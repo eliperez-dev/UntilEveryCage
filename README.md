@@ -3,7 +3,7 @@
 An interactive, data-driven map exposing the **global** infrastructure of animal exploitation.
 [Live website.](https://www.untileverycage.org/)
 
-![alt text](https://github.com/counterspecies/UntilEveryCage/blob/master/static/assets/icon.png)
+![alt text](https://github.com/eliperez-dev/UntilEveryCage/blob/master/static/assets/icon.png)
 
 ### Their Power is Secrecy. Our Power is Information.
 
@@ -25,53 +25,64 @@ The animal agriculture industry's power is built on a foundation of propaganda a
 
 This project is built with a focus on performance, transparency, and open-source principles.
 
-* **Backend:** A high-performance web server written in **Rust** using the **Axum** framework and deployed with **Shuttle**. It serves the static frontend files and provides a JSON API for the map data.
-* **Frontend:** A client-side application built with vanilla **HTML, CSS, and JavaScript**.
+* **Backend API:** A high-performance RESTful API written in **Rust** using the **Axum** framework and deployed with **Shuttle**.
+* **Frontend:** A client-side application built with vanilla **HTML, CSS, and JavaScript**, statically deployed via **Netlify**.
 * **Mapping Library:** **Leaflet.js** is used for all mapping functionalities, with the **Leaflet.markercluster** plugin for performance.
 * **Data Processing:** A series of **Python** scripts using `pandas` and `selenium` were used to download, clean, geocode, and compile the source data.
+## Running Locally
 
-## Getting Started
+This project uses a decoupled architecture: the frontend (HTML/JS) and backend (Rust API) are separate.
 
-To run this project locally for development or research, follow these steps.
+In production, the frontend is hosted on Netlify and the backend on Shuttle. To run this locally, you must run **two separate servers in two separate terminals.**
 
 ### Prerequisites
 
-* **Rust:** You must have the Rust programming language toolchain installed. You can install it from [rust-lang.org](https://www.rust-lang.org/tools/install).
-* **Shuttle:** The backend is designed for deployment with Shuttle. You will need to install the `cargo-shuttle` command-line tool.
-    ```bash
-    cargo install cargo-shuttle
-    ```
-* **Git:** You will need Git to clone the repository.
+* **Rust:** [rust-lang.org](https://www.rust-lang.org/tools/install)
+* **Shuttle:** `cargo install cargo-shuttle`
+* **Git**
+* **Python 3** (to serve the frontend files)
 
-### Installation & Setup
+
+### Instructions
 
 1.  **Clone the repository:**
     ```bash
-    git clone [https://github.com/eliPerez12/UntilEveryCage.git](https://github.com/eliPerez12/UntilEveryCage.git)
+    git clone [https://github.com/eliperez-dev/UntilEveryCage.git](https://github.com/eliperez-dev/UntilEveryCage.git)
     cd UntilEveryCage
     ```
 
-2.  **Place Data Files:** The backend expects the data files to be present in the `/static_data/` directory. Ensure the necessary files are placed in that folder, for example:
-    #### In /static_data/us
-    `locations.csv`
-    `aphis_data.csv`
-    `inspection_reports.csv`
-    #### In /static_data/de
-    `locations.csv`
-    #### In /static_data/uk
-    `locations.csv`
+2.  **Place Data Files:**
+    The backend expects the data files to be present in the `/static_data/` directory. Ensure the necessary files are placed in that folder, for example:
+    * In `/static_data/us`
+        * `locations.csv`
+        * `aphis_data.csv`
+        * `inspection_reports.csv`
+    * In `/static_data/de`
+        * `locations.csv`
+    * In `/static_data/uk`
+        * `locations.csv`
 
-4.  **Run the Backend Server:** Use Shuttle to run the project locally.
+3.  **Configure Frontend for Local API:**
+    Your JavaScript files are hard-coded to call the production API. You must change this.
+    * Open the main JavaScript file (e.g., `static/app.js` or similar).
+    * Find the production API URL (e.g., `https://untileverycage.shuttleapp.rs/api`).
+    * Change it to the local backend URL: `http://127.0.0.1:8001/api`
+
+4.  **Run the Backend API (Terminal 1):**
+    In your first terminal, run the Rust server. We will assign it to port **8001**.
     ```bash
-    cargo shuttle run
+    cargo shuttle run --port 8001
     ```
-    The server will start, typically on port `8000`.
 
-## How to View the Page
+5.  **Run the Frontend Server (Terminal 2):**
+    In your second terminal, serve the static files from the root directory using Python on port **8000**.
+    ```bash
+    python3 -m http.server 8000
+    ```
 
-To view the web page, start a python server to serve the local files `python -m http.server 8000`, then navigate to `http://127.0.0.1:8000/static/` on your web browser.
-
----
+6.  **Enable CORS Extension & View:**
+    * Turn on your browser's CORS-disabling extension.
+    * Navigate to `http://127.0.0.1:8000/static/` on your web browser.
 
 ## How to Contribute
 
