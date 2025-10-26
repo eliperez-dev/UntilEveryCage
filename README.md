@@ -80,10 +80,6 @@ In production, the frontend is hosted on Netlify and the backend on Shuttle. To 
     python3 -m http.server 8000
     ```
 
-6.  **Enable CORS Extension & View:**
-    * Turn on your browser's CORS-disabling extension.
-    * Navigate to `http://127.0.0.1:8000/static/` on your web browser.
-
 ## How to Contribute
 
 This is a living project, and collaboration is vital to its success. We welcome contributions of all kinds.
