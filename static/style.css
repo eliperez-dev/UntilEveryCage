@@ -427,6 +427,31 @@ hr {
     align-items: center;
 }
 
+.leaflet-control-layers-toggle {
+    background-image: none !important;
+    width: auto !important;
+    height: 39px !important;
+    padding: 0 16px !important;
+    font: bold 15px 'Helvetica Neue', Arial, Helvetica, sans-serif !important;
+    color: #333 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    line-height: 39px !important;
+}
+
+.leaflet-control-layers-toggle::before {
+    content: 'Views';
+}
+
+.leaflet-control-layers.leaflet-control-layers-expanded {
+    padding: 8px !important;
+}
+
+.leaflet-control-layers.leaflet-control-layers-expanded .leaflet-control-layers-toggle {
+    display: none;
+}
+
 /* Optional styling for the new resources section */
 .resources-section {
     background-color: #f9f9f9;

@@ -61,7 +61,7 @@
                 <li><a href="index.html" class="nav-link active">Map</a></li>
                 <li><a href="howtouse.html" class="nav-link">How To Use</a></li>
                 <li><a href="about.html" class="nav-link">About</a></li>
-                <li><a href="contribute.html" class="nav-link">Contribute</a></li>
+                <!-- <li><a href="contribute.html" class="nav-link">Contribute</a></li> -->
             </ul>
         </nav>
     </div>
@@ -81,51 +81,76 @@
     
     <!-- Simple filter panel -->
     <div id="map-filters" class="collapsed" role="region" aria-label="Map filters and controls">
+        <div class="resize-handle"></div>
         <div class="filter-header">
-            <span>Filters / Legend</span>
+            <span>Search</span>
             <button id="filter-toggle-btn" type="button" aria-label="Toggle filters panel">▶</button>
         </div>
         <div id="filter-panel" class="filter-content">
-            <div class="search-section">
-                <input type="text" id="name-search-input" placeholder="Search facilities..." aria-label="Search facilities by name">
-                <select id="country-selector" aria-label="Filter by country">
-                    <option value="all">All Countries</option>
-                </select>
-                <select id="state-selector" aria-label="Filter by state/province">
-                    <option value="all">All States/Provinces</option>
-                </select>
+            <div class="submenu-section">
+                <div class="submenu-header">
+                    <span>Search & Filters</span>
+                    <button class="submenu-toggle" type="button">▼</button>
+                </div>
+                <div class="submenu-content">
+                    <div class="search-section">
+                        <input type="text" id="name-search-input" placeholder="Search facilities..." aria-label="Search facilities by name">
+                        <select id="country-selector" aria-label="Filter by country">
+                            <option value="all">All Countries</option>
+                        </select>
+                        <select id="state-selector" aria-label="Filter by state/province">
+                            <option value="all">All States/Provinces</option>
+                        </select>
+                    </div>
+                </div>
             </div>
-            
-            <div class="button-section">
-                <button id="share-view-btn">Share View</button>
-                <button id="reset-filters-btn">Reset</button>
-                <button id="download-csv-btn">Download CSV</button>
+
+            <div class="submenu-section collapsed">
+                <div class="submenu-header">
+                    <span>Facility Types</span>
+                    <button class="submenu-toggle" type="button">▼</button>
+                </div>
+                <div class="submenu-content">
+                    <div class="types-section">
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="slaughterhousesCheckbox" checked> 
+                            <label for="slaughterhousesCheckbox">🔴 Slaughterhouses</label>
+                        </div>
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="meatProcessingPlantsCheckbox" checked>
+                            <label for="meatProcessingPlantsCheckbox">⚪️ Processing</label>
+                        </div>
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="testingLabsCheckbox" checked>
+                            <label for="testingLabsCheckbox">🟣 Labs</label>
+                        </div>
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="breedersCheckbox" checked>
+                            <label for="breedersCheckbox">🟡 Farms / Breeders</label>
+                        </div>
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="dealersCheckbox" checked>
+                            <label for="dealersCheckbox">🟠 Dealers</label>
+                        </div>
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="exhibitorsCheckbox" checked>
+                            <label for="exhibitorsCheckbox">🟢 Exhibitors/Zoos</label>
+                        </div>
+                    </div>
+                </div>
             </div>
-            
-            <div class="types-section">
-                <div class="checkbox-item">
-                    <input type="checkbox" id="slaughterhousesCheckbox" checked> 
-                    <label for="slaughterhousesCheckbox">🔴 Slaughterhouses</label>
+
+            <div class="submenu-section collapsed">
+                <div class="submenu-header">
+                    <span>Actions</span>
+                    <button class="submenu-toggle" type="button">▼</button>
                 </div>
-                <div class="checkbox-item">
-                    <input type="checkbox" id="meatProcessingPlantsCheckbox" checked>
-                    <label for="meatProcessingPlantsCheckbox">⚪️ Processing</label>
-                </div>
-                <div class="checkbox-item">
-                    <input type="checkbox" id="testingLabsCheckbox" checked>
-                    <label for="testingLabsCheckbox">🟣 Labs</label>
-                </div>
-                <div class="checkbox-item">
-                    <input type="checkbox" id="breedersCheckbox" checked>
-                    <label for="breedersCheckbox">🟡 Farms / Breeders</label>
-                </div>
-                <div class="checkbox-item">
-                    <input type="checkbox" id="dealersCheckbox" checked>
-                    <label for="dealersCheckbox">🟠 Dealers</label>
-                </div>
-                <div class="checkbox-item">
-                    <input type="checkbox" id="exhibitorsCheckbox" checked>
-                    <label for="exhibitorsCheckbox">🟢 Exhibitors/Zoos</label>
+                <div class="submenu-content">
+                    <div class="button-section">
+                        <button id="share-view-btn">Share View</button>
+                        <button id="reset-filters-btn">Reset</button>
+                        <button id="download-csv-btn">Download CSV</button>
+                    </div>
                 </div>
             </div>
 

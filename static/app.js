@@ -222,7 +222,7 @@ const baseMaps = {
     "Street View": streetMap,
     "Satellite View": satelliteMap
 };
-const layerControl = L.control.layers(baseMaps, null, { collapsed: false, position: 'bottomleft' }).addTo(map);
+const layerControl = L.control.layers(baseMaps, null, { collapsed: true, position: 'bottomleft' }).addTo(map);
 
 // Initialize with Default View active
 defaultViewLayer.addTo(map); // This makes "Default View" show as selected
@@ -923,6 +923,66 @@ filterHeader.addEventListener('click', () => {
     }
 });
 
+const resizeHandle = document.querySelector('.resize-handle');
+let isResizing = false;
+let startX = 0;
+let startWidth = 0;
+
+const startResize = (clientX) => {
+    isResizing = true;
+    startX = clientX;
+    startWidth = mapFilters.offsetWidth;
+    document.body.classList.add('resizing');
+};
+
+const doResize = (clientX) => {
+    if (!isResizing) return;
+    
+    const width = startWidth + (clientX - startX);
+    const minWidth = 200;
+    const maxWidth = 600;
+    
+    if (width >= minWidth && width <= maxWidth) {
+        mapFilters.style.width = `${width}px`;
+    }
+};
+
+const stopResize = () => {
+    isResizing = false;
+    document.body.classList.remove('resizing');
+};
+
+resizeHandle.addEventListener('mousedown', (e) => {
+    startResize(e.clientX);
+    e.preventDefault();
+});
+
+resizeHandle.addEventListener('touchstart', (e) => {
+    startResize(e.touches[0].clientX);
+    e.preventDefault();
+}, { passive: false });
+
+document.addEventListener('mousemove', (e) => {
+    doResize(e.clientX);
+});
+
+document.addEventListener('touchmove', (e) => {
+    if (isResizing) {
+        doResize(e.touches[0].clientX);
+        e.preventDefault();
+    }
+}, { passive: false });
+
+document.addEventListener('mouseup', stopResize);
+document.addEventListener('touchend', stopResize);
+
+const submenuHeaders = document.querySelectorAll('.submenu-header');
+submenuHeaders.forEach(header => {
+    header.addEventListener('click', (e) => {
+        const section = header.parentElement;
+        section.classList.toggle('collapsed');
+    });
+});
 
 map.on('popupopen', function (e) {
     const popupNode = e.popup.getElement();
