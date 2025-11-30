@@ -1,0 +1,23 @@
+This is a current listing of establishments registered under the Meat Inspection Act and Regulations.
+
+NOTE:
+* at the end of the operator's name means the establishment is temporarily inactive.
+
+The licensed operators of a registered establishment have a Hazard Analysis Critical Control Points (HACCP) system (prerequisite programs and HACCP plans) in place that meets Food Safety Enhancement Program (FSEP) requirements as required by section 29 of the Meat Inspection Regulations, 1990.
+
+Key To Function Codes:
+1. Slaughter    a) Cattle  b) Calves  c) Sheep, lambs and goats  d) Swine  e) Horses  f) Poultry  g) Rabbits  h) Others
+1. Ritual Slaughter    i) Halal  j) Kosher
+2. Canning    f) Poultry Meat  x) Red Meat  g) Rabbit Meat
+3. Boning and Cutting    f) Poultry Meat  x) Red Meat  g) Rabbit Meat
+4. Edible Rendering  
+5. Casing Preparation  
+6. Other Processing    f) Poultry Meat  x) Red Meat  g) Rabbit Meat
+7. Packaging, Labelling and Storing  
+8. Inedible Rendering  
+9. Facilities for inspection of detained or imported meat products    A) Cooked, frozen, boneless beef from South America.  B) Other than cooked, frozen, boneless beef from South America.  C) Not requiring refrigeration.  US) From the United States of America.
+10. Storage Only    A) Cold Storage  B) Dry Storage
+11. Establishments approved for export to specified markets. Please be advised that the approval of the establishments may be limited to specific products and/or that restrictions may apply. For details on the eligibility status of the establishment click on the following link and consult the applicable section on the market of destination of chapter 11: http://www.inspection.gc.ca/english/fssa/meavia/man/ch11/11.7e.shtml
+  A) Mexico  C) Japan  D) United States  F) Australia  G) South Africa  H) European Union* & Switzerland  I) Ukraine  J) Argentina  K) Brazil  L) Hong-Kong  O) Malaysia  P) Indonesia  R) Russia  S) China  B) Saudi Arabia  M) Singapore  Q) Peru  V) Vietnam
+NOTE: With the exception of St-Pierre et Miquelon
+12. Trichina Treatment Facilities  
