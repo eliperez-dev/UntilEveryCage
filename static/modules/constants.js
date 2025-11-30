@@ -139,6 +139,23 @@ export function initializeDOMElements() {
         dealersCheckbox: document.getElementById(DOM_SELECTORS.dealersCheckbox),
         exhibitorsCheckbox: document.getElementById(DOM_SELECTORS.exhibitorsCheckbox),
         
+        // Animal filter checkboxes
+        cattleCheckbox: document.getElementById(DOM_SELECTORS.cattleCheckbox),
+        pigsCheckbox: document.getElementById(DOM_SELECTORS.pigsCheckbox),
+        chickensCheckbox: document.getElementById(DOM_SELECTORS.chickensCheckbox),
+        turkeysCheckbox: document.getElementById(DOM_SELECTORS.turkeysCheckbox),
+        sheepCheckbox: document.getElementById(DOM_SELECTORS.sheepCheckbox),
+        goatsCheckbox: document.getElementById(DOM_SELECTORS.goatsCheckbox),
+        duckCheckbox: document.getElementById(DOM_SELECTORS.duckCheckbox),
+        rabbitCheckbox: document.getElementById(DOM_SELECTORS.rabbitCheckbox),
+        dogsCheckbox: document.getElementById(DOM_SELECTORS.dogsCheckbox),
+        catsCheckbox: document.getElementById(DOM_SELECTORS.catsCheckbox),
+        guineaPigsCheckbox: document.getElementById(DOM_SELECTORS.guineaPigsCheckbox),
+        hamstersCheckbox: document.getElementById(DOM_SELECTORS.hamstersCheckbox),
+        primatesCheckbox: document.getElementById(DOM_SELECTORS.primatesCheckbox),
+        otherFarmCheckbox: document.getElementById(DOM_SELECTORS.otherFarmCheckbox),
+        otherAnimalsCheckbox: document.getElementById(DOM_SELECTORS.otherAnimalsCheckbox),
+        
         // Filter controls
         countrySelector: document.getElementById(DOM_SELECTORS.countrySelector),
         stateSelector: document.getElementById(DOM_SELECTORS.stateSelector),

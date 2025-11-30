@@ -224,14 +224,14 @@
 .types-grid {
     display: grid;
     grid-template-columns: 1fr;
-    gap: 10px;
+    gap: 4px;
 }
 
 .checkbox-item {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 8px 0;
+    padding: 4px 0;
     font-size: 14px;
     transition: all 0.2s ease;
 }

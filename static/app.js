@@ -820,7 +820,11 @@ function updateStats(slaughterhouses, processing, labs, inspections, breeding, e
     if (testingLabsCheckbox.checked && labs > 0) stats.push(`${labs.toLocaleString()} Animal Labs`);
     if ((breedersCheckbox.checked || dealersCheckbox.checked || exhibitorsCheckbox.checked) && inspections > 0) stats.push(`${inspections.toLocaleString()} Other Locations`);
     
-    statsContainer.innerHTML = stats.length > 0 ? `Showing: ${stats.join(', ')}` : 'No facilities match the current filters.';
+    const total = slaughterhouses + processing + breeding + exhibition + labs + inspections;
+    const statsText = stats.length > 0 ? `Showing: ${stats.join(', ')}` : 'No facilities match the current filters.';
+    const totalText = total > 0 ? `<br><strong>Total: ${total.toLocaleString()}</strong>` : '';
+    
+    statsContainer.innerHTML = statsText + totalText;
 }
 
 
