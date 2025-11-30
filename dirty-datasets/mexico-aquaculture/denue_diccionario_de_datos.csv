@@ -1,0 +1,59 @@
+DICCIONARIO DE DATOS DENUE (22/05/2025),,,,
+Nombre del Atributo en csv,Nombre del Atributo en DBF,Tipo de dato,Longitud,Descripción
+id,id,numérico,10,"Número  de identificación del DENUE, es una clave numérica única para cada registro de la base de datos del Directorio Estadístico Nacional de Unidades Económicas (DENUE)."
+nom_estab,nom_estab,alfanumérico,150,"Es el nombre comercial o nombre exterior con el que se identifica o anuncia la unidad económica.Generalmente es fácil reconocerlo porque está visible y escrito en rótulos, fachadas o anuncios luminosos. Ejemplo: ABARROTES LUPITA.Cuando la unidad económica no tiene ningún apelativo comercial, entonces se registra con el nombre genérico de la actividad o la descripción de la actividad económica, ejemplo: ABARROTES o Comercio al por menor en tiendas de abarrotes, ultramarinos y misceláneas."
+raz_social,raz_social,alfanumérico,250,"Es la forma con que está legalmente constituida y registrada la persona moral, o la denominación de una sociedad legalmente constituida.Es importante considerar que en algunas sociedades mercantiles, la razón social y el nombre comercial pueden ser los mismos, ejemplo: GILSA, S.A. de C.V.Cuando la unidad económica pertenece a una persona física, el dato no se incluye para proteger la confidencialidad de la información."
+codigo_act,codigo_act,alfanumérico,6,"La clasificación de las actividades desarrolladas por las unidades económicas debe hacerse utilizando el SCIAN y sus actualizaciones, con base en lo dispuesto en el acuerdo para el uso del SCIAN y en la recopilación, análisis y presentación de estadísticas económicas, publicado en el Diario Oficial de la Federación del 10 de julio de 2009.
+El código está asignado con base en la actividad principal que desarrolla la unidad económica y de acuerdo con el Sistema de Clasificación Industrial para América del Norte, versión 2018.
+Para la asignación del código de actividad correspondiente, según el SCIAN 2018, se consideraron tanto los productos (bienes y servicios) desarrollados por el establecimiento como sus procesos de producción."
+nombre_act,nombre_act,alfanumérico,250,Nombre del código de actividad conforme al SCIAN 2018.
+per_ocu,per_ocu,alfanumérico,20,"Comprende al personal contratado directamente por la razón social y al personal ajeno suministrado por otra razón social, que trabajó para la unidad económica, sujeto a su dirección y control y que cubrió, como mínimo, una tercera parte de la jornada laboral. Puede ser personal de planta, eventual remunerado o no remunerado.
+
+Las unidades económicas se clasifican por rangos de personal ocupado, que permiten identificar el tamaño de Unidades Económicas por el número de personal que emplean; es decir, según su personal ocupado total. Para el Directorio las Unidades Económicas están agrupadas en rangos o estratos de personal ocupado, con base en el personal ocupado total reportado por éstas, como se indica en la siguiente tabla.
+
+Personal Ocupado
+1 = 0 a 5
+2 = 6 a 10
+3 = 11 a 30
+4 = 31 a 50
+5 = 51 a 100
+6 = 101 a 250
+7 = 251 y más"
+tipo_vial,tipo_vial,alfanumérico,40,"Es la superficie del terreno destinada para el tránsito vehicular y/o peatonal, en la cual se encuentra ubicada la unidad económica (calle, avenida, andador, etc.)"
+nom_vial,nom_vial,alfanumérico,150,Es el sustantivo propio con el cual se identifica la vialidad.
+tipo_v_e_1,tipo_v_e_1,alfanumérico,40,"Es la superficie del terreno destinada para el tránsito vehicular y/o peatonal, en la cual se encuentra ubicada la unidad económica (calle, avenida, andador, etc.)"
+nom_v_e_1,nom_v_e_1,alfanumérico,150,Es el sustantivo propio con el cual se identifica la vialidad.
+tipo_v_e_2,tipo_v_e_2,alfanumérico,40,"Es la superficie del terreno destinada para el tránsito vehicular y/o peatonal, en la cual se encuentra ubicada la unidad económica (calle, avenida, andador, etc.)"
+nom_v_e_2,nom_v_e_2,alfanumérico,150,Es el sustantivo propio con el cual se identifica la vialidad.
+tipo_v_e_3,tipo_v_e_3,alfanumérico,40,"Es la superficie del terreno destinada para el tránsito vehicular y/o peatonal, en la cual se encuentra ubicada la unidad económica (calle, avenida, andador, etc.)"
+nom_v_e_3,nom_v_e_3,alfanumérico,150,Es el sustantivo propio con el cual se identifica la vialidad.
+numero_ext,numero_ext,alfanumérico,35,Son los valores numéricos que identifican a uno o varios inmuebles en una vialidad.
+letra_ext,letra_ext,alfanumérico,35,Son los caracteres alfanuméricos que identifican a uno o varios inmuebles en una vialidad.
+edificio,edificio,alfanumérico,50,Es el sustantivo propio con el que se identifica el inmueble donde está ubicada la unidad económica.
+edificio_e,edificio_e,alfanumérico,35,Es con el que se identifica el piso o nivel del inmueble donde está ubicada la unidad económica.
+numero_int,numero_int,alfanumérico,35,Son los valores numéricos que identifican el domicilio de la unidad económica al interior de un inmueble.
+letra_int,letra_int,alfanumérico,35,Son los caracteres alfanuméricos que identifican un domicilio al interior de un inmueble.
+tipo_asent,tipo_asent,alfanumérico,25,"Es la clasificación que se da al asentamiento humano de acuerdo con su función (colonia, fraccionamiento, unidad habitacional, etc.)"
+nomb_asent,nomb_asent,alfanumérico,150,Es el sustantivo propio con el cual se identifica el asentamiento humano en el que se ubica la unidad económica.
+tipoCenCom,tipoCenCom,alfanumérico,40,"Tipo de plaza, centro comercial, etcétera donde se encuentra la unidad económica."
+nom_CenCom,nom_CenCom,alfanumérico,150,"Nombre de la plaza, centro comercial, etcétera donde se encuentra la unidad económica."
+num_local,num_local,alfanumérico,35,Dato alfanumérico que corresponde al local en donde se localizó la unidad económica.
+cod_postal,cod_postal,alfanumérico,5,Clave numérica integrada por cinco dígitos establecido por el Servicio Postal Mexicano.
+cve_ent,cve_ent,alfanumérico,2,Clave que identifica a la entidad federativa estadística.
+entidad,entidad,alfanumérico,50,Es el sustantivo propio que identifica a la entidad federativa.
+cve_mun,cve_mun,alfanumérico,3,"Clave que identifica al Municipio estadístico, y en el caso de la Ciudad de México, las que identifican a las Alcaldías."
+municipio,municipio,alfanumérico,150,"Es el sustantivo propio que identifica al Municipio, y en el caso de la Ciudad de México los que identifican a las Alcaldías."
+cve_loc,cve_loc,alfanumérico,4,"Clave que identifica a la localidad estadística. Esta es el lugar ocupado con una o más edificaciones utilizadas como viviendas, las cuales pueden estar habitadas o no, este lugar es reconocido por un nombre dado por alguna disposición legal o la costumbre."
+localidad,localidad,alfanumérico,150,"Es el sustantivo propio que identifica a la localidad. Esta es el lugar ocupado con una o más edificaciones utilizadas como viviendas, las cuales pueden estar habitadas o no, este lugar es reconocido por un nombre dado por alguna disposición legal o la costumbre."
+ageb,ageb,alfanumérico,4,"Es la extensión territorial que corresponde a la subdivisión de las AGEM. Constituye la unidad básica del Marco Geoestadístico Nacional y, dependiendo de sus características, se clasifica en dos tipos, Áreas Geoestadísticas Básicas Urbanas y Áreas Geoestadísticas Básicas Rurales."
+manzana,manzana,alfanumérico,3,"Clave geoestadística de la manzana, compuesta por tres dígitos, que identifica a una extensión territorial que está constituida por un grupo de viviendas, edificios, predios, lotes o terrenos de uso habitacional, comercial, industrial o de servicios."
+telefono,telefono,alfanumérico,20,"Número telefónico, secuencia de dígitos que permite la comunicación vía telefónica con la unidad económica."
+correoelec,correoelec,alfanumérico,75,"Correo electrónico, es la serie de caracteres cuya finalidad es acceder a un servicio de red que posibilita a las unidades económicas el envío y recepción de mensajes mediante sistemas de comunicación electrónicos."
+www,www,alfanumérico,150,Son los datos que permiten el acceso a información de la unidad económica en Internet.
+tipoUniEco,tipoUniEco,alfanumérico,8,"Grupo de categorías que sirve para identificar si el establecimiento es fijo o semifijo, bajo las siguientes definiciones: 
+Establecimiento fijo: es la unidad que en una sola ubicación física, asentada en un lugar de manera permanente y delimitada por construcciones e instalaciones fijas, combina acciones y recursos bajo el control de una sola entidad propietaria o controladora para realizar alguna actividad económica con y sin fines de lucro, excepto las destinadas al autoconsumo. En este tipo de establecimiento están comprendidas las viviendas cuando en algún espacio de la casa-habitación, que también está destinado a otras actividades cotidianas, se realiza alguna actividad económica. 
+Establecimiento semifijo: establecimientos que están fijos, enclavados en el suelo, y que permanecen de día y de noche en el mismo sitio aunque sus instalaciones sean frágiles o rústicas. También aquellas instalaciones que aun cuando no estén enclavadas al suelo no pueden ser removidas de donde están, aunque lleven a cabo actividades que tienen carácter temporal o estacional, siempre y cuando permanezcan activas y en un solo lugar durante un periodo de por lo menos tres meses seguidos."
+latitud,latitud,numérico,20,"Es la distancia que existe entre la unidad económica y el ecuador, medida sobre el meridiano que pasa por dicho punto."
+longitud,longitud,numérico,20,"Es la distancia que existe entre la unidad económica y el meridiano de Greenwich, medida sobre el paralelo que pasa por dicho punto."
+fecha_alta,fecha_alta,alfanumérico,15,Fecha en la que la unidad económica se integró al Directorio Estadístico Nacional de Unidades Económicas y al Registro Estadístico de Negocios de México (RENEM).
+clee,clee,alfanumérico,40,"Es la llave única de identificación estadística, asignada exclusivamente por el INEGI a cada uno de los establecimientos y empresas registrados en el RENEM, cuya función es identificarlos unívocamente y vincular a los establecimientos de una misma empresa."

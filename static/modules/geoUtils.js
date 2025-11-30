@@ -10,7 +10,8 @@ import {
     GERMAN_STATE_NAMES, 
     SPANISH_STATE_NAMES, 
     FRENCH_STATE_NAMES,
-    CANADIAN_PROVINCE_NAMES
+    CANADIAN_PROVINCE_NAMES,
+    MEXICAN_STATE_NAMES
 } from './constants.js';
 
 // --- State/Country Detection Functions ---
@@ -26,11 +27,14 @@ export function getStateDisplayName(stateCode) {
         return '';
     }
     
+    const normalized = stateCode.toUpperCase();
+    
     return US_STATE_NAMES[stateCode] || 
            GERMAN_STATE_NAMES[stateCode] || 
            SPANISH_STATE_NAMES[stateCode] || 
            FRENCH_STATE_NAMES[stateCode] ||
            CANADIAN_PROVINCE_NAMES[stateCode] ||
+           MEXICAN_STATE_NAMES[normalized] ||
            stateCode;
 }
 
@@ -80,6 +84,15 @@ export function isCanadianProvince(stateCode) {
 }
 
 /**
+ * Check if a state code belongs to Mexico
+ * @param {string} stateCode - The state code to check
+ * @returns {boolean} - True if Mexican state
+ */
+export function isMexicanState(stateCode) {
+    return stateCode ? MEXICAN_STATE_NAMES.hasOwnProperty(stateCode.toUpperCase()) : false;
+}
+
+/**
  * Check if a location belongs to France
  * @param {Object} location - The location object with country property
  * @returns {boolean} - True if French location
@@ -107,8 +120,17 @@ export function isDanishLocation(location) {
 }
 
 /**
+ * Check if a location belongs to Mexico
+ * @param {Object} location - The location object with country property
+ * @returns {boolean} - True if Mexican location
+ */
+export function isMexicanLocation(location) {
+    return location.country === 'mx';
+}
+
+/**
  * Check if a state code belongs to the UK
- * UK states/counties are any that aren't US, German, Spanish, French, or Canadian states
+ * UK states/counties are any that aren't US, German, Spanish, French, Canadian, or Mexican states
  * @param {string} stateCode - The state code to check
  * @returns {boolean} - True if UK state
  */
@@ -118,6 +140,7 @@ export function isUKState(stateCode) {
            !isSpanishState(stateCode) && 
            !isFrenchState(stateCode) && 
            !isCanadianProvince(stateCode) && 
+           !isMexicanState(stateCode) && 
            stateCode && 
            stateCode.trim() !== '';
 }
@@ -127,7 +150,7 @@ export function isUKState(stateCode) {
 /**
  * Get the selected country code for a given state code
  * @param {string} stateCode - The state code
- * @returns {string} - Country code (US, DE, ES, FR, UK) or 'all'
+ * @returns {string} - Country code (US, DE, ES, FR, CA, MX, UK) or 'all'
  */
 export function getSelectedCountryForState(stateCode) {
     if (isUSState(stateCode)) return 'US';
@@ -135,6 +158,7 @@ export function getSelectedCountryForState(stateCode) {
     if (isSpanishState(stateCode)) return 'ES';
     if (isFrenchState(stateCode)) return 'FR';
     if (isCanadianProvince(stateCode)) return 'CA';
+    if (isMexicanState(stateCode)) return 'MX';
     if (isUKState(stateCode)) return 'UK';
     return 'all';
 }
@@ -142,7 +166,7 @@ export function getSelectedCountryForState(stateCode) {
 /**
  * Get the selected country code for a given location object
  * @param {Object} location - The location object with country property
- * @returns {string} - Country code (US, DE, ES, FR, UK) or 'all'
+ * @returns {string} - Country code (US, DE, ES, FR, CA, MX, UK) or 'all'
  */
 export function getSelectedCountryForLocation(location) {
     if (location.country === 'us') return 'US';
@@ -150,6 +174,8 @@ export function getSelectedCountryForLocation(location) {
     if (location.country === 'es') return 'ES';
     if (location.country === 'fr') return 'FR';
     if (location.country === 'ca') return 'CA';
+    if (location.country === 'mx') return 'MX';
+    if (location.country === 'dk') return 'DK';
     if (location.country === 'uk') return 'UK';
     return 'all';
 }

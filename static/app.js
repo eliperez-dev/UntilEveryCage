@@ -32,9 +32,11 @@ import {
     isSpanishState,
     isFrenchState,
     isCanadianProvince,
+    isMexicanState,
     isFrenchLocation,
     isCanadianLocation,
     isDanishLocation,
+    isMexicanLocation,
     isUKState,
     getSelectedCountryForState,
     getSelectedCountryForLocation,
@@ -279,6 +281,7 @@ function populateCountrySelector(allStateValues) {
     const hasSpanishStates = allStateValues.some(state => isSpanishState(state));
     const hasFrenchStates = allLocations.some(location => isFrenchLocation(location));
     const hasCanadianStates = allLocations.some(location => isCanadianLocation(location));
+    const hasMexicanStates = allLocations.some(location => isMexicanLocation(location));
     const hasDanishStates = allLocations.some(location => isDanishLocation(location));
     const hasUKStates = allStateValues.some(state => isUKState(state));
     
@@ -319,6 +322,13 @@ function populateCountrySelector(allStateValues) {
         countrySelector.appendChild(caOption);
     }
     
+    if (hasMexicanStates) {
+        const mxOption = document.createElement('option');
+        mxOption.value = 'MX';
+        mxOption.textContent = 'México';
+        countrySelector.appendChild(mxOption);
+    }
+    
     if (hasDanishStates) {
         const dkOption = document.createElement('option');
         dkOption.value = 'DK';
@@ -351,6 +361,16 @@ function populateStateSelector(allStateValues, selectedCountry = 'all') {
     } else if (selectedCountry === 'CA') {
         // Filter for Canadian provinces
         filteredStates = allStateValues.filter(state => isCanadianProvince(state));
+    } else if (selectedCountry === 'MX') {
+        // Filter for Mexican states and deduplicate by normalizing to uppercase
+        const mexicanStateMap = new Map();
+        allStateValues.filter(state => isMexicanState(state)).forEach(state => {
+            const normalized = state.toUpperCase();
+            if (!mexicanStateMap.has(normalized)) {
+                mexicanStateMap.set(normalized, state);
+            }
+        });
+        filteredStates = Array.from(mexicanStateMap.values());
     } else if (selectedCountry === 'DK') {
         // For Danish locations, get unique city/region names from the locations
         filteredStates = [...new Set(allLocations
@@ -578,6 +598,8 @@ function applyFilters(shouldUpdateView = false, shouldCenterOnCountry = false) {
             } else if (selectedCountry === 'FR' && isFrenchLocation(loc)) {
                 countryMatch = true;
             } else if (selectedCountry === 'CA' && isCanadianLocation(loc)) {
+                countryMatch = true;
+            } else if (selectedCountry === 'MX' && isMexicanLocation(loc)) {
                 countryMatch = true;
             } else if (selectedCountry === 'DK' && isDanishLocation(loc)) {
                 countryMatch = true;
@@ -1187,7 +1209,7 @@ async function initializeApp() {
             API_ENDPOINTS.local.inspectionReports
         ];
         
-        let urls = productionUrls;
+        let urls = localUrls;
         let usdaResponse, aphisResponse, inspectionsResponse;
         
         try {

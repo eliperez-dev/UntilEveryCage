@@ -349,3 +349,38 @@ export const CANADIAN_PROVINCE_NAMES = {
     'SK': 'Saskatchewan',
     'YT': 'Yukon'
 };
+
+export const MEXICAN_STATE_NAMES = {
+    'AGUASCALIENTES': 'Aguascalientes',
+    'BAJA CALIFORNIA': 'Baja California',
+    'BAJA CALIFORNIA SUR': 'Baja California Sur',
+    'CAMPECHE': 'Campeche',
+    'CHIAPAS': 'Chiapas',
+    'CHIHUAHUA': 'Chihuahua',
+    'CIUDAD DE MÉXICO': 'Ciudad de México',
+    'COAHUILA DE ZARAGOZA': 'Coahuila de Zaragoza',
+    'COLIMA': 'Colima',
+    'DURANGO': 'Durango',
+    'GUANAJUATO': 'Guanajuato',
+    'GUERRERO': 'Guerrero',
+    'HIDALGO': 'Hidalgo',
+    'JALISCO': 'Jalisco',
+    'MICHOACÁN DE OCAMPO': 'Michoacán de Ocampo',
+    'MORELOS': 'Morelos',
+    'MÉXICO': 'México',
+    'NAYARIT': 'Nayarit',
+    'NUEVO LEÓN': 'Nuevo León',
+    'OAXACA': 'Oaxaca',
+    'PUEBLA': 'Puebla',
+    'QUERÉTARO': 'Querétaro',
+    'QUINTANA ROO': 'Quintana Roo',
+    'SAN LUIS POTOSÍ': 'San Luis Potosí',
+    'SINALOA': 'Sinaloa',
+    'SONORA': 'Sonora',
+    'TABASCO': 'Tabasco',
+    'TAMAULIPAS': 'Tamaulipas',
+    'TLAXCALA': 'Tlaxcala',
+    'VERACRUZ DE IGNACIO DE LA LLAVE': 'Veracruz de Ignacio de la Llave',
+    'YUCATÁN': 'Yucatán',
+    'ZACATECAS': 'Zacatecas'
+};
