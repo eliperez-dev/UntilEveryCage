@@ -49,6 +49,7 @@ import {
     getCurrentScale,
     getCurrentScaleIndex,
     setCurrentScaleIndex,
+    setCustomScale,
     cycleToNextScale,
     refreshGlobalIcons,
     iconForType,
@@ -259,6 +260,7 @@ let allLocations = [];
 let allLabLocations = [];
 let allInspectionReports = [];
 let isInitialDataLoading = true;
+let clusterThreshold = 2800;
 
 // Geographic utilities are now imported from geoUtils module
 
@@ -413,7 +415,11 @@ const {
     loadingText,
     progressFill,
     progressPercentage,
-    filterHeader
+    filterHeader,
+    clusterThresholdSlider,
+    clusterValueDisplay,
+    iconSizeSlider,
+    iconSizeDisplay
 } = initializeDOMElements();
 
 function updateProgress(percentage, message) {
@@ -511,7 +517,7 @@ function updateUrlWithCurrentState() {
     history.pushState({}, '', newUrl);
 }
 
-function applyFilters(shouldUpdateView = false) {
+function applyFilters(shouldUpdateView = false, shouldCenterOnCountry = false) {
     const selectedCountry = countrySelector.value;
     const selectedState = stateSelector.value;
     const searchTerm = nameSearchInput.value.toLowerCase().trim();
@@ -695,8 +701,7 @@ function applyFilters(shouldUpdateView = false) {
     if (testingLabsCheckbox.checked) totalMarkerCount += filteredLabs.length;
     totalMarkerCount += filteredInspections.length;
 
-    const CLUSTER_THRESHOLD = 2800;
-    const useClustering = totalMarkerCount >= CLUSTER_THRESHOLD;
+    const useClustering = totalMarkerCount >= clusterThreshold;
 
     updateStats(slaughterhouses.length, processingPlants.length, filteredLabs.length, filteredInspections.length, breedingFacilities.length, exhibitionFacilities.length);
 
@@ -705,7 +710,7 @@ function applyFilters(shouldUpdateView = false) {
     const addMarkerToLayer = (marker, layer) => {
         if (marker) {
             layer.addLayer(marker);
-            if (!isAllStatesView) markerBounds.push(marker.getLatLng());
+            if (!isAllStatesView || shouldCenterOnCountry) markerBounds.push(marker.getLatLng());
         }
     };
 
@@ -756,7 +761,11 @@ function applyFilters(shouldUpdateView = false) {
         if (!isAllStatesView && markerBounds.length > 0) {
             map.fitBounds(L.latLngBounds(markerBounds).pad(0.1));
         } else if (isAllStatesView) {
-            map.setView([31.42841, -49.57343], 2).setZoom(2);
+            if (shouldCenterOnCountry && selectedCountry !== 'all' && markerBounds.length > 0) {
+                map.fitBounds(L.latLngBounds(markerBounds).pad(0.1));
+            } else {
+                map.setView([31.42841, -49.57343], 2).setZoom(2);
+            }
         }
     }
     updateUrlWithCurrentState();
@@ -813,14 +822,33 @@ function plotMarker(data, type) {
 
 function updateStats(slaughterhouses, processing, labs, inspections, breeding, exhibition) {
     let stats = [];
-    if (slaughterhouseCheckbox.checked && slaughterhouses > 0 ) stats.push(`${slaughterhouses.toLocaleString()} Slaughterhouses`);
-    if (meatProcessingCheckbox.checked && processing > 0) stats.push(`${processing.toLocaleString()} Processing Plants`);
-    if (breedersCheckbox.checked && breeding > 0) stats.push(`${breeding.toLocaleString()} Production Facilities`);
-    if (exhibitorsCheckbox.checked && exhibition > 0) stats.push(`${exhibition.toLocaleString()} Exhibition Facilities`);
-    if (testingLabsCheckbox.checked && labs > 0) stats.push(`${labs.toLocaleString()} Animal Labs`);
-    if ((breedersCheckbox.checked || dealersCheckbox.checked || exhibitorsCheckbox.checked) && inspections > 0) stats.push(`${inspections.toLocaleString()} Other Locations`);
+    let total = 0;
     
-    const total = slaughterhouses + processing + breeding + exhibition + labs + inspections;
+    if (slaughterhouseCheckbox.checked && slaughterhouses > 0) {
+        stats.push(`${slaughterhouses.toLocaleString()} Slaughterhouses`);
+        total += slaughterhouses;
+    }
+    if (meatProcessingCheckbox.checked && processing > 0) {
+        stats.push(`${processing.toLocaleString()} Processing Plants`);
+        total += processing;
+    }
+    if (breedersCheckbox.checked && breeding > 0) {
+        stats.push(`${breeding.toLocaleString()} Production Facilities`);
+        total += breeding;
+    }
+    if (exhibitorsCheckbox.checked && exhibition > 0) {
+        stats.push(`${exhibition.toLocaleString()} Exhibition Facilities`);
+        total += exhibition;
+    }
+    if (testingLabsCheckbox.checked && labs > 0) {
+        stats.push(`${labs.toLocaleString()} Animal Labs`);
+        total += labs;
+    }
+    if ((breedersCheckbox.checked || dealersCheckbox.checked || exhibitorsCheckbox.checked) && inspections > 0) {
+        stats.push(`${inspections.toLocaleString()} Other Locations`);
+        total += inspections;
+    }
+    
     const statsText = stats.length > 0 ? `Showing: ${stats.join(', ')}` : 'No facilities match the current filters.';
     const totalText = total > 0 ? `<br><strong>Total: ${total.toLocaleString()}</strong>` : '';
     
@@ -844,6 +872,13 @@ countrySelector.addEventListener('change', () => {
         ...allInspectionReports.map(report => report['State'])
     ].filter(Boolean))];
     
+    // Show state selector only if a specific country is selected
+    if (selectedCountry === 'all') {
+        stateSelector.style.display = 'none';
+    } else {
+        stateSelector.style.display = 'block';
+    }
+    
     // Special handling for French locations since the current data doesn't include department codes
     // This filters for any actual French department codes that might exist in the data
     if (selectedCountry === 'FR') {
@@ -858,11 +893,35 @@ countrySelector.addEventListener('change', () => {
     }
     
     populateStateSelector(allStateValues, selectedCountry);
-    applyFilters(true);
+    stateSelector.value = 'all';
+    applyFilters(true, true);
 });
 
 stateSelector.addEventListener('change', () => applyFilters(true));
 nameSearchInput.addEventListener('input', () => applyFilters(false));
+
+if (clusterThresholdSlider) {
+    clusterThresholdSlider.addEventListener('input', (e) => {
+        clusterThreshold = parseInt(e.target.value);
+        if (clusterValueDisplay) {
+            clusterValueDisplay.textContent = clusterThreshold.toLocaleString();
+        }
+        applyFilters(false);
+    });
+}
+
+if (iconSizeSlider) {
+    iconSizeSlider.addEventListener('input', (e) => {
+        const scale = parseFloat(e.target.value);
+        if (iconSizeDisplay) {
+            iconSizeDisplay.textContent = scale.toFixed(1);
+        }
+        setCustomScale(scale);
+        refreshGlobalIcons();
+        updateMapMarkerIcons();
+    });
+}
+
 map.on('moveend', updateUrlWithCurrentState);
 
 function getStateFromCityStateZip(cityStateZip) {
@@ -886,6 +945,9 @@ shareViewBtn.addEventListener('click', () => {
 
 resetFiltersBtn.addEventListener('click', () => {
     countrySelector.value = 'all';
+    
+    // Hide state selector when resetting to all countries
+    stateSelector.style.display = 'none';
     
     // Repopulate state selector with all states since country is reset to 'all'
     const allStateValues = [...new Set([
@@ -1102,6 +1164,9 @@ async function initializeApp() {
         // Populate country and state dropdowns
         populateCountrySelector(allStateValues);
         populateStateSelector(allStateValues, 'all');
+        
+        // Hide state selector initially since we start with "All Countries"
+        stateSelector.style.display = 'none';
 
         urlParams = new URLSearchParams(window.location.search); // Assign the value here
         const layersParam = urlParams.get('layers');
@@ -1123,6 +1188,7 @@ async function initializeApp() {
         // If a specific country is pre-selected or a specific state is requested, 
         // make sure state selector is properly filtered
         if (urlCountry !== 'all') {
+            stateSelector.style.display = 'block';
             let stateValuesForCountry = allStateValues;
             // Special handling for French locations - filter for actual French department codes
             if (urlCountry === 'FR') {
@@ -1133,6 +1199,7 @@ async function initializeApp() {
         } else if (urlState !== 'all') {
             const stateCountry = getSelectedCountryForState(urlState);
             if (stateCountry !== 'all') {
+                stateSelector.style.display = 'block';
                 countrySelector.value = stateCountry;
                 let stateValuesForCountry = allStateValues;
                 // Special handling for French locations - filter for actual French department codes

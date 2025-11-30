@@ -154,6 +154,20 @@
                 </div>
             </div>
 
+            <!-- Clustering Section -->
+            <div class="drawer-section">
+                <h3 class="section-title">Display Settings</h3>
+                <p class="slider-label">Cluster after <span id="cluster-value">2800</span> facilities</p>
+                <input type="range" id="cluster-threshold-slider" min="1" max="10000" step="100" value="2800" class="threshold-slider">
+                <small>Lower values = earlier clustering.</small>
+                
+                <hr style="margin: 16px 0; border: none; border-top: 1px solid #e0e0e0;">
+                
+                <p class="slider-label">Pin Size: <span id="icon-size-value">1.0</span>x</p>
+                <input type="range" id="icon-size-slider" min="0.5" max="2.0" step="0.1" value="1" class="threshold-slider">
+                <small>Higher values = larger markers.</small>
+            </div>
+
             <!-- Stats Section -->
             <div class="drawer-section stats-section">
                 <div id="stats-container"></div>

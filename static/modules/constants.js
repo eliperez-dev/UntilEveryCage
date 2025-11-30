@@ -121,7 +121,15 @@ export const DOM_SELECTORS = {
     progressPercentage: '.progress-percentage',
     
     // Filter UI
-    filterHeader: '.drawer-header'
+    filterHeader: '.drawer-header',
+    
+    // Clustering control
+    clusterThresholdSlider: 'cluster-threshold-slider',
+    clusterValueDisplay: 'cluster-value',
+    
+    // Icon size control
+    iconSizeSlider: 'icon-size-slider',
+    iconSizeDisplay: 'icon-size-value'
 };
 
 // =============================================================================
@@ -176,7 +184,15 @@ export function initializeDOMElements() {
         progressPercentage: document.querySelector(DOM_SELECTORS.progressPercentage),
         
         // Filter UI
-        filterHeader: document.querySelector(DOM_SELECTORS.filterHeader)
+        filterHeader: document.querySelector(DOM_SELECTORS.filterHeader),
+        
+        // Clustering control
+        clusterThresholdSlider: document.getElementById(DOM_SELECTORS.clusterThresholdSlider),
+        clusterValueDisplay: document.getElementById(DOM_SELECTORS.clusterValueDisplay),
+        
+        // Icon size control
+        iconSizeSlider: document.getElementById(DOM_SELECTORS.iconSizeSlider),
+        iconSizeDisplay: document.getElementById(DOM_SELECTORS.iconSizeDisplay)
     };
 }
 

@@ -25,6 +25,12 @@ import { BASE_ICON_SPECS, PIN_SCALES } from './constants.js';
 let currentPinScaleIndex = PIN_SCALES.indexOf(1) !== -1 ? PIN_SCALES.indexOf(1) : PIN_SCALES.length - 1;
 
 /**
+ * Current custom scale value (overrides PIN_SCALES when set)
+ * @type {number|null}
+ */
+let currentCustomScale = null;
+
+/**
  * Rounds a number to at least 1
  * @param {number} n - Number to round
  * @returns {number} Rounded number, minimum 1
@@ -59,7 +65,7 @@ export function createScaledIcon(spec, scale) {
  * @returns {number} Current scale factor
  */
 export function getCurrentScale() { 
-    return PIN_SCALES[currentPinScaleIndex]; 
+    return currentCustomScale !== null ? currentCustomScale : PIN_SCALES[currentPinScaleIndex]; 
 }
 
 /**
@@ -77,6 +83,17 @@ export function getCurrentScaleIndex() {
 export function setCurrentScaleIndex(index) {
     if (index >= 0 && index < PIN_SCALES.length) {
         currentPinScaleIndex = index;
+        currentCustomScale = null;
+    }
+}
+
+/**
+ * Sets a custom scale value (0.5 to 2.0)
+ * @param {number} scale - New scale value
+ */
+export function setCustomScale(scale) {
+    if (scale >= 0.5 && scale <= 2.0) {
+        currentCustomScale = scale;
     }
 }
 
