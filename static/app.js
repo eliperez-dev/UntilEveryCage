@@ -1209,7 +1209,7 @@ async function initializeApp() {
             API_ENDPOINTS.local.inspectionReports
         ];
         
-        let urls = localUrls;
+        let urls = productionUrls;
         let usdaResponse, aphisResponse, inspectionsResponse;
         
         try {
