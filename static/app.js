@@ -919,7 +919,129 @@ countrySelector.addEventListener('change', () => {
 });
 
 stateSelector.addEventListener('change', () => applyFilters(true));
-nameSearchInput.addEventListener('input', () => applyFilters(false));
+
+nameSearchInput.addEventListener('input', (e) => {
+    applyFilters(false);
+    updateSearchResults(e.target.value);
+});
+
+function updateSearchResults(searchTerm) {
+    const resultsDropdown = document.getElementById('search-results-dropdown');
+    
+    if (!searchTerm || searchTerm.trim() === '') {
+        resultsDropdown.classList.remove('active');
+        resultsDropdown.innerHTML = '';
+        return;
+    }
+    
+    const term = searchTerm.toLowerCase().trim();
+    const nameMatches = [];
+    const dbaMatches = [];
+    
+    allLocations.forEach(loc => {
+        const nameMatch = (loc.establishment_name && loc.establishment_name.toLowerCase().includes(term));
+        const dbaMatch = (loc.dbas && loc.dbas.toLowerCase().includes(term));
+        
+        const item = {
+            id: loc.establishment_id,
+            name: loc.establishment_name || 'Unknown',
+            dba: loc.dbas || '',
+            location: `${loc.city}, ${loc.state}`,
+            lat: loc.latitude,
+            lng: loc.longitude,
+            type: 'usda-facility'
+        };
+        
+        if (nameMatch) {
+            nameMatches.push(item);
+        } else if (dbaMatch) {
+            dbaMatches.push(item);
+        }
+    });
+    
+    allLabLocations.forEach(lab => {
+        const nameMatch = (lab['Account Name'] && lab['Account Name'].toLowerCase().includes(term));
+        
+        if (nameMatch) {
+            const cityState = lab['City-State-Zip'] || '';
+            nameMatches.push({
+                id: lab['Customer Number_x'],
+                name: lab['Account Name'] || 'Unknown',
+                dba: '',
+                location: cityState,
+                lat: lab.latitude,
+                lng: lab.longitude,
+                type: 'lab'
+            });
+        }
+    });
+    
+    const results = [...nameMatches, ...dbaMatches].slice(0, 10);
+    
+    if (results.length === 0) {
+        resultsDropdown.innerHTML = '<div class="search-result-item" style="color: #999; cursor: default;">No facilities found</div>';
+        resultsDropdown.classList.add('active');
+        return;
+    }
+    
+    resultsDropdown.innerHTML = results.map(result => `
+        <div class="search-result-item" data-lat="${result.lat}" data-lng="${result.lng}" data-type="${result.type}" data-name="${result.name}">
+            <span class="search-result-name">${result.name}</span>
+            ${result.dba ? `<span class="search-result-type">${result.dba}</span>` : ''}
+            <span class="search-result-location">${result.location}</span>
+        </div>
+    `).join('');
+    
+    resultsDropdown.classList.add('active');
+    
+    resultsDropdown.querySelectorAll('.search-result-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const lat = parseFloat(item.dataset.lat);
+            const lng = parseFloat(item.dataset.lng);
+            const facilityName = item.dataset.name;
+            
+            map.setView([lat, lng], 16);
+            resultsDropdown.classList.remove('active');
+            nameSearchInput.value = facilityName;
+            
+            setTimeout(() => {
+                const matchingMarkers = [];
+                unifiedClusterLayer.eachLayer(layer => {
+                    if (layer.getLatLng && 
+                        Math.abs(layer.getLatLng().lat - lat) < 0.001 && 
+                        Math.abs(layer.getLatLng().lng - lng) < 0.001) {
+                        matchingMarkers.push(layer);
+                    }
+                });
+                
+                if (matchingMarkers.length === 0) {
+                    [slaughterhouseFeatureLayer, processingFeatureLayer, labFeatureLayer, inspectionReportFeatureLayer].forEach(layer => {
+                        layer.eachLayer(marker => {
+                            if (marker.getLatLng && 
+                                Math.abs(marker.getLatLng().lat - lat) < 0.001 && 
+                                Math.abs(marker.getLatLng().lng - lng) < 0.001) {
+                                matchingMarkers.push(marker);
+                            }
+                        });
+                    });
+                }
+                
+                if (matchingMarkers.length > 0) {
+                    matchingMarkers[0].openPopup();
+                }
+            }, 100);
+        });
+    });
+}
+
+document.addEventListener('click', (e) => {
+    const resultsDropdown = document.getElementById('search-results-dropdown');
+    const searchInput = document.getElementById('name-search-input');
+    
+    if (!resultsDropdown.contains(e.target) && e.target !== searchInput) {
+        resultsDropdown.classList.remove('active');
+    }
+});
 
 if (clusterThresholdSlider) {
     clusterThresholdSlider.addEventListener('input', (e) => {
@@ -1063,7 +1185,7 @@ async function initializeApp() {
             API_ENDPOINTS.local.inspectionReports
         ];
         
-        let urls = localUrls;
+        let urls = productionUrls;
         let usdaResponse, aphisResponse, inspectionsResponse;
         
         try {

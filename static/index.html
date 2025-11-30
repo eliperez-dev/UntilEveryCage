@@ -97,7 +97,10 @@
             <!-- Search Section -->
             <div class="drawer-section search-section">
                 <h3 class="section-title">Search</h3>
-                <input type="text" id="name-search-input" placeholder="Search facilities, animals, companies..." aria-label="Search facilities by name" class="search-input">
+                <div class="search-input-wrapper">
+                    <input type="text" id="name-search-input" placeholder="Search facilities, animals, companies..." aria-label="Search facilities by name" class="search-input">
+                    <div id="search-results-dropdown" class="search-results-dropdown"></div>
+                </div>
             </div>
 
             <!-- Location Section -->
@@ -158,7 +161,7 @@
             <div class="drawer-section">
                 <h3 class="section-title">Display Settings</h3>
                 <p class="slider-label">Cluster after <span id="cluster-value">2800</span> facilities</p>
-                <input type="range" id="cluster-threshold-slider" min="1" max="10000" step="100" value="2800" class="threshold-slider">
+                <input type="range" id="cluster-threshold-slider" min="0" max="10000" step="200" value="1500" class="threshold-slider">
                 <small>Lower values = earlier clustering.</small>
                 
                 <hr style="margin: 16px 0; border: none; border-top: 1px solid #e0e0e0;">
