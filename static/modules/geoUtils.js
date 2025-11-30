@@ -9,7 +9,8 @@ import {
     US_STATE_NAMES, 
     GERMAN_STATE_NAMES, 
     SPANISH_STATE_NAMES, 
-    FRENCH_STATE_NAMES 
+    FRENCH_STATE_NAMES,
+    CANADIAN_PROVINCE_NAMES
 } from './constants.js';
 
 // --- State/Country Detection Functions ---
@@ -28,7 +29,8 @@ export function getStateDisplayName(stateCode) {
     return US_STATE_NAMES[stateCode] || 
            GERMAN_STATE_NAMES[stateCode] || 
            SPANISH_STATE_NAMES[stateCode] || 
-           FRENCH_STATE_NAMES[stateCode] || 
+           FRENCH_STATE_NAMES[stateCode] ||
+           CANADIAN_PROVINCE_NAMES[stateCode] ||
            stateCode;
 }
 
@@ -69,12 +71,30 @@ export function isFrenchState(stateCode) {
 }
 
 /**
+ * Check if a state code belongs to Canada
+ * @param {string} stateCode - The province code to check
+ * @returns {boolean} - True if Canadian province
+ */
+export function isCanadianProvince(stateCode) {
+    return CANADIAN_PROVINCE_NAMES.hasOwnProperty(stateCode);
+}
+
+/**
  * Check if a location belongs to France
  * @param {Object} location - The location object with country property
  * @returns {boolean} - True if French location
  */
 export function isFrenchLocation(location) {
     return location.country === 'fr';
+}
+
+/**
+ * Check if a location belongs to Canada
+ * @param {Object} location - The location object with country property
+ * @returns {boolean} - True if Canadian location
+ */
+export function isCanadianLocation(location) {
+    return location.country === 'ca';
 }
 
 /**
@@ -88,7 +108,7 @@ export function isDanishLocation(location) {
 
 /**
  * Check if a state code belongs to the UK
- * UK states/counties are any that aren't US, German, Spanish, or French states
+ * UK states/counties are any that aren't US, German, Spanish, French, or Canadian states
  * @param {string} stateCode - The state code to check
  * @returns {boolean} - True if UK state
  */
@@ -97,6 +117,7 @@ export function isUKState(stateCode) {
            !isGermanState(stateCode) && 
            !isSpanishState(stateCode) && 
            !isFrenchState(stateCode) && 
+           !isCanadianProvince(stateCode) && 
            stateCode && 
            stateCode.trim() !== '';
 }
@@ -113,6 +134,7 @@ export function getSelectedCountryForState(stateCode) {
     if (isGermanState(stateCode)) return 'DE';
     if (isSpanishState(stateCode)) return 'ES';
     if (isFrenchState(stateCode)) return 'FR';
+    if (isCanadianProvince(stateCode)) return 'CA';
     if (isUKState(stateCode)) return 'UK';
     return 'all';
 }
@@ -127,6 +149,7 @@ export function getSelectedCountryForLocation(location) {
     if (location.country === 'de') return 'DE';
     if (location.country === 'es') return 'ES';
     if (location.country === 'fr') return 'FR';
+    if (location.country === 'ca') return 'CA';
     if (location.country === 'uk') return 'UK';
     return 'all';
 }

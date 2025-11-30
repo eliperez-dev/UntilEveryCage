@@ -83,8 +83,8 @@ async fn read_locations_from_csv(
         }
 
         // Read the CSV file for this country
-        let csv_path = format!("{}/locations.csv", dir_name.clone());
-        if let Some(csv_data) = locale_dir.get_file(csv_path) {
+        let csv_path = format!("{}/locations.csv", dir_name);
+        if let Some(csv_data) = DATA_DIR.get_file(&csv_path) {
             let mut reader = csv::Reader::from_reader(csv_data.contents());
 
             for result in reader.deserialize() {

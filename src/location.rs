@@ -406,3 +406,743 @@ pub struct InspectionReport {
     #[serde(rename = "Geocodio Longitude")]
     pub longitude: f64,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn create_default_location() -> Location {
+        Location::default()
+    }
+
+    mod get_slaughtered_animals_tests {
+        use super::*;
+
+        #[test]
+        fn test_empty_location_returns_empty_string() {
+            let location = create_default_location();
+            let result = get_slaughtered_animals(&location);
+            assert_eq!(result, "");
+        }
+
+        #[test]
+        fn test_cattle_slaughter_detection() {
+            let mut location = create_default_location();
+            location.beef_cow_slaughter = "Yes".to_string();
+            let result = get_slaughtered_animals(&location);
+            assert!(result.contains("Cattle (Cows, Bulls)"));
+        }
+
+        #[test]
+        fn test_steer_slaughter_detection() {
+            let mut location = create_default_location();
+            location.steer_slaughter = "Yes".to_string();
+            let result = get_slaughtered_animals(&location);
+            assert!(result.contains("Cattle (Cows, Bulls)"));
+        }
+
+        #[test]
+        fn test_veal_calf_slaughter_detection() {
+            let mut location = create_default_location();
+            location.heavy_calf_slaughter = "Yes".to_string();
+            let result = get_slaughtered_animals(&location);
+            assert!(result.contains("Calves (Veal)"));
+        }
+
+        #[test]
+        fn test_swine_slaughter_detection() {
+            let mut location = create_default_location();
+            location.market_swine_slaughter = "Yes".to_string();
+            let result = get_slaughtered_animals(&location);
+            assert!(result.contains("Pigs"));
+        }
+
+        #[test]
+        fn test_poultry_slaughter_detection() {
+            let mut location = create_default_location();
+            location.young_chicken_slaughter = "Yes".to_string();
+            let result = get_slaughtered_animals(&location);
+            assert!(result.contains("Chickens"));
+        }
+
+        #[test]
+        fn test_turkey_slaughter_detection() {
+            let mut location = create_default_location();
+            location.young_turkey_slaughter = "Yes".to_string();
+            let result = get_slaughtered_animals(&location);
+            assert!(result.contains("Turkeys"));
+        }
+
+        #[test]
+        fn test_sheep_and_lamb_slaughter_detection() {
+            let mut location = create_default_location();
+            location.sheep_slaughter = "Yes".to_string();
+            let result = get_slaughtered_animals(&location);
+            assert!(result.contains("Sheep & Lambs"));
+        }
+
+        #[test]
+        fn test_rabbit_slaughter_detection() {
+            let mut location = create_default_location();
+            location.rabbit_slaughter = "Yes".to_string();
+            let result = get_slaughtered_animals(&location);
+            assert!(result.contains("Rabbits"));
+        }
+
+        #[test]
+        fn test_duck_slaughter_detection() {
+            let mut location = create_default_location();
+            location.duck_slaughter = "Yes".to_string();
+            let result = get_slaughtered_animals(&location);
+            assert!(result.contains("Ducks"));
+        }
+
+        #[test]
+        fn test_goose_slaughter_detection() {
+            let mut location = create_default_location();
+            location.goose_slaughter = "Yes".to_string();
+            let result = get_slaughtered_animals(&location);
+            assert!(result.contains("Geese"));
+        }
+
+        #[test]
+        fn test_multiple_animals_comma_separated() {
+            let mut location = create_default_location();
+            location.beef_cow_slaughter = "Yes".to_string();
+            location.market_swine_slaughter = "Yes".to_string();
+            location.young_chicken_slaughter = "Yes".to_string();
+            let result = get_slaughtered_animals(&location);
+            assert!(result.contains("Cattle (Cows, Bulls)"));
+            assert!(result.contains("Pigs"));
+            assert!(result.contains("Chickens"));
+            assert!(result.contains(", "));
+        }
+
+        #[test]
+        fn test_bison_and_buffalo_grouping() {
+            let mut location = create_default_location();
+            location.bison_slaughter = "Yes".to_string();
+            let result = get_slaughtered_animals(&location);
+            assert!(result.contains("Bison & Buffalo"));
+        }
+
+        #[test]
+        fn test_buffalo_slaughter_detection() {
+            let mut location = create_default_location();
+            location.buffalo_slaughter = "Yes".to_string();
+            let result = get_slaughtered_animals(&location);
+            assert!(result.contains("Bison & Buffalo"));
+        }
+
+        #[test]
+        fn test_ratite_slaughter_detection() {
+            let mut location = create_default_location();
+            location.ostrich_slaughter = "Yes".to_string();
+            let result = get_slaughtered_animals(&location);
+            assert!(result.contains("Ratites (Ostrich, Emu, etc.)"));
+        }
+
+        #[test]
+        fn test_emu_slaughter_detection() {
+            let mut location = create_default_location();
+            location.emu_slaughter = "Yes".to_string();
+            let result = get_slaughtered_animals(&location);
+            assert!(result.contains("Ratites (Ostrich, Emu, etc.)"));
+        }
+
+        #[test]
+        fn test_pheasant_slaughter_detection() {
+            let mut location = create_default_location();
+            location.pheasant_slaughter = "Yes".to_string();
+            let result = get_slaughtered_animals(&location);
+            assert!(result.contains("Pheasants"));
+        }
+
+        #[test]
+        fn test_quail_slaughter_detection() {
+            let mut location = create_default_location();
+            location.quail_slaughter = "Yes".to_string();
+            let result = get_slaughtered_animals(&location);
+            assert!(result.contains("Quail"));
+        }
+
+        #[test]
+        fn test_guinea_fowl_slaughter_detection() {
+            let mut location = create_default_location();
+            location.guinea_slaughter = "Yes".to_string();
+            let result = get_slaughtered_animals(&location);
+            assert!(result.contains("Guinea Fowl"));
+        }
+
+        #[test]
+        fn test_squab_slaughter_detection() {
+            let mut location = create_default_location();
+            location.squab_slaughter = "Yes".to_string();
+            let result = get_slaughtered_animals(&location);
+            assert!(result.contains("Pigeons (Squab)"));
+        }
+
+        #[test]
+        fn test_other_voluntary_poultry_slaughter() {
+            let mut location = create_default_location();
+            location.other_voluntary_poultry_slaughter = "Yes".to_string();
+            let result = get_slaughtered_animals(&location);
+            assert!(result.contains("Other Poultry"));
+        }
+
+        #[test]
+        fn test_antelope_slaughter_detection() {
+            let mut location = create_default_location();
+            location.antelope_slaughter = "Yes".to_string();
+            let result = get_slaughtered_animals(&location);
+            assert!(result.contains("Antelope"));
+        }
+
+        #[test]
+        fn test_elk_slaughter_detection() {
+            let mut location = create_default_location();
+            location.elk_slaughter = "Yes".to_string();
+            let result = get_slaughtered_animals(&location);
+            assert!(result.contains("Elk"));
+        }
+
+        #[test]
+        fn test_yak_slaughter_detection() {
+            let mut location = create_default_location();
+            location.yak_slaughter = "Yes".to_string();
+            let result = get_slaughtered_animals(&location);
+            assert!(result.contains("Yak"));
+        }
+
+        #[test]
+        fn test_case_sensitivity_yes_detection() {
+            let mut location = create_default_location();
+            location.beef_cow_slaughter = "Yes".to_string();
+            let result = get_slaughtered_animals(&location);
+            assert!(!result.is_empty());
+        }
+
+        #[test]
+        fn test_case_sensitivity_no_not_included() {
+            let mut location = create_default_location();
+            location.beef_cow_slaughter = "No".to_string();
+            let result = get_slaughtered_animals(&location);
+            assert!(!result.contains("Cattle (Cows, Bulls)"));
+        }
+
+        #[test]
+        fn test_combination_cattle_types() {
+            let mut location = create_default_location();
+            location.beef_cow_slaughter = "Yes".to_string();
+            location.steer_slaughter = "Yes".to_string();
+            location.heifer_slaughter = "Yes".to_string();
+            let result = get_slaughtered_animals(&location);
+            assert_eq!(result.matches("Cattle (Cows, Bulls)").count(), 1);
+        }
+    }
+
+    mod get_processed_animals_tests {
+        use super::*;
+
+        #[test]
+        fn test_empty_location_returns_na() {
+            let location = create_default_location();
+            let result = get_processed_animals(&location);
+            assert_eq!(result, "N/A");
+        }
+
+        #[test]
+        fn test_beef_processing_detection() {
+            let mut location = create_default_location();
+            location.beef_processing = "Yes".to_string();
+            let result = get_processed_animals(&location);
+            assert!(result.contains("Beef"));
+        }
+
+        #[test]
+        fn test_pork_processing_detection() {
+            let mut location = create_default_location();
+            location.pork_processing = "Yes".to_string();
+            let result = get_processed_animals(&location);
+            assert!(result.contains("Pork"));
+        }
+
+        #[test]
+        fn test_chicken_processing_detection() {
+            let mut location = create_default_location();
+            location.chicken_processing = "Yes".to_string();
+            let result = get_processed_animals(&location);
+            assert!(result.contains("Chicken"));
+        }
+
+        #[test]
+        fn test_turkey_processing_detection() {
+            let mut location = create_default_location();
+            location.turkey_processing = "Yes".to_string();
+            let result = get_processed_animals(&location);
+            assert!(result.contains("Turkey"));
+        }
+
+        #[test]
+        fn test_duck_processing_detection() {
+            let mut location = create_default_location();
+            location.duck_processing = "Yes".to_string();
+            let result = get_processed_animals(&location);
+            assert!(result.contains("Duck"));
+        }
+
+        #[test]
+        fn test_rabbit_processing_detection() {
+            let mut location = create_default_location();
+            location.rabbit_processing = "Yes".to_string();
+            let result = get_processed_animals(&location);
+            assert!(result.contains("Rabbit"));
+        }
+
+        #[test]
+        fn test_deer_processing_detection() {
+            let mut location = create_default_location();
+            location.deer_processing = "Yes".to_string();
+            let result = get_processed_animals(&location);
+            assert!(result.contains("Deer"));
+        }
+
+        #[test]
+        fn test_goat_processing_detection() {
+            let mut location = create_default_location();
+            location.goat_processing = "Yes".to_string();
+            let result = get_processed_animals(&location);
+            assert!(result.contains("Goat"));
+        }
+
+        #[test]
+        fn test_sheep_processing_detection() {
+            let mut location = create_default_location();
+            location.sheep_processing = "Yes".to_string();
+            let result = get_processed_animals(&location);
+            assert!(result.contains("Sheep"));
+        }
+
+        #[test]
+        fn test_multiple_processed_animals() {
+            let mut location = create_default_location();
+            location.beef_processing = "Yes".to_string();
+            location.pork_processing = "Yes".to_string();
+            location.chicken_processing = "Yes".to_string();
+            let result = get_processed_animals(&location);
+            assert!(result.contains("Beef"));
+            assert!(result.contains("Pork"));
+            assert!(result.contains("Chicken"));
+        }
+
+        #[test]
+        fn test_exotic_poultry_processing() {
+            let mut location = create_default_location();
+            location.exotic_poultry_processing = "Yes".to_string();
+            let result = get_processed_animals(&location);
+            assert!(result.contains("Exotic Poultry"));
+        }
+
+        #[test]
+        fn test_ratite_processing() {
+            let mut location = create_default_location();
+            location.ratite_processing = "Yes".to_string();
+            let result = get_processed_animals(&location);
+            assert!(result.contains("Ratite (Ostrich/Emu)"));
+        }
+
+        #[test]
+        fn test_no_processing_returns_na() {
+            let mut location = create_default_location();
+            location.beef_processing = "No".to_string();
+            location.pork_processing = "No".to_string();
+            let result = get_processed_animals(&location);
+            assert_eq!(result, "N/A");
+        }
+    }
+
+    mod get_tested_animals_tests {
+        use super::*;
+
+        #[test]
+        fn test_all_zero_animals_returns_unknown() {
+            let report = AphisReport {
+                account_name: String::new(),
+                customer_number_x: String::new(),
+                certificate_number: String::new(),
+                registration_type: String::new(),
+                certificate_status: String::new(),
+                status_date: String::new(),
+                address_line_1: String::new(),
+                address_line_2: String::new(),
+                city_state_zip: String::new(),
+                county: String::new(),
+                customer_number_y: String::new(),
+                year: String::new(),
+                dogs: "0".to_string(),
+                cats: "0".to_string(),
+                guinea_pigs: "0".to_string(),
+                hamsters: "0".to_string(),
+                rabbits: "0".to_string(),
+                non_human_primates: "0".to_string(),
+                sheep: "0".to_string(),
+                pigs: "0".to_string(),
+                other_farm_animals: "0".to_string(),
+                all_other_animals: "0".to_string(),
+                latitude: 0.0,
+                longitude: 0.0,
+                animals_tested: None,
+            };
+            let result = get_tested_animals(&report);
+            assert_eq!(result, "Unknown");
+        }
+
+        #[test]
+        fn test_single_dog_count() {
+            let report = AphisReport {
+                account_name: String::new(),
+                customer_number_x: String::new(),
+                certificate_number: String::new(),
+                registration_type: String::new(),
+                certificate_status: String::new(),
+                status_date: String::new(),
+                address_line_1: String::new(),
+                address_line_2: String::new(),
+                city_state_zip: String::new(),
+                county: String::new(),
+                customer_number_y: String::new(),
+                year: String::new(),
+                dogs: "5".to_string(),
+                cats: "0".to_string(),
+                guinea_pigs: "0".to_string(),
+                hamsters: "0".to_string(),
+                rabbits: "0".to_string(),
+                non_human_primates: "0".to_string(),
+                sheep: "0".to_string(),
+                pigs: "0".to_string(),
+                other_farm_animals: "0".to_string(),
+                all_other_animals: "0".to_string(),
+                latitude: 0.0,
+                longitude: 0.0,
+                animals_tested: None,
+            };
+            let result = get_tested_animals(&report);
+            assert!(result.contains("5 Dogs"));
+        }
+
+        #[test]
+        fn test_multiple_animal_types() {
+            let report = AphisReport {
+                account_name: String::new(),
+                customer_number_x: String::new(),
+                certificate_number: String::new(),
+                registration_type: String::new(),
+                certificate_status: String::new(),
+                status_date: String::new(),
+                address_line_1: String::new(),
+                address_line_2: String::new(),
+                city_state_zip: String::new(),
+                county: String::new(),
+                customer_number_y: String::new(),
+                year: String::new(),
+                dogs: "10".to_string(),
+                cats: "15".to_string(),
+                guinea_pigs: "20".to_string(),
+                hamsters: "0".to_string(),
+                rabbits: "0".to_string(),
+                non_human_primates: "0".to_string(),
+                sheep: "0".to_string(),
+                pigs: "0".to_string(),
+                other_farm_animals: "0".to_string(),
+                all_other_animals: "0".to_string(),
+                latitude: 0.0,
+                longitude: 0.0,
+                animals_tested: None,
+            };
+            let result = get_tested_animals(&report);
+            assert!(result.contains("10 Dogs"));
+            assert!(result.contains("15 Cats"));
+            assert!(result.contains("20 Guinea Pigs"));
+        }
+
+        #[test]
+        fn test_primate_testing_detection() {
+            let report = AphisReport {
+                account_name: String::new(),
+                customer_number_x: String::new(),
+                certificate_number: String::new(),
+                registration_type: String::new(),
+                certificate_status: String::new(),
+                status_date: String::new(),
+                address_line_1: String::new(),
+                address_line_2: String::new(),
+                city_state_zip: String::new(),
+                county: String::new(),
+                customer_number_y: String::new(),
+                year: String::new(),
+                dogs: "0".to_string(),
+                cats: "0".to_string(),
+                guinea_pigs: "0".to_string(),
+                hamsters: "0".to_string(),
+                rabbits: "0".to_string(),
+                non_human_primates: "3".to_string(),
+                sheep: "0".to_string(),
+                pigs: "0".to_string(),
+                other_farm_animals: "0".to_string(),
+                all_other_animals: "0".to_string(),
+                latitude: 0.0,
+                longitude: 0.0,
+                animals_tested: None,
+            };
+            let result = get_tested_animals(&report);
+            assert!(result.contains("3 Non-Human Primates"));
+        }
+
+        #[test]
+        fn test_comma_separated_output() {
+            let report = AphisReport {
+                account_name: String::new(),
+                customer_number_x: String::new(),
+                certificate_number: String::new(),
+                registration_type: String::new(),
+                certificate_status: String::new(),
+                status_date: String::new(),
+                address_line_1: String::new(),
+                address_line_2: String::new(),
+                city_state_zip: String::new(),
+                county: String::new(),
+                customer_number_y: String::new(),
+                year: String::new(),
+                dogs: "1".to_string(),
+                cats: "2".to_string(),
+                guinea_pigs: "0".to_string(),
+                hamsters: "0".to_string(),
+                rabbits: "0".to_string(),
+                non_human_primates: "0".to_string(),
+                sheep: "0".to_string(),
+                pigs: "0".to_string(),
+                other_farm_animals: "0".to_string(),
+                all_other_animals: "0".to_string(),
+                latitude: 0.0,
+                longitude: 0.0,
+                animals_tested: None,
+            };
+            let result = get_tested_animals(&report);
+            assert!(result.contains(", "));
+        }
+
+        #[test]
+        fn test_invalid_number_format_ignored() {
+            let report = AphisReport {
+                account_name: String::new(),
+                customer_number_x: String::new(),
+                certificate_number: String::new(),
+                registration_type: String::new(),
+                certificate_status: String::new(),
+                status_date: String::new(),
+                address_line_1: String::new(),
+                address_line_2: String::new(),
+                city_state_zip: String::new(),
+                county: String::new(),
+                customer_number_y: String::new(),
+                year: String::new(),
+                dogs: "invalid".to_string(),
+                cats: "0".to_string(),
+                guinea_pigs: "0".to_string(),
+                hamsters: "0".to_string(),
+                rabbits: "0".to_string(),
+                non_human_primates: "0".to_string(),
+                sheep: "0".to_string(),
+                pigs: "0".to_string(),
+                other_farm_animals: "0".to_string(),
+                all_other_animals: "0".to_string(),
+                latitude: 0.0,
+                longitude: 0.0,
+                animals_tested: None,
+            };
+            let result = get_tested_animals(&report);
+            assert_eq!(result, "Unknown");
+        }
+
+        #[test]
+        fn test_float_counts_converted_to_integer() {
+            let report = AphisReport {
+                account_name: String::new(),
+                customer_number_x: String::new(),
+                certificate_number: String::new(),
+                registration_type: String::new(),
+                certificate_status: String::new(),
+                status_date: String::new(),
+                address_line_1: String::new(),
+                address_line_2: String::new(),
+                city_state_zip: String::new(),
+                county: String::new(),
+                customer_number_y: String::new(),
+                year: String::new(),
+                dogs: "5.9".to_string(),
+                cats: "0".to_string(),
+                guinea_pigs: "0".to_string(),
+                hamsters: "0".to_string(),
+                rabbits: "0".to_string(),
+                non_human_primates: "0".to_string(),
+                sheep: "0".to_string(),
+                pigs: "0".to_string(),
+                other_farm_animals: "0".to_string(),
+                all_other_animals: "0".to_string(),
+                latitude: 0.0,
+                longitude: 0.0,
+                animals_tested: None,
+            };
+            let result = get_tested_animals(&report);
+            assert!(result.contains("5 Dogs"));
+        }
+
+        #[test]
+        fn test_all_animal_types_maximum_counts() {
+            let report = AphisReport {
+                account_name: String::new(),
+                customer_number_x: String::new(),
+                certificate_number: String::new(),
+                registration_type: String::new(),
+                certificate_status: String::new(),
+                status_date: String::new(),
+                address_line_1: String::new(),
+                address_line_2: String::new(),
+                city_state_zip: String::new(),
+                county: String::new(),
+                customer_number_y: String::new(),
+                year: String::new(),
+                dogs: "100".to_string(),
+                cats: "200".to_string(),
+                guinea_pigs: "300".to_string(),
+                hamsters: "400".to_string(),
+                rabbits: "500".to_string(),
+                non_human_primates: "600".to_string(),
+                sheep: "700".to_string(),
+                pigs: "800".to_string(),
+                other_farm_animals: "900".to_string(),
+                all_other_animals: "1000".to_string(),
+                latitude: 0.0,
+                longitude: 0.0,
+                animals_tested: None,
+            };
+            let result = get_tested_animals(&report);
+            assert!(result.contains("100 Dogs"));
+            assert!(result.contains("200 Cats"));
+            assert!(result.contains("300 Guinea Pigs"));
+            assert!(result.contains("400 Hamsters"));
+            assert!(result.contains("500 Rabbits"));
+            assert!(result.contains("600 Non-Human Primates"));
+            assert!(result.contains("700 Sheep"));
+            assert!(result.contains("800 Pigs"));
+            assert!(result.contains("900 Other Farm Animals"));
+            assert!(result.contains("1000 All Other Animals"));
+        }
+    }
+
+    mod location_struct_tests {
+        use super::*;
+
+        #[test]
+        fn test_location_default_creation() {
+            let location = Location::default();
+            assert_eq!(location.establishment_id, "");
+            assert_eq!(location.establishment_name, "");
+            assert_eq!(location.city, "");
+            assert_eq!(location.state, "");
+        }
+
+        #[test]
+        fn test_location_creation_with_values() {
+            let mut location = Location::default();
+            location.establishment_id = "12345".to_string();
+            location.establishment_name = "Test Facility".to_string();
+            location.city = "Test City".to_string();
+            location.state = "TS".to_string();
+            
+            assert_eq!(location.establishment_id, "12345");
+            assert_eq!(location.establishment_name, "Test Facility");
+            assert_eq!(location.city, "Test City");
+            assert_eq!(location.state, "TS");
+        }
+
+        #[test]
+        fn test_location_coordinates() {
+            let mut location = Location::default();
+            location.latitude = 40.7128;
+            location.longitude = -74.0060;
+            
+            assert_eq!(location.latitude, 40.7128);
+            assert_eq!(location.longitude, -74.0060);
+        }
+    }
+
+    mod aphis_report_struct_tests {
+        use super::*;
+
+        #[test]
+        fn test_aphis_report_creation() {
+            let report = AphisReport {
+                account_name: "Test Lab".to_string(),
+                customer_number_x: "123".to_string(),
+                certificate_number: "ABC123".to_string(),
+                registration_type: "Research".to_string(),
+                certificate_status: "Active".to_string(),
+                status_date: "2024-01-01".to_string(),
+                address_line_1: "123 Test St".to_string(),
+                address_line_2: "Suite 100".to_string(),
+                city_state_zip: "Test City, TS 12345".to_string(),
+                county: "Test County".to_string(),
+                customer_number_y: "456".to_string(),
+                year: "2024".to_string(),
+                dogs: "10".to_string(),
+                cats: "5".to_string(),
+                guinea_pigs: "20".to_string(),
+                hamsters: "15".to_string(),
+                rabbits: "8".to_string(),
+                non_human_primates: "3".to_string(),
+                sheep: "2".to_string(),
+                pigs: "1".to_string(),
+                other_farm_animals: "0".to_string(),
+                all_other_animals: "0".to_string(),
+                latitude: 40.0,
+                longitude: -75.0,
+                animals_tested: None,
+            };
+            
+            assert_eq!(report.account_name, "Test Lab");
+            assert_eq!(report.certificate_number, "ABC123");
+            assert_eq!(report.dogs, "10");
+        }
+    }
+
+    mod inspection_report_struct_tests {
+        use super::*;
+
+        #[test]
+        fn test_inspection_report_creation() {
+            let report = InspectionReport {
+                account_name: "Test Facility".to_string(),
+                customer_number: "123".to_string(),
+                certificate_number: "ABC123".to_string(),
+                license_type: "Type A".to_string(),
+                certificate_status: "Active".to_string(),
+                status_date: "2024-01-01".to_string(),
+                address_line_1: "123 Test St".to_string(),
+                address_line_2: "Suite 100".to_string(),
+                city_state_zip: "Test City, TS 12345".to_string(),
+                county: "Test County".to_string(),
+                city: "Test City".to_string(),
+                state: "TS".to_string(),
+                zip: "12345".to_string(),
+                latitude: 40.0,
+                longitude: -75.0,
+            };
+            
+            assert_eq!(report.account_name, "Test Facility");
+            assert_eq!(report.certificate_number, "ABC123");
+            assert_eq!(report.city, "Test City");
+            assert_eq!(report.latitude, 40.0);
+        }
+    }
+}

@@ -37,8 +37,8 @@ async fn main() -> shuttle_axum::ShuttleAxum {
             "/api/inspection-reports",
             get(heatmap_backend::get_inspection_reports_handler),
         )
-        .layer(CompressionLayer::new().gzip(true))
+        .layer(CompressionLayer::new().br(true))
         .layer(cors);
-
+ 
     Ok(app.into())
 }

@@ -31,7 +31,9 @@ import {
     isGermanState,
     isSpanishState,
     isFrenchState,
+    isCanadianProvince,
     isFrenchLocation,
+    isCanadianLocation,
     isDanishLocation,
     isUKState,
     getSelectedCountryForState,
@@ -270,6 +272,7 @@ function populateCountrySelector(allStateValues) {
     const hasGermanStates = allStateValues.some(state => isGermanState(state));
     const hasSpanishStates = allStateValues.some(state => isSpanishState(state));
     const hasFrenchStates = allLocations.some(location => isFrenchLocation(location));
+    const hasCanadianStates = allLocations.some(location => isCanadianLocation(location));
     const hasDanishStates = allLocations.some(location => isDanishLocation(location));
     const hasUKStates = allStateValues.some(state => isUKState(state));
     
@@ -303,6 +306,13 @@ function populateCountrySelector(allStateValues) {
         countrySelector.appendChild(frOption);
     }
     
+    if (hasCanadianStates) {
+        const caOption = document.createElement('option');
+        caOption.value = 'CA';
+        caOption.textContent = 'Canada';
+        countrySelector.appendChild(caOption);
+    }
+    
     if (hasDanishStates) {
         const dkOption = document.createElement('option');
         dkOption.value = 'DK';
@@ -332,6 +342,9 @@ function populateStateSelector(allStateValues, selectedCountry = 'all') {
     } else if (selectedCountry === 'FR') {
         // Filter for actual French department codes
         filteredStates = allStateValues.filter(state => isFrenchState(state));
+    } else if (selectedCountry === 'CA') {
+        // Filter for Canadian provinces
+        filteredStates = allStateValues.filter(state => isCanadianProvince(state));
     } else if (selectedCountry === 'DK') {
         // For Danish locations, get unique city/region names from the locations
         filteredStates = [...new Set(allLocations
@@ -555,6 +568,8 @@ function applyFilters(shouldUpdateView = false, shouldCenterOnCountry = false) {
             } else if (selectedCountry === 'ES' && isSpanishState(loc.state)) {
                 countryMatch = true;
             } else if (selectedCountry === 'FR' && isFrenchLocation(loc)) {
+                countryMatch = true;
+            } else if (selectedCountry === 'CA' && isCanadianLocation(loc)) {
                 countryMatch = true;
             } else if (selectedCountry === 'DK' && isDanishLocation(loc)) {
                 countryMatch = true;
