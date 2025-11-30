@@ -78,6 +78,12 @@ import {
 // Import drawer manager
 import { initializeDrawer } from './modules/drawerManager.js';
 
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch((error) => {
+        console.warn('ServiceWorker registration failed:', error);
+    });
+}
+
 // =============================================================================
 //  MAP INITIALIZATION & CONFIGURATION
 // =============================================================================
