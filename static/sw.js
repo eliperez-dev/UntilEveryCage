@@ -1,4 +1,4 @@
-const CACHE_NAME = 'api-cache-v1';
+const CACHE_NAME = 'api-cache-v2';
 const API_URLS = [
   'https://untileverycage-ikbq.shuttle.app/api/locations',
   'https://untileverycage-ikbq.shuttle.app/api/aphis-reports',
