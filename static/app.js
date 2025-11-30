@@ -398,7 +398,9 @@ function populateStateSelector(allStateValues, selectedCountry = 'all') {
 const unifiedClusterLayer = L.markerClusterGroup({ 
     chunkedLoading: true, 
     maxClusterRadius: MAP_CONFIG.maxClusterRadius, 
-    disableClusteringAtZoom: MAP_CONFIG.disableClusteringAtZoom 
+    disableClusteringAtZoom: MAP_CONFIG.disableClusteringAtZoom,
+    spiderfyOnMaxZoom: false,
+    showCoverageOnHover: false
 });
 
 // Individual layers for when clustering is disabled
