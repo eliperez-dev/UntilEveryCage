@@ -284,7 +284,7 @@ pub fn get_slaughtered_animals(location: &Location) -> String {
     killed_animals.join(", ")
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AphisReport {
     #[serde(rename = "Account Name")]
     pub account_name: String,
@@ -373,7 +373,7 @@ pub fn get_tested_animals(report: &AphisReport) -> String {
 }
 
 // --- NEW STRUCT for Inspection Reports ---
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct InspectionReport {
     #[serde(rename = "Account Name")]
     pub account_name: String,

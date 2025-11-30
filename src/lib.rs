@@ -20,6 +20,7 @@ use axum::{Json, http::StatusCode, response::IntoResponse};
 use include_dir::{Dir, include_dir};
 use serde::{Deserialize, Serialize};
 use std::error::Error;
+use once_cell::sync::Lazy;
 
 mod location;
 use crate::location::*;
@@ -28,9 +29,28 @@ pub use location::Location;
 
 const DATA_DIR: Dir = include_dir!("./static_data");
 
+static CACHED_LOCATIONS: Lazy<Result<Vec<LocationResponse>, String>> = Lazy::new(|| {
+    parse_all_locations().map_err(|e| e.to_string())
+});
+
+static CACHED_APHIS: Lazy<Result<Vec<AphisReport>, String>> = Lazy::new(|| {
+    parse_aphis_reports().map_err(|e| e.to_string())
+});
+
+static CACHED_INSPECTION: Lazy<Result<Vec<InspectionReport>, String>> = Lazy::new(|| { 
+    parse_inspection_reports().map_err(|e| e.to_string())
+});
+
 pub async fn get_locations_handler(Query(params): Query<LocationParams>) -> impl IntoResponse {
-    match read_locations_from_csv(params.country_code).await {
-        Ok(locations) => Json(locations).into_response(),
+    match CACHED_LOCATIONS.as_ref() {
+        Ok(all_locations) => {
+            let filtered = if let Some(country) = params.country_code {
+                all_locations.iter().filter(|loc| loc.country == country).cloned().collect()
+            } else {
+                all_locations.clone()
+            };
+            Json(filtered).into_response()
+        }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to read location data: {}", e),
@@ -40,8 +60,8 @@ pub async fn get_locations_handler(Query(params): Query<LocationParams>) -> impl
 }
 
 pub async fn get_aphis_reports_handler() -> impl IntoResponse {
-    match read_aphis_reports_from_csv().await {
-        Ok(reports) => Json(reports).into_response(),
+    match CACHED_APHIS.as_ref() {
+        Ok(reports) => Json(reports.clone()).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to read APHIS data: {}", e),
@@ -51,8 +71,8 @@ pub async fn get_aphis_reports_handler() -> impl IntoResponse {
 }
 
 pub async fn get_inspection_reports_handler() -> impl IntoResponse {
-    match read_inspection_reports_from_csv().await {
-        Ok(reports) => Json(reports).into_response(),
+    match CACHED_INSPECTION.as_ref() {
+        Ok(reports) => Json(reports.clone()).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to read inspection reports data: {}", e),
@@ -61,12 +81,9 @@ pub async fn get_inspection_reports_handler() -> impl IntoResponse {
     }
 }
 
-async fn read_locations_from_csv(
-    country: Option<String>,
-) -> Result<Vec<LocationResponse>, Box<dyn Error>> {
+fn parse_all_locations() -> Result<Vec<LocationResponse>, Box<dyn Error>> {
     let mut locations = Vec::new();
 
-    // Process each country directory
     for locale_dir in DATA_DIR.dirs() {
         let dir_name = locale_dir
             .path()
@@ -75,14 +92,6 @@ async fn read_locations_from_csv(
             .to_string_lossy()
             .to_string();
 
-        // Skip the country directory if it doesn't match the country code
-        if let Some(country) = &country {
-            if dir_name != *country {
-                continue;
-            }
-        }
-
-        // Read the CSV file for this country
         let csv_path = format!("{}/locations.csv", dir_name);
         if let Some(csv_data) = DATA_DIR.get_file(&csv_path) {
             let mut reader = csv::Reader::from_reader(csv_data.contents());
@@ -117,11 +126,8 @@ async fn read_locations_from_csv(
     Ok(locations)
 }
 
-pub async fn read_aphis_reports_from_csv() -> Result<Vec<AphisReport>, Box<dyn Error>> {
-    // Embed the APHIS data at compile time
+fn parse_aphis_reports() -> Result<Vec<AphisReport>, Box<dyn Error>> {
     let csv_data = include_str!("../static_data/us/aphis_data_final.csv");
-
-    // Read directly from the string data
     let mut reader = csv::Reader::from_reader(csv_data.as_bytes());
 
     let mut reports = Vec::new();
@@ -132,9 +138,8 @@ pub async fn read_aphis_reports_from_csv() -> Result<Vec<AphisReport>, Box<dyn E
     Ok(reports)
 }
 
-pub async fn read_inspection_reports_from_csv() -> Result<Vec<InspectionReport>, Box<dyn Error>> {
+fn parse_inspection_reports() -> Result<Vec<InspectionReport>, Box<dyn Error>> {
     let csv_data = include_str!("../static_data/us/inspection_reports.csv");
-
     let mut reader = csv::Reader::from_reader(csv_data.as_bytes());
 
     let mut reports = Vec::new();
@@ -150,7 +155,7 @@ pub struct LocationParams {
     country_code: Option<String>,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone)]
 struct LocationResponse {
     country: String,
     establishment_id: String,

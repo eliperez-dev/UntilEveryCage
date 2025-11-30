@@ -491,6 +491,7 @@ dependencies = [
  "axum",
  "csv",
  "include_dir",
+ "once_cell",
  "serde",
  "serde-xml-rs",
  "shuttle-axum",
