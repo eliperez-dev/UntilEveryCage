@@ -72,6 +72,9 @@ import {
     buildInspectionReportPopup
 } from './modules/popupBuilder.js';
 
+// Import drawer manager
+import { initializeDrawer } from './modules/drawerManager.js';
+
 // =============================================================================
 //  MAP INITIALIZATION & CONFIGURATION
 // =============================================================================
@@ -194,17 +197,7 @@ function applyZoomBasedLayer() {
         map.addLayer(targetLayer);
         currentActiveLayer = targetLayer;
         
-        // Force the Default View radio button to stay selected
-        // We do this by finding the radio button and setting it as checked
-        setTimeout(() => {
-            const layerControlElement = document.querySelector('.leaflet-control-layers');
-            if (layerControlElement) {
-                const defaultViewRadio = layerControlElement.querySelector('input[type="radio"]');
-                if (defaultViewRadio) {
-                    defaultViewRadio.checked = true;
-                }
-            }
-        }, 10);
+
         
         isAutoSwitching = false; // Clear flag
         console.log(`Auto-switched to ${currentZoom > SATELLITE_ZOOM_THRESHOLD ? 'satellite' : 'street'} view at zoom ${currentZoom}`);
@@ -216,13 +209,12 @@ map.on('zoomend', function() {
     applyZoomBasedLayer();
 });
 
-// Create the layer control with Default View integrated
+// Map layer definitions (layer switching handled automatically based on zoom)
 const baseMaps = {
     "Default View": defaultViewLayer,
     "Street View": streetMap,
     "Satellite View": satelliteMap
 };
-const layerControl = L.control.layers(baseMaps, null, { collapsed: true, position: 'bottomleft' }).addTo(map);
 
 // Initialize with Default View active
 defaultViewLayer.addTo(map); // This makes "Default View" show as selected
@@ -254,6 +246,9 @@ map.on('baselayerchange', function(e) {
 
 // Initialize all custom controls
 initializeCustomControls(map);
+
+// Initialize drawer interactions
+initializeDrawer();
 
 // =============================================================================
 //  LAYER GROUPS
@@ -908,28 +903,7 @@ resetFiltersBtn.addEventListener('click', () => {
 });
 
 
-// Filter panel toggle functionality
-const mapFilters = document.getElementById('map-filters');
-const toggleBtn = document.getElementById('filter-toggle-btn');
 
-filterHeader.addEventListener('click', () => {
-    mapFilters.classList.toggle('collapsed');
-    
-    // Update arrow direction
-    if (mapFilters.classList.contains('collapsed')) {
-        toggleBtn.textContent = '▶';
-    } else {
-        toggleBtn.textContent = '▼';
-    }
-});
-
-const submenuHeaders = document.querySelectorAll('.submenu-header');
-submenuHeaders.forEach(header => {
-    header.addEventListener('click', (e) => {
-        const section = header.parentElement;
-        section.classList.toggle('collapsed');
-    });
-});
 
 map.on('popupopen', function (e) {
     const popupNode = e.popup.getElement();

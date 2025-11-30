@@ -390,73 +390,117 @@ hr {
     z-index: 10000 !important; /* Make sure it's on top of everything */
 }
 
-/* --- UI Control Size Adjustments --- */
+/* =============================================================================
+   MODERN LEAFLET CONTROLS STYLING
+   ============================================================================= */
 
-/* 1. Makes the Fullscreen button 30% bigger */
-.leaflet-control-custom-fullscreen a {
-    /* Set an explicit size for the button */
-    height: 58px; /* 30% bigger: 58px → 75px */
-    padding: 0 24px; /* 30% bigger: 24px → 31px */
+.leaflet-bar {
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+    border: none;
+    overflow: hidden;
+    background: transparent;
+    padding: 0;
+}
 
-    /* Use Flexbox for perfect centering */
+.leaflet-bar a {
+    background-color: #ffffff;
+    border: none;
+    color: #1a1a1a;
     display: flex;
-    justify-content: center; /* Horizontally centers */
-    align-items: center;    /* Vertically centers */
-
-    /* General styling */
-    background-color: white;
-    color: #333;
-    text-decoration: none;
-    font: bold 14px 'Helvetica Neue', Arial, Helvetica, sans-serif; /* 30% bigger: 14px → 18px */
-}
-
-/* 2. Makes the Layers (Street/Satellite) control 30% bigger */
-.leaflet-control-layers {
-    padding: 5px; /* 30% bigger: 5px → 7px */
-    border-radius: 8px; /* Rounds the corners */
-}
-
-.leaflet-control-layers-base label {
-    font-size: 15px; /* 30% bigger: 15px → 20px */
-    line-height: 1.5; /* Adds more space between the two lines */
-}
-
-/* 3. Vertically centers the radio buttons with the larger text */
-.leaflet-control-layers-base label span {
-    display: inline-flex;
     align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    text-decoration: none;
 }
 
-.leaflet-control-layers-toggle {
-    background-image: none !important;
-    width: auto !important;
-    height: 39px !important;
-    padding: 0 16px !important;
-    font: bold 15px 'Helvetica Neue', Arial, Helvetica, sans-serif !important;
-    color: #333 !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    line-height: 39px !important;
+.leaflet-bar a:first-child {
+    border-radius: 12px 12px 0 0;
 }
 
-.leaflet-control-layers-toggle::before {
-    content: 'Views';
+.leaflet-bar a:last-child {
+    border-radius: 0 0 12px 12px;
 }
 
-.leaflet-control-layers.leaflet-control-layers-expanded {
-    padding: 8px !important;
+.leaflet-bar a:only-child {
+    border-radius: 12px;
 }
 
-.leaflet-control-layers.leaflet-control-layers-expanded .leaflet-control-layers-toggle {
-    display: none;
+.leaflet-bar a:not(:last-child) {
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.leaflet-bar a:hover {
+    background-color: #f8f8f8;
+    transform: translateY(-2px);
+}
+
+.leaflet-bar a:active {
+    transform: translateY(0);
+}
+
+/* Individual Control Containers - Hidden */
+.leaflet-control-custom-fullscreen,
+.leaflet-control-find-me,
+.leaflet-control-pin-scale,
+.leaflet-control-zoom {
+    display: none !important;
+}
+
+/* Fullscreen Control */
+.leaflet-control-custom-fullscreen a {
+    height: 44px !important;
+    width: 44px !important;
+    padding: 0 !important;
+    font-size: 14px !important;
+    line-height: 44px !important;
+}
+
+/* Find Me Control */
+.leaflet-control-find-me a {
+    height: 44px !important;
+    width: 44px !important;
+    padding: 0 !important;
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%231a1a1a"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>') !important;
+    background-size: 20px !important;
+    background-repeat: no-repeat !important;
+    background-position: center !important;
+    font-size: 0 !important;
+}
+
+/* Pin Scale Control */
+.leaflet-control-pin-scale a {
+    height: 44px !important;
+    width: 44px !important;
+    padding: 0 !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    line-height: 44px !important;
+}
+
+/* Zoom Controls */
+.leaflet-control-zoom a {
+    height: 44px !important;
+    width: 44px !important;
+    font-size: 18px !important;
+    line-height: 44px !important;
+}
+
+.leaflet-control-zoom-in {
+    border-radius: 12px 12px 0 0 !important;
+}
+
+.leaflet-control-zoom-out {
+    border-radius: 0 0 12px 12px !important;
 }
 
 /* Optional styling for the new resources section */
 .resources-section {
     background-color: #f9f9f9;
     border: 1px solid #eee;
-    border-left: 3px solid #c81a2a; /* Red accent consistent with theme */
+    border-left: 3px solid #c81a2a;
     padding: 0.5rem 1.5rem;
     margin-top: 1rem;
     border-radius: 4px;
@@ -501,23 +545,6 @@ hr {
     color: #555;
 }
 
-/* Find Me button - 30% bigger */
-.leaflet-control-find-me a {
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23333"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>');
-    background-size: 23px 23px; /* 30% bigger: 18px → 23px */
-    background-repeat: no-repeat;
-    background-position: center;
-    width: 39px; /* 30% bigger: 30px → 39px */
-    height: 39px; /* 30% bigger: 30px → 39px */
-}
-
-/* Zoom controls - 30% bigger */
-.leaflet-control-zoom a {
-    width: 39px; /* 30% bigger than default ~30px */
-    height: 39px; /* 30% bigger than default ~30px */
-    font-size: 23px; /* 30% bigger than default ~18px */
-    line-height: 39px; /* Match height for centering */
-}
 
 .filter-grid {
     display: grid;
@@ -549,25 +576,34 @@ hr {
 #share-view-btn,
 #reset-filters-btn {
     padding: 8px 12px;
-    border: 1px solid #ced4da;
-    border-radius: 4px;
-    background-color: #6c757d; /* A neutral grey */
+    border: none;
+    border-radius: 0;
     color: white;
     font-weight: 500;
     cursor: pointer;
-    transition: background-color 0.2s;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    outline: none;
+    box-shadow: none;
+}
+
+#reset-filters-btn {
+    background-color: #f5f5f5;
+    color: #333;
+    border: 1px solid #e0e0e0;
 }
 
 #reset-filters-btn:hover {
-    background-color: #5a6268;
+    background-color: #efefef;
+    border-color: #ccc;
+    transform: translateY(-2px);
 }
 
 /* Make the share button blue again */
 #share-view-btn {
-    background-color: #007bff;
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
 }
 #share-view-btn:hover {
-    background-color: #0056b3;
+    transform: translateY(-2px);
 }
 
 /* --- Copyable Text Styles --- */

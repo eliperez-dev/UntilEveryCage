@@ -121,7 +121,7 @@ export const DOM_SELECTORS = {
     progressPercentage: '.progress-percentage',
     
     // Filter UI
-    filterHeader: '.filter-header'
+    filterHeader: '.drawer-header'
 };
 
 // =============================================================================

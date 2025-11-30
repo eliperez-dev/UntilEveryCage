@@ -31,6 +31,7 @@ L.Control.CustomFullscreen = L.Control.extend({
         this.link = L.DomUtil.create('a', '', container);
         this.link.href = '#';
         this.link.innerHTML = this.options.enterText;
+        this.link.setAttribute('aria-label', this.options.enterText);
         this._map = map;
         
         // Set up fullscreen change event listeners for different browsers
@@ -122,6 +123,7 @@ L.Control.FindMe = L.Control.extend({
         const link = L.DomUtil.create('a', '', container);
         link.href = '#';
         link.title = 'Find my location';
+        link.setAttribute('aria-label', 'Find my location');
 
         L.DomEvent.on(link, 'click', L.DomEvent.stop)
                   .on(link, 'click', () => {
@@ -150,7 +152,8 @@ L.Control.PinScale = L.Control.extend({
         const link = L.DomUtil.create('a', '', container);
         link.href = '#';
         link.title = 'Toggle pin size';
-        link.style.minWidth = '34px';
+        link.setAttribute('aria-label', 'Toggle pin size');
+        link.style.minWidth = '44px';
         link.style.textAlign = 'center';
         
         const setLabel = () => { 

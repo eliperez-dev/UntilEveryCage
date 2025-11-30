@@ -1,219 +1,430 @@
-/* Simple Map Filter Overlay Styles */
-#map-filters {
+/* =============================================================================
+   MODERN MATERIAL DESIGN SIDE DRAWER
+   ============================================================================= */
+
+#map-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+#map {
+    flex: 1;
+    width: 100%;
+    min-height: 0;
+}
+
+/* Drawer Toggle Button */
+.drawer-toggle-btn {
     position: absolute;
-    top: 10px;
-    left: 10px;
-    background: white;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    z-index: 1000;
-    width: 320px;
-    max-height: 80vh;
+    top: 16px;
+    left: 16px;
+    width: 48px;
+    height: 48px;
+    background: #ffffff;
+    border: none;
+    border-radius: 50%;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 500;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    font-size: 20px;
+    color: #1a1a1a;
+}
+
+.drawer-toggle-btn:hover {
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+    transform: scale(1.05);
+}
+
+.drawer-toggle-btn:active {
+    transform: scale(0.95);
+}
+
+/* Side Drawer */
+.search-drawer {
+    position: fixed;
+    top: 0;
+    left: -440px;
+    width: 432px;
+    height: 100%;
+    background: #ffffff;
+    box-shadow: 2px 0 24px rgba(0, 0, 0, 0.15);
+    z-index: 999;
+    display: flex;
+    flex-direction: column;
+    transition: left 0.35s cubic-bezier(0.4, 0, 0.2, 1);
     overflow: hidden;
 }
 
-.filter-header {
+.search-drawer.open {
+    left: 0;
+}
+
+/* Drawer Header */
+.drawer-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 13px 20px;
-    background: #f5f5f5;
-    border-bottom: 1px solid #ddd;
-    cursor: pointer;
-    font-weight: bold;
-    font-size: 16px; /* 30% bigger than default */
+    padding: 20px;
+    background: #111111;
+    border-bottom: none;
+    flex-shrink: 0;
 }
 
-#filter-toggle-btn {
-    background: none;
+.drawer-header h2 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+    color: #ffffff;
+    letter-spacing: 0.5px;
+}
+
+.drawer-close-btn {
+    background: rgba(255, 255, 255, 0.2);
     border: none;
-    font-size: 18px; /* 30% bigger: 14px → 18px */
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    color: #ffffff;
+    font-size: 20px;
     cursor: pointer;
-    padding: 0;
-    width: 26px; /* 30% bigger: 20px → 26px */
-    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
 }
 
-.filter-content {
-    padding: 15px 25px 15px 15px;
-    max-height: 60vh;
+.drawer-close-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+/* Drawer Content */
+.drawer-content {
+    flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
-    touch-action: pan-y;
+    padding: 0;
+    box-sizing: border-box;
 }
 
-.filter-content::-webkit-scrollbar {
-    width: 8px;
+.drawer-content::-webkit-scrollbar {
+    width: 6px;
 }
 
-.filter-content::-webkit-scrollbar-track {
+.drawer-content::-webkit-scrollbar-track {
     background: transparent;
 }
 
-.filter-content::-webkit-scrollbar-thumb {
-    background: #ccc;
-    border-radius: 4px;
-}
-
-.search-section {
-    margin-bottom: 15px;
-    margin-right: 10px;
-}
-
-.search-section input,
-.search-section select {
-    width: 100%;
-    padding: 8px;
-    border: 1px solid #ccc;
+.drawer-content::-webkit-scrollbar-thumb {
+    background: #d0d0d0;
     border-radius: 3px;
-    margin-bottom: 8px;
+}
+
+.drawer-content::-webkit-scrollbar-thumb:hover {
+    background: #999;
+}
+
+/* Drawer Sections */
+.drawer-section {
+    padding: 20px;
+    border-bottom: 1px solid #f0f0f0;
     box-sizing: border-box;
-    font-size: 14px;
-    font-family: inherit;
-    background: white;
-    appearance: none;
-    -webkit-appearance: none;
-    -moz-appearance: none;
 }
 
-/* Add custom dropdown arrow for consistent appearance */
-.search-section select {
-    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
-    background-position: right 8px center;
-    background-repeat: no-repeat;
-    background-size: 16px;
-    padding-right: 32px;
-}
-
-.button-section {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 15px;
-    margin-right: 10px;
-}
-
-.button-section button {
-    flex: 1;
-    padding: 8px;
-    border: 1px solid #ccc;
-    border-radius: 3px;
-    background: white;
-    cursor: pointer;
-    font-size: 12px;
-}
-
-.button-section button:hover {
-    background: #f0f0f0;
-}
-
-#share-view-btn {
-    background: #007bff !important;
-    color: white !important;
-}
-
-#share-view-btn:hover {
-    background: #0056b3 !important;
-}
-
-.types-section {
-    padding-top: 5px;
-    margin-right: 10px;
-}
-
-.submenu-section {
-    border-bottom: 1px solid #eee;
-    margin-bottom: 0;
-}
-
-.submenu-section:last-of-type {
+.drawer-section:last-child {
     border-bottom: none;
 }
 
-.submenu-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 10px 0;
-    cursor: pointer;
-    user-select: none;
-    font-weight: 600;
+.section-title {
+    margin: 0 0 14px 0;
     font-size: 14px;
+    font-weight: 600;
+    color: #1a1a1a;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
-.submenu-header:hover {
-    background: #f8f8f8;
-    padding-left: 5px;
-    padding-right: 5px;
-    margin-left: -5px;
-    margin-right: -5px;
-    border-radius: 3px;
+/* Search Section */
+.search-section {
+    padding: 16px 20px;
+    background: #fafafa;
+    border-bottom: 1px solid #e8e8e8;
+    box-sizing: border-box;
 }
 
-.submenu-toggle {
-    background: none;
-    border: none;
-    font-size: 12px;
+.search-input {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 15px;
+    font-family: inherit;
+    background: #ffffff;
+    transition: all 0.2s ease;
+    color: #333;
+    box-sizing: border-box;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+.search-input::placeholder {
+    color: #999;
+}
+
+/* Location Filters */
+.location-filters {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.filter-select {
+    width: 100%;
+    padding: 11px 14px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    background: #ffffff;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
     cursor: pointer;
-    padding: 0;
-    width: 20px;
-    text-align: center;
-    transition: transform 0.2s;
+    transition: all 0.2s ease;
+    color: #333;
+    box-sizing: border-box;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23555' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 10px center;
+    background-repeat: no-repeat;
+    background-size: 14px;
+    padding-right: 36px;
 }
 
-.submenu-content {
-    max-height: 500px;
-    overflow: hidden;
-    transition: max-height 0.3s ease;
-    padding-bottom: 10px;
+.filter-select:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
 }
 
-.submenu-section.collapsed .submenu-content {
-    max-height: 0;
-    padding-bottom: 0;
-}
-
-.submenu-section.collapsed .submenu-toggle {
-    transform: rotate(-90deg);
+/* Types Grid */
+.types-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
 }
 
 .checkbox-item {
     display: flex;
     align-items: center;
-    margin-bottom: 8px;
+    gap: 10px;
+    padding: 8px 0;
     font-size: 14px;
+    transition: all 0.2s ease;
 }
 
 .checkbox-item input {
-    margin-right: 8px;
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: #007bff;
+    flex-shrink: 0;
 }
 
 .checkbox-item label {
     cursor: pointer;
     user-select: none;
+    color: #333;
+    flex: 1;
+}
+
+.checkbox-item:hover label {
+    color: #007bff;
+}
+
+/* Action Buttons */
+.action-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.action-btn {
+    width: 100%;
+    padding: 8px 12px;
+    border: none;
+    border-radius: 0;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    letter-spacing: 0.3px;
+    text-align: center;
+    outline: none;
+    box-shadow: none;
+    box-sizing: border-box;
+}
+
+.action-btn:focus {
+    outline: none;
+    box-shadow: none;
+}
+
+.primary-btn {
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+    color: white;
+}
+
+.primary-btn:hover {
+    transform: translateY(-2px);
+}
+
+.primary-btn:active {
+    transform: translateY(0);
+}
+
+.secondary-btn {
+    background: #f5f5f5;
+    color: #333;
+    border: 1px solid #e0e0e0;
+    box-shadow: none;
+}
+
+.secondary-btn:hover {
+    background: #efefef;
+    border-color: #ccc;
+    transform: translateY(-2px);
+}
+
+.secondary-btn:active {
+    transform: translateY(0);
+}
+
+/* Stats Section */
+.stats-section {
+    padding: 16px 20px;
+    background: #f9f9f9;
+    border-top: 1px solid #e8e8e8;
 }
 
 #stats-container {
-    margin-top: 10px;
-    font-size: 12px;
+    font-size: 13px;
     color: #666;
+    line-height: 1.6;
+    font-weight: 500;
 }
 
-/* Collapsed state */
-#map-filters.collapsed .filter-content {
-    display: none;
+/* Drawer Backdrop */
+.drawer-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0);
+    z-index: 998;
+    transition: background 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: none;
 }
 
-/* All map controls are now positioned at the bottom to avoid any overlap */
+.drawer-backdrop.open {
+    background: rgba(0, 0, 0, 0.4);
+    pointer-events: auto;
+}
 
-/* Mobile responsive */
-@media (max-width: 768px) {
-    #map-filters {
-        width: calc(100vw - 20px);
-        left: 10px;
-        right: 10px;
+/* Desktop: Wider drawer + different positioning */
+@media (min-width: 1024px) {
+    .search-drawer {
+        width: 456px;
+        left: -456px;
     }
-    
-    /* Controls are at bottom, no mobile-specific positioning needed */
+
+    .drawer-toggle-btn {
+        top: 20px;
+        left: 20px;
+    }
+}
+
+/* Tablet & Mobile: Adjust for smaller screens */
+@media (max-width: 768px) {
+    .search-drawer {
+        width: 100%;
+        left: -100%;
+    }
+
+    .drawer-toggle-btn {
+        top: 12px;
+        left: 12px;
+        width: 44px;
+        height: 44px;
+    }
+
+    .drawer-header {
+        padding: 16px;
+    }
+
+    .drawer-header h2 {
+        font-size: 18px;
+    }
+
+    .drawer-close-btn {
+        width: 36px;
+        height: 36px;
+        font-size: 18px;
+    }
+
+    .drawer-section {
+        padding: 16px;
+    }
+
+    .section-title {
+        font-size: 13px;
+    }
+
+    .search-input,
+    .filter-select,
+    .action-btn {
+        font-size: 16px;
+    }
+}
+
+@media (max-width: 480px) {
+    .drawer-toggle-btn {
+        width: 40px;
+        height: 40px;
+        top: 10px;
+        left: 10px;
+        font-size: 18px;
+    }
+
+    .drawer-header {
+        padding: 14px;
+    }
+
+    .drawer-header h2 {
+        font-size: 16px;
+    }
+
+    .drawer-section {
+        padding: 14px;
+    }
+
+    .drawer-close-btn {
+        width: 32px;
+        height: 32px;
+        font-size: 16px;
+    }
 }

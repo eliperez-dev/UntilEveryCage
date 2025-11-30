@@ -66,96 +66,102 @@
         </nav>
     </div>
 </header>
-<div id="map">
-    <!-- Loading indicator -->
-    <div id="loading-indicator">
-        <div class="loading-spinner"></div>
-        <div class="loading-text">Loading map data...</div>
-        <div class="progress-container">
-            <div class="progress-bar">
-                <div class="progress-fill"></div>
+<div id="map-container">
+    <div id="map">
+        <!-- Loading indicator -->
+        <div id="loading-indicator">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Loading map data...</div>
+            <div class="progress-container">
+                <div class="progress-bar">
+                    <div class="progress-fill"></div>
+                </div>
+                <div class="progress-percentage">0%</div>
             </div>
-            <div class="progress-percentage">0%</div>
         </div>
     </div>
-    
-    <!-- Simple filter panel -->
-    <div id="map-filters" class="collapsed" role="region" aria-label="Map filters and controls">
-        <div class="filter-header">
-            <span>Search</span>
-            <button id="filter-toggle-btn" type="button" aria-label="Toggle filters panel">▶</button>
+
+    <!-- Drawer Toggle Button -->
+    <button id="drawer-toggle-btn" class="drawer-toggle-btn" type="button" aria-label="Toggle search drawer" title="Open search and filters">
+        <span class="drawer-toggle-icon">☰</span>
+    </button>
+
+    <!-- Side Drawer -->
+    <div id="search-drawer" class="search-drawer" role="region" aria-label="Search and filter panel">
+        <div class="drawer-header">
+            <h2>Search & Filter</h2>
+            <button id="drawer-close-btn" class="drawer-close-btn" type="button" aria-label="Close search drawer">✕</button>
         </div>
-        <div id="filter-panel" class="filter-content">
-            <div class="submenu-section">
-                <div class="submenu-header">
-                    <span>Search & Filters</span>
-                    <button class="submenu-toggle" type="button">▼</button>
+
+        <div class="drawer-content">
+            <!-- Search Section -->
+            <div class="drawer-section search-section">
+                <input type="text" id="name-search-input" placeholder="Search facilities, animals..." aria-label="Search facilities by name" class="search-input">
+            </div>
+
+            <!-- Location Section -->
+            <div class="drawer-section">
+                <h3 class="section-title">Location</h3>
+                <div class="location-filters">
+                    <select id="country-selector" aria-label="Filter by country" class="filter-select">
+                        <option value="all">All Countries</option>
+                    </select>
+                    <select id="state-selector" aria-label="Filter by state/province" class="filter-select">
+                        <option value="all">All States/Provinces</option>
+                    </select>
                 </div>
-                <div class="submenu-content">
-                    <div class="search-section">
-                        <input type="text" id="name-search-input" placeholder="Search facilities and animals..." aria-label="Search facilities by name">
-                        <select id="country-selector" aria-label="Filter by country">
-                            <option value="all">All Countries</option>
-                        </select>
-                        <select id="state-selector" aria-label="Filter by state/province">
-                            <option value="all">All States/Provinces</option>
-                        </select>
+            </div>
+
+            <!-- Facility Types Section -->
+            <div class="drawer-section">
+                <h3 class="section-title">Facility Types</h3>
+                <div class="types-grid">
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="slaughterhousesCheckbox" checked> 
+                        <label for="slaughterhousesCheckbox">🔴 Slaughterhouses</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="meatProcessingPlantsCheckbox" checked>
+                        <label for="meatProcessingPlantsCheckbox">⚪️ Processing</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="testingLabsCheckbox" checked>
+                        <label for="testingLabsCheckbox">🟣 Labs</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="breedersCheckbox" checked>
+                        <label for="breedersCheckbox">🟡 Farms / Breeders</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="dealersCheckbox" checked>
+                        <label for="dealersCheckbox">🟠 Dealers</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="exhibitorsCheckbox" checked>
+                        <label for="exhibitorsCheckbox">🟢 Exhibitors/Zoos</label>
                     </div>
                 </div>
             </div>
 
-            <div class="submenu-section collapsed">
-                <div class="submenu-header">
-                    <span>Facility Types</span>
-                    <button class="submenu-toggle" type="button">▼</button>
-                </div>
-                <div class="submenu-content">
-                    <div class="types-section">
-                        <div class="checkbox-item">
-                            <input type="checkbox" id="slaughterhousesCheckbox" checked> 
-                            <label for="slaughterhousesCheckbox">🔴 Slaughterhouses</label>
-                        </div>
-                        <div class="checkbox-item">
-                            <input type="checkbox" id="meatProcessingPlantsCheckbox" checked>
-                            <label for="meatProcessingPlantsCheckbox">⚪️ Processing</label>
-                        </div>
-                        <div class="checkbox-item">
-                            <input type="checkbox" id="testingLabsCheckbox" checked>
-                            <label for="testingLabsCheckbox">🟣 Labs</label>
-                        </div>
-                        <div class="checkbox-item">
-                            <input type="checkbox" id="breedersCheckbox" checked>
-                            <label for="breedersCheckbox">🟡 Farms / Breeders</label>
-                        </div>
-                        <div class="checkbox-item">
-                            <input type="checkbox" id="dealersCheckbox" checked>
-                            <label for="dealersCheckbox">🟠 Dealers</label>
-                        </div>
-                        <div class="checkbox-item">
-                            <input type="checkbox" id="exhibitorsCheckbox" checked>
-                            <label for="exhibitorsCheckbox">🟢 Exhibitors/Zoos</label>
-                        </div>
-                    </div>
+            <!-- Export & Settings Section -->
+            <div class="drawer-section">
+                <h3 class="section-title">Export & Settings</h3>
+                <div class="action-buttons">
+                    <button id="share-view-btn" class="action-btn primary-btn">Share View</button>
+                    <button id="download-csv-btn" class="action-btn primary-btn">Download CSV</button>
+                    <button id="reset-filters-btn" class="action-btn secondary-btn">Reset Filters</button>
                 </div>
             </div>
 
-            <div class="submenu-section collapsed">
-                <div class="submenu-header">
-                    <span>Actions</span>
-                    <button class="submenu-toggle" type="button">▼</button>
-                </div>
-                <div class="submenu-content">
-                    <div class="button-section">
-                        <button id="share-view-btn">Share View</button>
-                        <button id="reset-filters-btn">Reset</button>
-                        <button id="download-csv-btn">Download CSV</button>
-                    </div>
-                </div>
+            <!-- Stats Section -->
+            <div class="drawer-section stats-section">
+                <div id="stats-container"></div>
             </div>
-
-            <div id="stats-container"></div>
         </div>
     </div>
+
+    <!-- Drawer Backdrop -->
+    <div id="drawer-backdrop" class="drawer-backdrop"></div>
 </div>
 
 
