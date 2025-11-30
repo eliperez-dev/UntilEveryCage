@@ -3,9 +3,9 @@ const API_URLS = [
   'https://untileverycage-ikbq.shuttle.app/api/locations',
   'https://untileverycage-ikbq.shuttle.app/api/aphis-reports',
   'https://untileverycage-ikbq.shuttle.app/api/inspection-reports',
-  'http://127.0.0.1:8001/api/locations',
-  'http://127.0.0.1:8001/api/aphis-reports',
-  'http://127.0.0.1:8001/api/inspection-reports',
+  'http://127.0.0.1:8000/api/locations',
+  'http://127.0.0.1:8000/api/aphis-reports',
+  'http://127.0.0.1:8000/api/inspection-reports',
 ];
 
 self.addEventListener('install', (event) => {

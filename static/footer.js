@@ -18,7 +18,7 @@ function loadFooter() {
     <p class="footer-small-text">
         Source code is licensed under the <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noopener noreferrer">AGPLv3</a>. Compiled data is licensed under <a href="http://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>. Kill counter adapted from <a href="https://www.adaptt.org/" target="_blank" rel="noopener noreferrer">ADAPTT</a>. Website inspired by the <a href="https://finalnail.com/" target="_blank" rel="noopener noreferrer">Final Nail</a>.
     </p>
-    <p>v1.4</p>
+    <p>v1.5</p>
 </div>`;
     
     const footerPlaceholder = document.getElementById('footer-placeholder');
