@@ -90,9 +90,11 @@ export function buildLocationPopup(location, facilityTypeLabel) {
                                   animals_slaughtered_yearly_text !== "N/A";
         
         // Only include slaughter data if at least one field has meaningful data
+        // Skip animals_slaughtered for Mexican facilities
+        const isMexican = location.country === 'mx';
         if (hasAnimalsSlaughtered || hasSlaughterVolume) {
             slaughterText = `<hr>`;
-            if (hasAnimalsSlaughtered) {
+            if (hasAnimalsSlaughtered && !isMexican) {
                 slaughterText += `<p><strong>Types of Animals Killed:</strong> ${location.animals_slaughtered}</p>`;
             }
             if (hasSlaughterVolume) {
@@ -107,6 +109,8 @@ export function buildLocationPopup(location, facilityTypeLabel) {
         disclaimerText = ' (Approximately)';
     }
 
+    const isMexican = location.country === 'mx';
+
     return `
         <div class="info-popup">
             <h3>${establishmentName}</h3>
@@ -117,9 +121,9 @@ export function buildLocationPopup(location, facilityTypeLabel) {
             <p><strong>ID:</strong> <span class="copyable-text" data-copy="${establishmentId}">${establishmentId}</span></p>
             ${phone && phone.trim() !== '' && phone !== 'N/A' ? `<p><strong>Phone:</strong> <span class="copyable-text" data-copy="${phone}">${phone}</span></p>` : ''}
             ${dbas ? `<p><strong>Doing Business As:</strong> <span class="copyable-text" data-copy="${dbas}">${dbas}</span></p>` : ""}
-            ${(hasAnimalsProcessed || hasProcessingVolume) ? '<hr>' : ''}
-            ${hasAnimalsProcessed ? `<p><strong>Products Processed:</strong> ${location.animals_processed}</p>` : ''}
-            ${hasProcessingVolume ? `<p><strong>Product Volume:</strong> ${animals_processed_monthly_text}</p>` : ''}
+            ${(hasAnimalsProcessed || hasProcessingVolume) && !isMexican ? '<hr>' : ''}
+            ${hasAnimalsProcessed && !isMexican ? `<p><strong>Products Processed:</strong> ${location.animals_processed}</p>` : ''}
+            ${hasProcessingVolume && !isMexican ? `<p><strong>Product Volume:</strong> ${animals_processed_monthly_text}</p>` : ''}
             ${slaughterText}
             <a href="${directionsUrl}" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>Get Directions</strong></a>${location.country === 'us' || !location.country ? ' | <a href="https://www.fsis.usda.gov/inspection/establishments/meat-poultry-and-egg-product-inspection-directory" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>View Source</strong></a>' : location.country === 'uk' ? ' | <a href="https://transparentfarms.org.uk/" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>View Source</strong></a>' : location.country === 'ca' ? ' | <a href="https://open.canada.ca/data/en/dataset/a763088c-018d-48b7-bf47-3027a8c725b8" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>View Source</strong></a>' : location.country === 'es' ? ' | <a href="https://granjastransparentes.es/" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>View Source</strong></a>' : location.country === 'mx' ? ' | <a href="https://www.inegi.org.mx/app/mapa/denue/" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>View Source</strong></a>' : location.country === 'fr' ? ' | <a href="https://www.google.com/maps/d/u/0/viewer?mid=1TGGpOJz40AHgTrbfYMO6sg3XrTFoG31n&ll=48.794860747569736%2C2.0410253416334534&z=8" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>View Source</strong></a>' : location.country === 'de' ? ' | <a href="https://www.google.com/maps/d/u/0/viewer?mid=1TGGpOJz40AHgTrbfYMO6sg3XrTFoG31n&ll=48.794860747569736%2C2.0410253416334534&z=8" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>View Source</strong></a>' : ''}
         </div>`;
