@@ -80,11 +80,16 @@ import {
 // Import drawer manager
 import { initializeDrawer } from './modules/drawerManager.js';
 
+// Import welcome modal
+import { initializeWelcomeModal } from './modules/welcomeModal.js';
+
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch((error) => {
         console.warn('ServiceWorker registration failed:', error);
     });
 }
+
+document.addEventListener('DOMContentLoaded', initializeWelcomeModal);
 
 // =============================================================================
 //  MAP INITIALIZATION & CONFIGURATION
