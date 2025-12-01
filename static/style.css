@@ -185,6 +185,28 @@ hr {
     max-width: 420px;
 }
 
+/* Mobile responsiveness for content wrapper */
+@media (max-width: 900px) {
+    .content-wrapper {
+        flex-direction: column;
+        gap: 1rem;
+        padding: 0.5rem;
+    }
+    
+    .content-wrapper > div {
+        flex: 1 1 auto;
+        max-width: 100% !important;
+    }
+    
+    .manifesto-container {
+        max-width: 100%;
+    }
+    
+    .kill-counter-container {
+        max-width: 100%;
+    }
+}
+
 /* --- Fluid Typography for Proportional Scaling --- */
 
 /* This makes the main text in the manifesto scale with the screen */
