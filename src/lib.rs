@@ -84,6 +84,18 @@ pub async fn get_inspection_reports_handler() -> impl IntoResponse {
 fn parse_all_locations() -> Result<Vec<LocationResponse>, Box<dyn Error>> {
     let mut locations = Vec::new();
 
+    println!("[DEBUG] Starting to parse all locations...");
+    println!("[DEBUG] Available directories:");
+    for locale_dir in DATA_DIR.dirs() {
+        let dir_name = locale_dir
+            .path()
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        println!("[DEBUG]   - {}", dir_name);
+    }
+
     for locale_dir in DATA_DIR.dirs() {
         let dir_name = locale_dir
             .path()
@@ -93,36 +105,52 @@ fn parse_all_locations() -> Result<Vec<LocationResponse>, Box<dyn Error>> {
             .to_string();
 
         let csv_path = format!("{}/locations.csv", dir_name);
+        println!("[DEBUG] Looking for: {}", csv_path);
         if let Some(csv_data) = DATA_DIR.get_file(&csv_path) {
+            println!("[DEBUG] Found CSV file for country: {}", dir_name);
             let mut reader = csv::Reader::from_reader(csv_data.contents());
+            let mut country_count = 0;
 
-            for result in reader.deserialize() {
-                let record: Location = result?;
-                let animals_slaughtered = get_slaughtered_animals(&record);
-                let animals_processed = get_processed_animals(&record);
-                locations.push(LocationResponse {
-                    country: dir_name.clone(),
-                    establishment_id: record.establishment_id,
-                    establishment_name: record.establishment_name,
-                    latitude: record.latitude,
-                    longitude: record.longitude,
-                    r#type: record.activities,
-                    state: record.state,
-                    city: record.city,
-                    street: record.street,
-                    zip: record.zip,
-                    slaughter: record.slaughter,
-                    animals_slaughtered,
-                    dbas: record.dbas,
-                    phone: record.phone,
-                    slaughter_volume_category: record.slaughter_volume_category,
-                    processing_volume_category: record.processing_volume_category,
-                    animals_processed,
-                    grant_date: record.grant_date,
-                });
+            for (idx, result) in reader.deserialize().enumerate() {
+                match result {
+                    Ok(record) => {
+                        let record: Location = record;
+                        let animals_slaughtered = get_slaughtered_animals(&record);
+                        let animals_processed = get_processed_animals(&record);
+                        locations.push(LocationResponse {
+                            country: dir_name.clone(),
+                            establishment_id: record.establishment_id,
+                            establishment_name: record.establishment_name,
+                            latitude: record.latitude,
+                            longitude: record.longitude,
+                            r#type: record.activities,
+                            state: record.state,
+                            city: record.city,
+                            street: record.street,
+                            zip: record.zip,
+                            slaughter: record.slaughter,
+                            animals_slaughtered,
+                            dbas: record.dbas,
+                            phone: record.phone,
+                            slaughter_volume_category: record.slaughter_volume_category,
+                            processing_volume_category: record.processing_volume_category,
+                            animals_processed,
+                            grant_date: record.grant_date,
+                        });
+                        country_count += 1;
+                    }
+                    Err(e) => {
+                        println!("[ERROR] Failed to deserialize row {} in {}: {}", idx, dir_name, e);
+                        return Err(Box::new(e));
+                    }
+                }
             }
+            println!("[DEBUG] Parsed {} records from country: {}", country_count, dir_name);
+        } else {
+            println!("[WARN] CSV file not found: {}", csv_path);
         }
     }
+    println!("[DEBUG] Total locations parsed: {}", locations.len());
     Ok(locations)
 }
 

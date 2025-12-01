@@ -61,100 +61,130 @@
 
     <div class="content-wrapper">
         <div class="manifesto-container">
-            <h1>How to Use This Map</h1>
-            
-            <p>This map exposes the global infrastructure of animal exploitation. Here's how to navigate it and use it effectively.</p>
+            <div class="page-hero">
+                <h1>How to Use This Map</h1>
+                <p>This map exposes the global infrastructure of animal exploitation. Use it to investigate, document, and dismantle.</p>
+            </div>
 
-
-            <h2>Filter and Search</h2>
-            <p>Use the overlay panel in the top-left corner of the map to focus your search:</p>
-            
-            <h3>Search Options</h3>
-            <ul>
-                <li><strong>Search Bar:</strong> Enter facility names, company names, or animal types (e.g., "Tyson", "cattle", "chickens")</li>
-                <li><strong>State Filter:</strong> Select a specific state or view all facilities nationwide</li>
-                <li><strong>Reset Filters:</strong> Clear all filters and return to the default view</li>
-            </ul>
-
-            <h3>Facility Types</h3>
-            <p>Toggle different facility types on/off using the checkboxes in the filter panel:</p>
-            <ul>
-                <li><strong>🔴 Slaughterhouses:</strong> Where animals are killed (red markers)</li>
-                <li><strong>⚫ Processing-Only:</strong> Facilities that process meat but don't kill (grey markers)</li>
-                <li><strong>🟣 Animal Testing Labs:</strong> Research facilities using animals (purple markers)</li>
-                <li><strong>🟡 Farms / Breeders:</strong> Breeding facilities and animal farms (yellow markers)</li>
-                <li><strong>🟠 Animal Dealers:</strong> Animal dealers (orange markers)</li>
-                <li><strong>🟢 Exhibitors/Zoos:</strong> Exhibitors and zoos (green markers)</li>
-            </ul>
-
-            <h2>Investigating Facilities</h2>
-            <p>The map provides starting points for deeper investigations. Each facility type offers different investigative pathways:</p>
-
-            <h3>Slaughterhouses & Processing Facilities</h3>
-            <p>For meat processing facilities, use the facility information to conduct deeper research:</p>
-            <ul>
-                <li><strong>Public Company Research:</strong> If the facility belongs to a publicly traded company (like Tyson, JBS, Cargill) in the US, research their <strong>10-K forms</strong> filed with the SEC. These annual reports contain detailed information about:
-                    <ul>
-                        <li>Board members and executives</li>
-                        <li>Financial performance and risks</li>
-                        <li>Legal proceedings and regulatory issues</li>
-                        <li>Business operations and subsidiaries</li>
+            <section class="guide-section">
+                <h2>Getting Started</h2>
+                <p>The overlay panel in the top-left corner of the map is your primary tool:</p>
+                
+                <div class="guide-card">
+                    <ul class="feature-list">
+                        <li><strong>Search:</strong> Facility names, company names, or animal types (e.g., "Tyson", "cattle", "chickens")</li>
+                        <li><strong>Location:</strong> Select country, state, or province</li>
+                        <li><strong>Reset:</strong> Clear all filters</li>
                     </ul>
-                    Access 10-K forms at <a href="https://www.sec.gov/edgar/search/" target="_blank" rel="noopener">SEC's EDGAR database</a></li>
-                <li><strong>Corporate Connections:</strong> Research parent companies, subsidiaries, and business relationships</li>
-            </ul>
+                    <video width="100%" controls style="border: 1px solid #ccc; margin-top: 0.5rem;">
+                        <source src="tutorial-videos/2025-11-30 16-18-52.mp4" type="video/mp4">
+                        Your browser does not support the video tag.
+                    </video>
+                </div>
+            </section>
 
-            <h3>Animal Testing Laboratories</h3>
-            <p>For research facilities, additional investigation tools are available:</p>
-            <ul>
-                <li><strong>ARLO Database:</strong> Click <strong>"View full reports on ARLO"</strong> in any lab's popup to access detailed facility histories on the <a href="https://arlo.riseforanimals.org/" target="_blank" rel="noopener">ARLO website by Rise for Animals</a>. ARLO provides:
-                    <ul>
-                        <li>Historical inspection reports and violations</li>
-                        <li>Animal welfare incidents and deaths</li>
-                        <li>Facility licensing and compliance history</li>
-                        <li>Research protocols and animal usage data</li>
-                    </ul>
-                </li>
-                <li><strong>University Research:</strong> For academic institutions, research their animal care committees and research protocols</li>
-                <li><strong>Government Labs:</strong> Use FOIA requests to obtain more detailed information about government research facilities</li>
-            </ul>
+            <section class="guide-section">
+                <h2>Facility Types</h2>
+                <div class="facility-grid">
+                    <div class="facility-card">
+                        <div class="facility-marker slaughterhouse"></div>
+                        <strong>Slaughterhouses</strong> (red)
+                    </div>
+                    <div class="facility-card">
+                        <div class="facility-marker processing"></div>
+                        <strong>Processing</strong> (grey)
+                    </div>
+                    <div class="facility-card">
+                        <div class="facility-marker testing"></div>
+                        <strong>Testing Labs</strong> (purple)
+                    </div>
+                    <div class="facility-card">
+                        <div class="facility-marker breeders"></div>
+                        <strong>Farms/Breeders</strong> (yellow)
+                    </div>
+                    <div class="facility-card">
+                        <div class="facility-marker dealers"></div>
+                        <strong>Dealers</strong> (orange)
+                    </div>
+                    <div class="facility-card">
+                        <div class="facility-marker exhibitors"></div>
+                        <strong>Exhibitors</strong> (green)
+                    </div>
+                </div>
+            </section>
 
-            <h3>Farms/Breeders, Dealers, & Exhibitors/Zoos</h3>
-            <p>APHIS-licensed facilities can be investigated using their certificate numbers:</p>
-            <ul>
-                <li><strong>APHIS Public Search Tool:</strong> Use the <a href="https://aphis.my.site.com/PublicSearchTool/s/inspection-reports" target="_blank" rel="noopener">APHIS Animal Welfare Inspection Database</a> to search by:
-                    <ul>
-                        <li><strong>Certificate Number:</strong> Found in each facility's popup information</li>
-                        <li><strong>Business Name:</strong> Search by the facility name</li>
-                        <li><strong>Location:</strong> Search by city, state, or ZIP code</li>
-                    </ul>
-                </li>
-                <li><strong>What You'll Find:</strong> The APHIS database provides:
-                    <ul>
-                        <li>Current license status and expiration dates</li>
-                        <li>Inspection reports dating back several years</li>
-                        <li>Animal welfare violations and citations</li>
-                        <li>Types of animals held at the facility</li>
-                        <li>Business contact information</li>
-                    </ul>
-                </li>
-            </ul>
+            <section class="guide-section">
+                <h2>Investigation Pathways</h2>
 
+                <div class="accordion">
+                    <div class="accordion-item">
+                        <button class="accordion-header">
+                            <span>Slaughterhouses & Processing Facilities</span>
+                            <span class="accordion-toggle">+</span>
+                        </button>
+                        <div class="accordion-content">
+                            <div class="investigation-pathway">
+                                <h4>Public Company Research</h4>
+                                <p>For publicly traded companies (Tyson, JBS, Cargill), research SEC <strong>10-K forms</strong> for board members, financials, legal issues, and operations.</p>
+                                <p><a href="https://www.sec.gov/edgar/search/" target="_blank" rel="noopener">SEC EDGAR Database</a></p>
+                                
+                                <h4>Corporate Connections</h4>
+                                <p>Map parent companies, subsidiaries, and business relationships.</p>
+                            </div>
+                        </div>
+                    </div>
 
-            <h2>Reporting Issues & Getting Help</h2>
-            <p>If you find problems with the map or data:</p>
-            <ul>
-                <li>Incorrect facility locations</li>
-                <li>Missing facilities you know exist</li>
-                <li>Technical bugs or performance issues</li>
-                <li>Data that seems outdated</li>
-            </ul>
-            
-            <p><strong>Report issues or get help:</strong></p>
-            <ul>
-                <li><strong>Discord:</strong> <a href="https://discord.gg/wbdTHzAZ4b" target="_blank" rel="noopener noreferrer">Join our Discord server</a> for real-time support and discussion</li>
-                <li><strong>Email:</strong> <a href="mailto:untileverycageproject@protonmail.com">untileverycageproject@protonmail.com</a></li>
-            </ul>
+                    <div class="accordion-item">
+                        <button class="accordion-header">
+                            <span>Animal Testing Laboratories</span>
+                            <span class="accordion-toggle">+</span>
+                        </button>
+                        <div class="accordion-content">
+                            <div class="investigation-pathway">
+                                <h4>APHIS Annual Reports</h4>
+                                <p>Copy the certificate number from the facility popup, paste it into the APHIS search tool, then click "view annual reports" Look carefully for exception reports and narratives in the e-column data.</p>
+                                <p><a href="https://aphis.my.site.com/PublicSearchTool/s/annual-reports" target="_blank" rel="noopener">APHIS Annual Reports Tool</a></p>
+
+                                <h4>University & Government Research</h4>
+                                <p>For academic institutions, research animal care committees and protocols. Use FOIA requests for government research facilities.</p>
+                                <video width="100%" controls style="border: 1px solid #ccc; margin-top: 0.5rem;">
+                                    <source src="tutorial-videos/2025-11-30 16-30-46.mp4" type="video/mp4">
+                                    Your browser does not support the video tag.
+                                </video>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="accordion-item">
+                        <button class="accordion-header">
+                            <span>Farms, Dealers, & Exhibitors</span>
+                            <span class="accordion-toggle">+</span>
+                        </button>
+                        <div class="accordion-content">
+                            <div class="investigation-pathway">
+                                <h4>APHIS Inspection Database (US Only)</h4>
+                                <p>For US-based facilities only: Search by certificate number (in popup info), business name, or location. Find license status, inspection reports, violations, and contact info.</p>
+                                <p><a href="https://aphis.my.site.com/PublicSearchTool/s/inspection-reports" target="_blank" rel="noopener">APHIS Inspection Database</a></p>
+                                <video width="100%" controls style="border: 1px solid #ccc; margin-top: 0.5rem;">
+                                    <source src="tutorial-videos/2025-11-30 16-30-46.mp4" type="video/mp4">
+                                    Your browser does not support the video tag.
+                                </video>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="guide-section support-section">
+                <h2>Report Issues</h2>
+                <p>Found something wrong? <a href="https://discord.gg/wbdTHzAZ4b" target="_blank" rel="noopener noreferrer">Join our Discord</a> or <a href="mailto:untileverycageproject@protonmail.com">email us</a> about:</p>
+                <ul>
+                    <li>Incorrect facility locations</li>
+                    <li>Missing facilities</li>
+                    <li>Bugs or performance issues</li>
+                    <li>Outdated data</li>
+                </ul>
+            </section>
 
         </div>
     </div>
@@ -163,5 +193,6 @@
     <div id="footer-placeholder"></div>
 
     <script src="footer.js"></script>
+    <script src="accordion.js"></script>
 </body>
 </html>

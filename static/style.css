@@ -271,6 +271,439 @@ hr {
     border: 2px solid #ffffff;
 }
 
+/* =============================================================================
+   PAGE HERO & SECTIONS
+   ============================================================================= */
+
+.page-hero {
+    margin-bottom: 1.5rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #000;
+}
+
+.page-hero h1 {
+    margin: 0 0 0.25rem 0;
+    font-size: 2rem;
+    color: #000;
+}
+
+.page-hero p {
+    font-size: 0.95rem;
+    margin: 0;
+    color: #333;
+}
+
+.guide-section,
+.about-section {
+    margin-bottom: 1rem;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.guide-section:last-child,
+.about-section:last-child {
+    border-bottom: none;
+}
+
+/* =============================================================================
+   GUIDE CARDS
+   ============================================================================= */
+
+.guide-card {
+    display: flex;
+    gap: 1.5rem;
+    background-color: transparent;
+    border: none;
+    padding: 0.5rem 0;
+    margin: 1rem 0;
+    align-items: flex-start;
+}
+
+.card-content {
+    flex: 1;
+}
+
+.card-content h3 {
+    display: none;
+}
+
+.card-media {
+    flex: 1;
+    min-width: 250px;
+}
+
+.feature-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.feature-list li {
+    padding: 0.25rem 0;
+    border-bottom: none;
+}
+
+/* =============================================================================
+   FACILITY TYPE GRID
+   ============================================================================= */
+
+.facility-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 1rem;
+    margin: 0.75rem 0;
+}
+
+.facility-card {
+    background: transparent;
+    padding: 0.75rem;
+    border-radius: 0;
+    border: 1px solid #ccc;
+    text-align: center;
+    transition: all 0.2s ease;
+}
+
+.facility-card:hover {
+    border-color: #000;
+    background: #f5f5f5;
+}
+
+.facility-card h3 {
+    display: none;
+}
+
+.facility-card strong {
+    display: block;
+    font-size: 0.85rem;
+    margin: 0.5rem 0 0.25rem 0;
+}
+
+.facility-card {
+    font-size: 0.85rem;
+    color: #555;
+    margin: 0;
+}
+
+.facility-marker {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    margin: 0 auto 0.5rem;
+    box-shadow: none;
+}
+
+.facility-marker.slaughterhouse {
+    background-color: #d90429;
+}
+
+.facility-marker.processing {
+    background-color: #555;
+}
+
+.facility-marker.testing {
+    background-color: #8b5cf6;
+}
+
+.facility-marker.breeders {
+    background-color: #fbbf24;
+}
+
+.facility-marker.dealers {
+    background-color: #fb923c;
+}
+
+.facility-marker.exhibitors {
+    background-color: #22c55e;
+}
+
+/* =============================================================================
+   ACCORDION
+   ============================================================================= */
+
+.accordion {
+    margin: 0.75rem 0;
+}
+
+.accordion-item {
+    margin-bottom: 0.5rem;
+    border: 1px solid #ccc;
+    border-radius: 0;
+    overflow: hidden;
+    transition: none;
+}
+
+.accordion-item:hover {
+    border-color: #000;
+    box-shadow: none;
+}
+
+.accordion-header {
+    width: 100%;
+    padding: 0.7rem;
+    background-color: #f0f0f0;
+    border: none;
+    cursor: pointer;
+    font-size: 0.95rem;
+    font-weight: 600;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: background-color 0.2s ease;
+}
+
+.accordion-header:hover {
+    background-color: #e8e8e8;
+}
+
+.accordion-header.active {
+    background-color: #000;
+    color: #fff;
+}
+
+.accordion-toggle {
+    font-size: 1.2rem;
+    font-weight: 300;
+    transition: transform 0.2s ease;
+}
+
+.accordion-header.active .accordion-toggle {
+    transform: rotate(45deg);
+}
+
+.accordion-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+    background-color: #fff;
+}
+
+.accordion-content.open {
+    max-height: 2000px;
+    overflow: visible;
+}
+
+.investigation-pathway {
+    padding: 0.75rem;
+    font-size: 0.9rem;
+}
+
+.investigation-pathway h4 {
+    margin-top: 0.5rem;
+    margin-bottom: 0.25rem;
+    font-size: 0.95rem;
+    border-left: none;
+    padding-left: 0;
+    font-weight: 600;
+}
+
+.investigation-pathway h4:first-child {
+    margin-top: 0;
+}
+
+.investigation-pathway p {
+    margin: 0.25rem 0;
+    line-height: 1.5;
+}
+
+.investigation-pathway ul {
+    margin: 0.25rem 0;
+    padding-left: 1.25rem;
+}
+
+.investigation-pathway li {
+    margin: 0;
+}
+
+.investigation-pathway a {
+    color: #0056b3;
+    font-weight: 400;
+}
+
+.investigation-pathway a:hover {
+    text-decoration: underline;
+}
+
+/* =============================================================================
+   GIF PLACEHOLDERS
+   ============================================================================= */
+
+.gif-placeholder {
+    background: #f5f5f5;
+    color: #666;
+    padding: 0.5rem;
+    border-radius: 0;
+    text-align: center;
+    margin-top: 0.5rem;
+    border: 1px dashed #999;
+    font-size: 0.8rem;
+}
+
+.gif-placeholder p {
+    margin: 0;
+    font-weight: 400;
+}
+
+.gif-placeholder small {
+    display: block;
+    margin-top: 0;
+    color: #999;
+}
+
+.gif-placeholder.investigation {
+    margin-top: 0.5rem;
+}
+
+/* =============================================================================
+   SUPPORT & CONTACT GRIDS
+   ============================================================================= */
+
+.support-grid,
+.contact-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin: 0.5rem 0;
+}
+
+.support-card,
+.contact-card {
+    background: #f9f9f9;
+    padding: 0.75rem;
+    border-radius: 0;
+    border: 1px solid #ccc;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    color: inherit;
+}
+
+.support-card:hover,
+.contact-card:hover {
+    background-color: #f0f0f0;
+    border-color: #000;
+}
+
+.support-card h3,
+.contact-card h3 {
+    margin: 0 0 0.25rem 0;
+    font-size: 0.95rem;
+}
+
+.support-card p,
+.contact-card p {
+    margin: 0;
+    color: #555;
+    font-size: 0.85rem;
+}
+
+.support-link {
+    display: inline;
+    color: #0056b3;
+    font-weight: 400;
+    text-decoration: none;
+}
+
+.support-link:hover {
+    text-decoration: underline;
+}
+
+.issues-list {
+    background-color: transparent;
+    padding: 0;
+    border-left: none;
+    border-radius: 0;
+    margin-top: 0.5rem;
+}
+
+.contact-links {
+    list-style: none;
+    padding: 0;
+    margin: 0.5rem 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.contact-links li {
+    display: inline;
+}
+
+.contact-links a {
+    color: #0056b3;
+    font-weight: 400;
+}
+
+/* =============================================================================
+   VALUES & IMPACT GRIDS
+   ============================================================================= */
+
+.values-grid {
+    display: none;
+}
+
+.value-card {
+    display: none;
+}
+
+.impact-list {
+    list-style: none;
+    padding: 0;
+    margin: 0.5rem 0;
+}
+
+.impact-list li {
+    padding: 0.25rem 0 0.25rem 1.25rem;
+    position: relative;
+}
+
+.impact-list li:before {
+    content: '•';
+    position: absolute;
+    left: 0;
+}
+
+.manifesto-section {
+    text-align: center;
+    padding-top: 1rem;
+    margin-top: 1rem;
+    border-top: 1px solid #000;
+    border-bottom: none;
+}
+
+.manifesto-section h2 {
+    font-size: 1.5rem;
+    color: #000;
+    margin: 0;
+}
+
+/* =============================================================================
+   SUPPORT SECTION
+   ============================================================================= */
+
+.support-section {
+    margin-bottom: 1rem;
+}
+
+.support-section p {
+    margin: 0.25rem 0;
+}
+
+.support-section ul {
+    list-style: none;
+    padding: 0;
+    margin: 0.5rem 0;
+}
+
+.support-section li {
+    padding: 0.15rem 0 0.15rem 1.25rem;
+    position: relative;
+}
+
+.support-section li:before {
+    content: '•';
+    position: absolute;
+    left: 0;
+}
+
 /* Responsive navigation for smaller screens */
 @media (max-width: 1024px) {
     .site-header h1 {
@@ -280,6 +713,19 @@ hr {
     .nav-link {
         font-size: 1rem;
         padding: 0.4rem 0.7rem;
+    }
+    
+    .page-hero h1 {
+        font-size: 2rem;
+    }
+    
+    .guide-card {
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .card-media {
+        min-width: auto;
     }
 }
 
