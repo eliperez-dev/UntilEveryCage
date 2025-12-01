@@ -1409,9 +1409,9 @@ ol li strong {
     background-color: #ffffff;
     border-radius: 8px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-    max-width: 600px;
-    width: 90%;
-    max-height: 90vh;
+    max-width: 500px;
+    width: 85%;
+    max-height: 85vh;
     overflow-y: auto;
     position: relative;
     animation: slideUp 0.3s ease;
@@ -1528,21 +1528,26 @@ ol li strong {
 
 @media (max-width: 600px) {
     .welcome-modal-content {
-        width: 95%;
-        max-height: 95vh;
+        width: 90%;
+        max-height: 80vh;
     }
 
     .welcome-modal-body {
-        padding: 40px 20px 20px;
+        padding: 32px 16px 16px;
     }
 
     .welcome-modal-body h2 {
-        font-size: 24px;
+        font-size: 22px;
+    }
+
+    .welcome-modal-body p {
+        font-size: 14px;
     }
 
     .welcome-get-started-btn {
-        margin-left: 20px;
-        margin-right: 20px;
-        width: calc(100% - 40px);
+        margin-left: 16px;
+        margin-right: 16px;
+        width: calc(100% - 32px);
+        font-size: 14px;
     }
 }
