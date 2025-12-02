@@ -1,0 +1,216 @@
+{
+    "app": {
+        "title": "Until Every Cage is Empty",
+        "description": "An interactive map exposing the infrastructure of animal exploitation."
+    },
+    "nav": {
+        "map": "Map",
+        "howToUse": "How To Use",
+        "about": "About",
+        "contribute": "Contribute"
+    },
+    "loading": {
+        "text": "Loading map data..."
+    },
+    "drawer": {
+        "title": "Search & Filter",
+        "search": {
+            "title": "Search",
+            "placeholder": "Search facilities, animals, companies..."
+        },
+        "location": {
+            "title": "Location",
+            "allCountries": "All Countries",
+            "allStates": "All States/Provinces"
+        },
+        "types": {
+            "title": "Facility Types",
+            "slaughterhouses": "🔴 Slaughterhouses",
+            "processing": "⚪️ Processing",
+            "labs": "🟣 Labs",
+            "breeders": "🟡 Farms / Breeders",
+            "dealers": "🟠 Dealers",
+            "exhibitors": "🟢 Exhibitors/Zoos"
+        },
+        "export": {
+            "title": "Export & Settings",
+            "share": "Share View",
+            "download": "Download CSV",
+            "reset": "Reset Filters"
+        },
+        "display": {
+            "title": "Display Settings",
+            "clusterLabel": "Cluster after",
+            "facilities": "facilities",
+            "clusterHelp": "Lower values = earlier clustering.",
+            "pinSize": "Pin Size",
+            "pinSizeHelp": "Higher values = larger markers."
+        }
+    },
+    "welcome": {
+        "title": "Until Every Cage is Empty",
+        "p1": "<strong>Secrecy and propaganda are their weapons.</strong> The animal agriculture industry relies on secrecy and propaganda to normalize systemic violence. This map destroys that cover, exposing over 54,000 locations where sentient beings are imprisoned, tested on, and slaughtered for profit.",
+        "p2": "<strong>It is closer than you think.</strong> From factory farms to roadside zoos, this systematic abuse isn't distant, it is happening in your own backyard.",
+        "p3": "<strong>Free and open source, forever.</strong> We provide the raw data necessary to force accountability and dismantle the system, built entirely on community contributions.",
+        "p4": "Follow the guides on the <a href=\"howtouse.html\" target=\"_self\">How To Use</a> to be able to use this map effectively, and read our <a href=\"about.html\" target=\"_self\">About</a> page to learn how to contribute.",
+        "button": "Explore the Map"
+    },
+    "popups": {
+        "slaughterhouse": "Slaughterhouse",
+        "processing": "Processing-Only Facility",
+        "addressNA": "Address not available",
+        "unknownName": "Unknown Name",
+        "phone": "Phone",
+        "dba": "Doing Business As",
+        "productsProcessed": "Products Processed",
+        "productVolume": "Product Volume",
+        "animalsKilled": "Types of Animals Killed",
+        "slaughterVolume": "Slaughter Volume",
+        "getDirections": "Get Directions",
+        "viewSource": "View Source",
+        "approx": "(Approximately)",
+        "openAphis": "Open APHIS Search Tool",
+        "investigation": "Investigation Instructions",
+        "investigationText": "Copy the <span class=\"copyable-text\" data-copy=\"{certNum}\">{certNum}</span>, paste it into the APHIS search tool below, then click <strong>query annual reports</strong> on the facility. Keep an eye out for <strong> exception reports</strong>; those are especially cruel.",
+        "investigationTextInspection": "Copy the <span class=\"copyable-text\" data-copy=\"{certNum}\">{certNum}</span>, paste it into the APHIS search tool below, then click <strong>query inspection reports</strong> on the facility.",
+        "breeder": "Animal Breeder",
+        "dealer": "Animal Dealer",
+        "exhibitor": "Exhibitor / Zoo",
+        "registrationType": "Registration Type",
+        "animalsTested": "Animals Being Tested On",
+        "certNum": "Certificate Number",
+        "address": "Address",
+        "id": "ID"
+    },
+    "howToUse": {
+        "hero": {
+            "title": "How to Use This Map",
+            "subtitle": "This map exposes the global infrastructure of animal exploitation. Use it to investigate, document, and dismantle."
+        },
+        "gettingStarted": {
+            "title": "Getting Started",
+            "intro": "The overlay panel in the top-left corner of the map is your primary tool:",
+            "search": "Search:",
+            "searchDesc": "Facility names, company names, or animal types (e.g., \"Tyson\", \"cattle\", \"chickens\")",
+            "location": "Location:",
+            "locationDesc": "Select country, state, or province",
+            "download": "Download CSV:",
+            "downloadDesc": "Export the currently visible facilities as a CSV file for analysis and research",
+            "reset": "Reset:",
+            "resetDesc": "Clear all filters"
+        },
+        "facilityTypes": {
+            "title": "Facility Types",
+            "slaughterhouses": "Slaughterhouses",
+            "red": "(red)",
+            "processing": "Processing",
+            "grey": "(grey)",
+            "labs": "Testing Labs",
+            "purple": "(purple)",
+            "breeders": "Farms/Breeders",
+            "yellow": "(yellow)",
+            "dealers": "Dealers",
+            "orange": "(orange)",
+            "exhibitors": "Exhibitors",
+            "green": "(green)"
+        },
+        "investigation": {
+            "title": "Investigation Pathways",
+            "slaughter": {
+                "title": "Slaughterhouses & Processing Facilities",
+                "publicResearch": "Public Company Research",
+                "publicResearchDesc": "For publicly traded companies (Tyson, JBS, Cargill), research SEC <strong>10-K forms</strong> for board members, financials, legal issues, and operations.",
+                "secLink": "SEC EDGAR Database",
+                "corporate": "Corporate Connections",
+                "corporateDesc": "Map parent companies, subsidiaries, and business relationships."
+            },
+            "labs": {
+                "title": "Animal Testing Laboratories",
+                "aphis": "APHIS Annual Reports",
+                "aphisDesc": "Copy the certificate number from the facility popup, paste it into the APHIS search tool, then click \"view annual reports\" Look carefully for exception reports and narratives in the e-column data.",
+                "aphisLink": "APHIS Annual Reports Tool",
+                "university": "University & Government Research",
+                "universityDesc": "For academic institutions, research animal care committees and protocols. Use FOIA requests for government research facilities."
+            },
+            "farms": {
+                "title": "Farms, Dealers, & Exhibitors",
+                "aphis": "APHIS Inspection Database (US Only)",
+                "aphisDesc": "For US-based facilities only: Search by certificate number (in popup info), business name, or location. Find license status, inspection reports, violations, and contact info.",
+                "aphisLink": "APHIS Inspection Database"
+            }
+        },
+        "report": {
+            "title": "Report Issues",
+            "intro": "Found something wrong?",
+            "discord": "Join our Discord",
+            "or": "or",
+            "email": "email us",
+            "about": "about:",
+            "issue1": "Incorrect facility locations",
+            "issue2": "Missing facilities",
+            "issue3": "Bugs or performance issues",
+            "issue4": "Outdated data"
+        }
+    },
+    "about": {
+        "hero": {
+            "title": "About Until Every Cage is Empty"
+        },
+        "project": {
+            "title": "The Project",
+            "desc": "<strong>Until Every Cage is Empty</strong> is an instrument of exposure. We aggregate public government data to map the global infrastructure of animal exploitation. From slaughterhouses and vivisection labs to commercial breeders, we bring the industry's hidden network into a single, searchable interface."
+        },
+        "reality": {
+            "title": "The Reality",
+            "desc": "The violence inflicted on these animals is not accidental; it is <strong>standard industry practice</strong>. In the facilities mapped here, sentient beings endure systematic torture legalized by the state:",
+            "point1": "<strong>Routine Mutilation:</strong> Piglets are castrated and tails are docked without anesthesia. Cows are dehorned with burning irons. Chickens are debeaked with hot blades.",
+            "point2": "<strong>Total Confinement:</strong> Sows are bolted into gestation crates so small they cannot turn around. Hens are stacked in battery cages, denied the space to spread their wings for their entire lives.",
+            "point3": "<strong>Psychological Torture:</strong> Newborns are ripped from their mothers hours after birth. Male chicks, useless to the egg industry, are ground up alive or suffocated in trash bags."
+        },
+        "silence": {
+            "title": "The Architecture of Silence",
+            "desc": "The industry knows the public would never accept this reality if they saw it. Therefore, the system is engineered to ensure you never do.",
+            "point1": "<strong>Physical Erasure:</strong> Facilities are built in remote locations, housed in windowless bunkers, and surrounded by security perimeters to physically separate the consumer from the victim.",
+            "point2": "<strong>Legal Intimidation:</strong> \"Ag-Gag\" laws criminalize whistleblowing, making it a felony to photograph or record the abuse taking place inside these walls.",
+            "point3": "<strong>Humane-Washing:</strong> Labels like \"Free Range\" and \"Locally Sourced\" are marketing fabrications designed to soothe consumer guilt while hiding the industrialized slaughterhouse floor."
+        },
+        "mission": {
+            "title": "The Mission",
+            "desc": "<strong>Transparency is resistance.</strong> By mapping this concealed infrastructure, we aim to:",
+            "point1": "<strong>Shatter Ignorance:</strong> Confront the public with the staggering scale of industrialized violence.",
+            "point2": "<strong>Arm the Movement:</strong> Provide investigators and activists with the location data needed to target campaigns and document violations.",
+            "point3": "<strong>Force Accountability:</strong> Ensure that no facility can hide its operations in the dark."
+        },
+        "commitment": {
+            "title": "Our Commitment",
+            "desc": "Our goal is not simply to document the system, but to provide the open-source tools necessary to <strong>dismantle it</strong>."
+        },
+        "getInvolved": {
+            "title": "Get Involved",
+            "contact": "Contact",
+            "donate": "Donate",
+            "resources": "Vegan Resources"
+        },
+        "killCounter": {
+            "title": "Animals Killed Since You Opened This Page",
+            "fish": "Fish",
+            "chickens": "Chickens",
+            "ducks": "Ducks",
+            "pigs": "Pigs",
+            "rabbits": "Rabbits",
+            "turkeys": "Turkeys",
+            "geese": "Geese",
+            "sheep": "Sheep",
+            "goats": "Goats",
+            "cows": "Cows",
+            "rodents": "Lab Rodents",
+            "birds": "Other birds",
+            "buffaloes": "Buffaloes",
+            "dogs": "Dogs",
+            "cats": "Cats",
+            "horses": "Horses",
+            "donkeys": "Donkeys",
+            "camels": "Camels"
+        }
+    }
+}

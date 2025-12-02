@@ -1,0 +1,216 @@
+{
+    "app": {
+        "title": "Until Every Cage is Empty",
+        "description": "Un mapa interactivo que expone la infraestructura de la explotación animal."
+    },
+    "nav": {
+        "map": "Mapa",
+        "howToUse": "Cómo Usar",
+        "about": "Acerca de",
+        "contribute": "Contribuir"
+    },
+    "loading": {
+        "text": "Cargando datos del mapa..."
+    },
+    "drawer": {
+        "title": "Buscar y Filtrar",
+        "search": {
+            "title": "Buscar",
+            "placeholder": "Buscar instalaciones, animales, empresas..."
+        },
+        "location": {
+            "title": "Ubicación",
+            "allCountries": "Todos los Países",
+            "allStates": "Todos los Estados/Provincias"
+        },
+        "types": {
+            "title": "Tipos de Instalaciones",
+            "slaughterhouses": "🔴 Mataderos",
+            "processing": "⚪️ Procesamiento",
+            "labs": "🟣 Laboratorios",
+            "breeders": "🟡 Granjas / Criadores",
+            "dealers": "🟠 Comerciantes",
+            "exhibitors": "🟢 Expositores / Zoológicos"
+        },
+        "export": {
+            "title": "Exportar y Configuración",
+            "share": "Compartir Vista",
+            "download": "Descargar CSV",
+            "reset": "Restablecer Filtros"
+        },
+        "display": {
+            "title": "Configuración de Visualización",
+            "clusterLabel": "Agrupar después de",
+            "facilities": "instalaciones",
+            "clusterHelp": "Valores más bajos = agrupación más temprana.",
+            "pinSize": "Tamaño del Pin",
+            "pinSizeHelp": "Valores más altos = marcadores más grandes."
+        }
+    },
+    "welcome": {
+        "title": "Until Every Cage is Empty",
+        "p1": "<strong>El secreto y la propaganda son sus armas.</strong> La industria de la agricultura animal depende del secreto y la propaganda para normalizar la violencia sistémica. Este mapa destruye esa cobertura, exponiendo más de 54,000 ubicaciones donde los seres sintientes son encarcelados, sometidos a pruebas y sacrificados con fines de lucro.",
+        "p2": "<strong>Está más cerca de lo que piensas.</strong> Desde granjas industriales hasta zoológicos de carretera, este abuso sistemático no es distante, está sucediendo en tu propio patio trasero.",
+        "p3": "<strong>Gratis y de código abierto, para siempre.</strong> Proporcionamos los datos brutos necesarios para forzar la rendición de cuentas y desmantelar el sistema, construido enteramente con contribuciones de la comunidad.",
+        "p4": "Sigue las guías en <a href=\"howtouse.html\" target=\"_self\">Cómo Usar</a> para poder usar este mapa de manera efectiva, y lee nuestra página <a href=\"about.html\" target=\"_self\">Acerca de</a> para aprender cómo contribuir.",
+        "button": "Explorar el Mapa"
+    },
+    "popups": {
+        "slaughterhouse": "Matadero",
+        "processing": "Instalación de Procesamiento",
+        "addressNA": "Dirección no disponible",
+        "unknownName": "Nombre Desconocido",
+        "phone": "Teléfono",
+        "dba": "Operando Como",
+        "productsProcessed": "Productos Procesados",
+        "productVolume": "Volumen de Producto",
+        "animalsKilled": "Tipos de Animales Sacrificados",
+        "slaughterVolume": "Volumen de Sacrificio",
+        "getDirections": "Obtener Direcciones",
+        "viewSource": "Ver Fuente",
+        "approx": "(Aproximadamente)",
+        "openAphis": "Abrir Herramienta de Búsqueda APHIS",
+        "investigation": "Instrucciones de Investigación",
+        "investigationText": "Copia el <span class=\"copyable-text\" data-copy=\"{certNum}\">{certNum}</span>, pégalo en la herramienta de búsqueda APHIS a continuación, luego haz clic en <strong>consultar informes anuales</strong> sobre la instalación. Esté atento a los <strong>informes de excepción</strong>; esos son especialmente crueles.",
+        "investigationTextInspection": "Copia el <span class=\"copyable-text\" data-copy=\"{certNum}\">{certNum}</span>, pégalo en la herramienta de búsqueda APHIS a continuación, luego haz clic en <strong>consultar informes de inspección</strong> sobre la instalación.",
+        "breeder": "Criador de Animales",
+        "dealer": "Comerciante de Animales",
+        "exhibitor": "Expositor / Zoológico",
+        "registrationType": "Tipo de Registro",
+        "animalsTested": "Animales en Pruebas",
+        "certNum": "Número de Certificado",
+        "address": "Dirección",
+        "id": "ID"
+    },
+    "howToUse": {
+        "hero": {
+            "title": "Cómo Usar Este Mapa",
+            "subtitle": "Este mapa expone la infraestructura global de la explotación animal. Úsalo para investigar, documentar y desmantelar."
+        },
+        "gettingStarted": {
+            "title": "Comenzando",
+            "intro": "El panel superpuesto en la esquina superior izquierda del mapa es tu herramienta principal:",
+            "search": "Buscar:",
+            "searchDesc": "Nombres de instalaciones, nombres de empresas o tipos de animales (por ejemplo, \"Tyson\", \"ganado\", \"pollos\")",
+            "location": "Ubicación:",
+            "locationDesc": "Seleccionar país, estado o provincia",
+            "download": "Descargar CSV:",
+            "downloadDesc": "Exportar las instalaciones actualmente visibles como un archivo CSV para análisis e investigación",
+            "reset": "Restablecer:",
+            "resetDesc": "Borrar todos los filtros"
+        },
+        "facilityTypes": {
+            "title": "Tipos de Instalaciones",
+            "slaughterhouses": "Mataderos",
+            "red": "(rojo)",
+            "processing": "Procesamiento",
+            "grey": "(gris)",
+            "labs": "Laboratorios de Pruebas",
+            "purple": "(púrpura)",
+            "breeders": "Granjas/Criadores",
+            "yellow": "(amarillo)",
+            "dealers": "Comerciantes",
+            "orange": "(naranja)",
+            "exhibitors": "Expositores",
+            "green": "(verde)"
+        },
+        "investigation": {
+            "title": "Vías de Investigación",
+            "slaughter": {
+                "title": "Mataderos e Instalaciones de Procesamiento",
+                "publicResearch": "Investigación de Empresas Públicas",
+                "publicResearchDesc": "Para empresas que cotizan en bolsa (Tyson, JBS, Cargill), investiga los formularios SEC <strong>10-K</strong> para miembros de la junta, finanzas, problemas legales y operaciones.",
+                "secLink": "Base de Datos SEC EDGAR",
+                "corporate": "Conexiones Corporativas",
+                "corporateDesc": "Mapear empresas matrices, subsidiarias y relaciones comerciales."
+            },
+            "labs": {
+                "title": "Laboratorios de Pruebas en Animales",
+                "aphis": "Informes Anuales de APHIS",
+                "aphisDesc": "Copia el número de certificado de la ventana emergente de la instalación, pégalo en la herramienta de búsqueda de APHIS, luego haz clic en \"ver informes anuales\". Busca cuidadosamente informes de excepción y narrativas en los datos de la columna e.",
+                "aphisLink": "Herramienta de Informes Anuales de APHIS",
+                "university": "Investigación Universitaria y Gubernamental",
+                "universityDesc": "Para instituciones académicas, investiga los comités y protocolos de cuidado animal. Usa solicitudes FOIA para instalaciones de investigación gubernamentales."
+            },
+            "farms": {
+                "title": "Granjas, Comerciantes y Expositores",
+                "aphis": "Base de Datos de Inspección de APHIS (Solo EE. UU.)",
+                "aphisDesc": "Solo para instalaciones en EE. UU.: Busca por número de certificado (en la información emergente), nombre comercial o ubicación. Encuentra el estado de la licencia, informes de inspección, violaciones e información de contacto.",
+                "aphisLink": "Base de Datos de Inspección de APHIS"
+            }
+        },
+        "report": {
+            "title": "Informar Problemas",
+            "intro": "¿Encontraste algo mal?",
+            "discord": "Únete a nuestro Discord",
+            "or": "o",
+            "email": "envíanos un correo electrónico",
+            "about": "sobre:",
+            "issue1": "Ubicaciones de instalaciones incorrectas",
+            "issue2": "Instalaciones faltantes",
+            "issue3": "Errores o problemas de rendimiento",
+            "issue4": "Datos desactualizados"
+        }
+    },
+    "about": {
+        "hero": {
+            "title": "Acerca de Until Every Cage is Empty"
+        },
+        "project": {
+            "title": "El Proyecto",
+            "desc": "<strong>Until Every Cage is Empty</strong> es un instrumento de exposición. Agregamos datos gubernamentales públicos para mapear la infraestructura global de la explotación animal. Desde mataderos y laboratorios de vivisección hasta criadores comerciales, traemos la red oculta de la industria a una interfaz única y buscable."
+        },
+        "reality": {
+            "title": "La Realidad",
+            "desc": "La violencia infligida a estos animales no es accidental; es <strong>práctica estándar de la industria</strong>. En las instalaciones mapeadas aquí, los seres sintientes soportan tortura sistemática legalizada por el estado:",
+            "point1": "<strong>Mutilación Rutinaria:</strong> Los lechones son castrados y se les cortan las colas sin anestesia. Las vacas son descornadas con hierros candentes. A los pollos se les corta el pico con cuchillas calientes.",
+            "point2": "<strong>Confinamiento Total:</strong> Las cerdas son encerradas en jaulas de gestación tan pequeñas que no pueden darse la vuelta. Las gallinas se apilan en jaulas en batería, negándoles el espacio para extender sus alas durante toda su vida.",
+            "point3": "<strong>Tortura Psicológica:</strong> Los recién nacidos son arrancados de sus madres horas después del nacimiento. Los pollitos machos, inútiles para la industria del huevo, son triturados vivos o asfixiados en bolsas de basura."
+        },
+        "silence": {
+            "title": "La Arquitectura del Silencio",
+            "desc": "La industria sabe que el público nunca aceptaría esta realidad si la viera. Por lo tanto, el sistema está diseñado para asegurar que nunca lo hagas.",
+            "point1": "<strong>Borrado Físico:</strong> Las instalaciones se construyen en lugares remotos, alojadas en búnkeres sin ventanas y rodeadas de perímetros de seguridad para separar físicamente al consumidor de la víctima.",
+            "point2": "<strong>Intimidación Legal:</strong> Las leyes \"Ag-Gag\" criminalizan la denuncia, convirtiendo en delito fotografiar o grabar el abuso que tiene lugar dentro de estos muros.",
+            "point3": "<strong>Blanqueo de Bienestar:</strong> Etiquetas como \"Cría en Libertad\" y \"Origen Local\" son fabricaciones de marketing diseñadas para calmar la culpa del consumidor mientras ocultan el piso del matadero industrializado."
+        },
+        "mission": {
+            "title": "La Misión",
+            "desc": "<strong>La transparencia es resistencia.</strong> Al mapear esta infraestructura oculta, nuestro objetivo es:",
+            "point1": "<strong>Romper la Ignorancia:</strong> Enfrentar al público con la escala asombrosa de la violencia industrializada.",
+            "point2": "<strong>Armar al Movimiento:</strong> Proporcionar a investigadores y activistas los datos de ubicación necesarios para dirigir campañas y documentar violaciones.",
+            "point3": "<strong>Forzar la Rendición de Cuentas:</strong> Asegurar que ninguna instalación pueda ocultar sus operaciones en la oscuridad."
+        },
+        "commitment": {
+            "title": "Nuestro Compromiso",
+            "desc": "Nuestro objetivo no es simplemente documentar el sistema, sino proporcionar las herramientas de código abierto necesarias para <strong>desmantelarlo</strong>."
+        },
+        "getInvolved": {
+            "title": "Involúcrate",
+            "contact": "Contacto",
+            "donate": "Donar",
+            "resources": "Recursos Veganos"
+        },
+        "killCounter": {
+            "title": "Animales Asesinados Desde Que Abriste Esta Página",
+            "fish": "Peces",
+            "chickens": "Pollos",
+            "ducks": "Patos",
+            "pigs": "Cerdos",
+            "rabbits": "Conejos",
+            "turkeys": "Pavos",
+            "geese": "Gansos",
+            "sheep": "Ovejas",
+            "goats": "Cabras",
+            "cows": "Vacas",
+            "rodents": "Roedores de Laboratorio",
+            "birds": "Otras aves",
+            "buffaloes": "Búfalos",
+            "dogs": "Perros",
+            "cats": "Gatos",
+            "horses": "Caballos",
+            "donkeys": "Burros",
+            "camels": "Camellos"
+        }
+    }
+}

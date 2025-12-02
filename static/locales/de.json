@@ -1,0 +1,216 @@
+{
+    "app": {
+        "title": "Until Every Cage is Empty",
+        "description": "Eine interaktive Karte, die die Infrastruktur der Tierausbeutung aufdeckt."
+    },
+    "nav": {
+        "map": "Karte",
+        "howToUse": "Anleitung",
+        "about": "Über uns",
+        "contribute": "Mitwirken"
+    },
+    "loading": {
+        "text": "Lade Kartendaten..."
+    },
+    "drawer": {
+        "title": "Suche & Filter",
+        "search": {
+            "title": "Suche",
+            "placeholder": "Suche nach Einrichtungen, Tieren, Firmen..."
+        },
+        "location": {
+            "title": "Standort",
+            "allCountries": "Alle Länder",
+            "allStates": "Alle Bundesländer/Regionen"
+        },
+        "types": {
+            "title": "Einrichtungstypen",
+            "slaughterhouses": "🔴 Schlachthöfe",
+            "processing": "⚪️ Verarbeitung",
+            "labs": "🟣 Labore",
+            "breeders": "🟡 Züchter / Farmen",
+            "dealers": "🟠 Händler",
+            "exhibitors": "🟢 Aussteller / Zoos"
+        },
+        "export": {
+            "title": "Export & Einstellungen",
+            "share": "Ansicht teilen",
+            "download": "CSV herunterladen",
+            "reset": "Filter zurücksetzen"
+        },
+        "display": {
+            "title": "Anzeigeeinstellungen",
+            "clusterLabel": "Gruppieren ab",
+            "facilities": "Einrichtungen",
+            "clusterHelp": "Niedrigere Werte = frühere Gruppierung.",
+            "pinSize": "Markergröße",
+            "pinSizeHelp": "Höhere Werte = größere Marker."
+        }
+    },
+    "welcome": {
+        "title": "Until Every Cage is Empty",
+        "p1": "<strong>Geheimhaltung und Propaganda sind ihre Waffen.</strong> Die Tierindustrie verlässt sich auf Geheimhaltung und Propaganda, um systemische Gewalt zu normalisieren. Diese Karte zerstört diesen Deckmantel und enthüllt über 54.000 Orte, an denen fühlende Lebewesen für Profit eingesperrt, getestet und geschlachtet werden.",
+        "p2": "<strong>Es ist näher als du denkst.</strong> Von Massentierhaltungsbetrieben bis zu Straßenzoos – dieser systematische Missbrauch ist nicht weit entfernt, er geschieht direkt vor deiner Haustür.",
+        "p3": "<strong>Kostenlos und Open Source, für immer.</strong> Wir stellen die Rohdaten zur Verfügung, die notwendig sind, um Rechenschaftspflicht zu erzwingen und das System zu demontieren, vollständig aufgebaut auf Beiträgen der Gemeinschaft.",
+        "p4": "Folge den Anleitungen auf der <a href=\"howtouse.html\" target=\"_self\">Anleitungsseite</a>, um diese Karte effektiv nutzen zu können, und lies unsere <a href=\"about.html\" target=\"_self\">Über uns</a>-Seite, um zu erfahren, wie du beitragen kannst.",
+        "button": "Karte erkunden"
+    },
+    "popups": {
+        "slaughterhouse": "Schlachthof",
+        "processing": "Verarbeitungsanlage",
+        "addressNA": "Adresse nicht verfügbar",
+        "unknownName": "Unbekannter Name",
+        "phone": "Telefon",
+        "dba": "Geschäftstätig als",
+        "productsProcessed": "Verarbeitete Produkte",
+        "productVolume": "Produktvolumen",
+        "animalsKilled": "Getötete Tierarten",
+        "slaughterVolume": "Schlachtvolumen",
+        "getDirections": "Wegbeschreibung",
+        "viewSource": "Quelle anzeigen",
+        "approx": "(Ungefähr)",
+        "openAphis": "APHIS-Suchtool öffnen",
+        "investigation": "Ermittlungsanweisungen",
+        "investigationText": "Kopiere die <span class=\"copyable-text\" data-copy=\"{certNum}\">{certNum}</span>, füge sie in das APHIS-Suchtool unten ein und klicke dann auf <strong>query annual reports</strong> für die Einrichtung. Achte auf <strong>Ausnahmeberichte (exception reports)</strong>; diese sind besonders grausam.",
+        "investigationTextInspection": "Kopiere die <span class=\"copyable-text\" data-copy=\"{certNum}\">{certNum}</span>, füge sie in das APHIS-Suchtool unten ein und klicke dann auf <strong>query inspection reports</strong> für die Einrichtung.",
+        "breeder": "Tierzüchter",
+        "dealer": "Tierhändler",
+        "exhibitor": "Aussteller / Zoo",
+        "registrationType": "Registrierungstyp",
+        "animalsTested": "Getestete Tiere",
+        "certNum": "Zertifikatsnummer",
+        "address": "Adresse",
+        "id": "ID"
+    },
+    "howToUse": {
+        "hero": {
+            "title": "Wie man diese Karte benutzt",
+            "subtitle": "Diese Karte enthüllt die globale Infrastruktur der Tierausbeutung. Nutze sie, um zu ermitteln, zu dokumentieren und zu demontieren."
+        },
+        "gettingStarted": {
+            "title": "Erste Schritte",
+            "intro": "Das Overlay-Panel in der oberen linken Ecke der Karte ist dein wichtigstes Werkzeug:",
+            "search": "Suche:",
+            "searchDesc": "Namen von Einrichtungen, Firmennamen oder Tierarten (z.B. \"Tönnies\", \"Rinder\", \"Hühner\")",
+            "location": "Standort:",
+            "locationDesc": "Wähle Land, Bundesland oder Region",
+            "download": "CSV herunterladen:",
+            "downloadDesc": "Exportiere die aktuell sichtbaren Einrichtungen als CSV-Datei für Analysen und Recherchen",
+            "reset": "Zurücksetzen:",
+            "resetDesc": "Alle Filter löschen"
+        },
+        "facilityTypes": {
+            "title": "Einrichtungstypen",
+            "slaughterhouses": "Schlachthöfe",
+            "red": "(rot)",
+            "processing": "Verarbeitung",
+            "grey": "(grau)",
+            "labs": "Testlabore",
+            "purple": "(lila)",
+            "breeders": "Farmen/Züchter",
+            "yellow": "(gelb)",
+            "dealers": "Händler",
+            "orange": "(orange)",
+            "exhibitors": "Aussteller",
+            "green": "(grün)"
+        },
+        "investigation": {
+            "title": "Ermittlungswege",
+            "slaughter": {
+                "title": "Schlachthöfe & Verarbeitungsanlagen",
+                "publicResearch": "Öffentliche Unternehmensrecherche",
+                "publicResearchDesc": "Für börsennotierte Unternehmen, recherchiere SEC <strong>10-K-Formulare</strong> (in den USA) oder Geschäftsberichte für Vorstandsmitglieder, Finanzen, rechtliche Probleme und Betriebsabläufe.",
+                "secLink": "SEC EDGAR Datenbank",
+                "corporate": "Unternehmensverbindungen",
+                "corporateDesc": "Kartiere Muttergesellschaften, Tochtergesellschaften und Geschäftsbeziehungen."
+            },
+            "labs": {
+                "title": "Tierversuchslabore",
+                "aphis": "APHIS Jahresberichte (USA)",
+                "aphisDesc": "Kopiere die Zertifikatsnummer aus dem Popup der Einrichtung, füge sie in das APHIS-Suchtool ein und klicke auf \"view annual reports\". Suche sorgfältig nach Ausnahmeberichten und Beschreibungen in den Daten der Spalte E.",
+                "aphisLink": "APHIS Jahresberichte Tool",
+                "university": "Universitäts- & Regierungsforschung",
+                "universityDesc": "Für akademische Einrichtungen, recherchiere Tierschutzausschüsse und Protokolle. Nutze Informationsfreiheitsanfragen (FOIA/IFG) für staatliche Forschungseinrichtungen."
+            },
+            "farms": {
+                "title": "Farmen, Händler & Aussteller",
+                "aphis": "APHIS Inspektionsdatenbank (Nur USA)",
+                "aphisDesc": "Nur für Einrichtungen in den USA: Suche nach Zertifikatsnummer (im Popup), Geschäftsnamen oder Standort. Finde Lizenzstatus, Inspektionsberichte, Verstöße und Kontaktinformationen.",
+                "aphisLink": "APHIS Inspektionsdatenbank"
+            }
+        },
+        "report": {
+            "title": "Probleme melden",
+            "intro": "Etwas Falsches gefunden?",
+            "discord": "Tritt unserem Discord bei",
+            "or": "oder",
+            "email": "sende uns eine E-Mail",
+            "about": "betreffend:",
+            "issue1": "Falsche Standorte",
+            "issue2": "Fehlende Einrichtungen",
+            "issue3": "Fehler oder Leistungsprobleme",
+            "issue4": "Veraltete Daten"
+        }
+    },
+    "about": {
+        "hero": {
+            "title": "Über Until Every Cage is Empty"
+        },
+        "project": {
+            "title": "Das Projekt",
+            "desc": "<strong>Until Every Cage is Empty</strong> ist ein Instrument der Enthüllung. Wir aggregieren öffentliche Regierungsdaten, um die globale Infrastruktur der Tierausbeutung zu kartieren. Von Schlachthöfen und Vivisektionslaboren bis hin zu kommerziellen Züchtern bringen wir das verborgene Netzwerk der Industrie in eine einzige, durchsuchbare Oberfläche."
+        },
+        "reality": {
+            "title": "Die Realität",
+            "desc": "Die Gewalt, die diesen Tieren zugefügt wird, ist kein Zufall; sie ist <strong>industrielle Standardpraxis</strong>. In den hier kartierten Einrichtungen erleiden fühlende Lebewesen systematische Folter, die vom Staat legalisiert ist:",
+            "point1": "<strong>Routine-Verstümmelung:</strong> Ferkeln werden ohne Betäubung kastriert und die Schwänze kupiert. Kühe werden mit Brenneisen enthornt. Hühnern werden die Schnäbel mit heißen Klingen gekürzt.",
+            "point2": "<strong>Totale Gefangenschaft:</strong> Säue werden in Kastenstände gesperrt, die so klein sind, dass sie sich nicht umdrehen können. Hennen werden in Legebatterien gestapelt, ohne jemals ihre Flügel ausbreiten zu können.",
+            "point3": "<strong>Psychologische Folter:</strong> Neugeborene werden ihren Müttern Stunden nach der Geburt entrissen. Männliche Küken, nutzlos für die Eierindustrie, werden lebendig geschreddert oder in Müllsäcken erstickt."
+        },
+        "silence": {
+            "title": "Die Architektur des Schweigens",
+            "desc": "Die Industrie weiß, dass die Öffentlichkeit diese Realität niemals akzeptieren würde, wenn sie sie sähe. Daher ist das System so konzipiert, dass du es niemals siehst.",
+            "point1": "<strong>Physische Auslöschung:</strong> Einrichtungen werden an abgelegenen Orten gebaut, in fensterlosen Bunkern untergebracht und von Sicherheitszäunen umgeben, um den Verbraucher physisch vom Opfer zu trennen.",
+            "point2": "<strong>Rechtliche Einschüchterung:</strong> \"Ag-Gag\"-Gesetze kriminalisieren Whistleblowing und machen das Fotografieren oder Aufzeichnen des Missbrauchs innerhalb dieser Mauern zu einer Straftat.",
+            "point3": "<strong>Humane-Washing:</strong> Labels wie \"Freilandhaltung\" und \"Regional\" sind Marketing-Fabrikationen, die das Gewissen der Verbraucher beruhigen sollen, während sie den industrialisierten Schlachthofboden verbergen."
+        },
+        "mission": {
+            "title": "Die Mission",
+            "desc": "<strong>Transparenz ist Widerstand.</strong> Durch die Kartierung dieser verborgenen Infrastruktur zielen wir darauf ab:",
+            "point1": "<strong>Ignoranz zerschlagen:</strong> Die Öffentlichkeit mit dem erschütternden Ausmaß der industrialisierten Gewalt konfrontieren.",
+            "point2": "<strong>Die Bewegung bewaffnen:</strong> Ermittlern und Aktivisten die Standortdaten zur Verfügung stellen, die benötigt werden, um Kampagnen zu zielen und Verstöße zu dokumentieren.",
+            "point3": "<strong>Rechenschaftspflicht erzwingen:</strong> Sicherstellen, dass keine Einrichtung ihre Operationen im Dunkeln verbergen kann."
+        },
+        "commitment": {
+            "title": "Unser Engagement",
+            "desc": "Unser Ziel ist es nicht nur, das System zu dokumentieren, sondern die Open-Source-Werkzeuge bereitzustellen, die notwendig sind, um es <strong>zu demontieren</strong>."
+        },
+        "getInvolved": {
+            "title": "Mitmachen",
+            "contact": "Kontakt",
+            "donate": "Spenden",
+            "resources": "Vegane Ressourcen"
+        },
+        "killCounter": {
+            "title": "Getötete Tiere seit du diese Seite geöffnet hast",
+            "fish": "Fische",
+            "chickens": "Hühner",
+            "ducks": "Enten",
+            "pigs": "Schweine",
+            "rabbits": "Kaninchen",
+            "turkeys": "Puten",
+            "geese": "Gänse",
+            "sheep": "Schafe",
+            "goats": "Ziegen",
+            "cows": "Kühe",
+            "rodents": "Labornager",
+            "birds": "Andere Vögel",
+            "buffaloes": "Büffel",
+            "dogs": "Hunde",
+            "cats": "Katzen",
+            "horses": "Pferde",
+            "donkeys": "Esel",
+            "camels": "Kamele"
+        }
+    }
+}

@@ -50,10 +50,18 @@
             <h1>Until Every Cage is Empty</h1>
             <nav class="main-navigation">
                 <ul class="nav-menu">
-                    <li><a href="index.html" class="nav-link">Map</a></li>
-                    <li><a href="howtouse.html" class="nav-link">How To Use</a></li>
-                    <li><a href="about.html" class="nav-link active">About</a></li>
-                    <!-- <li><a href="contribute.html" class="nav-link">Contribute</a></li> -->
+                    <li><a href="index.html" class="nav-link" data-i18n="nav.map">Map</a></li>
+                    <li><a href="howtouse.html" class="nav-link" data-i18n="nav.howToUse">How To Use</a></li>
+                    <li><a href="about.html" class="nav-link active" data-i18n="nav.about">About</a></li>
+                    <!-- <li><a href="contribute.html" class="nav-link" data-i18n="nav.contribute">Contribute</a></li> -->
+                    <li>
+                        <select id="language-selector" class="nav-link" style="background: transparent; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; cursor: pointer; padding: 2px 5px;">
+                            <option value="en">🇺🇸 EN</option>
+                            <option value="es">🇲🇽 ES</option>
+                            <option value="fr">🇫🇷 FR</option>
+                            <option value="de">🇩🇪 DE</option>
+                        </select>
+                    </li>
                 </ul>
             </nav>
         </div>
@@ -62,72 +70,72 @@
     <div class="content-wrapper">
        <div class="manifesto-container">
         <div class="page-hero">
-            <h1>About Until Every Cage is Empty</h1>
+            <h1 data-i18n="about.hero.title">About Until Every Cage is Empty</h1>
         </div>
 
-        <h2>The Project</h2>
-        <p><strong>Until Every Cage is Empty</strong> is an instrument of exposure. We aggregate public government data to map the global infrastructure of animal exploitation. From slaughterhouses and vivisection labs to commercial breeders, we bring the industry's hidden network into a single, searchable interface.</p>
+        <h2 data-i18n="about.project.title">The Project</h2>
+        <p data-i18n="about.project.desc"><strong>Until Every Cage is Empty</strong> is an instrument of exposure. We aggregate public government data to map the global infrastructure of animal exploitation. From slaughterhouses and vivisection labs to commercial breeders, we bring the industry's hidden network into a single, searchable interface.</p>
 
-        <h2>The Reality</h2>
-        <p>The violence inflicted on these animals is not accidental; it is <strong>standard industry practice</strong>. In the facilities mapped here, sentient beings endure systematic torture legalized by the state:</p>
+        <h2 data-i18n="about.reality.title">The Reality</h2>
+        <p data-i18n="about.reality.desc">The violence inflicted on these animals is not accidental; it is <strong>standard industry practice</strong>. In the facilities mapped here, sentient beings endure systematic torture legalized by the state:</p>
         <ul>
-            <li><strong>Routine Mutilation:</strong> Piglets are castrated and tails are docked without anesthesia. Cows are dehorned with burning irons. Chickens are debeaked with hot blades.</li>
-            <li><strong>Total Confinement:</strong> Sows are bolted into gestation crates so small they cannot turn around. Hens are stacked in battery cages, denied the space to spread their wings for their entire lives.</li>
-            <li><strong>Psychological Torture:</strong> Newborns are ripped from their mothers hours after birth. Male chicks, useless to the egg industry, are ground up alive or suffocated in trash bags.</li>
+            <li data-i18n="about.reality.point1"><strong>Routine Mutilation:</strong> Piglets are castrated and tails are docked without anesthesia. Cows are dehorned with burning irons. Chickens are debeaked with hot blades.</li>
+            <li data-i18n="about.reality.point2"><strong>Total Confinement:</strong> Sows are bolted into gestation crates so small they cannot turn around. Hens are stacked in battery cages, denied the space to spread their wings for their entire lives.</li>
+            <li data-i18n="about.reality.point3"><strong>Psychological Torture:</strong> Newborns are ripped from their mothers hours after birth. Male chicks, useless to the egg industry, are ground up alive or suffocated in trash bags.</li>
         </ul>
 
-        <h2>The Architecture of Silence</h2>
-        <p>The industry knows the public would never accept this reality if they saw it. Therefore, the system is engineered to ensure you never do.</p>
+        <h2 data-i18n="about.silence.title">The Architecture of Silence</h2>
+        <p data-i18n="about.silence.desc">The industry knows the public would never accept this reality if they saw it. Therefore, the system is engineered to ensure you never do.</p>
         <ul>
-            <li><strong>Physical Erasure:</strong> Facilities are built in remote locations, housed in windowless bunkers, and surrounded by security perimeters to physically separate the consumer from the victim.</li>
-            <li><strong>Legal Intimidation:</strong> "Ag-Gag" laws criminalize whistleblowing, making it a felony to photograph or record the abuse taking place inside these walls.</li>
-            <li><strong>Humane-Washing:</strong> Labels like "Free Range" and "Locally Sourced" are marketing fabrications designed to soothe consumer guilt while hiding the industrialized slaughterhouse floor.</li>
+            <li data-i18n="about.silence.point1"><strong>Physical Erasure:</strong> Facilities are built in remote locations, housed in windowless bunkers, and surrounded by security perimeters to physically separate the consumer from the victim.</li>
+            <li data-i18n="about.silence.point2"><strong>Legal Intimidation:</strong> "Ag-Gag" laws criminalize whistleblowing, making it a felony to photograph or record the abuse taking place inside these walls.</li>
+            <li data-i18n="about.silence.point3"><strong>Humane-Washing:</strong> Labels like "Free Range" and "Locally Sourced" are marketing fabrications designed to soothe consumer guilt while hiding the industrialized slaughterhouse floor.</li>
         </ul>
 
-        <h2>The Mission</h2>
-        <p><strong>Transparency is resistance.</strong> By mapping this concealed infrastructure, we aim to:</p>
+        <h2 data-i18n="about.mission.title">The Mission</h2>
+        <p data-i18n="about.mission.desc"><strong>Transparency is resistance.</strong> By mapping this concealed infrastructure, we aim to:</p>
         <ul>
-            <li><strong>Shatter Ignorance:</strong> Confront the public with the staggering scale of industrialized violence.</li>
-            <li><strong>Arm the Movement:</strong> Provide investigators and activists with the location data needed to target campaigns and document violations.</li>
-            <li><strong>Force Accountability:</strong> Ensure that no facility can hide its operations in the dark.</li>
+            <li data-i18n="about.mission.point1"><strong>Shatter Ignorance:</strong> Confront the public with the staggering scale of industrialized violence.</li>
+            <li data-i18n="about.mission.point2"><strong>Arm the Movement:</strong> Provide investigators and activists with the location data needed to target campaigns and document violations.</li>
+            <li data-i18n="about.mission.point3"><strong>Force Accountability:</strong> Ensure that no facility can hide its operations in the dark.</li>
         </ul>
 
-        <h2>Our Commitment</h2>
-        <p>Our goal is not simply to document the system, but to provide the open-source tools necessary to <strong>dismantle it</strong>.</p>
+        <h2 data-i18n="about.commitment.title">Our Commitment</h2>
+        <p data-i18n="about.commitment.desc">Our goal is not simply to document the system, but to provide the open-source tools necessary to <strong>dismantle it</strong>.</p>
 
-        <h2>Get Involved</h2>
+        <h2 data-i18n="about.getInvolved.title">Get Involved</h2>
         <img src="assets/icon.png" alt="Until Every Cage is Empty logo" class="about-footer-icon">
         <ul class="contact-links">
-            <li><a href="mailto:untileverycageproject@protonmail.com">Contact</a></li>
+            <li><a href="mailto:untileverycageproject@protonmail.com" data-i18n="about.getInvolved.contact">Contact</a></li>
             <li><a href="https://github.com/counterspecies/UntilEveryCage" target="_blank" rel="noopener noreferrer">GitHub</a></li>
             <li><a href="https://discord.gg/wbdTHzAZ4b" target="_blank" rel="noopener noreferrer">Discord</a></li>
-            <li><a href="https://ko-fi.com/untileverycageisempty" target="_blank" rel="noopener noreferrer">Donate</a></li>
-            <li><a href="https://linktr.ee/veganresource" target="_blank" rel="noopener noreferrer">Vegan Resources</a></li>
+            <li><a href="https://ko-fi.com/untileverycageisempty" target="_blank" rel="noopener noreferrer" data-i18n="about.getInvolved.donate">Donate</a></li>
+            <li><a href="https://linktr.ee/veganresource" target="_blank" rel="noopener noreferrer" data-i18n="about.getInvolved.resources">Vegan Resources</a></li>
         </ul>
 
-        <h2>Until Every Cage is Empty</h2>
+        <h2 data-i18n="app.title">Until Every Cage is Empty</h2>
     </div>
     <div class="kill-counter-container">
-        <h1>Animals Killed Since You Opened This Page</h1>
+        <h1 data-i18n="about.killCounter.title">Animals Killed Since You Opened This Page</h1>
         <div class="kill-counter-list">
-            <span id="count0" class="count-number">0</span> <span class="animal-name">Fish</span><br />
-            <span id="count1" class="count-number">0</span> <span class="animal-name">Chickens</span><br />
-            <span id="count2" class="count-number">0</span> <span class="animal-name">Ducks</span><br />
-            <span id="count3" class="count-number">0</span> <span class="animal-name">Pigs</span><br />
-            <span id="count4" class="count-number">0</span> <span class="animal-name">Rabbits</span><br />
-            <span id="count5" class="count-number">0</span> <span class="animal-name">Turkeys</span><br />
-            <span id="count6" class="count-number">0</span> <span class="animal-name">Geese</span><br />
-            <span id="count7" class="count-number">0</span> <span class="animal-name">Sheep</span><br />
-            <span id="count8" class="count-number">0</span> <span class="animal-name">Goats</span><br />
-            <span id="count9" class="count-number">0</span> <span class="animal-name">Cows</span><br />
-            <span id="count10" class="count-number">0</span> <span class="animal-name">Lab Rodents</span><br />
-            <span id="count11" class="count-number">0</span> <span class="animal-name">Other birds</span><br />
-            <span id="count12" class="count-number">0</span> <span class="animal-name">Buffaloes</span><br />
-            <span id="count13" class="count-number">0</span> <span class="animal-name">Dogs</span><br/>
-            <span id="count14" class="count-number">0</span> <span class="animal-name">Cats</span><br />
-            <span id="count15" class="count-number">0</span> <span class="animal-name">Horses</span><br />
-            <span id="count16" class="count-number">0</span> <span class="animal-name">Donkeys</span><br />
-            <span id="count17" class="count-number">0</span> <span class="animal-name">Camels</span><br />
+            <span id="count0" class="count-number">0</span> <span class="animal-name" data-i18n="about.killCounter.fish">Fish</span><br />
+            <span id="count1" class="count-number">0</span> <span class="animal-name" data-i18n="about.killCounter.chickens">Chickens</span><br />
+            <span id="count2" class="count-number">0</span> <span class="animal-name" data-i18n="about.killCounter.ducks">Ducks</span><br />
+            <span id="count3" class="count-number">0</span> <span class="animal-name" data-i18n="about.killCounter.pigs">Pigs</span><br />
+            <span id="count4" class="count-number">0</span> <span class="animal-name" data-i18n="about.killCounter.rabbits">Rabbits</span><br />
+            <span id="count5" class="count-number">0</span> <span class="animal-name" data-i18n="about.killCounter.turkeys">Turkeys</span><br />
+            <span id="count6" class="count-number">0</span> <span class="animal-name" data-i18n="about.killCounter.geese">Geese</span><br />
+            <span id="count7" class="count-number">0</span> <span class="animal-name" data-i18n="about.killCounter.sheep">Sheep</span><br />
+            <span id="count8" class="count-number">0</span> <span class="animal-name" data-i18n="about.killCounter.goats">Goats</span><br />
+            <span id="count9" class="count-number">0</span> <span class="animal-name" data-i18n="about.killCounter.cows">Cows</span><br />
+            <span id="count10" class="count-number">0</span> <span class="animal-name" data-i18n="about.killCounter.rodents">Lab Rodents</span><br />
+            <span id="count11" class="count-number">0</span> <span class="animal-name" data-i18n="about.killCounter.birds">Other birds</span><br />
+            <span id="count12" class="count-number">0</span> <span class="animal-name" data-i18n="about.killCounter.buffaloes">Buffaloes</span><br />
+            <span id="count13" class="count-number">0</span> <span class="animal-name" data-i18n="about.killCounter.dogs">Dogs</span><br/>
+            <span id="count14" class="count-number">0</span> <span class="animal-name" data-i18n="about.killCounter.cats">Cats</span><br />
+            <span id="count15" class="count-number">0</span> <span class="animal-name" data-i18n="about.killCounter.horses">Horses</span><br />
+            <span id="count16" class="count-number">0</span> <span class="animal-name" data-i18n="about.killCounter.donkeys">Donkeys</span><br />
+            <span id="count17" class="count-number">0</span> <span class="animal-name" data-i18n="about.killCounter.camels">Camels</span><br />
         </div>
     </div>
 </div>
@@ -199,5 +207,6 @@
     </script>
 
     <script src="footer.js"></script>
+    <script type="module" src="init-i18n.js"></script>
 </body>
 </html>

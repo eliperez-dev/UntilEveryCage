@@ -83,13 +83,27 @@ import { initializeDrawer } from './modules/drawerManager.js';
 // Import welcome modal
 import { initializeWelcomeModal } from './modules/welcomeModal.js';
 
+// Import translation manager
+import { i18n } from './modules/translationManager.js';
+
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch((error) => {
         console.warn('ServiceWorker registration failed:', error);
     });
 }
 
-document.addEventListener('DOMContentLoaded', initializeWelcomeModal);
+document.addEventListener('DOMContentLoaded', async () => {
+    await i18n.init();
+    initializeWelcomeModal();
+
+    const langSelector = document.getElementById('language-selector');
+    if (langSelector) {
+        langSelector.value = i18n.currentLocale;
+        langSelector.addEventListener('change', (e) => {
+            i18n.setLanguage(e.target.value);
+        });
+    }
+});
 
 // =============================================================================
 //  MAP INITIALIZATION & CONFIGURATION

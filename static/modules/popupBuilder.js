@@ -19,6 +19,7 @@
 // Import required modules
 import { getStateDisplayName } from './geoUtils.js';
 import { EXTERNAL_URLS } from './constants.js';
+import { i18n } from './translationManager.js';
 
 /**
  * Builds HTML popup content for USDA facility locations
@@ -27,12 +28,12 @@ import { EXTERNAL_URLS } from './constants.js';
  * @returns {string} HTML string for the popup content
  */
 export function buildLocationPopup(location, facilityTypeLabel) {
-    const establishmentName = location.establishment_name || 'Unknown Name';
+    const establishmentName = location.establishment_name || i18n.t('popups.unknownName');
     const locationTypeText = typeof facilityTypeLabel === 'string' ? facilityTypeLabel : 
-                            (facilityTypeLabel ? "Slaughterhouse" : "Processing-Only Facility");
+                            (facilityTypeLabel ? i18n.t('popups.slaughterhouse') : i18n.t('popups.processing'));
     const stateDisplayName = location.state ? getStateDisplayName(location.state.trim()) : '';
     const statePart = stateDisplayName ? ` ${stateDisplayName}` : '';
-    const fullAddress = location.street && location.street.trim() ? `${location.street.trim()}, ${location.city.trim()}${statePart} ${location.zip}` : 'Address not available';
+    const fullAddress = location.street && location.street.trim() ? `${location.street.trim()}, ${location.city.trim()}${statePart} ${location.zip}` : i18n.t('popups.addressNA');
     const establishmentId = location.establishment_id;
     const grantDate = location.grant_date;
     const phone = location.phone;
@@ -95,10 +96,10 @@ export function buildLocationPopup(location, facilityTypeLabel) {
         if (hasAnimalsSlaughtered || hasSlaughterVolume) {
             slaughterText = `<hr>`;
             if (hasAnimalsSlaughtered && !isMexican) {
-                slaughterText += `<p><strong>Types of Animals Killed:</strong> ${location.animals_slaughtered}</p>`;
+                slaughterText += `<p><strong>${i18n.t('popups.animalsKilled')}:</strong> ${location.animals_slaughtered}</p>`;
             }
             if (hasSlaughterVolume) {
-                slaughterText += `<p><strong>Slaughter Volume:</strong> ${animals_slaughtered_yearly_text}</p>`;
+                slaughterText += `<p><strong>${i18n.t('popups.slaughterVolume')}:</strong> ${animals_slaughtered_yearly_text}</p>`;
             }
         }
     }
@@ -106,7 +107,7 @@ export function buildLocationPopup(location, facilityTypeLabel) {
     // Create disclaimer text if needed
     let disclaimerText = '';
     if (location.country && location.country !== 'us') {
-        disclaimerText = ' (Approximately)';
+        disclaimerText = ` ${i18n.t('popups.approx')}`;
     }
 
     const isMexican = location.country === 'mx';
@@ -117,15 +118,15 @@ export function buildLocationPopup(location, facilityTypeLabel) {
             <p1><strong>${locationTypeText}</strong></p1><br>
             <p1>(${location.latitude}, ${location.longitude}) ${disclaimerText}</p1>
             <hr>
-            <p><strong>Address:</strong> <span class="copyable-text" data-copy="${fullAddress}">${fullAddress}</span></p>
-            <p><strong>ID:</strong> <span class="copyable-text" data-copy="${establishmentId}">${establishmentId}</span></p>
-            ${phone && phone.trim() !== '' && phone !== 'N/A' ? `<p><strong>Phone:</strong> <span class="copyable-text" data-copy="${phone}">${phone}</span></p>` : ''}
-            ${dbas ? `<p><strong>Doing Business As:</strong> <span class="copyable-text" data-copy="${dbas}">${dbas}</span></p>` : ""}
+            <p><strong>${i18n.t('popups.address')}:</strong> <span class="copyable-text" data-copy="${fullAddress}">${fullAddress}</span></p>
+            <p><strong>${i18n.t('popups.id')}:</strong> <span class="copyable-text" data-copy="${establishmentId}">${establishmentId}</span></p>
+            ${phone && phone.trim() !== '' && phone !== 'N/A' ? `<p><strong>${i18n.t('popups.phone')}:</strong> <span class="copyable-text" data-copy="${phone}">${phone}</span></p>` : ''}
+            ${dbas ? `<p><strong>${i18n.t('popups.dba')}:</strong> <span class="copyable-text" data-copy="${dbas}">${dbas}</span></p>` : ""}
             ${(hasAnimalsProcessed || hasProcessingVolume) && !isMexican ? '<hr>' : ''}
-            ${hasAnimalsProcessed && !isMexican ? `<p><strong>Products Processed:</strong> ${location.animals_processed}</p>` : ''}
-            ${hasProcessingVolume && !isMexican ? `<p><strong>Product Volume:</strong> ${animals_processed_monthly_text}</p>` : ''}
+            ${hasAnimalsProcessed && !isMexican ? `<p><strong>${i18n.t('popups.productsProcessed')}:</strong> ${location.animals_processed}</p>` : ''}
+            ${hasProcessingVolume && !isMexican ? `<p><strong>${i18n.t('popups.productVolume')}:</strong> ${animals_processed_monthly_text}</p>` : ''}
             ${slaughterText}
-            <a href="${directionsUrl}" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>Get Directions</strong></a>${location.country === 'us' || !location.country ? ' | <a href="https://www.fsis.usda.gov/inspection/establishments/meat-poultry-and-egg-product-inspection-directory" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>View Source</strong></a>' : location.country === 'uk' ? ' | <a href="https://transparentfarms.org.uk/" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>View Source</strong></a>' : location.country === 'ca' ? ' | <a href="https://open.canada.ca/data/en/dataset/a763088c-018d-48b7-bf47-3027a8c725b8" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>View Source</strong></a>' : location.country === 'es' ? ' | <a href="https://granjastransparentes.es/" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>View Source</strong></a>' : location.country === 'mx' ? ' | <a href="https://www.inegi.org.mx/app/mapa/denue/" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>View Source</strong></a>' : location.country === 'fr' ? ' | <a href="https://www.google.com/maps/d/u/0/viewer?mid=1TGGpOJz40AHgTrbfYMO6sg3XrTFoG31n&ll=48.794860747569736%2C2.0410253416334534&z=8" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>View Source</strong></a>' : location.country === 'de' ? ' | <a href="https://www.google.com/maps/d/u/0/viewer?mid=1TGGpOJz40AHgTrbfYMO6sg3XrTFoG31n&ll=48.794860747569736%2C2.0410253416334534&z=8" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>View Source</strong></a>' : ''}
+            <a href="${directionsUrl}" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.getDirections')}</strong></a>${location.country === 'us' || !location.country ? ` | <a href="https://www.fsis.usda.gov/inspection/establishments/meat-poultry-and-egg-product-inspection-directory" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewSource')}</strong></a>` : location.country === 'uk' ? ` | <a href="https://transparentfarms.org.uk/" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewSource')}</strong></a>` : location.country === 'ca' ? ` | <a href="https://open.canada.ca/data/en/dataset/a763088c-018d-48b7-bf47-3027a8c725b8" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewSource')}</strong></a>` : location.country === 'es' ? ` | <a href="https://granjastransparentes.es/" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewSource')}</strong></a>` : location.country === 'mx' ? ` | <a href="https://www.inegi.org.mx/app/mapa/denue/" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewSource')}</strong></a>` : location.country === 'fr' ? ` | <a href="https://www.google.com/maps/d/u/0/viewer?mid=1TGGpOJz40AHgTrbfYMO6sg3XrTFoG31n&ll=48.794860747569736%2C2.0410253416334534&z=8" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewSource')}</strong></a>` : location.country === 'de' ? ` | <a href="https://www.google.com/maps/d/u/0/viewer?mid=1TGGpOJz40AHgTrbfYMO6sg3XrTFoG31n&ll=48.794860747569736%2C2.0410253416334534&z=8" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewSource')}</strong></a>` : ''}
         </div>`;
 }
 
@@ -135,28 +136,30 @@ export function buildLocationPopup(location, facilityTypeLabel) {
  * @returns {string} HTML string for the popup content
  */
 export function buildLabPopup(lab) {
-    const name = lab['Account Name'] || 'Unknown Name';
+    const name = lab['Account Name'] || i18n.t('popups.unknownName');
     const certNum = lab['Certificate Number'];
     const fullAddress = `${lab['Address Line 1'] || ''} ${lab['Address Line 2'] || ''} ${lab['City-State-Zip'] || ''}`.trim().replace(/ ,/g, ',');
     const arloUrl = certNum ? `https://arlo.riseforanimals.org/browse?query=${encodeURIComponent(certNum)}&order=relevance` : null;
     const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lab.latitude},${lab.longitude}`;
 
+    const investigationText = i18n.t('popups.investigationText').replace(/{certNum}/g, certNum || 'N/A');
+
     return `
         <div class="info-popup">
             <h3>${name}</h3>
             <p1><strong>${lab['Registration Type'] || 'N/A'}</strong></p1><br>
-            <p1>(${lab.latitude},${lab.longitude}) (Approximately)</p1>
+            <p1>(${lab.latitude},${lab.longitude}) ${i18n.t('popups.approx')}</p1>
             <hr>
-            <p><strong>Address:</strong> <span class="copyable-text" data-copy="${fullAddress}">${fullAddress || 'N/A'}</span></p>
-            <p><strong>Certificate Number:</strong> <span class="copyable-text" data-copy="${certNum}">${certNum || 'N/A'}</span></p>
-            <p><strong>Animals Being Tested On:</strong> ${lab['Animals Tested On'] || 'N/A'}</p>
+            <p><strong>${i18n.t('popups.address')}:</strong> <span class="copyable-text" data-copy="${fullAddress}">${fullAddress || 'N/A'}</span></p>
+            <p><strong>${i18n.t('popups.certNum')}:</strong> <span class="copyable-text" data-copy="${certNum}">${certNum || 'N/A'}</span></p>
+            <p><strong>${i18n.t('popups.animalsTested')}:</strong> ${lab['Animals Tested On'] || 'N/A'}</p>
             <hr>
             
-            <p><strong>Investigation Instructions: </strong>Copy the <span class="copyable-text" data-copy="${certNum}">${"certificate number" || 'N/A'}</span>, paste it into the APHIS search tool below, then click <strong>query annual reports</strong> on the facility. Keep an eye out for <strong> exception reports</strong>; those are especially cruel.</p>
+            <p><strong>${i18n.t('popups.investigation')}: </strong>${investigationText}</p>
 
-            <a href="${EXTERNAL_URLS.aphis.annualReports}" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>Open APHIS Search Tool</strong></a>
+            <a href="${EXTERNAL_URLS.aphis.annualReports}" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.openAphis')}</strong></a>
             <p></p>
-            <a href="${directionsUrl}" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>Get Directions</strong></a> | <a href="${EXTERNAL_URLS.eFileAphis.annualReports}" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>View Source</strong></a>
+            <a href="${directionsUrl}" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.getDirections')}</strong></a> | <a href="${EXTERNAL_URLS.eFileAphis.annualReports}" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewSource')}</strong></a>
         </div>`;
 }
 
@@ -167,26 +170,28 @@ export function buildLabPopup(lab) {
  */
 export function buildInspectionReportPopup(report) {
     let classText = "N/A";
-    if (report['License Type'] === "Class A - Breeder") classText = "Animal Breeder";
-    else if (report['License Type'] === "Class B - Dealer") classText = "Animal Dealer";
-    else if (report['License Type'] === "Class C - Exhibitor") classText = "Exhibitor / Zoo";
+    if (report['License Type'] === "Class A - Breeder") classText = i18n.t('popups.breeder');
+    else if (report['License Type'] === "Class B - Dealer") classText = i18n.t('popups.dealer');
+    else if (report['License Type'] === "Class C - Exhibitor") classText = i18n.t('popups.exhibitor');
     
-    const name = report['Account Name'] || 'Unknown Name';
+    const name = report['Account Name'] || i18n.t('popups.unknownName');
     const certNum = report['Certificate Number'];
     const fullAddress = `${report['Address Line 1'] || ''}, ${report['City-State-Zip'] || ''}`.trim().replace(/^,|,$/g, '').trim();
     const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${report['Geocodio Latitude']},${report['Geocodio Longitude']}`;
+
+    const investigationText = i18n.t('popups.investigationTextInspection').replace(/{certNum}/g, certNum || 'N/A');
 
     return `
         <div class="info-popup inspection-popup">
             <h3>${name}</h3>
             <p1><strong>${classText}</strong></p1><br>
-            <p1>(${report['Geocodio Latitude']}, ${report['Geocodio Longitude']}) (Approximately)</p1>
+            <p1>(${report['Geocodio Latitude']}, ${report['Geocodio Longitude']}) ${i18n.t('popups.approx')}</p1>
             <hr>
-            <p><strong>Address:</strong> <span class="copyable-text" data-copy="${fullAddress}">${fullAddress || 'N/A'}</span></p>
-            <p><strong>Certificate Number:</strong> <span class="copyable-text" data-copy="${certNum}">${certNum || 'N/A'}</span></p>
-            <p><strong>Investigation Instructions: </strong>Copy the <span class="copyable-text" data-copy="${certNum}">${"certificate number" || 'N/A'}</span>, paste it into the APHIS search tool below, then click <strong>query inspection reports</strong> on the facility.</p>
-            <a href="${EXTERNAL_URLS.aphis.inspectionReports}" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>Open APHIS Search Tool</strong></a>
+            <p><strong>${i18n.t('popups.address')}:</strong> <span class="copyable-text" data-copy="${fullAddress}">${fullAddress || 'N/A'}</span></p>
+            <p><strong>${i18n.t('popups.certNum')}:</strong> <span class="copyable-text" data-copy="${certNum}">${certNum || 'N/A'}</span></p>
+            <p><strong>${i18n.t('popups.investigation')}: </strong>${investigationText}</p>
+            <a href="${EXTERNAL_URLS.aphis.inspectionReports}" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.openAphis')}</strong></a>
             <p></p>
-            <a href="${directionsUrl}" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>Get Directions</strong></a> | <a href="${EXTERNAL_URLS.eFileAphis.inspectionReports}" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>View Source</strong></a>
+            <a href="${directionsUrl}" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.getDirections')}</strong></a> | <a href="${EXTERNAL_URLS.eFileAphis.inspectionReports}" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewSource')}</strong></a>
         </div>`;
 }

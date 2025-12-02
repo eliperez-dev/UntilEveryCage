@@ -50,10 +50,18 @@
             <h1>Until Every Cage is Empty</h1>
             <nav class="main-navigation">
                 <ul class="nav-menu">
-                    <li><a href="index.html" class="nav-link">Map</a></li>
-                    <li><a href="howtouse.html" class="nav-link active">How To Use</a></li>
-                    <li><a href="about.html" class="nav-link">About</a></li>
-                    <!-- <li><a href="contribute.html" class="nav-link">Contribute</a></li> -->
+                    <li><a href="index.html" class="nav-link" data-i18n="nav.map">Map</a></li>
+                    <li><a href="howtouse.html" class="nav-link active" data-i18n="nav.howToUse">How To Use</a></li>
+                    <li><a href="about.html" class="nav-link" data-i18n="nav.about">About</a></li>
+                    <!-- <li><a href="contribute.html" class="nav-link" data-i18n="nav.contribute">Contribute</a></li> -->
+                    <li>
+                        <select id="language-selector" class="nav-link" style="background: transparent; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; cursor: pointer; padding: 2px 5px;">
+                            <option value="en">🇺🇸 EN</option>
+                            <option value="es">🇲🇽 ES</option>
+                            <option value="fr">🇫🇷 FR</option>
+                            <option value="de">🇩🇪 DE</option>
+                        </select>
+                    </li>
                 </ul>
             </nav>
         </div>
@@ -62,20 +70,20 @@
     <div class="content-wrapper">
         <div class="manifesto-container">
             <div class="page-hero">
-                <h1>How to Use This Map</h1>
-                <p>This map exposes the global infrastructure of animal exploitation. Use it to investigate, document, and dismantle.</p>
+                <h1 data-i18n="howToUse.hero.title">How to Use This Map</h1>
+                <p data-i18n="howToUse.hero.subtitle">This map exposes the global infrastructure of animal exploitation. Use it to investigate, document, and dismantle.</p>
             </div>
 
             <section class="guide-section">
-                <h2>Getting Started</h2>
-                <p>The overlay panel in the top-left corner of the map is your primary tool:</p>
+                <h2 data-i18n="howToUse.gettingStarted.title">Getting Started</h2>
+                <p data-i18n="howToUse.gettingStarted.intro">The overlay panel in the top-left corner of the map is your primary tool:</p>
                 
                 <div class="guide-card">
                     <ul class="feature-list">
-                        <li><strong>Search:</strong> Facility names, company names, or animal types (e.g., "Tyson", "cattle", "chickens")</li>
-                        <li><strong>Location:</strong> Select country, state, or province</li>
-                        <li><strong>Download CSV:</strong> Export the currently visible facilities as a CSV file for analysis and research</li>
-                        <li><strong>Reset:</strong> Clear all filters</li>
+                        <li><strong data-i18n="howToUse.gettingStarted.search">Search:</strong> <span data-i18n="howToUse.gettingStarted.searchDesc">Facility names, company names, or animal types (e.g., "Tyson", "cattle", "chickens")</span></li>
+                        <li><strong data-i18n="howToUse.gettingStarted.location">Location:</strong> <span data-i18n="howToUse.gettingStarted.locationDesc">Select country, state, or province</span></li>
+                        <li><strong data-i18n="howToUse.gettingStarted.download">Download CSV:</strong> <span data-i18n="howToUse.gettingStarted.downloadDesc">Export the currently visible facilities as a CSV file for analysis and research</span></li>
+                        <li><strong data-i18n="howToUse.gettingStarted.reset">Reset:</strong> <span data-i18n="howToUse.gettingStarted.resetDesc">Clear all filters</span></li>
                     </ul>
                     <video width="100%" controls style="border: 1px solid #ccc; margin-top: 0.5rem;">
                         <source src="tutorial-videos/2025-11-30 16-18-52.mp4" type="video/mp4">
@@ -85,69 +93,69 @@
             </section>
 
             <section class="guide-section">
-                <h2>Facility Types</h2>
+                <h2 data-i18n="howToUse.facilityTypes.title">Facility Types</h2>
                 <div class="facility-grid">
                     <div class="facility-card">
                         <div class="facility-marker slaughterhouse"></div>
-                        <strong>Slaughterhouses</strong> (red)
+                        <strong data-i18n="howToUse.facilityTypes.slaughterhouses">Slaughterhouses</strong> <span data-i18n="howToUse.facilityTypes.red">(red)</span>
                     </div>
                     <div class="facility-card">
                         <div class="facility-marker processing"></div>
-                        <strong>Processing</strong> (grey)
+                        <strong data-i18n="howToUse.facilityTypes.processing">Processing</strong> <span data-i18n="howToUse.facilityTypes.grey">(grey)</span>
                     </div>
                     <div class="facility-card">
                         <div class="facility-marker testing"></div>
-                        <strong>Testing Labs</strong> (purple)
+                        <strong data-i18n="howToUse.facilityTypes.labs">Testing Labs</strong> <span data-i18n="howToUse.facilityTypes.purple">(purple)</span>
                     </div>
                     <div class="facility-card">
                         <div class="facility-marker breeders"></div>
-                        <strong>Farms/Breeders</strong> (yellow)
+                        <strong data-i18n="howToUse.facilityTypes.breeders">Farms/Breeders</strong> <span data-i18n="howToUse.facilityTypes.yellow">(yellow)</span>
                     </div>
                     <div class="facility-card">
                         <div class="facility-marker dealers"></div>
-                        <strong>Dealers</strong> (orange)
+                        <strong data-i18n="howToUse.facilityTypes.dealers">Dealers</strong> <span data-i18n="howToUse.facilityTypes.orange">(orange)</span>
                     </div>
                     <div class="facility-card">
                         <div class="facility-marker exhibitors"></div>
-                        <strong>Exhibitors</strong> (green)
+                        <strong data-i18n="howToUse.facilityTypes.exhibitors">Exhibitors</strong> <span data-i18n="howToUse.facilityTypes.green">(green)</span>
                     </div>
                 </div>
             </section>
 
             <section class="guide-section">
-                <h2>Investigation Pathways</h2>
+                <h2 data-i18n="howToUse.investigation.title">Investigation Pathways</h2>
 
                 <div class="accordion">
                     <div class="accordion-item">
                         <button class="accordion-header">
-                            <span>Slaughterhouses & Processing Facilities</span>
+                            <span data-i18n="howToUse.investigation.slaughter.title">Slaughterhouses & Processing Facilities</span>
                             <span class="accordion-toggle">+</span>
                         </button>
                         <div class="accordion-content">
                             <div class="investigation-pathway">
-                                <h4>Public Company Research</h4>
-                                <p>For publicly traded companies (Tyson, JBS, Cargill), research SEC <strong>10-K forms</strong> for board members, financials, legal issues, and operations.</p>
-                                <p><a href="https://www.sec.gov/edgar/search/" target="_blank" rel="noopener">SEC EDGAR Database</a></p>
+                                <h4 data-i18n="howToUse.investigation.slaughter.publicResearch">Public Company Research</h4>
+                                <p data-i18n="howToUse.investigation.slaughter.publicResearchDesc">For publicly traded companies (Tyson, JBS, Cargill), research SEC <strong>10-K forms</strong> for board members, financials, legal issues, and operations.</p>
+                                <p><a href="https://www.sec.gov/edgar/search/" target="_blank" rel="noopener" data-i18n="howToUse.investigation.slaughter.secLink">SEC EDGAR Database</a></p>
                                 
-                                <h4>Corporate Connections</h4>
-                                <p>Map parent companies, subsidiaries, and business relationships.</p>
+                                <h4 data-i18n="howToUse.investigation.slaughter.corporate">Corporate Connections</h4>
+                                <p data-i18n="howToUse.investigation.slaughter.corporateDesc">Map parent companies, subsidiaries, and business relationships.</p>
                             </div>
                         </div>
                     </div>
 
                     <div class="accordion-item">
                         <button class="accordion-header">
-                            <span>Animal Testing Laboratories</span>
+                            <span data-i18n="howToUse.investigation.labs.title">Animal Testing Laboratories</span>
                             <span class="accordion-toggle">+</span>
                         </button>
                         <div class="accordion-content">
                             <div class="investigation-pathway">
-                                <h4>APHIS Annual Reports</h4>
-                                <p>Copy the certificate number from the facility popup, paste it into the APHIS search tool, then click "view annual reports" Look carefully for exception reports and narratives in the e-column data.</p>
-                                <p><a href="https://aphis.my.site.com/PublicSearchTool/s/annual-reports" target="_blank" rel="noopener">APHIS Annual Reports Tool</a></p>
+                                <h4 data-i18n="howToUse.investigation.labs.aphis">APHIS Annual Reports</h4>
+                                <p data-i18n="howToUse.investigation.labs.aphisDesc">Copy the certificate number from the facility popup, paste it into the APHIS search tool, then click "view annual reports" Look carefully for exception reports and narratives in the e-column data.</p>
+                                <p><a href="https://aphis.my.site.com/PublicSearchTool/s/annual-reports" target="_blank" rel="noopener" data-i18n="howToUse.investigation.labs.aphisLink">APHIS Annual Reports Tool</a></p>
 
-                                <h4>University & Government Research</h4>
-                                <p>For academic institutions, research animal care committees and protocols. Use FOIA requests for government research facilities.</p>
+                                <h4 data-i18n="howToUse.investigation.labs.university">University & Government Research</h4>
+                                <p data-i18n="howToUse.investigation.labs.universityDesc">For academic institutions, research animal care committees and protocols. Use FOIA requests for government research facilities.</p>
                                 <video width="100%" controls style="border: 1px solid #ccc; margin-top: 0.5rem;">
                                     <source src="tutorial-videos/2025-11-30 16-30-46.mp4" type="video/mp4">
                                     Your browser does not support the video tag.
@@ -158,14 +166,14 @@
 
                     <div class="accordion-item">
                         <button class="accordion-header">
-                            <span>Farms, Dealers, & Exhibitors</span>
+                            <span data-i18n="howToUse.investigation.farms.title">Farms, Dealers, & Exhibitors</span>
                             <span class="accordion-toggle">+</span>
                         </button>
                         <div class="accordion-content">
                             <div class="investigation-pathway">
-                                <h4>APHIS Inspection Database (US Only)</h4>
-                                <p>For US-based facilities only: Search by certificate number (in popup info), business name, or location. Find license status, inspection reports, violations, and contact info.</p>
-                                <p><a href="https://aphis.my.site.com/PublicSearchTool/s/inspection-reports" target="_blank" rel="noopener">APHIS Inspection Database</a></p>
+                                <h4 data-i18n="howToUse.investigation.farms.aphis">APHIS Inspection Database (US Only)</h4>
+                                <p data-i18n="howToUse.investigation.farms.aphisDesc">For US-based facilities only: Search by certificate number (in popup info), business name, or location. Find license status, inspection reports, violations, and contact info.</p>
+                                <p><a href="https://aphis.my.site.com/PublicSearchTool/s/inspection-reports" target="_blank" rel="noopener" data-i18n="howToUse.investigation.farms.aphisLink">APHIS Inspection Database</a></p>
                                 <video width="100%" controls style="border: 1px solid #ccc; margin-top: 0.5rem;">
                                     <source src="tutorial-videos\2025-11-30 16-46-05.mp4" type="video/mp4">
                                     Your browser does not support the video tag.
@@ -177,13 +185,13 @@
             </section>
 
             <section class="guide-section support-section">
-                <h2>Report Issues</h2>
-                <p>Found something wrong? <a href="https://discord.gg/wbdTHzAZ4b" target="_blank" rel="noopener noreferrer">Join our Discord</a> or <a href="mailto:untileverycageproject@protonmail.com">email us</a> about:</p>
+                <h2 data-i18n="howToUse.report.title">Report Issues</h2>
+                <p><span data-i18n="howToUse.report.intro">Found something wrong?</span> <a href="https://discord.gg/wbdTHzAZ4b" target="_blank" rel="noopener noreferrer" data-i18n="howToUse.report.discord">Join our Discord</a> <span data-i18n="howToUse.report.or">or</span> <a href="mailto:untileverycageproject@protonmail.com" data-i18n="howToUse.report.email">email us</a> <span data-i18n="howToUse.report.about">about:</span></p>
                 <ul>
-                    <li>Incorrect facility locations</li>
-                    <li>Missing facilities</li>
-                    <li>Bugs or performance issues</li>
-                    <li>Outdated data</li>
+                    <li data-i18n="howToUse.report.issue1">Incorrect facility locations</li>
+                    <li data-i18n="howToUse.report.issue2">Missing facilities</li>
+                    <li data-i18n="howToUse.report.issue3">Bugs or performance issues</li>
+                    <li data-i18n="howToUse.report.issue4">Outdated data</li>
                 </ul>
             </section>
 
@@ -195,5 +203,6 @@
 
     <script src="footer.js"></script>
     <script src="accordion.js"></script>
+    <script type="module" src="init-i18n.js"></script>
 </body>
 </html>
