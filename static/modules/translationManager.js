@@ -60,7 +60,7 @@ export class TranslationManager {
         let value = this.translations;
         
         for (const k of keys) {
-            if (value && value[k]) {
+            if (value && typeof value === 'object' && k in value) {
                 value = value[k];
             } else {
                 return key; // Return key if translation missing
@@ -68,6 +68,26 @@ export class TranslationManager {
         }
         
         return value;
+    }
+
+    /**
+     * Check if a translation key exists.
+     * @param {string} key 
+     * @returns {boolean}
+     */
+    exists(key) {
+        const keys = key.split('.');
+        let value = this.translations;
+        
+        for (const k of keys) {
+            if (value && typeof value === 'object' && k in value) {
+                value = value[k];
+            } else {
+                return false;
+            }
+        }
+        
+        return true;
     }
 
     /**

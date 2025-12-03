@@ -37,6 +37,7 @@ import {
     isCanadianLocation,
     isDanishLocation,
     isMexicanLocation,
+    isNZLocation,
     isUKState,
     getSelectedCountryForState,
     getSelectedCountryForLocation,
@@ -95,6 +96,25 @@ if ('serviceWorker' in navigator) {
 document.addEventListener('DOMContentLoaded', async () => {
     await i18n.init();
     initializeWelcomeModal();
+
+    // Subscribe to language changes to update open popups
+    i18n.subscribe(() => {
+        map.eachLayer(layer => {
+            if (layer instanceof L.Popup) {
+                const source = layer._source;
+                if (source && source.getPopup) {
+                    const popup = source.getPopup();
+                    const content = popup.getContent();
+                    if (typeof content === 'function') {
+                        // Pass the function itself to setContent to preserve dynamic updates
+                        // Leaflet will execute the function to get the HTML string
+                        layer.setContent(content);
+                        layer.update();
+                    }
+                }
+            }
+        });
+    });
 
     const langSelector = document.getElementById('language-selector');
     if (langSelector) {
@@ -302,6 +322,7 @@ function populateCountrySelector(allStateValues) {
     const hasCanadianStates = allLocations.some(location => isCanadianLocation(location));
     const hasMexicanStates = allLocations.some(location => isMexicanLocation(location));
     const hasDanishStates = allLocations.some(location => isDanishLocation(location));
+    const hasNZStates = allLocations.some(location => isNZLocation(location));
     const hasUKStates = allStateValues.some(state => isUKState(state));
     
     countrySelector.innerHTML = '<option value="all">All Countries</option>';
@@ -354,6 +375,13 @@ function populateCountrySelector(allStateValues) {
         dkOption.textContent = 'Danmark';
         countrySelector.appendChild(dkOption);
     }
+
+    if (hasNZStates) {
+        const nzOption = document.createElement('option');
+        nzOption.value = 'NZ';
+        nzOption.textContent = 'New Zealand';
+        countrySelector.appendChild(nzOption);
+    }
     
     if (hasUKStates) {
         const ukOption = document.createElement('option');
@@ -396,6 +424,13 @@ function populateStateSelector(allStateValues, selectedCountry = 'all') {
             .filter(location => isDanishLocation(location))
             .map(location => location.city)
             .filter(city => city && city.trim() !== '')
+        )].sort();
+    } else if (selectedCountry === 'NZ') {
+        // For NZ locations, get unique city/region names from the locations
+        filteredStates = [...new Set(allLocations
+            .filter(location => isNZLocation(location))
+            .map(location => location.state) // Using state field which holds region/authority
+            .filter(state => state && state.trim() !== '')
         )].sort();
     } else if (selectedCountry === 'UK') {
         filteredStates = allStateValues.filter(state => isUKState(state));
@@ -624,6 +659,8 @@ function applyFilters(shouldUpdateView = false, shouldCenterOnCountry = false) {
                 countryMatch = true;
             } else if (selectedCountry === 'UK' && isUKState(loc.state)) {
                 countryMatch = true;
+            } else if (selectedCountry === 'NZ' && isNZLocation(loc)) {
+                countryMatch = true;
             }
         }
         if (!countryMatch) return false;
@@ -842,7 +879,7 @@ function plotMarker(data, type) {
         lat = data.latitude;
         lng = data.longitude;
         iconType = 'lab';
-        popupContent = buildLabPopup(data);
+        popupContent = () => buildLabPopup(data);
     } else if (type === 'inspection') {
         lat = parseFloat(data['Geocodio Latitude']);
         lng = parseFloat(data['Geocodio Longitude']);
@@ -859,19 +896,19 @@ function plotMarker(data, type) {
             iconType = 'breeder'; // fallback
         }
         
-        popupContent = buildInspectionReportPopup(data);
+        popupContent = () => buildInspectionReportPopup(data);
     } else if (type === 'usda-facility') { // USDA Location with new facility types
         lat = data.latitude;
         lng = data.longitude;
         const facilityMapping = mapFacilityType(data.type, data.establishment_name);
         iconType = facilityMapping.iconType;
-        popupContent = buildLocationPopup(data, facilityMapping.displayLabel);
+        popupContent = () => buildLocationPopup(data, facilityMapping.displayLabel);
     } else { // Legacy fallback for old USDA locations
         lat = data.latitude;
         lng = data.longitude;
         const isSlaughterhouse = type === true;
         iconType = isSlaughterhouse ? 'slaughter' : 'processing';
-        popupContent = buildLocationPopup(data, isSlaughterhouse ? 'Slaughterhouse' : 'Processing Facility');
+        popupContent = () => buildLocationPopup(data, isSlaughterhouse);
     }
 
     if (lat && lng) {
@@ -1228,7 +1265,7 @@ async function initializeApp() {
             API_ENDPOINTS.local.inspectionReports
         ];
         
-        let urls = productionUrls;
+        let urls = localUrls;
         let usdaResponse, aphisResponse, inspectionsResponse;
         
         try {

@@ -29,8 +29,16 @@ import { i18n } from './translationManager.js';
  */
 export function buildLocationPopup(location, facilityTypeLabel) {
     const establishmentName = location.establishment_name || i18n.t('popups.unknownName');
-    const locationTypeText = typeof facilityTypeLabel === 'string' ? facilityTypeLabel : 
-                            (facilityTypeLabel ? i18n.t('popups.slaughterhouse') : i18n.t('popups.processing'));
+    
+    let locationTypeText;
+    if (typeof facilityTypeLabel === 'string') {
+        locationTypeText = i18n.exists(facilityTypeLabel) ? i18n.t(facilityTypeLabel) : facilityTypeLabel;
+    } else if (typeof facilityTypeLabel === 'object' && facilityTypeLabel.key) {
+        locationTypeText = i18n.t(facilityTypeLabel.key) + (facilityTypeLabel.suffix || '');
+    } else {
+        locationTypeText = facilityTypeLabel ? i18n.t('popups.slaughterhouse') : i18n.t('popups.processing');
+    }
+
     const stateDisplayName = location.state ? getStateDisplayName(location.state.trim()) : '';
     const statePart = stateDisplayName ? ` ${stateDisplayName}` : '';
     const fullAddress = location.street && location.street.trim() ? `${location.street.trim()}, ${location.city.trim()}${statePart} ${location.zip}` : i18n.t('popups.addressNA');
@@ -51,6 +59,69 @@ export function buildLocationPopup(location, facilityTypeLabel) {
         }
     }
 
+    // Helper to split string by comma respecting parentheses
+    const splitWithParentheses = (str) => {
+        const result = [];
+        let current = '';
+        let depth = 0;
+        
+        for (let i = 0; i < str.length; i++) {
+            const char = str[i];
+            if (char === '(') depth++;
+            else if (char === ')') depth--;
+            
+            if (char === ',' && depth === 0) {
+                result.push(current.trim());
+                current = '';
+            } else {
+                current += char;
+            }
+        }
+        if (current) result.push(current.trim());
+        return result;
+    };
+
+    // Helper to translate a single item
+    const translateItem = (text) => {
+        const key = text.toLowerCase();
+        if (i18n.exists(`animals.${key}`)) {
+            return i18n.t(`animals.${key}`);
+        }
+        // Try singular if plural (simple check)
+        if (key.endsWith('s') && i18n.exists(`animals.${key.slice(0, -1)}`)) {
+            return i18n.t(`animals.${key.slice(0, -1)}`);
+        }
+        return text;
+    };
+
+    // Helper to translate comma-separated lists (recursive)
+    const translateList = (listStr) => {
+        if (!listStr) return listStr;
+        
+        const items = splitWithParentheses(listStr);
+        
+        return items.map(item => {
+            const trimmed = item.trim();
+            
+            // Handle parentheses: "Cattle (Cows, Bulls)"
+            const parenMatch = trimmed.match(/^([^(]+)\s*\((.*)\)$/);
+            if (parenMatch) {
+                const mainPart = parenMatch[1].trim();
+                const insideParens = parenMatch[2];
+                
+                const translatedMain = translateItem(mainPart);
+                const translatedInside = translateList(insideParens); // Recursion
+                
+                return `${translatedMain} (${translatedInside})`;
+            }
+            
+            return translateItem(trimmed);
+        }).join(', ');
+    };
+
+    const animalsProcessed = translateList(location.animals_processed);
+    const animalsSlaughtered = translateList(location.animals_slaughtered);
+
     // Check if animals_processed has meaningful data
     const hasAnimalsProcessed = location.animals_processed && 
                                location.animals_processed.toLowerCase() !== 'n/a' && 
@@ -63,9 +134,15 @@ export function buildLocationPopup(location, facilityTypeLabel) {
                                animals_processed_monthly_text !== "N/A";
 
     let slaughterText = "";
-    const isSlaughterFacility = typeof facilityTypeLabel === 'string' ? 
-        (facilityTypeLabel.toLowerCase().includes('slaughter') || facilityTypeLabel.toLowerCase().includes('aquatic processing')) :
-        facilityTypeLabel === true;
+    
+    let isSlaughterFacility = false;
+    if (typeof facilityTypeLabel === 'string') {
+        isSlaughterFacility = facilityTypeLabel.toLowerCase().includes('slaughter') || facilityTypeLabel.toLowerCase().includes('aquatic processing');
+    } else if (typeof facilityTypeLabel === 'object' && facilityTypeLabel.key) {
+        isSlaughterFacility = facilityTypeLabel.key.toLowerCase().includes('slaughter');
+    } else {
+        isSlaughterFacility = facilityTypeLabel === true;
+    }
     
     if (isSlaughterFacility) {
         let animals_slaughtered_yearly_text = "N/A";
@@ -96,7 +173,7 @@ export function buildLocationPopup(location, facilityTypeLabel) {
         if (hasAnimalsSlaughtered || hasSlaughterVolume) {
             slaughterText = `<hr>`;
             if (hasAnimalsSlaughtered && !isMexican) {
-                slaughterText += `<p><strong>${i18n.t('popups.animalsKilled')}:</strong> ${location.animals_slaughtered}</p>`;
+                slaughterText += `<p><strong>${i18n.t('popups.animalsKilled')}:</strong> ${animalsSlaughtered}</p>`;
             }
             if (hasSlaughterVolume) {
                 slaughterText += `<p><strong>${i18n.t('popups.slaughterVolume')}:</strong> ${animals_slaughtered_yearly_text}</p>`;
@@ -123,7 +200,7 @@ export function buildLocationPopup(location, facilityTypeLabel) {
             ${phone && phone.trim() !== '' && phone !== 'N/A' ? `<p><strong>${i18n.t('popups.phone')}:</strong> <span class="copyable-text" data-copy="${phone}">${phone}</span></p>` : ''}
             ${dbas ? `<p><strong>${i18n.t('popups.dba')}:</strong> <span class="copyable-text" data-copy="${dbas}">${dbas}</span></p>` : ""}
             ${(hasAnimalsProcessed || hasProcessingVolume) && !isMexican ? '<hr>' : ''}
-            ${hasAnimalsProcessed && !isMexican ? `<p><strong>${i18n.t('popups.productsProcessed')}:</strong> ${location.animals_processed}</p>` : ''}
+            ${hasAnimalsProcessed && !isMexican ? `<p><strong>${i18n.t('popups.productsProcessed')}:</strong> ${animalsProcessed}</p>` : ''}
             ${hasProcessingVolume && !isMexican ? `<p><strong>${i18n.t('popups.productVolume')}:</strong> ${animals_processed_monthly_text}</p>` : ''}
             ${slaughterText}
             <a href="${directionsUrl}" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.getDirections')}</strong></a>${location.country === 'us' || !location.country ? ` | <a href="https://www.fsis.usda.gov/inspection/establishments/meat-poultry-and-egg-product-inspection-directory" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewSource')}</strong></a>` : location.country === 'uk' ? ` | <a href="https://transparentfarms.org.uk/" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewSource')}</strong></a>` : location.country === 'ca' ? ` | <a href="https://open.canada.ca/data/en/dataset/a763088c-018d-48b7-bf47-3027a8c725b8" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewSource')}</strong></a>` : location.country === 'es' ? ` | <a href="https://granjastransparentes.es/" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewSource')}</strong></a>` : location.country === 'mx' ? ` | <a href="https://www.inegi.org.mx/app/mapa/denue/" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewSource')}</strong></a>` : location.country === 'fr' ? ` | <a href="https://www.google.com/maps/d/u/0/viewer?mid=1TGGpOJz40AHgTrbfYMO6sg3XrTFoG31n&ll=48.794860747569736%2C2.0410253416334534&z=8" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewSource')}</strong></a>` : location.country === 'de' ? ` | <a href="https://www.google.com/maps/d/u/0/viewer?mid=1TGGpOJz40AHgTrbfYMO6sg3XrTFoG31n&ll=48.794860747569736%2C2.0410253416334534&z=8" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewSource')}</strong></a>` : ''}
@@ -144,10 +221,21 @@ export function buildLabPopup(lab) {
 
     const investigationText = i18n.t('popups.investigationText').replace(/{certNum}/g, certNum || 'N/A');
 
+    const regType = lab['Registration Type'];
+    let regTypeText = regType || 'N/A';
+    if (regType) {
+        if (regType.includes('Class A')) regTypeText = i18n.t('facilityTypes.classABreeder');
+        else if (regType.includes('Class B')) regTypeText = i18n.t('facilityTypes.classBDealer');
+        else if (regType.includes('Class C')) regTypeText = i18n.t('facilityTypes.classCExhibitor');
+        else if (regType.includes('Class R')) regTypeText = i18n.t('facilityTypes.classRResearchFacility');
+        else if (regType.includes('Class T')) regTypeText = i18n.t('facilityTypes.classTCarrier');
+        else if (regType.includes('Class H')) regTypeText = i18n.t('facilityTypes.classHIntermediateHandler');
+    }
+
     return `
         <div class="info-popup">
             <h3>${name}</h3>
-            <p1><strong>${lab['Registration Type'] || 'N/A'}</strong></p1><br>
+            <p1><strong>${regTypeText}</strong></p1><br>
             <p1>(${lab.latitude},${lab.longitude}) ${i18n.t('popups.approx')}</p1>
             <hr>
             <p><strong>${i18n.t('popups.address')}:</strong> <span class="copyable-text" data-copy="${fullAddress}">${fullAddress || 'N/A'}</span></p>
@@ -170,9 +258,10 @@ export function buildLabPopup(lab) {
  */
 export function buildInspectionReportPopup(report) {
     let classText = "N/A";
-    if (report['License Type'] === "Class A - Breeder") classText = i18n.t('popups.breeder');
-    else if (report['License Type'] === "Class B - Dealer") classText = i18n.t('popups.dealer');
-    else if (report['License Type'] === "Class C - Exhibitor") classText = i18n.t('popups.exhibitor');
+    const licenseType = report['License Type'];
+    if (licenseType === "Class A - Breeder") classText = i18n.t('facilityTypes.classABreeder');
+    else if (licenseType === "Class B - Dealer") classText = i18n.t('facilityTypes.classBDealer');
+    else if (licenseType === "Class C - Exhibitor") classText = i18n.t('facilityTypes.classCExhibitor');
     
     const name = report['Account Name'] || i18n.t('popups.unknownName');
     const certNum = report['Certificate Number'];

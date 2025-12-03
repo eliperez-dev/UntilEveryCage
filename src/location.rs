@@ -21,8 +21,10 @@ use serde::Serialize;
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct Location {
     pub establishment_id: String,
+    #[serde(default)]
     pub establishment_number: String,
     pub establishment_name: String,
+    #[serde(default)]
     pub duns_number: String,
     pub street: String,
     pub city: String,
@@ -32,101 +34,192 @@ pub struct Location {
     pub grant_date: String,
     #[serde(rename = "type")]
     pub activities: String,
+    #[serde(default)]
+    pub animals_slaughtered_list: String,
+    #[serde(default)]
+    pub animals_processed_list: String,
     pub dbas: String,
+    #[serde(default)]
     pub district: String,
+    #[serde(default)]
     pub circuit: String,
+    #[serde(default)]
     pub size: String,
     pub latitude: f64,
     pub longitude: f64,
+    #[serde(default)]
     pub county: String,
+    #[serde(default)]
     pub fips_code: String,
+    #[serde(default)]
     pub meat_exemption_custom_slaughter: String,
+    #[serde(default)]
     pub poultry_exemption_custom_slaughter: String,
     pub slaughter: String,
+    #[serde(default)]
     pub meat_slaughter: String,
+    #[serde(default)]
     pub beef_cow_slaughter: String,
+    #[serde(default)]
     pub steer_slaughter: String,
+    #[serde(default)]
     pub heifer_slaughter: String,
+    #[serde(default)]
     pub bull_stag_slaughter: String,
+    #[serde(default)]
     pub dairy_cow_slaughter: String,
+    #[serde(default)]
     pub heavy_calf_slaughter: String,
+    #[serde(default)]
     pub bob_veal_slaughter: String,
+    #[serde(default)]
     pub formula_fed_veal_slaughter: String,
+    #[serde(default)]
     pub non_formula_fed_veal_slaughter: String,
+    #[serde(default)]
     pub market_swine_slaughter: String,
+    #[serde(default)]
     pub sow_slaughter: String,
+    #[serde(default)]
     pub roaster_swine_slaughter: String,
+    #[serde(default)]
     pub boar_stag_swine_slaughter: String,
+    #[serde(default)]
     pub stag_swine_slaughter: String,
+    #[serde(default)]
     pub feral_swine_slaughter: String,
+    #[serde(default)]
     pub goat_slaughter: String,
+    #[serde(default)]
     pub young_goat_slaughter: String,
+    #[serde(default)]
     pub adult_goat_slaughter: String,
+    #[serde(default)]
     pub sheep_slaughter: String,
+    #[serde(default)]
     pub lamb_slaughter: String,
+    #[serde(default)]
     pub deer_reindeer_slaughter: String,
+    #[serde(default)]
     pub antelope_slaughter: String,
+    #[serde(default)]
     pub elk_slaughter: String,
+    #[serde(default)]
     pub bison_slaughter: String,
+    #[serde(default)]
     pub buffalo_slaughter: String,
+    #[serde(default)]
     pub water_buffalo_slaughter: String,
+    #[serde(default)]
     pub cattalo_slaughter: String,
+    #[serde(default)]
     pub yak_slaughter: String,
+    #[serde(default)]
     pub other_voluntary_livestock_slaughter: String,
+    #[serde(default)]
     pub rabbit_slaughter: String,
+    #[serde(default)]
     pub poultry_slaughter: String,
+    #[serde(default)]
     pub young_chicken_slaughter: String,
+    #[serde(default)]
     pub light_fowl_slaughter: String,
+    #[serde(default)]
     pub heavy_fowl_slaughter: String,
+    #[serde(default)]
     pub capon_slaughter: String,
+    #[serde(default)]
     pub young_turkey_slaughter: String,
+    #[serde(default)]
     pub young_breeder_turkey_slaughter: String,
+    #[serde(default)]
     pub old_breeder_turkey_slaughter: String,
+    #[serde(default)]
     pub fryer_roaster_turkey_slaughter: String,
+    #[serde(default)]
     pub duck_slaughter: String,
+    #[serde(default)]
     pub goose_slaughter: String,
+    #[serde(default)]
     pub pheasant_slaughter: String,
+    #[serde(default)]
     pub quail_slaughter: String,
+    #[serde(default)]
     pub guinea_slaughter: String,
+    #[serde(default)]
     pub ostrich_slaughter: String,
+    #[serde(default)]
     pub emu_slaughter: String,
+    #[serde(default)]
     pub rhea_slaughter: String,
+    #[serde(default)]
     pub squab_slaughter: String,
+    #[serde(default)]
     pub other_voluntary_poultry_slaughter: String,
+    #[serde(default)]
     pub slaughter_or_processing_only: String,
+    #[serde(default)]
     pub slaughter_only_class: String,
+    #[serde(default)]
     pub slaughter_only_species: String,
+    #[serde(default)]
     pub meat_slaughter_only_species: String,
+    #[serde(default)]
     pub poultry_slaughter_only_species: String,
     pub slaughter_volume_category: String,
     pub processing_volume_category: String,
 
     // --- PROCESSING FIELDS ---
+    #[serde(default)]
     pub beef_processing: String,
+    #[serde(default)]
     pub pork_processing: String,
+    #[serde(default)]
     pub antelope_processing: String,
+    #[serde(default)]
     pub bison_processing: String,
+    #[serde(default)]
     pub buffalo_processing: String,
+    #[serde(default)]
     pub deer_processing: String,
+    #[serde(default)]
     pub elk_processing: String,
+    #[serde(default)]
     pub goat_processing: String,
+    #[serde(default)]
     pub other_voluntary_livestock_processing: String,
+    #[serde(default)]
     pub rabbit_processing: String,
+    #[serde(default)]
     pub reindeer_processing: String,
+    #[serde(default)]
     pub sheep_processing: String,
+    #[serde(default)]
     pub yak_processing: String,
+    #[serde(default)]
     pub chicken_processing: String,
+    #[serde(default)]
     pub duck_processing: String,
+    #[serde(default)]
     pub goose_processing: String,
+    #[serde(default)]
     pub pigeon_processing: String,
+    #[serde(default)]
     pub ratite_processing: String,
+    #[serde(default)]
     pub turkey_processing: String,
+    #[serde(default)]
     pub exotic_poultry_processing: String,
+    #[serde(default)]
     pub other_voluntary_poultry_processing: String,
 }
 
 // --- NEW HELPER FUNCTION FOR PROCESSED ANIMALS ---
 pub fn get_processed_animals(location: &Location) -> String {
+    if !location.animals_processed_list.is_empty() {
+        return location.animals_processed_list.clone();
+    }
+
     let mut processed_animals: Vec<&str> = Vec::new();
 
     // Helper closure to check the Option<String> fields safely
@@ -176,6 +269,10 @@ pub fn get_processed_animals(location: &Location) -> String {
 
 // --- UPDATED to use more common names ---
 pub fn get_slaughtered_animals(location: &Location) -> String {
+    if !location.animals_slaughtered_list.is_empty() {
+        return location.animals_slaughtered_list.clone();
+    }
+
     let mut killed_animals: Vec<&str> = Vec::new();
 
     if location.beef_cow_slaughter == "Yes"

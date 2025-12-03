@@ -164,7 +164,7 @@ export function iconForType(type) {
 // @ts-ignore
 export function mapFacilityType(facilityTypeString, establishmentName) {
     if (!facilityTypeString) {
-        return { iconType: 'processing', displayLabel: 'Processing Facility', category: 'processing' };
+        return { iconType: 'processing', displayLabel: 'facilityTypes.processing', category: 'processing' };
     }
     
     const type = facilityTypeString.toLowerCase();
@@ -173,28 +173,28 @@ export function mapFacilityType(facilityTypeString, establishmentName) {
     // Dairy farms
     // @ts-ignore
     if (type.includes('dairy farm')) {
-        return { iconType: 'breeder', displayLabel: 'Dairy Farm', category: 'breeder' };
+        return { iconType: 'breeder', displayLabel: 'facilityTypes.dairyFarm', category: 'breeder' };
     }
     
     // Intensive farms
     // @ts-ignore
     if (type.includes('intensive pig farm')) {
-        return { iconType: 'breeder', displayLabel: 'Intensive Pig Farm', category: 'breeder' };
+        return { iconType: 'breeder', displayLabel: 'facilityTypes.intensivePigFarm', category: 'breeder' };
     }
     
     // @ts-ignore
     if (type.includes('intensive poultry farm')) {
-        return { iconType: 'breeder', displayLabel: 'Intensive Poultry Farm', category: 'breeder' };
+        return { iconType: 'breeder', displayLabel: 'facilityTypes.intensivePoultryFarm', category: 'breeder' };
     }
     
     // @ts-ignore
     if (type.includes('intensive sow pig farm')) {
-        return { iconType: 'breeder', displayLabel: 'Intensive Sow Pig Farm', category: 'breeder' };
+        return { iconType: 'breeder', displayLabel: 'facilityTypes.intensiveSowPigFarm', category: 'breeder' };
     }
     
     // @ts-ignore
     if (type.includes('finishing unit')) {
-        return { iconType: 'breeder', displayLabel: 'Finishing Unit', category: 'breeder' };
+        return { iconType: 'breeder', displayLabel: 'facilityTypes.finishingUnit', category: 'breeder' };
     }
     
     // Mixed farms (UK specific) - handle the new format
@@ -203,60 +203,60 @@ export function mapFacilityType(facilityTypeString, establishmentName) {
         // Extract the farm types from the parentheses for a cleaner display
         const match = type.match(/mixed farm \(([^)]+)\)/i);
         if (match) {
-            return { iconType: 'breeder', displayLabel: `Mixed Farm (${match[1]})`, category: 'breeder' };
+            return { iconType: 'breeder', displayLabel: { key: 'facilityTypes.mixedFarm', suffix: ` (${match[1]})` }, category: 'breeder' };
         }
-        return { iconType: 'breeder', displayLabel: 'Mixed Farm', category: 'breeder' };
+        return { iconType: 'breeder', displayLabel: 'facilityTypes.mixedFarm', category: 'breeder' };
     }
     
     // Specific slaughterhouse types (UK)
     // @ts-ignore
     if (type.includes('cattle slaughterhouse')) {
-        return { iconType: 'slaughter', displayLabel: 'Cattle Slaughterhouse', category: 'slaughter' };
+        return { iconType: 'slaughter', displayLabel: 'facilityTypes.cattleSlaughterhouse', category: 'slaughter' };
     }
     
     // @ts-ignore
     if (type.includes('pig slaughterhouse')) {
-        return { iconType: 'slaughter', displayLabel: 'Pig Slaughterhouse', category: 'slaughter' };
+        return { iconType: 'slaughter', displayLabel: 'facilityTypes.pigSlaughterhouse', category: 'slaughter' };
     }
     
     // @ts-ignore
     if (type.includes('poultry slaughterhouse')) {
-        return { iconType: 'slaughter', displayLabel: 'Poultry Slaughterhouse', category: 'slaughter' };
+        return { iconType: 'slaughter', displayLabel: 'facilityTypes.poultrySlaughterhouse', category: 'slaughter' };
     }
     
     // @ts-ignore
     if (type.includes('sheep & lamb slaughterhouse')) {
-        return { iconType: 'slaughter', displayLabel: 'Sheep & Lamb Slaughterhouse', category: 'slaughter' };
+        return { iconType: 'slaughter', displayLabel: 'facilityTypes.sheepLambSlaughterhouse', category: 'slaughter' };
     }
     
     // @ts-ignore
     if (type.includes('goat slaughterhouse')) {
-        return { iconType: 'slaughter', displayLabel: 'Goat Slaughterhouse', category: 'slaughter' };
+        return { iconType: 'slaughter', displayLabel: 'facilityTypes.goatSlaughterhouse', category: 'slaughter' };
     }
     
     // @ts-ignore
     if (type.includes('horse slaughterhouse')) {
-        return { iconType: 'slaughter', displayLabel: 'Horse Slaughterhouse', category: 'slaughter' };
+        return { iconType: 'slaughter', displayLabel: 'facilityTypes.horseSlaughterhouse', category: 'slaughter' };
     }
     
     // @ts-ignore
     if (type.includes('other mammal slaughterhouse')) {
-        return { iconType: 'slaughter', displayLabel: 'Other Mammal Slaughterhouse', category: 'slaughter' };
+        return { iconType: 'slaughter', displayLabel: 'facilityTypes.otherMammalSlaughterhouse', category: 'slaughter' };
     }
     
     // @ts-ignore
     if (type.includes('large bird slaughterhouse')) {
-        return { iconType: 'slaughter', displayLabel: 'Large Bird Slaughterhouse', category: 'slaughter' };
+        return { iconType: 'slaughter', displayLabel: 'facilityTypes.largeBirdSlaughterhouse', category: 'slaughter' };
     }
     
     // @ts-ignore
     if (type.includes('wild bird slaughterhouse')) {
-        return { iconType: 'slaughter', displayLabel: 'Wild Bird Slaughterhouse', category: 'slaughter' };
+        return { iconType: 'slaughter', displayLabel: 'facilityTypes.wildBirdSlaughterhouse', category: 'slaughter' };
     }
     
     // @ts-ignore
     if (type.includes('wild rabbit slaughterhouse')) {
-        return { iconType: 'slaughter', displayLabel: 'Wild Rabbit Slaughterhouse', category: 'slaughter' };
+        return { iconType: 'slaughter', displayLabel: 'facilityTypes.wildRabbitSlaughterhouse', category: 'slaughter' };
     }
     
     // Mixed slaughterhouses (UK specific) - handle the new format
@@ -265,36 +265,36 @@ export function mapFacilityType(facilityTypeString, establishmentName) {
         // Extract the animal types from the parentheses for a cleaner display
         const match = type.match(/mixed slaughterhouse \(([^)]+)\)/i);
         if (match) {
-            return { iconType: 'slaughter', displayLabel: `Mixed Slaughterhouse (${match[1]})`, category: 'slaughter' };
+            return { iconType: 'slaughter', displayLabel: { key: 'facilityTypes.mixedSlaughterhouse', suffix: ` (${match[1]})` }, category: 'slaughter' };
         }
-        return { iconType: 'slaughter', displayLabel: 'Mixed Slaughterhouse', category: 'slaughter' };
+        return { iconType: 'slaughter', displayLabel: 'facilityTypes.mixedSlaughterhouse', category: 'slaughter' };
     }
     
     // Check for general slaughter facilities (broader check)
     // @ts-ignore
     if (type.includes('meat slaughter') || type.includes('slaughter')) {
-        return { iconType: 'slaughter', displayLabel: 'Slaughterhouse', category: 'slaughter' };
+        return { iconType: 'slaughter', displayLabel: 'facilityTypes.slaughterhouse', category: 'slaughter' };
     }
     
     // Check for specific Spanish facility types
     // @ts-ignore
     if (type.includes('pig breeding farm')) {
-        return { iconType: 'breeder', displayLabel: 'Pig Breeding Farm', category: 'breeder' };
+        return { iconType: 'breeder', displayLabel: 'facilityTypes.pigBreedingFarm', category: 'breeder' };
     }
     
     // @ts-ignore
     if (type.includes('pig farm')) {
-        return { iconType: 'breeder', displayLabel: 'Pig Farm', category: 'breeder' };
+        return { iconType: 'breeder', displayLabel: 'facilityTypes.pigFarm', category: 'breeder' };
     }
     
     // @ts-ignore
     if (type.includes('poultry farm')) {
-        return { iconType: 'breeder', displayLabel: 'Poultry Farm', category: 'breeder' };
+        return { iconType: 'breeder', displayLabel: 'facilityTypes.poultryFarm', category: 'breeder' };
     }
     
     // @ts-ignore
     if (type.includes('aquaculture')) {
-        return { iconType: 'breeder', displayLabel: 'Aquaculture Facility', category: 'breeder' };
+        return { iconType: 'breeder', displayLabel: 'facilityTypes.aquacultureFacility', category: 'breeder' };
     }
     
     // Generic farm type detection for any remaining farm types
@@ -306,19 +306,19 @@ export function mapFacilityType(facilityTypeString, establishmentName) {
         for (const animal of animalTypes) {
             // @ts-ignore
             if (type.includes(animal)) {
-                const displayName = animal.charAt(0).toUpperCase() + animal.slice(1);
-                return { iconType: 'breeder', displayLabel: `${displayName} Farm`, category: 'breeder' };
+                const key = `facilityTypes.${animal}Farm`;
+                return { iconType: 'breeder', displayLabel: key, category: 'breeder' };
             }
         }
         
         // Check for intensive farms without specific animal type
         // @ts-ignore
         if (type.includes('intensive')) {
-            return { iconType: 'breeder', displayLabel: 'Intensive Farm', category: 'breeder' };
+            return { iconType: 'breeder', displayLabel: 'facilityTypes.intensiveFarm', category: 'breeder' };
         }
         
         // If no specific animal type found, use "Farm" 
-        return { iconType: 'breeder', displayLabel: 'Farm', category: 'breeder' };
+        return { iconType: 'breeder', displayLabel: 'facilityTypes.farm', category: 'breeder' };
     }
     
     // Check for breeding/production facilities
@@ -326,16 +326,16 @@ export function mapFacilityType(facilityTypeString, establishmentName) {
     if (type.includes('animal production')) {
         // @ts-ignore
         if (type.includes('hunting') || type.includes('game')) {
-            return { iconType: 'breeder', displayLabel: 'Game/Hunting Facility', category: 'breeder' };
+            return { iconType: 'breeder', displayLabel: 'facilityTypes.gameHuntingFacility', category: 'breeder' };
         } else {
-            return { iconType: 'breeder', displayLabel: 'Animal Farm', category: 'breeder' };
+            return { iconType: 'breeder', displayLabel: 'facilityTypes.animalFarm', category: 'breeder' };
         }
     }
     
     // Check for exhibition facilities
     // @ts-ignore
     if (type.includes('exhibition')) {
-        return { iconType: 'exhibitor', displayLabel: 'Exhibition Facility', category: 'exhibitor' };
+        return { iconType: 'exhibitor', displayLabel: 'facilityTypes.exhibitionFacility', category: 'exhibitor' };
     }
     
     // Check for aquatic facilities
@@ -343,14 +343,24 @@ export function mapFacilityType(facilityTypeString, establishmentName) {
     if (type.includes('aquatic')) {
         // @ts-ignore
         if (type.includes('processing')) {
-            return { iconType: 'slaughter', displayLabel: 'Aquatic Processing Facility', category: 'slaughter' };
+            return { iconType: 'slaughter', displayLabel: 'facilityTypes.aquaticProcessingFacility', category: 'slaughter' };
         } else {
-            return { iconType: 'breeder', displayLabel: 'Aquatic Production Facility', category: 'breeder' };
+            return { iconType: 'breeder', displayLabel: 'facilityTypes.aquaticProductionFacility', category: 'breeder' };
         }
+    }
+
+    // NZ Specific Types
+    // @ts-ignore
+    if (type.includes('chicken producer')) {
+        return { iconType: 'breeder', displayLabel: 'facilityTypes.chickenProducer', category: 'breeder' };
+    }
+    // @ts-ignore
+    if (type.includes('butcher')) {
+        return { iconType: 'slaughter', displayLabel: 'facilityTypes.butcher', category: 'slaughter' };
     }
     
     // Default to processing
-    return { iconType: 'processing', displayLabel: 'Processing Facility', category: 'processing' };
+    return { iconType: 'processing', displayLabel: 'facilityTypes.processing', category: 'processing' };
 }
 
 // =============================================================================

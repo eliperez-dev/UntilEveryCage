@@ -19,8 +19,6 @@ use axum::{Router, routing::get};
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::CorsLayer;
 
-mod location;
-
 #[shuttle_runtime::main]
 async fn main() -> shuttle_axum::ShuttleAxum {
     let cors = CorsLayer::very_permissive();

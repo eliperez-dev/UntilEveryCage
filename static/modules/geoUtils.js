@@ -129,6 +129,15 @@ export function isMexicanLocation(location) {
 }
 
 /**
+ * Check if a location belongs to New Zealand
+ * @param {Object} location - The location object with country property
+ * @returns {boolean} - True if NZ location
+ */
+export function isNZLocation(location) {
+    return location.country === 'nz';
+}
+
+/**
  * Check if a state code belongs to the UK
  * UK states/counties are any that aren't US, German, Spanish, French, Canadian, or Mexican states
  * @param {string} stateCode - The state code to check
@@ -141,6 +150,7 @@ export function isUKState(stateCode) {
            !isFrenchState(stateCode) && 
            !isCanadianProvince(stateCode) && 
            !isMexicanState(stateCode) && 
+           !isNZState(stateCode) &&
            stateCode && 
            stateCode.trim() !== '';
 }
@@ -160,13 +170,26 @@ export function getSelectedCountryForState(stateCode) {
     if (isCanadianProvince(stateCode)) return 'CA';
     if (isMexicanState(stateCode)) return 'MX';
     if (isUKState(stateCode)) return 'UK';
+    if (isNZState(stateCode)) return 'NZ';
     return 'all';
+}
+
+/**
+ * Check if a state code belongs to New Zealand
+ * @param {string} stateCode - The state code to check
+ * @returns {boolean} - True if NZ state
+ */
+export function isNZState(stateCode) {
+    // NZ regions are typically full names, so we check if it's not another country's state
+    // and if the location country is 'nz' (handled in getSelectedCountryForLocation)
+    // But for state selector filtering, we might need a list or just rely on the country check
+    return false; // Placeholder, logic handled via location country check mostly
 }
 
 /**
  * Get the selected country code for a given location object
  * @param {Object} location - The location object with country property
- * @returns {string} - Country code (US, DE, ES, FR, CA, MX, UK) or 'all'
+ * @returns {string} - Country code (US, DE, ES, FR, CA, MX, UK, NZ) or 'all'
  */
 export function getSelectedCountryForLocation(location) {
     if (location.country === 'us') return 'US';
@@ -177,6 +200,7 @@ export function getSelectedCountryForLocation(location) {
     if (location.country === 'mx') return 'MX';
     if (location.country === 'dk') return 'DK';
     if (location.country === 'uk') return 'UK';
+    if (location.country === 'nz') return 'NZ';
     return 'all';
 }
 
