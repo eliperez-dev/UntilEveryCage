@@ -190,7 +190,19 @@
         "offal": "Abats",
         "breeder chickens": "Poulets reproducteurs",
         "day-old chicks": "Poussins d'un jour",
-        "fertile eggs": "Œufs fécondés"
+        "fertile eggs": "Œufs fécondés",
+        "beef": "Bœuf",
+        "pork": "Porc",
+        "sheep & lambs": "Moutons et Agneaux",
+        "bison & buffalo": "Bisons et Buffles",
+        "hamster": "Hamster",
+        "hamsters": "Hamsters",
+        "non-human primates": "Primates non humains",
+        "other farm animals": "Autres animaux de ferme",
+        "dogs": "Chiens",
+        "cats": "Chats",
+        "guinea pigs": "Cochons d'Inde",
+        "rabbits": "Lapins"
     },
     "howToUse": {
         "hero": {

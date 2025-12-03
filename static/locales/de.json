@@ -190,7 +190,19 @@
         "offal": "Innereien",
         "breeder chickens": "Zuchthühner",
         "day-old chicks": "Eintagsküken",
-        "fertile eggs": "Bruteier"
+        "fertile eggs": "Bruteier",
+        "beef": "Rindfleisch",
+        "pork": "Schweinefleisch",
+        "sheep & lambs": "Schafe & Lämmer",
+        "bison & buffalo": "Bisons & Büffel",
+        "hamster": "Hamster",
+        "hamsters": "Hamster",
+        "non-human primates": "Nicht-menschliche Primaten",
+        "other farm animals": "Andere Nutztiere",
+        "dogs": "Hunde",
+        "cats": "Katzen",
+        "guinea pigs": "Meerschweinchen",
+        "rabbits": "Kaninchen"
     },
     "howToUse": {
         "hero": {

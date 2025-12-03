@@ -21,6 +21,75 @@ import { getStateDisplayName } from './geoUtils.js';
 import { EXTERNAL_URLS } from './constants.js';
 import { i18n } from './translationManager.js';
 
+// Helper to split string by comma respecting parentheses
+const splitWithParentheses = (str) => {
+    const result = [];
+    let current = '';
+    let depth = 0;
+    
+    for (let i = 0; i < str.length; i++) {
+        const char = str[i];
+        if (char === '(') depth++;
+        else if (char === ')') depth--;
+        
+        if (char === ',' && depth === 0) {
+            result.push(current.trim());
+            current = '';
+        } else {
+            current += char;
+        }
+    }
+    if (current) result.push(current.trim());
+    return result;
+};
+
+// Helper to translate a single item
+const translateItem = (text) => {
+    const key = text.toLowerCase();
+    if (i18n.exists(`animals.${key}`)) {
+        return i18n.t(`animals.${key}`);
+    }
+    // Try singular if plural (simple check)
+    if (key.endsWith('s') && i18n.exists(`animals.${key.slice(0, -1)}`)) {
+        return i18n.t(`animals.${key.slice(0, -1)}`);
+    }
+    return text;
+};
+
+// Helper to translate comma-separated lists (recursive)
+const translateList = (listStr) => {
+    if (!listStr) return listStr;
+    
+    const items = splitWithParentheses(listStr);
+    
+    return items.map(item => {
+        const trimmed = item.trim();
+        
+        // Handle parentheses: "Cattle (Cows, Bulls)"
+        const parenMatch = trimmed.match(/^([^(]+)\s*\((.*)\)$/);
+        if (parenMatch) {
+            const mainPart = parenMatch[1].trim();
+            const insideParens = parenMatch[2];
+            
+            const translatedMain = translateItem(mainPart);
+            const translatedInside = translateList(insideParens); // Recursion
+            
+            return `${translatedMain} (${translatedInside})`;
+        }
+        
+        // Handle counts: "311 Hamsters"
+        const countMatch = trimmed.match(/^(\d+)\s+(.+)$/);
+        if (countMatch) {
+            const count = countMatch[1];
+            const animal = countMatch[2];
+            const translatedAnimal = translateItem(animal);
+            return `${count} ${translatedAnimal}`;
+        }
+        
+        return translateItem(trimmed);
+    }).join(', ');
+};
+
 /**
  * Builds HTML popup content for USDA facility locations
  * @param {Object} location - The facility location data
@@ -58,66 +127,6 @@ export function buildLocationPopup(location, facilityTypeLabel) {
             case "5.0": animals_processed_monthly_text = "Over 10M pounds/month."; break;
         }
     }
-
-    // Helper to split string by comma respecting parentheses
-    const splitWithParentheses = (str) => {
-        const result = [];
-        let current = '';
-        let depth = 0;
-        
-        for (let i = 0; i < str.length; i++) {
-            const char = str[i];
-            if (char === '(') depth++;
-            else if (char === ')') depth--;
-            
-            if (char === ',' && depth === 0) {
-                result.push(current.trim());
-                current = '';
-            } else {
-                current += char;
-            }
-        }
-        if (current) result.push(current.trim());
-        return result;
-    };
-
-    // Helper to translate a single item
-    const translateItem = (text) => {
-        const key = text.toLowerCase();
-        if (i18n.exists(`animals.${key}`)) {
-            return i18n.t(`animals.${key}`);
-        }
-        // Try singular if plural (simple check)
-        if (key.endsWith('s') && i18n.exists(`animals.${key.slice(0, -1)}`)) {
-            return i18n.t(`animals.${key.slice(0, -1)}`);
-        }
-        return text;
-    };
-
-    // Helper to translate comma-separated lists (recursive)
-    const translateList = (listStr) => {
-        if (!listStr) return listStr;
-        
-        const items = splitWithParentheses(listStr);
-        
-        return items.map(item => {
-            const trimmed = item.trim();
-            
-            // Handle parentheses: "Cattle (Cows, Bulls)"
-            const parenMatch = trimmed.match(/^([^(]+)\s*\((.*)\)$/);
-            if (parenMatch) {
-                const mainPart = parenMatch[1].trim();
-                const insideParens = parenMatch[2];
-                
-                const translatedMain = translateItem(mainPart);
-                const translatedInside = translateList(insideParens); // Recursion
-                
-                return `${translatedMain} (${translatedInside})`;
-            }
-            
-            return translateItem(trimmed);
-        }).join(', ');
-    };
 
     const animalsProcessed = translateList(location.animals_processed);
     const animalsSlaughtered = translateList(location.animals_slaughtered);
@@ -232,6 +241,8 @@ export function buildLabPopup(lab) {
         else if (regType.includes('Class H')) regTypeText = i18n.t('facilityTypes.classHIntermediateHandler');
     }
 
+    const animalsTested = translateList(lab['Animals Tested On']);
+
     return `
         <div class="info-popup">
             <h3>${name}</h3>
@@ -240,7 +251,7 @@ export function buildLabPopup(lab) {
             <hr>
             <p><strong>${i18n.t('popups.address')}:</strong> <span class="copyable-text" data-copy="${fullAddress}">${fullAddress || 'N/A'}</span></p>
             <p><strong>${i18n.t('popups.certNum')}:</strong> <span class="copyable-text" data-copy="${certNum}">${certNum || 'N/A'}</span></p>
-            <p><strong>${i18n.t('popups.animalsTested')}:</strong> ${lab['Animals Tested On'] || 'N/A'}</p>
+            <p><strong>${i18n.t('popups.animalsTested')}:</strong> ${animalsTested || 'N/A'}</p>
             <hr>
             
             <p><strong>${i18n.t('popups.investigation')}: </strong>${investigationText}</p>

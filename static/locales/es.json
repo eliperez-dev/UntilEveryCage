@@ -190,7 +190,19 @@
         "offal": "Despojos",
         "breeder chickens": "Pollos reproductores",
         "day-old chicks": "Pollitos de un día",
-        "fertile eggs": "Huevos fértiles"
+        "fertile eggs": "Huevos fértiles",
+        "beef": "Carne de res",
+        "pork": "Cerdo",
+        "sheep & lambs": "Ovejas y Corderos",
+        "bison & buffalo": "Bisontes y Búfalos",
+        "hamster": "Hámster",
+        "hamsters": "Hámsters",
+        "non-human primates": "Primates no humanos",
+        "other farm animals": "Otros animales de granja",
+        "dogs": "Perros",
+        "cats": "Gatos",
+        "guinea pigs": "Cobayas",
+        "rabbits": "Conejos"
     },
     "howToUse": {
         "hero": {
