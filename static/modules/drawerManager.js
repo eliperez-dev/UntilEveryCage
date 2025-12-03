@@ -20,6 +20,24 @@ export function initializeDrawer() {
     closeBtn.addEventListener('click', closeDrawer);
     backdrop.addEventListener('click', closeDrawer);
 
+    // Prevent map interactions through the drawer
+    if (window.L) {
+        L.DomEvent.disableScrollPropagation(drawer);
+    }
+
+    // Stop propagation of events that might affect the map
+    const stopPropagation = (e) => e.stopPropagation();
+    
+    // Touch events - use passive: true to allow scrolling
+    drawer.addEventListener('touchstart', stopPropagation, { passive: true });
+    drawer.addEventListener('touchmove', stopPropagation, { passive: true });
+    drawer.addEventListener('touchend', stopPropagation, { passive: true });
+    
+    // Mouse events
+    drawer.addEventListener('mousedown', stopPropagation);
+    drawer.addEventListener('dblclick', stopPropagation);
+    drawer.addEventListener('click', stopPropagation);
+
     window.openSearchDrawer = openDrawer;
     window.closeSearchDrawer = closeDrawer;
 }
