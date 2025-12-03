@@ -41,7 +41,7 @@ class DataManager {
                 API_ENDPOINTS.local.inspectionReports
             ];
             
-            let urls = localUrls;
+            let urls = productionUrls;
             let usdaResponse, aphisResponse, inspectionsResponse;
             
             try {
