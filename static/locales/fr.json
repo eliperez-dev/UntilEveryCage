@@ -57,7 +57,7 @@
     },
     "popups": {
         "slaughterhouse": "Abattoir",
-        "processing": "Installation de transformation",
+        "processing": "Usine de transformation",
         "addressNA": "Adresse non disponible",
         "unknownName": "Nom inconnu",
         "phone": "Téléphone",
@@ -83,7 +83,7 @@
         "id": "ID"
     },
     "facilityTypes": {
-        "processing": "Installation de transformation",
+        "processing": "Usine de transformation",
         "dairyFarm": "Ferme laitière",
         "intensivePigFarm": "Élevage porcin intensif",
         "intensivePoultryFarm": "Élevage de volailles intensif",
@@ -130,7 +130,7 @@
         "gameHuntingFacility": "Installation de chasse",
         "animalFarm": "Ferme animale",
         "exhibitionFacility": "Installation d'exposition",
-        "aquaticProcessingFacility": "Installation de transformation aquatique",
+        "aquaticProcessingFacility": "Usine de transformation aquatique",
         "aquaticProductionFacility": "Installation de production aquatique",
         "chickenProducer": "Producteur de poulets",
         "butcher": "Boucher",
@@ -239,7 +239,7 @@
         "investigation": {
             "title": "Pistes d'enquête",
             "slaughter": {
-                "title": "Abattoirs & Installations de transformation",
+                "title": "Abattoirs & Usines de transformation",
                 "publicResearch": "Recherche publique sur les entreprises",
                 "publicResearchDesc": "Pour les sociétés cotées en bourse (Tyson, JBS, Cargill), recherchez les formulaires SEC <strong>10-K</strong> pour les membres du conseil, les finances, les problèmes juridiques et les opérations.",
                 "secLink": "Base de données SEC EDGAR",

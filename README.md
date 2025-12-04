@@ -69,9 +69,9 @@ In production, the frontend is hosted on Netlify and the backend on Shuttle. To 
     * Change it to the local backend URL: `http://127.0.0.1:8001/api`
 
 4.  **Run the Backend API (Terminal 1):**
-    In your first terminal, run the Rust server. We will assign it to port **8001**.
+    In your first terminal, run the Rust server. 
     ```bash
-    cargo shuttle run --port 8001
+    cargo shuttle run
     ```
 
 5.  **Run the Frontend Server (Terminal 2):**
