@@ -107,7 +107,15 @@ export class MapManager {
     }
 
     setupEvents() {
-        this.map.on('moveend', () => this.correctMapView());
+        this.map.on('moveend', () => {
+            this.correctMapView();
+            window.parent.postMessage({
+                type: 'map-update',
+                lat: this.map.getCenter().lat,
+                lng: this.map.getCenter().lng,
+                zoom: this.map.getZoom()
+            }, '*');
+        });
         this.map.on('dragend', () => this.correctMapView());
         this.map.on('zoomend', () => this.applyZoomBasedLayer());
         

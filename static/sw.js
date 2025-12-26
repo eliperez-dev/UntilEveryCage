@@ -8,13 +8,17 @@ const API_URLS = [
   'http://127.0.0.1:8000/api/inspection-reports',
 ];
 
+// @ts-ignore
 self.addEventListener('install', (event) => {
+  // @ts-ignore
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
+  // @ts-ignore
   event.waitUntil(
     caches.keys().then((cacheNames) => {
+      // @ts-ignore
       return Promise.all(
         cacheNames.map((cacheName) => {
           if (cacheName !== CACHE_NAME) {
@@ -24,19 +28,23 @@ self.addEventListener('activate', (event) => {
       );
     })
   );
+  // @ts-ignore
   self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
+  // @ts-ignore
   const { request } = event;
   const url = new URL(request.url);
 
+  // @ts-ignore
   const isApiRequest = API_URLS.some((apiUrl) => url.href.startsWith(apiUrl));
 
   if (!isApiRequest) {
     return;
   }
 
+  // @ts-ignore
   event.respondWith(
     caches.match(request).then((cachedResponse) => {
       if (cachedResponse) {
