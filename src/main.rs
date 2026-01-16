@@ -19,8 +19,10 @@ use axum::{Router, routing::get};
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::CorsLayer;
 
-#[shuttle_runtime::main]
-async fn main() -> shuttle_axum::ShuttleAxum {
+use tower_http::services::ServeDir;
+
+#[tokio::main]
+async fn main() {
     let cors = CorsLayer::very_permissive();
     let app = Router::new()
         .route(
@@ -35,8 +37,14 @@ async fn main() -> shuttle_axum::ShuttleAxum {
             "/api/inspection-reports",
             get(heatmap_backend::get_inspection_reports_handler),
         )
+        .fallback_service(ServeDir::new("static"))
         .layer(CompressionLayer::new().br(true))
         .layer(cors);
- 
-    Ok(app.into())
+
+    let port = std::env::var("PORT").unwrap_or_else(|_| "8000".to_string());
+    let addr = format!("0.0.0.0:{}", port);
+    println!("Listening on {}", addr);
+    
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    axum::serve(listener, app).await.unwrap();
 }

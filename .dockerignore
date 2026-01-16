@@ -1,0 +1,8 @@
+target
+Old scripts
+Old CSVs
+.git
+node_modules
+.zenflow
+.zencoder
+dirty-datasets
