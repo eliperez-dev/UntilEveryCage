@@ -55,14 +55,14 @@ export const PIN_SCALES = [0.5, 0.75, 1];
 
 export const API_ENDPOINTS = {
     production: {
-        locations: 'https://untileverycage-ikbq.shuttle.app/api/locations',
-        aphisReports: 'https://untileverycage-ikbq.shuttle.app/api/aphis-reports', 
-        inspectionReports: 'https://untileverycage-ikbq.shuttle.app/api/inspection-reports'
+        locations: 'https://untileverycage-production.up.railway.app/api/locations',
+        aphisReports: 'https://untileverycage-production.up.railway.app/api/aphis-reports', 
+        inspectionReports: 'https://untileverycage-production.up.railway.app/api/inspection-reports'
     },
     local: {
-        locations: 'http://127.0.0.1:8000/api/locations',
-        aphisReports: 'http://127.0.0.1:8000/api/aphis-reports',
-        inspectionReports: 'http://127.0.0.1:8000/api/inspection-reports'
+        locations: 'http://localhost:8000/api/locations',
+        aphisReports: 'http://localhost:8000/api/aphis-reports',
+        inspectionReports: 'http://localhost:8000/api/inspection-reports'
     }
 };
 

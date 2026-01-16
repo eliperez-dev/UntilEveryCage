@@ -25,60 +25,57 @@ The animal agriculture industry's power is built on a foundation of propaganda a
 
 This project is built with a focus on performance, transparency, and open-source principles.
 
-* **Backend API:** A high-performance RESTful API written in **Rust** using the **Axum** framework and deployed with **Shuttle**.
-* **Frontend:** A client-side application built with vanilla **HTML, CSS, and JavaScript**, statically deployed via **Netlify**.
+* **Backend API:** A high-performance RESTful API written in **Rust** using the **Axum** framework.
+* **Frontend:** A client-side application built with vanilla **HTML, CSS, and JavaScript**.
+* **Deployment:** Fully Dockerized for easy deployment on any platform (Railway, Fly.io, DigitalOcean, etc.).
 * **Mapping Library:** **Leaflet.js** is used for all mapping functionalities, with the **Leaflet.markercluster** plugin for performance.
 * **Data Processing:** A series of **Python** scripts using `pandas` and `selenium` were used to download, clean, geocode, and compile the source data.
+
 ## Running Locally
 
-This project uses a decoupled architecture: the frontend (HTML/JS) and backend (Rust API) are separate.
-
-In production, the frontend is hosted on Netlify and the backend on Shuttle. To run this locally, you must run **two separate servers in two separate terminals.**
+This project serves both the API and the frontend from a single high-performance Rust server.
 
 ### Prerequisites
 
-* **Rust:** [rust-lang.org](https://www.rust-lang.org/tools/install)
-* **Shuttle:** `cargo install cargo-shuttle`
-* **Git**
-* **Python 3** (to serve the frontend files)
+* **Rust:** [rust-lang.org](https://www.rust-lang.org/tools/install) (for running without Docker)
+* **Docker** (optional, for containerized running)
 
-
-### Instructions
+### Option 1: Running with Cargo (Recommended for dev)
 
 1.  **Clone the repository:**
     ```bash
-    git clone [https://github.com/eliperez-dev/UntilEveryCage.git](https://github.com/eliperez-dev/UntilEveryCage.git)
+    git clone https://github.com/eliperez-dev/UntilEveryCage.git
     cd UntilEveryCage
     ```
 
-2.  **Place Data Files:**
-    The backend expects the data files to be present in the `/static_data/` directory. Ensure the necessary files are placed in that folder, for example:
-    * In `/static_data/us`
-        * `locations.csv`
-        * `aphis_data.csv`
-        * `inspection_reports.csv`
-    * In `/static_data/de`
-        * `locations.csv`
-    * In `/static_data/uk`
-        * `locations.csv`
-
-3.  **Configure Frontend for Local API:**
-    Your JavaScript files are hard-coded to call the production API. You must change this.
-    * Open the main JavaScript file (e.g., `static/app.js` or similar).
-    * Find the production API URL (e.g., `https://untileverycage.shuttleapp.rs/api`).
-    * Change it to the local backend URL: `http://127.0.0.1:8001/api`
-
-4.  **Run the Backend API (Terminal 1):**
-    In your first terminal, run the Rust server. 
+2.  **Run the server:**
+    The server will compile and start listening on port 8000.
     ```bash
-    cargo shuttle run
+    cargo run
     ```
 
-5.  **Run the Frontend Server (Terminal 2):**
-    In your second terminal, serve the static files from the root directory using Python on port **8000**.
+3.  **View the app:**
+    Open [http://localhost:8000](http://localhost:8000) in your browser.
+
+### Option 2: Running with Docker
+
+1.  **Build the image:**
     ```bash
-    python3 -m http.server 8000
+    docker build -t heatmap-backend .
     ```
+
+2.  **Run the container:**
+    ```bash
+    docker run -p 8000:8000 heatmap-backend
+    ```
+
+3.  **View the app:**
+    Open [http://localhost:8000](http://localhost:8000) in your browser.
+
+## Deployment
+
+This project includes a `Dockerfile` optimized for production (multi-stage build). You can deploy it to any provider that supports Docker.
+
 
 ## How to Contribute
 

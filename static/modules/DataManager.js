@@ -28,71 +28,41 @@ class DataManager {
         try {
             updateProgress(0, "Fetching facility data...");
             
-            // Try production URLs first, fallback to local if they fail
-            const productionUrls = [
+            // Determine which environment we are in
+            const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+            
+            const urls = isLocal ? [
+                API_ENDPOINTS.local.locations,
+                API_ENDPOINTS.local.aphisReports,
+                API_ENDPOINTS.local.inspectionReports
+            ] : [
                 API_ENDPOINTS.production.locations,
                 API_ENDPOINTS.production.aphisReports,
                 API_ENDPOINTS.production.inspectionReports
             ];
             
-            const localUrls = [
-                API_ENDPOINTS.local.locations,
-                API_ENDPOINTS.local.aphisReports,
-                API_ENDPOINTS.local.inspectionReports
-            ];
-            
-            let urls = productionUrls;
             let usdaResponse, aphisResponse, inspectionsResponse;
             
-            try {
-                // Create AbortController for timeout handling
-                const abortController = new AbortController();
-                const timeoutId = setTimeout(() => abortController.abort(), 30000); // 30 second timeout
-                
-                [usdaResponse, aphisResponse, inspectionsResponse] = await Promise.all([
-                    fetch(urls[0], { 
-                        signal: abortController.signal,
-                        headers: { 'Accept': 'application/json' },
-                        mode: 'cors'
-                    }),
-                    fetch(urls[1], { 
-                        signal: abortController.signal,
-                        headers: { 'Accept': 'application/json' },
-                        mode: 'cors'
-                    }),
-                    fetch(urls[2], { 
-                        signal: abortController.signal,
-                        headers: { 'Accept': 'application/json' },
-                        mode: 'cors'
-                    })
-                ]);
-                
-                clearTimeout(timeoutId);
-            } catch (error) {
-                console.warn('Production API failed, trying local development server:', error);
-                updateProgress(20, "Trying local server...");
-                
-                // Try local development URLs as fallback
-                const abortController = new AbortController();
-                const timeoutId = setTimeout(() => abortController.abort(), 10000); // 10 second timeout for local
-                
-                [usdaResponse, aphisResponse, inspectionsResponse] = await Promise.all([
-                    fetch(localUrls[0], { 
-                        signal: abortController.signal,
-                        headers: { 'Accept': 'application/json' }
-                    }),
-                    fetch(localUrls[1], { 
-                        signal: abortController.signal,
-                        headers: { 'Accept': 'application/json' }
-                    }),
-                    fetch(localUrls[2], { 
-                        signal: abortController.signal,
-                        headers: { 'Accept': 'application/json' }
-                    })
-                ]);
-                
-                clearTimeout(timeoutId);
-            }
+            // Create AbortController for timeout handling
+            const abortController = new AbortController();
+            const timeoutId = setTimeout(() => abortController.abort(), 30000); // 30 second timeout
+            
+            [usdaResponse, aphisResponse, inspectionsResponse] = await Promise.all([
+                fetch(urls[0], { 
+                    signal: abortController.signal,
+                    headers: { 'Accept': 'application/json' }
+                }),
+                fetch(urls[1], { 
+                    signal: abortController.signal,
+                    headers: { 'Accept': 'application/json' }
+                }),
+                fetch(urls[2], { 
+                    signal: abortController.signal,
+                    headers: { 'Accept': 'application/json' }
+                })
+            ]);
+            
+            clearTimeout(timeoutId);
 
             updateProgress(50, "Processing responses...");
 
