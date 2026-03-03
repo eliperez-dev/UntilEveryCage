@@ -21,6 +21,89 @@ import { getStateDisplayName } from './geoUtils.js';
 import { EXTERNAL_URLS } from './constants.js';
 import { i18n } from './translationManager.js';
 
+// Animal field names used in APHIS annual report records
+const APHIS_ANIMAL_FIELDS = [
+    ['dogs', 'Dogs'], ['cats', 'Cats'], ['guineaPigs', 'Guinea Pigs'],
+    ['hamsters', 'Hamsters'], ['nonHumanPrimates', 'Non-Human Primates'],
+    ['rabbits', 'Rabbits'], ['pigs', 'Pigs'], ['sheep', 'Sheep'],
+    ['otherFarmAnimals', 'Other Farm Animals'], ['allOtherAnimals', 'All Other Animals']
+];
+
+function renderAnnualReports(results) {
+    return results.map(r => {
+        const nonZero = APHIS_ANIMAL_FIELDS
+            .filter(([key]) => r[key] && r[key] > 0)
+            .map(([key, label]) => `${label}: ${r[key]}`);
+
+        const animalsHtml = nonZero.length > 0 ? `<p>${nonZero.join(', ')}</p>` : '';
+
+        const reportLink = r.reportLink
+            ? `<a href="${r.reportLink}" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewReport')}</strong></a>`
+            : '';
+
+        const colELink = r.columnELink
+            ? ` | <a href="${r.columnELink}" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.colEnarrative')}</strong></a>`
+            : '';
+
+        const exceptionBadge = r.exceptionReport
+            ? ` <span style="color:#c00;font-weight:bold;">⚠ ${i18n.t('popups.exceptionReport')}</span>`
+            : '';
+
+        return `<div class="aphis-record"><strong>${r.year}</strong>${exceptionBadge}${animalsHtml}${reportLink}${colELink}</div>`;
+    }).join('<hr>');
+}
+
+function renderInspectionReports(results) {
+    return results.map(r => {
+        const date = r.inspectionDate || r.date || '';
+        const type = r.inspectionType || r.type || '';
+        const dateStr = date ? `<strong>${date}</strong>` : '';
+        const typeStr = type ? ` — ${type}` : '';
+
+        const violations = [];
+        if (r.numDirect > 0) violations.push(`Direct: ${r.numDirect}`);
+        if (r.numCritical > 0) violations.push(`Critical: ${r.numCritical}`);
+        if (r.numNAT > 0) violations.push(`NAT: ${r.numNAT}`);
+        const violationsHtml = violations.length > 0
+            ? `<p style="color:#c00;">${violations.join(', ')}</p>`
+            : '';
+
+        const reportLink = r.reportLink
+            ? `<a href="${r.reportLink}" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewReport')}</strong></a>`
+            : '';
+
+        return `<div class="aphis-record">${dateStr}${typeStr}${violationsHtml}${reportLink}</div>`;
+    }).join('<hr>');
+}
+
+window.loadAphisReports = async function(certNum, type, btn) {
+    const prefix = type === 'annual' ? 'aphis-ar-' : 'aphis-ir-';
+    const container = document.getElementById(prefix + certNum);
+    if (!container) return;
+
+    btn.disabled = true;
+    container.innerHTML = `<p>${i18n.t('popups.aphisLoading')}</p>`;
+
+    try {
+        const response = await fetch(`/api/aphis-query?cert=${encodeURIComponent(certNum)}&type=${encodeURIComponent(type)}`);
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        const results = await response.json();
+
+        if (!Array.isArray(results) || results.length === 0) {
+            container.innerHTML = `<p>${i18n.t('popups.aphisNoResults')}</p>`;
+            return;
+        }
+
+        container.innerHTML = type === 'annual'
+            ? renderAnnualReports(results)
+            : renderInspectionReports(results);
+        btn.style.display = 'none';
+    } catch (e) {
+        container.innerHTML = `<p>${i18n.t('popups.aphisError')}</p>`;
+        btn.disabled = false;
+    }
+};
+
 // Helper to split string by comma respecting parentheses
 const splitWithParentheses = (str) => {
     const result = [];
@@ -228,8 +311,6 @@ export function buildLabPopup(lab) {
     const arloUrl = certNum ? `https://arlo.riseforanimals.org/browse?query=${encodeURIComponent(certNum)}&order=relevance` : null;
     const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lab.latitude},${lab.longitude}`;
 
-    const investigationText = i18n.t('popups.investigationText').replace(/{certNum}/g, certNum || 'N/A');
-
     const regType = lab['Registration Type'];
     let regTypeText = regType || 'N/A';
     if (regType) {
@@ -253,10 +334,8 @@ export function buildLabPopup(lab) {
             <p><strong>${i18n.t('popups.certNum')}:</strong> <span class="copyable-text" data-copy="${certNum}">${certNum || 'N/A'}</span></p>
             <p><strong>${i18n.t('popups.animalsTested')}:</strong> ${animalsTested || 'N/A'}</p>
             <hr>
-            
-            <p><strong>${i18n.t('popups.investigation')}: </strong>${investigationText}</p>
-
-            <a href="${EXTERNAL_URLS.aphis.annualReports}" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.openAphis')}</strong></a>
+            <div id="aphis-ar-${certNum}" class="aphis-results-container"></div>
+            ${certNum ? `<button class="directions-btn aphis-load-btn" onclick="window.loadAphisReports('${certNum}', 'annual', this)"><strong>${i18n.t('popups.loadAnnualReports')}</strong></button> | <a href="${EXTERNAL_URLS.aphis.annualReports}" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.openAphis')}</strong></a>` : ''}
             <p></p>
             <a href="${directionsUrl}" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.getDirections')}</strong></a> | <a href="${EXTERNAL_URLS.eFileAphis.annualReports}" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewSource')}</strong></a>
         </div>`;
@@ -279,8 +358,6 @@ export function buildInspectionReportPopup(report) {
     const fullAddress = `${report['Address Line 1'] || ''}, ${report['City-State-Zip'] || ''}`.trim().replace(/^,|,$/g, '').trim();
     const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${report['Geocodio Latitude']},${report['Geocodio Longitude']}`;
 
-    const investigationText = i18n.t('popups.investigationTextInspection').replace(/{certNum}/g, certNum || 'N/A');
-
     return `
         <div class="info-popup inspection-popup">
             <h3>${name}</h3>
@@ -289,8 +366,9 @@ export function buildInspectionReportPopup(report) {
             <hr>
             <p><strong>${i18n.t('popups.address')}:</strong> <span class="copyable-text" data-copy="${fullAddress}">${fullAddress || 'N/A'}</span></p>
             <p><strong>${i18n.t('popups.certNum')}:</strong> <span class="copyable-text" data-copy="${certNum}">${certNum || 'N/A'}</span></p>
-            <p><strong>${i18n.t('popups.investigation')}: </strong>${investigationText}</p>
-            <a href="${EXTERNAL_URLS.aphis.inspectionReports}" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.openAphis')}</strong></a>
+            <hr>
+            <div id="aphis-ir-${certNum}" class="aphis-results-container"></div>
+            ${certNum ? `<button class="directions-btn aphis-load-btn" onclick="window.loadAphisReports('${certNum}', 'inspection', this)"><strong>${i18n.t('popups.loadInspectionReports')}</strong></button> | <a href="${EXTERNAL_URLS.aphis.inspectionReports}" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.openAphis')}</strong></a>` : ''}
             <p></p>
             <a href="${directionsUrl}" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.getDirections')}</strong></a> | <a href="${EXTERNAL_URLS.eFileAphis.inspectionReports}" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewSource')}</strong></a>
         </div>`;

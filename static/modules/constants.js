@@ -60,9 +60,9 @@ export const API_ENDPOINTS = {
         inspectionReports: 'https://untileverycage-production.up.railway.app/api/inspection-reports'
     },
     local: {
-        locations: 'http://localhost:8000/api/locations',
-        aphisReports: 'http://localhost:8000/api/aphis-reports',
-        inspectionReports: 'http://localhost:8000/api/inspection-reports'
+        locations: '/api/locations',
+        aphisReports: '/api/aphis-reports',
+        inspectionReports: '/api/inspection-reports'
     }
 };
 
