@@ -18,7 +18,7 @@
 
 // Import required modules
 import { getStateDisplayName } from './geoUtils.js';
-import { EXTERNAL_URLS } from './constants.js';
+import { EXTERNAL_URLS, API_ENDPOINTS } from './constants.js';
 import { i18n } from './translationManager.js';
 
 // Animal field names used in APHIS annual report records
@@ -85,7 +85,9 @@ window.loadAphisReports = async function(certNum, type, btn) {
     container.innerHTML = `<p>${i18n.t('popups.aphisLoading')}</p>`;
 
     try {
-        const response = await fetch(`/api/aphis-query?cert=${encodeURIComponent(certNum)}&type=${encodeURIComponent(type)}`);
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const baseUrl = isLocal ? API_ENDPOINTS.local.aphisQuery : API_ENDPOINTS.production.aphisQuery;
+        const response = await fetch(`${baseUrl}?cert=${encodeURIComponent(certNum)}&type=${encodeURIComponent(type)}`);
         if (!response.ok) throw new Error('HTTP ' + response.status);
         const results = await response.json();
 
