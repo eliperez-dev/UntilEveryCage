@@ -235,11 +235,11 @@ function updateUrlWithCurrentState() {
 function setupEventListeners() {
     // Checkboxes
     [
-        elements.slaughterhouseCheckbox, 
-        elements.meatProcessingCheckbox, 
-        elements.testingLabsCheckbox, 
-        elements.breedersCheckbox, 
-        elements.dealersCheckbox, 
+        elements.slaughterhouseCheckbox,
+        elements.meatProcessingCheckbox,
+        elements.testingLabsCheckbox,
+        elements.breedersCheckbox,
+        elements.dealersCheckbox,
         elements.exhibitorsCheckbox
     ].forEach(checkbox => {
         if (checkbox) checkbox.addEventListener('change', () => applyFilters(false));

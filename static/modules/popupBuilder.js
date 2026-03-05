@@ -76,6 +76,19 @@ function renderInspectionReports(results) {
     }).join('<hr>');
 }
 
+window.filterAnnualReports = function(certNum) {
+    const container = document.getElementById('aphis-ar-' + certNum);
+    if (!container || !container._aphisResults) return;
+    const checkbox = document.getElementById('exceptions-only-' + certNum);
+    const exceptionsOnly = checkbox && checkbox.checked;
+    const filtered = exceptionsOnly
+        ? container._aphisResults.filter(r => r.exceptionReport)
+        : container._aphisResults;
+    container.innerHTML = filtered.length > 0
+        ? renderAnnualReports(filtered)
+        : `<p>${i18n.t('popups.aphisNoResults')}</p>`;
+};
+
 window.loadAphisReports = async function(certNum, type, btn) {
     const prefix = type === 'annual' ? 'aphis-ar-' : 'aphis-ir-';
     const container = document.getElementById(prefix + certNum);
@@ -96,9 +109,12 @@ window.loadAphisReports = async function(certNum, type, btn) {
             return;
         }
 
-        container.innerHTML = type === 'annual'
-            ? renderAnnualReports(results)
-            : renderInspectionReports(results);
+        if (type === 'annual') {
+            container._aphisResults = results;
+            window.filterAnnualReports(certNum);
+        } else {
+            container.innerHTML = renderInspectionReports(results);
+        }
         btn.style.display = 'none';
     } catch (e) {
         container.innerHTML = `<p>${i18n.t('popups.aphisError')}</p>`;
@@ -337,7 +353,7 @@ export function buildLabPopup(lab) {
             <p><strong>${i18n.t('popups.animalsTested')}:</strong> ${animalsTested || 'N/A'}</p>
             <hr>
             <div id="aphis-ar-${certNum}" class="aphis-results-container"></div>
-            ${certNum ? `<button class="directions-btn aphis-load-btn" onclick="window.loadAphisReports('${certNum}', 'annual', this)"><strong>${i18n.t('popups.loadAnnualReports')}</strong></button> | <a href="${EXTERNAL_URLS.aphis.annualReports}" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.openAphis')}</strong></a>` : ''}
+            ${certNum ? `<button class="directions-btn aphis-load-btn" onclick="window.loadAphisReports('${certNum}', 'annual', this)"><strong>${i18n.t('popups.loadAnnualReports')}</strong></button> <label style="font-size:0.85em;cursor:pointer;white-space:nowrap;"><input type="checkbox" id="exceptions-only-${certNum}" onchange="window.filterAnnualReports('${certNum}')"> ⚠️ View only exception reports; those are especially cruel.</label> | <a href="${EXTERNAL_URLS.aphis.annualReports}" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.openAphis')}</strong></a>` : ''}
             <p></p>
             <a href="${directionsUrl}" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.getDirections')}</strong></a> | <a href="${EXTERNAL_URLS.eFileAphis.annualReports}" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewSource')}</strong></a>
         </div>`;
