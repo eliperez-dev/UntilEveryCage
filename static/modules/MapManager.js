@@ -222,7 +222,7 @@ export class MapManager {
         if (lat && lng) {
             const marker = L.marker([lat, lng], { icon: iconForType(iconType) });
             marker._iconType = iconType;
-            marker.bindPopup(popupContent);
+            marker.bindPopup(popupContent, { maxHeight: 350 });
             return marker;
         }
         return null;
