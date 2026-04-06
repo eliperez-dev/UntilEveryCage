@@ -37,6 +37,10 @@ async fn main() {
             "/api/inspection-reports",
             get(heatmap_backend::get_inspection_reports_handler),
         )
+        .route(
+            "/api/aphis-query",
+            get(heatmap_backend::get_aphis_query_handler),
+        )
         .fallback_service(ServeDir::new("static"))
         .layer(CompressionLayer::new().br(true))
         .layer(cors);
