@@ -51,7 +51,7 @@
         "title": "Until Every Cage is Empty",
         "p1": "<strong>Secrecy and propaganda are their weapons.</strong> The animal agriculture industry relies on secrecy and propaganda to normalize systemic violence. This map destroys that cover, exposing over 54,000 locations where sentient beings are imprisoned, tested on, and slaughtered for profit.",
         "p2": "<strong>It is closer than you think.</strong> From factory farms to roadside zoos, this systematic abuse isn't distant, it is happening in your own backyard.",
-        "p3": "<strong>Free and open source, forever.</strong> We provide the raw data necessary to force accountability and dismantle the system, built entirely on community contributions.",
+        "p3": "<strong>Free and open source, forever.</strong> We provide the raw data necessary to force accountability, built entirely on community contributions.",
         "p4": "Follow the guides on the <a href=\"howtouse.html\" target=\"_self\">How To Use</a> to be able to use this map effectively, and read our <a href=\"about.html\" target=\"_self\">About</a> page to learn how to contribute.",
         "button": "Explore the Map"
     },
@@ -200,7 +200,7 @@
     "howToUse": {
         "hero": {
             "title": "How to Use This Map",
-            "subtitle": "This map exposes the global infrastructure of animal exploitation. Use it to investigate, document, and dismantle."
+            "subtitle": "This map exposes the global infrastructure of animal exploitation."
         },
         "gettingStarted": {
             "title": "Getting Started",
