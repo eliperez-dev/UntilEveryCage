@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: uec
+      POSTGRES_USER: uec
+      POSTGRES_PASSWORD: uec-local-development-only
+    healthcheck:
+      test: ["CMD-SHELL", "psql -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\" -c \"SELECT 1\" >/dev/null 2>&1"]
+      interval: 1s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
+    ports:
+      - "${UEC_PIPELINE_DB_PORT:-5433}:5432"
+    volumes:
+      - uec-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  uec-postgres-data:

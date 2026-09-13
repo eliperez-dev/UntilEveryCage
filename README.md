@@ -11,6 +11,10 @@ The animal agriculture industry's power is built on a foundation of propaganda a
 
 ## Key Features
 
+For a short introduction to the project's standards, read the [ethics summary](docs/ETHICS-SUMMARY.md); the [full policy](docs/ETHICS.md) remains authoritative.
+
+Contributor and data work is governed by [docs/ETHICS.md](docs/ETHICS.md), including source transparency, privacy, and correction/removal requirements. Outstanding implementation work is tracked in the [policy checklist](docs/governance/policy-implementation-todo.md). Documented requirements are not a claim that every protection is already implemented.
+
 * **Multi-Layer Interactive Map:** Visualizes tens of thousands of facilities across the globe on distinct, toggleable layers.
 * **Comprehensive Data:** Integrates multiple public datasets from government bodies worldwide, such as:
     * **Slaughterhouses & Processing Plants** (USDA in the U.S., BVL in Germany, FSA in the UK)
@@ -61,12 +65,12 @@ This project serves both the API and the frontend from a single high-performance
 
 1.  **Build the image:**
     ```bash
-    docker build -t heatmap-backend .
+    docker build -t uec-api .
     ```
 
 2.  **Run the container:**
     ```bash
-    docker run -p 8000:8000 heatmap-backend
+    docker run -p 8000:8000 uec-api
     ```
 
 3.  **View the app:**

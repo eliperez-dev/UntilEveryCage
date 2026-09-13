@@ -20,6 +20,7 @@
 import { getStateDisplayName } from './geoUtils.js';
 import { EXTERNAL_URLS, API_ENDPOINTS } from './constants.js';
 import { i18n } from './translationManager.js';
+import { escapeHtml } from './v2Adapter.js';
 
 // Animal field names used in APHIS annual report records
 const APHIS_ANIMAL_FIELDS = [
@@ -198,7 +199,7 @@ const translateList = (listStr) => {
  * @returns {string} HTML string for the popup content
  */
 export function buildLocationPopup(location, facilityTypeLabel) {
-    const establishmentName = location.establishment_name || i18n.t('popups.unknownName');
+    const establishmentName = escapeHtml(location.establishment_name || i18n.t('popups.unknownName'));
     
     let locationTypeText;
     if (typeof facilityTypeLabel === 'string') {
@@ -216,7 +217,26 @@ export function buildLocationPopup(location, facilityTypeLabel) {
     const grantDate = location.grant_date;
     const phone = location.phone;
     const dbas = location.dbas;
-    const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${location.latitude},${location.longitude}`;
+    const hasCoordinates = Number.isFinite(Number(location.latitude)) && Number.isFinite(Number(location.longitude));
+    const directionsUrl = hasCoordinates
+        ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${location.latitude},${location.longitude}`)}`
+        : null;
+    const coordinateText = hasCoordinates
+        ? `(${escapeHtml(location.latitude)}, ${escapeHtml(location.longitude)})`
+        : '(location not available)';
+    const v2 = location.v2;
+    const v2Provenance = v2 ? `
+            <hr>
+            <div class="v2-provenance" aria-label="V2 data status">
+                <p><strong>Data status:</strong> ${escapeHtml(v2.lifecycleStatus || 'status unknown')}</p>
+                <p><strong>Display precision:</strong> ${escapeHtml(v2.displayPrecision || 'unknown')}</p>
+                <p><strong>Source origin:</strong> ${escapeHtml(v2.sourceType || 'unknown')}</p>
+                <p><strong>Publication profile:</strong> ${escapeHtml(v2.profile || 'unknown')}</p>
+                ${v2.firstObservedAt ? `<p><strong>First observed:</strong> ${escapeHtml(v2.firstObservedAt)}</p>` : ''}
+                ${v2.lastObservedAt ? `<p><strong>Last observed:</strong> ${escapeHtml(v2.lastObservedAt)}</p>` : ''}
+                ${v2.observationCount != null ? `<p><strong>Observations retained:</strong> ${escapeHtml(v2.observationCount)}</p>` : ''}
+                <p class="data-limitation">These fields describe the project's records and publication status; they do not certify that a facility is currently operating.</p>
+            </div>` : '';
 
     let animals_processed_monthly_text = "N/A";
     if (location.processing_volume_category) {
@@ -303,7 +323,7 @@ export function buildLocationPopup(location, facilityTypeLabel) {
         <div class="info-popup">
             <h3>${establishmentName}</h3>
             <p1><strong>${locationTypeText}</strong></p1><br>
-            <p1>(${location.latitude}, ${location.longitude}) ${disclaimerText}</p1>
+            <p1>${coordinateText} ${disclaimerText}</p1>
             <hr>
             <p><strong>${i18n.t('popups.address')}:</strong> <span class="copyable-text" data-copy="${fullAddress}">${fullAddress}</span></p>
             <p><strong>${i18n.t('popups.id')}:</strong> <span class="copyable-text" data-copy="${establishmentId}">${establishmentId}</span></p>
@@ -313,7 +333,8 @@ export function buildLocationPopup(location, facilityTypeLabel) {
             ${hasAnimalsProcessed && !isMexican ? `<p><strong>${i18n.t('popups.productsProcessed')}:</strong> ${animalsProcessed}</p>` : ''}
             ${hasProcessingVolume && !isMexican ? `<p><strong>${i18n.t('popups.productVolume')}:</strong> ${animals_processed_monthly_text}</p>` : ''}
             ${slaughterText}
-            <a href="${directionsUrl}" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.getDirections')}</strong></a>${location.country === 'us' || !location.country ? ` | <a href="https://www.fsis.usda.gov/inspection/establishments/meat-poultry-and-egg-product-inspection-directory" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewSource')}</strong></a>` : location.country === 'uk' ? ` | <a href="https://transparentfarms.org.uk/" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewSource')}</strong></a>` : location.country === 'ca' ? ` | <a href="https://open.canada.ca/data/en/dataset/a763088c-018d-48b7-bf47-3027a8c725b8" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewSource')}</strong></a>` : location.country === 'es' ? ` | <a href="https://granjastransparentes.es/" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewSource')}</strong></a>` : location.country === 'mx' ? ` | <a href="https://www.inegi.org.mx/app/mapa/denue/" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewSource')}</strong></a>` : location.country === 'fr' ? ` | <a href="https://www.google.com/maps/d/u/0/viewer?mid=1TGGpOJz40AHgTrbfYMO6sg3XrTFoG31n&ll=48.794860747569736%2C2.0410253416334534&z=8" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewSource')}</strong></a>` : location.country === 'de' ? ` | <a href="https://www.google.com/maps/d/u/0/viewer?mid=1TGGpOJz40AHgTrbfYMO6sg3XrTFoG31n&ll=48.794860747569736%2C2.0410253416334534&z=8" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewSource')}</strong></a>` : ''}
+            ${v2Provenance}
+            ${directionsUrl ? `<a href="${directionsUrl}" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.getDirections')}</strong></a>` : ''}${location.country === 'us' || !location.country ? ` | <a href="https://www.fsis.usda.gov/inspection/establishments/meat-poultry-and-egg-product-inspection-directory" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewSource')}</strong></a>` : location.country === 'uk' ? ` | <a href="https://transparentfarms.org.uk/" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewSource')}</strong></a>` : location.country === 'ca' ? ` | <a href="https://open.canada.ca/data/en/dataset/a763088c-018d-48b7-bf47-3027a8c725b8" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewSource')}</strong></a>` : location.country === 'es' ? ` | <a href="https://granjastransparentes.es/" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewSource')}</strong></a>` : location.country === 'mx' ? ` | <a href="https://www.inegi.org.mx/app/mapa/denue/" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewSource')}</strong></a>` : location.country === 'fr' ? ` | <a href="https://www.google.com/maps/d/u/0/viewer?mid=1TGGpOJz40AHgTrbfYMO6sg3XrTFoG31n&ll=48.794860747569736%2C2.0410253416334534&z=8" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewSource')}</strong></a>` : location.country === 'de' ? ` | <a href="https://www.google.com/maps/d/u/0/viewer?mid=1TGGpOJz40AHgTrbfYMO6sg3XrTFoG31n&ll=48.794860747569736%2C2.0410253416334534&z=8" target="_blank" rel="noopener noreferrer" class="directions-btn"><strong>${i18n.t('popups.viewSource')}</strong></a>` : ''}
         </div>`;
 }
 

@@ -1,0 +1,47 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  standard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install psycopg[binary]
+      - name: Run standard tests in the canonical clean environment
+        shell: pwsh
+        run: ./pipeline/tests/run-standard.ps1
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install psycopg[binary]
+      - name: Run Docker-backed API E2E tests
+        env:
+          UEC_RUN_E2E: '1'
+        run: |
+          python -m unittest pipeline.tests.e2e.test_public_api -v
+          python -m unittest pipeline.tests.e2e.test_community_api -v
+          python -m unittest pipeline.tests.e2e.test_seeded_api -v
+
+  backup-restore:
+    # The PostGIS image is Linux-only; Ubuntu includes PowerShell Core for the drill.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run synthetic backup/restore gate
+        shell: pwsh
+        env:
+          UEC_RUN_E2E: '1'
+        run: ./pipeline/tests/e2e/backup-restore.ps1

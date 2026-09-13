@@ -1,0 +1,151 @@
+{
+  "registry_version": "1.0",
+  "evidence_basis": "Repository evidence only; no live source verification was performed.",
+  "unknown_value": "unknown",
+  "sources": [
+    {
+      "source_id": "ca.locations",
+      "jurisdiction_scope": "Canada; federal and Ontario legacy coverage",
+      "legacy_paths": ["static_data/ca/locations.csv"],
+      "url": "unknown",
+      "access_method": "download or assisted export",
+      "cadence": "unknown",
+      "attribution_licensing_notes": "unknown; confirm source terms and attribution before acquisition",
+      "adapter_status": "not_started",
+      "expected_artifact_schema": "CSV; legacy normalized location rows; exact upstream schema unknown",
+      "blockers": ["Separate federal and Ontario upstream identities and verify current URLs, terms, and fields."]
+    },
+    {
+      "source_id": "de.locations",
+      "jurisdiction_scope": "Germany",
+      "legacy_paths": ["static_data/de/locations.csv"],
+      "url": "https://bltu.bvl.bund.de/bltu/app/process/bvl-btl_p_veroeffentlichung?execution=e6s1",
+      "access_method": "browser-assisted export or download",
+      "cadence": "unknown",
+      "attribution_licensing_notes": "unknown; verify BVL reuse and attribution terms",
+      "adapter_status": "not_started",
+      "expected_artifact_schema": "CSV or tabular export; establishment identifier groups are represented in the legacy file",
+      "blockers": ["The URL is copied from a legacy migration comment and contains a session execution parameter; confirm a stable endpoint and current schema."]
+    },
+    {
+      "source_id": "dk.smiley",
+      "jurisdiction_scope": "Denmark; food and animal-related establishments in Find Smiley coverage",
+      "legacy_paths": ["static_data/dk/locations.csv", "static_data/dk/Smiley_xml.xml"],
+      "url": "https://pub.fvst.dk/publikationer/Smileydata.xml",
+      "access_method": "bulk XML download",
+      "cadence": "weekly",
+      "attribution_licensing_notes": "Repository code names Fødevarestyrelsen; confirm current publication and reuse terms before acquisition.",
+      "adapter_status": "implemented_partial",
+      "expected_artifact_schema": "XML source artifact -> parsed JSONL -> normalized/classified JSONL; source fields are preserved",
+      "blockers": ["Current endpoint, publication date semantics, licensing, and full coverage still require live verification."]
+    },
+    {
+      "source_id": "es.locations",
+      "jurisdiction_scope": "Spain",
+      "legacy_paths": ["static_data/es/locations.csv", "static_data/es/locations.csv.backup"],
+      "url": "unknown",
+      "access_method": "download or assisted export",
+      "cadence": "unknown",
+      "attribution_licensing_notes": "unknown; confirm competent authority, reuse terms, and attribution",
+      "adapter_status": "not_started",
+      "expected_artifact_schema": "CSV; legacy location rows with authority and date fields; exact upstream schema unknown",
+      "blockers": ["Identify the exact competent-authority publication and distinguish source values from legacy transformations."]
+    },
+    {
+      "source_id": "fr.locations",
+      "jurisdiction_scope": "France",
+      "legacy_paths": ["static_data/fr/locations.csv", "france-data.kml"],
+      "url": "unknown",
+      "access_method": "downloaded spreadsheet/text/KML or assisted export",
+      "cadence": "unknown",
+      "attribution_licensing_notes": "unknown; verify DGAL source identity, licence, and attribution",
+      "adapter_status": "not_started",
+      "expected_artifact_schema": "CSV/KML; legacy locations and geometry; exact upstream schema unknown",
+      "blockers": ["Confirm current DGAL publication and whether the KML is an original source or a derived artifact."]
+    },
+    {
+      "source_id": "it.locations",
+      "jurisdiction_scope": "Italy",
+      "legacy_paths": ["dirty-datasets/it/italy_locations.csv", "Old CSVs/italian_facilities.csv"],
+      "url": "https://www.salute.gov.it/consultazioneStabilimenti/ConsultazioneStabilimentiServlet?ACTION=gestioneSingolaCategoria&idNormativa=2&idCategoria=1",
+      "access_method": "HTML table or official export",
+      "cadence": "unknown",
+      "attribution_licensing_notes": "Legacy scraper identifies the Italian Ministry of Health; verify terms and attribution.",
+      "adapter_status": "reference_only",
+      "expected_artifact_schema": "HTML/table export -> preserved source rows; legacy CSV schema is not a canonical upstream schema",
+      "blockers": ["Confirm stable endpoint, pagination, retrieval policy, and source schema; geocoding scripts are separate derived processing."]
+    },
+    {
+      "source_id": "mx.locations",
+      "jurisdiction_scope": "Mexico; mixed official-register and INEGI-derived legacy coverage",
+      "legacy_paths": ["static_data/mx/locations.csv", "Old CSVs/mexico"],
+      "url": "unknown",
+      "access_method": "download/API or assisted export",
+      "cadence": "unknown",
+      "attribution_licensing_notes": "unknown; separate official source terms from INEGI-derived research artifacts before reuse",
+      "adapter_status": "not_started",
+      "expected_artifact_schema": "CSV/official export; legacy material includes location rows and separate aquaculture processing artifacts",
+      "blockers": ["Split official source identities from derived DENUE/aquaculture work and establish source-level provenance."]
+    },
+    {
+      "source_id": "nz.locations",
+      "jurisdiction_scope": "New Zealand; MPI approved premises/register coverage",
+      "legacy_paths": ["static_data/nz/locations.csv"],
+      "url": "https://mpi.my.site.com/publicregister/s/RiskMeasureSearch?riskMeasureType=Risk%20Management%20Programme",
+      "access_method": "browser-assisted public-register export or download",
+      "cadence": "unknown",
+      "attribution_licensing_notes": "Legacy notes identify MPI; verify current terms, attribution, and whether the register endpoint is stable.",
+      "adapter_status": "not_started",
+      "expected_artifact_schema": "Public-register export; identifier, address, processes, species, and expiry fields are described by legacy processing code",
+      "blockers": ["Confirm current register coverage, export format, access limits, and publication semantics."]
+    },
+    {
+      "source_id": "uk.locations",
+      "jurisdiction_scope": "United Kingdom; England, Wales, Northern Ireland, and Scotland legacy coverage",
+      "legacy_paths": ["static_data/uk/locations.csv", "static_data/uk/locations.csv.backup"],
+      "url": "unknown",
+      "access_method": "monthly CSV download or assisted export",
+      "cadence": "monthly",
+      "attribution_licensing_notes": "Legacy inventory names the Food Standards Agency; confirm the applicable national publication licences and attribution.",
+      "adapter_status": "not_started",
+      "expected_artifact_schema": "CSV; publication is split across national administrations; exact schemas unknown",
+      "blockers": ["Identify and model each national feed separately before combining; confirm current URLs and terms."]
+    },
+    {
+      "source_id": "us.fsis",
+      "jurisdiction_scope": "United States; USDA FSIS meat and poultry establishment coverage",
+      "legacy_paths": ["static_data/us/locations.csv"],
+      "url": "unknown",
+      "access_method": "download or official directory export",
+      "cadence": "unknown",
+      "attribution_licensing_notes": "unknown; determine whether legacy rows came from FSIS, another USDA file, or a combination",
+      "adapter_status": "not_started",
+      "expected_artifact_schema": "CSV/directory export; establishment identity, address, and activity fields expected; exact schema unknown",
+      "blockers": ["Trace legacy rows to a specific FSIS artifact and separate any other USDA inputs."]
+    },
+    {
+      "source_id": "us.aphis",
+      "jurisdiction_scope": "United States; USDA APHIS Animal Care public search and annual-report data",
+      "legacy_paths": ["static_data/us/aphis_data_final.csv"],
+      "url": "https://aphis.my.site.com/PublicSearchTool/s/annual-reports",
+      "access_method": "interactive export/browser-assisted retrieval",
+      "cadence": "unknown",
+      "attribution_licensing_notes": "Legacy scripts identify USDA APHIS; confirm export terms, attribution, and handling of license/registrant information.",
+      "adapter_status": "reference_only",
+      "expected_artifact_schema": "CSV export; license, registrant, annual-report, and exception-report fields must remain separately attributed",
+      "blockers": ["Confirm current export workflow and schema; do not merge annual reports or exception reports into a facility master without explicit provenance."]
+    },
+    {
+      "source_id": "us.inspections",
+      "jurisdiction_scope": "United States; USDA APHIS inspection-report observations",
+      "legacy_paths": ["static_data/us/inspection_reports.csv"],
+      "url": "https://efile.aphis.usda.gov/PublicSearchTool/s/inspection-reports",
+      "access_method": "interactive export/browser-assisted retrieval",
+      "cadence": "unknown",
+      "attribution_licensing_notes": "Legacy script identifies USDA APHIS; verify current export terms and attribution.",
+      "adapter_status": "reference_only",
+      "expected_artifact_schema": "CSV inspection observations; not a facility master record",
+      "blockers": ["Confirm current export schema and link observations to facilities only through explicit, reviewable identity matching."]
+    }
+  ]
+}

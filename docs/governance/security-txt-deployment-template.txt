@@ -1,0 +1,7 @@
+# Deploy only after confirming a monitored private reporting route.
+# Contact: mailto:<maintainer-confirmed-security-address>
+# Expires: <ISO-8601 date no later than one year from deployment>
+# Preferred-Languages: en
+# Canonical: https://<verified-host>/.well-known/security.txt
+# Do not publish this template with placeholders. A security.txt route is an
+# operational commitment and must match actual monitoring capacity.

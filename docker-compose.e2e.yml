@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: uec
+      POSTGRES_USER: uec
+      POSTGRES_PASSWORD: uec-e2e
+    # Keep the disposable CI fixture within small Docker Desktop memory budgets.
+    command: ["postgres", "-c", "shared_buffers=32MB", "-c", "max_connections=20", "-c", "work_mem=1MB"]
+    healthcheck:
+      # A running server is not sufficient: the configured database is created
+      # by the image entrypoint shortly after Postgres begins accepting sockets.
+      test: ["CMD-SHELL", "psql -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\" -c \"SELECT 1\" > /dev/null 2>&1"]
+      interval: 1s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
+    ports:
+      - "${UEC_E2E_DB_PORT:-55432}:5432"

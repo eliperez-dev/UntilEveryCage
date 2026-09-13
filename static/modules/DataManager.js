@@ -4,7 +4,8 @@
  * Handles fetching, processing, and storing application data.
  */
 
-import { API_ENDPOINTS } from './constants.js';
+import { API_ENDPOINTS, useV2Api } from './constants.js';
+import { v2Client } from './v2Client.js';
 import { getStateFromCityStateZip } from './geoUtils.js';
 
 class DataManager {
@@ -13,6 +14,13 @@ class DataManager {
         this.allLabLocations = [];
         this.allInspectionReports = [];
         this.isInitialDataLoading = true;
+        this.apiVersion = 'v1';
+        this.v2Meta = null;
+        this.v2Profile = 'official';
+        this.v2Filters = {};
+        this.v2Status = 'idle';
+        this.v2Error = null;
+        this.v2HasMore = false;
     }
 
     /**
@@ -42,6 +50,14 @@ class DataManager {
             ];
             
             let usdaResponse, aphisResponse, inspectionsResponse;
+
+            if (useV2Api()) {
+                updateProgress(30, "Loading the promoted V2 release...");
+                await this.fetchV2Page();
+                updateProgress(100, "Done!");
+                this.isInitialDataLoading = false;
+                return;
+            }
             
             // Create AbortController for timeout handling
             const abortController = new AbortController();
@@ -139,6 +155,53 @@ class DataManager {
 
     getAllLocations() {
         return this.allLocations;
+    }
+
+    async fetchV2Page(filters = {}, signal) {
+        const { profile: ignoredProfile, ...safeFilters } = filters;
+        const isContinuation = Boolean(safeFilters.cursor) && safeFilters.cursor === this.v2Meta?.next_cursor;
+        const comparableFilters = { ...safeFilters, cursor: undefined };
+        const previousFilters = { ...this.v2Filters, cursor: undefined };
+        const restart = !isContinuation && JSON.stringify(comparableFilters) !== JSON.stringify(previousFilters);
+        this.v2Status = 'loading';
+        this.v2Error = null;
+        let result;
+        try {
+            result = await v2Client.list({ profile: 'official', ...safeFilters }, signal);
+        } catch (error) {
+            this.v2Status = 'error';
+            this.v2Error = error;
+            throw error;
+        }
+        this.allLocations = restart ? result.records : [...this.allLocations, ...result.records];
+        this.v2Meta = result.meta;
+        this.apiVersion = 'v2';
+        this.v2Filters = { ...safeFilters, profile: 'official' };
+        this.v2HasMore = Boolean(result.meta.next_cursor);
+        this.v2Status = result.meta.release_id === null ? 'no_release' : 'ready';
+        this.processLocations();
+        return result;
+    }
+
+    async fetchNextV2Page(signal) {
+        if (!this.v2Meta?.next_cursor) {
+            this.v2HasMore = false;
+            return { records: [], meta: this.v2Meta || {} };
+        }
+        return this.fetchV2Page({ ...this.v2Filters, cursor: this.v2Meta.next_cursor }, signal);
+    }
+
+    setV2Profile(profile) {
+        if (profile !== 'official') {
+            throw new Error(`V2 profile is not available in the public UI: ${profile}`);
+        }
+        this.v2Profile = profile;
+        this.v2Filters = {};
+        this.v2Meta = null;
+        this.allLocations = [];
+        this.v2Status = 'idle';
+        this.v2Error = null;
+        this.v2HasMore = false;
     }
 
     getAllLabLocations() {

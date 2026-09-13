@@ -2,7 +2,7 @@ use std::io;
 
 use serde::{Deserialize, Serialize};
 
-use heatmap_backend::Location;
+use uec_api::Location;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 struct Document(Vec<Row>);

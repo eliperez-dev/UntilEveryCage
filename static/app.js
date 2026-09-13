@@ -179,6 +179,18 @@ function applyFilters(shouldUpdateView = false, shouldCenterOnCountry = false) {
 
     filterManager.updateStats(filteredData);
 
+    if (dataManager.apiVersion === 'v2' && elements.statsContainer) {
+        if (dataManager.v2Status === 'error') {
+            elements.statsContainer.textContent = 'V2 data could not be loaded. Existing results remain unchanged.';
+        } else if (dataManager.v2Status === 'no_release') {
+            elements.statsContainer.textContent = 'No promoted V2 release is currently available.';
+        } else if (dataManager.v2HasMore) {
+            elements.statsContainer.textContent += ' Showing the first V2 page; more results are available.';
+        } else if (dataManager.v2Meta?.coverage_note) {
+            elements.statsContainer.textContent += ` ${dataManager.v2Meta.coverage_note}`;
+        }
+    }
+
     const filterState = filterManager.getFilterState();
     
     mapManager.updateMarkers(filteredData, {
