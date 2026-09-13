@@ -124,20 +124,32 @@ pub async fn get_v2_locations_handler(State(state): State<ApiState>, Query(param
         Err(_) => return (StatusCode::BAD_REQUEST, "offset must be an integer").into_response(),
     };
     let client = match state.database.as_ref() { Some(pool) => match pool.get().await { Ok(client) => client, Err(_) => return (StatusCode::SERVICE_UNAVAILABLE, "Database pool unavailable").into_response() }, None => return (StatusCode::SERVICE_UNAVAILABLE, "V2 database is not configured").into_response() };
+    let release = client.query_opt("SELECT release_id, ruleset_version, created_at FROM uec.releases WHERE status = 'promoted' ORDER BY created_at DESC, release_id DESC LIMIT 1", &[]).await;
+    let release = match release {
+        Ok(release) => release,
+        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "V2 release query failed").into_response(),
+    };
+    let Some(release) = release else {
+        return Json(serde_json::json!({"data": [], "api_version": "v2", "meta": {"release_id": null, "profile": "official", "coverage_note": "No promoted release is currently available."}})).into_response();
+    };
+    let promoted_release_id: String = release.get(0);
+    let promoted_ruleset: String = release.get(1);
+    let promoted_created_at: chrono::DateTime<chrono::Utc> = release.get(2);
     let rows = match client.query(r#"
         SELECT facility_id, canonical_name, country_code, city, display_precision,
                ST_Y(display_location::geometry), ST_X(display_location::geometry),
                first_observed_at, last_observed_at, observation_count, lifecycle_status,
-               provenance_origin_type, provenance_source_url, release_id, release_ruleset_version,
+               provenance_origin_type, release_id, release_ruleset_version,
                provenance_source_id, provenance_source_name, provenance_source_url, provenance_retrieved_at
         FROM uec.map_facilities_display_history
-        WHERE ($1::text IS NULL OR country_code = $1)
-          AND ($2::text IS NULL OR classification_category = $2)
-          AND ($3::text IS NULL OR display_precision = $3)
-          AND ($4::text IS NULL OR lifecycle_status = $4)
-          AND ($5::text IS NULL OR provenance_origin_type = $5)
-        ORDER BY facility_id LIMIT $6 OFFSET $7
-    "#, &[&params.country_code, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &limit, &offset]).await {
+        WHERE release_id = $1
+          AND ($2::text IS NULL OR country_code = $2)
+          AND ($3::text IS NULL OR classification_category = $3)
+          AND ($4::text IS NULL OR display_precision = $4)
+          AND ($5::text IS NULL OR lifecycle_status = $5)
+          AND ($6::text IS NULL OR provenance_origin_type = $6)
+        ORDER BY facility_id LIMIT $7 OFFSET $8
+    "#, &[&promoted_release_id, &params.country_code, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &limit, &offset]).await {
         Ok(rows) => rows,
         Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "V2 location query failed").into_response(),
     };
@@ -145,18 +157,17 @@ pub async fn get_v2_locations_handler(State(state): State<ApiState>, Query(param
         facility_id: row.get(0), canonical_name: row.get(1), country_code: row.get(2), city: row.get(3),
         display_precision: row.get(4), latitude: row.get(5), longitude: row.get(6),
         first_observed_at: row.get(7), last_observed_at: row.get(8), observation_count: row.get(9),
-        lifecycle_status: row.get(10), source_type: row.get(11), provenance_source: row.get(12),
-        release_id: row.get(13), release_ruleset_version: row.get(14), provenance_source_id: row.get(15),
-        provenance_source_name: row.get(16), provenance_source_url: row.get(17), provenance_retrieved_at: row.get(18),
+        lifecycle_status: row.get(10), source_type: row.get(11),
+        release_id: row.get(12), release_ruleset_version: row.get(13), provenance_source_id: row.get(14),
+        provenance_source: row.get(15), provenance_source_name: row.get(15), provenance_source_url: row.get(16), provenance_retrieved_at: row.get(17),
     }).collect::<Vec<_>>();
-    let release = client.query_opt("SELECT release_id, ruleset_version, created_at FROM uec.releases WHERE status = 'promoted' ORDER BY created_at DESC LIMIT 1", &[]).await.ok().flatten();
-    let metadata = release.map(|row| serde_json::json!({
-        "release_id": row.get::<_, String>(0),
-        "ruleset_version": row.get::<_, String>(1),
-        "release_created_at": row.get::<_, chrono::DateTime<chrono::Utc>>(2),
+    let metadata = serde_json::json!({
+        "release_id": promoted_release_id,
+        "ruleset_version": promoted_ruleset,
+        "release_created_at": promoted_created_at,
         "profile": "official",
         "coverage_note": "Results are limited to the selected promoted release and public-access policy."
-    })).unwrap_or_else(|| serde_json::json!({"release_id": null, "profile": "official", "coverage_note": "No promoted release is currently available."}));
+    });
     Json(serde_json::json!({"data": data, "api_version": "v2", "meta": metadata})).into_response()
 }
 

@@ -32,8 +32,18 @@ class SeededApiE2ETests(unittest.TestCase):
         self.assertEqual(logistics[0]['canonical_name'], 'E2E unmapped')
 
     def test_provenance_and_precision_are_returned_for_each_public_record(self):
-        for row in self.get('/api/v2/locations?limit=100')['data']:
+        response = self.get('/api/v2/locations?limit=100')
+        self.assertEqual(response['meta']['release_id'], 'e2e-promoted')
+        self.assertEqual(response['meta']['ruleset_version'], 'e2e-v1')
+        self.assertEqual(response['meta']['profile'], 'official')
+        for row in response['data']:
             self.assertEqual(row['source_type'], 'official')
+            self.assertEqual(row['provenance_source_id'], 'e2e.official')
+            self.assertEqual(row['provenance_source_name'], 'Synthetic official source')
+            self.assertEqual(row['provenance_source_url'], 'https://example.invalid/official')
+            self.assertEqual(row['release_id'], response['meta']['release_id'])
+            self.assertEqual(row['release_ruleset_version'], response['meta']['ruleset_version'])
+            self.assertIsNotNone(row['provenance_retrieved_at'])
             self.assertIn(row['display_precision'], ('exact', 'city', 'unmapped'))
             self.assertEqual(row['observation_count'], 1)
             self.assertIsNotNone(row['first_observed_at'])
