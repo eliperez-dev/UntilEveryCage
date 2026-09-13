@@ -99,6 +99,13 @@ class E2EEnvironment:
                 db.execute("INSERT INTO uec.releases (release_id,status,ruleset_version,summary) VALUES ('e2e-failed-candidate','candidate','e2e-v2','{}')")
                 db.execute("INSERT INTO uec.validation_findings (severity,code,details) VALUES ('error','synthetic_failure','{}')")
 
+    def restore_restricted_record(self):
+        """Append a restoration event; the original evidence is unchanged."""
+        with psycopg.connect(self.database_url) as db:
+            with db.transaction():
+                record = db.execute("SELECT source_record_id FROM uec.source_records WHERE source_record_key = 'restricted'").fetchone()[0]
+                db.execute("INSERT INTO uec.record_access_events (source_record_id,action,reason_category,policy_version,maintainer) VALUES (%s,'public_access_restored','privacy','ethics-v1','e2e')", (record,))
+
     def __enter__(self):
         return self.start()
 

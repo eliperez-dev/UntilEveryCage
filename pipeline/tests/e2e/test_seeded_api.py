@@ -58,4 +58,9 @@ class SeededApiE2ETests(unittest.TestCase):
         self.assertEqual(response['meta']['release_id'], 'e2e-promoted')
         self.assertTrue(response['data'])
 
+    def test_z_restoration_requires_an_explicit_append_only_event(self):
+        self.env.restore_restricted_record()
+        names = {r['canonical_name'] for r in self.get('/api/v2/locations?limit=100')['data']}
+        self.assertIn('E2E restricted', names)
+
 if __name__ == '__main__': unittest.main()
