@@ -15,16 +15,17 @@ New-Item -ItemType Directory -Force -Path $outputDirectory | Out-Null
 
 $excludedDirectories = @('node_modules', '.git', 'target')
 $files = Get-ChildItem -LiteralPath $RepositoryRoot -Recurse -File | Where-Object {
-    $relative = $_.FullName.Substring($RepositoryRoot.Length).TrimStart('\')
-    ($relative -notlike 'data\manifests\*') -and
-    ($excludedDirectories | ForEach-Object { $relative -notlike "$_\*" }) -notcontains $false -and
+    $relative = [System.IO.Path]::GetRelativePath($RepositoryRoot, $_.FullName).Replace('\', '/')
+    $pathParts = $relative.Split('/')
+    ($relative -notlike 'data/manifests/*') -and
+    ($excludedDirectories -notcontains $pathParts[0]) -and
     ($_.Extension.ToLowerInvariant() -in @('.csv', '.xml', '.kml', '.txt')) -and
-    ($relative -like 'static_data\*' -or $relative -like 'Old CSVs\*' -or $relative -like 'dirty-datasets\*' -or $relative -eq 'france-data.kml')
+    ($relative -like 'static_data/*' -or $relative -like 'Old CSVs/*' -or $relative -like 'dirty-datasets/*' -or $relative -eq 'france-data.kml')
 } | Sort-Object FullName
 
 $generatedAt = (Get-Date).ToUniversalTime().ToString('o')
 $rows = @(foreach ($file in $files) {
-    $relative = $file.FullName.Substring($RepositoryRoot.Length).TrimStart('\').Replace('\', '/')
+    $relative = [System.IO.Path]::GetRelativePath($RepositoryRoot, $file.FullName).Replace('\', '/')
     $sha256 = [System.Security.Cryptography.SHA256]::Create()
     try {
         $hash = ([System.BitConverter]::ToString($sha256.ComputeHash([System.IO.File]::ReadAllBytes($file.FullName))) -replace '-', '').ToLowerInvariant()
