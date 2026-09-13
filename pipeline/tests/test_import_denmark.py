@@ -10,6 +10,11 @@ SPEC.loader.exec_module(MODULE)
 
 
 class DenmarkImporterTests(unittest.TestCase):
+    def test_current_acquisition_metadata_aliases_are_accepted(self):
+        metadata = {"final_url": "https://example.invalid/data", "artifact": "Smileydata.xml", "byte_size": 12}
+        self.assertEqual(MODULE.metadata_value(metadata, "source_url", "final_url"), "https://example.invalid/data")
+        self.assertEqual(MODULE.metadata_value(metadata, "artifact_path", "artifact"), "Smileydata.xml")
+        self.assertEqual(MODULE.metadata_value(metadata, "bytes", "byte_size"), 12)
     def test_single_point_requires_explicit_coordinate_review(self):
         item = {
             "acceptance": "accepted_single_point",

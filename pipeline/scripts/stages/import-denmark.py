@@ -15,6 +15,13 @@ def now():
     return datetime.now(timezone.utc)
 
 
+def metadata_value(metadata, *names):
+    for name in names:
+        if metadata.get(name) is not None:
+            return metadata[name]
+    return None
+
+
 def point_from_geocode(item):
     # A provider's one-point response is evidence for review, not permission
     # to store/display a precise point. Only an explicit review decision can
@@ -55,16 +62,16 @@ def run(classified_path: Path, artifact_metadata_path: Path, geocode_path: Path 
                 INSERT INTO uec.sources(source_id, country_code, name, official_url, access_method, cadence, status, attribution)
                 VALUES ('dk.smiley', 'DK', 'Find Smiley', %s, 'bulk_xml', 'weekly', 'active', 'Fødevarestyrelsen')
                 ON CONFLICT (source_id) DO NOTHING
-            """, (artifact["source_url"],))
+            """, (metadata_value(artifact, "source_url", "final_url", "requested_url"),))
             connection.execute("""
                 INSERT INTO uec.acquisition_runs(run_id, source_id, checked_at, retrieved_at, ingested_at, status, source_url, code_version, config_version)
                 VALUES (%s, 'dk.smiley', %s, %s, %s, 'changed', %s, 'import-denmark.py', 'denmark-classification-v1')
-            """, (run_id, checked_at, artifact.get("retrieved_at_utc"), checked_at, artifact["source_url"]))
+            """, (run_id, checked_at, artifact.get("retrieved_at_utc"), checked_at, metadata_value(artifact, "source_url", "final_url", "requested_url")))
             connection.execute("""
                 INSERT INTO uec.raw_artifacts(artifact_id, storage_key, sha256, byte_size, media_type, retrieved_at)
                 VALUES (%s, %s, %s, %s, 'application/xml', %s)
                 ON CONFLICT (sha256) DO NOTHING
-            """, (artifact_id, artifact["artifact_path"], artifact["sha256"], artifact["bytes"], artifact["retrieved_at_utc"]))
+            """, (artifact_id, metadata_value(artifact, "artifact_path", "artifact"), artifact["sha256"], metadata_value(artifact, "bytes", "byte_size"), artifact["retrieved_at_utc"]))
             artifact_id = connection.execute("SELECT artifact_id FROM uec.raw_artifacts WHERE sha256=%s", (artifact["sha256"],)).fetchone()[0]
             connection.execute("INSERT INTO uec.acquisition_run_artifacts(run_id, artifact_id) VALUES (%s, %s)", (run_id, artifact_id))
             connection.execute("INSERT INTO uec.releases(release_id, status, ruleset_version, summary) VALUES (%s, 'candidate', 'denmark-classification-v1', %s) ON CONFLICT DO NOTHING", (release_id, json.dumps({"source": "dk.smiley", "run_id": str(run_id)})))
