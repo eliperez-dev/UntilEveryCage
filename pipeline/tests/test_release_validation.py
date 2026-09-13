@@ -11,13 +11,18 @@ SPEC.loader.exec_module(MODULE)
 
 class ReleaseValidationTests(unittest.TestCase):
     def test_complete_release_passes(self):
-        report = MODULE.evaluate({"release_records": 10, "duplicate_observations": 0, "validation_errors": 0, "review_visible": 0}, 10)
+        report = MODULE.evaluate({"release_records": 10, "duplicate_observations": 0, "validation_errors": 0, "review_visible": 0, "coordinate_not_ready": 0, "publication_not_approved": 0, "active_suppression": 0}, 10)
         self.assertEqual(report["status"], "passed")
 
     def test_incomplete_or_unsafe_release_is_blocked(self):
-        report = MODULE.evaluate({"release_records": 9, "duplicate_observations": 1, "validation_errors": 2, "review_visible": 1}, 10)
+        report = MODULE.evaluate({"release_records": 9, "duplicate_observations": 1, "validation_errors": 2, "review_visible": 1, "coordinate_not_ready": 2, "publication_not_approved": 3, "active_suppression": 1}, 10)
         self.assertEqual(report["status"], "blocked")
-        self.assertEqual({finding["code"] for finding in report["findings"]}, {"record_count_mismatch", "duplicate_release_observations", "validation_errors", "review_required_visible"})
+        self.assertEqual({finding["code"] for finding in report["findings"]}, {"record_count_mismatch", "duplicate_release_observations", "validation_errors", "review_required_visible", "coordinate_not_ready", "publication_not_approved", "active_suppression"})
+
+    def test_publication_safety_gates_block_candidate(self):
+        report = MODULE.evaluate({"release_records": 1, "duplicate_observations": 0, "validation_errors": 0, "review_visible": 0, "coordinate_not_ready": 1, "publication_not_approved": 1, "active_suppression": 1})
+        self.assertEqual(report["status"], "blocked")
+        self.assertEqual({finding["code"] for finding in report["findings"]}, {"coordinate_not_ready", "publication_not_approved", "active_suppression"})
 
     def test_html_report_is_human_readable(self):
         report = {"release_id": "test-release", "status": "passed", "metrics": {"release_records": 2}, "findings": []}
