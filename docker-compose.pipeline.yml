@@ -5,6 +5,11 @@ services:
       POSTGRES_DB: uec
       POSTGRES_USER: uec
       POSTGRES_PASSWORD: uec-local-development-only
+    healthcheck:
+      test: ["CMD-SHELL", "psql -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\" -c \"SELECT 1\" >/dev/null 2>&1"]
+      interval: 1s
+      timeout: 5s
+      retries: 60
     ports:
       - "5433:5432"
     volumes:

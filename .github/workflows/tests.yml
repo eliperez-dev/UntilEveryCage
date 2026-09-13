@@ -15,9 +15,15 @@ jobs:
           python-version: '3.11'
       - run: pip install psycopg[binary]
       - name: Start PostGIS for database-backed tests
-        run: docker compose -f docker-compose.pipeline.yml up -d
+        run: docker compose -f docker-compose.pipeline.yml up -d --wait
+      - name: Apply current database migrations
+        env:
+          UEC_DATABASE_URL: postgresql://uec:uec-local-development-only@localhost:5433/uec
+        run: cat pipeline/migrations/*.sql | docker compose -f docker-compose.pipeline.yml exec -T postgres psql -v ON_ERROR_STOP=1 -U uec -d uec
       - run: cargo test --locked
       - run: python -m unittest discover -s pipeline/tests -q
+        env:
+          UEC_DATABASE_URL: postgresql://uec:uec-local-development-only@localhost:5433/uec
       - name: Stop PostGIS
         if: always()
         run: docker compose -f docker-compose.pipeline.yml down -v
@@ -37,7 +43,8 @@ jobs:
         run: python -m unittest discover -s pipeline/tests/e2e -p 'test_*.py' -v
 
   backup-restore:
-    runs-on: windows-latest
+    # The PostGIS image is Linux-only; Ubuntu includes PowerShell Core for the drill.
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Run synthetic backup/restore gate
