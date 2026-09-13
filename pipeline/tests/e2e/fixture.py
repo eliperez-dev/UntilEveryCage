@@ -106,6 +106,24 @@ class E2EEnvironment:
                 record = db.execute("SELECT source_record_id FROM uec.source_records WHERE source_record_key = 'restricted'").fetchone()[0]
                 db.execute("INSERT INTO uec.record_access_events (source_record_id,action,reason_category,policy_version,maintainer) VALUES (%s,'public_access_restored','privacy','ethics-v1','e2e')", (record,))
 
+    def seed_community_scenario(self):
+        """Seed one eligible and one ineligible community claim."""
+        now = datetime.now(timezone.utc)
+        with psycopg.connect(self.database_url) as db:
+            with db.transaction():
+                db.execute("INSERT INTO uec.sources (source_id,country_code,name,official_url,access_method,origin_type) VALUES ('e2e.community','DK','Synthetic community source','https://example.invalid/community','fixture','user_submitted')")
+                db.execute("INSERT INTO uec.releases (release_id,status,ruleset_version,profile,summary) VALUES ('e2e-community','promoted','community-v1','community','{}')")
+                for name, eligible in (("eligible", True), ("unreviewed", False)):
+                    record = uuid.uuid4(); facility = uuid.uuid4(); observation = uuid.uuid4(); artifact = uuid.uuid4()
+                    db.execute("INSERT INTO uec.raw_artifacts (artifact_id,storage_key,sha256,byte_size,retrieved_at) VALUES (%s,%s,%s,1,%s)", (artifact, f'e2e-community/{name}', uuid.uuid4().hex*2, now))
+                    db.execute("INSERT INTO uec.source_records (source_record_id,source_id,source_record_key,artifact_id,raw_fields,parsed_at) VALUES (%s,'e2e.community',%s,%s,'{}',%s)", (record,name,artifact,now))
+                    db.execute("INSERT INTO uec.facilities (facility_id,canonical_name,country_code,city) VALUES (%s,%s,'DK','Communityby')", (facility, f'E2E community {name}'))
+                    db.execute("INSERT INTO uec.observations (observation_id,facility_id,source_record_id,observed_at,observation,classification,ruleset_id,rule_id,classification_category,classification_review_status,default_visible,first_observed_at) VALUES (%s,%s,%s,%s,'{}','{}','community-v1','e2e','slaughter','approved',true,%s)", (observation,facility,record,now,now))
+                    db.execute("INSERT INTO uec.release_members (release_id,facility_id,observation_id,default_visible) VALUES ('e2e-community',%s,%s,true)", (facility,observation))
+                    db.execute("INSERT INTO uec.geocode_results (source_record_id,provider_id,query,match_method,status,attempt_number,result,queried_at) VALUES (%s,'e2e','community fixture','fixture','accepted',1,ST_SetSRID(ST_MakePoint(12,56),4326)::geography,%s)", (record,now))
+                    if eligible:
+                        db.execute("INSERT INTO uec.publication_review_events (source_record_id,factual_review_status,privacy_screening_status,maintainer_approval,publication_eligible,reviewer_role,note) VALUES (%s,'reviewed','passed','approved',true,'maintainer','Synthetic eligible claim')", (record,))
+
     def __enter__(self):
         return self.start()
 
