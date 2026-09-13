@@ -60,7 +60,10 @@ class E2EEnvironment:
 
     def stop(self):
         if self.backend and self.backend.poll() is None:
-            subprocess.run(["taskkill", "/PID", str(self.backend.pid), "/T", "/F"], check=False, capture_output=True)
+            if os.name == "nt":
+                subprocess.run(["taskkill", "/PID", str(self.backend.pid), "/T", "/F"], check=False, capture_output=True)
+            else:
+                self.backend.terminate()
             self.backend.wait(timeout=10)
         subprocess.run(self.command("down", "-v", "--remove-orphans"), cwd=ROOT, check=False, capture_output=True, text=True, env=self.compose_env())
 

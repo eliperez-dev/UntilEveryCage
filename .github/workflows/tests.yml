@@ -14,8 +14,13 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install psycopg[binary]
+      - name: Start PostGIS for database-backed tests
+        run: docker compose -f docker-compose.pipeline.yml up -d
       - run: cargo test --locked
       - run: python -m unittest discover -s pipeline/tests -q
+      - name: Stop PostGIS
+        if: always()
+        run: docker compose -f docker-compose.pipeline.yml down -v
 
   e2e:
     runs-on: ubuntu-latest
