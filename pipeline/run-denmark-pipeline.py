@@ -9,6 +9,7 @@ import json
 import logging
 import subprocess
 import sys
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -64,7 +65,12 @@ def artifact_manifest(run_dir: Path, input_path: Path, started_at: str, complete
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("input", type=Path, help="Downloaded official Smileydata.xml")
+    parser.add_argument("input", nargs="?", type=Path, help="Previously archived or local Smileydata.xml")
+    parser.add_argument("--fetch", action="store_true", help="Acquire dk.smiley first; requires --terms-review and does not import or promote.")
+    parser.add_argument("--terms-review", type=Path, help="Approved terms-review JSON required with --fetch.")
+    parser.add_argument("--source-url", help="Optional requested URL override for --fetch.")
+    parser.add_argument("--raw-output-root", type=Path, default=ROOT / "data/raw", help="Archive root for --fetch.")
+    parser.add_argument("--run-id", help="Acquisition run ID for --fetch.")
     parser.add_argument("--rules", type=Path, default=ROOT / "pipeline/config/denmark-classification-v1.json")
     parser.add_argument("--output-dir", type=Path, help="Run directory; defaults to data/staging/<UTC run>")
     parser.add_argument("--expected-rows", type=int)
@@ -73,7 +79,27 @@ def main() -> int:
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%SZ")
-    input_path = args.input.resolve()
+    if args.fetch and args.input is not None:
+        parser.error("input cannot be provided with --fetch")
+    if not args.fetch and args.input is None:
+        parser.error("input is required unless --fetch is used")
+    if args.fetch and args.terms_review is None:
+        parser.error("--terms-review is required with --fetch")
+    if args.fetch:
+        terms_review_path = args.terms_review.resolve()
+        raw_output_root = args.raw_output_root.resolve()
+        acquisition_run_id = args.run_id or (datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8])
+        acquisition_args = ["--fetch", "--output-root", str(raw_output_root), "--terms-review", str(terms_review_path), "--run-id", acquisition_run_id]
+        if args.source_url:
+            acquisition_args.extend(["--url", args.source_url])
+        run_stage("acquire", SCRIPTS / "acquire-denmark-smiley.py", acquisition_args)
+        acquisition_root = raw_output_root / "dk.smiley"
+        input_path = (acquisition_root / acquisition_run_id / "Smileydata.xml").resolve()
+        acquisition_metadata = json.loads((input_path.parent / "acquisition-metadata.json").read_text(encoding="utf-8"))
+        acquired_source_url = acquisition_metadata.get("final_url") or acquisition_metadata.get("requested_url")
+    else:
+        input_path = args.input.resolve()
+        acquired_source_url = None
     if not input_path.is_file():
         LOGGER.error("pipeline status=failed reason=input_not_found input=%s", input_path)
         return 2
@@ -89,7 +115,10 @@ def main() -> int:
         classify_dir = run_dir / "03-classify"
         validate_dir = run_dir / "04-validate"
         geocode_dir = run_dir / "05-geocode-queue"
-        run_stage("parse", SCRIPTS / "parse-denmark-smiley.py", [str(input_path), "--output-dir", str(parse_dir)])
+        parse_args = [str(input_path), "--output-dir", str(parse_dir)]
+        if acquired_source_url and acquired_source_url != "unknown":
+            parse_args.extend(["--source-url", acquired_source_url])
+        run_stage("parse", SCRIPTS / "parse-denmark-smiley.py", parse_args)
         run_stage("normalize", SCRIPTS / "normalize-denmark-smiley.py", [str(parse_dir / "parsed-rows.jsonl"), "--output-dir", str(normalize_dir)])
         run_stage("classify", SCRIPTS / "classify-denmark.py", [str(normalize_dir / "normalized-records.jsonl"), "--rules", str(args.rules.resolve()), "--output-dir", str(classify_dir)])
         validation_args = [str(classify_dir / "classified-records.jsonl"), "--output-dir", str(validate_dir)]
