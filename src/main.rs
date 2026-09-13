@@ -16,8 +16,12 @@
 
 // Contact the developer directly at untileverycageproject@protonmail.com
 use axum::http::{HeaderValue, Method};
+use axum::http::{Request, Response, header};
 use axum::{Json, http::StatusCode, response::IntoResponse};
 use axum::{Router, routing::get};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::CorsLayer;
 
@@ -54,8 +58,61 @@ pub fn app(state: uec_api::ApiState) -> Router {
         .route("/api/aphis-query", get(uec_api::get_aphis_query_handler))
         .fallback_service(ServeDir::new("static"))
         .layer(CompressionLayer::new().br(true))
+        .layer(axum::middleware::from_fn(rate_limit))
         .layer(cors)
         .with_state(state)
+}
+
+const RATE_WINDOW: Duration = Duration::from_secs(60);
+const RATE_LIMIT: u32 = 60;
+static GLOBAL_LIMITER: once_cell::sync::Lazy<Limiter> =
+    once_cell::sync::Lazy::new(Limiter::default);
+
+#[derive(Clone, Default)]
+struct Limiter(Arc<Mutex<HashMap<String, (Instant, u32)>>>);
+
+impl Limiter {
+    fn allow(&self, key: String, now: Instant) -> bool {
+        let mut entries = self.0.lock().expect("rate limiter mutex poisoned");
+        entries.retain(|_, (started, _)| now.duration_since(*started) < RATE_WINDOW);
+        let entry = entries.entry(key).or_insert((now, 0));
+        if now.duration_since(entry.0) >= RATE_WINDOW {
+            *entry = (now, 0);
+        }
+        entry.1 += 1;
+        entry.1 <= RATE_LIMIT
+    }
+}
+
+async fn rate_limit(
+    request: Request<axum::body::Body>,
+    next: axum::middleware::Next,
+) -> Response<axum::body::Body> {
+    if request.uri().path().starts_with("/health/") {
+        return next.run(request).await;
+    }
+    let trusted_proxy = std::env::var("UEC_TRUST_PROXY").as_deref() == Ok("true");
+    let key = if trusted_proxy {
+        request
+            .headers()
+            .get("x-forwarded-for")
+            .and_then(|v| v.to_str().ok())
+            .map(|v| format!("proxy:{}", v.split(',').next().unwrap_or("unknown")))
+            .unwrap_or_else(|| "proxy:unknown".into())
+    } else {
+        "process-wide".into()
+    };
+    if !GLOBAL_LIMITER.allow(key, Instant::now()) {
+        return Response::builder()
+            .status(StatusCode::TOO_MANY_REQUESTS)
+            .header(header::RETRY_AFTER, RATE_WINDOW.as_secs().to_string())
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(axum::body::Body::from(
+                r#"{"status":"rate_limited","reason":"request_rate_limit"}"#,
+            ))
+            .unwrap();
+    }
+    next.run(request).await
 }
 
 async fn liveness() -> impl IntoResponse {
@@ -169,5 +226,33 @@ mod config_tests {
         assert!(validate_runtime("test", Some("redacted"), "8000").is_err());
         assert!(validate_runtime("production", Some("redacted"), "bad").is_err());
         assert!(validate_runtime("production", Some("redacted"), "0").is_err());
+    }
+}
+
+#[cfg(test)]
+mod rate_limit_tests {
+    use super::*;
+    #[test]
+    fn enforces_limit_and_resets_window() {
+        let limiter = Limiter::default();
+        let start = Instant::now();
+        for _ in 0..RATE_LIMIT {
+            assert!(limiter.allow("synthetic".into(), start));
+        }
+        assert!(!limiter.allow("synthetic".into(), start));
+        assert!(limiter.allow(
+            "synthetic".into(),
+            start + RATE_WINDOW + Duration::from_secs(1)
+        ));
+    }
+    #[test]
+    fn separate_keys_are_independent_and_expired_entries_cleanup() {
+        let limiter = Limiter::default();
+        let start = Instant::now();
+        assert!(limiter.allow("a".into(), start));
+        assert!(limiter.allow("b".into(), start));
+        let later = start + RATE_WINDOW + Duration::from_secs(1);
+        assert!(limiter.allow("c".into(), later));
+        assert_eq!(limiter.0.lock().unwrap().len(), 1);
     }
 }

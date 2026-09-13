@@ -1,5 +1,12 @@
 # V2 location API contract
 
+The API applies a bounded in-memory request limiter to non-health routes. The
+default is 60 requests per process-wide 60-second window; health endpoints are
+exempt. Trusted-proxy `X-Forwarded-For` handling is disabled unless
+`UEC_TRUST_PROXY=true` is explicitly configured. No request query, address, or
+durable visitor profile is stored, and rate-limited responses return HTTP 429
+with `Retry-After: 60`.
+
 The V2 public API must read from curated database projections, never raw evidence tables. The default query returns only records in a promoted release that are eligible for public access. It is exposed under `/api/v2/locations`; the legacy `/api/locations` endpoint remains separate during migration.
 
 Each location response includes the stable location ID, name, `category`, source origin, `publication_profile`, independent `factual_review_status`, `privacy_screening_status`, `project_approval`, optional `reviewer_role`, display precision, and provenance. These fields are not inferred from source origin. List responses use `{data: [...], api_version: "v2", meta: {...}}`; detail responses use `{data: {...}, api_version: "v2", meta: {...}}`. Provenance includes `first_observed_at`, `last_observed_at`, and `observation_count`; these describe the project's retained observations, not guaranteed opening or operating dates.
