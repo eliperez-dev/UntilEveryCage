@@ -15,7 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 // Contact the developer directly at untileverycageproject@protonmail.com
-use axum::extract::Query;
+use axum::extract::{Query, State};
 use axum::{Json, http::StatusCode, response::IntoResponse};
 use include_dir::{Dir, include_dir};
 use serde::{Deserialize, Serialize};
@@ -24,7 +24,10 @@ use std::error::Error;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 use once_cell::sync::Lazy;
-use tokio_postgres::NoTls;
+use deadpool_postgres::Pool;
+
+#[derive(Clone)]
+pub struct ApiState { pub database: Option<Pool> }
 
 mod location;
 use crate::location::*;
@@ -88,9 +91,15 @@ pub struct V2Location {
     pub lifecycle_status: String,
     pub source_type: String,
     pub provenance_source: Option<String>,
+    pub release_id: String,
+    pub release_ruleset_version: String,
+    pub provenance_source_id: String,
+    pub provenance_source_name: String,
+    pub provenance_source_url: String,
+    pub provenance_retrieved_at: chrono::DateTime<chrono::Utc>,
 }
 
-pub async fn get_v2_locations_handler(Query(params): Query<V2LocationParams>) -> impl IntoResponse {
+pub async fn get_v2_locations_handler(State(state): State<ApiState>, Query(params): Query<V2LocationParams>) -> impl IntoResponse {
     let limit = match params.limit.as_deref().map(str::parse::<i64>).transpose() {
         Ok(value) => value.unwrap_or(100).clamp(1, 1000),
         Err(_) => return (StatusCode::BAD_REQUEST, "limit must be an integer").into_response(),
@@ -99,20 +108,13 @@ pub async fn get_v2_locations_handler(Query(params): Query<V2LocationParams>) ->
         Ok(value) => value.unwrap_or(0).max(0),
         Err(_) => return (StatusCode::BAD_REQUEST, "offset must be an integer").into_response(),
     };
-    let database_url = match std::env::var("UEC_DATABASE_URL") {
-        Ok(url) => url,
-        Err(_) => return (StatusCode::SERVICE_UNAVAILABLE, "V2 database is not configured").into_response(),
-    };
-    let (client, connection) = match tokio_postgres::connect(&database_url, NoTls).await {
-        Ok(value) => value,
-        Err(error) => return (StatusCode::BAD_GATEWAY, format!("Database connection failed: {error}")).into_response(),
-    };
-    tokio::spawn(async move { let _ = connection.await; });
+    let client = match state.database.as_ref() { Some(pool) => match pool.get().await { Ok(client) => client, Err(_) => return (StatusCode::SERVICE_UNAVAILABLE, "Database pool unavailable").into_response() }, None => return (StatusCode::SERVICE_UNAVAILABLE, "V2 database is not configured").into_response() };
     let rows = match client.query(r#"
         SELECT facility_id, canonical_name, country_code, city, display_precision,
                ST_Y(display_location::geometry), ST_X(display_location::geometry),
                first_observed_at, last_observed_at, observation_count, lifecycle_status,
-               'official', NULL::text
+               provenance_origin_type, provenance_source_url, release_id, release_ruleset_version,
+               provenance_source_id, provenance_source_name, provenance_source_url, provenance_retrieved_at
         FROM uec.map_facilities_display_history
         WHERE ($1::text IS NULL OR country_code = $1)
           AND ($2::text IS NULL OR classification_category = $2)
@@ -128,6 +130,8 @@ pub async fn get_v2_locations_handler(Query(params): Query<V2LocationParams>) ->
         display_precision: row.get(4), latitude: row.get(5), longitude: row.get(6),
         first_observed_at: row.get(7), last_observed_at: row.get(8), observation_count: row.get(9),
         lifecycle_status: row.get(10), source_type: row.get(11), provenance_source: row.get(12),
+        release_id: row.get(13), release_ruleset_version: row.get(14), provenance_source_id: row.get(15),
+        provenance_source_name: row.get(16), provenance_source_url: row.get(17), provenance_retrieved_at: row.get(18),
     }).collect::<Vec<_>>();
     Json(serde_json::json!({"data": data, "api_version": "v2"})).into_response()
 }
@@ -137,12 +141,19 @@ mod v2_api_tests {
     use super::*;
     use axum::{body::Body, http::{Request, StatusCode}, Router};
     use tower::ServiceExt;
+    use tokio_postgres::NoTls;
+
+    async fn test_state() -> ApiState {
+        let mut config = deadpool_postgres::Config::new();
+        config.url = Some(std::env::var("UEC_DATABASE_URL").unwrap_or_else(|_| "postgresql://uec:uec-local-development-only@localhost:5433/uec".into()));
+        ApiState { database: Some(config.create_pool(Some(deadpool_postgres::Runtime::Tokio1), NoTls).unwrap()) }
+    }
 
     #[tokio::test]
     async fn v2_response_is_json_when_database_is_configured() {
         let url = std::env::var("UEC_DATABASE_URL").unwrap_or_else(|_| "postgresql://uec:uec-local-development-only@localhost:5433/uec".into());
         unsafe { std::env::set_var("UEC_DATABASE_URL", url); }
-        let response = Router::new().route("/api/v2/locations", axum::routing::get(get_v2_locations_handler))
+        let response = Router::new().route("/api/v2/locations", axum::routing::get(get_v2_locations_handler)).with_state(test_state().await)
             .oneshot(Request::builder().uri("/api/v2/locations?country_code=DK").body(Body::empty()).unwrap()).await.unwrap();
         let status = response.status();
         if status != StatusCode::OK {
@@ -164,7 +175,7 @@ mod v2_api_tests {
             "/api/v2/locations?country_code=DK&category=retail_and_prepared_food",
             "/api/v2/locations?display_precision=city&lifecycle_status=active_observed",
         ] {
-            let response = Router::new().route("/api/v2/locations", axum::routing::get(get_v2_locations_handler))
+            let response = Router::new().route("/api/v2/locations", axum::routing::get(get_v2_locations_handler)).with_state(test_state().await)
                 .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap()).await.unwrap();
             assert_eq!(response.status(), StatusCode::OK);
             let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
@@ -184,7 +195,7 @@ mod v2_api_tests {
             "/api/v2/locations?category=retail_and_prepared_food&display_precision=exact",
             "/api/v2/locations?lifecycle_status=explicitly_closed",
         ] {
-            let response = Router::new().route("/api/v2/locations", axum::routing::get(get_v2_locations_handler))
+            let response = Router::new().route("/api/v2/locations", axum::routing::get(get_v2_locations_handler)).with_state(test_state().await)
                 .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap()).await.unwrap();
             assert_eq!(response.status(), StatusCode::OK);
             let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
@@ -197,13 +208,27 @@ mod v2_api_tests {
     async fn v2_response_cannot_contain_raw_evidence_fields() {
         let url = std::env::var("UEC_DATABASE_URL").unwrap_or_else(|_| "postgresql://uec:uec-local-development-only@localhost:5433/uec".into());
         unsafe { std::env::set_var("UEC_DATABASE_URL", url); }
-        let response = Router::new().route("/api/v2/locations", axum::routing::get(get_v2_locations_handler))
+        let response = Router::new().route("/api/v2/locations", axum::routing::get(get_v2_locations_handler)).with_state(test_state().await)
             .oneshot(Request::builder().uri("/api/v2/locations?country_code=DK").body(Body::empty()).unwrap()).await.unwrap();
         let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let text = String::from_utf8(body.to_vec()).unwrap();
         for forbidden in ["raw_fields", "street_address", "phone", "private_address"] {
             assert!(!text.contains(forbidden), "public response contained forbidden field {forbidden}");
         }
+    }
+
+    #[tokio::test]
+    async fn v2_handles_concurrent_requests_through_shared_pool() {
+        let state = test_state().await;
+        let router = Router::new().route("/api/v2/locations", axum::routing::get(get_v2_locations_handler)).with_state(state);
+        let requests = (0..12).map(|_| {
+            let router = router.clone();
+            async move {
+                router.oneshot(Request::builder().uri("/api/v2/locations?country_code=DK&limit=1").body(Body::empty()).unwrap()).await.unwrap().status()
+            }
+        });
+        let statuses = futures_util::future::join_all(requests).await;
+        assert!(statuses.iter().all(|status| *status == StatusCode::OK));
     }
 
     #[test]
@@ -213,6 +238,8 @@ mod v2_api_tests {
             city: Some("Testby".into()), display_precision: "city".into(), latitude: Some(55.0), longitude: Some(10.0),
             first_observed_at: None, last_observed_at: None, observation_count: Some(2),
             lifecycle_status: "active_observed".into(), source_type: "official".into(), provenance_source: None,
+            release_id: "test".into(), release_ruleset_version: "test".into(), provenance_source_id: "test".into(),
+            provenance_source_name: "test".into(), provenance_source_url: "https://example.invalid".into(), provenance_retrieved_at: chrono::Utc::now(),
         };
         let json = serde_json::to_value(item).unwrap();
         assert_eq!(json["display_precision"], "city");
