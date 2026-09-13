@@ -306,6 +306,31 @@ pub async fn get_locations_handler(Query(params): Query<LocationParams>) -> impl
     }
 }
 
+const V2_CATEGORIES: &[&str] = &[
+    "slaughter",
+    "fish_processing",
+    "logistics_and_storage",
+    "retail_and_prepared_food",
+];
+const V2_COUNTRIES: &[&str] = &["DK"];
+const V2_SOURCE_TYPES: &[&str] = &["official", "secondary", "user_submitted"];
+const V2_PROFILES: &[&str] = &["official", "secondary", "community"];
+const V2_PRECISIONS: &[&str] = &["exact", "city", "unmapped"];
+const V2_LIFECYCLES: &[&str] = &[
+    "active_observed",
+    "explicitly_closed",
+    "not_seen_recently",
+    "status_unknown",
+];
+
+pub async fn get_v2_filter_metadata_handler() -> impl IntoResponse {
+    Json(json!({"api_version":"v2", "contract_version":"v1", "dimensions": {
+        "country_code":{"values":V2_COUNTRIES}, "category":{"values":V2_CATEGORIES},
+        "source_type":{"values":V2_SOURCE_TYPES}, "profile":{"values":V2_PROFILES,"default":"official"},
+        "display_precision":{"values":V2_PRECISIONS}, "lifecycle_status":{"values":V2_LIFECYCLES}
+    }, "pagination":{"limit_max":1000,"cursor":"facility_id"}, "privacy":"Filters operate only on eligible records in the selected promoted release; filters never override suppression or publication review."})).into_response()
+}
+
 #[derive(Deserialize)]
 pub struct V2LocationParams {
     pub country_code: Option<String>,
@@ -353,17 +378,10 @@ pub async fn get_v2_locations_handler(
     State(state): State<ApiState>,
     Query(params): Query<V2LocationParams>,
 ) -> impl IntoResponse {
-    const PRECISIONS: &[&str] = &["exact", "city", "unmapped"];
-    const LIFECYCLES: &[&str] = &[
-        "active_observed",
-        "explicitly_closed",
-        "not_seen_recently",
-        "status_unknown",
-    ];
     if params
         .display_precision
         .as_deref()
-        .is_some_and(|v| !PRECISIONS.contains(&v))
+        .is_some_and(|v| !V2_PRECISIONS.contains(&v))
     {
         return v2_error(
             StatusCode::BAD_REQUEST,
@@ -374,7 +392,7 @@ pub async fn get_v2_locations_handler(
     if params
         .lifecycle_status
         .as_deref()
-        .is_some_and(|v| !LIFECYCLES.contains(&v))
+        .is_some_and(|v| !V2_LIFECYCLES.contains(&v))
     {
         return v2_error(
             StatusCode::BAD_REQUEST,
@@ -385,8 +403,11 @@ pub async fn get_v2_locations_handler(
     if params
         .category
         .as_deref()
-        .is_some_and(|v| v.trim().is_empty())
-        || params.country_code.as_deref().is_some_and(|v| v.len() != 2)
+        .is_some_and(|v| !V2_CATEGORIES.contains(&v))
+        || params
+            .country_code
+            .as_deref()
+            .is_some_and(|v| v.len() != 2 || !v.chars().all(|c| c.is_ascii_uppercase()))
     {
         return v2_error(
             StatusCode::BAD_REQUEST,
@@ -397,7 +418,7 @@ pub async fn get_v2_locations_handler(
     if params
         .source_type
         .as_deref()
-        .is_some_and(|v| !["official", "secondary", "user_submitted"].contains(&v))
+        .is_some_and(|v| !V2_SOURCE_TYPES.contains(&v))
     {
         return v2_error(
             StatusCode::BAD_REQUEST,
@@ -408,7 +429,7 @@ pub async fn get_v2_locations_handler(
     if params
         .profile
         .as_deref()
-        .is_some_and(|v| !["official", "secondary", "community"].contains(&v))
+        .is_some_and(|v| !V2_PROFILES.contains(&v))
     {
         return v2_error(
             StatusCode::BAD_REQUEST,
@@ -763,6 +784,14 @@ mod v2_api_tests {
         assert_eq!(contract["version"], "v2");
         assert_eq!(contract["profiles"].as_array().unwrap().len(), 3);
         assert_eq!(contract["error"]["shape"]["api_version"], "v2");
+    }
+
+    #[tokio::test]
+    async fn filter_metadata_is_versioned_and_allowlisted() {
+        let response = get_v2_filter_metadata_handler().await.into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(V2_CATEGORIES.len(), 4);
+        assert!(!V2_COUNTRIES.contains(&"ZZ"));
     }
 
     #[tokio::test]

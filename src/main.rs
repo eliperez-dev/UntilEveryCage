@@ -23,7 +23,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tower_http::compression::CompressionLayer;
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{AllowOrigin, CorsLayer};
 
 use deadpool_postgres::{Config, ManagerConfig, RecyclingMethod, Runtime};
 use tokio_postgres::NoTls;
@@ -31,14 +31,7 @@ use tokio_postgres_rustls::MakeRustlsConnect;
 use tower_http::services::ServeDir;
 
 pub fn app(state: uec_api::ApiState) -> Router {
-    let origin =
-        std::env::var("UEC_CORS_ORIGIN").unwrap_or_else(|_| "http://localhost:3000".to_string());
-    let origin = origin
-        .parse::<HeaderValue>()
-        .expect("UEC_CORS_ORIGIN must be a valid origin");
-    let cors = CorsLayer::new()
-        .allow_origin(origin)
-        .allow_methods([Method::GET]);
+    let cors = cors_layer().expect("CORS configuration must be validated before app startup");
     Router::new()
         .route("/health/live", get(liveness))
         .route("/health/ready", get(readiness))
@@ -51,6 +44,10 @@ pub fn app(state: uec_api::ApiState) -> Router {
         .route(
             "/api/v2/locations.csv",
             get(uec_api::get_v2_locations_export_handler),
+        )
+        .route(
+            "/api/v2/discovery/filters",
+            get(uec_api::get_v2_filter_metadata_handler),
         )
         .route(
             "/api/v2/locations/{facility_id}",
@@ -70,6 +67,59 @@ pub fn app(state: uec_api::ApiState) -> Router {
         .layer(axum::middleware::from_fn(rate_limit))
         .layer(cors)
         .with_state(state)
+}
+
+fn parse_cors_origins(
+    mode: &str,
+    configured: Option<&str>,
+    legacy: Option<&str>,
+) -> Result<Vec<HeaderValue>, &'static str> {
+    let value = configured.or(legacy).unwrap_or(if mode == "development" {
+        "http://localhost:3000"
+    } else {
+        ""
+    });
+    if mode == "production" && value.trim().is_empty() {
+        return Err("UEC_CORS_ORIGINS is required in production");
+    }
+    let mut origins = Vec::new();
+    for raw in value.split(',').map(str::trim).filter(|v| !v.is_empty()) {
+        if raw == "*" || raw.contains('*') {
+            return Err("UEC_CORS_ORIGINS must not contain wildcards");
+        }
+        let uri = raw
+            .parse::<axum::http::Uri>()
+            .map_err(|_| "UEC_CORS_ORIGINS contains a malformed origin")?;
+        if !matches!(uri.scheme_str(), Some("http") | Some("https"))
+            || uri.host().is_none()
+            || !uri.path().is_empty() && uri.path() != "/"
+            || uri.query().is_some()
+            || raw.contains('#')
+        {
+            return Err("UEC_CORS_ORIGINS must contain bare http(s) origins");
+        }
+        origins.push(
+            raw.parse::<HeaderValue>()
+                .map_err(|_| "UEC_CORS_ORIGINS contains an invalid header value")?,
+        );
+    }
+    if origins.is_empty() {
+        return Err("UEC_CORS_ORIGINS must contain at least one origin");
+    }
+    Ok(origins)
+}
+
+fn cors_layer() -> Result<CorsLayer, &'static str> {
+    let mode = std::env::var("UEC_RUNTIME_MODE").unwrap_or_else(|_| "development".into());
+    let origins = parse_cors_origins(
+        mode.as_str(),
+        std::env::var("UEC_CORS_ORIGINS").ok().as_deref(),
+        std::env::var("UEC_CORS_ORIGIN").ok().as_deref(),
+    )?;
+    Ok(CorsLayer::new()
+        .allow_origin(AllowOrigin::list(origins))
+        .allow_methods([Method::GET, Method::OPTIONS])
+        .allow_headers([axum::http::header::CONTENT_TYPE, axum::http::header::ACCEPT]))
 }
 
 const RATE_WINDOW: Duration = Duration::from_secs(60);
@@ -184,6 +234,17 @@ async fn main() {
         );
         std::process::exit(2)
     });
+    if let Err(error) = parse_cors_origins(
+        mode.as_str(),
+        std::env::var("UEC_CORS_ORIGINS").ok().as_deref(),
+        std::env::var("UEC_CORS_ORIGIN").ok().as_deref(),
+    ) {
+        eprintln!(
+            "{{\"event\":\"configuration_error\",\"reason\":\"{}\"}}",
+            error
+        );
+        std::process::exit(2);
+    }
     let database = database_url.and_then(|url| {
         let mut config = Config::new();
         config.url = Some(url);
@@ -230,7 +291,7 @@ async fn main() {
 
 #[cfg(test)]
 mod config_tests {
-    use super::validate_runtime;
+    use super::{parse_cors_origins, validate_runtime};
     #[test]
     fn development_allows_local_defaults() {
         assert_eq!(validate_runtime("development", None, "8000"), Ok(8000));
@@ -247,6 +308,26 @@ mod config_tests {
         assert!(validate_runtime("test", Some("redacted"), "8000").is_err());
         assert!(validate_runtime("production", Some("redacted"), "bad").is_err());
         assert!(validate_runtime("production", Some("redacted"), "0").is_err());
+    }
+    #[test]
+    fn cors_requires_narrow_production_allowlist() {
+        assert!(parse_cors_origins("production", None, None).is_err());
+        assert!(parse_cors_origins("production", Some("*"), None).is_err());
+        assert!(parse_cors_origins("production", Some("https://example.test/path"), None).is_err());
+        assert_eq!(
+            parse_cors_origins(
+                "production",
+                Some("https://example.test,https://research.test"),
+                None
+            )
+            .unwrap()
+            .len(),
+            2
+        );
+        assert_eq!(
+            parse_cors_origins("development", None, None).unwrap().len(),
+            1
+        );
     }
 }
 

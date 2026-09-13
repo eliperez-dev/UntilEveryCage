@@ -52,5 +52,12 @@ class PublicApiE2ETests(unittest.TestCase):
             self.get("/api/v2/locations?cursor=00000000-0000-0000-0000-000000000000&offset=1")
         self.assertEqual(error.exception.code, 400)
 
+    def test_filter_metadata_is_versioned_and_allowlisted(self):
+        status, body = self.get("/api/v2/discovery/filters")
+        self.assertEqual(status, 200)
+        self.assertEqual(body["api_version"], "v2")
+        self.assertIn("community", body["dimensions"]["profile"]["values"])
+        self.assertNotIn("address", body["dimensions"])
+
 if __name__ == "__main__":
     unittest.main()
