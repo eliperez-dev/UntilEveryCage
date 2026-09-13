@@ -32,7 +32,7 @@ try {
     }
     if (-not $migrationApplied) { throw "Migration $($migration.Name) failed (exit $LASTEXITCODE)." }
   }
-  Get-Content (Join-Path $root 'pipeline\tests\e2e\backup_restore_seed.sql') -Raw | & docker compose -p $project -f $compose exec -T postgres psql -U uec -d uec
+  Get-Content (Join-Path $root 'pipeline\tests\e2e\backup_restore_seed.sql') -Raw | & docker compose -p $project -f $compose exec -T postgres psql -1 -v ON_ERROR_STOP=1 -U uec -d uec
   if ($LASTEXITCODE -ne 0) { throw "Synthetic seed failed (exit $LASTEXITCODE)." }
   & docker compose -p $project -f $compose exec -T postgres pg_dump -U uec -d uec --format=custom --file=/tmp/uec.dump
   if ($LASTEXITCODE -ne 0) { throw "Backup creation failed (exit $LASTEXITCODE)." }

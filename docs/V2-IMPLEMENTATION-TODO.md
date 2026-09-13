@@ -47,9 +47,9 @@ These are confirmed gaps or unavailable verification evidence. They must not be 
 - [ ] Establish authorized maintainer/reviewer availability, publication pause behavior, retention/removal ownership, and operational correction handling.
 - [ ] Audit deployed visitor privacy, logging, CDN/tile/geocoder/error services, and retention behavior.
 - [ ] Publish and monitor a real `security.txt` route rather than only retaining the template.
-- [ ] Resolve the JavaScript test runner environment/configuration failure before relying on the frontend gate.
+- [x] Resolve the JavaScript test runner environment/configuration failure before relying on the frontend gate.
 
-On 2026-09-13, the Rust suite passed 65 tests and the Python unittest suite passed 57 tests with 4 skipped. A disposable PostGIS run applied all 20 migrations twice and confirmed 20 checksum-ledger rows. The backup/restore drill passed with suppression exclusion. Isolated public API (5), community API (3), and seeded API (12) E2E tests passed. Jest could not complete because of worker/ESM environment errors. These results are evidence of partial progress, not Phase 0 certification.
+On 2026-09-13, the Rust suite passed 65 tests and the Python unittest suite passed 57 tests with 3 expected skips in the canonical clean runner. The runner uses the same PowerShell entrypoint in local and GitHub Actions environments, starts a disposable database on an isolated port, applies all 21 migrations, and removes its volume afterward. Jest passed 13 tests. Isolated public API (5), community API (5), and seeded API (12) E2E tests passed. These results support the Phase 0/1 implementation claims; operational and production-policy blockers remain listed below.
 
 ### Phase 0 exit criteria
 

@@ -7,9 +7,9 @@ This document records the current evidence for the V2 backend foundation. It is 
 ## Verified foundation
 
 - Rust backend tests: 65 passed.
-- Python pipeline unit tests: 57 passed, 4 skipped where database/E2E prerequisites were unavailable to the ordinary local suite.
+- Python pipeline unit tests: 57 passed, 3 expected skips in the canonical clean runner.
 - Public API E2E: 5 passed in an isolated disposable PostGIS environment.
-- Community API E2E: 3 passed in an isolated disposable PostGIS environment.
+- Community API E2E: 5 passed in an isolated disposable PostGIS environment.
 - Seeded API E2E: 12 passed in an isolated disposable PostGIS environment.
 - Database migrations 001–020: applied successfully to clean PostGIS.
 - Migration rerun: idempotent; the checksum ledger contained 20 migration rows after the second run.
@@ -40,7 +40,7 @@ These do not invalidate the verified local/CI backend foundation, but they preve
 4. Authorized maintainer/reviewer availability, least-privilege release controls, publication-pause behavior, and legal-demand handling require operational ownership and evidence.
 5. Visitor privacy, hosting/CDN/tile/geocoder/error-provider behavior, logging, and retention remain deployment-audit items.
 6. Current source acquisition is complete only for the Denmark partial vertical slice; other source blockers remain recorded in the source registry.
-7. The full multi-module E2E discovery command has a harness/resource-concurrency issue; isolated module runs are currently the authoritative passing evidence.
+7. The full multi-module E2E discovery command remains intentionally split into sequential modules because each module owns a disposable PostGIS environment; isolated sequential module runs are the authoritative passing evidence.
 8. The existing Jest configuration has an ESM/worker execution failure and is outside the backend certification gate.
 
 ## Handoff decision
