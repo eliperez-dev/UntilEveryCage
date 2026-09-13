@@ -1,0 +1,11 @@
+{
+  "source_id": "dk.smiley",
+  "source_url": "https://pub.fvst.dk/publikationer/Smileydata.xml",
+  "retrieved_at_utc": "2026-09-13T00:25:57.0826907Z",
+  "artifact_path": "data/raw/denmark-smiley/20260913T002554Z/Smileydata.xml",
+  "bytes": 0,
+  "sha256": null,
+  "http_status": null,
+  "status": "failed",
+  "error": "Local network connection actively refused while requesting the official endpoint; no artifact was downloaded."
+}

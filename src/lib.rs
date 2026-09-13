@@ -24,6 +24,7 @@ use std::error::Error;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 use once_cell::sync::Lazy;
+use tokio_postgres::NoTls;
 
 mod location;
 use crate::location::*;
@@ -59,6 +60,165 @@ pub async fn get_locations_handler(Query(params): Query<LocationParams>) -> impl
             format!("Failed to read location data: {}", e),
         )
             .into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct V2LocationParams {
+    pub country_code: Option<String>,
+    pub category: Option<String>,
+    pub display_precision: Option<String>,
+    pub lifecycle_status: Option<String>,
+    pub limit: Option<String>,
+    pub offset: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct V2Location {
+    pub facility_id: uuid::Uuid,
+    pub canonical_name: Option<String>,
+    pub country_code: String,
+    pub city: Option<String>,
+    pub display_precision: String,
+    pub latitude: Option<f64>,
+    pub longitude: Option<f64>,
+    pub first_observed_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub last_observed_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub observation_count: Option<i32>,
+    pub lifecycle_status: String,
+    pub source_type: String,
+    pub provenance_source: Option<String>,
+}
+
+pub async fn get_v2_locations_handler(Query(params): Query<V2LocationParams>) -> impl IntoResponse {
+    let limit = match params.limit.as_deref().map(str::parse::<i64>).transpose() {
+        Ok(value) => value.unwrap_or(100).clamp(1, 1000),
+        Err(_) => return (StatusCode::BAD_REQUEST, "limit must be an integer").into_response(),
+    };
+    let offset = match params.offset.as_deref().map(str::parse::<i64>).transpose() {
+        Ok(value) => value.unwrap_or(0).max(0),
+        Err(_) => return (StatusCode::BAD_REQUEST, "offset must be an integer").into_response(),
+    };
+    let database_url = match std::env::var("UEC_DATABASE_URL") {
+        Ok(url) => url,
+        Err(_) => return (StatusCode::SERVICE_UNAVAILABLE, "V2 database is not configured").into_response(),
+    };
+    let (client, connection) = match tokio_postgres::connect(&database_url, NoTls).await {
+        Ok(value) => value,
+        Err(error) => return (StatusCode::BAD_GATEWAY, format!("Database connection failed: {error}")).into_response(),
+    };
+    tokio::spawn(async move { let _ = connection.await; });
+    let rows = match client.query(r#"
+        SELECT facility_id, canonical_name, country_code, city, display_precision,
+               ST_Y(display_location::geometry), ST_X(display_location::geometry),
+               first_observed_at, last_observed_at, observation_count, lifecycle_status,
+               'official', NULL::text
+        FROM uec.map_facilities_display_history
+        WHERE ($1::text IS NULL OR country_code = $1)
+          AND ($2::text IS NULL OR classification_category = $2)
+          AND ($3::text IS NULL OR display_precision = $3)
+          AND ($4::text IS NULL OR lifecycle_status = $4)
+        ORDER BY facility_id LIMIT $5 OFFSET $6
+    "#, &[&params.country_code, &params.category, &params.display_precision, &params.lifecycle_status, &limit, &offset]).await {
+        Ok(rows) => rows,
+        Err(error) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("V2 query failed: {error}")).into_response(),
+    };
+    let data = rows.into_iter().map(|row| V2Location {
+        facility_id: row.get(0), canonical_name: row.get(1), country_code: row.get(2), city: row.get(3),
+        display_precision: row.get(4), latitude: row.get(5), longitude: row.get(6),
+        first_observed_at: row.get(7), last_observed_at: row.get(8), observation_count: row.get(9),
+        lifecycle_status: row.get(10), source_type: row.get(11), provenance_source: row.get(12),
+    }).collect::<Vec<_>>();
+    Json(serde_json::json!({"data": data, "api_version": "v2"})).into_response()
+}
+
+#[cfg(test)]
+mod v2_api_tests {
+    use super::*;
+    use axum::{body::Body, http::{Request, StatusCode}, Router};
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn v2_response_is_json_when_database_is_configured() {
+        let url = std::env::var("UEC_DATABASE_URL").unwrap_or_else(|_| "postgresql://uec:uec-local-development-only@localhost:5433/uec".into());
+        unsafe { std::env::set_var("UEC_DATABASE_URL", url); }
+        let response = Router::new().route("/api/v2/locations", axum::routing::get(get_v2_locations_handler))
+            .oneshot(Request::builder().uri("/api/v2/locations?country_code=DK").body(Body::empty()).unwrap()).await.unwrap();
+        let status = response.status();
+        if status != StatusCode::OK {
+            let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+            panic!("unexpected status {status}: {}", String::from_utf8_lossy(&body));
+        }
+        assert_eq!(response.headers().get("content-type").unwrap(), "application/json");
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["api_version"], "v2");
+        assert!(json["data"].is_array());
+    }
+
+    #[tokio::test]
+    async fn v2_filters_are_accepted_without_bypassing_public_release_gate() {
+        let url = std::env::var("UEC_DATABASE_URL").unwrap_or_else(|_| "postgresql://uec:uec-local-development-only@localhost:5433/uec".into());
+        unsafe { std::env::set_var("UEC_DATABASE_URL", url); }
+        for uri in [
+            "/api/v2/locations?country_code=DK&category=retail_and_prepared_food",
+            "/api/v2/locations?display_precision=city&lifecycle_status=active_observed",
+        ] {
+            let response = Router::new().route("/api/v2/locations", axum::routing::get(get_v2_locations_handler))
+                .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap()).await.unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+            let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(json["api_version"], "v2");
+            assert!(json["data"].as_array().unwrap().is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn v2_default_and_opt_in_profiles_remain_empty_until_promotion() {
+        let url = std::env::var("UEC_DATABASE_URL").unwrap_or_else(|_| "postgresql://uec:uec-local-development-only@localhost:5433/uec".into());
+        unsafe { std::env::set_var("UEC_DATABASE_URL", url); }
+        for uri in [
+            "/api/v2/locations",
+            "/api/v2/locations?category=logistics_and_storage",
+            "/api/v2/locations?category=retail_and_prepared_food&display_precision=exact",
+            "/api/v2/locations?lifecycle_status=explicitly_closed",
+        ] {
+            let response = Router::new().route("/api/v2/locations", axum::routing::get(get_v2_locations_handler))
+                .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap()).await.unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+            let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            assert!(json["data"].as_array().unwrap().is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn v2_response_cannot_contain_raw_evidence_fields() {
+        let url = std::env::var("UEC_DATABASE_URL").unwrap_or_else(|_| "postgresql://uec:uec-local-development-only@localhost:5433/uec".into());
+        unsafe { std::env::set_var("UEC_DATABASE_URL", url); }
+        let response = Router::new().route("/api/v2/locations", axum::routing::get(get_v2_locations_handler))
+            .oneshot(Request::builder().uri("/api/v2/locations?country_code=DK").body(Body::empty()).unwrap()).await.unwrap();
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let text = String::from_utf8(body.to_vec()).unwrap();
+        for forbidden in ["raw_fields", "street_address", "phone", "private_address"] {
+            assert!(!text.contains(forbidden), "public response contained forbidden field {forbidden}");
+        }
+    }
+
+    #[test]
+    fn v2_schema_serializes_history_and_lifecycle_fields() {
+        let item = V2Location {
+            facility_id: uuid::Uuid::nil(), canonical_name: Some("Example".into()), country_code: "DK".into(),
+            city: Some("Testby".into()), display_precision: "city".into(), latitude: Some(55.0), longitude: Some(10.0),
+            first_observed_at: None, last_observed_at: None, observation_count: Some(2),
+            lifecycle_status: "active_observed".into(), source_type: "official".into(), provenance_source: None,
+        };
+        let json = serde_json::to_value(item).unwrap();
+        assert_eq!(json["display_precision"], "city");
+        assert_eq!(json["observation_count"], 2);
+        assert_eq!(json["lifecycle_status"], "active_observed");
+        assert_eq!(json["source_type"], "official");
     }
 }
 

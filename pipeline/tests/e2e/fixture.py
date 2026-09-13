@@ -1,0 +1,95 @@
+"""Disposable PostGIS and backend fixture used by API E2E tests."""
+import os
+import socket
+import subprocess
+import time
+import uuid
+from pathlib import Path
+from datetime import datetime, timezone
+import psycopg
+
+ROOT = Path(__file__).resolve().parents[3]
+COMPOSE = ROOT / "docker-compose.e2e.yml"
+
+def free_port():
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+class E2EEnvironment:
+    def __init__(self):
+        self.project = f"uec-e2e-{uuid.uuid4().hex[:8]}"
+        self.db_port = free_port()
+        self.api_port = free_port()
+        self.database_url = f"postgresql://uec:uec-e2e@localhost:{self.db_port}/uec"
+        self.backend = None
+
+    def command(self, *args):
+        return ["docker", "compose", "-p", self.project, "-f", str(COMPOSE), *args]
+
+    def compose_env(self):
+        env = os.environ.copy(); env["UEC_E2E_DB_PORT"] = str(self.db_port); return env
+
+    def start(self):
+        try:
+            subprocess.run(self.command("up", "-d", "--wait"), cwd=ROOT, check=True, capture_output=True, text=True, env=self.compose_env())
+            migrations = "\n".join(p.read_text(encoding="utf-8") for p in sorted((ROOT / "pipeline/migrations").glob("*.sql")))
+            for _ in range(60):
+                ready = subprocess.run(self.command("exec", "-T", "postgres", "pg_isready", "-U", "uec", "-d", "uec"), cwd=ROOT, capture_output=True, text=True, env=self.compose_env()).returncode == 0
+                if ready: break
+                time.sleep(.25)
+            else: raise RuntimeError("PostGIS container did not become ready")
+            subprocess.run(self.command("exec", "-T", "postgres", "psql", "-U", "uec", "-d", "uec"), input=migrations.encode("utf-8"), cwd=ROOT, check=True, env=self.compose_env())
+            subprocess.run(["cargo", "build", "--quiet"], cwd=ROOT, check=True)
+            env = os.environ.copy(); env.update({"UEC_DATABASE_URL": self.database_url, "PORT": str(self.api_port)})
+            self.backend = subprocess.Popen([str(ROOT / "target/debug/heatmap-backend.exe")], cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            import urllib.request
+            for _ in range(80):
+                try:
+                    urllib.request.urlopen(f"http://localhost:{self.api_port}/api/v2/locations?limit=1", timeout=1)
+                    return self
+                except Exception:
+                    time.sleep(.25)
+            raise RuntimeError("backend did not become ready")
+        except Exception:
+            self.stop()
+            raise
+
+    def stop(self):
+        if self.backend and self.backend.poll() is None:
+            self.backend.terminate(); self.backend.wait(timeout=10)
+        subprocess.run(self.command("down", "-v", "--remove-orphans"), cwd=ROOT, check=False, capture_output=True, text=True, env=self.compose_env())
+
+    def seed_official_scenario(self):
+        """Seed safe synthetic records for public API tests."""
+        now = datetime.now(timezone.utc)
+        with psycopg.connect(self.database_url) as db:
+            with db.transaction():
+                db.execute("INSERT INTO uec.sources (source_id,country_code,name,official_url,access_method) VALUES ('e2e.official','DK','Synthetic official source','https://example.invalid/official','fixture')")
+                release = 'e2e-promoted'
+                db.execute("INSERT INTO uec.releases (release_id,status,ruleset_version,summary) VALUES (%s,'promoted','e2e-v1','{}')", (release,))
+                city = 'Testby'
+                db.execute("INSERT INTO uec.city_reference_points (country_code,city_name,reference_location,reference_source,source_retrieved_at,source_reference_id) VALUES ('DK',%s,ST_SetSRID(ST_MakePoint(10,55),4326)::geography,'https://example.invalid/cities',%s,'e2e-city')", (city, now))
+                cases = [('exact','slaughter', 'accepted', True), ('city','fish_processing','review_required', False), ('unmapped','logistics_and_storage','unresolved', False), ('restricted','slaughter','accepted', True)]
+                for name, category, status, has_point in cases:
+                    record = uuid.uuid4(); facility = uuid.uuid4(); observation = uuid.uuid4()
+                    db.execute("INSERT INTO uec.raw_artifacts (artifact_id,storage_key,sha256,byte_size,retrieved_at) VALUES (%s,%s,%s,1,%s)", (uuid.uuid4(), f'e2e/{name}', uuid.uuid4().hex*2, now))
+                    artifact = db.execute("SELECT artifact_id FROM uec.raw_artifacts WHERE storage_key=%s", (f'e2e/{name}',)).fetchone()[0]
+                    db.execute("INSERT INTO uec.source_records (source_record_id,source_id,source_record_key,artifact_id,raw_fields,parsed_at) VALUES (%s,'e2e.official',%s,%s,'{}',%s)", (record,name,artifact,now))
+                    db.execute("INSERT INTO uec.facilities (facility_id,canonical_name,country_code,city) VALUES (%s,%s,'DK',%s)", (facility, f'E2E {name}', city))
+                    db.execute("INSERT INTO uec.observations (observation_id,facility_id,source_record_id,observed_at,observation,classification,ruleset_id,rule_id,classification_category,classification_review_status,default_visible,first_observed_at) VALUES (%s,%s,%s,%s,'{}','{}','e2e-v1','e2e',%s::text,'approved',true,%s)", (observation,facility,record,now,category,now))
+                    db.execute("INSERT INTO uec.release_members (release_id,facility_id,observation_id,default_visible) VALUES (%s,%s,%s,true)", (release,facility,observation))
+                    if has_point:
+                        db.execute("INSERT INTO uec.geocode_results (source_record_id,provider_id,query,match_method,status,attempt_number,result,queried_at) VALUES (%s,'e2e','fixture','fixture',%s,1,ST_SetSRID(ST_MakePoint(12,56),4326)::geography,%s)", (record,status,now))
+                    else:
+                        db.execute("INSERT INTO uec.geocode_results (source_record_id,provider_id,query,match_method,status,attempt_number,queried_at) VALUES (%s,'e2e','fixture','fixture',%s,1,%s)", (record,status,now))
+                    if name == 'restricted':
+                        db.execute("INSERT INTO uec.record_access_events (source_record_id,action,reason_category,policy_version,maintainer) VALUES (%s,'public_access_revoked','privacy','ethics-v1','e2e')", (record,))
+                    if name == 'exact':
+                        db.execute("INSERT INTO uec.facility_lifecycle_events (facility_id,status,effective_at,evidence_note) VALUES (%s,'active_observed',%s,'Synthetic official observation')", (facility, now))
+
+    def __enter__(self):
+        return self.start()
+
+    def __exit__(self, *_):
+        self.stop()

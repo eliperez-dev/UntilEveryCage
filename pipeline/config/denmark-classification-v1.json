@@ -1,0 +1,24 @@
+{
+  "ruleset_id": "denmark-classification-v1",
+  "default_visibility_profile": "production-and-processing",
+  "rules": [
+    {"rule_id": "DK-INC-SLAUGHTER", "codes": ["EB.10.10.99", "EB.10.10.88"], "classification": "slaughter", "review_status": "approved", "default_visible": true, "optional_filter": "production-and-processing"},
+    {"rule_id": "DK-INC-MEAT", "codes": ["EB.10.10.13", "EB.20.59.99"], "classification": "meat_processing", "review_status": "approved", "default_visible": true, "optional_filter": "production-and-processing"},
+    {"rule_id": "DK-INC-FISH", "codes": ["EB.10.20.20", "EB.03.21.00"], "classification": "fish_processing", "review_status": "approved", "default_visible": true, "optional_filter": "production-and-processing"},
+    {"rule_id": "DK-INC-DAIRY", "codes": ["EB.10.50.00"], "classification": "dairy_processing", "review_status": "approved", "default_visible": true, "optional_filter": "production-and-processing"},
+    {"rule_id": "DK-INC-EGGS", "codes": ["EB.10.89.00"], "classification": "egg_processing", "review_status": "approved", "default_visible": true, "optional_filter": "production-and-processing"},
+    {"rule_id": "DK-OPT-RETAIL-BUTCHER", "codes": ["DD.47.22.00", "00.00.02.N"], "classification": "butcher_retail", "review_status": "approved", "default_visible": false, "optional_filter": "retail"},
+    {"rule_id": "DK-OPT-RETAIL-FISH", "codes": ["DD.47.23.00", "00.00.02.M", "00.00.02.O"], "classification": "fish_retail", "review_status": "approved", "default_visible": false, "optional_filter": "retail"},
+    {"rule_id": "DK-OPT-LOGISTICS", "codes": ["EE.49.41.00", "DD.49.41.00", "EB.52.10.99", "EE.46.30.88", "EE.46.30.99", "DE.46.39.99"], "classification": "logistics_and_storage", "review_status": "approved", "default_visible": false, "optional_filter": "logistics"},
+    {"rule_id": "DK-OPT-RETAIL-DELI", "codes": ["DD.47.20.99", "00.00.02.T", "00.00.02.S", "00.00.02.G", "00.00.02.B", "00.00.02.C", "00.00.02.I", "00.00.02.L", "00.00.03.E"], "classification": "retail_and_prepared_food", "review_status": "approved", "default_visible": false, "optional_filter": "retail"},
+    {"rule_id": "DK-OPT-COMMERCIAL", "codes": ["EE.46.17.00", "EE.70.10.10", "00.00.03.B"], "classification": "commercial_food_business", "review_status": "approved", "default_visible": false, "optional_filter": "commercial"},
+    {"rule_id": "DK-OPT-MIXED", "codes": ["EB.10.30.99", "00.00.04.G", "00.00.04.I"], "classification": "mixed_food_processing", "review_status": "approved", "default_visible": false, "optional_filter": "mixed-processing"},
+    {"rule_id": "DK-OPT-CATERING", "codes": ["DE.56.20.00", "00.00.02.H", "00.00.02.J"], "classification": "catering_and_institutional_kitchens", "review_status": "approved", "default_visible": false, "optional_filter": "catering"},
+    {"rule_id": "DK-OPT-PACKAGING", "codes": ["DD.23.00.99", "DD.47.50.99", "EE.46.40.99", "EB.20.16.99", "00.00.04.H", "00.00.02.D"], "classification": "food_contact_and_packaging", "review_status": "approved", "default_visible": false, "optional_filter": "packaging"},
+    {"rule_id": "DK-OPT-ADJACENT", "codes": ["EB.20.00.99", "EB.10.86.99", "00.00.04.F"], "classification": "animal_products_adjacent", "review_status": "approved", "default_visible": false, "optional_filter": "animal-products-adjacent"},
+    {"rule_id": "DK-OPT-GENERAL", "codes": ["DD.56.10.99", "DD.47.10.99", "DD.56.29.00", "DD.56.30.99", "DD.10.71.20", "EB.11.00.00", "00.00.04.A", "00.00.04.B", "00.00.04.C", "00.00.04.E"], "classification": "general_food_business", "review_status": "approved", "default_visible": false, "optional_filter": "general-food"},
+    {"rule_id": "DK-OPT-TRANSPORT", "codes": ["00.00.03.L", "00.00.03.A", "00.00.03.C", "00.00.03.H"], "classification": "logistics_and_storage", "review_status": "approved", "default_visible": false, "optional_filter": "logistics"},
+    {"rule_id": "DK-REVIEW-TEMPORARY", "codes": ["00.00.02.A", "99.99.99.H"], "classification": "temporary_or_change_status", "review_status": "review_required", "default_visible": false, "optional_filter": null}
+  ],
+  "fallback": {"rule_id": "DK-REVIEW-UNKNOWN", "classification": "unknown", "review_status": "review_required", "default_visible": false, "optional_filter": null}
+}

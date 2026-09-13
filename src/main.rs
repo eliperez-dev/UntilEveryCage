@@ -21,13 +21,16 @@ use tower_http::cors::CorsLayer;
 
 use tower_http::services::ServeDir;
 
-#[tokio::main]
-async fn main() {
+pub fn app() -> Router {
     let cors = CorsLayer::very_permissive();
-    let app = Router::new()
+    Router::new()
         .route(
             "/api/locations",
             get(heatmap_backend::get_locations_handler),
+        )
+        .route(
+            "/api/v2/locations",
+            get(heatmap_backend::get_v2_locations_handler),
         )
         .route(
             "/api/aphis-reports",
@@ -43,12 +46,15 @@ async fn main() {
         )
         .fallback_service(ServeDir::new("static"))
         .layer(CompressionLayer::new().br(true))
-        .layer(cors);
+        .layer(cors)
+}
 
+#[tokio::main]
+async fn main() {
     let port = std::env::var("PORT").unwrap_or_else(|_| "8000".to_string());
     let addr = format!("0.0.0.0:{}", port);
     println!("Listening on {}", addr);
     
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    axum::serve(listener, app()).await.unwrap();
 }

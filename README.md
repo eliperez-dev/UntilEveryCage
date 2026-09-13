@@ -11,6 +11,10 @@ The animal agriculture industry's power is built on a foundation of propaganda a
 
 ## Key Features
 
+For a short introduction to the project's standards, read the [ethics summary](docs/ETHICS-SUMMARY.md); the [full policy](docs/ETHICS.md) remains authoritative.
+
+Contributor and data work is governed by [docs/ETHICS.md](docs/ETHICS.md), including source transparency, privacy, and correction/removal requirements. Outstanding implementation work is tracked in the [policy checklist](docs/governance/policy-implementation-todo.md). Documented requirements are not a claim that every protection is already implemented.
+
 * **Multi-Layer Interactive Map:** Visualizes tens of thousands of facilities across the globe on distinct, toggleable layers.
 * **Comprehensive Data:** Integrates multiple public datasets from government bodies worldwide, such as:
     * **Slaughterhouses & Processing Plants** (USDA in the U.S., BVL in Germany, FSA in the UK)

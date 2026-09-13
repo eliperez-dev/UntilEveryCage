@@ -1,0 +1,9 @@
+{
+  "source_id": "dk.smiley",
+  "source_url": "https://pub.fvst.dk/publikationer/Smileydata.xml",
+  "retrieved_at_utc": "2026-09-13T00:27:18.2197219Z",
+  "artifact_path": "data/raw/denmark-smiley/20260913T002711Z/Smileydata.xml",
+  "bytes": 34893824,
+  "sha256": "db5bc824eaf1f5c11051de8e1df2bd39ce20068f314baceb7bd999fccb76d1fd",
+  "status": "success"
+}

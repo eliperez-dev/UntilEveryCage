@@ -1,0 +1,13 @@
+{
+  "provider_id": "dawa",
+  "provider_name": "Danmarks Adressers Web API",
+  "base_url": "https://api.dataforsyningen.dk/adresser",
+  "mode": "development_only",
+  "status": "approved_for_development",
+  "reevaluate_before_production": true,
+  "query_parameters": {"struktur": "mini"},
+  "rate_limit_requests_per_second": 1,
+  "cache_results": true,
+  "preserve_original_address": true,
+  "notes": "DAWA is a temporary development provider. Verify replacement and licensing before production use."
+}

@@ -1,0 +1,9 @@
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: uec
+      POSTGRES_USER: uec
+      POSTGRES_PASSWORD: uec-e2e
+    ports:
+      - "${UEC_E2E_DB_PORT:-55432}:5432"

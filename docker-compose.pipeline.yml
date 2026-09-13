@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: uec
+      POSTGRES_USER: uec
+      POSTGRES_PASSWORD: uec-local-development-only
+    ports:
+      - "5433:5432"
+    volumes:
+      - uec-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  uec-postgres-data:
