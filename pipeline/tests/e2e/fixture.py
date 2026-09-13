@@ -41,7 +41,17 @@ class E2EEnvironment:
             migrations = "\n".join(p.read_text(encoding="utf-8") for p in sorted((ROOT / "pipeline/migrations").glob("*.sql")))
             print("[e2e] applying migrations", flush=True)
             for _ in range(60):
-                ready = subprocess.run(self.command("exec", "-T", "postgres", "pg_isready", "-U", "uec", "-d", "uec"), cwd=ROOT, capture_output=True, text=True, env=self.compose_env()).returncode == 0
+                # pg_isready only confirms that Postgres accepts connections;
+                # during container bootstrap it may report ready before the
+                # POSTGRES_DB database has been created. Query the target DB
+                # directly so migrations never race initialization in CI.
+                ready = subprocess.run(
+                    self.command("exec", "-T", "postgres", "psql", "-U", "uec", "-d", "uec", "-c", "SELECT 1"),
+                    cwd=ROOT,
+                    capture_output=True,
+                    text=True,
+                    env=self.compose_env(),
+                ).returncode == 0
                 if ready: break
                 time.sleep(.25)
             else: raise RuntimeError("PostGIS container did not become ready")

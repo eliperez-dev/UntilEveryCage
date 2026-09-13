@@ -5,5 +5,12 @@ services:
       POSTGRES_DB: uec
       POSTGRES_USER: uec
       POSTGRES_PASSWORD: uec-e2e
+    healthcheck:
+      # A running server is not sufficient: the configured database is created
+      # by the image entrypoint shortly after Postgres begins accepting sockets.
+      test: ["CMD-SHELL", "psql -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\" -c \"SELECT 1\" > /dev/null 2>&1"]
+      interval: 1s
+      timeout: 5s
+      retries: 60
     ports:
       - "${UEC_E2E_DB_PORT:-55432}:5432"
