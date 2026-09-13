@@ -38,5 +38,14 @@ class PublicApiE2ETests(unittest.TestCase):
             self.get("/api/v2/locations?limit=invalid")
         self.assertEqual(error.exception.code, 400)
 
+    def test_profile_is_explicit_and_mismatch_does_not_leak_records(self):
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            self.get("/api/v2/locations?profile=invalid")
+        self.assertEqual(error.exception.code, 400)
+        status, body = self.get("/api/v2/locations?profile=community")
+        self.assertEqual(status, 200)
+        self.assertEqual(body["data"], [])
+        self.assertEqual(body["meta"]["profile"], "community")
+
 if __name__ == "__main__":
     unittest.main()

@@ -71,6 +71,7 @@ pub struct V2LocationParams {
     pub country_code: Option<String>,
     pub category: Option<String>,
     pub source_type: Option<String>,
+    pub profile: Option<String>,
     pub display_precision: Option<String>,
     pub lifecycle_status: Option<String>,
     pub limit: Option<String>,
@@ -115,6 +116,9 @@ pub async fn get_v2_locations_handler(State(state): State<ApiState>, Query(param
     if params.source_type.as_deref().is_some_and(|v| !["official", "secondary", "user_submitted"].contains(&v)) {
         return (StatusCode::BAD_REQUEST, "invalid source_type").into_response();
     }
+    if params.profile.as_deref().is_some_and(|v| !["official", "secondary", "community"].contains(&v)) {
+        return (StatusCode::BAD_REQUEST, "invalid profile").into_response();
+    }
     let limit = match params.limit.as_deref().map(str::parse::<i64>).transpose() {
         Ok(value) => value.unwrap_or(100).clamp(1, 1000),
         Err(_) => return (StatusCode::BAD_REQUEST, "limit must be an integer").into_response(),
@@ -135,12 +139,18 @@ pub async fn get_v2_locations_handler(State(state): State<ApiState>, Query(param
     };
     let Some(release) = release else {
         let _ = transaction.commit().await;
-        return Json(serde_json::json!({"data": [], "api_version": "v2", "meta": {"release_id": null, "profile": "official", "coverage_note": "No promoted release is currently available."}})).into_response();
+        let profile = params.profile.as_deref().unwrap_or("official");
+        return Json(serde_json::json!({"data": [], "api_version": "v2", "meta": {"release_id": null, "profile": profile, "coverage_note": "No promoted release is currently available."}})).into_response();
     };
     let promoted_release_id: String = release.get(0);
     let promoted_ruleset: String = release.get(1);
     let promoted_created_at: chrono::DateTime<chrono::Utc> = release.get(2);
     let promoted_profile: String = release.get(3);
+    let requested_profile = params.profile.as_deref().unwrap_or("official");
+    if promoted_profile != requested_profile {
+        let _ = transaction.commit().await;
+        return Json(serde_json::json!({"data": [], "api_version": "v2", "meta": {"release_id": null, "profile": requested_profile, "coverage_note": "No promoted release is available for the requested publication profile."}})).into_response();
+    }
     let rows = match transaction.query(r#"
         SELECT facility_id, canonical_name, country_code, city, display_precision,
                ST_Y(display_location::geometry), ST_X(display_location::geometry),
