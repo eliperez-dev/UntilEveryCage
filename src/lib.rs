@@ -134,7 +134,7 @@ pub async fn get_v2_locations_handler(State(state): State<ApiState>, Query(param
         ORDER BY facility_id LIMIT $5 OFFSET $6
     "#, &[&params.country_code, &params.category, &params.display_precision, &params.lifecycle_status, &limit, &offset]).await {
         Ok(rows) => rows,
-        Err(error) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("V2 query failed: {error}")).into_response(),
+        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "V2 location query failed").into_response(),
     };
     let data = rows.into_iter().map(|row| V2Location {
         facility_id: row.get(0), canonical_name: row.get(1), country_code: row.get(2), city: row.get(3),

@@ -16,6 +16,7 @@
 
 // Contact the developer directly at untileverycageproject@protonmail.com
 use axum::{Router, routing::get};
+use axum::http::{HeaderValue, Method};
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::CorsLayer;
 
@@ -24,7 +25,11 @@ use deadpool_postgres::{Config, ManagerConfig, RecyclingMethod, Runtime};
 use tokio_postgres::NoTls;
 
 pub fn app(state: heatmap_backend::ApiState) -> Router {
-    let cors = CorsLayer::very_permissive();
+    let origin = std::env::var("UEC_CORS_ORIGIN").unwrap_or_else(|_| "http://localhost:3000".to_string());
+    let origin = origin.parse::<HeaderValue>().expect("UEC_CORS_ORIGIN must be a valid origin");
+    let cors = CorsLayer::new()
+        .allow_origin(origin)
+        .allow_methods([Method::GET]);
     Router::new()
         .route(
             "/api/locations",
