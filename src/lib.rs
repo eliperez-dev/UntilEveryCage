@@ -128,7 +128,7 @@ pub async fn get_v2_locations_handler(State(state): State<ApiState>, Query(param
         Ok(transaction) => transaction,
         Err(_) => return (StatusCode::SERVICE_UNAVAILABLE, "V2 database transaction unavailable").into_response(),
     };
-    let release = transaction.query_opt("SELECT release_id, ruleset_version, created_at FROM uec.releases WHERE status = 'promoted' ORDER BY created_at DESC, release_id DESC LIMIT 1", &[]).await;
+    let release = transaction.query_opt("SELECT release_id, ruleset_version, created_at, profile FROM uec.releases WHERE status = 'promoted' ORDER BY created_at DESC, release_id DESC LIMIT 1", &[]).await;
     let release = match release {
         Ok(release) => release,
         Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "V2 release query failed").into_response(),
@@ -140,6 +140,7 @@ pub async fn get_v2_locations_handler(State(state): State<ApiState>, Query(param
     let promoted_release_id: String = release.get(0);
     let promoted_ruleset: String = release.get(1);
     let promoted_created_at: chrono::DateTime<chrono::Utc> = release.get(2);
+    let promoted_profile: String = release.get(3);
     let rows = match transaction.query(r#"
         SELECT facility_id, canonical_name, country_code, city, display_precision,
                ST_Y(display_location::geometry), ST_X(display_location::geometry),
@@ -170,7 +171,7 @@ pub async fn get_v2_locations_handler(State(state): State<ApiState>, Query(param
         "release_id": promoted_release_id,
         "ruleset_version": promoted_ruleset,
         "release_created_at": promoted_created_at,
-        "profile": "official",
+        "profile": promoted_profile,
         "coverage_note": "Results are limited to the selected promoted release and public-access policy."
     });
     if transaction.commit().await.is_err() {
