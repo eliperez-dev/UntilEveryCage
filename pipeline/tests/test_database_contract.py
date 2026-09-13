@@ -228,8 +228,8 @@ class DatabaseContractTests(unittest.TestCase):
             self.assertEqual(before, 1)
             self.connection.execute("""
                 INSERT INTO uec.record_access_events
-                (source_record_id, action, reason_category, policy_version, maintainer)
-                VALUES (%s, 'public_access_revoked', 'safety', 'ethics-v1', 'test-maintainer')
+                (source_record_id, action, reason_category, policy_version, maintainer, occurred_at)
+                VALUES (%s, 'public_access_revoked', 'safety', 'ethics-v1', 'test-maintainer', now() + interval '2 seconds')
             """, (source_record_id,))
             after = self.connection.execute(
                 "SELECT count(*) FROM uec.map_facilities_public WHERE source_record_id = %s",

@@ -12,7 +12,7 @@ services:
       retries: 60
       start_period: 10s
     ports:
-      - "5433:5432"
+      - "${UEC_PIPELINE_DB_PORT:-5433}:5432"
     volumes:
       - uec-postgres-data:/var/lib/postgresql/data
 

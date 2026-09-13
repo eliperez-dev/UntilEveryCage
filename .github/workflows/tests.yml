@@ -14,21 +14,9 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install psycopg[binary]
-      - name: Start PostGIS for database-backed tests
-        run: docker compose -f docker-compose.pipeline.yml up -d --wait
-      - name: Apply current database migrations
-        env:
-          UEC_DATABASE_URL: postgresql://uec:uec-local-development-only@localhost:5433/uec?sslmode=disable
-        run: python pipeline/scripts/maintenance/apply-migrations.py
-      - name: Seed synthetic database contract fixtures
-        run: docker compose -f docker-compose.pipeline.yml exec -T postgres psql -v ON_ERROR_STOP=1 -U uec -d uec < pipeline/tests/e2e/backup_restore_seed.sql
-      - run: cargo test --locked
-      - run: python -m unittest discover -s pipeline/tests -q
-        env:
-          UEC_DATABASE_URL: postgresql://uec:uec-local-development-only@localhost:5433/uec
-      - name: Stop PostGIS
-        if: always()
-        run: docker compose -f docker-compose.pipeline.yml down -v
+      - name: Run standard tests in the canonical clean environment
+        shell: pwsh
+        run: ./pipeline/tests/run-standard.ps1
 
   e2e:
     runs-on: ubuntu-latest

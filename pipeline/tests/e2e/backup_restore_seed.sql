@@ -19,17 +19,3 @@ INSERT INTO uec.release_members (release_id,facility_id,observation_id,default_v
 VALUES ('e2e-promoted','00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000005',true);
 INSERT INTO uec.publication_review_events (source_record_id,factual_review_status,privacy_screening_status,maintainer_approval,publication_eligible,reviewer_role)
 VALUES ('00000000-0000-0000-0000-000000000002','reviewed','passed','approved',true,'maintainer');
-INSERT INTO uec.raw_artifacts (artifact_id,storage_key,sha256,byte_size,retrieved_at)
-VALUES ('00000000-0000-0000-0000-000000000006','e2e/backup/contract',repeat('b',64),1,now());
-INSERT INTO uec.source_records (source_record_id,source_id,source_record_key,artifact_id,raw_fields,parsed_at)
-VALUES ('00000000-0000-0000-0000-000000000007','e2e.backup','contract','00000000-0000-0000-0000-000000000006','{}',now());
-INSERT INTO uec.facilities (facility_id,canonical_name,country_code,city)
-VALUES ('00000000-0000-0000-0000-000000000008','Synthetic contract facility','DK','Contractby');
-INSERT INTO uec.observations (observation_id,facility_id,source_record_id,observed_at,observation,classification,ruleset_id,rule_id,classification_category,classification_review_status,default_visible,first_observed_at)
-VALUES ('00000000-0000-0000-0000-000000000009','00000000-0000-0000-0000-000000000008','00000000-0000-0000-0000-000000000007',now(),'{}','{}','synthetic-v1','fixture','slaughter','approved',true,now());
-INSERT INTO uec.release_members (release_id,facility_id,observation_id,default_visible)
-VALUES ('e2e-promoted','00000000-0000-0000-0000-000000000008','00000000-0000-0000-0000-000000000009',true);
-INSERT INTO uec.geocode_results (source_record_id,provider_id,query,match_method,status,attempt_number,result,queried_at)
-VALUES ('00000000-0000-0000-0000-000000000007','fixture','Contractby','city','accepted',1,ST_SetSRID(ST_MakePoint(10,55),4326)::geography,now());
-INSERT INTO uec.publication_review_events (source_record_id,factual_review_status,privacy_screening_status,maintainer_approval,publication_eligible,reviewer_role)
-VALUES ('00000000-0000-0000-0000-000000000007','reviewed','passed','approved',true,'maintainer');
