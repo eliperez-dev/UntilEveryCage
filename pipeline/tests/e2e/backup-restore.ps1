@@ -40,8 +40,8 @@ try {
   if ($LASTEXITCODE -ne 0) { throw "Backup extraction failed (exit $LASTEXITCODE)." }
   & docker compose -p $project -f $compose exec -T postgres pg_restore -U uec -d uec --clean --if-exists /tmp/uec.dump
   if ($LASTEXITCODE -ne 0) { throw "Restore failed (exit $LASTEXITCODE)." }
-  $checks = & docker compose -p $project -f $compose exec -T postgres psql -U uec -d uec -At -c "SELECT count(*) FROM uec.releases WHERE release_id='e2e-promoted' AND status='promoted'; SELECT count(*) FROM uec.public_access_restricted WHERE source_record_id='00000000-0000-0000-0000-000000000002'; SELECT count(*) FROM uec.map_facilities_display WHERE source_record_id='00000000-0000-0000-0000-000000000002'; SELECT count(*) FROM uec.map_facilities_display_history WHERE source_record_id='00000000-0000-0000-0000-000000000002';"
-  if (($checks | Where-Object { $_ -eq '1' }).Count -ne 2 -or ($checks | Where-Object { $_ -eq '0' }).Count -ne 2) { throw "Backup/restore invariant failed (expected 1,1,0,0): $checks" }
+  $checks = & docker compose -p $project -f $compose exec -T postgres psql -U uec -d uec -At -c "SELECT count(*) FROM uec.releases WHERE release_id='e2e-promoted' AND status='promoted'; SELECT count(*) FROM uec.release_manifests WHERE release_id='e2e-promoted' AND manifest_sha256='cabe8641a05beb76c9517006a8ec4cdd60b3bad58aa5b0fc29335fee1ac7d5dd'; SELECT count(*) FROM uec.public_access_restricted WHERE source_record_id='00000000-0000-0000-0000-000000000002'; SELECT count(*) FROM uec.map_facilities_display WHERE source_record_id='00000000-0000-0000-0000-000000000002'; SELECT count(*) FROM uec.map_facilities_display_history WHERE source_record_id='00000000-0000-0000-0000-000000000002';"
+  if (($checks | Where-Object { $_ -eq '1' }).Count -ne 3 -or ($checks | Where-Object { $_ -eq '0' }).Count -ne 2) { throw "Backup/restore invariant failed (expected 1,1,1,0,0): $checks" }
   Write-Host 'PASS: promoted synthetic release restored; restricted source is excluded from both public projections.'
 } finally {
   $savedPreference = $ErrorActionPreference

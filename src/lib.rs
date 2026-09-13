@@ -26,6 +26,7 @@ use include_dir::{Dir, include_dir};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::error::Error;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
@@ -40,6 +41,97 @@ pub fn v2_error(
         Json(json!({"api_version":"v2", "error": {"code": code, "message": message}})),
     )
         .into_response()
+}
+
+fn canonical_json(value: &Value) -> String {
+    match value {
+        Value::Object(map) => {
+            let mut keys: Vec<_> = map.keys().collect();
+            keys.sort();
+            format!(
+                "{{{}}}",
+                keys.into_iter()
+                    .map(|k| format!(
+                        "{}:{}",
+                        serde_json::to_string(k).unwrap(),
+                        canonical_json(&map[k])
+                    ))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )
+        }
+        Value::Array(items) => format!(
+            "[{}]",
+            items
+                .iter()
+                .map(canonical_json)
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
+        _ => value.to_string(),
+    }
+}
+
+pub async fn get_v2_release_manifest_handler(
+    State(state): State<ApiState>,
+    Query(params): Query<ProfileParams>,
+) -> impl IntoResponse {
+    let profile = params.profile.as_deref().unwrap_or("official");
+    if !["official", "secondary", "community"].contains(&profile) {
+        return v2_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_profile",
+            "profile is unsupported",
+        );
+    }
+    let Some(pool) = state.database else {
+        return v2_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "database_not_configured",
+            "V2 database is not configured",
+        );
+    };
+    let client = match pool.get().await {
+        Ok(c) => c,
+        Err(_) => {
+            return v2_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "database_pool_unavailable",
+                "database pool unavailable",
+            );
+        }
+    };
+    let row = match client.query_opt("SELECT r.release_id, r.profile, m.manifest::text, m.manifest_sha256 FROM uec.releases r JOIN uec.release_manifests m ON m.release_id=r.release_id WHERE r.status='promoted' AND r.profile=$1 ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1", &[&profile]).await {
+        Ok(row) => row, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "release_manifest_unavailable", "release manifest unavailable")
+    };
+    let Some(row) = row else {
+        return v2_error(
+            StatusCode::NOT_FOUND,
+            "release_not_found",
+            "no promoted eligible release",
+        );
+    };
+    let manifest_text: String = row.get(2);
+    let manifest: Value = match serde_json::from_str(&manifest_text) {
+        Ok(value) => value,
+        Err(_) => {
+            return v2_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "release_manifest_invalid",
+                "release manifest integrity check failed",
+            );
+        }
+    };
+    let digest: String = row.get(3);
+    let actual = format!("{:x}", Sha256::digest(canonical_json(&manifest).as_bytes()));
+    if actual != digest {
+        return v2_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "release_manifest_invalid",
+            "release manifest integrity check failed",
+        );
+    }
+    Json(json!({"api_version":"v2", "data": {"release_id": row.get::<_,String>(0), "profile": row.get::<_,String>(1), "manifest": manifest, "manifest_sha256": digest}})).into_response()
 }
 
 #[derive(Clone)]

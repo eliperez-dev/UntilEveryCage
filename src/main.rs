@@ -45,6 +45,10 @@ pub fn app(state: uec_api::ApiState) -> Router {
         .route("/api/locations", get(uec_api::get_locations_handler))
         .route("/api/v2/locations", get(uec_api::get_v2_locations_handler))
         .route(
+            "/api/v2/releases/manifest",
+            get(uec_api::get_v2_release_manifest_handler),
+        )
+        .route(
             "/api/v2/locations/{facility_id}",
             get(uec_api::get_v2_location_detail_handler),
         )

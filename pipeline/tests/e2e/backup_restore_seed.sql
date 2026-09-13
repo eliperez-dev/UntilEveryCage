@@ -3,6 +3,8 @@ INSERT INTO uec.sources (source_id,country_code,name,official_url,access_method)
 VALUES ('e2e.backup','DK','Synthetic backup source','https://example.invalid/backup','fixture');
 INSERT INTO uec.releases (release_id,status,ruleset_version,profile,summary)
 VALUES ('e2e-promoted','promoted','synthetic-v1','official','{}');
+INSERT INTO uec.release_manifests (release_id,manifest,manifest_sha256)
+VALUES ('e2e-promoted','{"eligible_record_count":1,"manifest_version":"v1","profile":"official","release_id":"e2e-promoted","ruleset_version":"synthetic-v1","source_ids":["e2e.backup"]}', 'cabe8641a05beb76c9517006a8ec4cdd60b3bad58aa5b0fc29335fee1ac7d5dd');
 INSERT INTO uec.raw_artifacts (artifact_id,storage_key,sha256,byte_size,retrieved_at)
 VALUES ('00000000-0000-0000-0000-000000000001','e2e/backup/restricted',repeat('a',64),0,now());
 INSERT INTO uec.source_records (source_record_id,source_id,source_record_key,artifact_id,raw_fields,parsed_at)

@@ -2,6 +2,7 @@
 """Promote a validated release to the active public release state."""
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -17,7 +18,7 @@ def can_promote(status: str) -> bool:
 def promote(database_url: str, release_id: str) -> dict:
     with psycopg.connect(database_url) as connection:
         with connection.transaction():
-            target = connection.execute("SELECT status, profile FROM uec.releases WHERE release_id = %s FOR UPDATE", (release_id,)).fetchone()
+            target = connection.execute("SELECT status, profile, ruleset_version FROM uec.releases WHERE release_id = %s FOR UPDATE", (release_id,)).fetchone()
             if not target:
                 raise ValueError(f"release not found: {release_id}")
             if not can_promote(target[0]):
@@ -37,6 +38,18 @@ def promote(database_url: str, release_id: str) -> dict:
             """, (release_id,)).fetchone()
             if any(unsafe):
                 raise ValueError(f"release safety gates failed: coordinate_not_ready={unsafe[0]}, review_required={unsafe[1]}, publication_not_approved={unsafe[2]}, active_suppression={unsafe[3]}")
+            summary = connection.execute("""
+                SELECT count(*), coalesce(array_agg(DISTINCT sr.source_id ORDER BY sr.source_id), ARRAY[]::text[])
+                FROM uec.release_members m JOIN uec.observations o ON o.observation_id=m.observation_id
+                JOIN uec.source_records sr ON sr.source_record_id=o.source_record_id
+                WHERE m.release_id=%s AND m.default_visible
+                  AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted x WHERE x.source_record_id=sr.source_record_id)
+            """, (release_id,)).fetchone()
+            manifest = {"manifest_version": "v1", "release_id": release_id, "profile": target[1], "ruleset_version": target[2], "eligible_record_count": summary[0], "source_ids": summary[1]}
+            # Python's sorted-key JSON is the canonical representation shared by consumers.
+            canonical = json.dumps(manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+            digest = hashlib.sha256(canonical.encode()).hexdigest()
+            connection.execute("INSERT INTO uec.release_manifests (release_id,manifest,manifest_sha256) VALUES (%s,%s,%s)", (release_id, json.dumps(manifest, ensure_ascii=False), digest))
             previous = connection.execute("SELECT release_id FROM uec.releases WHERE status = 'promoted' AND profile = %s AND release_id <> %s", (target[1], release_id)).fetchall()
             connection.execute("UPDATE uec.releases SET status = 'validated' WHERE status = 'promoted' AND profile = %s AND release_id <> %s", (target[1], release_id))
             connection.execute("UPDATE uec.releases SET status = 'promoted' WHERE release_id = %s", (release_id,))
