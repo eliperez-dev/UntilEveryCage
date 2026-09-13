@@ -263,6 +263,23 @@ class DatabaseContractTests(unittest.TestCase):
             ).fetchone()[0]
             self.assertEqual(restricted, 0)
 
+    def test_suppression_references_are_payload_free_and_reimport_safe(self):
+        tables = {row[0] for row in self.connection.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'uec'").fetchall()}
+        if "suppression_cases" not in tables or "suppression_references" not in tables:
+            self.skipTest("database is older than migration 018; Docker E2E applies the current schema")
+        self.assertIn("suppression_cases", tables)
+        self.assertIn("suppression_references", tables)
+        columns = {row[0] for row in self.connection.execute("SELECT column_name FROM information_schema.columns WHERE table_schema='uec' AND table_name='suppression_references'").fetchall()}
+        self.assertNotIn("address", columns)
+        self.assertNotIn("coordinates", columns)
+        self.assertIn("source_record_key", columns)
+
+    def test_suppression_lift_requires_explicit_lifted_state(self):
+        migration = (__import__('pathlib').Path(__file__).parents[1] / 'migrations' / '019_explicit_suppression_lift.sql').read_text(encoding='utf-8')
+        self.assertIn("'lifted'", migration)
+        self.assertIn("'closed', 'expired'", migration)
+        self.assertNotIn("WHERE case_record.status IN ('active', 'review')", migration)
+
 
 if __name__ == "__main__":
     unittest.main()

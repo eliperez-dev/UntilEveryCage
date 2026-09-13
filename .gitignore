@@ -1,4 +1,5 @@
 /target/
+/node_modules/
 /snapshots/
 /\.shuttle*
 /Secrets*.toml

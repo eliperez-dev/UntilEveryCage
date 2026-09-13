@@ -18,6 +18,9 @@ class DataManager {
         this.v2Meta = null;
         this.v2Profile = 'official';
         this.v2Filters = {};
+        this.v2Status = 'idle';
+        this.v2Error = null;
+        this.v2HasMore = false;
     }
 
     /**
@@ -155,32 +158,50 @@ class DataManager {
     }
 
     async fetchV2Page(filters = {}, signal) {
-        const isContinuation = Boolean(filters.cursor) && filters.cursor === this.v2Meta?.next_cursor;
-        const comparableFilters = { ...filters, cursor: undefined };
+        const { profile: ignoredProfile, ...safeFilters } = filters;
+        const isContinuation = Boolean(safeFilters.cursor) && safeFilters.cursor === this.v2Meta?.next_cursor;
+        const comparableFilters = { ...safeFilters, cursor: undefined };
         const previousFilters = { ...this.v2Filters, cursor: undefined };
         const restart = !isContinuation && JSON.stringify(comparableFilters) !== JSON.stringify(previousFilters);
-        const result = await v2Client.list({ profile: this.v2Profile, ...filters }, signal);
+        this.v2Status = 'loading';
+        this.v2Error = null;
+        let result;
+        try {
+            result = await v2Client.list({ profile: 'official', ...safeFilters }, signal);
+        } catch (error) {
+            this.v2Status = 'error';
+            this.v2Error = error;
+            throw error;
+        }
         this.allLocations = restart ? result.records : [...this.allLocations, ...result.records];
         this.v2Meta = result.meta;
         this.apiVersion = 'v2';
-        this.v2Filters = { ...filters };
+        this.v2Filters = { ...safeFilters, profile: 'official' };
+        this.v2HasMore = Boolean(result.meta.next_cursor);
+        this.v2Status = result.meta.release_id === null ? 'no_release' : 'ready';
         this.processLocations();
         return result;
     }
 
     async fetchNextV2Page(signal) {
-        if (!this.v2Meta?.next_cursor) return { records: [], meta: this.v2Meta || {} };
+        if (!this.v2Meta?.next_cursor) {
+            this.v2HasMore = false;
+            return { records: [], meta: this.v2Meta || {} };
+        }
         return this.fetchV2Page({ ...this.v2Filters, cursor: this.v2Meta.next_cursor }, signal);
     }
 
     setV2Profile(profile) {
-        if (!['official', 'secondary', 'community'].includes(profile)) {
-            throw new Error(`Unsupported V2 profile: ${profile}`);
+        if (profile !== 'official') {
+            throw new Error(`V2 profile is not available in the public UI: ${profile}`);
         }
         this.v2Profile = profile;
         this.v2Filters = {};
         this.v2Meta = null;
         this.allLocations = [];
+        this.v2Status = 'idle';
+        this.v2Error = null;
+        this.v2HasMore = false;
     }
 
     getAllLabLocations() {

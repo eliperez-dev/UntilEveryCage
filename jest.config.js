@@ -2,10 +2,8 @@ export default {
   // Test environment for DOM testing
   testEnvironment: 'jsdom',
   
-  // Support ES modules
-  preset: 'es2022',
+  // Support native ES modules through Node/Jest's ESM mode.
   transform: {},
-  extensionsToTreatAsEsm: ['.js'],
   
   // Test file patterns
   testMatch: [
@@ -27,13 +25,6 @@ export default {
   // Module paths
   roots: ['<rootDir>'],
   moduleDirectories: ['node_modules', '<rootDir>'],
-  
-  // Global setup
-  globals: {
-    'ts-jest': {
-      useESM: true
-    }
-  },
   
   // Verbose output
   verbose: true
