@@ -1,4 +1,4 @@
-import json, os, unittest, urllib.request
+import json, os, subprocess, sys, unittest, urllib.request
 try:
     from .fixture import E2EEnvironment
 except ImportError:
@@ -48,5 +48,14 @@ class SeededApiE2ETests(unittest.TestCase):
             self.assertEqual(row['observation_count'], 1)
             self.assertIsNotNone(row['first_observed_at'])
             self.assertIsNotNone(row['last_observed_at'])
+
+    def test_failed_candidate_does_not_replace_promoted_release(self):
+        self.env.create_failed_candidate()
+        script = os.path.join(os.path.dirname(__file__), '..', '..', 'scripts', 'stages', 'validate-release.py')
+        result = subprocess.run([sys.executable, script, 'e2e-failed-candidate', '--expected-records', '0'], env={**os.environ, 'UEC_DATABASE_URL': self.env.database_url}, capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        response = self.get('/api/v2/locations?limit=100')
+        self.assertEqual(response['meta']['release_id'], 'e2e-promoted')
+        self.assertTrue(response['data'])
 
 if __name__ == '__main__': unittest.main()

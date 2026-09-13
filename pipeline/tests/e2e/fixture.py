@@ -89,6 +89,13 @@ class E2EEnvironment:
                     if name == 'exact':
                         db.execute("INSERT INTO uec.facility_lifecycle_events (facility_id,status,effective_at,evidence_note) VALUES (%s,'active_observed',%s,'Synthetic official observation')", (facility, now))
 
+    def create_failed_candidate(self):
+        """Create an invalid candidate without touching the promoted release."""
+        with psycopg.connect(self.database_url) as db:
+            with db.transaction():
+                db.execute("INSERT INTO uec.releases (release_id,status,ruleset_version,summary) VALUES ('e2e-failed-candidate','candidate','e2e-v2','{}')")
+                db.execute("INSERT INTO uec.validation_findings (severity,code,details) VALUES ('error','synthetic_failure','{}')")
+
     def __enter__(self):
         return self.start()
 
