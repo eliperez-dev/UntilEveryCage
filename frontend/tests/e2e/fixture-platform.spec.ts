@@ -4,7 +4,8 @@ import AxeBuilder from '@axe-core/playwright';
 test.beforeEach(async ({ page }) => {
   await page.route('**/*', async (route) => {
     const url = new URL(route.request().url());
-    if (url.origin !== 'http://127.0.0.1:4173') throw new Error(`Unexpected external request: ${url.href}`);
+    const localApiAllowed = process.env.LOCAL_V2_E2E === '1' && url.origin === 'http://127.0.0.1:8000';
+    if (url.origin !== 'http://127.0.0.1:4173' && !localApiAllowed) throw new Error(`Unexpected external request: ${url.href}`);
     await route.continue();
   });
 });

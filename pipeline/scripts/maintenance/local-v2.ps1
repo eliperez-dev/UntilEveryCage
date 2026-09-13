@@ -6,6 +6,7 @@ $project='uec-local-v2'; $dbPort=5433; $apiPort=8000
 $db="postgresql://uec:uec-local-development-only@127.0.0.1:$dbPort/uec?sslmode=disable"
 $stateDir=Join-Path $root 'target\local-v2'; $pidFile=Join-Path $stateDir 'uec-api.pid'; $logFile=Join-Path $stateDir 'uec-api.log'; $errorFile=Join-Path $stateDir 'uec-api-error.log'
 $env:UEC_PIPELINE_DB_PORT="$dbPort"; $env:UEC_DATABASE_URL=$db; $env:PORT="$apiPort"
+$env:UEC_CORS_ORIGIN="http://127.0.0.1:4173"
 
 function Get-OwnedApiProcess {
   if (!(Test-Path $pidFile)) { return $null }
@@ -28,6 +29,18 @@ try {
         Get-Content pipeline/tests/standard_contract_seed.sql -Raw | & docker compose -p $project -f $compose exec -T postgres psql -v ON_ERROR_STOP=1 -U uec -d uec
         if ($LASTEXITCODE) { throw 'Synthetic seed failed.' }
         & docker compose -p $project -f $compose exec -T postgres psql -v ON_ERROR_STOP=1 -U uec -d uec -c "CREATE TABLE IF NOT EXISTS uec.local_v2_fixture_seed (seed_name text primary key, seeded_at timestamptz not null default now()); INSERT INTO uec.local_v2_fixture_seed(seed_name) VALUES ('standard-contract') ON CONFLICT DO NOTHING;"
+      }
+      $releaseStatus=(& docker compose -p $project -f $compose exec -T postgres psql -U uec -d uec -Atc "SELECT status FROM uec.releases WHERE release_id = 'standard-candidate'")
+      if ($releaseStatus.Trim() -eq 'candidate') {
+        python pipeline/scripts/stages/validate-release.py standard-candidate --expected-records 1 --mark-validated
+        if ($LASTEXITCODE) { throw 'Synthetic release validation failed.' }
+        $releaseStatus='validated'
+      }
+      if ($releaseStatus.Trim() -eq 'validated') {
+        python pipeline/scripts/stages/promote-release.py standard-candidate
+        if ($LASTEXITCODE) { throw 'Synthetic release promotion failed.' }
+      } elseif ($releaseStatus.Trim() -ne 'promoted') {
+        throw "Synthetic release has unexpected status: $($releaseStatus.Trim())"
       }
       if (!(Get-OwnedApiProcess)) {
         $api=Join-Path $root 'target\debug\uec-api.exe'; if (!(Test-Path $api)) { cargo build --bin uec-api --quiet }
