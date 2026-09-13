@@ -109,7 +109,7 @@ async fn rate_limit(
             .header(header::RETRY_AFTER, RATE_WINDOW.as_secs().to_string())
             .header(header::CONTENT_TYPE, "application/json")
             .body(axum::body::Body::from(
-                r#"{"status":"rate_limited","reason":"request_rate_limit"}"#,
+                r#"{"api_version":"v2","error":{"code":"rate_limited","message":"request rate limit exceeded"}}"#,
             ))
             .unwrap();
     }

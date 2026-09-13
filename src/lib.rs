@@ -16,7 +16,11 @@
 
 // Contact the developer directly at untileverycageproject@protonmail.com
 use axum::extract::{Path, Query, State};
-use axum::{Json, http::StatusCode, response::IntoResponse};
+use axum::{
+    Json,
+    http::{Response, StatusCode},
+    response::IntoResponse,
+};
 use deadpool_postgres::Pool;
 use include_dir::{Dir, include_dir};
 use once_cell::sync::Lazy;
@@ -25,6 +29,18 @@ use serde_json::{Value, json};
 use std::error::Error;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
+
+pub fn v2_error(
+    status: StatusCode,
+    code: &'static str,
+    message: &'static str,
+) -> Response<axum::body::Body> {
+    (
+        status,
+        Json(json!({"api_version":"v2", "error": {"code": code, "message": message}})),
+    )
+        .into_response()
+}
 
 #[derive(Clone)]
 pub struct ApiState {
@@ -128,14 +144,22 @@ pub async fn get_v2_locations_handler(
         .as_deref()
         .is_some_and(|v| !PRECISIONS.contains(&v))
     {
-        return (StatusCode::BAD_REQUEST, "invalid display_precision").into_response();
+        return v2_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_display_precision",
+            "display_precision is unsupported",
+        );
     }
     if params
         .lifecycle_status
         .as_deref()
         .is_some_and(|v| !LIFECYCLES.contains(&v))
     {
-        return (StatusCode::BAD_REQUEST, "invalid lifecycle_status").into_response();
+        return v2_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_lifecycle_status",
+            "lifecycle_status is unsupported",
+        );
     }
     if params
         .category
@@ -143,36 +167,60 @@ pub async fn get_v2_locations_handler(
         .is_some_and(|v| v.trim().is_empty())
         || params.country_code.as_deref().is_some_and(|v| v.len() != 2)
     {
-        return (StatusCode::BAD_REQUEST, "invalid filter").into_response();
+        return v2_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_filter",
+            "filter is invalid",
+        );
     }
     if params
         .source_type
         .as_deref()
         .is_some_and(|v| !["official", "secondary", "user_submitted"].contains(&v))
     {
-        return (StatusCode::BAD_REQUEST, "invalid source_type").into_response();
+        return v2_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_source_type",
+            "source_type is unsupported",
+        );
     }
     if params
         .profile
         .as_deref()
         .is_some_and(|v| !["official", "secondary", "community"].contains(&v))
     {
-        return (StatusCode::BAD_REQUEST, "invalid profile").into_response();
+        return v2_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_profile",
+            "profile is unsupported",
+        );
     }
     let limit = match params.limit.as_deref().map(str::parse::<i64>).transpose() {
         Ok(value) => value.unwrap_or(100).clamp(1, 1000),
-        Err(_) => return (StatusCode::BAD_REQUEST, "limit must be an integer").into_response(),
+        Err(_) => {
+            return v2_error(
+                StatusCode::BAD_REQUEST,
+                "invalid_limit",
+                "limit must be an integer",
+            );
+        }
     };
     let offset = match params.offset.as_deref().map(str::parse::<i64>).transpose() {
         Ok(value) => value.unwrap_or(0).clamp(0, 1_000_000),
-        Err(_) => return (StatusCode::BAD_REQUEST, "offset must be an integer").into_response(),
+        Err(_) => {
+            return v2_error(
+                StatusCode::BAD_REQUEST,
+                "invalid_offset",
+                "offset must be an integer",
+            );
+        }
     };
     if params.cursor.is_some() && params.offset.is_some() {
-        return (
+        return v2_error(
             StatusCode::BAD_REQUEST,
+            "invalid_pagination",
             "cursor and offset cannot be combined",
-        )
-            .into_response();
+        );
     }
     let cursor = match params
         .cursor
@@ -182,7 +230,11 @@ pub async fn get_v2_locations_handler(
     {
         Ok(cursor) => cursor,
         Err(_) => {
-            return (StatusCode::BAD_REQUEST, "cursor must be a facility UUID").into_response();
+            return v2_error(
+                StatusCode::BAD_REQUEST,
+                "invalid_cursor",
+                "cursor must be a facility UUID",
+            );
         }
     };
     let effective_offset = if cursor.is_some() { 0 } else { offset };
@@ -190,16 +242,19 @@ pub async fn get_v2_locations_handler(
         Some(pool) => match pool.get().await {
             Ok(client) => client,
             Err(_) => {
-                return (StatusCode::SERVICE_UNAVAILABLE, "Database pool unavailable")
-                    .into_response();
+                return v2_error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "database_pool_unavailable",
+                    "database pool unavailable",
+                );
             }
         },
         None => {
-            return (
+            return v2_error(
                 StatusCode::SERVICE_UNAVAILABLE,
+                "database_not_configured",
                 "V2 database is not configured",
-            )
-                .into_response();
+            );
         }
     };
     let transaction = match client
@@ -211,11 +266,11 @@ pub async fn get_v2_locations_handler(
     {
         Ok(transaction) => transaction,
         Err(_) => {
-            return (
+            return v2_error(
                 StatusCode::SERVICE_UNAVAILABLE,
+                "database_transaction_unavailable",
                 "V2 database transaction unavailable",
-            )
-                .into_response();
+            );
         }
     };
     let requested_profile = params.profile.as_deref().unwrap_or("official");
@@ -223,7 +278,11 @@ pub async fn get_v2_locations_handler(
     let release = match release {
         Ok(release) => release,
         Err(_) => {
-            return (StatusCode::INTERNAL_SERVER_ERROR, "V2 release query failed").into_response();
+            return v2_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "release_query_failed",
+                "V2 release query failed",
+            );
         }
     };
     let Some(release) = release else {
@@ -254,7 +313,7 @@ pub async fn get_v2_locations_handler(
         ORDER BY facility_id LIMIT $8 OFFSET $9
     "#, &[&promoted_release_id, &cursor, &params.country_code, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &query_limit, &effective_offset]).await {
         Ok(rows) => rows,
-        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "V2 location query failed").into_response(),
+        Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
     };
     let has_next = rows.len() as i64 > limit;
     let data = rows
@@ -327,16 +386,19 @@ pub async fn get_v2_location_detail_handler(
         Some(pool) => match pool.get().await {
             Ok(client) => client,
             Err(_) => {
-                return (StatusCode::SERVICE_UNAVAILABLE, "Database pool unavailable")
-                    .into_response();
+                return v2_error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "database_pool_unavailable",
+                    "database pool unavailable",
+                );
             }
         },
         None => {
-            return (
+            return v2_error(
                 StatusCode::SERVICE_UNAVAILABLE,
+                "database_not_configured",
                 "V2 database is not configured",
-            )
-                .into_response();
+            );
         }
     };
     let transaction = match client
@@ -348,24 +410,32 @@ pub async fn get_v2_location_detail_handler(
     {
         Ok(transaction) => transaction,
         Err(_) => {
-            return (
+            return v2_error(
                 StatusCode::SERVICE_UNAVAILABLE,
+                "database_transaction_unavailable",
                 "V2 database transaction unavailable",
-            )
-                .into_response();
+            );
         }
     };
     let requested_profile = params.profile.as_deref().unwrap_or("official");
     if !["official", "secondary", "community"].contains(&requested_profile) {
-        return (StatusCode::BAD_REQUEST, "invalid profile").into_response();
+        return v2_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_profile",
+            "profile is unsupported",
+        );
     }
     let release = match transaction.query_opt("SELECT release_id, ruleset_version, created_at, profile FROM uec.releases WHERE status = 'promoted' AND profile = $1 ORDER BY created_at DESC, release_id DESC LIMIT 1", &[&requested_profile]).await {
         Ok(release) => release,
-        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "V2 release query failed").into_response(),
+        Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "release_query_failed", "V2 release query failed"),
     };
     let Some(release) = release else {
         let _ = transaction.commit().await;
-        return (StatusCode::NOT_FOUND, "location not found").into_response();
+        return v2_error(
+            StatusCode::NOT_FOUND,
+            "location_not_found",
+            "location not found",
+        );
     };
     let release_id: String = release.get(0);
     let ruleset: String = release.get(1);
@@ -383,11 +453,15 @@ pub async fn get_v2_location_detail_handler(
         WHERE facility_id = $1 AND release_id = $2
     "#, &[&facility_id, &release_id]).await {
         Ok(row) => row,
-        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "V2 location query failed").into_response(),
+        Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
     };
     let Some(row) = row else {
         let _ = transaction.commit().await;
-        return (StatusCode::NOT_FOUND, "location not found").into_response();
+        return v2_error(
+            StatusCode::NOT_FOUND,
+            "location_not_found",
+            "location not found",
+        );
     };
     let item = V2Location {
         facility_id: row.get(0),
@@ -459,6 +533,15 @@ mod v2_api_tests {
                     .unwrap(),
             ),
         }
+    }
+
+    #[test]
+    fn versioned_contract_lists_supported_profiles_and_error_shape() {
+        let contract: serde_json::Value =
+            serde_json::from_str(include_str!("../docs/api/v2-contract.json")).unwrap();
+        assert_eq!(contract["version"], "v2");
+        assert_eq!(contract["profiles"].as_array().unwrap().len(), 3);
+        assert_eq!(contract["error"]["shape"]["api_version"], "v2");
     }
 
     #[tokio::test]
@@ -546,10 +629,10 @@ mod v2_api_tests {
             std::env::set_var("UEC_DATABASE_URL", url);
         }
         for uri in [
-            "/api/v2/locations",
-            "/api/v2/locations?category=logistics_and_storage",
-            "/api/v2/locations?category=retail_and_prepared_food&display_precision=exact",
-            "/api/v2/locations?lifecycle_status=explicitly_closed",
+            "/api/v2/locations?country_code=ZZ",
+            "/api/v2/locations?country_code=ZZ&category=logistics_and_storage",
+            "/api/v2/locations?country_code=ZZ&category=retail_and_prepared_food&display_precision=exact",
+            "/api/v2/locations?country_code=ZZ&lifecycle_status=explicitly_closed",
         ] {
             let response = Router::new()
                 .route(

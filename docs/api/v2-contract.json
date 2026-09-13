@@ -1,0 +1,12 @@
+{
+  "version": "v2",
+  "profiles": ["official", "secondary", "community"],
+  "endpoints": {
+    "GET /health/live": {"success": {"status": "ok", "service": "uec-api"}},
+    "GET /health/ready": {"success": {"status": "ready", "database": "ok"}, "unavailable_status": 503},
+    "GET /api/v2/locations": {"success": {"api_version": "v2", "data": [], "meta": {"profile": "official", "next_cursor": null}}, "no_release": 200},
+    "GET /api/v2/locations/{facility_id}": {"success": {"api_version": "v2", "data": {}, "meta": {}}, "not_found": 404}
+  },
+  "error": {"shape": {"api_version": "v2", "error": {"code": "string", "message": "string"}}, "codes": ["invalid_filter", "invalid_profile", "invalid_limit", "invalid_offset", "invalid_cursor", "invalid_pagination", "database_not_configured", "database_pool_unavailable", "database_transaction_unavailable", "release_query_failed", "location_query_failed", "location_not_found", "rate_limited"]},
+  "privacy": "Public responses contain reviewed projection fields only; restricted records and raw evidence are never returned."
+}
