@@ -110,6 +110,7 @@ class E2EEnvironment:
                 db.execute("INSERT INTO uec.sources (source_id,country_code,name,official_url,access_method) VALUES ('e2e.official','DK','Synthetic official source','https://example.invalid/official','fixture')")
                 release = 'e2e-promoted'
                 db.execute("INSERT INTO uec.releases (release_id,status,ruleset_version,summary) VALUES (%s,'promoted','e2e-v1','{}')", (release,))
+                db.execute("INSERT INTO uec.release_manifests (release_id,manifest,manifest_sha256) VALUES ('e2e-promoted','{\"eligible_record_count\":3,\"manifest_version\":\"v1\",\"profile\":\"official\",\"release_id\":\"e2e-promoted\",\"ruleset_version\":\"e2e-v1\",\"source_ids\":[\"e2e.official\"]}', 'dcf1cb50c078057cac2527936332e35892c2c13ecdcf2f545176acd17897cde7')")
                 city = 'Testby'
                 db.execute("INSERT INTO uec.city_reference_points (country_code,city_name,reference_location,reference_source,source_retrieved_at,source_reference_id) VALUES ('DK',%s,ST_SetSRID(ST_MakePoint(10,55),4326)::geography,'https://example.invalid/cities',%s,'e2e-city')", (city, now))
                 cases = [('exact','slaughter', 'accepted', True, True), ('city','fish_processing','review_required', False, True), ('unmapped','logistics_and_storage','unresolved', False, True), ('restricted','slaughter','accepted', True, True), ('unapproved','retail_and_prepared_food','accepted', True, False)]

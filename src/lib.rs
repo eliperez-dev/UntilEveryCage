@@ -134,6 +134,135 @@ pub async fn get_v2_release_manifest_handler(
     Json(json!({"api_version":"v2", "data": {"release_id": row.get::<_,String>(0), "profile": row.get::<_,String>(1), "manifest": manifest, "manifest_sha256": digest}})).into_response()
 }
 
+#[derive(Serialize)]
+struct V2ExportRow {
+    facility_id: uuid::Uuid,
+    canonical_name: Option<String>,
+    country_code: String,
+    city: Option<String>,
+    category: String,
+    display_precision: String,
+    factual_review_status: String,
+    privacy_screening_status: String,
+    project_approval: String,
+    reviewer_role: Option<String>,
+    source_type: String,
+    provenance_source_id: String,
+    provenance_source_name: String,
+    provenance_source_url: String,
+    provenance_retrieved_at: chrono::DateTime<chrono::Utc>,
+    release_id: String,
+    release_profile: String,
+    manifest_sha256: String,
+}
+
+pub async fn get_v2_locations_export_handler(
+    State(state): State<ApiState>,
+    Query(params): Query<ProfileParams>,
+) -> impl IntoResponse {
+    let profile = params.profile.as_deref().unwrap_or("official");
+    if !["official", "secondary", "community"].contains(&profile) {
+        return v2_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_profile",
+            "profile is unsupported",
+        );
+    }
+    let Some(pool) = state.database else {
+        return v2_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "database_not_configured",
+            "V2 database is not configured",
+        );
+    };
+    let client = match pool.get().await {
+        Ok(c) => c,
+        Err(_) => {
+            return v2_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "database_pool_unavailable",
+                "database pool unavailable",
+            );
+        }
+    };
+    let release = match client.query_opt("SELECT r.release_id, m.manifest_sha256 FROM uec.releases r JOIN uec.release_manifests m ON m.release_id=r.release_id WHERE r.status='promoted' AND r.profile=$1 ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1", &[&profile]).await {
+        Ok(row) => row, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "release_query_failed", "release query failed")
+    };
+    let Some(release) = release else {
+        return v2_error(
+            StatusCode::NOT_FOUND,
+            "release_not_found",
+            "no promoted eligible release",
+        );
+    };
+    let release_id: String = release.get(0);
+    let manifest_sha256: String = release.get(1);
+    let rows = match client.query("SELECT h.facility_id, h.canonical_name, h.country_code, h.city, h.classification_category, h.display_precision, r.factual_review_status, r.privacy_screening_status, r.maintainer_approval, r.reviewer_role, h.provenance_origin_type, h.provenance_source_id, h.provenance_source_name, h.provenance_source_url, h.provenance_retrieved_at, h.release_id FROM uec.map_facilities_display_history h JOIN uec.publication_review_current r ON r.source_record_id=h.source_record_id WHERE h.release_id=$1 AND r.publication_eligible=true AND r.privacy_screening_status='passed' AND r.maintainer_approval='approved' ORDER BY h.facility_id LIMIT 1001", &[&release_id]).await {
+        Ok(rows) => rows, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "export_query_failed", "public export unavailable")
+    };
+    if rows.len() > 1000 {
+        return v2_error(
+            StatusCode::BAD_REQUEST,
+            "export_too_large",
+            "export exceeds the bounded limit",
+        );
+    }
+    let mut writer = csv::Writer::from_writer(Vec::new());
+    for row in rows {
+        if writer
+            .serialize(V2ExportRow {
+                facility_id: row.get(0),
+                canonical_name: row.get(1),
+                country_code: row.get(2),
+                city: row.get(3),
+                category: row.get(4),
+                display_precision: row.get(5),
+                factual_review_status: row.get(6),
+                privacy_screening_status: row.get(7),
+                project_approval: row.get(8),
+                reviewer_role: row.get(9),
+                source_type: row.get(10),
+                provenance_source_id: row.get(11),
+                provenance_source_name: row.get(12),
+                provenance_source_url: row.get(13),
+                provenance_retrieved_at: row.get(14),
+                release_id: row.get(15),
+                release_profile: profile.to_string(),
+                manifest_sha256: manifest_sha256.clone(),
+            })
+            .is_err()
+        {
+            return v2_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "export_encoding_failed",
+                "public export unavailable",
+            );
+        }
+    }
+    let body = match writer.into_inner() {
+        Ok(body) => body,
+        Err(_) => {
+            return v2_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "export_encoding_failed",
+                "public export unavailable",
+            );
+        }
+    };
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("content-type", "text/csv; charset=utf-8")
+        .header(
+            "content-disposition",
+            "attachment; filename=uec-v2-locations.csv",
+        )
+        .header("x-uec-release-id", release_id)
+        .header("x-uec-manifest-sha256", manifest_sha256)
+        .body(axum::body::Body::from(body))
+        .unwrap()
+        .into_response()
+}
+
 #[derive(Clone)]
 pub struct ApiState {
     pub database: Option<Pool>,

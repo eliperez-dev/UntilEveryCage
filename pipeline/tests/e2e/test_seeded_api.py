@@ -62,6 +62,16 @@ class SeededApiE2ETests(unittest.TestCase):
         self.assertEqual(detail['data']['release_id'], detail['meta']['release_id'])
         self.assertEqual(detail['data']['provenance_source_id'], 'e2e.official')
 
+    def test_csv_export_is_escaped_bounded_and_manifest_bound(self):
+        request = urllib.request.Request(f"http://localhost:{self.env.api_port}/api/v2/locations.csv?profile=official")
+        with urllib.request.urlopen(request, timeout=10) as response:
+            self.assertEqual(response.headers['Content-Type'], 'text/csv; charset=utf-8')
+            self.assertEqual(response.headers['X-Uec-Manifest-Sha256'], 'dcf1cb50c078057cac2527936332e35892c2c13ecdcf2f545176acd17897cde7')
+            body = response.read().decode()
+        self.assertIn('release_profile', body)
+        self.assertIn('manifest_sha256', body)
+        self.assertNotIn('E2E restricted', body)
+
     def test_provenance_and_precision_are_returned_for_each_public_record(self):
         response = self.get('/api/v2/locations?limit=100')
         self.assertEqual(response['meta']['release_id'], 'e2e-promoted')
