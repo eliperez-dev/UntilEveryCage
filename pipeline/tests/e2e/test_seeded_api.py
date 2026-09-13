@@ -1,9 +1,14 @@
-import json, unittest, urllib.request
-from fixture import E2EEnvironment
+import json, os, unittest, urllib.request
+try:
+    from .fixture import E2EEnvironment
+except ImportError:
+    from fixture import E2EEnvironment
 
 class SeededApiE2ETests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        if os.environ.get("UEC_RUN_E2E") != "1":
+            raise unittest.SkipTest("set UEC_RUN_E2E=1 to run Docker-backed E2E tests")
         cls.env = E2EEnvironment().start(); cls.env.seed_official_scenario()
     @classmethod
     def tearDownClass(cls): cls.env.stop()

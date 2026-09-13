@@ -100,6 +100,17 @@ pub struct V2Location {
 }
 
 pub async fn get_v2_locations_handler(State(state): State<ApiState>, Query(params): Query<V2LocationParams>) -> impl IntoResponse {
+    const PRECISIONS: &[&str] = &["exact", "city", "unmapped"];
+    const LIFECYCLES: &[&str] = &["active_observed", "explicitly_closed", "not_seen_recently", "status_unknown"];
+    if params.display_precision.as_deref().is_some_and(|v| !PRECISIONS.contains(&v)) {
+        return (StatusCode::BAD_REQUEST, "invalid display_precision").into_response();
+    }
+    if params.lifecycle_status.as_deref().is_some_and(|v| !LIFECYCLES.contains(&v)) {
+        return (StatusCode::BAD_REQUEST, "invalid lifecycle_status").into_response();
+    }
+    if params.category.as_deref().is_some_and(|v| v.trim().is_empty()) || params.country_code.as_deref().is_some_and(|v| v.len() != 2) {
+        return (StatusCode::BAD_REQUEST, "invalid filter").into_response();
+    }
     let limit = match params.limit.as_deref().map(str::parse::<i64>).transpose() {
         Ok(value) => value.unwrap_or(100).clamp(1, 1000),
         Err(_) => return (StatusCode::BAD_REQUEST, "limit must be an integer").into_response(),
@@ -133,7 +144,15 @@ pub async fn get_v2_locations_handler(State(state): State<ApiState>, Query(param
         release_id: row.get(13), release_ruleset_version: row.get(14), provenance_source_id: row.get(15),
         provenance_source_name: row.get(16), provenance_source_url: row.get(17), provenance_retrieved_at: row.get(18),
     }).collect::<Vec<_>>();
-    Json(serde_json::json!({"data": data, "api_version": "v2"})).into_response()
+    let release = client.query_opt("SELECT release_id, ruleset_version, created_at FROM uec.releases WHERE status = 'promoted' ORDER BY created_at DESC LIMIT 1", &[]).await.ok().flatten();
+    let metadata = release.map(|row| serde_json::json!({
+        "release_id": row.get::<_, String>(0),
+        "ruleset_version": row.get::<_, String>(1),
+        "release_created_at": row.get::<_, chrono::DateTime<chrono::Utc>>(2),
+        "profile": "official",
+        "coverage_note": "Results are limited to the selected promoted release and public-access policy."
+    })).unwrap_or_else(|| serde_json::json!({"release_id": null, "profile": "official", "coverage_note": "No promoted release is currently available."}));
+    Json(serde_json::json!({"data": data, "api_version": "v2", "meta": metadata})).into_response()
 }
 
 #[cfg(test)]
@@ -165,6 +184,7 @@ mod v2_api_tests {
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["api_version"], "v2");
         assert!(json["data"].is_array());
+        assert!(json["meta"]["coverage_note"].is_string());
     }
 
     #[tokio::test]
