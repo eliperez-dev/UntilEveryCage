@@ -1,6 +1,7 @@
 /target/
 /node_modules/
 /snapshots/
+/static/v2-preview/
 /\.shuttle*
 /Secrets*.toml
 __pycache__/
