@@ -46,6 +46,23 @@ class DenmarkGeocodeStageTests(unittest.TestCase):
         self.assertEqual(MODULE.acceptance([{"x": 10, "y": 55}, {"x": 11, "y": 56}]), "review_multiple_points")
         self.assertEqual(MODULE.acceptance([]), "unresolved")
 
+    def test_lock_refuses_existing_and_duplicate_output_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "results.jsonl"
+            lock = MODULE.acquire_lock(output)
+            with self.assertRaises(RuntimeError):
+                MODULE.acquire_lock(output)
+            lock.unlink()
+            output.write_text('{"queue_key":"same"}\n{"queue_key":"same"}\n', encoding="utf-8")
+            queue = Path(directory) / "queue.jsonl"
+            queue.write_text('{"queue_key":"same"}\n', encoding="utf-8")
+            config = Path(directory) / "config.json"
+            config.write_text(json.dumps({"provider_id":"test","base_url":"https://example.invalid","mode":"development_only","status":"approved_for_development","rate_limit_requests_per_second":1}), encoding="utf-8")
+            terms = Path(directory) / "terms.json"
+            terms.write_text(json.dumps({"decision":"approved","reviewer":"test","reference":"https://example.invalid","reviewed_at":"2026-01-01T00:00:00Z","notes":"synthetic"}), encoding="utf-8")
+            with self.assertRaises(RuntimeError):
+                MODULE._run_locked(queue, output, 1, 0, 1, config, None, terms, True)
+
     def test_suppressed_records_are_not_requested_and_report_is_aggregate_only(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

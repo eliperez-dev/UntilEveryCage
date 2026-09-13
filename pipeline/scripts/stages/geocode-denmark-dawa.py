@@ -6,6 +6,7 @@ import json
 import logging
 import re
 import hashlib
+import os
 import time
 import urllib.parse
 import urllib.request
@@ -100,7 +101,26 @@ def validate_provider_config(path: Path, network: bool, terms_review_path: Path 
     return config
 
 
+def acquire_lock(output_path: Path) -> Path:
+    lock = output_path.with_suffix(output_path.suffix + ".lock")
+    try:
+        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps({"pid": os.getpid()}) + "\n")
+    except FileExistsError as error:
+        raise RuntimeError(f"geocode output is locked: {lock}; inspect and remove it only after confirming the owner is gone") from error
+    return lock
+
+
 def run(queue_path: Path, output_path: Path, limit: int, delay: float, retries: int, provider_config: Path, suppression_path: Path | None, terms_review_path: Path | None, network: bool = False) -> None:
+    lock = acquire_lock(output_path)
+    try:
+        _run_locked(queue_path, output_path, limit, delay, retries, provider_config, suppression_path, terms_review_path, network)
+    finally:
+        lock.unlink(missing_ok=True)
+
+
+def _run_locked(queue_path: Path, output_path: Path, limit: int, delay: float, retries: int, provider_config: Path, suppression_path: Path | None, terms_review_path: Path | None, network: bool = False) -> None:
     if limit <= 0 or limit > MAX_BATCH:
         raise ValueError(f"limit must be between 1 and {MAX_BATCH}; full-queue runs are not permitted")
     if not network:
@@ -115,6 +135,8 @@ def run(queue_path: Path, output_path: Path, limit: int, delay: float, retries: 
         for line in output_path.read_text(encoding="utf-8").splitlines():
             if line.strip():
                 item = json.loads(line)
+                if item["queue_key"] in completed:
+                    raise RuntimeError(f"duplicate queue entries detected in existing output; refusing resume: {output_path}")
                 completed[item["queue_key"]] = item
     output_path.parent.mkdir(parents=True, exist_ok=True)
     pending = [item for item in queue if item["queue_key"] not in completed and (item.get("source_id"), item.get("source_record_key")) not in suppressed]
