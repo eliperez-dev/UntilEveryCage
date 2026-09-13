@@ -20,6 +20,12 @@ class ReleasePromotionTests(unittest.TestCase):
         source = SCRIPT.read_text(encoding="utf-8")
         self.assertIn("profile = %s", source)
 
+    def test_promotion_rechecks_public_safety_gates_and_supports_manifest(self):
+        source = SCRIPT.read_text(encoding="utf-8")
+        for gate in ("coordinate_not_ready", "review_required", "publication_not_approved", "active_suppression"):
+            self.assertIn(gate, source)
+        self.assertIn("--manifest", source)
+
 
 if __name__ == "__main__":
     unittest.main()
