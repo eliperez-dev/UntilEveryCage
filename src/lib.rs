@@ -123,19 +123,24 @@ pub async fn get_v2_locations_handler(State(state): State<ApiState>, Query(param
         Ok(value) => value.unwrap_or(0).clamp(0, 1_000_000),
         Err(_) => return (StatusCode::BAD_REQUEST, "offset must be an integer").into_response(),
     };
-    let client = match state.database.as_ref() { Some(pool) => match pool.get().await { Ok(client) => client, Err(_) => return (StatusCode::SERVICE_UNAVAILABLE, "Database pool unavailable").into_response() }, None => return (StatusCode::SERVICE_UNAVAILABLE, "V2 database is not configured").into_response() };
-    let release = client.query_opt("SELECT release_id, ruleset_version, created_at FROM uec.releases WHERE status = 'promoted' ORDER BY created_at DESC, release_id DESC LIMIT 1", &[]).await;
+    let mut client = match state.database.as_ref() { Some(pool) => match pool.get().await { Ok(client) => client, Err(_) => return (StatusCode::SERVICE_UNAVAILABLE, "Database pool unavailable").into_response() }, None => return (StatusCode::SERVICE_UNAVAILABLE, "V2 database is not configured").into_response() };
+    let transaction = match client.build_transaction().isolation_level(tokio_postgres::IsolationLevel::RepeatableRead).read_only(true).start().await {
+        Ok(transaction) => transaction,
+        Err(_) => return (StatusCode::SERVICE_UNAVAILABLE, "V2 database transaction unavailable").into_response(),
+    };
+    let release = transaction.query_opt("SELECT release_id, ruleset_version, created_at FROM uec.releases WHERE status = 'promoted' ORDER BY created_at DESC, release_id DESC LIMIT 1", &[]).await;
     let release = match release {
         Ok(release) => release,
         Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "V2 release query failed").into_response(),
     };
     let Some(release) = release else {
+        let _ = transaction.commit().await;
         return Json(serde_json::json!({"data": [], "api_version": "v2", "meta": {"release_id": null, "profile": "official", "coverage_note": "No promoted release is currently available."}})).into_response();
     };
     let promoted_release_id: String = release.get(0);
     let promoted_ruleset: String = release.get(1);
     let promoted_created_at: chrono::DateTime<chrono::Utc> = release.get(2);
-    let rows = match client.query(r#"
+    let rows = match transaction.query(r#"
         SELECT facility_id, canonical_name, country_code, city, display_precision,
                ST_Y(display_location::geometry), ST_X(display_location::geometry),
                first_observed_at, last_observed_at, observation_count, lifecycle_status,
@@ -168,6 +173,9 @@ pub async fn get_v2_locations_handler(State(state): State<ApiState>, Query(param
         "profile": "official",
         "coverage_note": "Results are limited to the selected promoted release and public-access policy."
     });
+    if transaction.commit().await.is_err() {
+        return (StatusCode::INTERNAL_SERVER_ERROR, "V2 database transaction failed").into_response();
+    }
     Json(serde_json::json!({"data": data, "api_version": "v2", "meta": metadata})).into_response()
 }
 

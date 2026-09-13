@@ -10,6 +10,8 @@ The API supports explicit `category`, `source_type`, `display_precision`, and `l
 
 Pagination is deterministic offset pagination: `limit` defaults to 100 and is bounded to 1,000; `offset` defaults to 0 and is bounded to 1,000,000. Results are ordered by stable `facility_id`. Cursor pagination should replace offset pagination before very large public collections are exposed.
 
+Release selection and location rows are read inside one `REPEATABLE READ`, read-only transaction. This ensures the response metadata and records come from one database snapshot, even if another release is promoted concurrently. The legacy `provenance_source` response field is retained as a compatibility alias for `provenance_source_name`; new clients should use the explicit `provenance_source_id`, `provenance_source_name`, `provenance_source_url`, and `provenance_retrieved_at` fields.
+
 Example response fields:
 
 ```json
