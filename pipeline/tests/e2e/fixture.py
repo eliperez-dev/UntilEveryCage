@@ -42,7 +42,10 @@ class E2EEnvironment:
             subprocess.run(self.command("exec", "-T", "postgres", "psql", "-U", "uec", "-d", "uec"), input=migrations.encode("utf-8"), cwd=ROOT, check=True, env=self.compose_env())
             subprocess.run(["cargo", "build", "--quiet"], cwd=ROOT, check=True)
             env = os.environ.copy(); env.update({"UEC_DATABASE_URL": self.database_url, "PORT": str(self.api_port)})
-            self.backend = subprocess.Popen([str(ROOT / "target/debug/heatmap-backend.exe")], cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            binary = ROOT / "target/debug/heatmap-backend.exe"
+            if not binary.exists():
+                binary = ROOT / "target/debug/heatmap-backend"
+            self.backend = subprocess.Popen([str(binary)], cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             import urllib.request
             for _ in range(80):
                 try:
