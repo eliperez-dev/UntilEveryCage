@@ -5,11 +5,15 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 $project = "uec-backup-$([Guid]::NewGuid().ToString('N').Substring(0,8))"
 $compose = Join-Path $root 'docker-compose.e2e.yml'; $env:UEC_E2E_DB_PORT = '55433'
 $dump = Join-Path ([IO.Path]::GetTempPath()) "$project.dump"
+$migrationFile = Join-Path ([IO.Path]::GetTempPath()) "$project-migrations.sql"
 try {
   & docker compose -p $project -f $compose up -d --wait
   if ($LASTEXITCODE -ne 0) { throw "Docker startup failed (exit $LASTEXITCODE)." }
   $migrations = (Get-ChildItem (Join-Path $root 'pipeline\migrations') -Filter '*.sql' | Sort-Object Name | ForEach-Object { Get-Content $_.FullName -Raw }) -join "`n"
-  $migrations | & docker compose -p $project -f $compose exec -T postgres psql -U uec -d uec
+  Set-Content -LiteralPath $migrationFile -Value $migrations -Encoding UTF8
+  & docker compose -p $project -f $compose cp $migrationFile postgres:/tmp/migrations.sql
+  if ($LASTEXITCODE -ne 0) { throw "Migration upload failed (exit $LASTEXITCODE)." }
+  & docker compose -p $project -f $compose exec -T postgres psql -v ON_ERROR_STOP=1 -U uec -d uec -f /tmp/migrations.sql
   if ($LASTEXITCODE -ne 0) { throw "Migration application failed (exit $LASTEXITCODE)." }
   Get-Content (Join-Path $root 'pipeline\tests\e2e\backup_restore_seed.sql') -Raw | & docker compose -p $project -f $compose exec -T postgres psql -U uec -d uec
   if ($LASTEXITCODE -ne 0) { throw "Synthetic seed failed (exit $LASTEXITCODE)." }
@@ -28,4 +32,5 @@ try {
   try { & docker compose -p $project -f $compose down -v --remove-orphans *> $null } catch { }
   $ErrorActionPreference = $savedPreference
   if (-not $KeepArtifacts -and (Test-Path -LiteralPath $dump)) { Remove-Item -LiteralPath $dump -Force }
+  if (Test-Path -LiteralPath $migrationFile) { Remove-Item -LiteralPath $migrationFile -Force }
 }
