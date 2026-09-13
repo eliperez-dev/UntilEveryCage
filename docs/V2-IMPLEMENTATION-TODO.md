@@ -28,9 +28,9 @@ Goal: make the current backend/data-platform branch independently runnable, revi
 - [ ] Verify stable facility identity behavior and source-record traceability.
 - [ ] Verify candidate release validation and explicit promotion.
 - [ ] Verify failed imports leave the previous eligible release available.
-- [ ] Verify the public API reads only from curated promoted projections.
-- [ ] Verify privacy screening, publication eligibility, and suppression behavior for list and detail endpoints.
-- [ ] Verify profile separation for official, secondary, and community views.
+- [x] Verify the public API reads only from curated promoted projections.
+- [x] Verify privacy screening, publication eligibility, and suppression behavior for list and detail endpoints.
+- [x] Verify profile separation for official, secondary, and community views.
 - [x] Verify backup/restore and historical release reconstruction for the synthetic suppression scenario.
 - [ ] Add or finish operational runbooks, health checks, diagnostics, and failure handling.
 - [ ] Record unresolved source-coverage and policy blockers explicitly.

@@ -9,7 +9,7 @@ This directory is the local-development home for V2 ingestion code. Acquired and
 Run the manifest generator from the repository root:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File pipeline/scripts/maintenance/build-legacy-manifest.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass -File pipeline/scripts/maintenance/build-legacy-manifest.ps1
 ```
 
 It writes `data/manifests/legacy-files.csv` with one row per legacy input, including byte size, SHA-256 checksum, relative path, and generated-at time. The generated timestamp records when this inventory was made; it is not an assertion about when the source data was current.
@@ -19,7 +19,7 @@ It writes `data/manifests/legacy-files.csv` with one row per legacy input, inclu
 The Denmark wrapper archives an artifact only; it never imports, validates for publication, promotes a release, or alters application data. Network retrieval is intentionally opt-in and requires an operator-authored terms review JSON with `reviewer`, `reference`, `reviewed_at`, `decision: "approved"`, and `notes`.
 
 ```powershell
-python pipeline/scripts/stages/acquire-denmark-smiley.py --fetch --terms-review data/reviews/dk-smiley-terms.json
+python pipeline/scripts/stages/acquire-denmark-smiley.py --fetch --terms-review <operator-approved-terms-review.json>
 ```
 
 Raw XML and its deterministic `acquisition-metadata.json` are written under ignored `data/raw/dk.smiley/<run-id>/`. For offline development, use `--local-file path/to/synthetic.xml`; it needs no terms review and records that distinction. Existing staging runs can continue to take an already archived local XML path. `run-denmark-pipeline.py --fetch --terms-review ...` uses the wrapper first, then performs staging only; database import and release promotion remain separate commands.

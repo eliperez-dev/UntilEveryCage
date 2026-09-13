@@ -36,12 +36,12 @@ These do not invalidate the verified local/CI backend foundation, but they preve
 
 1. Production PostgreSQL transport is now Rustls-backed, but deployment-level certificate/hostname verification and provider configuration still require a production environment check.
 2. Exceptional removal, retention, and propagation workflows remain incomplete across every controlled surface, reimport, cache, historical release, and restore path.
-3. The unreviewed-community profile requires a deliberate API/UI contract with persistent warning/context and separate counts before exposure.
+3. The API contract for screened-but-unreviewed community claims is implemented and tested; frontend context, exports, separate aggregate views, and production exposure controls remain incomplete.
 4. Authorized maintainer/reviewer availability, least-privilege release controls, publication-pause behavior, and legal-demand handling require operational ownership and evidence.
 5. Visitor privacy, hosting/CDN/tile/geocoder/error-provider behavior, logging, and retention remain deployment-audit items.
 6. Current source acquisition is complete only for the Denmark partial vertical slice; other source blockers remain recorded in the source registry.
 7. The full multi-module E2E discovery command remains intentionally split into sequential modules because each module owns a disposable PostGIS environment; isolated sequential module runs are the authoritative passing evidence.
-8. The existing Jest configuration has an ESM/worker execution failure and is outside the backend certification gate.
+8. Jest runs in the canonical frontend compatibility gate; broader browser, accessibility, and mobile coverage remains part of frontend platform work.
 
 ## Handoff decision
 

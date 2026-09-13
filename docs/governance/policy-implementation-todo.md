@@ -78,6 +78,11 @@ Governing policy: [ETHICS.md](../ETHICS.md), version 1.0, not yet publicly publi
 
 ## 8. Explicit public access to unreviewed community claims
 
+The V2 API now implements the screened-but-unreviewed contract for synthetic
+claims, including profile separation, persistent list/detail warnings, and
+default exclusion. The items below remain open where they require frontend,
+export, aggregate-count, historical/cache, or production operational controls.
+
 - [ ] Model factual review separately from privacy/abuse screening and publication eligibility. Raw unscreened and rejected submissions remain non-public.
 - [ ] Add explicit unreviewed-community profiles/query parameters; verify ordinary map, search, API, and export defaults exclude those claims.
 - [ ] Show persistent prominent warnings before access, on each record, and on direct links; keep community counts separate from default curated project totals.

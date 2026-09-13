@@ -6,7 +6,7 @@ From PowerShell:
 
 ```powershell
 $env:UEC_RUN_E2E = "1"
-powershell -ExecutionPolicy Bypass -File pipeline/tests/e2e/backup-restore.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass -File pipeline/tests/e2e/backup-restore.ps1
 ```
 
 The script uses a unique Compose project and removes its volume in `finally`. `-KeepArtifacts` retains the temporary dump for local inspection only. It never reads project data or credentials.
