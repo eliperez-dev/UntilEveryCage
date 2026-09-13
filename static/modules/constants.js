@@ -56,12 +56,14 @@ export const PIN_SCALES = [0.5, 0.75, 1];
 export const API_ENDPOINTS = {
     production: {
         locations: 'https://untileverycage-production.up.railway.app/api/locations',
+        v2Locations: 'https://untileverycage-production.up.railway.app/api/v2/locations',
         aphisReports: 'https://untileverycage-production.up.railway.app/api/aphis-reports',
         inspectionReports: 'https://untileverycage-production.up.railway.app/api/inspection-reports',
         aphisQuery: 'https://untileverycage-production.up.railway.app/api/aphis-query'
     },
     local: {
         locations: '/api/locations',
+        v2Locations: '/api/v2/locations',
         aphisReports: '/api/aphis-reports',
         inspectionReports: '/api/inspection-reports',
         aphisQuery: '/api/aphis-query'
@@ -386,3 +388,9 @@ export const MEXICAN_STATE_NAMES = {
     'YUCATÁN': 'Yucatán',
     'ZACATECAS': 'Zacatecas'
 };
+
+// V2 is opt-in during the migration. Enable with ?api=v2 or localStorage.setItem('uec-api-version', 'v2').
+export function useV2Api() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('api') === 'v2' || window.localStorage.getItem('uec-api-version') === 'v2';
+}

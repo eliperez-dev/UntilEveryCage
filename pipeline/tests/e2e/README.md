@@ -5,8 +5,11 @@ These tests exercise the compiled Rust service over real HTTP while it uses a di
 Run them from the repository root:
 
 ```powershell
+$env:UEC_RUN_E2E = "1"
 python -m unittest discover -s pipeline/tests/e2e -p "test_*.py" -v
 ```
+
+This requires Docker Desktop, Cargo, and the pinned Python dependencies. The fixture uses isolated random ports and tears down its Compose project even after setup failures. Fast non-Docker checks remain available with `python -m unittest discover -s pipeline/tests -p "test_*.py" -v`.
 
 `fixture.py` owns the environment lifecycle: it selects isolated ports, starts Docker Compose, applies migrations as UTF-8, builds and starts the backend, waits for readiness, and tears everything down. Setup failures also trigger cleanup.
 

@@ -15,19 +15,21 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 // Contact the developer directly at untileverycageproject@protonmail.com
-use axum::extract::{Query, State};
+use axum::extract::{Path, Query, State};
 use axum::{Json, http::StatusCode, response::IntoResponse};
+use deadpool_postgres::Pool;
 use include_dir::{Dir, include_dir};
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::error::Error;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
-use once_cell::sync::Lazy;
-use deadpool_postgres::Pool;
 
 #[derive(Clone)]
-pub struct ApiState { pub database: Option<Pool> }
+pub struct ApiState {
+    pub database: Option<Pool>,
+}
 
 mod location;
 use crate::location::*;
@@ -36,23 +38,24 @@ pub use location::Location;
 
 const DATA_DIR: Dir = include_dir!("./static_data");
 
-static CACHED_LOCATIONS: Lazy<Result<Vec<LocationResponse>, String>> = Lazy::new(|| {
-    parse_all_locations().map_err(|e| e.to_string())
-});
+static CACHED_LOCATIONS: Lazy<Result<Vec<LocationResponse>, String>> =
+    Lazy::new(|| parse_all_locations().map_err(|e| e.to_string()));
 
-static CACHED_APHIS: Lazy<Result<Vec<AphisReport>, String>> = Lazy::new(|| {
-    parse_aphis_reports().map_err(|e| e.to_string())
-});
+static CACHED_APHIS: Lazy<Result<Vec<AphisReport>, String>> =
+    Lazy::new(|| parse_aphis_reports().map_err(|e| e.to_string()));
 
-static CACHED_INSPECTION: Lazy<Result<Vec<InspectionReport>, String>> = Lazy::new(|| { 
-    parse_inspection_reports().map_err(|e| e.to_string())
-});
+static CACHED_INSPECTION: Lazy<Result<Vec<InspectionReport>, String>> =
+    Lazy::new(|| parse_inspection_reports().map_err(|e| e.to_string()));
 
 pub async fn get_locations_handler(Query(params): Query<LocationParams>) -> impl IntoResponse {
     match CACHED_LOCATIONS.as_ref() {
         Ok(all_locations) => {
             let filtered = if let Some(country) = params.country_code {
-                all_locations.iter().filter(|loc| loc.country == country).cloned().collect()
+                all_locations
+                    .iter()
+                    .filter(|loc| loc.country == country)
+                    .cloned()
+                    .collect()
             } else {
                 all_locations.clone()
             };
@@ -85,6 +88,12 @@ pub struct V2Location {
     pub canonical_name: Option<String>,
     pub country_code: String,
     pub city: Option<String>,
+    pub category: String,
+    pub publication_profile: String,
+    pub factual_review_status: String,
+    pub privacy_screening_status: String,
+    pub project_approval: String,
+    pub reviewer_role: Option<String>,
     pub display_precision: String,
     pub latitude: Option<f64>,
     pub longitude: Option<f64>,
@@ -102,22 +111,51 @@ pub struct V2Location {
     pub provenance_retrieved_at: chrono::DateTime<chrono::Utc>,
 }
 
-pub async fn get_v2_locations_handler(State(state): State<ApiState>, Query(params): Query<V2LocationParams>) -> impl IntoResponse {
+pub async fn get_v2_locations_handler(
+    State(state): State<ApiState>,
+    Query(params): Query<V2LocationParams>,
+) -> impl IntoResponse {
     const PRECISIONS: &[&str] = &["exact", "city", "unmapped"];
-    const LIFECYCLES: &[&str] = &["active_observed", "explicitly_closed", "not_seen_recently", "status_unknown"];
-    if params.display_precision.as_deref().is_some_and(|v| !PRECISIONS.contains(&v)) {
+    const LIFECYCLES: &[&str] = &[
+        "active_observed",
+        "explicitly_closed",
+        "not_seen_recently",
+        "status_unknown",
+    ];
+    if params
+        .display_precision
+        .as_deref()
+        .is_some_and(|v| !PRECISIONS.contains(&v))
+    {
         return (StatusCode::BAD_REQUEST, "invalid display_precision").into_response();
     }
-    if params.lifecycle_status.as_deref().is_some_and(|v| !LIFECYCLES.contains(&v)) {
+    if params
+        .lifecycle_status
+        .as_deref()
+        .is_some_and(|v| !LIFECYCLES.contains(&v))
+    {
         return (StatusCode::BAD_REQUEST, "invalid lifecycle_status").into_response();
     }
-    if params.category.as_deref().is_some_and(|v| v.trim().is_empty()) || params.country_code.as_deref().is_some_and(|v| v.len() != 2) {
+    if params
+        .category
+        .as_deref()
+        .is_some_and(|v| v.trim().is_empty())
+        || params.country_code.as_deref().is_some_and(|v| v.len() != 2)
+    {
         return (StatusCode::BAD_REQUEST, "invalid filter").into_response();
     }
-    if params.source_type.as_deref().is_some_and(|v| !["official", "secondary", "user_submitted"].contains(&v)) {
+    if params
+        .source_type
+        .as_deref()
+        .is_some_and(|v| !["official", "secondary", "user_submitted"].contains(&v))
+    {
         return (StatusCode::BAD_REQUEST, "invalid source_type").into_response();
     }
-    if params.profile.as_deref().is_some_and(|v| !["official", "secondary", "community"].contains(&v)) {
+    if params
+        .profile
+        .as_deref()
+        .is_some_and(|v| !["official", "secondary", "community"].contains(&v))
+    {
         return (StatusCode::BAD_REQUEST, "invalid profile").into_response();
     }
     let limit = match params.limit.as_deref().map(str::parse::<i64>).transpose() {
@@ -129,44 +167,82 @@ pub async fn get_v2_locations_handler(State(state): State<ApiState>, Query(param
         Err(_) => return (StatusCode::BAD_REQUEST, "offset must be an integer").into_response(),
     };
     if params.cursor.is_some() && params.offset.is_some() {
-        return (StatusCode::BAD_REQUEST, "cursor and offset cannot be combined").into_response();
+        return (
+            StatusCode::BAD_REQUEST,
+            "cursor and offset cannot be combined",
+        )
+            .into_response();
     }
-    let cursor = match params.cursor.as_deref().map(uuid::Uuid::parse_str).transpose() {
+    let cursor = match params
+        .cursor
+        .as_deref()
+        .map(uuid::Uuid::parse_str)
+        .transpose()
+    {
         Ok(cursor) => cursor,
-        Err(_) => return (StatusCode::BAD_REQUEST, "cursor must be a facility UUID").into_response(),
+        Err(_) => {
+            return (StatusCode::BAD_REQUEST, "cursor must be a facility UUID").into_response();
+        }
     };
     let effective_offset = if cursor.is_some() { 0 } else { offset };
-    let mut client = match state.database.as_ref() { Some(pool) => match pool.get().await { Ok(client) => client, Err(_) => return (StatusCode::SERVICE_UNAVAILABLE, "Database pool unavailable").into_response() }, None => return (StatusCode::SERVICE_UNAVAILABLE, "V2 database is not configured").into_response() };
-    let transaction = match client.build_transaction().isolation_level(tokio_postgres::IsolationLevel::RepeatableRead).read_only(true).start().await {
-        Ok(transaction) => transaction,
-        Err(_) => return (StatusCode::SERVICE_UNAVAILABLE, "V2 database transaction unavailable").into_response(),
+    let mut client = match state.database.as_ref() {
+        Some(pool) => match pool.get().await {
+            Ok(client) => client,
+            Err(_) => {
+                return (StatusCode::SERVICE_UNAVAILABLE, "Database pool unavailable")
+                    .into_response();
+            }
+        },
+        None => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "V2 database is not configured",
+            )
+                .into_response();
+        }
     };
-    let release = transaction.query_opt("SELECT release_id, ruleset_version, created_at, profile FROM uec.releases WHERE status = 'promoted' ORDER BY created_at DESC, release_id DESC LIMIT 1", &[]).await;
+    let transaction = match client
+        .build_transaction()
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .read_only(true)
+        .start()
+        .await
+    {
+        Ok(transaction) => transaction,
+        Err(_) => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "V2 database transaction unavailable",
+            )
+                .into_response();
+        }
+    };
+    let requested_profile = params.profile.as_deref().unwrap_or("official");
+    let release = transaction.query_opt("SELECT release_id, ruleset_version, created_at, profile FROM uec.releases WHERE status = 'promoted' AND profile = $1 ORDER BY created_at DESC, release_id DESC LIMIT 1", &[&requested_profile]).await;
     let release = match release {
         Ok(release) => release,
-        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "V2 release query failed").into_response(),
+        Err(_) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, "V2 release query failed").into_response();
+        }
     };
     let Some(release) = release else {
         let _ = transaction.commit().await;
-        let profile = params.profile.as_deref().unwrap_or("official");
-        return Json(serde_json::json!({"data": [], "api_version": "v2", "meta": {"release_id": null, "profile": profile, "coverage_note": "No promoted release is currently available."}})).into_response();
+        return Json(serde_json::json!({"data": [], "api_version": "v2", "meta": {"release_id": null, "profile": requested_profile, "coverage_note": "No promoted release is currently available."}})).into_response();
     };
     let promoted_release_id: String = release.get(0);
     let promoted_ruleset: String = release.get(1);
     let promoted_created_at: chrono::DateTime<chrono::Utc> = release.get(2);
     let promoted_profile: String = release.get(3);
-    let requested_profile = params.profile.as_deref().unwrap_or("official");
-    if promoted_profile != requested_profile {
-        let _ = transaction.commit().await;
-        return Json(serde_json::json!({"data": [], "api_version": "v2", "meta": {"release_id": null, "profile": requested_profile, "coverage_note": "No promoted release is available for the requested publication profile."}})).into_response();
-    }
+    let query_limit = limit + 1;
     let rows = match transaction.query(r#"
-        SELECT facility_id, canonical_name, country_code, city, display_precision,
+        SELECT facility_id, canonical_name, country_code, city, classification_category, display_precision,
+               review.factual_review_status, review.privacy_screening_status, review.maintainer_approval, review.reviewer_role,
                ST_Y(display_location::geometry), ST_X(display_location::geometry),
                first_observed_at, last_observed_at, observation_count, lifecycle_status,
                provenance_origin_type, release_id, release_ruleset_version,
                provenance_source_id, provenance_source_name, provenance_source_url, provenance_retrieved_at
         FROM uec.map_facilities_display_history
+        JOIN uec.publication_review_current AS review ON review.source_record_id = map_facilities_display_history.source_record_id
         WHERE release_id = $1
           AND ($2::uuid IS NULL OR facility_id > $2)
           AND ($3::text IS NULL OR country_code = $3)
@@ -175,19 +251,47 @@ pub async fn get_v2_locations_handler(State(state): State<ApiState>, Query(param
           AND ($6::text IS NULL OR lifecycle_status = $6)
           AND ($7::text IS NULL OR provenance_origin_type = $7)
         ORDER BY facility_id LIMIT $8 OFFSET $9
-    "#, &[&promoted_release_id, &cursor, &params.country_code, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &limit, &effective_offset]).await {
+    "#, &[&promoted_release_id, &cursor, &params.country_code, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &query_limit, &effective_offset]).await {
         Ok(rows) => rows,
         Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "V2 location query failed").into_response(),
     };
-    let data = rows.into_iter().map(|row| V2Location {
-        facility_id: row.get(0), canonical_name: row.get(1), country_code: row.get(2), city: row.get(3),
-        display_precision: row.get(4), latitude: row.get(5), longitude: row.get(6),
-        first_observed_at: row.get(7), last_observed_at: row.get(8), observation_count: row.get(9),
-        lifecycle_status: row.get(10), source_type: row.get(11),
-        release_id: row.get(12), release_ruleset_version: row.get(13), provenance_source_id: row.get(14),
-        provenance_source: row.get(15), provenance_source_name: row.get(15), provenance_source_url: row.get(16), provenance_retrieved_at: row.get(17),
-    }).collect::<Vec<_>>();
-    let next_cursor = if data.len() as i64 == limit { data.last().map(|row| row.facility_id.to_string()) } else { None };
+    let has_next = rows.len() as i64 > limit;
+    let data = rows
+        .into_iter()
+        .take(limit as usize)
+        .map(|row| V2Location {
+            facility_id: row.get(0),
+            canonical_name: row.get(1),
+            country_code: row.get(2),
+            city: row.get(3),
+            category: row.get(4),
+            factual_review_status: row.get(6),
+            privacy_screening_status: row.get(7),
+            project_approval: row.get(8),
+            reviewer_role: row.get(9),
+            publication_profile: promoted_profile.clone(),
+            display_precision: row.get(5),
+            latitude: row.get(10),
+            longitude: row.get(11),
+            first_observed_at: row.get(12),
+            last_observed_at: row.get(13),
+            observation_count: row.get(14),
+            lifecycle_status: row.get(15),
+            source_type: row.get(16),
+            release_id: row.get(17),
+            release_ruleset_version: row.get(18),
+            provenance_source_id: row.get(19),
+            provenance_source: row.get(20),
+            provenance_source_name: row.get(20),
+            provenance_source_url: row.get(21),
+            provenance_retrieved_at: row.get(22),
+        })
+        .collect::<Vec<_>>();
+    let next_cursor = if has_next {
+        data.last().map(|row| row.facility_id.to_string())
+    } else {
+        None
+    };
     let metadata = serde_json::json!({
         "release_id": promoted_release_id,
         "ruleset_version": promoted_ruleset,
@@ -197,37 +301,192 @@ pub async fn get_v2_locations_handler(State(state): State<ApiState>, Query(param
         "coverage_note": "Results are limited to the selected promoted release and public-access policy."
     });
     if transaction.commit().await.is_err() {
-        return (StatusCode::INTERNAL_SERVER_ERROR, "V2 database transaction failed").into_response();
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "V2 database transaction failed",
+        )
+            .into_response();
     }
     Json(serde_json::json!({"data": data, "api_version": "v2", "meta": metadata})).into_response()
+}
+
+pub async fn get_v2_location_detail_handler(
+    State(state): State<ApiState>,
+    Path(facility_id): Path<uuid::Uuid>,
+    Query(params): Query<ProfileParams>,
+) -> impl IntoResponse {
+    let mut client = match state.database.as_ref() {
+        Some(pool) => match pool.get().await {
+            Ok(client) => client,
+            Err(_) => {
+                return (StatusCode::SERVICE_UNAVAILABLE, "Database pool unavailable")
+                    .into_response();
+            }
+        },
+        None => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "V2 database is not configured",
+            )
+                .into_response();
+        }
+    };
+    let transaction = match client
+        .build_transaction()
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .read_only(true)
+        .start()
+        .await
+    {
+        Ok(transaction) => transaction,
+        Err(_) => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "V2 database transaction unavailable",
+            )
+                .into_response();
+        }
+    };
+    let requested_profile = params.profile.as_deref().unwrap_or("official");
+    if !["official", "secondary", "community"].contains(&requested_profile) {
+        return (StatusCode::BAD_REQUEST, "invalid profile").into_response();
+    }
+    let release = match transaction.query_opt("SELECT release_id, ruleset_version, created_at, profile FROM uec.releases WHERE status = 'promoted' AND profile = $1 ORDER BY created_at DESC, release_id DESC LIMIT 1", &[&requested_profile]).await {
+        Ok(release) => release,
+        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "V2 release query failed").into_response(),
+    };
+    let Some(release) = release else {
+        let _ = transaction.commit().await;
+        return (StatusCode::NOT_FOUND, "location not found").into_response();
+    };
+    let release_id: String = release.get(0);
+    let ruleset: String = release.get(1);
+    let created_at: chrono::DateTime<chrono::Utc> = release.get(2);
+    let profile: String = release.get(3);
+    let row = match transaction.query_opt(r#"
+        SELECT facility_id, canonical_name, country_code, city, classification_category, display_precision,
+               review.factual_review_status, review.privacy_screening_status, review.maintainer_approval, review.reviewer_role,
+               ST_Y(display_location::geometry), ST_X(display_location::geometry),
+               first_observed_at, last_observed_at, observation_count, lifecycle_status,
+               provenance_origin_type, release_id, release_ruleset_version,
+               provenance_source_id, provenance_source_name, provenance_source_url, provenance_retrieved_at
+        FROM uec.map_facilities_display_history
+        JOIN uec.publication_review_current AS review ON review.source_record_id = map_facilities_display_history.source_record_id
+        WHERE facility_id = $1 AND release_id = $2
+    "#, &[&facility_id, &release_id]).await {
+        Ok(row) => row,
+        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "V2 location query failed").into_response(),
+    };
+    let Some(row) = row else {
+        let _ = transaction.commit().await;
+        return (StatusCode::NOT_FOUND, "location not found").into_response();
+    };
+    let item = V2Location {
+        facility_id: row.get(0),
+        canonical_name: row.get(1),
+        country_code: row.get(2),
+        city: row.get(3),
+        category: row.get(4),
+        factual_review_status: row.get(6),
+        privacy_screening_status: row.get(7),
+        project_approval: row.get(8),
+        reviewer_role: row.get(9),
+        publication_profile: profile.clone(),
+        display_precision: row.get(5),
+        latitude: row.get(10),
+        longitude: row.get(11),
+        first_observed_at: row.get(12),
+        last_observed_at: row.get(13),
+        observation_count: row.get(14),
+        lifecycle_status: row.get(15),
+        source_type: row.get(16),
+        release_id: row.get(17),
+        release_ruleset_version: row.get(18),
+        provenance_source_id: row.get(19),
+        provenance_source: row.get(20),
+        provenance_source_name: row.get(20),
+        provenance_source_url: row.get(21),
+        provenance_retrieved_at: row.get(22),
+    };
+    if transaction.commit().await.is_err() {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "V2 database transaction failed",
+        )
+            .into_response();
+    }
+    Json(serde_json::json!({"data": item, "api_version": "v2", "meta": {"release_id": release_id, "ruleset_version": ruleset, "release_created_at": created_at, "profile": profile}})).into_response()
+}
+
+#[derive(Deserialize)]
+pub struct ProfileParams {
+    pub profile: Option<String>,
 }
 
 #[cfg(test)]
 mod v2_api_tests {
     use super::*;
-    use axum::{body::Body, http::{Request, StatusCode}, Router};
-    use tower::ServiceExt;
+    use axum::{
+        Router,
+        body::Body,
+        http::{Request, StatusCode},
+    };
     use tokio_postgres::NoTls;
+    use tower::ServiceExt;
 
     async fn test_state() -> ApiState {
         let mut config = deadpool_postgres::Config::new();
-        config.url = Some(std::env::var("UEC_DATABASE_URL").unwrap_or_else(|_| "postgresql://uec:uec-local-development-only@localhost:5433/uec".into()));
-        ApiState { database: Some(config.create_pool(Some(deadpool_postgres::Runtime::Tokio1), NoTls).unwrap()) }
+        config.url = Some(std::env::var("UEC_DATABASE_URL").unwrap_or_else(|_| {
+            "postgresql://uec:uec-local-development-only@localhost:5433/uec".into()
+        }));
+        ApiState {
+            database: Some(
+                config
+                    .create_pool(Some(deadpool_postgres::Runtime::Tokio1), NoTls)
+                    .unwrap(),
+            ),
+        }
     }
 
     #[tokio::test]
     async fn v2_response_is_json_when_database_is_configured() {
-        let url = std::env::var("UEC_DATABASE_URL").unwrap_or_else(|_| "postgresql://uec:uec-local-development-only@localhost:5433/uec".into());
-        unsafe { std::env::set_var("UEC_DATABASE_URL", url); }
-        let response = Router::new().route("/api/v2/locations", axum::routing::get(get_v2_locations_handler)).with_state(test_state().await)
-            .oneshot(Request::builder().uri("/api/v2/locations?country_code=DK").body(Body::empty()).unwrap()).await.unwrap();
+        let url = std::env::var("UEC_DATABASE_URL").unwrap_or_else(|_| {
+            "postgresql://uec:uec-local-development-only@localhost:5433/uec".into()
+        });
+        unsafe {
+            std::env::set_var("UEC_DATABASE_URL", url);
+        }
+        let response = Router::new()
+            .route(
+                "/api/v2/locations",
+                axum::routing::get(get_v2_locations_handler),
+            )
+            .with_state(test_state().await)
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v2/locations?country_code=DK")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
         let status = response.status();
         if status != StatusCode::OK {
-            let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
-            panic!("unexpected status {status}: {}", String::from_utf8_lossy(&body));
+            let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            panic!(
+                "unexpected status {status}: {}",
+                String::from_utf8_lossy(&body)
+            );
         }
-        assert_eq!(response.headers().get("content-type").unwrap(), "application/json");
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        assert_eq!(
+            response.headers().get("content-type").unwrap(),
+            "application/json"
+        );
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["api_version"], "v2");
         assert!(json["data"].is_array());
@@ -236,16 +495,29 @@ mod v2_api_tests {
 
     #[tokio::test]
     async fn v2_filters_are_accepted_without_bypassing_public_release_gate() {
-        let url = std::env::var("UEC_DATABASE_URL").unwrap_or_else(|_| "postgresql://uec:uec-local-development-only@localhost:5433/uec".into());
-        unsafe { std::env::set_var("UEC_DATABASE_URL", url); }
+        let url = std::env::var("UEC_DATABASE_URL").unwrap_or_else(|_| {
+            "postgresql://uec:uec-local-development-only@localhost:5433/uec".into()
+        });
+        unsafe {
+            std::env::set_var("UEC_DATABASE_URL", url);
+        }
         for uri in [
             "/api/v2/locations?country_code=DK&category=retail_and_prepared_food",
             "/api/v2/locations?display_precision=city&lifecycle_status=active_observed",
         ] {
-            let response = Router::new().route("/api/v2/locations", axum::routing::get(get_v2_locations_handler)).with_state(test_state().await)
-                .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap()).await.unwrap();
+            let response = Router::new()
+                .route(
+                    "/api/v2/locations",
+                    axum::routing::get(get_v2_locations_handler),
+                )
+                .with_state(test_state().await)
+                .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
             assert_eq!(response.status(), StatusCode::OK);
-            let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+            let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap();
             let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
             assert_eq!(json["api_version"], "v2");
             assert!(json["data"].as_array().unwrap().is_empty());
@@ -254,18 +526,31 @@ mod v2_api_tests {
 
     #[tokio::test]
     async fn v2_default_and_opt_in_profiles_remain_empty_until_promotion() {
-        let url = std::env::var("UEC_DATABASE_URL").unwrap_or_else(|_| "postgresql://uec:uec-local-development-only@localhost:5433/uec".into());
-        unsafe { std::env::set_var("UEC_DATABASE_URL", url); }
+        let url = std::env::var("UEC_DATABASE_URL").unwrap_or_else(|_| {
+            "postgresql://uec:uec-local-development-only@localhost:5433/uec".into()
+        });
+        unsafe {
+            std::env::set_var("UEC_DATABASE_URL", url);
+        }
         for uri in [
             "/api/v2/locations",
             "/api/v2/locations?category=logistics_and_storage",
             "/api/v2/locations?category=retail_and_prepared_food&display_precision=exact",
             "/api/v2/locations?lifecycle_status=explicitly_closed",
         ] {
-            let response = Router::new().route("/api/v2/locations", axum::routing::get(get_v2_locations_handler)).with_state(test_state().await)
-                .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap()).await.unwrap();
+            let response = Router::new()
+                .route(
+                    "/api/v2/locations",
+                    axum::routing::get(get_v2_locations_handler),
+                )
+                .with_state(test_state().await)
+                .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
             assert_eq!(response.status(), StatusCode::OK);
-            let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+            let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap();
             let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
             assert!(json["data"].as_array().unwrap().is_empty());
         }
@@ -273,25 +558,60 @@ mod v2_api_tests {
 
     #[tokio::test]
     async fn v2_response_cannot_contain_raw_evidence_fields() {
-        let url = std::env::var("UEC_DATABASE_URL").unwrap_or_else(|_| "postgresql://uec:uec-local-development-only@localhost:5433/uec".into());
-        unsafe { std::env::set_var("UEC_DATABASE_URL", url); }
-        let response = Router::new().route("/api/v2/locations", axum::routing::get(get_v2_locations_handler)).with_state(test_state().await)
-            .oneshot(Request::builder().uri("/api/v2/locations?country_code=DK").body(Body::empty()).unwrap()).await.unwrap();
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let url = std::env::var("UEC_DATABASE_URL").unwrap_or_else(|_| {
+            "postgresql://uec:uec-local-development-only@localhost:5433/uec".into()
+        });
+        unsafe {
+            std::env::set_var("UEC_DATABASE_URL", url);
+        }
+        let response = Router::new()
+            .route(
+                "/api/v2/locations",
+                axum::routing::get(get_v2_locations_handler),
+            )
+            .with_state(test_state().await)
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v2/locations?country_code=DK")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let text = String::from_utf8(body.to_vec()).unwrap();
         for forbidden in ["raw_fields", "street_address", "phone", "private_address"] {
-            assert!(!text.contains(forbidden), "public response contained forbidden field {forbidden}");
+            assert!(
+                !text.contains(forbidden),
+                "public response contained forbidden field {forbidden}"
+            );
         }
     }
 
     #[tokio::test]
     async fn v2_handles_concurrent_requests_through_shared_pool() {
         let state = test_state().await;
-        let router = Router::new().route("/api/v2/locations", axum::routing::get(get_v2_locations_handler)).with_state(state);
+        let router = Router::new()
+            .route(
+                "/api/v2/locations",
+                axum::routing::get(get_v2_locations_handler),
+            )
+            .with_state(state);
         let requests = (0..12).map(|_| {
             let router = router.clone();
             async move {
-                router.oneshot(Request::builder().uri("/api/v2/locations?country_code=DK&limit=1").body(Body::empty()).unwrap()).await.unwrap().status()
+                router
+                    .oneshot(
+                        Request::builder()
+                            .uri("/api/v2/locations?country_code=DK&limit=1")
+                            .body(Body::empty())
+                            .unwrap(),
+                    )
+                    .await
+                    .unwrap()
+                    .status()
             }
         });
         let statuses = futures_util::future::join_all(requests).await;
@@ -301,18 +621,39 @@ mod v2_api_tests {
     #[test]
     fn v2_schema_serializes_history_and_lifecycle_fields() {
         let item = V2Location {
-            facility_id: uuid::Uuid::nil(), canonical_name: Some("Example".into()), country_code: "DK".into(),
-            city: Some("Testby".into()), display_precision: "city".into(), latitude: Some(55.0), longitude: Some(10.0),
-            first_observed_at: None, last_observed_at: None, observation_count: Some(2),
-            lifecycle_status: "active_observed".into(), source_type: "official".into(), provenance_source: None,
-            release_id: "test".into(), release_ruleset_version: "test".into(), provenance_source_id: "test".into(),
-            provenance_source_name: "test".into(), provenance_source_url: "https://example.invalid".into(), provenance_retrieved_at: chrono::Utc::now(),
+            facility_id: uuid::Uuid::nil(),
+            canonical_name: Some("Example".into()),
+            country_code: "DK".into(),
+            city: Some("Testby".into()),
+            category: "slaughter".into(),
+            publication_profile: "official".into(),
+            factual_review_status: "reviewed".into(),
+            privacy_screening_status: "passed".into(),
+            project_approval: "approved".into(),
+            reviewer_role: Some("maintainer".into()),
+            display_precision: "city".into(),
+            latitude: Some(55.0),
+            longitude: Some(10.0),
+            first_observed_at: None,
+            last_observed_at: None,
+            observation_count: Some(2),
+            lifecycle_status: "active_observed".into(),
+            source_type: "official".into(),
+            provenance_source: None,
+            release_id: "test".into(),
+            release_ruleset_version: "test".into(),
+            provenance_source_id: "test".into(),
+            provenance_source_name: "test".into(),
+            provenance_source_url: "https://example.invalid".into(),
+            provenance_retrieved_at: chrono::Utc::now(),
         };
         let json = serde_json::to_value(item).unwrap();
         assert_eq!(json["display_precision"], "city");
         assert_eq!(json["observation_count"], 2);
         assert_eq!(json["lifecycle_status"], "active_observed");
         assert_eq!(json["source_type"], "official");
+        assert_eq!(json["category"], "slaughter");
+        assert_eq!(json["publication_profile"], "official");
     }
 }
 
@@ -397,12 +738,18 @@ fn parse_all_locations() -> Result<Vec<LocationResponse>, Box<dyn Error>> {
                         country_count += 1;
                     }
                     Err(e) => {
-                        println!("[ERROR] Failed to deserialize row {} in {}: {}", idx, dir_name, e);
+                        println!(
+                            "[ERROR] Failed to deserialize row {} in {}: {}",
+                            idx, dir_name, e
+                        );
                         return Err(Box::new(e));
                     }
                 }
             }
-            println!("[DEBUG] Parsed {} records from country: {}", country_count, dir_name);
+            println!(
+                "[DEBUG] Parsed {} records from country: {}",
+                country_count, dir_name
+            );
         } else {
             println!("[WARN] CSV file not found: {}", csv_path);
         }
@@ -509,10 +856,12 @@ async fn fetch_aphis_context() -> Result<AphisContext, String> {
         .await
         .map_err(|e| format!("APHIS page read failed: {}", e))?;
 
-    let inline_pos = html.find("/inline.js")
+    let inline_pos = html
+        .find("/inline.js")
         .ok_or("inline.js not found in APHIS page")?;
     let l_marker = "/sfsites/l/";
-    let l_pos = html[..inline_pos].rfind(l_marker)
+    let l_pos = html[..inline_pos]
+        .rfind(l_marker)
         .ok_or("sfsites/l/ not found before inline.js in APHIS page")?;
     let encoded_json = &html[l_pos + l_marker.len()..inline_pos];
     let decoded = percent_decode(encoded_json);
@@ -531,7 +880,11 @@ async fn fetch_aphis_context() -> Result<AphisContext, String> {
         .ok_or("loaded version not found in APHIS context")?
         .to_string();
 
-    Ok(AphisContext { fwuid, loaded_version, fetched_at: Instant::now() })
+    Ok(AphisContext {
+        fwuid,
+        loaded_version,
+        fetched_at: Instant::now(),
+    })
 }
 
 async fn get_or_refresh_aphis_context(force: bool) -> Result<(String, String), String> {
@@ -653,7 +1006,11 @@ pub struct AphisQueryParams {
 
 pub async fn get_aphis_query_handler(Query(params): Query<AphisQueryParams>) -> impl IntoResponse {
     let is_annual = params.query_type == "annual";
-    let action_name = if is_annual { "doARSearch" } else { "doIRSearch_UI" };
+    let action_name = if is_annual {
+        "doARSearch"
+    } else {
+        "doIRSearch_UI"
+    };
     let page_uri = if is_annual {
         "/PublicSearchTool/s/annual-reports"
     } else {
@@ -690,6 +1047,10 @@ pub async fn get_aphis_query_handler(Query(params): Query<AphisQueryParams>) -> 
     };
 
     let results = body["actions"][0]["returnValue"]["results"].clone();
-    let results = if results.is_array() { results } else { Value::Array(vec![]) };
+    let results = if results.is_array() {
+        results
+    } else {
+        Value::Array(vec![])
+    };
     Json(results).into_response()
 }

@@ -65,12 +65,12 @@ This project serves both the API and the frontend from a single high-performance
 
 1.  **Build the image:**
     ```bash
-    docker build -t heatmap-backend .
+    docker build -t uec-api .
     ```
 
 2.  **Run the container:**
     ```bash
-    docker run -p 8000:8000 heatmap-backend
+    docker run -p 8000:8000 uec-api
     ```
 
 3.  **View the app:**

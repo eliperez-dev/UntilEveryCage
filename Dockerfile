@@ -14,7 +14,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
 # Copy the binary from the builder stage
-COPY --from=builder /app/target/release/heatmap-backend .
+COPY --from=builder /app/target/release/uec-api .
 
 # Copy the static assets folder for frontend serving
 COPY static static
@@ -23,4 +23,4 @@ COPY static static
 ENV PORT=8000
 EXPOSE 8000
 
-CMD ["./heatmap-backend"]
+CMD ["./uec-api"]

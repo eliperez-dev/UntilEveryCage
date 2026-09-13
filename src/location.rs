@@ -1156,7 +1156,7 @@ mod tests {
             location.establishment_name = "Test Facility".to_string();
             location.city = "Test City".to_string();
             location.state = "TS".to_string();
-            
+
             assert_eq!(location.establishment_id, "12345");
             assert_eq!(location.establishment_name, "Test Facility");
             assert_eq!(location.city, "Test City");
@@ -1168,7 +1168,7 @@ mod tests {
             let mut location = Location::default();
             location.latitude = 40.7128;
             location.longitude = -74.0060;
-            
+
             assert_eq!(location.latitude, 40.7128);
             assert_eq!(location.longitude, -74.0060);
         }
@@ -1206,7 +1206,7 @@ mod tests {
                 longitude: -75.0,
                 animals_tested: None,
             };
-            
+
             assert_eq!(report.account_name, "Test Lab");
             assert_eq!(report.certificate_number, "ABC123");
             assert_eq!(report.dogs, "10");
@@ -1235,7 +1235,7 @@ mod tests {
                 latitude: 40.0,
                 longitude: -75.0,
             };
-            
+
             assert_eq!(report.account_name, "Test Facility");
             assert_eq!(report.certificate_number, "ABC123");
             assert_eq!(report.city, "Test City");

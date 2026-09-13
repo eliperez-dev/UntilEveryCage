@@ -4,7 +4,8 @@
  * Handles fetching, processing, and storing application data.
  */
 
-import { API_ENDPOINTS } from './constants.js';
+import { API_ENDPOINTS, useV2Api } from './constants.js';
+import { v2Client } from './v2Client.js';
 import { getStateFromCityStateZip } from './geoUtils.js';
 
 class DataManager {
@@ -13,6 +14,10 @@ class DataManager {
         this.allLabLocations = [];
         this.allInspectionReports = [];
         this.isInitialDataLoading = true;
+        this.apiVersion = 'v1';
+        this.v2Meta = null;
+        this.v2Profile = 'official';
+        this.v2Filters = {};
     }
 
     /**
@@ -42,6 +47,14 @@ class DataManager {
             ];
             
             let usdaResponse, aphisResponse, inspectionsResponse;
+
+            if (useV2Api()) {
+                updateProgress(30, "Loading the promoted V2 release...");
+                await this.fetchV2Page();
+                updateProgress(100, "Done!");
+                this.isInitialDataLoading = false;
+                return;
+            }
             
             // Create AbortController for timeout handling
             const abortController = new AbortController();
@@ -139,6 +152,35 @@ class DataManager {
 
     getAllLocations() {
         return this.allLocations;
+    }
+
+    async fetchV2Page(filters = {}, signal) {
+        const isContinuation = Boolean(filters.cursor) && filters.cursor === this.v2Meta?.next_cursor;
+        const comparableFilters = { ...filters, cursor: undefined };
+        const previousFilters = { ...this.v2Filters, cursor: undefined };
+        const restart = !isContinuation && JSON.stringify(comparableFilters) !== JSON.stringify(previousFilters);
+        const result = await v2Client.list({ profile: this.v2Profile, ...filters }, signal);
+        this.allLocations = restart ? result.records : [...this.allLocations, ...result.records];
+        this.v2Meta = result.meta;
+        this.apiVersion = 'v2';
+        this.v2Filters = { ...filters };
+        this.processLocations();
+        return result;
+    }
+
+    async fetchNextV2Page(signal) {
+        if (!this.v2Meta?.next_cursor) return { records: [], meta: this.v2Meta || {} };
+        return this.fetchV2Page({ ...this.v2Filters, cursor: this.v2Meta.next_cursor }, signal);
+    }
+
+    setV2Profile(profile) {
+        if (!['official', 'secondary', 'community'].includes(profile)) {
+            throw new Error(`Unsupported V2 profile: ${profile}`);
+        }
+        this.v2Profile = profile;
+        this.v2Filters = {};
+        this.v2Meta = null;
+        this.allLocations = [];
     }
 
     getAllLabLocations() {

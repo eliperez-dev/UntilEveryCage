@@ -22,7 +22,7 @@ class CommunityProfileE2ETests(unittest.TestCase):
         cls.env.stop()
 
     def get(self, path):
-        with urllib.request.urlopen(f"http://localhost:{self.env.api_port}{path}") as response:
+        with urllib.request.urlopen(f"http://localhost:{self.env.api_port}{path}", timeout=10) as response:
             return json.loads(response.read())
 
     def test_community_profile_is_hidden_from_official_default(self):
@@ -36,6 +36,10 @@ class CommunityProfileE2ETests(unittest.TestCase):
         self.assertEqual([row["canonical_name"] for row in response["data"]], ["E2E community eligible"])
         row = response["data"][0]
         self.assertEqual(row["source_type"], "user_submitted")
+        self.assertEqual(row["publication_profile"], "community")
+        self.assertEqual(row["factual_review_status"], "reviewed")
+        self.assertEqual(row["privacy_screening_status"], "passed")
+        self.assertEqual(row["project_approval"], "approved")
         self.assertEqual(row["provenance_source_id"], "e2e.community")
         self.assertEqual(row["provenance_source_name"], "Synthetic community source")
         self.assertEqual(row["provenance_source_url"], "https://example.invalid/community")

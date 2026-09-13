@@ -16,6 +16,10 @@ class ReleasePromotionTests(unittest.TestCase):
         self.assertFalse(MODULE.can_promote("promoted"))
         self.assertFalse(MODULE.can_promote("rejected"))
 
+    def test_promotion_script_scopes_replacement_to_profile(self):
+        source = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn("profile = %s", source)
+
 
 if __name__ == "__main__":
     unittest.main()

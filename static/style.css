@@ -1573,3 +1573,16 @@ ol li strong {
         font-size: 14px;
     }
 }
+.v2-provenance {
+    font-size: 0.9em;
+    line-height: 1.35;
+}
+
+.v2-provenance p {
+    margin: 0.25em 0;
+}
+
+.v2-provenance .data-limitation {
+    color: #555;
+    font-style: italic;
+}

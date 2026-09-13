@@ -505,28 +505,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07e28edb80900c19c28f1072f2e8aeca7fa06b23cd4169cefe1af5aa3260783f"
 
 [[package]]
-name = "heatmap-backend"
-version = "0.1.0"
-dependencies = [
- "axum",
- "chrono",
- "csv",
- "deadpool-postgres",
- "futures-util",
- "include_dir",
- "once_cell",
- "reqwest",
- "serde",
- "serde-xml-rs",
- "serde_json",
- "tokio",
- "tokio-postgres",
- "tower",
- "tower-http",
- "uuid",
-]
-
-[[package]]
 name = "hermit-abi"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1792,6 +1770,28 @@ name = "typenum"
 version = "1.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
+
+[[package]]
+name = "uec-api"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "csv",
+ "deadpool-postgres",
+ "futures-util",
+ "include_dir",
+ "once_cell",
+ "reqwest",
+ "serde",
+ "serde-xml-rs",
+ "serde_json",
+ "tokio",
+ "tokio-postgres",
+ "tower",
+ "tower-http",
+ "uuid",
+]
 
 [[package]]
 name = "unicase"

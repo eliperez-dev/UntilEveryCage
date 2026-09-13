@@ -21,7 +21,7 @@ class PublicApiE2ETests(unittest.TestCase):
         cls.env.stop()
 
     def get(self, path):
-        with urllib.request.urlopen(f"http://localhost:{self.env.api_port}{path}") as response:
+        with urllib.request.urlopen(f"http://localhost:{self.env.api_port}{path}", timeout=10) as response:
             return response.status, json.loads(response.read())
 
     def test_default_is_empty_before_promotion(self):
