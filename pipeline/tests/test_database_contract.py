@@ -160,7 +160,7 @@ class DatabaseContractTests(unittest.TestCase):
         original_release_id, observation_id, facility_id, source_record_id, city, country = row
         with self.connection.transaction():
             release_id = f'test-display-{uuid.uuid4().hex}'
-            self.connection.execute("INSERT INTO uec.releases (release_id, status, ruleset_version, summary) VALUES (%s, 'promoted', 'test-v1', '{}'::jsonb)", (release_id,))
+            self.connection.execute("INSERT INTO uec.releases (release_id, status, ruleset_version, profile, summary) VALUES (%s, 'promoted', 'test-v1', 'secondary', '{}'::jsonb)", (release_id,))
             self.connection.execute("INSERT INTO uec.release_members (release_id, facility_id, observation_id, default_visible) VALUES (%s, %s, %s, true)", (release_id, facility_id, observation_id))
             self.connection.execute("""
                 INSERT INTO uec.city_reference_points
