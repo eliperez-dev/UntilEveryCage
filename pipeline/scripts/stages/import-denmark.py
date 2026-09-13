@@ -16,7 +16,10 @@ def now():
 
 
 def point_from_geocode(item):
-    if item.get("acceptance") != "accepted_single_point":
+    # A provider's one-point response is evidence for review, not permission
+    # to store/display a precise point. Only an explicit review decision can
+    # advance it to an accepted coordinate.
+    if item.get("acceptance") != "accepted_single_point" or item.get("coordinate_review_status") != "approved":
         return None
     response = item.get("response", [])
     results = response if isinstance(response, list) else response.get("results", [])
@@ -26,8 +29,13 @@ def point_from_geocode(item):
 
 
 def geocode_status(item):
+    review_status = item.get("coordinate_review_status")
+    if review_status == "approved" and item.get("acceptance") == "accepted_single_point":
+        return "accepted"
+    if review_status == "review_required":
+        return "review_required"
     return {
-        "accepted_single_point": "accepted",
+        "accepted_single_point": "review_required",
         "review_multiple_points": "review_required",
         "unresolved": "unresolved",
     }.get(item.get("acceptance"), "failed" if item.get("status") == "failed" else "unresolved")

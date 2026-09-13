@@ -10,12 +10,16 @@ SPEC.loader.exec_module(MODULE)
 
 
 class DenmarkImporterTests(unittest.TestCase):
-    def test_accepts_archived_dawa_list_response(self):
+    def test_single_point_requires_explicit_coordinate_review(self):
         item = {
             "acceptance": "accepted_single_point",
             "response": [{"x": 12.5, "y": 55.6}],
         }
+        self.assertIsNone(MODULE.point_from_geocode(item))
+        self.assertEqual(MODULE.geocode_status(item), "review_required")
+        item["coordinate_review_status"] = "approved"
         self.assertEqual(MODULE.point_from_geocode(item), (12.5, 55.6))
+        self.assertEqual(MODULE.geocode_status(item), "accepted")
 
     def test_non_unique_results_are_not_promoted(self):
         item = {

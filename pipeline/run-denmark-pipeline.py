@@ -76,6 +76,9 @@ def main() -> int:
     parser.add_argument("--expected-rows", type=int)
     parser.add_argument("--geocode-limit", type=int, help="Optionally call DAWA for only this many queued records")
     parser.add_argument("--geocode-delay", type=float, default=1.0)
+    parser.add_argument("--geocode-provider-config", type=Path, default=ROOT / "pipeline/config/geocoding-dev.json")
+    parser.add_argument("--geocode-terms-review", type=Path, help="Approved per-run terms review required to make bounded geocoding requests.")
+    parser.add_argument("--geocode-suppression-keys", type=Path, help="Payload-free source identity references excluded from geocoding.")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%SZ")
@@ -85,6 +88,8 @@ def main() -> int:
         parser.error("input is required unless --fetch is used")
     if args.fetch and args.terms_review is None:
         parser.error("--terms-review is required with --fetch")
+    if args.geocode_limit is not None and args.geocode_terms_review is None:
+        parser.error("--geocode-terms-review is required with --geocode-limit")
     if args.fetch:
         terms_review_path = args.terms_review.resolve()
         raw_output_root = args.raw_output_root.resolve()
@@ -127,7 +132,10 @@ def main() -> int:
         run_stage("validate", SCRIPTS / "validate-denmark.py", validation_args)
         run_stage("geocode_queue", SCRIPTS / "create-geocode-queue.py", [str(classify_dir / "classified-records.jsonl"), "--output-dir", str(geocode_dir)])
         if args.geocode_limit is not None:
-            run_stage("geocode_dawa", SCRIPTS / "geocode-denmark-dawa.py", [str(geocode_dir / "geocode-queue.jsonl"), "--output", str(run_dir / "06-geocode-results.jsonl"), "--limit", str(args.geocode_limit), "--delay", str(args.geocode_delay)])
+            geocode_args = [str(geocode_dir / "geocode-queue.jsonl"), "--output", str(run_dir / "06-geocode-results.jsonl"), "--limit", str(args.geocode_limit), "--delay", str(args.geocode_delay), "--provider-config", str(args.geocode_provider_config.resolve()), "--terms-review", str(args.geocode_terms_review.resolve()), "--network"]
+            if args.geocode_suppression_keys:
+                geocode_args.extend(["--suppression-keys", str(args.geocode_suppression_keys.resolve())])
+            run_stage("geocode_dawa", SCRIPTS / "geocode-denmark-dawa.py", geocode_args)
         manifest = artifact_manifest(run_dir, input_path, started_at, utc_now())
         LOGGER.info("pipeline=denmark-smiley status=success manifest=%s", manifest)
     except subprocess.CalledProcessError as error:
