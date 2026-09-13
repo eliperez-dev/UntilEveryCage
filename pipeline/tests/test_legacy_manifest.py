@@ -1,5 +1,6 @@
 import csv
 import hashlib
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -20,9 +21,12 @@ class LegacyManifestTests(unittest.TestCase):
     def test_generator_emits_metadata_only_legacy_inventory(self):
         with tempfile.TemporaryDirectory() as directory:
             output_path = Path(directory) / "legacy-files.csv"
+            powershell = shutil.which("pwsh") or shutil.which("powershell")
+            if not powershell:
+                self.skipTest("PowerShell is unavailable")
             subprocess.run(
                 [
-                    "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                    powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
                     str(MANIFEST_SCRIPT), "-RepositoryRoot", str(REPOSITORY_ROOT),
                     "-OutputPath", str(output_path),
                 ],

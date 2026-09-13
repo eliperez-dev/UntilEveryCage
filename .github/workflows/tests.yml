@@ -20,6 +20,8 @@ jobs:
         env:
           UEC_DATABASE_URL: postgresql://uec:uec-local-development-only@localhost:5433/uec?sslmode=disable
         run: python pipeline/scripts/maintenance/apply-migrations.py
+      - name: Seed synthetic database contract fixtures
+        run: docker compose -f docker-compose.pipeline.yml exec -T postgres psql -v ON_ERROR_STOP=1 -U uec -d uec < pipeline/tests/e2e/backup_restore_seed.sql
       - run: cargo test --locked
       - run: python -m unittest discover -s pipeline/tests -q
         env:
