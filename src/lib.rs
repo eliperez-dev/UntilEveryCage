@@ -70,6 +70,7 @@ pub async fn get_locations_handler(Query(params): Query<LocationParams>) -> impl
 pub struct V2LocationParams {
     pub country_code: Option<String>,
     pub category: Option<String>,
+    pub source_type: Option<String>,
     pub display_precision: Option<String>,
     pub lifecycle_status: Option<String>,
     pub limit: Option<String>,
@@ -111,12 +112,15 @@ pub async fn get_v2_locations_handler(State(state): State<ApiState>, Query(param
     if params.category.as_deref().is_some_and(|v| v.trim().is_empty()) || params.country_code.as_deref().is_some_and(|v| v.len() != 2) {
         return (StatusCode::BAD_REQUEST, "invalid filter").into_response();
     }
+    if params.source_type.as_deref().is_some_and(|v| !["official", "secondary", "user_submitted"].contains(&v)) {
+        return (StatusCode::BAD_REQUEST, "invalid source_type").into_response();
+    }
     let limit = match params.limit.as_deref().map(str::parse::<i64>).transpose() {
         Ok(value) => value.unwrap_or(100).clamp(1, 1000),
         Err(_) => return (StatusCode::BAD_REQUEST, "limit must be an integer").into_response(),
     };
     let offset = match params.offset.as_deref().map(str::parse::<i64>).transpose() {
-        Ok(value) => value.unwrap_or(0).max(0),
+        Ok(value) => value.unwrap_or(0).clamp(0, 1_000_000),
         Err(_) => return (StatusCode::BAD_REQUEST, "offset must be an integer").into_response(),
     };
     let client = match state.database.as_ref() { Some(pool) => match pool.get().await { Ok(client) => client, Err(_) => return (StatusCode::SERVICE_UNAVAILABLE, "Database pool unavailable").into_response() }, None => return (StatusCode::SERVICE_UNAVAILABLE, "V2 database is not configured").into_response() };
@@ -131,8 +135,9 @@ pub async fn get_v2_locations_handler(State(state): State<ApiState>, Query(param
           AND ($2::text IS NULL OR classification_category = $2)
           AND ($3::text IS NULL OR display_precision = $3)
           AND ($4::text IS NULL OR lifecycle_status = $4)
-        ORDER BY facility_id LIMIT $5 OFFSET $6
-    "#, &[&params.country_code, &params.category, &params.display_precision, &params.lifecycle_status, &limit, &offset]).await {
+          AND ($5::text IS NULL OR provenance_origin_type = $5)
+        ORDER BY facility_id LIMIT $6 OFFSET $7
+    "#, &[&params.country_code, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &limit, &offset]).await {
         Ok(rows) => rows,
         Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "V2 location query failed").into_response(),
     };

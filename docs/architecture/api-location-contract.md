@@ -6,7 +6,9 @@ Each location response includes the stable location ID, name, category, source o
 
 Lifecycle is independent from observation history. Valid states are `active_observed`, `explicitly_closed`, `not_seen_recently`, and `status_unknown`. A record disappearing from a later source snapshot must not be labeled closed. `explicitly_closed` requires traceable closure evidence and a recorded lifecycle event.
 
-The API must support explicit category and source-profile filters while preserving labels. User-submitted profiles are separate from official profiles. Safety-restricted records are excluded from every public response, including historical and filtered queries.
+The API supports explicit `category`, `source_type`, `display_precision`, and `lifecycle_status` filters while preserving labels. `source_type` is one of `official`, `secondary`, or `user_submitted`; user-submitted profiles are separate from official profiles and are not included in the default official release. Safety-restricted records are excluded from every public response, including historical and filtered queries.
+
+Pagination is deterministic offset pagination: `limit` defaults to 100 and is bounded to 1,000; `offset` defaults to 0 and is bounded to 1,000,000. Results are ordered by stable `facility_id`. Cursor pagination should replace offset pagination before very large public collections are exposed.
 
 Example response fields:
 
