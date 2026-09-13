@@ -50,3 +50,13 @@ test('has no obvious accessibility violations at mobile width', async ({ page })
   await expect(page.getByRole('heading', { name: /See what a record can/i })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(await page.evaluate(() => document.documentElement.clientWidth));
 });
+
+test('filters the curated list and updates the detail hash on selection', async ({ page }) => {
+  await page.goto('./#/');
+  await page.getByLabel('Search locations').fill('dairy');
+  await expect(page.getByRole('button', { name: /River Meadow Foods/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /North Star Cooperative/ })).toHaveCount(0);
+  await page.getByRole('button', { name: /River Meadow Foods/ }).click();
+  await expect(page).toHaveURL(/#\/locations\/syn-river-meadow\?profile=curated/);
+  await expect(page.getByRole('heading', { name: 'River Meadow Foods' })).toBeVisible();
+});
