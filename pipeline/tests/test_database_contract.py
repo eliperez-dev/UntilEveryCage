@@ -280,6 +280,12 @@ class DatabaseContractTests(unittest.TestCase):
         self.assertIn("'closed', 'expired'", migration)
         self.assertNotIn("WHERE case_record.status IN ('active', 'review')", migration)
 
+    def test_v2_display_history_is_suppression_aware(self):
+        migration = (__import__('pathlib').Path(__file__).parents[1] / 'migrations' / '020_suppression_aware_v2_history.sql').read_text(encoding='utf-8')
+        self.assertIn('DROP VIEW IF EXISTS uec.map_facilities_display_history', migration)
+        self.assertIn('FROM uec.public_access_restricted restricted', migration)
+        self.assertIn('restricted.source_record_id = display.source_record_id', migration)
+
 
 if __name__ == "__main__":
     unittest.main()

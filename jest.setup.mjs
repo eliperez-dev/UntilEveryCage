@@ -1,6 +1,9 @@
+import { jest } from '@jest/globals';
+
 /**
  * Jest setup file for mocking browser globals and Leaflet
  */
+
 
 // Mock Leaflet library
 global.L = {
@@ -131,4 +134,5 @@ global.console = {
   warn: jest.fn(),
   error: jest.fn(),
 };
-import { jest } from '@jest/globals';
+
+

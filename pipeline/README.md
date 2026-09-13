@@ -37,7 +37,7 @@ The development geocoder is configured in `config/geocoding-dev.json`. DAWA is t
 
 The required interpreter is pinned in `.python-version`, and third-party packages are pinned exactly in `requirements.txt`.
 
-Database migrations are applied in filename order. `002_geocode_job_events.sql` upgrades an existing local database with append-only geocoding jobs and events without resetting the database.
+Database migrations are applied in filename order by `scripts/maintenance/apply-migrations.py`. The runner records each migration's SHA-256 in `uec.schema_migrations`, refuses a changed migration after application, and applies each new migration transactionally. `002_geocode_job_events.sql` upgrades an existing local database with append-only geocoding jobs and events without resetting the database. A clean database is the certified deployment baseline; existing databases must be assessed before adopting the ledger.
 
 `003_read_only_map_projection.sql` adds `uec.map_facilities_current`, a derived view that exposes only default-visible observations with accepted coordinates. It does not update source records or observations.
 

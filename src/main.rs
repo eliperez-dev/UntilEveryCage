@@ -27,6 +27,7 @@ use tower_http::cors::CorsLayer;
 
 use deadpool_postgres::{Config, ManagerConfig, RecyclingMethod, Runtime};
 use tokio_postgres::NoTls;
+use tokio_postgres_rustls::MakeRustlsConnect;
 use tower_http::services::ServeDir;
 
 pub fn app(state: uec_api::ApiState) -> Router {
@@ -181,7 +182,19 @@ async fn main() {
         config.manager = Some(ManagerConfig {
             recycling_method: RecyclingMethod::Fast,
         });
-        match config.create_pool(Some(Runtime::Tokio1), NoTls) {
+        let pool = if mode == "production" {
+            let _ = rustls::crypto::ring::default_provider().install_default();
+            match config.create_pool(
+                Some(Runtime::Tokio1),
+                MakeRustlsConnect::with_webpki_roots(),
+            ) {
+                Ok(pool) => Ok(pool),
+                Err(error) => Err(error),
+            }
+        } else {
+            config.create_pool(Some(Runtime::Tokio1), NoTls)
+        };
+        match pool {
             Ok(pool) => Some(pool),
             Err(_) => {
                 eprintln!(

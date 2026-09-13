@@ -1,5 +1,6 @@
 import { API_ENDPOINTS } from './constants.js';
 import { normalizeV2Location } from './v2Adapter.js';
+import { validateV2Envelope } from './v2Contract.js';
 
 function endpoint() {
     const local = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
@@ -31,11 +32,14 @@ export class V2Client {
         });
         if (!response.ok) throw new V2ApiError(`V2 request failed: HTTP ${response.status}`, response.status);
         const body = await response.json();
-        const isList = Array.isArray(body.data);
-        const isDetail = body.data && typeof body.data === 'object' && !isList;
-        if (body.api_version !== 'v2' || (!isList && !isDetail)) {
-            throw new V2ApiError('V2 response did not match the public API contract');
+        let isList;
+        try {
+            validateV2Envelope(body);
+            isList = Array.isArray(body.data);
+        } catch (error) {
+            throw new V2ApiError(`V2 response did not match the public API contract: ${error.message}`);
         }
+        const isDetail = !isList;
         return {
             records: isList ? body.data.map(record => normalizeV2Location(record, body.meta || {})) : [normalizeV2Location(body.data, body.meta || {})],
             meta: body.meta || {},

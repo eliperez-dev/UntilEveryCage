@@ -20,7 +20,7 @@ export default {
   ],
   
   // Setup files
-  setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.mjs'],
   
   // Module paths
   roots: ['<rootDir>'],

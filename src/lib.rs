@@ -94,6 +94,7 @@ pub struct V2Location {
     pub privacy_screening_status: String,
     pub project_approval: String,
     pub reviewer_role: Option<String>,
+    pub publication_warning: Option<String>,
     pub display_precision: String,
     pub latitude: Option<f64>,
     pub longitude: Option<f64>,
@@ -269,6 +270,13 @@ pub async fn get_v2_locations_handler(
             privacy_screening_status: row.get(7),
             project_approval: row.get(8),
             reviewer_role: row.get(9),
+            publication_warning: if promoted_profile == "community"
+                && row.get::<_, String>(6) == "unreviewed"
+            {
+                Some("Unreviewed community claim — not verified by Until Every Cage".into())
+            } else {
+                None
+            },
             publication_profile: promoted_profile.clone(),
             display_precision: row.get(5),
             latitude: row.get(10),
@@ -391,6 +399,11 @@ pub async fn get_v2_location_detail_handler(
         privacy_screening_status: row.get(7),
         project_approval: row.get(8),
         reviewer_role: row.get(9),
+        publication_warning: if profile == "community" && row.get::<_, String>(6) == "unreviewed" {
+            Some("Unreviewed community claim — not verified by Until Every Cage".into())
+        } else {
+            None
+        },
         publication_profile: profile.clone(),
         display_precision: row.get(5),
         latitude: row.get(10),
@@ -631,6 +644,7 @@ mod v2_api_tests {
             privacy_screening_status: "passed".into(),
             project_approval: "approved".into(),
             reviewer_role: Some("maintainer".into()),
+            publication_warning: None,
             display_precision: "city".into(),
             latitude: Some(55.0),
             longitude: Some(10.0),

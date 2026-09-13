@@ -22,8 +22,7 @@ try {
     Set-Content -LiteralPath $migrationFile -Value $migrationSql -Encoding UTF8
     & docker compose -p $project -f $compose cp $migrationFile postgres:/tmp/migration.sql
     if ($LASTEXITCODE -ne 0) { throw "Migration upload failed for $($migration.Name) (exit $LASTEXITCODE)." }
-    $stopMode = if ($migration.Name -eq '001_initial.sql') { '0' } else { '1' }
-    & docker compose -p $project -f $compose exec -T postgres psql -v ON_ERROR_STOP=$stopMode -U uec -d uec -f /tmp/migration.sql
+    & docker compose -p $project -f $compose exec -T postgres psql -v ON_ERROR_STOP=1 -U uec -d uec -f /tmp/migration.sql
     if ($LASTEXITCODE -ne 0) { throw "Migration $($migration.Name) failed (exit $LASTEXITCODE)." }
   }
   Get-Content (Join-Path $root 'pipeline\tests\e2e\backup_restore_seed.sql') -Raw | & docker compose -p $project -f $compose exec -T postgres psql -U uec -d uec

@@ -1,6 +1,8 @@
 import { jest } from '@jest/globals';
 import { V2ApiError, V2Client } from '../v2Client.js';
 import { escapeHtml, normalizeV2Location } from '../v2Adapter.js';
+import { validateV2Envelope, validateV2Location } from '../v2Contract.js';
+import { exactOfficialLocation, noPromotedRelease, restrictedLocation } from '../__fixtures__/v2-contract-fixtures.js';
 
 const listPayload = (data = [], meta = {}) => ({ api_version: 'v2', data, meta });
 const record = (overrides = {}) => ({
@@ -8,14 +10,27 @@ const record = (overrides = {}) => ({
     canonical_name: 'Example facility',
     country_code: 'DK',
     city: 'Copenhagen',
+    category: 'slaughter',
     display_precision: 'city',
     latitude: 55.67,
     longitude: 12.56,
+    publication_profile: 'official',
+    factual_review_status: 'reviewed',
+    privacy_screening_status: 'passed',
+    project_approval: 'approved',
+    reviewer_role: 'maintainer',
+    publication_warning: null,
     source_type: 'official',
+    release_id: 'fixture-release',
+    release_ruleset_version: 'fixture-v1',
+    provenance_source_id: 'fixture.source',
     provenance_source_name: 'Test source',
     provenance_source_url: 'https://example.test/source',
     provenance_retrieved_at: '2026-09-13T00:00:00Z',
     lifecycle_status: 'active_observed',
+    first_observed_at: '2026-09-13T00:00:00Z',
+    last_observed_at: '2026-09-13T00:00:00Z',
+    observation_count: 1,
     ...overrides
 });
 
@@ -71,4 +86,17 @@ test('V2 requests cannot override the official profile', async () => {
     await dataManager.fetchV2Page({ profile: 'community', category: 'slaughter' });
     expect(fetch.mock.calls.at(-1)[0]).toContain('profile=official');
     expect(fetch.mock.calls.at(-1)[0]).not.toContain('profile=community');
+});
+
+test('contract accepts a complete eligible synthetic location', () => {
+    expect(validateV2Location(exactOfficialLocation)).toBe(exactOfficialLocation);
+    expect(validateV2Envelope({ data: [exactOfficialLocation], api_version: 'v2', meta: { profile: 'official' } })).toBeTruthy();
+});
+
+test('contract preserves explicit no-release state without inventing records', () => {
+    expect(validateV2Envelope(noPromotedRelease).data).toEqual([]);
+});
+
+test('contract rejects privacy-ineligible records before rendering', () => {
+    expect(() => validateV2Location(restrictedLocation)).toThrow('not privacy eligible');
 });
