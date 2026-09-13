@@ -9,12 +9,23 @@ $migrationFile = Join-Path ([IO.Path]::GetTempPath()) "$project-migrations.sql"
 try {
   & docker compose -p $project -f $compose up -d --wait
   if ($LASTEXITCODE -ne 0) { throw "Docker startup failed (exit $LASTEXITCODE)." }
-  $migrations = (Get-ChildItem (Join-Path $root 'pipeline\migrations') -Filter '*.sql' | Sort-Object Name | ForEach-Object { Get-Content $_.FullName -Raw }) -join "`n"
-  Set-Content -LiteralPath $migrationFile -Value $migrations -Encoding UTF8
-  & docker compose -p $project -f $compose cp $migrationFile postgres:/tmp/migrations.sql
-  if ($LASTEXITCODE -ne 0) { throw "Migration upload failed (exit $LASTEXITCODE)." }
-  & docker compose -p $project -f $compose exec -T postgres psql -v ON_ERROR_STOP=1 -U uec -d uec -f /tmp/migrations.sql
-  if ($LASTEXITCODE -ne 0) { throw "Migration application failed (exit $LASTEXITCODE)." }
+  $ready = $false
+  for ($attempt = 0; $attempt -lt 60; $attempt++) {
+    & docker compose -p $project -f $compose exec -T postgres psql -U uec -d uec -c 'SELECT 1' *> $null
+    if ($LASTEXITCODE -eq 0) { $ready = $true; break }
+    Start-Sleep -Milliseconds 250
+  }
+  if (-not $ready) { throw 'PostgreSQL did not remain ready after container health reported healthy.' }
+  foreach ($migration in (Get-ChildItem (Join-Path $root 'pipeline\migrations') -Filter '*.sql' | Sort-Object Name)) {
+    Write-Host "[backup-restore] applying $($migration.Name)"
+    $migrationSql = Get-Content $migration.FullName -Raw
+    Set-Content -LiteralPath $migrationFile -Value $migrationSql -Encoding UTF8
+    & docker compose -p $project -f $compose cp $migrationFile postgres:/tmp/migration.sql
+    if ($LASTEXITCODE -ne 0) { throw "Migration upload failed for $($migration.Name) (exit $LASTEXITCODE)." }
+    $stopMode = if ($migration.Name -eq '001_initial.sql') { '0' } else { '1' }
+    & docker compose -p $project -f $compose exec -T postgres psql -v ON_ERROR_STOP=$stopMode -U uec -d uec -f /tmp/migration.sql
+    if ($LASTEXITCODE -ne 0) { throw "Migration $($migration.Name) failed (exit $LASTEXITCODE)." }
+  }
   Get-Content (Join-Path $root 'pipeline\tests\e2e\backup_restore_seed.sql') -Raw | & docker compose -p $project -f $compose exec -T postgres psql -U uec -d uec
   if ($LASTEXITCODE -ne 0) { throw "Synthetic seed failed (exit $LASTEXITCODE)." }
   & docker compose -p $project -f $compose exec -T postgres pg_dump -U uec -d uec --format=custom --file=/tmp/uec.dump

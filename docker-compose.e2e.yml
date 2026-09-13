@@ -5,6 +5,8 @@ services:
       POSTGRES_DB: uec
       POSTGRES_USER: uec
       POSTGRES_PASSWORD: uec-e2e
+    # Keep the disposable CI fixture within small Docker Desktop memory budgets.
+    command: ["postgres", "-c", "shared_buffers=32MB", "-c", "max_connections=20", "-c", "work_mem=1MB"]
     healthcheck:
       # A running server is not sufficient: the configured database is created
       # by the image entrypoint shortly after Postgres begins accepting sockets.
