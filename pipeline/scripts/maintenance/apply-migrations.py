@@ -4,6 +4,7 @@
 import argparse
 import hashlib
 import os
+import time
 from pathlib import Path
 
 import psycopg
@@ -19,7 +20,17 @@ def migration_files(directory: Path) -> list[Path]:
 def apply(database_url: str, directory: Path) -> list[str]:
     files = migration_files(directory)
     applied: list[str] = []
-    with psycopg.connect(database_url) as connection:
+    connection = None
+    for attempt in range(10):
+        try:
+            connection = psycopg.connect(database_url)
+            break
+        except psycopg.OperationalError:
+            if attempt == 9:
+                raise
+            time.sleep(1)
+    assert connection is not None
+    with connection:
         connection.execute("CREATE SCHEMA IF NOT EXISTS uec")
         connection.execute(
             """

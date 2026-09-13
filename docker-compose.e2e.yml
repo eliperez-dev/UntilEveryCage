@@ -14,5 +14,6 @@ services:
       interval: 1s
       timeout: 5s
       retries: 60
+      start_period: 10s
     ports:
       - "${UEC_E2E_DB_PORT:-55432}:5432"

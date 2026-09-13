@@ -10,9 +10,11 @@ try {
   & docker compose -p $project -f $compose up -d --wait
   if ($LASTEXITCODE -ne 0) { throw "Docker startup failed (exit $LASTEXITCODE)." }
   $ready = $false
+  $stableChecks = 0
   for ($attempt = 0; $attempt -lt 60; $attempt++) {
     & docker compose -p $project -f $compose exec -T postgres psql -U uec -d uec -c 'SELECT 1' *> $null
-    if ($LASTEXITCODE -eq 0) { $ready = $true; break }
+    if ($LASTEXITCODE -eq 0) { $stableChecks++ } else { $stableChecks = 0 }
+    if ($stableChecks -ge 5) { $ready = $true; break }
     Start-Sleep -Milliseconds 250
   }
   if (-not $ready) { throw 'PostgreSQL did not remain ready after container health reported healthy.' }
@@ -22,8 +24,13 @@ try {
     Set-Content -LiteralPath $migrationFile -Value $migrationSql -Encoding UTF8
     & docker compose -p $project -f $compose cp $migrationFile postgres:/tmp/migration.sql
     if ($LASTEXITCODE -ne 0) { throw "Migration upload failed for $($migration.Name) (exit $LASTEXITCODE)." }
-    & docker compose -p $project -f $compose exec -T postgres psql -v ON_ERROR_STOP=1 -U uec -d uec -f /tmp/migration.sql
-    if ($LASTEXITCODE -ne 0) { throw "Migration $($migration.Name) failed (exit $LASTEXITCODE)." }
+    $migrationApplied = $false
+    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+      & docker compose -p $project -f $compose exec -T postgres psql -1 -v ON_ERROR_STOP=1 -U uec -d uec -f /tmp/migration.sql
+      if ($LASTEXITCODE -eq 0) { $migrationApplied = $true; break }
+      Start-Sleep -Seconds 2
+    }
+    if (-not $migrationApplied) { throw "Migration $($migration.Name) failed (exit $LASTEXITCODE)." }
   }
   Get-Content (Join-Path $root 'pipeline\tests\e2e\backup_restore_seed.sql') -Raw | & docker compose -p $project -f $compose exec -T postgres psql -U uec -d uec
   if ($LASTEXITCODE -ne 0) { throw "Synthetic seed failed (exit $LASTEXITCODE)." }
