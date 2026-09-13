@@ -1,3 +1,51 @@
 param([ValidateSet('start','status','stop','probe')][string]$Command='status')
-$ErrorActionPreference='Stop';$root=(Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path;$compose=Join-Path $root 'docker-compose.pipeline.yml';$project='uec-local-v2';$port=5433;$db="postgresql://uec:uec-local-development-only@127.0.0.1:$port/uec";$env:UEC_PIPELINE_DB_PORT="$port";$env:UEC_DATABASE_URL="${db}?sslmode=disable"
-Push-Location $root;try{switch($Command){'start'{& docker compose -p $project -f $compose up -d --wait;if($LASTEXITCODE){throw 'Postgres startup failed.'};python pipeline/scripts/maintenance/apply-migrations.py;if($LASTEXITCODE){throw 'Migration application failed.'};$seeded=& docker compose -p $project -f $compose exec -T postgres psql -U uec -d uec -Atc "SELECT to_regclass('uec.local_v2_fixture_seed') IS NOT NULL";if($seeded.Trim() -ne 't'){Get-Content pipeline/tests/standard_contract_seed.sql -Raw|& docker compose -p $project -f $compose exec -T postgres psql -v ON_ERROR_STOP=1 -U uec -d uec;if($LASTEXITCODE){throw 'Synthetic seed failed.'};& docker compose -p $project -f $compose exec -T postgres psql -v ON_ERROR_STOP=1 -U uec -d uec -c "CREATE TABLE IF NOT EXISTS uec.local_v2_fixture_seed (seed_name text primary key, seeded_at timestamptz not null default now()); INSERT INTO uec.local_v2_fixture_seed(seed_name) VALUES ('standard-contract') ON CONFLICT DO NOTHING;"};Write-Host "Local Postgres ready on $port. Start Axum separately with: `$env:UEC_DATABASE_URL='${db}?sslmode=disable'; cargo run"}'status'{& docker compose -p $project -f $compose ps;if($LASTEXITCODE){throw 'Status failed.'}}'stop'{& docker compose -p $project -f $compose stop;if($LASTEXITCODE){throw 'Stop failed.'}}'probe'{& curl.exe --fail-with-body "http://127.0.0.1:8000/api/v2/locations?profile=official&limit=1";if($LASTEXITCODE){throw 'List probe failed.'}}}}finally{Pop-Location}
+$ErrorActionPreference='Stop'
+$root=(Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
+$compose=Join-Path $root 'docker-compose.pipeline.yml'
+$project='uec-local-v2'; $dbPort=5433; $apiPort=8000
+$db="postgresql://uec:uec-local-development-only@127.0.0.1:$dbPort/uec?sslmode=disable"
+$stateDir=Join-Path $root 'target\local-v2'; $pidFile=Join-Path $stateDir 'uec-api.pid'; $logFile=Join-Path $stateDir 'uec-api.log'; $errorFile=Join-Path $stateDir 'uec-api-error.log'
+$env:UEC_PIPELINE_DB_PORT="$dbPort"; $env:UEC_DATABASE_URL=$db; $env:PORT="$apiPort"
+
+function Get-OwnedApiProcess {
+  if (!(Test-Path $pidFile)) { return $null }
+  $processId=[int](Get-Content $pidFile -Raw).Trim(); $process=Get-Process -Id $processId -ErrorAction SilentlyContinue
+  if ($process -and $process.ProcessName -eq 'uec-api' -and $process.Path -eq (Join-Path $root 'target\debug\uec-api.exe')) { return $process }
+  return $null
+}
+
+Push-Location $root
+try {
+  switch ($Command) {
+    'start' {
+      New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
+      & docker compose -p $project -f $compose up -d --wait
+      if ($LASTEXITCODE) { throw 'Postgres startup failed.' }
+      python pipeline/scripts/maintenance/apply-migrations.py
+      if ($LASTEXITCODE) { throw 'Migration application failed.' }
+      $seeded=& docker compose -p $project -f $compose exec -T postgres psql -U uec -d uec -Atc "SELECT to_regclass('uec.local_v2_fixture_seed') IS NOT NULL"
+      if ($seeded.Trim() -ne 't') {
+        Get-Content pipeline/tests/standard_contract_seed.sql -Raw | & docker compose -p $project -f $compose exec -T postgres psql -v ON_ERROR_STOP=1 -U uec -d uec
+        if ($LASTEXITCODE) { throw 'Synthetic seed failed.' }
+        & docker compose -p $project -f $compose exec -T postgres psql -v ON_ERROR_STOP=1 -U uec -d uec -c "CREATE TABLE IF NOT EXISTS uec.local_v2_fixture_seed (seed_name text primary key, seeded_at timestamptz not null default now()); INSERT INTO uec.local_v2_fixture_seed(seed_name) VALUES ('standard-contract') ON CONFLICT DO NOTHING;"
+      }
+      if (!(Get-OwnedApiProcess)) {
+        $api=Join-Path $root 'target\debug\uec-api.exe'; if (!(Test-Path $api)) { cargo build --bin uec-api --quiet }
+        $process=Start-Process -FilePath $api -WorkingDirectory $root -WindowStyle Hidden -RedirectStandardOutput $logFile -RedirectStandardError $errorFile -PassThru
+        Set-Content -Path $pidFile -Value $process.Id -NoNewline
+      }
+      Write-Host "Local V2 ready: http://127.0.0.1:$apiPort (database $dbPort)."
+    }
+    'status' {
+      & docker compose -p $project -f $compose ps
+      $api=Get-OwnedApiProcess; if ($api) { Write-Host "Axum running: PID $($api.Id), port $apiPort" } else { Write-Host 'Axum not managed by local-v2.ps1.' }
+    }
+    'stop' {
+      $api=Get-OwnedApiProcess; if ($api) { Stop-Process -Id $api.Id -Force; Remove-Item $pidFile -Force }
+      & docker compose -p $project -f $compose stop
+      if ($LASTEXITCODE) { throw 'Postgres stop failed.' }
+      Write-Host 'Local V2 Axum and Postgres stopped; data volume preserved.'
+    }
+    'probe' { & node frontend/scripts/probe-local-v2.mjs "http://127.0.0.1:$apiPort"; if ($LASTEXITCODE) { throw 'Local V2 probe failed.' } }
+  }
+} finally { Pop-Location }
