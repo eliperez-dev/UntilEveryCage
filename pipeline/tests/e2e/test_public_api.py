@@ -47,5 +47,10 @@ class PublicApiE2ETests(unittest.TestCase):
         self.assertEqual(body["data"], [])
         self.assertEqual(body["meta"]["profile"], "community")
 
+    def test_cursor_and_offset_cannot_be_combined(self):
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            self.get("/api/v2/locations?cursor=00000000-0000-0000-0000-000000000000&offset=1")
+        self.assertEqual(error.exception.code, 400)
+
 if __name__ == "__main__":
     unittest.main()

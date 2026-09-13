@@ -10,6 +10,8 @@ The API supports explicit `category`, `source_type`, `display_precision`, and `l
 
 The optional `profile` filter selects `official`, `secondary`, or `community`; absent `profile` means `official`. A release whose stored profile does not match the request is never returned. This prevents community or user-submitted publication contexts from silently appearing in the official view.
 
+For stable traversal, clients may pass a `cursor` containing the last returned `facility_id`; the response returns `meta.next_cursor` while another page exists. Cursor and offset pagination cannot be combined. The cursor is scoped to the selected release and filters, so clients should restart traversal when those change.
+
 Pagination is deterministic offset pagination: `limit` defaults to 100 and is bounded to 1,000; `offset` defaults to 0 and is bounded to 1,000,000. Results are ordered by stable `facility_id`. Cursor pagination should replace offset pagination before very large public collections are exposed.
 
 Release selection and location rows are read inside one `REPEATABLE READ`, read-only transaction. This ensures the response metadata and records come from one database snapshot, even if another release is promoted concurrently. Each release has an explicit publication `profile` (`official`, `secondary`, or `community`), independent of source origin and factual review status; the API returns that stored value rather than inferring it. The legacy `provenance_source` response field is retained as a compatibility alias for `provenance_source_name`; new clients should use the explicit `provenance_source_id`, `provenance_source_name`, `provenance_source_url`, and `provenance_retrieved_at` fields.

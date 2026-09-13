@@ -31,6 +31,15 @@ class SeededApiE2ETests(unittest.TestCase):
         self.assertEqual(len(logistics), 1)
         self.assertEqual(logistics[0]['canonical_name'], 'E2E unmapped')
 
+    def test_cursor_traversal_is_stable_and_non_overlapping(self):
+        first = self.get('/api/v2/locations?limit=1')
+        self.assertEqual(len(first['data']), 1)
+        cursor = first['meta']['next_cursor']
+        self.assertIsNotNone(cursor)
+        second = self.get(f'/api/v2/locations?limit=10&cursor={cursor}')
+        self.assertTrue(second['data'])
+        self.assertNotEqual(first['data'][0]['facility_id'], second['data'][0]['facility_id'])
+
     def test_provenance_and_precision_are_returned_for_each_public_record(self):
         response = self.get('/api/v2/locations?limit=100')
         self.assertEqual(response['meta']['release_id'], 'e2e-promoted')

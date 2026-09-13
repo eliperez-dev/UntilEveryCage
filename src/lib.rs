@@ -76,6 +76,7 @@ pub struct V2LocationParams {
     pub lifecycle_status: Option<String>,
     pub limit: Option<String>,
     pub offset: Option<String>,
+    pub cursor: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -127,6 +128,14 @@ pub async fn get_v2_locations_handler(State(state): State<ApiState>, Query(param
         Ok(value) => value.unwrap_or(0).clamp(0, 1_000_000),
         Err(_) => return (StatusCode::BAD_REQUEST, "offset must be an integer").into_response(),
     };
+    if params.cursor.is_some() && params.offset.is_some() {
+        return (StatusCode::BAD_REQUEST, "cursor and offset cannot be combined").into_response();
+    }
+    let cursor = match params.cursor.as_deref().map(uuid::Uuid::parse_str).transpose() {
+        Ok(cursor) => cursor,
+        Err(_) => return (StatusCode::BAD_REQUEST, "cursor must be a facility UUID").into_response(),
+    };
+    let effective_offset = if cursor.is_some() { 0 } else { offset };
     let mut client = match state.database.as_ref() { Some(pool) => match pool.get().await { Ok(client) => client, Err(_) => return (StatusCode::SERVICE_UNAVAILABLE, "Database pool unavailable").into_response() }, None => return (StatusCode::SERVICE_UNAVAILABLE, "V2 database is not configured").into_response() };
     let transaction = match client.build_transaction().isolation_level(tokio_postgres::IsolationLevel::RepeatableRead).read_only(true).start().await {
         Ok(transaction) => transaction,
@@ -159,13 +168,14 @@ pub async fn get_v2_locations_handler(State(state): State<ApiState>, Query(param
                provenance_source_id, provenance_source_name, provenance_source_url, provenance_retrieved_at
         FROM uec.map_facilities_display_history
         WHERE release_id = $1
-          AND ($2::text IS NULL OR country_code = $2)
-          AND ($3::text IS NULL OR classification_category = $3)
-          AND ($4::text IS NULL OR display_precision = $4)
-          AND ($5::text IS NULL OR lifecycle_status = $5)
-          AND ($6::text IS NULL OR provenance_origin_type = $6)
-        ORDER BY facility_id LIMIT $7 OFFSET $8
-    "#, &[&promoted_release_id, &params.country_code, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &limit, &offset]).await {
+          AND ($2::uuid IS NULL OR facility_id > $2)
+          AND ($3::text IS NULL OR country_code = $3)
+          AND ($4::text IS NULL OR classification_category = $4)
+          AND ($5::text IS NULL OR display_precision = $5)
+          AND ($6::text IS NULL OR lifecycle_status = $6)
+          AND ($7::text IS NULL OR provenance_origin_type = $7)
+        ORDER BY facility_id LIMIT $8 OFFSET $9
+    "#, &[&promoted_release_id, &cursor, &params.country_code, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &limit, &effective_offset]).await {
         Ok(rows) => rows,
         Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "V2 location query failed").into_response(),
     };
@@ -177,11 +187,13 @@ pub async fn get_v2_locations_handler(State(state): State<ApiState>, Query(param
         release_id: row.get(12), release_ruleset_version: row.get(13), provenance_source_id: row.get(14),
         provenance_source: row.get(15), provenance_source_name: row.get(15), provenance_source_url: row.get(16), provenance_retrieved_at: row.get(17),
     }).collect::<Vec<_>>();
+    let next_cursor = if data.len() as i64 == limit { data.last().map(|row| row.facility_id.to_string()) } else { None };
     let metadata = serde_json::json!({
         "release_id": promoted_release_id,
         "ruleset_version": promoted_ruleset,
         "release_created_at": promoted_created_at,
         "profile": promoted_profile,
+        "next_cursor": next_cursor,
         "coverage_note": "Results are limited to the selected promoted release and public-access policy."
     });
     if transaction.commit().await.is_err() {
