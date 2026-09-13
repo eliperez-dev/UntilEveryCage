@@ -59,5 +59,18 @@ class PublicApiE2ETests(unittest.TestCase):
         self.assertIn("community", body["dimensions"]["profile"]["values"])
         self.assertNotIn("address", body["dimensions"])
 
+    def test_combination_filters_and_zero_result_are_deterministic(self):
+        rows = self.get('/api/v2/locations?country_code=DK&category=slaughter&display_precision=exact&limit=10')['data']
+        self.assertEqual(len(rows), 1)
+        restricted = self.get('/api/v2/locations?country_code=DK&category=retail_and_prepared_food&limit=10')['data']
+        self.assertEqual(restricted, [])
+        empty = self.get('/api/v2/locations?country_code=ZZ&limit=10')
+        self.assertEqual(empty['data'], [])
+
+    def test_unknown_controlled_filter_is_rejected(self):
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            self.get('/api/v2/locations?category=arbitrary')
+        self.assertEqual(error.exception.code, 400)
+
 if __name__ == "__main__":
     unittest.main()
