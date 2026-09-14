@@ -129,6 +129,31 @@ normalized rows and 1,042 quarantined rows. The remaining address-risk count was
 reduction is not a release decision: remarks, out-of-scope jurisdictions, and
 duplicate identifiers remain blocked pending their respective reviews.
 
+### Bounded real handoff (2026-09-14)
+
+A deterministic private sample was staged from the retained 2026-09-01 artifact
+for operator and importer-boundary validation. The sample contains 49 source rows:
+20 England, 20 Wales, 5 Jersey, 3 Isle of Man, and 1 Guernsey. The source-local
+handoff produced 29 normalized rows and 20 quarantined rows; quarantine reasons
+were `remarks_present` (11) and `unknown_nation` (9). The pre-DB importer checks
+loaded all 29 normalized rows and verified the raw and normalized checksums.
+
+Restricted operator packet paths (not repository files):
+
+- `data/restricted/country-recon/uk/runs/2026-09-14-bounded-real/selection.manifest.json`
+- `data/restricted/country-recon/uk/runs/2026-09-14-bounded-real/handoff/manifest.json`
+- `data/restricted/country-recon/uk/runs/2026-09-14-bounded-real/handoff/qa.json`
+
+The packet records the official source URL/catalog, parent and sample hashes,
+effective date, selection rule, coverage counts, quarantine counts, and disabled
+geocoding. The sample and all row-level derivatives remain restricted. No database
+import, preview, approval, coordinate release, or publication occurred. Operator
+decisions still required: source-rights/attribution review, duplicate and coverage
+scope review, privacy review of remarks and addresses, and authorization of any
+disposable-DB E2E run. The shared SourceArtifact/typed-run boundary remains a
+separate infrastructure integration limitation; this source-local bridge validates
+typed artifact facts directly and does not alter the common contract.
+
 This reconciliation is a design and test record, not source approval or legal
 clearance. No live row data is included, and the private artifact remains outside
 Git and public outputs.
