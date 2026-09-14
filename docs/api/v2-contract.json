@@ -8,6 +8,7 @@
     "GET /api/v2/locations/{facility_id}": {"success": {"api_version": "v2", "data": {}, "meta": {}}, "not_found": 404},
     "GET /api/v2/locations.csv": {"success_content_type": "text/csv", "bounded_rows": 1000, "profile_required_for_nonofficial": true, "not_found_without_promoted_manifest": 404},
     "GET /api/v2/discovery/filters": {"success": {"api_version": "v2", "contract_version": "v1", "dimensions": {"country_code": "allowlist", "category": "allowlist", "source_type": "allowlist", "profile": "allowlist", "display_precision": "allowlist", "lifecycle_status": "allowlist"}}}
+    ,"GET /api/v2/discovery/facets": {"success": {"api_version": "v2", "meta": {"profile": "official", "release_id": "string", "filters": {}}, "dimensions": {}}, "max_values_per_dimension": 20, "counts_are_from": "selected eligible promoted public projection"}
   },
   "error": {"shape": {"api_version": "v2", "error": {"code": "string", "message": "string"}}, "codes": ["invalid_filter", "invalid_profile", "invalid_limit", "invalid_offset", "invalid_cursor", "invalid_pagination", "database_not_configured", "database_pool_unavailable", "database_transaction_unavailable", "release_query_failed", "location_query_failed", "location_not_found", "rate_limited"]},
   "privacy": "Public responses contain reviewed projection fields only; restricted records and raw evidence are never returned."

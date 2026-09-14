@@ -331,6 +331,115 @@ pub async fn get_v2_filter_metadata_handler() -> impl IntoResponse {
     }, "pagination":{"limit_max":1000,"cursor":"facility_id"}, "privacy":"Filters operate only on eligible records in the selected promoted release; filters never override suppression or publication review."})).into_response()
 }
 
+pub async fn get_v2_facets_handler(
+    State(state): State<ApiState>,
+    Query(params): Query<V2LocationParams>,
+) -> impl IntoResponse {
+    let profile = params.profile.as_deref().unwrap_or("official");
+    if !V2_PROFILES.contains(&profile) {
+        return v2_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_profile",
+            "profile is unsupported",
+        );
+    }
+    if params
+        .category
+        .as_deref()
+        .is_some_and(|v| !V2_CATEGORIES.contains(&v))
+        || params
+            .source_type
+            .as_deref()
+            .is_some_and(|v| !V2_SOURCE_TYPES.contains(&v))
+        || params
+            .display_precision
+            .as_deref()
+            .is_some_and(|v| !V2_PRECISIONS.contains(&v))
+        || params
+            .lifecycle_status
+            .as_deref()
+            .is_some_and(|v| !V2_LIFECYCLES.contains(&v))
+        || params
+            .country_code
+            .as_deref()
+            .is_some_and(|v| v.len() != 2 || !v.chars().all(|c| c.is_ascii_uppercase()))
+    {
+        return v2_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_filter",
+            "filter is invalid",
+        );
+    }
+    let Some(pool) = state.database else {
+        return v2_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "database_not_configured",
+            "V2 database is not configured",
+        );
+    };
+    let client = match pool.get().await {
+        Ok(c) => c,
+        Err(_) => {
+            return v2_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "database_pool_unavailable",
+                "database pool unavailable",
+            );
+        }
+    };
+    let release = match client.query_opt("SELECT release_id FROM uec.releases WHERE status='promoted' AND profile=$1 ORDER BY created_at DESC, release_id DESC LIMIT 1", &[&profile]).await { Ok(row) => row, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "release_query_failed", "release query failed") };
+    let Some(release) = release else {
+        return v2_error(
+            StatusCode::NOT_FOUND,
+            "release_not_found",
+            "no promoted eligible release",
+        );
+    };
+    let release_id: String = release.get(0);
+    let rows = match client.query("SELECT country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type FROM uec.map_facilities_display_history WHERE release_id=$1 AND ($2::text IS NULL OR country_code=$2) AND ($3::text IS NULL OR classification_category=$3) AND ($4::text IS NULL OR provenance_origin_type=$4) AND ($5::text IS NULL OR display_precision=$5) AND ($6::text IS NULL OR lifecycle_status=$6)", &[&release_id, &params.country_code, &params.category, &params.source_type, &params.display_precision, &params.lifecycle_status]).await { Ok(rows) => rows, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "facets_query_failed", "public facets unavailable") };
+    let mut dimensions = serde_json::Map::new();
+    for (name, values) in [
+        (
+            "country_code",
+            rows.iter()
+                .map(|r| r.get::<_, String>(0))
+                .collect::<Vec<_>>(),
+        ),
+        (
+            "category",
+            rows.iter().map(|r| r.get::<_, String>(1)).collect(),
+        ),
+        (
+            "display_precision",
+            rows.iter().map(|r| r.get::<_, String>(2)).collect(),
+        ),
+        (
+            "lifecycle_status",
+            rows.iter().map(|r| r.get::<_, String>(3)).collect(),
+        ),
+        (
+            "source_type",
+            rows.iter().map(|r| r.get::<_, String>(4)).collect(),
+        ),
+    ] {
+        let mut counts = std::collections::BTreeMap::<String, usize>::new();
+        for value in values {
+            *counts.entry(value).or_default() += 1;
+        }
+        dimensions.insert(
+            name.into(),
+            json!(
+                counts
+                    .into_iter()
+                    .take(20)
+                    .map(|(value, count)| json!({"value":value,"count":count}))
+                    .collect::<Vec<_>>()
+            ),
+        );
+    }
+    Json(json!({"api_version":"v2", "meta":{"profile":profile,"release_id":release_id,"filters":{"country_code":params.country_code,"category":params.category,"source_type":params.source_type,"display_precision":params.display_precision,"lifecycle_status":params.lifecycle_status}}, "dimensions":dimensions})).into_response()
+}
+
 #[derive(Deserialize)]
 pub struct V2LocationParams {
     pub country_code: Option<String>,

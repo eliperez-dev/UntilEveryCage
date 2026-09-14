@@ -50,6 +50,10 @@ pub fn app(state: uec_api::ApiState) -> Router {
             get(uec_api::get_v2_filter_metadata_handler),
         )
         .route(
+            "/api/v2/discovery/facets",
+            get(uec_api::get_v2_facets_handler),
+        )
+        .route(
             "/api/v2/locations/{facility_id}",
             get(uec_api::get_v2_location_detail_handler),
         )

@@ -59,6 +59,16 @@ class PublicApiE2ETests(unittest.TestCase):
         self.assertIn("community", body["dimensions"]["profile"]["values"])
         self.assertNotIn("address", body["dimensions"])
 
+    def test_facets_apply_filters_and_never_include_restricted_record(self):
+        status, body = self.get('/api/v2/discovery/facets?profile=official&category=slaughter')
+        self.assertEqual(status, 200)
+        self.assertEqual(body['meta']['release_id'], 'e2e-promoted')
+        self.assertEqual(body['dimensions']['category'], [{'value': 'slaughter', 'count': 1}])
+        self.assertNotIn('restricted', json.dumps(body))
+        status, empty = self.get('/api/v2/discovery/facets?country_code=ZZ')
+        self.assertEqual(status, 200)
+        self.assertEqual(empty['dimensions']['category'], [])
+
     def test_combination_filters_and_zero_result_are_deterministic(self):
         rows = self.get('/api/v2/locations?country_code=DK&category=slaughter&display_precision=exact&limit=10')['data']
         self.assertEqual(len(rows), 1)
