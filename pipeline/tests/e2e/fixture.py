@@ -2,6 +2,8 @@
 import os
 import socket
 import subprocess
+import tempfile
+import shutil
 import time
 import uuid
 from pathlib import Path
@@ -27,9 +29,13 @@ class E2EEnvironment:
         self.database_url = f"postgresql://uec:uec-e2e@localhost:{self.db_port}/uec"
         self.backend = None
         self.backend_log = None
+        self.build_temp = tempfile.TemporaryDirectory(prefix="uec-e2e-cargo-")
+        self.cargo_target_dir = Path(self.build_temp.name)
+        self.cargo_cache_dir = ROOT / "target" / "e2e-cache"
         self.start_attempts = 0
         # Synthetic only: this token is scoped to the disposable test server.
         self.dev_preview_token = "uec-e2e-preview-token"
+        self.test_release_id = None
 
     def command(self, *args):
         return ["docker", "compose", "-p", self.project, "-f", str(COMPOSE), *args]
@@ -74,12 +80,18 @@ class E2EEnvironment:
                     return self.start()
                 raise
             print("[e2e] building backend", flush=True)
-            subprocess.run(["cargo", "build", "--quiet"], cwd=ROOT, check=True, timeout=180)
+            build_env = os.environ.copy()
+            build_env["CARGO_TARGET_DIR"] = str(self.cargo_cache_dir)
+            subprocess.run(["cargo", "build", "--quiet"], cwd=ROOT, check=True, timeout=180, env=build_env)
             env = os.environ.copy(); env.update({"UEC_DATABASE_URL": self.database_url, "PORT": str(self.api_port), "UEC_RUNTIME_MODE": "development", "UEC_BIND_HOST": "127.0.0.1", "UEC_DEV_PREVIEW": "true", "UEC_DEV_PREVIEW_TOKEN": self.dev_preview_token})
-            binary = ROOT / "target/debug/uec-api.exe"
-            if not binary.exists():
-                binary = ROOT / "target/debug/uec-api"
-            self.backend_log = (ROOT / "target" / f"e2e-{self.project}.log").open("w", encoding="utf-8")
+            if self.test_release_id:
+                env.update({"UEC_TEST_RELEASE_ID": self.test_release_id, "UEC_TEST_RELEASE_TOKEN": self.dev_preview_token})
+            cached_binary = self.cargo_cache_dir / "debug/uec-api.exe"
+            if not cached_binary.exists():
+                cached_binary = self.cargo_cache_dir / "debug/uec-api"
+            binary = self.cargo_target_dir / cached_binary.name
+            shutil.copy2(cached_binary, binary)
+            self.backend_log = (self.cargo_target_dir / f"e2e-{self.project}.log").open("w", encoding="utf-8")
             self.backend = subprocess.Popen([str(binary)], cwd=ROOT, env=env, stdout=self.backend_log, stderr=subprocess.STDOUT, text=True)
             print(f"[e2e] waiting for backend on {self.api_port}", flush=True)
             import urllib.error
@@ -122,6 +134,9 @@ class E2EEnvironment:
             self.backend_log.close()
             self.backend_log = None
         subprocess.run(self.command("down", "-v", "--remove-orphans"), cwd=ROOT, check=False, capture_output=True, text=True, env=self.compose_env())
+        if self.build_temp:
+            self.build_temp.cleanup()
+            self.build_temp = None
 
     def seed_official_scenario(self):
         """Seed safe synthetic records for public API tests."""

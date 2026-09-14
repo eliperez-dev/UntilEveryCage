@@ -12,8 +12,8 @@ from pathlib import Path
 import psycopg
 
 
-def can_promote(status: str) -> bool:
-    return status == "validated"
+def can_promote(status: str, test_only: bool = False) -> bool:
+    return status == "validated" and not test_only
 
 
 def canonical_json(manifest: dict) -> str:
@@ -53,10 +53,12 @@ def inventory_artifacts(paths: list[Path], no_distributed_artifacts: bool) -> li
 def promote(database_url: str, release_id: str, artifacts: list[dict]) -> dict:
     with psycopg.connect(database_url) as connection:
         with connection.transaction():
-            target = connection.execute("SELECT status, profile, ruleset_version FROM uec.releases WHERE release_id = %s FOR UPDATE", (release_id,)).fetchone()
+            target = connection.execute("SELECT status, profile, ruleset_version, test_only FROM uec.releases WHERE release_id = %s FOR UPDATE", (release_id,)).fetchone()
             if not target:
                 raise ValueError(f"release not found: {release_id}")
-            if not can_promote(target[0]):
+            if not can_promote(target[0], target[3]):
+                if target[3]:
+                    raise ValueError("test-only releases cannot be validated or promoted")
                 raise ValueError(f"release must be validated before promotion; current status is {target[0]}")
             unsafe = connection.execute("""
                 SELECT

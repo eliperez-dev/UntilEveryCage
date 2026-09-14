@@ -64,6 +64,22 @@ pub fn app(state: uec_api::ApiState) -> Router {
             get(uec_api::get_dev_candidate_preview_handler),
         )
         .route(
+            "/api/dev/preview/test-release/locations",
+            get(uec_api::get_dev_test_release_locations_handler),
+        )
+        .route(
+            "/api/dev/preview/test-release/locations/{facility_id}",
+            get(uec_api::get_dev_test_release_location_detail_handler),
+        )
+        .route(
+            "/api/dev/preview/test-release/discovery/facets",
+            get(uec_api::get_dev_test_release_facets_handler),
+        )
+        .route(
+            "/api/dev/preview/test-release/locations.csv",
+            get(uec_api::get_dev_test_release_export_handler),
+        )
+        .route(
             "/api/aphis-reports",
             get(uec_api::get_aphis_reports_handler),
         )
@@ -393,6 +409,29 @@ async fn main() {
         "{{\"event\":\"server_starting\",\"service\":\"uec-api\",\"mode\":\"{}\",\"port\":{}}}",
         mode, port
     );
+    let (dev_test_release_id, dev_test_release_token) = match (
+        std::env::var("UEC_TEST_RELEASE_ID").ok(),
+        std::env::var("UEC_TEST_RELEASE_TOKEN").ok(),
+    ) {
+        (None, None) => (None, None),
+        (Some(id), Some(token))
+            if mode == "development"
+                && bind_host
+                    .parse::<IpAddr>()
+                    .map(|ip| ip.is_loopback())
+                    .unwrap_or(false)
+                && !id.is_empty()
+                && !token.is_empty() =>
+        {
+            (Some(id), Some(token))
+        }
+        _ => {
+            eprintln!(
+                "{{\"event\":\"configuration_error\",\"reason\":\"test release requires development loopback mode and both UEC_TEST_RELEASE_ID/UEC_TEST_RELEASE_TOKEN\"}}"
+            );
+            std::process::exit(2);
+        }
+    };
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(
@@ -400,6 +439,8 @@ async fn main() {
         app(uec_api::ApiState {
             database,
             dev_preview_token,
+            dev_test_release_id,
+            dev_test_release_token,
         })
         .into_make_service_with_connect_info::<SocketAddr>(),
     )

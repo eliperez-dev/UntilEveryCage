@@ -128,8 +128,8 @@ def import_candidate(database_url: str, manifest: dict, rows: list[dict], releas
                                 (manifest["source_id"],)).fetchone()[0]
             db.execute("INSERT INTO uec.acquisition_run_artifacts(run_id,artifact_id) VALUES (%s,%s) ON CONFLICT DO NOTHING",
                        (run_id, artifact_id))
-            db.execute("""INSERT INTO uec.releases(release_id,status,ruleset_version,summary)
-                         VALUES (%s,'candidate',%s,%s)
+            db.execute("""INSERT INTO uec.releases(release_id,status,ruleset_version,summary,test_only)
+                         VALUES (%s,'candidate',%s,%s,true)
                          ON CONFLICT (release_id) DO NOTHING""",
                        (release_id, ruleset, json.dumps({"source_id": manifest["source_id"], "profile": manifest.get("profile")})))
             count = 0

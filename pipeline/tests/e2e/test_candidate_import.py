@@ -39,7 +39,9 @@ class CandidateImportE2ETests(unittest.TestCase):
     def setUpClass(cls):
         if os.environ.get("UEC_RUN_E2E") != "1":
             raise unittest.SkipTest("set UEC_RUN_E2E=1 to run Docker-backed E2E tests")
-        cls.env = E2EEnvironment().start()
+        cls.env = E2EEnvironment()
+        cls.env.test_release_id = "candidate-uk-e2e"
+        cls.env = cls.env.start()
         cls.temp = tempfile.TemporaryDirectory()
         root = Path(cls.temp.name)
         raw = root / "uk-monthly.csv"
@@ -68,6 +70,19 @@ class CandidateImportE2ETests(unittest.TestCase):
         if second.returncode:
             cls.temp.cleanup(); cls.env.stop()
             raise RuntimeError(f"candidate importer rerun failed:\n{second.stdout}\n{second.stderr}")
+        # Synthetic negative rows exercise source-state and privacy gates in
+        # every guarded test-release surface without introducing raw payloads.
+        now = datetime.now(timezone.utc)
+        with psycopg.connect(cls.env.database_url) as db:
+            with db.transaction():
+                artifact = db.execute("SELECT artifact_id FROM uec.raw_artifacts WHERE storage_key LIKE 'private-staging/%' LIMIT 1").fetchone()[0]
+                for key, state, privacy in (("rejected-negative", "rejected", "pending"), ("withheld-negative", "present", "failed")):
+                    record, facility, observation = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+                    db.execute("INSERT INTO uec.source_records(source_record_id,source_id,source_record_key,artifact_id,raw_fields,parsed_at,source_state) VALUES (%s,'fsa_approved_establishments',%s,%s,'{}',%s,%s)", (record,key,artifact,now,state))
+                    db.execute("INSERT INTO uec.facilities(facility_id,canonical_name,country_code,city) VALUES (%s,%s,'GB','London')", (facility, f"E2E {key}"))
+                    db.execute("INSERT INTO uec.observations(observation_id,facility_id,source_record_id,observed_at,observation,classification,ruleset_id,rule_id,classification_category,classification_review_status,default_visible,coordinate_review_status,first_observed_at) VALUES (%s,%s,%s,%s,'{}','{}','e2e','negative','processing','review_required',false,'review_required',%s)", (observation,facility,record,now,now))
+                    db.execute("INSERT INTO uec.release_members(release_id,facility_id,observation_id,default_visible) VALUES (%s,%s,%s,false)", (cls.release_id,facility,observation))
+                    db.execute("INSERT INTO uec.publication_review_events(source_record_id,release_id,factual_review_status,privacy_screening_status,maintainer_approval,publication_eligible) VALUES (%s,%s,'unreviewed',%s,'pending',false)", (record,cls.release_id,privacy))
         cls.initial_counts = cls.counts_for()
         cls._record_id = None
 
@@ -84,19 +99,23 @@ class CandidateImportE2ETests(unittest.TestCase):
 
     def test_import_is_idempotent_and_candidate_is_not_public_or_previewable(self):
         with psycopg.connect(self.env.database_url) as db:
-            source_count, observation_count, artifact_count, release_member_count, review_count, release_count, run_count = db.execute(
-                """SELECT count(DISTINCT r.source_record_id), count(DISTINCT o.observation_id)
-                   , (SELECT count(*) FROM uec.raw_artifacts WHERE storage_key LIKE 'private-staging/%')
-                   , (SELECT count(*) FROM uec.release_members WHERE release_id=%s)
-                   , (SELECT count(*) FROM uec.publication_review_events WHERE release_id=%s)
-                   , (SELECT count(*) FROM uec.releases WHERE release_id=%s)
-                   , (SELECT count(*) FROM uec.acquisition_runs WHERE source_id='fsa_approved_establishments')
-                   FROM uec.source_records r JOIN uec.observations o USING (source_record_id)
-                   WHERE r.source_id='fsa_approved_establishments'""", (self.release_id, self.release_id, self.release_id)
-            ).fetchone()
+            positive_record = db.execute("SELECT source_record_id FROM uec.source_records WHERE source_id='fsa_approved_establishments' AND source_record_key='2:UK-E2E-1'").fetchone()[0]
+            source_count = db.execute("SELECT count(*) FROM uec.source_records WHERE source_record_id=%s", (positive_record,)).fetchone()[0]
+            observation_count = db.execute("SELECT count(*) FROM uec.observations WHERE source_record_id=%s", (positive_record,)).fetchone()[0]
+            artifact_count = db.execute("SELECT count(*) FROM uec.raw_artifacts WHERE storage_key LIKE 'private-staging/%%'").fetchone()[0]
+            release_member_count = db.execute("SELECT count(*) FROM uec.release_members m JOIN uec.observations o ON o.observation_id=m.observation_id WHERE m.release_id=%s AND o.source_record_id=%s", (self.release_id, positive_record)).fetchone()[0]
+            review_count = db.execute("SELECT count(*) FROM uec.publication_review_events WHERE release_id=%s AND source_record_id=%s", (self.release_id, positive_record)).fetchone()[0]
+            release_count = db.execute("SELECT count(*) FROM uec.releases WHERE release_id=%s", (self.release_id,)).fetchone()[0]
+            run_count = db.execute("SELECT count(*) FROM uec.acquisition_runs WHERE source_id='fsa_approved_establishments'").fetchone()[0]
             self.assertEqual((source_count, observation_count, artifact_count, release_member_count, review_count, release_count, run_count), (1, 1, 1, 1, 1, 1, 2))
-            review_state = db.execute("SELECT factual_review_status, privacy_screening_status, maintainer_approval, publication_eligible FROM uec.publication_review_events WHERE release_id=%s", (self.release_id,)).fetchone()
+            review_state = db.execute("SELECT factual_review_status, privacy_screening_status, maintainer_approval, publication_eligible FROM uec.publication_review_events WHERE release_id=%s AND source_record_id=%s", (self.release_id, positive_record)).fetchone()
             self.assertEqual(review_state, ("unreviewed", "pending", "pending", False))
+            self.assertTrue(db.execute("SELECT test_only FROM uec.releases WHERE release_id=%s", (self.release_id,)).fetchone()[0])
+            for target_status in ("validated", "promoted"):
+                with self.assertRaises(psycopg.Error):
+                    db.execute("UPDATE uec.releases SET status=%s WHERE release_id=%s", (target_status, self.release_id))
+                db.rollback()
+            self.assertEqual(db.execute("SELECT status FROM uec.releases WHERE release_id=%s", (self.release_id,)).fetchone()[0], "candidate")
         # The public route succeeds with an empty envelope, not an error.
         with self.request("/api/v2/locations?profile=official") as response:
             body = json.loads(response.read())
@@ -108,6 +127,37 @@ class CandidateImportE2ETests(unittest.TestCase):
         )
         with urllib.request.urlopen(preview, timeout=10) as response:
             self.assertEqual(json.loads(response.read())["data"], [])
+        test_list = urllib.request.Request(
+            f"http://127.0.0.1:{self.env.api_port}/api/dev/preview/test-release/locations?profile=official",
+            headers={"X-UEC-Dev-Preview-Token": self.env.dev_preview_token},
+        )
+        with urllib.request.urlopen(test_list, timeout=10) as response:
+            test_body = json.loads(response.read())
+        self.assertEqual(test_body["meta"]["api_version"], "dev-test-v1")
+        self.assertTrue(test_body["meta"]["test_only"])
+        self.assertEqual(test_body["meta"]["release_status"], "candidate")
+        self.assertEqual(test_body["data"][0]["privacy_screening_status"], "pending")
+        self.assertIsNone(test_body["data"][0]["latitude"])
+        self.assertNotIn("source_values", json.dumps(test_body))
+        facility_id = test_body["data"][0]["facility_id"]
+        detail = urllib.request.Request(
+            f"http://127.0.0.1:{self.env.api_port}/api/dev/preview/test-release/locations/{facility_id}",
+            headers={"X-UEC-Dev-Preview-Token": self.env.dev_preview_token},
+        )
+        with urllib.request.urlopen(detail, timeout=10) as response:
+            self.assertEqual(json.loads(response.read())["meta"]["environment"], "test-only")
+        with urllib.request.urlopen(urllib.request.Request(
+            f"http://127.0.0.1:{self.env.api_port}/api/dev/preview/test-release/discovery/facets",
+            headers={"X-UEC-Dev-Preview-Token": self.env.dev_preview_token},
+        ), timeout=10) as response:
+            self.assertEqual(json.loads(response.read())["meta"]["test_only"], True)
+        with urllib.request.urlopen(urllib.request.Request(
+            f"http://127.0.0.1:{self.env.api_port}/api/dev/preview/test-release/locations.csv",
+            headers={"X-UEC-Dev-Preview-Token": self.env.dev_preview_token},
+        ), timeout=10) as response:
+            csv_body = response.read().decode()
+        self.assertIn("test_only", csv_body)
+        self.assertNotIn("source_values", csv_body)
 
     def test_review_version_unlocks_preview_only_then_suppression_relocks_it(self):
         now = datetime.now(timezone.utc)

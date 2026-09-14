@@ -102,7 +102,7 @@ pub async fn get_v2_release_manifest_handler(
             );
         }
     };
-    let row = match client.query_opt("SELECT r.release_id, r.profile, m.manifest::text, m.manifest_sha256 FROM uec.releases r JOIN uec.release_manifests m ON m.release_id=r.release_id WHERE r.status='promoted' AND r.profile=$1 ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1", &[&profile]).await {
+    let row = match client.query_opt("SELECT r.release_id, r.profile, m.manifest::text, m.manifest_sha256 FROM uec.releases r JOIN uec.release_manifests m ON m.release_id=r.release_id WHERE r.status='promoted' AND r.test_only IS NOT TRUE AND r.profile=$1 ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1", &[&profile]).await {
         Ok(row) => row, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "release_manifest_unavailable", "release manifest unavailable")
     };
     let Some(row) = row else {
@@ -205,7 +205,7 @@ pub async fn get_v2_locations_export_handler(
             );
         }
     };
-    let release = match client.query_opt("SELECT r.release_id, m.manifest_sha256 FROM uec.releases r JOIN uec.release_manifests m ON m.release_id=r.release_id WHERE r.status='promoted' AND r.profile=$1 ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1", &[&profile]).await {
+    let release = match client.query_opt("SELECT r.release_id, m.manifest_sha256 FROM uec.releases r JOIN uec.release_manifests m ON m.release_id=r.release_id WHERE r.status='promoted' AND r.test_only IS NOT TRUE AND r.profile=$1 ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1", &[&profile]).await {
         Ok(row) => row, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "release_query_failed", "release query failed")
     };
     let Some(release) = release else {
@@ -291,9 +291,347 @@ pub async fn get_v2_locations_export_handler(
 pub struct ApiState {
     pub database: Option<Pool>,
     pub dev_preview_token: Option<String>,
+    pub dev_test_release_id: Option<String>,
+    pub dev_test_release_token: Option<String>,
 }
 
 const DEV_PREVIEW_TOKEN_HEADER: &str = "x-uec-dev-preview-token";
+
+fn test_release_auth(headers: &HeaderMap, state: &ApiState) -> bool {
+    let (Some(release_id), Some(expected)) =
+        (&state.dev_test_release_id, &state.dev_test_release_token)
+    else {
+        return false;
+    };
+    preview_request_is_local(headers)
+        && headers
+            .get(DEV_PREVIEW_TOKEN_HEADER)
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|v| constant_time_token_matches(expected, v))
+        && !release_id.is_empty()
+}
+
+fn test_release_meta(release_id: &str, profile: &str) -> serde_json::Value {
+    json!({"api_version":"dev-test-v1","environment":"test-only","test_only":true,"private_preview":true,"release_status":"candidate","release_id":release_id,"profile":profile,"coverage_scope":"test_release_public_shaped_rows","count_semantics":"Rows are disposable candidate facilities, not project-approved or published counts.","preview_label":"Disposable test release — not project-approved or published"})
+}
+
+fn csv_safe_value(value: String) -> String {
+    if value.starts_with(['=', '+', '-', '@']) {
+        format!("'{}", value)
+    } else {
+        value
+    }
+}
+
+pub async fn get_dev_test_release_locations_handler(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Query(params): Query<V2LocationParams>,
+) -> impl IntoResponse {
+    if !test_release_auth(&headers, &state) {
+        return v2_error(
+            StatusCode::NOT_FOUND,
+            "test_release_unavailable",
+            "test release unavailable",
+        );
+    }
+    let Some(pool) = state.database else {
+        return v2_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "database_not_configured",
+            "test release database unavailable",
+        );
+    };
+    let profile = params.profile.as_deref().unwrap_or("official");
+    let Some(release_id) = state.dev_test_release_id.as_deref() else {
+        return v2_error(
+            StatusCode::NOT_FOUND,
+            "test_release_unavailable",
+            "test release unavailable",
+        );
+    };
+    let client = match pool.get().await {
+        Ok(c) => c,
+        Err(_) => {
+            return v2_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "database_pool_unavailable",
+                "database pool unavailable",
+            );
+        }
+    };
+    let limit = params
+        .limit
+        .as_deref()
+        .unwrap_or("100")
+        .parse::<i64>()
+        .ok()
+        .filter(|v| (1..=1000).contains(v))
+        .unwrap_or(0);
+    if limit == 0 {
+        return v2_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_limit",
+            "limit must be between 1 and 1000",
+        );
+    }
+    let rows = match client.query(r#"SELECT f.facility_id,f.canonical_name,f.country_code,f.city,o.classification_category,
+        CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN 'exact' ELSE 'unmapped' END,
+        CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN ST_Y(g.result::geometry) ELSE NULL END,
+        CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN ST_X(g.result::geometry) ELSE NULL END,
+        review.factual_review_status,review.privacy_screening_status,review.maintainer_approval,review.reviewer_role,
+        source.origin_type, source.source_id, source.name, source.official_url, r.ruleset_version, artifact.retrieved_at
+        FROM uec.release_members member JOIN uec.releases r ON r.release_id=member.release_id
+        JOIN uec.observations o ON o.observation_id=member.observation_id JOIN uec.facilities f ON f.facility_id=member.facility_id
+        JOIN uec.source_records record ON record.source_record_id=o.source_record_id JOIN uec.sources source ON source.source_id=record.source_id
+        JOIN uec.raw_artifacts artifact ON artifact.artifact_id=record.artifact_id
+        LEFT JOIN uec.publication_review_release_current review ON review.source_record_id=o.source_record_id AND review.release_id=member.release_id
+        LEFT JOIN LATERAL (SELECT result FROM uec.geocode_results WHERE source_record_id=o.source_record_id AND status='accepted' AND result IS NOT NULL ORDER BY queried_at DESC,geocode_result_id DESC LIMIT 1) g ON true
+        WHERE r.release_id=$1 AND r.status='candidate' AND r.test_only=true AND record.source_state NOT IN ('rejected','superseded')
+          AND COALESCE(review.privacy_screening_status,'pending') <> 'failed' AND COALESCE(review.factual_review_status,'unreviewed') <> 'rejected'
+          AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted restricted WHERE restricted.source_record_id=o.source_record_id)
+          AND ($2::text IS NULL OR f.country_code=$2) AND ($3::text IS NULL OR o.classification_category=$3)
+        ORDER BY f.facility_id LIMIT $4"#, &[&release_id,&params.country_code,&params.category,&limit]).await {
+        Ok(rows)=>rows, Err(_)=>return v2_error(StatusCode::SERVICE_UNAVAILABLE,"test_release_query_failed","test release unavailable")
+    };
+    let data = rows.into_iter().map(|row| json!({"facility_id":row.get::<_,uuid::Uuid>(0),"canonical_name":row.get::<_,Option<String>>(1),"country_code":row.get::<_,String>(2),"city":row.get::<_,Option<String>>(3),"category":row.get::<_,String>(4),"publication_profile":profile,"factual_review_status":row.get::<_,Option<String>>(8).unwrap_or("unreviewed".into()),"privacy_screening_status":row.get::<_,Option<String>>(9).unwrap_or("pending".into()),"project_approval":"not-approved","reviewer_role":row.get::<_,Option<String>>(11),"publication_warning":"Disposable test release — not project-approved or published","display_precision":row.get::<_,String>(5),"latitude":row.get::<_,Option<f64>>(6),"longitude":row.get::<_,Option<f64>>(7),"lifecycle_status":"status_unknown","source_type":row.get::<_,String>(12),"release_id":release_id,"release_ruleset_version":row.get::<_,String>(16),"provenance_source_id":row.get::<_,String>(13),"provenance_source_name":row.get::<_,String>(14),"provenance_source_url":row.get::<_,String>(15),"provenance_retrieved_at":row.get::<_,chrono::DateTime<chrono::Utc>>(17)})).collect::<Vec<_>>();
+    let mut meta = test_release_meta(release_id, profile);
+    meta["result_count"] = json!(data.len());
+    Json(json!({"data":data,"meta":meta})).into_response()
+}
+
+pub async fn get_dev_test_release_location_detail_handler(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Path(facility_id): Path<uuid::Uuid>,
+    Query(params): Query<ProfileParams>,
+) -> impl IntoResponse {
+    let profile = params.profile.as_deref().unwrap_or("official");
+    if !test_release_auth(&headers, &state) {
+        return v2_error(
+            StatusCode::NOT_FOUND,
+            "test_release_unavailable",
+            "test release unavailable",
+        );
+    }
+    let Some(pool) = state.database else {
+        return v2_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "database_not_configured",
+            "test release database unavailable",
+        );
+    };
+    let Some(release_id) = state.dev_test_release_id.as_deref() else {
+        return v2_error(
+            StatusCode::NOT_FOUND,
+            "test_release_unavailable",
+            "test release unavailable",
+        );
+    };
+    let client = match pool.get().await {
+        Ok(c) => c,
+        Err(_) => {
+            return v2_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "database_pool_unavailable",
+                "database pool unavailable",
+            );
+        }
+    };
+    let row=match client.query_opt("SELECT f.facility_id,f.canonical_name,f.country_code,f.city,o.classification_category,COALESCE(review.factual_review_status,'unreviewed'),COALESCE(review.privacy_screening_status,'pending'),o.coordinate_review_status,source.origin_type,source.source_id,source.name,source.official_url,artifact.retrieved_at,r.ruleset_version,CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN 'exact' ELSE 'unmapped' END,CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN ST_Y(g.result::geometry) ELSE NULL END,CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN ST_X(g.result::geometry) ELSE NULL END FROM uec.release_members m JOIN uec.releases r ON r.release_id=m.release_id JOIN uec.observations o ON o.observation_id=m.observation_id JOIN uec.facilities f ON f.facility_id=m.facility_id JOIN uec.source_records sr ON sr.source_record_id=o.source_record_id JOIN uec.sources source ON source.source_id=sr.source_id JOIN uec.raw_artifacts artifact ON artifact.artifact_id=sr.artifact_id LEFT JOIN uec.publication_review_release_current review ON review.source_record_id=o.source_record_id AND review.release_id=m.release_id LEFT JOIN LATERAL (SELECT result FROM uec.geocode_results WHERE source_record_id=o.source_record_id AND status='accepted' AND result IS NOT NULL ORDER BY queried_at DESC LIMIT 1) g ON true WHERE r.release_id=$1 AND r.status='candidate' AND r.test_only=true AND f.facility_id=$2 AND sr.source_state NOT IN ('rejected','superseded') AND COALESCE(review.privacy_screening_status,'pending') <> 'failed' AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted x WHERE x.source_record_id=o.source_record_id)", &[&release_id,&facility_id]).await {Ok(r)=>r,Err(_)=>return v2_error(StatusCode::SERVICE_UNAVAILABLE,"test_release_query_failed","test release unavailable")};
+    let Some(row) = row else {
+        return v2_error(
+            StatusCode::NOT_FOUND,
+            "location_not_found",
+            "test release location not found",
+        );
+    };
+    let item = json!({"facility_id":row.get::<_,uuid::Uuid>(0),"canonical_name":row.get::<_,Option<String>>(1),"country_code":row.get::<_,String>(2),"city":row.get::<_,Option<String>>(3),"category":row.get::<_,String>(4),"publication_profile":profile,"factual_review_status":row.get::<_,String>(5),"privacy_screening_status":row.get::<_,String>(6),"project_approval":"not-approved","publication_warning":"Disposable test release — not project-approved or published","display_precision":row.get::<_,String>(14),"latitude":row.get::<_,Option<f64>>(15),"longitude":row.get::<_,Option<f64>>(16),"release_id":release_id,"release_ruleset_version":row.get::<_,String>(13),"provenance_source_id":row.get::<_,String>(9),"provenance_source_name":row.get::<_,String>(10),"provenance_source_url":row.get::<_,String>(11),"provenance_retrieved_at":row.get::<_,chrono::DateTime<chrono::Utc>>(12)});
+    let mut meta = test_release_meta(release_id, profile);
+    meta["result_count"] = json!(1);
+    Json(json!({"data":item,"meta":meta})).into_response()
+}
+
+pub async fn get_dev_test_release_facets_handler(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Query(params): Query<V2LocationParams>,
+) -> impl IntoResponse {
+    if !test_release_auth(&headers, &state) {
+        return v2_error(
+            StatusCode::NOT_FOUND,
+            "test_release_unavailable",
+            "test release unavailable",
+        );
+    }
+    let Some(pool) = state.database else {
+        return v2_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "database_not_configured",
+            "test release database unavailable",
+        );
+    };
+    let Some(release_id) = state.dev_test_release_id.as_deref() else {
+        return v2_error(
+            StatusCode::NOT_FOUND,
+            "test_release_unavailable",
+            "test release unavailable",
+        );
+    };
+    let client = match pool.get().await {
+        Ok(c) => c,
+        Err(_) => {
+            return v2_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "database_pool_unavailable",
+                "database pool unavailable",
+            );
+        }
+    };
+    let rows=match client.query("SELECT f.country_code,o.classification_category,CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN 'exact' ELSE 'unmapped' END,source.origin_type FROM uec.release_members m JOIN uec.releases r ON r.release_id=m.release_id JOIN uec.observations o ON o.observation_id=m.observation_id JOIN uec.facilities f ON f.facility_id=m.facility_id JOIN uec.source_records sr ON sr.source_record_id=o.source_record_id JOIN uec.sources source ON source.source_id=sr.source_id LEFT JOIN LATERAL (SELECT result FROM uec.geocode_results WHERE source_record_id=o.source_record_id AND status='accepted' AND result IS NOT NULL ORDER BY queried_at DESC LIMIT 1) g ON true LEFT JOIN uec.publication_review_release_current review ON review.source_record_id=o.source_record_id AND review.release_id=m.release_id WHERE r.release_id=$1 AND r.status='candidate' AND r.test_only=true AND sr.source_state NOT IN ('rejected','superseded') AND COALESCE(review.privacy_screening_status,'pending')<>'failed' AND COALESCE(review.factual_review_status,'unreviewed')<>'rejected' AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted x WHERE x.source_record_id=o.source_record_id)", &[&release_id]).await {Ok(r)=>r,Err(_)=>return v2_error(StatusCode::SERVICE_UNAVAILABLE,"test_release_query_failed","test release unavailable")};
+    let mut dims = serde_json::Map::new();
+    for (name, values) in [
+        (
+            "country_code",
+            rows.iter()
+                .map(|r| r.get::<_, String>(0))
+                .collect::<Vec<_>>(),
+        ),
+        (
+            "category",
+            rows.iter().map(|r| r.get::<_, String>(1)).collect(),
+        ),
+        (
+            "display_precision",
+            rows.iter().map(|r| r.get::<_, String>(2)).collect(),
+        ),
+        (
+            "source_type",
+            rows.iter().map(|r| r.get::<_, String>(3)).collect(),
+        ),
+    ] {
+        let mut counts = std::collections::BTreeMap::new();
+        for v in values {
+            *counts.entry(v).or_insert(0usize) += 1;
+        }
+        dims.insert(
+            name.into(),
+            json!(
+                counts
+                    .into_iter()
+                    .map(|(value, count)| json!({"value":value,"count":count}))
+                    .collect::<Vec<_>>()
+            ),
+        );
+    }
+    let mut meta = test_release_meta(release_id, params.profile.as_deref().unwrap_or("official"));
+    meta["result_count"] = json!(rows.len());
+    Json(json!({"data":null,"meta":meta,"dimensions":dims})).into_response()
+}
+
+pub async fn get_dev_test_release_export_handler(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Query(params): Query<ProfileParams>,
+) -> impl IntoResponse {
+    if !test_release_auth(&headers, &state) {
+        return v2_error(
+            StatusCode::NOT_FOUND,
+            "test_release_unavailable",
+            "test release unavailable",
+        );
+    }
+    let Some(pool) = state.database else {
+        return v2_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "database_not_configured",
+            "test release database unavailable",
+        );
+    };
+    let Some(release_id) = state.dev_test_release_id.as_deref() else {
+        return v2_error(
+            StatusCode::NOT_FOUND,
+            "test_release_unavailable",
+            "test release unavailable",
+        );
+    };
+    let profile = params.profile.as_deref().unwrap_or("official");
+    let client = match pool.get().await {
+        Ok(c) => c,
+        Err(_) => {
+            return v2_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "database_pool_unavailable",
+                "test release database unavailable",
+            );
+        }
+    };
+    let rows=match client.query("SELECT f.facility_id,f.canonical_name,f.country_code,f.city,o.classification_category,source.origin_type,source.source_id,source.name,source.official_url,artifact.retrieved_at FROM uec.release_members m JOIN uec.releases r ON r.release_id=m.release_id JOIN uec.observations o ON o.observation_id=m.observation_id JOIN uec.facilities f ON f.facility_id=m.facility_id JOIN uec.source_records sr ON sr.source_record_id=o.source_record_id JOIN uec.sources source ON source.source_id=sr.source_id JOIN uec.raw_artifacts artifact ON artifact.artifact_id=sr.artifact_id LEFT JOIN uec.publication_review_release_current review ON review.source_record_id=o.source_record_id AND review.release_id=m.release_id WHERE r.release_id=$1 AND r.status='candidate' AND r.test_only=true AND sr.source_state NOT IN ('rejected','superseded') AND COALESCE(review.privacy_screening_status,'pending')<>'failed' AND COALESCE(review.factual_review_status,'unreviewed')<>'rejected' AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted x WHERE x.source_record_id=o.source_record_id) ORDER BY f.facility_id LIMIT 1001", &[&release_id]).await {Ok(r)=>r,Err(_)=>return v2_error(StatusCode::SERVICE_UNAVAILABLE,"test_release_query_failed","test release unavailable")};
+    if rows.len() > 1000 {
+        return v2_error(
+            StatusCode::BAD_REQUEST,
+            "export_too_large",
+            "test export exceeds bounded limit",
+        );
+    }
+    let mut writer = csv::Writer::from_writer(Vec::new());
+    let _ = writer.write_record([
+        "facility_id",
+        "canonical_name",
+        "country_code",
+        "city",
+        "category",
+        "source_type",
+        "provenance_source_id",
+        "provenance_source_name",
+        "provenance_source_url",
+        "provenance_retrieved_at",
+        "test_only",
+        "environment",
+        "release_status",
+        "project_approval",
+    ]);
+    for row in rows {
+        let _ = writer.write_record([
+            row.get::<_, uuid::Uuid>(0).to_string(),
+            csv_safe_value(row.get::<_, Option<String>>(1).unwrap_or_default()),
+            csv_safe_value(row.get::<_, String>(2)),
+            csv_safe_value(row.get::<_, Option<String>>(3).unwrap_or_default()),
+            csv_safe_value(row.get::<_, String>(4)),
+            csv_safe_value(row.get::<_, String>(5)),
+            csv_safe_value(row.get::<_, String>(6)),
+            csv_safe_value(row.get::<_, String>(7)),
+            csv_safe_value(row.get::<_, String>(8)),
+            csv_safe_value(row.get::<_, chrono::DateTime<chrono::Utc>>(9).to_rfc3339()),
+            "true".into(),
+            "test-only".into(),
+            "candidate".into(),
+            "not-approved".into(),
+        ]);
+    }
+    let body = match writer.into_inner() {
+        Ok(v) => v,
+        Err(_) => {
+            return v2_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "export_encoding_failed",
+                "test export unavailable",
+            );
+        }
+    };
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("content-type", "text/csv; charset=utf-8")
+        .header(
+            "content-disposition",
+            format!("attachment; filename=uec-test-only-{profile}-locations.csv"),
+        )
+        .header("x-uec-test-release", "true")
+        .header("x-uec-release-id", release_id)
+        .body(axum::body::Body::from(body))
+        .unwrap()
+        .into_response()
+}
 
 fn constant_time_token_matches(expected: &str, provided: &str) -> bool {
     let mut difference = expected.len() ^ provided.len();
@@ -593,7 +931,7 @@ pub async fn get_v2_facets_handler(
             );
         }
     };
-    let release = match client.query_opt("SELECT release_id, ruleset_version, created_at FROM uec.releases WHERE status='promoted' AND profile=$1 ORDER BY created_at DESC, release_id DESC LIMIT 1", &[&profile]).await { Ok(row) => row, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "release_query_failed", "release query failed") };
+    let release = match client.query_opt("SELECT release_id, ruleset_version, created_at FROM uec.releases WHERE status='promoted' AND test_only IS NOT TRUE AND profile=$1 ORDER BY created_at DESC, release_id DESC LIMIT 1", &[&profile]).await { Ok(row) => row, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "release_query_failed", "release query failed") };
     let Some(release) = release else {
         return v2_error(
             StatusCode::NOT_FOUND,
@@ -833,7 +1171,7 @@ pub async fn get_v2_locations_handler(
         }
     };
     let requested_profile = params.profile.as_deref().unwrap_or("official");
-    let release = transaction.query_opt("SELECT release_id, ruleset_version, created_at, profile FROM uec.releases WHERE status = 'promoted' AND profile = $1 ORDER BY created_at DESC, release_id DESC LIMIT 1", &[&requested_profile]).await;
+    let release = transaction.query_opt("SELECT release_id, ruleset_version, created_at, profile FROM uec.releases WHERE status = 'promoted' AND test_only IS NOT TRUE AND profile = $1 ORDER BY created_at DESC, release_id DESC LIMIT 1", &[&requested_profile]).await;
     let release = match release {
         Ok(release) => release,
         Err(_) => {
@@ -988,7 +1326,7 @@ pub async fn get_v2_location_detail_handler(
             "profile is unsupported",
         );
     }
-    let release = match transaction.query_opt("SELECT release_id, ruleset_version, created_at, profile FROM uec.releases WHERE status = 'promoted' AND profile = $1 ORDER BY created_at DESC, release_id DESC LIMIT 1", &[&requested_profile]).await {
+    let release = match transaction.query_opt("SELECT release_id, ruleset_version, created_at, profile FROM uec.releases WHERE status = 'promoted' AND test_only IS NOT TRUE AND profile = $1 ORDER BY created_at DESC, release_id DESC LIMIT 1", &[&requested_profile]).await {
         Ok(release) => release,
         Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "release_query_failed", "V2 release query failed"),
     };
@@ -1098,6 +1436,8 @@ mod v2_api_tests {
                     .unwrap(),
             ),
             dev_preview_token: None,
+            dev_test_release_id: None,
+            dev_test_release_token: None,
         }
     }
 
@@ -1114,6 +1454,14 @@ mod v2_api_tests {
         );
         assert!(contract["endpoints"]["GET /api/v2/discovery/facets"]["success"]["meta"]["count_semantics"]
             .as_str().unwrap().contains("not story-wide"));
+    }
+
+    #[test]
+    fn test_csv_escapes_formula_prefixes_without_mutating_evidence() {
+        for value in ["=SUM(A1)", "+cmd", "-cmd", "@cmd"] {
+            assert_eq!(csv_safe_value(value.to_string()), format!("'{}", value));
+        }
+        assert_eq!(csv_safe_value("Facility".into()), "Facility");
     }
 
     #[test]

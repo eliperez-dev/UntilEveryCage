@@ -27,6 +27,8 @@ def evaluate(metrics: dict, expected_records: int | None = None) -> dict:
         findings.append({"code": "publication_not_approved", "count": metrics["publication_not_approved"]})
     if metrics.get("active_suppression"):
         findings.append({"code": "active_suppression", "count": metrics["active_suppression"]})
+    if metrics.get("test_only"):
+        findings.append({"code": "test_only_release", "count": 1})
     return {"status": "passed" if not findings else "blocked", "findings": findings, "metrics": metrics}
 
 
@@ -45,7 +47,7 @@ def render_html(report: dict) -> str:
 
 def validate(database_url: str, release_id: str, expected_records: int | None, mark_validated: bool) -> dict:
     with psycopg.connect(database_url) as connection:
-        release = connection.execute("SELECT status FROM uec.releases WHERE release_id = %s", (release_id,)).fetchone()
+        release = connection.execute("SELECT status, test_only FROM uec.releases WHERE release_id = %s", (release_id,)).fetchone()
         if not release:
             raise ValueError(f"release not found: {release_id}")
         metrics = connection.execute("""
@@ -73,7 +75,8 @@ def validate(database_url: str, release_id: str, expected_records: int | None, m
             WHERE release_member.release_id = %s
         """, (release_id, release_id)).fetchone()
         names = ["release_records", "distinct_observations", "duplicate_observations", "review_visible", "exact_display_ready", "city_display_ready", "unmapped_display", "coordinate_not_ready", "publication_not_approved", "active_suppression", "validation_errors"]
-        result = evaluate(dict(zip(names, metrics)), expected_records)
+        metrics_dict = dict(zip(names, metrics)); metrics_dict["test_only"] = bool(release[1])
+        result = evaluate(metrics_dict, expected_records)
         result.update({"release_id": release_id, "release_status_before": release[0], "marked_validated": False})
         if result["status"] == "passed" and mark_validated:
             connection.execute("UPDATE uec.releases SET status = 'validated' WHERE release_id = %s AND status = 'candidate'", (release_id,))
