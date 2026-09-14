@@ -78,3 +78,24 @@ The FSA England/Wales source is a stronger near-term candidate than Spain's nati
 REGA for source clarity and automation, but it is not cleared for public release.
 Human terms, privacy, safety, suppression, legal, data-quality, and publication gates
 remain mandatory.
+
+## Adapter reconciliation
+
+The canonical implementation is `pipeline/sources/uk/fsa_approved/`. It currently
+provides a pinned synthetic schema, ordered source-value preservation, strict
+encoding/schema checks, duplicate-identifier quarantine, activity/status and
+authority/nation checks, address privacy-risk quarantine, deterministic manifests,
+and a human publication gate.
+
+The isolated experiment in commit `f73299b` assumes a different CSV contract using
+`AppNo`, `X/Y`, and `AddressWithheld`, with additional coordinate and coverage
+diagnostics. It must not be cherry-picked as a second UK adapter: doing so would
+create two incompatible interpretations of the same country source. Its unique
+behaviors are useful requirements for a future canonical schema review, especially
+explicit withheld-address semantics, source-coordinate CRS/axis/range validation,
+coverage counts for out-of-scope nations, and the related provenance fingerprints.
+
+This reconciliation is a design record, not source approval or legal clearance.
+No live row data is included, and no schema-dependent gap should be implemented
+until the actual source contract, terms, privacy treatment, and publication scope
+are reviewed together.
