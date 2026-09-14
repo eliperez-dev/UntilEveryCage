@@ -22,6 +22,20 @@ class SourceArtifact:
     coverage: str | None = None
 
 
+def source_artifact_from_mapping(values: dict[str, Any]) -> SourceArtifact:
+    """Convert legacy config dictionaries at a source-local boundary only."""
+    required = ("source_url", "retrieved_at_utc", "checksum_sha256", "byte_size")
+    missing = [key for key in required if not values.get(key)]
+    if missing:
+        raise ValueError("missing acquisition provenance: " + ", ".join(missing))
+    return SourceArtifact(
+        source_url=str(values["source_url"]), retrieved_at_utc=str(values["retrieved_at_utc"]),
+        sha256=str(values["checksum_sha256"]), byte_size=int(values["byte_size"]),
+        publication_date=values.get("publication_date"), effective_date=values.get("effective_date"),
+        code_version=str(values.get("code_version", "unknown")), config_version=str(values.get("config_version", "unknown")),
+        rights_caveat=values.get("rights_caveat"), privacy_caveat=values.get("privacy_caveat"), coverage=values.get("coverage"))
+
+
 class SourceAdapter(Protocol):
     """Minimal boundary between acquisition evidence and private staging."""
     source_id: str
