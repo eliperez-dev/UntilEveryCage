@@ -17,6 +17,18 @@ The current production application remains V1 while this plan is executed. V2 mu
 - [ ] V2 frontend is wired to the live V2 backend.
 - [ ] V2 has been promoted to replace V1 in production.
 
+At the [2026-09-13 integration baseline](V2-INTEGRATION-BASELINE.md) (`integration-v2-2026-09-13` at `d853721`), a separate Svelte/TypeScript preview renders synthetic fixtures by default. Its `?mode=local-v2` path can query a loopback API against a seeded synthetic release; this is opt-in local integration, not completed live-product wiring. Denmark remains controlled staging, Germany BLtU restricted staging pending a human terms decision, and the UK FSA/FSS adapters synthetic-fixture-only. The phase checkboxes below retain their full exit criteria.
+
+### 2026-09-13 integration evidence
+
+The tag annotation records a maintainer-reported CI pass, not a hosted run independently checked here. [Existing backend closeout evidence](V2-BACKEND-PHASE-0-CLOSEOUT.md) and the dated Phase 0/1 results below document earlier local and isolated test passes; [the CI workflow](../.github/workflows/tests.yml) now covers the Svelte fixture browser gate and [country adapter tests](../pipeline/tests/run-standard.ps1). See the [integration baseline](V2-INTEGRATION-BASELINE.md) for the exact scope and remaining release/ethics blockers. No tests were rerun for this documentation update.
+
+### 2026-09-13 post-tag review cleanup
+
+The [review cleanup record](V2-REVIEW-CLEANUP-2026-09-13.md) distinguishes fixes now in the working tree and a verified green final local gate from remote CI, which remains pending. Migration 022, community CSV, restricted country staging, static/Svelte context, rate limiting, CI coverage, backup-drill staging, and release-manifest checks address specific findings. They do not close the Phase 0 suppression-propagation item or the Phase 5–7 launch gates. The V1↔V2 suppression crosswalk, independent durable replay before an old-backup restore can serve, deployment proxy trust, complete artifact inventory/atomic manifest delivery, partial loaded-page behavior, real-backend frontend E2E, source terms, and authorized human release review remain open; leave the broader phase checkboxes unchanged.
+
+Post-fix A/B regression checks now cover release-scoped review in migration 022 and validation/promotion, plus Rust list/detail/CSV behavior through a two-profile synthetic HTTP E2E: B's later denial cannot revoke or relabel promoted A, and B cannot inherit A's approval. The local synthetic launcher explicitly declares `--no-distributed-artifacts`, with a narrow contract test; the portless two-stage backup drill passed twice in scoped local verification and in the final gate. The independent verifier reports a no-retry final local pass: standard 72 Rust and 102 Python (5 skipped), four sequential API E2E modules 36/36, root Jest 19/19, frontend unit 41/41, Playwright 42/42 across three browsers, plus frontend check/lint/boundary/build, `cargo fmt`, `git diff --check`, and PowerShell gate self-test 3/3. No disposable Docker project remained; persistent databases were untouched. **Remote CI remains pending.** Deploy migration 022 and the updated V2 API together with V2 public access paused during the transition, then verify compatibility and current restrictions before any eligible access resumes. See the [review cleanup record](V2-REVIEW-CLEANUP-2026-09-13.md); production crosswalk, independent suppression replay, and the other release blockers remain open.
+
 ## Phase 0 — Close and certify the backend foundation
 
 Goal: make the current backend/data-platform branch independently runnable, reviewable, and safe for frontend integration.
