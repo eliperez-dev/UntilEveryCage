@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import sys
+from datetime import timezone
 from pathlib import Path
 
 import psycopg
@@ -15,7 +16,41 @@ def can_promote(status: str) -> bool:
     return status == "validated"
 
 
-def promote(database_url: str, release_id: str) -> dict:
+def canonical_json(manifest: dict) -> str:
+    return json.dumps(manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def write_manifest(path: Path, result: dict) -> None:
+    payload = canonical_json(result["manifest"]).encode("utf-8")
+    if hashlib.sha256(payload).hexdigest() != result["manifest_sha256"]:
+        raise ValueError("manifest digest does not match promotion result")
+    with path.open("xb") as output:
+        output.write(payload)
+
+
+def inventory_artifacts(paths: list[Path], no_distributed_artifacts: bool) -> list[dict]:
+    if no_distributed_artifacts == bool(paths):
+        raise ValueError("declare --artifact for every distributed file or --no-distributed-artifacts")
+    artifacts = []
+    names = set()
+    for path in paths:
+        if not path.is_file():
+            raise ValueError(f"distributed artifact is not a file: {path}")
+        name = path.name
+        if name in names:
+            raise ValueError(f"duplicate distributed artifact name: {name}")
+        names.add(name)
+        digest = hashlib.sha256()
+        size = 0
+        with path.open("rb") as artifact:
+            for chunk in iter(lambda: artifact.read(1024 * 1024), b""):
+                digest.update(chunk)
+                size += len(chunk)
+        artifacts.append({"name": name, "sha256": digest.hexdigest(), "byte_size": size})
+    return sorted(artifacts, key=lambda artifact: artifact["name"])
+
+
+def promote(database_url: str, release_id: str, artifacts: list[dict]) -> dict:
     with psycopg.connect(database_url) as connection:
         with connection.transaction():
             target = connection.execute("SELECT status, profile, ruleset_version FROM uec.releases WHERE release_id = %s FOR UPDATE", (release_id,)).fetchone()
@@ -27,12 +62,13 @@ def promote(database_url: str, release_id: str) -> dict:
                 SELECT
                   count(*) FILTER (WHERE m.default_visible AND (g.status IS DISTINCT FROM 'accepted' OR g.result IS NULL)),
                   count(*) FILTER (WHERE o.classification_review_status <> 'approved' AND m.default_visible),
-                  count(*) FILTER (WHERE r.publication_eligible IS DISTINCT FROM true OR r.privacy_screening_status <> 'passed' OR r.maintainer_approval <> 'approved'),
+                  count(*) FILTER (WHERE r.release_id IS NULL OR r.publication_eligible IS DISTINCT FROM true OR r.privacy_screening_status IS DISTINCT FROM 'passed' OR r.maintainer_approval IS DISTINCT FROM 'approved'),
                   count(*) FILTER (WHERE s.source_record_id IS NOT NULL)
                 FROM uec.release_members m
                 JOIN uec.observations o ON o.observation_id = m.observation_id
                 LEFT JOIN LATERAL (SELECT status, result FROM uec.geocode_results WHERE source_record_id=o.source_record_id ORDER BY queried_at DESC, geocode_result_id DESC LIMIT 1) g ON true
-                LEFT JOIN uec.publication_review_current r ON r.source_record_id=o.source_record_id
+                LEFT JOIN uec.publication_review_release_current r
+                  ON r.source_record_id=o.source_record_id AND r.release_id=m.release_id
                 LEFT JOIN uec.public_access_restricted s ON s.source_record_id=o.source_record_id
                 WHERE m.release_id=%s
             """, (release_id,)).fetchone()
@@ -45,29 +81,40 @@ def promote(database_url: str, release_id: str) -> dict:
                 WHERE m.release_id=%s AND m.default_visible
                   AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted x WHERE x.source_record_id=sr.source_record_id)
             """, (release_id,)).fetchone()
-            manifest = {"manifest_version": "v1", "release_id": release_id, "profile": target[1], "ruleset_version": target[2], "eligible_record_count": summary[0], "source_ids": summary[1]}
+            created_at = connection.execute("SELECT now()").fetchone()[0]
+            if created_at.tzinfo is None:
+                raise ValueError("database manifest creation time must include a timezone")
+            manifest = {"manifest_version": "v1", "release_id": release_id, "profile": target[1], "ruleset_version": target[2], "eligible_record_count": summary[0], "source_ids": summary[1], "created_at": created_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"), "distributed_artifacts": artifacts}
             # Python's sorted-key JSON is the canonical representation shared by consumers.
-            canonical = json.dumps(manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-            digest = hashlib.sha256(canonical.encode()).hexdigest()
-            connection.execute("INSERT INTO uec.release_manifests (release_id,manifest,manifest_sha256) VALUES (%s,%s,%s)", (release_id, json.dumps(manifest, ensure_ascii=False), digest))
+            canonical = canonical_json(manifest)
+            digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+            connection.execute("INSERT INTO uec.release_manifests (release_id,manifest,manifest_sha256) VALUES (%s,%s,%s)", (release_id, canonical, digest))
             previous = connection.execute("SELECT release_id FROM uec.releases WHERE status = 'promoted' AND profile = %s AND release_id <> %s", (target[1], release_id)).fetchall()
             connection.execute("UPDATE uec.releases SET status = 'validated' WHERE status = 'promoted' AND profile = %s AND release_id <> %s", (target[1], release_id))
             connection.execute("UPDATE uec.releases SET status = 'promoted' WHERE release_id = %s", (release_id,))
-            return {"release_id": release_id, "status": "promoted", "previously_promoted": [row[0] for row in previous]}
+            return {"release_id": release_id, "status": "promoted", "previously_promoted": [row[0] for row in previous], "manifest": manifest, "manifest_sha256": digest}
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("release_id")
     parser.add_argument("--manifest", type=Path)
+    artifacts = parser.add_mutually_exclusive_group(required=True)
+    artifacts.add_argument("--artifact", type=Path, action="append", help="Distributed file to checksum; repeat for every file")
+    artifacts.add_argument("--no-distributed-artifacts", action="store_true", help="Declare that this release has no distributed files")
     parser.add_argument("--database-url", default=os.environ.get("UEC_DATABASE_URL", "postgresql://uec:uec-local-development-only@localhost:5433/uec"))
     args = parser.parse_args()
     try:
-        result = promote(args.database_url, args.release_id)
-        serialized = json.dumps(result, indent=2) + "\n"
+        if args.manifest and (not args.manifest.parent.is_dir() or args.manifest.exists()):
+            raise ValueError("manifest output requires an existing directory and a new file name")
+        if args.manifest and args.artifact and args.manifest.resolve() in {path.resolve() for path in args.artifact}:
+            raise ValueError("the output manifest cannot be one of its distributed artifacts")
+        artifact_inventory = inventory_artifacts(args.artifact or [], args.no_distributed_artifacts)
+        result = promote(args.database_url, args.release_id, artifact_inventory)
+        serialized = json.dumps({key: value for key, value in result.items() if key != "manifest"}, indent=2) + "\n"
         print(serialized, end="")
         if args.manifest:
-            args.manifest.write_text(serialized, encoding="utf-8")
+            write_manifest(args.manifest, result)
     except Exception as error:
         print(json.dumps({"status": "blocked", "error": str(error)}, indent=2), file=sys.stderr)
         sys.exit(1)

@@ -12,6 +12,7 @@ import csv
 import hashlib
 import io
 import json
+import math
 import os
 import tempfile
 from pathlib import Path
@@ -107,6 +108,8 @@ def normalize(records: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list
             lat, lon = float(lat_text), float(lon_text)
         except ValueError:
             lat, lon, coordinate_status = None, None, "unresolved"
+        if lat is not None and lon is not None and not (math.isfinite(lat) and math.isfinite(lon)):
+            lat, lon, coordinate_status = None, None, "unresolved"
         if lat == 0.0 and lon == 0.0:
             lat, lon, coordinate_status = None, None, "unresolved"
         if lat is not None and lon is not None and not (47.0 <= lat <= 55.2 and 5.8 <= lon <= 15.1):
@@ -138,7 +141,7 @@ def _write_jsonl_atomic(path: Path, rows: list[dict[str, Any]]) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
             for row in rows:
-                handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
+                handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True, allow_nan=False) + "\n")
         os.replace(temp_name, path)
     except Exception:
         try:

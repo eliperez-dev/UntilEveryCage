@@ -58,7 +58,7 @@ def validate(database_url: str, release_id: str, expected_records: int | None, m
                 count(*) FILTER (WHERE release_member.default_visible AND latest.status = 'review_required' AND city.reference_location IS NOT NULL)::int AS city_display_ready,
                 count(*) FILTER (WHERE release_member.default_visible AND (latest.status IS NULL OR (latest.status <> 'accepted' AND city.reference_location IS NULL)))::int AS unmapped_display,
                 count(*) FILTER (WHERE release_member.default_visible AND (latest.status <> 'accepted' OR latest.result IS NULL))::int AS coordinate_not_ready,
-                count(*) FILTER (WHERE review.publication_eligible IS DISTINCT FROM true OR review.privacy_screening_status <> 'passed' OR review.maintainer_approval <> 'approved')::int AS publication_not_approved,
+                count(*) FILTER (WHERE review.release_id IS NULL OR review.publication_eligible IS DISTINCT FROM true OR review.privacy_screening_status IS DISTINCT FROM 'passed' OR review.maintainer_approval IS DISTINCT FROM 'approved')::int AS publication_not_approved,
                 count(*) FILTER (WHERE restricted.source_record_id IS NOT NULL)::int AS active_suppression,
                 (SELECT count(*)::int FROM uec.validation_findings finding WHERE finding.severity = 'error' AND (finding.source_record_id IS NULL OR finding.source_record_id IN (SELECT source_record_id FROM uec.observations WHERE observation_id IN (SELECT observation_id FROM uec.release_members WHERE release_id = %s)))) AS validation_errors
             FROM uec.release_members AS release_member
@@ -66,7 +66,9 @@ def validate(database_url: str, release_id: str, expected_records: int | None, m
             JOIN uec.facilities AS facility ON facility.facility_id = release_member.facility_id
             LEFT JOIN LATERAL (SELECT status, result FROM uec.geocode_results WHERE source_record_id = observation.source_record_id ORDER BY queried_at DESC, geocode_result_id DESC LIMIT 1) AS latest ON true
             LEFT JOIN LATERAL (SELECT reference_location FROM uec.city_reference_points WHERE country_code = facility.country_code AND lower(city_name) = lower(facility.city) AND (postal_code IS NULL OR postal_code = facility.postal_code) LIMIT 1) AS city ON true
-            LEFT JOIN uec.publication_review_current review ON review.source_record_id = observation.source_record_id
+            LEFT JOIN uec.publication_review_release_current review
+              ON review.source_record_id = observation.source_record_id
+             AND review.release_id = release_member.release_id
             LEFT JOIN uec.public_access_restricted restricted ON restricted.source_record_id = observation.source_record_id
             WHERE release_member.release_id = %s
         """, (release_id, release_id)).fetchone()

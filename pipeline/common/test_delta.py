@@ -60,6 +60,16 @@ class DeltaTests(unittest.TestCase):
             self.assertEqual(result["prior_eligible_release"], prior)
             self.assertFalse(any(result["public_surfaces"].values()))
 
+    def test_uk_same_feed_id_in_different_nations_is_distinct(self):
+        def uk(nation, name):
+            return {"source_id": "fsa_approved_establishments", "normalized": {"nation": nation, "establishment_id": "00017", "trading_name": name}}
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            old = write_run(root, "old", [uk("England", "old"), uk("Wales", "same")])
+            new = write_run(root, "new", [uk("England", "changed"), uk("Wales", "same")])
+            result = compare_runs(old, new, {("fsa_approved_establishments", "Wales", "00017")})
+            self.assertEqual(result["counts"], {"added": 0, "changed": 1, "not_observed": 0, "suppressed": 1})
+
 
 if __name__ == "__main__":
     unittest.main()

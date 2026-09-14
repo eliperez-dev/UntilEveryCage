@@ -70,25 +70,66 @@ class GermanyAdapterTests(unittest.TestCase):
             self.assertFalse((output / "released" / "records.jsonl").exists())
             self.assertEqual(json.loads((output / "run-manifest.json").read_text())["quarantined_rows"], 1)
 
+    def test_nonfinite_coordinates_are_unresolved_and_json_is_standard(self):
+        header = "source_id,name,activity_code,species_codes,street,city,zip,latitude,longitude\n"
+        rows = "DE-NAN,Synthetic,CP,,Street,City,,nan,10\nDE-INF,Synthetic,SH,,Street,City,,50,inf\n"
+        raw = (header + rows).encode()
+        normalized, quarantine = normalize(parse(raw, source_metadata(raw, CONFIG)))
+        self.assertFalse(quarantine)
+        self.assertEqual(len(normalized), 2)
+        for row in normalized:
+            self.assertEqual(row["coordinate_status"], "unresolved")
+            self.assertIsNone(row["latitude"])
+            self.assertIsNone(row["longitude"])
+            json.dumps(row, allow_nan=False)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "nonfinite.csv"
+            source.write_bytes(raw)
+            run(source, root / "out", CONFIG)
+            lines = (root / "out" / "normalized" / "records.jsonl").read_text(encoding="utf-8").splitlines()
+            def reject_constant(value):
+                raise ValueError(f"non-standard JSON constant: {value}")
+            self.assertEqual(len([json.loads(line, parse_constant=reject_constant) for line in lines]), 2)
+
     def test_bltu_positional_mapping_preserves_duplicate_headers_and_quarantines_unknowns(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "out"
             config = {"source_url": "https://example.invalid/bltu", "terms_status": "pending_confirmation"}
             manifest = run_bltu(ROOT / "fixtures" / "synthetic_bltu.csv", output, config)
             self.assertEqual(manifest["input_rows"], 3)
-            self.assertEqual(manifest["normalized_rows"], 2)
-            self.assertEqual(manifest["quarantined_rows"], 1)
+            self.assertEqual(manifest["normalized_rows"], 1)
+            self.assertEqual(manifest["quarantined_rows"], 2)
             records = [json.loads(line) for line in (output / "normalized" / "records.jsonl").read_text().splitlines()]
             self.assertEqual(len(records[0]["source_columns"]), 50)
+            self.assertEqual(records[0]["source_id"], "DE-SYN-002")
             self.assertEqual(records[0]["source_columns"][10]["header"], "SH")
             self.assertIsNone(records[0]["latitude"])
             self.assertTrue(manifest["schema_fingerprint"])
             self.assertTrue(manifest["config_fingerprint"])
-            self.assertEqual(manifest["mapping_version"], "de-bltu-activity-map-1")
+            self.assertEqual(manifest["mapping_version"], "de-bltu-activity-map-2")
             diagnostics = json.loads((output / "validation-report.json").read_text())
+            self.assertEqual(diagnostics["schema_status"], "matched")
             self.assertEqual(diagnostics["row_length_counts"], {"50": 3})
             quarantined = [json.loads(line) for line in (output / "quarantined" / "records.jsonl").read_text().splitlines()]
-            self.assertEqual(quarantined[0]["quarantine_reason"], "unmapped activity code")
+            self.assertIn("unmapped activity code", [row["quarantine_reason"] for row in quarantined])
+
+    def test_bltu_schema_shift_with_same_width_quarantines_every_row(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            lines = (ROOT / "fixtures" / "synthetic_bltu.csv").read_text(encoding="utf-8").splitlines()
+            headers = lines[0].split(";")
+            headers[10], headers[11] = headers[11], headers[10]
+            raw = root / "shifted.csv"
+            raw.write_text(";".join(headers) + "\n" + "\n".join(lines[1:]) + "\n", encoding="utf-8")
+            output = root / "out"
+            manifest = run_bltu(raw, output, {"source_url": "https://example.invalid/bltu"})
+            self.assertEqual(manifest["normalized_rows"], 0)
+            self.assertEqual(manifest["quarantined_rows"], 3)
+            self.assertFalse((output / "released" / "records.jsonl").exists())
+            self.assertEqual(json.loads((output / "validation-report.json").read_text())["schema_status"], "unrecognized")
+            reasons = [json.loads(line)["quarantine_reason"] for line in (output / "quarantined" / "records.jsonl").read_text().splitlines()]
+            self.assertTrue(all(reason == "unrecognized header schema" for reason in reasons))
 
     def test_bltu_mapping_is_explicit_and_coordinates_are_never_enriched(self):
         with tempfile.TemporaryDirectory() as directory:

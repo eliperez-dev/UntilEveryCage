@@ -5,10 +5,13 @@ import hashlib
 import json
 import os
 import tempfile
+import uuid
 from pathlib import Path
 from typing import Any, Callable
 
-ORCHESTRATOR_VERSION = "v2-orchestrator-2"
+from .identity import record_key
+
+ORCHESTRATOR_VERSION = "v2-orchestrator-3"
 
 
 def _atomic(path: Path, payload: bytes) -> None:
@@ -35,23 +38,28 @@ def register_input(raw: bytes, staging_dir: str | Path, config: dict[str, Any]) 
         _atomic(artifact, raw)
     metadata = {**config, "checksum_sha256": digest, "byte_size": len(raw),
                 "orchestrator_version": ORCHESTRATOR_VERSION, "raw_artifact": str(artifact)}
-    _atomic(staging / "raw" / f"{digest}.manifest.json",
-            (json.dumps(metadata, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode())
+    # Equal bytes can represent separate observations with different retrieval
+    # metadata. Keep each observation while sharing the immutable raw bytes.
+    registration = staging / "raw" / "registrations" / f"{uuid.uuid4().hex}.manifest.json"
+    metadata["acquisition_manifest"] = str(registration)
+    _atomic(registration, (json.dumps(metadata, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode())
     return artifact, metadata
 
 
 def run_registered_input(raw_path: str | Path, runs_dir: str | Path, config: dict[str, Any],
                          adapter_runner: Callable[..., dict[str, Any]],
-                         suppressed_ids: set[str] | None = None,
+                         suppressed_ids: set[str | tuple[str, str, str]] | None = None,
                          prior_eligible_release: dict[str, Any] | None = None) -> dict[str, Any]:
     """Run an adapter to a human-gated candidate, preserving prior release on failure."""
     raw = Path(raw_path)
-    run_dir = Path(runs_dir) / hashlib.sha256(raw.read_bytes()).hexdigest()[:16]
+    runs = Path(runs_dir)
+    runs.mkdir(parents=True, exist_ok=True)
+    run_dir = Path(tempfile.mkdtemp(prefix=f"{hashlib.sha256(raw.read_bytes()).hexdigest()[:16]}-", dir=runs))
     try:
         manifest = adapter_runner(raw, run_dir, config)
         records = [json.loads(line) for line in (run_dir / "normalized" / "records.jsonl").read_text(encoding="utf-8").splitlines() if line]
         suppressed = suppressed_ids or set()
-        candidate = [r for r in records if r.get("source_id") not in suppressed]
+        candidate = [r for r in records if record_key(r) not in suppressed]
         restricted = (config.get("terms_status") == "pending_confirmation"
                       or config.get("acquisition_status") == "restricted_pending_terms")
         if restricted:
@@ -75,5 +83,6 @@ def run_registered_input(raw_path: str | Path, runs_dir: str | Path, config: dic
         status = {"status": "failed", "publication_state": "unchanged", "release_promoted": False,
                   "error_type": type(exc).__name__, "error": str(exc),
                   "prior_eligible_release": prior_eligible_release}
+    status["run_dir"] = str(run_dir)
     _atomic(run_dir / "run-status.json", (json.dumps(status, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode())
     return status

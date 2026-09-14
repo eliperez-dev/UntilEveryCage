@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import hashlib
 import json
 import tempfile
 import unittest
@@ -20,15 +21,35 @@ CONFIG = {
 
 
 class OrchestratorTests(unittest.TestCase):
-    def test_hash_addressed_registration_is_idempotent(self):
+    def test_identical_bytes_share_raw_artifact_but_keep_distinct_acquisition_events(self):
         with tempfile.TemporaryDirectory() as directory:
             staging = Path(directory)
             raw = FIXTURE.read_bytes()
             first_path, first = register_input(raw, staging, CONFIG)
-            second_path, second = register_input(raw, staging, CONFIG)
+            first_manifest_path = Path(first["acquisition_manifest"])
+            first_manifest_bytes = first_manifest_path.read_bytes()
+            later_observation = {**CONFIG, "retrieval_timestamp": "2026-09-14T00:00:00Z"}
+            second_path, second = register_input(raw, staging, later_observation)
+            second_manifest_path = Path(second["acquisition_manifest"])
+
             self.assertEqual(first_path, second_path)
-            self.assertEqual(first, second)
+            self.assertEqual(first_path.name, f"{hashlib.sha256(raw).hexdigest()}.artifact")
+            self.assertEqual(first_path.read_bytes(), raw)
             self.assertEqual(len(list((staging / "raw").glob("*.artifact"))), 1)
+            self.assertEqual(first["raw_artifact"], str(first_path))
+            self.assertEqual(second["raw_artifact"], str(first_path))
+            self.assertEqual(first["checksum_sha256"], second["checksum_sha256"])
+            self.assertEqual(first["byte_size"], second["byte_size"])
+
+            self.assertNotEqual(first_manifest_path, second_manifest_path)
+            self.assertEqual(len(list((staging / "raw" / "registrations").glob("*.manifest.json"))), 2)
+            self.assertEqual(first_manifest_path.read_bytes(), first_manifest_bytes)
+            self.assertEqual(json.loads(first_manifest_bytes), first)
+            self.assertEqual(json.loads(second_manifest_path.read_text(encoding="utf-8")), second)
+            self.assertEqual(first["retrieval_timestamp"], CONFIG["retrieval_timestamp"])
+            self.assertEqual(second["retrieval_timestamp"], later_observation["retrieval_timestamp"])
+            self.assertEqual(first["source_url"], CONFIG["source_url"])
+            self.assertEqual(first["source_publication_date"], CONFIG["source_publication_date"])
 
     def test_suppression_survives_rerun_and_candidate_handoff(self):
         with tempfile.TemporaryDirectory() as directory:

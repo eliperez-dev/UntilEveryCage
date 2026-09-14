@@ -37,7 +37,7 @@ try {
         $releaseStatus='validated'
       }
       if ($releaseStatus.Trim() -eq 'validated') {
-        python pipeline/scripts/stages/promote-release.py standard-candidate
+        python pipeline/scripts/stages/promote-release.py standard-candidate --no-distributed-artifacts
         if ($LASTEXITCODE) { throw 'Synthetic release promotion failed.' }
       } elseif ($releaseStatus.Trim() -ne 'promoted') {
         throw "Synthetic release has unexpected status: $($releaseStatus.Trim())"

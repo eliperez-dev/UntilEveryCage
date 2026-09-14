@@ -126,14 +126,15 @@ class FsaApprovedEstablishmentsAdapter:
         result = self.parse_bytes(raw)
         root = Path(run_dir)
         _write_jsonl(root / "parsed" / "records.jsonl", list(result.accepted) + [item["record"] for item in result.quarantined])
-        _write_jsonl(root / "normalized" / "records.jsonl", list(result.accepted))
+        normalized_sha256 = _write_jsonl(root / "normalized" / "records.jsonl", list(result.accepted))
         _write_jsonl(root / "quarantined" / "records.jsonl", list(result.quarantined))
         (root / "released").mkdir(parents=True, exist_ok=True)
         manifest = {"source_id": self.source_id, "adapter_version": self.adapter_version,
                     "schema_version": self.schema_version, "schema_status": CONFIG["schema_status"],
                     "checksum_sha256": result.source_sha256, "byte_size": len(raw),
                     "input_rows": len(result.accepted) + len(result.quarantined),
-                    "normalized_rows": len(result.accepted), "quarantined_rows": len(result.quarantined),
+                    "normalized_rows": len(result.accepted), "normalized_sha256": normalized_sha256,
+                    "quarantined_rows": len(result.quarantined),
                     "release_state": "not-created", "publication_state": "human-gate-required",
                     "acquisition": CONFIG["acquisition"], "source_url": (config or {}).get("source_url"),
                     "retrieved_at": (config or {}).get("retrieved_at")}
@@ -141,8 +142,10 @@ class FsaApprovedEstablishmentsAdapter:
         return manifest
 
 
-def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
-    _atomic(path, b"".join((json.dumps(row, ensure_ascii=False, sort_keys=True, default=list) + "\n").encode() for row in rows))
+def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> str:
+    payload = b"".join((json.dumps(row, ensure_ascii=False, sort_keys=True, default=list) + "\n").encode() for row in rows)
+    _atomic(path, payload)
+    return hashlib.sha256(payload).hexdigest()
 
 
 def _atomic(path: Path, payload: bytes) -> None:

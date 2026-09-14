@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .identity import record_key
+
 DELTA_VERSION = "v2-delta-1"
 
 
@@ -28,7 +30,7 @@ def _fingerprint(row: dict[str, Any]) -> str:
     return hashlib.sha256(json.dumps(comparable, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
-def compare_runs(previous_dir: Path, current_dir: Path, suppressed_ids: set[str] | None = None, prior_eligible_release: dict[str, Any] | None = None) -> dict[str, Any]:
+def compare_runs(previous_dir: Path, current_dir: Path, suppressed_ids: set[str | tuple[str, str, str]] | None = None, prior_eligible_release: dict[str, Any] | None = None) -> dict[str, Any]:
     """Compare normalized states without interpreting absence as closure.
 
     Only identifiers, categories, counts, and run fingerprints are emitted. Source
@@ -39,8 +41,8 @@ def compare_runs(previous_dir: Path, current_dir: Path, suppressed_ids: set[str]
         current_manifest = _manifest(current_dir)
         if previous_manifest.get("schema_fingerprint") != current_manifest.get("schema_fingerprint"):
             return {"status": "schema-change-blocked", "delta_version": DELTA_VERSION, "publication_state": "unchanged", "release_promoted": False, "public_surfaces": _blocked_surfaces(), "geocoding": "disabled", "prior_eligible_release": prior_eligible_release, "previous": _summary(previous_manifest), "current": _summary(current_manifest), "counts": {"added": 0, "changed": 0, "not_observed": 0, "suppressed": 0}}
-        previous = {row.get("source_id"): row for row in _jsonl(previous_dir / "normalized" / "records.jsonl") if row.get("source_id")}
-        current = {row.get("source_id"): row for row in _jsonl(current_dir / "normalized" / "records.jsonl") if row.get("source_id")}
+        previous = {record_key(row): row for row in _jsonl(previous_dir / "normalized" / "records.jsonl")}
+        current = {record_key(row): row for row in _jsonl(current_dir / "normalized" / "records.jsonl")}
         suppressed = suppressed_ids or set()
         added = changed = not_observed = suppressed_count = 0
         for source_id, row in current.items():

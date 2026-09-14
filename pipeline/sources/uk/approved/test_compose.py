@@ -42,22 +42,21 @@ class UkCompositionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             inputs = self._runs(root)
-            suppressed = {("fsa_approved_establishments", "00017")}
+            suppressed = {("fsa_approved_establishments", "England", "00017")}
             for suffix in ("one", "reimport"):
                 compose_sources(inputs, root / suffix, suppressed=suppressed)
                 rows = [json.loads(line) for line in (root / suffix / "reviewable/records.jsonl").read_text().splitlines()]
-                self.assertFalse(any(r["source_id"] == "fsa_approved_establishments" and r["source_record_id"] == "00017" for r in rows))
+                self.assertFalse(any(r["source_id"] == "fsa_approved_establishments" and r["nation"] == "England" and r["source_record_id"] == "00017" for r in rows))
+                self.assertTrue(any(r["source_id"] == "fsa_approved_establishments" and r["nation"] == "Wales" and r["source_record_id"] == "00017" for r in rows))
                 self.assertTrue(any(r["source_id"] == "fss_approved_establishments" for r in rows))
 
     def test_exact_cross_source_name_postcode_is_signal_not_merge(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             inputs = self._runs(root)
-            fss_path = inputs[0]["normalized_path"]
-            fss_record = json.loads(fss_path.read_text().splitlines()[0])
-            fss_record["normalized"]["trading_name"] = "East March Foods"
-            fss_record["normalized"]["postcode"] = "PE1 2AB"
-            fss_path.write_text(json.dumps(fss_record) + "\n")
+            modified_raw = root / "modified-fss.csv"
+            modified_raw.write_bytes(FSS_FIXTURE.read_bytes().replace(b"North Star Foods", b"East March Foods").replace(b"AB1 2CD", b"PE1 2AB"))
+            inputs[0]["manifest"] = FssApprovedEstablishmentsAdapter().run(modified_raw, root / "fss")
             manifest = compose_sources(inputs, root / "country")
             signals = [json.loads(line) for line in (root / "country/reviewable/possible-match-signals.jsonl").read_text().splitlines()]
             self.assertEqual(manifest["possible_match_signals"], 1)
@@ -87,6 +86,34 @@ class UkCompositionTests(unittest.TestCase):
             self.assertEqual(manifest["release_state"], "not-created")
             self.assertIn("fsa_approved_establishments:unresolved", manifest["blockers"])
             self.assertEqual(manifest["publication_state"], "human-gate-required")
+
+    def test_swapped_or_changed_normalized_output_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inputs = self._runs(root)
+            swapped = [dict(inputs[0], normalized_path=inputs[1]["normalized_path"]), inputs[1]]
+            with self.assertRaises(CompositionError):
+                compose_sources(swapped, root / "swapped")
+            path = inputs[0]["normalized_path"]
+            path.write_text(path.read_text() + "\n")
+            with self.assertRaises(CompositionError):
+                compose_sources(inputs, root / "altered")
+
+    def test_all_rows_suppressed_preserves_source_gates_and_provenance(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            inputs = self._runs(root)
+            suppressed = {("fss_approved_establishments", "Scotland", record["normalized"]["approval_number"])
+                          for record in FssApprovedEstablishmentsAdapter().parse_file(FSS_FIXTURE).accepted}
+            manifest = compose_sources(inputs[:1], root / "country", suppressed=suppressed)
+            self.assertEqual((root / "country/reviewable/records.jsonl").read_text(), "")
+            self.assertEqual(manifest["input_rows"], 2)
+            self.assertEqual(manifest["reviewable_rows"], 0)
+            self.assertEqual(manifest["suppressed_rows"], 2)
+            self.assertEqual(manifest["source_states"]["fss_approved_establishments"]["manifest"], inputs[0]["manifest"])
+            self.assertIn("fss_approved_establishments:unresolved", manifest["blockers"])
+            self.assertEqual(manifest["terms_state"], "blocked")
+            self.assertEqual(manifest["review_state"], "blocked")
 
 
 if __name__ == "__main__":
