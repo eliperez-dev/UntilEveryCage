@@ -187,7 +187,7 @@ class E2EEnvironment:
         with psycopg.connect(self.database_url) as db:
             with db.transaction():
                 db.execute("INSERT INTO uec.sources (source_id,country_code,name,official_url,access_method) VALUES ('e2e.private-candidate','DK','Synthetic private candidate source','https://example.invalid/private-candidate','fixture')")
-                db.execute("INSERT INTO uec.releases (release_id,status,ruleset_version,profile,summary) VALUES ('e2e-private-candidate','candidate','e2e-private-v1','official','{}')")
+                db.execute("INSERT INTO uec.releases (release_id,status,ruleset_version,profile,test_only,summary) VALUES ('e2e-private-candidate','candidate','e2e-private-v1','official',true,'{}')")
                 record, facility, observation, artifact = uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
                 db.execute("INSERT INTO uec.raw_artifacts (artifact_id,storage_key,sha256,byte_size,retrieved_at) VALUES (%s,'e2e/private-candidate',%s,1,%s)", (artifact, uuid.uuid4().hex * 2, now))
                 db.execute("INSERT INTO uec.source_records (source_record_id,source_id,source_record_key,artifact_id,raw_fields,parsed_at) VALUES (%s,'e2e.private-candidate','candidate-only',%s,'{}',%s)", (record, artifact, now))

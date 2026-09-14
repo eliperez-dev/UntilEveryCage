@@ -5,6 +5,7 @@ import { nextLocalReviewState } from '../../src/features/devPreview/devReviewSta
 import { TestReleaseRepository } from '../../src/api/TestReleaseRepository';
 import { TestReleaseCsvExportRepository } from '../../src/api/TestReleaseCsvExportRepository';
 import { TestReleaseFilterMetadataRepository } from '../../src/api/TestReleaseFilterMetadataRepository';
+import { locationSchema, testReleaseLocationSchema } from '../../src/api/wireSchema';
 
 describe('dev preview boundary', () => {
   it('requires both a development build and the explicit mode', () => {
@@ -44,6 +45,9 @@ describe('dev preview boundary', () => {
   it('maps test-release rows without requiring approval or coordinates and never falls back', async () => {
     const row = { facility_id: '550e8400-e29b-41d4-a716-446655440000', canonical_name: 'Pending test row', city: null, country_code: 'GB', category: 'dairy', source_type: 'official', publication_profile: 'official', factual_review_status: 'unreviewed', privacy_screening_status: 'passed', project_approval: 'pending', reviewer_role: null, publication_warning: null, display_precision: 'unmapped', latitude: null, longitude: null, first_observed_at: null, last_observed_at: null, observation_count: null, lifecycle_status: 'status_unknown', provenance_source_id: 's1', provenance_source_name: 'Test source', provenance_source_url: 'https://example.test/source', provenance_retrieved_at: '2026-01-01T00:00:00Z', release_id: 'test-release', release_ruleset_version: 'rules-1' };
     const body = { data: [row], meta: { api_version: 'dev-test-v1', environment: 'test-only', test_only: true, private_preview: true, release_status: 'candidate', release_id: 'test-release', profile: 'official', coverage_scope: 'test_release_public_shaped_rows', count_semantics: 'Rows only', preview_label: TEST_RELEASE_LABEL, result_count: 1, next_cursor: null } };
+    const candidateVariant = { ...row, canonical_name: null, privacy_screening_status: 'pending', project_approval: 'not-approved', release_ruleset_version: null };
+    expect(testReleaseLocationSchema.safeParse(candidateVariant).success).toBe(true);
+    expect(locationSchema.safeParse(candidateVariant).success).toBe(false);
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(body)));
     const result = await new TestReleaseRepository(fetcher).list('official', 'test-token');
     expect(result.locations[0]).toMatchObject({ name: 'Pending test row', lat: null, evidence: { projectApproval: 'pending' } });

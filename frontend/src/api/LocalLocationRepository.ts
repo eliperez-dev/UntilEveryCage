@@ -9,11 +9,11 @@ export type LocalListResult = Readonly<{ locations: readonly Location[]; release
 export const localOrigin = (value: string | undefined): string | undefined => { if (!value) return undefined; const url = new URL(value); if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost', '::1'].includes(url.hostname)) throw new Error('Local API origin must be loopback HTTP.'); return url.origin; };
 const fail = (kind: ApiError['kind'], message: string, status?: number): ApiError => Object.assign(new Error(message), status === undefined ? { kind } : { kind, status });
 export const mapWireLocation = (r: WireLocation): Location => ({
-  id: r.facility_id, name: r.canonical_name, region: r.city ?? r.country_code, category: r.category,
+  id: r.facility_id, name: r.canonical_name ?? 'Unnamed candidate record', region: r.city ?? r.country_code, category: r.category,
   lat: r.latitude, lon: r.longitude, observed: r.last_observed_at ?? r.first_observed_at ?? 'unknown', source: r.provenance_source_name,
   evidence: {
     sourceType: r.source_type, factualReviewStatus: r.factual_review_status, reviewerRole: r.reviewer_role,
-    privacyScreeningStatus: r.privacy_screening_status, projectApproval: r.project_approval,
+  privacyScreeningStatus: r.privacy_screening_status, projectApproval: r.project_approval,
     publicationProfile: r.publication_profile, publicationWarning: r.publication_warning,
     sourceId: r.provenance_source_id, sourceUrl: r.provenance_source_url,
     retrievedAt: r.provenance_retrieved_at, displayPrecision: r.display_precision, lifecycleStatus: r.lifecycle_status, observationCount: r.observation_count,
