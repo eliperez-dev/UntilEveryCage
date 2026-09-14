@@ -24,6 +24,7 @@ class CandidateImportError(ValueError):
 
 
 DISPOSABLE_MARKER = "uec-e2e-disposable-v1"
+DEFAULT_BATCH_SIZE = 500
 
 
 def require_disposable_database(database_url: str, acknowledged: bool) -> None:
@@ -96,13 +97,25 @@ def _country_code(manifest: dict, normalized: dict) -> str:
     return {"Denmark": "DK", "England": "GB", "Wales": "GB"}.get(normalized.get("nation"), "ZZ")
 
 
-def import_candidate(database_url: str, manifest: dict, rows: list[dict], release_id: str, reset: bool) -> int:
-    """Append one candidate release; never promotes or marks review complete."""
+def _stable_uuid(*parts: object) -> uuid.UUID:
+    return uuid.uuid5(uuid.NAMESPACE_URL, "uec-candidate:" + "|".join(str(part) for part in parts))
+
+
+def import_candidate(database_url: str, manifest: dict, rows: list[dict], release_id: str,
+                     reset: bool, batch_size: int = DEFAULT_BATCH_SIZE) -> int:
+    """Append one candidate release; never promotes or marks review complete.
+
+    Batches commit independently so a bounded failure can resume with the same
+    release ID. Deterministic IDs and conflict-safe inserts make retries
+    idempotent; every committed row remains private and review-required.
+    """
     if reset:
         raise CandidateImportError(
             "--reset is intentionally refused: append-only evidence cannot be deleted; "
             "recreate the disposable database with the local-v2 maintenance recipe"
         )
+    if batch_size <= 0:
+        raise CandidateImportError("batch size must be positive")
     now = manifest["retrieved_at_utc"]
     ruleset = str(manifest.get("config_version") or manifest.get("schema_version") or "unknown")
     with psycopg.connect(database_url) as db:
@@ -132,37 +145,47 @@ def import_candidate(database_url: str, manifest: dict, rows: list[dict], releas
                          VALUES (%s,'candidate',%s,%s,true)
                          ON CONFLICT (release_id) DO NOTHING""",
                        (release_id, ruleset, json.dumps({"source_id": manifest["source_id"], "profile": manifest.get("profile")})))
-            count = 0
-            for record in rows:
-                key, normalized = _record_parts(record)
-                country = _country_code(manifest, normalized)
-                name = normalized.get("trading_name")
-                city = normalized.get("city")
-                db.execute("""INSERT INTO uec.source_records(source_id,source_record_key,artifact_id,raw_fields,parsed_at)
-                    VALUES (%s,%s,%s,%s,%s) ON CONFLICT (source_id,source_record_key,artifact_id)
-                    DO NOTHING""",
-                    (manifest["source_id"], key, artifact_id, json.dumps({"source_values": record.get("source_values", {})}), now))
-                record_id = db.execute("""SELECT source_record_id FROM uec.source_records
-                    WHERE source_id=%s AND source_record_key=%s AND artifact_id=%s""",
-                    (manifest["source_id"], key, artifact_id)).fetchone()[0]
-                existing = db.execute("""SELECT facility_id, observation_id FROM uec.observations
-                    WHERE source_record_id=%s ORDER BY observed_at DESC, observation_id DESC LIMIT 1""", (record_id,)).fetchone()
-                if existing:
+        count = 0
+        for offset in range(0, len(rows), batch_size):
+            batch_count = 0
+            with db.transaction():
+                for record in rows[offset:offset + batch_size]:
+                    key, normalized = _record_parts(record)
+                    country = _country_code(manifest, normalized)
+                    name = normalized.get("trading_name")
+                    city = normalized.get("city")
+                    record_id = _stable_uuid(manifest["source_id"], key, artifact_id)
+                    source_inserted = db.execute("""INSERT INTO uec.source_records(source_record_id,source_id,source_record_key,artifact_id,raw_fields,parsed_at)
+                        VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (source_id,source_record_key,artifact_id)
+                        DO NOTHING RETURNING source_record_id""",
+                        (record_id, manifest["source_id"], key, artifact_id,
+                         json.dumps({"source_values": record.get("source_values", {})}), now)).fetchone()
+                    if source_inserted:
+                        record_id = source_inserted[0]
+                    else:
+                        record_id = db.execute("""SELECT source_record_id FROM uec.source_records
+                            WHERE source_id=%s AND source_record_key=%s AND artifact_id=%s""",
+                            (manifest["source_id"], key, artifact_id)).fetchone()[0]
+                    facility_id = _stable_uuid("facility", manifest["source_id"], key, artifact_id)
+                    observation_id = _stable_uuid("observation", manifest["source_id"], key, artifact_id)
+                    db.execute("""INSERT INTO uec.facilities(facility_id,canonical_name,country_code,city)
+                        VALUES (%s,%s,%s,%s) ON CONFLICT (facility_id) DO NOTHING""",
+                               (facility_id, name, country, city))
+                    created = db.execute("""INSERT INTO uec.observations(observation_id,facility_id,source_record_id,observed_at,observation,classification,ruleset_id,rule_id,classification_category,classification_review_status,default_visible,coordinate_review_status,first_observed_at)
+                        VALUES (%s,%s,%s,%s,%s,'{}',%s,'candidate','unclassified','review_required',false,'review_required',%s)
+                        ON CONFLICT (facility_id,source_record_id,observed_at) DO NOTHING RETURNING observation_id""",
+                        (observation_id, facility_id, record_id, now, json.dumps(normalized), ruleset, now)).fetchone()
+                    observation_ref = created[0] if created else db.execute("""SELECT observation_id FROM uec.observations
+                        WHERE facility_id=%s AND source_record_id=%s AND observed_at=%s""",
+                        (facility_id, record_id, now)).fetchone()[0]
                     db.execute("INSERT INTO uec.release_members(release_id,facility_id,observation_id,default_visible) VALUES (%s,%s,%s,false) ON CONFLICT DO NOTHING",
-                               (release_id, existing[0], existing[1]))
-                    continue
-                facility_id = uuid.uuid4(); observation_id = uuid.uuid4()
-                db.execute("INSERT INTO uec.facilities(facility_id,canonical_name,country_code,city) VALUES (%s,%s,%s,%s)",
-                           (facility_id, name, country, city))
-                db.execute("""INSERT INTO uec.observations(observation_id,facility_id,source_record_id,observed_at,observation,classification,ruleset_id,rule_id,classification_category,classification_review_status,default_visible,coordinate_review_status,first_observed_at)
-                    VALUES (%s,%s,%s,%s,%s,'{}',%s,'candidate','unclassified','review_required',false,'review_required',%s)""",
-                    (observation_id, facility_id, record_id, now, json.dumps(normalized), ruleset, now))
-                db.execute("INSERT INTO uec.release_members(release_id,facility_id,observation_id,default_visible) VALUES (%s,%s,%s,false)",
-                           (release_id, facility_id, observation_id))
-                db.execute("INSERT INTO uec.publication_review_events(source_record_id,release_id,factual_review_status,privacy_screening_status,maintainer_approval,publication_eligible) VALUES (%s,%s,'unreviewed','pending','pending',false)",
-                           (record_id, release_id))
-                count += 1
-            return count
+                               (release_id, facility_id, observation_ref))
+                    if created:
+                        db.execute("INSERT INTO uec.publication_review_events(source_record_id,release_id,factual_review_status,privacy_screening_status,maintainer_approval,publication_eligible) VALUES (%s,%s,'unreviewed','pending','pending',false)",
+                                   (record_id, release_id))
+                        batch_count += 1
+            count += batch_count
+        return count
 
 
 def main() -> int:
@@ -174,12 +197,13 @@ def main() -> int:
     parser.add_argument("--database-url", default=os.environ.get("UEC_DATABASE_URL", ""))
     parser.add_argument("--disposable-db", action="store_true", help="acknowledge this is a disposable local DB")
     parser.add_argument("--reset", action="store_true", help="rebuild this candidate release only")
+    parser.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE)
     args = parser.parse_args()
     require_disposable_database(args.database_url, args.disposable_db)
     if not args.release_id.startswith("candidate-"):
         raise CandidateImportError("release id must start with candidate-")
     manifest, rows = load_inputs(args.manifest, args.normalized, args.raw)
-    print(f"imported {import_candidate(args.database_url, manifest, rows, args.release_id, args.reset)} candidate rows")
+    print(f"imported {import_candidate(args.database_url, manifest, rows, args.release_id, args.reset, args.batch_size)} candidate rows")
     return 0
 
 

@@ -9,6 +9,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable
 
+from pipeline.contracts.adapter_contract import SourceAdapter, source_artifact_from_mapping
 from .identity import record_key
 
 ORCHESTRATOR_VERSION = "v2-orchestrator-3"
@@ -86,3 +87,24 @@ def run_registered_input(raw_path: str | Path, runs_dir: str | Path, config: dic
     status["run_dir"] = str(run_dir)
     _atomic(run_dir / "run-status.json", (json.dumps(status, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode())
     return status
+
+
+def run_registered_typed_input(raw_path: str | Path, runs_dir: str | Path,
+                               config: dict[str, Any], adapter: SourceAdapter,
+                               suppressed_ids: set[str | tuple[str, str, str]] | None = None,
+                               prior_eligible_release: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Run a typed adapter from registered acquisition metadata.
+
+    This is the compatibility seam for adapters whose ``run`` method accepts
+    ``SourceArtifact`` rather than the legacy config mapping. The mapping is
+    converted once at the shared boundary; the adapter still validates the
+    raw bytes and writes its own private manifest.
+    """
+    artifact = source_artifact_from_mapping(config)
+
+    def invoke(raw: str | Path, run_dir: str | Path, _config: dict[str, Any]) -> dict[str, Any]:
+        return adapter.run(raw, run_dir, artifact)
+
+    return run_registered_input(raw_path, runs_dir, config, invoke,
+                                suppressed_ids=suppressed_ids,
+                                prior_eligible_release=prior_eligible_release)

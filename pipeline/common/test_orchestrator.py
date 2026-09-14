@@ -1,14 +1,30 @@
 import json
+import hashlib
 import tempfile
 import unittest
 from pathlib import Path
 
 from .adapter_registry import load
-from .orchestrator import register_input, run_registered_input
+from .orchestrator import register_input, run_registered_input, run_registered_typed_input
 from pipeline.sources.uk.fss_approved.adapter import FssApprovedEstablishmentsAdapter
+from pipeline.sources.italy.it_853_adapter import Italy853Adapter
 
 
 class SharedPipelineTests(unittest.TestCase):
+    def test_registered_typed_adapter_compatibility(self):
+        header = "precedente_bollo_cee;num_identificativo_produzione_commercializzazione;ragione_sociale;indirizzo;comune;provincia;codice_regione;regione;classificazione_stabilimento;codice_impianto_attivita;descrizione_impianto_attivita;prodotti_abilitati;specifica_prodotti;paesi_export_autorizzato;longitudine;latitudine;stato_localizzazione;cod_fiscale;p_iva;codice_comune;data_inizio_attivita;data_fine_attivita;stato_attivita;data_ultimo_aggiornamento;num_identificativo_produzione_commercializzazione_2"
+        row = ";A;Name;;Town;;010;Piemonte;X;10;Activity;P;S;IT;12;45;1;tax;vat;001001;;;Autorizzata;2026-09-13;\n"
+        raw = (header + "\n" + row).encode()
+        with tempfile.TemporaryDirectory() as directory:
+            raw_path = Path(directory) / "italy.csv"
+            raw_path.write_bytes(raw)
+            config = {"source_url": "https://example.test/italy", "retrieved_at_utc": "2026-09-14T00:00:00Z",
+                      "checksum_sha256": hashlib.sha256(raw).hexdigest(), "byte_size": len(raw),
+                      "code_version": "test", "config_version": "test"}
+            status = run_registered_typed_input(raw_path, Path(directory) / "runs", config, Italy853Adapter())
+            self.assertEqual(status["status"], "candidate-ready")
+            self.assertEqual(status["manifest"]["source_id"], "it.853-2004")
+
     def test_registry_and_suppression_are_shared(self):
         root = Path(__file__).parents[1]
         registry = load(root / "adapter-capabilities.json")
