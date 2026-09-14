@@ -94,8 +94,38 @@ Northern Ireland as a separate future feed. It quarantines duplicate IDs within 
 nation, unknown jurisdictions, malformed rows, missing activities, remarks and
 address-risk rows; suppresses `AddressWithheld` addresses and coordinates; validates
 X/Y as source longitude/latitude without geocoding; and reports aggregate coverage
-and anomaly counts. The synthetic profile retains its authority/status/activity
-vocabulary tests for the canonical composition contract.
+and anomaly counts. Remarks remain a quarantine reason because their free text is
+preserved in restricted source values and has not passed privacy review. The address
+heuristic was narrowed after aggregate QA: generic facility-building words such as
+`house`, `home`, and `lodge` are not sufficient by themselves, while explicit
+residential or intermediary indicators remain review blockers. The synthetic profile
+retains its authority/status/activity vocabulary tests for the canonical composition
+contract.
+
+### Aggregate-only monthly QA (2026-09-14)
+
+The privately retained 2026-09-01 snapshot reproduced 5,342 input rows, 4,090
+normalized rows, and 1,252 quarantined rows before the heuristic correction. The
+sanitized reason matrix was:
+
+| Reason | Rows | Interpretation | Action |
+|---|---:|---|---|
+| `remarks_present` | 999 | Short free-text source notes; 956 were under 40 characters; only 46 overlapped an address-risk hit | Keep quarantined pending privacy review |
+| `address_privacy_risk` | 268 | 227 generic `house` hits, 25 `lodge`, 7 `home`, 8 `c/o`, and 3 `flat` hits; none had `AddressWithheld=Yes` | Narrow heuristic; retain explicit indicators for review |
+| `unknown_nation` | 31 | Jersey, Isle of Man, or Guernsey rows outside the England/Wales profile | Keep quarantined; use separate source scope |
+| `duplicate_id_within_nation` | 4 | Repeated application identifiers | Keep quarantined; never silently deduplicate |
+
+This is an aggregate QA result, not source approval. The artifact, row-level values,
+coordinates, and derived records remain restricted and were not committed or
+published. The automated pipeline requirement remains end-to-end: acquisition,
+checksum/metadata validation, parsing, quarantine, manifesting, and downstream
+ingestion must be orchestrated before any release gate can open.
+
+After the narrow heuristic correction, the same private artifact produced 4,300
+normalized rows and 1,042 quarantined rows. The remaining address-risk count was
+11; duplicate, unknown-jurisdiction, and remarks counts were unchanged. This
+reduction is not a release decision: remarks, out-of-scope jurisdictions, and
+duplicate identifiers remain blocked pending their respective reviews.
 
 This reconciliation is a design and test record, not source approval or legal
 clearance. No live row data is included, and the private artifact remains outside

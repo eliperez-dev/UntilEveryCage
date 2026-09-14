@@ -9,7 +9,11 @@ source feeds; they are not merged into this capability.
 Source values and identifiers are preserved. Duplicate IDs are quarantined within
 nation, unknown jurisdictions are quarantined, and malformed rows, missing or
 unresolved activity, remarks, authority mismatches, and address-risk values remain
-explicit review outcomes. `AddressWithheld=Yes` emits no address or coordinates;
+explicit review outcomes. Remarks remain quarantined because their free text is
+retained in restricted source values and has not passed privacy review. Address
+privacy heuristics intentionally exclude generic facility-building names such as
+"house", "home", and "lodge"; explicit residential or intermediary indicators
+still require review. `AddressWithheld=Yes` emits no address or coordinates;
 X/Y are validated as source longitude/latitude without geocoding. Registered runs
 write deterministic parsed, normalized, and quarantined states with a manifest
 whose `release_state` is always `not-created` and whose publication state is

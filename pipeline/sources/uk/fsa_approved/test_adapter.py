@@ -73,6 +73,18 @@ class FsaAdapterTests(unittest.TestCase):
             self.assertEqual(manifest["release_state"], "not-created")
             self.assertEqual(manifest["coverage_counts"], {"England": 2, "Jersey": 1, "Wales": 1})
 
+    def test_monthly_generic_facility_building_name_is_not_privacy_quarantine(self):
+        monthly = "AppNo,TradingName,Country,CompetentAuthority,X,Y,AddressWithheld,All_Activities,Address1,Town,Postcode\nA-1,House Foods,England,Food Standards Agency,-0.12,51.50,No,CP,House Farm,London,SW1\n"
+        result = self.adapter.parse_bytes(monthly.encode("cp1252"))
+        self.assertEqual(len(result.accepted), 1)
+        self.assertEqual(result.accepted[0]["normalized"]["address_lines"], ("House Farm", None, None))
+
+    def test_monthly_explicit_private_address_indicator_remains_quarantined(self):
+        monthly = "AppNo,TradingName,Country,CompetentAuthority,X,Y,AddressWithheld,All_Activities,Address1,Town,Postcode\nA-1,Private Foods,England,Food Standards Agency,-0.12,51.50,No,CP,Flat 2,London,SW1\n"
+        result = self.adapter.parse_bytes(monthly.encode("cp1252"))
+        self.assertEqual(len(result.accepted), 0)
+        self.assertEqual(result.quarantined[0]["reasons"], ("address_privacy_risk",))
+
 
 if __name__ == "__main__":
     unittest.main()

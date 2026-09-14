@@ -11,7 +11,10 @@ REQUIRED_COLUMNS=tuple(CONFIG["required_columns"])
 ALLOWED_ACTIVITIES=frozenset(CONFIG["allowed_activities"])
 ALLOWED_STATUSES=frozenset(CONFIG["allowed_statuses"])
 AUTHORITY_BY_NATION=CONFIG["authority_by_nation"]
-ADDRESS_RISK=re.compile(r"\b(flat|apartment|house|home|residential|c/o|care of|caravan|lodge)\b",re.I)
+# Generic facility-building names such as "house", "home", and "lodge" are
+# common in legitimate establishment addresses. Keep only terms that are
+# stronger indicators of a residential, private, or intermediary address.
+ADDRESS_RISK=re.compile(r"\b(flat|apartment|residential|c/o|care of|caravan)\b",re.I)
 MONTHLY_REQUIRED=frozenset({"AppNo","TradingName","Country","CompetentAuthority","X","Y","AddressWithheld","All_Activities"})
 MONTHLY_COUNTRIES=frozenset({"England","Wales"})
 
