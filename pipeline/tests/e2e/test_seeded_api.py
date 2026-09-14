@@ -96,6 +96,22 @@ class SeededApiE2ETests(unittest.TestCase):
             self.assertIsNotNone(row['first_observed_at'])
             self.assertIsNotNone(row['last_observed_at'])
 
+    def test_facets_apply_filters_and_never_include_restricted_record(self):
+        body = self.get('/api/v2/discovery/facets?profile=official&category=slaughter')
+        self.assertEqual(body['meta']['release_id'], 'e2e-promoted')
+        self.assertEqual(body['dimensions']['category'], [{'value': 'slaughter', 'count': 1}])
+        self.assertNotIn('restricted', json.dumps(body))
+        empty = self.get('/api/v2/discovery/facets?country_code=ZZ')
+        self.assertEqual(empty['dimensions']['category'], [])
+
+    def test_combination_filters_and_zero_result_are_deterministic(self):
+        rows = self.get('/api/v2/locations?country_code=DK&category=slaughter&display_precision=exact&limit=10')['data']
+        self.assertEqual(len(rows), 1)
+        restricted = self.get('/api/v2/locations?country_code=DK&category=retail_and_prepared_food&limit=10')['data']
+        self.assertEqual(restricted, [])
+        empty = self.get('/api/v2/locations?country_code=ZZ&limit=10')
+        self.assertEqual(empty['data'], [])
+
     def test_failed_candidate_does_not_replace_promoted_release(self):
         self.env.create_failed_candidate()
         script = os.path.join(os.path.dirname(__file__), '..', '..', 'scripts', 'stages', 'validate-release.py')

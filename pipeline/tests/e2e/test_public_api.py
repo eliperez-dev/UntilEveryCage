@@ -59,25 +59,11 @@ class PublicApiE2ETests(unittest.TestCase):
         self.assertIn("community", body["dimensions"]["profile"]["values"])
         self.assertNotIn("address", body["dimensions"])
 
-    def test_facets_apply_filters_and_never_include_restricted_record(self):
-        status, body = self.get('/api/v2/discovery/facets?profile=official&category=slaughter')
-        self.assertEqual(status, 200)
-        self.assertEqual(body['meta']['release_id'], 'e2e-promoted')
-        self.assertEqual(body['dimensions']['category'], [{'value': 'slaughter', 'count': 1}])
-        self.assertNotIn('restricted', json.dumps(body))
-        status, empty = self.get('/api/v2/discovery/facets?country_code=ZZ')
-        self.assertEqual(status, 200)
-        self.assertEqual(empty['dimensions']['category'], [])
-
-    def test_combination_filters_and_zero_result_are_deterministic(self):
-        _, body = self.get('/api/v2/locations?country_code=DK&category=slaughter&display_precision=exact&limit=10')
-        rows = body['data']
-        self.assertEqual(len(rows), 1)
-        _, restricted_body = self.get('/api/v2/locations?country_code=DK&category=retail_and_prepared_food&limit=10')
-        restricted = restricted_body['data']
-        self.assertEqual(restricted, [])
-        _, empty = self.get('/api/v2/locations?country_code=ZZ&limit=10')
-        self.assertEqual(empty['data'], [])
+    def test_facets_requires_a_promoted_release(self):
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            self.get('/api/v2/discovery/facets?profile=official&category=slaughter')
+        self.assertEqual(error.exception.code, 404)
+        self.assertEqual(json.loads(error.exception.read())['error']['code'], 'release_not_found')
 
     def test_unknown_controlled_filter_is_rejected(self):
         with self.assertRaises(urllib.error.HTTPError) as error:
