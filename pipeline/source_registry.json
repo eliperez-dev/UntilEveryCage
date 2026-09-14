@@ -34,10 +34,10 @@
       "url": "https://pub.fvst.dk/publikationer/Smileydata.xml",
       "access_method": "bulk XML download",
       "cadence": "weekly",
-      "attribution_licensing_notes": "Repository code names Fødevarestyrelsen; confirm current publication and reuse terms before acquisition.",
-      "adapter_status": "implemented_partial",
+      "attribution_licensing_notes": "Official Find Smiley data page records public-data reuse terms: attribute Fødevarestyrelsen, do not use its logo, and keep displayed smileys current; no project publication approval.",
+      "adapter_status": "private_staging_verified",
       "expected_artifact_schema": "XML source artifact -> parsed JSONL -> normalized/classified JSONL; source fields are preserved",
-      "blockers": ["Current endpoint, publication date semantics, licensing, and full coverage still require live verification."]
+      "blockers": ["Publisher supplies no dataset effective date; source coverage is limited to data available on Find Smiley and is not a completeness claim. Denmark candidate rows require explicit source-key mapping before disposable DB import."]
     },
     {
       "source_id": "es.locations",

@@ -36,4 +36,14 @@ class DenmarkAdapterTests(unittest.TestCase):
             manifest = adapter.run_registered(raw, root / "good", config)
             self.assertEqual(manifest["acquisition"]["source_url"], config["source_url"])
 
+    def test_candidate_mapping_preserves_source_values_and_pending_gates(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); raw = root / "raw.xml"; raw.write_bytes(XML)
+            parsed = {"source_id": "dk.smiley", "source_row": 2, "source_record_key": "1", "source_fields": {"ID_nummer": "1", "Virksomhed": "Test", "Adresse": "Road 1"}}
+            manifest = DenmarkSmileyAdapter().write_candidate_handoff(root / "handoff", self.artifact(), [parsed])
+            self.assertEqual(manifest["privacy_gate"], "pending")
+            handoff = json.loads((root / "handoff" / "normalized/records.jsonl").read_text())
+            self.assertEqual(handoff["source_values"]["ID_nummer"], "1")
+            self.assertEqual(handoff["normalized"]["establishment_id"], "1")
+
 if __name__ == "__main__": unittest.main()
