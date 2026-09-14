@@ -6,6 +6,7 @@
 /Secrets*.toml
 __pycache__/
 /data/raw/
+/data/restricted/
 /data/raw/**/*.xml
 /data/raw/**/*.csv
 /data/raw/**/*.xlsx

@@ -3,7 +3,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from delta import compare_runs
+try:
+    from .delta import compare_runs
+except ImportError:  # direct invocation from this directory
+    from delta import compare_runs
 
 
 def write_run(root: Path, name: str, rows: list[dict], schema: str = "schema-a", terms: str = "pending_confirmation") -> Path:

@@ -75,6 +75,16 @@ class OrchestratorTests(unittest.TestCase):
             self.assertFalse((run_dir / "release-candidate").exists())
             self.assertFalse((run_dir / "released" / "records.jsonl").exists())
 
+    def test_pending_terms_alone_blocks_candidate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            raw_path, _ = register_input(FIXTURE.read_bytes(), root, CONFIG)
+            result = run_registered_input(raw_path, root / "runs", {**CONFIG, "terms_status": "pending_confirmation"})
+            self.assertEqual(result["status"], "staged-restricted")
+            self.assertFalse(result["candidate_created"])
+            self.assertFalse(any(result["public_surfaces"].values()))
+            self.assertFalse((next((root / "runs").iterdir()) / "release-candidate").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
