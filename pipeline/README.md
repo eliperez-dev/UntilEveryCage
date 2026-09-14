@@ -72,3 +72,12 @@ python pipeline/run-denmark-pipeline.py data/raw/denmark-smiley/<run>/Smileydata
 ```
 
 Add `--geocode-limit 100` to run a bounded DAWA development sample. Every run gets numbered stage directories and a `pipeline-manifest.json` containing output sizes and SHA-256 checksums.
+
+## Restricted run comparison
+
+The shared `common/delta.py` comparison is private and aggregate-only: it retains
+both run manifests and fingerprints, classifies added/changed/not-observed/suppressed
+counts, blocks schema changes, and never interprets source absence as closure. Failed
+or partial comparisons retain the prior eligible release reference and expose no
+public surface. Terms, privacy/safety, suppression, review, project approval, and
+publication remain separate gates.
