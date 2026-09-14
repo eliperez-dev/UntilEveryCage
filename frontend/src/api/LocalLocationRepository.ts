@@ -8,7 +8,7 @@ export type LocationFilters = Readonly<{ country_code?: string | undefined; cate
 export type LocalListResult = Readonly<{ locations: readonly Location[]; releaseId: string; profile: LocalProfile; coverageNote: string; coverageScope?: string; countSemantics?: string; nextCursor: string | null; ruleset?: string }>;
 export const localOrigin = (value: string | undefined): string | undefined => { if (!value) return undefined; const url = new URL(value); if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost', '::1'].includes(url.hostname)) throw new Error('Local API origin must be loopback HTTP.'); return url.origin; };
 const fail = (kind: ApiError['kind'], message: string, status?: number): ApiError => Object.assign(new Error(message), status === undefined ? { kind } : { kind, status });
-const map = (r: WireLocation): Location => ({
+export const mapWireLocation = (r: WireLocation): Location => ({
   id: r.facility_id, name: r.canonical_name, region: r.city ?? r.country_code, category: r.category,
   lat: r.latitude, lon: r.longitude, observed: r.last_observed_at ?? r.first_observed_at ?? 'unknown', source: r.provenance_source_name,
   evidence: {
@@ -38,14 +38,14 @@ export class LocalLocationRepository {
       if (b.data.meta.release_id === null) throw fail('no-release', b.data.meta.coverage_note);
       const { release_id, ruleset_version } = b.data.meta;
       if (ruleset_version === undefined || b.data.data.some(row => !eligible(row, profile, release_id, ruleset_version))) throw fail('invalid-contract', 'Local V2 list snapshot was rejected.');
-      return { locations: b.data.data.map(map), releaseId: release_id, profile, coverageNote: b.data.meta.coverage_note, coverageScope: b.data.meta.coverage_scope ?? 'selected promoted release public facilities', countSemantics: b.data.meta.count_semantics ?? 'Eligible public facility projection rows, not animals or a story-wide total.', nextCursor: b.data.meta.next_cursor ?? null, ruleset: ruleset_version };
+      return { locations: b.data.data.map(mapWireLocation), releaseId: release_id, profile, coverageNote: b.data.meta.coverage_note, coverageScope: b.data.meta.coverage_scope ?? 'selected promoted release public facilities', countSemantics: b.data.meta.count_semantics ?? 'Eligible public facility projection rows, not animals or a story-wide total.', nextCursor: b.data.meta.next_cursor ?? null, ruleset: ruleset_version };
     } catch (e) { if (e && typeof e === 'object' && 'kind' in e) throw e; if (e instanceof DOMException && e.name === 'AbortError') throw fail('aborted', 'Local V2 request was aborted.'); if (e instanceof TypeError) throw fail('network', 'Local V2 request could not connect.'); throw fail('invalid-contract', 'Local V2 response could not be read safely.'); }
   }
   async detail(id: string, profile: LocalProfile = 'official', signal?: AbortSignal) {
     try {
       const b = detailEnvelopeSchema.safeParse(await this.json(`/api/v2/locations/${encodeURIComponent(id)}?profile=${profile}`, signal));
       if (!b.success || b.data.meta.profile !== profile || !eligible(b.data.data, profile, b.data.meta.release_id, b.data.meta.ruleset_version) || b.data.data.facility_id !== id) throw fail('invalid-contract', 'Local V2 detail response was rejected.');
-      return { location: map(b.data.data), releaseId: b.data.meta.release_id, profile };
+      return { location: mapWireLocation(b.data.data), releaseId: b.data.meta.release_id, profile };
     } catch (e) { if (e && typeof e === 'object' && 'kind' in e) throw e; if (e instanceof DOMException && e.name === 'AbortError') throw fail('aborted', 'Local V2 request was aborted.'); if (e instanceof TypeError) throw fail('network', 'Local V2 request could not connect.'); throw fail('invalid-contract', 'Local V2 response could not be read safely.'); }
   }
 }

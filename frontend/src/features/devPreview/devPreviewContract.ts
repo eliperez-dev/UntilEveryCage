@@ -7,6 +7,11 @@ export type DevPreviewState = 'disabled' | 'unavailable' | 'loading' | 'ready' |
 export const DEV_PREVIEW_PATH = '/api/dev/preview/candidates';
 export const DEV_PREVIEW_QUERY = 'dev-candidates';
 export const DEV_PREVIEW_TOKEN_HEADER = 'X-UEC-Dev-Preview-Token';
+export const TEST_RELEASE_PATH = '/api/dev/preview/test-release';
+export const TEST_RELEASE_API_VERSION = 'dev-test-v1';
+export const TEST_RELEASE_LABEL = 'Disposable test release — not project-approved or published';
+export const testReleasePath = (resource: 'locations' | 'filters' | 'facets' | 'csv', id?: string): string =>
+  `${TEST_RELEASE_PATH}/${resource}${id ? `/${encodeURIComponent(id)}` : ''}`;
 
 /** Keep a manually typed preview URL inert in production builds. */
 export const canOpenDevPreview = (isDevelopment: boolean, requestedMode: string | null): boolean =>

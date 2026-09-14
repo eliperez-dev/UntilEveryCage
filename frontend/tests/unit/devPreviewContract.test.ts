@@ -1,7 +1,10 @@
-import { describe, expect, it } from 'vitest';
-import { canOpenDevPreview, DEV_PREVIEW_LABEL, DEV_PREVIEW_PATH, DEV_PREVIEW_QUERY, DEV_PREVIEW_TOKEN_HEADER, devPreviewExportLabel, canMountPublicExport } from '../../src/features/devPreview/devPreviewContract';
+import { describe, expect, it, vi } from 'vitest';
+import { canOpenDevPreview, DEV_PREVIEW_LABEL, DEV_PREVIEW_PATH, DEV_PREVIEW_QUERY, DEV_PREVIEW_TOKEN_HEADER, devPreviewExportLabel, canMountPublicExport, TEST_RELEASE_API_VERSION, TEST_RELEASE_LABEL, TEST_RELEASE_PATH, testReleasePath } from '../../src/features/devPreview/devPreviewContract';
 import { DevCandidatePreviewRepository } from '../../src/api/DevCandidatePreviewRepository';
 import { nextLocalReviewState } from '../../src/features/devPreview/devReviewState';
+import { TestReleaseRepository } from '../../src/api/TestReleaseRepository';
+import { TestReleaseCsvExportRepository } from '../../src/api/TestReleaseCsvExportRepository';
+import { TestReleaseFilterMetadataRepository } from '../../src/api/TestReleaseFilterMetadataRepository';
 
 describe('dev preview boundary', () => {
   it('requires both a development build and the explicit mode', () => {
@@ -21,6 +24,11 @@ describe('dev preview boundary', () => {
     expect(devPreviewExportLabel(false)).toBeNull();
     expect(canMountPublicExport(true)).toBe(false); // includes ?preview=dev-candidates&mode=local-v2
     expect(canMountPublicExport(false)).toBe(true);
+    expect(TEST_RELEASE_API_VERSION).toBe('dev-test-v1');
+    expect(TEST_RELEASE_PATH).not.toContain('/api/v2/');
+    expect(testReleasePath('locations', 'facility/one')).toBe('/api/dev/preview/test-release/locations/facility%2Fone');
+    expect(testReleasePath('csv')).toBe('/api/dev/preview/test-release/csv');
+    expect(TEST_RELEASE_LABEL).toContain('not project-approved or published');
   });
 
   it('preserves candidate unapproved and unpublished semantics', async () => {
@@ -32,5 +40,20 @@ describe('dev preview boundary', () => {
     expect(nextLocalReviewState('unreviewed', 'inspect')).toBe('inspected');
     expect(nextLocalReviewState('inspected', 'follow_up')).toBe('follow_up');
     expect(nextLocalReviewState('follow_up', 'inspect')).toBe('follow_up');
+  });
+  it('maps test-release rows without requiring approval or coordinates and never falls back', async () => {
+    const row = { facility_id: '550e8400-e29b-41d4-a716-446655440000', canonical_name: 'Pending test row', city: null, country_code: 'GB', category: 'dairy', source_type: 'official', publication_profile: 'official', factual_review_status: 'unreviewed', privacy_screening_status: 'passed', project_approval: 'pending', reviewer_role: null, publication_warning: null, display_precision: 'unmapped', latitude: null, longitude: null, first_observed_at: null, last_observed_at: null, observation_count: null, lifecycle_status: 'status_unknown', provenance_source_id: 's1', provenance_source_name: 'Test source', provenance_source_url: 'https://example.test/source', provenance_retrieved_at: '2026-01-01T00:00:00Z', release_id: 'test-release', release_ruleset_version: 'rules-1' };
+    const body = { data: [row], meta: { api_version: 'dev-test-v1', environment: 'test-only', test_only: true, private_preview: true, release_status: 'candidate', release_id: 'test-release', profile: 'official', coverage_scope: 'test_release_public_shaped_rows', count_semantics: 'Rows only', preview_label: TEST_RELEASE_LABEL, result_count: 1, next_cursor: null } };
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(body)));
+    const result = await new TestReleaseRepository(fetcher).list('official', 'test-token');
+    expect(result.locations[0]).toMatchObject({ name: 'Pending test row', lat: null, evidence: { projectApproval: 'pending' } });
+    expect(result.coverageNote).toContain('not project-approved');
+    await expect(new TestReleaseRepository(vi.fn().mockResolvedValue(new Response('unavailable', { status: 401 }))).list('official', 'wrong')).rejects.toThrow('unavailable');
+  });
+  it('requires explicit test-release CSV markers and validates facets metadata', async () => {
+    const csvFetcher = vi.fn().mockResolvedValue(new Response('facility_id,project_approval\n1,pending\n', { headers: { 'x-uec-test-release': 'true', 'x-uec-release-id': 'test-release' } }));
+    await expect(new TestReleaseCsvExportRepository(csvFetcher).download('official', 'test-token')).resolves.toMatchObject({ releaseId: 'test-release', label: TEST_RELEASE_LABEL });
+    const facets = { data: null, meta: { api_version: 'dev-test-v1', environment: 'test-only', test_only: true, private_preview: true, release_status: 'candidate', release_id: 'test-release', profile: 'official', coverage_scope: 'test_release_public_shaped_rows', count_semantics: 'Rows only', preview_label: TEST_RELEASE_LABEL, result_count: 0 }, dimensions: { country_code: [], category: [], display_precision: [], source_type: [] } };
+    await expect(new TestReleaseFilterMetadataRepository(vi.fn().mockResolvedValue(new Response(JSON.stringify(facets)))).get('official', 'test-token')).resolves.toMatchObject({ meta: { test_only: true, release_status: 'candidate' } });
   });
 });

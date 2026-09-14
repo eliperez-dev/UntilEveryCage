@@ -14,8 +14,10 @@
   import ReleaseContext from '../ui/ReleaseContext.svelte';
   import ExportControl from '../ui/ExportControl.svelte';
   import ScaleNarrative from '../features/scale/ScaleNarrative.svelte';
-  import { canOpenDevPreview, DEV_PREVIEW_LABEL, devPreviewExportLabel, canMountPublicExport } from '../features/devPreview/devPreviewContract';
+  import { canOpenDevPreview, DEV_PREVIEW_LABEL, TEST_RELEASE_LABEL, devPreviewExportLabel, canMountPublicExport } from '../features/devPreview/devPreviewContract';
   import type { DevCandidate } from '../api/DevCandidatePreviewRepository';
+  import { TestReleaseRepository } from '../api/TestReleaseRepository';
+  import { TestReleaseCsvExportRepository } from '../api/TestReleaseCsvExportRepository';
   import DevReviewPanel from '../features/devPreview/DevReviewPanel.svelte';
 
   let profile: Profile = 'curated';
@@ -26,10 +28,13 @@
   let showMap = false; let showExport = false; let showGuidance = false;
   let localMode = false;
   let devPreviewMode = false;
+  let testReleaseMode = false;
   let previewToken = '';
   let previewStatus: 'idle' | 'loading' | 'ready' | 'error' | 'blocked' = 'idle';
   let previewError = '';
-  let previewRows: readonly DevCandidate[] = [];
+  let previewRows: readonly Location[] = [];
+  let testCsvBusy = false;
+  let testCsvError = '';
   let localStatus: 'idle' | 'loading' | 'ready' | 'error' | 'no-release' = 'idle';
   let detailStatus: 'idle' | 'loading' | 'error' = 'idle';
   let localError = ''; let exportError = ''; let exportBusy = false;
@@ -110,15 +115,17 @@
     if (!canOpenDevPreview(import.meta.env.DEV, devPreviewMode ? 'dev-candidates' : null)) { previewStatus = 'blocked'; previewError = 'Private candidate preview is unavailable in production builds.'; return; }
     if (!previewToken.trim()) { previewStatus = 'error'; previewError = 'Enter the operator token for this development session.'; return; }
     previewStatus = 'loading'; previewError = '';
-    try { const { DevCandidatePreviewRepository } = await import('../api/DevCandidatePreviewRepository'); previewRows = await new DevCandidatePreviewRepository().list(previewToken); previewStatus = 'ready'; selected = previewRows[0]; }
+    try { if (testReleaseMode) previewRows = (await new TestReleaseRepository().list(profile === 'community' ? 'community' : 'official', previewToken)).locations; else { const { DevCandidatePreviewRepository } = await import('../api/DevCandidatePreviewRepository'); previewRows = await new DevCandidatePreviewRepository().list(previewToken); } previewStatus = 'ready'; selected = previewRows[0]; }
     catch (error) { previewStatus = 'error'; previewError = error instanceof Error ? error.message : 'Private candidate preview was rejected safely.'; previewRows = []; selected = undefined; }
   };
+  const downloadTestCsv = async () => { if (!testReleaseMode || previewStatus !== 'ready' || testCsvBusy) return; testCsvBusy = true; testCsvError = ''; try { const result = await new TestReleaseCsvExportRepository().download(profile === 'community' ? 'community' : 'official', previewToken); const url = URL.createObjectURL(new Blob([result.body], { type: 'text/csv;charset=utf-8' })); const anchor = document.createElement('a'); anchor.href = url; anchor.download = `uec-test-release-${result.releaseId}.csv`; anchor.click(); URL.revokeObjectURL(url); } catch (error) { testCsvError = error instanceof Error ? error.message : 'Private test-release CSV was rejected safely.'; } finally { testCsvBusy = false; } };
   const clearFilters = () => { search = ''; region = 'all'; category = 'all'; sourceType = 'all'; displayPrecision = 'all'; lifecycleStatus = 'all'; };
   const searchChanged = () => { if (localMode) { const url = new URL(window.location.href); if (search.trim()) url.searchParams.set('q', search.trim()); else url.searchParams.delete('q'); history.replaceState(null, '', url); } };
   onMount(() => {
     const params = new URLSearchParams(window.location.search);
     localMode = params.get('mode') === 'local-v2';
-    devPreviewMode = params.get('preview') === 'dev-candidates';
+    testReleaseMode = params.get('preview') === 'test-release';
+    devPreviewMode = testReleaseMode || params.get('preview') === 'dev-candidates';
     const route = parseRoute(window.location.hash);
     if (route.kind !== 'not-found') profile = route.profile;
     if (localMode) {
@@ -138,8 +145,9 @@
 <main class:dev-preview={devPreviewMode}>
   <header class="top"><a class="wordmark" href="/v2-preview/#/">UNTIL EVERY CAGE <span>V2 / FIELD NOTE</span></a><nav aria-label="Site"><a href="/ethics.html">Ethics &amp; safeguards ↗</a></nav></header>
   <section class="intro"><p class="eyebrow">EVIDENCE DESK · {devPreviewMode ? 'PRIVATE CANDIDATE PREVIEW' : localMode ? 'LOCAL V2 API' : 'SYNTHETIC PREVIEW'}</p><h1>See what a record can—and cannot—tell us.</h1><p class="lede">Start with the source profile, narrow the visible evidence, then inspect what a record can—and cannot—tell us.</p></section>
-  {#if devPreviewMode}<section class="warning" role="alert"><strong>{DEV_PREVIEW_LABEL}</strong><span>Loopback development only. Candidate rows are not part of a promoted release and this view is not a publication decision.</span>{#if previewStatus !== 'blocked'}<label>Operator token (memory only)<input type="password" autocomplete="off" bind:value={previewToken} aria-describedby="preview-token-note" /></label><small id="preview-token-note">The token is sent only in the request header and is not persisted.</small><button onclick={() => void loadDevPreview()} disabled={previewStatus === 'loading'}>{previewStatus === 'loading' ? 'Loading private preview…' : 'Load private candidates'}</button>{/if}{#if previewError}<p role="status">{previewError}</p>{/if}</section>{/if}
+  {#if devPreviewMode}<section class="warning" role="alert"><strong>{testReleaseMode ? TEST_RELEASE_LABEL : DEV_PREVIEW_LABEL}</strong><span>Loopback development only. Candidate rows are not part of a promoted release and this view is not a publication decision.</span>{#if previewStatus !== 'blocked'}<label>Operator token (memory only)<input type="password" autocomplete="off" bind:value={previewToken} aria-describedby="preview-token-note" /></label><small id="preview-token-note">The token is sent only in the request header and is not persisted.</small><button onclick={() => void loadDevPreview()} disabled={previewStatus === 'loading'}>{previewStatus === 'loading' ? 'Loading private preview…' : testReleaseMode ? 'Load test release' : 'Load private candidates'}</button>{/if}{#if previewError}<p role="status">{previewError}</p>{/if}</section>{/if}
   {#if devPreviewMode}<DevReviewPanel candidate={selected as DevCandidate | undefined} />{/if}
+  {#if testReleaseMode && previewStatus === 'ready'}<section class="warning" aria-label="Test-only export"><strong>TEST-ONLY CSV — NOT PROJECT-APPROVED OR PUBLISHED</strong><span>Complete bounded test-release rows only; this action never uses the public export route.</span><button onclick={() => void downloadTestCsv()} disabled={testCsvBusy}>{testCsvBusy ? 'Preparing test-only CSV…' : 'Download test-only CSV'}</button>{#if testCsvError}<p role="alert">{testCsvError}</p>{/if}</section>{/if}
   {#if !devPreviewMode || previewStatus === 'ready'}
   <ScaleNarrative />
   <section class="research-bar" aria-labelledby="research-heading"><div><p class="eyebrow">01 / DISCOVER</p><h2 id="research-heading">Choose the evidence lane</h2><p>Profiles stay separate. A community claim is never silently promoted into a curated result.</p></div><div class="toolbar"><label>Profile<select bind:value={profile} onchange={profileChanged}><option value="curated">Curated release</option><option value="community">Community claims</option></select></label><label>Search locations<input aria-label="Search locations" bind:value={search} oninput={searchChanged} placeholder="Name, region, category" /></label><label>Country<select aria-label="Country" bind:value={region}><option value="all">All countries</option>{#if metadata}{#each metadata.dimensions.country_code.values as value}<option value={value}>{value}</option>{/each}{/if}</select></label><label>Category<select aria-label="Category" bind:value={category}><option value="all">All categories</option>{#if metadata}{#each metadata.dimensions.category.values as value}<option value={value}>{value}</option>{/each}{/if}</select></label><label>Source origin<select aria-label="Source origin" bind:value={sourceType}><option value="all">All source origins</option>{#if metadata}{#each metadata.dimensions.source_type.values as value}<option value={value}>{value}</option>{/each}{/if}</select></label><label>Map precision<select aria-label="Map precision" bind:value={displayPrecision}><option value="all">All map precision</option>{#if metadata}{#each metadata.dimensions.display_precision.values as value}<option value={value}>{value}</option>{/each}{/if}</select></label><label>Lifecycle<select aria-label="Lifecycle status" bind:value={lifecycleStatus}><option value="all">All lifecycle states</option>{#if metadata}{#each metadata.dimensions.lifecycle_status.values as value}<option value={value}>{value}</option>{/each}{/if}</select></label></div>{#if localMode && metadataStatus === 'loading'}<p class="metadata-status" role="status">Loading available filter values…</p>{:else if localMode && metadataStatus === 'error'}<p class="metadata-status error" role="status" aria-live="polite">Filter metadata is unavailable; only unscoped discovery is shown.</p>{/if}</section>

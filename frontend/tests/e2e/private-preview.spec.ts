@@ -29,3 +29,19 @@ test('private preview failure does not fall back to fixture records', async ({ p
   await expect(page.getByRole('heading', { name: 'Private candidate facility' })).toHaveCount(0);
   await expect(page.getByText('Synthetic demonstration')).toHaveCount(0);
 });
+
+test('test-release mode uses the existing list/detail flow with a private release label', async ({ page }) => {
+  await page.route('**/api/dev/preview/test-release/locations.csv**', route => route.fulfill({ headers: { 'content-type': 'text/csv', 'x-uec-test-release': 'true', 'x-uec-release-id': 'test-release' }, body: 'facility_id,project_approval\nfacility-1,pending\n' }));
+  await page.route('**/api/dev/preview/test-release/locations**', route => route.fulfill({ json: { data: [{ facility_id: '550e8400-e29b-41d4-a716-446655440000', canonical_name: 'Pending test-release row', city: null, country_code: 'GB', category: 'dairy', source_type: 'official', publication_profile: 'official', factual_review_status: 'unreviewed', privacy_screening_status: 'passed', project_approval: 'pending', reviewer_role: null, publication_warning: null, display_precision: 'unmapped', latitude: null, longitude: null, first_observed_at: null, last_observed_at: null, observation_count: null, lifecycle_status: 'status_unknown', provenance_source_id: 'source-1', provenance_source_name: 'Test source', provenance_source_url: 'https://example.test/source', provenance_retrieved_at: '2026-01-01T00:00:00Z', release_id: 'test-release', release_ruleset_version: 'rules-1' }], meta: { api_version: 'dev-test-v1', environment: 'test-only', test_only: true, private_preview: true, release_status: 'candidate', release_id: 'test-release', profile: 'official', coverage_scope: 'test_release_public_shaped_rows', count_semantics: 'Rows only', preview_label: 'Disposable test release — not project-approved or published', result_count: 1, next_cursor: null } } }));
+  await page.goto('./?preview=test-release#/');
+  await page.getByLabel('Operator token (memory only)').fill('synthetic-test-token');
+  await page.getByRole('button', { name: 'Load test release' }).click();
+  await expect(page.getByRole('heading', { name: 'Pending test-release row' })).toBeVisible();
+  await expect(page.getByText('Disposable test release — not project-approved or published')).toBeVisible();
+  await expect(page.getByText('No publishable map location')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Download test-only CSV' })).toBeVisible();
+  const csvRequest = page.waitForRequest(request => request.url().includes('/api/dev/preview/test-release/locations.csv'));
+  await page.getByRole('button', { name: 'Download test-only CSV' }).click();
+  expect((await csvRequest).headers()['x-uec-dev-preview-token']).toBe('synthetic-test-token');
+  await expect(page.getByRole('button', { name: /Preview export/ })).toHaveCount(0);
+});
