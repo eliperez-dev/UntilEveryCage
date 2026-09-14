@@ -13,6 +13,7 @@ COMPOSE = ROOT / "docker-compose.e2e.yml"
 
 def free_port():
     with socket.socket() as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind(("127.0.0.1", 0))
         return sock.getsockname()[1]
 
@@ -21,6 +22,8 @@ class E2EEnvironment:
         self.project = f"uec-e2e-{uuid.uuid4().hex[:8]}"
         self.db_port = free_port()
         self.api_port = free_port()
+        while self.api_port == self.db_port:
+            self.api_port = free_port()
         self.database_url = f"postgresql://uec:uec-e2e@localhost:{self.db_port}/uec"
         self.backend = None
         self.backend_log = None
@@ -77,15 +80,31 @@ class E2EEnvironment:
             self.backend_log = (ROOT / "target" / f"e2e-{self.project}.log").open("w", encoding="utf-8")
             self.backend = subprocess.Popen([str(binary)], cwd=ROOT, env=env, stdout=self.backend_log, stderr=subprocess.STDOUT, text=True)
             print(f"[e2e] waiting for backend on {self.api_port}", flush=True)
+            import urllib.error
             import urllib.request
+            last_error = None
             for _ in range(80):
                 try:
-                    urllib.request.urlopen(f"http://localhost:{self.api_port}/api/v2/locations?limit=1", timeout=1)
-                    return self
-                except Exception:
+                    with urllib.request.urlopen(f"http://127.0.0.1:{self.api_port}/health/ready", timeout=1) as response:
+                        if response.status == 200:
+                            return self
+                except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError) as exc:
+                    last_error = repr(exc)
+                    if self.backend.poll() is not None:
+                        break
                     time.sleep(.25)
-            log_text = self.backend_log.read_text(encoding="utf-8") if self.backend_log else ""
-            raise RuntimeError(f"backend did not become ready\n{log_text}")
+            exit_code = self.backend.poll() if self.backend else None
+            log_path = self.backend_log.name if self.backend_log else None
+            if self.backend_log:
+                self.backend_log.flush()
+                log_path = self.backend_log.name
+                self.backend_log.close()
+                self.backend_log = None
+            log_text = Path(log_path).read_text(encoding="utf-8") if log_path else ""
+            raise RuntimeError(
+                f"backend did not become ready; last_error={last_error}; "
+                f"exit_code={exit_code}; log_path={log_path}\n{log_text}"
+            )
         except Exception:
             self.stop()
             raise
