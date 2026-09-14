@@ -35,6 +35,7 @@ jobs:
           python -m unittest pipeline.tests.e2e.test_community_api -v
           python -m unittest pipeline.tests.e2e.test_seeded_api -v
           python -m unittest pipeline.tests.e2e.test_public_surface_safety -v
+          python -m unittest pipeline.tests.e2e.test_candidate_import -v
 
   backup-restore:
     # The PostGIS image is Linux-only; Ubuntu includes PowerShell Core for the drill.
@@ -86,4 +87,4 @@ jobs:
       - run: npm run boundary
       - run: npm run build
       - run: npx playwright install --with-deps chromium firefox webkit
-      - run: npx playwright test tests/e2e/fixture-platform.spec.ts tests/e2e/local-safety.spec.ts --project=chromium --project=firefox --project=webkit --workers=2
+      - run: npx playwright test tests/e2e/fixture-platform.spec.ts tests/e2e/local-safety.spec.ts tests/e2e/private-preview.spec.ts --project=chromium --project=firefox --project=webkit --workers=2
