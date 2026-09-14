@@ -23,7 +23,7 @@ No last-success timestamp is invented. Private artifacts are not proof of a publ
 | `dk.smiley` | partial | not_run | not_run | blocked | SourceArtifact and registered-adapter contracts are documented; official live acquisition, endpoint/licence/coverage/release verification remain open |
 | `de.locations` | partial | not_run | not_run | blocked | Legacy session URL and current BVL endpoint/schema/terms remain unresolved |
 | `ca.locations` | verified | not_run | not_run | blocked | Federal/export and Ontario candidates are documented separately; verify permitted artifact, terms, schema, coverage, and privacy before acquisition |
-| `es.locations` | unknown | not_run | not_run | blocked | Current competent-authority source and legacy/source boundary unresolved |
+| `es.locations` | partial | blocked | not_run | blocked | AESAN RGSEAA and MAPA sector routes are documented, but direct acquisition was refused; rights, export/schema, effective dates, sector coverage, privacy, and legacy/source boundaries remain unresolved |
 | `us.fsis` | verified | not_run | not_run | blocked | FSIS MPI route is documented; acquire a permitted current artifact and treat legacy inventory only as a comparison |
 | `us.aphis` | partial | not_run | not_run | blocked | APHIS export workflow and separate report/license provenance require review |
 | `us.inspections` | partial | not_run | not_run | blocked | Inspection observations require a current export and explicit identity matching |
