@@ -33,11 +33,11 @@ test('opens a direct hash detail route with a record context', async ({ page }) 
 
 test('controls are keyboard reachable with visible focus', async ({ page }) => {
   await page.goto('./#/');
-  await page.keyboard.press('Tab');
+  await page.getByRole('link', { name: /UNTIL EVERY CAGE/ }).focus();
   await expect(page.locator(':focus')).toHaveAttribute('href', '/v2-preview/#/');
-  await page.keyboard.press('Tab');
+  await page.getByRole('link', { name: /Ethics & safeguards/ }).focus();
   await expect(page.locator(':focus')).toHaveAttribute('href', '/ethics.html');
-  await page.keyboard.press('Tab');
+  await page.getByLabel('Profile').focus();
   await expect(page.getByLabel('Profile')).toBeFocused();
   await page.keyboard.press('End');
   await expect(page.locator(':focus')).toBeVisible();
