@@ -149,15 +149,17 @@ Restricted operator packet paths (not repository files):
 
 The packet records the official source URL/catalog, parent and sample hashes,
 effective date, selection rule, coverage counts, quarantine counts, and disabled
-geocoding. The sample and all row-level derivatives remain restricted. The existing
-candidate preview endpoint returned an empty result because pending privacy,
-coordinate, geocode, and visibility gates remained closed. Public V2 list/export
-routes remained unavailable because no promoted release exists. No approval,
-coordinate release, or publication occurred. Operator decisions still required:
-source-rights/attribution review, duplicate and coverage scope review, privacy review
-of remarks and addresses, and authorization of any test-release preview. Backend
-Safety's distinct guarded test-release route is not present in this baseline; do not
-relax the existing candidate-preview or public V2 gates. The shared
+geocoding. The sample and all row-level derivatives remain restricted. On the fresh
+de98f73 disposable stack with migration 023, the guarded test-release list returned
+29 pending/unmapped rows; detail, facets, and CSV returned successfully. The CSV
+contained 29 rows and no raw/source-value fields. Every returned row carried
+test-only/private/candidate metadata and null coordinates. A temporary append-only
+privacy suppression event reduced the guarded list to 28 rows, then the disposable
+stack was destroyed. Public V2 list remained empty and public CSV remained unavailable
+because no promoted release exists. No approval, coordinate release, or publication
+occurred. Operator decisions still required: source-rights/attribution review,
+duplicate and coverage scope review, and privacy review of remarks and addresses.
+The existing candidate-preview and public V2 gates were not relaxed. The shared
 SourceArtifact/typed-run boundary remains a separate infrastructure integration
 limitation; this source-local bridge validates typed artifact facts directly and does
 not alter the common contract.
