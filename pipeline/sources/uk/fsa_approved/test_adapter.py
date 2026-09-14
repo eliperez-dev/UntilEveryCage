@@ -78,12 +78,17 @@ class FsaAdapterTests(unittest.TestCase):
         result = self.adapter.parse_bytes(monthly.encode("cp1252"))
         self.assertEqual(len(result.accepted), 1)
         self.assertEqual(result.accepted[0]["normalized"]["address_lines"], ("House Farm", None, None))
+        self.assertEqual(result.accepted[0]["normalized"]["privacy_gate"], "privacy-review-required")
+        self.assertEqual(result.accepted[0]["normalized"]["coordinate_gate"], "privacy-review-required")
+        self.assertIsNone(result.accepted[0]["normalized"]["coordinates"])
 
     def test_monthly_explicit_private_address_indicator_remains_quarantined(self):
         monthly = "AppNo,TradingName,Country,CompetentAuthority,X,Y,AddressWithheld,All_Activities,Address1,Town,Postcode\nA-1,Private Foods,England,Food Standards Agency,-0.12,51.50,No,CP,Flat 2,London,SW1\n"
         result = self.adapter.parse_bytes(monthly.encode("cp1252"))
         self.assertEqual(len(result.accepted), 0)
         self.assertEqual(result.quarantined[0]["reasons"], ("address_privacy_risk",))
+        self.assertEqual(result.quarantined[0]["record"]["normalized"]["privacy_gate"], "privacy-review-required")
+        self.assertIsNone(result.quarantined[0]["record"]["normalized"]["coordinates"])
 
 
 if __name__ == "__main__":

@@ -98,9 +98,11 @@ and anomaly counts. Remarks remain a quarantine reason because their free text i
 preserved in restricted source values and has not passed privacy review. The address
 heuristic was narrowed after aggregate QA: generic facility-building words such as
 `house`, `home`, and `lodge` are not sufficient by themselves, while explicit
-residential or intermediary indicators remain review blockers. The synthetic profile
-retains its authority/status/activity vocabulary tests for the canonical composition
-contract.
+residential or intermediary indicators remain review blockers. A monthly record not
+flagged by that heuristic is still marked `privacy-review-required`; its normalized
+coordinates remain suppressed until an authorized privacy decision. A heuristic pass
+is not privacy clearance. The synthetic profile retains its authority/status/activity
+vocabulary tests for the canonical composition contract.
 
 ### Aggregate-only monthly QA (2026-09-14)
 

@@ -14,7 +14,10 @@ retained in restricted source values and has not passed privacy review. Address
 privacy heuristics intentionally exclude generic facility-building names such as
 "house", "home", and "lodge"; explicit residential or intermediary indicators
 still require review. `AddressWithheld=Yes` emits no address or coordinates;
-X/Y are validated as source longitude/latitude without geocoding. Registered runs
+X/Y are validated as source longitude/latitude without geocoding, but monthly
+normalized coordinates remain suppressed behind an explicit
+`privacy-review-required` gate even when no heuristic address-risk token is
+present. A heuristic pass is not privacy clearance. Registered runs
 write deterministic parsed, normalized, and quarantined states with a manifest
 whose `release_state` is always `not-created` and whose publication state is
 private-candidate.
