@@ -10,6 +10,7 @@
   import { previewExport } from '../export/previewExport';
   import { LocalLocationRepository } from '../api/LocalLocationRepository';
   import { LocalCsvExportRepository } from '../api/LocalCsvExportRepository';
+  import { FilterMetadataRepository, type FilterMetadata } from '../api/FilterMetadataRepository';
   import ReleaseContext from '../ui/ReleaseContext.svelte';
   import ExportControl from '../ui/ExportControl.svelte';
 
@@ -25,12 +26,16 @@
   let loaded: readonly Location[] = []; let release = 'synthetic-2026.09';
   let ruleset: string | undefined; let manifestSha256: string | undefined;
   let repo = new LocalLocationRepository(); let csvRepo = new LocalCsvExportRepository();
+  let metadata: FilterMetadata | undefined; let metadataStatus: 'idle' | 'loading' | 'ready' | 'error' = 'idle';
   $: filters = { search, region, category };
   $: source = localMode ? loaded : (profile === 'community' ? locations.slice(0, 1) : locations);
   $: visibleLocations = filterLocations(source, filters);
   $: exportPreview = previewExport(makeExportModel(visibleLocations, profile, release));
   $: eligibleExport = localMode && profile === 'curated' && localStatus === 'ready' && Boolean(release);
   $: profileLabel = profile === 'curated' ? 'Curated release' : 'Community claims';
+  let lastRemoteQuery = '';
+  $: remoteQuery = `${profile}|${region}|${category}|${search}`;
+  $: if (localMode && localStatus === 'ready' && remoteQuery !== lastRemoteQuery) { lastRemoteQuery = remoteQuery; const url = new URL(window.location.href); for (const key of ['country_code', 'category', 'q']) url.searchParams.delete(key); if (region !== 'all') url.searchParams.set('country_code', region); if (category !== 'all') url.searchParams.set('category', category); if (search.trim()) url.searchParams.set('q', search.trim()); history.replaceState(null, '', url); void loadLocal(); }
 
   const syncRoute = async () => {
     const route = parseRoute(window.location.hash);
@@ -43,7 +48,7 @@
   };
   const loadLocal = async () => {
     localStatus = 'loading'; localError = ''; manifestSha256 = undefined;
-    try { const result = await repo.list(profile === 'community' ? 'community' : 'official'); loaded = result.locations; selected = result.locations[0]; release = result.releaseId; localStatus = 'ready'; await syncRoute(); }
+    try { const result = await repo.list(profile === 'community' ? 'community' : 'official', { country_code: region === 'all' ? undefined : region, category: category === 'all' ? undefined : category }); loaded = result.locations; selected = result.locations[0]; release = result.releaseId; ruleset = result.ruleset; localStatus = 'ready'; await syncRoute(); }
     catch (error) { const kind = error && typeof error === 'object' && 'kind' in error ? (error as { kind: string }).kind : 'error'; localStatus = kind === 'no-release' ? 'no-release' : 'error'; localError = error instanceof Error ? error.message : 'Local V2 response was rejected safely.'; loaded = []; selected = undefined; }
   };
   const downloadCsv = async () => {
@@ -54,14 +59,17 @@
   };
   const select = (id: string) => { selected = source.find((item) => item.id === id) ?? selected; window.location.hash = `/locations/${id}?profile=${profile}`; };
   const profileChanged = () => { if (localMode) void loadLocal(); };
-  onMount(() => { const params = new URLSearchParams(window.location.search); localMode = params.get('mode') === 'local-v2'; if (localMode) { try { const api = params.get('api') ?? undefined; repo = new LocalLocationRepository(globalThis.fetch, api); csvRepo = new LocalCsvExportRepository(globalThis.fetch, api ?? ''); } catch (error) { localStatus = 'error'; localError = error instanceof Error ? error.message : 'Local API origin was rejected safely.'; } } if (localMode && localStatus !== 'error') void loadLocal(); else if (!localMode) void syncRoute(); const onHashChange = () => void syncRoute(); window.addEventListener('hashchange', onHashChange); return () => window.removeEventListener('hashchange', onHashChange); });
+  const clearFilters = () => { search = ''; region = 'all'; category = 'all'; };
+  onMount(() => { const params = new URLSearchParams(window.location.search); localMode = params.get('mode') === 'local-v2'; if (localMode) { try { const api = params.get('api') ?? undefined; repo = new LocalLocationRepository(globalThis.fetch, api); csvRepo = new LocalCsvExportRepository(globalThis.fetch, api ?? ''); metadataStatus = 'loading'; void new FilterMetadataRepository(globalThis.fetch, api ?? '').get().then((value) => { metadata = value; metadataStatus = 'ready'; }).catch(() => { metadataStatus = 'error'; }); } catch (error) { localStatus = 'error'; localError = error instanceof Error ? error.message : 'Local API origin was rejected safely.'; } } if (localMode && localStatus !== 'error') void loadLocal(); else if (!localMode) void syncRoute(); const onHashChange = () => void syncRoute(); window.addEventListener('hashchange', onHashChange); return () => window.removeEventListener('hashchange', onHashChange); });
+onMount(() => { const params = new URLSearchParams(window.location.search); if (params.get('mode') === 'local-v2') { search = params.get('q') ?? ''; region = params.get('country_code') ?? 'all'; category = params.get('category') ?? 'all'; } });
 </script>
 
 <svelte:head><title>Until Every Cage · evidence desk</title></svelte:head>
 <main>
   <header class="top"><a class="wordmark" href="/v2-preview/#/">UNTIL EVERY CAGE <span>V2 / FIELD NOTE</span></a><nav aria-label="Site"><a href="/ethics.html">Ethics &amp; safeguards ↗</a></nav></header>
   <section class="intro"><p class="eyebrow">EVIDENCE DESK · {localMode ? 'LOCAL V2 API' : 'SYNTHETIC PREVIEW'}</p><h1>See what a record can—and cannot—tell us.</h1><p class="lede">Start with the source profile, narrow the visible evidence, then inspect what a record can—and cannot—tell us.</p></section>
-  <section class="research-bar" aria-labelledby="research-heading"><div><p class="eyebrow">01 / DISCOVER</p><h2 id="research-heading">Choose the evidence lane</h2><p>Profiles stay separate. A community claim is never silently promoted into a curated result.</p></div><div class="toolbar"><label>Profile<select bind:value={profile} onchange={profileChanged}><option value="curated">Curated release</option><option value="community">Community claims</option></select></label><label>Search locations<input aria-label="Search locations" bind:value={search} placeholder="Name, region, category" /></label><label>Region<select bind:value={region}><option value="all">All regions</option><option value="North Coast">North Coast</option></select></label><label>Category<select bind:value={category}><option value="all">All categories</option><option value="dairy">Dairy</option><option value="slaughter">Slaughter</option></select></label></div></section>
+  <section class="research-bar" aria-labelledby="research-heading"><div><p class="eyebrow">01 / DISCOVER</p><h2 id="research-heading">Choose the evidence lane</h2><p>Profiles stay separate. A community claim is never silently promoted into a curated result.</p></div><div class="toolbar"><label>Profile<select bind:value={profile} onchange={profileChanged}><option value="curated">Curated release</option><option value="community">Community claims</option></select></label><label>Search locations<input aria-label="Search locations" bind:value={search} placeholder="Name, region, category" /></label><label>Country<select aria-label="Country" bind:value={region}><option value="all">All countries</option>{#if metadata}{#each metadata.dimensions.country_code.values as value}<option value={value}>{value}</option>{/each}{/if}</select></label><label>Category<select aria-label="Category" bind:value={category}><option value="all">All categories</option>{#if metadata}{#each metadata.dimensions.category.values as value}<option value={value}>{value}</option>{/each}{/if}</select></label></div>{#if localMode && metadataStatus === 'loading'}<p class="metadata-status" role="status">Loading available filter values…</p>{:else if localMode && metadataStatus === 'error'}<p class="metadata-status error" role="status" aria-live="polite">Filter metadata is unavailable; only unscoped discovery is shown.</p>{/if}</section>
+  <div class="filter-context" aria-live="polite"><span>{search || region !== 'all' || category !== 'all' ? `Filters applied: ${[search && `name “${search}”`, region !== 'all' && region, category !== 'all' && category].filter(Boolean).join(' · ')}` : 'No additional filters applied'}</span><button onclick={clearFilters} disabled={!search && region === 'all' && category === 'all'}>Clear filters</button></div>
   {#if profile === 'community'}<div class="warning" role="note"><strong>Unreviewed community claim</strong><span>Not verified by Until Every Cage. Review this profile before relying on it.</span></div>{/if}
   {#if localMode && localStatus === 'loading'}<div class="state" role="status" aria-live="polite">Loading the {profileLabel.toLowerCase()}…</div>{:else if localMode && (localStatus === 'error' || localStatus === 'no-release')}<div class="state error" role="alert"><h2>{localStatus === 'no-release' ? 'No promoted release' : 'Could not load local V2 data'}</h2><p>{localError}</p><button onclick={loadLocal}>Try again</button></div>{:else if localMode && detailStatus === 'loading'}<div class="state" role="status" aria-live="polite">Loading the selected local record…</div>{:else if localMode && detailStatus === 'error'}<div class="state error" role="alert"><h2>Could not load local record</h2><p>{localError}</p></div>{:else}
     <section class="results-head" aria-labelledby="results-heading"><div><p class="eyebrow">02 / FILTER &amp; COMPARE</p><h2 id="results-heading">Results <span>{visibleLocations.length}</span></h2></div><p class="scope">{localMode ? 'Current eligible response' : 'Fictional demonstration data'} · {profileLabel}</p></section>
