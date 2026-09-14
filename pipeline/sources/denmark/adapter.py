@@ -28,6 +28,24 @@ class DenmarkSmileyAdapter:
     source_id = SOURCE_ID
     adapter_version = ADAPTER_VERSION
 
+    def run_registered(self, raw_path: str | Path, run_dir: str | Path, config: dict[str, Any]) -> dict[str, Any]:
+        """Bridge the shared registered-input runner using recorded evidence."""
+        required = ("source_url", "retrieved_at_utc", "checksum_sha256", "byte_size")
+        missing = [key for key in required if not config.get(key)]
+        if missing:
+            raise ValueError("missing acquisition provenance: " + ", ".join(missing))
+        raw = Path(raw_path).read_bytes()
+        digest = hashlib.sha256(raw).hexdigest()
+        if digest != config["checksum_sha256"] or len(raw) != config["byte_size"]:
+            raise ValueError("registered acquisition integrity mismatch")
+        artifact = SourceArtifact(
+            source_url=str(config["source_url"]), retrieved_at_utc=str(config["retrieved_at_utc"]),
+            sha256=digest, byte_size=len(raw), publication_date=config.get("publication_date"),
+            effective_date=config.get("effective_date"), code_version=str(config.get("code_version", ADAPTER_VERSION)),
+            config_version=str(config.get("config_version", "unknown")), rights_caveat=config.get("rights_caveat"),
+            privacy_caveat=config.get("privacy_caveat"), coverage=config.get("coverage"))
+        return self.run(raw_path, run_dir, artifact)
+
     def run(self, raw_path: str | Path, run_dir: str | Path, artifact: SourceArtifact) -> dict[str, Any]:
         raw = Path(raw_path).read_bytes()
         actual = hashlib.sha256(raw).hexdigest()
