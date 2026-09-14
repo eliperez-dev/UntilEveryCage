@@ -12,7 +12,7 @@ class SharedPipelineTests(unittest.TestCase):
     def test_registry_and_suppression_are_shared(self):
         root = Path(__file__).parents[1]
         registry = load(root / "adapter-capabilities.json")
-        self.assertEqual(registry["adapters"][0]["source_id"], "fss_approved_establishments")
+        self.assertIn("fss_approved_establishments", {entry["source_id"] for entry in registry["adapters"]})
         adapter = FssApprovedEstablishmentsAdapter()
         with tempfile.TemporaryDirectory() as directory:
             staging = Path(directory) / "staging"

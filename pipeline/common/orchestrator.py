@@ -52,11 +52,21 @@ def run_registered_input(raw_path: str | Path, runs_dir: str | Path, config: dic
         records = [json.loads(line) for line in (run_dir / "normalized" / "records.jsonl").read_text(encoding="utf-8").splitlines() if line]
         suppressed = suppressed_ids or set()
         candidate = [r for r in records if r.get("source_id") not in suppressed]
-        _atomic(run_dir / "release-candidate" / "records.jsonl",
-                b"".join((json.dumps(r, ensure_ascii=False, sort_keys=True) + "\n").encode() for r in candidate))
-        status = {"status": "candidate-ready", "publication_state": "human-gate-required",
-                  "release_promoted": False, "suppressed_count": len(records) - len(candidate),
-                  "manifest": manifest, "prior_eligible_release": prior_eligible_release}
+        restricted = config.get("acquisition_status") == "restricted_pending_terms"
+        if restricted:
+            # Restricted inputs may be parsed and retained for review, but can
+            # never create a publication candidate until terms are confirmed.
+            status = {"status": "staged-restricted", "publication_state": "restricted",
+                      "candidate_created": False, "release_promoted": False,
+                      "suppressed_count": len(records) - len(candidate),
+                      "manifest": manifest, "prior_eligible_release": prior_eligible_release}
+        else:
+            _atomic(run_dir / "release-candidate" / "records.jsonl",
+                    b"".join((json.dumps(r, ensure_ascii=False, sort_keys=True) + "\n").encode() for r in candidate))
+            status = {"status": "candidate-ready", "publication_state": "human-gate-required",
+                      "candidate_created": True, "release_promoted": False,
+                      "suppressed_count": len(records) - len(candidate),
+                      "manifest": manifest, "prior_eligible_release": prior_eligible_release}
     except Exception as exc:
         status = {"status": "failed", "publication_state": "unchanged", "release_promoted": False,
                   "error_type": type(exc).__name__, "error": str(exc),

@@ -5,7 +5,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from adapter import parse, normalize, run, source_metadata
+try:
+    from .adapter import parse, normalize, run, source_metadata
+except ImportError:
+    from adapter import parse, normalize, run, source_metadata
 
 
 ROOT = Path(__file__).parent

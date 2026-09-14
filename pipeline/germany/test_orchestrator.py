@@ -4,7 +4,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from orchestrator import register_input, run_registered_input
+try:
+    from .orchestrator import register_input, run_registered_input
+except ImportError:
+    from orchestrator import register_input, run_registered_input
 
 
 ROOT = Path(__file__).parent

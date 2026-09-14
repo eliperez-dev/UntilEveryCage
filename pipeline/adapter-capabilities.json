@@ -1,6 +1,7 @@
 {
   "schema_version": "adapter-capabilities-v1",
   "adapters": [
+    {"country_code": "de", "source_id": "de-bvl-bltu", "adapter_version": "de-v2-foundation-1", "schema_version": "location-v2-foundation-1", "adapter_path": "pipeline/germany/adapter.py", "acquisition": "restricted_pending_terms", "geocoding": "disabled", "publication": "human_gate_required"},
     {"country_code": "gb", "source_id": "fss_approved_establishments", "adapter_version": "fss-scotland-v2-1", "schema_version": "fss-scotland-approved-v1", "adapter_path": "pipeline/sources/uk/fss_approved/adapter.py", "acquisition": "synthetic_only", "geocoding": "disabled", "publication": "human_gate_required"},
     {"country_code": "gb", "source_id": "fsa_approved_establishments", "adapter_version": "fsa-uk-v2-1", "schema_version": "fsa-uk-approved-v1", "adapter_path": "pipeline/sources/uk/fsa_approved/adapter.py", "acquisition": "synthetic_only", "geocoding": "disabled", "publication": "human_gate_required"}
   ]
