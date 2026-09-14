@@ -68,8 +68,12 @@ class OrchestratorTests(unittest.TestCase):
             result = run_registered_input(raw_path, root / "runs", restricted)
             self.assertEqual(result["status"], "staged-restricted")
             self.assertFalse(result["candidate_created"])
+            self.assertEqual(result["geocoding"], "disabled")
+            self.assertEqual(set(result["public_surfaces"]), {"api", "map", "export", "cache", "history"})
+            self.assertFalse(any(result["public_surfaces"].values()))
             run_dir = next((root / "runs").iterdir())
             self.assertFalse((run_dir / "release-candidate").exists())
+            self.assertFalse((run_dir / "released" / "records.jsonl").exists())
 
 
 if __name__ == "__main__":

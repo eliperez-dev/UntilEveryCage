@@ -82,8 +82,22 @@ class GermanyAdapterTests(unittest.TestCase):
             self.assertEqual(len(records[0]["source_columns"]), 50)
             self.assertEqual(records[0]["source_columns"][10]["header"], "SH")
             self.assertIsNone(records[0]["latitude"])
+            self.assertTrue(manifest["schema_fingerprint"])
+            self.assertTrue(manifest["config_fingerprint"])
+            self.assertEqual(manifest["mapping_version"], "de-bltu-activity-map-1")
+            diagnostics = json.loads((output / "validation-report.json").read_text())
+            self.assertEqual(diagnostics["row_length_counts"], {"50": 3})
             quarantined = [json.loads(line) for line in (output / "quarantined" / "records.jsonl").read_text().splitlines()]
             self.assertEqual(quarantined[0]["quarantine_reason"], "unmapped activity code")
+
+    def test_bltu_mapping_is_explicit_and_coordinates_are_never_enriched(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "out"
+            run_bltu(ROOT / "fixtures" / "synthetic_bltu.csv", output, {"source_url": "https://example.invalid/bltu", "terms_status": "pending_confirmation"})
+            records = [json.loads(line) for line in (output / "normalized" / "records.jsonl").read_text().splitlines()]
+            self.assertTrue(all(row["interpretation"]["status"] == "mapped" for row in records))
+            self.assertTrue(all(row["coordinate_status"] == "source_unavailable" for row in records))
+            self.assertTrue(all(row["latitude"] is None and row["longitude"] is None for row in records))
 
 
 if __name__ == "__main__":

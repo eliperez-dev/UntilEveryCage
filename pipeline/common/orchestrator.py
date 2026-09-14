@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
-ORCHESTRATOR_VERSION = "v2-orchestrator-1"
+ORCHESTRATOR_VERSION = "v2-orchestrator-2"
 
 
 def _atomic(path: Path, payload: bytes) -> None:
@@ -52,12 +52,16 @@ def run_registered_input(raw_path: str | Path, runs_dir: str | Path, config: dic
         records = [json.loads(line) for line in (run_dir / "normalized" / "records.jsonl").read_text(encoding="utf-8").splitlines() if line]
         suppressed = suppressed_ids or set()
         candidate = [r for r in records if r.get("source_id") not in suppressed]
-        restricted = config.get("acquisition_status") == "restricted_pending_terms"
+        restricted = (config.get("terms_status") == "pending_confirmation"
+                      or config.get("acquisition_status") == "restricted_pending_terms")
         if restricted:
             # Restricted inputs may be parsed and retained for review, but can
             # never create a publication candidate until terms are confirmed.
-            status = {"status": "staged-restricted", "publication_state": "restricted",
+            status = {"status": "staged-restricted", "publication_state": "terms-gate-blocked",
                       "candidate_created": False, "release_promoted": False,
+                      "public_surfaces": {"api": False, "map": False, "export": False,
+                                          "cache": False, "history": False},
+                      "geocoding": "disabled",
                       "suppressed_count": len(records) - len(candidate),
                       "manifest": manifest, "prior_eligible_release": prior_eligible_release}
         else:

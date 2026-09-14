@@ -34,3 +34,9 @@ irregular row lengths. It preserves headers and values as ordered pairs, keeps t
 current approval number distinct from legacy numbers, and quarantines malformed rows,
 missing current IDs, and unmapped activities. It is not a release adapter while
 `terms_status` is `pending_confirmation`.
+
+Restricted runs also record schema, configuration, and mapping fingerprints plus
+aggregate row-length, activity, quarantine, and coordinate diagnostics. The shared
+orchestrator explicitly marks API, map, export, cache, and history surfaces unavailable
+and geocoding disabled while terms are pending. These safeguards do not replace the
+separate human terms, privacy/safety, legal, suppression, review, or publication gates.
