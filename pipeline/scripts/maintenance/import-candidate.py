@@ -120,6 +120,10 @@ def import_candidate(database_url: str, manifest: dict, rows: list[dict], releas
     ruleset = str(manifest.get("config_version") or manifest.get("schema_version") or "unknown")
     with psycopg.connect(database_url) as db:
         verify_disposable_marker(db)
+        # The guard query starts an implicit read transaction in psycopg.
+        # End it before opening the independently resumable write batches;
+        # otherwise psycopg nests them as savepoints under one outer rollback.
+        db.commit()
         with db.transaction():
             db.execute("""INSERT INTO uec.sources(source_id,country_code,name,official_url,access_method)
                          VALUES (%s,%s,%s,%s,'validated-private-staging')
