@@ -34,3 +34,15 @@ dataset is complete or that records are current. A reviewed acquisition may be
 retained in ignored private storage for research and validation only. The
 adapter emits a private candidate with `release_state: not-created`; no health,
 approval, geocoding, or publication conclusion follows from a successful run.
+
+## Full private refresh evidence
+
+The retained full artifact was retrieved from the endpoint above at
+`2026-09-14T05:41:12Z` (59,852,153 bytes; SHA-256 recorded in ignored local
+acquisition metadata). Its deterministic handoff contained 58,792 normalized
+rows. In a uniquely named disposable PostGIS database, the batched importer
+created 58,792 source records and release members; all 58,792 remained pending
+privacy review and 0 were default-visible. A rerun left those counts unchanged.
+The database volume was removed after the check. The guarded API was not run
+against the full candidate; the existing synthetic DK-shaped E2E covers public
+exclusion and preview gates. No release or publication approval follows.
