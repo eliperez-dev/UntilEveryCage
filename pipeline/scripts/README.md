@@ -12,7 +12,12 @@ Run scripts from the repository root so their documented paths and output locati
 
 ## Adding another country
 
-Country-specific adapters currently live in `stages/` because Denmark is the only active adapter. Once a second country is added, move country logic into a dedicated `stages/<country>/` directory and keep shared orchestration or validation helpers outside country directories. Do not hide source-specific assumptions in shared code.
+Country-owned adapters and source-specific stages live under
+`pipeline/sources/<country>/`; Denmark is the current reference layout. The
+paths under `pipeline/scripts/stages/` remain shared generic stages or
+compatibility shims for legacy commands, while shared orchestration and
+validation helpers stay outside country directories. Do not hide source-
+specific assumptions in shared code.
 
 Keep diagnostics separate from production stages, and add a short entry to this file when a new script category is introduced.
 
