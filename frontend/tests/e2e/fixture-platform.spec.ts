@@ -17,6 +17,18 @@ test('renders the synthetic evidence desk', async ({ page }) => {
   await expect(page.getByText('SYNTHETIC PREVIEW')).toBeVisible();
 });
 
+test('moves through the accessible synthetic scale slice into the explorer', async ({ page }) => {
+  await page.goto('./#/');
+  await expect(page.getByRole('heading', { name: 'Start with one individual.' })).toBeVisible();
+  await expect(page.getByText('MODEL ESTIMATE · SYNTHETIC')).toBeVisible();
+  const scale = page.getByLabel('How large is the example?');
+  await scale.press('ArrowRight');
+  await expect(page.getByText('10')).toBeVisible();
+  await expect(page.getByText(/fictional interaction, not a published facility/)).toBeVisible();
+  await page.getByRole('link', { name: /Continue to the source-linked explorer/ }).click();
+  await expect(page.getByRole('heading', { name: 'Choose the evidence lane' })).toBeVisible();
+});
+
 test('selecting the community profile shows persistent warning context', async ({ page }) => {
   await page.goto('./#/');
   await page.getByLabel('Profile').selectOption('community');

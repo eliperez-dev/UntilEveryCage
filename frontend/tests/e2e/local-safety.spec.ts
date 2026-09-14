@@ -69,22 +69,15 @@ test('late list response cannot replace a newer community selection', async ({ p
   await expect(page.getByRole('note')).toContainText('Not verified');
 });
 
-test('changing search while a list is pending invalidates the old response', async ({ page }) => {
+test('search filters the loaded page without refetching or claiming global completeness', async ({ page }) => {
   await mockMetadata(page);
-  let releaseFirst: (() => void) | undefined;
-  const firstHeld = new Promise<void>(resolve => { releaseFirst = resolve; });
   let listRequests = 0;
-  await page.route('**/api/v2/locations**', async route => {
-    const index = ++listRequests;
-    if (index === 1) await firstHeld;
-    try { await route.fulfill({ json: list('official', [row(firstId, index === 1 ? 'Stale initial result' : 'Current filtered result')]) }); } catch { /* Aborted request. */ }
-  });
+  await page.route('**/api/v2/locations**', async route => { listRequests += 1; await route.fulfill({ json: list('official', [row(firstId, 'Current filtered result')], secondId) }); });
   await page.goto('./?mode=local-v2#/');
   await page.getByLabel('Search locations').fill('current');
   await expect(page.getByRole('heading', { name: 'Current filtered result' })).toBeVisible();
-  releaseFirst?.();
-  await expect(page.getByRole('heading', { name: 'Stale initial result' })).toHaveCount(0);
-  expect(listRequests).toBeGreaterThanOrEqual(2);
+  expect(listRequests).toBe(1);
+  await expect(page).toHaveURL(/q=current/);
 });
 
 test('late detail response cannot replace a newer route', async ({ page }) => {

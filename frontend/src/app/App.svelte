@@ -13,6 +13,7 @@
   import { FilterMetadataRepository, type FilterMetadata } from '../api/FilterMetadataRepository';
   import ReleaseContext from '../ui/ReleaseContext.svelte';
   import ExportControl from '../ui/ExportControl.svelte';
+  import ScaleNarrative from '../features/scale/ScaleNarrative.svelte';
 
   let profile: Profile = 'curated';
   let selected: Location | undefined = locations[0];
@@ -42,7 +43,7 @@
   $: eligibleExport = localMode && profile === 'curated' && localStatus === 'ready' && Boolean(release);
   $: profileLabel = profile === 'curated' ? 'Curated release' : 'Community claims';
   let lastRemoteQuery = '';
-  $: remoteQuery = `${profile}|${region}|${category}|${sourceType}|${displayPrecision}|${lifecycleStatus}|${search}`;
+  $: remoteQuery = `${profile}|${region}|${category}|${sourceType}|${displayPrecision}|${lifecycleStatus}`;
   const currentRemoteQuery = () => `${profile}|${region}|${category}|${sourceType}|${displayPrecision}|${lifecycleStatus}|${search}`;
   $: if (localMode && (localStatus === 'ready' || localStatus === 'loading') && remoteQuery !== lastRemoteQuery) { pushFilterUrl(); void loadLocal(); }
 
@@ -96,7 +97,7 @@
   const select = (id: string) => { selected = source.find((item) => item.id === id) ?? selected; window.location.hash = `/locations/${id}?profile=${profile}`; };
   const profileChanged = () => { history.pushState(null, '', `#/?profile=${profile}`); if (localMode) void loadLocal(); else void syncRoute(); };
   const clearFilters = () => { search = ''; region = 'all'; category = 'all'; sourceType = 'all'; displayPrecision = 'all'; lifecycleStatus = 'all'; };
-  const searchChanged = () => { if (localMode) pushFilterUrl(); };
+  const searchChanged = () => { if (localMode) { const url = new URL(window.location.href); if (search.trim()) url.searchParams.set('q', search.trim()); else url.searchParams.delete('q'); history.replaceState(null, '', url); } };
   onMount(() => {
     const params = new URLSearchParams(window.location.search);
     localMode = params.get('mode') === 'local-v2';
@@ -118,6 +119,7 @@
 <main>
   <header class="top"><a class="wordmark" href="/v2-preview/#/">UNTIL EVERY CAGE <span>V2 / FIELD NOTE</span></a><nav aria-label="Site"><a href="/ethics.html">Ethics &amp; safeguards ↗</a></nav></header>
   <section class="intro"><p class="eyebrow">EVIDENCE DESK · {localMode ? 'LOCAL V2 API' : 'SYNTHETIC PREVIEW'}</p><h1>See what a record can—and cannot—tell us.</h1><p class="lede">Start with the source profile, narrow the visible evidence, then inspect what a record can—and cannot—tell us.</p></section>
+  <ScaleNarrative />
   <section class="research-bar" aria-labelledby="research-heading"><div><p class="eyebrow">01 / DISCOVER</p><h2 id="research-heading">Choose the evidence lane</h2><p>Profiles stay separate. A community claim is never silently promoted into a curated result.</p></div><div class="toolbar"><label>Profile<select bind:value={profile} onchange={profileChanged}><option value="curated">Curated release</option><option value="community">Community claims</option></select></label><label>Search locations<input aria-label="Search locations" bind:value={search} oninput={searchChanged} placeholder="Name, region, category" /></label><label>Country<select aria-label="Country" bind:value={region}><option value="all">All countries</option>{#if metadata}{#each metadata.dimensions.country_code.values as value}<option value={value}>{value}</option>{/each}{/if}</select></label><label>Category<select aria-label="Category" bind:value={category}><option value="all">All categories</option>{#if metadata}{#each metadata.dimensions.category.values as value}<option value={value}>{value}</option>{/each}{/if}</select></label><label>Source origin<select aria-label="Source origin" bind:value={sourceType}><option value="all">All source origins</option>{#if metadata}{#each metadata.dimensions.source_type.values as value}<option value={value}>{value}</option>{/each}{/if}</select></label><label>Map precision<select aria-label="Map precision" bind:value={displayPrecision}><option value="all">All map precision</option>{#if metadata}{#each metadata.dimensions.display_precision.values as value}<option value={value}>{value}</option>{/each}{/if}</select></label><label>Lifecycle<select aria-label="Lifecycle status" bind:value={lifecycleStatus}><option value="all">All lifecycle states</option>{#if metadata}{#each metadata.dimensions.lifecycle_status.values as value}<option value={value}>{value}</option>{/each}{/if}</select></label></div>{#if localMode && metadataStatus === 'loading'}<p class="metadata-status" role="status">Loading available filter values…</p>{:else if localMode && metadataStatus === 'error'}<p class="metadata-status error" role="status" aria-live="polite">Filter metadata is unavailable; only unscoped discovery is shown.</p>{/if}</section>
   <div class="filter-context" aria-live="polite"><span>{search || region !== 'all' || category !== 'all' || sourceType !== 'all' || displayPrecision !== 'all' || lifecycleStatus !== 'all' ? `Filters applied: ${[search && `name “${search}”`, region !== 'all' && region, category !== 'all' && category, sourceType !== 'all' && sourceType, displayPrecision !== 'all' && displayPrecision, lifecycleStatus !== 'all' && lifecycleStatus].filter(Boolean).join(' · ')}` : 'No additional filters applied'}</span><button onclick={clearFilters} disabled={!search && region === 'all' && category === 'all' && sourceType === 'all' && displayPrecision === 'all' && lifecycleStatus === 'all'}>Clear filters</button></div>
   {#if profile === 'community'}<div class="warning" role="note"><strong>Community claims</strong><span>Unreviewed community claims: Not verified by Until Every Cage. Check each record’s factual review status before relying on it.</span></div>{/if}
