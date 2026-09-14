@@ -102,6 +102,9 @@ class SeededApiE2ETests(unittest.TestCase):
     def test_facets_apply_filters_and_never_include_restricted_record(self):
         body = self.get('/api/v2/discovery/facets?profile=official&category=slaughter')
         self.assertEqual(body['meta']['release_id'], 'e2e-promoted')
+        self.assertEqual(body['meta']['ruleset_version'], 'e2e-v1')
+        self.assertEqual(body['meta']['coverage_scope'], 'selected_promoted_release_public_facilities')
+        self.assertIn('not story-wide or animal counts', body['meta']['count_semantics'])
         self.assertEqual(body['dimensions']['category'], [{'value': 'slaughter', 'count': 1}])
         self.assertNotIn('restricted', json.dumps(body))
         empty = self.get('/api/v2/discovery/facets?country_code=ZZ')

@@ -410,7 +410,7 @@ pub async fn get_v2_facets_handler(
             );
         }
     };
-    let release = match client.query_opt("SELECT release_id FROM uec.releases WHERE status='promoted' AND profile=$1 ORDER BY created_at DESC, release_id DESC LIMIT 1", &[&profile]).await { Ok(row) => row, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "release_query_failed", "release query failed") };
+    let release = match client.query_opt("SELECT release_id, ruleset_version, created_at FROM uec.releases WHERE status='promoted' AND profile=$1 ORDER BY created_at DESC, release_id DESC LIMIT 1", &[&profile]).await { Ok(row) => row, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "release_query_failed", "release query failed") };
     let Some(release) = release else {
         return v2_error(
             StatusCode::NOT_FOUND,
@@ -419,6 +419,8 @@ pub async fn get_v2_facets_handler(
         );
     };
     let release_id: String = release.get(0);
+    let ruleset_version: String = release.get(1);
+    let release_created_at: chrono::DateTime<chrono::Utc> = release.get(2);
     let rows = match client.query("SELECT country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type FROM uec.map_facilities_display_history WHERE release_id=$1 AND ($2::text IS NULL OR country_code=$2) AND ($3::text IS NULL OR classification_category=$3) AND ($4::text IS NULL OR provenance_origin_type=$4) AND ($5::text IS NULL OR display_precision=$5) AND ($6::text IS NULL OR lifecycle_status=$6)", &[&release_id, &params.country_code, &params.category, &params.source_type, &params.display_precision, &params.lifecycle_status]).await { Ok(rows) => rows, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "facets_query_failed", "public facets unavailable") };
     let mut dimensions = serde_json::Map::new();
     for (name, values) in [
@@ -460,7 +462,7 @@ pub async fn get_v2_facets_handler(
             ),
         );
     }
-    Json(json!({"api_version":"v2", "meta":{"profile":profile,"release_id":release_id,"filters":{"country_code":params.country_code,"category":params.category,"source_type":params.source_type,"display_precision":params.display_precision,"lifecycle_status":params.lifecycle_status}}, "dimensions":dimensions})).into_response()
+    Json(json!({"api_version":"v2", "meta":{"profile":profile,"release_id":release_id,"ruleset_version":ruleset_version,"release_created_at":release_created_at,"coverage_scope":"selected_promoted_release_public_facilities","count_semantics":"Counts are eligible public facility projection rows after current suppression; they are not story-wide or animal counts.","filters":{"country_code":params.country_code,"category":params.category,"source_type":params.source_type,"display_precision":params.display_precision,"lifecycle_status":params.lifecycle_status}}, "dimensions":dimensions})).into_response()
 }
 
 #[derive(Deserialize)]
@@ -741,7 +743,9 @@ pub async fn get_v2_locations_handler(
         "release_created_at": promoted_created_at,
         "profile": promoted_profile,
         "next_cursor": next_cursor,
-        "coverage_note": "Results are limited to the selected promoted release and public-access policy."
+        "coverage_note": "Results are eligible public facility projection rows from the selected promoted release after current suppression; they are not story-wide or animal counts.",
+        "coverage_scope": "selected_promoted_release_public_facilities",
+        "count_semantics": "Each row represents a public facility projection, not an animal count."
     });
     if transaction.commit().await.is_err() {
         return (
@@ -880,7 +884,7 @@ pub async fn get_v2_location_detail_handler(
         )
             .into_response();
     }
-    Json(serde_json::json!({"data": item, "api_version": "v2", "meta": {"release_id": release_id, "ruleset_version": ruleset, "release_created_at": created_at, "profile": profile}})).into_response()
+    Json(serde_json::json!({"data": item, "api_version": "v2", "meta": {"release_id": release_id, "ruleset_version": ruleset, "release_created_at": created_at, "profile": profile, "coverage_scope": "selected_promoted_release_public_facilities", "count_semantics": "This record is a public facility projection, not an animal count."}})).into_response()
 }
 
 #[derive(Deserialize)]
@@ -920,6 +924,12 @@ mod v2_api_tests {
         assert_eq!(contract["version"], "v2");
         assert_eq!(contract["profiles"].as_array().unwrap().len(), 3);
         assert_eq!(contract["error"]["shape"]["api_version"], "v2");
+        assert_eq!(
+            contract["endpoints"]["GET /api/v2/discovery/facets"]["success"]["meta"]["coverage_scope"],
+            "selected_promoted_release_public_facilities"
+        );
+        assert!(contract["endpoints"]["GET /api/v2/discovery/facets"]["success"]["meta"]["count_semantics"]
+            .as_str().unwrap().contains("not story-wide"));
     }
 
     #[tokio::test]
