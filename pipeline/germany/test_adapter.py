@@ -7,8 +7,10 @@ from pathlib import Path
 
 try:
     from .adapter import parse, normalize, run, source_metadata
+    from .bltu_adapter import run as run_bltu
 except ImportError:
     from adapter import parse, normalize, run, source_metadata
+    from bltu_adapter import run as run_bltu
 
 
 ROOT = Path(__file__).parent
@@ -67,6 +69,21 @@ class GermanyAdapterTests(unittest.TestCase):
             self.assertEqual(manifest["release_state"], "not-created")
             self.assertFalse((output / "released" / "records.jsonl").exists())
             self.assertEqual(json.loads((output / "run-manifest.json").read_text())["quarantined_rows"], 1)
+
+    def test_bltu_positional_mapping_preserves_duplicate_headers_and_quarantines_unknowns(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "out"
+            config = {"source_url": "https://example.invalid/bltu", "terms_status": "pending_confirmation"}
+            manifest = run_bltu(ROOT / "fixtures" / "synthetic_bltu.csv", output, config)
+            self.assertEqual(manifest["input_rows"], 3)
+            self.assertEqual(manifest["normalized_rows"], 2)
+            self.assertEqual(manifest["quarantined_rows"], 1)
+            records = [json.loads(line) for line in (output / "normalized" / "records.jsonl").read_text().splitlines()]
+            self.assertEqual(len(records[0]["source_columns"]), 50)
+            self.assertEqual(records[0]["source_columns"][10]["header"], "SH")
+            self.assertIsNone(records[0]["latitude"])
+            quarantined = [json.loads(line) for line in (output / "quarantined" / "records.jsonl").read_text().splitlines()]
+            self.assertEqual(quarantined[0]["quarantine_reason"], "unmapped activity code")
 
 
 if __name__ == "__main__":

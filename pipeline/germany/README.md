@@ -27,3 +27,10 @@ release reference unchanged on failure and never promotes or publishes a release
 Before any real data is considered, add source-specific acquisition, dependency
 capture, and suppression checks across map/API/export/cache/history surfaces; terms,
 privacy/safety, legal, review, and publication approval remain human gates.
+
+`bltu_adapter.py` is the restricted-export profile for the current BLtU General List.
+It uses positional columns because the export repeats activity-code headers and has
+irregular row lengths. It preserves headers and values as ordered pairs, keeps the
+current approval number distinct from legacy numbers, and quarantines malformed rows,
+missing current IDs, and unmapped activities. It is not a release adapter while
+`terms_status` is `pending_confirmation`.
