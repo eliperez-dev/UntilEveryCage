@@ -1,5 +1,21 @@
 # Source-adapter contract
 
+## Shared private-run QA seam
+
+`private_run.run_typed_adapter` provides the common runner for typed
+`SourceAdapter` implementations. It writes a deterministic, row-free
+`qa.json` beside the adapter manifest, validates count and release-state
+invariants, and accepts provenance recorded either at the manifest root or in
+the nested `acquisition` object. The report includes schema/count/anomaly and
+drift summaries without copying source values, coordinates, or other row data.
+
+When a prior normalized artifact is supplied, disappeared identifiers are
+reported only as `not-observed`; they are never converted into closure or
+deauthorization claims. Acquisition, ingestion, release approval, and
+publication remain separate stages so the scrape-to-ingestion pipeline can be
+fully automated without silently turning a failed or incomplete run into a
+public result.
+
 Adapters receive a preserved raw artifact and `SourceArtifact` facts: source URL,
 UTC retrieval time, SHA-256, byte size, supplied publication/effective dates,
 code/config versions, rights/privacy caveats, and coverage. They must retain
