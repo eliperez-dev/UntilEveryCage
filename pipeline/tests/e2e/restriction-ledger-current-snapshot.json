@@ -1,0 +1,6 @@
+{
+  "ledger_revision": "synthetic-r2",
+  "active_restrictions": [
+    {"source_id": "e2e.backup", "source_record_key": "restricted", "scope": "whole_record"}
+  ]
+}

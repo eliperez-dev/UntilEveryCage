@@ -10,6 +10,10 @@ $dump = Join-Path ([IO.Path]::GetTempPath()) "$project.dump"
 $migrationFile = Join-Path ([IO.Path]::GetTempPath()) "$project-migrations.sql"
 $seedFile = Join-Path $PSScriptRoot 'backup_restore_seed.sql'
 $suppressionFile = Join-Path $PSScriptRoot 'backup_restore_current_suppression.sql'
+$ledgerGate = Join-Path $root 'pipeline\scripts\maintenance\restriction-ledger-gate.py'
+$ledgerFile = Join-Path $PSScriptRoot 'restriction-ledger.json'
+$oldSnapshot = Join-Path $PSScriptRoot 'restriction-ledger-old-snapshot.json'
+$currentSnapshot = Join-Path $PSScriptRoot 'restriction-ledger-current-snapshot.json'
 
 function Invoke-FixtureSql([string]$path) {
   Get-Content -LiteralPath $path -Raw | & docker compose @composeArgs exec -T postgres psql -1 -v ON_ERROR_STOP=1 -U uec -d uec
@@ -91,11 +95,15 @@ try {
   if ($LASTEXITCODE -ne 0) { throw "Restore failed (exit $LASTEXITCODE)." }
   Assert-Snapshot 'old backup restored, before replay' '1,1,0,0,0,1,1'
   if (Test-SyntheticServiceGate) { throw 'Unsafe drill gate accepted an old backup before current restriction replay.' }
+  & python $ledgerGate --ledger $ledgerFile --snapshot $oldSnapshot *> $null
+  if ($LASTEXITCODE -eq 0) { throw 'Pre-service ledger gate accepted an old restriction snapshot.' }
   Write-Host '[backup-restore] PASS: synthetic pre-service gate rejects the old backup before replay.'
 
   Invoke-FixtureSql $suppressionFile
   Assert-Snapshot 'current restriction replayed' '1,1,1,1,1,0,0'
   if (-not (Test-SyntheticServiceGate)) { throw 'Synthetic pre-service gate rejected the replayed current restriction.' }
+  & python $ledgerGate --ledger $ledgerFile --snapshot $currentSnapshot
+  if ($LASTEXITCODE -ne 0) { throw 'Pre-service ledger gate rejected the current restriction replay.' }
   Write-Host 'PASS: synthetic old-backup restore remains gated until current restriction is replayed and both public projections exclude it.'
   Write-Host 'TEST ONLY: production still needs an independent durable restriction ledger and an enforced service-start gate.'
 } finally {
