@@ -16,7 +16,8 @@ from pathlib import Path
 
 LOGGER = logging.getLogger("uec.denmark.pipeline")
 ROOT = Path(__file__).resolve().parent.parent
-SCRIPTS = ROOT / "pipeline" / "scripts" / "stages"
+SHARED_STAGES = ROOT / "pipeline" / "scripts" / "stages"
+DENMARK_STAGES = ROOT / "pipeline" / "sources" / "denmark" / "stages"
 
 
 def utc_now() -> str:
@@ -97,7 +98,7 @@ def main() -> int:
         acquisition_args = ["--fetch", "--output-root", str(raw_output_root), "--terms-review", str(terms_review_path), "--run-id", acquisition_run_id]
         if args.source_url:
             acquisition_args.extend(["--url", args.source_url])
-        run_stage("acquire", SCRIPTS / "acquire-denmark-smiley.py", acquisition_args)
+        run_stage("acquire", DENMARK_STAGES / "acquire-denmark-smiley.py", acquisition_args)
         acquisition_root = raw_output_root / "dk.smiley"
         input_path = (acquisition_root / acquisition_run_id / "Smileydata.xml").resolve()
         acquisition_metadata = json.loads((input_path.parent / "acquisition-metadata.json").read_text(encoding="utf-8"))
@@ -123,19 +124,19 @@ def main() -> int:
         parse_args = [str(input_path), "--output-dir", str(parse_dir)]
         if acquired_source_url and acquired_source_url != "unknown":
             parse_args.extend(["--source-url", acquired_source_url])
-        run_stage("parse", SCRIPTS / "parse-denmark-smiley.py", parse_args)
-        run_stage("normalize", SCRIPTS / "normalize-denmark-smiley.py", [str(parse_dir / "parsed-rows.jsonl"), "--output-dir", str(normalize_dir)])
-        run_stage("classify", SCRIPTS / "classify-denmark.py", [str(normalize_dir / "normalized-records.jsonl"), "--rules", str(args.rules.resolve()), "--output-dir", str(classify_dir)])
+        run_stage("parse", DENMARK_STAGES / "parse-denmark-smiley.py", parse_args)
+        run_stage("normalize", DENMARK_STAGES / "normalize-denmark-smiley.py", [str(parse_dir / "parsed-rows.jsonl"), "--output-dir", str(normalize_dir)])
+        run_stage("classify", DENMARK_STAGES / "classify-denmark.py", [str(normalize_dir / "normalized-records.jsonl"), "--rules", str(args.rules.resolve()), "--output-dir", str(classify_dir)])
         validation_args = [str(classify_dir / "classified-records.jsonl"), "--output-dir", str(validate_dir)]
         if args.expected_rows is not None:
             validation_args.extend(["--expected-rows", str(args.expected_rows)])
-        run_stage("validate", SCRIPTS / "validate-denmark.py", validation_args)
-        run_stage("geocode_queue", SCRIPTS / "create-geocode-queue.py", [str(classify_dir / "classified-records.jsonl"), "--output-dir", str(geocode_dir)])
+        run_stage("validate", DENMARK_STAGES / "validate-denmark.py", validation_args)
+        run_stage("geocode_queue", SHARED_STAGES / "create-geocode-queue.py", [str(classify_dir / "classified-records.jsonl"), "--output-dir", str(geocode_dir)])
         if args.geocode_limit is not None:
             geocode_args = [str(geocode_dir / "geocode-queue.jsonl"), "--output", str(run_dir / "06-geocode-results.jsonl"), "--limit", str(args.geocode_limit), "--delay", str(args.geocode_delay), "--provider-config", str(args.geocode_provider_config.resolve()), "--terms-review", str(args.geocode_terms_review.resolve()), "--network"]
             if args.geocode_suppression_keys:
                 geocode_args.extend(["--suppression-keys", str(args.geocode_suppression_keys.resolve())])
-            run_stage("geocode_dawa", SCRIPTS / "geocode-denmark-dawa.py", geocode_args)
+            run_stage("geocode_dawa", DENMARK_STAGES / "geocode-denmark-dawa.py", geocode_args)
         manifest = artifact_manifest(run_dir, input_path, started_at, utc_now())
         LOGGER.info("pipeline=denmark-smiley status=success manifest=%s", manifest)
     except subprocess.CalledProcessError as error:
