@@ -6,8 +6,8 @@ export type LocationEvidence = Readonly<{
   factualReviewStatus: 'unreviewed' | 'reviewed' | 'rejected';
   reviewerRole: string | null;
   privacyScreeningStatus: 'passed';
-  projectApproval: 'pending' | 'approved';
-  publicationProfile: 'official' | 'secondary' | 'community';
+  projectApproval: 'pending' | 'approved' | false;
+  publicationProfile: 'official' | 'secondary' | 'community' | null;
   publicationWarning: string | null;
   sourceId: string;
   sourceUrl: string;

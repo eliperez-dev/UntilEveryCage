@@ -30,7 +30,7 @@ export class DevCandidatePreviewRepository {
       id: row.facility_id, name: row.canonical_name, region: row.city ?? row.country_code, category: row.category,
       lat: row.latitude, lon: row.longitude, observed: 'candidate observation date unavailable', source: row.provenance_source_name,
       candidateId: row.candidate_id, sourceRecordId: row.source_record_id, previewLabel: row.preview_label, releaseStatus: row.release_status, coverageScope: parsed.data.meta.coverage_scope,
-      evidence: { sourceType: row.source_type, factualReviewStatus: row.factual_review_status, reviewerRole: null, privacyScreeningStatus: row.privacy_screening_status, projectApproval: 'pending', publicationProfile: 'community', publicationWarning: row.preview_label, sourceId: row.provenance_source_id, sourceUrl: row.provenance_source_url, retrievedAt: row.provenance_retrieved_at, displayPrecision: row.display_precision, lifecycleStatus: 'status_unknown', observationCount: null },
+      evidence: { sourceType: row.source_type, factualReviewStatus: row.factual_review_status, reviewerRole: null, privacyScreeningStatus: row.privacy_screening_status, projectApproval: false, publicationProfile: null, publicationWarning: row.preview_label, sourceId: row.provenance_source_id, sourceUrl: row.provenance_source_url, retrievedAt: row.provenance_retrieved_at, displayPrecision: row.display_precision, lifecycleStatus: 'status_unknown', observationCount: null },
     }));
   }
 }
