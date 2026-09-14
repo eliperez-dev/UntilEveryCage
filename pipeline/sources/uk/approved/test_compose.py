@@ -1,4 +1,5 @@
 import json
+import hashlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -17,8 +18,11 @@ class UkCompositionTests(unittest.TestCase):
         fss_dir, fsa_dir = root / "fss", root / "fsa"
         fss = FssApprovedEstablishmentsAdapter()
         fsa = FsaApprovedEstablishmentsAdapter()
-        fss_manifest = fss.run(FSS_FIXTURE, fss_dir)
-        fsa_manifest = fsa.run(FSA_FIXTURE, fsa_dir)
+        def artifact(path):
+            raw = path.read_bytes()
+            return {"source_url": "https://example.invalid/fsa", "retrieved_at_utc": "2026-09-14T00:00:00Z", "checksum_sha256": hashlib.sha256(raw).hexdigest(), "byte_size": len(raw), "effective_date": "2026-09-01"}
+        fss_manifest = fss.run(FSS_FIXTURE, fss_dir, {"source_url": "https://example.invalid/fss", "retrieved_at": "2026-09-14T00:00:00Z"})
+        fsa_manifest = fsa.run(FSA_FIXTURE, fsa_dir, artifact(FSA_FIXTURE))
         return [
             {"source_id": fss.source_id, "manifest": fss_manifest, "normalized_path": fss_dir / "normalized/records.jsonl", "terms_state": "unresolved", "review_state": "human-review-required"},
             {"source_id": fsa.source_id, "manifest": fsa_manifest, "normalized_path": fsa_dir / "normalized/records.jsonl", "terms_state": "unresolved", "review_state": "human-review-required"},
@@ -56,7 +60,7 @@ class UkCompositionTests(unittest.TestCase):
             inputs = self._runs(root)
             modified_raw = root / "modified-fss.csv"
             modified_raw.write_bytes(FSS_FIXTURE.read_bytes().replace(b"North Star Foods", b"East March Foods").replace(b"AB1 2CD", b"PE1 2AB"))
-            inputs[0]["manifest"] = FssApprovedEstablishmentsAdapter().run(modified_raw, root / "fss")
+            inputs[0]["manifest"] = FssApprovedEstablishmentsAdapter().run(modified_raw, root / "fss", {"source_url": "https://example.invalid/fss", "retrieved_at": "2026-09-14T00:00:00Z"})
             manifest = compose_sources(inputs, root / "country")
             signals = [json.loads(line) for line in (root / "country/reviewable/possible-match-signals.jsonl").read_text().splitlines()]
             self.assertEqual(manifest["possible_match_signals"], 1)

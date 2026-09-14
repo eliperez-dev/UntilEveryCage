@@ -81,21 +81,22 @@ remain mandatory.
 
 ## Adapter reconciliation
 
-The canonical implementation is `pipeline/sources/uk/fsa_approved/`. It currently
-provides a pinned synthetic schema, ordered source-value preservation, strict
-encoding/schema checks, duplicate-identifier quarantine, activity/status and
-authority/nation checks, address privacy-risk quarantine, deterministic manifests,
-and a human publication gate.
+The canonical implementation is `pipeline/sources/uk/fsa_approved/`. It supports
+the existing synthetic contract and the observed monthly FSA CSV profile through
+one adapter. Registered runs require source URL, retrieval UTC, checksum, and byte
+size and fail closed before staging on missing or mismatched metadata. They preserve
+source values, emit deterministic parsed/normalized/quarantined states, record
+normalized-output checksums and schema fingerprints, and always use
+`release_state=not-created` with a private-candidate publication state.
 
-The isolated experiment in commit `f73299b` assumes a different CSV contract using
-`AppNo`, `X/Y`, and `AddressWithheld`, with additional coordinate and coverage
-diagnostics. It must not be cherry-picked as a second UK adapter: doing so would
-create two incompatible interpretations of the same country source. Its unique
-behaviors are useful requirements for a future canonical schema review, especially
-explicit withheld-address semantics, source-coordinate CRS/axis/range validation,
-coverage counts for out-of-scope nations, and the related provenance fingerprints.
+The monthly profile treats England and Wales as the current source scope and keeps
+Northern Ireland as a separate future feed. It quarantines duplicate IDs within a
+nation, unknown jurisdictions, malformed rows, missing activities, remarks and
+address-risk rows; suppresses `AddressWithheld` addresses and coordinates; validates
+X/Y as source longitude/latitude without geocoding; and reports aggregate coverage
+and anomaly counts. The synthetic profile retains its authority/status/activity
+vocabulary tests for the canonical composition contract.
 
-This reconciliation is a design record, not source approval or legal clearance.
-No live row data is included, and no schema-dependent gap should be implemented
-until the actual source contract, terms, privacy treatment, and publication scope
-are reviewed together.
+This reconciliation is a design and test record, not source approval or legal
+clearance. No live row data is included, and the private artifact remains outside
+Git and public outputs.
