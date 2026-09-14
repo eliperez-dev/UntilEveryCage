@@ -19,8 +19,8 @@ No last-success timestamp is invented. Private artifacts are not proof of a publ
 | `it.locations` | verified | blocked | not_run | blocked | Ministry 853/2004 and 1069/2009 catalogs identified; use catalog downloads, not challenged servlet |
 | `mx.locations` | verified | blocked | not_run | blocked | DENUE/SENASICA/DGSIAP reconnaissance; resolve token, directory, terms, and schema |
 | `nz.locations` | verified | blocked | not_run | blocked | MPI/Stats NZ reconnaissance; resolve 403/access and aggregate-vs-facility boundaries |
-| `uk.locations` | partial | artifact_private_only | not_run | blocked | National-feed reconciliation and withheld-address/duplicate/coverage review remain open |
-| `dk.smiley` | partial | not_run | not_run | blocked | Existing partial pipeline; current endpoint/licence/coverage/release verification remains open |
+| `uk.locations` | partial | artifact_private_only | not_run | blocked | Private England/Wales monthly candidate is validated; NI and Scotland remain separate, with withheld-address/duplicate/coverage/terms/release review open |
+| `dk.smiley` | partial | not_run | not_run | blocked | SourceArtifact and registered-adapter contracts are documented; official live acquisition, endpoint/licence/coverage/release verification remain open |
 | `de.locations` | partial | not_run | not_run | blocked | Legacy session URL and current BVL endpoint/schema/terms remain unresolved |
 | `ca.locations` | verified | not_run | not_run | blocked | Federal/export and Ontario candidates are documented separately; verify permitted artifact, terms, schema, coverage, and privacy before acquisition |
 | `es.locations` | unknown | not_run | not_run | blocked | Current competent-authority source and legacy/source boundary unresolved |
