@@ -5,6 +5,7 @@
   $: selected = scaleSteps[selectedIndex] ?? scaleSteps[0];
 </script>
 
+<!-- Dev/private narrative prototype: no sourced aggregate or production claim is embedded here. -->
 <section class="scale-story" aria-labelledby="scale-heading">
   <div class="story-copy">
     <p class="eyebrow">A SCALE CHECK · SYNTHETIC MODEL</p>

@@ -8,6 +8,7 @@ export type ScaleStep = Readonly<{
 
 // Synthetic interaction values only. They are intentionally not presented as
 // an estimate of a country, company, facility, or real-world annual total.
+// Keep this private/dev-only model separate from any sourced aggregate ledger.
 export const SYNTHETIC_BASE = 1;
 
 export const scaleSteps: readonly [ScaleStep, ...ScaleStep[]] = [

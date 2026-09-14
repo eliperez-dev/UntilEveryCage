@@ -5,7 +5,7 @@ import type { Location } from '../domain/location';
 export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 export type LocalProfile = 'official' | 'secondary' | 'community';
 export type LocationFilters = Readonly<{ country_code?: string | undefined; category?: string | undefined; source_type?: string | undefined; display_precision?: string | undefined; lifecycle_status?: string | undefined; cursor?: string | undefined }>;
-export type LocalListResult = Readonly<{ locations: readonly Location[]; releaseId: string; profile: LocalProfile; coverageNote: string; nextCursor: string | null; ruleset?: string }>;
+export type LocalListResult = Readonly<{ locations: readonly Location[]; releaseId: string; profile: LocalProfile; coverageNote: string; coverageScope?: string; countSemantics?: string; nextCursor: string | null; ruleset?: string }>;
 export const localOrigin = (value: string | undefined): string | undefined => { if (!value) return undefined; const url = new URL(value); if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost', '::1'].includes(url.hostname)) throw new Error('Local API origin must be loopback HTTP.'); return url.origin; };
 const fail = (kind: ApiError['kind'], message: string, status?: number): ApiError => Object.assign(new Error(message), status === undefined ? { kind } : { kind, status });
 const map = (r: WireLocation): Location => ({
@@ -16,10 +16,12 @@ const map = (r: WireLocation): Location => ({
     privacyScreeningStatus: r.privacy_screening_status, projectApproval: r.project_approval,
     publicationProfile: r.publication_profile, publicationWarning: r.publication_warning,
     sourceId: r.provenance_source_id, sourceUrl: r.provenance_source_url,
-    retrievedAt: r.provenance_retrieved_at, displayPrecision: r.display_precision,
+    retrievedAt: r.provenance_retrieved_at, displayPrecision: r.display_precision, lifecycleStatus: r.lifecycle_status, observationCount: r.observation_count,
   },
 });
 const query = (profile: LocalProfile, filters: LocationFilters) => { const params = new URLSearchParams({ profile }); for (const [key, value] of Object.entries(filters)) if (value) params.set(key, value); return `/api/v2/locations?${params}`; };
+// Eligibility is a conservative client-side check, not a publication decision;
+// the server's current public projection and suppression rules remain authoritative.
 const eligible = (row: WireLocation, profile: LocalProfile, releaseId: string, ruleset: string): boolean =>
   row.publication_profile === profile && row.release_id === releaseId && row.release_ruleset_version === ruleset &&
   row.privacy_screening_status === 'passed' && row.factual_review_status !== 'rejected' &&
@@ -36,7 +38,7 @@ export class LocalLocationRepository {
       if (b.data.meta.release_id === null) throw fail('no-release', b.data.meta.coverage_note);
       const { release_id, ruleset_version } = b.data.meta;
       if (ruleset_version === undefined || b.data.data.some(row => !eligible(row, profile, release_id, ruleset_version))) throw fail('invalid-contract', 'Local V2 list snapshot was rejected.');
-      return { locations: b.data.data.map(map), releaseId: release_id, profile, coverageNote: b.data.meta.coverage_note, nextCursor: b.data.meta.next_cursor ?? null, ruleset: ruleset_version };
+      return { locations: b.data.data.map(map), releaseId: release_id, profile, coverageNote: b.data.meta.coverage_note, coverageScope: b.data.meta.coverage_scope ?? 'selected promoted release public facilities', countSemantics: b.data.meta.count_semantics ?? 'Eligible public facility projection rows, not animals or a story-wide total.', nextCursor: b.data.meta.next_cursor ?? null, ruleset: ruleset_version };
     } catch (e) { if (e && typeof e === 'object' && 'kind' in e) throw e; if (e instanceof DOMException && e.name === 'AbortError') throw fail('aborted', 'Local V2 request was aborted.'); if (e instanceof TypeError) throw fail('network', 'Local V2 request could not connect.'); throw fail('invalid-contract', 'Local V2 response could not be read safely.'); }
   }
   async detail(id: string, profile: LocalProfile = 'official', signal?: AbortSignal) {
