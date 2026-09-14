@@ -1,0 +1,14 @@
+{
+  "country_code": "de",
+  "adapter_version": "de-v2-foundation-1",
+  "schema_version": "location-v2-foundation-1",
+  "source_url": "https://gis.bvl.bund.de/datenportal/",
+  "retrieval_timestamp": "NOT-ACQUIRED",
+  "source_publication_date": "UNKNOWN-UNTIL-EXPORT",
+  "checksum_sha256": "COMPUTED-FROM-RAW-ARTIFACT",
+  "byte_size": "COMPUTED-FROM-RAW-ARTIFACT",
+  "terms_review": "BLOCKED-PENDING-HUMAN-CONFIRMATION",
+  "acquisition_status": "restricted_pending_terms",
+  "privacy_review": "REQUIRED-HUMAN-GATE",
+  "publication_approval": "REQUIRED-HUMAN-GATE"
+}

@@ -1,0 +1,16 @@
+{
+  "contract_version": "fss-scotland-approved-v1",
+  "adapter_version": "fss-scotland-v2-1",
+  "source_id": "fss_approved_establishments",
+  "authority": "Food Standards Scotland",
+  "country": "GB",
+  "nation": "Scotland",
+  "format": "csv",
+  "update_frequency": "monthly",
+  "licence": "Open Government Licence v3.0",
+  "acquisition": "synthetic-fixture-only",
+  "release_allowed_by_default": false,
+  "allowed_activities": ["slaughter", "cutting", "processing", "storage"],
+  "allowed_statuses": ["active", "inactive", "suspended", "closed"],
+  "required_columns": ["approval_number", "trading_name", "address_line_1", "address_line_2", "address_line_3", "postcode", "activities", "species", "competent_authority", "nation", "status", "remarks", "published_date", "source_url", "source_licence"]
+}

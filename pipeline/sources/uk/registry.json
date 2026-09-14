@@ -1,0 +1,1 @@
+{"version": "1", "sources": {"fss_approved_establishments": {"adapter": "pipeline.sources.uk.fss_approved.adapter:FssApprovedEstablishmentsAdapter", "authority": "Food Standards Scotland", "nation": "Scotland", "format": "csv", "acquisition": "synthetic-fixture-only", "publication": "human-gated"}}}
