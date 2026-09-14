@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canOpenDevPreview, DEV_PREVIEW_LABEL, DEV_PREVIEW_PATH, DEV_PREVIEW_QUERY, DEV_PREVIEW_TOKEN_HEADER, devPreviewExportLabel } from '../../src/features/devPreview/devPreviewContract';
+import { canOpenDevPreview, DEV_PREVIEW_LABEL, DEV_PREVIEW_PATH, DEV_PREVIEW_QUERY, DEV_PREVIEW_TOKEN_HEADER, devPreviewExportLabel, canMountPublicExport } from '../../src/features/devPreview/devPreviewContract';
 import { DevCandidatePreviewRepository } from '../../src/api/DevCandidatePreviewRepository';
 
 describe('dev preview boundary', () => {
@@ -18,6 +18,8 @@ describe('dev preview boundary', () => {
     expect(devPreviewExportLabel(true)).toContain('export unavailable');
     expect(devPreviewExportLabel(true)).not.toContain('curated');
     expect(devPreviewExportLabel(false)).toBeNull();
+    expect(canMountPublicExport(true)).toBe(false); // includes ?preview=dev-candidates&mode=local-v2
+    expect(canMountPublicExport(false)).toBe(true);
   });
 
   it('preserves candidate unapproved and unpublished semantics', async () => {
