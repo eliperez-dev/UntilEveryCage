@@ -14,7 +14,7 @@
   import ReleaseContext from '../ui/ReleaseContext.svelte';
   import ExportControl from '../ui/ExportControl.svelte';
   import ScaleNarrative from '../features/scale/ScaleNarrative.svelte';
-  import { canOpenDevPreview, DEV_PREVIEW_LABEL } from '../features/devPreview/devPreviewContract';
+  import { canOpenDevPreview, DEV_PREVIEW_LABEL, devPreviewExportLabel } from '../features/devPreview/devPreviewContract';
   import type { DevCandidate } from '../api/DevCandidatePreviewRepository';
 
   let profile: Profile = 'curated';
@@ -46,8 +46,8 @@
   $: filters = { search, region, category };
   $: source = devPreviewMode ? previewRows : localMode ? loaded : (profile === 'community' ? locations.slice(0, 1) : locations);
   $: visibleLocations = filterLocations(source, filters);
-  $: exportPreview = previewExport(makeExportModel(visibleLocations, profile, release));
-  $: eligibleExport = localMode && profile === 'curated' && localStatus === 'ready' && Boolean(release);
+  $: exportPreview = devPreviewExportLabel(devPreviewMode) ?? previewExport(makeExportModel(visibleLocations, profile, release));
+  $: eligibleExport = !devPreviewMode && localMode && profile === 'curated' && localStatus === 'ready' && Boolean(release);
   $: profileLabel = profile === 'curated' ? 'Curated release' : 'Community claims';
   let lastRemoteQuery = '';
   // Search is intentionally excluded: the API has no q contract, so it filters
@@ -98,7 +98,7 @@
     catch (error) { paging = false; if (!append) activeListKey = ''; if (generation !== listGeneration) return; const kind = error && typeof error === 'object' && 'kind' in error ? (error as { kind: string }).kind : 'error'; localStatus = kind === 'no-release' ? 'no-release' : 'error'; localError = error instanceof Error ? error.message : 'Local V2 response was rejected safely.'; loaded = []; selected = undefined; }
   };
   const downloadCsv = async () => {
-    if (!eligibleExport || exportBusy) return; exportBusy = true; exportError = '';
+    if (devPreviewMode || !eligibleExport || exportBusy) return; exportBusy = true; exportError = '';
     try { const result = await csvRepo.download('official'); release = result.releaseId; manifestSha256 = result.manifestSha256; const url = URL.createObjectURL(new Blob([result.body], { type: 'text/csv;charset=utf-8' })); const anchor = document.createElement('a'); anchor.href = url; anchor.download = `uec-v2-${result.releaseId}.csv`; anchor.click(); URL.revokeObjectURL(url); }
     catch (error) { const status = error && typeof error === 'object' && 'status' in error ? (error as { status: number }).status : undefined; exportError = status === 400 ? 'Choose an explicit supported profile before exporting.' : status === 404 ? 'No eligible promoted release with a manifest is available.' : status === 429 ? 'Export is temporarily rate-limited; try again later.' : error instanceof Error ? error.message : 'The CSV export could not be prepared safely.'; }
     finally { exportBusy = false; }
@@ -134,7 +134,7 @@
 </script>
 
 <svelte:head><title>Until Every Cage · evidence desk</title></svelte:head>
-<main>
+<main class:dev-preview={devPreviewMode}>
   <header class="top"><a class="wordmark" href="/v2-preview/#/">UNTIL EVERY CAGE <span>V2 / FIELD NOTE</span></a><nav aria-label="Site"><a href="/ethics.html">Ethics &amp; safeguards ↗</a></nav></header>
   <section class="intro"><p class="eyebrow">EVIDENCE DESK · {devPreviewMode ? 'PRIVATE CANDIDATE PREVIEW' : localMode ? 'LOCAL V2 API' : 'SYNTHETIC PREVIEW'}</p><h1>See what a record can—and cannot—tell us.</h1><p class="lede">Start with the source profile, narrow the visible evidence, then inspect what a record can—and cannot—tell us.</p></section>
   {#if devPreviewMode}<section class="warning" role="alert"><strong>{DEV_PREVIEW_LABEL}</strong><span>Loopback development only. Candidate rows are not part of a promoted release and this view is not a publication decision.</span>{#if previewStatus !== 'blocked'}<label>Operator token (memory only)<input type="password" autocomplete="off" bind:value={previewToken} aria-describedby="preview-token-note" /></label><small id="preview-token-note">The token is sent only in the request header and is not persisted.</small><button onclick={() => void loadDevPreview()} disabled={previewStatus === 'loading'}>{previewStatus === 'loading' ? 'Loading private preview…' : 'Load private candidates'}</button>{/if}{#if previewError}<p role="status">{previewError}</p>{/if}</section>{/if}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canOpenDevPreview, DEV_PREVIEW_LABEL, DEV_PREVIEW_PATH, DEV_PREVIEW_QUERY, DEV_PREVIEW_TOKEN_HEADER } from '../../src/features/devPreview/devPreviewContract';
+import { canOpenDevPreview, DEV_PREVIEW_LABEL, DEV_PREVIEW_PATH, DEV_PREVIEW_QUERY, DEV_PREVIEW_TOKEN_HEADER, devPreviewExportLabel } from '../../src/features/devPreview/devPreviewContract';
 import { DevCandidatePreviewRepository } from '../../src/api/DevCandidatePreviewRepository';
 
 describe('dev preview boundary', () => {
@@ -15,6 +15,9 @@ describe('dev preview boundary', () => {
     expect(DEV_PREVIEW_PATH).not.toContain('/api/v2/');
     expect(DEV_PREVIEW_TOKEN_HEADER).toBe('X-UEC-Dev-Preview-Token');
     expect(DEV_PREVIEW_LABEL).toContain('NOT REVIEWED OR PUBLISHED');
+    expect(devPreviewExportLabel(true)).toContain('export unavailable');
+    expect(devPreviewExportLabel(true)).not.toContain('curated');
+    expect(devPreviewExportLabel(false)).toBeNull();
   });
 
   it('preserves candidate unapproved and unpublished semantics', async () => {

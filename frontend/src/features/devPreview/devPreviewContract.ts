@@ -14,3 +14,4 @@ export const canOpenDevPreview = (isDevelopment: boolean, requestedMode: string 
 
 /** Persistent copy used on every private-preview surface. */
 export const DEV_PREVIEW_LABEL = 'PRIVATE TEST DATA — NOT REVIEWED OR PUBLISHED';
+export const devPreviewExportLabel = (isPreview: boolean): string | null => isPreview ? 'Private test preview — export unavailable.' : null;
