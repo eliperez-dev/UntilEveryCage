@@ -45,7 +45,7 @@ The repository’s historical Italy CSV and scraper are legacy/unverified inputs
 
 | Source | Discovered | Acquisition | Adapter / validation | Terms / privacy / publication | Blocker / next action |
 |---|---|---|---|---|---|
-| Ministry 853/2004 food establishments | Official catalog and regulatory sections verified | Private current CSV acquired; provenance recorded | Dictionary fields reviewed; adapter not implemented | Italian Open Data Licence v2.0; coordinate provenance partly OSM; ETHICS privacy/approval gates apply | Resolve repeated-activity identity, coded values, and privacy treatment before adapter |
+| Ministry 853/2004 food establishments | Official catalog and regulatory sections verified | Private current CSV acquired; provenance recorded | Private candidate adapter and shared-contract handoff implemented; bounded real QA quarantines ambiguous duplicates | Italian Open Data Licence v2.0; coordinate provenance partly OSM; ETHICS privacy/approval gates apply | Validate broader snapshots and resolve identity, coded values, and privacy treatment before publication |
 | Ministry 1069/2009 by-products | Separate official catalog/dictionary verified | Private current CSV acquired; provenance recorded | Kept separate; no adapter | Same licence and privacy/approval gates | Decide whether scope belongs in project, then validate separately |
 | Servlet HTML interface | Official interface identified | Not acquired; JS/cookie challenge | Historical HTML parser is brittle; no API claim | No export/terms contract verified; do not scrape through challenge | Prefer catalog downloads or request authorized export/documented endpoint |
 
@@ -57,4 +57,4 @@ Do not publish names, addresses, tax identifiers, or precise coordinates merely 
 
 ## Limitations
 
-This reconnaissance does not certify completeness/current accuracy, rate limits/authentication, or publication eligibility. Both artifacts are private candidates only; no release or healthy-pipeline claim is made. No source-local adapter was added because the current dictionary-to-contract mapping and safe publication treatment of addresses, identifiers, and OSM-derived coordinates remain to be reviewed.
+This reconnaissance and private candidate adapter do not certify completeness/current accuracy, rate limits/authentication, or publication eligibility. Both artifacts remain private; no public release or healthy-pipeline claim is made. Repeated-activity identity and safe publication treatment of addresses, identifiers, and OSM-derived coordinates remain to be reviewed.
