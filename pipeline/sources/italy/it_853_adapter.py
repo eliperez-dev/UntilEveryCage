@@ -4,6 +4,8 @@ import csv
 import hashlib
 import json
 from pathlib import Path
+from pipeline.contracts.adapter_contract import SourceArtifact
+from pipeline.contracts.candidate_handoff import write_handoff
 
 REQUIRED = tuple(
     "precedente_bollo_cee;num_identificativo_produzione_commercializzazione;ragione_sociale;indirizzo;comune;provincia;codice_regione;regione;classificazione_stabilimento;codice_impianto_attivita;descrizione_impianto_attivita;prodotti_abilitati;specifica_prodotti;paesi_export_autorizzato;longitudine;latitudine;stato_localizzazione;cod_fiscale;p_iva;codice_comune;data_inizio_attivita;data_fine_attivita;stato_attivita;data_ultimo_aggiornamento;num_identificativo_produzione_commercializzazione_2".split(";")
@@ -25,6 +27,12 @@ class Italy853Adapter:
     source_id = "it.853-2004"
     adapter_version = "it-853-candidate-v1"
     schema_version = "it-853-csv-v2.0"
+
+    def write_candidate_handoff(self, run_dir, artifact: SourceArtifact, parsed):
+        rows = [item["record"] if "record" in item else item for item in parsed["accepted"]]
+        for row in rows:
+            row["normalized"]["establishment_id"] = row["normalized"]["recognition_number"]
+        return write_handoff(run_dir, rows, artifact, source_id=self.source_id)
 
     def parse_bytes(self, content):
         digest = hashlib.sha256(content).hexdigest()
@@ -62,11 +70,16 @@ class Italy853Adapter:
                 "source_row_id": row_id(row, occurrences[key]),
                 "source_values": dict(row),
                 "normalized": {
+                    "establishment_id": rec,
                     "recognition_number": rec,
                     "facility_grouping": "provisional-recognition-number",
                     "name": clean(row.get("ragione_sociale")),
+                    "trading_name": clean(row.get("ragione_sociale")),
                     "address": None,
                     "municipality": clean(row.get("comune")),
+                    "city": clean(row.get("comune")),
+                    "country_code": "IT",
+                    "nation": "Italy",
                     "region": clean(row.get("regione")),
                     "activity_code": act,
                     "activity_description": clean(row.get("descrizione_impianto_attivita")),

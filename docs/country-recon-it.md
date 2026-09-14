@@ -53,6 +53,8 @@ The repository’s historical Italy CSV and scraper are legacy/unverified inputs
 
 Build a deterministic catalog-download adapter with an explicit dataset variant and format. Validate encoding, delimiter/header, recognition identifiers, status vocabulary, category/activity codes, dates, coordinate ranges, duplicate identifiers, and count changes. Quarantine schema drift and malformed rows. Geocoding, if approved later, must be a separate derived event with provider/query/time/precision/review fields.
 
+Private aggregate QA of the 853 snapshot found 41,844 distinct recognition/activity pairs; 4,529 pairs repeat, covering 10,055 rows. Multiplicity was 3,666 pairs occurring twice, 739 three times, 114 four times, and 10 five times. The adapter therefore retains source-row identity and quarantines repeated pair collisions rather than merging them; this is not evidence of duplicate facilities or an operating-status conclusion.
+
 Do not publish names, addresses, tax identifiers, or precise coordinates merely because the Ministry publishes them. Apply residential/private-location screening, source-origin labels, project approval, and publication profile independently. Government-sourced does not mean current, complete, project-approved, or safe to expose.
 
 ## Limitations

@@ -18,3 +18,7 @@ class Test(unittest.TestCase):
   content=(H+"\n"+row()+row("","10")).encode()
   with tempfile.TemporaryDirectory() as d, tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as f:
    f.write(content); f.flush(); sha=hashlib.sha256(content).hexdigest(); a=Italy853Adapter(); m=a.run(f.name,d,SourceArtifact("u","2026-09-14T00:00:00Z",sha,len(content),code_version="c",config_version="k")); assert_manifest(m,content,a.schema_version); self.assertTrue((__import__('pathlib').Path(d)/"normalized/records.jsonl").exists()); self.assertEqual(m["quarantined_rows"],1); self.assertNotIn("accepted",m); self.assertNotIn("source_values",json.dumps(m))
+ def test_candidate_handoff_uses_shared_writer(self):
+  content=(H+"\n"+row()).encode(); sha=hashlib.sha256(content).hexdigest(); a=Italy853Adapter()
+  with tempfile.TemporaryDirectory() as d, tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as f:
+   f.write(content); f.flush(); m=a.write_candidate_handoff(d,SourceArtifact("u","2026-09-14T00:00:00Z",sha,len(content)),a.parse_bytes(content)); self.assertEqual(m["contract_version"],"candidate-handoff-v1"); self.assertEqual(m["normalized_rows"],1)
