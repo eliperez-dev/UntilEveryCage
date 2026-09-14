@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0",
+  "purpose": "Evidence-backed source readiness baseline; not a runtime health monitor or publication approval register.",
+  "status_vocabulary": {
+    "metadata": ["verified", "partial", "unknown"],
+    "acquisition": ["not_run", "blocked", "artifact_private_only", "verified"],
+    "runtime_health": ["not_run", "unknown", "healthy"],
+    "publication_eligibility": ["not_assessed", "blocked", "eligible_pending_release_approval"]
+  },
+  "sources": [
+    {"source_id":"fr.locations","metadata":"verified","acquisition":"blocked","runtime_health":"not_run","publication_eligibility":"blocked","evidence":["docs/country-recon-fr.md","pipeline/source_registry.json"],"next_action":"Acquire and snapshot an official DGAL Section I/II artifact with terms, schema, and privacy review."},
+    {"source_id":"it.locations","metadata":"verified","acquisition":"blocked","runtime_health":"not_run","publication_eligibility":"blocked","evidence":["docs/country-recon-it.md","pipeline/source_registry.json"],"next_action":"Use catalog-linked Ministry downloads; record provenance and validate 853/2004 separately from 1069/2009."},
+    {"source_id":"mx.locations","metadata":"verified","acquisition":"blocked","runtime_health":"not_run","publication_eligibility":"blocked","evidence":["docs/country-recon-mx.md","pipeline/source_registry.json"],"next_action":"Resolve DENUE token/terms and SENASICA current directory/schema before bounded acquisition."},
+    {"source_id":"nz.locations","metadata":"verified","acquisition":"blocked","runtime_health":"not_run","publication_eligibility":"blocked","evidence":["docs/country-recon-nz.md","pipeline/source_registry.json"],"next_action":"Confirm MPI permitted acquisition route, list-specific terms, and schema before private staging."},
+    {"source_id":"uk.locations","metadata":"partial","acquisition":"artifact_private_only","runtime_health":"not_run","publication_eligibility":"blocked","evidence":["docs/country-recon-uk.md","pipeline/source_registry.json"],"next_action":"Keep national feeds separate; review withheld addresses, duplicates, coverage, terms, and source-specific adapters."},
+    {"source_id":"dk.smiley","metadata":"partial","acquisition":"not_run","runtime_health":"not_run","publication_eligibility":"blocked","evidence":["pipeline/README.md","pipeline/source_registry.json"],"next_action":"Verify current endpoint, publication date semantics, licence, coverage, and release approval."},
+    {"source_id":"de.locations","metadata":"partial","acquisition":"not_run","runtime_health":"not_run","publication_eligibility":"blocked","evidence":["pipeline/source_registry.json"],"next_action":"Replace session-bound legacy URL with a verified stable BVL endpoint and confirm terms/schema."},
+    {"source_id":"ca.locations","metadata":"unknown","acquisition":"not_run","runtime_health":"not_run","publication_eligibility":"blocked","evidence":["pipeline/source_registry.json"],"next_action":"Split federal and Ontario candidates, identify authoritative endpoints, and verify terms/schema before acquisition."},
+    {"source_id":"es.locations","metadata":"unknown","acquisition":"not_run","runtime_health":"not_run","publication_eligibility":"blocked","evidence":["pipeline/source_registry.json"],"next_action":"Identify the current competent-authority publication and distinguish original source from legacy transformations."},
+    {"source_id":"us.fsis","metadata":"unknown","acquisition":"not_run","runtime_health":"not_run","publication_eligibility":"blocked","evidence":["pipeline/source_registry.json"],"next_action":"Trace legacy rows to a specific FSIS artifact and verify current terms, schema, and coverage."},
+    {"source_id":"us.aphis","metadata":"partial","acquisition":"not_run","runtime_health":"not_run","publication_eligibility":"blocked","evidence":["pipeline/source_registry.json"],"next_action":"Verify current export workflow and keep licences, registrants, annual reports, and exception reports separately attributed."},
+    {"source_id":"us.inspections","metadata":"partial","acquisition":"not_run","runtime_health":"not_run","publication_eligibility":"blocked","evidence":["pipeline/source_registry.json"],"next_action":"Verify current inspection export and use explicit, reviewable identity matching rather than treating observations as a facility master."}
+  ]
+}
