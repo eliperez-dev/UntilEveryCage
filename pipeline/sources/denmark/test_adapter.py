@@ -1,7 +1,7 @@
 import hashlib, tempfile, unittest
 import json
 from pathlib import Path
-from .adapter import DenmarkSmileyAdapter
+from .adapter import DenmarkSmileyAdapter, check_refresh
 from pipeline.contracts.adapter_contract import SourceArtifact
 
 XML = b'<Root><Row><ID_nummer>1</ID_nummer><Virksomhed>Test</Virksomhed></Row><Row><Virksomhed>Unkeyed</Virksomhed></Row></Root>'
@@ -46,5 +46,15 @@ class DenmarkAdapterTests(unittest.TestCase):
             handoff = json.loads((root / "handoff" / "normalized/records.jsonl").read_text())
             self.assertEqual(handoff["source_values"]["ID_nummer"], "1")
             self.assertEqual(handoff["normalized"]["establishment_id"], "1")
+
+    def test_refresh_guards_reject_schema_count_and_duplicate_drift(self):
+        with self.assertRaisesRegex(ValueError, "schema"):
+            check_refresh({"source_id":"dk.smiley", "schema_version":"a", "normalized_rows":10}, {"source_id":"dk.smiley", "schema_version":"b", "normalized_rows":10})
+        with self.assertRaisesRegex(ValueError, "count"):
+            check_refresh({"source_id":"dk.smiley", "schema_version":"a", "normalized_rows":100}, {"source_id":"dk.smiley", "schema_version":"a", "normalized_rows":50})
+        duplicate = {"source_id":"dk.smiley", "source_row":3, "source_record_key":"1", "source_fields":{}}
+        with tempfile.TemporaryDirectory() as d:
+            with self.assertRaisesRegex(ValueError, "duplicate"):
+                DenmarkSmileyAdapter().write_candidate_handoff(Path(d), self.artifact(), [duplicate, duplicate])
 
 if __name__ == "__main__": unittest.main()

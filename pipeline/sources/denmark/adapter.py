@@ -14,6 +14,14 @@ from pipeline.contracts.candidate_handoff import write_handoff
 SOURCE_ID = "dk.smiley"
 ADAPTER_VERSION = "denmark-smiley-contract-v1"
 
+def check_refresh(previous: dict[str, Any], current: dict[str, Any], *, max_count_delta: float = 0.25) -> None:
+    """Fail closed on source/schema changes or implausible row-count shifts."""
+    if previous.get("source_id") != current.get("source_id") or previous.get("schema_version") != current.get("schema_version"):
+        raise ValueError("Denmark refresh schema or source identity changed")
+    old, new = int(previous.get("normalized_rows", 0)), int(current.get("normalized_rows", 0))
+    if old and abs(new - old) / old > max_count_delta:
+        raise ValueError("Denmark refresh normalized row count drift exceeds threshold")
+
 def _atomic(path: Path, payload: bytes) -> None:
     """Publish one complete staging file, never a partially written artifact."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -39,9 +47,13 @@ class DenmarkSmileyAdapter:
         facility, and it preserves every original field in private source_values.
         """
         handoff_rows = []
+        seen: set[str] = set()
         for row in rows:
             fields = row.get("source_fields", {})
             key = row.get("source_record_key")
+            if not key or key in seen:
+                raise ValueError("Denmark candidate contains missing or duplicate source identity")
+            seen.add(key)
             handoff_rows.append({"source_id": SOURCE_ID, "source_row": row.get("source_row", 0),
                                  "source_values": fields, "normalized": {
                                      "establishment_id": key, "trading_name": fields.get("Virksomhed"),
