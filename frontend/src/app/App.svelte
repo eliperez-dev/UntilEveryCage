@@ -14,6 +14,8 @@
   import ReleaseContext from '../ui/ReleaseContext.svelte';
   import ExportControl from '../ui/ExportControl.svelte';
   import ScaleNarrative from '../features/scale/ScaleNarrative.svelte';
+  import { canOpenDevPreview, DEV_PREVIEW_LABEL } from '../features/devPreview/devPreviewContract';
+  import type { DevCandidate } from '../api/DevCandidatePreviewRepository';
 
   let profile: Profile = 'curated';
   let selected: Location | undefined = locations[0];
@@ -22,6 +24,11 @@
   let filters: FilterState = initialFilters;
   let showMap = false; let showExport = false; let showGuidance = false;
   let localMode = false;
+  let devPreviewMode = false;
+  let previewToken = '';
+  let previewStatus: 'idle' | 'loading' | 'ready' | 'error' | 'blocked' = 'idle';
+  let previewError = '';
+  let previewRows: readonly DevCandidate[] = [];
   let localStatus: 'idle' | 'loading' | 'ready' | 'error' | 'no-release' = 'idle';
   let detailStatus: 'idle' | 'loading' | 'error' = 'idle';
   let localError = ''; let exportError = ''; let exportBusy = false;
@@ -37,7 +44,7 @@
   let activeListKey = '';
   let detailErrorHeading: HTMLHeadingElement;
   $: filters = { search, region, category };
-  $: source = localMode ? loaded : (profile === 'community' ? locations.slice(0, 1) : locations);
+  $: source = devPreviewMode ? previewRows : localMode ? loaded : (profile === 'community' ? locations.slice(0, 1) : locations);
   $: visibleLocations = filterLocations(source, filters);
   $: exportPreview = previewExport(makeExportModel(visibleLocations, profile, release));
   $: eligibleExport = localMode && profile === 'curated' && localStatus === 'ready' && Boolean(release);
@@ -98,18 +105,27 @@
   };
   const select = (id: string) => { selected = source.find((item) => item.id === id) ?? selected; window.location.hash = `/locations/${id}?profile=${profile}`; };
   const profileChanged = () => { history.pushState(null, '', `#/?profile=${profile}`); if (localMode) void loadLocal(); else void syncRoute(); };
+  const loadDevPreview = async () => {
+    if (!canOpenDevPreview(import.meta.env.DEV, devPreviewMode ? 'dev-candidates' : null)) { previewStatus = 'blocked'; previewError = 'Private candidate preview is unavailable in production builds.'; return; }
+    if (!previewToken.trim()) { previewStatus = 'error'; previewError = 'Enter the operator token for this development session.'; return; }
+    previewStatus = 'loading'; previewError = '';
+    try { const { DevCandidatePreviewRepository } = await import('../api/DevCandidatePreviewRepository'); previewRows = await new DevCandidatePreviewRepository().list(previewToken); previewStatus = 'ready'; selected = previewRows[0]; }
+    catch (error) { previewStatus = 'error'; previewError = error instanceof Error ? error.message : 'Private candidate preview was rejected safely.'; previewRows = []; selected = undefined; }
+  };
   const clearFilters = () => { search = ''; region = 'all'; category = 'all'; sourceType = 'all'; displayPrecision = 'all'; lifecycleStatus = 'all'; };
   const searchChanged = () => { if (localMode) { const url = new URL(window.location.href); if (search.trim()) url.searchParams.set('q', search.trim()); else url.searchParams.delete('q'); history.replaceState(null, '', url); } };
   onMount(() => {
     const params = new URLSearchParams(window.location.search);
     localMode = params.get('mode') === 'local-v2';
+    devPreviewMode = params.get('preview') === 'dev-candidates';
     const route = parseRoute(window.location.hash);
     if (route.kind !== 'not-found') profile = route.profile;
     if (localMode) {
       search = params.get('q') ?? ''; region = params.get('country_code') ?? 'all'; category = params.get('category') ?? 'all'; sourceType = params.get('source_type') ?? 'all'; displayPrecision = params.get('display_precision') ?? 'all'; lifecycleStatus = params.get('lifecycle_status') ?? 'all';
       try { const api = params.get('api') ?? undefined; repo = new LocalLocationRepository(globalThis.fetch, api); csvRepo = new LocalCsvExportRepository(globalThis.fetch, api ?? ''); metadataStatus = 'loading'; void new FilterMetadataRepository(globalThis.fetch, api ?? '').get().then((value) => { metadata = value; metadataStatus = 'ready'; }).catch(() => { metadataStatus = 'error'; }); } catch (error) { localStatus = 'error'; localError = error instanceof Error ? error.message : 'Local API origin was rejected safely.'; }
     }
-    if (localMode && localStatus !== 'error') void loadLocal(); else if (!localMode) void syncRoute();
+    if (devPreviewMode) { previewStatus = import.meta.env.DEV ? 'idle' : 'blocked'; if (!import.meta.env.DEV) previewError = 'Private candidate preview is unavailable in production builds.'; }
+    else if (localMode && localStatus !== 'error') void loadLocal(); else if (!localMode) void syncRoute();
     const onHashChange = () => { const next = parseRoute(window.location.hash); if (next.kind !== 'not-found' && next.profile !== profile) { profile = next.profile; if (localMode) void loadLocal(); else void syncRoute(); } else void syncRoute(); };
     const onPopState = () => { const current = new URLSearchParams(window.location.search); if (localMode) { search = current.get('q') ?? ''; region = current.get('country_code') ?? 'all'; category = current.get('category') ?? 'all'; sourceType = current.get('source_type') ?? 'all'; displayPrecision = current.get('display_precision') ?? 'all'; lifecycleStatus = current.get('lifecycle_status') ?? 'all'; } onHashChange(); };
     window.addEventListener('hashchange', onHashChange); window.addEventListener('popstate', onPopState);
@@ -120,7 +136,9 @@
 <svelte:head><title>Until Every Cage · evidence desk</title></svelte:head>
 <main>
   <header class="top"><a class="wordmark" href="/v2-preview/#/">UNTIL EVERY CAGE <span>V2 / FIELD NOTE</span></a><nav aria-label="Site"><a href="/ethics.html">Ethics &amp; safeguards ↗</a></nav></header>
-  <section class="intro"><p class="eyebrow">EVIDENCE DESK · {localMode ? 'LOCAL V2 API' : 'SYNTHETIC PREVIEW'}</p><h1>See what a record can—and cannot—tell us.</h1><p class="lede">Start with the source profile, narrow the visible evidence, then inspect what a record can—and cannot—tell us.</p></section>
+  <section class="intro"><p class="eyebrow">EVIDENCE DESK · {devPreviewMode ? 'PRIVATE CANDIDATE PREVIEW' : localMode ? 'LOCAL V2 API' : 'SYNTHETIC PREVIEW'}</p><h1>See what a record can—and cannot—tell us.</h1><p class="lede">Start with the source profile, narrow the visible evidence, then inspect what a record can—and cannot—tell us.</p></section>
+  {#if devPreviewMode}<section class="warning" role="alert"><strong>{DEV_PREVIEW_LABEL}</strong><span>Loopback development only. Candidate rows are not part of a promoted release and this view is not a publication decision.</span>{#if previewStatus !== 'blocked'}<label>Operator token (memory only)<input type="password" autocomplete="off" bind:value={previewToken} aria-describedby="preview-token-note" /></label><small id="preview-token-note">The token is sent only in the request header and is not persisted.</small><button onclick={() => void loadDevPreview()} disabled={previewStatus === 'loading'}>{previewStatus === 'loading' ? 'Loading private preview…' : 'Load private candidates'}</button>{/if}{#if previewError}<p role="status">{previewError}</p>{/if}</section>{/if}
+  {#if !devPreviewMode || previewStatus === 'ready'}
   <ScaleNarrative />
   <section class="research-bar" aria-labelledby="research-heading"><div><p class="eyebrow">01 / DISCOVER</p><h2 id="research-heading">Choose the evidence lane</h2><p>Profiles stay separate. A community claim is never silently promoted into a curated result.</p></div><div class="toolbar"><label>Profile<select bind:value={profile} onchange={profileChanged}><option value="curated">Curated release</option><option value="community">Community claims</option></select></label><label>Search locations<input aria-label="Search locations" bind:value={search} oninput={searchChanged} placeholder="Name, region, category" /></label><label>Country<select aria-label="Country" bind:value={region}><option value="all">All countries</option>{#if metadata}{#each metadata.dimensions.country_code.values as value}<option value={value}>{value}</option>{/each}{/if}</select></label><label>Category<select aria-label="Category" bind:value={category}><option value="all">All categories</option>{#if metadata}{#each metadata.dimensions.category.values as value}<option value={value}>{value}</option>{/each}{/if}</select></label><label>Source origin<select aria-label="Source origin" bind:value={sourceType}><option value="all">All source origins</option>{#if metadata}{#each metadata.dimensions.source_type.values as value}<option value={value}>{value}</option>{/each}{/if}</select></label><label>Map precision<select aria-label="Map precision" bind:value={displayPrecision}><option value="all">All map precision</option>{#if metadata}{#each metadata.dimensions.display_precision.values as value}<option value={value}>{value}</option>{/each}{/if}</select></label><label>Lifecycle<select aria-label="Lifecycle status" bind:value={lifecycleStatus}><option value="all">All lifecycle states</option>{#if metadata}{#each metadata.dimensions.lifecycle_status.values as value}<option value={value}>{value}</option>{/each}{/if}</select></label></div>{#if localMode && metadataStatus === 'loading'}<p class="metadata-status" role="status">Loading available filter values…</p>{:else if localMode && metadataStatus === 'error'}<p class="metadata-status error" role="status" aria-live="polite">Filter metadata is unavailable; only unscoped discovery is shown.</p>{/if}</section>
   <div class="filter-context" aria-live="polite"><span>{search || region !== 'all' || category !== 'all' || sourceType !== 'all' || displayPrecision !== 'all' || lifecycleStatus !== 'all' ? `Filters applied: ${[search && `name “${search}”`, region !== 'all' && region, category !== 'all' && category, sourceType !== 'all' && sourceType, displayPrecision !== 'all' && displayPrecision, lifecycleStatus !== 'all' && lifecycleStatus].filter(Boolean).join(' · ')}` : 'No additional filters applied'}</span><button onclick={clearFilters} disabled={!search && region === 'all' && category === 'all' && sourceType === 'all' && displayPrecision === 'all' && lifecycleStatus === 'all'}>Clear filters</button></div>
@@ -136,4 +154,5 @@
   {#if localMode && localStatus === 'ready'}<ReleaseContext profile={profile === 'curated' ? 'official' : 'community'} releaseId={release} ruleset={ruleset} manifestSha256={manifestSha256}/><ExportControl enabled={eligibleExport} busy={exportBusy} error={exportError} onExport={downloadCsv}/>{/if}
   <section class="guidance"><button class="guidance-toggle" aria-expanded={showGuidance} onclick={() => showGuidance = !showGuidance}><span><span class="eyebrow">04 / NEXT ACTION</span><strong>Something looks wrong or unsafe?</strong></span><span>{showGuidance ? 'Hide guidance' : 'Correction &amp; suppression guidance'}</span></button>{#if showGuidance}<div class="guidance-body"><p>Do not infer closure, identity, or permission from a map point. For a correction, privacy concern, or suppression request, preserve the record ID and contact the project maintainer through the reporting channel on the ethics page. Do not include sensitive personal details in a public issue.</p><a href="/ethics.html#reporting">Read reporting guidance ↗</a></div>{/if}</section>
   <div class="phase-controls"><button onclick={() => showMap = !showMap}>{showMap ? 'Hide map' : 'Show map'}</button><button onclick={() => showExport = !showExport}>Preview export</button></div>{#if showMap}<MapView items={visibleLocations} selectedId={selected?.id ?? null}/>{/if}{#if showExport}<section class="export-preview"><p class="eyebrow">IN-MEMORY EXPORT PREVIEW</p><strong>{profile} · {release}</strong><p>Loaded results only. This preview is not a live or complete export.</p><pre>{exportPreview}</pre></section>{/if}<footer><span>{localMode ? 'Local V2 mode · no fixture fallback' : 'Method preview · no live requests'}</span></footer>
+  {/if}
 </main>
