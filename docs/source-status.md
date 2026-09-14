@@ -16,7 +16,7 @@ No last-success timestamp is invented. Private artifacts are not proof of a publ
 | Source ID | Metadata | Acquisition | Runtime health | Publication | Evidence / next action |
 |---|---|---|---|---|---|
 | `fr.locations` | verified | blocked | not_run | blocked | DGAL/Alim’confiance/SIRENE/HVE/Agence Bio/Géorisques reconnaissance; acquire permitted official artifact and review terms/privacy |
-| `it.locations` | verified | blocked | not_run | blocked | Ministry 853/2004 and 1069/2009 catalogs identified; use catalog downloads, not challenged servlet |
+| `it.locations` | verified | artifact_private_only | not_run | blocked | Current 853/2004 and 1069/2009 CSVs were privately acquired with provenance; schemas remain distinct and require dictionary/privacy mapping plus separate adapters |
 | `mx.locations` | verified | blocked | not_run | blocked | DENUE/SENASICA/DGSIAP reconnaissance; resolve token, directory, terms, and schema |
 | `nz.locations` | verified | blocked | not_run | blocked | MPI/Stats NZ reconnaissance; resolve 403/access and aggregate-vs-facility boundaries |
 | `uk.locations` | partial | artifact_private_only | not_run | blocked | Private England/Wales monthly candidate is validated; NI and Scotland remain separate, with withheld-address/duplicate/coverage/terms/release review open |
