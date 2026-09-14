@@ -21,6 +21,12 @@ The catalog reported 853 data last updated 2026-09-13 and daily frequency; the 1
 
 The catalog identifies the Ministry of Health/DGSAN Office 2 and Italian Open Data Licence v2.0. It warns that some coordinates came from OpenStreetMap contributors; this is source metadata, not permission to publish precise points.
 
+## Dictionary investigation (read-only)
+
+The Ministry's [853 data dictionary v2.0](https://www.dati.salute.gov.it/dati/documenti/ID_8_Dataset_Stabilimenti_Italiani_per_gli_alimenti_di_origine_animale_v2.0.pdf) was accessible on 2026-09-14. It defines `num_identificativo_produzione_commercializzazione` as the EU recognition number, `codice_comune` as a six-character ISTAT municipality code, `classificazione_stabilimento` and `codice_impiatto_attivita` as classification/activity fields, and product/export fields as coded descriptions. It also defines supplied `longitudine`/`latitudine`, `stato_localizzazione` (`1` geolocalized, `2` not geolocalized), fiscal/VAT identifiers, `stato_attivita` (`Autorizzata`, `Revocata`, `Sospesa`), and `data_ultimo_aggiornamento` applying to establishment master data or an individual activity.
+
+The dictionary does not settle cross-snapshot identity for repeated activities, coded multi-value normalization, address privacy eligibility, or permission to expose precise coordinates. These remain explicit adapter/review decisions; headers alone are insufficient.
+
 ## Meaning and schema
 
 The 853/2004 sections are regulatory product/activity sections, not animal species or a simple facility type. Observed concepts include approval number, name, VAT/tax identifiers, town/region, category, associated activities, species, remarks, recognition number, activity/status fields, codes, products, export countries, coordinates, geolocation status, and last-update date. The separate 1069/2009 dataset covers animal by-products with its own recognition number, plant/activity/product codes, coordinates, status, and an optional 853 recognition link.
@@ -39,7 +45,7 @@ The repository’s historical Italy CSV and scraper are legacy/unverified inputs
 
 | Source | Discovered | Acquisition | Adapter / validation | Terms / privacy / publication | Blocker / next action |
 |---|---|---|---|---|---|
-| Ministry 853/2004 food establishments | Official catalog and regulatory sections verified | Private current CSV acquired; provenance recorded | Adapter not implemented; mapping requires dictionary review | Italian Open Data Licence v2.0; coordinate provenance partly OSM; ETHICS privacy/approval gates apply | Review dictionary and implement synthetic-only adapter |
+| Ministry 853/2004 food establishments | Official catalog and regulatory sections verified | Private current CSV acquired; provenance recorded | Dictionary fields reviewed; adapter not implemented | Italian Open Data Licence v2.0; coordinate provenance partly OSM; ETHICS privacy/approval gates apply | Resolve repeated-activity identity, coded values, and privacy treatment before adapter |
 | Ministry 1069/2009 by-products | Separate official catalog/dictionary verified | Private current CSV acquired; provenance recorded | Kept separate; no adapter | Same licence and privacy/approval gates | Decide whether scope belongs in project, then validate separately |
 | Servlet HTML interface | Official interface identified | Not acquired; JS/cookie challenge | Historical HTML parser is brittle; no API claim | No export/terms contract verified; do not scrape through challenge | Prefer catalog downloads or request authorized export/documented endpoint |
 
