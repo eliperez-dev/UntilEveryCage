@@ -294,8 +294,44 @@ async fn readiness(
             .into_response();
     };
     match pool.get().await {
-        Ok(client) => match client.query_one("SELECT to_regclass('uec.releases')::text", &[]).await {
-            Ok(row) if row.get::<_, Option<String>>(0).is_some() => {
+        Ok(client) => match client.query_one(r#"
+            WITH required_relations(name) AS (
+                VALUES ('uec.releases'), ('uec.release_manifests'),
+                       ('uec.map_facilities_display_history'),
+                       ('uec.publication_review_release_current'),
+                       ('uec.public_access_restricted')
+            ), required_columns(schema_name, table_name, column_name) AS (
+                VALUES ('uec','releases','release_id'), ('uec','releases','status'),
+                       ('uec','releases','test_only'), ('uec','releases','profile'),
+                       ('uec','releases','ruleset_version'), ('uec','releases','created_at'),
+                       ('uec','release_manifests','release_id'), ('uec','release_manifests','manifest'),
+                       ('uec','release_manifests','manifest_sha256'),
+                       ('uec','map_facilities_display_history','facility_id'),
+                       ('uec','map_facilities_display_history','release_id'),
+                       ('uec','map_facilities_display_history','release_ruleset_version'),
+                       ('uec','map_facilities_display_history','provenance_origin_type'),
+                       ('uec','publication_review_release_current','source_record_id'),
+                       ('uec','publication_review_release_current','release_id'),
+                       ('uec','publication_review_release_current','factual_review_status'),
+                       ('uec','publication_review_release_current','privacy_screening_status'),
+                       ('uec','publication_review_release_current','maintainer_approval'),
+                       ('uec','publication_review_release_current','publication_eligible'),
+                       ('uec','public_access_restricted','source_record_id')
+            )
+            SELECT NOT EXISTS (
+                SELECT 1 FROM required_relations
+                WHERE to_regclass(name) IS NULL
+            ) AND NOT EXISTS (
+                SELECT 1 FROM required_columns required
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns found
+                    WHERE found.table_schema = required.schema_name
+                      AND found.table_name = required.table_name
+                      AND found.column_name = required.column_name
+                )
+            )
+        "#, &[]).await {
+            Ok(row) if row.get::<_, bool>(0) => {
                 Json(serde_json::json!({"status": "ready", "database": "ok", "schema": "migrated"})).into_response()
             }
             Ok(_) => (

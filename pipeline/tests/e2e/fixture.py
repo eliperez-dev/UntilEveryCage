@@ -44,13 +44,14 @@ class E2EEnvironment:
     def compose_env(self):
         env = os.environ.copy(); env["UEC_E2E_DB_PORT"] = str(self.db_port); return env
 
-    def start(self):
+    def start(self, migration_files=None, wait_for_ready=True):
         try:
             print(f"[e2e] starting {self.project}", flush=True)
             startup = subprocess.run(self.command("up", "-d", "--wait"), cwd=ROOT, capture_output=True, text=True, env=self.compose_env())
             if startup.returncode:
                 raise RuntimeError(f"Docker Compose startup failed (exit {startup.returncode})\n{startup.stdout}\n{startup.stderr}")
-            migrations = "\n".join(p.read_text(encoding="utf-8") for p in sorted((ROOT / "pipeline/migrations").glob("*.sql")))
+            files = migration_files if migration_files is not None else sorted((ROOT / "pipeline/migrations").glob("*.sql"))
+            migrations = "\n".join(p.read_text(encoding="utf-8") for p in files)
             print("[e2e] applying migrations", flush=True)
             for _ in range(60):
                 # pg_isready only confirms that Postgres accepts connections;
@@ -95,6 +96,8 @@ class E2EEnvironment:
             self.backend_log = (self.cargo_target_dir / f"e2e-{self.project}.log").open("w", encoding="utf-8")
             self.backend = subprocess.Popen([str(binary)], cwd=ROOT, env=env, stdout=self.backend_log, stderr=subprocess.STDOUT, text=True)
             print(f"[e2e] waiting for backend on {self.api_port}", flush=True)
+            if not wait_for_ready:
+                return self
             import urllib.error
             import urllib.request
             last_error = None
