@@ -159,6 +159,28 @@ class E2EEnvironment:
                 db.execute("INSERT INTO uec.releases (release_id,status,ruleset_version,summary) VALUES ('e2e-failed-candidate','candidate','e2e-v2','{}') ON CONFLICT (release_id) DO NOTHING")
                 db.execute("INSERT INTO uec.validation_findings (severity,code,details) VALUES ('error','synthetic_failure','{}')")
 
+    def seed_private_candidate_scenario(self):
+        """Seed candidate-only data; review fields alone must not make it public.
+
+        The fixture is disposable and synthetic. Its accepted coordinate and
+        approval-shaped event intentionally test that release status remains a
+        separate publication gate.
+        """
+        now = datetime.now(timezone.utc)
+        with psycopg.connect(self.database_url) as db:
+            with db.transaction():
+                db.execute("INSERT INTO uec.sources (source_id,country_code,name,official_url,access_method) VALUES ('e2e.private-candidate','DK','Synthetic private candidate source','https://example.invalid/private-candidate','fixture')")
+                db.execute("INSERT INTO uec.releases (release_id,status,ruleset_version,profile,summary) VALUES ('e2e-private-candidate','candidate','e2e-private-v1','official','{}')")
+                record, facility, observation, artifact = uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+                db.execute("INSERT INTO uec.raw_artifacts (artifact_id,storage_key,sha256,byte_size,retrieved_at) VALUES (%s,'e2e/private-candidate',%s,1,%s)", (artifact, uuid.uuid4().hex * 2, now))
+                db.execute("INSERT INTO uec.source_records (source_record_id,source_id,source_record_key,artifact_id,raw_fields,parsed_at) VALUES (%s,'e2e.private-candidate','candidate-only',%s,'{}',%s)", (record, artifact, now))
+                db.execute("INSERT INTO uec.facilities (facility_id,canonical_name,country_code,city) VALUES (%s,'E2E private candidate','DK','Candidateby')", (facility,))
+                db.execute("INSERT INTO uec.observations (observation_id,facility_id,source_record_id,observed_at,observation,classification,ruleset_id,rule_id,classification_category,classification_review_status,default_visible,first_observed_at) VALUES (%s,%s,%s,%s,'{}','{}','e2e-private-v1','e2e','slaughter','approved',true,%s)", (observation, facility, record, now, now))
+                db.execute("INSERT INTO uec.release_members (release_id,facility_id,observation_id,default_visible) VALUES ('e2e-private-candidate',%s,%s,true)", (facility, observation))
+                db.execute("INSERT INTO uec.geocode_results (source_record_id,provider_id,query,match_method,status,attempt_number,result,queried_at) VALUES (%s,'e2e','synthetic candidate','fixture','accepted',1,ST_SetSRID(ST_MakePoint(12,56),4326)::geography,%s)", (record, now))
+                db.execute("INSERT INTO uec.publication_review_events (source_record_id,release_id,factual_review_status,privacy_screening_status,maintainer_approval,publication_eligible,reviewer_role) VALUES (%s,'e2e-private-candidate','reviewed','passed','approved',true,'maintainer')", (record,))
+        self.private_candidate_facility_id = facility
+
     def restore_restricted_record(self):
         """Append a restoration event; the original evidence is unchanged."""
         with psycopg.connect(self.database_url) as db:

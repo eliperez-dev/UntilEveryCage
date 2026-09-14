@@ -18,6 +18,8 @@ This requires Docker Desktop, Cargo, and the pinned Python dependencies. The fix
 `test_seeded_api.py` uses `seed_official_scenario()` to create synthetic exact, city-level, unmapped, lifecycle, category, and safety-restricted records in a promoted release. This is the reusable starting point for future user-submission and moderation scenarios.
 
 Tests should assert both positive behavior and absence of disclosure. A record being present in the database is not sufficient to make it public; every public response must pass release, visibility, and safety filtering.
+
+The public API suite also seeds a synthetic candidate-only record whose review and geocode fields look publishable. It verifies that candidate data is absent from public list, detail, and export routes. This is not a private preview API: any future end-user candidate preview must be a separate dev/test-only server or route, bound to loopback/private access, unavailable in production mode, and fail closed for remote or ambiguous configuration.
 For a local run that exactly matches the standard GitHub Actions database
 job, use PowerShell 7 (`pwsh`) and run:
 
