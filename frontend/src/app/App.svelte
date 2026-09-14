@@ -35,7 +35,7 @@
   $: profileLabel = profile === 'curated' ? 'Curated release' : 'Community claims';
   let lastRemoteQuery = '';
   $: remoteQuery = `${profile}|${region}|${category}|${search}`;
-  $: if (localMode && localStatus === 'ready' && remoteQuery !== lastRemoteQuery) { lastRemoteQuery = remoteQuery; const url = new URL(window.location.href); for (const key of ['country_code', 'category', 'q']) url.searchParams.delete(key); if (region !== 'all') url.searchParams.set('country_code', region); if (category !== 'all') url.searchParams.set('category', category); if (search.trim()) url.searchParams.set('q', search.trim()); history.replaceState(null, '', url); void loadLocal(); }
+  $: if (localMode && localStatus === 'ready' && remoteQuery !== lastRemoteQuery) { lastRemoteQuery = remoteQuery; const url = new URL(window.location.href); for (const key of ['country_code', 'category', 'q']) url.searchParams.delete(key); if (region !== 'all') url.searchParams.set('country_code', region); if (category !== 'all') url.searchParams.set('category', category); if (search.trim()) url.searchParams.set('q', search.trim()); history.pushState(null, '', url); void loadLocal(); }
 
   const syncRoute = async () => {
     const route = parseRoute(window.location.hash);

@@ -60,6 +60,9 @@ test('filters the curated list and updates the detail hash on selection', async 
   await page.getByRole('button', { name: /River Meadow Foods/ }).click();
   await expect(page).toHaveURL(/#\/locations\/syn-river-meadow\?profile=curated/);
   await expect(page.getByRole('heading', { name: 'River Meadow Foods' })).toBeVisible();
+  await page.goBack();
+  await expect(page).toHaveURL(/#\//);
+  await expect(page.getByRole('heading', { name: 'North Star Cooperative' })).toBeVisible();
 });
 
 test('shows the local map and limited export context', async ({ page }) => { await page.goto('./#/'); await page.getByRole('button', { name: 'Show map' }).click(); await expect(page.getByLabel('Synthetic location map')).toBeVisible(); await expect(page.getByText(/no external tiles/)).toBeVisible(); await page.getByRole('button', { name: 'Preview export' }).click(); const exportPanel=page.locator('.export-preview'); await expect(exportPanel.getByText('IN-MEMORY EXPORT PREVIEW')).toBeVisible(); await expect(exportPanel.locator('p').filter({hasText:'Loaded results only'})).toBeVisible(); });
