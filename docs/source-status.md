@@ -20,7 +20,7 @@ No last-success timestamp is invented. Private artifacts are not proof of a publ
 | `mx.locations` | verified | blocked | not_run | blocked | DENUE/SENASICA/DGSIAP reconnaissance; resolve token, directory, terms, and schema |
 | `nz.locations` | verified | blocked | not_run | blocked | MPI/Stats NZ reconnaissance; resolve 403/access and aggregate-vs-facility boundaries |
 | `uk.locations` | partial | artifact_private_only | not_run | blocked | Private England/Wales monthly candidate is validated; NI and Scotland remain separate, with withheld-address/duplicate/coverage/terms/release review open |
-| `dk.smiley` | partial | not_run | not_run | blocked | SourceArtifact and registered-adapter contracts are documented; official live acquisition, endpoint/licence/coverage/release verification remain open |
+| `dk.smiley` | partial | artifact_private_only | not_run | blocked | Current official artifact and registered adapter are privately staged for validation; coverage/effective-date uncertainty and terms/privacy/release review remain open |
 | `de.locations` | partial | not_run | not_run | blocked | Legacy session URL and current BVL endpoint/schema/terms remain unresolved |
 | `ca.locations` | verified | not_run | not_run | blocked | Federal/export and Ontario candidates are documented separately; verify permitted artifact, terms, schema, coverage, and privacy before acquisition |
 | `es.locations` | partial | blocked | not_run | blocked | AESAN RGSEAA and MAPA sector routes are documented, but direct acquisition was refused; rights, export/schema, effective dates, sector coverage, privacy, and legacy/source boundaries remain unresolved |
