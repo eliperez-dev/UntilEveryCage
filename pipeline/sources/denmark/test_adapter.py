@@ -1,4 +1,5 @@
 import hashlib, tempfile, unittest
+import json
 from pathlib import Path
 from .adapter import DenmarkSmileyAdapter
 from pipeline.contracts.adapter_contract import SourceArtifact
