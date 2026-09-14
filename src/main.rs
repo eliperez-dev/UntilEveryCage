@@ -15,11 +15,13 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 // Contact the developer directly at untileverycageproject@protonmail.com
+use axum::extract::{ConnectInfo, State};
 use axum::http::{HeaderValue, Method};
 use axum::http::{Request, Response, header};
 use axum::{Json, http::StatusCode, response::IntoResponse};
 use axum::{Router, routing::get};
 use std::collections::HashMap;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tower_http::compression::CompressionLayer;
@@ -68,7 +70,13 @@ pub fn app(state: uec_api::ApiState) -> Router {
         .route("/api/aphis-query", get(uec_api::get_aphis_query_handler))
         .fallback_service(ServeDir::new("static"))
         .layer(CompressionLayer::new().br(true))
-        .layer(axum::middleware::from_fn(rate_limit))
+        .layer(axum::middleware::from_fn_with_state(
+            RateLimitState {
+                limiter: Limiter::default(),
+                trust_proxy: std::env::var("UEC_TRUST_PROXY").as_deref() == Ok("true"),
+            },
+            rate_limit,
+        ))
         .layer(cors)
         .with_state(state)
 }
@@ -128,11 +136,14 @@ fn cors_layer() -> Result<CorsLayer, &'static str> {
 
 const RATE_WINDOW: Duration = Duration::from_secs(60);
 const RATE_LIMIT: u32 = 60;
-static GLOBAL_LIMITER: once_cell::sync::Lazy<Limiter> =
-    once_cell::sync::Lazy::new(Limiter::default);
-
 #[derive(Clone, Default)]
 struct Limiter(Arc<Mutex<HashMap<String, (Instant, u32)>>>);
+
+#[derive(Clone)]
+struct RateLimitState {
+    limiter: Limiter,
+    trust_proxy: bool,
+}
 
 impl Limiter {
     fn allow(&self, key: String, now: Instant) -> bool {
@@ -147,25 +158,36 @@ impl Limiter {
     }
 }
 
+fn client_key(request: &Request<axum::body::Body>, trust_proxy: bool) -> Option<String> {
+    if trust_proxy {
+        if let Some(ip) = request
+            .headers()
+            .get("x-forwarded-for")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.split(',').next())
+            .and_then(|value| value.trim().parse::<IpAddr>().ok())
+        {
+            return Some(format!("proxy:{ip}"));
+        }
+    }
+    request
+        .extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .map(|ConnectInfo(peer)| format!("peer:{}", peer.ip()))
+}
+
 async fn rate_limit(
+    State(config): State<RateLimitState>,
     request: Request<axum::body::Body>,
     next: axum::middleware::Next,
 ) -> Response<axum::body::Body> {
     if request.uri().path().starts_with("/health/") {
         return next.run(request).await;
     }
-    let trusted_proxy = std::env::var("UEC_TRUST_PROXY").as_deref() == Ok("true");
-    let key = if trusted_proxy {
-        request
-            .headers()
-            .get("x-forwarded-for")
-            .and_then(|v| v.to_str().ok())
-            .map(|v| format!("proxy:{}", v.split(',').next().unwrap_or("unknown")))
-            .unwrap_or_else(|| "proxy:unknown".into())
-    } else {
-        "process-wide".into()
+    let Some(key) = client_key(&request, config.trust_proxy) else {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
-    if !GLOBAL_LIMITER.allow(key, Instant::now()) {
+    if !config.limiter.allow(key, Instant::now()) {
         return Response::builder()
             .status(StatusCode::TOO_MANY_REQUESTS)
             .header(header::RETRY_AFTER, RATE_WINDOW.as_secs().to_string())
@@ -288,9 +310,12 @@ async fn main() {
     );
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    axum::serve(listener, app(uec_api::ApiState { database }))
-        .await
-        .unwrap();
+    axum::serve(
+        listener,
+        app(uec_api::ApiState { database }).into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await
+    .unwrap();
 }
 
 #[cfg(test)]
@@ -338,6 +363,7 @@ mod config_tests {
 #[cfg(test)]
 mod rate_limit_tests {
     use super::*;
+    use tower::ServiceExt;
     #[test]
     fn enforces_limit_and_resets_window() {
         let limiter = Limiter::default();
@@ -360,5 +386,106 @@ mod rate_limit_tests {
         let later = start + RATE_WINDOW + Duration::from_secs(1);
         assert!(limiter.allow("c".into(), later));
         assert_eq!(limiter.0.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn distinct_socket_peers_do_not_share_default_allowance() {
+        let router = Router::new()
+            .route("/asset.js", get(|| async { StatusCode::OK }))
+            .layer(axum::middleware::from_fn_with_state(
+                RateLimitState {
+                    limiter: Limiter::default(),
+                    trust_proxy: false,
+                },
+                rate_limit,
+            ));
+        let first: SocketAddr = "192.0.2.10:41000".parse().unwrap();
+        let second: SocketAddr = "192.0.2.11:41000".parse().unwrap();
+        for _ in 0..RATE_LIMIT {
+            let mut request = Request::builder()
+                .uri("/asset.js")
+                .header("x-forwarded-for", "203.0.113.99")
+                .body(axum::body::Body::empty())
+                .unwrap();
+            request.extensions_mut().insert(ConnectInfo(first));
+            assert_eq!(
+                router.clone().oneshot(request).await.unwrap().status(),
+                StatusCode::OK
+            );
+        }
+        let mut first_request = Request::builder()
+            .uri("/asset.js")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        first_request.extensions_mut().insert(ConnectInfo(first));
+        assert_eq!(
+            router
+                .clone()
+                .oneshot(first_request)
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::TOO_MANY_REQUESTS
+        );
+        let mut second_request = Request::builder()
+            .uri("/asset.js")
+            .header("x-forwarded-for", "203.0.113.99")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        second_request.extensions_mut().insert(ConnectInfo(second));
+        assert_eq!(
+            router.oneshot(second_request).await.unwrap().status(),
+            StatusCode::OK
+        );
+    }
+
+    #[test]
+    fn proxy_header_requires_explicit_trust_and_valid_ip() {
+        let peer: SocketAddr = "192.0.2.10:41000".parse().unwrap();
+        let mut request = Request::builder()
+            .uri("/asset.js")
+            .header("x-forwarded-for", "198.51.100.20, 192.0.2.10")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        request.extensions_mut().insert(ConnectInfo(peer));
+        assert_eq!(
+            client_key(&request, false).as_deref(),
+            Some("peer:192.0.2.10")
+        );
+        assert_eq!(
+            client_key(&request, true).as_deref(),
+            Some("proxy:198.51.100.20")
+        );
+
+        request.headers_mut().insert(
+            "x-forwarded-for",
+            HeaderValue::from_static("invalid, 198.51.100.20"),
+        );
+        assert_eq!(
+            client_key(&request, true).as_deref(),
+            Some("peer:192.0.2.10")
+        );
+    }
+
+    #[tokio::test]
+    async fn missing_peer_does_not_create_a_shared_allowance() {
+        let router = Router::new()
+            .route("/asset.js", get(|| async { StatusCode::OK }))
+            .layer(axum::middleware::from_fn_with_state(
+                RateLimitState {
+                    limiter: Limiter::default(),
+                    trust_proxy: false,
+                },
+                rate_limit,
+            ));
+        let request = Request::builder()
+            .uri("/asset.js")
+            .header("x-forwarded-for", "198.51.100.20")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        assert_eq!(
+            router.oneshot(request).await.unwrap().status(),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
     }
 }

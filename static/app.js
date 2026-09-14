@@ -394,7 +394,9 @@ function setupEventListeners() {
                 includeBreeders,
                 includeDealers,
                 includeExhibitors,
-                isComplete
+                isComplete,
+                apiVersion: dataManager.apiVersion,
+                v2Meta: dataManager.v2Meta
             }, mapFacilityType);
         });
     }

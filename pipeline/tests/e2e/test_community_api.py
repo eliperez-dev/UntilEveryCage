@@ -2,6 +2,9 @@ import json
 import os
 import unittest
 import urllib.request
+import uuid
+from datetime import datetime, timezone
+import psycopg
 
 try:
     from .fixture import E2EEnvironment
@@ -64,6 +67,21 @@ class CommunityProfileE2ETests(unittest.TestCase):
     def test_unscreened_claim_never_becomes_public(self):
         response = self.get("/api/v2/locations?profile=community&limit=100")
         self.assertNotIn("E2E community unscreened", {row["canonical_name"] for row in response["data"]})
+
+    def test_z_denied_and_factually_rejected_claims_stay_private(self):
+        now = datetime.now(timezone.utc)
+        with psycopg.connect(self.env.database_url) as db:
+            for name, factual_status, approval in (("denied", "unreviewed", "denied"), ("rejected", "rejected", "pending")):
+                record, facility, observation, artifact = (uuid.uuid4() for _ in range(4))
+                db.execute("INSERT INTO uec.raw_artifacts (artifact_id,storage_key,sha256,byte_size,retrieved_at) VALUES (%s,%s,%s,1,%s)", (artifact, f'e2e-community/{name}', uuid.uuid4().hex * 2, now))
+                db.execute("INSERT INTO uec.source_records (source_record_id,source_id,source_record_key,artifact_id,raw_fields,parsed_at) VALUES (%s,'e2e.community',%s,%s,'{}',%s)", (record, name, artifact, now))
+                db.execute("INSERT INTO uec.facilities (facility_id,canonical_name,country_code,city) VALUES (%s,%s,'DK','Communityby')", (facility, f'E2E community {name}'))
+                db.execute("INSERT INTO uec.observations (observation_id,facility_id,source_record_id,observed_at,observation,classification,ruleset_id,rule_id,classification_category,classification_review_status,default_visible,first_observed_at) VALUES (%s,%s,%s,%s,'{}','{}','community-v1','e2e','slaughter','approved',true,%s)", (observation, facility, record, now, now))
+                db.execute("INSERT INTO uec.release_members (release_id,facility_id,observation_id,default_visible) VALUES ('e2e-community',%s,%s,true)", (facility, observation))
+                db.execute("INSERT INTO uec.publication_review_events (source_record_id,factual_review_status,privacy_screening_status,maintainer_approval,publication_eligible,reviewer_role) VALUES (%s,%s,'passed',%s,true,'maintainer')", (record, factual_status, approval))
+        names = {row['canonical_name'] for row in self.get('/api/v2/locations?profile=community&limit=100')['data']}
+        self.assertNotIn('E2E community denied', names)
+        self.assertNotIn('E2E community rejected', names)
 
 
 if __name__ == "__main__":

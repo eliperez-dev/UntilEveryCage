@@ -153,7 +153,26 @@ struct V2ExportRow {
     provenance_retrieved_at: chrono::DateTime<chrono::Utc>,
     release_id: String,
     release_profile: String,
+    profile_notice: String,
+    publication_warning: Option<String>,
     manifest_sha256: String,
+}
+
+const UNREVIEWED_COMMUNITY_WARNING: &str =
+    "Unreviewed community claim — not verified by Until Every Cage";
+const COMMUNITY_EXPORT_NOTICE: &str = "Opt-in community profile: privacy-screened claims may be factually unreviewed and are not necessarily project-approved.";
+
+fn export_profile_notice(profile: &str) -> &'static str {
+    if profile == "community" {
+        COMMUNITY_EXPORT_NOTICE
+    } else {
+        "Curated release profile: rows require project approval and privacy screening."
+    }
+}
+
+fn export_publication_warning(profile: &str, factual_review_status: &str) -> Option<String> {
+    (profile == "community" && factual_review_status == "unreviewed")
+        .then(|| UNREVIEWED_COMMUNITY_WARNING.to_string())
 }
 
 pub async fn get_v2_locations_export_handler(
@@ -197,7 +216,7 @@ pub async fn get_v2_locations_export_handler(
     };
     let release_id: String = release.get(0);
     let manifest_sha256: String = release.get(1);
-    let rows = match client.query("SELECT h.facility_id, h.canonical_name, h.country_code, h.city, h.classification_category, h.display_precision, r.factual_review_status, r.privacy_screening_status, r.maintainer_approval, r.reviewer_role, h.provenance_origin_type, h.provenance_source_id, h.provenance_source_name, h.provenance_source_url, h.provenance_retrieved_at, h.release_id FROM uec.map_facilities_display_history h JOIN uec.publication_review_current r ON r.source_record_id=h.source_record_id WHERE h.release_id=$1 AND r.publication_eligible=true AND r.privacy_screening_status='passed' AND r.maintainer_approval='approved' ORDER BY h.facility_id LIMIT 1001", &[&release_id]).await {
+    let rows = match client.query("SELECT h.facility_id, h.canonical_name, h.country_code, h.city, h.classification_category, h.display_precision, r.factual_review_status, r.privacy_screening_status, r.maintainer_approval, r.reviewer_role, h.provenance_origin_type, h.provenance_source_id, h.provenance_source_name, h.provenance_source_url, h.provenance_retrieved_at, h.release_id FROM uec.map_facilities_display_history h JOIN uec.publication_review_release_current r ON r.source_record_id=h.source_record_id AND r.release_id=h.release_id WHERE h.release_id=$1 AND r.publication_eligible=true AND r.privacy_screening_status='passed' AND ($2='community' OR r.maintainer_approval='approved') ORDER BY h.facility_id LIMIT 1001", &[&release_id, &profile]).await {
         Ok(rows) => rows, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "export_query_failed", "public export unavailable")
     };
     if rows.len() > 1000 {
@@ -209,6 +228,7 @@ pub async fn get_v2_locations_export_handler(
     }
     let mut writer = csv::Writer::from_writer(Vec::new());
     for row in rows {
+        let factual_review_status: String = row.get(6);
         if writer
             .serialize(V2ExportRow {
                 facility_id: row.get(0),
@@ -217,7 +237,7 @@ pub async fn get_v2_locations_export_handler(
                 city: row.get(3),
                 category: row.get(4),
                 display_precision: row.get(5),
-                factual_review_status: row.get(6),
+                factual_review_status: factual_review_status.clone(),
                 privacy_screening_status: row.get(7),
                 project_approval: row.get(8),
                 reviewer_role: row.get(9),
@@ -228,6 +248,8 @@ pub async fn get_v2_locations_export_handler(
                 provenance_retrieved_at: row.get(14),
                 release_id: row.get(15),
                 release_profile: profile.to_string(),
+                profile_notice: export_profile_notice(profile).to_string(),
+                publication_warning: export_publication_warning(profile, &factual_review_status),
                 manifest_sha256: manifest_sha256.clone(),
             })
             .is_err()
@@ -254,9 +276,10 @@ pub async fn get_v2_locations_export_handler(
         .header("content-type", "text/csv; charset=utf-8")
         .header(
             "content-disposition",
-            "attachment; filename=uec-v2-locations.csv",
+            format!("attachment; filename=uec-v2-{profile}-locations.csv"),
         )
         .header("x-uec-release-id", release_id)
+        .header("x-uec-export-profile", profile)
         .header("x-uec-manifest-sha256", manifest_sha256)
         .body(axum::body::Body::from(body))
         .unwrap()
@@ -650,11 +673,13 @@ pub async fn get_v2_locations_handler(
                review.factual_review_status, review.privacy_screening_status, review.maintainer_approval, review.reviewer_role,
                ST_Y(display_location::geometry), ST_X(display_location::geometry),
                first_observed_at, last_observed_at, observation_count, lifecycle_status,
-               provenance_origin_type, release_id, release_ruleset_version,
+               provenance_origin_type, map_facilities_display_history.release_id, release_ruleset_version,
                provenance_source_id, provenance_source_name, provenance_source_url, provenance_retrieved_at
         FROM uec.map_facilities_display_history
-        JOIN uec.publication_review_current AS review ON review.source_record_id = map_facilities_display_history.source_record_id
-        WHERE release_id = $1
+        JOIN uec.publication_review_release_current AS review
+          ON review.source_record_id = map_facilities_display_history.source_record_id
+         AND review.release_id = map_facilities_display_history.release_id
+        WHERE map_facilities_display_history.release_id = $1
           AND ($2::uuid IS NULL OR facility_id > $2)
           AND ($3::text IS NULL OR country_code = $3)
           AND ($4::text IS NULL OR classification_category = $4)
@@ -683,7 +708,7 @@ pub async fn get_v2_locations_handler(
             publication_warning: if promoted_profile == "community"
                 && row.get::<_, String>(6) == "unreviewed"
             {
-                Some("Unreviewed community claim — not verified by Until Every Cage".into())
+                Some(UNREVIEWED_COMMUNITY_WARNING.into())
             } else {
                 None
             },
@@ -797,11 +822,13 @@ pub async fn get_v2_location_detail_handler(
                review.factual_review_status, review.privacy_screening_status, review.maintainer_approval, review.reviewer_role,
                ST_Y(display_location::geometry), ST_X(display_location::geometry),
                first_observed_at, last_observed_at, observation_count, lifecycle_status,
-               provenance_origin_type, release_id, release_ruleset_version,
+               provenance_origin_type, map_facilities_display_history.release_id, release_ruleset_version,
                provenance_source_id, provenance_source_name, provenance_source_url, provenance_retrieved_at
         FROM uec.map_facilities_display_history
-        JOIN uec.publication_review_current AS review ON review.source_record_id = map_facilities_display_history.source_record_id
-        WHERE facility_id = $1 AND release_id = $2
+        JOIN uec.publication_review_release_current AS review
+          ON review.source_record_id = map_facilities_display_history.source_record_id
+         AND review.release_id = map_facilities_display_history.release_id
+        WHERE facility_id = $1 AND map_facilities_display_history.release_id = $2
     "#, &[&facility_id, &release_id]).await {
         Ok(row) => row,
         Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
@@ -825,7 +852,7 @@ pub async fn get_v2_location_detail_handler(
         project_approval: row.get(8),
         reviewer_role: row.get(9),
         publication_warning: if profile == "community" && row.get::<_, String>(6) == "unreviewed" {
-            Some("Unreviewed community claim — not verified by Until Every Cage".into())
+            Some(UNREVIEWED_COMMUNITY_WARNING.into())
         } else {
             None
         },
@@ -1110,6 +1137,51 @@ mod v2_api_tests {
         assert_eq!(json["source_type"], "official");
         assert_eq!(json["category"], "slaughter");
         assert_eq!(json["publication_profile"], "official");
+    }
+
+    #[test]
+    fn community_export_labels_screened_unreviewed_claims_in_every_row() {
+        let row = V2ExportRow {
+            facility_id: uuid::Uuid::nil(),
+            canonical_name: Some("Synthetic claim".into()),
+            country_code: "DK".into(),
+            city: Some("Testby".into()),
+            category: "slaughter".into(),
+            display_precision: "city".into(),
+            factual_review_status: "unreviewed".into(),
+            privacy_screening_status: "passed".into(),
+            project_approval: "pending".into(),
+            reviewer_role: None,
+            source_type: "user_submitted".into(),
+            provenance_source_id: "synthetic.community".into(),
+            provenance_source_name: "Synthetic source".into(),
+            provenance_source_url: "https://example.invalid/community".into(),
+            provenance_retrieved_at: chrono::Utc::now(),
+            release_id: "synthetic-release".into(),
+            release_profile: "community".into(),
+            profile_notice: export_profile_notice("community").into(),
+            publication_warning: export_publication_warning("community", "unreviewed"),
+            manifest_sha256: "synthetic-hash".into(),
+        };
+        let mut writer = csv::Writer::from_writer(Vec::new());
+        writer.serialize(row).unwrap();
+        let bytes = writer.into_inner().unwrap();
+        let mut reader = csv::Reader::from_reader(bytes.as_slice());
+        let headers = reader.headers().unwrap().clone();
+        let fields = reader.records().next().unwrap().unwrap();
+        let value = |name: &str| {
+            fields
+                .get(headers.iter().position(|h| h == name).unwrap())
+                .unwrap()
+        };
+        assert_eq!(value("release_profile"), "community");
+        assert_eq!(value("factual_review_status"), "unreviewed");
+        assert_eq!(value("privacy_screening_status"), "passed");
+        assert_eq!(value("project_approval"), "pending");
+        assert_eq!(value("publication_warning"), UNREVIEWED_COMMUNITY_WARNING);
+        assert_eq!(value("profile_notice"), COMMUNITY_EXPORT_NOTICE);
+        assert!(export_publication_warning("official", "unreviewed").is_none());
+        assert!(export_publication_warning("community", "reviewed").is_none());
     }
 }
 

@@ -27,7 +27,7 @@ export function normalizeV2Location(record, meta = {}) {
             facilityId: record.facility_id,
             category: record.category,
             sourceType: record.source_type,
-            profile: record.profile || meta.profile,
+            profile: record.publication_profile,
             displayPrecision: record.display_precision,
             lifecycleStatus: record.lifecycle_status,
             firstObservedAt: record.first_observed_at,
