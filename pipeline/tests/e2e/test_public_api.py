@@ -48,6 +48,25 @@ class PublicApiE2ETests(unittest.TestCase):
             self.get(f"/api/v2/locations/{candidate}?profile=official")
         self.assertEqual(error.exception.code, 404)
 
+    def test_private_candidate_preview_requires_auth_and_is_explicitly_labeled(self):
+        endpoint = f"http://localhost:{self.env.api_port}/api/dev/preview/candidates?limit=10"
+        missing = urllib.request.Request(endpoint)
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(missing, timeout=10)
+        self.assertEqual(error.exception.code, 401)
+        wrong = urllib.request.Request(endpoint, headers={"X-UEC-Dev-Preview-Token": "wrong"})
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(wrong, timeout=10)
+        self.assertEqual(error.exception.code, 401)
+        request = urllib.request.Request(endpoint, headers={"X-UEC-Dev-Preview-Token": self.env.dev_preview_token})
+        with urllib.request.urlopen(request, timeout=10) as response:
+            body = json.loads(response.read())
+        self.assertEqual(body["api_version"], "dev-preview-v1")
+        self.assertEqual(body["meta"]["test_only"], True)
+        self.assertEqual(body["data"][0]["release_status"], "candidate")
+        self.assertEqual(body["data"][0]["project_approval"], False)
+        self.assertIn("not project-approved", body["data"][0]["preview_label"])
+
     def test_filters_do_not_bypass_publication_gate(self):
         for path in ("?category=retail_and_prepared_food", "?display_precision=city", "?lifecycle_status=explicitly_closed"):
             _, body = self.get("/api/v2/locations" + path)

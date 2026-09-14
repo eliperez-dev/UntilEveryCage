@@ -16,6 +16,7 @@
 
 // Contact the developer directly at untileverycageproject@protonmail.com
 use axum::extract::{Path, Query, State};
+use axum::http::HeaderMap;
 use axum::{
     Json,
     http::{Response, StatusCode},
@@ -289,6 +290,185 @@ pub async fn get_v2_locations_export_handler(
 #[derive(Clone)]
 pub struct ApiState {
     pub database: Option<Pool>,
+    pub dev_preview_token: Option<String>,
+}
+
+const DEV_PREVIEW_TOKEN_HEADER: &str = "x-uec-dev-preview-token";
+
+fn constant_time_token_matches(expected: &str, provided: &str) -> bool {
+    let mut difference = expected.len() ^ provided.len();
+    for (left, right) in expected.bytes().zip(provided.bytes()) {
+        difference |= usize::from(left ^ right);
+    }
+    difference == 0
+}
+
+fn is_loopback_host(value: &str) -> bool {
+    let Ok(uri) = format!("http://{value}").parse::<axum::http::Uri>() else {
+        return false;
+    };
+    let Some(host) = uri.host() else { return false };
+    host == "localhost"
+        || host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback())
+}
+
+fn preview_request_is_local(headers: &HeaderMap) -> bool {
+    let Some(host) = headers
+        .get(axum::http::header::HOST)
+        .and_then(|value| value.to_str().ok())
+    else {
+        return false;
+    };
+    if !is_loopback_host(host) {
+        return false;
+    }
+    headers
+        .get(axum::http::header::ORIGIN)
+        .map(|origin| {
+            origin
+                .to_str()
+                .ok()
+                .and_then(|value| value.parse::<axum::http::Uri>().ok())
+                .and_then(|uri| uri.host().map(str::to_owned))
+                .is_some_and(|host| is_loopback_host(&host))
+        })
+        .unwrap_or(true)
+}
+
+#[derive(Deserialize)]
+pub struct DevPreviewParams {
+    pub limit: Option<String>,
+}
+
+/// Candidate preview is deliberately separate from `/api/v2`: it is a local
+/// operator tool, not a release/profile or project-approval mechanism.
+pub async fn get_dev_candidate_preview_handler(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Query(params): Query<DevPreviewParams>,
+) -> impl IntoResponse {
+    let Some(expected_token) = state.dev_preview_token.as_deref() else {
+        return v2_error(
+            StatusCode::NOT_FOUND,
+            "dev_preview_unavailable",
+            "candidate preview unavailable",
+        );
+    };
+    if !preview_request_is_local(&headers) {
+        return v2_error(
+            StatusCode::FORBIDDEN,
+            "dev_preview_origin_rejected",
+            "candidate preview requires loopback host and origin",
+        );
+    }
+    let Some(provided_token) = headers
+        .get(DEV_PREVIEW_TOKEN_HEADER)
+        .and_then(|value| value.to_str().ok())
+    else {
+        return v2_error(
+            StatusCode::UNAUTHORIZED,
+            "dev_preview_auth_required",
+            "candidate preview requires operator authentication",
+        );
+    };
+    if !constant_time_token_matches(expected_token, provided_token) {
+        return v2_error(
+            StatusCode::UNAUTHORIZED,
+            "dev_preview_auth_failed",
+            "candidate preview authentication failed",
+        );
+    }
+    let limit = match params.limit.as_deref().unwrap_or("100").parse::<i64>() {
+        Ok(value) if (1..=1000).contains(&value) => value,
+        _ => {
+            return v2_error(
+                StatusCode::BAD_REQUEST,
+                "invalid_limit",
+                "limit must be between 1 and 1000",
+            );
+        }
+    };
+    let Some(pool) = state.database else {
+        return v2_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "database_not_configured",
+            "candidate preview database is not configured",
+        );
+    };
+    let client = match pool.get().await {
+        Ok(client) => client,
+        Err(_) => {
+            return v2_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "database_pool_unavailable",
+                "candidate preview database unavailable",
+            );
+        }
+    };
+    let rows = match client.query(r#"
+        SELECT r.release_id, r.status, o.source_record_id, o.facility_id,
+               f.canonical_name, f.country_code, f.city, o.classification_category,
+               ST_Y(g.result::geometry), ST_X(g.result::geometry),
+               source.origin_type, source.source_id, source.name, source.official_url,
+               artifact.retrieved_at, review.factual_review_status,
+               review.privacy_screening_status, review.maintainer_approval
+        FROM uec.release_members member
+        JOIN uec.releases r ON r.release_id = member.release_id
+        JOIN uec.observations o ON o.observation_id = member.observation_id
+        JOIN uec.facilities f ON f.facility_id = member.facility_id
+        JOIN uec.source_records record ON record.source_record_id = o.source_record_id
+        JOIN uec.sources source ON source.source_id = record.source_id
+        JOIN uec.raw_artifacts artifact ON artifact.artifact_id = record.artifact_id
+        JOIN uec.publication_review_release_current review
+          ON review.source_record_id = o.source_record_id AND review.release_id = member.release_id
+        JOIN LATERAL (
+            SELECT result FROM uec.geocode_results
+            WHERE source_record_id = o.source_record_id AND status = 'accepted' AND result IS NOT NULL
+            ORDER BY queried_at DESC, geocode_result_id DESC LIMIT 1
+        ) g ON true
+        WHERE r.status = 'candidate'
+          AND member.default_visible = true
+          AND record.source_state NOT IN ('rejected', 'superseded')
+          AND review.privacy_screening_status = 'passed'
+          AND review.factual_review_status <> 'rejected'
+          AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted restricted WHERE restricted.source_record_id = o.source_record_id)
+        ORDER BY r.release_id, o.facility_id
+        LIMIT $1
+    "#, &[&limit]).await {
+        Ok(rows) => rows,
+        Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "dev_preview_query_failed", "candidate preview unavailable"),
+    };
+    let data = rows
+        .into_iter()
+        .map(|row| {
+            json!({
+                "candidate_id": row.get::<_, uuid::Uuid>(2),
+                "source_record_id": row.get::<_, uuid::Uuid>(2),
+                "facility_id": row.get::<_, uuid::Uuid>(3),
+                "canonical_name": row.get::<_, Option<String>>(4),
+                "country_code": row.get::<_, String>(5),
+                "city": row.get::<_, Option<String>>(6),
+                "category": row.get::<_, String>(7),
+                "display_precision": "exact",
+                "latitude": row.get::<_, Option<f64>>(8),
+                "longitude": row.get::<_, Option<f64>>(9),
+                "source_type": row.get::<_, String>(10),
+                "provenance_source_id": row.get::<_, String>(11),
+                "provenance_source_name": row.get::<_, String>(12),
+                "provenance_source_url": row.get::<_, String>(13),
+                "provenance_retrieved_at": row.get::<_, chrono::DateTime<chrono::Utc>>(14),
+                "factual_review_status": row.get::<_, String>(15),
+                "privacy_screening_status": row.get::<_, String>(16),
+                "project_approval": false,
+                "release_id": row.get::<_, String>(0),
+                "release_status": row.get::<_, String>(1),
+                "preview_label": "Private development candidate — not project-approved or published"
+            })
+        })
+        .collect::<Vec<_>>();
+    Json(json!({"api_version":"dev-preview-v1", "data":data, "meta":{"test_only":true,"private_preview":true,"profile":null,"coverage_scope":"candidate_release_only","next_cursor":null}})).into_response()
 }
 
 mod location;
@@ -914,6 +1094,7 @@ mod v2_api_tests {
                     .create_pool(Some(deadpool_postgres::Runtime::Tokio1), NoTls)
                     .unwrap(),
             ),
+            dev_preview_token: None,
         }
     }
 
@@ -930,6 +1111,20 @@ mod v2_api_tests {
         );
         assert!(contract["endpoints"]["GET /api/v2/discovery/facets"]["success"]["meta"]["count_semantics"]
             .as_str().unwrap().contains("not story-wide"));
+    }
+
+    #[test]
+    fn candidate_preview_rejects_non_loopback_host_and_origin() {
+        let mut local = HeaderMap::new();
+        local.insert("host", "127.0.0.1:8000".parse().unwrap());
+        assert!(preview_request_is_local(&local));
+        local.insert("origin", "https://localhost:3000".parse().unwrap());
+        assert!(preview_request_is_local(&local));
+        local.insert("origin", "https://attacker.example".parse().unwrap());
+        assert!(!preview_request_is_local(&local));
+        local.insert("host", "preview.example:8000".parse().unwrap());
+        local.remove("origin");
+        assert!(!preview_request_is_local(&local));
     }
 
     #[tokio::test]

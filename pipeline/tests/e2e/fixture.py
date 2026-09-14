@@ -28,6 +28,8 @@ class E2EEnvironment:
         self.backend = None
         self.backend_log = None
         self.start_attempts = 0
+        # Synthetic only: this token is scoped to the disposable test server.
+        self.dev_preview_token = "uec-e2e-preview-token"
 
     def command(self, *args):
         return ["docker", "compose", "-p", self.project, "-f", str(COMPOSE), *args]
@@ -73,7 +75,7 @@ class E2EEnvironment:
                 raise
             print("[e2e] building backend", flush=True)
             subprocess.run(["cargo", "build", "--quiet"], cwd=ROOT, check=True, timeout=180)
-            env = os.environ.copy(); env.update({"UEC_DATABASE_URL": self.database_url, "PORT": str(self.api_port)})
+            env = os.environ.copy(); env.update({"UEC_DATABASE_URL": self.database_url, "PORT": str(self.api_port), "UEC_RUNTIME_MODE": "development", "UEC_BIND_HOST": "127.0.0.1", "UEC_DEV_PREVIEW": "true", "UEC_DEV_PREVIEW_TOKEN": self.dev_preview_token})
             binary = ROOT / "target/debug/uec-api.exe"
             if not binary.exists():
                 binary = ROOT / "target/debug/uec-api"

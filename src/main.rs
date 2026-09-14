@@ -60,6 +60,10 @@ pub fn app(state: uec_api::ApiState) -> Router {
             get(uec_api::get_v2_location_detail_handler),
         )
         .route(
+            "/api/dev/preview/candidates",
+            get(uec_api::get_dev_candidate_preview_handler),
+        )
+        .route(
             "/api/aphis-reports",
             get(uec_api::get_aphis_reports_handler),
         )
@@ -131,7 +135,66 @@ fn cors_layer() -> Result<CorsLayer, &'static str> {
     Ok(CorsLayer::new()
         .allow_origin(AllowOrigin::list(origins))
         .allow_methods([Method::GET, Method::OPTIONS])
-        .allow_headers([axum::http::header::CONTENT_TYPE, axum::http::header::ACCEPT]))
+        .allow_headers([
+            axum::http::header::CONTENT_TYPE,
+            axum::http::header::ACCEPT,
+            axum::http::HeaderName::from_static("x-uec-dev-preview-token"),
+        ]))
+}
+
+fn preview_config(
+    mode: &str,
+    opt_in: Option<&str>,
+    bind_host: &str,
+    token: Option<&str>,
+    cors_origins: Option<&str>,
+    legacy_cors_origin: Option<&str>,
+) -> Result<Option<String>, &'static str> {
+    let enabled = match opt_in.unwrap_or("false") {
+        "true" => true,
+        "false" | "" => false,
+        _ => return Err("UEC_DEV_PREVIEW must be true or false"),
+    };
+    let host = bind_host
+        .parse::<IpAddr>()
+        .map_err(|_| "UEC_BIND_HOST must be a valid IP address")?;
+    let token = token.filter(|value| !value.is_empty());
+    if mode == "production" && (enabled || token.is_some()) {
+        return Err("development candidate preview is unavailable in production");
+    }
+    if !enabled {
+        if token.is_some() {
+            return Err("UEC_DEV_PREVIEW_TOKEN requires UEC_DEV_PREVIEW=true");
+        }
+        return Ok(None);
+    }
+    if mode != "development" {
+        return Err("candidate preview requires development runtime mode");
+    }
+    if !host.is_loopback() {
+        return Err("candidate preview requires an exact loopback bind host");
+    }
+    let token = token.ok_or("UEC_DEV_PREVIEW_TOKEN is required when preview is enabled")?;
+    let cors = cors_origins
+        .or(legacy_cors_origin)
+        .unwrap_or("http://localhost:3000");
+    for origin in cors
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let uri = origin
+            .parse::<axum::http::Uri>()
+            .map_err(|_| "candidate preview CORS origin is invalid")?;
+        let origin_host = uri
+            .host()
+            .ok_or("candidate preview CORS origin must have a host")?;
+        let origin_ip = origin_host.parse::<IpAddr>().ok();
+        if !matches!(origin_host, "localhost") && !origin_ip.is_some_and(|ip| ip.is_loopback()) {
+            return Err("candidate preview CORS origins must be loopback only");
+        }
+    }
+    Ok(Some(token.to_owned()))
 }
 
 const RATE_WINDOW: Duration = Duration::from_secs(60);
@@ -253,6 +316,13 @@ async fn main() {
     let mode = std::env::var("UEC_RUNTIME_MODE").unwrap_or_else(|_| "development".to_string());
     let database_url = std::env::var("UEC_DATABASE_URL").ok();
     let port = std::env::var("PORT").unwrap_or_else(|_| "8000".to_string());
+    let bind_host = std::env::var("UEC_BIND_HOST").unwrap_or_else(|_| {
+        if mode == "development" {
+            "127.0.0.1".into()
+        } else {
+            "0.0.0.0".into()
+        }
+    });
     let port = validate_runtime(&mode, database_url.as_deref(), &port).unwrap_or_else(|error| {
         eprintln!(
             "{{\"event\":\"configuration_error\",\"reason\":\"{}\"}}",
@@ -271,6 +341,21 @@ async fn main() {
         );
         std::process::exit(2);
     }
+    let dev_preview_token = preview_config(
+        mode.as_str(),
+        std::env::var("UEC_DEV_PREVIEW").ok().as_deref(),
+        &bind_host,
+        std::env::var("UEC_DEV_PREVIEW_TOKEN").ok().as_deref(),
+        std::env::var("UEC_CORS_ORIGINS").ok().as_deref(),
+        std::env::var("UEC_CORS_ORIGIN").ok().as_deref(),
+    )
+    .unwrap_or_else(|error| {
+        eprintln!(
+            "{{\"event\":\"configuration_error\",\"reason\":\"{}\"}}",
+            error
+        );
+        std::process::exit(2)
+    });
     let database = database_url.and_then(|url| {
         let mut config = Config::new();
         config.url = Some(url);
@@ -303,7 +388,7 @@ async fn main() {
             }
         }
     });
-    let addr = format!("0.0.0.0:{}", port);
+    let addr = format!("{}:{}", bind_host, port);
     println!(
         "{{\"event\":\"server_starting\",\"service\":\"uec-api\",\"mode\":\"{}\",\"port\":{}}}",
         mode, port
@@ -312,7 +397,11 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(
         listener,
-        app(uec_api::ApiState { database }).into_make_service_with_connect_info::<SocketAddr>(),
+        app(uec_api::ApiState {
+            database,
+            dev_preview_token,
+        })
+        .into_make_service_with_connect_info::<SocketAddr>(),
     )
     .await
     .unwrap();
@@ -320,7 +409,7 @@ async fn main() {
 
 #[cfg(test)]
 mod config_tests {
-    use super::{parse_cors_origins, validate_runtime};
+    use super::{parse_cors_origins, preview_config, validate_runtime};
     #[test]
     fn development_allows_local_defaults() {
         assert_eq!(validate_runtime("development", None, "8000"), Ok(8000));
@@ -356,6 +445,63 @@ mod config_tests {
         assert_eq!(
             parse_cors_origins("development", None, None).unwrap().len(),
             1
+        );
+    }
+
+    #[test]
+    fn candidate_preview_requires_loopback_opt_in_and_token() {
+        assert!(
+            preview_config("development", Some("true"), "127.0.0.1", None, None, None).is_err()
+        );
+        assert!(
+            preview_config(
+                "development",
+                Some("true"),
+                "0.0.0.0",
+                Some("secret"),
+                None,
+                None
+            )
+            .is_err()
+        );
+        assert!(
+            preview_config(
+                "production",
+                Some("true"),
+                "127.0.0.1",
+                Some("secret"),
+                None,
+                None
+            )
+            .is_err()
+        );
+        assert!(
+            preview_config(
+                "development",
+                Some("true"),
+                "127.0.0.1",
+                Some("secret"),
+                Some("https://remote.example"),
+                None
+            )
+            .is_err()
+        );
+        assert_eq!(
+            preview_config(
+                "development",
+                Some("true"),
+                "127.0.0.1",
+                Some("secret"),
+                None,
+                None
+            )
+            .unwrap()
+            .as_deref(),
+            Some("secret")
+        );
+        assert_eq!(
+            preview_config("development", None, "127.0.0.1", None, None, None).unwrap(),
+            None
         );
     }
 }
