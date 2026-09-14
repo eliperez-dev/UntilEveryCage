@@ -70,11 +70,13 @@ class PublicApiE2ETests(unittest.TestCase):
         self.assertEqual(empty['dimensions']['category'], [])
 
     def test_combination_filters_and_zero_result_are_deterministic(self):
-        rows = self.get('/api/v2/locations?country_code=DK&category=slaughter&display_precision=exact&limit=10')['data']
+        _, body = self.get('/api/v2/locations?country_code=DK&category=slaughter&display_precision=exact&limit=10')
+        rows = body['data']
         self.assertEqual(len(rows), 1)
-        restricted = self.get('/api/v2/locations?country_code=DK&category=retail_and_prepared_food&limit=10')['data']
+        _, restricted_body = self.get('/api/v2/locations?country_code=DK&category=retail_and_prepared_food&limit=10')
+        restricted = restricted_body['data']
         self.assertEqual(restricted, [])
-        empty = self.get('/api/v2/locations?country_code=ZZ&limit=10')
+        _, empty = self.get('/api/v2/locations?country_code=ZZ&limit=10')
         self.assertEqual(empty['data'], [])
 
     def test_unknown_controlled_filter_is_rejected(self):
