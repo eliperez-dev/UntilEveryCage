@@ -9,6 +9,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 from pipeline.contracts.adapter_contract import SourceArtifact
+from pipeline.contracts.candidate_handoff import write_handoff
 
 SOURCE_ID = "dk.smiley"
 ADAPTER_VERSION = "denmark-smiley-contract-v1"
@@ -29,6 +30,29 @@ def _jsonl(path: Path, rows: list[dict[str, Any]]) -> str:
 class DenmarkSmileyAdapter:
     source_id = SOURCE_ID
     adapter_version = ADAPTER_VERSION
+
+    def write_candidate_handoff(self, run_dir: str | Path, artifact: SourceArtifact,
+                                rows: list[dict[str, Any]]) -> dict[str, Any]:
+        """Map Denmark's stable source key into the generic candidate identity.
+
+        This is an explicit source mapping: it does not fuzzy-match or infer a
+        facility, and it preserves every original field in private source_values.
+        """
+        handoff_rows = []
+        for row in rows:
+            fields = row.get("source_fields", {})
+            key = row.get("source_record_key")
+            handoff_rows.append({"source_id": SOURCE_ID, "source_row": row.get("source_row", 0),
+                                 "source_values": fields, "normalized": {
+                                     "establishment_id": key, "trading_name": fields.get("Virksomhed"),
+                                     "address_lines": [fields.get("Adresse")], "postcode": fields.get("Postnummer"),
+                                     "activities": [fields.get("FVST_branchenummer")] if fields.get("FVST_branchenummer") else [],
+                                     "species": None, "competent_authority": "Fødevarestyrelsen",
+                                     "nation": "Denmark", "authority_nation_key": "Denmark", "status": None,
+                                     "remarks": None, "published_date": None, "coordinates": None,
+                                     "privacy_gate": "pending", "coordinate_gate": "review_required",
+                                     "publication_gate": "blocked"}})
+        return write_handoff(run_dir, handoff_rows, artifact, source_id=SOURCE_ID)
 
     def run_registered(self, raw_path: str | Path, run_dir: str | Path, config: dict[str, Any]) -> dict[str, Any]:
         """Bridge the shared registered-input runner using recorded evidence."""
