@@ -23,6 +23,7 @@ class SourceArtifact:
 
 
 class SourceAdapter(Protocol):
+    """Minimal boundary between acquisition evidence and private staging."""
     source_id: str
     adapter_version: str
 
@@ -30,6 +31,7 @@ class SourceAdapter(Protocol):
 
 
 def assert_manifest(manifest: dict, raw: bytes, schema_version: str) -> None:
+    """Assert safety invariants shared by adapter tests; not a release gate."""
     assert manifest["checksum_sha256"] == hashlib.sha256(raw).hexdigest()
     assert manifest["byte_size"] == len(raw)
     assert manifest["schema_version"] == schema_version
@@ -38,4 +40,5 @@ def assert_manifest(manifest: dict, raw: bytes, schema_version: str) -> None:
 
 
 def read_jsonl(path: Path) -> list[dict]:
+    """Read deterministic staging records for test and review tooling."""
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]

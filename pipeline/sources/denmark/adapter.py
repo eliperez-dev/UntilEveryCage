@@ -14,12 +14,14 @@ SOURCE_ID = "dk.smiley"
 ADAPTER_VERSION = "denmark-smiley-contract-v1"
 
 def _atomic(path: Path, payload: bytes) -> None:
+    """Publish one complete staging file, never a partially written artifact."""
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + ".tmp")
     temporary.write_bytes(payload)
     os.replace(temporary, path)
 
 def _jsonl(path: Path, rows: list[dict[str, Any]]) -> str:
+    """Serialize with stable ordering so reruns can be compared byte-for-byte."""
     payload = b"".join((json.dumps(row, ensure_ascii=False, sort_keys=True, default=list) + "\n").encode() for row in rows)
     _atomic(path, payload)
     return hashlib.sha256(payload).hexdigest()
@@ -47,6 +49,7 @@ class DenmarkSmileyAdapter:
         return self.run(raw_path, run_dir, artifact)
 
     def run(self, raw_path: str | Path, run_dir: str | Path, artifact: SourceArtifact) -> dict[str, Any]:
+        """Parse one preserved artifact into private, human-gated candidate data."""
         raw = Path(raw_path).read_bytes()
         actual = hashlib.sha256(raw).hexdigest()
         if actual != artifact.sha256 or len(raw) != artifact.byte_size:
@@ -67,6 +70,7 @@ class DenmarkSmileyAdapter:
                                          "postcode": fields.get("Postnummer"),
                                          "city": fields.get("By"), "country_code": "DK",
                                          "coordinates": None}}
+                # Without a stable source identity, normalization must not invent one.
                 (quarantined if not key else rows).append({"reasons": ["missing_source_key"], "record": record} if not key else record)
         except ET.ParseError as exc:
             raise ValueError("invalid Denmark XML") from exc
@@ -74,6 +78,7 @@ class DenmarkSmileyAdapter:
         parsed_hash = _jsonl(root / "parsed" / "records.jsonl", rows + [item["record"] for item in quarantined])
         normalized_hash = _jsonl(root / "normalized" / "records.jsonl", rows)
         _jsonl(root / "quarantined" / "records.jsonl", quarantined)
+        # This state is deliberately private: validation cannot authorize release.
         manifest = {"source_id": SOURCE_ID, "adapter_version": ADAPTER_VERSION,
                     "schema_version": ADAPTER_VERSION, "checksum_sha256": actual,
                     "byte_size": len(raw), "input_rows": len(rows) + len(quarantined),
