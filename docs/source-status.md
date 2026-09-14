@@ -22,10 +22,10 @@ No last-success timestamp is invented. Private artifacts are not proof of a publ
 | `uk.locations` | partial | artifact_private_only | not_run | blocked | National-feed reconciliation and withheld-address/duplicate/coverage review remain open |
 | `dk.smiley` | partial | not_run | not_run | blocked | Existing partial pipeline; current endpoint/licence/coverage/release verification remains open |
 | `de.locations` | partial | not_run | not_run | blocked | Legacy session URL and current BVL endpoint/schema/terms remain unresolved |
-| `ca.locations` | unknown | not_run | not_run | blocked | Federal/Ontario candidates must be split and verified before acquisition |
+| `ca.locations` | verified | not_run | not_run | blocked | Federal/export and Ontario candidates are documented separately; verify permitted artifact, terms, schema, coverage, and privacy before acquisition |
 | `es.locations` | unknown | not_run | not_run | blocked | Current competent-authority source and legacy/source boundary unresolved |
-| `us.fsis` | unknown | not_run | not_run | blocked | Legacy rows are not traced to a verified current FSIS artifact |
-| `us.aphis` | partial | not_run | not_run | blocked | Export workflow and separate report/license provenance require review |
-| `us.inspections` | partial | not_run | not_run | blocked | Inspection observations require current export and explicit identity matching |
+| `us.fsis` | verified | not_run | not_run | blocked | FSIS MPI route is documented; acquire a permitted current artifact and treat legacy inventory only as a comparison |
+| `us.aphis` | partial | not_run | not_run | blocked | APHIS export workflow and separate report/license provenance require review |
+| `us.inspections` | partial | not_run | not_run | blocked | Inspection observations require a current export and explicit identity matching |
 
 The machine-readable file is the source of truth for these statuses. `.locations` IDs may represent composite legacy coverage rather than one upstream source. Candidate feeds mentioned in the France, Mexico, New Zealand, and Italy reconnaissance documents are not silently conflated into a single healthy source; source splitting remains a next action. Country reconnaissance documents provide evidence and next actions; they do not override this status vocabulary or authorize publication.

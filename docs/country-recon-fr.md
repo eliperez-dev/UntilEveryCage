@@ -37,17 +37,23 @@ Official dataset: <https://www.data.gouv.fr/datasets/base-sirene-des-entreprises
 
 SIRENE provides broad establishment discovery and crosswalk identifiers, not a facility-specific register. NAF codes are declared administrative activity, not proof of animals, slaughter, or current operation. API access requires account/subscription; the advertised limit is 30 requests/minute. The current stock bulk route is multi-gigabyte, and a versioned 2026-09-01 redirect was observed but not downloaded. Preserve SIRET/SIREN, active/closed dates, diffusion status, and source variables; treat partial-diffusion (`P`) as a hard privacy input and plan for the NAF transition.
 
+The advertised API base was `https://portail-api.insee.fr/catalog/api/2ba0e549-5587-3ef1-9082-99cd865de66f?aq=ALL`; the observed stock-establishment resource redirected to a versioned September 2026 ZIP. These routes support acquisition planning only; access and current schema were not tested here.
+
 ### HVE directory
 
 Official dataset: <https://www.data.gouv.fr/datasets/annuaire-des-exploitations-certifiees-haute-valeur-environnementale>. Verified [July 2026 CSV](https://static.data.gouv.fr/resources/annuaire-des-exploitations-certifiees-haute-valeur-environnementale/20260903-130258/annuaire-des-exploitations-hve-juillet-2026.csv). It is a voluntary, non-exhaustive directory. Head-office SIRET/address is not automatically an operating livestock site; use only as a labeled HVE subset and screen possible individual farm names/addresses.
 
 ### Agence Bio professionals API
 
-Official records/terms: <https://www.data.gouv.fr/dataservices/api-professionnels-bio>, [CGU](https://api.gouv.fr/resources/CGU%20API%20Professionnels%20du%20bio.pdf). Verified route: <https://opendata.agencebio.org/api/gouv/operateurs/>. It covers organic operators, including farms, processors, distributors, and importers, with active/stopped certification information. Preserve nested source values; minimize `manager`, addresses, and social/contact fields. Use only as a labeled organic subset, not a complete farm inventory.
+Official records/terms: <https://www.data.gouv.fr/dataservices/api-professionnels-bio>, [CGU](https://api.gouv.fr/resources/CGU%20API%20Professionnels%20du%20bio.pdf). Verified route: <https://opendata.agencebio.org/api/gouv/operateurs/>. It covers organic operators, including farms, processors, distributors, and importers, with active/stopped certification information. The service description advertises 50 calls/second/IP and no availability SLA; treat this as published service information, not a performance guarantee. Preserve nested source values; minimize `manager`, addresses, and social/contact fields. Use only as a labeled organic subset, not a complete farm inventory.
 
 ### Géorisques ICPE
 
 Official pages: <https://www.georisques.gouv.fr/donnees/bases-de-donnees/installations-industrielles>, <https://www.georisques.gouv.fr/acceder-la-carte-interactive-aux-bases-de-donnees-et-lapi>, and <https://www.georisques.gouv.fr/services>. ICPE classifications and rubrics are regulatory evidence, not proof of current animal use, capacity used, or complete farm coverage. The current download schema, licence, token/rate rules, and livestock/food rubric mapping remain unresolved; do not silently substitute the narrower data.gouv mirror.
+
+## Sources not suitable as V1 facility rows
+
+Agreste agricultural census tables are useful for commune-level aggregate context but lack facility identifiers and point locations. BDNI/animal-identification systems are restricted administrative systems rather than public facility downloads. Alim’confiance includes restaurants and retail as well as relevant activities; dataset presence alone is not enough to classify a record as animal agriculture or slaughtering.
 
 ## Private retrieval provenance (no raw artifact retained)
 
