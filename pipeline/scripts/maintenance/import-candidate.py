@@ -138,10 +138,13 @@ def import_candidate(database_url: str, manifest: dict, rows: list[dict], releas
                 country = _country_code(manifest, normalized)
                 name = normalized.get("trading_name")
                 city = normalized.get("city")
-                record_id = db.execute("""INSERT INTO uec.source_records(source_id,source_record_key,artifact_id,raw_fields,parsed_at)
+                db.execute("""INSERT INTO uec.source_records(source_id,source_record_key,artifact_id,raw_fields,parsed_at)
                     VALUES (%s,%s,%s,%s,%s) ON CONFLICT (source_id,source_record_key,artifact_id)
-                    DO UPDATE SET source_state='present' RETURNING source_record_id""",
-                    (manifest["source_id"], key, artifact_id, json.dumps({"source_values": record.get("source_values", {})}), now)).fetchone()[0]
+                    DO NOTHING""",
+                    (manifest["source_id"], key, artifact_id, json.dumps({"source_values": record.get("source_values", {})}), now))
+                record_id = db.execute("""SELECT source_record_id FROM uec.source_records
+                    WHERE source_id=%s AND source_record_key=%s AND artifact_id=%s""",
+                    (manifest["source_id"], key, artifact_id)).fetchone()[0]
                 existing = db.execute("""SELECT facility_id, observation_id FROM uec.observations
                     WHERE source_record_id=%s ORDER BY observed_at DESC, observation_id DESC LIMIT 1""", (record_id,)).fetchone()
                 if existing:
