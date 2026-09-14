@@ -210,6 +210,55 @@ class CandidateImportE2ETests(unittest.TestCase):
         after = self.counts()
         self.assertEqual(after, before)
 
+    def test_partial_batch_failure_resumes_idempotently_and_stays_private(self):
+        root = Path(self.temp.name) / "batch-resume"
+        root.mkdir()
+        raw = root / "batch.raw"
+        raw.write_bytes(b"synthetic-batch-resume")
+        source_id = "e2e.batch-resume"
+        release_id = "candidate-batch-resume"
+        digest = __import__("hashlib").sha256(raw.read_bytes()).hexdigest()
+        rows = [
+            {"source_id": source_id, "source_row": index, "source_values": {"name": f"private-{index}"},
+             "normalized": {"establishment_id": f"BATCH-{index}", "trading_name": f"Batch {index}",
+                             "city": "Testville", "country_code": "GB", "nation": "England"}}
+            for index in (1, 2, 3)
+        ]
+        manifest = {"source_id": source_id, "source_url": "https://example.invalid/batch",
+                    "retrieved_at_utc": "2026-09-14T00:00:00Z", "checksum_sha256": digest,
+                    "byte_size": raw.stat().st_size, "normalized_rows": 4,
+                    "release_state": "not-created", "publication_state": "private-candidate",
+                    "normalized_sha256": "placeholder", "config_version": "e2e"}
+        normalized = root / "normalized.jsonl"
+        bad = rows + [{"source_id": source_id, "source_row": 99, "normalized": {"trading_name": "bad"}}]
+        normalized.write_text("".join(json.dumps(row) + "\n" for row in bad), encoding="utf-8")
+        manifest["normalized_sha256"] = __import__("hashlib").sha256(normalized.read_bytes()).hexdigest()
+        manifest_path = root / "manifest.json"
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        command = [sys.executable, str(IMPORTER), "--manifest", str(manifest_path), "--normalized", str(normalized),
+                   "--raw", str(raw), "--release-id", release_id, "--database-url", self.env.database_url,
+                   "--disposable-db", "--batch-size", "2"]
+        failed = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
+        self.assertNotEqual(failed.returncode, 0)
+        with psycopg.connect(self.env.database_url) as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM uec.source_records WHERE source_id=%s", (source_id,)).fetchone()[0], 2)
+
+        normalized.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+        manifest["normalized_rows"] = len(rows)
+        manifest["normalized_sha256"] = __import__("hashlib").sha256(normalized.read_bytes()).hexdigest()
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        resumed = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
+        self.assertEqual(resumed.returncode, 0, resumed.stderr)
+        repeated = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
+        self.assertEqual(repeated.returncode, 0, repeated.stderr)
+        self.assertIn("imported 1 candidate rows", resumed.stdout)
+        self.assertIn("imported 0 candidate rows", repeated.stdout)
+        with psycopg.connect(self.env.database_url) as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM uec.source_records WHERE source_id=%s", (source_id,)).fetchone()[0], 3)
+            self.assertEqual(db.execute("SELECT count(*) FROM uec.release_members WHERE release_id=%s", (release_id,)).fetchone()[0], 3)
+            self.assertEqual(db.execute("SELECT bool_or(default_visible) FROM uec.release_members WHERE release_id=%s", (release_id,)).fetchone()[0], False)
+            self.assertEqual(db.execute("SELECT bool_or(publication_eligible) FROM uec.publication_review_events WHERE release_id=%s", (release_id,)).fetchone()[0], False)
+
 
 if __name__ == "__main__":
     unittest.main()
