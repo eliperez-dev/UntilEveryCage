@@ -136,7 +136,10 @@ for operator and importer-boundary validation. The sample contains 49 source row
 20 England, 20 Wales, 5 Jersey, 3 Isle of Man, and 1 Guernsey. The source-local
 handoff produced 29 normalized rows and 20 quarantined rows; quarantine reasons
 were `remarks_present` (11) and `unknown_nation` (9). The pre-DB importer checks
-loaded all 29 normalized rows and verified the raw and normalized checksums.
+loaded all 29 normalized rows and verified the raw and normalized checksums. The
+same handoff was then imported into a disposable local PostGIS database: 29
+candidate memberships, 0 default-visible rows, 29 pending privacy rows, 29
+coordinate-review-required rows, and 0 geocode rows.
 
 Restricted operator packet paths (not repository files):
 
@@ -146,13 +149,18 @@ Restricted operator packet paths (not repository files):
 
 The packet records the official source URL/catalog, parent and sample hashes,
 effective date, selection rule, coverage counts, quarantine counts, and disabled
-geocoding. The sample and all row-level derivatives remain restricted. No database
-import, preview, approval, coordinate release, or publication occurred. Operator
-decisions still required: source-rights/attribution review, duplicate and coverage
-scope review, privacy review of remarks and addresses, and authorization of any
-disposable-DB E2E run. The shared SourceArtifact/typed-run boundary remains a
-separate infrastructure integration limitation; this source-local bridge validates
-typed artifact facts directly and does not alter the common contract.
+geocoding. The sample and all row-level derivatives remain restricted. The existing
+candidate preview endpoint returned an empty result because pending privacy,
+coordinate, geocode, and visibility gates remained closed. Public V2 list/export
+routes remained unavailable because no promoted release exists. No approval,
+coordinate release, or publication occurred. Operator decisions still required:
+source-rights/attribution review, duplicate and coverage scope review, privacy review
+of remarks and addresses, and authorization of any test-release preview. Backend
+Safety's distinct guarded test-release route is not present in this baseline; do not
+relax the existing candidate-preview or public V2 gates. The shared
+SourceArtifact/typed-run boundary remains a separate infrastructure integration
+limitation; this source-local bridge validates typed artifact facts directly and does
+not alter the common contract.
 
 This reconciliation is a design and test record, not source approval or legal
 clearance. No live row data is included, and the private artifact remains outside
