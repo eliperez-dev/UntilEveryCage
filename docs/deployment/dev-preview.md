@@ -19,7 +19,9 @@ configuration fail closed. A local dev proxy may hold the token server-side;
 browser clients may hold it only in memory for the current session.
 
 Preview responses contain only privacy-screened, non-withheld candidate fields
-and source/retrieval metadata. They omit raw payloads, addresses, and geocoder
+and source/retrieval metadata. Exact coordinates require a separate explicit
+`coordinate_review_status=approved` decision; an accepted geocoder result alone
+is not permission to expose a point. They omit raw payloads, addresses, and geocoder
 queries. Every row is labeled `Private development candidate — not
 project-approved or published`; `project_approval` remains `false` and the
 release remains `candidate`. Candidate seed/reset/rebuild belongs to a

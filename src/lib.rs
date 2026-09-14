@@ -433,6 +433,9 @@ pub async fn get_dev_candidate_preview_handler(
           AND record.source_state NOT IN ('rejected', 'superseded')
           AND review.privacy_screening_status = 'passed'
           AND review.factual_review_status <> 'rejected'
+          -- An accepted geocoder result is not itself permission to expose a
+          -- precise point; candidate preview requires explicit coordinate review.
+          AND o.coordinate_review_status = 'approved'
           AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted restricted WHERE restricted.source_record_id = o.source_record_id)
         ORDER BY r.release_id, o.facility_id
         LIMIT $1

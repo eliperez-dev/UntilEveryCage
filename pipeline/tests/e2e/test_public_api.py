@@ -66,6 +66,8 @@ class PublicApiE2ETests(unittest.TestCase):
         self.assertEqual(body["data"][0]["release_status"], "candidate")
         self.assertEqual(body["data"][0]["project_approval"], False)
         self.assertIn("not project-approved", body["data"][0]["preview_label"])
+        self.assertEqual(len(body["data"]), 1)
+        self.assertEqual(body["data"][0]["canonical_name"], "E2E private candidate")
 
     def test_filters_do_not_bypass_publication_gate(self):
         for path in ("?category=retail_and_prepared_food", "?display_precision=city", "?lifecycle_status=explicitly_closed"):
