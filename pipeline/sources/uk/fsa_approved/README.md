@@ -22,14 +22,33 @@ write deterministic parsed, normalized, and quarantined states with a manifest
 whose `release_state` is always `not-created` and whose publication state is
 private-candidate.
 
-The adapter does not download or automate acquisition. Before a registered run,
-maintainers must verify the current official URL, effective/publication date,
-ownership, terms/licence, attribution, rate limits, retention/removal rules, and
-redistribution status. Privacy/suppression review, factual review, project approval,
-and publication remain independent gates.
+The source-local refresh command provides the repeatable acquisition boundary. It
+can fetch the configured official URL or accept a preserved raw artifact, records
+URL/retrieval/effective dates, hash, byte size, code/config versions, schema
+fingerprint, coverage, counts, and quarantine reasons, and writes an aggregate
+`refresh.json`. Dry-run is the default; `--mode handoff` is required to emit the
+private candidate-handoff contract. A changed header fingerprint or substantial
+unbounded count change raises a drift alarm and blocks handoff. A comparison with a
+prior normalized run reports disappeared identifiers as `not-observed`, never as
+closure. `--bounded-sample` is only for explicitly labeled private test samples.
+
+Before a registered or fetched run, maintainers must verify the current official
+URL, effective/publication date, ownership, terms/licence, attribution, rate limits,
+retention/removal rules, and redistribution status. Privacy/suppression review,
+factual review, project approval, and publication remain independent gates.
 
 Run focused tests from the repository root:
 
 ```text
 python -m unittest -q pipeline.sources.uk.fsa_approved.test_adapter pipeline.sources.uk.approved.test_compose
+```
+
+Private dry-run example:
+
+```text
+python -m pipeline.sources.uk.fsa_approved.refresh \
+  --raw <restricted-artifact.csv> \
+  --run-dir <restricted-run-dir> \
+  --effective-date 2026-09-01 \
+  --mode dry-run
 ```

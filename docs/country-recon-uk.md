@@ -167,3 +167,17 @@ not alter the common contract.
 This reconciliation is a design and test record, not source approval or legal
 clearance. No live row data is included, and the private artifact remains outside
 Git and public outputs.
+
+### Repeatable refresh QA (2026-09-14)
+
+The source-local refresh command was validated in aggregate-only dry-run mode against
+the retained 2026-09-01 artifact. It recorded the official URL, retrieval timestamp,
+effective date, SHA-256, byte size, code/config versions, 71-column schema
+fingerprint, coverage, quarantine reasons, and release/publication gates. Results:
+5,342 input rows, 4,300 normalized, 1,042 quarantined; anomaly counts were
+`remarks_present` 999, `address_privacy_risk` 11, `unknown_nation` 31, and
+`duplicate_id_within_nation` 4. No drift alarms were raised. The refresh report is
+restricted at `data/restricted/country-recon/uk/runs/2026-09-14-refresh-check/refresh.json`.
+Prior-run comparisons report disappeared identifiers as `not-observed`; they never
+infer closure. The command keeps Scotland and Northern Ireland outside this source
+profile and does not create a release.

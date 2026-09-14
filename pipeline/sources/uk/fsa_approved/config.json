@@ -3,6 +3,10 @@
   "adapter_version": "fsa-uk-v2-1",
   "source_id": "fsa_approved_establishments",
   "authority": "Food Standards Agency",
+  "source_url": "https://fsaopendata.blob.core.windows.net/opendatacatalog/Approved-Establishments-01-09-26.csv",
+  "catalog_url": "https://www.data.gov.uk/dataset/2c80e0ce-ee1c-4f26-ba6f-1e1ae1bd8ee9/approved-food-establishments",
+  "monthly_schema_fingerprint": "8a78f58c004a84811e51af53fab6eaf9316a93462575a17f52b6f7a7543e1fa8",
+  "monthly_baseline_rows": 5342,
   "covered_nations": ["England", "Wales", "Northern Ireland"],
   "authority_by_nation": {
     "England": "Food Standards Agency",
