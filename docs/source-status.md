@@ -19,7 +19,7 @@ No last-success timestamp is invented. Private artifacts are not proof of a publ
 | `it.locations` | verified | artifact_private_only | not_run | blocked | Current 853/2004 and 1069/2009 CSVs were privately acquired with provenance; schemas remain distinct and require dictionary/privacy mapping plus separate adapters |
 | `mx.locations` | verified | blocked | not_run | blocked | DENUE/SENASICA/DGSIAP reconnaissance; resolve token, directory, terms, and schema |
 | `nz.locations` | verified | blocked | not_run | blocked | MPI/Stats NZ reconnaissance; resolve 403/access and aggregate-vs-facility boundaries |
-| `uk.locations` | partial | artifact_private_only | not_run | blocked | Private England/Wales monthly candidate is validated; NI and Scotland remain separate, with withheld-address/duplicate/coverage/terms/release review open |
+| `uk.locations` | partial | artifact_private_only | not_run | blocked | Synthetic handoff passes importer pre-DB validation, but no real UK candidate has been imported or previewed; review-required/unapproved defaults, Docker E2E, privacy/coordinate, source-rights, duplicate, coverage, and release review remain open; NI/Scotland stay separate |
 | `dk.smiley` | partial | artifact_private_only | not_run | blocked | Current official artifact and registered adapter are privately staged for validation; coverage/effective-date uncertainty and terms/privacy/release review remain open |
 | `de.locations` | partial | not_run | not_run | blocked | Legacy session URL and current BVL endpoint/schema/terms remain unresolved |
 | `ca.locations` | verified | not_run | not_run | blocked | Federal/export and Ontario candidates are documented separately; verify permitted artifact, terms, schema, coverage, and privacy before acquisition |
