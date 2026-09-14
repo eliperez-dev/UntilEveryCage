@@ -35,7 +35,7 @@
   $: profileLabel = profile === 'curated' ? 'Curated release' : 'Community claims';
   let lastRemoteQuery = '';
   $: remoteQuery = `${profile}|${region}|${category}|${search}`;
-  $: if (localMode && localStatus === 'ready' && remoteQuery !== lastRemoteQuery) { lastRemoteQuery = remoteQuery; const url = new URL(window.location.href); for (const key of ['country_code', 'category', 'q']) url.searchParams.delete(key); if (region !== 'all') url.searchParams.set('country_code', region); if (category !== 'all') url.searchParams.set('category', category); if (search.trim()) url.searchParams.set('q', search.trim()); history.replaceState(null, '', url); void loadLocal(); }
+  $: if (localMode && localStatus === 'ready' && remoteQuery !== lastRemoteQuery) { lastRemoteQuery = remoteQuery; const url = new URL(window.location.href); for (const key of ['country_code', 'category', 'q']) url.searchParams.delete(key); if (region !== 'all') url.searchParams.set('country_code', region); if (category !== 'all') url.searchParams.set('category', category); if (search.trim()) url.searchParams.set('q', search.trim()); history.pushState(null, '', url); void loadLocal(); }
 
   const syncRoute = async () => {
     const route = parseRoute(window.location.hash);
@@ -61,7 +61,8 @@
   const profileChanged = () => { if (localMode) void loadLocal(); };
   const clearFilters = () => { search = ''; region = 'all'; category = 'all'; };
   onMount(() => { const params = new URLSearchParams(window.location.search); localMode = params.get('mode') === 'local-v2'; if (localMode) { try { const api = params.get('api') ?? undefined; repo = new LocalLocationRepository(globalThis.fetch, api); csvRepo = new LocalCsvExportRepository(globalThis.fetch, api ?? ''); metadataStatus = 'loading'; void new FilterMetadataRepository(globalThis.fetch, api ?? '').get().then((value) => { metadata = value; metadataStatus = 'ready'; }).catch(() => { metadataStatus = 'error'; }); } catch (error) { localStatus = 'error'; localError = error instanceof Error ? error.message : 'Local API origin was rejected safely.'; } } if (localMode && localStatus !== 'error') void loadLocal(); else if (!localMode) void syncRoute(); const onHashChange = () => void syncRoute(); window.addEventListener('hashchange', onHashChange); return () => window.removeEventListener('hashchange', onHashChange); });
-onMount(() => { const params = new URLSearchParams(window.location.search); if (params.get('mode') === 'local-v2') { search = params.get('q') ?? ''; region = params.get('country_code') ?? 'all'; category = params.get('category') ?? 'all'; } });
+  onMount(() => { const params = new URLSearchParams(window.location.search); if (params.get('mode') === 'local-v2') { search = params.get('q') ?? ''; region = params.get('country_code') ?? 'all'; category = params.get('category') ?? 'all'; } });
+  onMount(() => { const syncBrowserState = () => { const params = new URLSearchParams(window.location.search); if (params.get('mode') === 'local-v2') { search = params.get('q') ?? ''; region = params.get('country_code') ?? 'all'; category = params.get('category') ?? 'all'; } const route = parseRoute(window.location.hash); if (route.kind !== 'not-found' && route.profile !== profile) profile = route.profile; }; window.addEventListener('popstate', syncBrowserState); return () => window.removeEventListener('popstate', syncBrowserState); });
 </script>
 
 <svelte:head><title>Until Every Cage · evidence desk</title></svelte:head>
