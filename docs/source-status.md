@@ -24,7 +24,7 @@ No last-success timestamp is invented. Private artifacts are not proof of a publ
 | `de.locations` | partial | not_run | not_run | blocked | Legacy session URL and current BVL endpoint/schema/terms remain unresolved |
 | `ca.locations` | verified | not_run | not_run | blocked | Federal/export and Ontario candidates are documented separately; verify permitted artifact, terms, schema, coverage, and privacy before acquisition |
 | `es.locations` | partial | blocked | not_run | blocked | AESAN RGSEAA and MAPA sector routes are documented, but direct acquisition was refused; rights, export/schema, effective dates, sector coverage, privacy, and legacy/source boundaries remain unresolved |
-| `us.fsis` | verified | not_run | not_run | blocked | FSIS MPI route is documented; acquire a permitted current artifact and treat legacy inventory only as a comparison |
+| `us.fsis` | verified | blocked | not_run | blocked | Official FSIS MPI route is documented, but current CSV access returned 403; obtain authorized export access and record provenance/schema before adapter or publication review |
 | `us.aphis` | partial | not_run | not_run | blocked | APHIS export workflow and separate report/license provenance require review |
 | `us.inspections` | partial | not_run | not_run | blocked | Inspection observations require a current export and explicit identity matching |
 

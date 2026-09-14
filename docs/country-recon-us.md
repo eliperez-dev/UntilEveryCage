@@ -22,6 +22,19 @@ Legacy FSIS activity strings are multi-valued and overlap: Meat Slaughter 1,103;
 
 Acquire only official FSIS downloads or documented APHIS public-search/export workflows with UTC retrieval, effective/publication date, byte size, SHA-256, URL, and adapter/config version. Validate content type, signatures, headers, IDs, dates, coordinates, duplicates, and category vocabulary; quarantine HTML/login responses and sharp changes. Preserve raw/parsed layers separately in ignored restricted staging, keep source values/identifiers, avoid names/phones in logs, and never fuzzy-merge FSIS, APHIS annual reports, and inspections. Suppress personal names, direct contacts, residential/private locations, and precise points where ETHICS.md requires. A successful fetch is not publication approval.
 
+## 2026-09-14 FSIS access blocker
+
+The official FSIS MPI Directory route remains the identified source, but the
+current CSV links could not be safely acquired on 2026-09-14: ordinary direct
+and browser page access returned HTTP 403. Stale 2025 links were not used, and
+no artifact, byte count, or hash was retained. This is an access blocker, not
+evidence that the source is unavailable or that its terms permit reuse.
+
+Next step: obtain an authorized current FSIS export route or access context,
+then privately record the final URL, retrieval time, effective/publication date,
+content type, byte size, SHA-256, terms, and schema before any adapter or
+publication decision.
+
 ## Blockers and recommendation
 
 No safe bounded private fetch was performed, so current hashes/bytes and deterministic reproduction are intentionally unavailable. FSIS is the strongest automation candidate because recurring CSV downloads and source descriptions are available. APHIS is secondary/manual/UI-mediated and should be an explicitly versioned, human-reviewed annual-report adapter or restricted manual input. Do not build a laboratory-supplier layer from APHIS records without a separately identified, licensed source. Existing Selenium/compiler code is not production-grade: obsolete selectors, no provenance manifest, quarantine, terms/schema/privacy gates, and unsafe duplicate handling.
