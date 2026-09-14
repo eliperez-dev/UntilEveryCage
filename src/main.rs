@@ -294,8 +294,15 @@ async fn readiness(
             .into_response();
     };
     match pool.get().await {
-        Ok(client) => match client.query_one("SELECT 1", &[]).await {
-            Ok(_) => Json(serde_json::json!({"status": "ready", "database": "ok"})).into_response(),
+        Ok(client) => match client.query_one("SELECT to_regclass('uec.releases')::text", &[]).await {
+            Ok(row) if row.get::<_, Option<String>>(0).is_some() => {
+                Json(serde_json::json!({"status": "ready", "database": "ok", "schema": "migrated"})).into_response()
+            }
+            Ok(_) => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({"status": "not_ready", "reason": "database_schema_not_migrated"})),
+            )
+                .into_response(),
             Err(_) => (
                 StatusCode::SERVICE_UNAVAILABLE,
                 Json(serde_json::json!({"status": "not_ready", "reason": "database_query_failed"})),
@@ -315,7 +322,11 @@ fn validate_runtime(
     database_url: Option<&str>,
     port: &str,
 ) -> Result<u16, &'static str> {
-    if mode == "production" && database_url.is_none() {
+    if mode == "production"
+        && database_url
+            .map(|url| url.trim().is_empty())
+            .unwrap_or(true)
+    {
         return Err("UEC_DATABASE_URL is required in production");
     }
     if !matches!(mode, "development" | "production") {
@@ -459,6 +470,10 @@ mod config_tests {
     fn production_requires_database() {
         assert_eq!(
             validate_runtime("production", None, "8000"),
+            Err("UEC_DATABASE_URL is required in production")
+        );
+        assert_eq!(
+            validate_runtime("production", Some("  "), "8000"),
             Err("UEC_DATABASE_URL is required in production")
         );
     }

@@ -1,5 +1,6 @@
 """Disposable PostGIS and backend fixture used by API E2E tests."""
 import os
+import json
 import socket
 import subprocess
 import tempfile
@@ -100,7 +101,8 @@ class E2EEnvironment:
             for _ in range(80):
                 try:
                     with urllib.request.urlopen(f"http://127.0.0.1:{self.api_port}/health/ready", timeout=1) as response:
-                        if response.status == 200:
+                        payload = json.load(response)
+                        if response.status == 200 and payload.get("schema") == "migrated":
                             return self
                 except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError) as exc:
                     last_error = repr(exc)
