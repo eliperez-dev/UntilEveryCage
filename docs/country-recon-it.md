@@ -57,6 +57,17 @@ Private aggregate QA of the 853 snapshot found 41,844 distinct recognition/activ
 
 Do not publish names, addresses, tax identifiers, or precise coordinates merely because the Ministry publishes them. Apply residential/private-location screening, source-origin labels, project approval, and publication profile independently. Government-sourced does not mean current, complete, project-approved, or safe to expose.
 
+The private parity implementation is source-scoped as `it.853-2004`: the
+catalog-linked acquisition records the catalog/download boundary, response
+metadata, terms evidence, raw hash/bytes, and supplied file/catalog dates;
+`pipeline.common.orchestrator.run_private_lifecycle` then emits parsed,
+normalized, quarantined, QA, run-status, and private-health evidence. The
+candidate importer and guarded test-only API are explicit development steps;
+they do not promote a release or authorize publication. Regulation 1069/2009
+is registered as `it.1069-2009` but intentionally has no adapter, shared
+counts, candidate release, or API integration. A future link between the two
+must be a reviewed identity/link event, not a union by recognition number.
+
 ## Limitations
 
 This reconnaissance and private candidate adapter do not certify completeness/current accuracy, rate limits/authentication, or publication eligibility. Both artifacts remain private; no public release or healthy-pipeline claim is made. Repeated-activity identity and safe publication treatment of addresses, identifiers, and OSM-derived coordinates remain to be reviewed.

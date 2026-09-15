@@ -3,6 +3,7 @@ from pathlib import Path
 import psycopg
 from .fixture import E2EEnvironment
 from pipeline.contracts.adapter_contract import SourceArtifact
+from pipeline.common.orchestrator import run_private_lifecycle
 from pipeline.sources.italy.it_853_adapter import Italy853Adapter
 
 ROOT=Path(__file__).resolve().parents[3]
@@ -15,7 +16,7 @@ class ItalyCandidateImportE2E(unittest.TestCase):
   if os.environ.get("UEC_RUN_E2E")!="1": raise unittest.SkipTest("set UEC_RUN_E2E=1")
   cls.env=E2EEnvironment(); cls.env.test_release_id="e2e-private-candidate"; cls.env=cls.env.start(); cls.temp=tempfile.TemporaryDirectory(); root=Path(cls.temp.name); cls.raw=root/"it.csv"; cls.raw.write_text(HEADER+"\n"+ROW+"\n",encoding="utf-8")
   a=Italy853Adapter(); raw=cls.raw.read_bytes(); artifact=SourceArtifact("https://example.invalid/it-853.csv","2026-09-14T00:00:00Z",hashlib.sha256(raw).hexdigest(),len(raw),code_version=a.adapter_version,config_version=a.schema_version)
-  parsed=a.parse_bytes(raw); cls.run_dir=root/"handoff"; a.write_candidate_handoff(cls.run_dir,artifact,parsed)
+  cls.run_dir=root/"lifecycle"; lifecycle=run_private_lifecycle(cls.raw,root/"runs",artifact,a); assert lifecycle["status"]=="candidate-ready", lifecycle; cls.run_dir=Path(lifecycle["run_dir"])
   cls.release_id="candidate-italy-e2e"; cmd=[sys.executable,str(ROOT/"pipeline/scripts/maintenance/import-candidate.py"),"--manifest",str(cls.run_dir/"manifest.json"),"--normalized",str(cls.run_dir/"normalized/records.jsonl"),"--raw",str(cls.raw),"--release-id",cls.release_id,"--database-url",cls.env.database_url,"--disposable-db"]
   for _ in range(2):
    result=subprocess.run(cmd,cwd=ROOT,capture_output=True,text=True); assert result.returncode==0,result.stderr
@@ -32,11 +33,18 @@ class ItalyCandidateImportE2E(unittest.TestCase):
   if hasattr(cls,"temp"): cls.temp.cleanup()
   if hasattr(cls,"env"): cls.env.stop()
  def test_import_is_single_private_candidate(self): self.assertEqual(self.counts,(1,1,0)); self.assertEqual(self.linked,1)
+ def test_failed_batch_rolls_back_then_valid_import_is_idempotent(self):
+  bad_manifest=json.loads((self.run_dir/"manifest.json").read_text()); normalized=(self.run_dir/"normalized/records.jsonl").read_bytes(); bad=self.run_dir/"normalized/bad-records.jsonl"; bad.write_bytes(normalized+b'{"source_id":"it.853-2004","source_row":99}\n'); bad_manifest["normalized_rows"]=2; bad_manifest["normalized_sha256"]=hashlib.sha256(bad.read_bytes()).hexdigest(); bad_manifest_path=self.run_dir/"bad-manifest.json"; bad_manifest_path.write_text(json.dumps(bad_manifest),encoding="utf-8")
+  bad_cmd=[sys.executable,str(ROOT/"pipeline/scripts/maintenance/import-candidate.py"),"--manifest",str(bad_manifest_path),"--normalized",str(bad),"--raw",str(self.raw),"--release-id","candidate-italy-recovery","--database-url",self.env.database_url,"--disposable-db","--batch-size","2"]; failed=subprocess.run(bad_cmd,cwd=ROOT,capture_output=True,text=True); self.assertNotEqual(failed.returncode,0)
+  with psycopg.connect(self.env.database_url) as db: self.assertEqual(db.execute("SELECT count(*) FROM uec.releases WHERE release_id='candidate-italy-recovery'").fetchone()[0],0)
+  good_cmd=[sys.executable,str(ROOT/"pipeline/scripts/maintenance/import-candidate.py"),"--manifest",str(self.run_dir/"manifest.json"),"--normalized",str(self.run_dir/"normalized/records.jsonl"),"--raw",str(self.raw),"--release-id","candidate-italy-recovery","--database-url",self.env.database_url,"--disposable-db"]
+  first=subprocess.run(good_cmd,cwd=ROOT,capture_output=True,text=True); second=subprocess.run(good_cmd,cwd=ROOT,capture_output=True,text=True); self.assertEqual(first.returncode,0,first.stderr); self.assertEqual(second.returncode,0,second.stderr); self.assertIn("imported 0 candidate rows",first.stdout); self.assertIn("imported 0 candidate rows",second.stdout)
+  with psycopg.connect(self.env.database_url) as db: self.assertEqual(db.execute("SELECT count(*) FROM uec.release_members WHERE release_id='candidate-italy-recovery'").fetchone()[0],1)
  def test_guarded_preview_and_public_exclusion(self):
   base=f"http://127.0.0.1:{self.env.api_port}"
   with urllib.request.urlopen(base+"/api/v2/locations?profile=official") as r: self.assertEqual(json.loads(r.read())["data"],[])
   h={"X-UEC-Dev-Preview-Token":self.env.dev_preview_token}
-  req=urllib.request.Request(base+"/api/dev/preview/test-release/locations?profile=official",headers=h)
+  req=urllib.request.Request(base+"/api/dev/preview/test-release/locations?profile=official&country_code=IT&limit=1",headers=h)
   with urllib.request.urlopen(req) as r: body=json.loads(r.read())
   self.assertTrue(body["meta"]["test_only"]); self.assertTrue(body["meta"]["private_preview"]); self.assertEqual(body["meta"]["release_status"],"candidate"); self.assertIn("preview_label",body["meta"]); self.assertEqual(len(body["data"]),1); self.assertIn("Italy",json.dumps(body)); self.assertNotIn("source_values",json.dumps(body)); self.assertIsNone(body["data"][0]["latitude"])
   fid=body["data"][0]["facility_id"]
