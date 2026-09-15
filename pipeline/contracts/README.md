@@ -1,5 +1,21 @@
 # Source-adapter contract
 
+## Canonical source lifecycle
+
+All source packages use the same private lifecycle contract:
+
+`acquire -> preserve -> parse -> normalize -> validate -> health -> candidate import -> guarded test-only API`
+
+`source_lifecycle.py` owns the small cross-country primitives: atomic JSON and
+JSONL writes, deterministic JSONL hashes, private-manifest count/publication
+invariants, and the `source-lifecycle-v1` envelope. Source adapters continue
+to own their schemas, field mappings, validation rules, and quarantine reasons.
+The shared runner in `common.orchestrator.run_private_lifecycle` accepts only a
+preserved `SourceArtifact`, emits private QA/run-status/health evidence, and
+cannot promote or publish a release. See
+[`SOURCE-ADAPTER-TEMPLATE.md`](SOURCE-ADAPTER-TEMPLATE.md) for the country
+implementation template.
+
 ## Shared private-run QA seam
 
 `private_run.run_typed_adapter` provides the common runner for typed

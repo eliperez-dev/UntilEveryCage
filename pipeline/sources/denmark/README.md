@@ -32,8 +32,11 @@ inspection records); the publisher's statistics page explicitly excludes
 wholesale businesses. This is source coverage, not a claim that the project
 dataset is complete or that records are current. A reviewed acquisition may be
 retained in ignored private storage for research and validation only. The
-adapter emits a private candidate with `release_state: not-created`; no health,
-approval, geocoding, or publication conclusion follows from a successful run.
+adapter emits a private candidate with `release_state: not-created`. The
+source-owned runner additionally emits row-free QA and private health evidence
+when acquisition provenance is complete; `private-validated` is only an
+evidence-contract result, not a currentness, approval, geocoding, or
+publication conclusion.
 
 ## Full private refresh evidence
 

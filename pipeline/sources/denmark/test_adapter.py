@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 from .adapter import DenmarkSmileyAdapter, check_refresh
 from pipeline.contracts.adapter_contract import SourceArtifact
+from pipeline.common.orchestrator import run_private_lifecycle
 
 XML = b'<Root><Row><ID_nummer>1</ID_nummer><Virksomhed>Test</Virksomhed></Row><Row><Virksomhed>Unkeyed</Virksomhed></Row></Root>'
 
@@ -56,5 +57,32 @@ class DenmarkAdapterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             with self.assertRaisesRegex(ValueError, "duplicate"):
                 DenmarkSmileyAdapter().write_candidate_handoff(Path(d), self.artifact(), [duplicate, duplicate])
+
+    def test_canonical_lifecycle_emits_private_qa_status_and_deterministic_health(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); raw = root / "raw.xml"; raw.write_bytes(XML)
+            first = run_private_lifecycle(raw, root / "runs-one", self.artifact(), DenmarkSmileyAdapter())
+            second = run_private_lifecycle(raw, root / "runs-two", self.artifact(), DenmarkSmileyAdapter())
+            self.assertEqual(first["status"], "candidate-ready")
+            self.assertEqual(first["manifest"]["contract_version"], "source-lifecycle-v1")
+            self.assertEqual(first["manifest"], second["manifest"])
+            first_dir, second_dir = Path(first["run_dir"]), Path(second["run_dir"])
+            self.assertTrue((first_dir / "qa.json").is_file())
+            self.assertTrue((first_dir / "run-status.json").is_file())
+            self.assertTrue((first_dir / "source-health.json").is_file())
+            self.assertEqual((first_dir / "source-health.json").read_bytes(), (second_dir / "source-health.json").read_bytes())
+            health = json.loads((first_dir / "source-health.json").read_text())
+            self.assertEqual(health["health_state"], "private-validated")
+            self.assertFalse(health["public_exposure"])
+            self.assertNotIn("source_values", (first_dir / "source-health.json").read_text())
+
+    def test_canonical_lifecycle_rejects_malformed_xml_without_health(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); raw = root / "bad.xml"; raw.write_bytes(b"<Root><Row>")
+            status = run_private_lifecycle(raw, root / "runs", self.artifact(raw.read_bytes()), DenmarkSmileyAdapter())
+            self.assertEqual(status["status"], "failed")
+            run_dir = Path(status["run_dir"])
+            self.assertFalse((run_dir / "source-health.json").exists())
+            self.assertFalse((run_dir / "release-candidate" / "records.jsonl").exists())
 
 if __name__ == "__main__": unittest.main()

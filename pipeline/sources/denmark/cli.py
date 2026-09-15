@@ -14,6 +14,12 @@ def run_stage(script_name: str) -> None:
 
 
 def main(script_name: str) -> None:
+    if script_name == "run-denmark-pipeline.py":
+        # Preserve the old helper API while routing the runner to the
+        # source-owned implementation.
+        from pipeline.sources.denmark.pipeline import main as canonical_main
+        canonical_main()
+        return
     base = LEGACY_PIPELINE if script_name == "run-denmark-pipeline.py" else LEGACY_STAGES
     script = (base / script_name).resolve()
     if not script.is_file():

@@ -2,23 +2,15 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from typing import Any, Iterable
 
 from .adapter_contract import SourceAdapter, SourceArtifact
+from .source_lifecycle import atomic_json, validate_private_manifest
 
 
 class PrivateRunError(ValueError):
     """A private run manifest or report violates the shared contract."""
-
-
-def _atomic_json(path: Path, value: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    payload = (json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2, default=list) + "\n").encode()
-    temporary = path.with_name(path.name + ".tmp")
-    temporary.write_bytes(payload)
-    os.replace(temporary, path)
 
 
 def _manifest_value(manifest: dict[str, Any], key: str) -> Any:
@@ -52,16 +44,10 @@ def _record_ids(path: Path) -> set[str]:
 
 
 def validate_manifest(manifest: dict[str, Any]) -> None:
-    required = {"source_id", "input_rows", "normalized_rows", "quarantined_rows", "release_state"}
-    missing = sorted(required - manifest.keys())
-    if missing:
-        raise PrivateRunError("manifest missing required keys: " + ", ".join(missing))
-    if manifest["input_rows"] != manifest["normalized_rows"] + manifest["quarantined_rows"]:
-        raise PrivateRunError("manifest row counts do not reconcile")
-    if manifest["release_state"] != "not-created":
-        raise PrivateRunError("private run cannot have a release")
-    if manifest.get("publication_state") not in {None, "private-candidate", "not-staged"}:
-        raise PrivateRunError("private run publication state is not restricted")
+    try:
+        validate_private_manifest(manifest)
+    except ValueError as exc:
+        raise PrivateRunError(str(exc)) from exc
 
 
 def summarize_private_run(
@@ -115,7 +101,7 @@ def write_private_run_report(
         previous_normalized_path=previous_normalized_path,
         drift_alarms=drift_alarms,
     )
-    _atomic_json(Path(run_dir) / "qa.json", report)
+    atomic_json(Path(run_dir) / "qa.json", report)
     return report
 
 

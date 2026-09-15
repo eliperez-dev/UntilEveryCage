@@ -4,12 +4,13 @@ Parsing is private staging only.  This adapter never creates a release or
 publishes coordinates; records with no stable source key are quarantined.
 """
 from __future__ import annotations
-import hashlib, json, os
+import hashlib, json
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 from pipeline.contracts.adapter_contract import SourceArtifact
 from pipeline.contracts.candidate_handoff import write_handoff
+from pipeline.contracts.source_lifecycle import atomic_json, atomic_jsonl, private_manifest
 
 SOURCE_ID = "dk.smiley"
 ADAPTER_VERSION = "denmark-smiley-contract-v1"
@@ -21,19 +22,6 @@ def check_refresh(previous: dict[str, Any], current: dict[str, Any], *, max_coun
     old, new = int(previous.get("normalized_rows", 0)), int(current.get("normalized_rows", 0))
     if old and abs(new - old) / old > max_count_delta:
         raise ValueError("Denmark refresh normalized row count drift exceeds threshold")
-
-def _atomic(path: Path, payload: bytes) -> None:
-    """Publish one complete staging file, never a partially written artifact."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + ".tmp")
-    temporary.write_bytes(payload)
-    os.replace(temporary, path)
-
-def _jsonl(path: Path, rows: list[dict[str, Any]]) -> str:
-    """Serialize with stable ordering so reruns can be compared byte-for-byte."""
-    payload = b"".join((json.dumps(row, ensure_ascii=False, sort_keys=True, default=list) + "\n").encode() for row in rows)
-    _atomic(path, payload)
-    return hashlib.sha256(payload).hexdigest()
 
 class DenmarkSmileyAdapter:
     source_id = SOURCE_ID
@@ -111,16 +99,22 @@ class DenmarkSmileyAdapter:
         except ET.ParseError as exc:
             raise ValueError("invalid Denmark XML") from exc
         root = Path(run_dir)
-        parsed_hash = _jsonl(root / "parsed" / "records.jsonl", rows + [item["record"] for item in quarantined])
-        normalized_hash = _jsonl(root / "normalized" / "records.jsonl", rows)
-        _jsonl(root / "quarantined" / "records.jsonl", quarantined)
+        parsed_rows = rows + [item["record"] for item in quarantined]
+        _, parsed_hash, _ = atomic_jsonl(root / "parsed" / "records.jsonl", parsed_rows)
+        _, normalized_hash, _ = atomic_jsonl(root / "normalized" / "records.jsonl", rows)
+        atomic_jsonl(root / "quarantined" / "records.jsonl", quarantined)
         # This state is deliberately private: validation cannot authorize release.
-        manifest = {"source_id": SOURCE_ID, "adapter_version": ADAPTER_VERSION,
-                    "schema_version": ADAPTER_VERSION, "checksum_sha256": actual,
-                    "byte_size": len(raw), "input_rows": len(rows) + len(quarantined),
-                    "normalized_rows": len(rows), "quarantined_rows": len(quarantined),
-                    "parsed_sha256": parsed_hash, "normalized_sha256": normalized_hash,
-                    "release_state": "not-created", "publication_state": "private-candidate",
-                    "acquisition": artifact.__dict__}
-        _atomic(root / "manifest.json", (json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode())
+        manifest = private_manifest(
+            source_id=SOURCE_ID,
+            adapter_version=ADAPTER_VERSION,
+            schema_version=ADAPTER_VERSION,
+            artifact=artifact,
+            input_rows=len(parsed_rows),
+            normalized_rows=len(rows),
+            quarantined_rows=len(quarantined),
+            normalized_sha256=normalized_hash,
+            parsed_sha256=parsed_hash,
+            anomaly_counts={"missing_source_key": len(quarantined)} if quarantined else {},
+        )
+        atomic_json(root / "manifest.json", manifest)
         return manifest

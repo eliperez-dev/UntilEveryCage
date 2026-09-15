@@ -14,6 +14,13 @@ import urllib.request
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+import sys
+
+for _candidate in Path(__file__).resolve().parents:
+    if (_candidate / "pipeline").is_dir():
+        sys.path.insert(0, str(_candidate))
+        break
+from pipeline.contracts.source_lifecycle import atomic_json
 
 
 SOURCE_ID = "dk.smiley"
@@ -93,7 +100,7 @@ def archive_stream(stream, artifact_path: Path, *, max_bytes: int) -> tuple[str,
 
 
 def write_metadata(path: Path, metadata: dict) -> None:
-    path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    atomic_json(path, metadata)
 
 
 def archive_local_file(local_file: Path, output_root: Path, *, run_id: str, retrieved_at: str | None = None) -> dict:
