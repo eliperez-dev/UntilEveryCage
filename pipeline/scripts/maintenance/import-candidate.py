@@ -121,38 +121,41 @@ def import_candidate(database_url: str, manifest: dict, rows: list[dict], releas
     with psycopg.connect(database_url) as db:
         verify_disposable_marker(db)
         # The guard query starts an implicit read transaction in psycopg.
-        # End it before opening the independently resumable write batches;
+        # End it before opening independently resumable write batches;
         # otherwise psycopg nests them as savepoints under one outer rollback.
         db.commit()
-        with db.transaction():
-            db.execute("""INSERT INTO uec.sources(source_id,country_code,name,official_url,access_method)
-                         VALUES (%s,%s,%s,%s,'validated-private-staging')
-                         ON CONFLICT (source_id) DO NOTHING""",
-                       (manifest["source_id"], str(manifest.get("country_code", "ZZ"))[:2].upper(),
-                        manifest["source_id"], manifest["source_url"]))
-            db.execute("""INSERT INTO uec.raw_artifacts(storage_key,sha256,byte_size,media_type,retrieved_at)
-                         VALUES (%s,%s,%s,'application/octet-stream',%s)
-                         ON CONFLICT (sha256) DO NOTHING""",
-                       (f"private-staging/{manifest['source_id']}/{manifest['checksum_sha256']}",
-                        manifest["checksum_sha256"], int(manifest["byte_size"]), now))
-            artifact_id = db.execute("SELECT artifact_id FROM uec.raw_artifacts WHERE sha256=%s",
-                                     (manifest["checksum_sha256"],)).fetchone()[0]
-            db.execute("""INSERT INTO uec.acquisition_runs(source_id,checked_at,retrieved_at,ingested_at,status,source_url,code_version,config_version)
-                         VALUES (%s,%s,%s,now(),'changed',%s,%s,%s)""",
-                       (manifest["source_id"], now, now, manifest["source_url"],
-                        manifest.get("code_version", "unknown"), manifest.get("config_version", "unknown")))
-            run_id = db.execute("SELECT run_id FROM uec.acquisition_runs WHERE source_id=%s ORDER BY ingested_at DESC LIMIT 1",
-                                (manifest["source_id"],)).fetchone()[0]
-            db.execute("INSERT INTO uec.acquisition_run_artifacts(run_id,artifact_id) VALUES (%s,%s) ON CONFLICT DO NOTHING",
-                       (run_id, artifact_id))
-            db.execute("""INSERT INTO uec.releases(release_id,status,ruleset_version,summary,test_only)
-                         VALUES (%s,'candidate',%s,%s,true)
-                         ON CONFLICT (release_id) DO NOTHING""",
-                       (release_id, ruleset, json.dumps({"source_id": manifest["source_id"], "profile": manifest.get("profile")})))
         count = 0
         for offset in range(0, len(rows), batch_size):
             batch_count = 0
             with db.transaction():
+                if offset == 0:
+                    # Keep first-batch metadata atomic with its data. A
+                    # malformed first batch must leave no orphan run/release;
+                    # later batches remain independently resumable.
+                    db.execute("""INSERT INTO uec.sources(source_id,country_code,name,official_url,access_method)
+                                 VALUES (%s,%s,%s,%s,'validated-private-staging')
+                                 ON CONFLICT (source_id) DO NOTHING""",
+                               (manifest["source_id"], str(manifest.get("country_code", "ZZ"))[:2].upper(),
+                                manifest["source_id"], manifest["source_url"]))
+                    db.execute("""INSERT INTO uec.raw_artifacts(storage_key,sha256,byte_size,media_type,retrieved_at)
+                                 VALUES (%s,%s,%s,'application/octet-stream',%s)
+                                 ON CONFLICT (sha256) DO NOTHING""",
+                               (f"private-staging/{manifest['source_id']}/{manifest['checksum_sha256']}",
+                                manifest["checksum_sha256"], int(manifest["byte_size"]), now))
+                    artifact_id = db.execute("SELECT artifact_id FROM uec.raw_artifacts WHERE sha256=%s",
+                                             (manifest["checksum_sha256"],)).fetchone()[0]
+                    db.execute("""INSERT INTO uec.acquisition_runs(source_id,checked_at,retrieved_at,ingested_at,status,source_url,code_version,config_version)
+                                 VALUES (%s,%s,%s,now(),'changed',%s,%s,%s)""",
+                               (manifest["source_id"], now, now, manifest["source_url"],
+                                manifest.get("code_version", "unknown"), manifest.get("config_version", "unknown")))
+                    run_id = db.execute("SELECT run_id FROM uec.acquisition_runs WHERE source_id=%s ORDER BY ingested_at DESC LIMIT 1",
+                                        (manifest["source_id"],)).fetchone()[0]
+                    db.execute("INSERT INTO uec.acquisition_run_artifacts(run_id,artifact_id) VALUES (%s,%s) ON CONFLICT DO NOTHING",
+                               (run_id, artifact_id))
+                    db.execute("""INSERT INTO uec.releases(release_id,status,ruleset_version,summary,test_only)
+                                 VALUES (%s,'candidate',%s,%s,true)
+                                 ON CONFLICT (release_id) DO NOTHING""",
+                               (release_id, ruleset, json.dumps({"source_id": manifest["source_id"], "profile": manifest.get("profile")})))
                 for record in rows[offset:offset + batch_size]:
                     key, normalized = _record_parts(record)
                     country = _country_code(manifest, normalized)
