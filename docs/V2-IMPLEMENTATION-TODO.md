@@ -29,6 +29,29 @@ The [review cleanup record](V2-REVIEW-CLEANUP-2026-09-13.md) distinguishes fixes
 
 Post-fix A/B regression checks now cover release-scoped review in migration 022 and validation/promotion, plus Rust list/detail/CSV behavior through a two-profile synthetic HTTP E2E: B's later denial cannot revoke or relabel promoted A, and B cannot inherit A's approval. The local synthetic launcher explicitly declares `--no-distributed-artifacts`, with a narrow contract test; the portless two-stage backup drill passed twice in scoped local verification and in the final gate. The independent verifier reports a no-retry final local pass: standard 72 Rust and 102 Python (5 skipped), four sequential API E2E modules 36/36, root Jest 19/19, frontend unit 41/41, Playwright 42/42 across three browsers, plus frontend check/lint/boundary/build, `cargo fmt`, `git diff --check`, and PowerShell gate self-test 3/3. No disposable Docker project remained; persistent databases were untouched. **Remote CI remains pending.** Deploy migration 022 and the updated V2 API together with V2 public access paused during the transition, then verify compatibility and current restrictions before any eligible access resumes. See the [review cleanup record](V2-REVIEW-CLEANUP-2026-09-13.md); production crosswalk, independent suppression replay, and the other release blockers remain open.
 
+### 2026-09-15 final integration evidence
+
+The dependency-ordered integration of shared private lifecycle handling,
+suppression/re-exposure migration 024, Italy 853/2004, UK FSA/FSS, Belgium
+reconnaissance metadata, and the frontend V2 profile/state wiring is locally
+validated. The standard gate passed 65 Rust library tests, 10 Rust binary tests,
+85 Python tests with 10 expected skips, and 60 country/contract tests. The
+disposable Docker API modules passed public 10/10, community 6/6, seeded 19/19,
+public-surface 3/3, candidate-import 4/4, Italy 4/4, and suppression lifecycle
+4/4. Backup/restore passed stale-ledger rejection before replay and current
+restriction verification after replay. Root Jest passed 19/19, frontend unit
+tests 50/50, Playwright passed 54/54 across Chromium, Firefox, and WebKit, and
+frontend check/lint/build, `cargo fmt -- --check`, and `git diff --check` passed.
+
+These are local/disposable validation results, not production authorization.
+Belgium is deliberately non-runtime and reconnaissance-only; Italy
+853/2004/1069/2009 and UK FSA/FSS remain separate source scopes. The remaining
+ethics and implementation gates include an independently operated durable
+restriction ledger with enforced service-start/deployment integration, a
+reviewed V1↔V2 suppression crosswalk, source terms/privacy and visitor/provider
+audits, authorized human release authority, and remote CI verification. Keep
+V2 publication paused until those decisions have evidence.
+
 ## Phase 0 — Close and certify the backend foundation
 
 Goal: make the current backend/data-platform branch independently runnable, reviewable, and safe for frontend integration.

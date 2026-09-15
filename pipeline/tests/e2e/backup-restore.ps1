@@ -95,8 +95,15 @@ try {
   if ($LASTEXITCODE -ne 0) { throw "Restore failed (exit $LASTEXITCODE)." }
   Assert-Snapshot 'old backup restored, before replay' '1,1,0,0,0,1,1'
   if (Test-SyntheticServiceGate) { throw 'Unsafe drill gate accepted an old backup before current restriction replay.' }
+  # The verifier's nonzero exit is the expected result for the stale snapshot.
+  # Capture it while temporarily allowing native stderr so PowerShell's Stop
+  # policy does not turn the expected rejection into a harness failure.
+  $gateErrorAction = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
   & python $ledgerGate --ledger $ledgerFile --snapshot $oldSnapshot *> $null
-  if ($LASTEXITCODE -eq 0) { throw 'Pre-service ledger gate accepted an old restriction snapshot.' }
+  $oldGateExitCode = $LASTEXITCODE
+  $ErrorActionPreference = $gateErrorAction
+  if ($oldGateExitCode -eq 0) { throw 'Pre-service ledger gate accepted an old restriction snapshot.' }
   Write-Host '[backup-restore] PASS: synthetic pre-service gate rejects the old backup before replay.'
 
   Invoke-FixtureSql $suppressionFile
