@@ -15,9 +15,10 @@ SPEC.loader.exec_module(MODULE)
 class RestrictionLedgerGateTests(unittest.TestCase):
     def setUp(self):
         self.ledger = {"schema_version": 1, "revision": "r2", "active_restrictions": [
-            {"source_id": "synthetic", "source_record_key": "private", "scope": "whole_record"}
+            {"source_id": "synthetic", "source_record_key": "private", "scope": "whole_record", "action": "suppress"}
         ]}
-        self.snapshot = {"ledger_revision": "r2", "active_restrictions": list(self.ledger["active_restrictions"])}
+        self.ledger["ledger_sha256"] = MODULE.ledger_digest(self.ledger)
+        self.snapshot = {"ledger_revision": "r2", "ledger_sha256": self.ledger["ledger_sha256"], "active_restrictions": list(self.ledger["active_restrictions"])}
 
     def test_current_restrictions_must_match_before_service(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -26,6 +27,19 @@ class RestrictionLedgerGateTests(unittest.TestCase):
             MODULE.pre_service_gate(ledger_path, self.snapshot)
             with self.assertRaises(MODULE.RestrictionLedgerError):
                 MODULE.pre_service_gate(ledger_path, {"ledger_revision": "r1", "active_restrictions": []})
+
+    def test_digest_and_action_must_match(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ledger_path = Path(directory) / "ledger.json"
+            ledger_path.write_text(json.dumps(self.ledger), encoding="utf-8")
+            stale_digest = dict(self.snapshot, ledger_sha256="0" * 64)
+            with self.assertRaises(MODULE.RestrictionLedgerError):
+                MODULE.pre_service_gate(ledger_path, stale_digest)
+            unsupported = {**self.ledger, "active_restrictions": [{**self.ledger["active_restrictions"][0], "action": "restore"}]}
+            unsupported["ledger_sha256"] = MODULE.ledger_digest(unsupported)
+            ledger_path.write_text(json.dumps(unsupported), encoding="utf-8")
+            with self.assertRaises(MODULE.RestrictionLedgerError):
+                MODULE.load_ledger(ledger_path)
 
     def test_old_restore_cannot_start_without_current_replay(self):
         with tempfile.TemporaryDirectory() as directory:

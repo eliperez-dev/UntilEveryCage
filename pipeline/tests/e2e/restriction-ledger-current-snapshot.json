@@ -1,6 +1,7 @@
 {
   "ledger_revision": "synthetic-r2",
+  "ledger_sha256": "abd2e83d3030d733a2e5909430d33c783e2f37789180caa667259fa4952faffc",
   "active_restrictions": [
-    {"source_id": "e2e.backup", "source_record_key": "restricted", "scope": "whole_record"}
+    {"source_id": "e2e.backup", "source_record_key": "restricted", "scope": "whole_record", "action": "suppress"}
   ]
 }
