@@ -1,8 +1,9 @@
 import { test, expect } from '@playwright/test';
 
-test.skip(process.env.LOCAL_V2_E2E !== '1', 'Set LOCAL_V2_E2E=1 to run against the real local backend');
+const localE2eEnabled = process.env.LOCAL_V2_E2E === '1' || Boolean(process.env.UEC_E2E_API_URL);
 
 test('renders the real seeded local V2 record and opens its detail route', async ({ page }) => {
+  test.skip(!localE2eEnabled, 'Set LOCAL_V2_E2E=1 or UEC_E2E_API_URL to run against the real local backend');
   const apiUrl = process.env.UEC_E2E_API_URL ?? process.env.LOCAL_V2_API_URL ?? 'http://127.0.0.1:8000';
   let list: { data?: Array<{ facility_id: string; canonical_name: string }> } = {};
   const response = await fetch(`${apiUrl}/api/v2/locations?profile=official&limit=1`);
@@ -30,9 +31,43 @@ test('renders the real seeded local V2 record and opens its detail route', async
   await expect(page.locator('article')).toContainText('Project approval');
 });
 
-test.skip(process.env.TEST_RELEASE_E2E !== '1', 'Set TEST_RELEASE_E2E=1 with a disposable guarded test-release backend');
+test('exercises server discovery, cursor state, map, export, and mobile basics', async ({ page }) => {
+  test.skip(!localE2eEnabled, 'Set LOCAL_V2_E2E=1 or UEC_E2E_API_URL to run against the real local backend');
+  const apiUrl = process.env.UEC_E2E_API_URL ?? process.env.LOCAL_V2_API_URL ?? 'http://127.0.0.1:8000';
+  const response = await fetch(`${apiUrl}/api/v2/locations?profile=official&limit=2`);
+  expect(response.ok).toBeTruthy();
+  const list = await response.json() as { data?: Array<{ facility_id: string; canonical_name?: string; country_code?: string; latitude?: number | null; longitude?: number | null }>; };
+  const record = list.data?.[0];
+  if (!record) return;
+  const spatial = record.latitude !== null && record.longitude !== null
+    ? `&min_lon=${(record.longitude! - 1).toFixed(4)}&min_lat=${(record.latitude! - 1).toFixed(4)}&max_lon=${(record.longitude! + 1).toFixed(4)}&max_lat=${(record.latitude! + 1).toFixed(4)}`
+    : '&q=' + encodeURIComponent(record.canonical_name ?? record.country_code ?? 'synthetic');
+  const spatialResponse = await fetch(`${apiUrl}/api/v2/locations?profile=official&limit=2${spatial}`);
+  expect(spatialResponse.ok).toBeTruthy();
+  if (record.latitude !== null && record.longitude !== null) {
+    const radiusResponse = await fetch(`${apiUrl}/api/v2/locations?profile=official&limit=2&latitude=${record.latitude}&longitude=${record.longitude}&radius_km=100`);
+    expect(radiusResponse.ok).toBeTruthy();
+  }
+  await page.route('**/api/v2/**', async route => {
+    const requestUrl = new URL(route.request().url());
+    const upstream = await fetch(`${apiUrl}${requestUrl.pathname}${requestUrl.search}`);
+    await route.fulfill({ status: upstream.status, headers: { 'content-type': upstream.headers.get('content-type') ?? 'application/json', 'x-uec-release-id': upstream.headers.get('x-uec-release-id') ?? '' }, body: await upstream.text() });
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('./?mode=local-v2#/');
+  await expect(page.getByText('LOCAL V2 API')).toBeVisible();
+  const searchTerm = (record.canonical_name ?? record.country_code ?? '').slice(0, 6);
+  await page.getByLabel('Search locations').fill(searchTerm);
+  await expect(page).toHaveURL(new RegExp(`q=${encodeURIComponent(searchTerm)}`));
+  await expect(page.getByRole('status').filter({ hasText: 'server' })).toBeVisible();
+  await page.getByRole('button', { name: 'Show map' }).click();
+  await expect(page.getByLabel(/Location map showing facility records/)).toBeVisible();
+  await expect(page.getByRole('button', { name: /Download official CSV/ })).toBeVisible();
+  await expect(page.locator('main')).toBeVisible();
+});
 
 test('renders the guarded disposable test release without public fallback', async ({ page }) => {
+  test.skip(process.env.TEST_RELEASE_E2E !== '1', 'Set TEST_RELEASE_E2E=1 with a disposable guarded test-release backend');
   const apiUrl = process.env.UEC_E2E_API_URL ?? 'http://127.0.0.1:8000';
   const token = process.env.UEC_TEST_RELEASE_TOKEN ?? process.env.UEC_DEV_PREVIEW_TOKEN;
   expect(token, 'UEC_TEST_RELEASE_TOKEN must be supplied in memory by the test runner').toBeTruthy();

@@ -3,16 +3,20 @@ const row={facility_id:'550e8400-e29b-41d4-a716-446655440000',canonical_name:'Lo
 const response=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{'content-type':'application/json'}});const envelope=(data=[row],meta={release_id:'rel-1',ruleset_version:'rules-1',profile:'official',next_cursor:null,coverage_note:'Local promoted release.'})=>({data,api_version:'v2',meta});
 describe('LocalLocationRepository',()=>{it('maps a valid Rust-shaped envelope',async()=>{const result=await new LocalLocationRepository(vi.fn().mockResolvedValue(response(envelope()))).list();expect(result.locations[0]).toMatchObject({id:row.facility_id,name:'Local V2 Fixture',lat:55});});it('fails closed when no release is promoted',async()=>{await expect(new LocalLocationRepository(vi.fn().mockResolvedValue(response(envelope([],{release_id:null,profile:'official',coverage_note:'No promoted release.'})))).list()).rejects.toMatchObject({kind:'no-release'});});it('classifies server failures as unavailable',async()=>{await expect(new LocalLocationRepository(vi.fn().mockResolvedValue(response({},503))).list()).rejects.toMatchObject({kind:'unavailable',status:503});});it('rejects malformed or restricted payloads',async()=>{await expect(new LocalLocationRepository(vi.fn().mockResolvedValue(response({...envelope(),api_version:'v1'}))).list()).rejects.toMatchObject({kind:'invalid-contract'});await expect(new LocalLocationRepository(vi.fn().mockResolvedValue(response(envelope([{...row,privacy_screening_status:'failed'}])))).list()).rejects.toMatchObject({kind:'invalid-contract'});});});
 describe('LocalLocationRepository query contract', () => {
-  it('passes supported filters and the opaque cursor without inventing search semantics', async () => {
+  it('passes server-side search, region, supported filters, and opaque cursor', async () => {
     const fetcher = vi.fn().mockResolvedValue(response(envelope([], { ...envelope().meta, next_cursor: 'cursor-2' })));
-    const result = await new LocalLocationRepository(fetcher).list('official', { country_code: 'DK', category: 'dairy', source_type: 'official', display_precision: 'city', lifecycle_status: 'active_observed', cursor: 'cursor-1' });
+    const result = await new LocalLocationRepository(fetcher).list('official', { q: 'North Coast', country_code: 'DK', region: 'North Coast', category: 'dairy', source_type: 'official', display_precision: 'city', lifecycle_status: 'active_observed', min_lon: 8, min_lat: 54, max_lon: 13, max_lat: 58, cursor: 'cursor-1' });
     const request = String(fetcher.mock.calls[0]?.[0]);
     expect(request).toContain('profile=official');
+    expect(request).toContain('q=North+Coast');
     expect(request).toContain('country_code=DK');
+    expect(request).toContain('region=North+Coast');
     expect(request).toContain('category=dairy');
     expect(request).toContain('source_type=official');
     expect(request).toContain('display_precision=city');
     expect(request).toContain('lifecycle_status=active_observed');
+    expect(request).toContain('min_lon=8');
+    expect(request).toContain('max_lat=58');
     expect(request).toContain('cursor=cursor-1');
     expect(result.nextCursor).toBe('cursor-2');
   });

@@ -900,10 +900,10 @@ const V2_LIFECYCLES: &[&str] = &[
 
 pub async fn get_v2_filter_metadata_handler() -> impl IntoResponse {
     Json(json!({"api_version":"v2", "contract_version":"v1", "dimensions": {
-        "country_code":{"values":V2_COUNTRIES}, "category":{"values":V2_CATEGORIES},
+        "country_code":{"values":V2_COUNTRIES}, "region":{"values":[],"source":"release_facets"}, "category":{"values":V2_CATEGORIES},
         "source_type":{"values":V2_SOURCE_TYPES}, "profile":{"values":V2_PROFILES,"default":"official"},
         "display_precision":{"values":V2_PRECISIONS}, "lifecycle_status":{"values":V2_LIFECYCLES}
-    }, "pagination":{"limit_max":1000,"cursor":"facility_id"}, "privacy":"Filters operate only on eligible records in the selected promoted release; filters never override suppression or publication review."})).into_response()
+    }, "spatial":{"bbox":["min_lon","min_lat","max_lon","max_lat"],"radius":["latitude","longitude","radius_km"]}, "search":{"parameter":"q","fields":["canonical_name","city","country_code","category","source_name"]}, "pagination":{"limit_max":1000,"cursor":"facility_id"}, "privacy":"Filters operate only on eligible records in the selected promoted release; filters never override suppression or publication review."})).into_response()
 }
 
 pub async fn get_v2_facets_handler(
@@ -938,6 +938,10 @@ pub async fn get_v2_facets_handler(
             .country_code
             .as_deref()
             .is_some_and(|v| v.len() != 2 || !v.chars().all(|c| c.is_ascii_uppercase()))
+        || params
+            .region
+            .as_deref()
+            .is_some_and(|v| v.trim().is_empty() || v.len() > 120)
     {
         return v2_error(
             StatusCode::BAD_REQUEST,
@@ -973,7 +977,7 @@ pub async fn get_v2_facets_handler(
     let release_id: String = release.get(0);
     let ruleset_version: String = release.get(1);
     let release_created_at: chrono::DateTime<chrono::Utc> = release.get(2);
-    let rows = match client.query("SELECT country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type FROM uec.map_facilities_display_history WHERE release_id=$1 AND ($2::text IS NULL OR country_code=$2) AND ($3::text IS NULL OR classification_category=$3) AND ($4::text IS NULL OR provenance_origin_type=$4) AND ($5::text IS NULL OR display_precision=$5) AND ($6::text IS NULL OR lifecycle_status=$6)", &[&release_id, &params.country_code, &params.category, &params.source_type, &params.display_precision, &params.lifecycle_status]).await { Ok(rows) => rows, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "facets_query_failed", "public facets unavailable") };
+    let rows = match client.query("SELECT country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city FROM uec.map_facilities_display_history WHERE release_id=$1 AND ($2::text IS NULL OR country_code=$2) AND ($3::text IS NULL OR classification_category=$3) AND ($4::text IS NULL OR provenance_origin_type=$4) AND ($5::text IS NULL OR display_precision=$5) AND ($6::text IS NULL OR lifecycle_status=$6) AND ($7::text IS NULL OR city=$7)", &[&release_id, &params.country_code, &params.category, &params.source_type, &params.display_precision, &params.lifecycle_status, &params.region]).await { Ok(rows) => rows, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "facets_query_failed", "public facets unavailable") };
     let mut dimensions = serde_json::Map::new();
     for (name, values) in [
         (
@@ -998,6 +1002,12 @@ pub async fn get_v2_facets_handler(
             "source_type",
             rows.iter().map(|r| r.get::<_, String>(4)).collect(),
         ),
+        (
+            "region",
+            rows.iter()
+                .filter_map(|r| r.get::<_, Option<String>>(5))
+                .collect(),
+        ),
     ] {
         let mut counts = std::collections::BTreeMap::<String, usize>::new();
         for value in values {
@@ -1014,17 +1024,26 @@ pub async fn get_v2_facets_handler(
             ),
         );
     }
-    Json(json!({"api_version":"v2", "meta":{"profile":profile,"release_id":release_id,"ruleset_version":ruleset_version,"release_created_at":release_created_at,"coverage_scope":"selected_promoted_release_public_facilities","count_semantics":"Counts are eligible public facility projection rows after current suppression; they are not story-wide or animal counts.","filters":{"country_code":params.country_code,"category":params.category,"source_type":params.source_type,"display_precision":params.display_precision,"lifecycle_status":params.lifecycle_status}}, "dimensions":dimensions})).into_response()
+    Json(json!({"api_version":"v2", "meta":{"profile":profile,"release_id":release_id,"ruleset_version":ruleset_version,"release_created_at":release_created_at,"coverage_scope":"selected_promoted_release_public_facilities","count_semantics":"Counts are eligible public facility projection rows after current suppression; they are not story-wide or animal counts.","filters":{"country_code":params.country_code,"region":params.region,"category":params.category,"source_type":params.source_type,"display_precision":params.display_precision,"lifecycle_status":params.lifecycle_status}}, "dimensions":dimensions})).into_response()
 }
 
 #[derive(Deserialize)]
 pub struct V2LocationParams {
     pub country_code: Option<String>,
+    pub region: Option<String>,
     pub category: Option<String>,
     pub source_type: Option<String>,
     pub profile: Option<String>,
     pub display_precision: Option<String>,
     pub lifecycle_status: Option<String>,
+    pub q: Option<String>,
+    pub min_lon: Option<String>,
+    pub min_lat: Option<String>,
+    pub max_lon: Option<String>,
+    pub max_lat: Option<String>,
+    pub radius_km: Option<String>,
+    pub latitude: Option<String>,
+    pub longitude: Option<String>,
     pub limit: Option<String>,
     pub offset: Option<String>,
     pub cursor: Option<String>,
@@ -1110,6 +1129,116 @@ pub async fn get_v2_locations_handler(
             StatusCode::BAD_REQUEST,
             "invalid_source_type",
             "source_type is unsupported",
+        );
+    }
+    if params
+        .region
+        .as_deref()
+        .is_some_and(|v| v.trim().is_empty() || v.len() > 120)
+        || params
+            .q
+            .as_deref()
+            .is_some_and(|v| v.trim().is_empty() || v.len() > 120)
+    {
+        return v2_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_filter",
+            "region and q must be non-empty and at most 120 characters",
+        );
+    }
+    let search_text = params.q.as_deref().map(|value| {
+        value
+            .trim()
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_")
+    });
+    let parse_coordinate = |value: &Option<String>, name: &'static str, min: f64, max: f64| {
+        value
+            .as_deref()
+            .map(str::parse::<f64>)
+            .transpose()
+            .map_err(|_| (name, "must be a number"))
+            .and_then(|value| {
+                if value.is_some_and(|number| !number.is_finite() || number < min || number > max) {
+                    Err((name, "is outside the supported range"))
+                } else {
+                    Ok(value)
+                }
+            })
+    };
+    let min_lon = match parse_coordinate(&params.min_lon, "min_lon", -180.0, 180.0) {
+        Ok(v) => v,
+        Err((_, message)) => {
+            return v2_error(StatusCode::BAD_REQUEST, "invalid_spatial_query", message);
+        }
+    };
+    let min_lat = match parse_coordinate(&params.min_lat, "min_lat", -90.0, 90.0) {
+        Ok(v) => v,
+        Err((_, message)) => {
+            return v2_error(StatusCode::BAD_REQUEST, "invalid_spatial_query", message);
+        }
+    };
+    let max_lon = match parse_coordinate(&params.max_lon, "max_lon", -180.0, 180.0) {
+        Ok(v) => v,
+        Err((_, message)) => {
+            return v2_error(StatusCode::BAD_REQUEST, "invalid_spatial_query", message);
+        }
+    };
+    let max_lat = match parse_coordinate(&params.max_lat, "max_lat", -90.0, 90.0) {
+        Ok(v) => v,
+        Err((_, message)) => {
+            return v2_error(StatusCode::BAD_REQUEST, "invalid_spatial_query", message);
+        }
+    };
+    let radius_km = match parse_coordinate(&params.radius_km, "radius_km", 0.001, 5000.0) {
+        Ok(v) => v,
+        Err((_, message)) => {
+            return v2_error(StatusCode::BAD_REQUEST, "invalid_spatial_query", message);
+        }
+    };
+    let latitude = match parse_coordinate(&params.latitude, "latitude", -90.0, 90.0) {
+        Ok(v) => v,
+        Err((_, message)) => {
+            return v2_error(StatusCode::BAD_REQUEST, "invalid_spatial_query", message);
+        }
+    };
+    let longitude = match parse_coordinate(&params.longitude, "longitude", -180.0, 180.0) {
+        Ok(v) => v,
+        Err((_, message)) => {
+            return v2_error(StatusCode::BAD_REQUEST, "invalid_spatial_query", message);
+        }
+    };
+    let bbox_values = [min_lon, min_lat, max_lon, max_lat];
+    let bbox_present = bbox_values.iter().any(Option::is_some);
+    if bbox_present && bbox_values.iter().any(Option::is_none) {
+        return v2_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_spatial_query",
+            "bounding box requires min_lon, min_lat, max_lon, and max_lat",
+        );
+    }
+    if bbox_present && !(min_lon.unwrap() < max_lon.unwrap() && min_lat.unwrap() < max_lat.unwrap())
+    {
+        return v2_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_spatial_query",
+            "bounding box minimums must be less than maximums",
+        );
+    }
+    let radius_present = radius_km.is_some() || latitude.is_some() || longitude.is_some();
+    if radius_present && (radius_km.is_none() || latitude.is_none() || longitude.is_none()) {
+        return v2_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_spatial_query",
+            "radius queries require radius_km, latitude, and longitude",
+        );
+    }
+    if bbox_present && radius_present {
+        return v2_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_spatial_query",
+            "bounding box and radius cannot be combined",
         );
     }
     if params
@@ -1236,12 +1365,16 @@ pub async fn get_v2_locations_handler(
         WHERE map_facilities_display_history.release_id = $1
           AND ($2::uuid IS NULL OR facility_id > $2)
           AND ($3::text IS NULL OR country_code = $3)
-          AND ($4::text IS NULL OR classification_category = $4)
-          AND ($5::text IS NULL OR display_precision = $5)
-          AND ($6::text IS NULL OR lifecycle_status = $6)
-          AND ($7::text IS NULL OR provenance_origin_type = $7)
-        ORDER BY facility_id LIMIT $8 OFFSET $9
-    "#, &[&promoted_release_id, &cursor, &params.country_code, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &query_limit, &effective_offset]).await {
+          AND ($4::text IS NULL OR city = $4)
+          AND ($5::text IS NULL OR classification_category = $5)
+          AND ($6::text IS NULL OR display_precision = $6)
+          AND ($7::text IS NULL OR lifecycle_status = $7)
+          AND ($8::text IS NULL OR provenance_origin_type = $8)
+          AND ($9::text IS NULL OR lower(coalesce(canonical_name, '') || ' ' || coalesce(city, '') || ' ' || country_code || ' ' || classification_category || ' ' || coalesce(provenance_source_name, '')) LIKE '%' || lower($9) || '%' ESCAPE '\')
+          AND ($10::double precision IS NULL OR (display_location && ST_MakeEnvelope($10, $11, $12, $13, 4326)::geography AND ST_Intersects(display_location::geometry, ST_MakeEnvelope($10, $11, $12, $13, 4326))))
+          AND ($14::double precision IS NULL OR ST_DWithin(display_location, ST_SetSRID(ST_Point($15, $16), 4326)::geography, $14 * 1000))
+        ORDER BY facility_id LIMIT $17 OFFSET $18
+    "#, &[&promoted_release_id, &cursor, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &query_limit, &effective_offset]).await {
         Ok(rows) => rows,
         Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
     };
@@ -1297,7 +1430,8 @@ pub async fn get_v2_locations_handler(
         "next_cursor": next_cursor,
         "coverage_note": "Results are eligible public facility projection rows from the selected promoted release after current suppression; they are not story-wide or animal counts.",
         "coverage_scope": "selected_promoted_release_public_facilities",
-        "count_semantics": "Each row represents a public facility projection, not an animal count."
+        "count_semantics": "Each row represents a public facility projection, not an animal count.",
+        "query": {"q": params.q, "filters": {"country_code": params.country_code, "region": params.region, "category": params.category, "source_type": params.source_type, "display_precision": params.display_precision, "lifecycle_status": params.lifecycle_status}}
     });
     if transaction.commit().await.is_err() {
         return (
@@ -1515,6 +1649,32 @@ mod v2_api_tests {
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(V2_CATEGORIES.len(), 4);
         assert!(!V2_COUNTRIES.contains(&"ZZ"));
+    }
+
+    #[tokio::test]
+    async fn discovery_rejects_incomplete_or_conflicting_spatial_queries() {
+        let state = ApiState {
+            database: None,
+            dev_preview_token: None,
+            dev_test_release_id: None,
+            dev_test_release_token: None,
+        };
+        for uri in [
+            "/api/v2/locations?min_lon=8&min_lat=54&max_lon=13",
+            "/api/v2/locations?latitude=56&longitude=10",
+            "/api/v2/locations?min_lon=8&min_lat=54&max_lon=13&max_lat=58&latitude=56&longitude=10&radius_km=10",
+        ] {
+            let response = Router::new()
+                .route(
+                    "/api/v2/locations",
+                    axum::routing::get(get_v2_locations_handler),
+                )
+                .with_state(state.clone())
+                .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{uri}");
+        }
     }
 
     #[tokio::test]
