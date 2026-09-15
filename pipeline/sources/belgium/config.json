@@ -1,0 +1,12 @@
+{
+  "source_id": "be.locations",
+  "operator_url": "https://www.static.favv.be/bo-documents/inter_actieve_actoren_EN.csv",
+  "activity_code_url": "https://www.static.favv.be/bo-documents/inter_PAP_omschrijving_EN.csv",
+  "catalog_url": "https://data.gov.be/en/datasets/favv-afsca-operators",
+  "activity_catalog_url": "https://data.gov.be/en/datasets/fasfc-activity-codes",
+  "adapter_version": "be-fasfc-private-v1",
+  "schema_version": "be-fasfc-csv-v1",
+  "coverage": "Belgium FASFC operators with a current registration, approval, or authorization; activity codebook joined separately",
+  "terms": "CC Attribution 4.0 is indicated by the data.gov.be dataset pages; attribution and project publication review remain required",
+  "geocoding": "disabled"
+}

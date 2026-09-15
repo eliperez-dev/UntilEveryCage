@@ -17,6 +17,8 @@ identifies BVL/BKG attribution notices for portal geodata. The portal’s export
 capability supports a reproducible acquisition design, but it does not by itself
 establish permission to redistribute the exported establishment records.
 
+The stable entry route is [BVL BLtU](https://www.bvl.bund.de/bltu); the BVL portal supports selecting and exporting the current general or category list. Session-bound export URLs must be captured as run-specific provenance, not checked in as a source URL.
+
 The existing V1 Germany adapter is [`static_data/de/migrate_data.py`](../static_data/de/migrate_data.py),
 which references the BLtU publication endpoint and expects downloaded/merged CSVs.
 Its current behavior also performs external geocoding and emits a wide source-shaped
@@ -51,6 +53,16 @@ the actual BLtU resource. In particular, `http://dcat-ap.de` identifies a metada
 profile/specification, not a dataset license, and `https://bund.de` is a placeholder,
 not the BLtU resource URI. A DL-DE record for another BVL dataset cannot be inherited
 by BLtU without dataset-specific evidence.
+
+## Private/test-only implementation
+
+[`pipeline/sources/germany/`](../pipeline/sources/germany/) now provides a typed BLtU adapter and assisted refresh. Use the stable landing page to select the current CSV export, save it in private ignored storage, and run:
+
+```text
+python -m pipeline.sources.germany.refresh --raw <private/bltu-export.csv> --run-dir <private/run> --retrieved-at-utc 2026-09-15T00:00:00Z
+```
+
+The adapter preserves repeated activity columns and current approval numbers, quarantines schema/identity/unmapped-code anomalies, emits shared QA and health evidence, and produces only a private candidate handoff. Address and coordinate values remain private and geocoding is disabled. Candidate import, if used, must target the disposable database guard and remains test-only; no public release is created.
 
 ## Planned recurring acquisition after approval
 

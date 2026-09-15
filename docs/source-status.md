@@ -15,7 +15,7 @@ No last-success timestamp is invented. Private artifacts are not proof of a publ
 
 | Source ID | Metadata | Acquisition | Runtime health | Publication | Evidence / next action |
 |---|---|---|---|---|---|
-| `be.locations` | verified | blocked | not_run | blocked | FASFC operator/codebook reconnaissance; obtain an authorized bounded operator CSV, capture its schema and provenance, then implement category/privacy validation |
+| `be.locations` | verified | blocked | not_run | blocked | Shared private adapter and assisted two-file refresh are implemented with synthetic schema coverage; obtain an authorized operator capture and compare live schema before any real run |
 | `fr.locations` | verified | blocked | not_run | blocked | DGAL/Alim’confiance/SIRENE/HVE/Agence Bio/Géorisques reconnaissance; acquire permitted official artifact and review terms/privacy |
 | `it.853-2004` | verified | artifact_private_only | not_run | blocked | Catalog acquisition, shared lifecycle, adapter, private candidate import, and guarded API checks remain review-gated; repeated activity identity, coordinate/address privacy, coverage, and project approval remain open |
 | `it.1069-2009` | verified | not_run | not_run | blocked | Separate by-products catalog candidate; no adapter or integration decision; assess scope, schema, terms, identity links, and privacy |
@@ -23,7 +23,7 @@ No last-success timestamp is invented. Private artifacts are not proof of a publ
 | `nz.locations` | verified | blocked | not_run | blocked | MPI/Stats NZ reconnaissance; resolve 403/access and aggregate-vs-facility boundaries |
 | `uk.locations` | partial | artifact_private_only | unknown | blocked | FSA and FSS private V2 lifecycle paths and synthetic handoff tests pass; no real UK candidate has been imported or previewed; privacy/coordinate, source-rights, duplicate, coverage, and release review remain open; NI/Scotland stay separate |
 | `dk.smiley` | verified | verified | unknown | blocked | Shared private lifecycle and registered adapter are validated on synthetic/retained evidence; coverage/effective-date uncertainty and terms/privacy/release review remain open |
-| `de.locations` | partial | not_run | not_run | blocked | Legacy session URL and current BVL endpoint/schema/terms remain unresolved |
+| `de.locations` | partial | artifact_private_only | not_run | blocked | Stable BVL `/bltu` landing and portal route are verified; typed private adapter and assisted export refresh are implemented, while export-specific terms/privacy/release review remain unresolved |
 | `ca.locations` | verified | not_run | not_run | blocked | Federal/export and Ontario candidates are documented separately; verify permitted artifact, terms, schema, coverage, and privacy before acquisition |
 | `es.locations` | partial | blocked | not_run | blocked | AESAN RGSEAA and MAPA sector routes are documented, but direct acquisition was refused; rights, export/schema, effective dates, sector coverage, privacy, and legacy/source boundaries remain unresolved |
 | `us.fsis` | verified | blocked | not_run | blocked | Official FSIS MPI route is documented, but current CSV access returned 403; obtain authorized export access and record provenance/schema before adapter or publication review |

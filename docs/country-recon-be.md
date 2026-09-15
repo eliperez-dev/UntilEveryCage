@@ -1,8 +1,16 @@
 # Belgium source reconnaissance
 
-Status: reconnaissance only. No adapter, release, publication, or row-level fixture was created. No facility rows, names, addresses, contacts, coordinates, or private artifacts are retained here.
+Status: reconnaissance plus private/test-only adapter implementation. No real facility rows, names, addresses, contacts, coordinates, release, or publication are retained here. Synthetic fixtures contain no real operators.
 
 Last checked: 2026-09-15 UTC under `docs/ETHICS.md`, policy version 1.0, last reviewed 2026-09-12. This is source-status evidence, not publication approval or a runtime-health claim.
+
+The implementation is in [`pipeline/sources/belgium/`](../pipeline/sources/belgium/). It requires two independently preserved official artifacts: the operator CSV at `https://www.static.favv.be/bo-documents/inter_actieve_actoren_EN.csv` and the LAP/PAP codebook at `https://www.static.favv.be/bo-documents/inter_PAP_omschrijving_EN.csv`. The bounded assisted command is repeatable when a browser or authorized operator supplies both files:
+
+```text
+python -m pipeline.sources.belgium.refresh --operators <private/operators.csv> --activity-codes <private/inter_PAP_omschrijving_EN.csv> --run-dir <private/run> --retrieved-at-utc 2026-09-15T00:00:00Z
+```
+
+The codebook join is exact and deterministic; unresolved or ambiguous codes quarantine. The adapter preserves source activity text and distinguishes slaughter, cutting, processing, storage, animal-by-products, and export domains. It never geocodes and keeps source address/coordinate/enterprise values out of normalized/API-shaped rows. The live operator header was not obtainable in this environment, so the checked-in fixture is a schema contract and the first real capture must be reviewed for schema drift.
 
 ## Readiness
 
