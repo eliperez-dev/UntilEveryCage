@@ -16,7 +16,7 @@ No last-success timestamp is invented. Private artifacts are not proof of a publ
 | Source ID | Metadata | Acquisition | Runtime health | Publication | Evidence / next action |
 |---|---|---|---|---|---|
 | `fr.locations` | verified | blocked | not_run | blocked | DGAL/Alim’confiance/SIRENE/HVE/Agence Bio/Géorisques reconnaissance; acquire permitted official artifact and review terms/privacy |
-| `it.locations` | verified | artifact_private_only | not_run | blocked | Current 853/2004 and 1069/2009 CSVs were privately acquired with provenance; schemas remain distinct and require dictionary/privacy mapping plus separate adapters |
+| `it.locations` | verified | artifact_private_only | not_run | blocked | The 853/2004 adapter and private candidate-import path are covered by deterministic tests; keep them review-gated and validate the separate 1069/2009 variant, source terms, coverage, and privacy mappings before release review |
 | `mx.locations` | verified | blocked | not_run | blocked | DENUE/SENASICA/DGSIAP reconnaissance; resolve token, directory, terms, and schema |
 | `nz.locations` | verified | blocked | not_run | blocked | MPI/Stats NZ reconnaissance; resolve 403/access and aggregate-vs-facility boundaries |
 | `uk.locations` | partial | artifact_private_only | not_run | blocked | Synthetic handoff passes importer pre-DB validation, but no real UK candidate has been imported or previewed; review-required/unapproved defaults, Docker E2E, privacy/coordinate, source-rights, duplicate, coverage, and release review remain open; NI/Scotland stay separate |
