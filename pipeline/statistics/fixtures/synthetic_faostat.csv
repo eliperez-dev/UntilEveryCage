@@ -1,0 +1,18 @@
+Area,Item,Element,Year,Unit,Value,Flag
+World,"Meat of asses, fresh or chilled",Producing Animals/Slaughtered,2024,An,1,E
+World,"Meat of buffalo, fresh or chilled",Producing Animals/Slaughtered,2024,An,2,E
+World,"Meat of camels, fresh or chilled",Producing Animals/Slaughtered,2024,An,3,E
+World,"Meat of cattle with the bone, fresh or chilled",Producing Animals/Slaughtered,2024,An,4,E
+World,"Meat of chickens, fresh or chilled",Producing Animals/Slaughtered,2024,1000 An,5,E
+World,"Meat of ducks, fresh or chilled",Producing Animals/Slaughtered,2024,1000 An,6,E
+World,"Meat of geese, fresh or chilled",Producing Animals/Slaughtered,2024,1000 An,7,E
+World,"Meat of goat, fresh or chilled",Producing Animals/Slaughtered,2024,An,8,E
+World,"Meat of mules, fresh or chilled",Producing Animals/Slaughtered,2024,An,9,E
+World,"Meat of other domestic camelids, fresh or chilled",Producing Animals/Slaughtered,2024,An,10,E
+World,"Meat of other domestic rodents, fresh or chilled",Producing Animals/Slaughtered,2024,1000 An,11,E
+World,"Meat of pig with the bone, fresh or chilled",Producing Animals/Slaughtered,2024,An,12,A
+World,"Meat of pigeons and other birds n.e.c., fresh, chilled or frozen",Producing Animals/Slaughtered,2024,1000 An,13,E
+World,"Meat of rabbits and hares, fresh or chilled",Producing Animals/Slaughtered,2024,1000 An,14,E
+World,"Meat of sheep, fresh or chilled",Producing Animals/Slaughtered,2024,An,15,E
+World,"Meat of turkeys, fresh or chilled",Producing Animals/Slaughtered,2024,1000 An,16,A
+World,"Meat, Total",Production,2024,t,999,A

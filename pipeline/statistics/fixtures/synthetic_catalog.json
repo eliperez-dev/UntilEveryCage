@@ -1,0 +1,54 @@
+{
+  "schema_version": "aggregate-statistics-catalog-v1",
+  "catalog_id": "synthetic-statistics-fixture",
+  "catalog_version": "1.0.0",
+  "statistics": [
+    {
+      "statistic_id": "synthetic-land-count-2024",
+      "version_id": "synthetic-land-count-2024-v1",
+      "label": "Synthetic selected land animals, 2024",
+      "source": {
+        "source_id": "synthetic.source",
+        "publisher": "Synthetic fixture",
+        "dataset_name": "Synthetic annual source",
+        "dataset_url": "https://example.org/synthetic-source",
+        "origin": "synthetic test source"
+      },
+      "population_scope": {
+        "scope_id": "synthetic-two-populations-v1",
+        "animal_class": "land animals",
+        "activity": "slaughtered for food",
+        "included": ["synthetic birds", "synthetic mammals"],
+        "scope_note": "Synthetic values used only to exercise validation."
+      },
+      "geography": {"level": "global aggregate", "area": "Synthetic World"},
+      "period": {"kind": "calendar-year", "start": "2024-01-01", "end": "2024-12-31", "calendar_year": 2024},
+      "unit": {"kind": "count", "name": "animals (heads)", "numerator": "slaughtered animals", "denominator": "calendar year", "scale": 1},
+      "estimate": {"type": "point-with-qualitative-uncertainty", "low": null, "central": 2001, "high": null},
+      "method": {"type": "derived-from-components", "description": "Convert synthetic source rows to heads and sum them.", "formula": "sum(source_value * conversion_to_central_unit)"},
+      "exclusions": ["Synthetic rows outside the fixture scope"],
+      "uncertainty": {"kind": "qualitative-data-flags-and-coverage", "statement": "Synthetic fixture has no numeric uncertainty interval."},
+      "provenance": {
+        "artifact_id": "synthetic-artifact-v1",
+        "artifact_path": "pipeline/statistics/fixtures/synthetic-source.csv",
+        "public_artifact": false,
+        "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "byte_size": 42,
+        "retrieved_at_utc": "2026-09-15T00:00:00Z",
+        "effective_date": "2024-12-31",
+        "publication_date": null,
+        "code_version": "synthetic-v1",
+        "config_version": "synthetic-v1"
+      },
+      "revision": {"revision_id": "synthetic-revision-v1", "released_date": "2026-09-15", "supersedes": null, "change_note": "Initial synthetic fixture."},
+      "citations": [{"citation_id": "synthetic-citation", "title": "Synthetic fixture source", "url": "https://example.org/synthetic-source", "locator": "fixture rows", "accessed_date": "2026-09-15"}],
+      "citation_ids": ["synthetic-citation"],
+      "aggregation": {"operation": "sum", "overlap_status": "resolved-non-overlapping", "basis": "The two synthetic rows are disjoint populations."},
+      "components": [
+        {"component_id": "birds", "population": "synthetic birds", "source_item": "Synthetic birds", "source_unit": "1000 An", "source_value": 2, "conversion_to_central_unit": 1000, "overlap_group": "synthetic birds"},
+        {"component_id": "mammals", "population": "synthetic mammals", "source_item": "Synthetic mammals", "source_unit": "An", "source_value": 1, "conversion_to_central_unit": 1, "overlap_group": "synthetic mammals"}
+      ],
+      "status": "validated-private"
+    }
+  ]
+}
