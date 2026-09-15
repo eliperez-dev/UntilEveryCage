@@ -23,14 +23,17 @@ whose `release_state` is always `not-created` and whose publication state is
 private-candidate.
 
 The source-local refresh command provides the repeatable acquisition boundary. It
-can fetch the configured official URL or accept a preserved raw artifact, records
+can fetch the configured official URL or accept a preserved raw artifact. Network
+fetches require a terms-review JSON and use the shared bounded acquisition
+primitive, recording requested/final URLs, redirects, response headers,
 URL/retrieval/effective dates, hash, byte size, code/config versions, schema
-fingerprint, coverage, counts, and quarantine reasons, and writes an aggregate
-`refresh.json`. Dry-run is the default; `--mode handoff` is required to emit the
-private candidate-handoff contract. A changed header fingerprint or substantial
-unbounded count change raises a drift alarm and blocks handoff. A comparison with a
-prior normalized run reports disappeared identifiers as `not-observed`, never as
-closure. `--bounded-sample` is only for explicitly labeled private test samples.
+fingerprint, coverage, counts, and quarantine reasons. It also runs the shared
+lifecycle and emits row-free QA/source-health evidence. Dry-run is the default;
+`--mode handoff` additionally emits the private candidate-handoff contract. A
+changed header fingerprint or substantial unbounded count change raises a drift
+alarm and blocks handoff. A comparison with a prior normalized run reports
+disappeared identifiers as `not-observed`, never as closure. `--bounded-sample`
+is only for explicitly labeled private test samples.
 
 Before a registered or fetched run, maintainers must verify the current official
 URL, effective/publication date, ownership, terms/licence, attribution, rate limits,

@@ -375,7 +375,28 @@ pub async fn get_dev_test_release_locations_handler(
             "limit must be between 1 and 1000",
         );
     }
-    let rows = match client.query(r#"SELECT f.facility_id,f.canonical_name,f.country_code,f.city,o.classification_category,
+    if params.cursor.is_some() && params.offset.is_some() {
+        return v2_error(
+            StatusCode::BAD_REQUEST,
+            "cursor_offset_conflict",
+            "cursor and offset cannot be combined",
+        );
+    }
+    let cursor = match params.cursor.as_deref() {
+        Some(value) => match value.parse::<uuid::Uuid>() {
+            Ok(value) => Some(value),
+            Err(_) => {
+                return v2_error(
+                    StatusCode::BAD_REQUEST,
+                    "invalid_cursor",
+                    "cursor must be a facility UUID",
+                );
+            }
+        },
+        None => None,
+    };
+    let query_limit = limit + 1;
+    let mut rows = match client.query(r#"SELECT f.facility_id,f.canonical_name,f.country_code,f.city,o.classification_category,
         CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN 'exact' ELSE 'unmapped' END,
         CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN ST_Y(g.result::geometry) ELSE NULL END,
         CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN ST_X(g.result::geometry) ELSE NULL END,
@@ -391,12 +412,22 @@ pub async fn get_dev_test_release_locations_handler(
           AND COALESCE(review.privacy_screening_status,'pending') <> 'failed' AND COALESCE(review.factual_review_status,'unreviewed') <> 'rejected'
           AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted restricted WHERE restricted.source_record_id=o.source_record_id)
           AND ($2::text IS NULL OR f.country_code=$2) AND ($3::text IS NULL OR o.classification_category=$3)
-        ORDER BY f.facility_id LIMIT $4"#, &[&release_id,&params.country_code,&params.category,&limit]).await {
+          AND ($4::uuid IS NULL OR f.facility_id > $4)
+        ORDER BY f.facility_id LIMIT $5"#, &[&release_id,&params.country_code,&params.category,&cursor,&query_limit]).await {
         Ok(rows)=>rows, Err(_)=>return v2_error(StatusCode::SERVICE_UNAVAILABLE,"test_release_query_failed","test release unavailable")
     };
+    let has_next = rows.len() > limit as usize;
+    if has_next {
+        rows.truncate(limit as usize);
+    }
     let data = rows.into_iter().map(|row| json!({"facility_id":row.get::<_,uuid::Uuid>(0),"canonical_name":row.get::<_,Option<String>>(1),"country_code":row.get::<_,String>(2),"city":row.get::<_,Option<String>>(3),"category":row.get::<_,String>(4),"publication_profile":profile,"factual_review_status":row.get::<_,Option<String>>(8).unwrap_or("unreviewed".into()),"privacy_screening_status":row.get::<_,Option<String>>(9).unwrap_or("pending".into()),"project_approval":"not-approved","reviewer_role":row.get::<_,Option<String>>(11),"publication_warning":"Disposable test release — not project-approved or published","display_precision":row.get::<_,String>(5),"latitude":row.get::<_,Option<f64>>(6),"longitude":row.get::<_,Option<f64>>(7),"first_observed_at":null,"last_observed_at":null,"observation_count":null,"lifecycle_status":"status_unknown","source_type":row.get::<_,String>(12),"release_id":release_id,"release_ruleset_version":row.get::<_,String>(16),"provenance_source_id":row.get::<_,String>(13),"provenance_source_name":row.get::<_,String>(14),"provenance_source_url":row.get::<_,String>(15),"provenance_retrieved_at":row.get::<_,chrono::DateTime<chrono::Utc>>(17)})).collect::<Vec<_>>();
     let mut meta = test_release_meta(release_id, profile);
     meta["result_count"] = json!(data.len());
+    meta["next_cursor"] = json!(if has_next {
+        data.last().and_then(|row| row.get("facility_id")).cloned()
+    } else {
+        None::<serde_json::Value>
+    });
     Json(json!({"data":data,"meta":meta})).into_response()
 }
 

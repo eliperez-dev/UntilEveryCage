@@ -4,6 +4,8 @@ import csv, hashlib, json, os, re, tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
+from pipeline.contracts.adapter_contract import SourceArtifact
+from pipeline.common.activity import classify_activities
 
 ROOT=Path(__file__).parent
 CONFIG=json.loads((ROOT/"config.json").read_text(encoding="utf-8"))
@@ -59,7 +61,7 @@ def _csv(content):
         except csv.Error as exc:raise FsaContractError("malformed CSV") from exc
     raise FsaContractError("unsupported CSV encoding")
 def _synthetic_record(row,line):
-    nation=_clean(row.get("nation"));return {"source_id":CONFIG["source_id"],"source_row":line,"source_values":dict(row),"normalized":{"establishment_id":_clean(row.get("establishment_id")),"trading_name":_clean(row.get("trading_name")),"address_lines":tuple(_clean(row.get(f"address_line_{n}")) for n in range(1,4)),"postcode":_clean(row.get("postcode")),"activities":_split(row.get("activities")),"species":_clean(row.get("species")),"competent_authority":_clean(row.get("competent_authority")),"nation":nation,"authority_nation_key":nation,"status":_clean(row.get("status")),"remarks":_clean(row.get("remarks")),"published_date":_clean(row.get("published_date")),"coordinates":None}}
+    nation=_clean(row.get("nation"));acts=_split(row.get("activities"));return {"source_id":CONFIG["source_id"],"source_row":line,"source_values":dict(row),"normalized":{"establishment_id":_clean(row.get("establishment_id")),"trading_name":_clean(row.get("trading_name")),"address_lines":tuple(_clean(row.get(f"address_line_{n}")) for n in range(1,4)),"postcode":_clean(row.get("postcode")),"activities":acts,"activity_categories":classify_activities(acts),"species":_clean(row.get("species")),"competent_authority":_clean(row.get("competent_authority")),"nation":nation,"authority_nation_key":nation,"status":_clean(row.get("status")),"remarks":_clean(row.get("remarks")),"published_date":_clean(row.get("published_date")),"coordinates":None}}
 def _coords(row):
     try:x,y=float(row.get("X","").strip()),float(row.get("Y","").strip())
     except ValueError:return None,None,"unresolved-nonnumeric"
@@ -71,7 +73,7 @@ def _monthly_record(row,line):
     acts=tuple(x for x in (_clean(row.get("All_Activities")),_clean(row.get("Part_A__All_sections_")),_clean(row.get("Part B All sections "))) if x)
     privacy_gate="restricted-withheld-address" if withheld else "privacy-review-required"
     coordinate_gate="restricted-withheld-address" if withheld else "privacy-review-required"
-    return {"source_id":CONFIG["source_id"],"source_row":line,"source_values":dict(row),"normalized":{"establishment_id":_clean(row.get("AppNo")),"trading_name":_clean(row.get("TradingName")),"address_lines":None if withheld else tuple(_clean(row.get(k)) for k in ("Address1","Address2","Address3")),"postcode":_clean(row.get("Postcode")),"activities":acts,"species":_clean(row.get("Species")),"competent_authority":_clean(row.get("CompetentAuthority")),"nation":_clean(row.get("Country")),"authority_nation_key":_clean(row.get("Country")),"status":None,"remarks":_clean(row.get("Remarks")),"published_date":None,"coordinates":None,"coordinate_gate":coordinate_gate,"privacy_gate":privacy_gate,"publication_gate":"blocked"}}
+    return {"source_id":CONFIG["source_id"],"source_row":line,"source_values":dict(row),"normalized":{"establishment_id":_clean(row.get("AppNo")),"trading_name":_clean(row.get("TradingName")),"address_lines":None if withheld else tuple(_clean(row.get(k)) for k in ("Address1","Address2","Address3")),"postcode":_clean(row.get("Postcode")),"activities":acts,"activity_categories":classify_activities(acts),"species":_clean(row.get("Species")),"competent_authority":_clean(row.get("CompetentAuthority")),"nation":_clean(row.get("Country")),"authority_nation_key":_clean(row.get("Country")),"status":None,"remarks":_clean(row.get("Remarks")),"published_date":None,"coordinates":None,"coordinate_gate":coordinate_gate,"privacy_gate":privacy_gate,"publication_gate":"blocked"}}
 
 class FsaApprovedEstablishmentsAdapter:
     source_id=CONFIG["source_id"];schema_version=CONFIG["contract_version"];adapter_version=CONFIG["adapter_version"]
@@ -125,6 +127,8 @@ class FsaApprovedEstablishmentsAdapter:
         return ValidationResult(tuple(accepted),tuple(quarantined),digest,profile="monthly",schema_fingerprint=fp,coverage_counts=coverage,anomaly_counts=anomalies)
     def parse_file(self,path):return self.parse_bytes(Path(path).read_bytes())
     def run(self,raw_path,run_dir,artifact=None):
+        if isinstance(artifact, SourceArtifact):
+            artifact = {**asdict(artifact), "checksum_sha256": artifact.sha256}
         if artifact is None:raise FsaContractError("SourceArtifact metadata is required")
         required={"source_url","retrieved_at_utc","checksum_sha256","byte_size"};missing=sorted(required-set(artifact))
         if missing:raise FsaContractError(f"missing SourceArtifact fields: {', '.join(missing)}")
@@ -132,7 +136,7 @@ class FsaApprovedEstablishmentsAdapter:
         if digest!=artifact["checksum_sha256"] or len(raw)!=int(artifact["byte_size"]):raise FsaContractError("source checksum or byte size mismatch")
         result=self.parse_bytes(raw);accepted=list(result.accepted);quarantined=list(result.quarantined);root=Path(run_dir);parsed=accepted+[x["record"] for x in quarantined]
         normalized_sha=_jsonl(root/"normalized"/"records.jsonl",accepted);_jsonl(root/"parsed"/"records.jsonl",parsed);_jsonl(root/"quarantined"/"records.jsonl",quarantined);(root/"released").mkdir(parents=True,exist_ok=True)
-        manifest={**artifact,"source_id":self.source_id,"adapter_version":self.adapter_version,"schema_version":self.schema_version,"checksum_sha256":digest,"byte_size":len(raw),"input_rows":len(parsed),"normalized_rows":len(accepted),"normalized_sha256":normalized_sha,"quarantined_rows":len(quarantined),"profile":result.profile,"schema_fingerprint":result.schema_fingerprint,"coverage_counts":result.coverage_counts or {},"anomaly_counts":result.anomaly_counts or {},"geocoding":"disabled","release_state":"not-created","publication_state":"private-candidate"}
+        manifest={**artifact,"source_id":self.source_id,"country_code":"GB","adapter_version":self.adapter_version,"schema_version":self.schema_version,"checksum_sha256":digest,"byte_size":len(raw),"input_rows":len(parsed),"normalized_rows":len(accepted),"normalized_sha256":normalized_sha,"quarantined_rows":len(quarantined),"profile":result.profile,"schema_fingerprint":result.schema_fingerprint,"coverage_counts":result.coverage_counts or {},"anomaly_counts":result.anomaly_counts or {},"geocoding":"disabled","release_state":"not-created","publication_state":"private-candidate"}
         _atomic(root/"manifest.json",(json.dumps(manifest,ensure_ascii=False,sort_keys=True,indent=2,default=list)+"\n").encode());return manifest
 
 def run_registered(raw_path,run_dir,config):return FsaApprovedEstablishmentsAdapter().run(raw_path,run_dir,config)

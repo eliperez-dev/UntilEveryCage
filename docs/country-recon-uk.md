@@ -69,7 +69,7 @@ drop-in approved-establishment feed.
    private restricted staging, using `AppNo` only as a candidate identifier after the
    duplicate review; preserve all source values, activity strings, withheld-address
    flags, source coordinates, and coverage values.
-2. Add Scotland as the next candidate after inspecting its CSV schema and exact terms.
+2. Add Scotland as a restricted candidate after inspecting its CSV schema and exact terms.
 3. Keep Northern Ireland metadata-gated and do not represent the four UK feeds as one
    source until identity, coverage, update, terms, and suppression behavior are
    explicitly reconciled.
@@ -167,6 +167,56 @@ not alter the common contract.
 This reconciliation is a design and test record, not source approval or legal
 clearance. No live row data is included, and the private artifact remains outside
 Git and public outputs.
+
+### Private lifecycle implementation status (2026-09-15)
+
+The FSA England/Wales profile and the FSS Scotland profile now use the shared
+bounded acquisition and private lifecycle seams. A network fetch requires an
+operator terms-review record, is byte-bounded, and preserves requested/final URLs,
+redirects, response headers, retrieval/effective metadata, hashes, byte size, and
+code/configuration versions under ignored private storage. Both adapters emit
+deterministic parsed/normalized/quarantined outputs, row-free QA, and private
+source-health evidence. Activity categories are limited to slaughter, cutting,
+processing, and logistics/storage; unknown activity text remains unresolved or
+quarantined rather than guessed.
+
+The FSA feed remains explicitly England/Wales in the monthly source profile;
+Northern Ireland is retained as a separate source scope and is accepted only by
+the synthetic contract until its distinct catalogue resource is independently
+inspected. FSS is Scotland-only. Composition keeps source IDs, nation keys, and
+identities separate and emits possible-match review signals without merging.
+No release, promotion, public API/export exposure, or production acquisition is
+authorized by this implementation.
+
+### Bounded live-source validation (2026-09-15)
+
+The explicitly authorized private fetches completed under ignored storage. The
+following are aggregate validation results; no raw rows, addresses, coordinates,
+or derived records are committed:
+
+| Source/profile | Effective date | Bytes / SHA-256 | Input | Normalized | Quarantined |
+| --- | --- | ---: | ---: | ---: | ---: |
+| FSA monthly England/Wales profile | 2026-09-01 | 1,774,417 / `d5cfec048b0f4dc4a8594b0597982f3788f10eb1b4270f9593ead8abce33b61f` | 5,342 | 4,300 | 1,042 |
+| FSS live Scotland export | 2026-08-11 | 245,871 / `b95b66afb112636c09f6de401054c7ea3d11e5058f34522d900c60435a125246` | 725 | 586 | 139 |
+
+The FSA anomaly counts were 999 `remarks_present`, 31 `unknown_nation`, 11
+`address_privacy_risk`, and 4 `duplicate_id_within_nation`. The FSS anomaly
+counts were 125 `no_relevant_activity`, 18 `address_privacy_risk`, 2
+`malformed_row`, 2 `missing_activity`, and 2 `missing_approval_number`.
+Both runs emitted `health_state: private-validated`, `public_exposure: false`,
+and import evidence with zero publication-eligible and zero default-visible
+rows. Composition contained 4,886 source-preserving reviewable rows and created
+no candidate release.
+
+On a disposable PostGIS stack, both source manifests imported idempotently:
+4,300 FSA rows and 586 FSS rows on first pass, zero rows on each rerun, 4,886
+source records/observations/release members/review events, and zero
+default-visible rows. The guarded test-only API returned list, detail, category
+filter, cursor pagination, and facets successfully; public list returned zero
+rows. The full 4,886-row test export was rejected by the bounded
+`export_too_large` guard, while the existing small-candidate E2E covers a
+successful private CSV response. The disposable database was destroyed after
+validation.
 
 ### Repeatable refresh QA (2026-09-14)
 

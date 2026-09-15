@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from .adapter import FssApprovedEstablishmentsAdapter, FssContractError
+from .adapter import CONFIG, FssApprovedEstablishmentsAdapter, FssContractError
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -31,6 +31,16 @@ class FssAdapterTests(unittest.TestCase):
     def test_schema_drift_fails_closed(self):
         with self.assertRaises(FssContractError):
             self.adapter.parse_file(FIXTURES / "schema_drift.csv")
+
+    def test_inspected_live_export_profile_skips_preamble_and_classifies(self):
+        row = ["", "FSS-TEST-1", "Synthetic Scotland Foods", "Industrial Estate", "", "", "", "AB1 2CD", "CP (Cutting Plant); CS (Cold Store)"] + [""] * 19 + ["pig", "", "Food Standards Scotland", "Aberdeen City", "No"]
+        content = ("\n\nApproved Establishments in Scotland\n11 August 2026\n\n" + ",".join(CONFIG["live_columns"]) + "\n" + ",".join(row) + "\n").encode("cp1252")
+        result = self.adapter.parse_bytes(content)
+        self.assertEqual(len(result.accepted), 1)
+        self.assertEqual(result.accepted[0]["source_row"], 7)
+        self.assertEqual(result.accepted[0]["normalized"]["nation"], "Scotland")
+        self.assertEqual(result.accepted[0]["normalized"]["activity_categories"], ("cutting", "logistics_and_storage"))
+        self.assertEqual(result.coverage_counts, {"Scotland": 1})
 
     def test_run_is_deterministic_and_has_no_release(self):
         with tempfile.TemporaryDirectory() as directory:

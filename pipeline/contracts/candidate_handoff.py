@@ -26,6 +26,7 @@ def write_handoff(run_dir: str | Path, rows: list[dict[str, Any]], artifact: Sou
     manifest = {"contract_version": CONTRACT_VERSION, "profile": profile, "source_id": source_id,
                 "source_url": artifact.source_url, "retrieved_at_utc": artifact.retrieved_at_utc,
                 "checksum_sha256": artifact.sha256, "byte_size": artifact.byte_size,
+                "redirects": list(artifact.redirects),
                 "code_version": artifact.code_version, "config_version": artifact.config_version,
                 "coverage": artifact.coverage, "normalized_rows": len(rows),
                 "normalized_sha256": hashlib.sha256(payload).hexdigest(),

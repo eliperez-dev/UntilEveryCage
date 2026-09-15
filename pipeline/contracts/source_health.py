@@ -149,7 +149,7 @@ def build_health_snapshot(
 
     provenance = {
         key: manifest.get(key)
-        for key in ("source_url", "retrieved_at_utc", "publication_date", "effective_date", "sha256", "checksum_sha256", "byte_size", "code_version", "config_version")
+        for key in ("source_url", "retrieved_at_utc", "publication_date", "effective_date", "sha256", "checksum_sha256", "byte_size", "code_version", "config_version", "redirects")
         if manifest.get(key) is not None
     }
     snapshot = {

@@ -20,6 +20,7 @@ class SourceArtifact:
     rights_caveat: str | None = None
     privacy_caveat: str | None = None
     coverage: str | None = None
+    redirects: tuple[dict[str, Any], ...] = ()
 
 
 def source_artifact_from_mapping(values: dict[str, Any]) -> SourceArtifact:
@@ -33,7 +34,8 @@ def source_artifact_from_mapping(values: dict[str, Any]) -> SourceArtifact:
         sha256=str(values["checksum_sha256"]), byte_size=int(values["byte_size"]),
         publication_date=values.get("publication_date"), effective_date=values.get("effective_date"),
         code_version=str(values.get("code_version", "unknown")), config_version=str(values.get("config_version", "unknown")),
-        rights_caveat=values.get("rights_caveat"), privacy_caveat=values.get("privacy_caveat"), coverage=values.get("coverage"))
+        rights_caveat=values.get("rights_caveat"), privacy_caveat=values.get("privacy_caveat"), coverage=values.get("coverage"),
+        redirects=tuple(values.get("redirects") or ()))
 
 
 class SourceAdapter(Protocol):

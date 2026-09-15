@@ -94,7 +94,19 @@ def _country_code(manifest: dict, normalized: dict) -> str:
         return str(explicit)[:2].upper()
     # Do not turn a country name into an invented code. These are the only
     # source-country names currently present in the validated adapters.
-    return {"Denmark": "DK", "England": "GB", "Wales": "GB"}.get(normalized.get("nation"), "ZZ")
+    return {"Denmark": "DK", "England": "GB", "Wales": "GB", "Scotland": "GB", "Northern Ireland": "GB"}.get(normalized.get("nation"), "ZZ")
+
+
+def _classification_category(normalized: dict) -> str:
+    """Use an adapter's explicit classification without inventing one."""
+    categories = normalized.get("activity_categories") or normalized.get("classification_categories") or ()
+    if isinstance(categories, str):
+        categories = (categories,)
+    allowed = {"slaughter", "cutting", "processing", "logistics_and_storage"}
+    for category in categories:
+        if category in allowed:
+            return category
+    return "unclassified"
 
 
 def _stable_uuid(*parts: object) -> uuid.UUID:
@@ -178,10 +190,11 @@ def import_candidate(database_url: str, manifest: dict, rows: list[dict], releas
                     db.execute("""INSERT INTO uec.facilities(facility_id,canonical_name,country_code,city)
                         VALUES (%s,%s,%s,%s) ON CONFLICT (facility_id) DO NOTHING""",
                                (facility_id, name, country, city))
+                    category = _classification_category(normalized)
                     created = db.execute("""INSERT INTO uec.observations(observation_id,facility_id,source_record_id,observed_at,observation,classification,ruleset_id,rule_id,classification_category,classification_review_status,default_visible,coordinate_review_status,first_observed_at)
-                        VALUES (%s,%s,%s,%s,%s,'{}',%s,'candidate','unclassified','review_required',false,'review_required',%s)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,'candidate',%s,'review_required',false,'review_required',%s)
                         ON CONFLICT (facility_id,source_record_id,observed_at) DO NOTHING RETURNING observation_id""",
-                        (observation_id, facility_id, record_id, now, json.dumps(normalized), ruleset, now)).fetchone()
+                        (observation_id, facility_id, record_id, now, json.dumps(normalized), json.dumps({"activity_categories": list(normalized.get("activity_categories") or normalized.get("classification_categories") or [])}), ruleset, category, now)).fetchone()
                     observation_ref = created[0] if created else db.execute("""SELECT observation_id FROM uec.observations
                         WHERE facility_id=%s AND source_record_id=%s AND observed_at=%s""",
                         (facility_id, record_id, now)).fetchone()[0]

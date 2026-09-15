@@ -2,15 +2,14 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import hashlib
 import json
-import urllib.request
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from pipeline.contracts.adapter_contract import SourceArtifact
+from pipeline.common.acquisition import AcquisitionError, fetch_source, utc_now
+from pipeline.common.orchestrator import run_private_lifecycle
 
 from .adapter import CONFIG, FsaApprovedEstablishmentsAdapter, _csv
 from .handoff import write_private_monthly_handoff
@@ -18,10 +17,6 @@ from .handoff import write_private_monthly_handoff
 
 class RefreshError(ValueError):
     """The source refresh cannot safely continue."""
-
-
-def _utc_now() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _header_fingerprint(raw: bytes) -> tuple[str, int]:
@@ -48,14 +43,26 @@ def _write_json(path: Path, value: dict[str, Any]) -> None:
     path.write_text(json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2, default=list) + "\n", encoding="utf-8")
 
 
-def _fetch(url: str, destination: Path) -> tuple[bytes, str]:
-    request = urllib.request.Request(url, headers={"User-Agent": "UntilEveryCage/uk-fsa-refresh"})
-    with urllib.request.urlopen(request, timeout=60) as response:
-        raw = response.read()
-        effective = response.headers.get("Last-Modified") or "unknown"
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_bytes(raw)
-    return raw, effective
+def _local_acquisition_metadata(path: Path, *, source_url: str, retrieved_at_utc: str, effective_date: str | None) -> dict[str, Any]:
+    raw = path.read_bytes()
+    existing = path.parent / "acquisition-metadata.json"
+    if existing.exists():
+        retained = json.loads(existing.read_text(encoding="utf-8"))
+        if retained.get("sha256") == hashlib.sha256(raw).hexdigest() and int(retained.get("byte_size", -1)) == len(raw):
+            return retained
+    return {
+        "acquisition_method": "preserved_local_artifact", "source_id": CONFIG["source_id"],
+        "artifact": path.name, "artifact_path": str(path), "requested_url": source_url,
+        "final_url": source_url, "redirects": [], "response_headers": {},
+        "requested_at_utc": retrieved_at_utc, "retrieved_at_utc": retrieved_at_utc,
+        "effective_date": effective_date or "unknown", "publication_date": None,
+        "sha256": hashlib.sha256(raw).hexdigest(), "byte_size": len(raw),
+        "code_version": CONFIG["adapter_version"], "config_version": CONFIG["contract_version"],
+        "coverage": "England and Wales profile; Northern Ireland remains a separate source scope",
+        "rights_caveat": "OGL v3 indicated by catalogue; project terms/attribution review remains recorded separately",
+        "privacy_caveat": "restricted private staging; privacy and coordinate review pending",
+        "terms_review": "not_required_for_already-preserved-local-artifact",
+    }
 
 
 def refresh_monthly(
@@ -71,6 +78,8 @@ def refresh_monthly(
     mode: str = "dry-run",
     previous_normalized: str | Path | None = None,
     bounded_sample: bool = False,
+    terms_review_path: str | Path | None = None,
+    max_bytes: int = 64 * 1024 * 1024,
 ) -> dict[str, Any]:
     """Run a private refresh; ``mode=handoff`` also emits candidate-handoff-v1."""
     if mode not in {"dry-run", "handoff"}:
@@ -79,14 +88,31 @@ def refresh_monthly(
         raise RefreshError("specify exactly one of raw_path or fetch")
     root = Path(run_dir)
     if fetch:
-        raw, observed_effective = _fetch(source_url, root / "raw" / "source.csv")
-        effective_date = effective_date or observed_effective
-        input_path = root / "raw" / "source.csv"
+        if terms_review_path is None:
+            raise RefreshError("terms_review_path is required for network acquisition")
+        try:
+            acquisition = fetch_source(
+                source_id=CONFIG["source_id"], url=source_url, output_root=root / "acquisition",
+                artifact_name="source.csv", terms_review_path=terms_review_path, max_bytes=max_bytes,
+                code_version=CONFIG["adapter_version"], config_version=CONFIG["contract_version"],
+                coverage="England and Wales profile; Northern Ireland remains a separate source scope",
+                rights_caveat="OGL v3 indicated by catalogue; project terms/attribution review is retained with this run",
+                privacy_caveat="restricted private staging; privacy and coordinate review pending",
+                effective_date=effective_date,
+            )
+        except AcquisitionError as exc:
+            raise RefreshError(str(exc)) from exc
+        effective_date = effective_date or acquisition.get("effective_date")
+        input_path = Path(acquisition["artifact_path"])
+        raw = input_path.read_bytes()
     else:
         input_path = Path(raw_path)  # type: ignore[arg-type]
         raw = input_path.read_bytes()
-    retrieved_at_utc = retrieved_at_utc or _utc_now()
+    retrieved_at_utc = retrieved_at_utc or utc_now()
     effective_date = effective_date or "unknown"
+    if not fetch:
+        acquisition = _local_acquisition_metadata(input_path, source_url=source_url, retrieved_at_utc=retrieved_at_utc, effective_date=effective_date)
+    _write_json(root / "acquisition-metadata.json", acquisition)
     adapter = FsaApprovedEstablishmentsAdapter()
     result = adapter.parse_bytes(raw)
     if result.profile != "monthly":
@@ -117,15 +143,17 @@ def refresh_monthly(
         effective_date=effective_date,
         code_version=code_version,
         config_version=config_version,
-        rights_caveat="metadata-indicated-open-government-licence-v3-pending-project-review",
-        privacy_caveat="restricted-private-staging; privacy and coordinate review pending",
-        coverage="England and Wales profile; other nations remain quarantined",
+        rights_caveat=acquisition.get("rights_caveat") or "metadata-indicated-open-government-licence-v3-pending-project-review",
+        privacy_caveat=acquisition.get("privacy_caveat") or "restricted-private-staging; privacy and coordinate review pending",
+        coverage=acquisition.get("coverage") or "England and Wales profile; Northern Ireland remains a separate source scope",
+        redirects=tuple(acquisition.get("redirects") or ()),
     )
     if alarms and mode == "handoff":
         raise RefreshError("refresh drift alarm blocks handoff: " + ", ".join(alarms))
     handoff = None
     if mode == "handoff":
         handoff = write_private_monthly_handoff(input_path, root / "handoff", artifact)
+    lifecycle = run_private_lifecycle(input_path, root / "lifecycle", artifact, adapter, health_as_of_utc=retrieved_at_utc)
     report = {
         "source_url": source_url,
         "retrieved_at_utc": retrieved_at_utc,
@@ -149,6 +177,12 @@ def refresh_monthly(
         "mode": mode,
         "release_state": "not-created",
         "publication_state": "private-candidate" if handoff else "not-staged",
+        "requested_url": acquisition.get("requested_url"),
+        "final_url": acquisition.get("final_url"),
+        "redirects": acquisition.get("redirects", []),
+        "acquisition_metadata": str(root / "acquisition-metadata.json"),
+        "lifecycle_run_dir": lifecycle.get("run_dir"),
+        "health_path": str(Path(lifecycle["run_dir"]) / "source-health.json"),
     }
     _write_json(root / "refresh.json", report)
     return {"report": report, "handoff": handoff}
@@ -168,12 +202,15 @@ def main() -> int:
     parser.add_argument("--mode", choices=("dry-run", "handoff"), default="dry-run")
     parser.add_argument("--previous-normalized", type=Path)
     parser.add_argument("--bounded-sample", action="store_true")
+    parser.add_argument("--terms-review", type=Path)
+    parser.add_argument("--max-bytes", type=int, default=64 * 1024 * 1024)
     args = parser.parse_args()
     result = refresh_monthly(
         run_dir=args.run_dir, raw_path=args.raw, fetch=args.fetch, source_url=args.source_url,
         retrieved_at_utc=args.retrieved_at_utc, effective_date=args.effective_date,
         code_version=args.code_version, config_version=args.config_version, mode=args.mode,
         previous_normalized=args.previous_normalized, bounded_sample=args.bounded_sample,
+        terms_review_path=args.terms_review, max_bytes=args.max_bytes,
     )
     print(json.dumps(result["report"], sort_keys=True))
     return 0
