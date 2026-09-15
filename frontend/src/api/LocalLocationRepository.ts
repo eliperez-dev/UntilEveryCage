@@ -4,10 +4,10 @@ import type { Location } from '../domain/location';
 
 export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 export type LocalProfile = 'official' | 'secondary' | 'community';
-export type LocationFilters = Readonly<{ country_code?: string | undefined; category?: string | undefined; source_type?: string | undefined; display_precision?: string | undefined; lifecycle_status?: string | undefined; cursor?: string | undefined }>;
+export type LocationFilters = Readonly<{ country_code?: string | undefined; category?: string | undefined; source_type?: string | undefined; display_precision?: string | undefined; lifecycle_status?: string | undefined; cursor?: string | undefined; limit?: number | undefined }>;
 export type LocalListResult = Readonly<{ locations: readonly Location[]; releaseId: string; profile: LocalProfile; coverageNote: string; coverageScope?: string; countSemantics?: string; nextCursor: string | null; ruleset?: string }>;
 export const localOrigin = (value: string | undefined): string | undefined => { if (!value) return undefined; const url = new URL(value); if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost', '::1'].includes(url.hostname)) throw new Error('Local API origin must be loopback HTTP.'); return url.origin; };
-const fail = (kind: ApiError['kind'], message: string, status?: number): ApiError => Object.assign(new Error(message), status === undefined ? { kind } : { kind, status });
+const fail = (kind: ApiError['kind'], message: string, status?: number, code?: string): ApiError => Object.assign(new Error(message), { kind, ...(status === undefined ? {} : { status }), ...(code ? { code } : {}) });
 export const mapWireLocation = (r: WireLocation): Location => ({
   id: r.facility_id, name: r.canonical_name ?? 'Unnamed candidate record', region: r.city ?? r.country_code, category: r.category,
   lat: r.latitude, lon: r.longitude, observed: r.last_observed_at ?? r.first_observed_at ?? 'unknown', source: r.provenance_source_name,
@@ -19,7 +19,7 @@ export const mapWireLocation = (r: WireLocation): Location => ({
     retrievedAt: r.provenance_retrieved_at, displayPrecision: r.display_precision, lifecycleStatus: r.lifecycle_status, observationCount: r.observation_count,
   },
 });
-const query = (profile: LocalProfile, filters: LocationFilters) => { const params = new URLSearchParams({ profile }); for (const [key, value] of Object.entries(filters)) if (value) params.set(key, value); return `/api/v2/locations?${params}`; };
+const query = (profile: LocalProfile, filters: LocationFilters) => { const params = new URLSearchParams({ profile }); for (const [key, value] of Object.entries(filters)) if (value !== undefined && value !== '') params.set(key, String(value)); return `/api/v2/locations?${params}`; };
 // Eligibility is a conservative client-side check, not a publication decision;
 // the server's current public projection and suppression rules remain authoritative.
 const eligible = (row: WireLocation, profile: LocalProfile, releaseId: string, ruleset: string): boolean =>
@@ -30,7 +30,7 @@ const eligible = (row: WireLocation, profile: LocalProfile, releaseId: string, r
 export class LocalLocationRepository {
   readonly #base: string | undefined;
   constructor(private readonly fetcher: FetchLike = globalThis.fetch, baseUrl?: string) { this.#base = localOrigin(baseUrl); }
-  private async json(path: string, signal?: AbortSignal) { const init: RequestInit = { cache: 'no-store' }; if (signal) init.signal = signal; const response = await this.fetcher.call(globalThis, `${this.#base ?? ''}${path}`, init); if (!response.ok) throw fail('http', `Local V2 request failed with status ${response.status}`, response.status); try { return await response.json(); } catch { throw fail('invalid-contract', 'Local V2 response was not valid JSON.'); } }
+  private async json(path: string, signal?: AbortSignal) { const init: RequestInit = { cache: 'no-store' }; if (signal) init.signal = signal; const response = await this.fetcher.call(globalThis, `${this.#base ?? ''}${path}`, init); if (!response.ok) { let code: string | undefined; let message = `Local V2 request failed with status ${response.status}.`; try { const payload = await response.json() as { error?: { code?: string; message?: string } }; code = payload.error?.code; message = payload.error?.message ?? message; } catch { /* Keep the status-safe message. */ } const kind: ApiError['kind'] = response.status === 404 ? 'restricted' : response.status === 429 ? 'rate-limited' : response.status >= 500 ? 'unavailable' : 'http'; throw fail(kind, message, response.status, code); } try { return await response.json(); } catch { throw fail('invalid-contract', 'Local V2 response was not valid JSON.'); } }
   async list(profile: LocalProfile = 'official', filters: LocationFilters = {}, signal?: AbortSignal): Promise<LocalListResult> {
     try {
       const b = envelopeSchema.safeParse(await this.json(query(profile, filters), signal));

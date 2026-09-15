@@ -14,4 +14,10 @@ describe('LocalCsvExportRepository', () => {
   it('rejects an empty response or missing release context', async () => {
     await expect(new LocalCsvExportRepository(vi.fn().mockResolvedValue(response(200, ''))).download('official')).rejects.toThrow(/eligible release context/);
   });
+  it('requests the selected non-official profile and requires CSV content', async () => {
+    const fetcher = vi.fn().mockResolvedValue(response(200, 'facility_id\nsecondary-1\n'));
+    await expect(new LocalCsvExportRepository(fetcher).download('secondary')).resolves.toMatchObject({ profile: 'secondary' });
+    expect(String(fetcher.mock.calls[0]?.[0])).toContain('profile=secondary');
+    await expect(new LocalCsvExportRepository(vi.fn().mockResolvedValue(new Response('{}', { status: 200, headers: { 'x-uec-release-id': 'release-1', 'content-type': 'application/json' } }))).download('official')).rejects.toMatchObject({ kind: 'invalid-contract' });
+  });
 });

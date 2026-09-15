@@ -2,9 +2,9 @@ import { test, expect, type Page } from '@playwright/test';
 
 const firstId = '550e8400-e29b-41d4-a716-446655440000';
 const secondId = '550e8400-e29b-41d4-a716-446655440001';
-const row = (id = firstId, name = 'First local record', profile: 'official' | 'community' = 'official') => ({
+const row = (id = firstId, name = 'First local record', profile: 'official' | 'secondary' | 'community' = 'official') => ({
   facility_id: id, canonical_name: name, city: 'North Coast', country_code: 'DK', category: 'dairy',
-  source_type: profile === 'community' ? 'user_submitted' : 'official', publication_profile: profile,
+  source_type: profile === 'community' ? 'user_submitted' : profile, publication_profile: profile,
   factual_review_status: profile === 'community' ? 'unreviewed' : 'reviewed', privacy_screening_status: 'passed',
   project_approval: profile === 'community' ? 'pending' : 'approved', reviewer_role: null,
   publication_warning: profile === 'community' ? 'Unreviewed community claim — not verified by Until Every Cage' : null,
@@ -14,10 +14,10 @@ const row = (id = firstId, name = 'First local record', profile: 'official' | 'c
   provenance_source_url: 'https://example.test/source', provenance_retrieved_at: '2026-01-01T00:00:00Z',
   release_id: 'rel-1', release_ruleset_version: 'rules-1',
 });
-const list = (profile: 'official' | 'community', data = [row(firstId, 'First local record', profile)], nextCursor: string | null = null) => ({
+const list = (profile: 'official' | 'secondary' | 'community', data = [row(firstId, 'First local record', profile)], nextCursor: string | null = null) => ({
   data, api_version: 'v2', meta: { release_id: 'rel-1', ruleset_version: 'rules-1', profile, next_cursor: nextCursor, coverage_note: 'Selected promoted release only.' },
 });
-const detail = (data: ReturnType<typeof row>, profile: 'official' | 'community') => ({
+const detail = (data: ReturnType<typeof row>, profile: 'official' | 'secondary' | 'community') => ({
   data, api_version: 'v2', meta: { release_id: 'rel-1', ruleset_version: 'rules-1', release_created_at: '2026-01-01T00:00:00Z', profile },
 });
 const mockMetadata = async (page: Page) => page.route('**/api/v2/discovery/filters', route => route.fulfill({ status: 503, body: 'unavailable' }));
@@ -109,4 +109,31 @@ test('detail failure focuses the error heading and offers recovery', async ({ pa
   await expect(page.getByRole('button', { name: 'Try record again' })).toBeVisible();
   await page.getByRole('button', { name: 'Back to results' }).click();
   await expect(page.getByRole('heading', { name: 'First local record' })).toBeVisible();
+});
+
+test('secondary profile remains distinct through list, detail, and export requests', async ({ page }) => {
+  await mockMetadata(page);
+  const secondaryPayload = row(firstId, 'Secondary source record', 'secondary');
+  const seen: string[] = [];
+  await page.route('**/api/v2/locations*', async route => {
+    const url = new URL(route.request().url());
+    seen.push(`${url.pathname}|${url.searchParams.get('profile') ?? ''}`);
+    await route.fulfill({ json: url.pathname.endsWith(firstId) ? detail(secondaryPayload, 'secondary') : list('secondary', [secondaryPayload]) });
+  });
+  await page.route('**/api/v2/locations.csv*', route => route.fulfill({ headers: { 'content-type': 'text/csv', 'x-uec-release-id': 'rel-1' }, body: 'facility_id\nsecondary\n' }));
+  await page.goto('./?mode=local-v2#/');
+  await page.getByLabel('Profile').selectOption('secondary');
+  await expect(page.getByRole('heading', { name: 'Secondary source record' })).toBeVisible();
+  expect(seen.some(value => value.endsWith('|secondary'))).toBeTruthy();
+  await page.getByRole('button', { name: /Download secondary CSV/ }).click();
+  await expect(page.locator('.release-panel')).toContainText('secondary');
+});
+
+test('malformed V2 envelopes fail closed with a contract-specific state', async ({ page }) => {
+  await mockMetadata(page);
+  await page.route('**/api/v2/locations**', route => route.fulfill({ json: { api_version: 'v1', data: [] } }));
+  await page.goto('./?mode=local-v2#/');
+  await expect(page.getByRole('heading', { name: 'Could not load local V2 data' })).toBeVisible();
+  await expect(page.getByRole('alert')).toContainText('V2 data contract unavailable');
+  await expect(page.getByRole('button', { name: /North Star Cooperative/ })).toHaveCount(0);
 });
