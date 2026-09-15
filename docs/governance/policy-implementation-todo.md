@@ -104,10 +104,13 @@ export, aggregate-count, historical/cache, or production operational controls.
 
 ## Current implementation boundary
 
-The V2 checkpoint now includes a synthetic, tested urgent suppression path with
+The V2 checkpoint includes a synthetic, tested urgent suppression path with
 durable source-key references, append-only lift decisions, geocoding guards,
-release gates, and backup replay verification. This is evidence for the
-covered disposable V2 surfaces only. Production still needs an independently
-operated restriction ledger and enforced service-start/deployment gate, plus
-the remaining checklist items below. Do not treat unchecked work as complete
-or launch affected public capabilities based on policy text alone.
+release gates, and backup replay verification. This lane adds a
+production-shaped independently mounted ledger contract, fail-closed Rust
+startup validation, a replay command, migration/config checks, and a recovery
+runbook. That is implementation evidence for private staging only: no
+production instance has been configured or deployed, and the remaining
+deployment audit, authorized review, provider/log verification, and policy
+checklist items below remain open. Do not launch affected public capabilities
+based on this code or policy text alone.

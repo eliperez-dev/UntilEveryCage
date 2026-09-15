@@ -32,6 +32,12 @@ class ReadinessE2ETests(unittest.TestCase):
             with urllib.request.urlopen(f"http://127.0.0.1:{env.api_port}/health/ready", timeout=2) as response:
                 self.assertEqual(response.status, 200)
                 self.assertEqual(json.load(response)["schema"], "migrated")
+            with urllib.request.urlopen(f"http://127.0.0.1:{env.api_port}/health/diagnostics", timeout=2) as response:
+                diagnostics = json.load(response)
+                self.assertEqual(response.status, 200)
+                self.assertEqual(diagnostics["privacy"]["diagnostic_identifiers"], "excluded")
+                self.assertNotIn("database_url", json.dumps(diagnostics))
+                self.assertNotIn("forwarded", json.dumps(diagnostics).lower())
         finally:
             env.stop()
 

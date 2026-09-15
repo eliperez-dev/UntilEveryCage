@@ -14,10 +14,18 @@ $ledgerGate = Join-Path $root 'pipeline\scripts\maintenance\restriction-ledger-g
 $ledgerFile = Join-Path $PSScriptRoot 'restriction-ledger.json'
 $oldSnapshot = Join-Path $PSScriptRoot 'restriction-ledger-old-snapshot.json'
 $currentSnapshot = Join-Path $PSScriptRoot 'restriction-ledger-current-snapshot.json'
+$ledgerReplayFile = Join-Path ([IO.Path]::GetTempPath()) "$project-ledger-replay.sql"
 
 function Invoke-FixtureSql([string]$path) {
   Get-Content -LiteralPath $path -Raw | & docker compose @composeArgs exec -T postgres psql -1 -v ON_ERROR_STOP=1 -U uec -d uec
   if ($LASTEXITCODE -ne 0) { throw "Fixture SQL failed: $path (exit $LASTEXITCODE)." }
+}
+
+function Invoke-LedgerReplaySql([string]$path) {
+  # The emitted SQL owns its BEGIN/COMMIT so the zero/multiple-match exception
+  # rolls back the complete replay. Do not add psql's outer -1 transaction.
+  Get-Content -LiteralPath $path -Raw | & docker compose @composeArgs exec -T postgres psql -v ON_ERROR_STOP=1 -U uec -d uec
+  if ($LASTEXITCODE -ne 0) { throw "Restriction ledger replay failed: $path (exit $LASTEXITCODE)." }
 }
 
 function Get-Snapshot {
@@ -41,10 +49,10 @@ function Assert-Snapshot([string]$phase, [string]$expected) {
   Write-Host "[backup-restore] ${phase}: $actual"
 }
 
-function Test-SyntheticServiceGate {
+function Test-SyntheticServiceGate([string]$expected = '1,1,1,1,1,0,0') {
   # The external synthetic restriction is required in the restored DB and both
   # public projections must exclude it. A query error stops the drill.
-  return ((Get-Snapshot) -join ',') -eq '1,1,1,1,1,0,0'
+  return ((Get-Snapshot) -join ',') -eq $expected
 }
 
 try {
@@ -106,13 +114,16 @@ try {
   if ($oldGateExitCode -eq 0) { throw 'Pre-service ledger gate accepted an old restriction snapshot.' }
   Write-Host '[backup-restore] PASS: synthetic pre-service gate rejects the old backup before replay.'
 
-  Invoke-FixtureSql $suppressionFile
-  Assert-Snapshot 'current restriction replayed' '1,1,1,1,1,0,0'
-  if (-not (Test-SyntheticServiceGate)) { throw 'Synthetic pre-service gate rejected the replayed current restriction.' }
-  & python $ledgerGate --ledger $ledgerFile --snapshot $currentSnapshot
+  & python $ledgerGate --ledger $ledgerFile --snapshot $currentSnapshot *> $null
   if ($LASTEXITCODE -ne 0) { throw 'Pre-service ledger gate rejected the current restriction replay.' }
-  Write-Host 'PASS: synthetic old-backup restore remains gated until current restriction is replayed and both public projections exclude it.'
-  Write-Host 'TEST ONLY: production still needs an independent durable restriction ledger and an enforced service-start gate.'
+  $replaySql = & python (Join-Path $root 'pipeline\scripts\maintenance\replay-restriction-ledger.py') --ledger $ledgerFile --emit-sql
+  if ($LASTEXITCODE -ne 0) { throw 'Restriction ledger replay SQL generation failed.' }
+  Set-Content -LiteralPath $ledgerReplayFile -Value ($replaySql -join "`n") -Encoding UTF8
+  Invoke-LedgerReplaySql $ledgerReplayFile
+  Assert-Snapshot 'current restriction replayed' '1,1,0,0,1,0,0'
+  if (-not (Test-SyntheticServiceGate '1,1,0,0,1,0,0')) { throw 'Synthetic pre-service gate rejected the replayed current restriction.' }
+  Write-Host 'PASS: synthetic old-backup rollback remains gated until the independent current ledger is replayed and both public projections exclude it.'
+  Write-Host 'TEST ONLY: production still requires separately operated ledger storage, trusted references, and deployment-specific review.'
 } finally {
   $savedPreference = $ErrorActionPreference
   $ErrorActionPreference = 'Continue'
@@ -120,4 +131,5 @@ try {
   $ErrorActionPreference = $savedPreference
   if (-not $KeepArtifacts -and (Test-Path -LiteralPath $dump)) { Remove-Item -LiteralPath $dump -Force }
   if (Test-Path -LiteralPath $migrationFile) { Remove-Item -LiteralPath $migrationFile -Force }
+  if (Test-Path -LiteralPath $ledgerReplayFile) { Remove-Item -LiteralPath $ledgerReplayFile -Force }
 }

@@ -32,11 +32,14 @@ use tokio_postgres::NoTls;
 use tokio_postgres_rustls::MakeRustlsConnect;
 use tower_http::services::ServeDir;
 
-pub fn app(state: uec_api::ApiState) -> Router {
+mod private_environment;
+
+pub fn app(state: uec_api::ApiState, proxy: private_environment::ProxyConfig) -> Router {
     let cors = cors_layer().expect("CORS configuration must be validated before app startup");
     Router::new()
         .route("/health/live", get(liveness))
         .route("/health/ready", get(readiness))
+        .route("/health/diagnostics", get(diagnostics))
         .route("/api/locations", get(uec_api::get_locations_handler))
         .route("/api/v2/locations", get(uec_api::get_v2_locations_handler))
         .route(
@@ -93,7 +96,7 @@ pub fn app(state: uec_api::ApiState) -> Router {
         .layer(axum::middleware::from_fn_with_state(
             RateLimitState {
                 limiter: Limiter::default(),
-                trust_proxy: std::env::var("UEC_TRUST_PROXY").as_deref() == Ok("true"),
+                proxy,
             },
             rate_limit,
         ))
@@ -221,7 +224,7 @@ struct Limiter(Arc<Mutex<HashMap<String, (Instant, u32)>>>);
 #[derive(Clone)]
 struct RateLimitState {
     limiter: Limiter,
-    trust_proxy: bool,
+    proxy: private_environment::ProxyConfig,
 }
 
 impl Limiter {
@@ -237,8 +240,17 @@ impl Limiter {
     }
 }
 
-fn client_key(request: &Request<axum::body::Body>, trust_proxy: bool) -> Option<String> {
-    if trust_proxy {
+fn client_key(
+    request: &Request<axum::body::Body>,
+    proxy: &private_environment::ProxyConfig,
+) -> Option<String> {
+    let trusted_peer = request
+        .extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .is_some_and(|ConnectInfo(peer)| {
+            private_environment::peer_is_trusted_proxy(peer.ip(), proxy)
+        });
+    if proxy.trust_forwarded_for && trusted_peer {
         if let Some(ip) = request
             .headers()
             .get("x-forwarded-for")
@@ -263,7 +275,7 @@ async fn rate_limit(
     if request.uri().path().starts_with("/health/") {
         return next.run(request).await;
     }
-    let Some(key) = client_key(&request, config.trust_proxy) else {
+    let Some(key) = client_key(&request, &config.proxy) else {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
     if !config.limiter.allow(key, Instant::now()) {
@@ -281,6 +293,34 @@ async fn rate_limit(
 
 async fn liveness() -> impl IntoResponse {
     Json(serde_json::json!({"status": "ok", "service": "uec-api"}))
+}
+
+async fn diagnostics() -> impl IntoResponse {
+    let mode = std::env::var("UEC_RUNTIME_MODE").unwrap_or_else(|_| "development".into());
+    let database_configured = std::env::var("UEC_DATABASE_URL")
+        .ok()
+        .is_some_and(|url| !url.trim().is_empty());
+    let proxy_trust = match std::env::var("UEC_TRUST_PROXY").as_deref() {
+        Ok("true") => "enabled_with_configured_boundary",
+        Ok("false") | Err(_) => "disabled",
+        Ok(_) => "invalid_configuration",
+    };
+    Json(serde_json::json!({
+        "status": "ok",
+        "service": "uec-api",
+        "runtime_mode": mode,
+        "database_configured": database_configured,
+        "proxy_trust": proxy_trust,
+        "startup_gates": {
+            "restriction_ledger": if mode == "production" { "verified" } else { "not_required_development" },
+            "release_manifest": if mode == "production" { "verified" } else { "not_required_development" }
+        },
+        "privacy": {
+            "request_payloads": "not_reported",
+            "visitor_location": "not_reported",
+            "diagnostic_identifiers": "excluded"
+        }
+    }))
 }
 
 async fn readiness(
@@ -404,6 +444,34 @@ async fn main() {
         );
         std::process::exit(2);
     }
+    let proxy = private_environment::parse_proxy_config(
+        mode.as_str(),
+        std::env::var("UEC_TRUST_PROXY").ok().as_deref(),
+        std::env::var("UEC_TRUSTED_PROXY_CIDRS").ok().as_deref(),
+    )
+    .unwrap_or_else(|error| {
+        eprintln!(
+            "{{\"event\":\"configuration_error\",\"reason\":\"{}\"}}",
+            error
+        );
+        std::process::exit(2)
+    });
+    let startup_gate = private_environment::validate_startup(
+        mode.as_str(),
+        std::env::var("UEC_RESTRICTION_LEDGER_PATH").ok().as_deref(),
+        std::env::var("UEC_RESTORED_RESTRICTION_SNAPSHOT_PATH")
+            .ok()
+            .as_deref(),
+        std::env::var("UEC_RELEASE_MANIFEST_PATH").ok().as_deref(),
+        std::env::var("UEC_RELEASE_MANIFEST_SHA256").ok().as_deref(),
+    )
+    .unwrap_or_else(|error| {
+        eprintln!(
+            "{{\"event\":\"configuration_error\",\"reason\":\"{}\"}}",
+            error
+        );
+        std::process::exit(2)
+    });
     let dev_preview_token = preview_config(
         mode.as_str(),
         std::env::var("UEC_DEV_PREVIEW").ok().as_deref(),
@@ -453,8 +521,8 @@ async fn main() {
     });
     let addr = format!("{}:{}", bind_host, port);
     println!(
-        "{{\"event\":\"server_starting\",\"service\":\"uec-api\",\"mode\":\"{}\",\"port\":{}}}",
-        mode, port
+        "{{\"event\":\"server_starting\",\"service\":\"uec-api\",\"mode\":\"{}\",\"port\":{},\"restriction_ledger\":\"{}\",\"release_manifest\":\"{}\"}}",
+        mode, port, startup_gate.restriction_ledger, startup_gate.release_manifest
     );
     let (dev_test_release_id, dev_test_release_token) = match (
         std::env::var("UEC_TEST_RELEASE_ID").ok(),
@@ -483,12 +551,15 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(
         listener,
-        app(uec_api::ApiState {
-            database,
-            dev_preview_token,
-            dev_test_release_id,
-            dev_test_release_token,
-        })
+        app(
+            uec_api::ApiState {
+                database,
+                dev_preview_token,
+                dev_test_release_id,
+                dev_test_release_token,
+            },
+            proxy,
+        )
         .into_make_service_with_connect_info::<SocketAddr>(),
     )
     .await
@@ -633,7 +704,8 @@ mod rate_limit_tests {
             .layer(axum::middleware::from_fn_with_state(
                 RateLimitState {
                     limiter: Limiter::default(),
-                    trust_proxy: false,
+                    proxy: private_environment::parse_proxy_config("development", None, None)
+                        .unwrap(),
                 },
                 rate_limit,
             ));
@@ -687,11 +759,24 @@ mod rate_limit_tests {
             .unwrap();
         request.extensions_mut().insert(ConnectInfo(peer));
         assert_eq!(
-            client_key(&request, false).as_deref(),
+            client_key(
+                &request,
+                &private_environment::parse_proxy_config("development", None, None).unwrap(),
+            )
+            .as_deref(),
             Some("peer:192.0.2.10")
         );
         assert_eq!(
-            client_key(&request, true).as_deref(),
+            client_key(
+                &request,
+                &private_environment::parse_proxy_config(
+                    "production",
+                    Some("true"),
+                    Some("192.0.2.0/24"),
+                )
+                .unwrap(),
+            )
+            .as_deref(),
             Some("proxy:198.51.100.20")
         );
 
@@ -700,8 +785,37 @@ mod rate_limit_tests {
             HeaderValue::from_static("invalid, 198.51.100.20"),
         );
         assert_eq!(
-            client_key(&request, true).as_deref(),
+            client_key(
+                &request,
+                &private_environment::parse_proxy_config(
+                    "production",
+                    Some("true"),
+                    Some("192.0.2.0/24"),
+                )
+                .unwrap(),
+            )
+            .as_deref(),
             Some("peer:192.0.2.10")
+        );
+
+        let untrusted_peer: SocketAddr = "203.0.113.10:41000".parse().unwrap();
+        request.extensions_mut().remove::<ConnectInfo<SocketAddr>>();
+        request.extensions_mut().insert(ConnectInfo(untrusted_peer));
+        request
+            .headers_mut()
+            .insert("x-forwarded-for", HeaderValue::from_static("198.51.100.20"));
+        assert_eq!(
+            client_key(
+                &request,
+                &private_environment::parse_proxy_config(
+                    "production",
+                    Some("true"),
+                    Some("192.0.2.0/24"),
+                )
+                .unwrap(),
+            )
+            .as_deref(),
+            Some("peer:203.0.113.10")
         );
     }
 
@@ -712,7 +826,8 @@ mod rate_limit_tests {
             .layer(axum::middleware::from_fn_with_state(
                 RateLimitState {
                     limiter: Limiter::default(),
-                    trust_proxy: false,
+                    proxy: private_environment::parse_proxy_config("development", None, None)
+                        .unwrap(),
                 },
                 rate_limit,
             ));

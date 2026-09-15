@@ -31,3 +31,17 @@ python pipeline/scripts/stages/geocode-worker.py --provider dawa --limit 5 --del
 ```
 
 The worker writes append-only job events and geocode attempts. It does not modify source records or observations. New providers should implement the adapter contract in `pipeline/geocoding/` and reuse the worker’s lifecycle, retry, logging, and persistence behavior.
+# Private environment controls
+
+`maintenance/private-environment-gate.py` is the clean-checkout and
+deployment-shaped gate. In production it requires explicit runtime/CORS/proxy
+configuration, a separate durable restriction ledger and post-restore
+snapshot, a complete migration inventory, and a trusted release-manifest
+digest. It is validation only: it does not acquire, promote, or publish data.
+
+`maintenance/replay-restriction-ledger.py` applies current payload-free
+suppression references to a restored database in one transaction. It rejects
+missing or ambiguous source keys, supports only whole-record suppression,
+writes a row-free post-replay snapshot, and can emit idempotent SQL for a
+portless recovery container. Run the service startup gate after replay; never
+start public service on a stale restore.
