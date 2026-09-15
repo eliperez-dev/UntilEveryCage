@@ -48,3 +48,19 @@ Wales, Scotland, and Northern Ireland remain separate until coverage and
 identity semantics are evidenced. Legacy rows with unknown provenance or
 unresolved keys remain explicitly unmatched rather than being repaired by
 heuristic matching.
+
+## Legacy-country inventory
+
+Before a private V2 artifact exists, use the row-free inventory command:
+
+```powershell
+python pipeline/scripts/diagnostics/inventory-v1-countries.py `
+  --output data/reports/v1-country-inventory.json
+```
+
+It counts rows, missing and duplicate legacy keys, and coordinate-pair
+presence for the V1 country directories represented by the checkout. It
+explicitly reports `blocked_no_private_v2_artifact`; it does not pretend that
+every legacy row is unmatched against a current source, and it does not infer
+currentness, closure, or identity. Generated reports belong in ignored local
+data when run against real snapshots.
