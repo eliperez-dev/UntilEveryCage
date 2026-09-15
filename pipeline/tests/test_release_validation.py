@@ -31,6 +31,15 @@ class ReleaseValidationTests(unittest.TestCase):
         self.assertIn("PASSED", rendered)
         self.assertIn("release_records", rendered)
 
+    def test_test_only_release_is_blocked_before_validation(self):
+        report = MODULE.evaluate({"release_records": 1, "duplicate_observations": 0, "validation_errors": 0, "review_visible": 0, "coordinate_not_ready": 0, "publication_not_approved": 0, "active_suppression": 0, "test_only": True})
+        self.assertEqual(report["status"], "blocked")
+        self.assertEqual(report["findings"][0]["code"], "test_only_release")
+
+    def test_validation_report_names_test_only_blocker(self):
+        report = MODULE.evaluate({"release_records": 0, "duplicate_observations": 0, "validation_errors": 0, "review_visible": 0, "coordinate_not_ready": 0, "publication_not_approved": 0, "active_suppression": 0, "test_only": True})
+        self.assertIn("test_only_release", {finding["code"] for finding in report["findings"]})
+
 
 if __name__ == "__main__":
     unittest.main()

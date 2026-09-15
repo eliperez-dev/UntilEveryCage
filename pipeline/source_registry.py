@@ -71,8 +71,8 @@ def validate_registry(payload: object, *, repository_root: Path | None = None) -
                 raise SourceRegistryError(f"{prefix}.url must be an http(s) URL or 'unknown'")
         if source["adapter_status"] not in VALID_ADAPTER_STATUSES:
             raise SourceRegistryError(f"{prefix}.adapter_status is not recognized")
-        if not isinstance(source["legacy_paths"], list) or not source["legacy_paths"]:
-            raise SourceRegistryError(f"{prefix}.legacy_paths must be non-empty")
+        if not isinstance(source["legacy_paths"], list):
+            raise SourceRegistryError(f"{prefix}.legacy_paths must be a list")
         if not all(isinstance(item, str) and item for item in source["legacy_paths"]):
             raise SourceRegistryError(f"{prefix}.legacy_paths must contain non-empty strings")
         if not isinstance(source["blockers"], list) or not all(isinstance(item, str) and item for item in source["blockers"]):

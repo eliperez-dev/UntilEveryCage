@@ -1,8 +1,20 @@
 {
   "registry_version": "1.0",
-  "evidence_basis": "Repository evidence only; no live source verification was performed.",
+  "evidence_basis": "Repository evidence; source-specific live verification is documented in the linked evidence files.",
   "unknown_value": "unknown",
   "sources": [
+    {
+      "source_id": "be.locations",
+      "jurisdiction_scope": "Belgium; FASFC-registered, approved, or authorized operators, including animal-origin food and other food-chain activities",
+      "legacy_paths": [],
+      "url": "https://data.gov.be/en/datasets/favv-afsca-operators",
+      "access_method": "published weekly CSV download; companion PAP/LAP activity-code CSV",
+      "cadence": "weekly",
+      "attribution_licensing_notes": "CC Attribution 4.0; attribute FASFC and the last update date, do not imply FASFC affiliation/approval, and do not mislead",
+      "adapter_status": "not_started",
+      "expected_artifact_schema": "CSV operator rows with establishment/operator identity, address/geography, PAP/LAP activity codes, descriptions, and approval/authorization identifiers; exact header and field semantics require capture",
+      "blockers": ["Capture and verify the current operator CSV header, delimiter/encoding, identifiers, address/geography fields, status/date semantics, and slaughterhouse/cutting/processing/storage category mappings before implementation or acquisition staging."]
+    },
     {
       "source_id": "ca.locations",
       "jurisdiction_scope": "Canada; federal and Ontario legacy coverage",
@@ -34,10 +46,10 @@
       "url": "https://pub.fvst.dk/publikationer/Smileydata.xml",
       "access_method": "bulk XML download",
       "cadence": "weekly",
-      "attribution_licensing_notes": "Repository code names Fødevarestyrelsen; confirm current publication and reuse terms before acquisition.",
+      "attribution_licensing_notes": "Official Find Smiley data page records public-data reuse terms: attribute Fødevarestyrelsen, do not use its logo, and keep displayed smileys current; no project publication approval.",
       "adapter_status": "implemented_partial",
       "expected_artifact_schema": "XML source artifact -> parsed JSONL -> normalized/classified JSONL; source fields are preserved",
-      "blockers": ["Current endpoint, publication date semantics, licensing, and full coverage still require live verification."]
+      "blockers": ["Publisher supplies no dataset effective date; source coverage is limited to data available on Find Smiley and is not a completeness claim. Denmark candidate rows require explicit source-key mapping before disposable DB import."]
     },
     {
       "source_id": "es.locations",
@@ -64,16 +76,28 @@
       "blockers": ["Confirm current DGAL publication and whether the KML is an original source or a derived artifact."]
     },
     {
-      "source_id": "it.locations",
-      "jurisdiction_scope": "Italy",
+      "source_id": "it.853-2004",
+      "jurisdiction_scope": "Italy; Ministry of Health establishments recognized under Regulation (EC) 853/2004",
       "legacy_paths": ["dirty-datasets/it/italy_locations.csv", "Old CSVs/italian_facilities.csv"],
-      "url": "https://www.salute.gov.it/consultazioneStabilimenti/ConsultazioneStabilimentiServlet?ACTION=gestioneSingolaCategoria&idNormativa=2&idCategoria=1",
-      "access_method": "HTML table or official export",
-      "cadence": "unknown",
-      "attribution_licensing_notes": "Legacy scraper identifies the Italian Ministry of Health; verify terms and attribution.",
-      "adapter_status": "reference_only",
-      "expected_artifact_schema": "HTML/table export -> preserved source rows; legacy CSV schema is not a canonical upstream schema",
-      "blockers": ["Confirm stable endpoint, pagination, retrieval policy, and source schema; geocoding scripts are separate derived processing."]
+      "url": "https://www.dati.salute.gov.it/it/dataset/stabilimenti-italiani-gli-alimenti-di-origine-animale/",
+      "access_method": "stable catalog page -> same-origin dated CSV discovery",
+      "cadence": "daily",
+      "attribution_licensing_notes": "Ministry of Health catalog identifies Italian Open Data Licence v2.0; terms evidence and privacy review remain required before publication.",
+      "adapter_status": "implemented_partial",
+      "expected_artifact_schema": "catalog-discovered UTF-8 semicolon CSV -> parsed/normalized/quarantined JSONL; source values preserved privately",
+      "blockers": ["Resolve repeated establishment/activity identity, coded values, coordinate provenance, address privacy, coverage, and project publication approval before release review."]
+    },
+    {
+      "source_id": "it.1069-2009",
+      "jurisdiction_scope": "Italy; Ministry of Health establishments for animal by-products under Regulation (EC) 1069/2009",
+      "legacy_paths": [],
+      "url": "https://www.dati.salute.gov.it/it/dataset/stabilimenti-italiani-i-sottoprodotti-di-origine-animale/",
+      "access_method": "not acquired; separate catalog candidate",
+      "cadence": "daily",
+      "attribution_licensing_notes": "Separate Ministry catalog and Italian Open Data Licence v2.0 indication; no adapter or publication decision.",
+      "adapter_status": "not_started",
+      "expected_artifact_schema": "separate catalog CSV/XML/JSON schema; do not union with 853/2004",
+      "blockers": ["Assess scope, terms, schema, identity/link semantics, privacy, and whether this source belongs in the project before acquisition."]
     },
     {
       "source_id": "mx.locations",

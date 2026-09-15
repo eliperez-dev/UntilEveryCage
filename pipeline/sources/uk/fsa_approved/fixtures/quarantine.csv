@@ -1,0 +1,9 @@
+establishment_id,trading_name,address_line_1,address_line_2,address_line_3,postcode,activities,species,competent_authority,nation,status,remarks,published_date,source_url,source_licence
+00017,Duplicate England,Works,,,PE1 2AB,processing,pig,Food Standards Agency,England,,,2026-09-01,https://example.invalid/fsa,terms-pending
+00017,Duplicate England Again,Works,,,PE1 2AB,processing,pig,Food Standards Agency,England,,,2026-09-01,https://example.invalid/fsa,terms-pending
+00017,Same Identifier Wales,Works,,,CF1 2CD,processing,pig,Food Standards Agency,Wales,,,2026-09-01,https://example.invalid/fsa,terms-pending
+,Missing Identifier,Works,,,BT1 2EF,slaughter,pig,Food Standards Agency Northern Ireland,Northern Ireland,,,2026-09-01,https://example.invalid/fsa,terms-pending
+NI-005,Unknown Activity,Works,,,BT1 2EF,rendering,pig,Food Standards Agency Northern Ireland,Northern Ireland,,,2026-09-01,https://example.invalid/fsa,terms-pending
+NI-006,Unknown Status,Works,,,BT1 2EF,storage,pig,Food Standards Agency Northern Ireland,Northern Ireland,operating,,2026-09-01,https://example.invalid/fsa,terms-pending
+NI-007,Private Location,Flat 2,Home Road,,BT1 2EF,storage,pig,Food Standards Agency Northern Ireland,Northern Ireland,,,2026-09-01,https://example.invalid/fsa,terms-pending
+NI-008,Wrong Authority,Works,,,BT1 2EF,storage,pig,Food Standards Agency,Northern Ireland,,,2026-09-01,https://example.invalid/fsa,terms-pending

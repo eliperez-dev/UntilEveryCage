@@ -1,0 +1,10 @@
+{
+  "source_id": "it.853-2004",
+  "adapter_version": "it-853-candidate-v1",
+  "schema_version": "it-853-csv-v2.0",
+  "profile": "private-candidate",
+  "release_state": "not-created",
+  "publication_state": "private-candidate",
+  "coordinates": "pending-review",
+  "address_and_tax_fields": "private-source-values-only"
+}

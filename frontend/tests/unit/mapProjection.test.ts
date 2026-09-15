@@ -1,0 +1,1 @@
+import{describe,expect,it}from'vitest';import{locations}from'../../src/fixtures/locations';import{projectLocations}from'../../src/map/mapProjection';describe('map projection',()=>it('excludes unmapped fixtures',()=>expect(projectLocations(locations)).toHaveLength(2)));

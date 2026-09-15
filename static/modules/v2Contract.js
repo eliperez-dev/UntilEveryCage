@@ -50,7 +50,15 @@ export function validateV2Envelope(body) {
         throw new TypeError('V2 response envelope is invalid');
     }
     if (!Array.isArray(body.data) && !isObject(body.data)) throw new TypeError('V2 response data is invalid');
-    if (Array.isArray(body.data)) body.data.forEach(validateV2Location);
-    else validateV2Location(body.data);
+    const records = Array.isArray(body.data) ? body.data : [body.data];
+    if (records.length && !V2_PROFILES.includes(body.meta.profile)) {
+        throw new TypeError('V2 response has invalid profile');
+    }
+    records.forEach(record => {
+        validateV2Location(record);
+        if (record.publication_profile !== body.meta.profile) {
+            throw new TypeError('V2 location publication_profile differs from response profile');
+        }
+    });
     return body;
 }

@@ -3,14 +3,12 @@ INSERT INTO uec.sources (source_id,country_code,name,official_url,access_method)
 VALUES ('e2e.backup','DK','Synthetic backup source','https://example.invalid/backup','fixture');
 INSERT INTO uec.releases (release_id,status,ruleset_version,profile,summary)
 VALUES ('e2e-promoted','promoted','synthetic-v1','official','{}');
+INSERT INTO uec.release_manifests (release_id,manifest,manifest_sha256)
+VALUES ('e2e-promoted','{"eligible_record_count":1,"manifest_version":"v1","profile":"official","release_id":"e2e-promoted","ruleset_version":"synthetic-v1","source_ids":["e2e.backup"]}', 'cabe8641a05beb76c9517006a8ec4cdd60b3bad58aa5b0fc29335fee1ac7d5dd');
 INSERT INTO uec.raw_artifacts (artifact_id,storage_key,sha256,byte_size,retrieved_at)
 VALUES ('00000000-0000-0000-0000-000000000001','e2e/backup/restricted',repeat('a',64),0,now());
 INSERT INTO uec.source_records (source_record_id,source_id,source_record_key,artifact_id,raw_fields,parsed_at)
 VALUES ('00000000-0000-0000-0000-000000000002','e2e.backup','restricted','00000000-0000-0000-0000-000000000001','{}',now());
-INSERT INTO uec.suppression_cases (case_id,status,reason_category,policy_version,actor,decision)
-VALUES ('00000000-0000-0000-0000-000000000003','active','privacy','ethics-v1','fixture','suppress');
-INSERT INTO uec.suppression_references (case_id,source_id,source_record_key,scope)
-VALUES ('00000000-0000-0000-0000-000000000003','e2e.backup','restricted','whole_record');
 INSERT INTO uec.facilities (facility_id,canonical_name,country_code,city)
 VALUES ('00000000-0000-0000-0000-000000000004','Synthetic restricted facility','DK','Backupby');
 INSERT INTO uec.observations (observation_id,facility_id,source_record_id,observed_at,observation,classification,ruleset_id,rule_id,classification_category,classification_review_status,default_visible,first_observed_at)

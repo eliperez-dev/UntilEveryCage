@@ -17,3 +17,5 @@ services:
       start_period: 10s
     ports:
       - "${UEC_E2E_DB_PORT:-55432}:5432"
+    volumes:
+      - "./pipeline/tests/e2e/disposable-marker.sql:/docker-entrypoint-initdb.d/uec-disposable-marker.sql:ro"

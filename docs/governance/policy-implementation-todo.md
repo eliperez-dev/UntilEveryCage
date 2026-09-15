@@ -104,4 +104,10 @@ export, aggregate-count, historical/cache, or production operational controls.
 
 ## Current implementation boundary
 
-The documentation is aligned with ETHICS.md. The current database migration rejects updates/deletes on evidence tables; a policy-compliant exceptional-removal path and end-to-end publication enforcement have not been established by this documentation task. Do not treat unchecked work as complete or launch affected public capabilities based on policy text alone. Independent acquisition work may continue within the governing retention/access rules.
+The V2 checkpoint now includes a synthetic, tested urgent suppression path with
+durable source-key references, append-only lift decisions, geocoding guards,
+release gates, and backup replay verification. This is evidence for the
+covered disposable V2 surfaces only. Production still needs an independently
+operated restriction ledger and enforced service-start/deployment gate, plus
+the remaining checklist items below. Do not treat unchecked work as complete
+or launch affected public capabilities based on policy text alone.

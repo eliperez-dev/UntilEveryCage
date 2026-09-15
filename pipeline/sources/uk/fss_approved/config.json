@@ -1,0 +1,22 @@
+{
+  "contract_version": "fss-scotland-approved-v1",
+  "adapter_version": "fss-scotland-v2-1",
+  "source_id": "fss_approved_establishments",
+  "authority": "Food Standards Scotland",
+  "source_url": "https://www.foodstandards.gov.scot/sites/default/files/2026-08/Approved%20Establishments%20in%20Scotland.csv",
+  "catalog_url": "https://www.foodstandards.gov.scot/open-data-portal/approved-establishments-in-scotland",
+  "terms_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+  "country": "GB",
+  "nation": "Scotland",
+  "format": "csv",
+  "update_frequency": "monthly",
+  "licence": "Open Government Licence v3.0",
+  "acquisition": "bounded-private-fetch",
+  "schema_status": "pinned-fixture-contract-pending-live-verification",
+  "release_allowed_by_default": false,
+  "allowed_activities": ["slaughter", "cutting", "processing", "storage"],
+  "allowed_statuses": ["active", "inactive", "suspended", "closed"],
+  "required_columns": ["approval_number", "trading_name", "address_line_1", "address_line_2", "address_line_3", "postcode", "activities", "species", "competent_authority", "nation", "status", "remarks", "published_date", "source_url", "source_licence"],
+  "live_header_row": 5,
+  "live_columns": ["", "Approval Number", "Trading Name", "Address 1", "Address 2", "Address 3", "Address 4", "Post Code", "All Activities Approved", "Part A - Section 0 - General Activity Establishment", "Part A - Section I - Meat of Domestic Ungulates", "Part A - Section II - Meat from poultry and lagomorphs", "Part A - Section III - Meat of farmed game", "Part A - Section IV - Wild game meat", "Part A - Section V - Minced meat; Meat preparations and Mechanically separated meat", "Part A - Section VI - Meat Products", "Part A - Section VII - Live Bivalve Molluscs", "Part A - Section VIII - Fishery Products", "Part A - Section IX - Raw milk and Dairy products", "Part A - Section X - Eggs and egg products", "Part A - Section XI - Frog's Legs and Snails", "Part A - Section XII - Rendered animal fats and greaves", "Part A - Section XIII - Treated stomachs; bladders and intestines", "Part A - Section XIV - Gelatine", "Part A - Section XV - Collagen", "Part A - Section XVI - Highly refined products", "Part B - Section I - Sprouts", "Associated Activities", "Species", "Remarks", "Competent Authority", "Geographic Local Authority", "EU Export List"]
+}

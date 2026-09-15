@@ -25,8 +25,19 @@ def enqueue(records_path: Path, database_url: str, provider_id: str, limit: int 
                 query = ", ".join(filter(None, [address["street"], address["postal_code"], address.get("city"), "Denmark"]))
                 source_record_id = uuid.uuid5(uuid.NAMESPACE_URL, f"urn:uec:source-record:dk.smiley:{record['source_record_key']}:{record['source_artifact_sha256']}")
                 job = connection.execute(
-                    "INSERT INTO uec.geocode_jobs (source_record_id, provider_id, query) VALUES (%s, %s, %s) ON CONFLICT (source_record_id, provider_id, query) DO NOTHING RETURNING job_id",
-                    (source_record_id, provider_id, query),
+                    """
+                    INSERT INTO uec.geocode_jobs (source_record_id, provider_id, query)
+                    SELECT record.source_record_id, %s, %s
+                    FROM uec.source_records record
+                    WHERE record.source_record_id=%s
+                      AND NOT EXISTS (
+                          SELECT 1 FROM uec.public_access_restricted restricted
+                          WHERE restricted.source_record_id=record.source_record_id
+                      )
+                    ON CONFLICT (source_record_id, provider_id, query) DO NOTHING
+                    RETURNING job_id
+                    """,
+                    (provider_id, query, source_record_id),
                 ).fetchone()
                 if job:
                     connection.execute("INSERT INTO uec.geocode_job_events (job_id, event_type, attempt_number, occurred_at) VALUES (%s, 'queued', 1, %s)", (job[0], datetime.now(timezone.utc)))

@@ -29,6 +29,9 @@ try {
 
   python -m unittest discover -s pipeline/tests -q
   if ($LASTEXITCODE -ne 0) { throw "Python tests failed (exit $LASTEXITCODE)." }
+
+  python -m unittest -q pipeline.germany.test_adapter pipeline.germany.test_orchestrator pipeline.common.test_delta pipeline.common.test_orchestrator pipeline.common.test_registry pipeline.contracts.test_adapter_contract pipeline.contracts.test_candidate_handoff pipeline.sources.denmark.test_adapter pipeline.sources.uk.fsa_approved.test_adapter pipeline.sources.uk.fsa_approved.test_handoff pipeline.sources.uk.fss_approved.test_adapter pipeline.sources.uk.fss_approved.test_handoff pipeline.sources.uk.approved.test_compose
+  if ($LASTEXITCODE -ne 0) { throw "Country adapter tests failed (exit $LASTEXITCODE)." }
 }
 finally {
   $savedPreference = $ErrorActionPreference

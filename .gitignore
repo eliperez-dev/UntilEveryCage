@@ -1,10 +1,12 @@
 /target/
 /node_modules/
 /snapshots/
+/static/v2-preview/
 /\.shuttle*
 /Secrets*.toml
 __pycache__/
 /data/raw/
+/data/restricted/
 /data/raw/**/*.xml
 /data/raw/**/*.csv
 /data/raw/**/*.xlsx

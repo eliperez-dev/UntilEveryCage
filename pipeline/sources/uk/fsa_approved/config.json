@@ -1,0 +1,23 @@
+{
+  "contract_version": "fsa-uk-approved-v1",
+  "adapter_version": "fsa-uk-v2-1",
+  "source_id": "fsa_approved_establishments",
+  "authority": "Food Standards Agency",
+  "source_url": "https://fsaopendata.blob.core.windows.net/opendatacatalog/Approved-Establishments-01-09-26.csv",
+  "catalog_url": "https://www.data.gov.uk/dataset/2c80e0ce-ee1c-4f26-ba6f-1e1ae1bd8ee9/approved-food-establishments",
+  "monthly_schema_fingerprint": "8a78f58c004a84811e51af53fab6eaf9316a93462575a17f52b6f7a7543e1fa8",
+  "monthly_baseline_rows": 5342,
+  "covered_nations": ["England", "Wales", "Northern Ireland"],
+  "authority_by_nation": {
+    "England": "Food Standards Agency",
+    "Wales": "Food Standards Agency",
+    "Northern Ireland": "Food Standards Agency Northern Ireland"
+  },
+  "format": "csv",
+  "schema_status": "synthetic-assumption-pending-live-verification",
+  "acquisition": "synthetic-fixture-only",
+  "release_allowed_by_default": false,
+  "allowed_activities": ["slaughter", "cutting", "processing", "storage"],
+  "allowed_statuses": ["active", "inactive", "suspended", "closed"],
+  "required_columns": ["establishment_id", "trading_name", "address_line_1", "address_line_2", "address_line_3", "postcode", "activities", "species", "competent_authority", "nation", "status", "remarks", "published_date", "source_url", "source_licence"]
+}

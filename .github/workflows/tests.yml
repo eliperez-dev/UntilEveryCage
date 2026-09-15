@@ -34,6 +34,8 @@ jobs:
           python -m unittest pipeline.tests.e2e.test_public_api -v
           python -m unittest pipeline.tests.e2e.test_community_api -v
           python -m unittest pipeline.tests.e2e.test_seeded_api -v
+          python -m unittest pipeline.tests.e2e.test_public_surface_safety -v
+          python -m unittest pipeline.tests.e2e.test_candidate_import -v
 
   backup-restore:
     # The PostGIS image is Linux-only; Ubuntu includes PowerShell Core for the drill.
@@ -45,3 +47,44 @@ jobs:
         env:
           UEC_RUN_E2E: '1'
         run: ./pipeline/tests/e2e/backup-restore.ps1
+
+  static-jest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npm test
+
+  v2-gate-self-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check V2 gate failure and success reporting
+        shell: pwsh
+        run: ./pipeline/tests/test-v2-gate.ps1
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: npm run lint
+      - run: npm run boundary
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium firefox webkit
+      - run: npx playwright test tests/e2e/fixture-platform.spec.ts tests/e2e/local-safety.spec.ts tests/e2e/private-preview.spec.ts --project=chromium --project=firefox --project=webkit --workers=2
