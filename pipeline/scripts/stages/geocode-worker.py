@@ -26,7 +26,12 @@ def run(database_url: str, provider_id: str, limit: int | None, delay: float, re
                 SELECT job.job_id, job.source_record_id, job.provider_id, job.query, COALESCE(current.attempt_number, 0)
                 FROM uec.geocode_jobs AS job
                 LEFT JOIN uec.geocode_job_current AS current ON current.job_id = job.job_id
-                WHERE job.provider_id = %s AND (current.event_type IS NULL OR current.event_type = 'queued' OR (current.event_type = 'failed' AND current.retryable))
+                WHERE job.provider_id = %s
+                  AND (current.event_type IS NULL OR current.event_type = 'queued' OR (current.event_type = 'failed' AND current.retryable))
+                  AND NOT EXISTS (
+                      SELECT 1 FROM uec.public_access_restricted restricted
+                      WHERE restricted.source_record_id = job.source_record_id
+                  )
                 ORDER BY job.created_at, job.job_id LIMIT 1
             """, (provider_id,)).fetchone()
             if not job:

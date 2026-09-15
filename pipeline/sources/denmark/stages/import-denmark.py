@@ -94,7 +94,15 @@ def run(classified_path: Path, artifact_metadata_path: Path, geocode_path: Path 
                 """, (source_record_id, record["source_record_key"], artifact_id, json.dumps(source_fields, ensure_ascii=False), checked_at))
                 existing = connection.execute("SELECT source_record_id FROM uec.source_records WHERE source_id='dk.smiley' AND source_record_key=%s AND artifact_id=%s", (record["source_record_key"], artifact_id)).fetchone()
                 source_record_id = existing[0]
-                if geocode:
+                suppressed = connection.execute(
+                    "SELECT EXISTS (SELECT 1 FROM uec.public_access_restricted WHERE source_record_id=%s)",
+                    (source_record_id,),
+                ).fetchone()[0]
+                # A renewed geocoder request is not appropriate after an
+                # active residential/wrong-location restriction. Keep the
+                # source snapshot private, but do not create new coordinate
+                # evidence from its address.
+                if geocode and not suppressed:
                     queried_at = geocode.get("queried_at_utc") or checked_at.isoformat()
                     geocode_id = uuid.uuid5(uuid.NAMESPACE_URL, f"urn:uec:geocode:{geocode['queue_key']}:{geocode.get('provider', 'unknown')}:{queried_at}")
                     connection.execute("""
