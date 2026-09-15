@@ -1,8 +1,20 @@
 {
   "registry_version": "1.0",
-  "evidence_basis": "Repository evidence only; no live source verification was performed.",
+  "evidence_basis": "Repository evidence; source-specific live verification is documented in the linked evidence files.",
   "unknown_value": "unknown",
   "sources": [
+    {
+      "source_id": "be.locations",
+      "jurisdiction_scope": "Belgium; FASFC-registered, approved, or authorized operators, including animal-origin food and other food-chain activities",
+      "legacy_paths": [],
+      "url": "https://data.gov.be/en/datasets/favv-afsca-operators",
+      "access_method": "published weekly CSV download; companion PAP/LAP activity-code CSV",
+      "cadence": "weekly",
+      "attribution_licensing_notes": "CC Attribution 4.0; attribute FASFC and the last update date, do not imply FASFC affiliation/approval, and do not mislead",
+      "adapter_status": "not_started",
+      "expected_artifact_schema": "CSV operator rows with establishment/operator identity, address/geography, PAP/LAP activity codes, descriptions, and approval/authorization identifiers; exact header and field semantics require capture",
+      "blockers": ["Capture and verify the current operator CSV header, delimiter/encoding, identifiers, address/geography fields, status/date semantics, and slaughterhouse/cutting/processing/storage category mappings before implementation or acquisition staging."]
+    },
     {
       "source_id": "ca.locations",
       "jurisdiction_scope": "Canada; federal and Ontario legacy coverage",

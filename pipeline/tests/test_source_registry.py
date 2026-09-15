@@ -17,6 +17,11 @@ class SourceRegistryTests(unittest.TestCase):
         self.assertEqual(registry["unknown_value"], "unknown")
         self.assertIn("unknown", {source["url"] for source in registry["sources"]})
 
+    def test_allows_source_without_legacy_paths(self):
+        registry = load_registry()
+        belgium = next(source for source in registry["sources"] if source["source_id"] == "be.locations")
+        self.assertEqual(belgium["legacy_paths"], [])
+
     def test_rejects_duplicate_ids(self):
         registry = load_registry()
         registry["sources"].append(dict(registry["sources"][0]))
