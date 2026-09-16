@@ -15,6 +15,10 @@ No last-success timestamp is invented. Private artifacts are not proof of a publ
 
 The owner-authorized 2026-09-15 live-country rehearsal completed private candidate integration for Denmark, France Sections I/II, Italy 853/2004, Germany, Belgium, Canada Ontario/CFIA, and UK FSA/FSS. It created no public surface and kept publication blocked. See the detailed [country rehearsal report](country-rehearsal-2026-09-15.md) and machine-readable [rehearsal status](country-rehearsal-2026-09-15.json).
 
+## Ireland reconnaissance update
+
+The 2026-09-16 Ireland reconnaissance verified the current FSAI/DAFM/HSE/SFPA source topology and adjacent EPA, planning, CRO, CSO, funding, enforcement, and welfare context. It captured only bounded browser observations: HSE 72 distinct approval-number nodes, SFPA 184 approved-establishment entries, 50 freezer-vessel entries, and 1 factory-vessel entry. DAFM’s three workbook links were verified from the publication page, but workbook bytes, headers, and counts were not captured. See [Ireland reconnaissance](country-recon-ie.md), the [Ireland crosswalk](countries/ireland/v1-field-crosswalk.json), and the [Ireland artifact manifest](../data/manifests/ireland-source-artifacts.json). All 16 Ireland sources remain publication-blocked; no adapter or release artifact exists.
+
 ## Current baseline
 
 | Source ID | Metadata | Acquisition | Runtime health | Publication | Evidence / next action |
