@@ -15,7 +15,15 @@ import sys
 import tempfile
 from pathlib import Path
 
-import psycopg
+
+
+def _require_psycopg():
+    """Load the database driver only for operations that contact PostgreSQL."""
+    try:
+        import psycopg
+    except ModuleNotFoundError as exc:
+        raise RuntimeError("database replay requires the 'psycopg' package; install pipeline requirements") from exc
+    return psycopg
 
 
 def _ledger_module():
@@ -31,6 +39,7 @@ def _ledger_module():
 def replay(database_url: str, ledger_path: Path, actor: str = "external-ledger-replay") -> dict[str, int | str]:
     verifier = _ledger_module()
     ledger = verifier.load_ledger(ledger_path)
+    psycopg = _require_psycopg()
     restrictions = ledger["active_restrictions"]
     if any(item.get("scope") != "whole_record" for item in restrictions):
         raise ValueError("ledger replay supports only whole_record suppression references")
@@ -107,6 +116,7 @@ def write_replayed_snapshot(database_url: str, ledger_path: Path, output: Path) 
     """Write a row-free snapshot after confirming each reference is suppressed."""
     verifier = _ledger_module()
     ledger = verifier.load_ledger(ledger_path)
+    psycopg = _require_psycopg()
     restrictions = ledger["active_restrictions"]
     if any(item.get("scope") != "whole_record" for item in restrictions):
         raise ValueError("snapshot export supports only whole_record suppression references")

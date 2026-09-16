@@ -2,6 +2,8 @@
 import importlib.util
 import hashlib
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -108,6 +110,21 @@ class PrivateEnvironmentGateTests(unittest.TestCase):
             self.assertIn("record_access_events", sql)
             self.assertNotIn("address", sql.lower())
             self.assertNotIn("coordinate", sql.lower())
+
+    def test_emit_sql_does_not_require_site_packages(self):
+        script = ROOT / "scripts" / "maintenance" / "replay-restriction-ledger.py"
+        replay_spec = importlib.util.spec_from_file_location("replay_restriction_ledger_no_site", script)
+        replay = importlib.util.module_from_spec(replay_spec)
+        replay_spec.loader.exec_module(replay)
+        with tempfile.TemporaryDirectory() as directory:
+            paths, _ = self.fixtures(directory)
+            expected = replay.replay_sql(paths["ledger.json"])
+            result = subprocess.run(
+                [sys.executable, "-S", str(script), "--ledger", str(paths["ledger.json"]), "--emit-sql"],
+                capture_output=True, text=True, check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, expected)
 
 
 if __name__ == "__main__":
