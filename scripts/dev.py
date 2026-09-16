@@ -56,7 +56,7 @@ def main() -> int:
     sub.add_parser("doctor", help="check local prerequisites and safe configuration")
     for name in ("up", "down", "status", "logs", "probe"):
         sub.add_parser(name, help=f"local V2 {name}")
-    sub.add_parser("test", help="fast JavaScript tests").add_argument("--full", action="store_true")
+    sub.add_parser("test", help="root legacy static/Jest tests").add_argument("--full", action="store_true")
     sub.add_parser("pipeline", help="run Python pipeline tests").add_argument("args", nargs=argparse.REMAINDER)
     sub.add_parser("contracts", help="run contract tests")
     rp = sub.add_parser("review-packet", help="generate a private row-free review packet")
