@@ -8,6 +8,10 @@ Scripts are grouped by their role in the auditable ingestion workflow:
 - `diagnostics/` contains read-only inspection and sampling tools. These help evaluate a source or service and are not required for a normal full run.
 - `maintenance/` contains repository and migration-support utilities, such as the legacy manifest builder.
 
+For the contributor-facing command sequence, see
+[pipeline/ONBOARDING.md](../ONBOARDING.md). This page documents script roles;
+it is not a second lifecycle tutorial.
+
 `diagnostics/build-source-operations-health.py` reads the private append-only
 source run ledger and the checked-in schedule inventory to emit a deterministic,
 row-free health index. It does not acquire data, update `docs/source-status`,

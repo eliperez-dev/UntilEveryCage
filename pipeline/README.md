@@ -4,6 +4,10 @@ Acquisition, retention, geocoding, and release work follow [docs/ETHICS.md](../d
 
 This directory is the local-development home for V2 ingestion code. Acquired and generated data lives under the repository-level `data/` directory. The current application data remains unchanged while the pipeline is being established.
 
+New contributors should start with [pipeline/ONBOARDING.md](ONBOARDING.md),
+which provides the safe fixture-first test path and explains the boundary
+between private staging, release validation, and public publication.
+
 ## First operation
 
 Run the manifest generator from the repository root:
