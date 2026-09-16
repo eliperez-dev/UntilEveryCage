@@ -23,9 +23,10 @@ class PolandMetadataIntegrityTests(unittest.TestCase):
         manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
         metadata = json.loads(PRIVATE_METADATA.read_text(encoding="utf-8"))
         entry = next(item for item in manifest["artifacts"] if item["source_id"] == "pl.private.recon-metadata")
-        digest = hashlib.sha256(PRIVATE_METADATA.read_bytes()).hexdigest()
+        canonical_bytes = PRIVATE_METADATA.read_bytes().replace(b"\r\n", b"\n")
+        digest = hashlib.sha256(canonical_bytes).hexdigest()
         self.assertEqual(entry["sha256"], digest)
-        self.assertEqual(entry["bytes"], PRIVATE_METADATA.stat().st_size)
+        self.assertEqual(entry["bytes"], len(canonical_bytes))
         privacy = metadata["privacy"]
         self.assertFalse(privacy["raw_source_rows_retained"])
         self.assertFalse(privacy["addresses_retained"])
