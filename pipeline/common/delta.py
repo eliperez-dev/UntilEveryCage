@@ -19,9 +19,14 @@ def _jsonl(path: Path) -> list[dict[str, Any]]:
 
 
 def _manifest(run_dir: Path) -> dict[str, Any]:
+    # Source adapters historically used both names.  The shared operations
+    # layer treats them as the same private manifest contract so a wrapper
+    # rename cannot erase the release diff for an otherwise valid run.
     path = run_dir / "run-manifest.json"
     if not path.exists():
-        raise ValueError(f"missing run manifest: {path}")
+        path = run_dir / "manifest.json"
+    if not path.exists():
+        raise ValueError(f"missing run manifest: {run_dir / 'run-manifest.json'}")
     return json.loads(path.read_text(encoding="utf-8"))
 
 

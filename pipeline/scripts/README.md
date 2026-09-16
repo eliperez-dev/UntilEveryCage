@@ -8,6 +8,11 @@ Scripts are grouped by their role in the auditable ingestion workflow:
 - `diagnostics/` contains read-only inspection and sampling tools. These help evaluate a source or service and are not required for a normal full run.
 - `maintenance/` contains repository and migration-support utilities, such as the legacy manifest builder.
 
+`diagnostics/build-source-operations-health.py` reads the private append-only
+source run ledger and the checked-in schedule inventory to emit a deterministic,
+row-free health index. It does not acquire data, update `docs/source-status`,
+promote a release, or make a public health claim.
+
 Run scripts from the repository root so their documented paths and output locations are stable. Each stage should accept explicit input and output paths (or a run identifier), preserve source timestamps and checksums, and emit useful progress logs. Generated artifacts belong under `data/`, not beside the scripts.
 
 ## Adding another country

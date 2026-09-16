@@ -10,7 +10,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import socket
 import tempfile
+import time
 import urllib.error
 import urllib.request
 import uuid
@@ -21,6 +23,12 @@ from typing import Any, Iterable
 
 class AcquisitionError(ValueError):
     """An acquisition was not bounded, authorized, valid, or complete."""
+
+    def __init__(self, message: str, *, failure_class: str = "acquisition", retryable: bool = False, action: str = "inspect the private acquisition evidence and source terms") -> None:
+        super().__init__(message)
+        self.failure_class = failure_class
+        self.retryable = retryable
+        self.action = action
 
 
 def utc_now() -> str:
@@ -125,34 +133,103 @@ def fetch_source(
     coverage: str | None = None,
     rights_caveat: str | None = None,
     privacy_caveat: str | None = None,
+    max_attempts: int = 1,
+    retry_delay_seconds: float = 0.0,
+    max_retry_delay_seconds: float = 30.0,
+    sleep_fn: Any = time.sleep,
 ) -> dict[str, Any]:
     if not source_id or not url:
         raise AcquisitionError("source_id and url are required")
     if timeout_seconds <= 0:
         raise AcquisitionError("timeout_seconds must be positive")
+    if not 1 <= max_attempts <= 10:
+        raise AcquisitionError("max_attempts must be between 1 and 10", failure_class="configuration")
+    if retry_delay_seconds < 0 or max_retry_delay_seconds < 0 or retry_delay_seconds > max_retry_delay_seconds:
+        raise AcquisitionError("retry delay values are invalid", failure_class="configuration")
     terms_review = require_terms_review(Path(terms_review_path))
     run_id = run_id or default_run_id()
     run_dir = Path(output_root) / source_id / run_id
     artifact_path = run_dir / artifact_name
     requested_at = utc_now()
-    recorder = _RedirectRecorder()
-    try:
-        opener = urllib.request.build_opener(recorder)
-        request = urllib.request.Request(url, headers={"User-Agent": user_agent})
-        with opener.open(request, timeout=timeout_seconds) as response:
-            if not 200 <= response.status < 300:
-                raise AcquisitionError(f"source returned HTTP {response.status}")
-            content_type = response.headers.get("Content-Type")
-            allowed = {item.lower() for item in allowed_content_types}
-            if content_type and content_type.split(";", 1)[0].strip().lower() not in allowed:
-                raise AcquisitionError(f"unexpected content type: {content_type}")
-            sha256, byte_size = archive_stream(response, artifact_path, max_bytes=max_bytes)
-            headers = selected_headers(response.headers)
-            final_url = response.geturl()
-    except urllib.error.HTTPError as error:
-        raise AcquisitionError(f"source returned HTTP {error.code}") from error
-    except urllib.error.URLError as error:
-        raise AcquisitionError(f"network error: {error.reason}") from error
+    # Always download to a private temporary sibling.  A repeated run_id must
+    # never replace an existing raw artifact, even if a caller accidentally
+    # reuses the identifier with different bytes.
+    download_path = artifact_path.with_name(f".{artifact_path.name}.{uuid.uuid4().hex}.download")
+    artifact_state = "stored"
+    attempts: list[dict[str, Any]] = []
+    headers: dict[str, str] = {}
+    final_url = url
+    for attempt_number in range(1, max_attempts + 1):
+        recorder = _RedirectRecorder()
+        try:
+            opener = urllib.request.build_opener(recorder)
+            request = urllib.request.Request(url, headers={"User-Agent": user_agent})
+            with opener.open(request, timeout=timeout_seconds) as response:
+                if not 200 <= response.status < 300:
+                    retryable = response.status == 429 or 500 <= response.status <= 599
+                    raise AcquisitionError(
+                        f"source returned HTTP {response.status}", failure_class=f"http-{response.status}",
+                        retryable=retryable,
+                        action="retry a bounded server/rate-limit failure" if retryable else "verify URL, authorization, and terms before another run",
+                    )
+                content_type = response.headers.get("Content-Type")
+                allowed = {item.lower() for item in allowed_content_types}
+                if content_type and content_type.split(";", 1)[0].strip().lower() not in allowed:
+                    raise AcquisitionError(
+                        f"unexpected content type: {content_type}", failure_class="content-type",
+                        action="inspect the source response and update the adapter contract only after review",
+                    )
+                sha256, byte_size = archive_stream(response, download_path, max_bytes=max_bytes)
+                headers = selected_headers(response.headers)
+                final_url = response.geturl()
+            if artifact_path.exists():
+                if artifact_path.read_bytes() != download_path.read_bytes():
+                    raise AcquisitionError("existing run artifact differs from newly acquired bytes", failure_class="artifact-collision", action="use a new run_id and preserve both observations")
+                download_path.unlink(missing_ok=True)
+                artifact_state = "unchanged"
+            else:
+                artifact_path.parent.mkdir(parents=True, exist_ok=True)
+                os.replace(download_path, artifact_path)
+            attempts.append({"attempt": attempt_number, "outcome": "success", "redirects": recorder.redirects})
+            break
+        except urllib.error.HTTPError as error:
+            retryable = error.code == 429 or 500 <= error.code <= 599
+            details = {"attempt": attempt_number, "outcome": "failed", "failure_class": f"http-{error.code}", "retryable": retryable, "message": str(error)}
+            attempts.append(details)
+            if not retryable or attempt_number == max_attempts:
+                failure = AcquisitionError(
+                    f"source returned HTTP {error.code}", failure_class=details["failure_class"], retryable=retryable,
+                    action="retry a bounded server/rate-limit failure" if retryable else "verify URL, authorization, and terms before another run",
+                )
+                _write_failure(run_dir, source_id, run_id, failure, attempts)
+                raise failure from error
+        except urllib.error.URLError as error:
+            details = {"attempt": attempt_number, "outcome": "failed", "failure_class": "network", "retryable": True, "message": str(error)}
+            attempts.append(details)
+            if attempt_number == max_attempts:
+                failure = AcquisitionError(f"network error: {error.reason}", failure_class="network", retryable=True, action="retry within the source bound; verify connectivity if it persists")
+                _write_failure(run_dir, source_id, run_id, failure, attempts)
+                raise failure from error
+        except (TimeoutError, socket.timeout) as error:
+            details = {"attempt": attempt_number, "outcome": "failed", "failure_class": "timeout", "retryable": True, "message": str(error)}
+            attempts.append(details)
+            if attempt_number == max_attempts:
+                failure = AcquisitionError(f"timeout: {error}", failure_class="timeout", retryable=True, action="retry within the source bound; use the manual capture route if it persists")
+                _write_failure(run_dir, source_id, run_id, failure, attempts)
+                raise failure from error
+        except AcquisitionError as error:
+            download_path.unlink(missing_ok=True)
+            attempts.append({"attempt": attempt_number, "outcome": "failed", "failure_class": error.failure_class, "retryable": error.retryable, "message": str(error)})
+            if not error.retryable or attempt_number == max_attempts:
+                _write_failure(run_dir, source_id, run_id, error, attempts)
+                raise
+        if attempt_number < max_attempts:
+            delay = min(max_retry_delay_seconds, retry_delay_seconds * (2 ** (attempt_number - 1)))
+            attempts[-1]["retry_delay_seconds"] = delay
+            if delay:
+                sleep_fn(delay)
+    else:
+        raise AcquisitionError("acquisition retry loop did not complete", failure_class="runtime")
     metadata = {
         "acquisition_method": "network_fetch",
         "source_id": source_id,
@@ -176,6 +253,25 @@ def fetch_source(
         "rights_caveat": rights_caveat,
         "privacy_caveat": privacy_caveat,
         "terms_review": terms_review,
+        "attempts": attempts,
+        "artifact_state": artifact_state,
+        "retention": {"class": "restricted-research-evidence", "public_exposure": False, "review_required": True},
     }
     _atomic_bytes(run_dir / "acquisition-metadata.json", (json.dumps(metadata, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode())
     return metadata
+
+
+def _write_failure(run_dir: Path, source_id: str, run_id: str, error: AcquisitionError, attempts: list[dict[str, Any]]) -> None:
+    """Leave a private, actionable failure record without creating an artifact."""
+    payload = {
+        "schema_version": "acquisition-failure-v1", "source_id": source_id, "run_id": run_id,
+        "failure_class": error.failure_class, "retryable": error.retryable, "error": str(error),
+        "action": error.action, "attempts": attempts, "artifact_created": False,
+        "public_exposure": False,
+    }
+    try:
+        _atomic_bytes(run_dir / "acquisition-failure.json", (json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode())
+    except OSError:
+        # The original acquisition error is more useful than masking it with a
+        # best-effort diagnostic write failure.
+        pass

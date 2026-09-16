@@ -13,6 +13,7 @@ from pipeline.contracts.adapter_contract import SourceAdapter, SourceArtifact, s
 from pipeline.contracts.private_run import write_private_run_report
 from pipeline.contracts.source_health import build_health_snapshot, write_health_snapshot
 from .identity import record_key
+from .source_operations import classify_failure, finalize_run_operations
 
 ORCHESTRATOR_VERSION = "v2-orchestrator-3"
 
@@ -83,8 +84,10 @@ def run_registered_input(raw_path: str | Path, runs_dir: str | Path, config: dic
                       "suppressed_count": len(records) - len(candidate),
                       "manifest": manifest, "prior_eligible_release": prior_eligible_release}
     except Exception as exc:
+        failure = classify_failure(exc)
         status = {"status": "failed", "publication_state": "unchanged", "release_promoted": False,
                   "error_type": type(exc).__name__, "error": str(exc),
+                  "failure_class": failure["failure_class"], "attempts": getattr(exc, "attempts", []),
                   "prior_eligible_release": prior_eligible_release}
     status["run_dir"] = str(run_dir)
     # Health is emitted after run-status exists because it must prove that no
@@ -104,12 +107,33 @@ def run_registered_input(raw_path: str | Path, runs_dir: str | Path, config: dic
         except Exception as exc:
             # A candidate with invalid evidence is not ready for any later
             # gate.  Keep the files for diagnosis, but fail the run closed.
+            failure = classify_failure(exc)
             status = {"status": "failed", "publication_state": "unchanged",
                       "release_promoted": False, "error_type": type(exc).__name__,
-                      "error": f"private evidence: {exc}",
+                      "error": f"private evidence: {exc}", "failure_class": failure["failure_class"],
+                      "attempts": getattr(exc, "attempts", []),
                       "prior_eligible_release": prior_eligible_release,
                       "run_dir": str(run_dir)}
     status["run_dir"] = str(run_dir)
+    status["run_id"] = config.get("run_id") or run_dir.name
+    # The operations ledger is derived from the private run and is append-only.
+    # It records review/diff artifacts without changing the adapter contract or
+    # creating a release.  A ledger failure closes this run rather than leaving
+    # an apparently complete run with missing operational evidence.
+    try:
+        status = finalize_run_operations(
+            runs.parent, run_dir, manifest=status.get("manifest"), status=status,
+            config=config, prior_eligible_release=prior_eligible_release,
+        )
+    except Exception as exc:
+        failure = classify_failure(exc)
+        status = {
+            "status": "failed", "publication_state": "unchanged", "release_promoted": False,
+            "release_preserved": True, "error_type": type(exc).__name__,
+            "error": f"source operations: {exc}", "failure_class": failure["failure_class"],
+            "prior_eligible_release": prior_eligible_release, "run_dir": str(run_dir),
+            "run_id": config.get("run_id") or run_dir.name,
+        }
     _atomic(run_dir / "run-status.json", (json.dumps(status, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode())
     return status
 

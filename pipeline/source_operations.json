@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0",
+  "purpose": "Private-alpha scheduling, freshness, retention, and bounded retry expectations. This file does not authorize publication.",
+  "schedules": [
+    {"source_id":"be.locations","cadence":"weekly","interval_hours":168,"stale_after_hours":240,"max_attempts":3,"backoff_seconds":1,"max_backoff_seconds":30,"manual_fallback":"use the authorized two-file operator capture"},
+    {"source_id":"ca.locations","cadence":"unknown","interval_hours":null,"stale_after_hours":null,"max_attempts":1,"backoff_seconds":0,"max_backoff_seconds":0,"manual_fallback":"verify a permitted federal/provincial artifact before scheduling"},
+    {"source_id":"de.locations","cadence":"unknown","interval_hours":null,"stale_after_hours":null,"max_attempts":1,"backoff_seconds":0,"max_backoff_seconds":0,"manual_fallback":"select and preserve the BVL export through the operator route"},
+    {"source_id":"dk.smiley","cadence":"weekly","interval_hours":168,"stale_after_hours":240,"max_attempts":3,"backoff_seconds":1,"max_backoff_seconds":30,"manual_fallback":"use the reviewed Find Smiley bulk-download route"},
+    {"source_id":"es.locations","cadence":"unknown","interval_hours":null,"stale_after_hours":null,"max_attempts":1,"backoff_seconds":0,"max_backoff_seconds":0,"manual_fallback":"confirm the permitted AESAN/MAPA artifact or query route"},
+    {"source_id":"fr.locations","cadence":"unknown","interval_hours":null,"stale_after_hours":null,"max_attempts":1,"backoff_seconds":0,"max_backoff_seconds":0,"manual_fallback":"obtain an authorized DGAL artifact capture"},
+    {"source_id":"it.1069-2009","cadence":"daily","interval_hours":24,"stale_after_hours":48,"max_attempts":3,"backoff_seconds":1,"max_backoff_seconds":30,"manual_fallback":"use a separately reviewed Ministry catalog capture"},
+    {"source_id":"it.853-2004","cadence":"daily","interval_hours":24,"stale_after_hours":48,"max_attempts":3,"backoff_seconds":1,"max_backoff_seconds":30,"manual_fallback":"use the catalog-discovery capture route"},
+    {"source_id":"mx.locations","cadence":"unknown","interval_hours":null,"stale_after_hours":null,"max_attempts":1,"backoff_seconds":0,"max_backoff_seconds":0,"manual_fallback":"resolve official directory access and terms before scheduling"},
+    {"source_id":"nz.locations","cadence":"unknown","interval_hours":null,"stale_after_hours":null,"max_attempts":1,"backoff_seconds":0,"max_backoff_seconds":0,"manual_fallback":"use an authorized MPI register export"},
+    {"source_id":"uk.locations","cadence":"monthly","interval_hours":720,"stale_after_hours":960,"max_attempts":3,"backoff_seconds":1,"max_backoff_seconds":30,"manual_fallback":"use the source-specific national operator capture"},
+    {"source_id":"us.aphis","cadence":"unknown","interval_hours":null,"stale_after_hours":null,"max_attempts":1,"backoff_seconds":0,"max_backoff_seconds":0,"manual_fallback":"verify the APHIS export workflow"},
+    {"source_id":"us.fsis","cadence":"unknown","interval_hours":null,"stale_after_hours":null,"max_attempts":1,"backoff_seconds":0,"max_backoff_seconds":0,"manual_fallback":"obtain authorized FSIS export access"},
+    {"source_id":"us.inspections","cadence":"unknown","interval_hours":null,"stale_after_hours":null,"max_attempts":1,"backoff_seconds":0,"max_backoff_seconds":0,"manual_fallback":"verify a current inspection export"}
+  ]
+}

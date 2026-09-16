@@ -81,3 +81,16 @@ counts, blocks schema changes, and never interprets source absence as closure. F
 or partial comparisons retain the prior eligible release reference and expose no
 public surface. Terms, privacy/safety, suppression, review, project approval, and
 publication remain separate gates.
+
+## Private-alpha source operations
+
+The shared operational layer in `common/source_operations.py` adds the
+schedule/freshness inventory in `source_operations.json`, content-addressed raw
+artifact deduplication, append-only run history, row-free review packets and
+release diffs, bounded acquisition retry classification, and local failure
+notification hooks. See [the source operations contract](../docs/architecture/source-operations.md).
+
+Every operational record preserves the prior eligible release reference and
+keeps `release_promoted` false. A changed artifact, unchanged rerun, failed
+attempt, or review-required result is recorded as a new event; no run overwrites
+earlier evidence. The health index is private operational evidence only.
