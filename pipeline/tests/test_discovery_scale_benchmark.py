@@ -82,6 +82,20 @@ class DiscoveryScaleBenchmarkTests(unittest.TestCase):
         self.assertIn("group by release_id, facility_id", migration)
         self.assertNotIn("drop view", migration)
 
+    def test_public_eligibility_indexes_are_additive_and_order_safe(self):
+        migration = (ROOT / "migrations" / "034_public_eligibility_join_indexes.sql").read_text(encoding="utf-8").lower()
+        for index_name in (
+            "publication_review_events_record_current_idx",
+            "publication_review_release_scopes_event_release_idx",
+            "record_access_events_record_current_idx",
+            "observations_source_record_lookup_idx",
+        ):
+            self.assertIn(index_name, migration)
+        self.assertIn("reviewed_at desc, publication_review_event_id desc", migration)
+        self.assertIn("occurred_at desc, access_event_id desc", migration)
+        self.assertNotIn("drop table", migration)
+        self.assertNotIn("drop index", migration)
+
 
 if __name__ == "__main__":
     unittest.main()

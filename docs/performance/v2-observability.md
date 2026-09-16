@@ -116,3 +116,18 @@ decision and the safeguards required for any future release-built component.
 The benchmark and logs provide operational evidence only. They do not establish
 source completeness, publication eligibility, production capacity, cloud
 cost, or a guarantee for a particular traffic pattern.
+
+## Operational budget boundary
+
+The current rehearsal contract is intentionally bounded: 2,000 ms client
+request timeout, 30 s diagnostic statement timeout, and 350 ms as the review
+threshold for a database radius query. These are fail-safe review thresholds,
+not service-level objectives. The application uses the deadpool default pool
+unless deployment configuration proves a different bound; no pool size is
+recommended from the synthetic 5,000-row results. A deployment decision needs
+the same aggregate harness at 5,000, 25,000, and larger representative
+projections, bounded concurrency, and failure-injection/readiness evidence.
+
+Migration 034 adds only join-support indexes for the live projection. Migration
+033's release-summary component remains a candidate-only, non-public prototype
+and is deliberately not referenced by the API or this benchmark.
