@@ -6,9 +6,19 @@ from unittest.mock import patch
 import urllib.error
 
 from .acquisition import AcquisitionError, archive_stream, fetch_source, require_terms_review
+from pipeline.contracts.adapter_contract import source_artifact_from_acquisition
 
 
 class AcquisitionContractTests(unittest.TestCase):
+    def test_acquisition_metadata_normalizes_sha256_and_preserves_private_facts(self):
+        artifact = source_artifact_from_acquisition(
+            {"final_url": "https://example.test/a.csv", "retrieved_at_utc": "2026-09-15T00:00:00Z", "sha256": "a" * 64, "byte_size": 3, "redirects": [{"status": 302}]},
+            adapter_version="adapter-1", config_version="config-1", coverage="synthetic",
+        )
+        self.assertEqual(artifact.sha256, "a" * 64)
+        self.assertEqual(artifact.coverage, "synthetic")
+        self.assertEqual(artifact.redirects, ({"status": 302},))
+
     def test_terms_review_requires_explicit_approved_record(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "terms.json"

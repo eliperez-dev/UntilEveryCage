@@ -11,7 +11,7 @@ from typing import Any
 from pipeline.common.acquisition import utc_now
 from pipeline.common.orchestrator import run_private_lifecycle
 from pipeline.common.review import write_operator_review_packet
-from pipeline.contracts.adapter_contract import SourceArtifact
+from pipeline.contracts.adapter_contract import source_artifact_from_acquisition
 from pipeline.contracts.candidate_handoff import write_handoff
 from pipeline.contracts.source_lifecycle import atomic_json
 
@@ -36,12 +36,12 @@ def refresh(*, source: str, run_dir: str | Path, raw_path: str | Path | None = N
     if fetch:
         if terms_review_path is None: raise ValueError("--terms-review is required with --fetch")
         metadata = fetch_source_artifact(source=source, output_root=output_root, terms_review_path=terms_review_path, run_id=run_id, timeout_seconds=timeout_seconds, max_bytes=max_bytes); raw = Path(metadata["artifact_path"])
-        artifact = SourceArtifact(metadata["final_url"], metadata["retrieved_at_utc"], metadata["sha256"], metadata["byte_size"], effective_date=metadata.get("effective_date"), publication_date=metadata.get("publication_date"), code_version=adapter.adapter_version, config_version=adapter.schema_version, rights_caveat=metadata.get("rights_caveat"), privacy_caveat=metadata.get("privacy_caveat"), coverage=metadata.get("coverage"), redirects=tuple(metadata.get("redirects") or ()))
+        artifact = source_artifact_from_acquisition(metadata, adapter_version=adapter.adapter_version, config_version=adapter.schema_version)
     else:
         raw = Path(raw_path).resolve()
         if not raw.is_file(): raise ValueError("--raw artifact must exist")
         metadata = _local_metadata(raw, adapter, retrieved)
-        data = raw.read_bytes(); artifact = SourceArtifact(str(metadata.get("final_url") or adapter.source_url), str(metadata.get("retrieved_at_utc") or retrieved), str(metadata["sha256"]), int(metadata["byte_size"]), effective_date=metadata.get("effective_date"), publication_date=metadata.get("publication_date"), code_version=adapter.adapter_version, config_version=adapter.schema_version, rights_caveat=metadata.get("rights_caveat") or "assisted capture; current terms remain pending", privacy_caveat=metadata.get("privacy_caveat") or "private staging; privacy review pending", coverage=metadata.get("coverage") or adapter.coverage, redirects=tuple(metadata.get("redirects") or ()))
+        data = raw.read_bytes(); artifact = source_artifact_from_acquisition(metadata, adapter_version=adapter.adapter_version, config_version=adapter.schema_version, source_url=adapter.source_url, coverage=adapter.coverage, rights_caveat="assisted capture; current terms remain pending", privacy_caveat="private staging; privacy review pending")
     root = Path(run_dir); atomic_json(root / "acquisition-metadata.json", metadata); lifecycle = run_private_lifecycle(raw, root / "lifecycle", artifact, adapter, health_as_of_utc=retrieved)
     if lifecycle.get("status") == "candidate-ready":
         run_root = Path(lifecycle["run_dir"]); rows = [json.loads(line) for line in (run_root / "normalized" / "records.jsonl").read_text(encoding="utf-8").splitlines() if line]; write_handoff(run_root / "candidate-handoff", rows, artifact, source_id=adapter.source_id)
