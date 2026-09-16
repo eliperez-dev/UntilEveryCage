@@ -14,13 +14,28 @@ retained source records, names, addresses, coordinates, or geocoder responses.
 
 ## Reproduction
 
-Run `pipeline/tests/benchmarks/discovery_100k.sql` against a disposable PostGIS
-database after migrations through `025_discovery_query_indexes.sql` have been
-applied. The script creates only `bench_discovery_100k`, fills deterministic
-synthetic rows, runs `ANALYZE`, and emits `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)`
-for the list, cursor, text, bbox, radius, and detail shapes used by the API.
-Drop the benchmark table after capture. The benchmark is evidence about query
-shape and budget only; it is not publication or release evidence.
+The reproducible scale runner requires only PostGIS and the pinned Python
+dependencies; it does not require application migrations because all benchmark
+tables are temporary and synthetic:
+
+```powershell
+$env:UEC_DATABASE_URL = "postgresql://uec:uec-local-development-only@localhost:55434/uec?sslmode=disable"
+python pipeline/scripts/benchmarks/run_discovery_scale.py --json-output .tmp/discovery-scale.json
+```
+
+It creates deterministic 100k and 1m observation sets and runs aggregate
+`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` checks for list, cursor pagination,
+category filters, text filters, bbox, radius, detail, and release/privacy/
+suppression-aware graph joins. The plan checker requires the expected index
+family for each shape and bounds every result page at 50 rows. The JSON report
+contains timings, aggregate buffer counts, plan node types, and index names;
+it never contains query rows or source/private values. Closing the connection
+automatically drops every temporary table. The benchmark is evidence about
+query shape and budget only; it is not publication, release, or production
+load evidence.
+
+The original `pipeline/tests/benchmarks/discovery_100k.sql` remains available
+as a minimal SQL-only query-shape sample.
 
 ## Local disposable capture (2026-09-15)
 
@@ -30,3 +45,12 @@ search 3.206 ms, bbox 1.578 ms, radius 0.057 ms, and detail lookup 5.848 ms.
 The list/cursor/search/spatial plans used the expected B-tree, trigram GIN, or
 geography GiST indexes. These are cold/warm local database plan samples, not a
 production load test or an end-to-end p95 claim.
+
+## Operational interpretation
+
+Capture reports on the same PostGIS image and representative hardware when
+comparing revisions. A plan regression, increasing shared reads, or a query
+that fails its expected-index check is a release-review input. The measurements
+do not establish capacity, cloud cost, or public-source completeness; those
+require a separate load test with an approved traffic model and deployment
+configuration.

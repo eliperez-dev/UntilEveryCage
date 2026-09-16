@@ -2,16 +2,20 @@
 
 These tests exercise the compiled Rust service over real HTTP while it uses a disposable PostGIS container. They never use the Denmark database or real personal data.
 
-Run them from the repository root:
+Run the isolated core suite from the repository root:
 
 ```powershell
-$env:UEC_RUN_E2E = "1"
-python -m unittest discover -s pipeline/tests/e2e -p "test_*.py" -v
+pwsh -NoProfile -ExecutionPolicy Bypass -File pipeline/tests/e2e/run-suite.ps1
 ```
+
+Use `-Suite full` to include the suppression-lifecycle and country handoff
+modules. Each module owns a fresh database and is run in sequence; a failure
+stops the suite and the fixture's `finally` cleanup removes its container,
+volume, backend process, and temporary build directory.
 
 This requires Docker Desktop, Cargo, and the pinned Python dependencies. The fixture uses isolated random ports and tears down its Compose project even after setup failures. Fast non-Docker checks remain available with `python -m unittest discover -s pipeline/tests -p "test_*.py" -v`.
 
-`fixture.py` owns the environment lifecycle: it selects isolated ports, starts Docker Compose, applies migrations as UTF-8, builds and starts the backend from a per-run temporary Cargo target directory, waits for readiness, and tears everything down. The isolated target prevents E2E builds from contending with a developer's running backend binary. Setup failures also trigger cleanup. Run the API modules sequentially (`test_public_api`, `test_community_api`, `test_seeded_api`, and `test_candidate_import`) because each module owns a disposable PostGIS environment; running all classes in one discovery process can create avoidable Docker resource/lifecycle contention.
+`fixture.py` owns the environment lifecycle: it selects isolated ports, starts Docker Compose, applies migrations as UTF-8, builds and starts the backend from a per-run temporary Cargo target directory, waits for readiness, and tears everything down. The isolated target prevents E2E builds from contending with a developer's running backend binary. Setup failures also trigger cleanup. Run API modules through `run-suite.ps1` because each module owns a disposable PostGIS environment; running all classes in one discovery process can create avoidable Docker resource/lifecycle contention.
 
 `test_public_api.py` verifies the publication boundary with an empty database: candidate data and filters remain unavailable, and malformed pagination is rejected.
 
