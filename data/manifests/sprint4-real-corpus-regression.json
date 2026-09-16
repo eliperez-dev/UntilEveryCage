@@ -1,0 +1,59 @@
+{
+  "schema_version": "real-corpus-regression-v1",
+  "as_of_utc": "2026-09-16T00:00:00Z",
+  "corpus_state": "private-regression-only",
+  "publication_eligibility": "blocked",
+  "selection": {
+    "method": "stable-sha256-row-fingerprint",
+    "max_records": 50000,
+    "available_records": 50750,
+    "selected_records": 50000
+  },
+  "coverage": {
+    "country_count": 9,
+    "source_profile_count": 9,
+    "selected_records_by_source": {
+      "v1.ca.locations": 1309,
+      "v1.de.locations": 9121,
+      "v1.dk.locations": 1539,
+      "v1.es.locations": 4168,
+      "v1.fr.locations": 3148,
+      "v1.mx.locations": 14615,
+      "v1.nz.locations": 1629,
+      "v1.uk.locations": 7475,
+      "v1.us.locations": 6996
+    }
+  },
+  "funnel": {
+    "selected": 50000,
+    "accepted_private": 47978,
+    "quarantined": 2022,
+    "quarantine_rule": "missing/weak identity or missing/invalid source coordinates",
+    "row_count_reconciles": true
+  },
+  "source_files": [
+    {"country":"ca","path":"static_data/ca/locations.csv","bytes":361801,"sha256":"544fd7809926143d4e934f1c601e981a07b0137780f86de753ef3c54415e45f4"},
+    {"country":"de","path":"static_data/de/locations.csv","bytes":3849223,"sha256":"88eb00f6ae405489a7e873582aa65610ecaa3c9b475bc0046e9e8c32f48ac809"},
+    {"country":"dk","path":"static_data/dk/locations.csv","bytes":323380,"sha256":"b38f8165d6ea3617a13dbad950d0070490e645473bb851ddd3d907004a33b32f"},
+    {"country":"es","path":"static_data/es/locations.csv","bytes":1093952,"sha256":"93d36d6a760a4435c836348021fb03d98ddb4947345338ea8c199321af3e5347"},
+    {"country":"fr","path":"static_data/fr/locations.csv","bytes":626026,"sha256":"aeddafa5ebc19d63b6dd57777851e3e5590b5d5ddfb9cbeff37a552227e1c615"},
+    {"country":"mx","path":"static_data/mx/locations.csv","bytes":5039068,"sha256":"bc9b3adc80e4673bb8b996c7600b52b78e7973b1a1859608322a293aff9efdee"},
+    {"country":"nz","path":"static_data/nz/locations.csv","bytes":410481,"sha256":"636d80b33cc29dbd68b3c44ddf39c57db84cdd661d1c10dfab4227f8a87a3a87"},
+    {"country":"uk","path":"static_data/uk/locations.csv","bytes":2193258,"sha256":"4a14793c227afe558bfacfe45b05f3ae4e5332a3d502991050257320c5b53511"},
+    {"country":"us","path":"static_data/us/locations.csv","bytes":4099548,"sha256":"2dca259076a16a324ad9565d2d4057aa0f5e6e51bbc25a8dc1c80a4e4fbdf5c7"}
+  ],
+  "stages": {
+    "raw_preservation": "not_exercised; existing V1-derived snapshot hashes only",
+    "normalization": "existing V1-derived rows measured; no new normalization claimed",
+    "quarantine": "exercised by aggregate identity/coordinate gate",
+    "candidate_handoff": "not_exercised",
+    "private_import": "not_exercised",
+    "test_only_api_export": "not_exercised"
+  },
+  "limitations": [
+    "No raw source bytes are present in this checkout; this is not a reproducible raw-acquisition corpus.",
+    "The nine V1 files provide nine country/source profiles, but not eight independently acquired V2 adapters.",
+    "Row-level values, identifiers, addresses, coordinates, and samples are intentionally omitted.",
+    "No publication, release, or human review authorization is implied."
+  ]
+}
