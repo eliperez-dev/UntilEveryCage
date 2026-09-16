@@ -25,7 +25,7 @@ Both adapters preserve source values only in restricted staging and emit parsed,
 ## Accountability pilot
 
 The private accountability pilot in
-[`pipeline/sources/us/accountability`](../../pipeline/sources/us/accountability/README.md)
+[`pipeline/sources/us/accountability`](../../../pipeline/sources/us/accountability/README.md)
 adds a deterministic, graph-foundation-compatible link ledger. It starts from
 FSIS establishment/approval IDs and the modeled APHIS registration/inspection
 IDs, while keeping operators, legal entities, parents, brands, inspections,
