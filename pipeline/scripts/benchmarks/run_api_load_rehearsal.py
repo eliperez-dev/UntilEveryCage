@@ -30,6 +30,11 @@ if str(ROOT) not in sys.path:
 MAX_SEED = 25_000
 MAX_CONCURRENCY = 16
 MAX_REQUESTS_PER_LEVEL = 80
+ALLOWED_DISTRIBUTION_PRECISIONS = {"exact", "city", "unmapped"}
+ALLOWED_DISTRIBUTION_CATEGORIES = {
+    "slaughter", "fish_processing", "logistics_and_storage",
+    "retail_and_prepared_food", "other",
+}
 QUERY_MIX = (
     ("list", "http", "/api/v2/locations?profile=official&limit=50"),
     ("filters", "http", "/api/v2/locations?profile=official&country_code=DK&category=slaughter&limit=50"),
@@ -76,7 +81,45 @@ def validate_loopback_url(base_url: str) -> urllib.parse.SplitResult:
     return parsed
 
 
-def seed_public_projection(connection: Any, count: int) -> str:
+def load_distribution(path: Path) -> list[tuple[int, str, str, str]]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"distribution report cannot be read: {path}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("distribution report must be a JSON object")
+    if (
+        payload.get("schema_version") != "v2-private-distribution-v1"
+        or payload.get("corpus_state") != "private-regression-only"
+        or payload.get("publication_eligibility") != "blocked"
+    ):
+        raise ValueError("distribution report must be a blocked v2-private-distribution-v1 report")
+    rows: list[tuple[int, str, str, str]] = []
+    ordinal = 0
+    for item in payload.get("distribution", []):
+        if not isinstance(item, dict):
+            raise ValueError("distribution report contains an invalid stratum")
+        country, category, precision, count = (
+            item.get("country_code"), item.get("category"),
+            item.get("display_precision"), item.get("records"),
+        )
+        if not isinstance(country, str) or len(country) != 2 or not country.isascii() or not country.isupper():
+            raise ValueError("distribution report contains an invalid country code")
+        if category not in ALLOWED_DISTRIBUTION_CATEGORIES or precision not in ALLOWED_DISTRIBUTION_PRECISIONS:
+            raise ValueError("distribution report contains an unsupported stratum")
+        if not isinstance(count, int) or count < 1:
+            raise ValueError("distribution report contains an invalid record count")
+        for _ in range(count):
+            ordinal += 1
+            if ordinal > MAX_SEED:
+                raise ValueError(f"distribution report exceeds the {MAX_SEED:,}-record benchmark bound")
+            rows.append((ordinal, country, category, precision))
+    if not rows:
+        raise ValueError("distribution report contains no records")
+    return rows
+
+
+def seed_public_projection(connection: Any, count: int, distribution: list[tuple[int, str, str, str]] | None = None) -> str:
     """Create a deterministic, promoted, synthetic projection in the E2E DB."""
     release_id = "load-promoted"
     connection.execute("INSERT INTO uec.sources (source_id,country_code,name,official_url,access_method) VALUES ('load.synthetic','DK','Synthetic load source','https://example.invalid/load','fixture') ON CONFLICT DO NOTHING")
@@ -94,6 +137,11 @@ def seed_public_projection(connection: Any, count: int) -> str:
         (release_id, encoded_manifest, hashlib.sha256(encoded_manifest.encode("utf-8")).hexdigest()),
     )
     connection.execute("INSERT INTO uec.city_reference_points (country_code,city_name,reference_location,reference_source,source_retrieved_at,source_reference_id) VALUES ('DK','Loadville',ST_SetSRID(ST_Point(-5,50),4326)::geography,'https://example.invalid/load-city',TIMESTAMPTZ '2026-01-01 00:00:00+00','load-city') ON CONFLICT DO NOTHING")
+    connection.execute("CREATE TEMP TABLE load_distribution (ordinal integer PRIMARY KEY, country_code text NOT NULL, category text NOT NULL, display_precision text NOT NULL) ON COMMIT DROP")
+    if distribution:
+        with connection.cursor() as cursor:
+            cursor.executemany("INSERT INTO load_distribution (ordinal,country_code,category,display_precision) VALUES (%s,%s,%s,%s)", distribution)
+        connection.execute("INSERT INTO uec.city_reference_points (country_code,city_name,reference_location,reference_source,source_retrieved_at,source_reference_id) SELECT DISTINCT country_code,'Loadville-' || country_code,ST_SetSRID(ST_Point(-5,50),4326)::geography,'https://example.invalid/load-city',TIMESTAMPTZ '2026-01-01 00:00:00+00','load-city-' || country_code FROM load_distribution ON CONFLICT DO NOTHING")
     connection.execute("""
         INSERT INTO uec.raw_artifacts (artifact_id,storage_key,sha256,byte_size,retrieved_at)
         SELECT md5('load-artifact-' || n::text)::uuid, 'synthetic/load/' || n::text,
@@ -110,19 +158,24 @@ def seed_public_projection(connection: Any, count: int) -> str:
     connection.execute("""
         INSERT INTO uec.facilities (facility_id,canonical_name,country_code,city)
         SELECT md5('load-facility-' || n::text)::uuid, 'Synthetic load facility ' || n,
-               CASE WHEN n %% 2 = 0 THEN 'DK' ELSE 'SE' END, 'Loadville'
-        FROM generate_series(1,%s) n ON CONFLICT DO NOTHING
-    """, (count,))
+               CASE WHEN %s THEN d.country_code ELSE CASE WHEN n %% 2 = 0 THEN 'DK' ELSE 'SE' END END,
+               CASE WHEN %s THEN 'Loadville-' || d.country_code ELSE 'Loadville' END
+        FROM generate_series(1,%s) n
+        LEFT JOIN load_distribution d ON d.ordinal=n
+        ON CONFLICT DO NOTHING
+    """, (bool(distribution), bool(distribution), count))
     connection.execute("""
         INSERT INTO uec.observations (observation_id,facility_id,source_record_id,observed_at,observation,classification,ruleset_id,rule_id,classification_category,classification_review_status,default_visible,coordinate_review_status,first_observed_at)
         SELECT md5('load-observation-' || n::text)::uuid, md5('load-facility-' || n::text)::uuid,
                md5('load-record-' || n::text)::uuid,
                TIMESTAMPTZ '2026-01-01 00:00:00+00' + n * interval '1 second', '{}'::jsonb, '{}'::jsonb,
                'load-v1','synthetic',
-               CASE n %% 4 WHEN 0 THEN 'slaughter' WHEN 1 THEN 'fish_processing' WHEN 2 THEN 'logistics_and_storage' ELSE 'retail_and_prepared_food' END,
+               CASE WHEN %s THEN d.category ELSE CASE n %% 4 WHEN 0 THEN 'slaughter' WHEN 1 THEN 'fish_processing' WHEN 2 THEN 'logistics_and_storage' ELSE 'retail_and_prepared_food' END END,
                'approved',true,'approved',TIMESTAMPTZ '2026-01-01 00:00:00+00' + n * interval '1 second'
-        FROM generate_series(1,%s) n ON CONFLICT DO NOTHING
-    """, (count,))
+        FROM generate_series(1,%s) n
+        LEFT JOIN load_distribution d ON d.ordinal=n
+        ON CONFLICT DO NOTHING
+    """, (bool(distribution), count))
     connection.execute("""
         INSERT INTO uec.release_members (release_id,facility_id,observation_id,default_visible)
         SELECT 'load-promoted',md5('load-facility-' || n::text)::uuid,md5('load-observation-' || n::text)::uuid,true
@@ -130,11 +183,14 @@ def seed_public_projection(connection: Any, count: int) -> str:
     """, (count,))
     connection.execute("""
         INSERT INTO uec.geocode_results (source_record_id,provider_id,query,match_method,status,attempt_number,result,queried_at)
-        SELECT md5('load-record-' || n::text)::uuid,'synthetic-fixture','synthetic load query','fixture','accepted',1,
+        SELECT md5('load-record-' || n::text)::uuid,'synthetic-fixture','synthetic load query','fixture',CASE WHEN %s AND d.display_precision='city' THEN 'review_required' ELSE 'accepted' END,1,
                ST_SetSRID(ST_Point(-10 + (n %% 2000) / 100.0,45 + (n %% 1000) / 100.0),4326)::geography,
                TIMESTAMPTZ '2026-01-01 00:00:00+00' + n * interval '1 second'
-        FROM generate_series(1,%s) n ON CONFLICT DO NOTHING
-    """, (count,))
+        FROM generate_series(1,%s) n
+        LEFT JOIN load_distribution d ON d.ordinal=n
+        WHERE NOT (%s AND d.display_precision='unmapped')
+        ON CONFLICT DO NOTHING
+    """, (bool(distribution), count, bool(distribution)))
     connection.execute("""
         INSERT INTO uec.publication_review_events (source_record_id,release_id,factual_review_status,privacy_screening_status,maintainer_approval,publication_eligible,reviewer_role,reviewed_at)
         SELECT md5('load-record-' || n::text)::uuid,'load-promoted','reviewed','passed','approved',true,'synthetic-reviewer',
@@ -323,10 +379,10 @@ def build_recommendations(results: list[dict[str, Any]], timeout_ms: int) -> dic
     }
 
 
-def run_rehearsal(env: Any, observations: int, levels: tuple[int, ...], requests_per_level: int, timeout_ms: int) -> dict[str, Any]:
+def run_rehearsal(env: Any, observations: int, levels: tuple[int, ...], requests_per_level: int, timeout_ms: int, distribution: list[tuple[int, str, str, str]] | None = None) -> dict[str, Any]:
     import psycopg
     with psycopg.connect(env.database_url) as connection:
-        detail_id = seed_public_projection(connection, observations)
+        detail_id = seed_public_projection(connection, observations, distribution)
     base = f"http://127.0.0.1:{env.api_port}"
     results = []
     for concurrency in levels:
@@ -340,6 +396,7 @@ def run_rehearsal(env: Any, observations: int, levels: tuple[int, ...], requests
     return {
         "schema_version": 1,
         "synthetic_only": True,
+        "input_mode": "private-aggregate-distribution" if distribution else "fixed-synthetic-distribution",
         "observations": observations,
         "requests_per_level": requests_per_level,
         "timeout_ms": timeout_ms,
@@ -350,14 +407,16 @@ def run_rehearsal(env: Any, observations: int, levels: tuple[int, ...], requests
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--observations", type=int, default=5_000)
+    parser.add_argument("--observations", type=int, default=None)
+    parser.add_argument("--distribution-report", type=Path, help="use a row-free private V2 distribution report to shape synthetic rows")
     parser.add_argument("--concurrency", default="1,4,8,16")
     parser.add_argument("--requests-per-level", type=int, default=40)
     parser.add_argument("--timeout-ms", type=int, default=2_000)
     parser.add_argument("--json-output", type=Path)
     args = parser.parse_args(argv)
     try:
-        observations = validate_observations(args.observations)
+        distribution = load_distribution(args.distribution_report) if args.distribution_report else None
+        observations = len(distribution) if distribution else validate_observations(args.observations or 5_000)
     except ValueError as exc:
         parser.error(str(exc))
     if not 1 <= args.requests_per_level <= MAX_REQUESTS_PER_LEVEL:
@@ -369,7 +428,7 @@ def main(argv: list[str] | None = None) -> int:
         from pipeline.tests.e2e.fixture import E2EEnvironment
         env = E2EEnvironment().start()
         try:
-            report = run_rehearsal(env, observations, levels, args.requests_per_level, args.timeout_ms)
+            report = run_rehearsal(env, observations, levels, args.requests_per_level, args.timeout_ms, distribution)
         finally:
             env.stop()
     except (ValueError, RuntimeError) as exc:

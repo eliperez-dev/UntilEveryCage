@@ -32,6 +32,27 @@ level at 80. It refuses non-loopback API targets. The 25,000-row bound is an
 explicitly finite synthetic safety limit, not a statement about supported
 production scale.
 
+When an authorized private V2 normalized corpus is available, first create a
+row-free distribution report and then pass it to the same synthetic rehearsal:
+
+```powershell
+python pipeline/scripts/benchmarks/build_private_distribution.py `
+  --normalized data/private/<run>/normalized/records.jsonl `
+  --output .tmp/private-v2-distribution.json
+
+python pipeline/scripts/benchmarks/run_api_load_rehearsal.py `
+  --distribution-report .tmp/private-v2-distribution.json `
+  --concurrency 1,4,8,16 --requests-per-level 10 `
+  --timeout-ms 2000 --json-output .tmp/api-load-private-distribution.json
+```
+
+The distribution report is explicitly blocked and contains only aggregate
+country/category/precision strata. The rehearsal expands those strata into
+deterministic synthetic rows; it never imports private names, identifiers,
+addresses, coordinates, or source values into the disposable database or
+report. A real corpus therefore informs shape without becoming publication,
+release, or benchmark-output data.
+
 ## Captured evidence (2026-09-16)
 
 | Synthetic observations | Concurrency | Requests | Successes | Timeouts | 5xx | Throughput (rps) | p50 / p95 / p99 (ms) | Max active / waiting DB sessions |
