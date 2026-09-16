@@ -24,8 +24,9 @@ class SourceOperationsTests(unittest.TestCase):
     def test_checked_in_schedule_inventory_matches_registry(self):
         root = Path(__file__).parents[1]
         schedules = load_source_schedules(registry_path=root / "source_registry.json")
-        self.assertEqual(len(schedules), 14)
+        self.assertEqual(len(schedules), 16)
         self.assertEqual(schedules["dk.smiley"].stale_after_hours, 240)
+        self.assertEqual(schedules["fr.dgal.section-i"].interval_hours, 24)
         self.assertIsNone(schedules["us.fsis"].interval_hours)
 
     def test_schedule_validation_rejects_missing_and_inverted_freshness(self):

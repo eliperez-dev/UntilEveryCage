@@ -16,16 +16,28 @@
       "blockers": ["The official operator body was inaccessible from the current execution environment; obtain an authorized bounded capture and compare its header/field semantics with the synthetic contract before any real run. Privacy, source-terms interpretation, coverage, and project publication approval remain human gates."]
     },
     {
-      "source_id": "ca.locations",
-      "jurisdiction_scope": "Canada; federal and Ontario legacy coverage",
+      "source_id": "ca.ontario.meat-plants",
+      "jurisdiction_scope": "Canada; Ontario provincial meat plants only",
       "legacy_paths": ["static_data/ca/locations.csv"],
-      "url": "unknown",
-      "access_method": "download or assisted export",
-      "cadence": "unknown",
-      "attribution_licensing_notes": "unknown; confirm source terms and attribution before acquisition",
-      "adapter_status": "not_started",
-      "expected_artifact_schema": "CSV; legacy normalized location rows; exact upstream schema unknown",
-      "blockers": ["Separate federal and Ontario upstream identities and verify current URLs, terms, and fields."]
+      "url": "https://data.ontario.ca/dataset/a763088c-018d-48b7-bf47-3027a8c725b8/resource/ee6d559a-78de-40e6-b2ba-ad3c4a674b96/download/1._all_meat_plants.csv",
+      "access_method": "bounded CSV fetch or assisted local capture",
+      "cadence": "unknown; dataset metadata checked 2026-09-14",
+      "attribution_licensing_notes": "Government of Ontario dataset; current licence, attribution, privacy, and redistribution review remain explicit gates",
+      "adapter_status": "implemented_partial",
+      "expected_artifact_schema": "Delimited CSV; plant number/name, contact, coordinates, and animal class; schema fingerprint is captured per run",
+      "blockers": ["Ontario coverage is not national; privacy/coordinate review and project publication approval remain pending."]
+    },
+    {
+      "source_id": "ca.cfia.federal-meat",
+      "jurisdiction_scope": "Canada; CFIA federally registered meat establishments and licensed operators",
+      "legacy_paths": [],
+      "url": "https://active.inspection.gc.ca/scripts/meavia/reglist/download.asp?lang=e",
+      "access_method": "bounded registry download or assisted local capture",
+      "cadence": "unknown; registry page states list update 2023-12-04",
+      "attribution_licensing_notes": "CFIA government source; registry page calls the consolidation a convenience reference and current reuse/privacy review remains required",
+      "adapter_status": "implemented_partial",
+      "expected_artifact_schema": "Delimited export; registration number, operator/DBA, location, province, function codes, and contact fields",
+      "blockers": ["Federal registry is not complete provincial coverage; function-code schema, currency, privacy, and project publication approval remain pending."]
     },
     {
       "source_id": "de.locations",
@@ -64,16 +76,28 @@
       "blockers": ["Identify the exact competent-authority publication and distinguish source values from legacy transformations."]
     },
     {
-      "source_id": "fr.locations",
-      "jurisdiction_scope": "France",
+      "source_id": "fr.dgal.section-i",
+      "jurisdiction_scope": "France; DGAL Regulation (EC) 853/2004 Section I domestic ungulate establishments",
       "legacy_paths": ["static_data/fr/locations.csv", "france-data.kml"],
-      "url": "unknown",
-      "access_method": "downloaded spreadsheet/text/KML or assisted export",
-      "cadence": "unknown",
-      "attribution_licensing_notes": "unknown; verify DGAL source identity, licence, and attribution",
-      "adapter_status": "not_started",
-      "expected_artifact_schema": "CSV/KML; legacy locations and geometry; exact upstream schema unknown",
-      "blockers": ["Confirm current DGAL publication and whether the KML is an original source or a derived artifact."]
+      "url": "https://fichiers-publics.agriculture.gouv.fr/dgal/ListesOfficielles/SSA1_VIAN_ONG_DOM.txt",
+      "access_method": "bounded TXT fetch or assisted local capture",
+      "cadence": "daily; Ministry page checked 2026-09-15",
+      "attribution_licensing_notes": "Ministry page indicates Etalab 2.0 for site content; file-specific terms and attribution confirmation remain pending",
+      "adapter_status": "implemented_partial",
+      "expected_artifact_schema": "Delimited TXT; department, approval number, SIRET, name, address, commune, category, activities, and species",
+      "blockers": ["Privacy/coordinate review, file-specific terms, category codebook, and project publication approval remain pending."]
+    },
+    {
+      "source_id": "fr.dgal.section-ii",
+      "jurisdiction_scope": "France; DGAL Regulation (EC) 853/2004 Section II poultry and lagomorph establishments",
+      "legacy_paths": [],
+      "url": "https://fichiers-publics.agriculture.gouv.fr/dgal/ListesOfficielles/SSA1_VIAN_COL_LAGO.txt",
+      "access_method": "bounded TXT fetch or assisted local capture",
+      "cadence": "daily; Ministry page checked 2026-09-15",
+      "attribution_licensing_notes": "Ministry page indicates Etalab 2.0 for site content; file-specific terms and attribution confirmation remain pending",
+      "adapter_status": "implemented_partial",
+      "expected_artifact_schema": "Delimited TXT; same source fields as Section I, with Section II scope retained",
+      "blockers": ["Section II is separate from Section I; privacy/coordinate review, terms, codebook, and project publication approval remain pending."]
     },
     {
       "source_id": "it.853-2004",
