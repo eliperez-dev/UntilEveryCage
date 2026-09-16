@@ -988,41 +988,26 @@ pub async fn get_v2_facets_handler(
     let release_id: String = release.get(0);
     let ruleset_version: String = release.get(1);
     let release_created_at: chrono::DateTime<chrono::Utc> = release.get(2);
-    let rows = match client.query("SELECT country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city FROM uec.map_facilities_display_history WHERE release_id=$1 AND ($2::text IS NULL OR country_code=$2) AND ($3::text IS NULL OR classification_category=$3) AND ($4::text IS NULL OR provenance_origin_type=$4) AND ($5::text IS NULL OR display_precision=$5) AND ($6::text IS NULL OR lifecycle_status=$6) AND ($7::text IS NULL OR city=$7)", &[&release_id, &params.country_code, &params.category, &params.source_type, &params.display_precision, &params.lifecycle_status, &params.region]).await { Ok(rows) => rows, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "facets_query_failed", "public facets unavailable") };
+    let rows = match client.query("SELECT country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city, count(*)::bigint FROM uec.map_facilities_display_history WHERE release_id=$1 AND ($2::text IS NULL OR country_code=$2) AND ($3::text IS NULL OR classification_category=$3) AND ($4::text IS NULL OR provenance_origin_type=$4) AND ($5::text IS NULL OR display_precision=$5) AND ($6::text IS NULL OR lifecycle_status=$6) AND ($7::text IS NULL OR city=$7) GROUP BY country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city", &[&release_id, &params.country_code, &params.category, &params.source_type, &params.display_precision, &params.lifecycle_status, &params.region]).await { Ok(rows) => rows, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "facets_query_failed", "public facets unavailable") };
     let mut dimensions = serde_json::Map::new();
-    for (name, values) in [
-        (
-            "country_code",
-            rows.iter()
-                .map(|r| r.get::<_, String>(0))
-                .collect::<Vec<_>>(),
-        ),
-        (
-            "category",
-            rows.iter().map(|r| r.get::<_, String>(1)).collect(),
-        ),
-        (
-            "display_precision",
-            rows.iter().map(|r| r.get::<_, String>(2)).collect(),
-        ),
-        (
-            "lifecycle_status",
-            rows.iter().map(|r| r.get::<_, String>(3)).collect(),
-        ),
-        (
-            "source_type",
-            rows.iter().map(|r| r.get::<_, String>(4)).collect(),
-        ),
-        (
-            "region",
-            rows.iter()
-                .filter_map(|r| r.get::<_, Option<String>>(5))
-                .collect(),
-        ),
+    for (name, column) in [
+        ("country_code", 0),
+        ("category", 1),
+        ("display_precision", 2),
+        ("lifecycle_status", 3),
+        ("source_type", 4),
+        ("region", 5),
     ] {
         let mut counts = std::collections::BTreeMap::<String, usize>::new();
-        for value in values {
-            *counts.entry(value).or_default() += 1;
+        for row in &rows {
+            let value = if column == 5 {
+                row.get::<_, Option<String>>(column)
+            } else {
+                Some(row.get::<_, String>(column))
+            };
+            if let Some(value) = value {
+                *counts.entry(value).or_default() += row.get::<_, i64>(6) as usize;
+            }
         }
         dimensions.insert(
             name.into(),

@@ -45,6 +45,11 @@ class ScopedStageDatabaseTests(unittest.TestCase):
         except psycopg.Error as error:
             self.skipTest(f"PostGIS is unavailable: {error}")
         try:
+            has_test_only = db.execute(
+                "SELECT 1 FROM information_schema.columns WHERE table_schema='uec' AND table_name='releases' AND column_name='test_only'"
+            ).fetchone()
+            if not has_test_only:
+                self.skipTest("database migrations are incomplete: releases.test_only is unavailable")
             prefix = f"test.stage.{uuid.uuid4().hex}"
             release_a, release_b = prefix + ".a", prefix + ".b"
             db.execute("INSERT INTO uec.sources (source_id,country_code,name,official_url,access_method) VALUES (%s,'DK','Synthetic','https://example.invalid','test')", (prefix,))

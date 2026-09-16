@@ -63,6 +63,15 @@ class DiscoveryScaleBenchmarkTests(unittest.TestCase):
         self.assertNotIn("drop table", migration)
         self.assertNotIn("drop index", migration)
 
+    def test_public_read_path_migration_is_additive_and_release_scoped(self):
+        migration = (ROOT / "migrations" / "031_public_release_read_path_indexes.sql").read_text(encoding="utf-8").lower()
+        self.assertIn("release_members_public_discovery_idx", migration)
+        self.assertIn("publication_review_scopes_release_event_idx", migration)
+        self.assertIn("on uec.release_members (release_id, default_visible", migration)
+        self.assertIn("on uec.publication_review_release_scopes (release_id, publication_review_event_id)", migration)
+        self.assertNotIn("drop table", migration)
+        self.assertNotIn("drop index", migration)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -54,6 +54,35 @@ materialized projection.
 4. Keep the service stopped during backup restore until the independent
    restriction-ledger gate and current replay succeed.
 
+## Concurrent-load rehearsal
+
+For a local disposable rehearsal against the actual populated API projection:
+
+```powershell
+python pipeline/scripts/benchmarks/run_api_load_rehearsal.py `
+  --observations 5000 --concurrency 1,4,8,16 `
+  --requests-per-level 40 --timeout-ms 2000 `
+  --json-output .tmp/api-load.json
+```
+
+The harness starts its own E2E PostGIS/API environment, seeds deterministic
+synthetic released rows and graph projections, runs a fixed mix of list,
+filters, bbox, radius, facets, detail, and graph-ready reads, then destroys
+the environment. It refuses non-loopback targets and bounds observations,
+concurrency, request count, and timeout. It reports aggregate p50/p95/p99,
+throughput, status/error/timeouts, response byte totals, observed database
+active/waiting sessions, and pool-pressure signals only. It does not retain
+request paths, query values, coordinates, IDs, client data, or response rows.
+
+The default rehearsal currently establishes no clean concurrency level: the
+1,000- and 5,000-observation runs show timeout pressure across the tested
+levels, with facets a repeatable hotspot. Therefore it must not be used to
+choose a production pool size or to claim capacity. Keep production launch
+and pool sizing blocked pending an approved representative traffic test on the
+deployment topology. The 2-second request timeout and 350 ms database
+radius-query budget remain review thresholds for fail-safe behavior, not
+performance guarantees.
+
 The benchmark and logs provide operational evidence only. They do not establish
 source completeness, publication eligibility, production capacity, cloud
 cost, or a guarantee for a particular traffic pattern.

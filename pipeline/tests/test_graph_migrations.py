@@ -11,12 +11,22 @@ class GraphMigrationContractTests(unittest.TestCase):
 
     def test_reserved_migrations_are_present_and_ordered(self):
         migrations = sorted(path.name for path in (ROOT / "migrations").glob("*.sql"))
-        self.assertEqual(migrations[-5:], [
+        graph_migrations = [
+            "026_graph_entities_crosswalks.sql",
+            "027_graph_relationship_observations.sql",
+            "028_graph_claims_support.sql",
+            "029_graph_publication_projections.sql",
+        ]
+        positions = [migrations.index(name) for name in graph_migrations]
+        self.assertEqual(positions, sorted(positions))
+        self.assertEqual([migrations[position] for position in positions], graph_migrations)
+        self.assertEqual(migrations[-6:], [
             "026_graph_entities_crosswalks.sql",
             "027_graph_relationship_observations.sql",
             "028_graph_claims_support.sql",
             "029_graph_publication_projections.sql",
             "030_discovery_projection_support_indexes.sql",
+            "031_public_release_read_path_indexes.sql",
         ])
 
     def test_entities_are_distinct_and_crosswalk_is_scoped(self):
