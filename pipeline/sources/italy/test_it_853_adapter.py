@@ -14,9 +14,11 @@ class Test(unittest.TestCase):
   content=(H+"\n"+row()).encode(); a=Italy853Adapter(); x=a.parse_bytes(content)["accepted"][0]; y=a.parse_bytes(content)["accepted"][0]; self.assertEqual(x["source_row_id"],y["source_row_id"]); self.assertNotIn("p_iva",x["normalized"]); self.assertIsNone(x["normalized"]["coordinates"])
  def test_shape_drift_quarantine(self):
   content=(H+"\n"+row().replace("Name","Name;extra")).encode(); self.assertRaises(ValueError,Italy853Adapter().parse_bytes,content)
- def test_missing_date_and_geography_are_explicit(self):
-  r=Italy853Adapter().parse_bytes((H+"\n"+row().replace("001001","001").replace("2026-09-13","")).encode())["accepted"][0]
-  self.assertEqual(r["normalized"]["date_state"]["data_inizio_attivita"],"unknown"); self.assertEqual(r["normalized"]["geography_precision"],"unknown"); self.assertEqual(r["normalized"]["coordinate_state"],"source-value-present-pending-review")
+  def test_missing_date_and_geography_are_explicit(self):
+   r=Italy853Adapter().parse_bytes((H+"\n"+row().replace("001001","001").replace("2026-09-13","")).encode())["accepted"][0]
+   self.assertEqual(r["normalized"]["date_state"]["data_inizio_attivita"],"unknown"); self.assertEqual(r["normalized"]["geography_precision"],"unknown"); self.assertEqual(r["normalized"]["coordinate_state"],"source-value-present-pending-review")
+  def test_source_category_and_activity_coverage_are_explicit(self):
+   result=Italy853Adapter().parse_bytes((H+"\n"+row()).encode()); self.assertEqual(result["source_category_counts"], {"X": 1}); self.assertEqual(result["source_activity_counts"], {"10": 1}); self.assertTrue(result["schema_fingerprint"])
  def test_repeated_activity_quarantines_collision_without_merge(self):
   result=Italy853Adapter().parse_bytes((H+"\n"+row()+row()).encode()); self.assertEqual(len(result["accepted"]),1); self.assertEqual(len(result["quarantined"]),1); self.assertIn("ambiguous_repeated_recognition_activity",result["quarantined"][0]["reasons"])
  def test_run_writes_contract_manifest_and_row_quarantine(self):

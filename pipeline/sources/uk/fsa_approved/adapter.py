@@ -73,7 +73,7 @@ def _monthly_record(row,line):
     acts=tuple(x for x in (_clean(row.get("All_Activities")),_clean(row.get("Part_A__All_sections_")),_clean(row.get("Part B All sections "))) if x)
     privacy_gate="restricted-withheld-address" if withheld else "privacy-review-required"
     coordinate_gate="restricted-withheld-address" if withheld else "privacy-review-required"
-    return {"source_id":CONFIG["source_id"],"source_row":line,"source_values":dict(row),"normalized":{"establishment_id":_clean(row.get("AppNo")),"trading_name":_clean(row.get("TradingName")),"address_lines":None if withheld else tuple(_clean(row.get(k)) for k in ("Address1","Address2","Address3")),"postcode":_clean(row.get("Postcode")),"activities":acts,"activity_categories":classify_activities(acts),"species":_clean(row.get("Species")),"competent_authority":_clean(row.get("CompetentAuthority")),"nation":_clean(row.get("Country")),"authority_nation_key":_clean(row.get("Country")),"status":None,"remarks":_clean(row.get("Remarks")),"published_date":None,"coordinates":None,"coordinate_gate":coordinate_gate,"privacy_gate":privacy_gate,"publication_gate":"blocked"}}
+    return {"source_id":CONFIG["source_id"],"source_row":line,"source_values":dict(row),"normalized":{"establishment_id":_clean(row.get("AppNo")),"trading_name":_clean(row.get("TradingName")),"address_lines":None if withheld else tuple(_clean(row.get(k)) for k in ("Address1","Address2","Address3")),"postcode":_clean(row.get("Postcode")),"activities":acts,"activity_categories":classify_activities(acts),"species":_clean(row.get("Species")),"competent_authority":_clean(row.get("CompetentAuthority")),"nation":_clean(row.get("Country")),"authority_nation_key":_clean(row.get("Country")),"status":None,"remarks":_clean(row.get("Remarks")),"published_date":None,"coordinates":None,"coordinate_state":status,"coordinate_precision":"withheld" if withheld else "source-precision-unspecified","coordinate_gate":coordinate_gate,"privacy_gate":privacy_gate,"publication_gate":"blocked"}}
 
 class FsaApprovedEstablishmentsAdapter:
     source_id=CONFIG["source_id"];schema_version=CONFIG["contract_version"];adapter_version=CONFIG["adapter_version"]
@@ -82,13 +82,13 @@ class FsaApprovedEstablishmentsAdapter:
         if not synthetic and not monthly:raise FsaContractError("schema drift: unsupported FSA header profile")
         return self._synthetic(headers,rows,digest,fp) if synthetic else self._monthly(headers,rows,digest,fp)
     def _synthetic(self,headers,rows,digest,fp):
-        accepted=[];quarantined=[];parsed=[];keys=[]
+        accepted=[];quarantined=[];parsed=[];keys=[];coverage={};anomalies={}
         for line,row in enumerate(rows,2):
             v={h:row[i] if i<len(row) else None for i,h in enumerate(headers)};parsed.append((line,v));keys.append((_clean(v.get("nation")),_clean(v.get("establishment_id"))))
         duplicates={k for k in keys if k[0] and k[1] and keys.count(k)>1}
         for line,v in parsed:
             reasons=[];nation,ident=_clean(v.get("nation")),_clean(v.get("establishment_id"))
-            if len(v)!=len(headers) or any(x is None for x in v.values()):reasons.append("malformed_row")
+            if len(row)!=len(headers) or any(x is None for x in v.values()):reasons.append("malformed_row")
             if not ident:reasons.append("missing_establishment_id")
             if (nation,ident) in duplicates:reasons.append("duplicate_id_within_nation")
             if nation not in CONFIG["covered_nations"]:reasons.append("unknown_nation")
@@ -101,8 +101,10 @@ class FsaApprovedEstablishmentsAdapter:
             if status and status.lower() not in ALLOWED_STATUSES:reasons.append("unknown_status")
             if _clean(v.get("remarks")):reasons.append("remarks_present")
             if ADDRESS_RISK.search(" ".join(_clean(v.get(f"address_line_{n}")) or "" for n in range(1,4))):reasons.append("address_privacy_risk")
+            coverage[nation or ""] = coverage.get(nation or "", 0) + 1
+            for reason in dict.fromkeys(reasons): anomalies[reason] = anomalies.get(reason, 0) + 1
             record=_synthetic_record(v,line);(quarantined if reasons else accepted).append({"reasons":tuple(dict.fromkeys(reasons)),"record":record} if reasons else record)
-        return ValidationResult(tuple(accepted),tuple(quarantined),digest,profile="synthetic",schema_fingerprint=fp)
+        return ValidationResult(tuple(accepted),tuple(quarantined),digest,profile="synthetic",schema_fingerprint=fp,coverage_counts=coverage,anomaly_counts=anomalies)
     def _monthly(self,headers,rows,digest,fp):
         accepted=[];quarantined=[];parsed=[];keys=[];coverage={};anomalies={}
         for line,row in enumerate(rows,2):

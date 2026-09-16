@@ -15,6 +15,15 @@ from .adapter import CONFIG, FsaApprovedEstablishmentsAdapter, _csv
 from .handoff import write_private_monthly_handoff
 
 
+REVIEW_BLOCKERS = {
+    "terms": ["UK OGL v3 is indicated by the catalogue; attribution, national-scope terms, and project redistribution review remain separate gates."],
+    "privacy": ["AddressWithheld rows and precise X/Y coordinates require privacy classification; withheld addresses remain suppressed and geocoding is disabled."],
+    "completeness": ["The monthly feed covers England and Wales in this adapter; Northern Ireland remains a separate authority/source scope and disappearance is not closure."],
+    "classification": ["Activity values are source-native and mapped conservatively; unknown activity, status, authority/nation mismatch, duplicates, and remarks quarantine."],
+    "coverage": ["The inspected monthly schema/fingerprint and baseline are evidence for the retained snapshot only; live drift and source effective-date semantics require repeatable refresh review."],
+}
+
+
 class RefreshError(ValueError):
     """The source refresh cannot safely continue."""
 
@@ -153,7 +162,7 @@ def refresh_monthly(
     handoff = None
     if mode == "handoff":
         handoff = write_private_monthly_handoff(input_path, root / "handoff", artifact)
-    lifecycle = run_private_lifecycle(input_path, root / "lifecycle", artifact, adapter, health_as_of_utc=retrieved_at_utc)
+    lifecycle = run_private_lifecycle(input_path, root / "lifecycle", artifact, adapter, health_as_of_utc=retrieved_at_utc, previous_normalized_path=previous_normalized, review_blockers=REVIEW_BLOCKERS)
     report = {
         "source_url": source_url,
         "retrieved_at_utc": retrieved_at_utc,

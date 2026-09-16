@@ -43,6 +43,7 @@ class BltuAdapter:
         rows = list(csv.reader(text.splitlines(), delimiter=";", strict=True))
         headers = rows[0] if rows else []
         matched = headers == list(EXPECTED_HEADERS)
+        id_counts = Counter(values[CURRENT_ID_INDEX].strip() for values in rows[1:] if len(values) > CURRENT_ID_INDEX and values[CURRENT_ID_INDEX].strip())
         accepted: list[dict[str, Any]] = []
         quarantined: list[dict[str, Any]] = []
         anomalies: Counter[str] = Counter()
@@ -58,6 +59,8 @@ class BltuAdapter:
             name = values[NAME_INDEX].strip() if len(values) > NAME_INDEX else ""
             if not current_id:
                 reasons.append("missing_current_approval_id")
+            elif id_counts[current_id] > 1:
+                reasons.append("duplicate_current_approval_id")
             if not name:
                 reasons.append("missing_establishment_name")
             activity_codes = [headers[index] for index in range(ACTIVITY_START, min(ACTIVITY_END, len(values))) if values[index].strip()]
@@ -70,7 +73,7 @@ class BltuAdapter:
                 reasons.append("unmapped_activity_code")
             for category in mapped:
                 categories[category] += 1
-            record = {"source_id": self.source_id, "source_row": line, "source_record_key": f"{current_id or 'unknown'}|{line}", "source_values": source, "normalized": {"establishment_id": current_id or None, "approval_number": current_id or None, "name": name or None, "trading_name": name or None, "country_code": "DE", "nation": "Germany", "state": values[STATE_INDEX].strip() if len(values) > STATE_INDEX else None, "city": values[CITY_INDEX].strip() if len(values) > CITY_INDEX else None, "address": None, "address_state": "source-present-pending-privacy-review" if len(values) > STREET_INDEX and values[STREET_INDEX].strip() else "unknown", "activity_codes": tuple(activity_codes), "activity_categories": mapped, "source_activity_categories": mapped, "classification_state": "mapped" if mapped and not any(code not in ACTIVITY_MAP for code in activity_codes) else "unresolved", "coordinates": None, "coordinate_state": "unknown", "privacy_gate": "pending-review", "coordinate_gate": "review_required", "publication_gate": "blocked"}}
+            record = {"source_id": self.source_id, "source_row": line, "source_record_key": f"{current_id or 'unknown'}|{line}", "source_values": source, "normalized": {"establishment_id": current_id or None, "approval_number": current_id or None, "name": name or None, "trading_name": name or None, "country_code": "DE", "nation": "Germany", "state": values[STATE_INDEX].strip() if len(values) > STATE_INDEX else None, "city": values[CITY_INDEX].strip() if len(values) > CITY_INDEX else None, "address": None, "address_state": "source-present-pending-privacy-review" if len(values) > STREET_INDEX and values[STREET_INDEX].strip() else "unknown", "activity_codes": tuple(activity_codes), "activity_categories": mapped, "source_activity_categories": mapped, "classification_state": "mapped" if mapped and not any(code not in ACTIVITY_MAP for code in activity_codes) else "unresolved", "coordinates": None, "coordinate_state": "unknown", "coordinate_precision": "not-supplied", "privacy_gate": "pending-review", "coordinate_gate": "review_required", "publication_gate": "blocked"}}
             if reasons:
                 unique = tuple(dict.fromkeys(reasons))
                 for reason in unique:

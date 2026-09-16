@@ -71,6 +71,8 @@ class Italy853Adapter:
             raise ValueError("schema drift")
 
         occurrences: Counter[tuple[str | None, str | None]] = Counter()
+        category_counts: Counter[str] = Counter()
+        activity_counts: Counter[str] = Counter()
         accepted: list[dict[str, Any]] = []
         quarantined: list[dict[str, Any]] = []
         for line, row in enumerate(rows, 2):
@@ -81,6 +83,8 @@ class Italy853Adapter:
                 raise ValueError("schema drift: row has extra columns")
             rec = clean(row.get(REQUIRED[1]))
             activity = clean(row.get("codice_impianto_attivita"))
+            category_counts[clean(row.get("classificazione_stabilimento")) or "unknown"] += 1
+            activity_counts[activity or "unknown"] += 1
             key = (rec, activity)
             occurrences[key] += 1
             reasons: list[str] = []
@@ -119,6 +123,7 @@ class Italy853Adapter:
                 "geography_precision": geography_precision,
                 "geography_state": "source-municipality-code" if geography_precision != "unknown" else "unknown",
                 "classification": clean(row.get("classificazione_stabilimento")),
+                "classification_state": "source-category-preserved" if clean(row.get("classificazione_stabilimento")) else "unknown",
                 "activity_code": activity,
                 "activity_description": clean(row.get("descrizione_impianto_attivita")),
                 "products": clean(row.get("prodotti_abilitati")),
@@ -144,7 +149,7 @@ class Italy853Adapter:
                 quarantined.append({"reasons": tuple(dict.fromkeys(reasons)), "record": record})
             else:
                 accepted.append(record)
-        return {"accepted": accepted, "quarantined": quarantined, "source_sha256": digest, "input_rows": len(rows)}
+        return {"accepted": accepted, "quarantined": quarantined, "source_sha256": digest, "input_rows": len(rows), "schema_fingerprint": hashlib.sha256(json.dumps(headers, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest(), "source_category_counts": dict(sorted(category_counts.items())), "source_activity_counts": dict(sorted(activity_counts.items()))}
 
     def parse_file(self, path: str | Path) -> dict[str, Any]:
         return self.parse_bytes(Path(path).read_bytes())
@@ -175,7 +180,6 @@ class Italy853Adapter:
             parsed_sha256=parsed_sha256,
             anomaly_counts=dict(sorted(anomaly_counts.items())),
         )
-        manifest["coverage"] = "Italian Ministry 853/2004 CSV; one source row per establishment/activity; 1069/2009 excluded"
-        manifest["geocoding"] = "disabled"
+        manifest.update({"coverage": "Italian Ministry 853/2004 CSV; one source row per establishment/activity; 1069/2009 excluded", "geocoding": "disabled", "schema_fingerprint": result["schema_fingerprint"], "source_category_counts": result["source_category_counts"], "source_activity_counts": result["source_activity_counts"]})
         atomic_json(root / "manifest.json", manifest)
         return manifest

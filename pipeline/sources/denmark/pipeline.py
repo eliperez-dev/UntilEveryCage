@@ -15,6 +15,7 @@ from typing import Callable
 from pipeline.contracts.private_run import write_private_run_report
 from pipeline.contracts.source_health import build_health_snapshot, write_health_snapshot
 from pipeline.contracts.source_lifecycle import atomic_json, validate_private_manifest
+from pipeline.common.review_packet import write_review_packet
 
 
 LOGGER = logging.getLogger("uec.denmark.pipeline")
@@ -120,6 +121,13 @@ def _canonical_evidence(run_dir: Path, input_path: Path, metadata: dict,
     if retrieved:
         snapshot = build_health_snapshot(run_dir, as_of_utc=retrieved)
         write_health_snapshot(run_dir / "source-health.json", snapshot)
+    write_review_packet(run_dir, blockers={
+        "terms": ["Find Smiley attribution/currentness conditions are recorded; named project release approval remains open."],
+        "privacy": ["Address and source-coordinate residential/private-location screening remains required; geocoding is separately review-gated."],
+        "completeness": ["Find Smiley coverage is not a census and has no supplied dataset effective date."],
+        "classification": ["Source category and stable-key mappings remain explicit; unknown or ambiguous values quarantine."],
+        "coverage": ["Source disappearance is not-observed, never closure; candidate import and API checks remain disposable/test-only."],
+    })
     LOGGER.info("private evidence source=dk.smiley rows=%d findings=%d qa=%s",
                 report["normalized_rows"], validation.get("finding_records", 0), run_dir / "qa.json")
 

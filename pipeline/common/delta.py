@@ -30,6 +30,25 @@ def _manifest(run_dir: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def compare_normalized_paths(previous_path: str | Path | None, current_path: str | Path) -> dict[str, Any]:
+    """Compare normalized JSONL by stable source identity without row payloads."""
+    if previous_path is None:
+        return {"status": "not-run", "counts": {"added": 0, "changed": 0, "not_observed": 0, "suppressed": 0}, "disappearance_semantics": "not-observed; never inferred as closure"}
+    previous = Path(previous_path)
+    current = Path(current_path)
+    if not previous.is_file() or not current.is_file():
+        return {"status": "failed", "error": "normalized state is missing", "counts": {"added": 0, "changed": 0, "not_observed": 0, "suppressed": 0}, "disappearance_semantics": "not-observed; never inferred as closure"}
+    try:
+        old = {record_key(row): row for row in _jsonl(previous)}
+        new = {record_key(row): row for row in _jsonl(current)}
+        added = sum(key not in old for key in new)
+        changed = sum(key in old and _fingerprint(old[key]) != _fingerprint(row) for key, row in new.items())
+        not_observed = sum(key not in new for key in old)
+    except Exception as exc:
+        return {"status": "failed", "error_type": type(exc).__name__, "error": str(exc), "counts": {"added": 0, "changed": 0, "not_observed": 0, "suppressed": 0}, "disappearance_semantics": "not-observed; never inferred as closure"}
+    return {"status": "delta-ready", "counts": {"added": added, "changed": changed, "not_observed": not_observed, "suppressed": 0}, "disappearance_semantics": "not-observed; never inferred as closure"}
+
+
 def _fingerprint(row: dict[str, Any]) -> str:
     comparable = {key: value for key, value in row.items() if key not in {"provenance", "source_values", "source_columns"}}
     return hashlib.sha256(json.dumps(comparable, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()

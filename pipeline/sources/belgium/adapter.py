@@ -180,8 +180,10 @@ class BelgiumOperatorsAdapter:
         anomalies: Counter[str] = Counter()
         seen: Counter[tuple[str | None, str | None]] = Counter()
         prepared: list[tuple[int, dict[str, str | None], tuple[str, ...]]] = []
+        row_lengths: Counter[str] = Counter()
         for line, values in enumerate(rows, start=2):
             raw = _row_values(headers, values)
+            row_lengths[str(len(values))] += 1
             codes = _split_codes(_clean(raw.get(fields["activity_code"])))
             prepared.append((line, raw, codes))
             for code in codes:
@@ -190,7 +192,7 @@ class BelgiumOperatorsAdapter:
             establishment_id = _clean(raw.get(fields["establishment_id"]))
             name = _clean(raw.get(fields["name"]))
             reasons: list[str] = []
-            if len(raw) != len(headers) or any(value is None for value in raw.values()):
+            if len(values) != len(headers) or any(value is None for value in raw.values()):
                 reasons.append("malformed_row")
             if not establishment_id:
                 reasons.append("missing_establishment_id")
@@ -249,7 +251,7 @@ class BelgiumOperatorsAdapter:
                 quarantined.append({"reasons": unique, "record": record})
             else:
                 accepted.append(record)
-        return {"accepted": accepted, "quarantined": quarantined, "input_rows": len(rows), "source_sha256": hashlib.sha256(content).hexdigest(), "operator_schema_fingerprint": _fingerprint(headers), "operator_column_count": len(headers), "operator_encoding": encoding, "operator_delimiter": delimiter, "codebook": codebook_meta, "coverage_counts": dict(Counter(category for item in accepted for category in item["normalized"]["source_activity_categories"])), "anomaly_counts": dict(sorted(anomalies.items()))}
+        return {"accepted": accepted, "quarantined": quarantined, "input_rows": len(rows), "source_sha256": hashlib.sha256(content).hexdigest(), "operator_schema_fingerprint": _fingerprint(headers), "operator_column_count": len(headers), "operator_encoding": encoding, "operator_delimiter": delimiter, "row_length_counts": dict(sorted(row_lengths.items())), "codebook": codebook_meta, "coverage_counts": dict(Counter(category for item in accepted for category in item["normalized"]["source_activity_categories"])), "anomaly_counts": dict(sorted(anomalies.items()))}
 
     def run(self, raw_path: str | Path, run_dir: str | Path, artifact: SourceArtifact) -> dict[str, Any]:
         raw = Path(raw_path).read_bytes()
@@ -263,7 +265,7 @@ class BelgiumOperatorsAdapter:
         _, normalized_sha, _ = atomic_jsonl(root / "normalized" / "records.jsonl", result["accepted"])
         atomic_jsonl(root / "quarantined" / "records.jsonl", result["quarantined"])
         manifest = private_manifest(source_id=self.source_id, adapter_version=self.adapter_version, schema_version=self.schema_version, artifact=artifact, input_rows=result["input_rows"], normalized_rows=len(result["accepted"]), quarantined_rows=len(result["quarantined"]), normalized_sha256=normalized_sha, parsed_sha256=parsed_sha, anomaly_counts=result["anomaly_counts"])
-        manifest.update({"country_code": "BE", "coverage": CONFIG["coverage"], "geocoding": "disabled", "operator_schema_fingerprint": result["operator_schema_fingerprint"], "operator_column_count": result["operator_column_count"], "operator_encoding": result["operator_encoding"], "operator_delimiter": result["operator_delimiter"], "coverage_counts": result["coverage_counts"], "activity_codebook": result["codebook"], "codebook_source_url": self.activity_artifact.source_url if self.activity_artifact else "unrecorded-companion-artifact", "codebook_retrieved_at_utc": self.activity_artifact.retrieved_at_utc if self.activity_artifact else None, "codebook_sha256": result["codebook"]["sha256"], "codebook_byte_size": result["codebook"]["byte_size"]})
+        manifest.update({"country_code": "BE", "coverage": CONFIG["coverage"], "geocoding": "disabled", "operator_schema_fingerprint": result["operator_schema_fingerprint"], "operator_column_count": result["operator_column_count"], "operator_encoding": result["operator_encoding"], "operator_delimiter": result["operator_delimiter"], "row_length_counts": result["row_length_counts"], "coverage_counts": result["coverage_counts"], "activity_codebook": result["codebook"], "codebook_source_url": self.activity_artifact.source_url if self.activity_artifact else "unrecorded-companion-artifact", "codebook_retrieved_at_utc": self.activity_artifact.retrieved_at_utc if self.activity_artifact else None, "codebook_sha256": result["codebook"]["sha256"], "codebook_byte_size": result["codebook"]["byte_size"]})
         atomic_json(root / "manifest.json", manifest)
         return manifest
 

@@ -12,6 +12,7 @@ from typing import Any, Callable
 from pipeline.contracts.adapter_contract import SourceAdapter, SourceArtifact, source_artifact_from_mapping
 from pipeline.contracts.private_run import write_private_run_report
 from pipeline.contracts.source_health import build_health_snapshot, write_health_snapshot
+from pipeline.common.review_packet import write_review_packet
 from .identity import record_key
 from .source_operations import classify_failure, finalize_run_operations
 
@@ -53,7 +54,9 @@ def register_input(raw: bytes, staging_dir: str | Path, config: dict[str, Any]) 
 def run_registered_input(raw_path: str | Path, runs_dir: str | Path, config: dict[str, Any],
                          adapter_runner: Callable[..., dict[str, Any]],
                          suppressed_ids: set[str | tuple[str, str, str]] | None = None,
-                         prior_eligible_release: dict[str, Any] | None = None) -> dict[str, Any]:
+                         prior_eligible_release: dict[str, Any] | None = None,
+                         previous_normalized_path: str | Path | None = None,
+                         review_blockers: dict[str, list[str]] | None = None) -> dict[str, Any]:
     """Run an adapter to a human-gated candidate, preserving prior release on failure."""
     raw = Path(raw_path)
     runs = Path(runs_dir)
@@ -114,6 +117,8 @@ def run_registered_input(raw_path: str | Path, runs_dir: str | Path, config: dic
                       "attempts": getattr(exc, "attempts", []),
                       "prior_eligible_release": prior_eligible_release,
                       "run_dir": str(run_dir)}
+        if status.get("status") != "failed":
+            write_review_packet(run_dir, previous_normalized_path=previous_normalized_path, blockers=review_blockers)
     status["run_dir"] = str(run_dir)
     status["run_id"] = config.get("run_id") or run_dir.name
     # The operations ledger is derived from the private run and is append-only.
@@ -141,7 +146,9 @@ def run_registered_input(raw_path: str | Path, runs_dir: str | Path, config: dic
 def run_registered_typed_input(raw_path: str | Path, runs_dir: str | Path,
                                config: dict[str, Any], adapter: SourceAdapter,
                                suppressed_ids: set[str | tuple[str, str, str]] | None = None,
-                               prior_eligible_release: dict[str, Any] | None = None) -> dict[str, Any]:
+                               prior_eligible_release: dict[str, Any] | None = None,
+                               previous_normalized_path: str | Path | None = None,
+                               review_blockers: dict[str, list[str]] | None = None) -> dict[str, Any]:
     """Run a typed adapter from registered acquisition metadata.
 
     This is the compatibility seam for adapters whose ``run`` method accepts
@@ -156,14 +163,18 @@ def run_registered_typed_input(raw_path: str | Path, runs_dir: str | Path,
 
     return run_registered_input(raw_path, runs_dir, config, invoke,
                                 suppressed_ids=suppressed_ids,
-                                prior_eligible_release=prior_eligible_release)
+                                prior_eligible_release=prior_eligible_release,
+                                previous_normalized_path=previous_normalized_path,
+                                review_blockers=review_blockers)
 
 
 def run_private_lifecycle(raw_path: str | Path, runs_dir: str | Path,
                           artifact: SourceArtifact, adapter: SourceAdapter,
                           *, suppressed_ids: set[str | tuple[str, str, str]] | None = None,
                           prior_eligible_release: dict[str, Any] | None = None,
-                          health_as_of_utc: str | None = None) -> dict[str, Any]:
+                          health_as_of_utc: str | None = None,
+                          previous_normalized_path: str | Path | None = None,
+                          review_blockers: dict[str, list[str]] | None = None) -> dict[str, Any]:
     """Run the canonical typed lifecycle from a preserved ``SourceArtifact``.
 
     This is the source-local integration seam for new countries.  Acquisition
@@ -191,4 +202,6 @@ def run_private_lifecycle(raw_path: str | Path, runs_dir: str | Path,
         raw_path, runs_dir, config, adapter,
         suppressed_ids=suppressed_ids,
         prior_eligible_release=prior_eligible_release,
+        previous_normalized_path=previous_normalized_path,
+        review_blockers=review_blockers,
     )

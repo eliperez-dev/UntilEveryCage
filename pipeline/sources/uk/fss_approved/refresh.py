@@ -16,6 +16,15 @@ from .adapter import CONFIG, FssApprovedEstablishmentsAdapter
 from .handoff import write_private_handoff
 
 
+REVIEW_BLOCKERS = {
+    "terms": ["FSS indicates OGL v3; exact CSV terms, attribution, and project redistribution review remain human gates."],
+    "privacy": ["Address fields and remarks require privacy/safety review; no coordinates are published or geocoded by this adapter."],
+    "completeness": ["This lane is Scotland only; FSA England/Wales/Northern Ireland are separate feeds, and a missing source row is not closure."],
+    "classification": ["Live activity columns are preserved and classified conservatively; remarks, duplicate approval IDs, unknown activity/status, and privacy-risk addresses quarantine."],
+    "coverage": ["The retained live header contract is inspected but current source effective-date and full category coverage remain subject to each bounded refresh."],
+}
+
+
 def _write_json(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2, default=list) + "\n", encoding="utf-8")
@@ -128,7 +137,7 @@ def refresh_scotland(
     current_ids.discard(None)
     previous_ids = _read_previous_ids(Path(previous_normalized) if previous_normalized else None)
     disappeared = len(previous_ids - current_ids) if previous_ids else 0
-    lifecycle = run_private_lifecycle(input_path, root / "lifecycle", artifact, adapter, health_as_of_utc=retrieved_at_utc)
+    lifecycle = run_private_lifecycle(input_path, root / "lifecycle", artifact, adapter, health_as_of_utc=retrieved_at_utc, previous_normalized_path=previous_normalized, review_blockers=REVIEW_BLOCKERS)
     handoff = None
     if mode == "handoff":
         handoff = write_private_handoff(input_path, root / "handoff", artifact)

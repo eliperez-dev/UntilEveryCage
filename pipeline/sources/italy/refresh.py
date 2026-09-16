@@ -17,6 +17,15 @@ from .acquire import CATALOG_URL, DEFAULT_MAX_BYTES, fetch
 from .it_853_adapter import Italy853Adapter
 
 
+REVIEW_BLOCKERS = {
+    "terms": ["Italian Open Data Licence v2.0 is indicated by the Ministry catalogue; licence/attribution and project redistribution review remain open."],
+    "privacy": ["Address, tax identifiers, and precise source coordinates stay in restricted source evidence; privacy classification and coordinate precision review are pending."],
+    "completeness": ["The run covers the 853/2004 Ministry CSV only; the separate 1069/2009 by-products dataset is intentionally excluded and no national completeness claim is made."],
+    "classification": ["Recognition number plus activity code is the provisional identity; repeated recognition/activity pairs quarantine, and source classification/activity text is preserved without collapsing categories."],
+    "coverage": ["Catalog filename/publication date are recorded when supplied, but row-level effective dates and coded category coverage require review."],
+}
+
+
 def _metadata_for_local(raw_path: Path, metadata: dict, *, url: str, retrieved_at: str | None, adapter: Italy853Adapter) -> dict:
     import hashlib
 
@@ -49,6 +58,7 @@ def refresh(
     retrieved_at_utc: str | None = None,
     timeout_seconds: float = 60.0,
     max_bytes: int = DEFAULT_MAX_BYTES,
+    previous_normalized: str | Path | None = None,
 ) -> dict:
     """Run the shared private lifecycle from a preserved or acquired artifact."""
     if fetch_source == (raw_path is not None):
@@ -77,7 +87,7 @@ def refresh(
         code_version=str(facts["code_version"]), config_version=str(facts["config_version"]),
         rights_caveat=facts["rights_caveat"], privacy_caveat=facts["privacy_caveat"], coverage=facts["coverage"],
     )
-    status = run_private_lifecycle(input_path, run_dir, artifact, adapter)
+    status = run_private_lifecycle(input_path, run_dir, artifact, adapter, previous_normalized_path=previous_normalized, review_blockers=REVIEW_BLOCKERS)
     # Keep catalog/response/terms evidence beside the lifecycle run without
     # copying row payloads into QA, health, or API-shaped artifacts.
     if metadata:
@@ -99,12 +109,14 @@ def main() -> int:
     parser.add_argument("--retrieved-at-utc")
     parser.add_argument("--timeout-seconds", type=float, default=60.0)
     parser.add_argument("--max-bytes", type=int, default=DEFAULT_MAX_BYTES)
+    parser.add_argument("--previous-normalized", type=Path)
     args = parser.parse_args()
     try:
         status = refresh(run_dir=args.run_dir, raw_path=args.raw, fetch_source=args.fetch,
                          catalog_url=args.catalog_url, output_root=args.output_root, run_id=args.run_id,
                          terms_review=args.terms_review, retrieved_at_utc=args.retrieved_at_utc,
-                         timeout_seconds=args.timeout_seconds, max_bytes=args.max_bytes)
+                         timeout_seconds=args.timeout_seconds, max_bytes=args.max_bytes,
+                         previous_normalized=args.previous_normalized)
     except (OSError, ValueError) as error:
         print(json.dumps({"status": "failed", "error": str(error)}, sort_keys=True))
         return 2

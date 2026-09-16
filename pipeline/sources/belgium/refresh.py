@@ -25,6 +25,15 @@ class RefreshError(ValueError):
     """A Belgium refresh cannot safely continue."""
 
 
+REVIEW_BLOCKERS = {
+    "terms": ["CC BY 4.0 attribution and non-misleading-use review remain human gates; the operator feed has no checked-in licence grant beyond the catalogue evidence."],
+    "privacy": ["Address, postal, enterprise, and coordinate fields require field-level privacy review; normalized rows intentionally suppress them and geocoding is disabled."],
+    "completeness": ["The feed covers current FASFC registrations/approvals/authorizations, not every animal-agriculture facility; live operator schema and currentness semantics still require capture review."],
+    "classification": ["LAP/PAP codebook joins are explicit, but slaughter, cutting, processing, storage, animal-by-products, and export remain separate source categories."],
+    "coverage": ["Operator CSV and activity-code CSV must be captured together; the live operator header was not available in this environment."],
+}
+
+
 def _local_metadata(path: Path, *, source_id: str, source_url: str, retrieved_at: str, coverage: str) -> dict[str, Any]:
     raw = path.read_bytes()
     return {"acquisition_method": "assisted_local_capture", "source_id": source_id, "artifact": path.name, "artifact_path": str(path.resolve()), "requested_url": source_url, "final_url": source_url, "redirects": [], "response_headers": {}, "requested_at_utc": retrieved_at, "retrieved_at_utc": retrieved_at, "effective_date": "unknown", "publication_date": None, "sha256": hashlib.sha256(raw).hexdigest(), "byte_size": len(raw), "adapter_version": CONFIG["adapter_version"], "code_version": CONFIG["adapter_version"], "config_version": CONFIG["schema_version"], "coverage": coverage, "rights_caveat": CONFIG["terms"], "privacy_caveat": "private staging; address and coordinate review pending", "terms_review": "operator-assisted capture; source terms review remains a separate gate"}
@@ -60,7 +69,7 @@ def refresh(*, run_dir: str | Path, operators_path: str | Path | None = None, ac
     operator_artifact = _artifact(operator_meta, default_url=CONFIG["operator_url"], default_coverage=CONFIG["coverage"])
     code_artifact = _artifact(code_meta, default_url=CONFIG["activity_code_url"], default_coverage="FASFC LAP/PAP codebook; not a facility list")
     adapter = BelgiumOperatorsAdapter(code_path, code_artifact)
-    lifecycle = run_private_lifecycle(operator_path, root / "lifecycle", operator_artifact, adapter, health_as_of_utc=retrieved)
+    lifecycle = run_private_lifecycle(operator_path, root / "lifecycle", operator_artifact, adapter, health_as_of_utc=retrieved, previous_normalized_path=previous_normalized, review_blockers=REVIEW_BLOCKERS)
     manifest = lifecycle.get("manifest") or {}
     report = {"source_id": CONFIG["source_id"], "source_url": operator_artifact.source_url, "retrieved_at_utc": operator_artifact.retrieved_at_utc, "operator_sha256": operator_artifact.sha256, "activity_code_sha256": code_artifact.sha256, "input_rows": manifest.get("input_rows"), "normalized_rows": manifest.get("normalized_rows"), "quarantined_rows": manifest.get("quarantined_rows"), "operator_schema_fingerprint": manifest.get("operator_schema_fingerprint"), "activity_code_schema_fingerprint": (manifest.get("activity_codebook") or {}).get("schema_fingerprint"), "drift_alarms": [], "disappeared_not_observed_count": 0, "disappearance_semantics": "not-observed; never inferred as closure", "geocoding": "disabled", "release_state": "not-created", "publication_state": "private-candidate", "publication_eligibility": "blocked", "lifecycle_status": lifecycle.get("status"), "lifecycle_run_dir": lifecycle.get("run_dir"), "previous_normalized_supplied": previous_normalized is not None}
     atomic_json(root / "refresh.json", report)
