@@ -38,6 +38,12 @@ class E2EEnvironment:
         self.dev_preview_token = "uec-e2e-preview-token"
         self.test_release_id = None
 
+    def _ensure_build_temp(self):
+        """Recreate per-run paths after a failed-start cleanup before retrying."""
+        if self.build_temp is None:
+            self.build_temp = tempfile.TemporaryDirectory(prefix="uec-e2e-cargo-")
+            self.cargo_target_dir = Path(self.build_temp.name)
+
     def command(self, *args):
         return ["docker", "compose", "-p", self.project, "-f", str(COMPOSE), *args]
 
@@ -45,6 +51,7 @@ class E2EEnvironment:
         env = os.environ.copy(); env["UEC_E2E_DB_PORT"] = str(self.db_port); return env
 
     def start(self, migration_files=None, wait_for_ready=True):
+        self._ensure_build_temp()
         try:
             print(f"[e2e] starting {self.project}", flush=True)
             startup = subprocess.run(self.command("up", "-d", "--wait"), cwd=ROOT, capture_output=True, text=True, env=self.compose_env())
