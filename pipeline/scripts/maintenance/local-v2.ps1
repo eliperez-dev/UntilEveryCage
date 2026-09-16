@@ -51,7 +51,7 @@ try {
     }
     'status' {
       & docker compose -p $project -f $compose ps
-      $api=Get-OwnedApiProcess; if ($api) { Write-Host "Axum running: PID $($api.Id), port $apiPort" } else { Write-Host 'Axum not managed by local-v2.ps1.' }
+      $api=Get-OwnedApiProcess; if ($api) { Write-Host "Axum running: PID $($api.Id), port $apiPort" } else { Write-Host 'Axum is not running under this local-v2 checkout.' }
     }
     'stop' {
       $api=Get-OwnedApiProcess; if ($api) { Stop-Process -Id $api.Id -Force; Remove-Item $pidFile -Force }

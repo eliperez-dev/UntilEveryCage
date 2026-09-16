@@ -6,7 +6,7 @@ export const exactOfficialLocation = {
     privacy_screening_status: 'passed', project_approval: 'approved', reviewer_role: 'maintainer', publication_warning: null,
     display_precision: 'exact', latitude: 55, longitude: 10,
     first_observed_at: '2026-09-13T00:00:00Z', last_observed_at: '2026-09-13T00:00:00Z', observation_count: 1,
-    lifecycle_status: 'active_observed', source_type: 'official', provenance_source: 'Synthetic source',
+    lifecycle_status: 'active_observed', source_type: 'official', source_rights_status: 'attribution_required', provenance_source: 'Synthetic source',
     release_id: 'fixture-release', release_ruleset_version: 'fixture-v1', provenance_source_id: 'fixture.source',
     provenance_source_name: 'Synthetic source', provenance_source_url: 'https://example.invalid/source',
     provenance_retrieved_at: '2026-09-13T00:00:00Z'

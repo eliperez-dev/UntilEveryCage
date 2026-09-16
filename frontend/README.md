@@ -20,6 +20,8 @@ Open the URL Vite prints, normally `http://127.0.0.1:5173/v2-preview/#/`. This i
 
 The existing root `npm test` is the legacy static/Jest suite. It is deliberately separate from the commands above; run it from the repository root when changing root `static/` assets or compatibility modules.
 
+The ethics link intentionally targets the existing `/ethics.html` page.
+
 The explicit `?mode=local-v2` path uses the V2 API client for the official, secondary, and community profiles, controlled filters, cursor pagination, map/detail navigation, release/provenance context, and the profile-scoped public CSV route. A community profile keeps its persistent screened-but-unreviewed warning; it is not merged into official or secondary counts. Requests are cancellable and generation-checked so stale list/detail responses cannot replace newer state. No V1 fallback is used.
 
 Phase 2 gate notes: staging is explicit (`npm run stage`) and copies only `frontend/dist` to the resolved ignored `static/v2-preview` destination. The Leaflet adapter is isolated and uses a blank local background; no tile provider is configured. Export previews retain profile, release, limitations, source, and observation context.

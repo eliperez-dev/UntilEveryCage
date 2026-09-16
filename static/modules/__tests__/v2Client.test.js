@@ -23,6 +23,8 @@ const record = (overrides = {}) => ({
     reviewer_role: 'maintainer',
     publication_warning: null,
     source_type: 'official',
+    source_rights_status: 'attribution_required',
+    provenance_source: 'Test source',
     release_id: 'fixture-release',
     release_ruleset_version: 'fixture-v1',
     provenance_source_id: 'fixture.source',
