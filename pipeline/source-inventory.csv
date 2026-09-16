@@ -12,3 +12,14 @@ uk.locations,GB,static_data/uk/locations.csv;static_data/uk/locations.csv.backup
 us.fsis,US,static_data/us/locations.csv,USDA FSIS MPI directory and supplemental establishment-demographic data,operator-assisted official CSV export; bounded direct fetch with terms review,implemented_partial,Current route verified; direct links returned 403, so acquire an authorized edition and preserve provenance/schema/privacy review before test-only handoff.
 us.aphis,US,static_data/us/aphis_data_final.csv,USDA APHIS Animal Care Public Search Tool,operator-assisted profile-explicit export,implemented_partial,Registrations, annual reports, inspections, laboratories, and aggregate summaries remain separate evidence types.
 us.inspections,US,static_data/us/inspection_reports.csv,USDA APHIS inspection-reports public search,operator-assisted inspection export,implemented_partial,Inspection reports are observations, not facility master records; use explicit reviewable identity links only.
+nl.nvwa.approved-food,NL,,NVWA approved food establishment lists,public control XML plus SOAP POST,source_candidate,Recognition/activity observations retained separately; implement SOAP and review terms/privacy before release.
+nl.nvwa.welfare-enforcement,NL,,NVWA welfare and compliance publications,official HTML/PDF retrieval,source_candidate,2025 summary and 2024 detailed period are evidence observations; not a facility master.
+nl.cokz.dairy-eggs,NL,,COKZ dairy and egg registers,official HTML registers,source_candidate,Separate delegated regulator register family; terms and overlap with NVWA require review.
+nl.rvo.ir,NL,,RVO I&R services,authorized web service,source_candidate,Restricted UBN/location/animal data; no public scrape or exposure.
+nl.kvk.hvds,NL,,KVK business identity APIs,public open dataset or subscribed API,source_candidate,Identity/link evidence only; privacy and API terms remain gates.
+nl.cbs.slaughter,NL,,CBS table 7123slac,public OData API,source_candidate,Monthly aggregate slaughter counts/weight; never create facility rows.
+nl.cbs.livestock,NL,,CBS table 84952NED,public OData API,source_candidate,Twice-yearly aggregate livestock counts; agricultural-business scope only.
+eu.eurostat.nl-slaughter,NL,,Eurostat apro_mt_pann,public dissemination JSON API,source_candidate,EU aggregate mirror; keep separate from CBS and NVWA.
+nl.pdok.omgevingswet,NL,,PDOK/DSO omgevingsdocumenten,public OGC API and DSO APIs,source_candidate,Document/geometry evidence; no national animal-facility master.
+nl.koop.local-permits,NL,,KOOP/Overheid.nl official publications,collection-specific SRU CQL,source_candidate,Daily official publication surface with local coverage variation; initial query returned diagnostic.
+eu.traces.approved-establishments,NL,,European Commission TRACES/IMSOC,publication surface/national links,source_candidate,EU mirror context only; never double-count national NVWA observations.

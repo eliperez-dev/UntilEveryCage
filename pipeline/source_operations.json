@@ -43,6 +43,17 @@
     {"source_id":"au.vic.animal-use","cadence":"annual","interval_hours":8760,"stale_after_hours":null,"max_attempts":1,"backoff_seconds":0,"max_backoff_seconds":0,"manual_fallback":"obtain the current Victoria animal-use annual report"},
     {"source_id":"au.asic.company-dataset","cadence":"weekly","interval_hours":168,"stale_after_hours":336,"max_attempts":1,"backoff_seconds":0,"max_backoff_seconds":0,"manual_fallback":"use the bounded ASIC weekly snapshot plan"},
     {"source_id":"au.abr.lookup","cadence":"on_demand","interval_hours":null,"stale_after_hours":null,"max_attempts":1,"backoff_seconds":0,"max_backoff_seconds":0,"manual_fallback":"query ABR only for an upstream exact ABN/ACN crosswalk"},
-    {"source_id":"au.animal-welfare-and-use","cadence":"unknown","interval_hours":null,"stale_after_hours":null,"max_attempts":1,"backoff_seconds":0,"max_backoff_seconds":0,"manual_fallback":"use jurisdiction-specific reviewed welfare/report routes"}
+    {"source_id":"au.animal-welfare-and-use","cadence":"unknown","interval_hours":null,"stale_after_hours":null,"max_attempts":1,"backoff_seconds":0,"max_backoff_seconds":0,"manual_fallback":"use jurisdiction-specific reviewed welfare/report routes"},
+    {"source_id":"nl.nvwa.approved-food","cadence":"unknown","interval_hours":null,"stale_after_hours":null,"max_attempts":1,"backoff_seconds":0,"max_backoff_seconds":0,"manual_fallback":"use the private NVWA SOAP capture after schema and terms review"},
+    {"source_id":"nl.nvwa.welfare-enforcement","cadence":"annual/periodic","interval_hours":null,"stale_after_hours":null,"max_attempts":1,"backoff_seconds":0,"max_backoff_seconds":0,"manual_fallback":"retain the dated official HTML/PDF publication capture"},
+    {"source_id":"nl.cokz.dairy-eggs","cadence":"unknown","interval_hours":null,"stale_after_hours":null,"max_attempts":1,"backoff_seconds":0,"max_backoff_seconds":0,"manual_fallback":"obtain a reviewed COKZ register capture"},
+    {"source_id":"nl.rvo.ir","cadence":"unknown","interval_hours":null,"stale_after_hours":null,"max_attempts":1,"backoff_seconds":0,"max_backoff_seconds":0,"manual_fallback":"authorized RVO operator route only"},
+    {"source_id":"nl.kvk.hvds","cadence":"on-demand","interval_hours":null,"stale_after_hours":null,"max_attempts":1,"backoff_seconds":0,"max_backoff_seconds":0,"manual_fallback":"use the reviewed KVK API route"},
+    {"source_id":"nl.cbs.slaughter","cadence":"monthly","interval_hours":720,"stale_after_hours":960,"max_attempts":3,"backoff_seconds":1,"max_backoff_seconds":30,"manual_fallback":"use the public CBS OData endpoint"},
+    {"source_id":"nl.cbs.livestock","cadence":"twice-yearly","interval_hours":4380,"stale_after_hours":5760,"max_attempts":3,"backoff_seconds":1,"max_backoff_seconds":30,"manual_fallback":"use the public CBS OData endpoint"},
+    {"source_id":"eu.eurostat.nl-slaughter","cadence":"dataset-defined","interval_hours":null,"stale_after_hours":null,"max_attempts":1,"backoff_seconds":0,"max_backoff_seconds":0,"manual_fallback":"use the public Eurostat dissemination API"},
+    {"source_id":"nl.pdok.omgevingswet","cadence":"daily","interval_hours":24,"stale_after_hours":48,"max_attempts":3,"backoff_seconds":1,"max_backoff_seconds":30,"manual_fallback":"use the public PDOK OGC API"},
+    {"source_id":"nl.koop.local-permits","cadence":"daily","interval_hours":24,"stale_after_hours":48,"max_attempts":3,"backoff_seconds":1,"max_backoff_seconds":30,"manual_fallback":"use collection-specific KOOP SRU CQL"},
+    {"source_id":"eu.traces.approved-establishments","cadence":"unknown","interval_hours":null,"stale_after_hours":null,"max_attempts":1,"backoff_seconds":0,"max_backoff_seconds":0,"manual_fallback":"verify the NL TRACES publication route"}
   ]
 }
