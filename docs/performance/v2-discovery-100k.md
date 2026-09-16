@@ -54,3 +54,27 @@ that fails its expected-index check is a release-review input. The measurements
 do not establish capacity, cloud cost, or public-source completeness; those
 require a separate load test with an approved traffic model and deployment
 configuration.
+
+## Sprint 3 5k/25k query-plan capture (2026-09-16)
+
+On a fresh fully migrated PostGIS 16 / PostGIS 3.4 disposable database, the
+same row-free runner was executed with `--scales 5000 25000`. All 16 query
+observations passed their expected-index checks, returned at most 50 rows, and
+reported zero sequential-scan nodes. Aggregate execution times in milliseconds
+were:
+
+| Query shape | 5,000 | 25,000 |
+| --- | ---: | ---: |
+| list | 0.100 | 0.040 |
+| pagination | 0.010 | 0.009 |
+| filters | 0.046 | 0.044 |
+| text filter | 0.042 | 0.047 |
+| bbox | 0.039 | 0.060 |
+| radius | 9.658 | 7.150 |
+| detail | 0.011 | 0.011 |
+| graph-ready join | 0.133 | 0.118 |
+
+These are single-query local plan samples over temporary synthetic tables. They
+demonstrate query-shape/index behavior only and do not establish API latency,
+concurrency capacity, or production readiness. The companion API rehearsal and
+its limitations are recorded in `v2-api-load-rehearsal.md`.

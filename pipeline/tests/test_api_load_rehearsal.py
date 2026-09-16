@@ -14,6 +14,12 @@ SPEC.loader.exec_module(MODULE)
 
 
 class ApiLoadRehearsalTests(unittest.TestCase):
+    def test_requested_scale_is_supported_without_unbounded_seeding(self):
+        self.assertEqual(MODULE.MAX_SEED, 25_000)
+        self.assertEqual(MODULE.validate_observations(25_000), 25_000)
+        with self.assertRaises(ValueError):
+            MODULE.validate_observations(25_001)
+
     def test_levels_and_targets_are_bounded(self):
         self.assertEqual(MODULE.validate_levels([1, 4, 8, 16]), (1, 4, 8, 16))
         for levels in ([], [0], [17], [1, 1]):

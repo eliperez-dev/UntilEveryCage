@@ -27,7 +27,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-MAX_SEED = 20_000
+MAX_SEED = 25_000
 MAX_CONCURRENCY = 16
 MAX_REQUESTS_PER_LEVEL = 80
 QUERY_MIX = (
@@ -43,6 +43,12 @@ QUERY_MIX = (
 
 def deterministic_uuid(prefix: str, ordinal: int) -> str:
     return str(uuid.UUID(hex=hashlib.md5(f"{prefix}-{ordinal}".encode()).hexdigest()))
+
+
+def validate_observations(observations: int) -> int:
+    if not 1 <= observations <= MAX_SEED:
+        raise ValueError(f"observations must be between 1 and {MAX_SEED:,}")
+    return observations
 
 
 def validate_levels(levels: list[int]) -> tuple[int, ...]:
@@ -350,8 +356,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--timeout-ms", type=int, default=2_000)
     parser.add_argument("--json-output", type=Path)
     args = parser.parse_args(argv)
-    if not 1 <= args.observations <= MAX_SEED:
-        parser.error(f"observations must be between 1 and {MAX_SEED:,}")
+    try:
+        observations = validate_observations(args.observations)
+    except ValueError as exc:
+        parser.error(str(exc))
     if not 1 <= args.requests_per_level <= MAX_REQUESTS_PER_LEVEL:
         parser.error(f"requests-per-level must be between 1 and {MAX_REQUESTS_PER_LEVEL}")
     if not 100 <= args.timeout_ms <= 5_000:
@@ -361,7 +369,7 @@ def main(argv: list[str] | None = None) -> int:
         from pipeline.tests.e2e.fixture import E2EEnvironment
         env = E2EEnvironment().start()
         try:
-            report = run_rehearsal(env, args.observations, levels, args.requests_per_level, args.timeout_ms)
+            report = run_rehearsal(env, observations, levels, args.requests_per_level, args.timeout_ms)
         finally:
             env.stop()
     except (ValueError, RuntimeError) as exc:

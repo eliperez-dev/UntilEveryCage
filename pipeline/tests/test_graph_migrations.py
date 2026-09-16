@@ -20,7 +20,7 @@ class GraphMigrationContractTests(unittest.TestCase):
         positions = [migrations.index(name) for name in graph_migrations]
         self.assertEqual(positions, sorted(positions))
         self.assertEqual([migrations[position] for position in positions], graph_migrations)
-        self.assertEqual(migrations[-8:], [
+        self.assertEqual(migrations[-9:], [
             "026_graph_entities_crosswalks.sql",
             "027_graph_relationship_observations.sql",
             "028_graph_claims_support.sql",
@@ -29,6 +29,7 @@ class GraphMigrationContractTests(unittest.TestCase):
             "031_public_release_read_path_indexes.sql",
             "032_flatten_public_history_view.sql",
             "033_release_summary_component.sql",
+            "034_public_eligibility_join_indexes.sql",
         ])
 
     def test_entities_are_distinct_and_crosswalk_is_scoped(self):
