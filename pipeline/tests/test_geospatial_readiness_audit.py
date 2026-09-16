@@ -16,3 +16,18 @@ class GeospatialAuditTests(unittest.TestCase):
         self.assertEqual(r['funnel']['map_ready_under_current_rules'], 1); self.assertEqual(r['funnel']['privacy_restricted'], 1)
         payload=json.dumps(r); self.assertNotIn('Main 1', payload); self.assertNotIn('Private farmhouse', payload)
     def test_is_deterministic(self): self.assertEqual(audit(self.d, 2, 'x'), audit(self.d, 2, 'x'))
+
+    def test_v2_manifest_records_are_audited_separately(self):
+        run = self.d / 'runs' / 'dk.smiley'; (run / 'normalized').mkdir(parents=True)
+        (run / 'manifest.json').write_text(json.dumps({'source_id': 'dk.smiley', 'normalized_rows': 1}), encoding='utf8')
+        (run / 'normalized' / 'records.jsonl').write_text(json.dumps({'source_id': 'dk.smiley', 'normalized': {'establishment_id': 'secret', 'city': 'Town', 'coordinates': [12, 55]}}) + '\n', encoding='utf8')
+        r = audit(self.d, 10, 'x', v2_root=self.d / 'runs')
+        self.assertEqual(r['v1']['funnel']['total'], 3)
+        self.assertEqual(r['v2']['funnel']['total'], 1)
+        self.assertEqual(r['v2']['availability']['sources'][0]['source_id'], 'dk.smiley')
+        self.assertNotIn('secret', json.dumps(r))
+
+    def test_v2_absence_is_explicit(self):
+        r = audit(self.d, 2, 'x', v2_root=self.d / 'missing')
+        self.assertEqual(r['v2']['funnel']['total'], 0)
+        self.assertEqual(r['v2']['availability']['manifests_found'], 0)
