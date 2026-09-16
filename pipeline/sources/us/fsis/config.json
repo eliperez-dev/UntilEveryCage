@@ -1,0 +1,13 @@
+{
+  "source_id": "us.fsis",
+  "contract_version": "us-fsis-mpi-v1",
+  "adapter_version": "us-fsis-candidate-v1",
+  "authority": "USDA Food Safety and Inspection Service",
+  "directory_url": "https://www.fsis.usda.gov/inspection/establishments/meat-poultry-and-egg-product-inspection-directory",
+  "data_url": "https://www.fsis.usda.gov/inspection/establishments/meat-poultry-and-egg-product-inspection-directory",
+  "cadence": "weekly replacement; verify current edition before each run",
+  "format": "CSV directory and supplemental establishment-demographic CSV",
+  "release_allowed_by_default": false,
+  "privacy_default": "address-and-coordinate-review-required",
+  "category_policy": "preserve source activity vocabulary; do not collapse species, inspection systems, exemptions, or volume categories"
+}

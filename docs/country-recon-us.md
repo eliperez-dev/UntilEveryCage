@@ -38,3 +38,11 @@ publication decision.
 ## Blockers and recommendation
 
 No safe bounded private fetch was performed, so current hashes/bytes and deterministic reproduction are intentionally unavailable. FSIS is the strongest automation candidate because recurring CSV downloads and source descriptions are available. APHIS is secondary/manual/UI-mediated and should be an explicitly versioned, human-reviewed annual-report adapter or restricted manual input. Do not build a laboratory-supplier layer from APHIS records without a separately identified, licensed source. Existing Selenium/compiler code is not production-grade: obsolete selectors, no provenance manifest, quarantine, terms/schema/privacy gates, and unsafe duplicate handling.
+
+## 2026-09-15 recovery slice
+
+The private implementation is in `pipeline/sources/us/`. FSIS now has a profile-aware adapter and refresh command with a sanctioned operator-assisted capture contract. APHIS now has one adapter with explicit `registrations`, `annual_reports`, and `inspections` profiles. All three APHIS populations remain observations, not a laboratory or facility master, and no identity merge with FSIS is performed.
+
+The row-free V1 inventory and field/category crosswalk is [`docs/countries/us/v1-field-crosswalk.json`](countries/us/v1-field-crosswalk.json). It records 7,101 rows and 269 columns, maps identity/location/contact/administrative/slaughter/processing/inspection-system/derived fields, and records overlapping legacy field-presence counts. Since no authorized current FSIS artifact was available, current-versus-V1 reconciliation remains blocked; the existing exact-key crosswalk reports `not_observed`, never closure.
+
+Focused adapter, lifecycle, registry, status, and contract tests pass. No raw artifact, current source hash, or publication candidate from a real US source was created. Publication remains blocked pending authorized capture, terms, schema, privacy, coverage, review, and test-only import checks.
