@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.0",
+  "purpose": "Private bounded Australia source reconnaissance artifacts; not release inputs.",
+  "retrieved_at": "2026-09-16T00:17:32-07:00",
+  "artifacts": [
+    {
+      "source_id": "au.npi.facilities",
+      "url": "https://data.gov.au/data/dataset/043f58e0-a188-4458-b61c-04e5b540aea4/resource/f83cdee9-ebcb-4f24-941b-34bb2f0996cf/download/facilities.csv",
+      "local_path": "data/raw/australia/npi-facilities.csv",
+      "retrieved_at": "2026-09-16T07:15:42.2821369Z",
+      "content_type": "text/csv",
+      "byte_size": 3248241,
+      "sha256": "a0be4c37d588b391ea81baf240f675b2c9f3d9ee0210f9c451c7371eac11d6c7",
+      "row_count": 8140,
+      "unique_key": "facility_id",
+      "unique_key_count": 8140,
+      "schema": ["facility_id", "jurisdiction_code", "jurisdiction_facility_id", "registered_business_name", "facility_name", "abn", "acn", "street_address", "suburb", "state", "postcode", "latitude", "longitude", "primary_anzsic_class_code", "primary_anzsic_class_name", "main_activities", "facility_website", "first_report_year", "latest_report_year", "latest_report_id", "latest_report_url", "reports"],
+      "retention": "ignored private raw artifact; do not commit or publish"
+    },
+    {
+      "source_id": "au.sa.epa.licensed-activities",
+      "url": "https://data.sa.gov.au/data/dataset/8fdb86ff-d3d1-4f9e-85a5-bed4080d5ee1/resource/26e076f3-c37f-4089-8f28-3f7c9afd997e/download/topo_epa_activities_wgs84.geojson",
+      "local_path": "data/raw/australia/sa-epa-licensed-activities-2026-03-18.geojson",
+      "retrieved_at": "2026-09-16T00:15:42-07:00",
+      "content_type": "application/octet-stream (GeoJSON)",
+      "byte_size": 1613987,
+      "sha256": "53b908e02c67aaf9749bf517b4ed82c7e8af1dcc66fb87e0eb43ecb8bf12d7b0",
+      "feature_count": 4541,
+      "geometry_type": "Point",
+      "unique_key": "EPALICENCE",
+      "unique_key_count": 1695,
+      "schema": ["OBJECTID", "EPALICENCE", "ACTIVITY", "LICENCE_NAME", "PR_LINK", "geometry.coordinates"],
+      "retention": "ignored private raw artifact; CC BY 3.0 source terms still require project privacy/release review"
+    }
+  ],
+  "not_acquired": [
+    {
+      "source_id": "au.daff.export-dairy-processing",
+      "url": "https://www.agriculture.gov.au/sites/default/files/documents/dairy-export-registered-processing-establishments.pdf",
+      "reason": "Current page/PDF verified through primary-source inspection; direct download timed out in the execution environment."
+    }
+  ]
+}
