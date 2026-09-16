@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -20,8 +21,16 @@ STATES = ("source_supplied", "geocoded_exact", "approximate_coarse", "unresolved
 
 def _has_source_coordinate(record: dict[str, Any]) -> bool:
     coordinates = record.get("coordinates")
-    return isinstance(coordinates, dict) and all(
-        coordinates.get(key) is not None for key in ("latitude", "longitude")
+    if not isinstance(coordinates, dict):
+        return False
+    latitude, longitude = coordinates.get("latitude"), coordinates.get("longitude")
+    if any(isinstance(value, bool) or not isinstance(value, (int, float)) for value in (latitude, longitude)):
+        return False
+    return (
+        math.isfinite(latitude)
+        and math.isfinite(longitude)
+        and -90 <= latitude <= 90
+        and -180 <= longitude <= 180
     )
 
 
@@ -41,7 +50,9 @@ def coordinate_state(record: dict[str, Any]) -> str:
     status = geocode.get("status") or record.get("geocoding_status")
     precision = geocode.get("precision") or record.get("coordinate_precision")
     if status == "accepted" and geocode.get("result") is not None:
-        return "geocoded_exact" if precision in (None, "exact", "rooftop", "parcel") else "approximate_coarse"
+        if precision in {"exact", "rooftop", "parcel", "building", "address"}:
+            return "geocoded_exact"
+        return "approximate_coarse" if precision in {"city", "coarse", "approximate"} else "unresolved"
     if status in {"review_required", "approximate", "coarse"} or precision in {"city", "coarse", "approximate"}:
         return "approximate_coarse"
     return "unresolved"

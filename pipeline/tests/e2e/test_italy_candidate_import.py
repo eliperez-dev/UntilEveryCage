@@ -57,11 +57,14 @@ class ItalyCandidateImportE2E(unittest.TestCase):
    record=db.execute("SELECT source_record_id FROM uec.source_records WHERE source_id='it.853-2004' LIMIT 1").fetchone()[0]
    db.execute("INSERT INTO uec.record_access_events(source_record_id,action,reason_category,policy_version,maintainer) VALUES (%s,'public_access_revoked','privacy','ethics-v1','authorized-synthetic-operator')",(record,)); db.commit()
   base=f"http://127.0.0.1:{self.env.api_port}"; h={"X-UEC-Dev-Preview-Token":self.env.dev_preview_token}
+  for path in ("/api/dev/preview/test-release/locations?profile=official", "/api/dev/preview/test-release/discovery/facets?profile=official"):
+   with urllib.request.urlopen(urllib.request.Request(base+path,headers=h)) as r:
+    suppressed_surface=r.read().decode(); self.assertNotIn("Synthetic Italy Facility",suppressed_surface); self.assertNotIn("it.853-2004",suppressed_surface); self.assertNotIn(self.facility_id,suppressed_surface)
   with urllib.request.urlopen(urllib.request.Request(base+"/api/dev/preview/test-release/locations?profile=official",headers=h)) as r: self.assertEqual(json.loads(r.read())["data"],[])
   with self.assertRaises(urllib.error.HTTPError) as error: urllib.request.urlopen(urllib.request.Request(base+"/api/dev/preview/test-release/locations/"+self.facility_id+"?profile=official",headers=h))
   self.assertIn(error.exception.code,(404,410))
-  with urllib.request.urlopen(urllib.request.Request(base+"/api/dev/preview/test-release/discovery/facets?profile=official",headers=h)) as r: self.assertNotIn('"IT"',r.read().decode())
-  with urllib.request.urlopen(urllib.request.Request(base+"/api/dev/preview/test-release/locations.csv?profile=official",headers=h)) as r: self.assertEqual(len(r.read().decode().splitlines()),1)
+  with urllib.request.urlopen(urllib.request.Request(base+"/api/dev/preview/test-release/locations.csv?profile=official",headers=h)) as r:
+   csv_body=r.read().decode(); self.assertEqual(len(csv_body.splitlines()),1); self.assertNotIn("Synthetic Italy Facility",csv_body); self.assertNotIn("it.853-2004",csv_body); self.assertNotIn(self.facility_id,csv_body)
   with urllib.request.urlopen(base+"/api/v2/locations?profile=official") as r: self.assertEqual(json.loads(r.read())["data"],[])
 
 if __name__=="__main__": unittest.main()

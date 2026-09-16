@@ -14,7 +14,11 @@ SPEC.loader.exec_module(MODULE)
 class CoordinateCoverageTests(unittest.TestCase):
     def test_states_prioritize_restriction_and_distinguish_exact_from_coarse(self):
         self.assertEqual(MODULE.coordinate_state({"coordinates": {"latitude": 1, "longitude": 2}}), "source_supplied")
+        self.assertEqual(MODULE.coordinate_state({"coordinates": {"latitude": 0, "longitude": 0}}), "source_supplied")
+        self.assertEqual(MODULE.coordinate_state({"coordinates": {"latitude": 91, "longitude": 2}}), "unresolved")
+        self.assertEqual(MODULE.coordinate_state({"coordinates": {"latitude": True, "longitude": 2}}), "unresolved")
         self.assertEqual(MODULE.coordinate_state({"geocode": {"status": "accepted", "result": {"x": 2}, "precision": "exact"}}), "geocoded_exact")
+        self.assertEqual(MODULE.coordinate_state({"geocode": {"status": "accepted", "result": {"x": 2}}}), "unresolved")
         self.assertEqual(MODULE.coordinate_state({"geocode": {"status": "review_required", "result": {"x": 2}}}), "approximate_coarse")
         self.assertEqual(MODULE.coordinate_state({"geocode": {"status": "accepted", "result": {"x": 2}, "precision": "city"}}), "approximate_coarse")
         self.assertEqual(MODULE.coordinate_state({"geocode": {"status": "accepted", "result": {"x": 2}}, "restricted": True}), "restricted")

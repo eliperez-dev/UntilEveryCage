@@ -75,9 +75,20 @@ class PublicApiE2ETests(unittest.TestCase):
             self.assertEqual(body["data"], [])
 
     def test_invalid_pagination_is_rejected(self):
-        with self.assertRaises(urllib.error.HTTPError) as error:
-            self.get("/api/v2/locations?limit=invalid")
-        self.assertEqual(error.exception.code, 400)
+        for query in ("limit=invalid", "offset=invalid"):
+            with self.subTest(query=query), self.assertRaises(urllib.error.HTTPError) as error:
+                self.get(f"/api/v2/locations?{query}")
+            self.assertEqual(error.exception.code, 400)
+
+    def test_incomplete_or_conflicting_spatial_queries_are_rejected(self):
+        for query in (
+            "latitude=55",
+            "min_lat=54&min_lon=10&max_lat=53&max_lon=11",
+            "latitude=55&longitude=10&radius_km=0",
+        ):
+            with self.subTest(query=query), self.assertRaises(urllib.error.HTTPError) as error:
+                self.get(f"/api/v2/locations?{query}")
+            self.assertEqual(error.exception.code, 400)
 
     def test_profile_is_explicit_and_mismatch_does_not_leak_records(self):
         with self.assertRaises(urllib.error.HTTPError) as error:
