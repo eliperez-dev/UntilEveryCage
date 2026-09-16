@@ -132,11 +132,20 @@ def load_source_schedules(path: str | Path | None = None, *, registry_path: str 
     if registry_path is not None:
         from pipeline.source_registry import load_registry
 
-        registry_ids = {item["source_id"] for item in load_registry(Path(registry_path))["sources"]}
+        registry = load_registry(Path(registry_path))
+        registry_ids = {item["source_id"] for item in registry["sources"]}
         missing = sorted(registry_ids - schedules.keys())
         extra = sorted(schedules.keys() - registry_ids)
-        if missing or extra:
+        if extra:
             raise SourceOperationsError(f"schedule/source registry mismatch; missing={missing}, extra={extra}")
+        # Reference-only registry entries still need an explicit health row.
+        # An unknown cadence is not acquisition authorization.
+        for source_id in missing:
+            schedules[source_id] = SourceSchedule(
+                source_id=source_id, cadence="unknown", interval_hours=None,
+                stale_after_hours=None,
+                manual_fallback="source-specific terms and an authorized acquisition route remain unresolved",
+            )
     return schedules
 
 
