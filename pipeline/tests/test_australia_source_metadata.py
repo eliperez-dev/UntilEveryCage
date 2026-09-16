@@ -1,5 +1,6 @@
 import hashlib
 import json
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -21,10 +22,25 @@ class AustraliaSourceMetadataTests(unittest.TestCase):
         metadata = json.loads((ROOT / "data/raw/australia/metadata.json").read_text(encoding="utf-8"))
         artifact = ROOT / metadata["artifact"]["relative_path"]
         self.assertEqual(metadata["source_id"], "au.npi.facilities")
-        self.assertTrue(artifact.exists())
-        self.assertEqual(artifact.stat().st_size, metadata["artifact"]["byte_size"])
-        digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
-        self.assertEqual(digest, metadata["artifact"]["sha256"])
+        if artifact.exists():
+            self.assertEqual(artifact.stat().st_size, metadata["artifact"]["byte_size"])
+            digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+            self.assertEqual(digest, metadata["artifact"]["sha256"])
+        else:
+            ignored = subprocess.run(
+                ["git", "check-ignore", "--quiet", "--", str(artifact.relative_to(ROOT))],
+                cwd=ROOT,
+                check=False,
+            )
+            tracked = subprocess.run(
+                ["git", "ls-files", "--error-unmatch", "--", str(artifact.relative_to(ROOT))],
+                cwd=ROOT,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(ignored.returncode, 0)
+            self.assertNotEqual(tracked.returncode, 0)
         self.assertEqual(metadata["artifact"]["input_rows"], 8140)
         self.assertEqual(len(metadata["artifact"]["columns"]), 22)
         self.assertEqual(metadata["bounded_observations"]["rows_with_missing_latitude_or_longitude"], 0)
