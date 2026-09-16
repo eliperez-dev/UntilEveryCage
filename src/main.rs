@@ -100,6 +100,7 @@ pub fn app(state: uec_api::ApiState, proxy: private_environment::ProxyConfig) ->
             },
             rate_limit,
         ))
+        .layer(axum::middleware::from_fn(request_observability))
         .layer(cors)
         .with_state(state)
 }
@@ -289,6 +290,58 @@ async fn rate_limit(
             .unwrap();
     }
     next.run(request).await
+}
+
+fn request_route_class(path: &str) -> &'static str {
+    match path {
+        "/health/live" | "/health/ready" | "/health/diagnostics" => "health",
+        "/api/v2/locations" => "v2_locations_list",
+        "/api/v2/locations.csv" => "v2_locations_export",
+        "/api/v2/discovery/filters" => "v2_discovery_filters",
+        "/api/v2/discovery/facets" => "v2_discovery_facets",
+        "/api/v2/releases/manifest" => "v2_release_manifest",
+        path if path.starts_with("/api/v2/locations/") => "v2_location_detail",
+        path if path.starts_with("/api/v2/") => "v2_other",
+        path if path.starts_with("/api/") => "api_other",
+        _ => "other",
+    }
+}
+
+fn request_log_payload(
+    method: &Method,
+    path: &str,
+    status: StatusCode,
+    elapsed: Duration,
+) -> serde_json::Value {
+    let elapsed_ms = elapsed.as_millis().min(60_000) as u64;
+    let outcome = match status.as_u16() {
+        200..=399 => "success",
+        400..=499 => "client_error",
+        _ => "server_error",
+    };
+    serde_json::json!({
+        "event": "http_request",
+        "method": method.as_str(),
+        "route_class": request_route_class(path),
+        "status": status.as_u16(),
+        "outcome": outcome,
+        "latency_ms": elapsed_ms,
+    })
+}
+
+async fn request_observability(
+    request: Request<axum::body::Body>,
+    next: axum::middleware::Next,
+) -> Response<axum::body::Body> {
+    let method = request.method().clone();
+    let path = request.uri().path().to_owned();
+    let started = Instant::now();
+    let response = next.run(request).await;
+    println!(
+        "{}",
+        request_log_payload(&method, &path, response.status(), started.elapsed())
+    );
+    response
 }
 
 async fn liveness() -> impl IntoResponse {
@@ -568,7 +621,13 @@ async fn main() {
 
 #[cfg(test)]
 mod config_tests {
-    use super::{parse_cors_origins, preview_config, validate_runtime};
+    use axum::http::{Method, StatusCode};
+    use std::time::Duration;
+
+    use super::{
+        parse_cors_origins, preview_config, request_log_payload, request_route_class,
+        validate_runtime,
+    };
     #[test]
     fn development_allows_local_defaults() {
         assert_eq!(validate_runtime("development", None, "8000"), Ok(8000));
@@ -666,6 +725,29 @@ mod config_tests {
             preview_config("development", None, "127.0.0.1", None, None, None).unwrap(),
             None
         );
+    }
+
+    #[test]
+    fn request_observability_uses_safe_bounded_route_fields() {
+        let payload = request_log_payload(
+            &Method::GET,
+            "/api/v2/locations/synthetic-facility-id?latitude=51.5&longitude=-0.1",
+            StatusCode::TOO_MANY_REQUESTS,
+            Duration::from_secs(90_000),
+        );
+        assert_eq!(
+            request_route_class("/api/v2/locations/synthetic-id"),
+            "v2_location_detail"
+        );
+        assert_eq!(payload["route_class"], "v2_location_detail");
+        assert_eq!(payload["status"], 429);
+        assert_eq!(payload["outcome"], "client_error");
+        assert_eq!(payload["latency_ms"], 60_000);
+        let serialized = payload.to_string();
+        assert!(!serialized.contains("synthetic-facility-id"));
+        assert!(!serialized.contains("latitude"));
+        assert!(!serialized.contains("longitude"));
+        assert!(!serialized.contains("query"));
     }
 }
 

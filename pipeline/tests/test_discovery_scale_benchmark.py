@@ -55,6 +55,14 @@ class DiscoveryScaleBenchmarkTests(unittest.TestCase):
         self.assertNotIn("canonical_name", json.dumps(report).lower())
         self.assertNotIn("source_record", json.dumps(report).lower())
 
+    def test_projection_support_migration_is_additive_and_latest_safe(self):
+        migration = (ROOT / "migrations" / "030_discovery_projection_support_indexes.sql").read_text(encoding="utf-8").lower()
+        self.assertIn("geocode_results_discovery_latest_idx", migration)
+        self.assertIn("city_reference_points_discovery_lookup_idx", migration)
+        self.assertIn("queried_at desc, geocode_result_id desc", migration)
+        self.assertNotIn("drop table", migration)
+        self.assertNotIn("drop index", migration)
+
 
 if __name__ == "__main__":
     unittest.main()
