@@ -44,7 +44,10 @@ test('community direct link opens in community mode with persistent record conte
 
 test('first-page-only search reports uncertainty instead of a global no-results claim', async ({ page }) => {
   await mockMetadata(page);
-  await page.route('**/api/v2/locations**', route => route.fulfill({ json: list('official', [row()], secondId) }));
+  await page.route('**/api/v2/locations**', route => {
+    const q = new URL(route.request().url()).searchParams.get('q');
+    return route.fulfill({ json: q ? list('official', [], secondId) : list('official', [row()], secondId) });
+  });
   await page.goto('./?mode=local-v2#/');
   await expect(page.getByText('Only the first page is loaded.', { exact: false })).toBeVisible();
   await page.getByLabel('Search locations').fill('later record');
@@ -69,14 +72,20 @@ test('late list response cannot replace a newer community selection', async ({ p
   await expect(page.getByRole('note')).toContainText('Not verified');
 });
 
-test('search filters the loaded page without refetching or claiming global completeness', async ({ page }) => {
+test('search is evaluated by the server without claiming global completeness', async ({ page }) => {
   await mockMetadata(page);
   let listRequests = 0;
-  await page.route('**/api/v2/locations**', async route => { listRequests += 1; await route.fulfill({ json: list('official', [row(firstId, 'Current filtered result')], secondId) }); });
+  let lastQuery = '';
+  await page.route('**/api/v2/locations**', async route => {
+    listRequests += 1;
+    lastQuery = new URL(route.request().url()).searchParams.get('q') ?? '';
+    await route.fulfill({ json: list('official', [row(firstId, 'Current filtered result')], secondId) });
+  });
   await page.goto('./?mode=local-v2#/');
   await page.getByLabel('Search locations').fill('current');
   await expect(page.getByRole('heading', { name: 'Current filtered result' })).toBeVisible();
-  expect(listRequests).toBe(1);
+  expect(listRequests).toBe(2);
+  expect(lastQuery).toBe('current');
   await expect(page).toHaveURL(/q=current/);
 });
 
