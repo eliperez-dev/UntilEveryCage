@@ -135,6 +135,31 @@ class E2EEnvironment:
             self.stop()
             raise
 
+    def wait_for_listening(self, timeout=20):
+        """Wait for the backend socket without requiring schema readiness."""
+        deadline = time.monotonic() + timeout
+        last_error = None
+        while time.monotonic() < deadline:
+            if self.backend and self.backend.poll() is not None:
+                if self.backend_log:
+                    self.backend_log.flush()
+                    log_path = Path(self.backend_log.name)
+                    log_text = log_path.read_text(encoding="utf-8")
+                else:
+                    log_text = ""
+                raise RuntimeError(
+                    f"backend exited before listening; exit_code={self.backend.returncode}\n{log_text}"
+                )
+            try:
+                with socket.create_connection(("127.0.0.1", self.api_port), timeout=1):
+                    return
+            except OSError as exc:
+                last_error = repr(exc)
+                time.sleep(.1)
+        raise RuntimeError(
+            f"backend did not start listening within {timeout}s; last_error={last_error}"
+        )
+
     def stop(self):
         if self.backend and self.backend.poll() is None:
             if os.name == "nt":

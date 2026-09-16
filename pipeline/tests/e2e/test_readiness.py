@@ -14,6 +14,8 @@ class ReadinessE2ETests(unittest.TestCase):
         try:
             migrations = sorted((ROOT / "pipeline/migrations").glob("*.sql"))
             env.start(migration_files=migrations[:1], wait_for_ready=False)
+            env.wait_for_listening()
+            self.assertIsNone(env.backend.poll(), "backend must stay alive to report schema readiness")
             try:
                 urllib.request.urlopen(f"http://127.0.0.1:{env.api_port}/health/ready", timeout=2)
             except urllib.error.HTTPError as response:
