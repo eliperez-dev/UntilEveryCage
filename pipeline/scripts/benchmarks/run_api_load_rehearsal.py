@@ -75,7 +75,18 @@ def seed_public_projection(connection: Any, count: int) -> str:
     release_id = "load-promoted"
     connection.execute("INSERT INTO uec.sources (source_id,country_code,name,official_url,access_method) VALUES ('load.synthetic','DK','Synthetic load source','https://example.invalid/load','fixture') ON CONFLICT DO NOTHING")
     connection.execute("INSERT INTO uec.releases (release_id,status,ruleset_version,profile,test_only,summary) VALUES ('load-promoted','promoted','load-v1','official',false,'{}') ON CONFLICT DO NOTHING")
-    connection.execute("INSERT INTO uec.release_manifests (release_id,manifest,manifest_sha256) VALUES ('load-promoted',jsonb_build_object('manifest_version','load-v1','profile','official','release_id','load-promoted','ruleset_version','load-v1','eligible_record_count',%s),repeat('a',64)) ON CONFLICT DO NOTHING", (count,))
+    manifest = {
+        "eligible_record_count": count,
+        "manifest_version": "load-v1",
+        "profile": "official",
+        "release_id": release_id,
+        "ruleset_version": "load-v1",
+    }
+    encoded_manifest = json.dumps(manifest, sort_keys=True, separators=(",", ":"))
+    connection.execute(
+        "INSERT INTO uec.release_manifests (release_id,manifest,manifest_sha256) VALUES (%s,%s::jsonb,%s) ON CONFLICT DO NOTHING",
+        (release_id, encoded_manifest, hashlib.sha256(encoded_manifest.encode("utf-8")).hexdigest()),
+    )
     connection.execute("INSERT INTO uec.city_reference_points (country_code,city_name,reference_location,reference_source,source_retrieved_at,source_reference_id) VALUES ('DK','Loadville',ST_SetSRID(ST_Point(-5,50),4326)::geography,'https://example.invalid/load-city',TIMESTAMPTZ '2026-01-01 00:00:00+00','load-city') ON CONFLICT DO NOTHING")
     connection.execute("""
         INSERT INTO uec.raw_artifacts (artifact_id,storage_key,sha256,byte_size,retrieved_at)

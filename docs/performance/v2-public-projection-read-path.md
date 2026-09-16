@@ -5,8 +5,9 @@
 Keep the public projection live and release-scoped, with the flattened view in
 migration 032. It evaluates publication review, current suppression, profile
 eligibility, geocode display precision, and lifecycle state at read time. Do
-not add a request cache or a materialized public surface in this performance
-slice.
+not add a request cache or wire a materialized public surface into the API in
+this performance slice. A disposable release-built component prototype is
+implemented behind a candidate view for invariant testing only.
 
 ## Evidence
 
@@ -28,6 +29,20 @@ summary and eligibility work still exceeds the current 2-second rehearsal
 budget. A candidate that allowed the summary CTE to inline was measured and
 rejected because the 5,000-row facets plan increased from about 4,501 ms to
 6,622 ms.
+
+The prototype builder is reproducible with:
+
+```powershell
+python pipeline/scripts/maintenance/build_release_summary_component.py RELEASE_ID
+```
+
+It stores release-membership observation facts, not a frozen current-public
+decision. The candidate summary joins the exact release manifest checksum and
+re-evaluates current review, profile, and suppression state on every read.
+At 1,000 rows its candidate summary took about 406 ms versus 121 ms for the
+current live summary; at 5,000 rows it took about 9,984 ms versus 3,044 ms.
+The prototype therefore proves the safety protocol but does not justify API
+integration or a production capacity claim.
 
 ## Alternatives considered
 

@@ -15,6 +15,7 @@ $core = @(
 )
 $extended = @(
   'pipeline.tests.e2e.test_suppression_lifecycle',
+  'pipeline.tests.e2e.test_release_summary_component',
   'pipeline.tests.e2e.test_italy_candidate_import',
   'pipeline.tests.e2e.test_germany_belgium_candidate_import'
 )

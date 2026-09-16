@@ -18,11 +18,17 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[3]
 LOAD_SCRIPT = ROOT / "pipeline" / "scripts" / "benchmarks" / "run_api_load_rehearsal.py"
+BUILD_SCRIPT = ROOT / "pipeline" / "scripts" / "maintenance" / "build_release_summary_component.py"
 SPEC = importlib.util.spec_from_file_location("run_api_load_rehearsal", LOAD_SCRIPT)
 assert SPEC and SPEC.loader
 LOAD = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = LOAD
 SPEC.loader.exec_module(LOAD)
+BUILD_SPEC = importlib.util.spec_from_file_location("build_release_summary_component", BUILD_SCRIPT)
+assert BUILD_SPEC and BUILD_SPEC.loader
+BUILD = importlib.util.module_from_spec(BUILD_SPEC)
+sys.modules[BUILD_SPEC.name] = BUILD
+BUILD_SPEC.loader.exec_module(BUILD)
 
 OLD_FACETS = """
 SELECT country_code, classification_category, display_precision,
@@ -203,6 +209,11 @@ WHERE release_id = 'load-promoted'
 ORDER BY facility_id
 LIMIT 51
 """,
+    "component_summary_candidate": """
+SELECT count(*)
+FROM uec.public_facility_observation_summary_component_candidate
+WHERE release_id = 'load-promoted'
+""",
 }
 
 
@@ -273,6 +284,8 @@ def run(observations: int, include_components: bool = False) -> dict[str, Any]:
     try:
         with psycopg.connect(env.database_url) as connection:
             LOAD.seed_public_projection(connection, observations)
+        BUILD.build(env.database_url, "load-promoted")
+        with psycopg.connect(env.database_url) as connection:
             queries = {
                 "facets_before_nested": OLD_FACETS,
                 "facets_after_flattened": NEW_FACETS,
