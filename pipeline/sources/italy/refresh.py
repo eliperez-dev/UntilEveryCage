@@ -10,7 +10,9 @@ import json
 from pathlib import Path
 
 from pipeline.common.orchestrator import run_private_lifecycle
+from pipeline.common.review import write_operator_review_packet
 from pipeline.contracts.adapter_contract import SourceArtifact
+from pipeline.contracts.candidate_handoff import write_handoff
 from pipeline.contracts.source_lifecycle import atomic_json
 
 from .acquire import CATALOG_URL, DEFAULT_MAX_BYTES, fetch
@@ -88,6 +90,17 @@ def refresh(
         rights_caveat=facts["rights_caveat"], privacy_caveat=facts["privacy_caveat"], coverage=facts["coverage"],
     )
     status = run_private_lifecycle(input_path, run_dir, artifact, adapter, previous_normalized_path=previous_normalized, review_blockers=REVIEW_BLOCKERS)
+    if status.get("status") == "candidate-ready":
+        run_root = Path(status["run_dir"])
+        rows = [json.loads(line) for line in (run_root / "normalized" / "records.jsonl").read_text(encoding="utf-8").splitlines() if line]
+        write_handoff(run_root / "candidate-handoff", rows, artifact, source_id=adapter.source_id)
+        write_operator_review_packet(
+            run_root,
+            status["manifest"],
+            source_scope=status["manifest"]["coverage"],
+            checks=("review candidate-handoff/normalized/records.jsonl in restricted staging", "confirm no public release or API promotion", "review separate 1069/2009 coverage and source terms"),
+            blockers=("candidate is private and human-gated", "address, tax, and coordinate publication blocked"),
+        )
     # Keep catalog/response/terms evidence beside the lifecycle run without
     # copying row payloads into QA, health, or API-shaped artifacts.
     if metadata:

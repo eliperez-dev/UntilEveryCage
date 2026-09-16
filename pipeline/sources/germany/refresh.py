@@ -9,7 +9,9 @@ from typing import Any
 
 from pipeline.common.acquisition import AcquisitionError, fetch_source, utc_now
 from pipeline.common.orchestrator import run_private_lifecycle
+from pipeline.common.review import write_operator_review_packet
 from pipeline.contracts.adapter_contract import SourceArtifact
+from pipeline.contracts.candidate_handoff import write_handoff
 from pipeline.contracts.source_lifecycle import atomic_json
 
 from .adapter import CONFIG, BltuAdapter
@@ -59,6 +61,17 @@ def refresh(*, run_dir: str | Path, raw_path: str | Path | None = None, fetch: b
     raw = input_path.read_bytes()
     artifact = SourceArtifact(source_url=str(metadata.get("final_url") or CONFIG["source_url"]), retrieved_at_utc=str(metadata["retrieved_at_utc"]), sha256=hashlib.sha256(raw).hexdigest(), byte_size=len(raw), publication_date=metadata.get("publication_date"), effective_date=metadata.get("effective_date"), code_version=adapter.adapter_version, config_version=adapter.schema_version, rights_caveat=CONFIG["terms"], privacy_caveat=metadata.get("privacy_caveat"), coverage=CONFIG["coverage"], redirects=tuple(metadata.get("redirects") or ()))
     lifecycle = run_private_lifecycle(input_path, Path(run_dir) / "lifecycle", artifact, adapter, health_as_of_utc=str(metadata["retrieved_at_utc"]), previous_normalized_path=previous_normalized, review_blockers=REVIEW_BLOCKERS)
+    if lifecycle.get("status") == "candidate-ready":
+        run_root = Path(lifecycle["run_dir"])
+        rows = [json.loads(line) for line in (run_root / "normalized" / "records.jsonl").read_text(encoding="utf-8").splitlines() if line]
+        write_handoff(run_root / "candidate-handoff", rows, artifact, source_id=adapter.source_id)
+        write_operator_review_packet(
+            run_root,
+            lifecycle["manifest"],
+            source_scope=lifecycle["manifest"]["coverage"],
+            checks=("review candidate-handoff/normalized/records.jsonl in restricted staging", "confirm the BVL export request/session evidence", "confirm no public release or API promotion"),
+            blockers=("candidate is private and human-gated", "dataset-specific reuse and address/coordinate review pending"),
+        )
     manifest = lifecycle.get("manifest") or {}
     report = {"source_id": CONFIG["source_id"], "source_url": artifact.source_url, "portal_url": CONFIG["portal_url"], "retrieved_at_utc": artifact.retrieved_at_utc, "sha256": artifact.sha256, "byte_size": artifact.byte_size, "input_rows": manifest.get("input_rows"), "normalized_rows": manifest.get("normalized_rows"), "quarantined_rows": manifest.get("quarantined_rows"), "schema_status": manifest.get("schema_status"), "schema_fingerprint": manifest.get("schema_fingerprint"), "drift_alarms": [], "disappearance_semantics": "not-observed; never inferred as closure", "geocoding": "disabled", "release_state": "not-created", "publication_state": "private-candidate", "publication_eligibility": "blocked", "lifecycle_status": lifecycle.get("status"), "lifecycle_run_dir": lifecycle.get("run_dir")}
     atomic_json(Path(run_dir) / "refresh.json", report)

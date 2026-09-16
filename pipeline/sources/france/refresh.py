@@ -18,6 +18,18 @@ from pipeline.contracts.source_lifecycle import atomic_json
 from .acquire import ADAPTERS, fetch_section
 
 
+def _local_metadata(path: Path, retrieved: str) -> dict[str, Any]:
+    """Reuse a verified acquisition sidecar when staging a fetched artifact."""
+    sidecar = path.parent / "acquisition-metadata.json"
+    raw = path.read_bytes()
+    digest = hashlib.sha256(raw).hexdigest()
+    if sidecar.is_file():
+        retained = json.loads(sidecar.read_text(encoding="utf-8"))
+        if retained.get("sha256") == digest and int(retained.get("byte_size", -1)) == len(raw):
+            return retained
+    return {"acquisition_method": "assisted_local_capture", "source_id": "", "artifact_path": str(path), "sha256": digest, "byte_size": len(raw), "retrieved_at_utc": retrieved}
+
+
 def refresh(*, section: str, run_dir: str | Path, raw_path: str | Path | None = None, fetch: bool = False, terms_review_path: str | Path | None = None, output_root: str | Path = "data/raw", run_id: str | None = None, retrieved_at_utc: str | None = None, timeout_seconds: float = 60.0, max_bytes: int = 32 * 1024 * 1024) -> dict[str, Any]:
     if fetch == (raw_path is not None): raise ValueError("specify exactly one of --fetch or --raw")
     adapter = ADAPTERS[section](); retrieved = retrieved_at_utc or utc_now()
@@ -29,8 +41,9 @@ def refresh(*, section: str, run_dir: str | Path, raw_path: str | Path | None = 
     else:
         source = Path(raw_path).resolve()
         if not source.is_file(): raise ValueError("--raw artifact must exist")
-        raw = source.read_bytes(); artifact = SourceArtifact(adapter.source_url, retrieved, hashlib.sha256(raw).hexdigest(), len(raw), code_version=adapter.adapter_version, config_version=adapter.schema_version, rights_caveat="assisted capture; file-specific terms remain pending", privacy_caveat="private staging; privacy review pending", coverage=f"France DGAL Regulation (EC) 853/2004 Section {section}; source rows only")
-        metadata = {"acquisition_method": "assisted_local_capture", "source_id": adapter.source_id, "artifact_path": str(source), "sha256": artifact.sha256, "byte_size": artifact.byte_size, "retrieved_at_utc": retrieved, "requested_url": adapter.source_url, "final_url": adapter.source_url}
+        metadata = _local_metadata(source, retrieved)
+        metadata.update({"source_id": adapter.source_id, "requested_url": metadata.get("requested_url") or adapter.source_url, "final_url": metadata.get("final_url") or adapter.source_url})
+        raw = source.read_bytes(); artifact = SourceArtifact(str(metadata["final_url"]), str(metadata.get("retrieved_at_utc") or retrieved), str(metadata["sha256"]), int(metadata["byte_size"]), effective_date=metadata.get("effective_date"), publication_date=metadata.get("publication_date"), code_version=adapter.adapter_version, config_version=adapter.schema_version, rights_caveat=metadata.get("rights_caveat") or "assisted capture; file-specific terms remain pending", privacy_caveat=metadata.get("privacy_caveat") or "private staging; privacy review pending", coverage=metadata.get("coverage") or f"France DGAL Regulation (EC) 853/2004 Section {section}; source rows only", redirects=tuple(metadata.get("redirects") or ()))
     root = Path(run_dir); atomic_json(root / "acquisition-metadata.json", metadata)
     lifecycle = run_private_lifecycle(source, root / "lifecycle", artifact, adapter, health_as_of_utc=retrieved)
     if lifecycle.get("status") == "candidate-ready":

@@ -15,7 +15,9 @@ from typing import Any
 
 from pipeline.common.acquisition import AcquisitionError, fetch_source, utc_now
 from pipeline.common.orchestrator import run_private_lifecycle
+from pipeline.common.review import write_operator_review_packet
 from pipeline.contracts.adapter_contract import SourceArtifact
+from pipeline.contracts.candidate_handoff import write_handoff
 from pipeline.contracts.source_lifecycle import atomic_json
 
 from .adapter import CONFIG, BelgiumOperatorsAdapter
@@ -70,6 +72,17 @@ def refresh(*, run_dir: str | Path, operators_path: str | Path | None = None, ac
     code_artifact = _artifact(code_meta, default_url=CONFIG["activity_code_url"], default_coverage="FASFC LAP/PAP codebook; not a facility list")
     adapter = BelgiumOperatorsAdapter(code_path, code_artifact)
     lifecycle = run_private_lifecycle(operator_path, root / "lifecycle", operator_artifact, adapter, health_as_of_utc=retrieved, previous_normalized_path=previous_normalized, review_blockers=REVIEW_BLOCKERS)
+    if lifecycle.get("status") == "candidate-ready":
+        run_root = Path(lifecycle["run_dir"])
+        rows = [json.loads(line) for line in (run_root / "normalized" / "records.jsonl").read_text(encoding="utf-8").splitlines() if line]
+        write_handoff(run_root / "candidate-handoff", rows, operator_artifact, source_id=adapter.source_id)
+        write_operator_review_packet(
+            run_root,
+            lifecycle["manifest"],
+            source_scope=lifecycle["manifest"]["coverage"],
+            checks=("review candidate-handoff/normalized/records.jsonl in restricted staging", "review operator and LAP/PAP codebook provenance together", "confirm no public release or API promotion"),
+            blockers=("candidate is private and human-gated", "CC BY attribution and address/coordinate privacy review pending"),
+        )
     manifest = lifecycle.get("manifest") or {}
     report = {"source_id": CONFIG["source_id"], "source_url": operator_artifact.source_url, "retrieved_at_utc": operator_artifact.retrieved_at_utc, "operator_sha256": operator_artifact.sha256, "activity_code_sha256": code_artifact.sha256, "input_rows": manifest.get("input_rows"), "normalized_rows": manifest.get("normalized_rows"), "quarantined_rows": manifest.get("quarantined_rows"), "operator_schema_fingerprint": manifest.get("operator_schema_fingerprint"), "activity_code_schema_fingerprint": (manifest.get("activity_codebook") or {}).get("schema_fingerprint"), "drift_alarms": [], "disappeared_not_observed_count": 0, "disappearance_semantics": "not-observed; never inferred as closure", "geocoding": "disabled", "release_state": "not-created", "publication_state": "private-candidate", "publication_eligibility": "blocked", "lifecycle_status": lifecycle.get("status"), "lifecycle_run_dir": lifecycle.get("run_dir"), "previous_normalized_supplied": previous_normalized is not None}
     atomic_json(root / "refresh.json", report)

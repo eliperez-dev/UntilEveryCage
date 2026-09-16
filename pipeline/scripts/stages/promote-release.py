@@ -50,6 +50,12 @@ def inventory_artifacts(paths: list[Path], no_distributed_artifacts: bool) -> li
     return sorted(artifacts, key=lambda artifact: artifact["name"])
 
 
+def utc_iso(value) -> str:
+    if value.tzinfo is None:
+        raise ValueError("database timestamp must include a timezone")
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
 def promote(database_url: str, release_id: str, artifacts: list[dict]) -> dict:
     with psycopg.connect(database_url) as connection:
         with connection.transaction():
@@ -83,10 +89,54 @@ def promote(database_url: str, release_id: str, artifacts: list[dict]) -> dict:
                 WHERE m.release_id=%s AND m.default_visible
                   AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted x WHERE x.source_record_id=sr.source_record_id)
             """, (release_id,)).fetchone()
+            coverage_rows = connection.execute("""
+                SELECT sr.source_id, count(*)::int, min(artifact.retrieved_at), max(artifact.retrieved_at),
+                       CASE WHEN source.attribution IS NULL OR btrim(source.attribution) = '' THEN 'unknown' ELSE 'attribution_required' END
+                FROM uec.release_members m
+                JOIN uec.observations o ON o.observation_id=m.observation_id
+                JOIN uec.source_records sr ON sr.source_record_id=o.source_record_id
+                JOIN uec.raw_artifacts artifact ON artifact.artifact_id=sr.artifact_id
+                JOIN uec.sources source ON source.source_id=sr.source_id
+                WHERE m.release_id=%s AND m.default_visible
+                  AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted x WHERE x.source_record_id=sr.source_record_id)
+                GROUP BY sr.source_id, source.attribution ORDER BY sr.source_id
+            """, (release_id,)).fetchall()
             created_at = connection.execute("SELECT now()").fetchone()[0]
             if created_at.tzinfo is None:
                 raise ValueError("database manifest creation time must include a timezone")
-            manifest = {"manifest_version": "v1", "release_id": release_id, "profile": target[1], "ruleset_version": target[2], "eligible_record_count": summary[0], "source_ids": summary[1], "created_at": created_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"), "distributed_artifacts": artifacts}
+            source_coverage = [
+                {"source_id": source_id, "row_count": row_count, "retrieved_at": {"first": utc_iso(first), "last": utc_iso(last)}, "rights_status": rights_status}
+                for source_id, row_count, first, last, rights_status in coverage_rows
+            ]
+            retrieved_at = min((item["retrieved_at"]["first"] for item in source_coverage), default=utc_iso(created_at))
+            manifest = {
+                "manifest_version": "uec-release-manifest-v2",
+                "data_product_version": "uec-public-data-product-v1",
+                "release_id": release_id,
+                "profile": target[1],
+                "release_status": "promoted",
+                "test_only": False,
+                "ruleset_version": target[2],
+                "schema_version": "uec-location-projection-v1",
+                "generated_at": utc_iso(created_at),
+                "retrieved_at": retrieved_at,
+                "source_ids": summary[1],
+                "source_coverage": source_coverage,
+                "eligible_record_count": summary[0],
+                "row_counts": {"eligible_rows": summary[0], "packaged_rows": summary[0]},
+                "checksums": {"algorithm": "sha256", "distributed_artifacts": artifacts},
+                "review_state": "privacy-screened; community claims may be unreviewed" if target[1] == "community" else "project-approved and privacy-screened",
+                "publication_state": "project-published",
+                "limitations": [
+                    "Facility projection rows are not animal counts or a complete story-wide denominator.",
+                    "Coordinates and addresses remain subject to current privacy and coarse-location rules.",
+                    "Source origin and source availability do not certify factual accuracy or current operation.",
+                    "Artifact checksums detect byte changes but do not establish factual accuracy or reuse rights.",
+                ],
+                "supersedes": None,
+                "created_at": utc_iso(created_at),
+                "distributed_artifacts": artifacts,
+            }
             # Python's sorted-key JSON is the canonical representation shared by consumers.
             canonical = canonical_json(manifest)
             digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()

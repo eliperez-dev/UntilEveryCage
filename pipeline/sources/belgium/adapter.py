@@ -179,20 +179,20 @@ class BelgiumOperatorsAdapter:
         quarantined: list[dict[str, Any]] = []
         anomalies: Counter[str] = Counter()
         seen: Counter[tuple[str | None, str | None]] = Counter()
-        prepared: list[tuple[int, dict[str, str | None], tuple[str, ...]]] = []
+        prepared: list[tuple[int, dict[str, str | None], tuple[str, ...], int]] = []
         row_lengths: Counter[str] = Counter()
         for line, values in enumerate(rows, start=2):
             raw = _row_values(headers, values)
             row_lengths[str(len(values))] += 1
             codes = _split_codes(_clean(raw.get(fields["activity_code"])))
-            prepared.append((line, raw, codes))
+            prepared.append((line, raw, codes, len(values)))
             for code in codes:
                 seen[(_clean(raw.get(fields["establishment_id"])), code)] += 1
-        for line, raw, codes in prepared:
+        for line, raw, codes, value_count in prepared:
             establishment_id = _clean(raw.get(fields["establishment_id"]))
             name = _clean(raw.get(fields["name"]))
             reasons: list[str] = []
-            if len(values) != len(headers) or any(value is None for value in raw.values()):
+            if value_count != len(headers) or any(value is None for value in raw.values()):
                 reasons.append("malformed_row")
             if not establishment_id:
                 reasons.append("missing_establishment_id")

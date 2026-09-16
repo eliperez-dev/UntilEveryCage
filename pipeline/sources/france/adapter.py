@@ -16,16 +16,16 @@ from pipeline.contracts.source_lifecycle import atomic_json, atomic_jsonl, priva
 
 
 ALIASES = {
-    "department_number": ("department number", "department", "n departement", "numero departement", "code departement"),
-    "approval_number": ("approval number", "approval no", "n dagrement", "numero dagrement", "num dagrement", "agrément", "agrement"),
+    "department_number": ("department number", "department", "n departement", "numero departement", "code departement", "numero de département"),
+    "approval_number": ("approval number", "approval no", "n dagrement", "numero dagrement", "num dagrement", "agrément", "agrement", "numéro agrément/approval number"),
     "siret": ("siret", "siret number"),
-    "legal_name": ("legal name", "company name", "raison sociale", "nom de letablissement", "nom de l'etablissement", "establishment name"),
+    "legal_name": ("legal name", "company name", "raison sociale", "nom de letablissement", "nom de l'etablissement", "establishment name", "raison sociale - enseigne commerciale/name"),
     "address": ("address", "adresse", "location address"),
-    "postal_code": ("postal code", "code postal", "postcode"),
-    "commune": ("commune", "municipality", "city", "town"),
-    "category": ("category", "categorie", "catégorie", "establishment category"),
-    "associated_activities": ("associated activities", "activites associees", "activités associées", "activities", "activity"),
-    "species": ("species", "especes", "espèces", "animal species"),
+    "postal_code": ("postal code", "code postal", "postcode", "code postal/postal code"),
+    "commune": ("commune", "municipality", "city", "town", "commune/town"),
+    "category": ("category", "categorie", "catégorie", "establishment category", "catégorie/category"),
+    "associated_activities": ("associated activities", "activites associees", "activités associées", "activities", "activity", "activités associées/associated activities"),
+    "species": ("species", "especes", "espèces", "animal species", "espèce/specy"),
 }
 REQUIRED = ("approval_number", "legal_name", "commune", "category")
 

@@ -15,7 +15,10 @@ from typing import Callable
 from pipeline.contracts.private_run import write_private_run_report
 from pipeline.contracts.source_health import build_health_snapshot, write_health_snapshot
 from pipeline.contracts.source_lifecycle import atomic_json, validate_private_manifest
+from pipeline.contracts.adapter_contract import SourceArtifact
+from pipeline.common.review import write_operator_review_packet
 from pipeline.common.review_packet import write_review_packet
+from .adapter import DenmarkSmileyAdapter
 
 
 LOGGER = logging.getLogger("uec.denmark.pipeline")
@@ -112,6 +115,7 @@ def _canonical_evidence(run_dir: Path, input_path: Path, metadata: dict,
         "acquisition": metadata or {"source_url": source_url, "retrieved_at_utc": retrieved},
         "pipeline_started_at_utc": started_at,
         "pipeline_completed_at_utc": completed_at,
+        "coverage": "Danish Find Smiley food-business inspection listings; source rows only; no completeness claim",
     }
     validate_private_manifest(manifest)
     atomic_json(run_dir / "manifest.json", manifest)
@@ -121,6 +125,25 @@ def _canonical_evidence(run_dir: Path, input_path: Path, metadata: dict,
     if retrieved:
         snapshot = build_health_snapshot(run_dir, as_of_utc=retrieved)
         write_health_snapshot(run_dir / "source-health.json", snapshot)
+    classified = run_dir / "03-classify" / "classified-records.jsonl"
+    if classified.is_file() and retrieved and source_url:
+        artifact = SourceArtifact(
+            source_url=str(source_url), retrieved_at_utc=str(retrieved), sha256=str(raw_hash), byte_size=int(raw_size),
+            publication_date=manifest.get("publication_date"), effective_date=manifest.get("effective_date"),
+            code_version=str(manifest["code_version"]), config_version=str(manifest["config_version"]),
+            rights_caveat="Find Smiley source attribution/currentness review remains open; private handoff only",
+            privacy_caveat="restricted staging; address and source-coordinate review pending",
+            coverage=manifest["coverage"],
+        )
+        classified_rows = [json.loads(line) for line in classified.read_text(encoding="utf-8").splitlines() if line]
+        DenmarkSmileyAdapter().write_candidate_handoff(run_dir / "candidate-handoff", artifact, classified_rows)
+        write_operator_review_packet(
+            run_dir,
+            manifest,
+            source_scope=manifest["coverage"],
+            checks=("review candidate-handoff/normalized/records.jsonl in restricted staging", "review validation findings before any candidate import", "confirm no public release or API promotion"),
+            blockers=("candidate is private and human-gated", "address and coordinate publication blocked", "full pipeline validation findings require operator review"),
+        )
     write_review_packet(run_dir, blockers={
         "terms": ["Find Smiley attribution/currentness conditions are recorded; named project release approval remains open."],
         "privacy": ["Address and source-coordinate residential/private-location screening remains required; geocoding is separately review-gated."],

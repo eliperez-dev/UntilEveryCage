@@ -22,6 +22,19 @@ Both adapters preserve source values only in restricted staging and emit parsed,
 
 [`v1-field-crosswalk.json`](v1-field-crosswalk.json) is the row-free inventory and field/category map. The checked-in FSIS V1 snapshot has 7,101 rows and 269 columns. Its slaughter and processing flags overlap, so the counts are field-presence observations rather than totals. Until an authorized current artifact exists, V1 rows are not claimed current and a missing current observation is `not-observed`, never closure.
 
+## Accountability pilot
+
+The private accountability pilot in
+[`pipeline/sources/us/accountability`](../../pipeline/sources/us/accountability/README.md)
+adds a deterministic, graph-foundation-compatible link ledger. It starts from
+FSIS establishment/approval IDs and the modeled APHIS registration/inspection
+IDs, while keeping operators, legal entities, parents, brands, inspections,
+violations, enforcements, laboratories, and aggregate observations distinct.
+It accepts only exact source IDs or explicit reviewed link events. Ambiguous,
+stale, conflicting, overlapping-ownership, and suppressed relationships are
+quarantined. The checked-in fixture is synthetic/sanitized, private/test-only,
+and does not add a graph migration or public release.
+
 ## Review checklist
 
 - authority, edition/effective date, URL, terms/attribution, and retention are recorded;

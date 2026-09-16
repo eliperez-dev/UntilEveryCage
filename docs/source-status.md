@@ -11,10 +11,18 @@ This is the canonical human-readable view of [`source-status.json`](source-statu
 
 No last-success timestamp is invented. Private artifacts are not proof of a public release. “Government-sourced” does not mean current, complete, project-approved, or safe to expose.
 
+## Latest private rehearsal
+
+The owner-authorized 2026-09-15 live-country rehearsal completed private candidate integration for Denmark, France Sections I/II, Italy 853/2004, Germany, Belgium, Canada Ontario/CFIA, and UK FSA/FSS. It created no public surface and kept publication blocked. See the detailed [country rehearsal report](country-rehearsal-2026-09-15.md) and machine-readable [rehearsal status](country-rehearsal-2026-09-15.json).
+
 ## Current baseline
 
 | Source ID | Metadata | Acquisition | Runtime health | Publication | Evidence / next action |
 |---|---|---|---|---|---|
+| `br.sif.registered` | verified | verified | not_run | blocked | Current MAPA SIF registered CSV captured privately with schema/count/hash provenance; repeated activity rows, status semantics, terms, privacy, reconciliation, and project approval remain open; see `docs/country-recon-br.md` |
+| `br.sif.export` | verified | verified | not_run | blocked | Current MAPA SIF export-authorized CSV captured privately; model country/product authorizations as dated observations, not facility rows, and complete terms/privacy/reconciliation review; see `docs/country-recon-br.md` |
+| `br.sisbi.public` | verified | artifact_private_only | not_run | blocked | Public e-SISBI JSON/GIS routes returned bounded samples; pagination, code lists, ID lifecycle, status/effective-date semantics, terms, privacy, and cadence remain unresolved; see `docs/country-recon-br.md` |
+| `br.trase.facilities` | verified | artifact_private_only | not_run | blocked | Current Trase GeoJSON/methodology captured privately as secondary evidence; keep separate from MAPA and review source lineage, geocoding, constructed IDs, terms, privacy, and coverage; see `docs/country-recon-br.md` |
 | `be.locations` | verified | blocked | not_run | blocked | Shared private adapter, row-length/quarantine checks, and assisted two-file refresh are covered by synthetic fixtures; obtain an authorized operator capture and compare live schema before any real run; see `docs/review-packet-belgium.md` |
 | `fr.dgal.section-i` | verified | not_run | not_run | blocked | DGAL Section I private adapter/refresh is implemented; run only with approved terms or authorized capture, then review category semantics, address privacy, schema drift, and release approval |
 | `fr.dgal.section-ii` | verified | not_run | not_run | blocked | DGAL Section II remains a separate private adapter/refresh scope; review species/category semantics, address privacy, schema drift, and release approval |

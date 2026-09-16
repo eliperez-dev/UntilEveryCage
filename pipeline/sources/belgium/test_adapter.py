@@ -33,6 +33,14 @@ class BelgiumAdapterTests(unittest.TestCase):
         self.assertIn("address_privacy_risk", set().union(*reasons))
         self.assertIn("unresolved_activity_code", set().union(*reasons))
 
+    def test_row_length_is_checked_per_row_not_from_previous_row(self):
+        raw = (ROOT / "fixtures" / "synthetic_operators.csv").read_text(encoding="utf-8")
+        lines = raw.splitlines()
+        lines[1] += ",unexpected-extra-field"
+        result = self._adapter().parse_bytes(("\n".join(lines) + "\n").encode())
+        malformed = next(item for item in result["quarantined"] if item["record"]["source_row"] == 2)
+        self.assertIn("malformed_row", malformed["reasons"])
+
     def test_ambiguous_codebook_key_is_not_silently_selected(self):
         with tempfile.TemporaryDirectory() as directory:
             codebook = Path(directory) / "codes.csv"

@@ -95,6 +95,20 @@ class PrivateEnvironmentGateTests(unittest.TestCase):
         self.assertGreater(inventory["migration_count"], 0)
         self.assertEqual(len(inventory["migration_inventory_sha256"]), 64)
 
+    def test_v2_manifest_requires_release_metadata_contract(self):
+        with tempfile.TemporaryDirectory() as directory:
+            paths, _ = self.fixtures(directory)
+            manifest = json.loads(paths["manifest.json"].read_text(encoding="utf-8"))
+            manifest.update({"manifest_version": "uec-release-manifest-v2", "data_product_version": "uec-public-data-product-v1", "schema_version": "uec-location-projection-v1", "generated_at": "2026-09-15T00:00:00Z", "retrieved_at": "2026-09-14T00:00:00Z", "publication_state": "project-published", "review_state": "project-approved", "limitations": ["synthetic"], "row_counts": {"eligible_rows": 0, "packaged_rows": 0}, "source_coverage": [], "checksums": {"algorithm": "sha256"}, "test_only": False})
+            serialized = MODULE.canonical_json(manifest)
+            paths["manifest.json"].write_text(serialized, encoding="utf-8")
+            MODULE.validate_release_manifest(paths["manifest.json"], hashlib.sha256(serialized.encode()).hexdigest())
+            del manifest["limitations"]
+            serialized = MODULE.canonical_json(manifest)
+            paths["manifest.json"].write_text(serialized, encoding="utf-8")
+            with self.assertRaises(MODULE.PrivateEnvironmentError):
+                MODULE.validate_release_manifest(paths["manifest.json"], hashlib.sha256(serialized.encode()).hexdigest())
+
     def test_replay_sql_is_idempotent_and_does_not_embed_sensitive_columns(self):
         replay_spec = importlib.util.spec_from_file_location(
             "replay_restriction_ledger",

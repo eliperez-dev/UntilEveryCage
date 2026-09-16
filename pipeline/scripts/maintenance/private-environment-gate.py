@@ -152,6 +152,19 @@ def validate_release_manifest(path: Path, expected_digest: str) -> dict[str, Any
         names.append(item["name"])
     if len(names) != len(set(names)):
         raise PrivateEnvironmentError("release manifest artifact inventory is invalid")
+    if manifest["manifest_version"] == "uec-release-manifest-v2":
+        for field in ("data_product_version", "schema_version", "generated_at", "retrieved_at", "publication_state", "review_state", "limitations", "row_counts", "source_coverage", "checksums"):
+            if field not in manifest:
+                raise PrivateEnvironmentError(f"release manifest v2 field is missing: {field}")
+        if manifest["publication_state"] != "project-published" or manifest.get("test_only") is not False:
+            raise PrivateEnvironmentError("release manifest v2 publication state is invalid")
+        counts = manifest["row_counts"]
+        if not isinstance(counts, dict) or counts.get("eligible_rows") != counts.get("packaged_rows"):
+            raise PrivateEnvironmentError("release manifest v2 row counts are invalid")
+        if not isinstance(manifest["limitations"], list) or not all(isinstance(value, str) and value for value in manifest["limitations"]):
+            raise PrivateEnvironmentError("release manifest v2 limitations are invalid")
+        if not isinstance(manifest["checksums"], dict) or manifest["checksums"].get("algorithm") != "sha256":
+            raise PrivateEnvironmentError("release manifest v2 checksums are invalid")
     return {"manifest_version": manifest["manifest_version"], "release_id": manifest["release_id"], "profile": manifest["profile"], "artifact_count": len(artifacts), "manifest_sha256": actual}
 
 

@@ -1,0 +1,149 @@
+{
+  "schema_version": "br-v1-recon-crosswalk-1",
+  "status": "reconnaissance_only_private_artifacts_no_adapter",
+  "checked_at_utc": "2026-09-16T06:36:11.5283352Z",
+  "country_code": "BR",
+  "policy": "docs/ETHICS.md",
+  "source_boundaries": {
+    "br.sif.registered": {
+      "origin": "government_sourced",
+      "route": "https://dados.agricultura.gov.br/dataset/062166e3-b515-4274-8e7d-68aadd64b820/resource/97277e92-264a-4dc0-9aea-f87b8ea93798/download/sigsifestabelecimentosregistradosnosif.csv",
+      "format_observed": "UTF-8 semicolon-delimited CSV",
+      "retrieval_utc": "2026-09-16T06:27:27.9394921Z",
+      "http": 200,
+      "bytes": 11374764,
+      "sha256": "6a9b944ac34f9872b00b32338d5b5f4969c724167d6e2006ec2f71b372538c5a",
+      "catalog_update_utc": "2026-09-02T06:26:00Z",
+      "observed_rows": 24174,
+      "observed_unique_sif": 3147,
+      "identity": {
+        "primary_source_key": "NR_SIF",
+        "supporting_keys": ["CPF_CNPJ", "NUMERO_PROCESSO"],
+        "warning": "Rows repeat by source activity/category/occurrence; row count is not facility count."
+      },
+      "fields": {
+        "CPF_CNPJ": "source_cnpj",
+        "RAZAO_SOCIAL": "source_legal_name",
+        "NOME_FANTASIA": "source_trade_name",
+        "NR_SIF": "source_inspection_number",
+        "DATA_RESERVA": "source_reservation_date",
+        "DT_REGISTRO": "source_registration_date",
+        "NUMERO_PROCESSO": "source_process_number",
+        "SITUACAO": "source_status_code",
+        "LOGRADOURO": "source_address",
+        "BAIRRO": "source_neighborhood",
+        "CEP": "source_postal_code",
+        "MUNICIPIO": "source_municipality",
+        "UF": "source_state",
+        "TELEFONE": "restricted_source_phone",
+        "EMAIL": "restricted_source_email",
+        "AREA_CATEGORIA": "source_area_category",
+        "CATEGORIA_CLASSE": "source_category_class",
+        "DATA_OCORRENCIA": "source_occurrence_date",
+        "DESCRICAO_OCORRENCIA": "source_occurrence_description"
+      },
+      "coordinates": "not present; no geocoding performed",
+      "publication": "blocked_pending_terms_privacy_review_project_approval"
+    },
+    "br.sif.export": {
+      "origin": "government_sourced",
+      "route": "https://dados.agricultura.gov.br/dataset/062166e3-b515-4274-8e7d-68aadd64b820/resource/fcb7f87d-0092-4a52-a44b-b3550747b4c2/download/sigsifestabelecimentosnacionais.csv",
+      "format_observed": "UTF-8 semicolon-delimited CSV",
+      "retrieval_utc": "2026-09-16T06:27:31.7523210Z",
+      "http": 200,
+      "bytes": 4864067,
+      "sha256": "7b0540b3f9df244d562495eba07e3be20245219caaebd5d701beba0de636d113",
+      "observed_rows": 37508,
+      "observed_unique_sif": 2912,
+      "observed_unique_countries": 55,
+      "identity": {
+        "source_establishment_key": "SIF",
+        "observation_key": ["PAIS", "SIF", "PRODUTO", "DT_OCORRENCIA", "DT_SUSPENSAO"],
+        "warning": "One establishment has many country/product authorization rows."
+      },
+      "fields": {
+        "PAIS": "source_export_country",
+        "AREA": "source_area",
+        "ESTABELECIMENTO": "source_establishment_name",
+        "SIF": "source_inspection_number",
+        "UF": "source_state",
+        "MUNICIPIO": "source_municipality",
+        "PRODUTO": "source_authorized_product",
+        "DT_VALIDADE": "source_valid_until",
+        "DT_OCORRENCIA": "source_authorization_event_date",
+        "DT_SUSPENSAO": "source_suspension_date"
+      },
+      "publication": "blocked_pending_terms_privacy_review_project_approval"
+    },
+    "br.sisbi.public": {
+      "origin": "government_sourced",
+      "routes": {
+        "establishments": "https://sistemasweb.agricultura.gov.br/sisbi_api/estabelecimentos-sisbi",
+        "products": "https://sistemasweb.agricultura.gov.br/sisbi_api/produtos-sisbi",
+        "capacities": "https://sistemasweb.agricultura.gov.br/sisbi_api/estabs-capacidades",
+        "inspection_services": "https://sistemasweb.agricultura.gov.br/sisbi_api/servicos-inspecao",
+        "gis": "https://sistemasweb.agricultura.gov.br/gis_api/gis/genderecos/{idEndereco}"
+      },
+      "access_observed": {
+        "get": "HTTP 200, application/json; charset=UTF-8",
+        "default_list_items": 10,
+        "establishment_count": 10541,
+        "head": "HTTP 403 on establishments, capacities, and products list routes; GET must be used/tested",
+        "cache_control": "no-store, must-revalidate, no-cache, max-age=0"
+      },
+      "identity": {
+        "establishment_primary": "idEstabSisbi",
+        "supporting_keys": ["idServicoInspecao", "nrRegistro", "nrCnpj", "idEndereco"],
+        "warning": "Lifecycle/stability and cross-service uniqueness remain unverified."
+      },
+      "establishment_fields": [
+        "idEstabSisbi", "nrProcesso", "nrRegistro", "csEstabelecimento", "csSituacaoEstabelecimento",
+        "situacaoExclusao", "dtRegistro", "idEndereco", "sgUf", "nmMunicipio", "nome",
+        "tipoEstabelecimento", "servicoInspecao", "pessoa"
+      ],
+      "nested_fields": {
+        "pessoa.pessoaJuridica": ["nrCnpj", "nmRazaoSocial", "nmFantasia"],
+        "servicoInspecao": ["idServicoInspecao", "ufs", "nmServico", "csSituacao", "stSuspenso", "enderecos"],
+        "capacity": ["idEstabCapacidade", "categEstabEspecie", "estabSisbiClassificacao", "tipoCapacProducao", "qtCapacidade"],
+        "product": ["idProdutoSisbi", "nmVenda", "csComercio", "csSisbi", "nrRegistro", "estabelecimentoSisbi", "csAtivoSisbi", "csSuspensaoSisbi", "seloSisbi", "situacaoEscopo"]
+      },
+      "coordinates": "GIS lookup by idEndereco returns longitude/latitude; provider is MAPA GIS, not a project geocoder",
+      "publication": "blocked_pending_api_contract_terms_privacy_review_project_approval"
+    },
+    "br.trase.facilities": {
+      "origin": "secondary_project_compilation",
+      "route": "https://trase.earth/open-data/datasets/brazil-facilities",
+      "artifact_route": "https://resources.trase.earth/data/facilities-data/2026-05-07-br_beef_logistics_map_v6.geo.json",
+      "retrieval_utc": "2026-09-16T06:28:09.2156309Z",
+      "http": 200,
+      "bytes": 15888949,
+      "sha256": "11eb5131e0a9379c0bbbff731425726d76db74d8ac21b0356773293c75be32c5",
+      "dataset_year": 2025,
+      "page_updated": "2026-01-01",
+      "observed_features": 18090,
+      "observed_unique_facility_id": 15119,
+      "observed_unique_id": 18077,
+      "sources_observed": ["SISBI", "SIF database", "SIE database"],
+      "fields": [
+        "approved_export_countries", "capacity_units_english", "capacity_units_portuguese", "capacity_value_num",
+        "capacity_value_text", "cnpj", "commodity", "company", "facility_id", "inspection_level", "inspection_num",
+        "lat", "long", "municipality", "source", "state", "status", "type_detailed_english",
+        "type_detailed_portuguese", "type_english", "type_portuguese", "unique_id"
+      ],
+      "identity": {
+        "source_local_key": "unique_id",
+        "warning": "Trase constructs IDs and disclaims lifetime uniqueness; rows can repeat by commodity/activity. No silent merge with MAPA."
+      },
+      "coordinates": "Trase-derived; methodology says SISBI GIS API or Google Maps fallback; retain as secondary evidence",
+      "publication": "blocked_pending_trase_terms_privacy_review_project_approval"
+    }
+  },
+  "implementation_gates": [
+    "confirm e-SISBI pagination/query contract and code lists with authorized operator",
+    "confirm dataset-specific MAPA reuse and attribution terms",
+    "preserve raw/parsed/normalized/quarantine/review layers",
+    "screen full addresses, contacts, CNPJ/legal-person fields, and precise coordinates",
+    "use explicit reviewed cross-source identity links and separate counts by inspection authority",
+    "keep publication blocked until human privacy/terms/release approval"
+  ]
+}

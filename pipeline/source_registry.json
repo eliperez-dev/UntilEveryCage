@@ -4,6 +4,54 @@
   "unknown_value": "unknown",
   "sources": [
     {
+      "source_id": "br.sif.registered",
+      "jurisdiction_scope": "Brazil; MAPA/DIPOA establishments registered under the federal SIF directory",
+      "legacy_paths": [],
+      "url": "https://dados.agricultura.gov.br/dataset/062166e3-b515-4274-8e7d-68aadd64b820/resource/97277e92-264a-4dc0-9aea-f87b8ea93798/download/sigsifestabelecimentosregistradosnosif.csv",
+      "access_method": "published semicolon-delimited CSV via MAPA CKAN; bounded GET or assisted capture",
+      "cadence": "monthly; catalog last-update metadata checked 2026-09-16",
+      "attribution_licensing_notes": "MAPA catalog displays Creative Commons Attribution; confirm dataset-specific reuse, attribution, and personal-data handling before publication",
+      "adapter_status": "reference_only",
+      "expected_artifact_schema": "UTF-8 semicolon CSV with CNPJ, legal/trade names, SIF, dates, situation, address, contacts, area/category/class, and occurrence fields; repeated rows by source activity/occurrence",
+      "blockers": ["Restricted raw/contact/address handling, current code semantics, dataset-specific terms, identity lifecycle, and project publication approval remain pending."]
+    },
+    {
+      "source_id": "br.sif.export",
+      "jurisdiction_scope": "Brazil; MAPA/DIPOA SIF establishments with country/product export authorization observations",
+      "legacy_paths": [],
+      "url": "https://dados.agricultura.gov.br/dataset/062166e3-b515-4274-8e7d-68aadd64b820/resource/fcb7f87d-0092-4a52-a44b-b3550747b4c2/download/sigsifestabelecimentosnacionais.csv",
+      "access_method": "published semicolon-delimited CSV via MAPA CKAN; bounded GET or assisted capture",
+      "cadence": "monthly; catalog metadata checked 2026-09-16",
+      "attribution_licensing_notes": "MAPA catalog displays Creative Commons Attribution; export/product rows remain separate evidence and require terms/privacy review",
+      "adapter_status": "reference_only",
+      "expected_artifact_schema": "UTF-8 semicolon CSV with country, area, establishment, SIF, UF, municipality, product, validity, authorization-event, and suspension dates; one-to-many by SIF/country/product",
+      "blockers": ["Do not treat export authorization as facility status or count; terms, effective-date semantics, privacy, reconciliation, and project approval remain pending."]
+    },
+    {
+      "source_id": "br.sisbi.public",
+      "jurisdiction_scope": "Brazil; public e-SISBI/SISBI-POA service, establishment, product, capacity, and MAPA GIS address routes",
+      "legacy_paths": [],
+      "url": "https://sistemasweb.agricultura.gov.br/sgsi/app/estabelecimentos",
+      "access_method": "public JavaScript client with bounded JSON GET routes under sisbi_api and GIS API; no bulk scrape performed",
+      "cadence": "unknown; public route and API access verified 2026-09-16",
+      "attribution_licensing_notes": "MAPA government source; public access does not settle API reuse, retention, privacy, or publication terms",
+      "adapter_status": "reference_only",
+      "expected_artifact_schema": "JSON establishment records keyed by idEstabSisbi with service/person/address references; separate products, capacities, inspection-service, count, and GIS coordinate routes",
+      "blockers": ["Confirm pagination/query contract, code lists, status/effective-date semantics, ID lifecycle, address linkage, update cadence, privacy, terms, and project approval with an authorized operator."]
+    },
+    {
+      "source_id": "br.trase.facilities",
+      "jurisdiction_scope": "Brazil; Trase secondary compilation of SIF, SISBI, SIE, SIM, and CONSORCIO facility/activity rows",
+      "legacy_paths": [],
+      "url": "https://trase.earth/open-data/datasets/brazil-facilities",
+      "access_method": "published GeoJSON download; private reconnaissance capture only",
+      "cadence": "dataset page says 2025 data, updated 2026-01-01; future cadence unknown",
+      "attribution_licensing_notes": "Trase page permits platform charts/maps/representations under CC BY 4.0 and asks commercial data users to contact Trase; raw-data reuse and privacy handling remain review gates",
+      "adapter_status": "reference_only",
+      "expected_artifact_schema": "GeoJSON rows with source, inspection level/number, CNPJ, company, municipality/state, status, commodity/type, capacity, export countries, coordinates, facility_id, and constructed unique_id",
+      "blockers": ["Secondary source must remain separate from MAPA; validate source snapshots, geocoding provenance, terms, privacy, constructed-ID behavior, coverage, and project approval before any use."]
+    },
+    {
       "source_id": "be.locations",
       "jurisdiction_scope": "Belgium; FASFC-registered, approved, or authorized operators, including animal-origin food and other food-chain activities",
       "legacy_paths": [],

@@ -152,6 +152,7 @@ struct V2ExportRow {
     provenance_source_name: String,
     provenance_source_url: String,
     provenance_retrieved_at: chrono::DateTime<chrono::Utc>,
+    source_rights_status: String,
     release_id: String,
     release_profile: String,
     profile_notice: String,
@@ -174,6 +175,10 @@ fn export_profile_notice(profile: &str) -> &'static str {
 fn export_publication_warning(profile: &str, factual_review_status: &str) -> Option<String> {
     (profile == "community" && factual_review_status == "unreviewed")
         .then(|| UNREVIEWED_COMMUNITY_WARNING.to_string())
+}
+
+fn csv_safe_option(value: Option<String>) -> Option<String> {
+    value.map(csv_safe_value)
 }
 
 pub async fn get_v2_locations_export_handler(
@@ -217,7 +222,7 @@ pub async fn get_v2_locations_export_handler(
     };
     let release_id: String = release.get(0);
     let manifest_sha256: String = release.get(1);
-    let rows = match client.query("SELECT h.facility_id, h.canonical_name, h.country_code, h.city, h.classification_category, h.display_precision, r.factual_review_status, r.privacy_screening_status, r.maintainer_approval, r.reviewer_role, h.provenance_origin_type, h.provenance_source_id, h.provenance_source_name, h.provenance_source_url, h.provenance_retrieved_at, h.release_id FROM uec.map_facilities_display_history h JOIN uec.publication_review_release_current r ON r.source_record_id=h.source_record_id AND r.release_id=h.release_id WHERE h.release_id=$1 AND r.publication_eligible=true AND r.privacy_screening_status='passed' AND ($2='community' OR r.maintainer_approval='approved') ORDER BY h.facility_id LIMIT 1001", &[&release_id, &profile]).await {
+    let rows = match client.query("SELECT h.facility_id, h.canonical_name, h.country_code, h.city, h.classification_category, h.display_precision, r.factual_review_status, r.privacy_screening_status, r.maintainer_approval, r.reviewer_role, h.provenance_origin_type, h.provenance_source_id, h.provenance_source_name, h.provenance_source_url, h.provenance_retrieved_at, CASE WHEN source.attribution IS NULL OR btrim(source.attribution) = '' THEN 'unknown' ELSE 'attribution_required' END, h.release_id FROM uec.map_facilities_display_history h JOIN uec.publication_review_release_current r ON r.source_record_id=h.source_record_id AND r.release_id=h.release_id JOIN uec.sources source ON source.source_id=h.provenance_source_id WHERE h.release_id=$1 AND r.publication_eligible=true AND r.privacy_screening_status='passed' AND ($2='community' OR r.maintainer_approval='approved') ORDER BY h.facility_id LIMIT 1001", &[&release_id, &profile]).await {
         Ok(rows) => rows, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "export_query_failed", "public export unavailable")
     };
     if rows.len() > 1000 {
@@ -233,25 +238,29 @@ pub async fn get_v2_locations_export_handler(
         if writer
             .serialize(V2ExportRow {
                 facility_id: row.get(0),
-                canonical_name: row.get(1),
-                country_code: row.get(2),
-                city: row.get(3),
-                category: row.get(4),
-                display_precision: row.get(5),
-                factual_review_status: factual_review_status.clone(),
-                privacy_screening_status: row.get(7),
-                project_approval: row.get(8),
-                reviewer_role: row.get(9),
-                source_type: row.get(10),
-                provenance_source_id: row.get(11),
-                provenance_source_name: row.get(12),
-                provenance_source_url: row.get(13),
+                canonical_name: csv_safe_option(row.get(1)),
+                country_code: csv_safe_value(row.get(2)),
+                city: csv_safe_option(row.get(3)),
+                category: csv_safe_value(row.get(4)),
+                display_precision: csv_safe_value(row.get(5)),
+                factual_review_status: csv_safe_value(factual_review_status.clone()),
+                privacy_screening_status: csv_safe_value(row.get(7)),
+                project_approval: csv_safe_value(row.get(8)),
+                reviewer_role: csv_safe_option(row.get(9)),
+                source_type: csv_safe_value(row.get(10)),
+                provenance_source_id: csv_safe_value(row.get(11)),
+                provenance_source_name: csv_safe_value(row.get(12)),
+                provenance_source_url: csv_safe_value(row.get(13)),
                 provenance_retrieved_at: row.get(14),
-                release_id: row.get(15),
-                release_profile: profile.to_string(),
-                profile_notice: export_profile_notice(profile).to_string(),
-                publication_warning: export_publication_warning(profile, &factual_review_status),
-                manifest_sha256: manifest_sha256.clone(),
+                source_rights_status: csv_safe_value(row.get(15)),
+                release_id: csv_safe_value(row.get(16)),
+                release_profile: csv_safe_value(profile.to_string()),
+                profile_notice: csv_safe_value(export_profile_notice(profile).to_string()),
+                publication_warning: csv_safe_option(export_publication_warning(
+                    profile,
+                    &factual_review_status,
+                )),
+                manifest_sha256: csv_safe_value(manifest_sha256.clone()),
             })
             .is_err()
         {
@@ -282,6 +291,8 @@ pub async fn get_v2_locations_export_handler(
         .header("x-uec-release-id", release_id)
         .header("x-uec-export-profile", profile)
         .header("x-uec-manifest-sha256", manifest_sha256)
+        .header("x-uec-data-product-version", "uec-public-data-product-v1")
+        .header("x-uec-schema-version", "uec-location-projection-v1")
         .body(axum::body::Body::from(body))
         .unwrap()
         .into_response()
@@ -1070,6 +1081,7 @@ pub struct V2Location {
     pub observation_count: Option<i32>,
     pub lifecycle_status: String,
     pub source_type: String,
+    pub source_rights_status: String,
     pub provenance_source: Option<String>,
     pub release_id: String,
     pub release_ruleset_version: String,
@@ -1352,28 +1364,30 @@ pub async fn get_v2_locations_handler(
     let promoted_profile: String = release.get(3);
     let query_limit = limit + 1;
     let rows = match transaction.query(r#"
-        SELECT facility_id, canonical_name, country_code, city, classification_category, display_precision,
+        SELECT history.facility_id, history.canonical_name, history.country_code, history.city, history.classification_category, history.display_precision,
                review.factual_review_status, review.privacy_screening_status, review.maintainer_approval, review.reviewer_role,
-               ST_Y(display_location::geometry), ST_X(display_location::geometry),
-               first_observed_at, last_observed_at, observation_count, lifecycle_status,
-               provenance_origin_type, map_facilities_display_history.release_id, release_ruleset_version,
-               provenance_source_id, provenance_source_name, provenance_source_url, provenance_retrieved_at
-        FROM uec.map_facilities_display_history
+               ST_Y(history.display_location::geometry), ST_X(history.display_location::geometry),
+               history.first_observed_at, history.last_observed_at, history.observation_count, history.lifecycle_status,
+               history.provenance_origin_type, history.release_id, history.release_ruleset_version,
+               history.provenance_source_id, history.provenance_source_name, history.provenance_source_url, history.provenance_retrieved_at,
+               CASE WHEN rights.attribution IS NULL OR btrim(rights.attribution) = '' THEN 'unknown' ELSE 'attribution_required' END
+        FROM uec.map_facilities_display_history AS history
         JOIN uec.publication_review_release_current AS review
-          ON review.source_record_id = map_facilities_display_history.source_record_id
-         AND review.release_id = map_facilities_display_history.release_id
-        WHERE map_facilities_display_history.release_id = $1
-          AND ($2::uuid IS NULL OR facility_id > $2)
-          AND ($3::text IS NULL OR country_code = $3)
-          AND ($4::text IS NULL OR city = $4)
-          AND ($5::text IS NULL OR classification_category = $5)
-          AND ($6::text IS NULL OR display_precision = $6)
-          AND ($7::text IS NULL OR lifecycle_status = $7)
-          AND ($8::text IS NULL OR provenance_origin_type = $8)
-          AND ($9::text IS NULL OR lower(coalesce(canonical_name, '') || ' ' || coalesce(city, '') || ' ' || country_code || ' ' || classification_category || ' ' || coalesce(provenance_source_name, '')) LIKE '%' || lower($9) || '%' ESCAPE '\')
-          AND ($10::double precision IS NULL OR (display_location && ST_MakeEnvelope($10, $11, $12, $13, 4326)::geography AND ST_Intersects(display_location::geometry, ST_MakeEnvelope($10, $11, $12, $13, 4326))))
-          AND ($14::double precision IS NULL OR ST_DWithin(display_location, ST_SetSRID(ST_Point($15, $16), 4326)::geography, $14 * 1000))
-        ORDER BY facility_id LIMIT $17 OFFSET $18
+          ON review.source_record_id = history.source_record_id
+         AND review.release_id = history.release_id
+        JOIN uec.sources rights ON rights.source_id = history.provenance_source_id
+        WHERE history.release_id = $1
+          AND ($2::uuid IS NULL OR history.facility_id > $2)
+          AND ($3::text IS NULL OR history.country_code = $3)
+          AND ($4::text IS NULL OR history.city = $4)
+          AND ($5::text IS NULL OR history.classification_category = $5)
+          AND ($6::text IS NULL OR history.display_precision = $6)
+          AND ($7::text IS NULL OR history.lifecycle_status = $7)
+          AND ($8::text IS NULL OR history.provenance_origin_type = $8)
+          AND ($9::text IS NULL OR lower(coalesce(history.canonical_name, '') || ' ' || coalesce(history.city, '') || ' ' || history.country_code || ' ' || history.classification_category || ' ' || coalesce(history.provenance_source_name, '')) LIKE '%' || lower($9) || '%' ESCAPE '\')
+          AND ($10::double precision IS NULL OR (history.display_location && ST_MakeEnvelope($10, $11, $12, $13, 4326)::geography AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($10, $11, $12, $13, 4326))))
+          AND ($14::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($15, $16), 4326)::geography, $14 * 1000))
+        ORDER BY history.facility_id LIMIT $17 OFFSET $18
     "#, &[&promoted_release_id, &cursor, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &query_limit, &effective_offset]).await {
         Ok(rows) => rows,
         Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
@@ -1408,6 +1422,7 @@ pub async fn get_v2_locations_handler(
             observation_count: row.get(14),
             lifecycle_status: row.get(15),
             source_type: row.get(16),
+            source_rights_status: row.get(23),
             release_id: row.get(17),
             release_ruleset_version: row.get(18),
             provenance_source_id: row.get(19),
@@ -1425,6 +1440,8 @@ pub async fn get_v2_locations_handler(
     let metadata = serde_json::json!({
         "release_id": promoted_release_id,
         "ruleset_version": promoted_ruleset,
+        "data_product_version": "uec-public-data-product-v1",
+        "schema_version": "uec-location-projection-v1",
         "release_created_at": promoted_created_at,
         "profile": promoted_profile,
         "next_cursor": next_cursor,
@@ -1508,17 +1525,19 @@ pub async fn get_v2_location_detail_handler(
     let created_at: chrono::DateTime<chrono::Utc> = release.get(2);
     let profile: String = release.get(3);
     let row = match transaction.query_opt(r#"
-        SELECT facility_id, canonical_name, country_code, city, classification_category, display_precision,
+        SELECT history.facility_id, history.canonical_name, history.country_code, history.city, history.classification_category, history.display_precision,
                review.factual_review_status, review.privacy_screening_status, review.maintainer_approval, review.reviewer_role,
-               ST_Y(display_location::geometry), ST_X(display_location::geometry),
-               first_observed_at, last_observed_at, observation_count, lifecycle_status,
-               provenance_origin_type, map_facilities_display_history.release_id, release_ruleset_version,
-               provenance_source_id, provenance_source_name, provenance_source_url, provenance_retrieved_at
-        FROM uec.map_facilities_display_history
+               ST_Y(history.display_location::geometry), ST_X(history.display_location::geometry),
+               history.first_observed_at, history.last_observed_at, history.observation_count, history.lifecycle_status,
+               history.provenance_origin_type, history.release_id, history.release_ruleset_version,
+               history.provenance_source_id, history.provenance_source_name, history.provenance_source_url, history.provenance_retrieved_at,
+               CASE WHEN rights.attribution IS NULL OR btrim(rights.attribution) = '' THEN 'unknown' ELSE 'attribution_required' END
+        FROM uec.map_facilities_display_history AS history
         JOIN uec.publication_review_release_current AS review
-          ON review.source_record_id = map_facilities_display_history.source_record_id
-         AND review.release_id = map_facilities_display_history.release_id
-        WHERE facility_id = $1 AND map_facilities_display_history.release_id = $2
+          ON review.source_record_id = history.source_record_id
+         AND review.release_id = history.release_id
+        JOIN uec.sources rights ON rights.source_id = history.provenance_source_id
+        WHERE history.facility_id = $1 AND history.release_id = $2
     "#, &[&facility_id, &release_id]).await {
         Ok(row) => row,
         Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
@@ -1555,6 +1574,7 @@ pub async fn get_v2_location_detail_handler(
         observation_count: row.get(14),
         lifecycle_status: row.get(15),
         source_type: row.get(16),
+        source_rights_status: row.get(23),
         release_id: row.get(17),
         release_ruleset_version: row.get(18),
         provenance_source_id: row.get(19),
@@ -1570,7 +1590,7 @@ pub async fn get_v2_location_detail_handler(
         )
             .into_response();
     }
-    Json(serde_json::json!({"data": item, "api_version": "v2", "meta": {"release_id": release_id, "ruleset_version": ruleset, "release_created_at": created_at, "profile": profile, "coverage_scope": "selected_promoted_release_public_facilities", "count_semantics": "This record is a public facility projection, not an animal count."}})).into_response()
+    Json(serde_json::json!({"data": item, "api_version": "v2", "meta": {"release_id": release_id, "ruleset_version": ruleset, "data_product_version": "uec-public-data-product-v1", "schema_version": "uec-location-projection-v1", "release_created_at": created_at, "profile": profile, "coverage_scope": "selected_promoted_release_public_facilities", "count_semantics": "This record is a public facility projection, not an animal count."}})).into_response()
 }
 
 #[derive(Deserialize)]
@@ -1869,6 +1889,7 @@ mod v2_api_tests {
             observation_count: Some(2),
             lifecycle_status: "active_observed".into(),
             source_type: "official".into(),
+            source_rights_status: "attribution_required".into(),
             provenance_source: None,
             release_id: "test".into(),
             release_ruleset_version: "test".into(),
@@ -1882,6 +1903,7 @@ mod v2_api_tests {
         assert_eq!(json["observation_count"], 2);
         assert_eq!(json["lifecycle_status"], "active_observed");
         assert_eq!(json["source_type"], "official");
+        assert_eq!(json["source_rights_status"], "attribution_required");
         assert_eq!(json["category"], "slaughter");
         assert_eq!(json["publication_profile"], "official");
     }
@@ -1904,6 +1926,7 @@ mod v2_api_tests {
             provenance_source_name: "Synthetic source".into(),
             provenance_source_url: "https://example.invalid/community".into(),
             provenance_retrieved_at: chrono::Utc::now(),
+            source_rights_status: "attribution_required".into(),
             release_id: "synthetic-release".into(),
             release_profile: "community".into(),
             profile_notice: export_profile_notice("community").into(),
@@ -1927,6 +1950,7 @@ mod v2_api_tests {
         assert_eq!(value("project_approval"), "pending");
         assert_eq!(value("publication_warning"), UNREVIEWED_COMMUNITY_WARNING);
         assert_eq!(value("profile_notice"), COMMUNITY_EXPORT_NOTICE);
+        assert_eq!(value("source_rights_status"), "attribution_required");
         assert!(export_publication_warning("official", "unreviewed").is_none());
         assert!(export_publication_warning("community", "reviewed").is_none());
     }

@@ -11,6 +11,18 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 
 class CanadaAdapterTests(unittest.TestCase):
+    def test_bilingual_composite_headers_from_live_ontario_file_are_supported(self):
+        content = ('"Plant Name_ Nom de l\'usine","Plant Number_No. de l\'usine",'
+                   '"Address_Adresse","City_Ville","Province_Province",'
+                   '"Postal Code_Code postal","Telephone_Telephone",Latitude,Longitude,'
+                   '"Animal Class_Catégorie d\'animaux","Plant Type_Type",'
+                   '"Function Codes_Codes de fonction","Status_Statut"\n'
+                   'Synthetic Plant,SP-001,"Industrial Road 1",Toronto,ON,M1M 1M1,'
+                   '555-0100,43.1,-79.1,Abattoir,Abattoir,1,current\n').encode()
+        result = OntarioMeatPlantsAdapter().parse_bytes(content)
+        self.assertEqual(len(result["accepted"]), 1)
+        self.assertEqual(result["accepted"][0]["normalized"]["activity_categories"], ("slaughter",))
+
     def test_ontario_is_provincial_and_privacy_safe(self):
         adapter = OntarioMeatPlantsAdapter(); result = adapter.parse_file(FIXTURES / "ontario.csv")
         self.assertEqual(len(result["accepted"]), 2); self.assertEqual(len(result["quarantined"]), 1)

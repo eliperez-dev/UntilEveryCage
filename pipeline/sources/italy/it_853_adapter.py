@@ -25,6 +25,11 @@ REQUIRED = tuple(
 )
 STATUS = {"AUTORIZZATA": "Autorizzata", "REVOCATA": "Revocata", "SOSPESA": "Sospesa"}
 DATE_FIELDS = ("data_inizio_attivita", "data_fine_attivita", "data_ultimo_aggiornamento")
+MONTHS = {
+    "GEN": 1, "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAG": 5, "MAY": 5,
+    "GIU": 6, "JUN": 6, "LUG": 7, "JUL": 7, "AGO": 8, "AUG": 8,
+    "SET": 9, "SEP": 9, "OTT": 10, "OCT": 10, "NOV": 11, "DIC": 12, "DEC": 12,
+}
 
 
 def clean(value: Any) -> str | None:
@@ -37,14 +42,30 @@ def row_id(row: dict[str | None, Any], occurrence: int) -> str:
     return hashlib.sha256(f"{payload}|{occurrence}".encode()).hexdigest()
 
 
-def _date_state(value: str | None) -> str:
-    if not value:
-        return "unknown"
+def _normalize_date(value: str | None) -> str | None:
+    """Normalize the catalog's ISO and Italian/English abbreviated dates."""
+    if not value or value.strip() in {"-", "—"}:
+        return None
     try:
-        date.fromisoformat(value)
+        return date.fromisoformat(value).isoformat()
     except ValueError:
-        return "invalid"
-    return "known"
+        pass
+    parts = value.strip().upper().split("-")
+    if len(parts) != 3 or not parts[0].isdigit() or not parts[2].isdigit():
+        return None
+    month = MONTHS.get(parts[1])
+    if month is None:
+        return None
+    try:
+        return date(2000 + int(parts[2]), month, int(parts[0])).isoformat()
+    except ValueError:
+        return None
+
+
+def _date_state(value: str | None) -> str:
+    if not value or value.strip() in {"-", "—"}:
+        return "unknown"
+    return "known" if _normalize_date(value) else "invalid"
 
 
 class Italy853Adapter:
@@ -106,6 +127,7 @@ class Italy853Adapter:
                     reasons.append(f"invalid_{field}")
             municipality_code = clean(row.get("codice_comune"))
             geography_precision = "municipality-code" if municipality_code and len(municipality_code) == 6 else "unknown"
+            normalized_dates = {field: _normalize_date(clean(row.get(field))) for field in DATE_FIELDS}
             normalized = {
                 "establishment_id": rec,
                 "recognition_number": rec,
@@ -129,7 +151,7 @@ class Italy853Adapter:
                 "products": clean(row.get("prodotti_abilitati")),
                 "status": status,
                 "status_state": "known" if status else "unknown",
-                "dates": {field: clean(row.get(field)) for field in DATE_FIELDS},
+                "dates": normalized_dates,
                 "date_state": {field: _date_state(clean(row.get(field))) for field in DATE_FIELDS},
                 "coordinates": None,
                 "coordinate_state": "source-value-present-pending-review" if clean(row.get("longitudine")) or clean(row.get("latitudine")) else "unknown",

@@ -12,6 +12,17 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 
 class FranceAdapterTests(unittest.TestCase):
+    def test_bilingual_composite_headers_from_live_dgal_file_are_supported(self):
+        content = ('"Numero de département","Numéro agrément/Approval number","SIRET",'
+                   '"Raison SOCIALE - Enseigne commerciale/Name","Adresse/Adress",'
+                   '"Code postal/Postal code","Commune/Town","Catégorie/Category",'
+                   '"Activités associées/Associated activities","Espèce/Specy"\n'
+                   '01,"01.000.001",,"Synthetic Facility","Industrial Road 1",01000,'
+                   'Synthetic Town,SH,ABATTOIR,BOVINE\n').encode()
+        result = FranceDgalSectionIAdapter().parse_bytes(content)
+        self.assertEqual(len(result["accepted"]), 1)
+        self.assertEqual(result["accepted"][0]["normalized"]["activity_categories"], ("slaughter",))
+
     def test_section_i_preserves_source_and_quarantines_duplicate(self):
         adapter = FranceDgalSectionIAdapter(); result = adapter.parse_file(FIXTURES / "section_i.csv")
         self.assertEqual(len(result["accepted"]), 2); self.assertEqual(len(result["quarantined"]), 1)
