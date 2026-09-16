@@ -120,6 +120,91 @@ ORDER BY history.facility_id
 LIMIT 51
 """
 
+ELIGIBILITY = """
+SELECT member.release_id, member.facility_id, observation.observation_id,
+       observation.source_record_id, observation.first_observed_at,
+       observation.observed_at
+FROM uec.release_members AS member
+JOIN uec.releases AS release ON release.release_id = member.release_id
+JOIN uec.observations AS observation ON observation.observation_id = member.observation_id
+JOIN uec.source_records AS record ON record.source_record_id = observation.source_record_id
+JOIN uec.sources AS source ON source.source_id = record.source_id
+JOIN uec.publication_review_release_current AS review
+  ON review.source_record_id = observation.source_record_id
+ AND review.release_id = member.release_id
+WHERE release.status = 'promoted'
+  AND member.default_visible = true
+  AND review.publication_eligible = true
+  AND review.privacy_screening_status = 'passed'
+  AND review.factual_review_status <> 'rejected'
+  AND (review.maintainer_approval = 'approved'
+       OR (release.profile = 'community' AND source.origin_type = 'user_submitted'
+           AND review.factual_review_status = 'unreviewed'
+           AND review.maintainer_approval = 'pending'))
+  AND NOT EXISTS (
+      SELECT 1 FROM uec.public_access_restricted AS restricted
+      WHERE restricted.source_record_id = observation.source_record_id
+  )
+  AND member.release_id = 'load-promoted'
+"""
+
+COMPONENT_QUERIES = {
+    "eligibility_gate": "SELECT count(*) FROM (" + ELIGIBILITY + ") eligible",
+    "eligible_summary": """
+SELECT count(*) FROM (
+    SELECT eligible.release_id, eligible.facility_id,
+           min(eligible.first_observed_at), max(eligible.observed_at), count(*)
+    FROM (""" + ELIGIBILITY + """) eligible
+    GROUP BY eligible.release_id, eligible.facility_id
+) summary
+""",
+    "geocode_lookup": """
+SELECT count(*)
+FROM uec.observations observation
+JOIN uec.source_records record ON record.source_record_id = observation.source_record_id
+LEFT JOIN LATERAL (
+    SELECT result FROM uec.geocode_results
+    WHERE source_record_id = observation.source_record_id
+    ORDER BY queried_at DESC, geocode_result_id DESC LIMIT 1
+) latest ON true
+WHERE record.source_id = 'load.synthetic'
+""",
+    "city_lookup": """
+SELECT count(*)
+FROM uec.facilities facility
+LEFT JOIN LATERAL (
+    SELECT reference_location
+    FROM uec.city_reference_points
+    WHERE country_code = facility.country_code
+      AND lower(city_name) = lower(facility.city)
+      AND (postal_code IS NULL OR postal_code = facility.postal_code)
+    ORDER BY postal_code NULLS LAST LIMIT 1
+) city ON true
+WHERE facility.canonical_name LIKE 'Synthetic load facility %'
+""",
+    "lifecycle_lookup": """
+SELECT count(*)
+FROM uec.facilities facility
+LEFT JOIN uec.facility_lifecycle_current lifecycle
+  ON lifecycle.facility_id = facility.facility_id
+WHERE facility.canonical_name LIKE 'Synthetic load facility %'
+""",
+    "spatial_filter": """
+SELECT count(*)
+FROM uec.map_facilities_display_history history
+WHERE history.release_id = 'load-promoted'
+  AND history.display_location && ST_MakeEnvelope(-10, 45, -9.99, 45.01, 4326)::geography
+  AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope(-10, 45, -9.99, 45.01, 4326))
+""",
+    "pagination_sort": """
+SELECT facility_id
+FROM uec.map_facilities_display_history
+WHERE release_id = 'load-promoted'
+ORDER BY facility_id
+LIMIT 51
+""",
+}
+
 
 def plan_summary(payload: list[Any]) -> dict[str, Any]:
     root = payload[0]
@@ -180,7 +265,7 @@ def run_explain(connection: Any, query: str, analyze: bool) -> dict[str, Any]:
     return summary
 
 
-def run(observations: int) -> dict[str, Any]:
+def run(observations: int, include_components: bool = False) -> dict[str, Any]:
     import psycopg
     from pipeline.tests.e2e.fixture import E2EEnvironment
 
@@ -202,6 +287,11 @@ def run(observations: int) -> dict[str, Any]:
                 # timeout even on the 1,000-row fixture. The flattened path is
                 # measured with ANALYZE for before/after root-cause evidence.
                 plans[name] = run_explain(connection, query, analyze="after" in name)
+            if include_components:
+                plans["components"] = {
+                    name: run_explain(connection, query, analyze=True)
+                    for name, query in COMPONENT_QUERIES.items()
+                }
     finally:
         env.stop()
     return {"schema_version": 1, "synthetic_only": True, "observations": observations, "plans": plans}
@@ -211,10 +301,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--observations", type=int, default=1_000)
     parser.add_argument("--json-output", type=Path)
+    parser.add_argument("--components", action="store_true", help="also analyze isolated eligibility, summary, lookup, spatial, and pagination components")
     args = parser.parse_args(argv)
     if not 1 <= args.observations <= LOAD.MAX_SEED:
         parser.error(f"observations must be between 1 and {LOAD.MAX_SEED:,}")
-    report = run(args.observations)
+    report = run(args.observations, include_components=args.components)
     serialized = json.dumps(report, indent=2, sort_keys=True) + "\n"
     if args.json_output:
         args.json_output.write_text(serialized, encoding="utf-8")

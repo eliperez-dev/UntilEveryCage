@@ -84,6 +84,11 @@ python pipeline/scripts/benchmarks/explain_public_projection.py `
   --observations 1000 --json-output .tmp/public-explain.json
 ```
 
+Add `--components` to separate eligibility, summary, geocode, city,
+lifecycle, spatial, and pagination costs. The component report is aggregate
+only and remains bounded by the same disposable environment and statement
+timeout.
+
 On the synthetic 1,000-row fixture, the flattened list and facets queries
 executed in 262 ms and 243 ms respectively; the pre-change nested plans were
 estimated with 28 nested-loop nodes, 25 sequential scans, and 9 repeated
@@ -98,6 +103,15 @@ pool sizing and launch capacity decisions blocked pending an approved
 representative traffic test on the deployment topology. The 2-second request
 timeout and 350 ms database radius-query budget remain review thresholds for
 fail-safe behavior, not performance guarantees.
+
+The 5,000-row component matrix attributes the remaining cost primarily to the
+release-scoped eligibility and public summary path: about 663 ms and 3,362 ms
+respectively in isolation, versus about 16 ms geocode, 15 ms city, and 1 ms
+lifecycle lookup. Full pagination and spatial statements measured about 5,097
+ms and 4,690 ms. Allowing the summary CTE to inline was tested and rejected:
+facets worsened from about 4,501 ms to 6,622 ms. See
+`docs/performance/v2-public-projection-read-path.md` for the architecture
+decision and the safeguards required for any future release-built component.
 
 The benchmark and logs provide operational evidence only. They do not establish
 source completeness, publication eligibility, production capacity, cloud
