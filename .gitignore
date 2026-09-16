@@ -19,3 +19,4 @@ __pycache__/
 !/data/raw/**/
 !/data/raw/**/metadata.json
 !/data/reports/.gitkeep
+/data/graph-rehearsal/
