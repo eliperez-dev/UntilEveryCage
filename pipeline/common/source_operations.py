@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 
 from .acquisition import AcquisitionError
-from .delta import compare_runs
+from .delta import compare_normalized_paths, compare_runs
 from pipeline.contracts.source_lifecycle import atomic_bytes, atomic_json
 
 
@@ -333,9 +333,12 @@ def _provenance(manifest: dict[str, Any]) -> dict[str, Any]:
     return {key: manifest[key] for key in keys if manifest.get(key) is not None}
 
 
-def build_release_diff(previous_run_dir: str | Path | None, current_run_dir: str | Path, *, prior_eligible_release: dict[str, Any] | None = None) -> dict[str, Any]:
+def build_release_diff(previous_run_dir: str | Path | None, current_run_dir: str | Path, *, previous_normalized_path: str | Path | None = None, prior_eligible_release: dict[str, Any] | None = None) -> dict[str, Any]:
     """Build a row-free, deterministic diff for a human operator."""
     current = Path(current_run_dir)
+    if previous_run_dir is None and previous_normalized_path is not None:
+        normalized_delta = compare_normalized_paths(previous_normalized_path, current / "normalized" / "records.jsonl")
+        return {"schema_version": "release-diff-v1", **normalized_delta, "release_promoted": False, "prior_eligible_release": prior_eligible_release}
     if previous_run_dir is None:
         return {
             "schema_version": "release-diff-v1", "status": "no-previous-validated-run",
@@ -352,6 +355,7 @@ def build_review_packet(
     manifest: dict[str, Any] | None,
     status: dict[str, Any],
     previous_run_dir: str | Path | None = None,
+    previous_normalized_path: str | Path | None = None,
     prior_eligible_release: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Create a stable operator packet containing no source rows or raw fields."""
@@ -376,15 +380,33 @@ def build_review_packet(
         reasons.append("publication remains behind the human/terms gate")
     if not reasons:
         reasons.append("confirm private evidence and release scope before any separate approval action")
-    diff = build_release_diff(previous_run_dir, run_dir, prior_eligible_release=prior_eligible_release)
+    diff = build_release_diff(previous_run_dir, run_dir, previous_normalized_path=previous_normalized_path, prior_eligible_release=prior_eligible_release)
+    counts = {
+        key: manifest.get(key) for key in ("input_rows", "normalized_rows", "quarantined_rows")
+    }
+    qa_counts = {key: qa.get(key) for key in counts}
+    blockers = status.get("review_blockers", {})
     return {
-        "schema_version": "review-packet-v1",
+        "schema_version": "private-review-packet-v1",
         "source_id": source_id,
+        "run_dir_digest": _file_sha256(Path(run_dir) / "manifest.json") or _file_sha256(Path(run_dir) / "run-manifest.json"),
         "run_id": status.get("run_id") or Path(run_dir).name,
         "classification": status.get("run_classification", "failed" if failed else "changed"),
         "review_required": review_required,
         "reasons": sorted(set(reasons)),
         "provenance": _provenance(manifest),
+        "schema": {
+            "adapter_version": manifest.get("adapter_version"),
+            "schema_version": manifest.get("schema_version"),
+            "schema_fingerprint": manifest.get("schema_fingerprint"),
+            "schema_status": manifest.get("schema_status", "not-reported"),
+        },
+        "counts": {
+            **counts,
+            "reconciles": all(isinstance(value, int) and value >= 0 for value in counts.values()) and counts["input_rows"] == counts["normalized_rows"] + counts["quarantined_rows"],
+            "qa_matches_manifest": counts == qa_counts,
+        },
+        "quarantine": {"rows": manifest.get("quarantined_rows"), "reasons": manifest.get("anomaly_counts", {})},
         "run": {
             "status": status.get("status"),
             "publication_state": status.get("publication_state", "unchanged"),
@@ -395,6 +417,14 @@ def build_review_packet(
             "drift_alarms": sorted(set(qa.get("drift_alarms", []))) if isinstance(qa.get("drift_alarms", []), list) else [],
         },
         "release_diff": diff,
+        "gates": {
+            "release_state": manifest.get("release_state", "not-created"),
+            "publication_state": status.get("publication_state"),
+            "release_promoted": status.get("release_promoted"),
+            "public_surfaces": status.get("public_surfaces", {surface: False for surface in ("api", "map", "export", "cache", "history")}),
+            "geocoding": manifest.get("geocoding", "disabled"),
+        },
+        "blockers": blockers,
         "prior_eligible_release": prior_eligible_release,
         "release_promotion_allowed": False,
         "public_exposure": False,
@@ -414,6 +444,7 @@ def finalize_run_operations(
     status: dict[str, Any],
     config: dict[str, Any] | None = None,
     previous_run_dir: str | Path | None = None,
+    previous_normalized_path: str | Path | None = None,
     prior_eligible_release: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Persist the shared run ledger and deterministic operator artifacts."""
@@ -441,7 +472,8 @@ def finalize_run_operations(
         "release_preserved": True,
         "release_promoted": False,
     })
-    packet = build_review_packet(run_path, manifest=manifest, status=status, previous_run_dir=previous_run_dir, prior_eligible_release=prior_eligible_release)
+    status["review_blockers"] = config.get("review_blockers", {})
+    packet = build_review_packet(run_path, manifest=manifest, status=status, previous_run_dir=previous_run_dir, previous_normalized_path=previous_normalized_path, prior_eligible_release=prior_eligible_release)
     packet_path = run_path / "review-packet.json"
     diff_path = run_path / "release-diff.json"
     atomic_json(packet_path, packet)

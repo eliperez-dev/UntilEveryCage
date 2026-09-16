@@ -12,7 +12,6 @@ from typing import Any, Callable
 from pipeline.contracts.adapter_contract import SourceAdapter, SourceArtifact, source_artifact_from_mapping
 from pipeline.contracts.private_run import write_private_run_report
 from pipeline.contracts.source_health import build_health_snapshot, write_health_snapshot
-from pipeline.common.review_packet import write_review_packet
 from .identity import record_key
 from .source_operations import classify_failure, finalize_run_operations
 
@@ -117,8 +116,6 @@ def run_registered_input(raw_path: str | Path, runs_dir: str | Path, config: dic
                       "attempts": getattr(exc, "attempts", []),
                       "prior_eligible_release": prior_eligible_release,
                       "run_dir": str(run_dir)}
-        if status.get("status") != "failed":
-            write_review_packet(run_dir, previous_normalized_path=previous_normalized_path, blockers=review_blockers)
     status["run_dir"] = str(run_dir)
     status["run_id"] = config.get("run_id") or run_dir.name
     # The operations ledger is derived from the private run and is append-only.
@@ -128,7 +125,9 @@ def run_registered_input(raw_path: str | Path, runs_dir: str | Path, config: dic
     try:
         status = finalize_run_operations(
             runs.parent, run_dir, manifest=status.get("manifest"), status=status,
-            config=config, prior_eligible_release=prior_eligible_release,
+            config={**config, "review_blockers": review_blockers or {}},
+            previous_normalized_path=previous_normalized_path,
+            prior_eligible_release=prior_eligible_release,
         )
     except Exception as exc:
         failure = classify_failure(exc)
