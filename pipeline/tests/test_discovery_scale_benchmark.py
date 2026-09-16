@@ -72,6 +72,16 @@ class DiscoveryScaleBenchmarkTests(unittest.TestCase):
         self.assertNotIn("drop table", migration)
         self.assertNotIn("drop index", migration)
 
+    def test_public_history_flattening_preserves_release_and_suppression_gates(self):
+        migration = (ROOT / "migrations" / "032_flatten_public_history_view.sql").read_text(encoding="utf-8").lower()
+        self.assertIn("create or replace view uec.map_facilities_display_history", migration)
+        self.assertIn("with eligible as materialized", migration)
+        self.assertIn("public_summary as materialized", migration)
+        self.assertIn("publication_review_release_current", migration)
+        self.assertIn("public_access_restricted", migration)
+        self.assertIn("group by release_id, facility_id", migration)
+        self.assertNotIn("drop view", migration)
+
 
 if __name__ == "__main__":
     unittest.main()
