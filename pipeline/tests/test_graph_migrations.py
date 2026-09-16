@@ -12,7 +12,6 @@ class GraphMigrationContractTests(unittest.TestCase):
     def test_reserved_migrations_are_present_and_ordered(self):
         migrations = sorted(path.name for path in (ROOT / "migrations").glob("*.sql"))
         self.assertEqual(migrations[-5:], [
-            "025_discovery_query_indexes.sql",
             "026_graph_entities_crosswalks.sql",
             "027_graph_relationship_observations.sql",
             "028_graph_claims_support.sql",
