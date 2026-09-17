@@ -34,15 +34,18 @@ private health evidence, and a candidate handoff. Verify the raw artifact hash
 and byte size against its manifest before restoring or rerunning. A source
 disappearance is recorded as not observed, never as closure.
 
-CFIA is captured privately as an XLS workbook. The reviewed adapter accepts
-XLSX and HTML-table exports mislabeled as XLS, preserves source-native cell
-text and workbook provenance, and fails closed on unsupported binary BIFF or
-schema drift. Candidate handoffs remain private and human-gated; no public
+CFIA is captured privately as an XLS workbook. The adapter accepts the legacy
+BIFF workbook as well as XLSX and HTML-table exports mislabeled as XLS,
+preserves source-native cell text and workbook provenance, and fails closed on
+malformed workbooks or schema drift. The current 874 rows parse deterministically
+but remain quarantined because their function-code values have not yet been
+mapped to a reviewed project category. Therefore no CFIA rows enter the
+candidate release. Candidate handoffs remain private and human-gated; no public
 release is created.
 
 ## Full-corpus V2 rehearsal
 
-The seven normalized source handoffs can be rechecked without exposing their
+The eight requested source profiles can be rechecked without exposing their
 rows by running the aggregate-only validator below. It reads the ignored raw
 artifacts and candidate handoffs named by the checked-in manifest, verifies raw
 and normalized hashes, and checks `input = normalized + quarantined` for every
@@ -59,10 +62,11 @@ The command always writes an aggregate report, but exits nonzero if a private
 artifact, handoff, checksum, candidate state, or reconciliation count is
 missing or changed. It enumerates every unavailable or invalid source instead
 of stopping at the first one; unavailable inputs are never counted as zero.
-CFIA is intentionally reported as raw-only because its current workbook has no
-normalized handoff. The checked-in report must remain aggregate-only; do not
-substitute a normalized JSONL path for its output path or add row payloads to
-the manifest.
+CFIA is parsed through the legacy BIFF adapter, but all 874 current rows remain
+explicitly quarantined because their function-code values still need reviewed
+project-category mapping. The checked-in report must remain aggregate-only; do
+not substitute a normalized JSONL path for its output path or add row payloads
+to the manifest.
 
 For the complete disposable candidate/API rehearsal, use the separate
 operator command below. `--root` may point at an authorized ignored staging
@@ -81,23 +85,42 @@ python pipeline/scripts/maintenance/rehearse_current_candidate.py `
 
 The candidate release is loopback-only, `test_only`, unapproved, and never
 promoted. A successful run must report 108,475 normalized rows imported on
-the first pass and zero new rows on the rerun. CFIA is intentionally listed as
-raw-only and is not silently counted as zero.
+the first pass and zero new rows on the rerun. CFIA is represented by its 874
+quarantined input rows and is not silently counted as zero. A zero-normalized
+source remains included when every input row is explicitly quarantined.
 
-The completed rehearsal used a disposable `docker-compose.e2e.yml` project
-(`uec-reacq-20260916`, DB port `55440`) with all 34 migrations. It imported the
-Denmark and Italy candidate handoffs into
-`candidate-current-reacquisition-20260916` for 100,613 normalized rows using
-`pipeline/scripts/maintenance/import-candidate.py` and loopback-only
-test-release configuration.
+To run the complete disposable candidate rehearsal, including all seven
+normalized handoffs, one idempotent rerun, list/detail/facets/cursor checks, the
+bounded export guard, and an append-only suppression check, use:
 
-The loopback API was exercised on `127.0.0.1:18000`: candidate preview,
-test-release locations, facets, paginated location retrieval, and a bounded
-sample CSV export returned successfully. The full CSV endpoint correctly
-returned its explicit `export_too_large` guard above 1,000 rows. The public V2
-route returned zero rows because no promoted release existed. One append-only
-`public_access_revoked` event reduced private candidate visibility from 100,613
-to 100,612. Re-running both candidate imports produced zero new rows.
+```powershell
+python pipeline/scripts/maintenance/rehearse_current_candidate.py `
+  --manifest data/manifests/current-reacquisition-2026-09-16.json `
+  --root . `
+  --output data/reports/current-candidate-rehearsal.json
+```
+
+The runner resolves each raw artifact by its recorded hash and byte size and
+fails closed if the authorized ignored artifact is unavailable or ambiguous.
+It writes only row-free evidence. The candidate release is test-only and
+loopback-authenticated; it is never a publication approval or public release.
+The checked-in aggregate result is [the candidate rehearsal manifest](../data/manifests/current-candidate-rehearsal-2026-09-16.json);
+the detailed runner report remains ignored because it is regenerated from
+authorized private artifacts.
+
+The previous bounded rehearsal used a disposable `docker-compose.e2e.yml`
+project (`uec-reacq-20260916`, DB port `55440`) with all 34 migrations. The
+current lane supersedes that partial rehearsal by importing the seven
+normalized handoffs into one disposable candidate release; the CFIA profile is
+accounted for but contributes zero candidate rows while its 874 rows remain
+quarantined.
+
+The row-free runner report records the current loopback API results. The full
+CSV endpoint must return its explicit `export_too_large` guard above 1,000
+rows. The public V2 route must return zero rows because no promoted release
+exists. One append-only `public_access_revoked` event must remove the selected
+facility from test-release detail and list responses. Re-running every source
+import must produce zero new rows.
 
 The disposable Compose project and API process should be stopped and removed
 after inspection:

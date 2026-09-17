@@ -140,22 +140,23 @@
       "raw_artifact": "data/raw/ca.cfia.federal-meat/20260916T152500Z-cfia/source.xls",
       "raw_bytes": 572928,
       "raw_sha256": "d2f042a43e0dc72460c892c67b60e8d0cacf9a91bd85032862664a6deae0cfef",
-      "private_manifest": "data/raw/ca.cfia.federal-meat/20260916T152500Z-cfia/acquisition-metadata.json",
-      "input_rows": null,
-      "normalized_rows": null,
-      "quarantined_rows": null,
-      "code_version": "ca-meat-v1",
-      "config_version": "ca-meat-delimited-v1",
-      "status": "raw-only; blocked because live response is XLS and existing adapter is delimited-only"
+      "private_manifest": "data/staging/reacquisition/ca.cfia.federal-meat/20260916T152500Z-cfia/lifecycle/d2f042a43e0dc724-_h8snid7/manifest.json",
+      "candidate_handoff_manifest": "data/staging/reacquisition/ca.cfia.federal-meat/20260916T152500Z-cfia/lifecycle/d2f042a43e0dc724-_h8snid7/candidate-handoff/manifest.json",
+      "input_rows": 874,
+      "normalized_rows": 0,
+      "quarantined_rows": 874,
+      "code_version": "ca-meat-v2-workbook",
+      "config_version": "ca-meat-tabular-workbook-v1",
+      "status": "candidate-ready; private only; all rows quarantined pending CFIA function-code mapping review"
     }
   ],
   "totals": {
     "source_profiles": 8,
     "profiles_with_normalized_rows": 7,
-    "input_rows_known": 115182,
+    "input_rows_known": 116056,
     "normalized_rows": 108475,
-    "quarantined_rows": 6707,
-    "raw_only_profiles": 1,
+    "quarantined_rows": 7581,
+    "raw_only_profiles": 0,
     "requested_min_normalized_rows": 100000,
     "target_met": true
   },
@@ -165,8 +166,8 @@
     "database_is_disposable": true,
     "migrations_applied": 34,
     "release_id": "candidate-current-reacquisition-20260916",
-    "imported_source_ids": ["dk.smiley", "it.853-2004"],
-    "imported_normalized_rows": 100613,
+    "imported_source_ids": ["dk.smiley", "it.853-2004", "fr.dgal.section-i", "fr.dgal.section-ii", "fsa_approved_establishments", "fss_approved_establishments", "ca.ontario.meat-plants"],
+    "imported_normalized_rows": 108475,
     "rerun_new_rows": 0,
     "suppression": {
       "restricted_before": 0,
@@ -190,7 +191,7 @@
     "publication_state": "no public release; test-only candidate preview/export only"
   },
   "blockers": [
-    "CFIA current registry was acquired as an XLS workbook but the existing adapter accepts delimited text only; add/review a workbook adapter before normalization.",
+    "CFIA legacy BIFF workbook now parses deterministically, but all 874 rows are quarantined because source function-code values do not yet map to a reviewed project category; no CFIA rows enter the candidate release.",
     "Italy Python HTTPS failed with an SSL handshake error in this environment; the same official catalog and CSV were captured with system curl and recorded as assisted_local_capture.",
     "FSA, FSS, France, Italy, Ontario, and Denmark review/terms/privacy/classification gates remain open; normalization is not publication approval."
   ]

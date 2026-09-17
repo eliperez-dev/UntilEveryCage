@@ -99,7 +99,10 @@ def _validate_profile(profile: dict[str, Any], root: Path) -> dict[str, Any]:
     if not normalized_path.is_file():
         raise ValueError(f"{source_id}: normalized handoff is missing")
     normalized_hash, _ = _sha(normalized_path)
-    expected_hash = handoff.get("normalized_sha256")
+    # The handoff is the artifact being validated below.  Some adapters write
+    # a separate parsed/normalized file in their private run manifest, so that
+    # hash must not take precedence over the handoff hash.
+    expected_hash = handoff.get("normalized_sha256") or manifest.get("normalized_sha256")
     if expected_hash and normalized_hash != expected_hash:
         raise ValueError(f"{source_id}: normalized checksum mismatch")
     rows = _jsonl_count(normalized_path)
@@ -145,7 +148,7 @@ def build_report(manifest_path: Path, root: Path, output: Path) -> dict[str, Any
     unavailable = [item["source_id"] for item in results if item["status"] in {"unavailable_private_handoff", "unavailable_raw_only"}]
     raw_only = [item["source_id"] for item in results if item["status"] == "validated-raw-only"]
     failed = [item["source_id"] for item in results if item["status"] not in {"validated-private-candidate", "validated-raw-only", "unavailable_private_handoff", "unavailable_raw_only"}]
-    passed = not unavailable and not failed and len(complete) == len(EXPECTED) - 1
+    passed = not unavailable and not failed and len(complete) == len(EXPECTED)
     report = {"schema_version": "current-reacquisition-rehearsal-v1",
               "privacy_boundary": "aggregate-only; private rows, raw artifacts, and location fields are excluded",
               "release_id": source_manifest["publication"]["candidate_release"],
@@ -156,7 +159,7 @@ def build_report(manifest_path: Path, root: Path, output: Path) -> dict[str, Any
                                "validated_raw_only_profiles": len(raw_only), "unavailable_profiles": unavailable,
                                "failed_profiles": failed},
               "reconciliation": {"passed": passed, "quarantine_accounted": passed,
-                                  "reason": "all required private handoffs must be present and integrity-checked"},
+                                  "reason": "all required private handoffs, including explicitly quarantined zero-normalized sources, must be present and integrity-checked"},
               "rerun": {"status": "not-run; private handoffs unavailable" if not passed else "operator-required",
                         "expected_new_rows": 0, "deterministic_ids": True},
               "api_checks": {"status": "not-run; private handoffs unavailable" if not passed else "operator-required",
@@ -164,7 +167,7 @@ def build_report(manifest_path: Path, root: Path, output: Path) -> dict[str, Any
                              "bounded_export": "not-run", "suppression": "not-run"},
               "limitations": ["Database/API observations require the disposable loopback rehearsal.",
                               "Validation does not approve or publish any source.",
-                              "CFIA XLS remains raw-only and is intentionally excluded.",
+                              "CFIA is parsed but its 874 rows remain quarantined pending reviewed function-code mapping.",
                               "Missing private artifacts are reported as unavailable, never as zero rows."]}
     text = json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
     if any(key in text for key in FORBIDDEN_KEYS):

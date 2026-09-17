@@ -14,25 +14,25 @@ from pathlib import Path
 from typing import Any
 
 from pipeline.common.review import write_operator_review_packet
-from pipeline.common.tabular import TabularSchemaError, occurrence_key, read_rows, resolve_mapping, row_identity, value
+from pipeline.common.tabular import TabularSchemaError, canonical_header, occurrence_key, read_rows, resolve_mapping, row_identity, value
 from pipeline.contracts.adapter_contract import SourceArtifact
 from pipeline.contracts.source_lifecycle import atomic_json, atomic_jsonl, private_manifest
 
 
 ALIASES = {
-    "plant_number": ("plant number", "registration number", "establishment number", "establishment id", "plant id", "registration no", "plant number no. de l'usine"),
+    "plant_number": ("plant number", "registration number", "establishment number", "establishment id", "plant id", "registration no", "plant number no. de l'usine", "est_num"),
     "name": ("plant name", "operator name", "operators name", "name of operator", "establishment name", "operator", "name", "plant name nom de l'usine"),
     "doing_business_as": ("doing business as", "dba name", "also doing business as name", "trade name"),
-    "address": ("address", "location address", "street address", "location", "address adresse"),
-    "city": ("city", "location city", "municipality", "town", "city ville"),
-    "province": ("province", "location province", "prov", "state", "province"),
-    "postal_code": ("postal code", "postcode", "zip", "postal code code postal"),
-    "phone": ("phone", "telephone", "telephone numbers", "contact phone", "telephone telephone"),
+    "address": ("address", "location address", "street address", "location", "address adresse", "loc_add1", "loc_add2", "loc_add3"),
+    "city": ("city", "location city", "municipality", "town", "city ville", "loc_city"),
+    "province": ("province", "location province", "prov", "state", "province", "loc_prov"),
+    "postal_code": ("postal code", "postcode", "zip", "postal code code postal", "loc_pc"),
+    "phone": ("phone", "telephone", "telephone numbers", "contact phone", "telephone telephone", "tele_1"),
     "latitude": ("latitude", "lat", "y"),
     "longitude": ("longitude", "lon", "lng", "x"),
     "animal_class": ("animal class", "animal classes", "species", "species processed", "animal class catégorie d'animaux"),
     "plant_type": ("plant type", "type", "dataset", "facility type"),
-    "function_codes": ("function codes", "function code", "activities", "activity codes", "activity"),
+    "function_codes": ("function codes", "function code", "activities", "activity codes", "activity", "codes_1", "codes_2", "codes_3", "code_4", "code_5", "codes_6", "code_7", "code_8", "codes_9", "codes_10"),
     "status": ("status", "current status", "state"),
     "effective_date": ("effective date", "date updated", "last updated", "updated"),
 }
@@ -52,6 +52,12 @@ def _categories(*values_: str | None) -> tuple[str, ...]:
     return tuple(dict.fromkeys(categories))
 
 
+def _joined_source_codes(row: dict[str, str]) -> str | None:
+    values = [str(raw).strip() for header, raw in row.items()
+              if canonical_header(header).startswith(("codes", "code")) and str(raw).strip()]
+    return "; ".join(values) or None
+
+
 def _fingerprint(headers: tuple[str, ...]) -> str:
     return hashlib.sha256(json.dumps(tuple(re.sub(r"\s+", " ", h).strip().lower() for h in headers), separators=(",", ":")).encode()).hexdigest()
 
@@ -64,6 +70,43 @@ def _validate_sheet(headers: tuple[str, ...], rows: list[dict[str, str]], aliase
         raise TabularSchemaError("schema drift; missing columns: " + ", ".join(missing))
     if any(len(row) != len(headers) for row in rows):
         raise TabularSchemaError("schema drift; row has an inconsistent column count")
+
+
+def _read_xls(content: bytes, aliases: dict[str, tuple[str, ...]], *, required: tuple[str, ...]):
+    """Read a legacy BIFF workbook while keeping source cells as text.
+
+    CFIA's current download is an ``.xls`` compound-document workbook rather
+    than an OOXML ``.xlsx`` file.  It must be parsed explicitly; treating the
+    bytes as delimited text would silently corrupt the source evidence.
+    """
+    try:
+        import xlrd
+    except ImportError as error:  # pragma: no cover - exercised in env checks
+        raise TabularSchemaError("legacy XLS requires pinned xlrd dependency") from error
+    try:
+        book = xlrd.open_workbook(file_contents=content, on_demand=True)
+        sheet = next((candidate for candidate in book.sheets() if candidate.nrows and candidate.ncols), None)
+        if sheet is None:
+            raise TabularSchemaError("workbook has no populated worksheets")
+
+        def cell_text(cell) -> str:
+            if cell.ctype in (xlrd.XL_CELL_EMPTY, xlrd.XL_CELL_BLANK):
+                return ""
+            value = cell.value
+            if cell.ctype == xlrd.XL_CELL_NUMBER and float(value).is_integer():
+                return str(int(value))
+            return str(value)
+
+        headers = tuple(cell_text(sheet.cell(0, column)) for column in range(sheet.ncols))
+        rows: list[dict[str, str]] = []
+        for row_index in range(1, sheet.nrows):
+            values = [cell_text(sheet.cell(row_index, column)) for column in range(sheet.ncols)]
+            if any(value.strip() for value in values):
+                rows.append(dict(zip(headers, values)))
+    except (ImportError, IndexError, ValueError, xlrd.biffh.XLRDError) as error:
+        raise TabularSchemaError("malformed or unsupported legacy XLS workbook") from error
+    _validate_sheet(headers, rows, aliases, required)
+    return headers, rows, "xls", _fingerprint(headers)
 
 
 def _read_xlsx(content: bytes, aliases: dict[str, tuple[str, ...]], *, required: tuple[str, ...]):
@@ -122,7 +165,9 @@ class CanadaMeatAdapter:
 
     def parse_bytes(self, content: bytes) -> dict[str, Any]:
         required = ("plant_number", "name")
-        if content[:2] == b"PK":
+        if content[:8] == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":
+            headers, rows, delimiter, schema_fingerprint = _read_xls(content, ALIASES, required=required)
+        elif content[:2] == b"PK":
             headers, rows, delimiter, schema_fingerprint = _read_xlsx(content, ALIASES, required=required)
         elif content.lstrip().lower().startswith((b"<html", b"<!doctype html", b"<?xml")):
             headers, rows, delimiter, schema_fingerprint = _read_html_table(content, ALIASES, required=required)
@@ -133,7 +178,7 @@ class CanadaMeatAdapter:
         for line, row in enumerate(rows, 2):
             plant_number, name = _clean(value(row, mapping, "plant_number")), _clean(value(row, mapping, "name"))
             key = occurrence_key(row, mapping, ("plant_number", "name", "city", "province", "function_codes", "animal_class")); occurrences[key] += 1
-            plant_type, functions, animal_class = _clean(value(row, mapping, "plant_type")), _clean(value(row, mapping, "function_codes")), _clean(value(row, mapping, "animal_class"))
+            plant_type, functions, animal_class = _clean(value(row, mapping, "plant_type")), _clean(_joined_source_codes(row) or value(row, mapping, "function_codes")), _clean(value(row, mapping, "animal_class"))
             categories = _categories(plant_type, functions, animal_class)
             reasons: list[str] = []
             if not plant_number: reasons.append("missing_plant_number")

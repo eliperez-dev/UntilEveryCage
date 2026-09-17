@@ -1,1 +1,2 @@
 psycopg[binary]==3.2.9
+xlrd==2.0.1
