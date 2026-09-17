@@ -1,3 +1,4 @@
+import hashlib
 import json, os, subprocess, sys, unittest, urllib.error, urllib.request
 import uuid
 from datetime import datetime, timezone
@@ -175,7 +176,10 @@ class SeededApiE2ETests(unittest.TestCase):
         with psycopg.connect(self.env.database_url) as db:
             facility_id, observation_id = db.execute("SELECT facility_id, observation_id FROM uec.observations o JOIN uec.source_records r USING (source_record_id) WHERE r.source_record_key = 'exact'").fetchone()
             db.execute("INSERT INTO uec.releases (release_id,status,ruleset_version,profile,summary) VALUES ('e2e-secondary-later','promoted','e2e-v2','secondary','{}')")
+            manifest = '{"eligible_record_count":0,"manifest_version":"v1","profile":"secondary","release_id":"e2e-secondary-later","ruleset_version":"e2e-v2"}'
+            db.execute("INSERT INTO uec.release_manifests (release_id,manifest,manifest_sha256) VALUES ('e2e-secondary-later',%s::jsonb,%s)", (manifest, hashlib.sha256(manifest.encode()).hexdigest()))
             db.execute("INSERT INTO uec.release_members (release_id,facility_id,observation_id,default_visible) VALUES ('e2e-secondary-later',%s,%s,true)", (facility_id, observation_id))
+        self.env.build_public_read_model('e2e-secondary-later')
         self.assertEqual(self.get('/api/v2/locations?profile=secondary&limit=100')['data'], [])
 
     def test_z1b_candidate_review_does_not_revoke_independent_promoted_approval(self):

@@ -25,26 +25,6 @@ class PublicSurfaceSafetyE2ETests(unittest.TestCase):
             raise unittest.SkipTest("set UEC_RUN_E2E=1 to run Docker-backed E2E tests")
         cls.env = E2EEnvironment().start()
         cls.env.seed_community_scenario()
-        with psycopg.connect(cls.env.database_url) as db:
-            for release_id, profile, count in (
-                ("e2e-official-empty", "official", 0),
-                ("e2e-community", "community", 2),
-            ):
-                manifest = {
-                    "eligible_record_count": count,
-                    "manifest_version": "v1",
-                    "profile": profile,
-                    "release_id": release_id,
-                    "ruleset_version": f"{profile}-v1",
-                    "source_ids": ["e2e.community"] if profile == "community" else [],
-                }
-                serialized = json.dumps(manifest, sort_keys=True, separators=(",", ":"))
-                digest = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
-                db.execute(
-                    "INSERT INTO uec.release_manifests (release_id,manifest,manifest_sha256) "
-                    "VALUES (%s,%s::jsonb,%s)",
-                    (release_id, serialized, digest),
-                )
 
     @classmethod
     def tearDownClass(cls):
@@ -127,6 +107,8 @@ class ReleaseScopedReviewE2ETests(unittest.TestCase):
             raise unittest.SkipTest("set UEC_RUN_E2E=1 to run Docker-backed E2E tests")
         cls.env = E2EEnvironment().start()
         cls.seed_shared_record()
+        cls.env.build_public_read_model("e2e-release-a")
+        cls.env.build_public_read_model("e2e-release-b")
 
     @classmethod
     def tearDownClass(cls):

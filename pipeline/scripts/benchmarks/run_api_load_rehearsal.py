@@ -53,7 +53,7 @@ PLAN_QUERIES = {
     "list": """
         SELECT facility_id, canonical_name, country_code, city,
                classification_category, display_precision
-        FROM uec.map_facilities_display_history
+        FROM uec.map_facilities_public_discovery_read_model
         WHERE release_id = 'load-promoted'
         ORDER BY facility_id
         LIMIT 51
@@ -61,14 +61,14 @@ PLAN_QUERIES = {
     "facets": """
         SELECT country_code, classification_category, display_precision,
                lifecycle_status, provenance_origin_type, city, count(*)::bigint
-        FROM uec.map_facilities_display_history
+        FROM uec.map_facilities_public_discovery_read_model
         WHERE release_id = 'load-promoted'
         GROUP BY country_code, classification_category, display_precision,
                  lifecycle_status, provenance_origin_type, city
     """,
     "radius": """
         SELECT facility_id
-        FROM uec.map_facilities_display_history
+        FROM uec.map_facilities_public_discovery_read_model
         WHERE release_id = 'load-promoted'
           AND display_location && ST_SetSRID(
                 ST_MakeEnvelope(-5.7, 49.55, -4.3, 50.45, 4326), 4326)::geography
@@ -476,6 +476,8 @@ def run_rehearsal(env: Any, observations: int, levels: tuple[int, ...], requests
     import psycopg
     with psycopg.connect(env.database_url) as connection:
         detail_id = seed_public_projection(connection, observations, distribution)
+    env.build_public_read_model("load-promoted")
+    with psycopg.connect(env.database_url) as connection:
         query_plans = capture_query_plans(connection)
     base = f"http://127.0.0.1:{env.api_port}"
     results = []

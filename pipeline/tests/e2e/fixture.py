@@ -1,5 +1,6 @@
 """Disposable PostGIS and backend fixture used by API E2E tests."""
 import os
+import hashlib
 import json
 import socket
 import subprocess
@@ -13,6 +14,20 @@ import psycopg
 
 ROOT = Path(__file__).resolve().parents[3]
 COMPOSE = ROOT / "docker-compose.e2e.yml"
+
+_READ_MODEL_SCRIPT = ROOT / "pipeline" / "scripts" / "maintenance" / "build_public_discovery_read_model.py"
+_READ_MODEL_SPEC = None
+_READ_MODEL_MODULE = None
+
+def _read_model_builder():
+    global _READ_MODEL_SPEC, _READ_MODEL_MODULE
+    if _READ_MODEL_MODULE is None:
+        import importlib.util
+        _READ_MODEL_SPEC = importlib.util.spec_from_file_location("build_public_discovery_read_model", _READ_MODEL_SCRIPT)
+        _READ_MODEL_MODULE = importlib.util.module_from_spec(_READ_MODEL_SPEC)
+        assert _READ_MODEL_SPEC.loader
+        _READ_MODEL_SPEC.loader.exec_module(_READ_MODEL_MODULE)
+    return _READ_MODEL_MODULE
 
 def free_port():
     with socket.socket() as sock:
@@ -208,6 +223,7 @@ class E2EEnvironment:
     def seed_official_scenario(self):
         """Seed safe synthetic records for public API tests."""
         now = datetime.now(timezone.utc)
+        restricted_record = None
         with psycopg.connect(self.database_url) as db:
             with db.transaction():
                 db.execute("INSERT INTO uec.sources (source_id,country_code,name,official_url,access_method) VALUES ('e2e.official','DK','Synthetic official source','https://example.invalid/official','fixture')")
@@ -230,11 +246,22 @@ class E2EEnvironment:
                     else:
                         db.execute("INSERT INTO uec.geocode_results (source_record_id,provider_id,query,match_method,status,attempt_number,queried_at) VALUES (%s,'e2e','fixture','fixture',%s,1,%s)", (record,status,now))
                     if name == 'restricted':
-                        db.execute("INSERT INTO uec.record_access_events (source_record_id,action,reason_category,policy_version,maintainer) VALUES (%s,'public_access_revoked','privacy','ethics-v1','e2e')", (record,))
+                        restricted_record = record
                     if approved:
                         db.execute("INSERT INTO uec.publication_review_events (source_record_id,factual_review_status,privacy_screening_status,maintainer_approval,publication_eligible,reviewer_role) VALUES (%s,'reviewed','passed','approved',true,'maintainer')", (record,))
                     if name == 'exact':
                         db.execute("INSERT INTO uec.facility_lifecycle_events (facility_id,status,effective_at,evidence_note) VALUES (%s,'active_observed',%s,'Synthetic official observation')", (facility, now))
+        self.build_public_read_model('e2e-promoted')
+        # Build from the public projection before the synthetic restriction is
+        # appended. The read view still applies the restriction live, and an
+        # explicit restoration can therefore be tested without storing a
+        # private row in the component.
+        with psycopg.connect(self.database_url) as db:
+            db.execute("INSERT INTO uec.record_access_events (source_record_id,action,reason_category,policy_version,maintainer) VALUES (%s,'public_access_revoked','privacy','ethics-v1','e2e')", (restricted_record,))
+
+    def build_public_read_model(self, release_id):
+        """Activate a synthetic model through the same atomic operator flow."""
+        return _read_model_builder().build(self.database_url, release_id)
 
     def create_failed_candidate(self):
         """Create an invalid candidate without touching the promoted release."""
@@ -302,6 +329,25 @@ class E2EEnvironment:
                         db.execute("INSERT INTO uec.publication_review_events (source_record_id,factual_review_status,privacy_screening_status,maintainer_approval,publication_eligible,reviewer_role,note) VALUES (%s,'reviewed','passed','approved',true,'maintainer','Synthetic eligible claim')", (record,))
                     elif review_state == "screened-unreviewed":
                         db.execute("INSERT INTO uec.publication_review_events (source_record_id,factual_review_status,privacy_screening_status,maintainer_approval,publication_eligible,reviewer_role,note) VALUES (%s,'unreviewed','passed','pending',true,NULL,'Synthetic screened but unreviewed claim')", (record,))
+            for release_id, profile, count in (
+                ('e2e-official-empty', 'official', 0),
+                ('e2e-community', 'community', 2),
+            ):
+                manifest = {
+                    'eligible_record_count': count,
+                    'manifest_version': 'v1',
+                    'profile': profile,
+                    'release_id': release_id,
+                    'ruleset_version': f'{profile}-v1',
+                    'source_ids': ['e2e.community'] if profile == 'community' else [],
+                }
+                serialized = json.dumps(manifest, sort_keys=True, separators=(',', ':'))
+                db.execute(
+                    "INSERT INTO uec.release_manifests (release_id,manifest,manifest_sha256) VALUES (%s,%s::jsonb,%s)",
+                    (release_id, serialized, hashlib.sha256(serialized.encode()).hexdigest()),
+                )
+        self.build_public_read_model('e2e-official-empty')
+        self.build_public_read_model('e2e-community')
 
     def __enter__(self):
         return self.start()

@@ -125,6 +125,7 @@ class SuppressionLifecycleE2ETests(unittest.TestCase):
                     "VALUES (%s,'synthetic',%s,'fixture','accepted',1,ST_SetSRID(ST_MakePoint(12,56),4326)::geography,%s)",
                     (cls.source_record_id, cls.private_marker, now),
                 )
+        cls.env.build_public_read_model("e2e-suppression-old")
 
     def get_json(self, path):
         with urllib.request.urlopen(f"http://localhost:{self.env.api_port}{path}", timeout=10) as response:

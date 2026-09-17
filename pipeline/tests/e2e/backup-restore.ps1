@@ -37,6 +37,8 @@ SELECT count(*) FROM uec.suppression_references WHERE case_id='00000000-0000-000
 SELECT count(*) FROM uec.public_access_restricted WHERE source_record_id='00000000-0000-0000-0000-000000000002';
 SELECT count(*) FROM uec.map_facilities_display WHERE source_record_id='00000000-0000-0000-0000-000000000002';
 SELECT count(*) FROM uec.map_facilities_display_history WHERE source_record_id='00000000-0000-0000-0000-000000000002';
+SELECT count(*) FROM uec.public_discovery_read_models WHERE release_id='e2e-promoted';
+SELECT count(*) FROM uec.public_discovery_read_model_rows WHERE source_record_id='00000000-0000-0000-0000-000000000002';
 "@
   $result = @(& docker compose @composeArgs exec -T postgres psql -v ON_ERROR_STOP=1 -U uec -d uec -At -c $sql)
   if ($LASTEXITCODE -ne 0) { throw "Restore gate query failed (exit $LASTEXITCODE)." }
@@ -49,7 +51,7 @@ function Assert-Snapshot([string]$phase, [string]$expected) {
   Write-Host "[backup-restore] ${phase}: $actual"
 }
 
-function Test-SyntheticServiceGate([string]$expected = '1,1,1,1,1,0,0') {
+function Test-SyntheticServiceGate([string]$expected = '1,1,1,1,1,0,0,1,1') {
   # The external synthetic restriction is required in the restored DB and both
   # public projections must exclude it. A query error stops the drill.
   return ((Get-Snapshot) -join ',') -eq $expected
@@ -88,20 +90,20 @@ try {
     if (-not $migrationApplied) { throw "Migration $($migration.Name) failed (exit $LASTEXITCODE)." }
   }
   Invoke-FixtureSql $seedFile
-  Assert-Snapshot 'older eligible state' '1,1,0,0,0,1,1'
+  Assert-Snapshot 'older eligible state' '1,1,0,0,0,1,1,1,1'
   & docker compose @composeArgs exec -T postgres pg_dump -U uec -d uec --format=custom --file=/tmp/uec.dump
   if ($LASTEXITCODE -ne 0) { throw "Backup creation failed (exit $LASTEXITCODE)." }
   & docker compose @composeArgs cp postgres:/tmp/uec.dump $dump
   if ($LASTEXITCODE -ne 0) { throw "Backup extraction failed (exit $LASTEXITCODE)." }
   Invoke-FixtureSql $suppressionFile
-  Assert-Snapshot 'later restriction active' '1,1,1,1,1,0,0'
+  Assert-Snapshot 'later restriction active' '1,1,1,1,1,0,0,1,1'
   if (-not (Test-SyntheticServiceGate)) { throw 'Current synthetic restriction did not close both public projections.' }
 
   # No application service is started anywhere in this drill. An old restore
   # loses the newer case, so the service gate MUST reject it before replay.
   & docker compose @composeArgs exec -T postgres pg_restore -U uec -d uec --clean --if-exists --exit-on-error /tmp/uec.dump
   if ($LASTEXITCODE -ne 0) { throw "Restore failed (exit $LASTEXITCODE)." }
-  Assert-Snapshot 'old backup restored, before replay' '1,1,0,0,0,1,1'
+  Assert-Snapshot 'old backup restored, before replay' '1,1,0,0,0,1,1,1,1'
   if (Test-SyntheticServiceGate) { throw 'Unsafe drill gate accepted an old backup before current restriction replay.' }
   # The verifier's nonzero exit is the expected result for the stale snapshot.
   # Capture it while temporarily allowing native stderr so PowerShell's Stop
@@ -120,8 +122,8 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'Restriction ledger replay SQL generation failed.' }
   Set-Content -LiteralPath $ledgerReplayFile -Value ($replaySql -join "`n") -Encoding UTF8
   Invoke-LedgerReplaySql $ledgerReplayFile
-  Assert-Snapshot 'current restriction replayed' '1,1,0,0,1,0,0'
-  if (-not (Test-SyntheticServiceGate '1,1,0,0,1,0,0')) { throw 'Synthetic pre-service gate rejected the replayed current restriction.' }
+  Assert-Snapshot 'current restriction replayed' '1,1,0,0,1,0,0,1,1'
+  if (-not (Test-SyntheticServiceGate '1,1,0,0,1,0,0,1,1')) { throw 'Synthetic pre-service gate rejected the replayed current restriction.' }
   Write-Host 'PASS: synthetic old-backup rollback remains gated until the independent current ledger is replayed and both public projections exclude it.'
   Write-Host 'TEST ONLY: production still requires separately operated ledger storage, trusted references, and deployment-specific review.'
 } finally {

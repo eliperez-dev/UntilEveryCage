@@ -17,3 +17,23 @@ INSERT INTO uec.release_members (release_id,facility_id,observation_id,default_v
 VALUES ('e2e-promoted','00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000005',true);
 INSERT INTO uec.publication_review_events (source_record_id,factual_review_status,privacy_screening_status,maintainer_approval,publication_eligible,reviewer_role)
 VALUES ('00000000-0000-0000-0000-000000000002','reviewed','passed','approved',true,'maintainer');
+-- The read model is part of the backup and is still only a public projection.
+-- Current suppression remains live after restore/replay.
+INSERT INTO uec.public_discovery_read_models (release_id,manifest_sha256,content_sha256,row_count)
+VALUES ('e2e-promoted','cabe8641a05beb76c9517006a8ec4cdd60b3bad58aa5b0fc29335fee1ac7d5dd',repeat('b',64),1);
+INSERT INTO uec.public_discovery_read_model_rows
+    (release_id,facility_id,observation_id,source_record_id,canonical_name,country_code,
+     city,display_precision,display_label,classification_category,observed_at,
+     first_observed_at,provenance_origin_type,provenance_source_id,provenance_source_name,
+     provenance_source_url,provenance_retrieved_at,source_rights_status)
+SELECT 'e2e-promoted', facility.facility_id, observation.observation_id,
+       observation.source_record_id, facility.canonical_name, facility.country_code,
+       facility.city, 'unmapped', 'No publishable location', observation.classification_category,
+       observation.observed_at, observation.first_observed_at, source.origin_type,
+       source.source_id, source.name, source.official_url, artifact.retrieved_at, 'unknown'
+FROM uec.observations observation
+JOIN uec.facilities facility ON facility.facility_id=observation.facility_id
+JOIN uec.source_records record ON record.source_record_id=observation.source_record_id
+JOIN uec.sources source ON source.source_id=record.source_id
+JOIN uec.raw_artifacts artifact ON artifact.artifact_id=record.artifact_id
+WHERE observation.observation_id='00000000-0000-0000-0000-000000000005';
