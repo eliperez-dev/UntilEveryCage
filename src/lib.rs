@@ -222,7 +222,17 @@ pub async fn get_v2_locations_export_handler(
     };
     let release_id: String = release.get(0);
     let manifest_sha256: String = release.get(1);
-    let rows = match client.query("SELECT h.facility_id, h.canonical_name, h.country_code, h.city, h.classification_category, h.display_precision, r.factual_review_status, r.privacy_screening_status, r.maintainer_approval, r.reviewer_role, h.provenance_origin_type, h.provenance_source_id, h.provenance_source_name, h.provenance_source_url, h.provenance_retrieved_at, CASE WHEN source.attribution IS NULL OR btrim(source.attribution) = '' THEN 'unknown' ELSE 'attribution_required' END, h.release_id FROM uec.map_facilities_display_history h JOIN uec.publication_review_release_current r ON r.source_record_id=h.source_record_id AND r.release_id=h.release_id JOIN uec.sources source ON source.source_id=h.provenance_source_id WHERE h.release_id=$1 AND r.publication_eligible=true AND r.privacy_screening_status='passed' AND ($2='community' OR r.maintainer_approval='approved') ORDER BY h.facility_id LIMIT 1001", &[&release_id, &profile]).await {
+    let model_ready = match client.query_opt(
+        "SELECT 1 FROM uec.release_summary_components component JOIN uec.release_manifests manifest ON manifest.release_id=component.release_id AND manifest.manifest_sha256=component.manifest_sha256 LEFT JOIN uec.release_summary_component_rows component_row ON component_row.release_id=component.release_id WHERE component.release_id=$1 GROUP BY component.release_id, component.member_count HAVING component.member_count=count(component_row.release_id)",
+        &[&release_id],
+    ).await {
+        Ok(row) => row.is_some(),
+        Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "read_model_query_failed", "public read model unavailable"),
+    };
+    if !model_ready {
+        return v2_error(StatusCode::SERVICE_UNAVAILABLE, "read_model_unavailable", "public read model is not ready for the selected release");
+    }
+    let rows = match client.query("SELECT h.facility_id, h.canonical_name, h.country_code, h.city, h.classification_category, h.display_precision, h.factual_review_status, h.privacy_screening_status, h.maintainer_approval, h.reviewer_role, h.provenance_origin_type, h.provenance_source_id, h.provenance_source_name, h.provenance_source_url, h.provenance_retrieved_at, CASE WHEN source.attribution IS NULL OR btrim(source.attribution) = '' THEN 'unknown' ELSE 'attribution_required' END, h.release_id FROM uec.map_facilities_public_discovery h JOIN uec.sources source ON source.source_id=h.provenance_source_id WHERE h.release_id=$1 ORDER BY h.facility_id LIMIT 1001", &[&release_id]).await {
         Ok(rows) => rows, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "export_query_failed", "public export unavailable")
     };
     if rows.len() > 1000 {
@@ -988,7 +998,17 @@ pub async fn get_v2_facets_handler(
     let release_id: String = release.get(0);
     let ruleset_version: String = release.get(1);
     let release_created_at: chrono::DateTime<chrono::Utc> = release.get(2);
-    let rows = match client.query("SELECT country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city, count(*)::bigint FROM (SELECT DISTINCT ON (facility_id) facility_id, country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city FROM uec.map_facilities_display_history WHERE release_id=$1 AND ($2::text IS NULL OR country_code=$2) AND ($3::text IS NULL OR classification_category=$3) AND ($4::text IS NULL OR provenance_origin_type=$4) AND ($5::text IS NULL OR display_precision=$5) AND ($6::text IS NULL OR lifecycle_status=$6) AND ($7::text IS NULL OR city=$7) ORDER BY facility_id, observation_id) public_facilities GROUP BY country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city", &[&release_id, &params.country_code, &params.category, &params.source_type, &params.display_precision, &params.lifecycle_status, &params.region]).await { Ok(rows) => rows, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "facets_query_failed", "public facets unavailable") };
+    let model_ready = match client.query_opt(
+        "SELECT 1 FROM uec.release_summary_components component JOIN uec.release_manifests manifest ON manifest.release_id=component.release_id AND manifest.manifest_sha256=component.manifest_sha256 LEFT JOIN uec.release_summary_component_rows component_row ON component_row.release_id=component.release_id WHERE component.release_id=$1 GROUP BY component.release_id, component.member_count HAVING component.member_count=count(component_row.release_id)",
+        &[&release_id],
+    ).await {
+        Ok(row) => row.is_some(),
+        Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "read_model_query_failed", "public read model unavailable"),
+    };
+    if !model_ready {
+        return v2_error(StatusCode::SERVICE_UNAVAILABLE, "read_model_unavailable", "public read model is not ready for the selected release");
+    }
+    let rows = match client.query("SELECT country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city, count(*)::bigint FROM (SELECT DISTINCT ON (facility_id) facility_id, country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city FROM uec.map_facilities_public_discovery WHERE release_id=$1 AND ($2::text IS NULL OR country_code=$2) AND ($3::text IS NULL OR classification_category=$3) AND ($4::text IS NULL OR provenance_origin_type=$4) AND ($5::text IS NULL OR display_precision=$5) AND ($6::text IS NULL OR lifecycle_status=$6) AND ($7::text IS NULL OR city=$7) ORDER BY facility_id, observation_id) public_facilities GROUP BY country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city", &[&release_id, &params.country_code, &params.category, &params.source_type, &params.display_precision, &params.lifecycle_status, &params.region]).await { Ok(rows) => rows, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "facets_query_failed", "public facets unavailable") };
     let mut dimensions = serde_json::Map::new();
     for (name, column) in [
         ("country_code", 0),
@@ -1347,19 +1367,26 @@ pub async fn get_v2_locations_handler(
     let promoted_ruleset: String = release.get(1);
     let promoted_created_at: chrono::DateTime<chrono::Utc> = release.get(2);
     let promoted_profile: String = release.get(3);
+    let model_ready = match transaction.query_opt(
+        "SELECT 1 FROM uec.release_summary_components component JOIN uec.release_manifests manifest ON manifest.release_id=component.release_id AND manifest.manifest_sha256=component.manifest_sha256 LEFT JOIN uec.release_summary_component_rows component_row ON component_row.release_id=component.release_id WHERE component.release_id=$1 GROUP BY component.release_id, component.member_count HAVING component.member_count=count(component_row.release_id)",
+        &[&promoted_release_id],
+    ).await {
+        Ok(row) => row.is_some(),
+        Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "read_model_query_failed", "public read model unavailable"),
+    };
+    if !model_ready {
+        return v2_error(StatusCode::SERVICE_UNAVAILABLE, "read_model_unavailable", "public read model is not ready for the selected release");
+    }
     let query_limit = limit + 1;
     let rows = match transaction.query(r#"
         SELECT DISTINCT ON (history.facility_id) history.facility_id, history.canonical_name, history.country_code, history.city, history.classification_category, history.display_precision,
-               review.factual_review_status, review.privacy_screening_status, review.maintainer_approval, review.reviewer_role,
+               history.factual_review_status, history.privacy_screening_status, history.maintainer_approval, history.reviewer_role,
                ST_Y(history.display_location::geometry), ST_X(history.display_location::geometry),
                history.first_observed_at, history.last_observed_at, history.observation_count, history.lifecycle_status,
                history.provenance_origin_type, history.release_id, history.release_ruleset_version,
                history.provenance_source_id, history.provenance_source_name, history.provenance_source_url, history.provenance_retrieved_at,
                CASE WHEN rights.attribution IS NULL OR btrim(rights.attribution) = '' THEN 'unknown' ELSE 'attribution_required' END
-        FROM uec.map_facilities_display_history AS history
-        JOIN uec.publication_review_release_current AS review
-          ON review.source_record_id = history.source_record_id
-         AND review.release_id = history.release_id
+        FROM uec.map_facilities_public_discovery AS history
         JOIN uec.sources rights ON rights.source_id = history.provenance_source_id
         WHERE history.release_id = $1
           AND ($2::uuid IS NULL OR history.facility_id > $2)
@@ -1509,18 +1536,25 @@ pub async fn get_v2_location_detail_handler(
     let ruleset: String = release.get(1);
     let created_at: chrono::DateTime<chrono::Utc> = release.get(2);
     let profile: String = release.get(3);
+    let model_ready = match transaction.query_opt(
+        "SELECT 1 FROM uec.release_summary_components component JOIN uec.release_manifests manifest ON manifest.release_id=component.release_id AND manifest.manifest_sha256=component.manifest_sha256 LEFT JOIN uec.release_summary_component_rows component_row ON component_row.release_id=component.release_id WHERE component.release_id=$1 GROUP BY component.release_id, component.member_count HAVING component.member_count=count(component_row.release_id)",
+        &[&release_id],
+    ).await {
+        Ok(row) => row.is_some(),
+        Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "read_model_query_failed", "public read model unavailable"),
+    };
+    if !model_ready {
+        return v2_error(StatusCode::SERVICE_UNAVAILABLE, "read_model_unavailable", "public read model is not ready for the selected release");
+    }
     let row = match transaction.query_opt(r#"
         SELECT history.facility_id, history.canonical_name, history.country_code, history.city, history.classification_category, history.display_precision,
-               review.factual_review_status, review.privacy_screening_status, review.maintainer_approval, review.reviewer_role,
+               history.factual_review_status, history.privacy_screening_status, history.maintainer_approval, history.reviewer_role,
                ST_Y(history.display_location::geometry), ST_X(history.display_location::geometry),
                history.first_observed_at, history.last_observed_at, history.observation_count, history.lifecycle_status,
                history.provenance_origin_type, history.release_id, history.release_ruleset_version,
                history.provenance_source_id, history.provenance_source_name, history.provenance_source_url, history.provenance_retrieved_at,
                CASE WHEN rights.attribution IS NULL OR btrim(rights.attribution) = '' THEN 'unknown' ELSE 'attribution_required' END
-        FROM uec.map_facilities_display_history AS history
-        JOIN uec.publication_review_release_current AS review
-          ON review.source_record_id = history.source_record_id
-         AND review.release_id = history.release_id
+        FROM uec.map_facilities_public_discovery AS history
         JOIN uec.sources rights ON rights.source_id = history.provenance_source_id
          WHERE history.facility_id = $1 AND history.release_id = $2
          ORDER BY history.observation_id

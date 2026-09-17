@@ -25,13 +25,24 @@ class PublicDiscoveryQueryContractTests(unittest.TestCase):
         self.assertIn("ORDER BY history.observation_id", detail)
         self.assertIn("LIMIT 1", detail)
 
-    def test_public_queries_keep_live_release_review_join_and_view(self):
+    def test_public_queries_keep_live_release_review_view_and_model_gate(self):
         source = _source()
         locations = source[source.index("pub async fn get_v2_locations_handler"):source.index("pub async fn get_v2_location_detail_handler")]
-        self.assertIn("FROM uec.map_facilities_display_history AS history", locations)
-        self.assertIn("JOIN uec.publication_review_release_current AS review", locations)
-        self.assertIn("review.release_id = history.release_id", locations)
+        self.assertIn("FROM uec.map_facilities_public_discovery AS history", locations)
+        self.assertIn("history.factual_review_status", locations)
+        self.assertIn("release_summary_components", locations)
+        self.assertIn("read_model_unavailable", locations)
         self.assertIn("history.release_id = $1", locations)
+
+    def test_discovery_view_is_a_live_gated_one_row_per_facility_projection(self):
+        migration = (ROOT / "migrations" / "036_public_facility_discovery_view.sql").read_text(encoding="utf-8").lower()
+        self.assertIn("create or replace view uec.map_facilities_public_discovery", migration)
+        self.assertIn("with eligible as (", migration)
+        self.assertIn("release_summary_component_rows", migration)
+        self.assertIn("group by release_id, facility_id", migration)
+        self.assertIn("select distinct on (release_id, facility_id)", migration)
+        self.assertIn("public_access_restricted", migration)
+        self.assertIn("publication_review_release_current", migration)
 
     def test_planner_indexes_are_additive_and_gate_neutral(self):
         migration = (ROOT / "migrations" / "035_public_discovery_planner_indexes.sql").read_text(encoding="utf-8").lower()
