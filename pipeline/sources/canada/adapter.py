@@ -5,12 +5,16 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import html
+import io
+import zipfile
+import xml.etree.ElementTree as ET
 from collections import Counter
 from pathlib import Path
 from typing import Any
 
 from pipeline.common.review import write_operator_review_packet
-from pipeline.common.tabular import occurrence_key, read_rows, resolve_mapping, row_identity, value
+from pipeline.common.tabular import TabularSchemaError, occurrence_key, read_rows, resolve_mapping, row_identity, value
 from pipeline.contracts.adapter_contract import SourceArtifact
 from pipeline.contracts.source_lifecycle import atomic_json, atomic_jsonl, private_manifest
 
@@ -48,15 +52,82 @@ def _categories(*values_: str | None) -> tuple[str, ...]:
     return tuple(dict.fromkeys(categories))
 
 
+def _fingerprint(headers: tuple[str, ...]) -> str:
+    return hashlib.sha256(json.dumps(tuple(re.sub(r"\s+", " ", h).strip().lower() for h in headers), separators=(",", ":")).encode()).hexdigest()
+
+
+def _validate_sheet(headers: tuple[str, ...], rows: list[dict[str, str]], aliases: dict[str, tuple[str, ...]], required: tuple[str, ...]) -> None:
+    if not headers or len(set(headers)) != len(headers):
+        raise TabularSchemaError("missing or duplicate workbook header columns")
+    missing = sorted(set(required) - resolve_mapping(headers, aliases).keys())
+    if missing:
+        raise TabularSchemaError("schema drift; missing columns: " + ", ".join(missing))
+    if any(len(row) != len(headers) for row in rows):
+        raise TabularSchemaError("schema drift; row has an inconsistent column count")
+
+
+def _read_xlsx(content: bytes, aliases: dict[str, tuple[str, ...]], *, required: tuple[str, ...]):
+    """Read the first non-empty XLSX sheet without type inference or external deps."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as archive:
+            shared = []
+            if "xl/sharedStrings.xml" in archive.namelist():
+                root = ET.fromstring(archive.read("xl/sharedStrings.xml"))
+                shared = ["".join(node.itertext()) for node in root.findall(".//{*}si")]
+            workbook = ET.fromstring(archive.read("xl/workbook.xml"))
+            rels = ET.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
+            relmap = {r.attrib["Id"]: r.attrib["Target"] for r in rels}
+            sheet = next((s for s in workbook.findall(".//{*}sheet")), None)
+            if sheet is None: raise TabularSchemaError("workbook has no worksheets")
+            target = relmap[sheet.attrib["{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"]]
+            path = "xl/" + target.lstrip("/") if not target.startswith("xl/") else target
+            root = ET.fromstring(archive.read(path))
+            matrix = []
+            for row in root.findall(".//{*}sheetData/{*}row"):
+                cells = {}
+                for cell in row.findall("{*}c"):
+                    ref = cell.attrib.get("r", "A1"); col = 0
+                    for char in re.match(r"[A-Z]+", ref).group(): col = col * 26 + ord(char) - 64
+                    col -= 1; node = cell.find("{*}v"); raw = "" if node is None else node.text or ""
+                    if cell.attrib.get("t") == "s" and raw: raw = shared[int(raw)]
+                    elif cell.attrib.get("t") == "inlineStr": raw = "".join(cell.itertext())
+                    cells[col] = raw
+                if cells: matrix.append([cells.get(i, "") for i in range(max(cells) + 1)])
+    except (KeyError, IndexError, ET.ParseError, zipfile.BadZipFile) as error:
+        raise TabularSchemaError("malformed or unsupported XLSX workbook") from error
+    if not matrix:
+        raise TabularSchemaError("workbook has no populated rows")
+    headers = tuple(matrix[0]); rows = [dict(zip(headers, row)) for row in matrix[1:]]
+    _validate_sheet(headers, rows, aliases, required)
+    return headers, rows, "xlsx", _fingerprint(headers)
+
+
+def _read_html_table(content: bytes, aliases: dict[str, tuple[str, ...]], *, required: tuple[str, ...]):
+    text = html.unescape(content.decode("utf-8", errors="replace")); tables = re.findall(r"<table\b.*?</table>", text, flags=re.I | re.S)
+    for table in tables:
+        lines = [[re.sub(r"<[^>]+>", "", cell).strip() for cell in re.findall(r"<t[dh]\b[^>]*>(.*?)</t[dh]>", row, flags=re.I | re.S)] for row in re.findall(r"<tr\b.*?</tr>", table, flags=re.I | re.S)]
+        if not lines: continue
+        headers = tuple(lines[0]); rows = [dict(zip(headers, row)) for row in lines[1:] if row]
+        try: _validate_sheet(headers, rows, aliases, required)
+        except TabularSchemaError: continue
+        return headers, rows, "html-table-xls", _fingerprint(headers)
+    raise TabularSchemaError("no supported table found in XLS capture")
+
+
 class CanadaMeatAdapter:
     def __init__(self, source_id: str, jurisdiction_level: str, jurisdiction: str, source_url: str, coverage: str, require_categories: bool = False) -> None:
         self.source_id, self.jurisdiction_level, self.jurisdiction, self.source_url, self.coverage = source_id, jurisdiction_level, jurisdiction, source_url, coverage
         self.require_categories = require_categories
-        self.adapter_version, self.schema_version = "ca-meat-v1", "ca-meat-delimited-v1"
+        self.adapter_version, self.schema_version = "ca-meat-v2-workbook", "ca-meat-tabular-workbook-v1"
 
     def parse_bytes(self, content: bytes) -> dict[str, Any]:
         required = ("plant_number", "name")
-        headers, rows, delimiter, schema_fingerprint = read_rows(content, ALIASES, required=required)
+        if content[:2] == b"PK":
+            headers, rows, delimiter, schema_fingerprint = _read_xlsx(content, ALIASES, required=required)
+        elif content.lstrip().lower().startswith((b"<html", b"<!doctype html", b"<?xml")):
+            headers, rows, delimiter, schema_fingerprint = _read_html_table(content, ALIASES, required=required)
+        else:
+            headers, rows, delimiter, schema_fingerprint = read_rows(content, ALIASES, required=required)
         mapping = resolve_mapping(headers, ALIASES)
         occurrences: Counter[tuple[str | None, ...]] = Counter(); accepted: list[dict[str, Any]] = []; quarantined: list[dict[str, Any]] = []
         for line, row in enumerate(rows, 2):

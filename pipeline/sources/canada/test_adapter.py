@@ -1,4 +1,6 @@
 import hashlib
+import io
+import zipfile
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,6 +13,19 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 
 class CanadaAdapterTests(unittest.TestCase):
+    def test_cfia_xlsx_preserves_cell_text_and_detects_workbook_schema(self):
+        files = {
+            "xl/workbook.xml": '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Registry" sheetId="1" r:id="rId1"/></sheets></workbook>',
+            "xl/_rels/workbook.xml.rels": '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Target="worksheets/sheet1.xml" Type="x"/></Relationships>',
+            "xl/worksheets/sheet1.xml": '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Establishment Number</t></is></c><c r="B1" t="inlineStr"><is><t>Operator Name</t></is></c><c r="C1" t="inlineStr"><is><t>Function Code</t></is></c></row><row r="2"><c r="A2" t="inlineStr"><is><t>0007</t></is></c><c r="B2" t="inlineStr"><is><t>Synthetic Federal Plant</t></is></c><c r="C2" t="inlineStr"><is><t>1A</t></is></c></row></sheetData></worksheet>',
+        }
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as archive:
+            for name, text in files.items(): archive.writestr(name, text)
+        result = CfiaFederalMeatAdapter().parse_bytes(buf.getvalue())
+        self.assertEqual(len(result["accepted"]), 1)
+        self.assertEqual(result["accepted"][0]["source_values"]["Establishment Number"], "0007")
+        self.assertEqual(result["delimiter"], "xlsx")
     def test_bilingual_composite_headers_from_live_ontario_file_are_supported(self):
         content = ('"Plant Name_ Nom de l\'usine","Plant Number_No. de l\'usine",'
                    '"Address_Adresse","City_Ville","Province_Province",'

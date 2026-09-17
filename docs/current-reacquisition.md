@@ -34,10 +34,11 @@ private health evidence, and a candidate handoff. Verify the raw artifact hash
 and byte size against its manifest before restoring or rerunning. A source
 disappearance is recorded as not observed, never as closure.
 
-CFIA was captured privately but is not normalized: the current response is an
-XLS workbook, while `ca-meat-v1` intentionally accepts delimited text only.
-Keep that artifact raw-only until a reviewed workbook adapter and schema
-contract exist.
+CFIA is captured privately as an XLS workbook. The reviewed adapter accepts
+XLSX and HTML-table exports mislabeled as XLS, preserves source-native cell
+text and workbook provenance, and fails closed on unsupported binary BIFF or
+schema drift. Candidate handoffs remain private and human-gated; no public
+release is created.
 
 ## Full-corpus V2 rehearsal
 
