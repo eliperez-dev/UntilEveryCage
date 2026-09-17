@@ -56,8 +56,37 @@ same source-record reference is used through a source-key ledger, so the
 rehearsal covers same-source reimport protection without copying restricted
 payloads.
 
-The full lane was not run in this checkout when Docker Desktop was unavailable;
-the focused Python tests and plan-only path remain runnable without Docker.
+Observed local evidence on 2026-09-16 includes a passing 5,000-record Docker
+run using a 1,000-row batch: all 35 migrations applied in 3.963 seconds,
+import completed in 52.228 seconds, duplicate import completed in 45.044
+seconds with zero new rows, backup took 1.217 seconds, restore took 5.804
+seconds, the custom dump was 1,459,170 bytes, the final database was
+39,793,123 bytes, and total runtime was 115.943 seconds. The interruption
+committed 1,000 rows before resuming; the resumed pass inserted 461 new rows.
+The 5,000-row report remained aggregate-only and the stale pre-service gate
+rejected the restored database until the current restriction ledger was
+replayed.
+
+The representative 50,000-record bound also passed locally in the disposable
+PostGIS project with a 2,000-row batch. All 35 migrations applied in 2.931
+seconds; import took 514.241 seconds; duplicate import took 506.435 seconds
+and inserted zero new rows; backup took 5.686 seconds; restore took 16.554
+seconds; the custom dump was 12,954,656 bytes; the final database was
+162,607,587 bytes; and total runtime was 1,063.195 seconds. The interruption
+committed 2,000 rows before resuming, which inserted 12,615 new rows. The
+report observed a 61,591,500-byte Python allocation peak while loading and
+importing the largest partition (14,615 rows), and the stale pre-service gate
+rejected the restored database until the current restriction ledger was
+replayed. Both reports are aggregate-only.
+
+The 50,000-record result is evidence for this local disposable Docker Desktop
+run, not a production capacity guarantee. Earlier concurrent local attempts
+also demonstrated that overlapping rehearsals can trigger Docker/Postgres
+administrator shutdowns; run this lane in isolation when collecting capacity
+measurements. The focused Python tests and plan-only path remain runnable
+without Docker. If Docker Desktop is unavailable in a later checkout, the full
+lane is not expected to run there; retain the recorded rehearsal as historical
+evidence rather than implying a fresh local run.
 This harness does not claim real-source quality, adapter correctness,
 production capacity, cloud backup durability, WAL recovery, operator access
 controls, or publication approval. It also does not measure PostgreSQL or
