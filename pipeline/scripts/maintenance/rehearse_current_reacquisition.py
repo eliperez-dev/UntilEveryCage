@@ -167,7 +167,7 @@ def build_report(manifest_path: Path, root: Path, output: Path) -> dict[str, Any
                              "bounded_export": "not-run", "suppression": "not-run"},
               "limitations": ["Database/API observations require the disposable loopback rehearsal.",
                               "Validation does not approve or publish any source.",
-                              "CFIA is parsed but its 874 rows remain quarantined pending reviewed function-code mapping.",
+                              "CFIA is represented by a zero-normalized handoff; all 874 inputs remain explicitly quarantined pending reviewed function-code mapping.",
                               "Missing private artifacts are reported as unavailable, never as zero rows."]}
     text = json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
     if any(key in text for key in FORBIDDEN_KEYS):

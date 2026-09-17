@@ -13,6 +13,7 @@ import importlib.util
 import json
 import os
 import sys
+import tempfile
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -159,14 +160,23 @@ def run(manifest_path: Path, root: Path, output: Path, release_id: str) -> dict[
         raise RehearsalError("aggregate manifest has no sources")
 
     validator = _load_module(ROOT / "pipeline/scripts/maintenance/rehearse_current_reacquisition.py", "current_reacquisition_validator")
-    validation_output = root / "data" / "reports" / "current-reacquisition-rehearsal.json"
-    validation = validator.build_report(manifest_path, root, validation_output)
+    validation_handle = tempfile.NamedTemporaryFile(prefix="uec-current-validation-", suffix=".json", delete=False)
+    validation_output = Path(validation_handle.name)
+    validation_handle.close()
+    try:
+        validation = validator.build_report(manifest_path, root, validation_output)
+    finally:
+        validation_output.unlink(missing_ok=True)
 
     import_candidate = _load_module(ROOT / "pipeline/scripts/maintenance/import-candidate.py", "candidate_import")
     env = E2EEnvironment()
     env.test_release_id = release_id
     try:
-        env.start()
+        # The candidate release is created by this runner, so its test-release
+        # readiness cannot be required before import.  Wait for the socket and
+        # verify schema readiness after the import instead.
+        env.start(wait_for_ready=False)
+        env.wait_for_listening()
         imported: list[dict[str, Any]] = []
         for entry in sources:
             if not isinstance(entry, dict):
@@ -194,6 +204,9 @@ def run(manifest_path: Path, root: Path, output: Path, release_id: str) -> dict[
         status, _, public_body = _request(base, "/api/v2/locations?profile=official&limit=1")
         if status != 200 or public_body.get("data") != []:
             raise RehearsalError("public API exposed candidate rows during private rehearsal")
+        status, _, readiness = _request(base, "/health/ready")
+        if status != 200 or readiness.get("schema") != "migrated":
+            raise RehearsalError("API readiness failed after candidate import")
         status, _, first_page = _request(base, "/api/dev/preview/test-release/locations?profile=official&limit=2", headers)
         if status != 200 or not isinstance(first_page.get("data"), list) or not first_page["data"]:
             raise RehearsalError("test-release list did not return candidate rows")
@@ -233,7 +246,7 @@ def run(manifest_path: Path, root: Path, output: Path, release_id: str) -> dict[
                 "SELECT sr.source_record_id, m.facility_id FROM uec.source_records sr "
                 "JOIN uec.observations o ON o.source_record_id=sr.source_record_id "
                 "JOIN uec.release_members m ON m.observation_id=o.observation_id "
-                "WHERE m.release_id=%s ORDER BY sr.source_record_id LIMIT 1", (release_id,)
+                "WHERE m.release_id=%s ORDER BY m.facility_id LIMIT 1", (release_id,)
             ).fetchone()
             db.execute("INSERT INTO uec.record_access_events(source_record_id,action,reason_category,policy_version,maintainer) VALUES (%s,'public_access_revoked','privacy','ethics-v1','authorized-sprint-runner')", (restricted_record,))
         status, _, after_suppression = _request(base, f"/api/dev/preview/test-release/locations/{restricted_facility}?profile=official", headers)
@@ -242,7 +255,7 @@ def run(manifest_path: Path, root: Path, output: Path, release_id: str) -> dict[
         if status != 200:
             raise RehearsalError("test-release list failed after suppression")
         post_ids = {row["facility_id"] for row in after_list.get("data", [])}
-        if suppression_detail_status == 200:
+        if suppression_detail_status != 404:
             raise RehearsalError("suppressed facility remained available in detail")
         if str(restricted_facility) in post_ids:
             raise RehearsalError("suppressed facility remained available in list")
