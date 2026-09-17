@@ -41,6 +41,25 @@ contract exist.
 
 ## Full-corpus V2 rehearsal
 
+The seven normalized source handoffs can be rechecked without exposing their
+rows by running the aggregate-only validator below. It reads the ignored raw
+artifacts and candidate handoffs named by the checked-in manifest, verifies raw
+and normalized hashes, and checks `input = normalized + quarantined` for every
+source. Its output contains counts and hashes only:
+
+```powershell
+python pipeline/scripts/maintenance/rehearse_current_reacquisition.py `
+  --manifest data/manifests/current-reacquisition-2026-09-16.json `
+  --root . `
+  --output data/reports/current-reacquisition-rehearsal.json
+```
+
+The command fails closed if a private artifact, handoff, checksum, candidate
+state, or reconciliation count is missing or changed. CFIA is intentionally
+excluded because its current workbook remains raw-only. The checked-in report
+must remain aggregate-only; do not substitute a normalized JSONL path for its
+output path or add row payloads to the manifest.
+
 The completed rehearsal used a disposable `docker-compose.e2e.yml` project
 (`uec-reacq-20260916`, DB port `55440`) with all 34 migrations. It imported the
 Denmark and Italy candidate handoffs into
