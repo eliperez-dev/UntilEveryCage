@@ -47,6 +47,16 @@ the earlier component comparison. The candidate therefore still proves the
 safety protocol but does not justify API integration or a production capacity
 claim.
 
+The manifest-bound read-model builder was subsequently hardened for the
+representative HTTP rehearsal. Its high-volume activation now inserts from a
+single set-based query and uses the same release-scoped correlated review,
+current-access, and suppression gates as the live read model. It does not read
+through the older compatibility history view, whose suppression UNION expands
+all source records before release filtering. On the 2026-09-17 Windows/Docker
+rehearsal host, the 100k synthetic activation took 14,790.181 ms and the 150k
+activation took 22,674.087 ms; interrupted activation remains transactional
+and fail-closed.
+
 ## Alternatives considered
 
 1. Request caching is rejected. An emergency suppression, privacy decision,

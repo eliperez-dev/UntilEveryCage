@@ -293,14 +293,14 @@
     {
       "id": "scale.concurrent-http-capacity",
       "area": "scale",
-      "claim": "The API has completed representative concurrent HTTP performance testing with reliable p95/p99 results through 150k records.",
-      "status": "implemented_not_exercised",
+      "claim": "The API has completed bounded representative concurrent HTTP performance testing with p50/p95/p99, throughput, timeout, error, concurrency, database-size, and session-pressure measurements through 150k synthetic records.",
+      "status": "implemented_tested",
       "evidence": [
         {"path": "pipeline/scripts/benchmarks/run_api_load_rehearsal.py", "line": 1},
         {"path": "pipeline/tests/test_api_load_rehearsal.py", "line": 1},
         {"path": "docs/performance/v2-api-load-rehearsal.md", "line": 1}
       ],
-      "limit": "The harness and bounded scale contract exist; the full post-optimization concurrent run remains a Sprint 1 exit item."
+      "limit": "These are single-run local synthetic measurements, not a production SLO, capacity guarantee, or browser/mobile performance result; 150k requests exceed the 2s client budget at some tested concurrency levels."
     },
     {
       "id": "operations.resilience",

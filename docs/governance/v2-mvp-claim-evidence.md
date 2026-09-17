@@ -51,7 +51,7 @@ links to the full claim, evidence paths, and limitations in the JSON source.
 | `graph.source-qualified-identities` | Graph | `implemented_tested` | Crosswalks remain source-scoped and reviewable. |
 | `graph.public-product` | Graph | `prototype_only` | No production public accountability graph is claimed yet. |
 | `scale.indexed-discovery` | Scale | `implemented_tested` | Discovery plans were measured at 25k/100k/150k rows. |
-| `scale.concurrent-http-capacity` | Scale | `implemented_not_exercised` | Full post-optimization concurrent HTTP evidence remains open. |
+| `scale.concurrent-http-capacity` | Scale | `implemented_tested` | Bounded synthetic HTTP rehearsals through 150k capture percentiles, throughput, timeouts, errors, session pressure, and database size; they are not production SLOs. |
 | `operations.resilience` | Operational | `implemented_not_exercised` | The 50k resilience harness exists; full Postgres rehearsal is pending. |
 | `operations.health-diagnostics` | Operational | `planned` | Deployment observability and alerting are not yet proven. |
 | `operations.release-authority` | Operational | `human_policy` | Publication authority and least privilege require operational ownership. |
@@ -63,13 +63,11 @@ links to the full claim, evidence paths, and limitations in the JSON source.
 
 These items prevent declaring the Sprint 1 backend-proof goal complete:
 
-1. Run the full post-optimization HTTP rehearsal and record concurrency and
-   p95/p99 evidence.
-2. Run the full disposable Postgres resilience rehearsal, or preserve a clear
+1. Run the full disposable Postgres resilience rehearsal, or preserve a clear
    environment blocker and do not claim representative backup/restore proof.
-3. Produce the current-corpus geospatial report from actual private normalized
+2. Produce the current-corpus geospatial report from actual private normalized
    handoffs rather than the current `unavailable_private_handoff` result.
-4. Keep the contract freeze and this matrix synchronized with the API schema,
+3. Keep the contract freeze and this matrix synchronized with the API schema,
    endpoint inventory, and tests.
 
 The last item is automated by

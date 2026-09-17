@@ -34,7 +34,15 @@ class PublicDiscoveryReadModelTests(unittest.TestCase):
     def test_operator_query_never_selects_raw_fields(self):
         query = MODULE.SELECT_ROWS.lower()
         self.assertNotIn("raw_fields", query)
-        self.assertIn("map_facilities_display_history", query)
+        self.assertIn("release_members", query)
+        self.assertIn("record_access_current", query)
+        self.assertIn("suppression_case_current", query)
+        self.assertNotIn("public_access_restricted", query)
+
+    def test_high_volume_activation_has_set_based_path_and_interrupt_hook(self):
+        self.assertIn("insert into uec.public_discovery_read_model_rows", MODULE.INSERT_ROWS.lower())
+        self.assertIn("from (", MODULE.INSERT_ROWS.lower())
+        self.assertIn("if fail_after_rows is not none", (ROOT / "scripts" / "maintenance" / "build_public_discovery_read_model.py").read_text(encoding="utf-8").lower())
 
 
 if __name__ == "__main__":

@@ -14,6 +14,7 @@ import http.client
 import ipaddress
 import json
 import os
+import platform
 import sys
 import threading
 import time
@@ -412,6 +413,17 @@ def capture_query_plans(connection: Any) -> dict[str, Any]:
     return plans
 
 
+def runtime_environment() -> dict[str, Any]:
+    """Return reproducibility metadata without host paths or user data."""
+    return {
+        "os": platform.platform(),
+        "machine": platform.machine(),
+        "processor": platform.processor() or "unknown",
+        "python": platform.python_version(),
+        "cpu_count": os.cpu_count(),
+    }
+
+
 def percentile(values: list[float], fraction: float) -> float:
     if not values:
         return 0.0
@@ -474,11 +486,19 @@ def build_recommendations(results: list[dict[str, Any]], timeout_ms: int) -> dic
 
 def run_rehearsal(env: Any, observations: int, levels: tuple[int, ...], requests_per_level: int, timeout_ms: int, distribution: list[tuple[int, str, str, str]] | None = None) -> dict[str, Any]:
     import psycopg
+    setup_started = time.perf_counter()
     with psycopg.connect(env.database_url) as connection:
+        seed_started = time.perf_counter()
         detail_id = seed_public_projection(connection, observations, distribution)
+    seed_ms = (time.perf_counter() - seed_started) * 1000
+    build_started = time.perf_counter()
     env.build_public_read_model("load-promoted")
+    build_ms = (time.perf_counter() - build_started) * 1000
+    plan_started = time.perf_counter()
     with psycopg.connect(env.database_url) as connection:
         query_plans = capture_query_plans(connection)
+        database_size_bytes = int(connection.execute("SELECT pg_database_size(current_database())").fetchone()[0])
+    plan_ms = (time.perf_counter() - plan_started) * 1000
     base = f"http://127.0.0.1:{env.api_port}"
     results = []
     for concurrency in levels:
@@ -496,6 +516,14 @@ def run_rehearsal(env: Any, observations: int, levels: tuple[int, ...], requests
         "observations": observations,
         "requests_per_level": requests_per_level,
         "timeout_ms": timeout_ms,
+        "runtime_environment": runtime_environment(),
+        "database_size_bytes": database_size_bytes,
+        "setup_timings_ms": {
+            "seed": round(seed_ms, 3),
+            "read_model_build": round(build_ms, 3),
+            "plan_capture_and_size": round(plan_ms, 3),
+            "total_before_http": round((time.perf_counter() - setup_started) * 1000, 3),
+        },
         "query_plans": query_plans,
         "levels": results,
         "recommendations": build_recommendations(results, timeout_ms),

@@ -99,5 +99,12 @@ class ApiLoadRehearsalTests(unittest.TestCase):
         self.assertNotIn("Plans", report)
         self.assertNotIn("Plan", report)
 
+    def test_runtime_environment_is_row_free_reproducibility_metadata(self):
+        environment = MODULE.runtime_environment()
+        self.assertIn("os", environment)
+        self.assertIn("python", environment)
+        self.assertIsInstance(environment["cpu_count"], int)
+        self.assertNotIn("C:\\", str(environment))
+
 if __name__ == "__main__":
     unittest.main()
