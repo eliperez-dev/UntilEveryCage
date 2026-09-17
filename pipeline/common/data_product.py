@@ -23,8 +23,11 @@ DATA_PRODUCT_VERSION = "uec-public-data-product-v1"
 SCHEMA_VERSION = "uec-location-projection-v1"
 MANIFEST_VERSION = "uec-release-manifest-v2"
 SUPPORTED_PROFILES = frozenset(("official", "secondary", "community"))
+ALLOWED_SOURCE_TYPES = frozenset(("official", "secondary", "user_submitted"))
+ALLOWED_FACTUAL_REVIEW_STATUSES = frozenset(("unreviewed", "reviewed"))
 ALLOWED_RIGHTS = frozenset(("cleared", "attribution_required"))
 FORMULA_PREFIXES = ("=", "+", "-", "@")
+UNREVIEWED_COMMUNITY_WARNING = "Unreviewed community claim — not verified by Until Every Cage"
 
 CSV_FIELDS = (
     "facility_id",
@@ -206,17 +209,31 @@ def validate_public_rows(rows: Iterable[Mapping[str, Any]], metadata: Mapping[st
             raise DataProductError(f"row {index} does not match the selected release/profile")
         if row.get("publication_eligible") is not True or row.get("privacy_screening_status") != "passed":
             raise DataProductError(f"row {index} is not publication-eligible and privacy-screened")
-        if selected_profile != "community" and row.get("project_approval") != "approved":
+        if row.get("source_type") not in ALLOWED_SOURCE_TYPES:
+            raise DataProductError(f"row {index} has an unsupported source type")
+        factual_review_status = row.get("factual_review_status")
+        if factual_review_status not in ALLOWED_FACTUAL_REVIEW_STATUSES:
+            raise DataProductError(f"row {index} has an unsupported factual review status")
+        project_approval = row.get("project_approval")
+        community_unreviewed = (
+            selected_profile == "community"
+            and row.get("source_type") == "user_submitted"
+            and factual_review_status == "unreviewed"
+            and project_approval == "pending"
+        )
+        if project_approval != "approved" and not community_unreviewed:
             raise DataProductError(f"row {index} is not project-approved")
-        if row.get("source_rights_status") not in ALLOWED_RIGHTS:
-            raise DataProductError(f"row {index} has unclear or restricted source reuse rights")
         if row.get("source_type") == "user_submitted" and selected_profile != "community":
             raise DataProductError(f"row {index} user-submitted claim is outside the community profile")
+        if row.get("source_rights_status") not in ALLOWED_RIGHTS:
+            raise DataProductError(f"row {index} has unclear or restricted source reuse rights")
+        if community_unreviewed and row.get("publication_warning") not in (None, UNREVIEWED_COMMUNITY_WARNING):
+            raise DataProductError(f"row {index} is missing the required community warning")
         projection = {field: row.get(field) for field in CSV_FIELDS}
         projection["release_ruleset_version"] = row.get("release_ruleset_version", release["ruleset_version"])
         projection["publication_warning"] = row.get("publication_warning") or (
-            "Unreviewed community claim — not verified by Until Every Cage"
-            if selected_profile == "community" and row.get("factual_review_status") == "unreviewed"
+            UNREVIEWED_COMMUNITY_WARNING
+            if community_unreviewed
             else None
         )
         validated.append(projection)

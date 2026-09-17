@@ -1,4 +1,4 @@
-import type { FetchLike, LocalProfile } from './LocalLocationRepository';
+import { localOrigin, type FetchLike, type LocalProfile } from './LocalLocationRepository';
 import type { ApiError } from './errors';
 
 export type CsvExport = Readonly<{
@@ -9,11 +9,12 @@ export type CsvExport = Readonly<{
 }>;
 
 export class LocalCsvExportRepository {
-  constructor(private readonly fetcher: FetchLike = globalThis.fetch, private readonly baseUrl = '') {}
+  readonly #base: string | undefined;
+  constructor(private readonly fetcher: FetchLike = globalThis.fetch, baseUrl = '') { this.#base = baseUrl ? localOrigin(baseUrl) : undefined; }
 
   async download(profile: LocalProfile = 'official', signal?: AbortSignal): Promise<CsvExport> {
     const init: RequestInit = { cache: 'no-store' }; if (signal) init.signal = signal;
-    const response = await this.fetcher.call(globalThis, `${this.baseUrl}/api/v2/locations.csv?profile=${profile}`, init);
+    const response = await this.fetcher.call(globalThis, `${this.#base ?? ''}/api/v2/locations.csv?profile=${profile}`, init);
     if (!response.ok) {
       let message = `Local V2 export request failed with status ${response.status}.`;
       let code: string | undefined;

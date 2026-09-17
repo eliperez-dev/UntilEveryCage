@@ -1141,6 +1141,17 @@ pub async fn get_v2_locations_handler(
     Query(params): Query<V2LocationParams>,
 ) -> impl IntoResponse {
     if params
+        .profile
+        .as_deref()
+        .is_some_and(|v| !V2_PROFILES.contains(&v))
+    {
+        return v2_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_profile",
+            "profile is unsupported",
+        );
+    }
+    if params
         .display_precision
         .as_deref()
         .is_some_and(|v| !V2_PRECISIONS.contains(&v))
@@ -1748,6 +1759,37 @@ mod v2_api_tests {
                 .unwrap();
             assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{uri}");
         }
+    }
+
+    #[tokio::test]
+    async fn list_rejects_an_unsupported_profile_before_database_access() {
+        let state = ApiState {
+            database: None,
+            dev_preview_token: None,
+            dev_test_release_id: None,
+            dev_test_release_token: None,
+        };
+        let response = Router::new()
+            .route(
+                "/api/v2/locations",
+                axum::routing::get(get_v2_locations_handler),
+            )
+            .with_state(state)
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v2/locations?profile=untrusted")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["api_version"], "v2");
+        assert_eq!(json["error"]["code"], "invalid_profile");
     }
 
     #[tokio::test]

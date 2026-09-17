@@ -122,6 +122,43 @@ class DataProductTests(unittest.TestCase):
             with self.assertRaisesRegex(DataProductError, message):
                 write_package(Path(tempfile.mkdtemp()), metadata(), [row(**changes)])
 
+    def test_community_profile_requires_approval_or_screened_unreviewed_submission(self):
+        community_metadata = metadata("community")
+        with self.assertRaisesRegex(DataProductError, "project-approved"):
+            write_package(
+                Path(tempfile.mkdtemp()),
+                community_metadata,
+                [row("community", project_approval="pending")],
+            )
+        unreviewed = row(
+            "community",
+            source_type="user_submitted",
+            factual_review_status="unreviewed",
+            project_approval="pending",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            write_package(Path(directory), community_metadata, [unreviewed])
+            self.assertIn("Unreviewed community claim", (Path(directory) / "locations.csv").read_text())
+
+    def test_rejected_or_mislabelled_public_rows_fail_closed(self):
+        for changes, message in [
+            ({"factual_review_status": "rejected"}, "factual review status"),
+            ({"source_type": "unknown"}, "source type"),
+            (
+                {
+                    "source_type": "user_submitted",
+                    "factual_review_status": "unreviewed",
+                    "project_approval": "pending",
+                    "publication_profile": "community",
+                    "publication_warning": "Claim is verified",
+                },
+                "community warning",
+            ),
+        ]:
+            candidate = row("community", **changes)
+            with self.assertRaisesRegex(DataProductError, message):
+                write_package(Path(tempfile.mkdtemp()), metadata("community"), [candidate])
+
     def test_malformed_metadata_and_tampering_fail_verification(self):
         for field in ("release_id", "generated_at", "source_coverage", "row_counts", "checksums"):
             invalid = metadata()

@@ -7,7 +7,7 @@ const rowSchema = z.object({
   candidate_id: z.string().min(1), source_record_id: z.string().min(1), facility_id: z.string().min(1), canonical_name: z.string().min(1),
   country_code: z.string().min(1), city: z.string().nullable(), category: z.string().min(1), display_precision: z.enum(['exact', 'city', 'unmapped']),
   latitude: z.number().finite().nullable(), longitude: z.number().finite().nullable(), source_type: z.enum(['official', 'secondary', 'user_submitted']),
-  provenance_source_id: z.string().min(1), provenance_source_name: z.string().min(1), provenance_source_url: z.string().url(), provenance_retrieved_at: z.string().min(1),
+  provenance_source_id: z.string().min(1), provenance_source_name: z.string().min(1), provenance_source_url: z.string().url().refine(value => { try { return ['http:', 'https:'].includes(new URL(value).protocol); } catch { return false; } }, 'source URL must use HTTP or HTTPS'), provenance_retrieved_at: z.string().min(1),
   factual_review_status: z.enum(['unreviewed', 'reviewed', 'rejected']), privacy_screening_status: z.literal('passed'), project_approval: z.literal(false),
   release_id: z.string().nullable(), release_status: z.literal('candidate'), preview_label: z.string().min(1),
 }).superRefine((row, ctx) => { if ((row.latitude === null) !== (row.longitude === null)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'coordinate pair must be complete' }); });
