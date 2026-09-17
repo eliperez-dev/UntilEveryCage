@@ -15,10 +15,12 @@ SPEC.loader.exec_module(MODULE)
 
 class ApiLoadRehearsalTests(unittest.TestCase):
     def test_requested_scale_is_supported_without_unbounded_seeding(self):
-        self.assertEqual(MODULE.MAX_SEED, 25_000)
-        self.assertEqual(MODULE.validate_observations(25_000), 25_000)
+        self.assertEqual(MODULE.MAX_SEED, 150_000)
+        self.assertEqual(MODULE.MAX_GRAPH_FIXTURE_ROWS, 1_000)
+        for size in (5_000, 25_000, 100_000, 150_000):
+            self.assertEqual(MODULE.validate_observations(size), size)
         with self.assertRaises(ValueError):
-            MODULE.validate_observations(25_001)
+            MODULE.validate_observations(150_001)
 
     def test_levels_and_targets_are_bounded(self):
         self.assertEqual(MODULE.validate_levels([1, 4, 8, 16]), (1, 4, 8, 16))
@@ -72,6 +74,30 @@ class ApiLoadRehearsalTests(unittest.TestCase):
         self.assertEqual(recommendations["initial_api_pool_per_process"], 1)
         self.assertEqual(recommendations["clean_tested_concurrency_levels"], [1])
 
+    def test_plan_summary_is_aggregate_only(self):
+        payload = [{
+            "Planning Time": 0.25,
+            "Plan": {
+                "Node Type": "Index Scan",
+                "Relation Name": "public_projection",
+                "Index Name": "public_projection_idx",
+                "Plan Rows": 51,
+                "Total Cost": 12.5,
+                "Plans": [{
+                    "Node Type": "Seq Scan",
+                    "Relation Name": "private_relation",
+                    "Plan Rows": 100,
+                    "Total Cost": 8.0,
+                }],
+            },
+        }]
+        report = MODULE.plan_summary(payload)
+        self.assertEqual(report["planning_ms"], 0.25)
+        self.assertEqual(report["estimated_rows_max"], 100)
+        self.assertEqual(report["indexes"], ["public_projection_idx"])
+        self.assertEqual(report["sequential_scan_relations"], ["private_relation"])
+        self.assertNotIn("Plans", report)
+        self.assertNotIn("Plan", report)
 
 if __name__ == "__main__":
     unittest.main()

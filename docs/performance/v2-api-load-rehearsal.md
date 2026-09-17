@@ -27,10 +27,20 @@ python pipeline/scripts/benchmarks/run_api_load_rehearsal.py `
   --json-output .tmp/api-load-25000.json
 ```
 
-The runner bounds observations at 25,000, concurrency at 16, and requests per
-level at 80. It refuses non-loopback API targets. The 25,000-row bound is an
+The runner bounds observations at 150,000, concurrency at 16, and requests per
+level at 80. It refuses non-loopback API targets. The 150,000-row bound is an
 explicitly finite synthetic safety limit, not a statement about supported
 production scale.
+
+Each run also captures row-free planner metadata for the list, facets, radius,
+and graph read shapes. Reports include estimated costs, node counts, relation
+and index names, and sequential-scan relation names; they do not include SQL,
+plan filters, identifiers, coordinates, or result rows.
+
+At scales above 1,000 facilities, the graph-shaped fixture is intentionally
+capped at 1,000 organizations, relationships, and claims. This keeps the
+150,000-row run focused on the facility discovery API rather than multiplying
+unrelated graph evidence rows; graph scale is measured separately.
 
 When an authorized private V2 normalized corpus is available, first create a
 row-free distribution report and then pass it to the same synthetic rehearsal:
@@ -57,20 +67,42 @@ release, or benchmark-output data.
 
 | Synthetic observations | Concurrency | Requests | Successes | Timeouts | 5xx | Throughput (rps) | p50 / p95 / p99 (ms) | Max active / waiting DB sessions |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 5,000 | 1 | 10 | 4 | 6 | 0 | 0.622 | 2013.251 / 2028.338 / 2028.338 | 2 / 1 |
-| 5,000 | 4 | 10 | 3 | 7 | 0 | 1.981 | 2001.908 / 2029.853 / 2029.853 | 2 / 0 |
-| 5,000 | 8 | 10 | 4 | 6 | 0 | 3.982 | 2013.191 / 2017.044 / 2017.044 | 6 / 1 |
-| 5,000 | 16 | 10 | 2 | 8 | 0 | 4.953 | 2009.559 / 2011.767 / 2011.767 | 9 / 1 |
-| 25,000 | 1 | 10 | 1 | 9 | 0 | 0.514 | 2016.681 / 2029.881 / 2029.881 | 2 / 1 |
-| 25,000 | 4 | 10 | 1 | 9 | 0 | 1.653 | 2012.612 / 2025.954 / 2025.954 | 2 / 1 |
-| 25,000 | 8 | 10 | 2 | 8 | 0 | 2.547 | 2007.124 / 2030.413 / 2030.413 | 6 / 2 |
-| 25,000 | 16 | 10 | 1 | 9 | 0 | 4.482 | 2004.377 / 2024.087 / 2024.087 | 10 / 3 |
+| 5,000 | 1 | 10 | 10 | 0 | 0 | 4.579 | 215.700 / 302.345 / 302.345 | 2 / 1 |
+| 5,000 | 4 | 10 | 10 | 0 | 0 | 7.316 | 328.596 / 900.362 / 900.362 | 2 / 1 |
+| 5,000 | 8 | 10 | 10 | 0 | 0 | 11.290 | 507.344 / 595.657 / 595.657 | 5 / 4 |
+| 5,000 | 16 | 10 | 10 | 0 | 0 | 14.781 | 464.993 / 598.804 / 598.804 | 7 / 8 |
+| 25,000 | 1 | 10 | 10 | 0 | 0 | 0.793 | 1263.909 / 1705.504 / 1705.504 | 3 / 2 |
+| 25,000 | 4 | 10 | 5 | 5 | 0 | 1.770 | 2004.356 / 2017.358 / 2017.358 | 2 / 1 |
+| 25,000 | 8 | 10 | 3 | 7 | 0 | 2.640 | 2010.196 / 2011.692 / 2011.692 | 5 / 4 |
+| 25,000 | 16 | 10 | 3 | 7 | 0 | 2.922 | 2006.612 / 2010.724 / 2010.724 | 9 / 7 |
+| 100,000 | 1 | 10 | 1 | 9 | 0 | 0.497 | 2004.792 / 2017.417 / 2017.417 | 2 / 1 |
+| 100,000 | 4 | 10 | 1 | 9 | 0 | 1.657 | 2007.899 / 2014.835 / 2014.835 | 2 / 1 |
+| 100,000 | 8 | 10 | 1 | 9 | 0 | 2.480 | 2011.186 / 2026.853 / 2026.853 | 5 / 3 |
+| 100,000 | 16 | 10 | 1 | 9 | 0 | 2.366 | 2016.205 / 2031.078 / 2031.078 | 8 / 6 |
+| 150,000 | 1 | 10 | 1 | 9 | 0 | 0.489 | 2008.950 / 2024.313 / 2024.313 | 2 / 1 |
+| 150,000 | 4 | 10 | 1 | 9 | 0 | 1.651 | 2014.980 / 2023.360 / 2023.360 | 2 / 1 |
+| 150,000 | 8 | 10 | 1 | 9 | 0 | 2.476 | 2010.329 / 2015.471 / 2015.471 | 6 / 4 |
+| 150,000 | 16 | 10 | 1 | 9 | 0 | 2.506 | 2009.943 / 2030.332 / 2030.332 | 9 / 5 |
 
-No tested level was clean under the harness definition (zero timeout, server,
-or connection errors). The result supports keeping API pool sizing and
-production capacity claims blocked until an approved representative load
-model is available. It also confirms that the failure mode in this local
-rehearsal is timeout pressure rather than HTTP 5xx or connection exhaustion.
+The 5,000-row fixture is clean at every tested concurrency. At 25,000 rows,
+the single-worker level is clean, but timeouts begin at concurrency 4. At
+100,000 and 150,000 rows, only one of ten mixed requests completed at each
+level; the two-second client budget is not viable. No server-side 5xx or
+connection errors occurred. Pool pressure rose with concurrency, but the
+observed failure mode was request timeout rather than pool exhaustion.
+
+These are actual local measurements from the post-optimization harness, not
+capacity claims. The run artifacts remain in the ignored `.tmp/` directory;
+only these aggregate values and row-free plan summaries are documented here.
+
+The row-free planner summaries estimated list/facets/radius costs of roughly
+82,989 at 5,000 rows, 416,639 at 25,000, 1,683,553 at 100,000, and 2,525,920
+at 150,000. The graph-shaped plan estimated roughly twice the discovery cost.
+The repeated sequential-scan relations were control-plane tables used by the
+live suppression and review views, including `source_records`,
+`record_access_events`, `suppression_case_events`, and
+`suppression_references`. No query-plan row payloads or filter values were
+retained.
 
 The dominant slow path remains the live eligibility/summary work documented in
 `v2-public-projection-read-path.md`. The evidence does not justify caching,

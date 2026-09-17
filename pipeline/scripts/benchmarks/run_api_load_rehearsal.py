@@ -27,7 +27,8 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-MAX_SEED = 25_000
+MAX_SEED = 150_000
+MAX_GRAPH_FIXTURE_ROWS = 1_000
 MAX_CONCURRENCY = 16
 MAX_REQUESTS_PER_LEVEL = 80
 ALLOWED_DISTRIBUTION_PRECISIONS = {"exact", "city", "unmapped"}
@@ -44,6 +45,51 @@ QUERY_MIX = (
     ("detail", "detail", None),
     ("graph_ready", "graph", None),
 )
+
+# These are the public read-path shapes exercised by the HTTP mix.  The
+# harness records only planner metadata for them; it never emits SQL, values,
+# identifiers, or result rows in a report.
+PLAN_QUERIES = {
+    "list": """
+        SELECT facility_id, canonical_name, country_code, city,
+               classification_category, display_precision
+        FROM uec.map_facilities_display_history
+        WHERE release_id = 'load-promoted'
+        ORDER BY facility_id
+        LIMIT 51
+    """,
+    "facets": """
+        SELECT country_code, classification_category, display_precision,
+               lifecycle_status, provenance_origin_type, city, count(*)::bigint
+        FROM uec.map_facilities_display_history
+        WHERE release_id = 'load-promoted'
+        GROUP BY country_code, classification_category, display_precision,
+                 lifecycle_status, provenance_origin_type, city
+    """,
+    "radius": """
+        SELECT facility_id
+        FROM uec.map_facilities_display_history
+        WHERE release_id = 'load-promoted'
+          AND display_location && ST_SetSRID(
+                ST_MakeEnvelope(-5.7, 49.55, -4.3, 50.45, 4326), 4326)::geography
+          AND ST_DWithin(
+                display_location,
+                ST_SetSRID(ST_Point(-5, 50), 4326)::geography,
+                50000)
+        ORDER BY facility_id
+        LIMIT 51
+    """,
+    "graph": """
+        SELECT relationship.relationship_type
+        FROM uec.graph_public_relationships relationship
+        JOIN uec.graph_public_claims claim
+          ON claim.release_id = relationship.release_id
+         AND claim.facility_id = relationship.target_facility_id
+        WHERE relationship.release_id = 'load-promoted'
+        ORDER BY relationship.relationship_observation_id
+        LIMIT 50
+    """,
+}
 
 
 def deterministic_uuid(prefix: str, ordinal: int) -> str:
@@ -122,6 +168,7 @@ def load_distribution(path: Path) -> list[tuple[int, str, str, str]]:
 def seed_public_projection(connection: Any, count: int, distribution: list[tuple[int, str, str, str]] | None = None) -> str:
     """Create a deterministic, promoted, synthetic projection in the E2E DB."""
     release_id = "load-promoted"
+    graph_count = min(count, MAX_GRAPH_FIXTURE_ROWS)
     connection.execute("INSERT INTO uec.sources (source_id,country_code,name,official_url,access_method) VALUES ('load.synthetic','DK','Synthetic load source','https://example.invalid/load','fixture') ON CONFLICT DO NOTHING")
     connection.execute("INSERT INTO uec.releases (release_id,status,ruleset_version,profile,test_only,summary) VALUES ('load-promoted','promoted','load-v1','official',false,'{}') ON CONFLICT DO NOTHING")
     manifest = {
@@ -201,7 +248,7 @@ def seed_public_projection(connection: Any, count: int, distribution: list[tuple
         INSERT INTO uec.organizations (organization_id,canonical_name,country_code,organization_type)
         SELECT md5('load-organization-' || n::text)::uuid,'Synthetic load organization ' || n,'DK','company'
         FROM generate_series(1,%s) n ON CONFLICT DO NOTHING
-    """, (count,))
+    """, (graph_count,))
     connection.execute("""
         INSERT INTO uec.organization_relationship_observations
           (relationship_observation_id,source_id,source_record_id,from_organization_id,target_facility_id,relationship_type,observed_at,confidence,review_state,storage_state,privacy_status,publication_status,release_id)
@@ -209,7 +256,7 @@ def seed_public_projection(connection: Any, count: int, distribution: list[tuple
                md5('load-organization-' || n::text)::uuid,md5('load-facility-' || n::text)::uuid,'operator',
                TIMESTAMPTZ '2026-01-02 00:00:00+00' + n * interval '1 second',0.9,'accepted','released','passed','released','load-promoted'
         FROM generate_series(1,%s) n ON CONFLICT DO NOTHING
-    """, (count,))
+    """, (graph_count,))
     connection.execute("""
         INSERT INTO uec.claims
           (claim_id,source_id,source_record_id,facility_id,claim_domain,claim_kind,value_state,claim_value,observed_at,confidence,review_state,storage_state,privacy_status,publication_status,release_id)
@@ -217,7 +264,7 @@ def seed_public_projection(connection: Any, count: int, distribution: list[tuple
                md5('load-facility-' || n::text)::uuid,'operation','synthetic_status','known','{}'::jsonb,
                TIMESTAMPTZ '2026-01-02 00:00:00+00' + n * interval '1 second',0.9,'accepted','released','passed','released','load-promoted'
         FROM generate_series(1,%s) n ON CONFLICT DO NOTHING
-    """, (count,))
+    """, (graph_count,))
     connection.commit()
     for table in ("uec.raw_artifacts", "uec.source_records", "uec.facilities", "uec.observations", "uec.release_members", "uec.geocode_results", "uec.publication_review_events", "uec.organization_relationship_observations", "uec.claims"):
         connection.execute(f"ANALYZE {table}")
@@ -319,6 +366,52 @@ class DbSampler:
         self.thread.join(timeout=3)
 
 
+def plan_summary(payload: list[Any]) -> dict[str, Any]:
+    """Reduce EXPLAIN JSON to row-free planner metadata."""
+    root = payload[0]["Plan"]
+    node_counts: dict[str, int] = {}
+    relations: set[str] = set()
+    indexes: set[str] = set()
+    sequential_scan_relations: set[str] = set()
+    max_plan_rows = 0
+
+    def visit(node: dict[str, Any]) -> None:
+        nonlocal max_plan_rows
+        node_type = str(node.get("Node Type", "unknown"))
+        node_counts[node_type] = node_counts.get(node_type, 0) + 1
+        max_plan_rows = max(max_plan_rows, int(node.get("Plan Rows", 0)))
+        relation = node.get("Relation Name")
+        if relation:
+            relations.add(str(relation))
+            if node_type == "Seq Scan":
+                sequential_scan_relations.add(str(relation))
+        index = node.get("Index Name")
+        if index:
+            indexes.add(str(index))
+        for child in node.get("Plans", []):
+            visit(child)
+
+    visit(root)
+    return {
+        "planning_ms": round(float(payload[0].get("Planning Time", 0)), 3),
+        "estimated_total_cost": round(float(root.get("Total Cost", 0)), 3),
+        "estimated_rows_max": max_plan_rows,
+        "node_counts": dict(sorted(node_counts.items())),
+        "relations": sorted(relations),
+        "indexes": sorted(indexes),
+        "sequential_scan_relations": sorted(sequential_scan_relations),
+    }
+
+
+def capture_query_plans(connection: Any) -> dict[str, Any]:
+    """Capture aggregate plans without ANALYZE, SQL text, or returned rows."""
+    plans = {}
+    for name, query in PLAN_QUERIES.items():
+        payload = connection.execute("EXPLAIN (FORMAT JSON) " + query).fetchone()[0]
+        plans[name] = plan_summary(payload)
+    return plans
+
+
 def percentile(values: list[float], fraction: float) -> float:
     if not values:
         return 0.0
@@ -383,6 +476,7 @@ def run_rehearsal(env: Any, observations: int, levels: tuple[int, ...], requests
     import psycopg
     with psycopg.connect(env.database_url) as connection:
         detail_id = seed_public_projection(connection, observations, distribution)
+        query_plans = capture_query_plans(connection)
     base = f"http://127.0.0.1:{env.api_port}"
     results = []
     for concurrency in levels:
@@ -400,6 +494,7 @@ def run_rehearsal(env: Any, observations: int, levels: tuple[int, ...], requests
         "observations": observations,
         "requests_per_level": requests_per_level,
         "timeout_ms": timeout_ms,
+        "query_plans": query_plans,
         "levels": results,
         "recommendations": build_recommendations(results, timeout_ms),
     }

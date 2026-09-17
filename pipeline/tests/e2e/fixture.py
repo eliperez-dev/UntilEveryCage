@@ -57,26 +57,56 @@ class E2EEnvironment:
             startup = subprocess.run(self.command("up", "-d", "--wait"), cwd=ROOT, capture_output=True, text=True, env=self.compose_env())
             if startup.returncode:
                 raise RuntimeError(f"Docker Compose startup failed (exit {startup.returncode})\n{startup.stdout}\n{startup.stderr}")
-            files = migration_files if migration_files is not None else sorted((ROOT / "pipeline/migrations").glob("*.sql"))
-            migrations = "\n".join(p.read_text(encoding="utf-8") for p in files)
+            files = tuple(migration_files if migration_files is not None else sorted((ROOT / "pipeline/migrations").glob("*.sql")))
             print("[e2e] applying migrations", flush=True)
-            for _ in range(60):
+            stable_postmaster = None
+            stable_checks = 0
+            for _ in range(120):
                 # pg_isready only confirms that Postgres accepts connections;
                 # during container bootstrap it may report ready before the
                 # POSTGRES_DB database has been created. Query the target DB
-                # directly so migrations never race initialization in CI.
+                # directly so migrations never race initialization in CI. The
+                # image can still replace its temporary bootstrap server after
+                # the first successful query, so require the same postmaster
+                # start time across several checks before attaching migrations.
                 ready = subprocess.run(
-                    self.command("exec", "-T", "postgres", "psql", "-U", "uec", "-d", "uec", "-c", "SELECT 1"),
+                    self.command("exec", "-T", "postgres", "psql", "-At", "-U", "uec", "-d", "uec", "-c", "SELECT pg_postmaster_start_time()"),
                     cwd=ROOT,
                     capture_output=True,
                     text=True,
                     env=self.compose_env(),
-                ).returncode == 0
-                if ready: break
+                )
+                if ready.returncode == 0 and ready.stdout.strip():
+                    postmaster = ready.stdout.strip()
+                    if postmaster == stable_postmaster:
+                        stable_checks += 1
+                    else:
+                        stable_postmaster = postmaster
+                        stable_checks = 1
+                    if stable_checks >= 3:
+                        break
+                else:
+                    stable_postmaster = None
+                    stable_checks = 0
                 time.sleep(.25)
             else: raise RuntimeError("PostGIS container did not become ready")
             try:
-                subprocess.run(self.command("exec", "-T", "postgres", "psql", "-U", "uec", "-d", "uec"), input=migrations.encode("utf-8"), cwd=ROOT, check=True, env=self.compose_env())
+                # Apply files one at a time.  Streaming the complete migration
+                # history through a single Windows/Docker exec can terminate
+                # the disposable Postgres process mid-stream, which leaves a
+                # misleading partial-schema failure and makes the local load
+                # harness non-rerunnable.  Per-file execution is still
+                # disposable, ordered, and fail-fast, while keeping the
+                # migration boundary visible in the log.
+                for migration in files:
+                    print(f"[e2e] applying {migration.name}", flush=True)
+                    subprocess.run(
+                        self.command("exec", "-T", "postgres", "psql", "-v", "ON_ERROR_STOP=1", "-U", "uec", "-d", "uec"),
+                        input=migration.read_bytes(),
+                        cwd=ROOT,
+                        check=True,
+                        env=self.compose_env(),
+                    )
             except subprocess.CalledProcessError:
                 # Docker Desktop can restart a freshly initialized PostGIS
                 # container while the first large SQL stream is attached.

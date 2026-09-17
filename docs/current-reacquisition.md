@@ -55,11 +55,34 @@ python pipeline/scripts/maintenance/rehearse_current_reacquisition.py `
   --output data/reports/current-reacquisition-rehearsal.json
 ```
 
-The command fails closed if a private artifact, handoff, checksum, candidate
-state, or reconciliation count is missing or changed. CFIA is intentionally
-excluded because its current workbook remains raw-only. The checked-in report
-must remain aggregate-only; do not substitute a normalized JSONL path for its
-output path or add row payloads to the manifest.
+The command always writes an aggregate report, but exits nonzero if a private
+artifact, handoff, checksum, candidate state, or reconciliation count is
+missing or changed. It enumerates every unavailable or invalid source instead
+of stopping at the first one; unavailable inputs are never counted as zero.
+CFIA is intentionally reported as raw-only because its current workbook has no
+normalized handoff. The checked-in report must remain aggregate-only; do not
+substitute a normalized JSONL path for its output path or add row payloads to
+the manifest.
+
+For the complete disposable candidate/API rehearsal, use the separate
+operator command below. `--root` may point at an authorized ignored staging
+checkout; it is read-only from this command. The command imports every
+available normalized handoff into one candidate release, reruns every import,
+checks list/detail/facets/cursor pagination, verifies the bounded CSV guard,
+and records an append-only suppression check. Its output is row-free and must
+be written outside the repository or to an ignored report path:
+
+```powershell
+python pipeline/scripts/maintenance/rehearse_current_candidate.py `
+  --manifest data/manifests/current-reacquisition-2026-09-16.json `
+  --root C:\New\ Projects\UntilEveryCage-current-reacquisition `
+  --output $env:TEMP\uec-current-candidate-rehearsal.json
+```
+
+The candidate release is loopback-only, `test_only`, unapproved, and never
+promoted. A successful run must report 108,475 normalized rows imported on
+the first pass and zero new rows on the rerun. CFIA is intentionally listed as
+raw-only and is not silently counted as zero.
 
 The completed rehearsal used a disposable `docker-compose.e2e.yml` project
 (`uec-reacq-20260916`, DB port `55440`) with all 34 migrations. It imported the
@@ -86,3 +109,29 @@ docker compose -p uec-reacq-20260916 -f docker-compose.e2e.yml down -v --remove-
 This rehearsal is evidence of private normalization, quarantine, candidate
 handoff/import, test-only preview/export, suppression, and rerun behavior. It
 is not project approval, currentness certification, or publication permission.
+
+## Current workspace availability check
+
+The `eli/front-end-overhaul` integration checkout intentionally contains only
+the row-free manifest. The authorized private staging root used for the final
+rehearsal was the separate ignored checkout
+`C:\New Projects\UntilEveryCage-current-reacquisition`; it was inspected
+read-only and no raw or normalized rows were copied into the integration
+checkout. The aggregate validator completed successfully there for seven
+normalized profiles and one CFIA raw-only profile.
+
+The verified reconciliation is 115,182 input rows = 108,475 normalized rows
++ 6,707 quarantined rows. The current-corpus geospatial audit found 40,115
+source-coordinate-valid rows, 1,710 source-coordinate-pending-review rows,
+68,273 city-display rows, 87 unmapped rows, and 103,676 rows still requiring
+privacy/coordinate review. It produced aggregate evidence only. No source
+was approved, promoted, or published; the public API row count remains zero.
+
+The candidate/API rehearsal is run separately with
+`rehearse_current_candidate.py` because it requires Docker and a disposable
+database. Its report should record the exact per-source import counts, a zero
+row delta on the idempotent rerun, successful test-only API surfaces, a
+bounded full-export rejection above 1,000 rows, and suppression reducing
+visible candidate rows by one. CFIA remains the explicit unresolved adapter
+blocker: its current official response is an XLS workbook and has no reviewed
+normalized handoff.
