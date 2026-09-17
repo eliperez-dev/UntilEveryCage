@@ -6,7 +6,7 @@ from pipeline.platform_registry import build_platform_registry, source_metadata
 class PlatformRegistryTests(unittest.TestCase):
     def test_materialized_registry_scales_from_existing_source_status_inputs(self):
         registry = build_platform_registry()
-        self.assertEqual(registry["source_count"], 234)
+        self.assertEqual(registry["source_count"], 240)
         self.assertGreaterEqual(registry["country_count"], 40)
         self.assertEqual(registry["publication_boundary"], "awaiting-owner-review; private staging may continue; no release approval or promotion is implied")
         self.assertTrue(all(country["publication"]["state"] == "blocked" for country in registry["countries"]))

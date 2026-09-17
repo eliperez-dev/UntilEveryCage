@@ -2,7 +2,7 @@
 
 The source registry and source-status baseline remain the authoritative inputs.
 This module joins them into a typed, country-aware view so new lanes do not
-copy 234 source rows into another file.  It is intentionally offline and never
+copy source rows into another file.  It is intentionally offline and never
 fetches a source or grants release approval.
 """
 from __future__ import annotations
