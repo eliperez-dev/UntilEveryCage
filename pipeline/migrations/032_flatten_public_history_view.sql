@@ -1,8 +1,11 @@
 -- Flatten the public history view's nested release/review/suppression joins.
 -- Eligibility is still evaluated from append-only control-plane views for every
 -- request; this changes only plan shape, not the public contract.
+-- Keep the eligibility CTE inline so release/facility filters can push down
+-- before the window aggregates. The partition still covers every eligible
+-- observation for a facility, preserving history counts and timestamps.
 CREATE OR REPLACE VIEW uec.map_facilities_display_history AS
-WITH eligible AS MATERIALIZED (
+WITH eligible AS (
     SELECT member.release_id,
            member.default_visible AS release_visible,
            observation.observation_id,
@@ -56,14 +59,6 @@ WITH eligible AS MATERIALIZED (
           FROM uec.public_access_restricted AS restricted
           WHERE restricted.source_record_id = observation.source_record_id
       )
-), public_summary AS MATERIALIZED (
-    SELECT release_id,
-           facility_id,
-           min(first_observed_at) AS first_observed_at,
-           max(observed_at) AS last_observed_at,
-           count(*)::int AS observation_count
-    FROM eligible
-    GROUP BY release_id, facility_id
 )
 SELECT eligible.release_id,
        'promoted'::text AS release_status,
@@ -88,9 +83,9 @@ SELECT eligible.release_id,
        latest.provider_id AS geocoder_provider,
        latest.queried_at AS geocoded_at,
        eligible.classification_category,
-       public_summary.first_observed_at,
-       public_summary.last_observed_at,
-       public_summary.observation_count,
+       min(eligible.first_observed_at) OVER facility_history AS first_observed_at,
+       max(eligible.observed_at) OVER facility_history AS last_observed_at,
+       (count(*) OVER facility_history)::int AS observation_count,
        COALESCE(lifecycle.status, 'status_unknown') AS lifecycle_status,
        lifecycle.effective_at AS lifecycle_effective_at,
        lifecycle.source_record_id AS lifecycle_source_record_id,
@@ -102,9 +97,6 @@ SELECT eligible.release_id,
        eligible.provenance_source_url,
        eligible.provenance_retrieved_at
 FROM eligible
-JOIN public_summary
-  ON public_summary.release_id = eligible.release_id
- AND public_summary.facility_id = eligible.facility_id
 LEFT JOIN LATERAL (
     SELECT status, result, provider_id, queried_at
     FROM uec.geocode_results
@@ -122,7 +114,8 @@ LEFT JOIN LATERAL (
     LIMIT 1
 ) AS city ON true
 LEFT JOIN uec.facility_lifecycle_current AS lifecycle
-  ON lifecycle.facility_id = eligible.facility_id;
+  ON lifecycle.facility_id = eligible.facility_id
+WINDOW facility_history AS (PARTITION BY eligible.release_id, eligible.facility_id);
 
 COMMENT ON VIEW uec.map_facilities_display_history IS
     'V2 public display history with one release-scoped eligibility pass, current suppression, and public-only lifecycle counts.';

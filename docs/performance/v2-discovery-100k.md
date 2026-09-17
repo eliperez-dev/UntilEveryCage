@@ -78,3 +78,22 @@ These are single-query local plan samples over temporary synthetic tables. They
 demonstrate query-shape/index behavior only and do not establish API latency,
 concurrency capacity, or production readiness. The companion API rehearsal and
 its limitations are recorded in `v2-api-load-rehearsal.md`.
+
+## Scale expectations after the 2026-09-16 hardening
+
+These expectations are deliberately separated from support or capacity claims.
+The following row-free hardening capture used PostGIS 16 / PostGIS 3.4 on
+2026-09-16; the value in each column is the slowest single-query execution
+sample among the eight bounded query shapes (the radius shape was the slowest
+at each scale):
+
+| Synthetic observations | Slowest sample | Evidence-backed expectation |
+| ---: | ---: | --- |
+| 25,000 | 12.588 ms | All eight shapes returned at most 50 rows, used an expected index family, and had zero sequential-scan nodes in this run. |
+| 100,000 | 12.200 ms | The same bounded/indexed query-shape behavior held in this local sample; it remains single-query evidence. |
+| 150,000 | 50.895 ms | The row-free planner capture also passed all checks; radius cost increased materially but stayed below the 350 ms review threshold in this sample. |
+
+These are validation observations, not promises of API latency or capacity. The live public
+projection still evaluates release membership, publication review, privacy
+screening, profile rules, and current suppression on every read. No cache or
+frozen public projection is used to manufacture a scale claim.

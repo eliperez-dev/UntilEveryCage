@@ -74,10 +74,11 @@ throughput, status/error/timeouts, response byte totals, observed database
 active/waiting sessions, and pool-pressure signals only. It does not retain
 request paths, query values, coordinates, IDs, client data, or response rows.
 
-Migration 032 flattens the nested public-history view into one
-release-scoped eligibility pass and one per-release facility summary while
-retaining the live review, suppression, lifecycle, and geocode checks. The
-diagnostic can be reproduced with:
+Migration 032 flattens the nested public-history view into one inline
+release-scoped eligibility pass and window aggregates over each facility's
+history while retaining the live review, suppression, lifecycle, and geocode
+checks. Keeping eligibility inline lets selected release/facility predicates
+push down before the window work. The diagnostic can be reproduced with:
 
 ```powershell
 python pipeline/scripts/benchmarks/explain_public_projection.py `
@@ -104,12 +105,11 @@ representative traffic test on the deployment topology. The 2-second request
 timeout and 350 ms database radius-query budget remain review thresholds for
 fail-safe behavior, not performance guarantees.
 
-The 5,000-row component matrix attributes the remaining cost primarily to the
-release-scoped eligibility and public summary path: about 663 ms and 3,362 ms
-respectively in isolation, versus about 16 ms geocode, 15 ms city, and 1 ms
-lifecycle lookup. Full pagination and spatial statements measured about 5,097
-ms and 4,690 ms. Allowing the summary CTE to inline was tested and rejected:
-facets worsened from about 4,501 ms to 6,622 ms. See
+The earlier 5,000-row component matrix attributed the cost primarily to the
+release-scoped eligibility and repeated public summary path. After the inline
+eligibility/window-aggregate rewrite, a fresh local synthetic capture measured
+the flattened list and facets statements at approximately 108 ms and 106 ms.
+These are single-query samples, not p95 or capacity measurements. See
 `docs/performance/v2-public-projection-read-path.md` for the architecture
 decision and the safeguards required for any future release-built component.
 

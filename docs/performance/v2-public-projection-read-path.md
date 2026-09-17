@@ -11,7 +11,8 @@ implemented behind a candidate view for invariant testing only.
 
 ## Evidence
 
-The synthetic component benchmark at 5,000 observations measured roughly:
+The earlier pre-rewrite synthetic component benchmark at 5,000 observations
+measured roughly:
 
 | Component | Execution time |
 | --- | ---: |
@@ -23,12 +24,13 @@ The synthetic component benchmark at 5,000 observations measured roughly:
 | Full pagination projection | 5,097 ms |
 | Full spatial projection | 4,690 ms |
 
-The flattened view removed repeated nested expansion and made the 1,000-row
-concurrent rehearsal clean at all tested levels. At 5,000 rows, the remaining
-summary and eligibility work still exceeds the current 2-second rehearsal
-budget. A candidate that allowed the summary CTE to inline was measured and
-rejected because the 5,000-row facets plan increased from about 4,501 ms to
-6,622 ms.
+The flattened view removed repeated nested expansion. The scale-hardening
+revision keeps eligibility inline and uses window aggregates for the
+per-facility summary, allowing release and facility predicates to be pushed
+before the summary work while preserving the same live joins. In a fresh
+synthetic 5,000-row local plan capture, list and facets measured approximately
+108 ms and 106 ms. These are single-query samples, not p95 or capacity
+measurements.
 
 The prototype builder is reproducible with:
 
@@ -40,9 +42,10 @@ It stores release-membership observation facts, not a frozen current-public
 decision. The candidate summary joins the exact release manifest checksum and
 re-evaluates current review, profile, and suppression state on every read.
 At 1,000 rows its candidate summary took about 406 ms versus 121 ms for the
-current live summary; at 5,000 rows it took about 9,984 ms versus 3,044 ms.
-The prototype therefore proves the safety protocol but does not justify API
-integration or a production capacity claim.
+current live summary; at 5,000 rows it took about 9,984 ms versus 3,044 ms in
+the earlier component comparison. The candidate therefore still proves the
+safety protocol but does not justify API integration or a production capacity
+claim.
 
 ## Alternatives considered
 

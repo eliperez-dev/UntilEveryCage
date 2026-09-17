@@ -988,7 +988,7 @@ pub async fn get_v2_facets_handler(
     let release_id: String = release.get(0);
     let ruleset_version: String = release.get(1);
     let release_created_at: chrono::DateTime<chrono::Utc> = release.get(2);
-    let rows = match client.query("SELECT country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city, count(*)::bigint FROM uec.map_facilities_display_history WHERE release_id=$1 AND ($2::text IS NULL OR country_code=$2) AND ($3::text IS NULL OR classification_category=$3) AND ($4::text IS NULL OR provenance_origin_type=$4) AND ($5::text IS NULL OR display_precision=$5) AND ($6::text IS NULL OR lifecycle_status=$6) AND ($7::text IS NULL OR city=$7) GROUP BY country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city", &[&release_id, &params.country_code, &params.category, &params.source_type, &params.display_precision, &params.lifecycle_status, &params.region]).await { Ok(rows) => rows, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "facets_query_failed", "public facets unavailable") };
+    let rows = match client.query("SELECT country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city, count(*)::bigint FROM (SELECT DISTINCT ON (facility_id) facility_id, country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city FROM uec.map_facilities_display_history WHERE release_id=$1 AND ($2::text IS NULL OR country_code=$2) AND ($3::text IS NULL OR classification_category=$3) AND ($4::text IS NULL OR provenance_origin_type=$4) AND ($5::text IS NULL OR display_precision=$5) AND ($6::text IS NULL OR lifecycle_status=$6) AND ($7::text IS NULL OR city=$7) ORDER BY facility_id, observation_id) public_facilities GROUP BY country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city", &[&release_id, &params.country_code, &params.category, &params.source_type, &params.display_precision, &params.lifecycle_status, &params.region]).await { Ok(rows) => rows, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "facets_query_failed", "public facets unavailable") };
     let mut dimensions = serde_json::Map::new();
     for (name, column) in [
         ("country_code", 0),
@@ -1349,7 +1349,7 @@ pub async fn get_v2_locations_handler(
     let promoted_profile: String = release.get(3);
     let query_limit = limit + 1;
     let rows = match transaction.query(r#"
-        SELECT history.facility_id, history.canonical_name, history.country_code, history.city, history.classification_category, history.display_precision,
+        SELECT DISTINCT ON (history.facility_id) history.facility_id, history.canonical_name, history.country_code, history.city, history.classification_category, history.display_precision,
                review.factual_review_status, review.privacy_screening_status, review.maintainer_approval, review.reviewer_role,
                ST_Y(history.display_location::geometry), ST_X(history.display_location::geometry),
                history.first_observed_at, history.last_observed_at, history.observation_count, history.lifecycle_status,
@@ -1372,7 +1372,7 @@ pub async fn get_v2_locations_handler(
           AND ($9::text IS NULL OR lower(coalesce(history.canonical_name, '') || ' ' || coalesce(history.city, '') || ' ' || history.country_code || ' ' || history.classification_category || ' ' || coalesce(history.provenance_source_name, '')) LIKE '%' || lower($9) || '%' ESCAPE '\')
           AND ($10::double precision IS NULL OR (history.display_location && ST_MakeEnvelope($10, $11, $12, $13, 4326)::geography AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($10, $11, $12, $13, 4326))))
           AND ($14::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($15, $16), 4326)::geography, $14 * 1000))
-        ORDER BY history.facility_id LIMIT $17 OFFSET $18
+        ORDER BY history.facility_id, history.observation_id LIMIT $17 OFFSET $18
     "#, &[&promoted_release_id, &cursor, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &query_limit, &effective_offset]).await {
         Ok(rows) => rows,
         Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
@@ -1522,7 +1522,9 @@ pub async fn get_v2_location_detail_handler(
           ON review.source_record_id = history.source_record_id
          AND review.release_id = history.release_id
         JOIN uec.sources rights ON rights.source_id = history.provenance_source_id
-        WHERE history.facility_id = $1 AND history.release_id = $2
+         WHERE history.facility_id = $1 AND history.release_id = $2
+         ORDER BY history.observation_id
+         LIMIT 1
     "#, &[&facility_id, &release_id]).await {
         Ok(row) => row,
         Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
