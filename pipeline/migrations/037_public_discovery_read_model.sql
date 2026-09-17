@@ -79,9 +79,23 @@ WITH eligible AS (
     JOIN uec.release_manifests manifest
       ON manifest.release_id = model.release_id
      AND manifest.manifest_sha256 = metadata.manifest_sha256
-    JOIN uec.publication_review_release_current review
-      ON review.source_record_id = model.source_record_id
-     AND review.release_id = model.release_id
+    -- This lateral form is equivalent to publication_review_release_current
+    -- for one source/release, but lets the indexed source-record lookup avoid
+    -- materializing the complete append-only review view for every request.
+    JOIN LATERAL (
+        SELECT review.factual_review_status,
+               review.privacy_screening_status,
+               review.maintainer_approval,
+               review.reviewer_role,
+               review.publication_eligible
+        FROM uec.publication_review_events review
+        JOIN uec.publication_review_release_scopes scope
+          ON scope.publication_review_event_id = review.publication_review_event_id
+         AND scope.release_id = model.release_id
+        WHERE review.source_record_id = model.source_record_id
+        ORDER BY review.reviewed_at DESC, review.publication_review_event_id DESC
+        LIMIT 1
+    ) review ON true
     WHERE release.status = 'promoted'
       AND release.test_only IS NOT TRUE
       AND review.publication_eligible = true
@@ -94,10 +108,37 @@ WITH eligible AS (
               AND review.factual_review_status = 'unreviewed'
               AND review.maintainer_approval = 'pending')
       )
+      -- Keep both current append-only restriction sources live, but correlate
+      -- them to the candidate record so a large model does not force a full
+      -- public_access_restricted UNION expansion on every read.
       AND NOT EXISTS (
           SELECT 1
-          FROM uec.public_access_restricted restricted
-          WHERE restricted.source_record_id = model.source_record_id
+          FROM uec.record_access_current access
+          WHERE access.source_record_id = model.source_record_id
+            AND access.action = 'public_access_revoked'
+      )
+      AND NOT EXISTS (
+          SELECT 1
+          FROM uec.suppression_case_current current_case
+          JOIN uec.suppression_cases case_record
+            ON case_record.case_id = current_case.case_id
+          JOIN uec.suppression_references ref
+            ON ref.case_id = case_record.case_id
+          JOIN uec.source_records record ON (
+              (ref.facility_id IS NOT NULL AND (
+                  EXISTS (SELECT 1 FROM uec.facility_source_links link
+                          WHERE link.facility_id = ref.facility_id
+                            AND link.source_record_id = record.source_record_id)
+                  OR EXISTS (SELECT 1 FROM uec.observations observation
+                             WHERE observation.facility_id = ref.facility_id
+                               AND observation.source_record_id = record.source_record_id)
+              ))
+              OR (ref.source_id = record.source_id
+                  AND ref.source_record_key = record.source_record_key)
+          )
+          WHERE current_case.event_type = 'suppressed'
+            AND case_record.status IN ('active', 'review', 'closed', 'expired')
+            AND record.source_record_id = model.source_record_id
       )
 )
 SELECT eligible.release_id,
@@ -142,4 +183,4 @@ LEFT JOIN uec.facility_lifecycle_current lifecycle
 WINDOW facility_history AS (PARTITION BY eligible.release_id, eligible.facility_id);
 
 COMMENT ON VIEW uec.map_facilities_public_discovery_read_model IS
-    'Manifest-bound public discovery component with live review, profile, suppression, and lifecycle gates; missing or stale metadata yields no rows.';
+    'Manifest-bound public discovery component with live publication_review_release_current-equivalent review, profile, suppression, and lifecycle gates; missing or stale metadata yields no rows.';
