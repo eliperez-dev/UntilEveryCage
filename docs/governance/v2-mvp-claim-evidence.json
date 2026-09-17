@@ -1,0 +1,378 @@
+{
+  "matrix_version": "v2-mvp-claim-evidence-1",
+  "as_of": "2026-09-16",
+  "status_definitions": {
+    "implemented_tested": "The repository contains the behavior and an automated test or deterministic rehearsal proving it within the stated scope.",
+    "implemented_not_exercised": "The code or harness exists, but the relevant full-scale, live, or operational exercise has not completed.",
+    "prototype_only": "A schema, contract, research lane, or partial implementation exists, but the promised product capability is not ready to claim.",
+    "planned": "The policy or roadmap requires it, but the implementation evidence is not present.",
+    "human_policy": "The decision requires an authorized maintainer, qualified advice, or an operational review that software cannot replace."
+  },
+  "claims": [
+    {
+      "id": "provenance.raw-lineage",
+      "area": "provenance",
+      "claim": "Source artifacts, retrieval facts, hashes, parser/configuration versions, source records, and normalized values have a lineage model.",
+      "status": "implemented_tested",
+      "evidence": [
+        {"path": "docs/architecture/database-import-contract.md", "line": 18},
+        {"path": "docs/architecture/source-operations.md", "line": 9},
+        {"path": "pipeline/tests/test_database_contract.py", "line": 1},
+        {"path": "pipeline/contracts/test_private_run.py", "line": 1}
+      ],
+      "limit": "This proves the model and private staging contract, not that every current upstream source has a fresh artifact locally."
+    },
+    {
+      "id": "provenance.append-only-history",
+      "area": "provenance",
+      "claim": "Ordinary imports and enrichment append evidence and do not silently overwrite retained history.",
+      "status": "implemented_tested",
+      "evidence": [
+        {"path": "docs/architecture/database-import-contract.md", "line": 5},
+        {"path": "pipeline/tests/test_database_contract.py", "line": 1},
+        {"path": "pipeline/tests/e2e/test_candidate_import.py", "line": 1}
+      ],
+      "limit": "Exceptional redaction/deletion remains a separate unfinished maintainer workflow."
+    },
+    {
+      "id": "provenance.deterministic-rerun",
+      "area": "provenance",
+      "claim": "Validated candidate imports are deterministic, transactional, resumable, and idempotent for repeated input.",
+      "status": "implemented_tested",
+      "evidence": [
+        {"path": "docs/architecture/database-import-contract.md", "line": 26},
+        {"path": "docs/architecture/disposable-candidate-import.md", "line": 22},
+        {"path": "pipeline/tests/e2e/test_candidate_import.py", "line": 1}
+      ],
+      "limit": "The full 50,000-row Postgres resilience rehearsal is not yet evidenced in this checkout."
+    },
+    {
+      "id": "provenance.legacy-separation",
+      "area": "provenance",
+      "claim": "Legacy data can be retained as explicitly private legacy evidence rather than relabeled as fresh verification.",
+      "status": "implemented_tested",
+      "evidence": [
+        {"path": "v2-ideas.md", "line": 13},
+        {"path": "docs/real-v2-rehearsal.md", "line": 1},
+        {"path": "pipeline/tests/test_real_v2_rehearsal.py", "line": 1}
+      ],
+      "limit": "Legacy data remains a compatibility/rehearsal population until each source has a current pipeline."
+    },
+    {
+      "id": "provenance.current-source-coverage",
+      "area": "provenance",
+      "claim": "All intended current sources have fresh, reproducible acquisition and normalized handoffs.",
+      "status": "prototype_only",
+      "evidence": [
+        {"path": "docs/architecture/data-pipeline-plan.md", "line": 86},
+        {"path": "docs/current-geospatial-readiness.md", "line": 42},
+        {"path": "docs/current-reacquisition.md", "line": 1}
+      ],
+      "limit": "The current-corpus audit explicitly reports unavailable private handoffs locally; no complete fresh-source claim is made."
+    },
+    {
+      "id": "ethics.governing-policy",
+      "area": "ethics",
+      "claim": "ETHICS.md is the governing policy for acquisition, processing, retention, review, suppression, and publication, with unfinished protections tracked separately.",
+      "status": "human_policy",
+      "evidence": [
+        {"path": "docs/ETHICS.md", "line": 1},
+        {"path": "docs/governance/policy-implementation-todo.md", "line": 1},
+        {"path": "docs/governance/ethics-changelog.md", "line": 1}
+      ],
+      "limit": "A governing policy is not proof that every control is implemented; this matrix preserves that distinction."
+    },
+    {
+      "id": "publication.explicit-gate",
+      "area": "publication",
+      "claim": "Acquisition success and government origin do not automatically publish a record; release/profile, privacy, review, and project approval gates are separate.",
+      "status": "implemented_tested",
+      "evidence": [
+        {"path": "docs/architecture/database-import-contract.md", "line": 49},
+        {"path": "docs/architecture/release-manifest-verification.md", "line": 10},
+        {"path": "pipeline/tests/e2e/test_seeded_api.py", "line": 1},
+        {"path": "pipeline/tests/e2e/test_public_api.py", "line": 1}
+      ],
+      "limit": "The database gate is tested in disposable environments; deployment-level authorization is still open."
+    },
+    {
+      "id": "publication.public-projection",
+      "area": "publication",
+      "claim": "Public list, detail, facets, and export routes read a reviewed projection rather than raw evidence and require an eligible promoted release.",
+      "status": "implemented_tested",
+      "evidence": [
+        {"path": "docs/architecture/api-location-contract.md", "line": 5},
+        {"path": "docs/api/v2-contract.md", "line": 1},
+        {"path": "pipeline/tests/e2e/test_public_api.py", "line": 27},
+        {"path": "pipeline/tests/e2e/test_public_surface_safety.py", "line": 1}
+      ],
+      "limit": "The current branch does not claim a deployed public instance."
+    },
+    {
+      "id": "publication.profile-separation",
+      "area": "publication",
+      "claim": "Official, secondary, and community profiles remain explicit and cannot silently relabel one another.",
+      "status": "implemented_tested",
+      "evidence": [
+        {"path": "docs/architecture/api-location-contract.md", "line": 28},
+        {"path": "docs/ETHICS.md", "line": 61},
+        {"path": "pipeline/tests/e2e/test_seeded_api.py", "line": 1}
+      ],
+      "limit": "The community surface is synthetic/test evidence and still needs frontend and operational publication work."
+    },
+    {
+      "id": "publication.export-integrity",
+      "area": "publication",
+      "claim": "Bounded API exports and release snapshots carry release, profile, provenance, rights, and manifest integrity metadata.",
+      "status": "implemented_tested",
+      "evidence": [
+        {"path": "docs/api/v2-contract.md", "line": 7},
+        {"path": "docs/architecture/release-manifest-verification.md", "line": 1},
+        {"path": "pipeline/tests/e2e/test_seeded_api.py", "line": 1}
+      ],
+      "limit": "Checksums detect alteration relative to a trusted reference; they do not establish factual accuracy or licensing."
+    },
+    {
+      "id": "privacy.public-suppression",
+      "area": "privacy",
+      "claim": "A restricted record is excluded from current public list, detail, facets, exports, and historical projections, including after replay in tested scenarios.",
+      "status": "implemented_tested",
+      "evidence": [
+        {"path": "docs/architecture/adr-map-visualization-platform.md", "line": 17},
+        {"path": "docs/governance/policy-implementation-todo.md", "line": 27},
+        {"path": "pipeline/tests/e2e/test_public_surface_safety.py", "line": 1},
+        {"path": "pipeline/tests/e2e/backup_restore_current_suppression.sql", "line": 1}
+      ],
+      "limit": "The policy-compliant exceptional removal/redaction workflow and complete propagation exercise remain open."
+    },
+    {
+      "id": "privacy.exceptional-removal",
+      "area": "privacy",
+      "claim": "Authorized maintainers can execute and audit the full private-data-safe correction, removal, retention, and deletion workflow.",
+      "status": "planned",
+      "evidence": [
+        {"path": "docs/governance/policy-implementation-todo.md", "line": 5},
+        {"path": "docs/governance/private-data-removal-runbook.md", "line": 1},
+        {"path": "docs/ETHICS.md", "line": 31}
+      ],
+      "limit": "Existing suppression is not evidence that the complete exceptional-removal workflow is implemented."
+    },
+    {
+      "id": "privacy.people-not-targets",
+      "area": "safety",
+      "claim": "The public product will not expose workers, residents, private individuals, or targeting-enabling personal details.",
+      "status": "human_policy",
+      "evidence": [
+        {"path": "docs/ETHICS.md", "line": 84},
+        {"path": "docs/architecture/adr-map-visualization-platform.md", "line": 55},
+        {"path": "docs/governance/policy-implementation-todo.md", "line": 27}
+      ],
+      "limit": "This is a binding policy and design constraint; source-specific human screening and operational review remain necessary."
+    },
+    {
+      "id": "privacy.visitor-data",
+      "area": "privacy",
+      "claim": "Visitor searches, device location, logs, tiles, geocoding, analytics, hosting, and third-party disclosures have been audited and verified against the public privacy statement.",
+      "status": "planned",
+      "evidence": [
+        {"path": "docs/ETHICS.md", "line": 116},
+        {"path": "docs/governance/visitor-privacy-inventory.md", "line": 1},
+        {"path": "docs/governance/policy-implementation-todo.md", "line": 49}
+      ],
+      "limit": "The policy explicitly says current hosting/provider behavior has not yet been audited."
+    },
+    {
+      "id": "safety.uncertainty-labels",
+      "area": "safety",
+      "claim": "Unknown, unavailable, approximate, unresolved, and failed values are represented explicitly rather than guessed.",
+      "status": "implemented_tested",
+      "evidence": [
+        {"path": "docs/ETHICS.md", "line": 39},
+        {"path": "docs/architecture/api-location-contract.md", "line": 13},
+        {"path": "pipeline/tests/e2e/test_seeded_api.py", "line": 1},
+        {"path": "pipeline/tests/test_real_corpus_report.py", "line": 1}
+      ],
+      "limit": "This is proven for the tested projections and diagnostics, not every future source-specific field."
+    },
+    {
+      "id": "safety.no-closure-inference",
+      "area": "lifecycle",
+      "claim": "A source disappearance is not converted into a closure claim; explicit closure requires traceable evidence.",
+      "status": "implemented_tested",
+      "evidence": [
+        {"path": "docs/architecture/api-location-contract.md", "line": 17},
+        {"path": "docs/architecture/source-operations.md", "line": 42},
+        {"path": "pipeline/tests/e2e/test_seeded_api.py", "line": 1}
+      ],
+      "limit": "Lifecycle quality still depends on source-specific evidence and review."
+    },
+    {
+      "id": "lifecycle.history",
+      "area": "lifecycle",
+      "claim": "Facility lifecycle events and observation history are separate, dated, and visible only through eligible projections.",
+      "status": "implemented_tested",
+      "evidence": [
+        {"path": "docs/architecture/source-lifecycle.md", "line": 1},
+        {"path": "docs/architecture/api-location-contract.md", "line": 17},
+        {"path": "pipeline/tests/e2e/test_seeded_api.py", "line": 1}
+      ],
+      "limit": "The frontend presentation is not part of this backend lane."
+    },
+    {
+      "id": "geospatial.precision",
+      "area": "geospatial",
+      "claim": "Exact, city/coarse, unmapped, restricted, source coordinates, and geocoder evidence remain distinct states.",
+      "status": "implemented_tested",
+      "evidence": [
+        {"path": "docs/current-geospatial-readiness.md", "line": 16},
+        {"path": "docs/architecture/api-location-contract.md", "line": 13},
+        {"path": "pipeline/tests/e2e/test_seeded_api.py", "line": 1}
+      ],
+      "limit": "An accepted geocode is location evidence only; it is not publication approval."
+    },
+    {
+      "id": "geospatial.current-coverage",
+      "area": "geospatial",
+      "claim": "Current-corpus coordinate coverage and privacy-review queues have been measured from the complete current handoff.",
+      "status": "implemented_not_exercised",
+      "evidence": [
+        {"path": "docs/current-geospatial-readiness.md", "line": 42},
+        {"path": "docs/geospatial-readiness-audit.md", "line": 1},
+        {"path": "pipeline/scripts/diagnostics/current_geospatial_readiness.py", "line": 1}
+      ],
+      "limit": "The checked-in manifest lists current source profiles, but the private normalized handoffs are unavailable in this checkout; the audit correctly reports coverage as unavailable, not zero."
+    },
+    {
+      "id": "geospatial.provider-controls",
+      "area": "geospatial",
+      "claim": "Geocoding attempts retain provider, query, timestamp, precision, response, retryability, and review state.",
+      "status": "implemented_tested",
+      "evidence": [
+        {"path": "docs/architecture/database-import-contract.md", "line": 18},
+        {"path": "docs/current-geospatial-readiness.md", "line": 50},
+        {"path": "pipeline/tests/test_geocoding_adapters.py", "line": 1}
+      ],
+      "limit": "Only Denmark DAWA is configured for development-only use; production providers, cost, retention, and terms are not established."
+    },
+    {
+      "id": "graph.source-qualified-identities",
+      "area": "graph",
+      "claim": "Source-native identifiers and crosswalks are source-scoped, reviewable, and do not silently create universal identity merges.",
+      "status": "implemented_tested",
+      "evidence": [
+        {"path": "docs/architecture/adr-graph-foundation.md", "line": 5},
+        {"path": "docs/architecture/graph-data-dictionary.md", "line": 1},
+        {"path": "pipeline/tests/test_graph_database_contract.py", "line": 1}
+      ],
+      "limit": "This proves the evidence model, not a complete global graph."
+    },
+    {
+      "id": "graph.public-product",
+      "area": "graph",
+      "claim": "A production public accountability graph with reviewed organization relationships and demonstrated accuracy is available.",
+      "status": "prototype_only",
+      "evidence": [
+        {"path": "docs/architecture/adr-graph-foundation.md", "line": 1},
+        {"path": "docs/review-packet-us-accountability.md", "line": 1},
+        {"path": "docs/architecture/adr-map-visualization-platform.md", "line": 68}
+      ],
+      "limit": "The current graph work is a private evidence foundation and pilot; no public graph import, inference, or UI is claimed."
+    },
+    {
+      "id": "scale.indexed-discovery",
+      "area": "scale",
+      "claim": "The public discovery read path has deterministic, facility-scoped queries and indexed plans measured at 25k, 100k, and 150k rows.",
+      "status": "implemented_tested",
+      "evidence": [
+        {"path": "docs/performance/v2-public-projection-read-path.md", "line": 1},
+        {"path": "docs/performance/v2-api-load-rehearsal.md", "line": 1},
+        {"path": "pipeline/tests/test_public_discovery_query_contract.py", "line": 1}
+      ],
+      "limit": "Plan and local samples are not a production concurrency SLO."
+    },
+    {
+      "id": "scale.concurrent-http-capacity",
+      "area": "scale",
+      "claim": "The API has completed representative concurrent HTTP performance testing with reliable p95/p99 results through 150k records.",
+      "status": "implemented_not_exercised",
+      "evidence": [
+        {"path": "pipeline/scripts/benchmarks/run_api_load_rehearsal.py", "line": 1},
+        {"path": "pipeline/tests/test_api_load_rehearsal.py", "line": 1},
+        {"path": "docs/performance/v2-api-load-rehearsal.md", "line": 1}
+      ],
+      "limit": "The harness and bounded scale contract exist; the full post-optimization concurrent run remains a Sprint 1 exit item."
+    },
+    {
+      "id": "operations.resilience",
+      "area": "operational",
+      "claim": "Interrupted imports, duplicate imports, backup/restore, stale suppression rejection, and restriction-ledger replay have completed at representative 50k scale.",
+      "status": "implemented_not_exercised",
+      "evidence": [
+        {"path": "docs/performance/corpus-resilience.md", "line": 1},
+        {"path": "pipeline/scripts/benchmarks/run_corpus_resilience.py", "line": 1},
+        {"path": "pipeline/tests/e2e/test_corpus_resilience.py", "line": 1}
+      ],
+      "limit": "The plan-only path and focused tests pass; Docker Desktop access denied the full Postgres rehearsal in the reporting agent's checkout."
+    },
+    {
+      "id": "operations.health-diagnostics",
+      "area": "operational",
+      "claim": "The deployed system has audited, privacy-safe observability, configuration validation, alerting, and operator incident procedures.",
+      "status": "planned",
+      "evidence": [
+        {"path": "docs/performance/v2-observability.md", "line": 1},
+        {"path": "docs/architecture/api-location-contract.md", "line": 5},
+        {"path": "docs/governance/policy-implementation-todo.md", "line": 105}
+      ],
+      "limit": "Health endpoints and coarse diagnostics exist; that is not evidence of a deployed observability system or alerting coverage."
+    },
+    {
+      "id": "operations.release-authority",
+      "area": "operational",
+      "claim": "Least-privilege deployment controls, explicit authorized publication authority, reviewer availability, and a tested publication pause are operational.",
+      "status": "human_policy",
+      "evidence": [
+        {"path": "docs/ETHICS.md", "line": 129},
+        {"path": "docs/governance/policy-implementation-todo.md", "line": 59},
+        {"path": "docs/deployment/private-environment.md", "line": 1}
+      ],
+      "limit": "The user is the currently authorized operator; the repository does not establish a backup reviewer or deployed access-control configuration."
+    },
+    {
+      "id": "rights.source-licensing",
+      "area": "provenance",
+      "claim": "Every intended public source has completed rights, attribution, privacy, scope, and release review.",
+      "status": "human_policy",
+      "evidence": [
+        {"path": "docs/architecture/release-manifest-verification.md", "line": 1},
+        {"path": "docs/source-status.md", "line": 1},
+        {"path": "docs/governance/policy-implementation-todo.md", "line": 39}
+      ],
+      "limit": "Source metadata and rights-status fields exist, but a machine-readable field is not a completed legal or maintainer decision."
+    },
+    {
+      "id": "product.narrative",
+      "area": "safety",
+      "claim": "The flagship scale story is a finished, citable, accessible public experience that connects the horror of scale to local evidence without overclaiming.",
+      "status": "prototype_only",
+      "evidence": [
+        {"path": "v2-ideas.md", "line": 242},
+        {"path": "docs/story/flagship-scale-evidence-spec.md", "line": 1},
+        {"path": "docs/story/storyboard.md", "line": 1}
+      ],
+      "limit": "The mission and story specifications are real product direction; frontend narrative implementation is deliberately outside this backend freeze."
+    },
+    {
+      "id": "product.reviewer-mvp",
+      "area": "operational",
+      "claim": "An invited activist, journalist, or researcher can independently start the MVP, inspect provenance, use filters/exports, understand limitations, and provide feedback.",
+      "status": "planned",
+      "evidence": [
+        {"path": "v2-ideas.md", "line": 29},
+        {"path": "docs/api/v2-contract.md", "line": 1},
+        {"path": "docs/governance/policy-implementation-todo.md", "line": 39}
+      ],
+      "limit": "This becomes the Sprint 2 demonstrator goal after the backend MVP contract is frozen."
+    }
+  ]
+}
