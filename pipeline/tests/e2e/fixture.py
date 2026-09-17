@@ -6,8 +6,10 @@ import socket
 import subprocess
 import tempfile
 import shutil
+import sys
 import time
 import uuid
+import re
 from pathlib import Path
 from datetime import datetime, timezone
 import psycopg
@@ -18,6 +20,42 @@ COMPOSE = ROOT / "docker-compose.e2e.yml"
 _READ_MODEL_SCRIPT = ROOT / "pipeline" / "scripts" / "maintenance" / "build_public_discovery_read_model.py"
 _READ_MODEL_SPEC = None
 _READ_MODEL_MODULE = None
+
+MAX_START_ATTEMPTS = 2
+_TRANSIENT_DATABASE_MARKERS = (
+    "database system is shutting down",
+    "database system is starting up",
+    "could not connect to server",
+    "connection refused",
+    "server closed the connection unexpectedly",
+)
+
+
+def is_retryable_database_failure(output):
+    """Return whether output describes a transient Postgres lifecycle failure.
+
+    This deliberately excludes SQL/schema errors. Retrying those would hide a
+    deterministic migration defect and would only produce a second failure.
+    """
+    text = output if isinstance(output, str) else str(output or "")
+    lowered = text.lower()
+    return any(marker in lowered for marker in _TRANSIENT_DATABASE_MARKERS)
+
+
+class _RetryableStartupFailure(RuntimeError):
+    """A bounded retry may recreate the disposable environment for this error."""
+
+
+def _process_output(result):
+    return "\n".join(part for part in (result.stdout, result.stderr) if part)
+
+
+def _sanitize_diagnostics(text):
+    """Keep Docker diagnostics useful without echoing credentials or URLs."""
+    text = text or ""
+    text = re.sub(r"(?i)postgres(?:ql)?://[^\s]+", "postgresql://[redacted]", text)
+    text = re.sub(r"(?i)(password|token|secret)=([^\s]+)", r"\1=[redacted]", text)
+    return text[-12000:]
 
 def _read_model_builder():
     global _READ_MODEL_SPEC, _READ_MODEL_MODULE
@@ -65,120 +103,198 @@ class E2EEnvironment:
     def compose_env(self):
         env = os.environ.copy(); env["UEC_E2E_DB_PORT"] = str(self.db_port); return env
 
-    def start(self, migration_files=None, wait_for_ready=True):
-        self._ensure_build_temp()
-        try:
-            print(f"[e2e] starting {self.project}", flush=True)
-            startup = subprocess.run(self.command("up", "-d", "--wait"), cwd=ROOT, capture_output=True, text=True, env=self.compose_env())
-            if startup.returncode:
-                raise RuntimeError(f"Docker Compose startup failed (exit {startup.returncode})\n{startup.stdout}\n{startup.stderr}")
-            files = tuple(migration_files if migration_files is not None else sorted((ROOT / "pipeline/migrations").glob("*.sql")))
-            print("[e2e] applying migrations", flush=True)
-            stable_postmaster = None
-            stable_checks = 0
-            for _ in range(120):
-                # pg_isready only confirms that Postgres accepts connections;
-                # during container bootstrap it may report ready before the
-                # POSTGRES_DB database has been created. Query the target DB
-                # directly so migrations never race initialization in CI. The
-                # image can still replace its temporary bootstrap server after
-                # the first successful query, so require the same postmaster
-                # start time across several checks before attaching migrations.
-                ready = subprocess.run(
-                    self.command("exec", "-T", "postgres", "psql", "-At", "-U", "uec", "-d", "uec", "-c", "SELECT pg_postmaster_start_time()"),
+    def _rotate_attempt(self):
+        """Give a retry a new Compose identity, ports, container, and volume."""
+        self.project = f"uec-e2e-{uuid.uuid4().hex[:8]}"
+        self.db_port = free_port()
+        self.api_port = free_port()
+        while self.api_port == self.db_port:
+            self.api_port = free_port()
+        self.database_url = f"postgresql://uec:uec-e2e@localhost:{self.db_port}/uec"
+
+    def _container_diagnostics(self):
+        """Return bounded, redacted diagnostics before failed cleanup removes state."""
+        parts = []
+        for args in (("ps", "--all"), ("logs", "--no-color", "--tail", "120", "postgres")):
+            try:
+                result = subprocess.run(
+                    self.command(*args),
                     cwd=ROOT,
                     capture_output=True,
                     text=True,
+                    check=False,
                     env=self.compose_env(),
                 )
-                if ready.returncode == 0 and ready.stdout.strip():
-                    postmaster = ready.stdout.strip()
-                    if postmaster == stable_postmaster:
-                        stable_checks += 1
-                    else:
-                        stable_postmaster = postmaster
-                        stable_checks = 1
-                    if stable_checks >= 3:
-                        break
+                output = _sanitize_diagnostics(_process_output(result))
+                if output:
+                    parts.append(f"$ docker compose {' '.join(args)}\n{output}")
+            except OSError as exc:
+                parts.append(f"$ docker compose {' '.join(args)}\n{type(exc).__name__}: unavailable")
+        return "\n".join(parts) or "(no container diagnostics available)"
+
+    def _database_ready(self):
+        result = subprocess.run(
+            self.command(
+                "exec", "-T", "postgres", "psql", "-At", "-U", "uec", "-d", "uec",
+                "-c", "SELECT pg_postmaster_start_time()",
+            ),
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+            env=self.compose_env(),
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result
+        return result
+
+    def _start_once(self, files, wait_for_ready):
+        self._ensure_build_temp()
+        print(f"[e2e] starting {self.project}", flush=True)
+        startup = subprocess.run(self.command("up", "-d", "--wait"), cwd=ROOT, capture_output=True, text=True, env=self.compose_env())
+        if startup.returncode:
+            output = _process_output(startup)
+            if is_retryable_database_failure(output):
+                raise _RetryableStartupFailure(f"Docker Compose startup transiently failed (exit {startup.returncode})")
+            raise RuntimeError(f"Docker Compose startup failed (exit {startup.returncode})\n{_sanitize_diagnostics(output)}")
+        print("[e2e] applying migrations", flush=True)
+        stable_postmaster = None
+        stable_checks = 0
+        last_ready = None
+        for _ in range(120):
+            # pg_isready only confirms that Postgres accepts connections;
+            # during container bootstrap it may report ready before the
+            # POSTGRES_DB database has been created. Query the target DB
+            # directly so migrations never race initialization in CI. The
+            # image can still replace its temporary bootstrap server after
+            # the first successful query, so require the same postmaster
+            # start time across several checks before attaching migrations.
+            ready = self._database_ready()
+            last_ready = ready
+            if ready.returncode == 0 and (ready.stdout or "").strip():
+                postmaster = ready.stdout.strip()
+                if postmaster == stable_postmaster:
+                    stable_checks += 1
                 else:
-                    stable_postmaster = None
-                    stable_checks = 0
-                time.sleep(.25)
-            else: raise RuntimeError("PostGIS container did not become ready")
-            try:
-                # Apply files one at a time.  Streaming the complete migration
-                # history through a single Windows/Docker exec can terminate
-                # the disposable Postgres process mid-stream, which leaves a
-                # misleading partial-schema failure and makes the local load
-                # harness non-rerunnable.  Per-file execution is still
-                # disposable, ordered, and fail-fast, while keeping the
-                # migration boundary visible in the log.
-                for migration in files:
-                    print(f"[e2e] applying {migration.name}", flush=True)
-                    subprocess.run(
-                        self.command("exec", "-T", "postgres", "psql", "-v", "ON_ERROR_STOP=1", "-U", "uec", "-d", "uec"),
-                        input=migration.read_bytes(),
-                        cwd=ROOT,
-                        check=True,
-                        env=self.compose_env(),
-                    )
-            except subprocess.CalledProcessError:
-                # Docker Desktop can restart a freshly initialized PostGIS
-                # container while the first large SQL stream is attached.
-                # Recreate the disposable environment once; never retry a
-                # partially applied migration set in place.
-                if self.start_attempts < 1:
-                    self.start_attempts += 1
-                    self.stop()
-                    time.sleep(1)
-                    return self.start()
-                raise
-            print("[e2e] building backend", flush=True)
-            build_env = os.environ.copy()
-            build_env["CARGO_TARGET_DIR"] = str(self.cargo_cache_dir)
-            subprocess.run(["cargo", "build", "--quiet"], cwd=ROOT, check=True, timeout=180, env=build_env)
-            env = os.environ.copy(); env.update({"UEC_DATABASE_URL": self.database_url, "PORT": str(self.api_port), "UEC_RUNTIME_MODE": "development", "UEC_BIND_HOST": "127.0.0.1", "UEC_DEV_PREVIEW": "true", "UEC_DEV_PREVIEW_TOKEN": self.dev_preview_token})
-            if self.test_release_id:
-                env.update({"UEC_TEST_RELEASE_ID": self.test_release_id, "UEC_TEST_RELEASE_TOKEN": self.dev_preview_token})
-            cached_binary = self.cargo_cache_dir / "debug/uec-api.exe"
-            if not cached_binary.exists():
-                cached_binary = self.cargo_cache_dir / "debug/uec-api"
-            binary = self.cargo_target_dir / cached_binary.name
-            shutil.copy2(cached_binary, binary)
-            self.backend_log = (self.cargo_target_dir / f"e2e-{self.project}.log").open("w", encoding="utf-8")
-            self.backend = subprocess.Popen([str(binary)], cwd=ROOT, env=env, stdout=self.backend_log, stderr=subprocess.STDOUT, text=True)
-            print(f"[e2e] waiting for backend on {self.api_port}", flush=True)
-            if not wait_for_ready:
-                return self
-            import urllib.error
-            import urllib.request
-            last_error = None
-            for _ in range(80):
-                try:
-                    with urllib.request.urlopen(f"http://127.0.0.1:{self.api_port}/health/ready", timeout=1) as response:
-                        payload = json.load(response)
-                        if response.status == 200 and payload.get("schema") == "migrated":
-                            return self
-                except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError) as exc:
-                    last_error = repr(exc)
-                    if self.backend.poll() is not None:
-                        break
-                    time.sleep(.25)
-            exit_code = self.backend.poll() if self.backend else None
-            log_path = self.backend_log.name if self.backend_log else None
-            if self.backend_log:
-                self.backend_log.flush()
-                log_path = self.backend_log.name
-                self.backend_log.close()
-                self.backend_log = None
-            log_text = Path(log_path).read_text(encoding="utf-8") if log_path else ""
-            raise RuntimeError(
-                f"backend did not become ready; last_error={last_error}; "
-                f"exit_code={exit_code}; log_path={log_path}\n{log_text}"
+                    stable_postmaster = postmaster
+                    stable_checks = 1
+                if stable_checks >= 3:
+                    break
+            else:
+                stable_postmaster = None
+                stable_checks = 0
+            time.sleep(.25)
+        else:
+            if last_ready and is_retryable_database_failure(_process_output(last_ready)):
+                raise _RetryableStartupFailure("Postgres did not stabilize before migrations")
+            raise RuntimeError("PostGIS container did not become ready")
+        # Apply files one at a time. A transient Postgres restart is retryable;
+        # all SQL/schema errors remain deterministic and fail immediately.
+        for migration in files:
+            print(f"[e2e] applying {migration.name}", flush=True)
+            result = subprocess.run(
+                self.command("exec", "-T", "postgres", "psql", "-v", "ON_ERROR_STOP=1", "-U", "uec", "-d", "uec"),
+                input=migration.read_text(encoding="utf-8"),
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+                env=self.compose_env(),
             )
-        except Exception:
-            self.stop()
-            raise
+            if result.stdout:
+                print(result.stdout, end="", flush=True)
+            if result.stderr:
+                print(result.stderr, end="", file=sys.stderr, flush=True)
+            if result.returncode:
+                output = _process_output(result)
+                if is_retryable_database_failure(output):
+                    raise _RetryableStartupFailure(
+                        f"migration {migration.name} hit a transient Postgres lifecycle failure"
+                    )
+                raise subprocess.CalledProcessError(
+                    result.returncode,
+                    result.args,
+                    output=result.stdout,
+                    stderr=result.stderr,
+                )
+        # Revalidate the database after migration application so a container
+        # that restarted at the boundary cannot launch a backend against an
+        # unstable database.
+        final_ready = self._database_ready()
+        if final_ready.returncode != 0 or not (final_ready.stdout or "").strip():
+            output = _process_output(final_ready)
+            if is_retryable_database_failure(output):
+                raise _RetryableStartupFailure("Postgres became unavailable after migrations")
+            raise RuntimeError(f"PostGIS database failed post-migration readiness\n{_sanitize_diagnostics(output)}")
+        print("[e2e] building backend", flush=True)
+        build_env = os.environ.copy()
+        build_env["CARGO_TARGET_DIR"] = str(self.cargo_cache_dir)
+        subprocess.run(["cargo", "build", "--quiet"], cwd=ROOT, check=True, timeout=180, env=build_env)
+        env = os.environ.copy(); env.update({"UEC_DATABASE_URL": self.database_url, "PORT": str(self.api_port), "UEC_RUNTIME_MODE": "development", "UEC_BIND_HOST": "127.0.0.1", "UEC_DEV_PREVIEW": "true", "UEC_DEV_PREVIEW_TOKEN": self.dev_preview_token})
+        if self.test_release_id:
+            env.update({"UEC_TEST_RELEASE_ID": self.test_release_id, "UEC_TEST_RELEASE_TOKEN": self.dev_preview_token})
+        cached_binary = self.cargo_cache_dir / "debug/uec-api.exe"
+        if not cached_binary.exists():
+            cached_binary = self.cargo_cache_dir / "debug/uec-api"
+        binary = self.cargo_target_dir / cached_binary.name
+        shutil.copy2(cached_binary, binary)
+        self.backend_log = (self.cargo_target_dir / f"e2e-{self.project}.log").open("w", encoding="utf-8")
+        self.backend = subprocess.Popen([str(binary)], cwd=ROOT, env=env, stdout=self.backend_log, stderr=subprocess.STDOUT, text=True)
+        print(f"[e2e] waiting for backend on {self.api_port}", flush=True)
+        if not wait_for_ready:
+            return self
+        import urllib.error
+        import urllib.request
+        last_error = None
+        for _ in range(80):
+            try:
+                with urllib.request.urlopen(f"http://127.0.0.1:{self.api_port}/health/ready", timeout=1) as response:
+                    payload = json.load(response)
+                    if response.status == 200 and payload.get("schema") == "migrated":
+                        return self
+            except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError) as exc:
+                last_error = repr(exc)
+                if self.backend.poll() is not None:
+                    break
+                time.sleep(.25)
+        exit_code = self.backend.poll() if self.backend else None
+        log_path = self.backend_log.name if self.backend_log else None
+        if self.backend_log:
+            self.backend_log.flush()
+            log_path = self.backend_log.name
+            self.backend_log.close()
+            self.backend_log = None
+        log_text = Path(log_path).read_text(encoding="utf-8") if log_path else ""
+        raise RuntimeError(
+            f"backend did not become ready; last_error={last_error}; "
+            f"exit_code={exit_code}; log_path={log_path}\n{log_text}"
+        )
+
+    def start(self, migration_files=None, wait_for_ready=True):
+        files = tuple(migration_files if migration_files is not None else sorted((ROOT / "pipeline/migrations").glob("*.sql")))
+        for attempt in range(MAX_START_ATTEMPTS):
+            self.start_attempts = attempt + 1
+            try:
+                return self._start_once(files, wait_for_ready)
+            except _RetryableStartupFailure as exc:
+                diagnostics = self._container_diagnostics()
+                self.stop()
+                if attempt + 1 >= MAX_START_ATTEMPTS:
+                    raise RuntimeError(
+                        f"E2E startup exhausted {MAX_START_ATTEMPTS} isolated attempts: {exc}\n"
+                        f"sanitized container diagnostics:\n{diagnostics}"
+                    ) from exc
+                print(
+                    f"[e2e] transient startup failure; cleaning {self.project} and rotating the next attempt",
+                    flush=True,
+                )
+                self._rotate_attempt()
+                time.sleep(1)
+            except Exception:
+                self.stop()
+                raise
 
     def wait_for_listening(self, timeout=20):
         """Wait for the backend socket without requiring schema readiness."""
