@@ -13,6 +13,16 @@ from pipeline.contracts.candidate_handoff import write_handoff
 from pipeline.contracts.source_lifecycle import atomic_json, atomic_jsonl, private_manifest
 from pipeline.germany.bltu_adapter import EXPECTED_HEADERS
 
+CURRENT_HEADERS = tuple((
+    "# Bundesland", "Name des Betriebs ", "Straße / Haus-Nr.", "Ort", "Alte Zulassungs-nummern",
+    "Neue Zulassungsnummer", "Zulassungsnummer Eierpackstellen", "CS", "RW", "WM", "SH", "CP",
+    "SH", "CP", "SH", "CP", "GHE", "CP", "MM", "MP", "MSM", "PP", "CC", "PP", "CC",
+    "PP", "CC", "PP", "CC", "PP", "CC", "PP", "EPC", "LEP", "PP", "AH", "FV", "ZV", "FFPP",
+    "PP", "WM", "PC", "DC", "PP", "Einschränkungen", "Bemerkungen", "Zulassung befristet bis",
+    "Zulassung ruht seit", "Drittlandzulassungen", ""
+))
+SUPPORTED_HEADERS = {tuple(EXPECTED_HEADERS), CURRENT_HEADERS}
+
 CONFIG = json.loads((Path(__file__).parent / "config.json").read_text(encoding="utf-8"))
 CURRENT_ID_INDEX = 5
 NAME_INDEX = 1
@@ -40,22 +50,39 @@ class BltuAdapter:
         except UnicodeDecodeError:
             text = content.decode("cp1252")
             encoding = "cp1252"
-        rows = list(csv.reader(text.splitlines(), delimiter=";", strict=True))
-        headers = rows[0] if rows else []
-        matched = headers == list(EXPECTED_HEADERS)
-        id_counts = Counter(values[CURRENT_ID_INDEX].strip() for values in rows[1:] if len(values) > CURRENT_ID_INDEX and values[CURRENT_ID_INDEX].strip())
+        lines = text.splitlines()
+        try:
+            headers = next(csv.reader([lines[0]], delimiter=";", strict=True)) if lines else []
+        except csv.Error as error:
+            raise ValueError("BLtU header is malformed") from error
+        rows: list[tuple[int, list[str] | None, str | None]] = []
+        for line_number, raw_line in enumerate(lines[1:], start=2):
+            try:
+                values = next(csv.reader([raw_line], delimiter=";", strict=True))
+            except csv.Error:
+                rows.append((line_number, None, raw_line))
+                continue
+            rows.append((line_number, values, None))
+        matched = tuple(headers) in SUPPORTED_HEADERS
+        id_counts = Counter((values[CURRENT_ID_INDEX].strip() or values[4].strip()) for _, values, _ in rows if values is not None and len(values) > CURRENT_ID_INDEX and (values[CURRENT_ID_INDEX].strip() or values[4].strip()))
         accepted: list[dict[str, Any]] = []
         quarantined: list[dict[str, Any]] = []
         anomalies: Counter[str] = Counter()
         categories: Counter[str] = Counter()
-        for line, values in enumerate(rows[1:], start=2):
+        for line, values, raw_line in rows:
+            if values is None:
+                evidence = {"source_row": line, "source_headers": headers, "raw_line": raw_line, "source_values": None}
+                quarantined.append({**evidence, "reasons": ("malformed_csv_row",), "record": {"source_id": self.source_id, "source_row": line, "source_record_key": f"unknown|{line}"}})
+                anomalies["malformed_csv_row"] += 1
+                continue
             source = {"source_row": line, "source_headers": headers, "source_values": values}
             reasons: list[str] = []
             if not matched:
                 reasons.append("unrecognized_header_schema")
-            if len(values) != len(EXPECTED_HEADERS):
+            if len(values) != len(CURRENT_HEADERS):
                 reasons.append("physical_column_count_mismatch")
-            current_id = values[CURRENT_ID_INDEX].strip() if len(values) > CURRENT_ID_INDEX else ""
+            has_current_id = len(values) > CURRENT_ID_INDEX and bool(values[CURRENT_ID_INDEX].strip())
+            current_id = (values[CURRENT_ID_INDEX].strip() if has_current_id else (values[4].strip() if len(values) > 4 else ""))
             name = values[NAME_INDEX].strip() if len(values) > NAME_INDEX else ""
             if not current_id:
                 reasons.append("missing_current_approval_id")
@@ -73,7 +100,7 @@ class BltuAdapter:
                 reasons.append("unmapped_activity_code")
             for category in mapped:
                 categories[category] += 1
-            record = {"source_id": self.source_id, "source_row": line, "source_record_key": f"{current_id or 'unknown'}|{line}", "source_values": source, "normalized": {"establishment_id": current_id or None, "approval_number": current_id or None, "name": name or None, "trading_name": name or None, "country_code": "DE", "nation": "Germany", "state": values[STATE_INDEX].strip() if len(values) > STATE_INDEX else None, "city": values[CITY_INDEX].strip() if len(values) > CITY_INDEX else None, "address": None, "address_state": "source-present-pending-privacy-review" if len(values) > STREET_INDEX and values[STREET_INDEX].strip() else "unknown", "activity_codes": tuple(activity_codes), "activity_categories": mapped, "source_activity_categories": mapped, "classification_state": "mapped" if mapped and not any(code not in ACTIVITY_MAP for code in activity_codes) else "unresolved", "coordinates": None, "coordinate_state": "unknown", "coordinate_precision": "not-supplied", "privacy_gate": "pending-review", "coordinate_gate": "review_required", "publication_gate": "blocked"}}
+            record = {"source_id": self.source_id, "source_row": line, "source_record_key": f"{current_id or 'unknown'}|{line}", "source_values": source, "normalized": {"establishment_id": current_id or None, "approval_number": current_id or None, "approval_number_kind": "current" if has_current_id else "legacy", "name": name or None, "trading_name": name or None, "country_code": "DE", "nation": "Germany", "state": values[STATE_INDEX].strip() if len(values) > STATE_INDEX else None, "city": values[CITY_INDEX].strip() if len(values) > CITY_INDEX else None, "address": None, "address_state": "source-present-pending-privacy-review" if len(values) > STREET_INDEX and values[STREET_INDEX].strip() else "unknown", "activity_codes": tuple(activity_codes), "activity_categories": mapped, "source_activity_categories": mapped, "classification_state": "mapped" if mapped and not any(code not in ACTIVITY_MAP for code in activity_codes) else "unresolved", "coordinates": None, "coordinate_state": "unknown", "coordinate_precision": "not-supplied", "privacy_gate": "pending-review", "coordinate_gate": "review_required", "publication_gate": "blocked"}}
             if reasons:
                 unique = tuple(dict.fromkeys(reasons))
                 for reason in unique:
@@ -81,7 +108,7 @@ class BltuAdapter:
                 quarantined.append({"reasons": unique, "record": record})
             else:
                 accepted.append(record)
-        return {"accepted": accepted, "quarantined": quarantined, "input_rows": len(rows) - 1 if rows else 0, "source_sha256": hashlib.sha256(content).hexdigest(), "schema_status": "matched" if matched else "unrecognized", "schema_fingerprint": hashlib.sha256(json.dumps(headers, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest(), "encoding": encoding, "row_length_counts": dict(Counter(str(len(row)) for row in rows[1:])), "coverage_counts": dict(categories), "anomaly_counts": dict(sorted(anomalies.items()))}
+        return {"accepted": accepted, "quarantined": quarantined, "input_rows": len(rows), "source_sha256": hashlib.sha256(content).hexdigest(), "schema_status": "matched" if matched else "unrecognized", "schema_fingerprint": hashlib.sha256(json.dumps(headers, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest(), "encoding": encoding, "row_length_counts": dict(Counter(str(len(values)) for _, values, _ in rows if values is not None)), "coverage_counts": dict(categories), "anomaly_counts": dict(sorted(anomalies.items()))}
 
     def run(self, raw_path: str | Path, run_dir: str | Path, artifact: SourceArtifact) -> dict[str, Any]:
         raw = Path(raw_path).read_bytes()

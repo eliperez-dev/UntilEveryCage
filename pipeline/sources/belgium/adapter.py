@@ -29,30 +29,30 @@ class BelgiumSchemaError(ValueError):
 
 
 _ALIASES = {
-    "operator_id": ("operator_id", "operator id", "operator number", "enterprise number", "enterprise id", "nummer operator", "numero operateur"),
-    "establishment_id": ("establishment_id", "establishment id", "establishment number", "establishment nr", "n establishment", "nummer vestiging", "numero etablissement", "n etablissement"),
+    "operator_id": ("operator_id", "operator id", "operator number", "enterprise number", "enterprise id", "nummer operator", "numero operateur", "op n unique id", "op unique id"),
+    "establishment_id": ("establishment_id", "establishment id", "establishment number", "establishment nr", "n establishment", "nummer vestiging", "numero etablissement", "n etablissement", "lno n unique", "lno unique id"),
     "name": ("name", "operator name", "establishment name", "name operator", "naam", "nom", "name establishment"),
     "address": ("address", "address line", "street", "street address", "street and number", "adres", "adresse"),
-    "postcode": ("postcode", "postal code", "zip", "code postal"),
-    "municipality": ("municipality", "city", "town", "gemeente", "commune", "municipality name"),
-    "region": ("region", "province", "provincie", "province"),
+    "postcode": ("postcode", "postal code", "zip", "code postal", "pc code postal"),
+    "municipality": ("municipality", "city", "town", "gemeente", "commune", "municipality name", "gem nom"),
+    "region": ("region", "province", "provincie", "province", "pr nom"),
     "latitude": ("latitude", "lat", "latitude y"),
     "longitude": ("longitude", "lon", "lng", "longitude x"),
     "activity_code": ("activity_code", "activity code", "activity codes", "lap code", "lap id", "pap code", "pap id", "code lap", "code pap", "activiteiten code", "code activite"),
-    "activity_description": ("activity_description", "activity description", "activity", "description", "omschrijving activiteit", "description activite"),
-    "approval_number": ("approval_number", "approval number", "approval nr", "agrément", "erkenningsnummer", "numero agrement"),
+    "activity_description": ("activity_description", "activity description", "activity", "description", "omschrijving activiteit", "description activite", "pap description"),
+    "approval_number": ("approval_number", "approval number", "approval nr", "agrément", "erkenningsnummer", "numero agrement", "erk nummer", "erk numero"),
     "authorization_number": ("authorization_number", "authorization number", "authorization nr", "authorisation number", "autorisatienummer", "numero autorisation"),
     "status": ("status", "current status", "state", "statuut", "statut"),
-    "effective_date": ("effective_date", "effective date", "valid from", "start date", "geldigheid vanaf", "date debut"),
+    "effective_date": ("effective_date", "effective date", "valid from", "start date", "geldigheid vanaf", "date debut", "erk date debut"),
 }
 _CODE_ALIASES = {
     "lap_code": ("lap_code", "lap code", "lap id", "pap_code", "pap code", "pap id", "activity_code", "activity code", "code lap", "code pap"),
     "place_code": ("place_code", "place code", "pl code", "location code", "code lieu", "plaats code"),
     "place_description": ("place_description", "place description", "location description", "lieu", "plaats"),
-    "activity_description": ("activity_description", "activity description", "activity", "activiteit", "activite"),
-    "product_description": ("product_description", "product description", "product", "produit", "productomschrijving"),
-    "approval_code": ("approval_code", "approval code", "approval form", "code agrement", "erkenningscode"),
-    "approval_description": ("approval_description", "approval description", "approval", "agrement", "erkenning"),
+    "activity_description": ("activity_description", "activity description", "activity", "activiteit", "activite", "activiteit omschrijving"),
+    "product_description": ("product_description", "product description", "product", "produit", "productomschrijving", "product omschrijving"),
+    "approval_code": ("approval_code", "approval code", "approval form", "code agrement", "erkenningscode", "erkenning code"),
+    "approval_description": ("approval_description", "approval description", "approval", "agrement", "erkenning", "erkenning omschrijving"),
 }
 _CATEGORY_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("slaughter", ("slaughter", "abattoir", "slachthuis", "killing", "abattage")),
@@ -174,36 +174,39 @@ class BelgiumOperatorsAdapter:
     def parse_bytes(self, content: bytes) -> dict[str, Any]:
         codebook, codebook_meta = self._codebook()
         headers, rows, encoding, delimiter = _csv(content)
-        fields = _header_map(headers, _ALIASES, {"establishment_id", "name", "activity_code"})
+        fields = _header_map(headers, _ALIASES, {"establishment_id", "activity_code"})
+        name_header = fields.get("name")
         accepted: list[dict[str, Any]] = []
         quarantined: list[dict[str, Any]] = []
         anomalies: Counter[str] = Counter()
-        seen: Counter[tuple[str | None, str | None]] = Counter()
-        prepared: list[tuple[int, dict[str, str | None], tuple[str, ...], int]] = []
+        exact_counts: Counter[tuple[str, ...]] = Counter()
+        first_lines: dict[tuple[str, ...], int] = {}
+        prepared: list[tuple[int, dict[str, str | None], tuple[str, ...], int, tuple[str, ...]]] = []
         row_lengths: Counter[str] = Counter()
         for line, values in enumerate(rows, start=2):
             raw = _row_values(headers, values)
             row_lengths[str(len(values))] += 1
             codes = _split_codes(_clean(raw.get(fields["activity_code"])))
-            prepared.append((line, raw, codes, len(values)))
-            for code in codes:
-                seen[(_clean(raw.get(fields["establishment_id"])), code)] += 1
-        for line, raw, codes, value_count in prepared:
+            row_key = tuple(raw.get(header) or "" for header in headers)
+            prepared.append((line, raw, codes, len(values), row_key))
+            exact_counts[row_key] += 1
+            first_lines.setdefault(row_key, line)
+        for line, raw, codes, value_count, row_key in prepared:
             establishment_id = _clean(raw.get(fields["establishment_id"]))
-            name = _clean(raw.get(fields["name"]))
+            name = _clean(raw.get(name_header)) if name_header else None
             reasons: list[str] = []
             if value_count != len(headers) or any(value is None for value in raw.values()):
                 reasons.append("malformed_row")
             if not establishment_id:
                 reasons.append("missing_establishment_id")
-            if not name:
+            if name_header and not name:
                 reasons.append("missing_name")
             if not codes:
                 reasons.append("missing_activity_code")
             if any(code not in codebook for code in codes):
                 reasons.append("unresolved_activity_code")
-            if any(seen[(establishment_id, code)] > 1 for code in codes):
-                reasons.append("ambiguous_repeated_establishment_activity")
+            if exact_counts[row_key] > 1 and first_lines[row_key] != line:
+                reasons.append("duplicate_source_row")
             address = _clean(raw.get(fields.get("address", ""))) if "address" in fields else None
             if address and _RISK.search(address):
                 reasons.append("address_privacy_risk")
@@ -220,6 +223,7 @@ class BelgiumOperatorsAdapter:
                     "establishment_id": establishment_id,
                     "operator_id": _clean(raw.get(fields.get("operator_id", ""))) if "operator_id" in fields else None,
                     "name": name,
+                    "name_state": "source-supplied" if name_header else "not-supplied-by-source",
                     "trading_name": name,
                     "country_code": "BE",
                     "nation": "Belgium",
@@ -251,7 +255,7 @@ class BelgiumOperatorsAdapter:
                 quarantined.append({"reasons": unique, "record": record})
             else:
                 accepted.append(record)
-        return {"accepted": accepted, "quarantined": quarantined, "input_rows": len(rows), "source_sha256": hashlib.sha256(content).hexdigest(), "operator_schema_fingerprint": _fingerprint(headers), "operator_column_count": len(headers), "operator_encoding": encoding, "operator_delimiter": delimiter, "row_length_counts": dict(sorted(row_lengths.items())), "codebook": codebook_meta, "coverage_counts": dict(Counter(category for item in accepted for category in item["normalized"]["source_activity_categories"])), "anomaly_counts": dict(sorted(anomalies.items()))}
+        return {"accepted": accepted, "quarantined": quarantined, "input_rows": len(rows), "source_sha256": hashlib.sha256(content).hexdigest(), "operator_schema_fingerprint": _fingerprint(headers), "operator_column_count": len(headers), "operator_encoding": encoding, "operator_delimiter": delimiter, "row_length_counts": dict(sorted(row_lengths.items())), "codebook": codebook_meta, "name_header": name_header, "repeated_establishment_activity_keys": sum(1 for key, count in exact_counts.items() if count > 1), "coverage_counts": dict(Counter(category for item in accepted for category in item["normalized"]["source_activity_categories"])), "anomaly_counts": dict(sorted(anomalies.items()))}
 
     def run(self, raw_path: str | Path, run_dir: str | Path, artifact: SourceArtifact) -> dict[str, Any]:
         raw = Path(raw_path).read_bytes()
@@ -265,7 +269,7 @@ class BelgiumOperatorsAdapter:
         _, normalized_sha, _ = atomic_jsonl(root / "normalized" / "records.jsonl", result["accepted"])
         atomic_jsonl(root / "quarantined" / "records.jsonl", result["quarantined"])
         manifest = private_manifest(source_id=self.source_id, adapter_version=self.adapter_version, schema_version=self.schema_version, artifact=artifact, input_rows=result["input_rows"], normalized_rows=len(result["accepted"]), quarantined_rows=len(result["quarantined"]), normalized_sha256=normalized_sha, parsed_sha256=parsed_sha, anomaly_counts=result["anomaly_counts"])
-        manifest.update({"country_code": "BE", "coverage": CONFIG["coverage"], "geocoding": "disabled", "operator_schema_fingerprint": result["operator_schema_fingerprint"], "operator_column_count": result["operator_column_count"], "operator_encoding": result["operator_encoding"], "operator_delimiter": result["operator_delimiter"], "row_length_counts": result["row_length_counts"], "coverage_counts": result["coverage_counts"], "activity_codebook": result["codebook"], "codebook_source_url": self.activity_artifact.source_url if self.activity_artifact else "unrecorded-companion-artifact", "codebook_retrieved_at_utc": self.activity_artifact.retrieved_at_utc if self.activity_artifact else None, "codebook_sha256": result["codebook"]["sha256"], "codebook_byte_size": result["codebook"]["byte_size"]})
+        manifest.update({"country_code": "BE", "coverage": CONFIG["coverage"], "geocoding": "disabled", "operator_schema_fingerprint": result["operator_schema_fingerprint"], "operator_column_count": result["operator_column_count"], "operator_encoding": result["operator_encoding"], "operator_delimiter": result["operator_delimiter"], "row_length_counts": result["row_length_counts"], "repeated_establishment_activity_keys": result["repeated_establishment_activity_keys"], "coverage_counts": result["coverage_counts"], "activity_codebook": result["codebook"], "codebook_source_url": self.activity_artifact.source_url if self.activity_artifact else "unrecorded-companion-artifact", "codebook_retrieved_at_utc": self.activity_artifact.retrieved_at_utc if self.activity_artifact else None, "codebook_sha256": result["codebook"]["sha256"], "codebook_byte_size": result["codebook"]["byte_size"], "source_name_field": result["name_header"], "source_name_status": "available" if result["name_header"] else "not-supplied"})
         atomic_json(root / "manifest.json", manifest)
         return manifest
 

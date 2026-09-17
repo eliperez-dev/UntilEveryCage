@@ -1,3 +1,5 @@
+import hashlib
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,6 +11,17 @@ ROOT = Path(__file__).parent
 
 
 class GermanyRefreshTests(unittest.TestCase):
+    def test_row_free_acquisition_sidecar_is_verified_and_preserved(self):
+        raw = ROOT.parent.parent / "germany" / "fixtures" / "synthetic_bltu.csv"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            metadata = root / "capture.json"
+            metadata.write_text(json.dumps({"sha256": hashlib.sha256(raw.read_bytes()).hexdigest(), "byte_size": raw.stat().st_size, "final_url": "https://example.invalid/current-bltu.csv", "effective_date": "2026-09-14"}), encoding="utf-8")
+            result = refresh(run_dir=root / "run", raw_path=raw, acquisition_metadata_path=metadata, retrieved_at_utc="2026-09-14T00:00:00Z")
+            self.assertEqual(result["report"]["publication_eligibility"], "blocked")
+            saved = json.loads((root / "run" / "acquisition-metadata.json").read_text(encoding="utf-8"))
+            self.assertEqual(saved["final_url"], "https://example.invalid/current-bltu.csv")
+
     def test_assisted_refresh_is_private_and_repeatable(self):
         raw = ROOT.parent.parent / "germany" / "fixtures" / "synthetic_bltu.csv"
         with tempfile.TemporaryDirectory() as directory:

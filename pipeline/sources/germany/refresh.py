@@ -30,12 +30,32 @@ REVIEW_BLOCKERS = {
 }
 
 
-def _local_metadata(path: Path, retrieved: str) -> dict[str, Any]:
+def _local_metadata(path: Path, retrieved: str, metadata_path: str | Path | None = None) -> dict[str, Any]:
     raw = path.read_bytes()
+    if metadata_path is not None:
+        metadata = json.loads(Path(metadata_path).read_text(encoding="utf-8"))
+        if not isinstance(metadata, dict):
+            raise RefreshError("acquisition metadata must be an object")
+        if str(metadata.get("sha256") or "").lower() != hashlib.sha256(raw).hexdigest() or int(metadata.get("byte_size") or -1) != len(raw):
+            raise RefreshError("acquisition metadata does not match the BLtU artifact")
+        metadata.setdefault("artifact_path", str(path.resolve()))
+        metadata.setdefault("retrieved_at_utc", retrieved)
+        metadata.setdefault("requested_at_utc", retrieved)
+        metadata.setdefault("effective_date", "unknown")
+        metadata.setdefault("publication_date", None)
+        metadata.setdefault("redirects", [])
+        metadata.setdefault("response_headers", {})
+        metadata.setdefault("adapter_version", CONFIG["adapter_version"])
+        metadata.setdefault("code_version", CONFIG["adapter_version"])
+        metadata.setdefault("config_version", CONFIG["schema_version"])
+        metadata.setdefault("coverage", CONFIG["coverage"])
+        metadata.setdefault("rights_caveat", CONFIG["terms"])
+        metadata.setdefault("privacy_caveat", "private staging; address and coordinate review pending")
+        return metadata
     return {"acquisition_method": "assisted_bvl_portal_export", "source_id": CONFIG["source_id"], "artifact": path.name, "artifact_path": str(path.resolve()), "requested_url": CONFIG["source_url"], "final_url": CONFIG["source_url"], "redirects": [], "response_headers": {}, "requested_at_utc": retrieved, "retrieved_at_utc": retrieved, "effective_date": "unknown", "publication_date": None, "sha256": hashlib.sha256(raw).hexdigest(), "byte_size": len(raw), "adapter_version": CONFIG["adapter_version"], "code_version": CONFIG["adapter_version"], "config_version": CONFIG["schema_version"], "coverage": CONFIG["coverage"], "rights_caveat": CONFIG["terms"], "privacy_caveat": "private staging; address and coordinate review pending", "terms_review": "assisted capture; recurring acquisition and redistribution remain human-gated"}
 
 
-def refresh(*, run_dir: str | Path, raw_path: str | Path | None = None, fetch: bool = False, export_url: str | None = None, terms_review_path: str | Path | None = None, output_root: str | Path = "data/raw", run_id: str | None = None, retrieved_at_utc: str | None = None, timeout_seconds: float = 60, max_bytes: int = 128 * 1024 * 1024, previous_normalized: str | Path | None = None) -> dict[str, Any]:
+def refresh(*, run_dir: str | Path, raw_path: str | Path | None = None, fetch: bool = False, export_url: str | None = None, terms_review_path: str | Path | None = None, output_root: str | Path = "data/raw", run_id: str | None = None, retrieved_at_utc: str | None = None, timeout_seconds: float = 60, max_bytes: int = 128 * 1024 * 1024, previous_normalized: str | Path | None = None, acquisition_metadata_path: str | Path | None = None) -> dict[str, Any]:
     if fetch == (raw_path is not None):
         raise RefreshError("specify exactly one of --raw or --fetch")
     retrieved = retrieved_at_utc or utc_now()
@@ -55,7 +75,7 @@ def refresh(*, run_dir: str | Path, raw_path: str | Path | None = None, fetch: b
         input_path = Path(raw_path).resolve()  # type: ignore[arg-type]
         if not input_path.is_file():
             raise RefreshError("BLtU raw artifact does not exist")
-        metadata = _local_metadata(input_path, retrieved)
+        metadata = _local_metadata(input_path, retrieved, acquisition_metadata_path)
     atomic_json(Path(run_dir) / "acquisition-metadata.json", metadata)
     adapter = BltuAdapter()
     raw = input_path.read_bytes()
@@ -92,9 +112,10 @@ def main() -> int:
     parser.add_argument("--timeout-seconds", type=float, default=60)
     parser.add_argument("--max-bytes", type=int, default=128 * 1024 * 1024)
     parser.add_argument("--previous-normalized", type=Path)
+    parser.add_argument("--acquisition-metadata", type=Path, help="row-free JSON sidecar for a browser-assisted export")
     args = parser.parse_args()
     try:
-        result = refresh(run_dir=args.run_dir, raw_path=args.raw, fetch=args.fetch, export_url=args.export_url, terms_review_path=args.terms_review, output_root=args.output_root, run_id=args.run_id, retrieved_at_utc=args.retrieved_at_utc, timeout_seconds=args.timeout_seconds, max_bytes=args.max_bytes, previous_normalized=args.previous_normalized)
+        result = refresh(run_dir=args.run_dir, raw_path=args.raw, fetch=args.fetch, export_url=args.export_url, terms_review_path=args.terms_review, output_root=args.output_root, run_id=args.run_id, retrieved_at_utc=args.retrieved_at_utc, timeout_seconds=args.timeout_seconds, max_bytes=args.max_bytes, previous_normalized=args.previous_normalized, acquisition_metadata_path=args.acquisition_metadata)
     except (OSError, RefreshError) as error:
         print(json.dumps({"status": "failed", "error": str(error)}, sort_keys=True))
         return 2

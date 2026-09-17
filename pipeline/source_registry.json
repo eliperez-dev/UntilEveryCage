@@ -60,8 +60,8 @@
       "cadence": "weekly",
       "attribution_licensing_notes": "CC Attribution 4.0; attribute FASFC and the last update date, do not imply FASFC affiliation/approval, and do not mislead",
       "adapter_status": "implemented_partial",
-      "expected_artifact_schema": "UTF-8/CP1252 CSV operator rows joined by LAP/PAP code to the separate FASFC activity-code CSV; live operator header remains to be captured",
-      "blockers": ["The official operator body was inaccessible from the current execution environment; obtain an authorized bounded capture and compare its header/field semantics with the synthetic contract before any real run. Privacy, source-terms interpretation, coverage, and project publication approval remain human gates."]
+      "expected_artifact_schema": "CP1252 CSV with 20 live identifier/activity/location fields joined by LAP/PAP code to the separate FASFC activity-code CSV; establishment name is not supplied by this snapshot",
+      "blockers": ["A current official pair was captured privately and validated through the deterministic adapter. Five exact duplicates and 15 unresolved activity codes remain quarantined; privacy, source-terms interpretation, classification, coverage, and project publication approval remain human gates."]
     },
     {
       "source_id": "ca.ontario.meat-plants",
@@ -96,8 +96,8 @@
       "cadence": "unknown",
       "attribution_licensing_notes": "unknown; verify BVL reuse and attribution terms",
       "adapter_status": "implemented_partial",
-      "expected_artifact_schema": "BLtU general-list semicolon CSV with repeated activity-code columns, current approval number, establishment name, state, address, and activity flags",
-      "blockers": ["The stable BVL landing and portal export route are verified, but the selected export URL is session/request-specific and dataset reuse terms remain pending human confirmation. Keep raw data private and publication blocked."]
+      "expected_artifact_schema": "BLtU general-list cp1252 CSV with 50 live columns, repeated activity-code columns, current approval number, establishment name, state, address, and activity flags",
+      "blockers": ["A current public general-list export was captured privately: 15,788 input, 2,691 normalized, and 13,097 quarantined. The export URL is session/request-specific, effective date is unknown, and dataset reuse terms, privacy, coverage, and project approval remain pending human confirmation. Keep raw data private and publication blocked."]
     },
     {
       "source_id": "dk.smiley",

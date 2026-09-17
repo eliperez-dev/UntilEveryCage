@@ -8,6 +8,9 @@ and run the assisted refresh:
 python -m pipeline.sources.germany.refresh --raw <private/bltu-export.csv> --run-dir <private/run> --retrieved-at-utc 2026-09-15T00:00:00Z
 ```
 
+For a captured export with row-free acquisition metadata, also pass
+`--acquisition-metadata <private/capture-metadata.json>`.
+
 The typed adapter preserves repeated activity columns and source evidence,
 quarantines schema and mapping anomalies, emits shared health evidence, and
 cannot create a release. Address/coordinate review, BVL reuse terms, and human

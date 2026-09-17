@@ -37,12 +37,15 @@ export. Therefore acquisition is **blocked pending human confirmation** of:
 4. required attribution, notices, update/deletion obligations, and any restrictions
    on address, approval-number, or activity/species fields.
 
-This is a terms uncertainty, not a claim that the source prohibits use. A single
-real BLtU export was downloaded earlier at the user's direction as a restricted
-local research artifact and staged privately (15,797 input rows; 6,346 normalized;
-9,451 quarantined). It is not a repository fixture, release candidate, API source,
-map layer, export, or publication. That retrieval does not establish permission for
-recurring acquisition, retention, or redistribution; those decisions remain open.
+This is a terms uncertainty, not a claim that the source prohibits use. A current
+real BLtU general-list export was captured on 2026-09-17 through the ordinary
+public browser flow as a restricted local research artifact and staged privately
+(15,788 input rows; 2,691 normalized; 13,097 quarantined). The row-free capture
+sidecar records the stable landing route, session navigation steps, export route,
+response headers, byte size, and SHA-256. It is not a repository fixture, release
+candidate, API source, map layer, export, or publication. That retrieval does not
+establish permission for recurring acquisition, retention, or redistribution; those
+decisions remain open.
 Privacy/safety review is separately required because facility addresses can overlap
 with residences or identify individuals; source origin does not resolve that risk.
 
@@ -59,10 +62,10 @@ by BLtU without dataset-specific evidence.
 [`pipeline/sources/germany/`](../pipeline/sources/germany/) now provides a typed BLtU adapter and assisted refresh. Use the stable landing page to select the current CSV export, save it in private ignored storage, and run:
 
 ```text
-python -m pipeline.sources.germany.refresh --raw <private/bltu-export.csv> --run-dir <private/run> --retrieved-at-utc 2026-09-15T00:00:00Z
+python -m pipeline.sources.germany.refresh --raw <private/bltu-export.csv> --acquisition-metadata <private/capture-metadata.json> --run-dir <private/run> --retrieved-at-utc 2026-09-17T20:26:41Z
 ```
 
-The adapter preserves repeated activity columns and current approval numbers, quarantines schema/identity/unmapped-code anomalies, emits shared QA and health evidence, and produces only a private candidate handoff. Address and coordinate values remain private and geocoding is disabled. Candidate import, if used, must target the disposable database guard and remains test-only; no public release is created.
+The adapter preserves repeated activity columns, current/legacy approval-number provenance, and malformed source rows, quarantines schema/identity/unmapped-code anomalies, emits shared QA and health evidence, and produces only a private candidate handoff. The 2026-09-17 run matched the live 50-column cp1252 schema; eight malformed CSV rows and 13,084 unmapped activity rows were quarantined. Address and coordinate values remain private and geocoding is disabled. Candidate import, if used, must target the disposable database guard and remains test-only; no public release is created.
 
 ## Planned recurring acquisition after approval
 

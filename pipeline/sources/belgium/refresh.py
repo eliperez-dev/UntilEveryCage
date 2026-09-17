@@ -32,12 +32,35 @@ REVIEW_BLOCKERS = {
     "privacy": ["Address, postal, enterprise, and coordinate fields require field-level privacy review; normalized rows intentionally suppress them and geocoding is disabled."],
     "completeness": ["The feed covers current FASFC registrations/approvals/authorizations, not every animal-agriculture facility; live operator schema and currentness semantics still require capture review."],
     "classification": ["LAP/PAP codebook joins are explicit, but slaughter, cutting, processing, storage, animal-by-products, and export remain separate source categories."],
-    "coverage": ["Operator CSV and activity-code CSV must be captured together; the live operator header was not available in this environment."],
+    "coverage": ["Operator CSV and activity-code CSV were captured together; the live operator feed is broader than slaughterhouses and its identifier/activity-only schema must remain source-labeled."],
 }
 
 
-def _local_metadata(path: Path, *, source_id: str, source_url: str, retrieved_at: str, coverage: str) -> dict[str, Any]:
+def _local_metadata(path: Path, *, source_id: str, source_url: str, retrieved_at: str, coverage: str, metadata_path: str | Path | None = None) -> dict[str, Any]:
     raw = path.read_bytes()
+    if metadata_path is not None:
+        metadata = json.loads(Path(metadata_path).read_text(encoding="utf-8"))
+        if not isinstance(metadata, dict):
+            raise RefreshError("acquisition metadata must be an object")
+        expected_hash = str(metadata.get("sha256") or "").lower()
+        expected_size = metadata.get("byte_size")
+        if expected_hash != hashlib.sha256(raw).hexdigest() or int(expected_size or -1) != len(raw):
+            raise RefreshError(f"acquisition metadata does not match {path.name}")
+        metadata.setdefault("acquisition_method", "assisted_local_capture")
+        metadata.setdefault("artifact_path", str(path.resolve()))
+        metadata.setdefault("requested_at_utc", retrieved_at)
+        metadata.setdefault("retrieved_at_utc", retrieved_at)
+        metadata.setdefault("effective_date", "unknown")
+        metadata.setdefault("publication_date", None)
+        metadata.setdefault("redirects", [])
+        metadata.setdefault("response_headers", {})
+        metadata.setdefault("adapter_version", CONFIG["adapter_version"])
+        metadata.setdefault("code_version", CONFIG["adapter_version"])
+        metadata.setdefault("config_version", CONFIG["schema_version"])
+        metadata.setdefault("coverage", coverage)
+        metadata.setdefault("rights_caveat", CONFIG["terms"])
+        metadata.setdefault("privacy_caveat", "private staging; address and coordinate review pending")
+        return metadata
     return {"acquisition_method": "assisted_local_capture", "source_id": source_id, "artifact": path.name, "artifact_path": str(path.resolve()), "requested_url": source_url, "final_url": source_url, "redirects": [], "response_headers": {}, "requested_at_utc": retrieved_at, "retrieved_at_utc": retrieved_at, "effective_date": "unknown", "publication_date": None, "sha256": hashlib.sha256(raw).hexdigest(), "byte_size": len(raw), "adapter_version": CONFIG["adapter_version"], "code_version": CONFIG["adapter_version"], "config_version": CONFIG["schema_version"], "coverage": coverage, "rights_caveat": CONFIG["terms"], "privacy_caveat": "private staging; address and coordinate review pending", "terms_review": "operator-assisted capture; source terms review remains a separate gate"}
 
 
@@ -45,7 +68,7 @@ def _artifact(metadata: dict[str, Any], *, default_url: str, default_coverage: s
     return SourceArtifact(source_url=str(metadata.get("final_url") or metadata.get("requested_url") or default_url), retrieved_at_utc=str(metadata.get("retrieved_at_utc") or ""), sha256=str(metadata["sha256"]), byte_size=int(metadata["byte_size"]), publication_date=metadata.get("publication_date"), effective_date=metadata.get("effective_date"), code_version=str(metadata.get("code_version") or CONFIG["adapter_version"]), config_version=str(metadata.get("config_version") or CONFIG["schema_version"]), rights_caveat=metadata.get("rights_caveat") or CONFIG["terms"], privacy_caveat=metadata.get("privacy_caveat") or "private staging; privacy review pending", coverage=metadata.get("coverage") or default_coverage, redirects=tuple(metadata.get("redirects") or ()))
 
 
-def refresh(*, run_dir: str | Path, operators_path: str | Path | None = None, activity_codes_path: str | Path | None = None, fetch_pair: bool = False, output_root: str | Path = "data/raw", run_id: str | None = None, terms_review_path: str | Path | None = None, retrieved_at_utc: str | None = None, timeout_seconds: float = 60, max_bytes: int = 128 * 1024 * 1024, previous_normalized: str | Path | None = None) -> dict[str, Any]:
+def refresh(*, run_dir: str | Path, operators_path: str | Path | None = None, activity_codes_path: str | Path | None = None, fetch_pair: bool = False, output_root: str | Path = "data/raw", run_id: str | None = None, terms_review_path: str | Path | None = None, retrieved_at_utc: str | None = None, timeout_seconds: float = 60, max_bytes: int = 128 * 1024 * 1024, previous_normalized: str | Path | None = None, acquisition_metadata_path: str | Path | None = None) -> dict[str, Any]:
     if fetch_pair == (operators_path is not None or activity_codes_path is not None):
         raise RefreshError("specify --fetch or both --operators and --activity-codes")
     root = Path(run_dir)
@@ -65,8 +88,9 @@ def refresh(*, run_dir: str | Path, operators_path: str | Path | None = None, ac
         operator_path, code_path = Path(operators_path).resolve(), Path(activity_codes_path).resolve()
         if not operator_path.is_file() or not code_path.is_file():
             raise RefreshError("operator and activity-code artifacts must exist")
-        operator_meta = _local_metadata(operator_path, source_id=CONFIG["source_id"], source_url=CONFIG["operator_url"], retrieved_at=retrieved, coverage=CONFIG["coverage"])
-        code_meta = _local_metadata(code_path, source_id="be.activity-codes", source_url=CONFIG["activity_code_url"], retrieved_at=retrieved, coverage="FASFC LAP/PAP codebook; not a facility list")
+        metadata_root = json.loads(Path(acquisition_metadata_path).read_text(encoding="utf-8")) if acquisition_metadata_path else {}
+        operator_meta = _local_metadata(operator_path, source_id=CONFIG["source_id"], source_url=CONFIG["operator_url"], retrieved_at=retrieved, coverage=CONFIG["coverage"], metadata_path=metadata_root.get("operator_path") if isinstance(metadata_root, dict) and metadata_root.get("operator_path") else None)
+        code_meta = _local_metadata(code_path, source_id="be.activity-codes", source_url=CONFIG["activity_code_url"], retrieved_at=retrieved, coverage="FASFC LAP/PAP codebook; not a facility list", metadata_path=metadata_root.get("activity_codes_path") if isinstance(metadata_root, dict) and metadata_root.get("activity_codes_path") else None)
     atomic_json(root / "acquisition-metadata.json", {"operator": operator_meta, "activity_codes": code_meta})
     operator_artifact = _artifact(operator_meta, default_url=CONFIG["operator_url"], default_coverage=CONFIG["coverage"])
     code_artifact = _artifact(code_meta, default_url=CONFIG["activity_code_url"], default_coverage="FASFC LAP/PAP codebook; not a facility list")
@@ -103,9 +127,10 @@ def main() -> int:
     parser.add_argument("--timeout-seconds", type=float, default=60)
     parser.add_argument("--max-bytes", type=int, default=128 * 1024 * 1024)
     parser.add_argument("--previous-normalized", type=Path)
+    parser.add_argument("--acquisition-metadata", type=Path, help="row-free JSON mapping with operator_path and activity_codes_path sidecars")
     args = parser.parse_args()
     try:
-        result = refresh(run_dir=args.run_dir, operators_path=args.operators, activity_codes_path=args.activity_codes, fetch_pair=args.fetch, output_root=args.output_root, run_id=args.run_id, terms_review_path=args.terms_review, retrieved_at_utc=args.retrieved_at_utc, timeout_seconds=args.timeout_seconds, max_bytes=args.max_bytes, previous_normalized=args.previous_normalized)
+        result = refresh(run_dir=args.run_dir, operators_path=args.operators, activity_codes_path=args.activity_codes, fetch_pair=args.fetch, output_root=args.output_root, run_id=args.run_id, terms_review_path=args.terms_review, retrieved_at_utc=args.retrieved_at_utc, timeout_seconds=args.timeout_seconds, max_bytes=args.max_bytes, previous_normalized=args.previous_normalized, acquisition_metadata_path=args.acquisition_metadata)
     except (OSError, RefreshError) as error:
         print(json.dumps({"status": "failed", "error": str(error)}, sort_keys=True))
         return 2
