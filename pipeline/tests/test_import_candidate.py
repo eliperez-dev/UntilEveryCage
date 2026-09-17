@@ -3,7 +3,9 @@ import hashlib
 import json
 import tempfile
 import unittest
+import uuid
 from pathlib import Path
+from unittest.mock import patch
 
 from pipeline.sources.uk.fsa_approved.adapter import FsaApprovedEstablishmentsAdapter
 
@@ -14,6 +16,101 @@ SPEC.loader.exec_module(MODULE)
 
 
 class CandidateImportContractTests(unittest.TestCase):
+    def test_post_commit_interruption_observer_resumes_without_duplicate_rows(self):
+        class Result:
+            def __init__(self, row=None):
+                self.row = row
+
+            def fetchone(self):
+                return self.row
+
+        class Transaction:
+            def __init__(self, connection):
+                self.connection = connection
+
+            def __enter__(self):
+                self.connection.transaction_depth += 1
+                return self
+
+            def __exit__(self, exc_type, *_args):
+                self.connection.transaction_events.append(exc_type is not None)
+                self.connection.transaction_depth -= 1
+                return False
+
+        class Connection:
+            def __init__(self):
+                self.transaction_depth = 0
+                self.transaction_events = []
+                self.records = {}
+                self.observations = {}
+                self.artifact_id = uuid.uuid4()
+                self.run_id = uuid.uuid4()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def commit(self):
+                pass
+
+            def transaction(self):
+                return Transaction(self)
+
+            def execute(self, query, params=None):
+                compact = " ".join(query.split())
+                if "FROM uec.disposable_import_guard" in compact:
+                    return Result((MODULE.DISPOSABLE_MARKER,))
+                if compact.startswith("SELECT artifact_id FROM uec.raw_artifacts"):
+                    return Result((self.artifact_id,))
+                if compact.startswith("SELECT run_id FROM uec.acquisition_runs"):
+                    return Result((self.run_id,))
+                if compact.startswith("INSERT INTO uec.source_records"):
+                    key = (params[1], params[2], params[3])
+                    if key in self.records:
+                        return Result()
+                    self.records[key] = params[0]
+                    return Result((params[0],))
+                if compact.startswith("SELECT source_record_id FROM uec.source_records"):
+                    return Result((self.records[(params[0], params[1], params[2])],))
+                if compact.startswith("INSERT INTO uec.observations"):
+                    key = (params[1], params[2], params[3])
+                    if key in self.observations:
+                        return Result()
+                    self.observations[key] = params[0]
+                    return Result((params[0],))
+                if compact.startswith("SELECT observation_id FROM uec.observations"):
+                    return Result((self.observations[(params[0], params[1], params[2])],))
+                return Result()
+
+        rows = [
+            {"source_id": "synthetic", "source_row": 1, "normalized": {"establishment_id": "A", "trading_name": "A"}},
+            {"source_id": "synthetic", "source_row": 2, "normalized": {"establishment_id": "B", "trading_name": "B"}},
+        ]
+        manifest = {
+            "source_id": "synthetic", "source_url": "https://example.invalid/synthetic",
+            "retrieved_at_utc": "2026-09-16T00:00:00Z", "checksum_sha256": "a" * 64,
+            "byte_size": 1, "config_version": "test", "country_code": "ZZ",
+        }
+        connection = Connection()
+        observed = []
+
+        def interrupt(batch_number, offset, batch_count):
+            observed.append((batch_number, offset, batch_count))
+            raise RuntimeError("synthetic process interruption")
+
+        with patch.object(MODULE.psycopg, "connect", return_value=connection):
+            with self.assertRaisesRegex(RuntimeError, "synthetic process interruption"):
+                MODULE.import_candidate("postgresql://loopback", manifest, rows, "candidate-test", False, 1, interrupt)
+            resumed = MODULE.import_candidate("postgresql://loopback", manifest, rows, "candidate-test", False, 1)
+            duplicate = MODULE.import_candidate("postgresql://loopback", manifest, rows, "candidate-test", False, 1)
+
+        self.assertEqual(observed, [(1, 0, 1)])
+        self.assertEqual(resumed, 1)
+        self.assertEqual(duplicate, 0)
+        self.assertEqual(connection.transaction_events, [False, False, False, False, False])
+
     def test_server_marker_is_required_even_after_cli_acknowledgement(self):
         class FakeConnection:
             def execute(self, *_args):

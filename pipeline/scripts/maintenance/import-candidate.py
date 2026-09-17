@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 from urllib.parse import urlparse
 import uuid
+from collections.abc import Callable
 
 import psycopg
 
@@ -25,6 +26,7 @@ class CandidateImportError(ValueError):
 
 DISPOSABLE_MARKER = "uec-e2e-disposable-v1"
 DEFAULT_BATCH_SIZE = 500
+BatchCommitObserver = Callable[[int, int, int], None]
 
 
 def require_disposable_database(database_url: str, acknowledged: bool) -> None:
@@ -114,7 +116,8 @@ def _stable_uuid(*parts: object) -> uuid.UUID:
 
 
 def import_candidate(database_url: str, manifest: dict, rows: list[dict], release_id: str,
-                     reset: bool, batch_size: int = DEFAULT_BATCH_SIZE) -> int:
+                     reset: bool, batch_size: int = DEFAULT_BATCH_SIZE,
+                     on_batch_committed: BatchCommitObserver | None = None) -> int:
     """Append one candidate release; never promotes or marks review complete.
 
     Batches commit independently so a bounded failure can resume with the same
@@ -205,6 +208,11 @@ def import_candidate(database_url: str, manifest: dict, rows: list[dict], releas
                                    (record_id, release_id))
                         batch_count += 1
             count += batch_count
+            if on_batch_committed is not None:
+                # The transaction has committed before this callback runs.
+                # Rehearsals can therefore raise here to model a process loss
+                # without making a test-specific database mutation path.
+                on_batch_committed(offset // batch_size + 1, offset, batch_count)
         return count
 
 
