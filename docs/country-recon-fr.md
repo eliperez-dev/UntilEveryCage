@@ -1,6 +1,6 @@
 # France source reconnaissance
 
-Status: reconnaissance only. No adapter, release, publication, or row-level fixture was created. No row-level records, personal names, addresses, contacts, coordinates, or private artifacts are retained here.
+Status: private candidate implementation and source assessment. No release, publication, or row-level fixture is created in Git; real artifacts remain restricted and ignored.
 
 Last checked: 2026-09-14 UTC under `docs/ETHICS.md`, policy version 1.0, last reviewed 2026-09-12. This document is source-status evidence, not publication approval or a healthy-pipeline claim.
 
@@ -8,7 +8,7 @@ Last checked: 2026-09-14 UTC under `docs/ETHICS.md`, policy version 1.0, last re
 
 | Source | Discovered / verified | Acquisition | Adapter / validation | Terms / privacy | Blocker / next action |
 |---|---|---|---|---|---|
-| DGAL approved CE lists | Official Ministry page and Section I/II TXT routes verified | HTTP 200 bounded retrieval; bytes discarded | Not started | Etalab attribution appears on Ministry page; confirm file-specific terms; screen names, addresses, and precise geocodes | Freeze category dictionary and daily snapshot/provenance handling, then human review |
+| DGAL approved CE lists | Official Ministry page and Section I/II TXT routes verified | HTTP 200 bounded retrieval with recorded artifact provenance | Shared private lifecycle, source-local handoff, category/quarantine QA, row-free review packet, and graph-candidate rehearsal | Etalab attribution appears on Ministry page; confirm file-specific terms; screen names, addresses, and precise geocodes | Human terms, privacy, category, duplicate, and release review |
 | Alim’confiance | Official DGAL Opendatasoft dataset/API/CSV routes verified | Bounded API query HTTP 200; bytes discarded | Not started | Licence Ouverte 2.0 in data.gouv metadata; screen address/coordinate and farm/person fields | Define qualifying activity/agreement labels; do not ingest all food establishments |
 | INSEE SIRENE | Official open-data page, bulk route, and API terms verified | Not attempted; API account/subscription and multi-GB bulk | Not started | Licence Ouverte 2.0; diffusion-partielle and personal-data rules are material | Authorized access, partitioned import, NAF mapping, and privacy rules |
 | HVE directory | Official Ministry dataset/current CSV verified | HTTP 200 bounded retrieval; bytes discarded | Not started | Licence Ouverte 2.0; voluntary opt-in, head-office address, possible individual farm names | Treat only as labeled HVE subset, never exhaustive farm source |
@@ -77,3 +77,27 @@ All listed requests were bounded and read-only; response bytes were discarded. N
 4. Use SIRENE as a cross-source backbone only after authorized access and diffusion/privacy handling.
 5. Treat Géorisques as a later regulatory complement after schema/licence/token/rubric review.
 6. Obtain authorized project approval before any release; acquisition success and government origin are not publication authorization.
+
+## Private candidate implementation status (2026-09-17)
+
+Section I and Section II now run through the shared typed lifecycle and
+candidate-handoff contract. Source values remain restricted; normalized rows
+keep approval, SIRET, category, activity, species, section, and explicit
+uncertainty states. Category codes are tokenized rather than substring-matched;
+unknown categories and duplicate source observations stay quarantined. Address
+and coordinate fields remain suppressed, geocoding is disabled, and the
+non-public graph handoff contains only source-supported claims with
+`review_required`, source-scoped identity, and `publication_status: not_eligible`.
+
+Refresh accepts `--previous-normalized`; the shared delta reports additions,
+changes, and `not-observed` rows without inferring closure. Review packets are
+aggregate-only and retain the prior-run linkage. France sections remain
+separate sources and no candidate is owner-approved or public.
+
+The current checked-in evidence is aggregate only. The 2026-09-16 private
+reacquisition manifest records 1,448 Section I rows and 1,068 Section II rows,
+with zero quarantines in that snapshot; those counts are not a release decision
+and the underlying artifacts are not present in Git. Remaining maintainer
+decisions are file-specific rights/attribution, address/privacy disposition,
+category codebook confirmation, duplicate identity handling, and any
+release-specific project approval.

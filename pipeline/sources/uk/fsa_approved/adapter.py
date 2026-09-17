@@ -1,11 +1,12 @@
 """FSA approved-establishments adapter for synthetic and monthly source profiles."""
 from __future__ import annotations
-import csv, hashlib, json, os, re, tempfile
+import csv, hashlib, json, os, tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 from pipeline.contracts.adapter_contract import SourceArtifact
 from pipeline.common.activity import classify_activities
+from pipeline.common.privacy import address_privacy_risk
 
 ROOT=Path(__file__).parent
 CONFIG=json.loads((ROOT/"config.json").read_text(encoding="utf-8"))
@@ -16,7 +17,6 @@ AUTHORITY_BY_NATION=CONFIG["authority_by_nation"]
 # Generic facility-building names such as "house", "home", and "lodge" are
 # common in legitimate establishment addresses. Keep only terms that are
 # stronger indicators of a residential, private, or intermediary address.
-ADDRESS_RISK=re.compile(r"\b(flat|apartment|residential|c/o|care of|caravan)\b",re.I)
 MONTHLY_REQUIRED=frozenset({"AppNo","TradingName","Country","CompetentAuthority","X","Y","AddressWithheld","All_Activities"})
 MONTHLY_COUNTRIES=frozenset({"England","Wales"})
 
@@ -61,7 +61,7 @@ def _csv(content):
         except csv.Error as exc:raise FsaContractError("malformed CSV") from exc
     raise FsaContractError("unsupported CSV encoding")
 def _synthetic_record(row,line):
-    nation=_clean(row.get("nation"));acts=_split(row.get("activities"));return {"source_id":CONFIG["source_id"],"source_row":line,"source_values":dict(row),"normalized":{"establishment_id":_clean(row.get("establishment_id")),"trading_name":_clean(row.get("trading_name")),"address_lines":tuple(_clean(row.get(f"address_line_{n}")) for n in range(1,4)),"postcode":_clean(row.get("postcode")),"activities":acts,"activity_categories":classify_activities(acts),"species":_clean(row.get("species")),"competent_authority":_clean(row.get("competent_authority")),"nation":nation,"authority_nation_key":nation,"status":_clean(row.get("status")),"remarks":_clean(row.get("remarks")),"published_date":_clean(row.get("published_date")),"coordinates":None}}
+    nation=_clean(row.get("nation"));ident=_clean(row.get("establishment_id"));acts=_split(row.get("activities"));return {"source_id":CONFIG["source_id"],"source_row":line,"source_record_key":f"{nation or 'unknown'}|{ident or 'unknown'}","source_values":dict(row),"normalized":{"establishment_id":ident,"trading_name":_clean(row.get("trading_name")),"address_lines":tuple(_clean(row.get(f"address_line_{n}")) for n in range(1,4)),"postcode":_clean(row.get("postcode")),"activities":acts,"activity_categories":classify_activities(acts),"species":_clean(row.get("species")),"competent_authority":_clean(row.get("competent_authority")),"nation":nation,"authority_nation_key":nation,"status":_clean(row.get("status")),"remarks":_clean(row.get("remarks")),"published_date":_clean(row.get("published_date")),"coordinates":None}}
 def _coords(row):
     try:x,y=float(row.get("X","").strip()),float(row.get("Y","").strip())
     except ValueError:return None,None,"unresolved-nonnumeric"
@@ -73,7 +73,7 @@ def _monthly_record(row,line):
     acts=tuple(x for x in (_clean(row.get("All_Activities")),_clean(row.get("Part_A__All_sections_")),_clean(row.get("Part B All sections "))) if x)
     privacy_gate="restricted-withheld-address" if withheld else "privacy-review-required"
     coordinate_gate="restricted-withheld-address" if withheld else "privacy-review-required"
-    return {"source_id":CONFIG["source_id"],"source_row":line,"source_values":dict(row),"normalized":{"establishment_id":_clean(row.get("AppNo")),"trading_name":_clean(row.get("TradingName")),"address_lines":None if withheld else tuple(_clean(row.get(k)) for k in ("Address1","Address2","Address3")),"postcode":_clean(row.get("Postcode")),"activities":acts,"activity_categories":classify_activities(acts),"species":_clean(row.get("Species")),"competent_authority":_clean(row.get("CompetentAuthority")),"nation":_clean(row.get("Country")),"authority_nation_key":_clean(row.get("Country")),"status":None,"remarks":_clean(row.get("Remarks")),"published_date":None,"coordinates":None,"coordinate_state":status,"coordinate_precision":"withheld" if withheld else "source-precision-unspecified","coordinate_gate":coordinate_gate,"privacy_gate":privacy_gate,"publication_gate":"blocked"}}
+    ident=_clean(row.get("AppNo"));nation=_clean(row.get("Country"));return {"source_id":CONFIG["source_id"],"source_row":line,"source_record_key":f"{nation or 'unknown'}|{ident or 'unknown'}","source_values":dict(row),"normalized":{"establishment_id":ident,"trading_name":_clean(row.get("TradingName")),"address_lines":None if withheld else tuple(_clean(row.get(k)) for k in ("Address1","Address2","Address3")),"postcode":_clean(row.get("Postcode")),"activities":acts,"activity_categories":classify_activities(acts),"species":_clean(row.get("Species")),"competent_authority":_clean(row.get("CompetentAuthority")),"nation":nation,"authority_nation_key":nation,"status":None,"remarks":_clean(row.get("Remarks")),"published_date":None,"coordinates":None,"coordinate_state":status,"coordinate_precision":"withheld" if withheld else "source-precision-unspecified","coordinate_gate":coordinate_gate,"privacy_gate":privacy_gate,"publication_gate":"blocked"}}
 
 class FsaApprovedEstablishmentsAdapter:
     source_id=CONFIG["source_id"];schema_version=CONFIG["contract_version"];adapter_version=CONFIG["adapter_version"]
@@ -100,7 +100,7 @@ class FsaApprovedEstablishmentsAdapter:
             status=_clean(v.get("status"))
             if status and status.lower() not in ALLOWED_STATUSES:reasons.append("unknown_status")
             if _clean(v.get("remarks")):reasons.append("remarks_present")
-            if ADDRESS_RISK.search(" ".join(_clean(v.get(f"address_line_{n}")) or "" for n in range(1,4))):reasons.append("address_privacy_risk")
+            if address_privacy_risk(*(_clean(v.get(f"address_line_{n}")) for n in range(1,4))):reasons.append("address_privacy_risk")
             coverage[nation or ""] = coverage.get(nation or "", 0) + 1
             for reason in dict.fromkeys(reasons): anomalies[reason] = anomalies.get(reason, 0) + 1
             record=_synthetic_record(v,line);(quarantined if reasons else accepted).append({"reasons":tuple(dict.fromkeys(reasons)),"record":record} if reasons else record)
@@ -118,9 +118,10 @@ class FsaApprovedEstablishmentsAdapter:
             if (country,ident) in duplicates:reasons.append("duplicate_id_within_nation")
             if country not in MONTHLY_COUNTRIES:reasons.append("unknown_nation")
             if not any(_clean(v.get(k)) for k in ("All_Activities","Part_A__All_sections_","Part B All sections ")):reasons.append("missing_activity")
+            elif not classify_activities(_split(_clean(v.get("All_Activities")) or _clean(v.get("Part_A__All_sections_")) or _clean(v.get("Part B All sections ")))):reasons.append("no_relevant_activity")
             if _clean(v.get("Remarks")):reasons.append("remarks_present")
             withheld=(_clean(v.get("AddressWithheld")) or "").lower()=="yes"
-            if not withheld and ADDRESS_RISK.search(" ".join(_clean(v.get(k)) or "" for k in ("Address1","Address2","Address3","Town","Postcode"))):reasons.append("address_privacy_risk")
+            if not withheld and address_privacy_risk(*(v.get(k) for k in ("Address1","Address2","Address3","Town","Postcode"))):reasons.append("address_privacy_risk")
             record=_monthly_record(v,line)
             if reasons:
                 for reason in reasons:anomalies[reason]=anomalies.get(reason,0)+1

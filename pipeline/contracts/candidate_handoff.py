@@ -4,6 +4,7 @@ import hashlib, json, os
 from pathlib import Path
 from typing import Any
 from .adapter_contract import SourceArtifact
+from pipeline.common.graph_candidate import write_graph_candidates
 
 CONTRACT_VERSION = "candidate-handoff-v1"
 
@@ -13,7 +14,8 @@ def _atomic(path: Path, payload: bytes) -> None:
     tmp.write_bytes(payload); os.replace(tmp, path)
 
 def write_handoff(run_dir: str | Path, rows: list[dict[str, Any]], artifact: SourceArtifact,
-                  *, source_id: str, profile: str = "default") -> dict[str, Any]:
+                  *, source_id: str, profile: str = "default",
+                  emit_graph_candidates: bool = True) -> dict[str, Any]:
     """Write importer-compatible JSONL/manifest, rejecting guessed identities."""
     for row in rows:
         normalized = row.get("normalized")
@@ -35,4 +37,13 @@ def write_handoff(run_dir: str | Path, rows: list[dict[str, Any]], artifact: Sou
                 "coordinate_gate": "review_required"}
     # The importer consumes the conventional manifest.json name.
     _atomic(root / "manifest.json", (json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode())
+    if emit_graph_candidates:
+        graph_manifest = write_graph_candidates(
+            root / "graph-candidates", rows,
+            artifact_sha256=artifact.sha256,
+            observed_at=artifact.effective_date or artifact.retrieved_at_utc,
+        )
+        manifest["graph_candidate_manifest"] = "graph-candidates/manifest.json"
+        manifest["graph_candidate_rows"] = graph_manifest["candidate_rows"]
+        _atomic(root / "manifest.json", (json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode())
     return manifest

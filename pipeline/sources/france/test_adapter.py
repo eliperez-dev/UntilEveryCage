@@ -35,6 +35,15 @@ class FranceAdapterTests(unittest.TestCase):
         result = FranceDgalSectionIIAdapter().parse_file(FIXTURES / "section_ii.csv")
         self.assertEqual(len(result["accepted"]), 1); self.assertIn("missing_approval_number", result["quarantined"][0]["reasons"])
 
+    def test_category_codes_are_tokenized_and_source_rows_have_distinct_graph_keys(self):
+        content = ("approval_number;legal_name;commune;category;associated activities\n"
+                   "FR-1;Fresh Foods;Town;FRESH;\n"
+                   "FR-2;Cut Foods;Town;CP;Découpe\n").encode()
+        result = FranceDgalSectionIAdapter().parse_bytes(content)
+        self.assertEqual(len(result["accepted"]), 1)
+        self.assertIn("unknown_category_code", result["quarantined"][0]["reasons"])
+        self.assertIn("source_record_key", result["accepted"][0])
+
     def test_schema_drift_and_lifecycle_are_closed(self):
         adapter = FranceDgalSectionIAdapter(); raw = (FIXTURES / "section_i.csv").read_bytes(); artifact = SourceArtifact(adapter.source_url, "2026-09-15T00:00:00Z", hashlib.sha256(raw).hexdigest(), len(raw), code_version=adapter.adapter_version, config_version=adapter.schema_version)
         with self.assertRaises(ValueError): adapter.parse_bytes(raw.replace("N° d'agrément".encode(), b"wrong"))

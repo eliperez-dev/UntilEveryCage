@@ -7,6 +7,7 @@ from typing import Any, Iterable
 
 from .adapter_contract import SourceAdapter, SourceArtifact
 from pipeline.common.review_metrics import build_private_review_metrics
+from pipeline.common.identity import record_key
 from .source_lifecycle import atomic_json, validate_private_manifest
 
 
@@ -23,24 +24,29 @@ def _manifest_value(manifest: dict[str, Any], key: str) -> Any:
     return None
 
 
-def _record_ids(path: Path) -> set[str]:
+def _record_ids(path: Path) -> set[str | tuple[str, str, str]]:
     if not path.exists():
         return set()
-    ids: set[str] = set()
+    ids: set[str | tuple[str, str, str]] = set()
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line:
             continue
         row = json.loads(line)
-        normalized = row.get("normalized", {})
-        candidates = (
-            normalized.get("establishment_id"),
-            normalized.get("recognition_number"),
-            row.get("source_record_key"),
-            row.get("source_row_id"),
-        )
-        value = next((candidate for candidate in candidates if isinstance(candidate, str) and candidate), None)
-        if value:
-            ids.add(value)
+        if row.get("source_id"):
+            ids.add(record_key(row))
+            normalized = row.get("normalized", {})
+            legacy_value = normalized.get("establishment_id") or normalized.get("recognition_number")
+            if isinstance(legacy_value, str) and legacy_value.strip():
+                # Alias only for comparison with pre-envelope snapshots.
+                ids.add(legacy_value.strip())
+        else:
+            # Accept older normalized snapshots that predate the shared
+            # source-envelope.  They still contribute a conservative delta
+            # signal, but cannot be mistaken for a source-qualified key.
+            normalized = row.get("normalized", {})
+            value = normalized.get("establishment_id") or normalized.get("recognition_number")
+            if isinstance(value, str) and value.strip():
+                ids.add(value.strip())
     return ids
 
 

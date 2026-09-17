@@ -231,3 +231,21 @@ restricted at `data/restricted/country-recon/uk/runs/2026-09-14-refresh-check/re
 Prior-run comparisons report disappeared identifiers as `not-observed`; they never
 infer closure. The command keeps Scotland and Northern Ireland outside this source
 profile and does not create a release.
+
+### Shared candidate/graph handoff updates (2026-09-17)
+
+FSA England/Wales and FSS Scotland accepted rows now carry a stable,
+nation-qualified `source_record_key`. The shared delta path therefore keeps
+same-number records in different UK feeds or nations distinct; legacy prior-run
+files without nation metadata retain a conservative compatibility alias. France
+uses the same source-scoped identity rule for one-to-many approval/activity
+observations.
+
+All candidate handoffs emit a private, deterministic graph-candidate set. It
+contains only source-supported claims, retains `review_required` and
+`publication_status: not_eligible`, performs no auto-merge, and emits no graph
+candidate for quarantined rows. Quarantine reasons remain in the row-free QA and
+review packet. Source coordinates remain null/suppressed and no geocoding is
+enabled. Northern Ireland remains quarantined/out of scope in the monthly FSA
+profile until its separate catalogue resource, terms, schema, and privacy
+handling are independently supported.

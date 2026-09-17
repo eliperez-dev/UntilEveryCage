@@ -29,14 +29,11 @@ def record_key(record: dict[str, Any]) -> str | tuple[str, str] | tuple[str, str
         return source_id, nation.strip(), identifier.strip()
     if not isinstance(source_id, str) or not source_id:
         raise ValueError("record lacks stable source_id")
-    # Source adapters commonly carry many observations under one feed-level
-    # source_id.  Prefer the source-native row key when it is present; using
-    # only source_id silently collapses Italy activity observations (and any
-    # future multi-row source) during diffs and suppression checks.
-    source_record_key = record.get("source_record_key")
+    # Source adapters must be able to retain one-to-many observations (for
+    # example France approval/activity rows) without collapsing a whole feed
+    # to one source-level key.  The key is still source-scoped and is never a
+    # universal identity assertion.
+    source_record_key = record.get("source_record_key") or record.get("source_row_id")
     if isinstance(source_record_key, str) and source_record_key.strip():
         return source_id, source_record_key.strip()
-    source_row_id = record.get("source_row_id")
-    if isinstance(source_row_id, str) and source_row_id.strip():
-        return source_id, source_row_id.strip()
     return source_id

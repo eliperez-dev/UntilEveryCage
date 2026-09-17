@@ -9,6 +9,7 @@ from .graph_candidate_handoff import (
     validate_graph_candidate,
     write_graph_candidate,
 )
+from pipeline.common.graph_candidate import build_graph_candidate, write_graph_candidates
 
 
 def candidate():
@@ -72,6 +73,24 @@ class GraphCandidateHandoffTests(unittest.TestCase):
         }]
         with self.assertRaisesRegex(ValueError, "unknown_reason"):
             validate_graph_candidate(value)
+
+    def test_shared_builder_preserves_source_identity_and_blocks_publication(self):
+        row = {
+            "source_id": "fr.dgal.section-i", "source_row": 4,
+            "source_record_key": "FR-1|SH|BOVINS|1",
+            "source_values": {"N° d'agrément": "FR-1", "Catégorie": "SH"},
+            "normalized": {"establishment_id": "FR-1", "name": "Synthetic", "activity_categories": ("slaughter",)},
+        }
+        candidate = build_graph_candidate(row, artifact_sha256="a" * 64, observed_at="2026-09-16T00:00:00Z")
+        self.assertEqual(candidate["source_record_key"], row["source_record_key"])
+        self.assertEqual(candidate["publication"]["publication_status"], "not_eligible")
+        self.assertEqual(candidate["review_state"], "review_required")
+        self.assertNotIn("canonical_id", candidate)
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = write_graph_candidates(directory, [row], artifact_sha256="a" * 64, quarantined_rows=2)
+            self.assertEqual(manifest["candidate_rows"], 1)
+            self.assertEqual(manifest["quarantined_source_rows"], 2)
+            self.assertEqual(len(Path(directory, "records.jsonl").read_text().splitlines()), 1)
 
 
 if __name__ == "__main__":

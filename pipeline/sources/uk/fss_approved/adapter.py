@@ -8,19 +8,18 @@ import csv
 import hashlib
 import json
 import os
-import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 from pipeline.contracts.adapter_contract import SourceArtifact
 from pipeline.common.activity import classify_activities
+from pipeline.common.privacy import address_privacy_risk
 
 ROOT = Path(__file__).parent
 CONFIG = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
 REQUIRED_COLUMNS = tuple(CONFIG["required_columns"])
 ALLOWED_ACTIVITIES = frozenset(CONFIG["allowed_activities"])
 ALLOWED_STATUSES = frozenset(CONFIG["allowed_statuses"])
-ADDRESS_RISK = re.compile(r"\b(flat|apartment|house|home|residential|c/o|care of|caravan|lodge)\b", re.I)
 
 
 class FssContractError(ValueError):
@@ -53,9 +52,12 @@ def _split(value: str | None) -> tuple[str, ...]:
 
 
 def _record(row: dict[str, str], line: int) -> dict[str, Any]:
+    approval = _clean(row.get("approval_number"))
+    nation = _clean(row.get("nation"))
     return {"source_id": CONFIG["source_id"], "source_row": line,
+            "source_record_key": f"{nation or 'unknown'}|{approval or 'unknown'}",
             "source_values": dict(row), "normalized": {
-                "approval_number": _clean(row.get("approval_number")),
+                "approval_number": approval,
                 # Keep the source-native identifier and expose the shared
                 # importer identity explicitly; neither value is inferred or
                 # used to merge records across authorities.
@@ -66,7 +68,7 @@ def _record(row: dict[str, str], line: int) -> dict[str, Any]:
                 "activity_categories": classify_activities(_split(row.get("activities"))),
                 "species": _clean(row.get("species")),
                 "competent_authority": _clean(row.get("competent_authority")),
-                "nation": _clean(row.get("nation")), "status": _clean(row.get("status")),
+                "nation": nation, "status": _clean(row.get("status")),
                 "remarks": _clean(row.get("remarks")), "published_date": _clean(row.get("published_date")),
                 "coordinates": None}}
 
@@ -162,7 +164,7 @@ class FssApprovedEstablishmentsAdapter:
             if _clean(row.get("remarks")):
                 reasons.append("remarks_present")
             address = " ".join(_clean(record_row.get(f"address_line_{n}")) or "" for n in range(1, 5 if live else 4))
-            if ADDRESS_RISK.search(address):
+            if address_privacy_risk(address):
                 reasons.append("address_privacy_risk")
             nation = "Scotland" if live else (_clean(row.get("nation")) or "")
             coverage[nation] = coverage.get(nation, 0) + 1

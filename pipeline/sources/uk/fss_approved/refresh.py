@@ -70,8 +70,9 @@ def _read_previous_ids(path: Path | None) -> set[str]:
         if line:
             normalized = json.loads(line).get("normalized", {})
             value = normalized.get("establishment_id") or normalized.get("approval_number")
+            nation = normalized.get("nation") or "Scotland"
             if isinstance(value, str) and value:
-                values.add(value)
+                values.add(f"{nation}|{value}")
     return values
 
 
@@ -128,11 +129,13 @@ def refresh_scotland(
     adapter = FssApprovedEstablishmentsAdapter()
     result = adapter.parse_bytes(raw)
     current_ids = {
-        record["normalized"].get("approval_number")
+        f"Scotland|{record['normalized'].get('approval_number')}"
         for record in result.accepted
+        if record["normalized"].get("approval_number")
     } | {
-        item["record"]["normalized"].get("approval_number")
+        f"Scotland|{item['record']['normalized'].get('approval_number')}"
         for item in result.quarantined
+        if item["record"]["normalized"].get("approval_number")
     }
     current_ids.discard(None)
     previous_ids = _read_previous_ids(Path(previous_normalized) if previous_normalized else None)

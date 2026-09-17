@@ -396,6 +396,20 @@ def build_review_packet(
     }
     qa_counts = {key: qa.get(key) for key in counts}
     blockers = status.get("review_blockers", {})
+    graph_manifest = None
+    for graph_path in (
+        Path(run_dir) / "graph-candidates" / "manifest.json",
+        Path(run_dir) / "candidate-handoff" / "graph-candidates" / "manifest.json",
+    ):
+        if graph_path.is_file():
+            graph_value = json.loads(graph_path.read_text(encoding="utf-8"))
+            if isinstance(graph_value, dict):
+                graph_manifest = {key: graph_value.get(key) for key in (
+                    "schema_version", "contract_version", "candidate_rows",
+                    "quarantined_source_rows", "records_sha256", "storage_state",
+                    "privacy_status", "review_state", "publication_status", "release_id", "auto_merge",
+                )}
+            break
     packet = {
         "schema_version": "private-review-packet-v1",
         "source_id": source_id,
@@ -427,6 +441,10 @@ def build_review_packet(
             "drift_alarms": sorted(set(qa.get("drift_alarms", []))) if isinstance(qa.get("drift_alarms", []), list) else [],
         },
         "release_diff": diff,
+        "graph_candidates": graph_manifest or {
+            "status": "not-emitted", "storage_state": "private",
+            "review_state": "review_required", "publication_status": "not_eligible",
+        },
         "gates": {
             "release_state": manifest.get("release_state", "not-created"),
             "publication_state": status.get("publication_state"),

@@ -33,6 +33,23 @@ def _header_fingerprint(raw: bytes) -> tuple[str, int]:
     return hashlib.sha256(json.dumps(headers, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest(), len(headers)
 
 
+def _id_keys(normalized: dict[str, Any]) -> set[str]:
+    identifier = normalized.get("establishment_id")
+    nation = normalized.get("nation")
+    if not isinstance(identifier, str) or not identifier.strip():
+        return set()
+    identifier = identifier.strip()
+    if not isinstance(nation, str) or not nation.strip():
+        # Legacy prior-run files may predate nation-qualified IDs.  Preserve
+        # their disappearance signal conservatively rather than treating the
+        # missing nation as a match to an arbitrary current nation.
+        return {identifier}
+    # Keep the bare alias for old prior-run files that predate nation
+    # qualification, while the qualified key remains authoritative for new
+    # comparisons.
+    return {identifier, f"{nation.strip()}|{identifier}"}
+
+
 def _read_ids(path: Path) -> set[str]:
     if not path.exists():
         return set()
@@ -41,9 +58,7 @@ def _read_ids(path: Path) -> set[str]:
         if not line:
             continue
         normalized = json.loads(line).get("normalized", {})
-        value = normalized.get("establishment_id")
-        if isinstance(value, str) and value:
-            ids.add(value)
+        ids.update(_id_keys(normalized))
     return ids
 
 
@@ -135,14 +150,11 @@ def refresh_monthly(
     if not bounded_sample and abs(len(result.accepted) + len(result.quarantined) - baseline) > max(100, baseline // 10):
         alarms.append("input_row_count_changed")
     previous_ids = _read_ids(Path(previous_normalized)) if previous_normalized else set()
-    current_ids = {
-        r["normalized"].get("establishment_id")
-        for r in result.accepted
-    } | {
-        item["record"]["normalized"].get("establishment_id")
-        for item in result.quarantined
-    }
-    current_ids.discard(None)
+    current_ids: set[str] = set()
+    for record in result.accepted:
+        current_ids.update(_id_keys(record["normalized"]))
+    for item in result.quarantined:
+        current_ids.update(_id_keys(item["record"]["normalized"]))
     disappeared = len(previous_ids - current_ids) if previous_ids else 0
     artifact = SourceArtifact(
         source_url=source_url,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -37,13 +38,16 @@ def _clean(raw: str | None) -> str | None:
 def _categories(category: str | None, activities: str | None) -> tuple[tuple[str, ...], bool]:
     text = " ".join(item for item in (category, activities) if item).upper()
     categories: list[str] = []
-    if any(token in text for token in ("SH", "ABAT", "SLAUGHT", "ABATTAGE")):
+    # Match source codes as tokens; substring matching would turn an
+    # unrelated value such as ``FRESH`` into a slaughter classification.
+    codes = set(re.findall(r"(?<![A-Z0-9])(SH|CP)(?![A-Z0-9])", text))
+    if "SH" in codes or re.search(r"\b(?:ABAT|ABATTAGE|SLAUGHT)\w*\b", text):
         categories.append("slaughter")
-    if any(token in text for token in ("CP", "CUT", "DECOUPE", "DÉCOUPE")):
+    if "CP" in codes or re.search(r"\b(?:CUT|DECOUPE|DÉCOUPE)\w*\b", text):
         categories.append("cutting")
-    if any(token in text for token in ("TRANSFORM", "PROCESS", "PREPAR", "PRÉPAR")):
+    if re.search(r"\b(?:TRANSFORM|PROCESS|PREPAR|PRÉPAR)\w*\b", text):
         categories.append("processing")
-    if any(token in text for token in ("ENTREP", "STOCK", "STORAGE")):
+    if re.search(r"\b(?:ENTREP|STOCK|STORAGE)\w*\b", text):
         categories.append("logistics_and_storage")
     return tuple(dict.fromkeys(categories)), bool(categories)
 
@@ -86,6 +90,7 @@ class FranceDgalAdapter:
                     "establishment_id": approval, "recognition_number": approval,
                     "facility_grouping": "provisional-dgal-approval-number", "identity_review": "required-before-merge",
                     "name": _clean(value(row, mapping, "legal_name")), "trading_name": _clean(value(row, mapping, "legal_name")),
+                    "siret": _clean(value(row, mapping, "siret")),
                     "address": None, "address_state": "source-value-present-pending-review" if _clean(value(row, mapping, "address")) else "unknown",
                     "postal_code": _clean(value(row, mapping, "postal_code")), "municipality": _clean(value(row, mapping, "commune")),
                     "city": _clean(value(row, mapping, "commune")), "department_number": _clean(value(row, mapping, "department_number")),
