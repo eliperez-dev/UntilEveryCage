@@ -226,7 +226,7 @@ class E2EEnvironment:
         restricted_record = None
         with psycopg.connect(self.database_url) as db:
             with db.transaction():
-                db.execute("INSERT INTO uec.sources (source_id,country_code,name,official_url,access_method) VALUES ('e2e.official','DK','Synthetic official source','https://example.invalid/official','fixture')")
+                db.execute("INSERT INTO uec.sources (source_id,country_code,name,official_url,access_method,attribution) VALUES ('e2e.official','DK','Synthetic official source','https://example.invalid/official','fixture','Synthetic fixture attribution')")
                 release = 'e2e-promoted'
                 db.execute("INSERT INTO uec.releases (release_id,status,ruleset_version,summary) VALUES (%s,'promoted','e2e-v1','{}')", (release,))
                 db.execute("INSERT INTO uec.release_manifests (release_id,manifest,manifest_sha256) VALUES ('e2e-promoted','{\"eligible_record_count\":3,\"manifest_version\":\"v1\",\"profile\":\"official\",\"release_id\":\"e2e-promoted\",\"ruleset_version\":\"e2e-v1\",\"source_ids\":[\"e2e.official\"]}', 'dcf1cb50c078057cac2527936332e35892c2c13ecdcf2f545176acd17897cde7')")

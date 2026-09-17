@@ -433,11 +433,12 @@ async fn liveness() -> impl IntoResponse {
     Json(serde_json::json!({"status": "ok", "service": "uec-api"}))
 }
 
-async fn diagnostics(Extension(metrics): Extension<Arc<OperationalMetrics>>) -> impl IntoResponse {
+async fn diagnostics(
+    State(state): State<uec_api::ApiState>,
+    Extension(metrics): Extension<Arc<OperationalMetrics>>,
+) -> impl IntoResponse {
     let mode = std::env::var("UEC_RUNTIME_MODE").unwrap_or_else(|_| "development".into());
-    let database_configured = std::env::var("UEC_DATABASE_URL")
-        .ok()
-        .is_some_and(|url| !url.trim().is_empty());
+    let database_configured = state.database.is_some();
     let proxy_trust = match std::env::var("UEC_TRUST_PROXY").as_deref() {
         Ok("true") => "enabled_with_configured_boundary",
         Ok("false") | Err(_) => "disabled",

@@ -58,7 +58,7 @@ test('exercises server discovery, cursor state, map, export, and mobile basics',
   await expect(page.getByText('LOCAL V2 API')).toBeVisible();
   const searchTerm = (record.canonical_name ?? record.country_code ?? '').slice(0, 6);
   await page.getByLabel('Search locations').fill(searchTerm);
-  await expect(page).toHaveURL(new RegExp(`q=${encodeURIComponent(searchTerm)}`));
+  await expect.poll(() => new URL(page.url()).searchParams.get('q')).toBe(searchTerm);
   await expect(page.getByRole('status').filter({ hasText: 'server' })).toBeVisible();
   await page.getByRole('button', { name: 'Show map' }).click();
   await expect(page.getByLabel(/Location map showing facility records/)).toBeVisible();
