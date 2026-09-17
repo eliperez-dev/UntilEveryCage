@@ -1,0 +1,45 @@
+{
+  "manifest_version": "uec-reviewed-demo-evidence-v1",
+  "evidence_scope": "row-free private release-lane evidence; not a public release",
+  "as_of_utc": "2026-09-17T00:00:00Z",
+  "release_created": false,
+  "release_promoted": false,
+  "public_api_rows": 0,
+  "profile": "official",
+  "source": {
+    "source_id": "dk.smiley",
+    "source_url": "https://pub.fvst.dk/publikationer/Smileydata.xml",
+    "private_rehearsal_input_rows": 58766,
+    "private_rehearsal_normalized_rows": 58766,
+    "private_rehearsal_validation_findings": 57,
+    "private_rehearsal_coordinate_state": "unresolved",
+    "source_artifact_sha256": "4d2f012d3c287ad63e97fc13be8adfcc22f45a163d6096d549d970e63749ccff",
+    "payload_location": "restricted local artifact; not checked in"
+  },
+  "gates": {
+    "terms_and_rights": "blocked_pending_named_release_review",
+    "coverage_and_effective_date": "blocked",
+    "classification": "blocked_pending_review_of_validation_findings",
+    "privacy_and_location": "blocked_pending_record_screening",
+    "coordinate_precision": "blocked_pending_reviewed_coordinates",
+    "project_approval": "not-recorded"
+  },
+  "second_source": {
+    "included": false,
+    "reason": "No additional source currently demonstrates rights, provenance, privacy, and precision gates together."
+  },
+  "machinery": {
+    "selection_stage": "pipeline/scripts/stages/prepare-demonstration-release.py",
+    "review_stage": "pipeline/scripts/stages/record-demonstration-review.py",
+    "validation_and_promotion": "existing release gates with demonstration rights check",
+    "replacement": "promotion manifest records supersedes",
+    "suppression": "existing append-only suppression and restore workflow"
+  },
+  "limitations": [
+    "This evidence does not approve, promote, or publish any Denmark record.",
+    "The private rehearsal counts are aggregate evidence only; they are not a completeness claim.",
+    "A geocoder result, government origin, attribution, or source availability does not substitute for project approval.",
+    "The public demonstration remains blocked until an authorized maintainer records the required scoped review."
+  ],
+  "private_payloads_included": false
+}

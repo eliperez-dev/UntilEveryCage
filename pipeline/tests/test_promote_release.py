@@ -30,9 +30,14 @@ class ReleasePromotionTests(unittest.TestCase):
 
     def test_promotion_rechecks_public_safety_gates_and_supports_manifest(self):
         source = SCRIPT.read_text(encoding="utf-8")
-        for gate in ("coordinate_not_ready", "review_required", "publication_not_approved", "active_suppression"):
+        for gate in ("coordinate_not_ready", "review_required", "publication_not_approved", "active_suppression", "rights_not_cleared"):
             self.assertIn(gate, source)
         self.assertIn("--manifest", source)
+
+    def test_promotion_manifest_records_replacement_and_demo_rights_state(self):
+        source = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn('"supersedes": previous[0] if previous else None', source)
+        self.assertIn('"rights_review":', source)
 
     def test_artifact_inventory_hashes_real_bytes(self):
         with tempfile.TemporaryDirectory() as directory:

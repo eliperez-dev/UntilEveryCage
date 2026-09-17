@@ -59,7 +59,7 @@ def utc_iso(value) -> str:
 def promote(database_url: str, release_id: str, artifacts: list[dict]) -> dict:
     with psycopg.connect(database_url) as connection:
         with connection.transaction():
-            target = connection.execute("SELECT status, profile, ruleset_version, test_only FROM uec.releases WHERE release_id = %s FOR UPDATE", (release_id,)).fetchone()
+            target = connection.execute("SELECT status, profile, ruleset_version, test_only, summary FROM uec.releases WHERE release_id = %s FOR UPDATE", (release_id,)).fetchone()
             if not target:
                 raise ValueError(f"release not found: {release_id}")
             if not can_promote(target[0], target[3]):
@@ -71,8 +71,10 @@ def promote(database_url: str, release_id: str, artifacts: list[dict]) -> dict:
                   count(*) FILTER (WHERE m.default_visible AND (g.status IS DISTINCT FROM 'accepted' OR g.result IS NULL)),
                   count(*) FILTER (WHERE o.classification_review_status <> 'approved' AND m.default_visible),
                   count(*) FILTER (WHERE r.release_id IS NULL OR r.publication_eligible IS DISTINCT FROM true OR r.privacy_screening_status IS DISTINCT FROM 'passed' OR r.maintainer_approval IS DISTINCT FROM 'approved'),
-                  count(*) FILTER (WHERE s.source_record_id IS NOT NULL)
+                  count(*) FILTER (WHERE s.source_record_id IS NOT NULL),
+                  count(*) FILTER (WHERE m.default_visible AND (release.summary->'demonstration' IS NOT NULL AND release.summary->'demonstration'->>'rights_status' IS DISTINCT FROM 'cleared'))
                 FROM uec.release_members m
+                JOIN uec.releases release ON release.release_id = m.release_id
                 JOIN uec.observations o ON o.observation_id = m.observation_id
                 LEFT JOIN LATERAL (SELECT status, result FROM uec.geocode_results WHERE source_record_id=o.source_record_id ORDER BY queried_at DESC, geocode_result_id DESC LIMIT 1) g ON true
                 LEFT JOIN uec.publication_review_release_current r
@@ -81,7 +83,11 @@ def promote(database_url: str, release_id: str, artifacts: list[dict]) -> dict:
                 WHERE m.release_id=%s
             """, (release_id,)).fetchone()
             if any(unsafe):
-                raise ValueError(f"release safety gates failed: coordinate_not_ready={unsafe[0]}, review_required={unsafe[1]}, publication_not_approved={unsafe[2]}, active_suppression={unsafe[3]}")
+                raise ValueError(f"release safety gates failed: coordinate_not_ready={unsafe[0]}, review_required={unsafe[1]}, publication_not_approved={unsafe[2]}, active_suppression={unsafe[3]}, rights_not_cleared={unsafe[4]}")
+            demonstration = target[4].get("demonstration") if isinstance(target[4], dict) else None
+            if demonstration is not None and demonstration.get("review_status") != "approved":
+                raise ValueError("demonstration release requires an explicit recorded review")
+            previous = connection.execute("SELECT release_id FROM uec.releases WHERE status = 'promoted' AND profile = %s AND release_id <> %s ORDER BY created_at DESC, release_id DESC LIMIT 1", (target[1], release_id)).fetchone()
             summary = connection.execute("""
                 SELECT count(*), coalesce(array_agg(DISTINCT sr.source_id ORDER BY sr.source_id), ARRAY[]::text[])
                 FROM uec.release_members m JOIN uec.observations o ON o.observation_id=m.observation_id
@@ -133,7 +139,8 @@ def promote(database_url: str, release_id: str, artifacts: list[dict]) -> dict:
                     "Source origin and source availability do not certify factual accuracy or current operation.",
                     "Artifact checksums detect byte changes but do not establish factual accuracy or reuse rights.",
                 ],
-                "supersedes": None,
+                "supersedes": previous[0] if previous else None,
+                "rights_review": (demonstration or {}).get("rights_status") if demonstration else "not-recorded",
                 "created_at": utc_iso(created_at),
                 "distributed_artifacts": artifacts,
             }
@@ -141,10 +148,10 @@ def promote(database_url: str, release_id: str, artifacts: list[dict]) -> dict:
             canonical = canonical_json(manifest)
             digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
             connection.execute("INSERT INTO uec.release_manifests (release_id,manifest,manifest_sha256) VALUES (%s,%s,%s)", (release_id, canonical, digest))
-            previous = connection.execute("SELECT release_id FROM uec.releases WHERE status = 'promoted' AND profile = %s AND release_id <> %s", (target[1], release_id)).fetchall()
+            previous_rows = connection.execute("SELECT release_id FROM uec.releases WHERE status = 'promoted' AND profile = %s AND release_id <> %s", (target[1], release_id)).fetchall()
             connection.execute("UPDATE uec.releases SET status = 'validated' WHERE status = 'promoted' AND profile = %s AND release_id <> %s", (target[1], release_id))
             connection.execute("UPDATE uec.releases SET status = 'promoted' WHERE release_id = %s", (release_id,))
-            return {"release_id": release_id, "status": "promoted", "previously_promoted": [row[0] for row in previous], "manifest": manifest, "manifest_sha256": digest}
+            return {"release_id": release_id, "status": "promoted", "previously_promoted": [row[0] for row in previous_rows], "manifest": manifest, "manifest_sha256": digest}
 
 
 if __name__ == "__main__":

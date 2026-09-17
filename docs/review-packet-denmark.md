@@ -9,3 +9,8 @@ As of 2026-09-15, `dk.smiley` has a private, deterministic staging path. It is n
 - Coverage/lifecycle: source disappearance is `not-observed`, never closure. Candidate import and guarded API checks must remain disposable/test-only.
 
 Evidence: `pipeline/sources/denmark/`, `pipeline/contracts/source_health.py`, and `docs/countries/denmark/denmark-data-flow.md`.
+
+The bounded release lane and current row-free evidence are recorded in
+[`docs/reviewed-demonstration-release.md`](reviewed-demonstration-release.md)
+and [`data/manifests/reviewed-demonstration-release-2026-09-17.json`](../data/manifests/reviewed-demonstration-release-2026-09-17.json).
+That evidence records no public rows and does not represent a release approval.
