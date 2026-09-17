@@ -6,6 +6,12 @@ from pathlib import Path
 SEED = 20260916
 STRATA = {"fsis_locations": 3500, "fsis_inspections": 2500, "aphis_observations": 1000}
 
+ID_FIELDS = {
+    "fsis_locations": ("establishment_id",),
+    "fsis_inspections": ("establishment_id", "operator_id"),
+    "aphis_observations": ("facility_id", "operator_id"),
+}
+
 def digest(path):
     data = path.read_bytes()
     return hashlib.sha256(data).hexdigest(), len(data), max(0, len(data.splitlines()) - 1)
@@ -15,6 +21,32 @@ def sample_rows(path, count, seed):
         rows = list(csv.DictReader(handle))
     if count > len(rows): raise ValueError(f"{path} has only {len(rows)} rows")
     return random.Random(seed).sample(rows, count)
+
+def _present(row, fields):
+    return all(str(row.get(field, "")).strip() for field in fields)
+
+def measure_sample(selections):
+    """Return row-free, deterministic linkage and review metrics.
+
+    Linkage is counted only for explicit source-native keys present in the
+    same row.  Names, addresses, phones, coordinates, and proximity are not
+    identity evidence.
+    """
+    metrics = {}
+    for name, rows in selections.items():
+        fields = ID_FIELDS[name]
+        complete = sum(_present(row, fields) for row in rows)
+        metrics[name] = {
+            "sample_rows": len(rows),
+            "rows_with_all_required_ids": complete,
+            "rows_missing_required_ids": len(rows) - complete,
+            "exact_identifier_linkage_rate": complete / len(rows) if rows else 0.0,
+            "endpoint_availability": {
+                field: sum(bool(str(row.get(field, "")).strip()) for row in rows)
+                for field in fields
+            },
+        }
+    return metrics
 
 def stable_id(source, value):
     return hashlib.sha256(f"{source}|{value}".encode()).hexdigest()[:24]
@@ -75,9 +107,15 @@ def run(inputs, output, *, seed=SEED):
         {"relationship_id": "control-conflict", "relationship_type": "operates", "subject": "org:ORG-CONTROL-3", "object": "facility:FAC-CONTROL-3", "evidence": "conflicting_evidence", "confidence": None, "review_state": "quarantined", "publication_gate": "blocked"},
     ]
     (private / "labeled-controls.jsonl").write_text("".join(json.dumps(x, sort_keys=True) + "\n" for x in controls), encoding="utf-8")
+    linkage = measure_sample(selections)
+    source_keys = {}
+    for name, rows in selections.items():
+        for field in ID_FIELDS[name]:
+            values = [str(row.get(field, "")).strip() for row in rows if str(row.get(field, "")).strip()]
+            source_keys[f"{name}.{field}"] = {"distinct": len(set(values)), "duplicate_values": len(values) - len(set(values))}
     ids = [r.get("establishment_id", "").strip() for r in selections["fsis_locations"]]
     features = {"exact_identifier": sum(bool(x) for x in ids), "missing_identifier": 1, "duplicate_identifier": 1, "temporal_observation": sum(bool(r.get("grant_date")) for r in selections["fsis_locations"]), "conflicting_evidence": 1}
-    report = {"schema_version": "graph-rehearsal-report-v2", "seed": seed, "sample_size": sum(map(len, selections.values())), "strata": {k: len(v) for k, v in selections.items()}, "source_meta": metadata, "sample_features": features, "candidate_relationships": len(candidates), "candidate_relationships_by_source": {s: sum(c.get("source_id") == s for c in candidates) for s in sorted({c.get("source_id") for c in candidates})}, "labeled_control_rows": len(controls), "review_queue": {"missing_identifier": 1, "duplicate_identifier": 1, "conflicting_evidence": 1, "quarantined": 1}, "synthetic_controls": {"true_positive": 100, "true_negative": 100, "false_positive": 0, "false_negative": 0, "policy_rejected_name_only": 25, "policy_rejected_proximity_only": 25, "metrics": {"precision": 1.0, "recall": 1.0, "false_positive_rate": 0.0, "false_negative_rate": 0.0}}, "observed_candidates": {"yield": len(candidates), "manual_review_required": len(candidates), "accuracy": "not measured; no adjudicated real labels available"}, "gates": {"storage_state": "private", "privacy_status": "pending", "review_state": "review_required", "publication_status": "not_eligible", "public_projection": "blocked", "geocoding": "disabled", "auto_merge": False}, "limitations": ["No authorized real row artifacts were available in this checkout; this run is executable only when private local paths are supplied.", "Controls are synthetic and do not estimate production error rates.", "Observed candidate yield is not accuracy; every edge requires evidence review.", "Missing identifiers and conflicting claims require review; absence is not closure.", "A source disappearance is not evidence of closure."]}
+    report = {"schema_version": "graph-rehearsal-report-v3", "seed": seed, "sample_size": sum(map(len, selections.values())), "strata": {k: len(v) for k, v in selections.items()}, "source_meta": metadata, "sample_features": features, "linkage_metrics": linkage, "source_key_metrics": source_keys, "candidate_relationships": len(candidates), "graph_yield_rate": len(candidates) / sum(map(len, selections.values())) if selections else 0.0, "candidate_relationships_by_source": {s: sum(c.get("source_id") == s for c in candidates) for s in sorted({c.get("source_id") for c in candidates})}, "contradictions": {"duplicate_source_key_values": sum(v["duplicate_values"] for v in source_keys.values()), "explicit_conflicting_claims": 0, "status": "not adjudicated"}, "labeled_control_rows": len(controls), "review_queue": {"missing_identifier": sum(v["rows_missing_required_ids"] for v in linkage.values()), "duplicate_identifier": sum(v["duplicate_values"] for v in source_keys.values()), "conflicting_evidence": 0, "endpoint_unavailable": sum(v["rows_missing_required_ids"] for v in linkage.values()), "candidate_evidence_review": len(candidates), "quarantined": 0}, "synthetic_controls": {"true_positive": 100, "true_negative": 100, "false_positive": 0, "false_negative": 0, "policy_rejected_name_only": 25, "policy_rejected_proximity_only": 25, "metrics": {"precision": 1.0, "recall": 1.0, "false_positive_rate": 0.0, "false_negative_rate": 0.0}}, "observed_candidates": {"yield": len(candidates), "manual_review_required": len(candidates), "accuracy": "not measured; no adjudicated real labels available"}, "gates": {"storage_state": "private", "privacy_status": "pending", "review_state": "review_required", "publication_status": "not_eligible", "public_projection": "blocked", "geocoding": "disabled", "auto_merge": False}, "limitations": ["No authorized real row artifacts were available in this checkout; this run is executable only when private local paths are supplied.", "Controls are synthetic and do not estimate production error rates.", "Observed candidate yield is not accuracy; every edge requires evidence review.", "Missing identifiers and conflicting claims require review; absence is not closure.", "A source disappearance is not evidence of closure."]}
     (output / "aggregate-manifest.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return report
 

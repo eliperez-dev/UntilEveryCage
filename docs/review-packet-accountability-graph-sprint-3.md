@@ -34,3 +34,11 @@ Consolidation order for a future authorized run:
 Tests cover deterministic sampling, explicit-key edge generation, rejection of
 implicit/proximity matching, private storage gates, and separation of synthetic
 controls from observed candidate yield.
+
+The aggregate report schema (v3) additionally records, for each requested
+stratum, exact source-native-ID linkage rate and endpoint availability; it also
+records distinct/duplicate source-key counts, explicit contradiction status,
+candidate graph yield, and review-queue counts. These are observations about
+the supplied private sample only. Accuracy remains “not measured” until an
+authorized human adjudicates the queued relationships; synthetic control
+precision/recall must not be combined with observed sample metrics.

@@ -3,6 +3,12 @@ from pathlib import Path
 import pipeline.graph_rehearsal as g
 
 class GraphRehearsalTests(unittest.TestCase):
+    def test_measurement_is_row_free_and_counts_endpoint_availability(self):
+        result = g.measure_sample({"fsis_locations": [{"establishment_id": "F1"}], "fsis_inspections": [{"establishment_id": "F1", "operator_id": ""}], "aphis_observations": [{"facility_id": "A1", "operator_id": "O1"}]})
+        self.assertEqual(result["fsis_locations"]["exact_identifier_linkage_rate"], 1.0)
+        self.assertEqual(result["fsis_inspections"]["rows_missing_required_ids"], 1)
+        self.assertNotIn("rows", result)
+
     def test_edges_require_explicit_source_keys_and_never_auto_merge(self):
         edge = g.candidate_relationship("x", {"operator_id": "O1", "facility_id": "F1"},
                                         subject_field="operator_id", object_field="facility_id",
