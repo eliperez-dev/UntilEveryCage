@@ -10,8 +10,8 @@ const row = (id = firstId, name = 'First local record', profile: 'official' | 's
   publication_warning: profile === 'community' ? 'Unreviewed community claim — not verified by Until Every Cage' : null,
   display_precision: 'city', latitude: 55, longitude: 10, first_observed_at: null,
   last_observed_at: '2026-01-01T00:00:00Z', observation_count: 1, lifecycle_status: 'active_observed',
-  provenance_source_id: 'source-1', provenance_source_name: 'Synthetic local source',
-  provenance_source_url: 'https://example.test/source', provenance_retrieved_at: '2026-01-01T00:00:00Z',
+  provenance_source_id: 'source-1', provenance_source: null, provenance_source_name: 'Synthetic local source',
+  provenance_source_url: 'https://example.test/source', provenance_retrieved_at: '2026-01-01T00:00:00Z', source_rights_status: 'cleared',
   release_id: 'rel-1', release_ruleset_version: 'rules-1',
 });
 const list = (profile: 'official' | 'secondary' | 'community', data = [row(firstId, 'First local record', profile)], nextCursor: string | null = null) => ({

@@ -15,7 +15,7 @@ export const mapWireLocation = (r: WireLocation): Location => ({
     sourceType: r.source_type, factualReviewStatus: r.factual_review_status, reviewerRole: r.reviewer_role,
   privacyScreeningStatus: r.privacy_screening_status, projectApproval: r.project_approval,
     publicationProfile: r.publication_profile, publicationWarning: r.publication_warning,
-    sourceId: r.provenance_source_id, sourceUrl: r.provenance_source_url,
+    sourceId: r.provenance_source_id, sourceUrl: r.provenance_source_url, provenanceSource: r.provenance_source, sourceRightsStatus: r.source_rights_status,
     retrievedAt: r.provenance_retrieved_at, displayPrecision: r.display_precision, lifecycleStatus: r.lifecycle_status, observationCount: r.observation_count,
   },
 });
@@ -25,7 +25,8 @@ const query = (profile: LocalProfile, filters: LocationFilters) => { const param
 const eligible = (row: WireLocation, profile: LocalProfile, releaseId: string, ruleset: string): boolean =>
   row.publication_profile === profile && row.release_id === releaseId && row.release_ruleset_version === ruleset &&
   row.privacy_screening_status === 'passed' && row.factual_review_status !== 'rejected' &&
-  (row.project_approval === 'approved' || (profile === 'community' && row.source_type === 'user_submitted' && row.factual_review_status === 'unreviewed'));
+  (row.project_approval === 'approved' || (profile === 'community' && row.source_type === 'user_submitted' && row.factual_review_status === 'unreviewed')) &&
+  ['cleared', 'attribution_required'].includes(row.source_rights_status);
 
 export class LocalLocationRepository {
   readonly #base: string | undefined;

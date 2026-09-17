@@ -38,7 +38,7 @@ test('test-release mode uses the existing list/detail flow with a private releas
   await page.getByRole('button', { name: 'Load test release' }).click();
   await expect(page.getByRole('heading', { name: 'Pending test-release row' })).toBeVisible();
   await expect(page.getByText('Disposable test release — not project-approved or published')).toBeVisible();
-  await expect(page.getByText('No publishable map location')).toBeVisible();
+  await expect(page.getByText('No publishable map location', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Download test-only CSV' })).toBeVisible();
   const csvRequest = page.waitForRequest(request => request.url().includes('/api/dev/preview/test-release/locations.csv'));
   await page.getByRole('button', { name: 'Download test-only CSV' }).click();

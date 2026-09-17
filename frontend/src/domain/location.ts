@@ -3,14 +3,16 @@ export type LocationId = string;
 // approval, precision, and lifecycle are independent signals.
 export type LocationEvidence = Readonly<{
   sourceType: 'official' | 'secondary' | 'user_submitted';
-  factualReviewStatus: 'unreviewed' | 'reviewed' | 'rejected';
+  factualReviewStatus: string;
   reviewerRole: string | null;
   privacyScreeningStatus: 'pending' | 'passed' | 'failed';
-  projectApproval: 'pending' | 'approved' | false;
+  projectApproval: string | false;
   publicationProfile: 'official' | 'secondary' | 'community' | null;
   publicationWarning: string | null;
   sourceId: string;
   sourceUrl: string;
+  provenanceSource: string | null;
+  sourceRightsStatus: string;
   retrievedAt: string;
   displayPrecision: 'exact' | 'city' | 'unmapped';
   lifecycleStatus: 'active_observed' | 'explicitly_closed' | 'not_seen_recently' | 'status_unknown';
