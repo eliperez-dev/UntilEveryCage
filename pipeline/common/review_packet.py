@@ -16,6 +16,57 @@ from pipeline.contracts.source_lifecycle import atomic_json
 
 
 REVIEW_PACKET_VERSION = "private-review-packet-v1"
+ROW_FREE_REVIEW_PACKET_VERSION = "private-review-packet-v2"
+
+
+def _assert_row_free(value: Any, path: str = "packet") -> None:
+    """Reject row-shaped or location-bearing payloads in operator artifacts."""
+    forbidden = {
+        "source_values", "raw_fields", "address", "street", "latitude", "longitude",
+        "coordinates", "geocoder_query", "geocoder_response", "phone", "email",
+    }
+    if isinstance(value, dict):
+        leaked = sorted(forbidden.intersection(value))
+        if leaked:
+            raise ValueError(f"row-free review packet contains prohibited keys at {path}: {leaked}")
+        for key, child in value.items():
+            _assert_row_free(child, f"{path}.{key}")
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            _assert_row_free(child, f"{path}[{index}]")
+
+
+def platform_context(source_id: str | None) -> dict[str, Any]:
+    """Return safe attribution/coverage/readiness metadata for a source."""
+    if not source_id:
+        return {
+            "registered": False,
+            "owner_review": "awaiting-owner-review",
+            "publication_state": "blocked",
+            "readiness_state": "not-started",
+        }
+    try:
+        from pipeline.platform_registry import source_metadata
+
+        metadata = source_metadata(source_id)
+    except Exception:
+        metadata = None
+    if metadata is None:
+        return {
+            "registered": False,
+            "owner_review": "awaiting-owner-review",
+            "publication_state": "blocked",
+            "readiness_state": "not-started",
+        }
+    return {
+        "registered": True,
+        "country_code": metadata["country_code"],
+        "coverage": metadata["coverage"],
+        "attribution": metadata["attribution"],
+        "readiness": metadata["readiness"],
+        "owner_review": metadata["owner_review"],
+        "publication": metadata["publication"],
+    }
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -88,12 +139,15 @@ def build_review_packet(
             "public_surfaces": status.get("public_surfaces", {surface: False for surface in ("api", "map", "export", "cache", "history")}),
             "geocoding": manifest.get("geocoding", "disabled"),
         },
+        "platform": platform_context(manifest.get("source_id")),
+        "publication_boundary": "awaiting-owner-review; this packet is row-free evidence and cannot approve or promote a release",
         "blockers": blockers or {},
     }
     if not counts["reconciles"] or not counts["qa_matches_manifest"]:
         packet["blockers"].setdefault("validation", []).append("manifest and QA row counts must reconcile")
     if packet["gates"]["release_state"] != "not-created" or packet["gates"]["release_promoted"] is not False:
         packet["blockers"].setdefault("release", []).append("private review requires release_state=not-created and release_promoted=false")
+    _assert_row_free(packet)
     return packet
 
 

@@ -1,5 +1,12 @@
 # Source status baseline
 
+The joined country/source platform view is documented in
+[`architecture/country-source-platform.md`](architecture/country-source-platform.md)
+and validated offline with `python scripts/dev.py platform-registry`. This
+baseline remains evidence-backed status, not runtime health or publication
+approval; every derived lane stops at `awaiting-owner-review` until an
+authorized owner records a decision.
+
 This is the canonical human-readable view of [`source-status.json`](source-status.json). It records repository evidence and reconnaissance state; it is not a live monitor, acquisition log, pipeline health dashboard, release approval, or publication authorization.
 
 ## How to read it

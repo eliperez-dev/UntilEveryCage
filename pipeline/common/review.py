@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from pipeline.contracts.source_lifecycle import atomic_json
+from .review_packet import _assert_row_free, platform_context
 
 
 def write_operator_review_packet(
@@ -40,7 +41,10 @@ def write_operator_review_packet(
         "geocoding": "disabled",
         "checks": sorted(set(checks)),
         "blockers": sorted(set(blockers)),
+        "platform": platform_context(manifest.get("source_id")),
+        "publication_boundary": "awaiting-owner-review; this packet is row-free evidence and cannot approve or promote a release",
         "row_payloads_included": False,
     }
+    _assert_row_free(packet)
     atomic_json(Path(run_dir) / "operator-review-packet.json", packet)
     return packet

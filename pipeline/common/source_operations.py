@@ -23,6 +23,7 @@ from typing import Any, Callable, Iterable
 
 from .acquisition import AcquisitionError
 from .delta import compare_normalized_paths, compare_runs
+from .review_packet import _assert_row_free, platform_context
 from pipeline.contracts.source_lifecycle import atomic_bytes, atomic_json
 
 
@@ -395,7 +396,7 @@ def build_review_packet(
     }
     qa_counts = {key: qa.get(key) for key in counts}
     blockers = status.get("review_blockers", {})
-    return {
+    packet = {
         "schema_version": "private-review-packet-v1",
         "source_id": source_id,
         "run_dir_digest": _file_sha256(Path(run_dir) / "manifest.json") or _file_sha256(Path(run_dir) / "run-manifest.json"),
@@ -433,6 +434,8 @@ def build_review_packet(
             "public_surfaces": status.get("public_surfaces", {surface: False for surface in ("api", "map", "export", "cache", "history")}),
             "geocoding": manifest.get("geocoding", "disabled"),
         },
+        "platform": platform_context(source_id),
+        "publication_boundary": "awaiting-owner-review; this packet is row-free evidence and cannot approve or promote a release",
         "blockers": blockers,
         "prior_eligible_release": prior_eligible_release,
         "release_promotion_allowed": False,
@@ -443,6 +446,8 @@ def build_review_packet(
             "use a separate authorized release process; this packet cannot promote a release",
         ],
     }
+    _assert_row_free(packet)
+    return packet
 
 
 def finalize_run_operations(

@@ -78,6 +78,9 @@ def main() -> int:
     sub.add_parser("test", help="root legacy static/Jest tests").add_argument("--full", action="store_true")
     sub.add_parser("pipeline", help="run Python pipeline tests").add_argument("args", nargs=argparse.REMAINDER)
     sub.add_parser("contracts", help="run contract tests")
+    sub.add_parser("platform-registry", help="validate the joined country/source registry")
+    pf = sub.add_parser("private-frontend", help="rehearse a candidate against the private frontend preview boundary")
+    pf.add_argument("manifest"); pf.add_argument("output"); pf.add_argument("--root", default=str(ROOT)); pf.add_argument("--base-url"); pf.add_argument("--token")
     rp = sub.add_parser("review-packet", help="generate a private row-free review packet")
     rp.add_argument("run_dir"); rp.add_argument("--previous-normalized")
     args = p.parse_args(); SUMMARY["command"] = args.command
@@ -92,6 +95,13 @@ def main() -> int:
         runner = "pytest" if shutil.which("pytest") else "unittest"
         targets = ["pipeline/contracts", "pipeline/tests/test_database_contract.py", "pipeline/tests/test_graph_database_contract.py"] if runner == "pytest" else ["discover", "-s", "pipeline/contracts", "-t", str(ROOT)]
         code = run([sys.executable, "-m", runner, *targets], capture=args.json)
+    elif args.command == "platform-registry":
+        code = run([sys.executable, "-c", "import json; from pipeline.platform_registry import build_platform_registry; r=build_platform_registry(); print(json.dumps({'countries':r['country_count'],'sources':r['source_count'],'status':'validated'}))"], capture=args.json)
+    elif args.command == "private-frontend":
+        cmd = [sys.executable, str(ROOT / "pipeline/scripts/maintenance/rehearse_candidate_private_frontend.py"), "--manifest", args.manifest, "--root", args.root, "--output", args.output]
+        if args.base_url: cmd.extend(["--base-url", args.base_url])
+        if args.token: cmd.extend(["--token", args.token])
+        code = run(cmd, capture=args.json)
     else:
         cmd = [sys.executable, "-c", "from pipeline.common.review_packet import write_review_packet; import sys; write_review_packet(sys.argv[1], previous_normalized_path=sys.argv[2] if len(sys.argv)>2 else None)", args.run_dir]
         if args.previous_normalized: cmd.append(args.previous_normalized)

@@ -27,6 +27,8 @@ class ReviewPacketTests(unittest.TestCase):
             self.assertEqual(packet["release_diff"]["counts"]["not_observed"], 0)
             self.assertEqual(packet["gates"]["release_state"], "not-created")
             self.assertFalse(packet["gates"]["release_promoted"])
+            self.assertEqual(packet["platform"]["owner_review"]["state"], "awaiting-owner-review")
+            self.assertEqual(packet["publication_boundary"].split(";", 1)[0], "awaiting-owner-review")
             self.assertNotIn("source_values", json.dumps(packet))
 
 

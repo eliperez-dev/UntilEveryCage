@@ -49,6 +49,12 @@ It requires recorded URL, UTC retrieval time, hash, and byte size; missing or
 mismatched provenance fails closed. Database import, geocoding, release approval,
 and publication remain separately gated.
 
+The country/source platform adds two source-agnostic contracts:
+`country_contract.py` validates country scope, attribution, coverage, and
+ownership; `readiness.py` prevents acquisition or private validation from being
+mistaken for approval. The explicit stopping state for a lane needing a human
+decision is `awaiting-owner-review`.
+
 For disposable development teardown, remove only the selected
 `data/staging/denmark-smiley/<run>/` directory after checking retention duties,
 then recreate the local database through the existing maintenance script with
