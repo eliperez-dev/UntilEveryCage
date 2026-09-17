@@ -40,6 +40,24 @@ python pipeline/scripts/stages/geocode-worker.py --provider dawa --limit 5 --del
 ```
 
 The worker writes append-only job events and geocode attempts. It does not modify source records or observations. New providers should implement the adapter contract in `pipeline/geocoding/` and reuse the worker’s lifecycle, retry, logging, and persistence behavior.
+
+## Current-corpus geospatial readiness
+
+Audit private normalized candidate handoffs without emitting rows:
+
+```powershell
+python pipeline/scripts/diagnostics/current_geospatial_readiness.py `
+  --manifest data/manifests/current-reacquisition-2026-09-16.json `
+  --root . `
+  --output data/reports/current-geospatial-readiness.json
+```
+
+The report distinguishes source coordinates, accepted geocodes, coarse/city
+signals, unresolved/invalid values, whole-record restrictions, and human review
+queues. It reports missing private handoffs explicitly and never treats
+geocoding success as publication permission. See
+`docs/current-geospatial-readiness.md` for the report contract and provider
+limitations.
 # Private environment controls
 
 `maintenance/private-environment-gate.py` is the clean-checkout and

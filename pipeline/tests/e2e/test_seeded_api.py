@@ -1,4 +1,4 @@
-import json, os, subprocess, sys, unittest, urllib.request
+import json, os, subprocess, sys, unittest, urllib.error, urllib.request
 import uuid
 from datetime import datetime, timezone
 import psycopg
@@ -20,9 +20,36 @@ class SeededApiE2ETests(unittest.TestCase):
     def test_exact_city_and_unmapped_are_distinct(self):
         rows = self.get('/api/v2/locations?limit=100')['data']
         self.assertEqual({r['display_precision'] for r in rows}, {'exact','city','unmapped'})
+
+    def test_location_precision_contract_never_emits_a_point_for_unmapped(self):
+        rows = {row['canonical_name']: row for row in self.get('/api/v2/locations?limit=100')['data']}
+        exact = rows['E2E exact']
+        city = rows['E2E city']
+        unmapped = rows['E2E unmapped']
+        self.assertEqual(exact['display_precision'], 'exact')
+        self.assertIsInstance(exact['latitude'], float)
+        self.assertIsInstance(exact['longitude'], float)
+        self.assertEqual(city['display_precision'], 'city')
+        self.assertIsInstance(city['latitude'], float)
+        self.assertIsInstance(city['longitude'], float)
+        self.assertEqual(unmapped['display_precision'], 'unmapped')
+        self.assertIsNone(unmapped['latitude'])
+        self.assertIsNone(unmapped['longitude'])
+        for row in (exact, city, unmapped):
+            self.assertNotIn('source_values', row)
+
     def test_restricted_record_is_absent(self):
         names = {r['canonical_name'] for r in self.get('/api/v2/locations?limit=100')['data']}
         self.assertNotIn('E2E restricted', names)
+
+    def test_restricted_detail_is_not_relabelled_or_exposed(self):
+        names = {r['canonical_name'] for r in self.get('/api/v2/locations?limit=100')['data']}
+        self.assertNotIn('E2E restricted', names)
+        with psycopg.connect(self.env.database_url) as db:
+            facility_id = db.execute("SELECT facility_id FROM uec.facilities WHERE canonical_name='E2E restricted'").fetchone()[0]
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            self.get(f'/api/v2/locations/{facility_id}')
+        self.assertEqual(error.exception.code, 404)
 
     def test_official_record_without_publication_approval_is_absent(self):
         names = {r['canonical_name'] for r in self.get('/api/v2/locations?limit=100')['data']}
