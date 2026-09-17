@@ -18,10 +18,11 @@
 use axum::extract::{ConnectInfo, State};
 use axum::http::{HeaderValue, Method};
 use axum::http::{Request, Response, header};
-use axum::{Json, http::StatusCode, response::IntoResponse};
+use axum::{Extension, Json, http::StatusCode, response::IntoResponse};
 use axum::{Router, routing::get};
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tower_http::compression::CompressionLayer;
@@ -36,6 +37,7 @@ mod private_environment;
 
 pub fn app(state: uec_api::ApiState, proxy: private_environment::ProxyConfig) -> Router {
     let cors = cors_layer().expect("CORS configuration must be validated before app startup");
+    let metrics = Arc::new(OperationalMetrics::default());
     Router::new()
         .route("/health/live", get(liveness))
         .route("/health/ready", get(readiness))
@@ -102,7 +104,71 @@ pub fn app(state: uec_api::ApiState, proxy: private_environment::ProxyConfig) ->
         ))
         .layer(axum::middleware::from_fn(request_observability))
         .layer(cors)
+        .layer(Extension(metrics))
         .with_state(state)
+}
+
+/// Aggregate-only, process-local operational counters. No request paths,
+/// query values, addresses, identifiers, or payloads are retained.
+#[derive(Default)]
+struct OperationalMetrics {
+    requests_total: AtomicU64,
+    responses_success: AtomicU64,
+    responses_client_error: AtomicU64,
+    responses_server_error: AtomicU64,
+    health_requests: AtomicU64,
+    rate_limited: AtomicU64,
+    missing_client_identity: AtomicU64,
+    latency_ms_total: AtomicU64,
+    latency_ms_max: AtomicU64,
+}
+
+impl OperationalMetrics {
+    fn observe_response(&self, route_class: &str, status: StatusCode, elapsed: Duration) {
+        self.requests_total.fetch_add(1, Ordering::Relaxed);
+        match status.as_u16() {
+            200..=399 => self.responses_success.fetch_add(1, Ordering::Relaxed),
+            400..=499 => self.responses_client_error.fetch_add(1, Ordering::Relaxed),
+            _ => self.responses_server_error.fetch_add(1, Ordering::Relaxed),
+        };
+        if route_class == "health" {
+            self.health_requests.fetch_add(1, Ordering::Relaxed);
+        }
+        let latency_ms = elapsed.as_millis().min(60_000) as u64;
+        self.latency_ms_total
+            .fetch_add(latency_ms, Ordering::Relaxed);
+        let mut previous = self.latency_ms_max.load(Ordering::Relaxed);
+        while latency_ms > previous {
+            match self.latency_ms_max.compare_exchange_weak(
+                previous,
+                latency_ms,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => break,
+                Err(current) => previous = current,
+            }
+        }
+    }
+
+    fn snapshot(&self) -> serde_json::Value {
+        serde_json::json!({
+            "requests_total": self.requests_total.load(Ordering::Relaxed),
+            "responses": {
+                "success": self.responses_success.load(Ordering::Relaxed),
+                "client_error": self.responses_client_error.load(Ordering::Relaxed),
+                "server_error": self.responses_server_error.load(Ordering::Relaxed)
+            },
+            "health_requests": self.health_requests.load(Ordering::Relaxed),
+            "rate_limited": self.rate_limited.load(Ordering::Relaxed),
+            "missing_client_identity": self.missing_client_identity.load(Ordering::Relaxed),
+            "latency_ms": {
+                "total": self.latency_ms_total.load(Ordering::Relaxed),
+                "max": self.latency_ms_max.load(Ordering::Relaxed)
+            },
+            "retention": "process_lifetime_only"
+        })
+    }
 }
 
 fn parse_cors_origins(
@@ -110,6 +176,9 @@ fn parse_cors_origins(
     configured: Option<&str>,
     legacy: Option<&str>,
 ) -> Result<Vec<HeaderValue>, &'static str> {
+    if configured.is_some() && legacy.is_some() && configured != legacy {
+        return Err("UEC_CORS_ORIGINS and legacy UEC_CORS_ORIGIN conflict");
+    }
     let value = configured.or(legacy).unwrap_or(if mode == "development" {
         "http://localhost:3000"
     } else {
@@ -277,9 +346,17 @@ async fn rate_limit(
         return next.run(request).await;
     }
     let Some(key) = client_key(&request, &config.proxy) else {
+        if let Some(metrics) = request.extensions().get::<Arc<OperationalMetrics>>() {
+            metrics
+                .missing_client_identity
+                .fetch_add(1, Ordering::Relaxed);
+        }
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
     if !config.limiter.allow(key, Instant::now()) {
+        if let Some(metrics) = request.extensions().get::<Arc<OperationalMetrics>>() {
+            metrics.rate_limited.fetch_add(1, Ordering::Relaxed);
+        }
         return Response::builder()
             .status(StatusCode::TOO_MANY_REQUESTS)
             .header(header::RETRY_AFTER, RATE_WINDOW.as_secs().to_string())
@@ -335,8 +412,16 @@ async fn request_observability(
 ) -> Response<axum::body::Body> {
     let method = request.method().clone();
     let path = request.uri().path().to_owned();
+    let route_class = request_route_class(&path);
+    let metrics = request
+        .extensions()
+        .get::<Arc<OperationalMetrics>>()
+        .cloned();
     let started = Instant::now();
     let response = next.run(request).await;
+    if let Some(metrics) = metrics {
+        metrics.observe_response(route_class, response.status(), started.elapsed());
+    }
     println!(
         "{}",
         request_log_payload(&method, &path, response.status(), started.elapsed())
@@ -348,7 +433,7 @@ async fn liveness() -> impl IntoResponse {
     Json(serde_json::json!({"status": "ok", "service": "uec-api"}))
 }
 
-async fn diagnostics() -> impl IntoResponse {
+async fn diagnostics(Extension(metrics): Extension<Arc<OperationalMetrics>>) -> impl IntoResponse {
     let mode = std::env::var("UEC_RUNTIME_MODE").unwrap_or_else(|_| "development".into());
     let database_configured = std::env::var("UEC_DATABASE_URL")
         .ok()
@@ -363,6 +448,7 @@ async fn diagnostics() -> impl IntoResponse {
         "service": "uec-api",
         "runtime_mode": mode,
         "database_configured": database_configured,
+        "service_state": if database_configured { "configured" } else { "degraded_database_unconfigured" },
         "proxy_trust": proxy_trust,
         "startup_gates": {
             "restriction_ledger": if mode == "production" { "verified" } else { "not_required_development" },
@@ -372,7 +458,8 @@ async fn diagnostics() -> impl IntoResponse {
             "request_payloads": "not_reported",
             "visitor_location": "not_reported",
             "diagnostic_identifiers": "excluded"
-        }
+        },
+        "operational_metrics": metrics.snapshot()
     }))
 }
 
@@ -458,6 +545,16 @@ fn validate_runtime(
     {
         return Err("UEC_DATABASE_URL is required in production");
     }
+    if mode == "production"
+        && database_url.is_some_and(|url| {
+            let trimmed = url.trim();
+            trimmed != url
+                || trimmed.chars().any(char::is_whitespace)
+                || !(trimmed.starts_with("postgres://") || trimmed.starts_with("postgresql://"))
+        })
+    {
+        return Err("UEC_DATABASE_URL must be a PostgreSQL URL without whitespace");
+    }
     if !matches!(mode, "development" | "production") {
         return Err("UEC_RUNTIME_MODE must be development or production");
     }
@@ -465,6 +562,43 @@ fn validate_runtime(
         Ok(port) if port > 0 => Ok(port),
         _ => Err("PORT must be a valid non-zero TCP port"),
     }
+}
+
+fn validate_bind_host(bind_host: &str) -> Result<IpAddr, &'static str> {
+    bind_host
+        .parse::<IpAddr>()
+        .map_err(|_| "UEC_BIND_HOST must be a valid IP address")
+}
+
+#[cfg(unix)]
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+    let terminate = async {
+        if let Ok(mut signal) =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        {
+            let _ = signal.recv().await;
+        }
+    };
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+    println!(
+        "{}",
+        serde_json::json!({"event":"server_stopping","reason":"shutdown_signal"})
+    );
+}
+
+#[cfg(not(unix))]
+async fn shutdown_signal() {
+    let _ = tokio::signal::ctrl_c().await;
+    println!(
+        "{}",
+        serde_json::json!({"event":"server_stopping","reason":"shutdown_signal"})
+    );
 }
 
 #[tokio::main]
@@ -479,6 +613,13 @@ async fn main() {
             "0.0.0.0".into()
         }
     });
+    if let Err(error) = validate_bind_host(&bind_host) {
+        eprintln!(
+            "{}",
+            serde_json::json!({"event":"configuration_error","reason":error})
+        );
+        std::process::exit(2);
+    }
     let port = validate_runtime(&mode, database_url.as_deref(), &port).unwrap_or_else(|error| {
         eprintln!(
             "{{\"event\":\"configuration_error\",\"reason\":\"{}\"}}",
@@ -601,8 +742,17 @@ async fn main() {
         }
     };
 
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    axum::serve(
+    let listener = match tokio::net::TcpListener::bind(addr).await {
+        Ok(listener) => listener,
+        Err(_) => {
+            eprintln!(
+                "{}",
+                serde_json::json!({"event":"server_bind_error","reason":"listener_bind_failed"})
+            );
+            std::process::exit(1);
+        }
+    };
+    let result = axum::serve(
         listener,
         app(
             uec_api::ApiState {
@@ -615,8 +765,19 @@ async fn main() {
         )
         .into_make_service_with_connect_info::<SocketAddr>(),
     )
-    .await
-    .unwrap();
+    .with_graceful_shutdown(shutdown_signal())
+    .await;
+    if result.is_err() {
+        eprintln!(
+            "{}",
+            serde_json::json!({"event":"server_error","reason":"serve_failed"})
+        );
+        std::process::exit(1);
+    }
+    println!(
+        "{}",
+        serde_json::json!({"event":"server_stopped","reason":"graceful_shutdown"})
+    );
 }
 
 #[cfg(test)]
@@ -626,7 +787,7 @@ mod config_tests {
 
     use super::{
         parse_cors_origins, preview_config, request_log_payload, request_route_class,
-        validate_runtime,
+        validate_bind_host, validate_runtime,
     };
     #[test]
     fn development_allows_local_defaults() {
@@ -648,12 +809,28 @@ mod config_tests {
         assert!(validate_runtime("test", Some("redacted"), "8000").is_err());
         assert!(validate_runtime("production", Some("redacted"), "bad").is_err());
         assert!(validate_runtime("production", Some("redacted"), "0").is_err());
+        assert!(validate_bind_host("not-an-ip").is_err());
+        assert!(validate_bind_host("127.0.0.1").is_ok());
+    }
+    #[test]
+    fn production_rejects_non_postgres_or_whitespace_database_urls() {
+        assert!(validate_runtime("production", Some("sqlite://private"), "8000").is_err());
+        assert!(validate_runtime("production", Some("postgresql://db host"), "8000").is_err());
+        assert!(validate_runtime("production", Some("postgresql://db/uec"), "8000").is_ok());
     }
     #[test]
     fn cors_requires_narrow_production_allowlist() {
         assert!(parse_cors_origins("production", None, None).is_err());
         assert!(parse_cors_origins("production", Some("*"), None).is_err());
         assert!(parse_cors_origins("production", Some("https://example.test/path"), None).is_err());
+        assert!(
+            parse_cors_origins(
+                "production",
+                Some("https://example.test"),
+                Some("https://other.test")
+            )
+            .is_err()
+        );
         assert_eq!(
             parse_cors_origins(
                 "production",
@@ -748,6 +925,79 @@ mod config_tests {
         assert!(!serialized.contains("latitude"));
         assert!(!serialized.contains("longitude"));
         assert!(!serialized.contains("query"));
+    }
+
+    #[test]
+    fn operational_metrics_are_aggregate_and_bounded() {
+        let metrics = super::OperationalMetrics::default();
+        metrics.observe_response("health", StatusCode::OK, Duration::from_secs(90_000));
+        metrics.observe_response(
+            "v2_location_detail",
+            StatusCode::NOT_FOUND,
+            Duration::from_millis(7),
+        );
+        metrics.observe_response(
+            "v2_locations_list",
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Duration::from_millis(3),
+        );
+        let snapshot = metrics.snapshot();
+        assert_eq!(snapshot["requests_total"], 3);
+        assert_eq!(snapshot["responses"]["success"], 1);
+        assert_eq!(snapshot["responses"]["client_error"], 1);
+        assert_eq!(snapshot["responses"]["server_error"], 1);
+        assert_eq!(snapshot["health_requests"], 1);
+        assert_eq!(snapshot["latency_ms"]["max"], 60_000);
+        assert_eq!(snapshot["retention"], "process_lifetime_only");
+        let serialized = snapshot.to_string();
+        assert!(!serialized.contains("location_detail"));
+    }
+
+    #[tokio::test]
+    async fn diagnostics_exposes_safe_degraded_state_and_metrics() {
+        use tower::ServiceExt;
+
+        let router = super::app(
+            uec_api::ApiState {
+                database: None,
+                dev_preview_token: None,
+                dev_test_release_id: None,
+                dev_test_release_token: None,
+            },
+            super::private_environment::ProxyConfig {
+                trust_forwarded_for: false,
+                trusted_proxy_cidrs: Vec::new(),
+            },
+        );
+        let _ = router
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/health/live")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let response = router
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/health/diagnostics")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(value["service_state"], "degraded_database_unconfigured");
+        assert_eq!(value["operational_metrics"]["requests_total"], 1);
+        let serialized = value.to_string();
+        assert!(!serialized.contains("database_url"));
+        assert!(!serialized.contains("127.0.0.1"));
     }
 }
 

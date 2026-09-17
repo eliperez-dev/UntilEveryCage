@@ -1,5 +1,11 @@
 # Developer entrypoint
 
+Production-shaped deploy, rollback, backup, restore, incident, and
+fresh-machine procedures are in
+[`deployment/production-operations.md`](deployment/production-operations.md).
+They describe controls and verification steps; they do not claim that hosting,
+staffing, retention, or provider behavior has been audited.
+
 Use `python scripts/dev.py --help` (or `scripts/dev.ps1 --help` on Windows) to discover the V2 workflow. Commands are thin wrappers around the existing project tools:
 
 ```text
