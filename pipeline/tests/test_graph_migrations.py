@@ -20,7 +20,7 @@ class GraphMigrationContractTests(unittest.TestCase):
         positions = [migrations.index(name) for name in graph_migrations]
         self.assertEqual(positions, sorted(positions))
         self.assertEqual([migrations[position] for position in positions], graph_migrations)
-        self.assertEqual(migrations[-12:], [
+        self.assertEqual(migrations[-13:], [
             "026_graph_entities_crosswalks.sql",
             "027_graph_relationship_observations.sql",
             "028_graph_claims_support.sql",
@@ -33,6 +33,7 @@ class GraphMigrationContractTests(unittest.TestCase):
             "035_public_discovery_planner_indexes.sql",
             "036_public_facility_discovery_view.sql",
             "037_public_discovery_read_model.sql",
+            "038_graph_regulatory_authority_relationship.sql",
         ])
 
     def test_entities_are_distinct_and_crosswalk_is_scoped(self):
@@ -54,6 +55,7 @@ class GraphMigrationContractTests(unittest.TestCase):
         self.assertIn("unknown_reason", relationship)
         self.assertIn("support_role", claims)
         self.assertIn("contradicting", claims)
+        self.assertIn("regulatory_authority_for", (ROOT / "migrations" / "038_graph_regulatory_authority_relationship.sql").read_text(encoding="utf-8"))
 
     def test_public_projections_are_release_and_suppression_aware(self):
         sql = self.read("029_graph_publication_projections.sql")

@@ -1,0 +1,21 @@
+{
+  "manifest_version": "us-fsis-current-route-v1",
+  "source_id": "us.fsis",
+  "authority": "USDA Food Safety and Inspection Service",
+  "page_url": "https://www.fsis.usda.gov/inspection/establishments/meat-poultry-and-egg-product-inspection-directory",
+  "page_observed_in_normal_browser": true,
+  "page_last_updated_observed": "2026-09-14",
+  "current_file_routes": [
+    "https://www.fsis.usda.gov/sites/default/files/media_file/documents/MPI_Directory_by_Establishment_Name.csv",
+    "https://www.fsis.usda.gov/sites/default/files/media_file/documents/MPI_Directory_by_Establishment_Number.csv",
+    "https://www.fsis.usda.gov/sites/default/files/media_file/documents/Dataset_Establishment_Demographic_Data.csv"
+  ],
+  "current_raw_artifacts": {
+    "status": "not_captured",
+    "reason": "The exact CSV routes returned HTTP 403 to the bounded direct acquisition attempt; the in-app browser displayed the official page and links but did not expose a local downloaded artifact path.",
+    "bypass_attempted": false,
+    "next_action": "Authorized operator-assisted browser capture, then record retrieval timestamp, final URL, byte size, hash, edition/effective date, and terms review before V2 handoff."
+  },
+  "publication_state": "blocked",
+  "row_payloads_included": false
+}

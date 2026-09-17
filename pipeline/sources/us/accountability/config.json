@@ -5,7 +5,7 @@
   "source_url": "https://www.fsis.usda.gov/inspection/establishments/meat-poultry-and-egg-product-inspection-directory",
   "acquisition": "assisted-link-ledger-after-source-specific-review",
   "release_allowed_by_default": false,
-  "entity_policy": "facilities, establishment approvals, operators, legal entities, parents, brands, inspections, violations, enforcements, laboratories, and aggregate observations remain distinct",
+  "entity_policy": "facilities, establishment approvals, operators, legal entities (including authorities in a regulator role), parents, brands, inspections, violations, enforcements, laboratories, and aggregate observations remain distinct",
   "match_policy": "exact source identifiers or an explicit reviewed link event; never name, address, phone, geocoder, or fuzzy matching",
   "stale_after_days": 365
 }

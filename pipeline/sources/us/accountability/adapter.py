@@ -37,6 +37,7 @@ RELATIONSHIPS: dict[str, tuple[str, frozenset[str]]] = {
     "enforcement_for": ("enforcement", frozenset({"violation"})),
     "laboratory_supports": ("laboratory", frozenset({"inspection", "aggregate_observation"})),
     "aggregate_describes": ("aggregate_observation", frozenset({"facility", "operator"})),
+    "regulatory_authority_for": ("legal_entity", frozenset({"facility", "operator", "inspection"})),
 }
 CONFIDENCE = frozenset({"high", "medium", "low"})
 REVIEW_STATES = frozenset({"evidence_verified", "review_required", "quarantined"})

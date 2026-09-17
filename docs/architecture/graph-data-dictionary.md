@@ -6,6 +6,7 @@
 | `source_entity_identifiers` | Native identifier observed in one source record | Source-qualified; exactly one facility or organization target; append-only. |
 | `source_entity_crosswalks` | A reviewed or candidate mapping between two native identifiers | `identity_scope = source_scoped`; does not merge or assert universal identity. |
 | `organization_relationship_observations` | Dated organization-to-facility or organization-to-organization assertion | Validity dates, observation time, source, confidence, review state, and explicit unknowns are distinct. |
+| `regulatory_authority_for` relationship | Source-backed regulatory-scope assertion from a legal-entity authority to a facility, operator, or inspection | Authority role is a relationship, not a new canonical entity type; it does not establish project approval, operation, or factual accuracy. |
 | `organization_relationship_current` | Latest observation per scoped endpoint/type | Projection only; different targets remain visible for contradictions. |
 | `claims` | Source-backed typed value/unknown for one facility or organization | Multiple values can coexist; unknown requires a reason. |
 | `claim_support` | Link from a claim to a source record/artifact | Role is explicit: primary, corroborating, contradicting, or context. |

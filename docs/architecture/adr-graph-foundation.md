@@ -12,8 +12,8 @@ source-scoped decision (`candidate`, `accepted`, `disputed`, or `rejected`),
 but never merges rows or creates a universal identity.
 
 Relationship rows are dated observations, not mutable edges. They support
-operator, owner, parent, brand, supplier, and customer assertions, including
-explicit unknown observations. Conflicting observations remain queryable and
+operator, owner, parent, brand, supplier, customer, and regulatory-authority
+assertions, including explicit unknown observations. Conflicting observations remain queryable and
 are not resolved by a latest-write overwrite. `uec.organization_relationship_current`
 is only a convenience projection over retained observations.
 

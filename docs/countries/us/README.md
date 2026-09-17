@@ -35,6 +35,14 @@ stale, conflicting, overlapping-ownership, and suppressed relationships are
 quarantined. The checked-in fixture is synthetic/sanitized, private/test-only,
 and does not add a graph migration or public release.
 
+## Legacy real-data V2 and graph rehearsal
+
+Run `python -m pipeline.scripts.maintenance.rehearse_us_real --root . --output data/manifests/us-real-legacy-graph-rehearsal-2026-09-17.json --private-dir data/graph-rehearsal/us-real-20260917` to replay the checked-in V1-derived US snapshots through the typed FSIS and APHIS private lifecycle contracts and build a private graph ledger. The rehearsal keeps FSIS federal facility/establishment-approval evidence separate from APHIS inspection and annual-report evidence, emits regulator edges only from source scope, and never joins across FSIS and APHIS by name, address, phone, or coordinates. All output rows remain ignored private staging; the checked-in manifest is aggregate-only.
+
+The 2026-09-17 rehearsal measured 7,101 FSIS rows, 4,507 APHIS inspection rows, and 1,013 APHIS annual-report rows. It produced 25,238 explicit source-local ledger assertions; 2,664 survived the stale/retrieval safety checks and 22,574 were quarantined for review. These are candidate and queue counts, not accuracy, ownership, operating-status, approval, or publication claims. State inspection programs remain excluded.
+
+The current FSIS page was observed in a normal browser with a September 14, 2026 update and three CSV routes, but the exact file routes returned HTTP 403 to bounded direct acquisition. See the row-free [current-route manifest](../../../data/manifests/us-fsis-current-route-2026-09-17.json).
+
 ## Review checklist
 
 - authority, edition/effective date, URL, terms/attribution, and retention are recorded;
