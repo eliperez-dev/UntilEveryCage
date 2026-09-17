@@ -18,6 +18,7 @@ from pipeline.contracts.source_lifecycle import atomic_json, validate_private_ma
 from pipeline.contracts.adapter_contract import SourceArtifact
 from pipeline.common.review import write_operator_review_packet
 from pipeline.common.review_packet import write_review_packet
+from pipeline.common.graph_candidates import build_identifier_graph_candidate, write_graph_candidates
 from .adapter import DenmarkSmileyAdapter
 
 
@@ -119,7 +120,11 @@ def _canonical_evidence(run_dir: Path, input_path: Path, metadata: dict,
     }
     validate_private_manifest(manifest)
     atomic_json(run_dir / "manifest.json", manifest)
-    report = write_private_run_report(run_dir, manifest)
+    report = write_private_run_report(
+        run_dir,
+        manifest,
+        normalized_path=run_dir / "03-classify" / "classified-records.jsonl",
+    )
     # Using the recorded observation time as the default makes local reruns
     # byte-identical. Callers needing wall-clock freshness may override it.
     if retrieved:
@@ -137,6 +142,28 @@ def _canonical_evidence(run_dir: Path, input_path: Path, metadata: dict,
         )
         classified_rows = [json.loads(line) for line in classified.read_text(encoding="utf-8").splitlines() if line]
         DenmarkSmileyAdapter().write_candidate_handoff(run_dir / "candidate-handoff", artifact, classified_rows)
+        graph_candidates = []
+        for row in classified_rows:
+            key = row.get("source_record_key")
+            fields = row.get("source_fields", {})
+            if not isinstance(key, str) or not key or not isinstance(fields, dict):
+                continue
+            cvr = fields.get("CVR_nummer") or fields.get("cvrnr")
+            graph_candidates.append(build_identifier_graph_candidate(
+                source_id="dk.smiley",
+                source_record_key=key,
+                source_values=fields,
+                facility_identifier=("findsmiley_id", key),
+                organization_identifier=("cvr", str(cvr).strip()) if cvr and str(cvr).strip() else None,
+                observed_at=str(retrieved),
+                source_row=row.get("source_row", 1),
+            ))
+        graph_summary = write_graph_candidates(run_dir / "graph", graph_candidates)
+        manifest["graph_candidate_summary"] = {key: graph_summary[key] for key in (
+            "candidate_count", "facility_identifier_candidates", "organization_identifier_candidates",
+            "operator_relationship_candidates", "review_required_count", "publication_status",
+        )}
+        atomic_json(run_dir / "manifest.json", manifest)
         write_operator_review_packet(
             run_dir,
             manifest,

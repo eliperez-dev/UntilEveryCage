@@ -21,6 +21,7 @@ def valid_point(lat, lon):
 
 def _audit_rows(files, sample_size, as_of, corpus):
     funnel = Counter(); countries = Counter(); strata = Counter(); sample_buckets = {}
+    precision_counts = Counter(); coordinate_review_states = Counter()
     file_manifest = []
     for path in files:
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
@@ -41,6 +42,15 @@ def _audit_rows(files, sample_size, as_of, corpus):
                     lon, lat = num(coordinates[0]), num(coordinates[1])
                 coord = "source_coordinate_valid" if valid_point(lat, lon) else "source_coordinate_invalid_or_missing"
                 funnel[coord] += 1
+                supplied_state = normalized.get("coordinate_state") or normalized.get("coordinate_review_state")
+                if valid_point(lat, lon):
+                    precision = normalized.get("geography_precision") or normalized.get("coordinate_precision") or "point-precision-unknown"
+                elif supplied_state:
+                    precision = normalized.get("geography_precision") or normalized.get("coordinate_precision") or "source-precision-unknown"
+                else:
+                    precision = "unresolved"
+                precision_counts[str(precision)] += 1
+                coordinate_review_states[str(normalized.get("coordinate_gate") or supplied_state or "not-specified")] += 1
                 address_values = (normalized.get("street", row.get("street")), normalized.get("zip", row.get("zip")), normalized.get("city", row.get("city")), normalized.get("state", row.get("state")))
                 address = " ".join(filter(None, address_values))
                 quality = "address_complete" if all(address_values) else ("city_only" if address_values[2] else "address_missing")
@@ -60,7 +70,7 @@ def _audit_rows(files, sample_size, as_of, corpus):
     samples = [v for _, v in sorted(samples)[:sample_size * max(1, len(files))]]
     composition = Counter("|".join((x["country"], x["address_quality"], x["coordinate_state"])) for x in samples)
     funnel.setdefault("total", 0)
-    return {"corpus": corpus, "schema_version": "geospatial-readiness-audit/v1", "as_of": as_of or datetime.now(timezone.utc).isoformat(), "method": "offline deterministic audit; no geocoder calls", "funnel": dict(sorted(funnel.items())), "country_counts": dict(sorted(countries.items())), "strata_counts": {"|".join(k): v for k,v in sorted(strata.items())}, "sample": {"size": len(samples), "composition": dict(composition)}, "sample_rows": samples, "source_files": file_manifest, "provenance_fields_required_for_any_geocode": ["provider", "query_hash", "queried_at", "precision", "review_state"], "publication_rule": "map-ready requires current privacy eligibility and release approval; geocoding success alone never grants publication permission"}
+    return {"corpus": corpus, "schema_version": "geospatial-readiness-audit/v1", "as_of": as_of or datetime.now(timezone.utc).isoformat(), "method": "offline deterministic audit; no geocoder calls", "funnel": dict(sorted(funnel.items())), "country_counts": dict(sorted(countries.items())), "strata_counts": {"|".join(k): v for k,v in sorted(strata.items())}, "precision_counts": dict(sorted(precision_counts.items())), "coordinate_review_state_counts": dict(sorted(coordinate_review_states.items())), "sample": {"size": len(samples), "composition": dict(composition)}, "sample_rows": samples, "source_files": file_manifest, "provenance_fields_required_for_any_geocode": ["provider", "query_hash", "queried_at", "precision", "review_state"], "publication_rule": "map-ready requires current privacy eligibility and release approval; geocoding success alone never grants publication permission", "precision_rule": "a valid point with unknown precision remains precision-unknown until source or geocoder precision is reviewed"}
 
 def _v2_files(root: Path):
     manifests = sorted(root.rglob("manifest.json")) if root.exists() else []

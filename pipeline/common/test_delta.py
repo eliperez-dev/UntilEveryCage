@@ -70,6 +70,16 @@ class DeltaTests(unittest.TestCase):
             result = compare_runs(old, new, {("fsa_approved_establishments", "Wales", "00017")})
             self.assertEqual(result["counts"], {"added": 0, "changed": 1, "not_observed": 0, "suppressed": 1})
 
+    def test_source_native_row_keys_keep_multi_observation_feeds_distinct(self):
+        def italy(key, name):
+            return {"source_id": "it.853-2004", "source_record_key": key, "normalized": {"recognition_number": key, "name": name}}
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            old = write_run(root, "old", [italy("REC|A|1", "same"), italy("REC|B|1", "same")])
+            new = write_run(root, "new", [italy("REC|A|1", "changed"), italy("REC|B|1", "same")])
+            result = compare_runs(old, new)
+            self.assertEqual(result["counts"], {"added": 0, "changed": 1, "not_observed": 0, "suppressed": 0})
+
 
 if __name__ == "__main__":
     unittest.main()

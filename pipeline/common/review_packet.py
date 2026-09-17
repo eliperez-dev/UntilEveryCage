@@ -107,6 +107,11 @@ def build_review_packet(
     status = _read_json(root / "run-status.json")
     counts = _counts(manifest, qa)
     normalized = root / "normalized" / "records.jsonl"
+    packet_blockers: dict[str, list[str]] = {key: list(values) for key, values in (blockers or {}).items()}
+    review_metrics = qa.get("review_metrics", {})
+    facility_observation = review_metrics.get("facility_observation", {}) if isinstance(review_metrics, dict) else {}
+    classification = review_metrics.get("classification", {}) if isinstance(review_metrics, dict) else {}
+    geospatial = review_metrics.get("geospatial", {}) if isinstance(review_metrics, dict) else {}
     packet: dict[str, Any] = {
         "schema_version": REVIEW_PACKET_VERSION,
         "source_id": manifest.get("source_id"),
@@ -123,6 +128,10 @@ def build_review_packet(
             "schema_status": manifest.get("schema_status", "not-reported"),
         },
         "counts": counts,
+        "review_metrics": review_metrics,
+        "facility_observation": facility_observation,
+        "classification": classification,
+        "geospatial": geospatial,
         "quarantine": {
             "rows": manifest.get("quarantined_rows"),
             "reasons": manifest.get("anomaly_counts", {}),
@@ -141,10 +150,20 @@ def build_review_packet(
         },
         "platform": platform_context(manifest.get("source_id")),
         "publication_boundary": "awaiting-owner-review; this packet is row-free evidence and cannot approve or promote a release",
-        "blockers": blockers or {},
+        "blockers": packet_blockers,
     }
     if not counts["reconciles"] or not counts["qa_matches_manifest"]:
         packet["blockers"].setdefault("validation", []).append("manifest and QA row counts must reconcile")
+    if facility_observation.get("repeated_provisional_facility_groups", 0):
+        packet["blockers"].setdefault("identity", []).append("repeated provisional facility groups require source-scoped identity review; rows were not merged")
+    if classification.get("review_state_counts", {}).get("review_required", 0) or classification.get("review_state_counts", {}).get("unknown", 0):
+        packet["blockers"].setdefault("classification", []).append("classification remains source-preserved or unresolved and requires scoped human review")
+    pending_coordinates = sum(
+        value for key, value in geospatial.get("coordinate_gate_counts", {}).items()
+        if key not in {"passed", "not-required"} and isinstance(value, int)
+    )
+    if pending_coordinates:
+        packet["blockers"].setdefault("geospatial", []).append("coordinate precision/privacy review remains open; coordinate success is not publication approval")
     if packet["gates"]["release_state"] != "not-created" or packet["gates"]["release_promoted"] is not False:
         packet["blockers"].setdefault("release", []).append("private review requires release_state=not-created and release_promoted=false")
     _assert_row_free(packet)

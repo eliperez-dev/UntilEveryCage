@@ -18,6 +18,8 @@ from typing import Any
 from pipeline.contracts.adapter_contract import SourceArtifact
 from pipeline.contracts.candidate_handoff import write_handoff
 from pipeline.contracts.source_lifecycle import atomic_json, atomic_jsonl, private_manifest
+from pipeline.common.graph_candidates import build_identifier_graph_candidate, write_graph_candidates
+from pipeline.common.review_metrics import build_private_review_metrics
 
 
 REQUIRED = tuple(
@@ -133,6 +135,8 @@ class Italy853Adapter:
                 "recognition_number": rec,
                 "source_activity_code": activity,
                 "facility_grouping": "provisional-recognition-number",
+                "facility_identity_state": "provisional-source-recognition-number",
+                "observation_identity_state": "source-row-with-occurrence",
                 "name": clean(row.get("ragione_sociale")),
                 "trading_name": clean(row.get("ragione_sociale")),
                 "address": None,
@@ -146,6 +150,8 @@ class Italy853Adapter:
                 "geography_state": "source-municipality-code" if geography_precision != "unknown" else "unknown",
                 "classification": clean(row.get("classificazione_stabilimento")),
                 "classification_state": "source-category-preserved" if clean(row.get("classificazione_stabilimento")) else "unknown",
+                "classification_decision": "review_required",
+                "activity_state": "source-code-preserved-unmapped",
                 "activity_code": activity,
                 "activity_description": clean(row.get("descrizione_impianto_attivita")),
                 "products": clean(row.get("prodotti_abilitati")),
@@ -155,6 +161,7 @@ class Italy853Adapter:
                 "date_state": {field: _date_state(clean(row.get(field))) for field in DATE_FIELDS},
                 "coordinates": None,
                 "coordinate_state": "source-value-present-pending-review" if clean(row.get("longitudine")) or clean(row.get("latitudine")) else "unknown",
+                "coordinate_precision": "source-precision-unknown" if clean(row.get("longitudine")) or clean(row.get("latitudine")) else "unresolved",
                 "privacy_gate": "pending-review",
                 "coordinate_gate": "review_required",
                 "publication_gate": "blocked",
@@ -189,6 +196,28 @@ class Italy853Adapter:
         _, parsed_sha256, _ = atomic_jsonl(root / "parsed" / "records.jsonl", parsed)
         _, normalized_sha256, _ = atomic_jsonl(root / "normalized" / "records.jsonl", accepted)
         atomic_jsonl(root / "quarantined" / "records.jsonl", quarantined)
+        graph_candidates = []
+        for item in parsed:
+            record = item.get("record") if isinstance(item, dict) and isinstance(item.get("record"), dict) else item
+            if not isinstance(record, dict):
+                continue
+            source_key = record.get("source_record_key")
+            source_values = record.get("source_values")
+            if not isinstance(source_key, str) or not source_key or not isinstance(source_values, dict):
+                continue
+            recognition = clean(source_values.get("num_identificativo_produzione_commercializzazione"))
+            piva = clean(source_values.get("p_iva"))
+            fiscal = clean(source_values.get("cod_fiscale"))
+            graph_candidates.append(build_identifier_graph_candidate(
+                source_id=self.source_id,
+                source_record_key=source_key,
+                source_values=source_values,
+                facility_identifier=("eu_recognition_number", recognition) if recognition else None,
+                organization_identifier=(("italian_vat", piva) if piva else ("italian_fiscal_code", fiscal) if fiscal else None),
+                observed_at=artifact.retrieved_at_utc,
+                source_row=record.get("source_row", 1),
+            ))
+        graph_manifest = write_graph_candidates(root / "graph", graph_candidates)
         anomaly_counts = Counter(reason for item in quarantined for reason in item["reasons"])
         manifest = private_manifest(
             source_id=self.source_id,
@@ -202,6 +231,6 @@ class Italy853Adapter:
             parsed_sha256=parsed_sha256,
             anomaly_counts=dict(sorted(anomaly_counts.items())),
         )
-        manifest.update({"coverage": "Italian Ministry 853/2004 CSV; one source row per establishment/activity; 1069/2009 excluded", "geocoding": "disabled", "schema_fingerprint": result["schema_fingerprint"], "source_category_counts": result["source_category_counts"], "source_activity_counts": result["source_activity_counts"]})
+        manifest.update({"coverage": "Italian Ministry 853/2004 CSV; one source row per establishment/activity; 1069/2009 excluded", "geocoding": "disabled", "schema_fingerprint": result["schema_fingerprint"], "source_category_counts": result["source_category_counts"], "source_activity_counts": result["source_activity_counts"], "review_metrics": build_private_review_metrics(accepted, quarantined), "graph_candidate_summary": {key: graph_manifest[key] for key in ("candidate_count", "facility_identifier_candidates", "organization_identifier_candidates", "operator_relationship_candidates", "review_required_count", "publication_status")}})
         atomic_json(root / "manifest.json", manifest)
         return manifest

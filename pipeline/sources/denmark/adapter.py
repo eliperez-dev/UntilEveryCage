@@ -11,6 +11,8 @@ from typing import Any
 from pipeline.contracts.adapter_contract import SourceArtifact
 from pipeline.contracts.candidate_handoff import write_handoff
 from pipeline.contracts.source_lifecycle import atomic_json, atomic_jsonl, private_manifest
+from pipeline.common.graph_candidates import build_identifier_graph_candidate, write_graph_candidates
+from pipeline.common.review_metrics import build_private_review_metrics
 
 SOURCE_ID = "dk.smiley"
 ADAPTER_VERSION = "denmark-smiley-contract-v1"
@@ -103,6 +105,23 @@ class DenmarkSmileyAdapter:
         _, parsed_hash, _ = atomic_jsonl(root / "parsed" / "records.jsonl", parsed_rows)
         _, normalized_hash, _ = atomic_jsonl(root / "normalized" / "records.jsonl", rows)
         atomic_jsonl(root / "quarantined" / "records.jsonl", quarantined)
+        graph_candidates = []
+        for record in parsed_rows:
+            fields = record.get("source_fields", {})
+            key = record.get("source_record_key")
+            if not isinstance(key, str) or not key:
+                continue
+            cvr = fields.get("CVR_nummer") or fields.get("cvrnr")
+            graph_candidates.append(build_identifier_graph_candidate(
+                source_id=SOURCE_ID,
+                source_record_key=key,
+                source_values=fields,
+                facility_identifier=("findsmiley_id", key),
+                organization_identifier=("cvr", str(cvr).strip()) if cvr and str(cvr).strip() else None,
+                observed_at=artifact.retrieved_at_utc,
+                source_row=record.get("source_row", 1),
+            ))
+        graph_manifest = write_graph_candidates(root / "graph", graph_candidates)
         # This state is deliberately private: validation cannot authorize release.
         manifest = private_manifest(
             source_id=SOURCE_ID,
@@ -116,5 +135,11 @@ class DenmarkSmileyAdapter:
             parsed_sha256=parsed_hash,
             anomaly_counts={"missing_source_key": len(quarantined)} if quarantined else {},
         )
+        atomic_json(root / "manifest.json", manifest)
+        manifest["review_metrics"] = build_private_review_metrics(rows, quarantined)
+        manifest["graph_candidate_summary"] = {key: graph_manifest[key] for key in (
+            "candidate_count", "facility_identifier_candidates", "organization_identifier_candidates",
+            "operator_relationship_candidates", "review_required_count", "publication_status",
+        )}
         atomic_json(root / "manifest.json", manifest)
         return manifest

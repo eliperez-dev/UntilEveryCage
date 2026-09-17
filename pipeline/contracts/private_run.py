@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .adapter_contract import SourceAdapter, SourceArtifact
+from pipeline.common.review_metrics import build_private_review_metrics
 from .source_lifecycle import atomic_json, validate_private_manifest
 
 
@@ -95,12 +96,22 @@ def write_private_run_report(
     previous_normalized_path: str | Path | None = None,
     drift_alarms: Iterable[str] = (),
 ) -> dict[str, Any]:
+    run_root = Path(run_dir)
+    normalized_path = normalized_path or run_root / "normalized" / "records.jsonl"
+    quarantine_path = run_root / "quarantined" / "records.jsonl"
+    normalized_rows = []
+    quarantined_rows = []
+    if Path(normalized_path).is_file():
+        normalized_rows = [json.loads(line) for line in Path(normalized_path).read_text(encoding="utf-8").splitlines() if line.strip()]
+    if quarantine_path.is_file():
+        quarantined_rows = [json.loads(line) for line in quarantine_path.read_text(encoding="utf-8").splitlines() if line.strip()]
     report = summarize_private_run(
         manifest,
         normalized_path=normalized_path,
         previous_normalized_path=previous_normalized_path,
         drift_alarms=drift_alarms,
     )
+    report["review_metrics"] = build_private_review_metrics(normalized_rows, quarantined_rows)
     atomic_json(Path(run_dir) / "qa.json", report)
     return report
 

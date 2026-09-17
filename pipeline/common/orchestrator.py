@@ -100,7 +100,12 @@ def run_registered_input(raw_path: str | Path, runs_dir: str | Path, config: dic
     if "manifest" in status and isinstance(status["manifest"], dict) and status["manifest"].get("source_id"):
         manifest = status["manifest"]
         try:
-            write_private_run_report(run_dir, manifest)
+            write_private_run_report(
+                run_dir,
+                manifest,
+                normalized_path=run_dir / "normalized" / "records.jsonl",
+                previous_normalized_path=previous_normalized_path,
+            )
             if manifest.get("publication_state") == "private-candidate":
                 as_of = config.get("health_as_of_utc") or config.get("retrieved_at_utc")
                 if as_of:
