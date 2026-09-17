@@ -16,12 +16,14 @@ from typing import Any
 from pipeline.common.review import write_operator_review_packet
 from pipeline.common.tabular import TabularSchemaError, canonical_header, occurrence_key, read_rows, resolve_mapping, row_identity, value
 from pipeline.contracts.adapter_contract import SourceArtifact
+from pipeline.contracts.graph_candidate_handoff import write_graph_candidate
 from pipeline.contracts.source_lifecycle import atomic_json, atomic_jsonl, private_manifest
 
 
 ALIASES = {
     "plant_number": ("plant number", "registration number", "establishment number", "establishment id", "plant id", "registration no", "plant number no. de l'usine", "est_num"),
     "name": ("plant name", "operator name", "operators name", "name of operator", "establishment name", "operator", "name", "plant name nom de l'usine"),
+    "operator_name": ("operator name", "operators name", "name of operator"),
     "doing_business_as": ("doing business as", "dba name", "also doing business as name", "trade name"),
     "address": ("address", "location address", "street address", "location", "address adresse", "loc_add1", "loc_add2", "loc_add3"),
     "city": ("city", "location city", "municipality", "town", "city ville", "loc_city"),
@@ -187,7 +189,7 @@ class CanadaMeatAdapter:
             if occurrences[key] > 1: reasons.append("duplicate_source_row")
             normalized = {
                 "establishment_id": plant_number, "recognition_number": plant_number, "facility_grouping": f"provisional-{self.jurisdiction_level}-plant-number", "identity_review": "required-before-merge",
-                "name": name, "trading_name": _clean(value(row, mapping, "doing_business_as")) or name, "address": None,
+                "name": name, "operator_name": _clean(value(row, mapping, "operator_name")), "trading_name": _clean(value(row, mapping, "doing_business_as")) or name, "address": None,
                 "address_state": "source-value-present-pending-review" if _clean(value(row, mapping, "address")) else "unknown", "city": _clean(value(row, mapping, "city")), "postal_code": _clean(value(row, mapping, "postal_code")), "province": _clean(value(row, mapping, "province")),
                 "country_code": "CA", "nation": "Canada", "jurisdiction_level": self.jurisdiction_level, "jurisdiction": self.jurisdiction,
                 "source_plant_type": plant_type, "source_function_codes": functions, "animal_class": animal_class, "activity_categories": categories,
@@ -201,6 +203,73 @@ class CanadaMeatAdapter:
 
     def parse_file(self, path: str | Path) -> dict[str, Any]: return self.parse_bytes(Path(path).read_bytes())
 
+    def _graph_candidate(self, record: dict[str, Any], artifact: SourceArtifact) -> dict[str, Any]:
+        """Build a source-scoped graph candidate from one accepted source row.
+
+        A facility node is always justified by the source establishment number.
+        Operator and regulator edges are emitted only for the federal adapter:
+        its workbook has an explicit operator column and its registry scope is
+        federal. Ontario's plant-name field is deliberately not treated as an
+        operator identity.
+        """
+        normalized = record["normalized"]
+        facility_ref = f"facility:{record['source_record_key']}"
+        support = [{"source_record_key": record["source_record_key"]}, {"artifact_sha256": artifact.sha256}]
+        candidate: dict[str, Any] = {
+            "contract_version": "graph-candidate-handoff-v1",
+            "source_id": self.source_id,
+            "source_row": record["source_row"],
+            "source_record_key": record["source_record_key"],
+            "source_values": record["source_values"],
+            "publication": {"storage_state": "private", "privacy_status": "pending", "review_state": "review_required", "publication_status": "not_eligible", "release_id": None},
+            "facilities": [{"local_ref": facility_ref, "source_identifier": {"identifier_type": "establishment-number", "value": str(normalized["establishment_id"])}}],
+            "organizations": [],
+            "relationships": [],
+            "claims": [{"claim_domain": "operation", "claim_kind": "listed-meat-establishment", "facility_ref": facility_ref, "value_state": "known", "observed_at": artifact.retrieved_at_utc, "review_state": "review_required", "support": support}],
+            "crosswalks": [],
+        }
+        if self.jurisdiction_level == "federal" and normalized.get("operator_name"):
+            operator_ref = f"organization:operator:{record['source_record_key']}"
+            regulator_ref = "organization:regulator:cfia"
+            candidate["organizations"] = [
+                {"local_ref": operator_ref, "source_identifier": {"identifier_type": "operator-name", "value": normalized["operator_name"]}},
+                {"local_ref": regulator_ref, "source_identifier": {"identifier_type": "authority-source", "value": "CFIA"}},
+            ]
+            candidate["relationships"] = [
+                {"relationship_type": "operator", "from_organization_ref": operator_ref, "target_facility_ref": facility_ref, "assertion_status": "asserted", "observed_at": artifact.retrieved_at_utc, "review_state": "review_required", "support": support, "assertion_basis": "explicit CFIA operator field"},
+                {"relationship_type": "regulator", "from_organization_ref": regulator_ref, "target_facility_ref": facility_ref, "assertion_status": "asserted", "observed_at": artifact.retrieved_at_utc, "review_state": "review_required", "support": support, "assertion_basis": "CFIA federal registry scope"},
+            ]
+        return candidate
+
+    def _write_graph_candidates(self, root: Path, records: list[dict[str, Any]], artifact: SourceArtifact) -> dict[str, Any]:
+        """Persist identity-safe graph candidates and a row-free manifest.
+
+        A row quarantined only for an unmapped activity code can still support
+        a private facility/operator/regulator review edge. Rows with missing
+        identity fields or duplicate source keys are excluded from graph
+        staging because their identity is not sufficiently supported.
+        """
+        graph_root = root / "graph-candidates"
+        relationship_counts: Counter[str] = Counter()
+        for record in records:
+            candidate = self._graph_candidate(record, artifact)
+            candidate_dir = graph_root / hashlib.sha256(record["source_record_key"].encode("utf-8")).hexdigest()[:24]
+            write_graph_candidate(candidate_dir, candidate)
+            relationship_counts.update(item["relationship_type"] for item in candidate["relationships"])
+        summary = {
+            "contract_version": "graph-candidate-handoff-v1",
+            "source_id": self.source_id,
+            "candidate_count": len(records),
+            "relationship_counts": dict(sorted(relationship_counts.items())),
+            "storage_state": "private",
+            "review_state": "review_required",
+            "publication_status": "not_eligible",
+            "universal_identity_assertions": 0,
+            "row_payloads_included": False,
+        }
+        atomic_json(graph_root / "manifest.json", summary)
+        return summary
+
     def run(self, raw_path: str | Path, run_dir: str | Path, artifact: SourceArtifact) -> dict[str, Any]:
         raw = Path(raw_path).read_bytes()
         if artifact.sha256 != hashlib.sha256(raw).hexdigest() or artifact.byte_size != len(raw): raise ValueError("artifact provenance mismatch")
@@ -209,6 +278,9 @@ class CanadaMeatAdapter:
         anomaly_counts = Counter(reason for item in quarantined for reason in item["reasons"])
         manifest = private_manifest(source_id=self.source_id, adapter_version=self.adapter_version, schema_version=self.schema_version, artifact=artifact, input_rows=result["input_rows"], normalized_rows=len(accepted), quarantined_rows=len(quarantined), normalized_sha256=normalized_sha256, parsed_sha256=parsed_sha256, anomaly_counts=dict(sorted(anomaly_counts.items())))
         manifest.update({"country_code": "CA", "jurisdiction_level": self.jurisdiction_level, "jurisdiction": self.jurisdiction, "delimiter": result["delimiter"], "schema_fingerprint": result["schema_fingerprint"], "coverage": self.coverage, "geocoding": "disabled"})
+        graph_records = accepted + [item["record"] for item in quarantined if set(item["reasons"]).issubset({"unknown_function_code"})]
+        manifest["graph_candidates"] = self._write_graph_candidates(root, graph_records, artifact)
+        manifest["graph_candidates"]["quarantined_identity_safe_rows"] = len(graph_records) - len(accepted)
         atomic_json(root / "manifest.json", manifest)
         write_operator_review_packet(root, manifest, source_scope=self.coverage, checks=("keep federal and provincial identities separate", "review address, phone, and coordinate privacy", "review duplicate plant-number rows without silent merge", "confirm function-code or plant-type mapping", "approve any project release separately"), blockers=("no national completeness claim", "publication and privacy approval pending", "source disappearance means not observed, not closure"))
         return manifest

@@ -156,7 +156,7 @@
     "input_rows_known": 116056,
     "normalized_rows": 108475,
     "quarantined_rows": 7581,
-    "raw_only_profiles": 0,
+    "raw_only_profiles": 1,
     "requested_min_normalized_rows": 100000,
     "target_met": true
   },

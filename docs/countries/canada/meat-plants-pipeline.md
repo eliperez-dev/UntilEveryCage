@@ -27,4 +27,12 @@ handoff`. Reruns are deterministic. Missing observations are not closure. No
 geocoding is performed. Current licence, attribution, redistribution, privacy,
 function-code semantics, freshness, and project approval remain human gates.
 
+The adapter also emits row-level graph candidates into the private run. Every
+accepted row gets a source-scoped facility node keyed by its source
+establishment number and a supported operation claim. CFIA rows with an
+explicit operator field additionally get operator and federal-registry
+regulator edges; Ontario's plant-name field is never guessed to be an operator.
+These graph candidates remain `review_required`, private, and not eligible for
+publication, with no universal identity or cross-source merge assertion.
+
 Run with `python -m pipeline.sources.canada.refresh --source ontario --raw <restricted.csv> --run-dir <restricted-run>` or `--source cfia --fetch --terms-review <approved-terms.json>`. Keep federal and provincial candidate releases separate.

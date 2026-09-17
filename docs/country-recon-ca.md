@@ -1,6 +1,6 @@
 # Canada source reconnaissance
 
-Status: sanitized metadata handoff; no facility rows, names, addresses, coordinates, or downloaded artifacts are retained here. Last checked 2026-09-14 UTC. This is not publication approval or a healthy-pipeline claim.
+Status: sanitized metadata handoff; no facility rows, names, addresses, coordinates, or downloaded artifacts are retained here. Last checked 2026-09-17 UTC. This is not publication approval or a healthy-pipeline claim.
 
 ## Comparison
 
@@ -30,8 +30,8 @@ AAFC livestock/slaughter context: <https://agriculture.canada.ca/en/sector/anima
 
 | Source | Verification | Acquisition | Adapter / validation | Terms/privacy/publication | Blocker / next action |
 |---|---|---|---|---|---|
-| CFIA | Official guidance/export routes verified; complete federal route unresolved | Not performed; no account/rows | Not implemented/tested | Government-sourced only; distinguish export eligibility/domestic registration; minimize fields | Locate current federal list and privately capture URL/date/size/hash |
-| Ontario | Open Government Portal dataset/resource structure verified | Not performed | Not implemented/tested | Confirm current licence/attribution and coordinate privacy | Acquire metadata/bounded schema check; assess other provinces separately |
+| CFIA | Official federal registry download responded to a normal public HEAD request on 2026-09-17 with `application/octet-stream`, 572,928 bytes; workbook schema/function semantics remain unresolved | Private current XLS capture exists in ignored restricted staging; tracked evidence retains only row-free metadata | Implemented partial; BIFF/XLSX/HTML-table parsing and quarantine tests pass | Government-sourced only; distinguish federal registration from export eligibility and provincial coverage; minimize fields | Complete function-code mapping review, confirm current terms/attribution and freshness, and only then consider a separately approved candidate import |
+| Ontario | Open Government Portal dataset/resource structure verified; current resource is Ontario-only | Private current CSV capture exists in ignored restricted staging; tracked evidence retains only row-free metadata | Implemented partial; bilingual/composite headers, duplicate handling, and privacy-safe normalization tests pass | Confirm current licence/attribution and coordinate/contact privacy | Repair prior-run linkage if delta comparison is needed; assess other provinces separately |
 | AAFC/Statistics Canada | Official aggregate sources verified | Not performed | Not implemented/tested | Aggregate role only; table-specific licences/suppression notes required | Select aggregate tables and keep separate from facility totals |
 
 ## Unresolved gaps

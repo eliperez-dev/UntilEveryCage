@@ -1,0 +1,88 @@
+{
+  "manifest_version": "current-canada-private-v1",
+  "as_of_utc": "2026-09-17T20:20:33Z",
+  "evidence_scope": "private row-free Canada source and graph-candidate rehearsal; no publication decision",
+  "publication": {
+    "release_created": false,
+    "release_promoted": false,
+    "public_api_rows": 0,
+    "project_approval": "not-approved"
+  },
+  "sources": [
+    {
+      "source_id": "ca.ontario.meat-plants",
+      "country_code": "CA",
+      "jurisdiction_level": "provincial",
+      "jurisdiction": "Ontario",
+      "coverage": "Ontario provincially licensed meat plants only; no national completeness claim",
+      "source_url": "https://data.ontario.ca/dataset/a763088c-018d-48b7-bf47-3027a8c725b8/resource/ee6d559a-78de-40e6-b2ba-ad3c4a674b96/download/1._all_meat_plants.csv",
+      "retrieved_at_utc": "2026-09-17T20:20:33Z",
+      "effective_date": "Thu, 06 Aug 2026 19:04:50 GMT",
+      "raw_artifact": "data/raw/ca.ontario.meat-plants/20260917T000000Z-on/source.csv",
+      "raw_bytes": 130252,
+      "raw_sha256": "c4edfdd415812f6a914f5fb29a9f67cf2907ea6fbfe4e09ab96eae1468002adf",
+      "private_manifest": "data/staging/reacquisition/ca.ontario.meat-plants/20260917T002000Z-rerun/lifecycle/c4edfdd415812f6a-b_z_w5rh/manifest.json",
+      "candidate_handoff_manifest": "data/staging/reacquisition/ca.ontario.meat-plants/20260917T002000Z-rerun/lifecycle/c4edfdd415812f6a-b_z_w5rh/candidate-handoff/manifest.json",
+      "graph_candidate_manifest": "data/staging/reacquisition/ca.ontario.meat-plants/20260917T002000Z-rerun/lifecycle/c4edfdd415812f6a-b_z_w5rh/graph-candidates/manifest.json",
+      "input_rows": 460,
+      "normalized_rows": 460,
+      "quarantined_rows": 0,
+      "graph_candidates": 460,
+      "graph_relationships": {},
+      "status": "candidate-ready; private only; human review required"
+    },
+    {
+      "source_id": "ca.cfia.federal-meat",
+      "country_code": "CA",
+      "jurisdiction_level": "federal",
+      "jurisdiction": "Canada",
+      "coverage": "CFIA federally registered meat establishments; federal registry only; provincial establishments excluded",
+      "source_url": "https://active.inspection.gc.ca/scripts/meavia/reglist/download.asp?lang=e",
+      "retrieved_at_utc": "2026-09-17T20:20:06Z",
+      "effective_date": "unknown",
+      "raw_artifact": "data/raw/ca.cfia.federal-meat/20260917T000000Z-cfia/source.xls",
+      "raw_bytes": 572928,
+      "raw_sha256": "d2f042a43e0dc72460c892c67b60e8d0cacf9a91bd85032862664a6deae0cfef",
+      "response_content_type": "application/octet-stream",
+      "private_manifest": "data/staging/reacquisition/ca.cfia.federal-meat/20260917T002000Z-rerun/lifecycle/d2f042a43e0dc724-grqcwtl2/manifest.json",
+      "candidate_handoff_manifest": "data/staging/reacquisition/ca.cfia.federal-meat/20260917T002000Z-rerun/lifecycle/d2f042a43e0dc724-grqcwtl2/candidate-handoff/manifest.json",
+      "graph_candidate_manifest": "data/staging/reacquisition/ca.cfia.federal-meat/20260917T002000Z-rerun/lifecycle/d2f042a43e0dc724-grqcwtl2/graph-candidates/manifest.json",
+      "input_rows": 874,
+      "normalized_rows": 0,
+      "quarantined_rows": 874,
+      "anomaly_counts": {"unknown_function_code": 874},
+      "graph_candidates": 874,
+      "graph_relationships": {},
+      "status": "candidate-ready; private only; all rows quarantined pending reviewed function-code and operator-field mapping"
+    }
+  ],
+  "reconciliation": {
+    "input_rows": 1334,
+    "normalized_rows": 460,
+    "quarantined_rows": 874,
+    "identity_safe_graph_candidates": 1334,
+    "asserted_operator_relationships": 0,
+    "asserted_regulator_relationships": 0,
+    "formula": "input = normalized + quarantined"
+  },
+  "private_api_frontend_rehearsal": {
+    "status": "passed-in-shared-current-candidate-lane",
+    "evidence_manifest": "data/manifests/current-candidate-rehearsal-2026-09-16.json",
+    "public_v2_rows": 0,
+    "test_release_list_detail_facets_cursor": "passed",
+    "bounded_export_guard": "passed",
+    "raw_fields_absent": true,
+    "suppression": "append-only public_access_revoked removed the selected candidate from detail and list",
+    "frontend_boundary": "loopback development preview requires explicit opt-in and operator token; candidate rows visibly labeled private test data"
+  },
+  "gates": {
+    "geocoding": "disabled",
+    "privacy_and_coordinate_review": "required",
+    "terms_and_attribution_review": "required",
+    "federal_function_code_mapping": "required",
+    "federal_operator_field_semantics": "required",
+    "cross_source_merge": "disabled",
+    "publication": "blocked"
+  },
+  "private_payloads_included": false
+}

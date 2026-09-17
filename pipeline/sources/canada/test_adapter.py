@@ -1,5 +1,6 @@
 import hashlib
 import io
+import json
 import zipfile
 import tempfile
 import unittest
@@ -7,6 +8,7 @@ from pathlib import Path
 
 from pipeline.common.orchestrator import run_private_lifecycle
 from pipeline.contracts.adapter_contract import SourceArtifact
+from pipeline.contracts.graph_candidate_handoff import validate_graph_candidate
 from .adapter import CfiaFederalMeatAdapter, OntarioMeatPlantsAdapter
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -55,6 +57,33 @@ class CanadaAdapterTests(unittest.TestCase):
                 raw = (FIXTURES / fixture).read_bytes(); artifact = SourceArtifact(adapter.source_url, "2026-09-15T00:00:00Z", hashlib.sha256(raw).hexdigest(), len(raw), code_version=adapter.adapter_version, config_version=adapter.schema_version)
                 status = run_private_lifecycle(FIXTURES / fixture, Path(d) / adapter.source_id, artifact, adapter)
                 self.assertEqual(status["status"], "candidate-ready"); self.assertEqual(status["manifest"]["jurisdiction_level"], adapter.jurisdiction_level); self.assertTrue((Path(status["run_dir"]) / "release-candidate" / "records.jsonl").exists())
+
+    def test_graph_candidates_are_source_scoped_and_only_explicit_federal_edges_are_emitted(self):
+        with tempfile.TemporaryDirectory() as d:
+            for adapter, fixture, expected_graph_candidates, expected_relationships in ((OntarioMeatPlantsAdapter(), "ontario.csv", 2, {}), (CfiaFederalMeatAdapter(), "cfia.csv", 3, {"operator": 3, "regulator": 3})):
+                raw = (FIXTURES / fixture).read_bytes(); artifact = SourceArtifact(adapter.source_url, "2026-09-15T00:00:00Z", hashlib.sha256(raw).hexdigest(), len(raw), code_version=adapter.adapter_version, config_version=adapter.schema_version)
+                status = run_private_lifecycle(FIXTURES / fixture, Path(d) / adapter.source_id, artifact, adapter)
+                run = Path(status["run_dir"]); graph_root = run / "graph-candidates"
+                summary = json.loads((graph_root / "manifest.json").read_text(encoding="utf-8"))
+                self.assertEqual(summary["candidate_count"], expected_graph_candidates)
+                self.assertEqual(summary["relationship_counts"], expected_relationships)
+                candidates = [path / "graph-candidate.json" for path in graph_root.iterdir() if path.is_dir()]
+                self.assertEqual(len(candidates), expected_graph_candidates)
+                candidate = json.loads(candidates[0].read_text(encoding="utf-8"))
+                validate_graph_candidate(candidate)
+                self.assertEqual(candidate["publication"]["publication_status"], "not_eligible")
+                if adapter.jurisdiction_level == "provincial":
+                    self.assertEqual(candidate["relationships"], [])
+
+    def test_graph_candidate_rerun_is_byte_deterministic(self):
+        raw = (FIXTURES / "cfia.csv").read_bytes(); adapter = CfiaFederalMeatAdapter()
+        artifact = SourceArtifact(adapter.source_url, "2026-09-15T00:00:00Z", hashlib.sha256(raw).hexdigest(), len(raw), code_version=adapter.adapter_version, config_version=adapter.schema_version)
+        with tempfile.TemporaryDirectory() as d:
+            first = run_private_lifecycle(FIXTURES / "cfia.csv", Path(d) / "first", artifact, adapter)
+            second = run_private_lifecycle(FIXTURES / "cfia.csv", Path(d) / "second", artifact, adapter)
+            def payloads(status):
+                return sorted(path.read_bytes() for path in (Path(status["run_dir"]) / "graph-candidates").glob("*/graph-candidate.json"))
+            self.assertEqual(payloads(first), payloads(second))
 
 
 if __name__ == "__main__": unittest.main()

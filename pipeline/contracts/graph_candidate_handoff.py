@@ -18,7 +18,7 @@ GRAPH_DOMAINS = {
     "identity", "location", "operation", "ownership", "inspection", "violation",
     "commitment", "investigation", "public_funding", "animal_count", "other",
 }
-RELATIONSHIP_TYPES = {"operator", "owner", "parent", "brand", "supplier", "customer"}
+RELATIONSHIP_TYPES = {"operator", "regulator", "owner", "parent", "brand", "supplier", "customer"}
 REVIEW_STATES = {"unreviewed", "review_required", "reviewed", "accepted", "rejected"}
 
 

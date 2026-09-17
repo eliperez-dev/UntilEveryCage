@@ -90,6 +90,13 @@ The checked-in aggregate result is [the candidate rehearsal manifest](../data/ma
 the detailed runner report remains ignored because it is regenerated from
 authorized private artifacts.
 
+The latest Canada-only revalidation is recorded in the row-free [Canada
+private manifest](../data/manifests/current-canada-private-2026-09-17.json),
+with the aggregate [geospatial/privacy report](../data/reports/current-canada-geospatial-readiness-2026-09-17.json).
+It confirms 460 Ontario normalized candidates and 874 CFIA quarantined inputs;
+no CFIA row enters a release candidate, and the API/frontend rehearsal remains
+loopback-only and test-only.
+
 The previous bounded rehearsal used a disposable `docker-compose.e2e.yml`
 project (`uec-reacq-20260916`, DB port `55440`) with all 34 migrations. The
 current lane supersedes that partial rehearsal by importing the seven
@@ -125,8 +132,10 @@ read-only and no raw or normalized rows were copied into the integration
 checkout. The aggregate validator completed successfully there for seven
 normalized profiles and one CFIA raw-only profile.
 
-The verified reconciliation is 115,182 input rows = 108,475 normalized rows
-+ 6,707 quarantined rows. The current-corpus geospatial audit found 40,115
+The seven normalized profiles reconcile to 115,182 input rows = 108,475
+normalized rows + 6,707 quarantined rows. Including the raw-only CFIA profile,
+the eight-profile total is 116,056 input rows = 108,475 normalized rows + 7,581
+quarantined rows. The current-corpus geospatial audit found 40,115
 source-coordinate-valid rows, 1,710 source-coordinate-pending-review rows,
 68,273 city-display rows, 87 unmapped rows, and 103,676 rows still requiring
 privacy/coordinate review. It produced aggregate evidence only. No source

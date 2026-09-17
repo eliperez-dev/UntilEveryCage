@@ -3,7 +3,8 @@
 `graph_candidate_handoff.py` defines the smallest adapter-to-graph boundary.
 Each candidate contains a source-qualified record key, preserved `source_values`,
 source-native identifiers for facilities and organizations, local references for
-relationships, optional claims with at least one supporting artifact/record,
+relationships (including an explicitly supported `regulator` edge when a source
+scope justifies it), optional claims with at least one supporting artifact/record,
 and optional source-scoped crosswalks.
 
 The shared `candidate_handoff.write_handoff` bridge emits a deterministic
