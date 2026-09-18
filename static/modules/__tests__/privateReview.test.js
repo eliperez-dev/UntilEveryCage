@@ -53,7 +53,11 @@ test('safe review page never includes private address, raw payload, geocoder, or
 });
 
 test('review packet loader rejects row-shaped payloads and keeps tokens out of storage APIs', async () => {
-  const { validateReviewPacket } = await import('../../private-review.js');
+  const { validateReviewPacket, validateReadinessPayload } = await import('../../private-review.js');
   expect(() => validateReviewPacket({ schema_version: 'private-review-packet-v2', counts: { input_rows: 1 } })).not.toThrow();
   expect(() => validateReviewPacket({ schema_version: 'private-review-packet-v2', normalized: { records: [] } })).toThrow('rejected safely');
+  expect(() => validateReviewPacket({ schema_version: 'private-review-packet-v2', counts: { input_rows: 1 }, provenance: { raw_payload_alias: 'withheld' } })).toThrow('rejected safely');
+  expect(() => validateReviewPacket({ schema_version: 'private-review-packet-v2', quarantine: { reasons: { raw_payload_alias: 'withheld' } } })).toThrow('rejected safely');
+  expect(() => validateReadinessPayload(JSON.parse(root('static/private-review/readiness-matrix.json')))).not.toThrow();
+  expect(() => validateReadinessPayload({ schema_version: 'private-review-console-v1', derived_context: true, countries: {} })).toThrow('rejected safely');
 });

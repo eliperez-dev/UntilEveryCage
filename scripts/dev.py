@@ -81,6 +81,8 @@ def main() -> int:
     sub.add_parser("demo", help="run the safe synthetic/private tooling demo")
     sub.add_parser("preflight", help="alias for doctor: verify local prerequisites before a run")
     sub.add_parser("platform-registry", help="validate the joined country/source registry")
+    rc = sub.add_parser("review-console-snapshot", help="build the row-free private review-console readiness snapshot")
+    rc.add_argument("output", default=str(ROOT / "static" / "private-review" / "readiness-matrix.json"), nargs="?")
     pf = sub.add_parser("private-frontend", help="rehearse a candidate against the private frontend preview boundary")
     pf.add_argument("manifest"); pf.add_argument("output"); pf.add_argument("--root", default=str(ROOT)); pf.add_argument("--base-url"); pf.add_argument("--token")
     rp = sub.add_parser("review-packet", help="generate a private row-free review packet")
@@ -107,6 +109,8 @@ def main() -> int:
         code = run([sys.executable, "-m", "unittest", "pipeline.common.test_graph_candidates", "pipeline.common.test_review_packet"], capture=args.json)
     elif args.command == "platform-registry":
         code = run([sys.executable, "-c", "import json; from pipeline.platform_registry import build_platform_registry; r=build_platform_registry(); print(json.dumps({'countries':r['country_count'],'sources':r['source_count'],'status':'validated'}))"], capture=args.json)
+    elif args.command == "review-console-snapshot":
+        code = run([sys.executable, str(ROOT / "pipeline/scripts/diagnostics/build-review-console-snapshot.py"), args.output], capture=args.json)
     elif args.command == "private-frontend":
         cmd = [sys.executable, str(ROOT / "pipeline/scripts/maintenance/rehearse_candidate_private_frontend.py"), "--manifest", args.manifest, "--root", args.root, "--output", args.output]
         if args.base_url: cmd.extend(["--base-url", args.base_url])

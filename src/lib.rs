@@ -55,8 +55,16 @@ pub struct PrivateGraphSearchParams {
 /// Private evidence-only graph search. This is intentionally not a public projection.
 pub async fn get_private_graph_search_handler(
     State(state): State<ApiState>,
+    headers: HeaderMap,
     Query(params): Query<PrivateGraphSearchParams>,
 ) -> impl IntoResponse {
+    if !graph_private::authorized(&headers) {
+        return v2_error(
+            StatusCode::NOT_FOUND,
+            "private_graph_unavailable",
+            "private graph unavailable",
+        );
+    }
     let Some(pool) = state.database else {
         return v2_error(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -91,8 +99,16 @@ pub struct PrivateGraphTraverseParams {
 
 pub async fn get_private_graph_traverse_handler(
     State(state): State<ApiState>,
+    headers: HeaderMap,
     Query(params): Query<PrivateGraphTraverseParams>,
 ) -> impl IntoResponse {
+    if !graph_private::authorized(&headers) {
+        return v2_error(
+            StatusCode::NOT_FOUND,
+            "private_graph_unavailable",
+            "private graph unavailable",
+        );
+    }
     let Some(pool) = state.database else {
         return v2_error(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -121,7 +137,7 @@ pub async fn get_private_graph_traverse_handler(
             );
         }
     };
-    let rows = match client.query("SELECT relationship_observation_id, source_id, source_record_id, from_organization_id, target_facility_id, target_organization_id, relationship_type, assertion_status, unknown_reason, valid_from, valid_to, observed_at, confidence, review_state, storage_state, privacy_status, publication_status, note FROM uec.organization_relationship_observations WHERE (($1='organization' AND ((($3 IN ('out','both')) AND from_organization_id=$2) OR (($3 IN ('in','both')) AND target_organization_id=$2))) OR ($1='facility' AND target_facility_id=$2) ORDER BY observed_at DESC LIMIT 200", &[&params.entity_type, &params.entity_id, &direction]).await { Ok(r) => r, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "private_graph_query_failed", "private graph traversal failed") };
+    let rows = match client.query("WITH RECURSIVE observations AS (SELECT relationship_observation_id, source_id, source_record_id, from_organization_id, target_facility_id, target_organization_id, relationship_type, assertion_status, unknown_reason, valid_from, valid_to, observed_at, confidence, review_state, storage_state, privacy_status, publication_status, note FROM uec.organization_relationship_observations), edges AS (SELECT o.*, 'organization'::text AS from_type, o.from_organization_id AS from_id, CASE WHEN o.target_facility_id IS NOT NULL THEN 'facility'::text ELSE 'organization'::text END AS to_type, COALESCE(o.target_facility_id, o.target_organization_id) AS to_id FROM observations o), walk(node_type, node_id, hop) AS (SELECT $1::text, $2::uuid, 0 UNION SELECT CASE WHEN $3 IN ('out','both') THEN e.to_type ELSE e.from_type END, CASE WHEN $3 IN ('out','both') THEN e.to_id ELSE e.from_id END, w.hop + 1 FROM walk w JOIN edges e ON (($3 IN ('out','both') AND e.from_type=w.node_type AND e.from_id=w.node_id) OR ($3 IN ('in','both') AND e.to_type=w.node_type AND e.to_id=w.node_id)) WHERE w.hop < $4), matched AS (SELECT DISTINCT e.relationship_observation_id FROM edges e JOIN walk w ON w.hop < $4 AND (($3 IN ('out','both') AND e.from_type=w.node_type AND e.from_id=w.node_id) OR ($3 IN ('in','both') AND e.to_type=w.node_type AND e.to_id=w.node_id))) SELECT o.relationship_observation_id, o.source_id, o.source_record_id, o.from_organization_id, o.target_facility_id, o.target_organization_id, o.relationship_type, o.assertion_status, o.unknown_reason, o.valid_from, o.valid_to, o.observed_at, o.confidence, o.review_state, o.storage_state, o.privacy_status, o.publication_status, o.note FROM observations o JOIN matched m USING (relationship_observation_id) ORDER BY o.observed_at DESC LIMIT 200", &[&params.entity_type, &params.entity_id, &direction, &depth]).await { Ok(r) => r, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "private_graph_query_failed", "private graph traversal failed") };
     let data: Vec<Value> = rows.into_iter().map(|r| json!({"relationship_observation_id":r.get::<_,uuid::Uuid>(0),"source_id":r.get::<_,String>(1),"source_record_id":r.get::<_,uuid::Uuid>(2),"from_organization_id":r.get::<_,Option<uuid::Uuid>>(3),"target_facility_id":r.get::<_,Option<uuid::Uuid>>(4),"target_organization_id":r.get::<_,Option<uuid::Uuid>>(5),"relationship_type":r.get::<_,Option<String>>(6),"assertion_status":r.get::<_,String>(7),"unknown_reason":r.get::<_,Option<String>>(8),"valid_from":r.get::<_,Option<chrono::NaiveDate>>(9),"valid_to":r.get::<_,Option<chrono::NaiveDate>>(10),"observed_at":r.get::<_,chrono::DateTime<chrono::Utc>>(11),"confidence":r.get::<_,Option<f64>>(12),"review_state":r.get::<_,String>(13),"storage_state":r.get::<_,String>(14),"privacy_status":r.get::<_,String>(15),"publication_status":r.get::<_,String>(16),"note":r.get::<_,Option<String>>(17)})).collect();
     Json(json!({"api_version":"private-graph-v1","data":data,"meta":{"scope":"private_evidence_only","bounded":true,"depth":depth,"direction":direction,"contradictions_preserved":true,"public_projection":false}})).into_response()
 }
@@ -902,6 +918,7 @@ pub async fn get_dev_candidate_preview_handler(
     let rows = match client.query(r#"
         SELECT r.release_id, r.status, o.source_record_id, o.facility_id,
                f.canonical_name, f.country_code, f.city, o.classification_category,
+               o.coordinate_precision, o.coordinate_review_status,
                ST_Y(g.result::geometry), ST_X(g.result::geometry),
                source.origin_type, source.source_id, source.name, source.official_url,
                artifact.retrieved_at, review.factual_review_status,
@@ -947,16 +964,20 @@ pub async fn get_dev_candidate_preview_handler(
                 "city": row.get::<_, Option<String>>(6),
                 "category": row.get::<_, String>(7),
                 "display_precision": "exact",
-                "latitude": row.get::<_, Option<f64>>(8),
-                "longitude": row.get::<_, Option<f64>>(9),
-                "source_type": row.get::<_, String>(10),
-                "provenance_source_id": row.get::<_, String>(11),
-                "provenance_source_name": row.get::<_, String>(12),
-                "provenance_source_url": row.get::<_, String>(13),
-                "provenance_retrieved_at": row.get::<_, chrono::DateTime<chrono::Utc>>(14),
-                "factual_review_status": row.get::<_, String>(15),
-                "privacy_screening_status": row.get::<_, String>(16),
+                "latitude": row.get::<_, Option<f64>>(10),
+                "longitude": row.get::<_, Option<f64>>(11),
+                "coordinate_precision": row.get::<_, Option<String>>(8),
+                "coordinate_review_status": row.get::<_, Option<String>>(9),
+                "source_type": row.get::<_, String>(12),
+                "provenance_source_id": row.get::<_, String>(13),
+                "provenance_source_name": row.get::<_, String>(14),
+                "provenance_source_url": row.get::<_, String>(15),
+                "provenance_retrieved_at": row.get::<_, chrono::DateTime<chrono::Utc>>(16),
+                "factual_review_status": row.get::<_, String>(17),
+                "privacy_screening_status": row.get::<_, String>(18),
                 "project_approval": false,
+                "maintainer_approval": row.get::<_, String>(19),
+                "suppression_state": "not_currently_restricted",
                 "release_id": row.get::<_, String>(0),
                 "release_status": row.get::<_, String>(1),
                 "preview_label": "Private development candidate — not project-approved or published"

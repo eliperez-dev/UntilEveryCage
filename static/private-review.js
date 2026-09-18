@@ -222,22 +222,251 @@ function renderCandidateDetail() {
     </div>`;
 }
 
-const FORBIDDEN_PACKET_KEYS = new Set([
-  'source_values', 'raw_fields', 'address', 'street', 'street_address', 'latitude', 'longitude',
-  'coordinates', 'geocoder_query', 'geocoder_response', 'phone', 'email', 'requester',
-  'requester_contact', 'reviewer_identity', 'records', 'rows',
+const PACKET_TOP_KEYS = new Set([
+  'schema_version', 'source_id', 'run_dir_digest', 'run_id', 'classification', 'review_required', 'reasons',
+  'provenance', 'schema', 'counts', 'review_metrics', 'facility_observation', 'classification', 'geospatial',
+  'quarantine', 'run', 'release_diff', 'graph_candidates', 'gates', 'platform', 'publication_boundary',
+  'blockers', 'prior_eligible_release', 'release_promotion_allowed', 'public_exposure', 'operator_actions',
 ]);
+const PROVENANCE_KEYS = new Set(['source_url', 'retrieved_at_utc', 'publication_date', 'effective_date', 'sha256', 'checksum_sha256', 'byte_size', 'code_version', 'config_version', 'redirects']);
+const SCHEMA_KEYS = new Set(['adapter_version', 'schema_version', 'schema_fingerprint', 'schema_status']);
+const COUNT_KEYS = new Set(['input_rows', 'normalized_rows', 'quarantined_rows', 'reconciles', 'qa_matches_manifest']);
+const METRIC_FACILITY_KEYS = new Set(['schema_version', 'source_row_unit', 'input_observations', 'accepted_observations', 'quarantined_observations', 'distinct_provisional_facility_keys', 'accepted_distinct_provisional_facility_keys', 'distinct_observation_keys', 'repeated_provisional_facility_groups', 'repeated_observation_keys', 'max_observations_per_provisional_facility', 'identity_semantics', 'disappearance_semantics']);
+const METRIC_CLASSIFICATION_KEYS = new Set(['schema_version', 'rows', 'review_state_counts', 'field_presence', 'status_state_counts', 'interpretation']);
+const METRIC_GEOSPATIAL_KEYS = new Set(['schema_version', 'coordinate_state_counts', 'precision_counts', 'coordinate_gate_counts', 'interpretation']);
+const QUARANTINE_KEYS = new Set(['rows', 'reasons']);
+const RUN_KEYS = new Set(['status', 'publication_state', 'release_state', 'input_rows', 'normalized_rows', 'quarantined_rows', 'drift_alarms']);
+const RELEASE_DIFF_KEYS = new Set(['schema_version', 'status', 'delta_version', 'publication_state', 'release_promoted', 'public_surfaces', 'geocoding', 'prior_eligible_release', 'disappearance_semantics', 'error_type', 'error', 'counts', 'previous', 'current', 'added', 'changed', 'not_observed', 'suppressed']);
+const RELEASE_SUMMARY_KEYS = new Set(['checksum_sha256', 'schema_fingerprint', 'config_fingerprint', 'mapping_version', 'adapter_version', 'schema_version', 'input_rows', 'normalized_rows', 'quarantined_rows']);
+const GRAPH_CANDIDATE_KEYS = new Set(['status', 'storage_state', 'review_state', 'publication_status']);
+const GATE_KEYS = new Set(['release_state', 'publication_state', 'release_promoted', 'public_surfaces', 'geocoding']);
+const PLATFORM_KEYS = new Set(['registered', 'country_code', 'coverage', 'attribution', 'readiness', 'owner_review', 'publication']);
+const COVERAGE_KEYS = new Set(['completeness', 'disappearance_semantics', 'limitations']);
+const ATTRIBUTION_KEYS = new Set(['source_origin', 'terms_status', 'attribution_required', 'notice']);
+const READINESS_KEYS = new Set(['state', 'owner_review', 'private_candidate', 'public_release_allowed', 'reasons']);
+const OWNER_REVIEW_KEYS = new Set(['state', 'decision_recorded', 'decision_id']);
+const PUBLICATION_KEYS = new Set(['state', 'approval_required', 'reason']);
+const CONTRACT_VERSION_KEYS = new Set(['country', 'readiness']);
+
+function packetError(path) {
+  throw new Error(`Review packet rejected safely at ${path}.`);
+}
+
+function assertObjectKeys(value, allowed, path) {
+  if (!isRecord(value)) packetError(path);
+  if (Object.keys(value).some((key) => !allowed.has(key))) packetError(path);
+}
+
+function assertScalar(value, path) {
+  if (!(value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean')) packetError(path);
+}
+
+function assertStringList(value, path) {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) packetError(path);
+}
+
+function assertAggregateMap(value, path, mode = 'scalar') {
+  if (!isRecord(value)) packetError(path);
+  for (const [key, child] of Object.entries(value)) {
+    if (!/^[A-Za-z][A-Za-z0-9_.-]{0,79}$/.test(key)) packetError(`${path}.${key}`);
+    if (mode === 'string-list') assertStringList(child, `${path}.${key}`);
+    else if (mode === 'number') {
+      if (!Number.isInteger(child) || child < 0) packetError(`${path}.${key}`);
+    } else assertScalar(child, `${path}.${key}`);
+  }
+}
+
+function validateMetricObject(value, path, allowed) {
+  if (value === undefined || value === null) return;
+  assertObjectKeys(value, allowed, path);
+  for (const [key, child] of Object.entries(value)) {
+    const childPath = `${path}.${key}`;
+    if (['review_state_counts', 'field_presence', 'status_state_counts', 'coordinate_state_counts', 'precision_counts', 'coordinate_gate_counts'].includes(key)) assertAggregateMap(child, childPath, 'number');
+    else if (key === 'schema_version' || key === 'source_row_unit' || key === 'identity_semantics' || key === 'disappearance_semantics' || key === 'interpretation') assertScalar(child, childPath);
+    else if (typeof child !== 'number' || !Number.isFinite(child) || child < 0) packetError(childPath);
+  }
+}
+
+function validateReviewPacketBranch(value, path = 'packet') {
+  if (!isRecord(value)) packetError(path);
+  assertObjectKeys(value, PACKET_TOP_KEYS, path);
+  for (const [key, child] of Object.entries(value)) {
+    const childPath = `${path}.${key}`;
+    if (['schema_version', 'source_id', 'run_dir_digest', 'run_id', 'classification', 'publication_boundary'].includes(key)) assertScalar(child, childPath);
+    else if (key === 'review_required' || key === 'release_promotion_allowed' || key === 'public_exposure') {
+      if (typeof child !== 'boolean') packetError(childPath);
+    } else if (key === 'reasons' || key === 'operator_actions') assertStringList(child, childPath);
+    else if (key === 'provenance') {
+      assertObjectKeys(child, PROVENANCE_KEYS, childPath);
+      Object.entries(child).forEach(([nestedKey, nestedValue]) => nestedKey === 'redirects' ? assertStringList(nestedValue, `${childPath}.${nestedKey}`) : assertScalar(nestedValue, `${childPath}.${nestedKey}`));
+    } else if (key === 'schema') {
+      assertObjectKeys(child, SCHEMA_KEYS, childPath);
+      Object.entries(child).forEach(([nestedKey, nestedValue]) => assertScalar(nestedValue, `${childPath}.${nestedKey}`));
+    } else if (key === 'counts') {
+      assertObjectKeys(child, COUNT_KEYS, childPath);
+      Object.entries(child).forEach(([nestedKey, nestedValue]) => {
+        if (nestedKey === 'reconciles' || nestedKey === 'qa_matches_manifest') {
+          if (typeof nestedValue !== 'boolean') packetError(`${childPath}.${nestedKey}`);
+        } else if (!Number.isInteger(nestedValue) || nestedValue < 0) packetError(`${childPath}.${nestedKey}`);
+      });
+    } else if (key === 'review_metrics') {
+      assertObjectKeys(child, new Set(['schema_version', 'facility_observation', 'classification', 'geospatial']), childPath);
+      assertScalar(child.schema_version, `${childPath}.schema_version`);
+      validateMetricObject(child.facility_observation, `${childPath}.facility_observation`, METRIC_FACILITY_KEYS);
+      validateMetricObject(child.classification, `${childPath}.classification`, METRIC_CLASSIFICATION_KEYS);
+      validateMetricObject(child.geospatial, `${childPath}.geospatial`, METRIC_GEOSPATIAL_KEYS);
+    } else if (key === 'facility_observation') validateMetricObject(child, childPath, METRIC_FACILITY_KEYS);
+    else if (key === 'classification') validateMetricObject(child, childPath, METRIC_CLASSIFICATION_KEYS);
+    else if (key === 'geospatial') validateMetricObject(child, childPath, METRIC_GEOSPATIAL_KEYS);
+    else if (key === 'quarantine') {
+      assertObjectKeys(child, QUARANTINE_KEYS, childPath);
+      if (child.rows !== undefined && (!Number.isInteger(child.rows) || child.rows < 0)) packetError(`${childPath}.rows`);
+      if (child.reasons !== undefined) assertAggregateMap(child.reasons, `${childPath}.reasons`, 'number');
+    } else if (key === 'run') {
+      assertObjectKeys(child, RUN_KEYS, childPath);
+      for (const [nestedKey, nestedValue] of Object.entries(child)) {
+        if (nestedKey === 'drift_alarms') assertStringList(nestedValue, `${childPath}.${nestedKey}`);
+        else assertScalar(nestedValue, `${childPath}.${nestedKey}`);
+      }
+    } else if (key === 'release_diff') {
+      assertObjectKeys(child, RELEASE_DIFF_KEYS, childPath);
+      for (const [nestedKey, nestedValue] of Object.entries(child)) {
+        if (nestedKey === 'counts') {
+          assertObjectKeys(nestedValue, new Set(['added', 'changed', 'not_observed', 'suppressed']), `${childPath}.counts`);
+          Object.values(nestedValue).forEach((count) => { if (count !== null && (!Number.isInteger(count) || count < 0)) packetError(`${childPath}.counts`); });
+        } else if (nestedKey === 'public_surfaces') {
+          assertObjectKeys(nestedValue, new Set(['api', 'map', 'export', 'cache', 'history']), `${childPath}.public_surfaces`);
+          Object.values(nestedValue).forEach((flag) => { if (typeof flag !== 'boolean') packetError(`${childPath}.public_surfaces`); });
+        } else if (nestedKey === 'previous' || nestedKey === 'current') {
+          assertObjectKeys(nestedValue, RELEASE_SUMMARY_KEYS, `${childPath}.${nestedKey}`);
+          Object.values(nestedValue).forEach((summaryValue) => assertScalar(summaryValue, `${childPath}.${nestedKey}`));
+        } else if (nestedKey === 'release_promoted') {
+          if (typeof nestedValue !== 'boolean') packetError(`${childPath}.${nestedKey}`);
+        } else assertScalar(nestedValue, `${childPath}.${nestedKey}`);
+      }
+    } else if (key === 'graph_candidates') {
+      assertObjectKeys(child, GRAPH_CANDIDATE_KEYS, childPath);
+      Object.values(child).forEach((nestedValue) => assertScalar(nestedValue, childPath));
+    } else if (key === 'gates') {
+      assertObjectKeys(child, GATE_KEYS, childPath);
+      Object.entries(child).forEach(([nestedKey, nestedValue]) => {
+        if (nestedKey === 'public_surfaces') {
+          assertObjectKeys(nestedValue, new Set(['api', 'map', 'export', 'cache', 'history']), `${childPath}.public_surfaces`);
+          Object.values(nestedValue).forEach((flag) => { if (typeof flag !== 'boolean') packetError(`${childPath}.public_surfaces`); });
+        } else if (nestedKey === 'release_promoted') {
+          if (typeof nestedValue !== 'boolean') packetError(`${childPath}.${nestedKey}`);
+        } else assertScalar(nestedValue, `${childPath}.${nestedKey}`);
+      });
+    } else if (key === 'platform') validatePlatformPacket(child, childPath);
+    else if (key === 'blockers') assertAggregateMap(child, childPath, 'string-list');
+    else if (key === 'prior_eligible_release') assertScalar(child, childPath);
+  }
+  return value;
+}
+
+function validatePlatformPacket(value, path) {
+  assertObjectKeys(value, PLATFORM_KEYS, path);
+  for (const [key, child] of Object.entries(value)) {
+    const childPath = `${path}.${key}`;
+    if (key === 'registered') {
+      if (typeof child !== 'boolean') packetError(childPath);
+    } else if (key === 'country_code') assertScalar(child, childPath);
+    else if (key === 'coverage') {
+      assertObjectKeys(child, COVERAGE_KEYS, childPath);
+      if (child.limitations !== undefined) assertStringList(child.limitations, `${childPath}.limitations`);
+      if (child.completeness !== undefined) assertScalar(child.completeness, `${childPath}.completeness`);
+      if (child.disappearance_semantics !== undefined) assertScalar(child.disappearance_semantics, `${childPath}.disappearance_semantics`);
+    } else if (key === 'attribution') {
+      assertObjectKeys(child, ATTRIBUTION_KEYS, childPath);
+      Object.values(child).forEach((nestedValue) => assertScalar(nestedValue, childPath));
+    } else if (key === 'readiness') {
+      assertObjectKeys(child, READINESS_KEYS, childPath);
+      if (child.reasons !== undefined) assertStringList(child.reasons, `${childPath}.reasons`);
+      Object.entries(child).forEach(([nestedKey, nestedValue]) => {
+        if (nestedKey !== 'reasons' && !['state', 'owner_review'].includes(nestedKey) && typeof nestedValue !== 'boolean') assertScalar(nestedValue, `${childPath}.${nestedKey}`);
+      });
+    } else if (key === 'owner_review') {
+      if (isRecord(child)) {
+        assertObjectKeys(child, OWNER_REVIEW_KEYS, childPath);
+        Object.values(child).forEach((nestedValue) => assertScalar(nestedValue, childPath));
+      } else assertScalar(child, childPath);
+    } else if (key === 'publication') {
+      assertObjectKeys(child, PUBLICATION_KEYS, childPath);
+      Object.values(child).forEach((nestedValue) => assertScalar(nestedValue, childPath));
+    }
+  }
+}
 
 export function validateReviewPacket(value, path = 'packet') {
-  if (Array.isArray(value)) {
-    value.forEach((child, index) => validateReviewPacket(child, `${path}[${index}]`));
-    return value;
-  }
-  if (!isRecord(value)) return value;
-  const leaked = Object.keys(value).filter((key) => FORBIDDEN_PACKET_KEYS.has(key.toLowerCase()));
-  if (leaked.length) throw new Error(`Review packet rejected safely at ${path}.`);
-  Object.entries(value).forEach(([key, child]) => validateReviewPacket(child, `${path}.${key}`));
+  validateReviewPacketBranch(value, path);
+  if (!/^private-review-packet-v[12]$/.test(String(value.schema_version || ''))) packetError(`${path}.schema_version`);
   return value;
+}
+
+export function validateReadinessPayload(value, path = 'readiness') {
+  if (!isRecord(value)) packetError(path);
+  const allowed = new Set(['schema_version', 'generated_at', 'contract_versions', 'source_of_truth', 'derived_context', 'country_count', 'source_count', 'readiness_counts', 'readiness_classes', 'states', 'classification_notes', 'countries', 'country_records', 'publication_boundary']);
+  assertObjectKeys(value, allowed, path);
+  if (value.schema_version !== 'private-review-console-v1' || value.derived_context !== true) packetError(path);
+  if (value.generated_at !== undefined) assertScalar(value.generated_at, `${path}.generated_at`);
+  if (value.contract_versions !== undefined) {
+    assertObjectKeys(value.contract_versions, CONTRACT_VERSION_KEYS, `${path}.contract_versions`);
+    Object.values(value.contract_versions).forEach((item) => assertScalar(item, `${path}.contract_versions`));
+  }
+  if (value.source_of_truth !== undefined) {
+    assertObjectKeys(value.source_of_truth, new Set(['platform_registry', 'publication_boundary']), `${path}.source_of_truth`);
+    Object.values(value.source_of_truth).forEach((item) => assertScalar(item, `${path}.source_of_truth`));
+  }
+  if (value.readiness_counts !== undefined) assertAggregateMap(value.readiness_counts, `${path}.readiness_counts`, 'number');
+  if (value.classification_notes !== undefined) {
+    assertObjectKeys(value.classification_notes, new Set(READINESS_STATES), `${path}.classification_notes`);
+    Object.values(value.classification_notes).forEach((item) => { if (typeof item !== 'string') packetError(`${path}.classification_notes`); });
+  }
+  if (value.publication_boundary !== undefined) assertScalar(value.publication_boundary, `${path}.publication_boundary`);
+  if (!Number.isInteger(value.country_count) || value.country_count < 1 || !Number.isInteger(value.source_count) || value.source_count < 1) packetError(path);
+  if (!Array.isArray(value.readiness_classes) || value.readiness_classes.length !== READINESS_STATES.length || value.readiness_classes.some((item, index) => item !== READINESS_STATES[index])) packetError(`${path}.readiness_classes`);
+  if (!Array.isArray(value.states) || value.states.join('|') !== READINESS_STATES.join('|')) packetError(`${path}.states`);
+  if (!isRecord(value.countries) || Object.keys(value.countries).length !== value.country_count) packetError(`${path}.countries`);
+  for (const [code, country] of Object.entries(value.countries)) {
+    if (!/^[A-Z]{2}$/.test(code) || !isRecord(country)) packetError(`${path}.countries.${code}`);
+    assertObjectKeys(country, new Set(['name', 'country_code', 'display_name', 'state', 'readiness_class', 'summary', 'basis', 'source_count', 'acquisition_counts', 'country_reasons', 'owner_review', 'publication_state', 'sources']), `${path}.countries.${code}`);
+    if (typeof country.name !== 'string' || !READINESS_STATES.includes(country.state) || typeof country.summary !== 'string' || !Array.isArray(country.basis) || !Number.isInteger(country.source_count) || country.source_count < 1 || !Array.isArray(country.sources) || country.sources.length !== country.source_count) packetError(`${path}.countries.${code}`);
+    if (country.acquisition_counts !== undefined) assertAggregateMap(country.acquisition_counts, `${path}.countries.${code}.acquisition_counts`, 'number');
+    if (country.country_reasons !== undefined) assertStringList(country.country_reasons, `${path}.countries.${code}.country_reasons`);
+    if (country.owner_review !== undefined) assertScalar(country.owner_review, `${path}.countries.${code}.owner_review`);
+    if (country.publication_state !== undefined) assertScalar(country.publication_state, `${path}.countries.${code}.publication_state`);
+    country.sources.forEach((source, index) => validateReadinessSource(source, `${path}.countries.${code}.sources[${index}]`, code));
+  }
+  if (!Array.isArray(value.country_records) || value.country_records.length !== value.country_count) packetError(`${path}.country_records`);
+  value.country_records.forEach((record, index) => {
+    const recordPath = `${path}.country_records[${index}]`;
+    if (!isRecord(record)) packetError(recordPath);
+    assertObjectKeys(record, new Set(['country_code', 'display_name', 'readiness_class', 'source_count', 'sources', 'owner_review', 'publication_state', 'basis', 'summary', 'acquisition_counts', 'country_reasons']), recordPath);
+    if (typeof record.country_code !== 'string' || !READINESS_STATES.includes(record.readiness_class) || !Number.isInteger(record.source_count) || !Array.isArray(record.sources) || record.sources.length !== record.source_count) packetError(recordPath);
+    record.sources.forEach((source, sourceIndex) => validateReadinessSource(source, `${recordPath}.sources[${sourceIndex}]`, record.country_code));
+  });
+  return value;
+}
+
+function validateReadinessSource(value, path, countryCode) {
+  const allowed = new Set(['source_id', 'country_code', 'jurisdiction_scope', 'source_url', 'access_method', 'cadence', 'status', 'readiness', 'owner_review', 'publication', 'coverage', 'attribution']);
+  assertObjectKeys(value, allowed, path);
+  if (value.country_code !== countryCode || typeof value.source_id !== 'string' || typeof value.status !== 'object' || typeof value.attribution !== 'object' || typeof value.coverage !== 'object') packetError(path);
+  assertObjectKeys(value.status, new Set(['metadata', 'acquisition', 'runtime_health', 'publication_eligibility', 'evidence', 'next_action']), `${path}.status`);
+  if (value.status.evidence !== undefined) assertStringList(value.status.evidence, `${path}.status.evidence`);
+  Object.entries(value.status).forEach(([key, child]) => { if (key !== 'evidence') assertScalar(child, `${path}.status.${key}`); });
+  assertObjectKeys(value.readiness, READINESS_KEYS, `${path}.readiness`);
+  if (value.readiness.reasons !== undefined) assertStringList(value.readiness.reasons, `${path}.readiness.reasons`);
+  Object.entries(value.readiness).forEach(([key, child]) => { if (key !== 'reasons') assertScalar(child, `${path}.readiness.${key}`); });
+  assertObjectKeys(value.owner_review, new Set(['state', 'decision_id', 'decision_recorded']), `${path}.owner_review`);
+  Object.values(value.owner_review).forEach((child) => assertScalar(child, `${path}.owner_review`));
+  assertObjectKeys(value.publication, new Set(['state', 'approval_required', 'reason']), `${path}.publication`);
+  Object.values(value.publication).forEach((child) => assertScalar(child, `${path}.publication`));
+  assertObjectKeys(value.coverage, COVERAGE_KEYS, `${path}.coverage`);
+  if (value.coverage.limitations !== undefined) assertStringList(value.coverage.limitations, `${path}.coverage.limitations`);
+  Object.entries(value.coverage).forEach(([key, child]) => { if (key !== 'limitations') assertScalar(child, `${path}.coverage.${key}`); });
+  assertObjectKeys(value.attribution, ATTRIBUTION_KEYS, `${path}.attribution`);
+  Object.values(value.attribution).forEach((child) => assertScalar(child, `${path}.attribution`));
 }
 
 function packetEntries(value) {
@@ -266,7 +495,11 @@ function renderReviewPacket() {
   const diff = packet.release_diff || {};
   const diffCounts = diff.counts || {};
   const geospatial = packet.geospatial || {};
-  panel.innerHTML = `<div class="packet-heading"><div><p class="eyebrow">LOCAL ROW-FREE PACKET</p><h3>${escapeHtml(displayValue(packet.source_id, 'Source unavailable'))}</h3><p class="notice-small">${escapeHtml(displayValue(packet.publication_boundary, 'Packet is evidence only; no approval is implied.'))}</p></div><span class="badge badge-amber">inspection only</span></div><div class="packet-grid"><article class="packet-card"><h4>Counts / deltas</h4><ul class="packet-facts">${packetEntries({ input: counts.input_rows, normalized: counts.normalized_rows, quarantined: counts.quarantined_rows, reconciles: counts.reconciles, added: diffCounts.added, changed: diffCounts.changed, not_observed: diffCounts.not_observed })}</ul></article><article class="packet-card"><h4>Quarantine reasons</h4><ul class="packet-facts">${packetEntries(packet.quarantine?.reasons)}</ul></article><article class="packet-card"><h4>Coordinate / privacy gates</h4><ul class="packet-facts">${packetEntries(geospatial.coordinate_gate_counts || geospatial.precision_counts)}</ul></article><article class="packet-card"><h4>Publication blockers</h4><ul class="packet-facts">${packetEntries(packet.blockers)}</ul></article></div>`;
+  const provenance = packet.provenance || {};
+  const schema = packet.schema || {};
+  const gates = packet.gates || {};
+  const platform = packet.platform || {};
+  panel.innerHTML = `<div class="packet-heading"><div><p class="eyebrow">LOCAL ROW-FREE PACKET</p><h3>${escapeHtml(displayValue(packet.source_id, 'Source unavailable'))}</h3><p class="notice-small">${escapeHtml(displayValue(packet.publication_boundary, 'Packet is evidence only; no approval is implied.'))}</p></div><span class="badge badge-amber">inspection only</span></div><div class="packet-grid"><article class="packet-card"><h4>Counts / deltas</h4><ul class="packet-facts">${packetEntries({ input: counts.input_rows, normalized: counts.normalized_rows, quarantined: counts.quarantined_rows, reconciles: counts.reconciles, added: diffCounts.added, changed: diffCounts.changed, not_observed: diffCounts.not_observed })}</ul></article><article class="packet-card"><h4>Quarantine reasons</h4><ul class="packet-facts">${packetEntries(packet.quarantine?.reasons)}</ul></article><article class="packet-card"><h4>Coordinate / privacy gates</h4><ul class="packet-facts">${packetEntries(geospatial.coordinate_gate_counts || geospatial.precision_counts)}</ul></article><article class="packet-card"><h4>Provenance / schema</h4><ul class="packet-facts">${packetEntries({ retrieved: provenance.retrieved_at_utc, effective: provenance.effective_date, sha256: provenance.sha256 || provenance.checksum_sha256, bytes: provenance.byte_size, adapter: schema.adapter_version, schema: schema.schema_version, fingerprint: schema.schema_fingerprint, schema_status: schema.schema_status })}</ul></article><article class="packet-card"><h4>Release gates</h4><ul class="packet-facts">${packetEntries({ release: gates.release_state, publication: gates.publication_state, promoted: gates.release_promoted, geocoding: gates.geocoding, public_surfaces: gates.public_surfaces })}</ul></article><article class="packet-card"><h4>Platform / attribution</h4><ul class="packet-facts">${packetEntries({ owner_review: platform.owner_review?.state || platform.owner_review, terms: platform.attribution?.terms_status, source_origin: platform.attribution?.source_origin, coverage: platform.coverage?.completeness })}</ul></article><article class="packet-card"><h4>Publication blockers</h4><ul class="packet-facts">${packetEntries(packet.blockers)}</ul></article></div>`;
 }
 
 async function loadReviewPacket(event) {
@@ -418,7 +651,7 @@ async function loadReadiness() {
     const response = await fetch(READINESS_PATH, { cache: 'no-store', headers: { Accept: 'application/json' } });
     if (!response.ok) throw new Error('unavailable');
     const payload = await response.json();
-    if (!isRecord(payload) || payload.derived_context !== true || !isRecord(payload.countries)) throw new Error('invalid');
+    validateReadinessPayload(payload);
     state.readiness = payload;
     state.readinessError = false;
     setAuthStatus('readiness-status', 'Readiness context loaded · derived only', 'ready');

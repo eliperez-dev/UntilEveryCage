@@ -28578,7 +28578,7 @@
     }
   ],
   "derived_context": true,
-  "generated_at": "2026-09-18T22:35:41Z",
+  "generated_at": "2026-09-18T22:53:58Z",
   "publication_boundary": "This row-free snapshot is operator context only. It cannot approve, promote, or publish a release.",
   "readiness_classes": [
     "infrastructure-only",
