@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <title>Private candidate review console</title>
+  <link rel="stylesheet" href="private-review.css">
+</head>
+<body data-private-review="true">
+  <a class="skip-link" href="#review-content">Skip to console</a>
+  <main id="private-review-app" class="app-shell">
+    <header class="masthead">
+      <div>
+        <p class="eyebrow">RESTRICTED / OPERATOR CONSOLE</p>
+        <h1>Private candidate review</h1>
+        <p class="lede">A read-only workspace for inspecting candidate evidence before any separate, accountable human decision.</p>
+      </div>
+      <div class="masthead-status" aria-label="Console scope">
+        <span class="scope-badge">PRIVATE ONLY</span>
+        <span class="scope-detail">No public links · no mutation controls</span>
+      </div>
+    </header>
+
+    <section class="safety-banner" aria-label="Private-only warning">
+      <span class="banner-mark" aria-hidden="true">!</span>
+      <div>
+        <strong>Restricted evidence surface.</strong>
+        <span>Candidate rows and graph observations are not a release, do not establish ownership or operational status, and must not be used to target people or locations.</span>
+      </div>
+    </section>
+
+    <section class="auth-card panel" aria-labelledby="auth-heading">
+      <div class="section-heading compact-heading">
+        <div>
+          <p class="eyebrow">SESSION ACCESS</p>
+          <h2 id="auth-heading">Connect private read APIs</h2>
+        </div>
+        <span class="quiet-label">tokens live in this page only</span>
+      </div>
+      <div class="auth-grid">
+        <label class="field">
+          <span>Candidate preview token <small>(memory only)</small></span>
+          <input id="dev-token" type="password" autocomplete="off" spellcheck="false" placeholder="X-UEC-Dev-Preview-Token">
+          <small class="field-help">Used only for <code>GET /api/dev/preview/candidates</code>.</small>
+        </label>
+        <label class="field">
+          <span>Private graph token <small>(memory only)</small></span>
+          <input id="graph-token" type="password" autocomplete="off" spellcheck="false" placeholder="X-UEC-Private-Graph-Token">
+          <small class="field-help">Used only for queues, entity search, and neighborhood reads.</small>
+        </label>
+      <div class="auth-actions">
+        <button id="load-candidates" class="button button-primary" type="button">Load candidates</button>
+        <button id="load-queues" class="button button-secondary" type="button">Refresh queues</button>
+        <button id="clear-session" class="button button-quiet" type="button">Clear session</button>
+      </div>
+      <label class="field packet-loader">
+        <span>Inspect row-free review packet <small>(local file only)</small></span>
+        <input id="review-packet-file" type="file" accept="application/json,.json">
+        <small class="field-help">Counts, deltas, quarantine reasons, geospatial gates, provenance, and blockers only. Row-shaped packets are rejected.</small>
+      </label>
+      </div>
+      <div class="auth-status-row" aria-live="polite">
+        <span id="dev-auth-status" class="auth-status"><span class="status-dot"></span>Candidate preview not connected</span>
+        <span id="graph-auth-status" class="auth-status"><span class="status-dot"></span>Private graph not connected</span>
+        <span id="readiness-status" class="auth-status"><span class="status-dot"></span>Readiness context loading</span>
+      </div>
+    </section>
+
+    <div class="summary-grid" aria-label="Console summary">
+      <article class="metric-card">
+        <p class="metric-label">Candidate rows</p>
+        <strong id="metric-candidates" class="metric-value">—</strong>
+        <span id="metric-candidates-note" class="metric-note">Private preview not loaded</span>
+      </article>
+      <article class="metric-card metric-card-amber">
+        <p class="metric-label">Review queue items</p>
+        <strong id="metric-queues" class="metric-value">—</strong>
+        <span id="metric-queues-note" class="metric-note">Graph access required</span>
+      </article>
+      <article class="metric-card">
+        <p class="metric-label">Countries in context</p>
+        <strong id="metric-countries" class="metric-value">—</strong>
+        <span id="metric-countries-note" class="metric-note">Derived matrix, not an approval</span>
+      </article>
+      <article class="metric-card metric-card-slate">
+        <p class="metric-label">Visible blockers</p>
+        <strong id="metric-blockers" class="metric-value">—</strong>
+        <span id="metric-blockers-note" class="metric-note">Unknown until evidence loads</span>
+      </article>
+    </div>
+
+    <div class="console-layout">
+      <aside class="overview-rail" aria-label="Review console navigation">
+        <div class="rail-card panel">
+          <p class="eyebrow">WORKSPACE</p>
+          <nav class="rail-nav">
+            <a class="rail-link active" href="#candidates"><span>01</span><span>Candidate preview</span><b id="rail-candidate-count">—</b></a>
+            <a class="rail-link" href="#queues"><span>02</span><span>Review queues</span><b id="rail-queue-count">—</b></a>
+            <a class="rail-link" href="#readiness"><span>03</span><span>Launch readiness</span><b id="rail-country-count">—</b></a>
+            <a class="rail-link" href="#graph"><span>04</span><span>Entity graph</span><b>read</b></a>
+          </nav>
+        </div>
+        <div class="rail-card panel rail-note">
+          <p class="eyebrow">READ-ONLY BOUNDARY</p>
+          <p>This console fetches authenticated evidence and renders it for inspection. Human review decisions, suppression decisions, and any release decision remain outside this page.</p>
+          <dl class="mini-list">
+            <div><dt>Addresses</dt><dd>withheld</dd></div>
+            <div><dt>Raw payloads</dt><dd>withheld</dd></div>
+            <div><dt>Reviewer identities</dt><dd>withheld</dd></div>
+            <div><dt>Exports / public links</dt><dd>not available</dd></div>
+          </dl>
+        </div>
+      </aside>
+
+      <div id="review-content" class="review-content">
+        <section id="candidates" class="content-section" aria-labelledby="candidates-heading">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">01 / PRIVATE CANDIDATE RELEASE</p>
+              <h2 id="candidates-heading">Candidate preview</h2>
+            </div>
+            <span class="section-tag">authenticated GET · candidate only</span>
+          </div>
+          <div class="candidate-workspace panel">
+            <div class="candidate-list-column">
+              <div class="list-heading"><h3>Rows in preview</h3><span id="candidate-list-count">Not loaded</span></div>
+              <div id="candidate-list" class="candidate-list" aria-live="polite"><div class="empty-state"><strong>Waiting for private preview.</strong><span>Enter the candidate token above, then load the authenticated test-only response.</span></div></div>
+            </div>
+            <div id="candidate-detail" class="candidate-detail" aria-live="polite">
+              <div class="empty-state empty-state-large"><span class="empty-icon" aria-hidden="true">↳</span><strong>Select a candidate row.</strong><span>Details will be limited to safe review fields. Private addresses, raw source material, geocoder details, and reviewer identities stay out of this surface.</span></div>
+            </div>
+          </div>
+          <div id="packet-summary" class="packet-summary panel" aria-live="polite"><div class="empty-state"><strong>No local review packet loaded.</strong><span>The console does not infer counts, deltas, quarantine reasons, or blockers from candidate rows.</span></div></div>
+        </section>
+
+        <section id="queues" class="content-section" aria-labelledby="queues-heading">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">02 / REVIEW WORK QUEUES</p>
+              <h2 id="queues-heading">Contradictions, identity, quarantine, statistics</h2>
+            </div>
+            <span class="section-tag">private graph · separate observations</span>
+          </div>
+          <div class="queue-tabs" role="tablist" aria-label="Review queues">
+            <button class="queue-tab active" data-queue="contradictions" role="tab" type="button">Contradictions <b id="queue-count-contradictions">—</b></button>
+            <button class="queue-tab" data-queue="unresolved-identities" role="tab" type="button">Unresolved identities <b id="queue-count-unresolved-identities">—</b></button>
+            <button class="queue-tab" data-queue="quarantine" role="tab" type="button">Quarantine <b id="queue-count-quarantine">—</b></button>
+            <button class="queue-tab" data-queue="claims" role="tab" type="button">Claims / support <b id="queue-count-claims">—</b></button>
+            <button class="queue-tab" data-queue="rejected-candidates" role="tab" type="button">Rejected candidates <b id="queue-count-rejected-candidates">—</b></button>
+            <button class="queue-tab" data-queue="suppression" role="tab" type="button">Suppression <b id="queue-count-suppression">—</b></button>
+            <button class="queue-tab" data-queue="statistics" role="tab" type="button">Statistics <b id="queue-count-statistics">—</b></button>
+          </div>
+          <div id="queue-panel" class="queue-panel panel" aria-live="polite"><div class="empty-state"><strong>Private graph access required.</strong><span>Queue contents are not inferred from candidate rows.</span></div></div>
+        </section>
+
+        <section id="readiness" class="content-section" aria-labelledby="readiness-heading">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">03 / DERIVED OPERATOR CONTEXT</p>
+              <h2 id="readiness-heading">Launch-readiness matrix</h2>
+            </div>
+            <span class="section-tag">static JSON · not approval</span>
+          </div>
+          <div class="matrix-intro panel">
+            <p><strong>Read this as a staging map, not a release gate.</strong> Each country has one derived context label from <code>private-review/readiness-matrix.json</code>. It does not approve a record, source, release, or publication profile.</p>
+            <div id="readiness-legend" class="legend" aria-label="Readiness states"></div>
+          </div>
+          <div id="readiness-matrix" class="readiness-matrix panel" aria-live="polite"><div class="empty-state"><strong>Loading readiness context.</strong><span>Unknown is shown until the local asset is available.</span></div></div>
+        </section>
+
+        <section id="graph" class="content-section" aria-labelledby="graph-heading">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">04 / BOUNDED EVIDENCE GRAPH</p>
+              <h2 id="graph-heading">Entity search and neighborhood</h2>
+            </div>
+            <span class="section-tag">observations stay separate</span>
+          </div>
+          <div class="graph-search panel">
+            <div class="search-row">
+              <label class="field search-field"><span>Entity name</span><input id="entity-query" type="search" autocomplete="off" placeholder="Search canonical entity names"></label>
+              <button id="search-entities" class="button button-primary" type="button">Search entities</button>
+            </div>
+            <div class="control-row">
+              <label class="inline-field"><span>Direction</span><select id="graph-direction"><option value="both">both</option><option value="out">outgoing</option><option value="in">incoming</option></select></label>
+              <label class="inline-field"><span>Depth</span><select id="graph-depth"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></label>
+              <span class="field-help graph-help">The server contract remains bounded. Direction and depth are sent with every neighborhood read.</span>
+            </div>
+            <p id="graph-status" class="inline-status" role="status">Private graph search is not connected.</p>
+          </div>
+          <div class="graph-workspace">
+            <div class="entity-results panel">
+              <div class="list-heading"><h3>Entities</h3><span id="entity-count">Not loaded</span></div>
+              <div id="entity-list" class="entity-list" aria-live="polite"><div class="empty-state"><strong>No entity search yet.</strong><span>Search returns bounded entity metadata only.</span></div></div>
+            </div>
+            <div id="neighborhood-panel" class="neighborhood-panel panel" aria-live="polite">
+              <div class="empty-state empty-state-large"><strong>Select an entity.</strong><span>Neighborhood results will be displayed as retained relationship observations, never as an ownership or operational-status conclusion.</span></div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <footer class="page-footer">
+      <span>Private candidate review · local/operator use only</span>
+      <span>Evidence state is explicit; unavailable is not a positive finding.</span>
+    </footer>
+  </main>
+  <script type="module" src="private-review.js"></script>
+</body>
+</html>
