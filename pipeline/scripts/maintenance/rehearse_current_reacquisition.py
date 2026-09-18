@@ -145,6 +145,12 @@ def build_report(manifest_path: Path, root: Path, output: Path) -> dict[str, Any
             results.append(_missing_result(profile, [str(exc)], [], status="validation_error"))
     complete = [item for item in results if item["status"] == "validated-private-candidate"]
     totals = {key: sum(int(item[key]) for item in complete) for key in ("input", "normalized", "quarantined")}
+    # A missing handoff is unavailable evidence, not a zero-row source. Keep
+    # manifest-declared scope separate from validated totals for auditability.
+    declared_totals = {
+        key: sum(int(profile[key]) for profile in selected if profile.get(key) is not None)
+        for key in ("input_rows", "normalized_rows", "quarantined_rows")
+    }
     unavailable = [item["source_id"] for item in results if item["status"] in {"unavailable_private_handoff", "unavailable_raw_only"}]
     raw_only = [item["source_id"] for item in results if item["status"] == "validated-raw-only"]
     failed = [item["source_id"] for item in results if item["status"] not in {"validated-private-candidate", "validated-raw-only", "unavailable_private_handoff", "unavailable_raw_only"}]
@@ -154,7 +160,7 @@ def build_report(manifest_path: Path, root: Path, output: Path) -> dict[str, Any
               "release_id": source_manifest["publication"]["candidate_release"],
               "publication": {"release_created": False, "release_promoted": False, "public_api_rows": 0,
                               "candidate_only": True},
-              "sources": results, "totals": totals,
+              "sources": results, "totals": totals, "declared_totals": declared_totals,
               "availability": {"expected_profiles": len(EXPECTED), "validated_private_profiles": len(complete),
                                "validated_raw_only_profiles": len(raw_only), "unavailable_profiles": unavailable,
                                "failed_profiles": failed},

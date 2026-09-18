@@ -63,6 +63,7 @@ class CurrentReacquisitionRehearsalTests(unittest.TestCase):
             report = build_report(manifest, root, root / "out.json")
             self.assertFalse(report["reconciliation"]["passed"])
             self.assertEqual(report["totals"], {"input": 0, "normalized": 0, "quarantined": 0})
+            self.assertEqual(report["declared_totals"], {"input_rows": 21, "normalized_rows": 14, "quarantined_rows": 7})
             self.assertEqual(len(report["availability"]["unavailable_profiles"]), len(EXPECTED))
             self.assertEqual(report["availability"]["failed_profiles"], [])
             self.assertTrue(all(item["missing_artifacts"] for item in report["sources"]))
