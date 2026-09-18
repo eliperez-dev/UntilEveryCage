@@ -138,6 +138,28 @@ The 2026-09-17 rehearsal measured 7,101 FSIS rows, 4,507 APHIS inspection rows, 
 
 The current FSIS page was observed in a normal browser with a September 14, 2026 update and three CSV routes, but the exact file routes returned HTTP 403 to bounded direct acquisition. See the row-free [current-route manifest](../../../data/manifests/us-fsis-current-route-2026-09-17.json).
 
+### Current APHIS accountability demonstration
+
+The 2026-09-18 private demonstration replayed the locally retained APHIS
+public-search evidence through the same source-local ledger contract. Run:
+
+```powershell
+python -m pipeline.scripts.maintenance.rehearse_us_real `
+  --root . `
+  --output data/manifests/us-real-accountability-demonstration-2026-09-18.json `
+  --private-dir data/graph-rehearsal/us-real-accountability-20260918
+```
+
+The tracked output is aggregate-only; row payloads and candidate JSONL remain
+in ignored private staging. This run is useful for inspecting distinct APHIS
+inspection, annual-report, and regulatory-authority relationships with source
+IDs, observation dates, confidence, and provenance. It does not assert that an
+organization owns or operates a facility, does not infer wrongdoing, and keeps
+`publication_eligibility=blocked`. The input includes legacy V1-derived FSIS
+and APHIS snapshots alongside the current APHIS proof manifest; it is not a
+claim that those legacy snapshots are current. Use the [APHIS proof manifest](../../../data/manifests/us-aphis-wave1-real-data-proof-2026-09-18.json)
+for current acquisition coverage and failure boundaries.
+
 State MPI acquisition remains documentation-only. No state roster or CIS
 workbook was acquired in this sprint, and no current state facility row is
 claimed. Before any private capture, record the final URL, retrieval UTC,
