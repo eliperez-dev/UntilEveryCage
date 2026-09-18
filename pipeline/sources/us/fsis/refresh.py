@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -99,6 +100,22 @@ def _drift(manifest: dict[str, Any], previous_manifest: str | Path | None) -> di
     return {"checked": True, "blocked": bool(alarms), "alarms": alarms, "previous_manifest": str(previous_manifest)}
 
 
+def _currentness(effective_date: str | None, *, max_age_days: int) -> dict[str, Any]:
+    """Classify the displayed source edition without guessing when absent."""
+    if max_age_days < 0:
+        raise ValueError("max_age_days must be non-negative")
+    if not effective_date or effective_date == "unknown":
+        return {"status": "unknown", "blocked": True, "effective_date": "unknown", "max_age_days": max_age_days}
+    try:
+        observed = datetime.fromisoformat(effective_date.replace("Z", "+00:00")).date()
+    except ValueError as error:
+        raise ValueError("effective_date must be ISO-8601") from error
+    today = datetime.now(timezone.utc).date()
+    age_days = (today - observed).days
+    return {"status": "current" if 0 <= age_days <= max_age_days else "stale", "blocked": age_days < 0 or age_days > max_age_days,
+            "effective_date": observed.isoformat(), "age_days": age_days, "max_age_days": max_age_days}
+
+
 def refresh(
     *,
     run_dir: str | Path,
@@ -116,6 +133,7 @@ def refresh(
     max_attempts: int = 3,
     retry_delay_seconds: float = 1.0,
     max_retry_delay_seconds: float = 30.0,
+    max_age_days: int = 14,
 ) -> dict[str, Any]:
     if raw_path is not None and directory_path is not None:
         raise ValueError("specify raw_path or directory_path, not both")
@@ -182,11 +200,14 @@ def refresh(
     adapter = FsisMpiAdapter()
     lifecycle_root = root / "lifecycle"
     manifest = adapter.run_sources(paths, lifecycle_root, artifacts)
+    currentness = _currentness(effective_date or metadata["directory"].get("effective_date"), max_age_days=max_age_days)
+    manifest["currentness"] = currentness
     drift = _drift(manifest, previous_manifest)
     manifest["drift"] = drift
     atomic_json(lifecycle_root / "manifest.json", manifest)
-    if drift["blocked"] and mode == "handoff":
-        raise ValueError("refresh drift alarm blocks handoff: " + ", ".join(drift["alarms"]))
+    if mode == "handoff" and (drift["blocked"] or currentness["blocked"]):
+        reasons = drift["alarms"] + (["source_effective_date_not_current"] if currentness["blocked"] else [])
+        raise ValueError("refresh gate blocks handoff: " + ", ".join(reasons))
 
     handoff = None
     if mode == "handoff":
@@ -242,6 +263,7 @@ def main() -> int:
     parser.add_argument("--max-attempts", type=int, default=3)
     parser.add_argument("--retry-delay-seconds", type=float, default=1.0)
     parser.add_argument("--max-retry-delay-seconds", type=float, default=30.0)
+    parser.add_argument("--max-age-days", type=int, default=14)
     args = parser.parse_args()
     try:
         result = refresh(
@@ -251,6 +273,7 @@ def main() -> int:
             previous_manifest=args.previous_manifest, max_bytes=args.max_bytes,
             max_attempts=args.max_attempts, retry_delay_seconds=args.retry_delay_seconds,
             max_retry_delay_seconds=args.max_retry_delay_seconds,
+            max_age_days=args.max_age_days,
         )
     except (OSError, ValueError) as exc:
         print(json.dumps({"status": "failed", "error": str(exc)}))

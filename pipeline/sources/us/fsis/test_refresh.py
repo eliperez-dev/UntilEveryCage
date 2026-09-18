@@ -48,6 +48,15 @@ class FsisRefreshTests(unittest.TestCase):
                 refresh(run_dir=root / "second", directory_path=changed, previous_manifest=previous, mode="handoff")
             self.assertFalse((root / "second/lifecycle/handoff/manifest.json").exists())
 
+    def test_stale_or_unknown_edition_blocks_handoff(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, "source_effective_date_not_current"):
+                refresh(run_dir=Path(directory) / "stale", directory_path=ROOT / "fixtures/valid.csv",
+                        effective_date="2020-01-01", mode="handoff")
+            with self.assertRaisesRegex(ValueError, "source_effective_date_not_current"):
+                refresh(run_dir=Path(directory) / "unknown", directory_path=ROOT / "fixtures/valid.csv",
+                        mode="handoff")
+
 
 if __name__ == "__main__":
     unittest.main()
