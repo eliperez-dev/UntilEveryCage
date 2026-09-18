@@ -96,6 +96,8 @@ pub fn app(state: uec_api::ApiState, proxy: private_environment::ProxyConfig) ->
             get(uec_api::get_inspection_reports_handler),
         )
         .route("/api/aphis-query", get(uec_api::get_aphis_query_handler))
+        .route("/api/private/graph/search", get(uec_api::get_private_graph_search_handler))
+        .route("/api/private/graph/traverse", get(uec_api::get_private_graph_traverse_handler))
         .fallback_service(ServeDir::new("static"))
         .layer(CompressionLayer::new().br(true))
         .layer(axum::middleware::from_fn_with_state(

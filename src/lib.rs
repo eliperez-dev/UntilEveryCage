@@ -46,6 +46,33 @@ pub fn v2_error(
         .into_response()
 }
 
+#[derive(Debug, Deserialize)]
+pub struct PrivateGraphSearchParams { pub q: Option<String>, pub limit: Option<i64> }
+
+/// Private evidence-only graph search. This is intentionally not a public projection.
+pub async fn get_private_graph_search_handler(State(state): State<ApiState>, Query(params): Query<PrivateGraphSearchParams>) -> impl IntoResponse {
+    let Some(pool) = state.database else { return v2_error(StatusCode::SERVICE_UNAVAILABLE, "private_graph_unavailable", "private graph database unavailable"); };
+    let q = params.q.unwrap_or_default().trim().to_string();
+    let limit = params.limit.unwrap_or(25).clamp(1, 100);
+    let client = match pool.get().await { Ok(c) => c, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "private_graph_unavailable", "private graph database unavailable") };
+    let rows = match client.query("SELECT entity_type, entity_id, display_name, source_id, source_identifier, observed_at FROM (SELECT 'facility' AS entity_type, f.facility_id AS entity_id, COALESCE(f.canonical_name, '[unnamed facility]') AS display_name, sei.source_id, sei.source_identifier, sei.observed_at FROM uec.facilities f LEFT JOIN uec.source_entity_identifiers sei ON sei.facility_id=f.facility_id UNION ALL SELECT 'organization', o.organization_id, COALESCE(o.canonical_name, '[unnamed organization]'), sei.source_id, sei.source_identifier, sei.observed_at FROM uec.organizations o LEFT JOIN uec.source_entity_identifiers sei ON sei.organization_id=o.organization_id) entities WHERE ($1='' OR display_name ILIKE '%' || $1 || '%' OR source_identifier ILIKE '%' || $1 || '%') ORDER BY display_name, observed_at DESC NULLS LAST LIMIT $2", &[&q, &limit]).await { Ok(r) => r, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "private_graph_query_failed", "private graph search failed") };
+    let data: Vec<Value> = rows.into_iter().map(|r| json!({"entity_type":r.get::<_,String>(0),"entity_id":r.get::<_,uuid::Uuid>(1),"display_name":r.get::<_,String>(2),"source_id":r.get::<_,Option<String>>(3),"source_identifier":r.get::<_,Option<String>>(4),"observed_at":r.get::<_,Option<chrono::DateTime<chrono::Utc>>>(5),"review_state":"unknown","privacy_status":"unknown","publication_status":"unknown"})).collect();
+    Json(json!({"api_version":"private-graph-v1","data":data,"meta":{"scope":"private_evidence_only","bounded":true,"public_projection":false}})).into_response()
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PrivateGraphTraverseParams { pub entity_type: String, pub entity_id: uuid::Uuid, pub direction: Option<String>, pub depth: Option<i32> }
+
+pub async fn get_private_graph_traverse_handler(State(state): State<ApiState>, Query(params): Query<PrivateGraphTraverseParams>) -> impl IntoResponse {
+    let Some(pool) = state.database else { return v2_error(StatusCode::SERVICE_UNAVAILABLE, "private_graph_unavailable", "private graph database unavailable"); };
+    let depth = params.depth.unwrap_or(1).clamp(1, 2); let direction = params.direction.as_deref().unwrap_or("both");
+    if !matches!(params.entity_type.as_str(), "organization" | "facility") || !matches!(direction, "in" | "out" | "both") { return v2_error(StatusCode::BAD_REQUEST, "invalid_traversal", "entity type, direction, or depth is invalid"); }
+    let client = match pool.get().await { Ok(c) => c, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "private_graph_unavailable", "private graph database unavailable") };
+    let rows = match client.query("SELECT relationship_observation_id, source_id, source_record_id, from_organization_id, target_facility_id, target_organization_id, relationship_type, assertion_status, unknown_reason, valid_from, valid_to, observed_at, confidence, review_state, storage_state, privacy_status, publication_status, note FROM uec.organization_relationship_observations WHERE (($1='organization' AND ((($3 IN ('out','both')) AND from_organization_id=$2) OR (($3 IN ('in','both')) AND target_organization_id=$2))) OR ($1='facility' AND target_facility_id=$2) ORDER BY observed_at DESC LIMIT 200", &[&params.entity_type, &params.entity_id, &direction]).await { Ok(r) => r, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "private_graph_query_failed", "private graph traversal failed") };
+    let data: Vec<Value> = rows.into_iter().map(|r| json!({"relationship_observation_id":r.get::<_,uuid::Uuid>(0),"source_id":r.get::<_,String>(1),"source_record_id":r.get::<_,uuid::Uuid>(2),"from_organization_id":r.get::<_,Option<uuid::Uuid>>(3),"target_facility_id":r.get::<_,Option<uuid::Uuid>>(4),"target_organization_id":r.get::<_,Option<uuid::Uuid>>(5),"relationship_type":r.get::<_,Option<String>>(6),"assertion_status":r.get::<_,String>(7),"unknown_reason":r.get::<_,Option<String>>(8),"valid_from":r.get::<_,Option<chrono::NaiveDate>>(9),"valid_to":r.get::<_,Option<chrono::NaiveDate>>(10),"observed_at":r.get::<_,chrono::DateTime<chrono::Utc>>(11),"confidence":r.get::<_,Option<f64>>(12),"review_state":r.get::<_,String>(13),"storage_state":r.get::<_,String>(14),"privacy_status":r.get::<_,String>(15),"publication_status":r.get::<_,String>(16),"note":r.get::<_,Option<String>>(17)})).collect();
+    Json(json!({"api_version":"private-graph-v1","data":data,"meta":{"scope":"private_evidence_only","bounded":true,"depth":depth,"direction":direction,"contradictions_preserved":true,"public_projection":false}})).into_response()
+}
+
 fn canonical_json(value: &Value) -> String {
     match value {
         Value::Object(map) => {
