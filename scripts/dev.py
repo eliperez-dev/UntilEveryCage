@@ -78,13 +78,19 @@ def main() -> int:
     sub.add_parser("test", help="root legacy static/Jest tests").add_argument("--full", action="store_true")
     sub.add_parser("pipeline", help="run Python pipeline tests").add_argument("args", nargs=argparse.REMAINDER)
     sub.add_parser("contracts", help="run contract tests")
+    sub.add_parser("demo", help="run the safe synthetic/private tooling demo")
+    sub.add_parser("preflight", help="alias for doctor: verify local prerequisites before a run")
     sub.add_parser("platform-registry", help="validate the joined country/source registry")
     pf = sub.add_parser("private-frontend", help="rehearse a candidate against the private frontend preview boundary")
     pf.add_argument("manifest"); pf.add_argument("output"); pf.add_argument("--root", default=str(ROOT)); pf.add_argument("--base-url"); pf.add_argument("--token")
     rp = sub.add_parser("review-packet", help="generate a private row-free review packet")
     rp.add_argument("run_dir"); rp.add_argument("--previous-normalized")
+    re = sub.add_parser("review-export", help="export the private row-free review packet")
+    re.add_argument("run_dir"); re.add_argument("--previous-normalized")
+    diag = sub.add_parser("diagnostics", help="build a row-free manifest/source diagnostic")
+    diag.add_argument("output"); diag.add_argument("--manifest-root", default="data/manifests")
     args = p.parse_args(); SUMMARY["command"] = args.command
-    if args.command == "doctor": code = doctor(args)
+    if args.command in ("doctor", "preflight"): code = doctor(args)
     elif args.command in ("up", "down", "status", "probe"): code = run(["powershell", "-ExecutionPolicy", "Bypass", "-File", str(LOCAL_V2), {"up":"start","down":"stop"}.get(args.command,args.command)], capture=args.json)
     elif args.command == "logs": code = run(["docker", "compose", "-p", "uec-local-v2", "-f", "docker-compose.pipeline.yml", "logs", "--tail=100"], capture=args.json)
     elif args.command == "test": code = run(["npm", "test", "--", *( ["--runInBand"] if not args.full else [])], capture=args.json)
@@ -95,6 +101,10 @@ def main() -> int:
         runner = "pytest" if shutil.which("pytest") else "unittest"
         targets = ["pipeline/contracts", "pipeline/tests/test_database_contract.py", "pipeline/tests/test_graph_database_contract.py"] if runner == "pytest" else ["discover", "-s", "pipeline/contracts", "-t", str(ROOT)]
         code = run([sys.executable, "-m", runner, *targets], capture=args.json)
+    elif args.command == "demo":
+        # The demo is intentionally synthetic and read-only: it exercises the
+        # contract/review boundary without acquiring, importing, or publishing.
+        code = run([sys.executable, "-m", "unittest", "pipeline.common.test_graph_candidates", "pipeline.common.test_review_packet"], capture=args.json)
     elif args.command == "platform-registry":
         code = run([sys.executable, "-c", "import json; from pipeline.platform_registry import build_platform_registry; r=build_platform_registry(); print(json.dumps({'countries':r['country_count'],'sources':r['source_count'],'status':'validated'}))"], capture=args.json)
     elif args.command == "private-frontend":
@@ -102,7 +112,9 @@ def main() -> int:
         if args.base_url: cmd.extend(["--base-url", args.base_url])
         if args.token: cmd.extend(["--token", args.token])
         code = run(cmd, capture=args.json)
-    else:
+    elif args.command == "diagnostics":
+        code = run([sys.executable, str(ROOT / "pipeline/scripts/diagnostics/real_corpus_report.py"), "--manifest-root", args.manifest_root, "--output", args.output], capture=args.json)
+    elif args.command in ("review-packet", "review-export"):
         cmd = [sys.executable, "-c", "from pipeline.common.review_packet import write_review_packet; import sys; write_review_packet(sys.argv[1], previous_normalized_path=sys.argv[2] if len(sys.argv)>2 else None)", args.run_dir]
         if args.previous_normalized: cmd.append(args.previous_normalized)
         code = run(cmd, capture=args.json)

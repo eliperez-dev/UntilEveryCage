@@ -10,6 +10,13 @@ class DevEntrypointTests(unittest.TestCase):
     self.assertIn("doctor", result.stdout)
     self.assertIn("review-packet", result.stdout)
     self.assertIn("private-frontend", result.stdout)
+    self.assertIn("demo", result.stdout)
+    self.assertIn("diagnostics", result.stdout)
+
+  def test_preflight_is_doctor_alias(self):
+    result = subprocess.run([sys.executable, "scripts/dev.py", "--json", "preflight"], cwd=ROOT, capture_output=True, text=True)
+    self.assertEqual(result.returncode, 0)
+    self.assertEqual(json.loads(result.stdout)["command"], "preflight")
 
   def test_doctor_json_does_not_echo_secret(self):
     result = subprocess.run([sys.executable, "scripts/dev.py", "--json", "doctor"], cwd=ROOT, env={**os.environ, "UEC_DATABASE_URL": "postgresql://secret.invalid/db"}, capture_output=True, text=True)

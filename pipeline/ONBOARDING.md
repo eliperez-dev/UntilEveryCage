@@ -28,6 +28,24 @@ Run the complete Python suite before submitting pipeline changes:
 python -m unittest discover -s pipeline -p 'test*.py'
 ```
 
+The one-command private demo runs the graph-candidate and review-packet
+contracts without acquiring, importing, or publishing anything:
+
+```powershell
+python scripts/dev.py demo
+python scripts/dev.py preflight
+python scripts/dev.py diagnostics data/reports/real-corpus-report.json
+python scripts/dev.py review-export data/staging/<source>/<run-id>
+```
+
+`review-export` is a row-free operator packet. It is not approval. Source
+adapters remain the canonical acquire -> parse/normalize -> quarantine ->
+candidate handoff path; candidate database import is restricted to the
+disposable loopback database. Rebuild candidates by rerunning the source-owned
+adapter with a new private run directory; never edit or promote a candidate in
+`static_data`. Missing evidence, source drift, ambiguous identities, and
+quarantined rows remain blockers and are reported in the packet/health files.
+
 ## 3. Inspect private operational evidence
 
 For an existing private run, build a row-free report from its manifest root:
