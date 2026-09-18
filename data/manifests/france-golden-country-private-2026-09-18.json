@@ -1,0 +1,62 @@
+{
+  "manifest_version": "golden-country-private-v1",
+  "evidence_scope": "aggregate row-free private evidence plus disposable synthetic lifecycle rehearsal",
+  "selected_country": "FR",
+  "selection_basis": {
+    "source_count": 2,
+    "source_scopes": ["fr.dgal.section-i", "fr.dgal.section-ii"],
+    "current_private_capture_date": "2026-09-16",
+    "input_rows": 2516,
+    "normalized_rows": 2516,
+    "quarantined_rows": 0,
+    "comparison": "Italy 853/2004 has 47,373 input rows, 41,847 normalized rows, and 5,526 quarantined repeated recognition/activity rows; France is operationally cleaner for a focused vertical slice."
+  },
+  "sources": [
+    {
+      "source_id": "fr.dgal.section-i",
+      "scope": "DGAL Regulation (EC) 853/2004 Section I domestic ungulates",
+      "input_rows": 1448,
+      "normalized_rows": 1448,
+      "quarantined_rows": 0,
+      "acquisition": "private current capture; raw artifact restricted",
+      "lifecycle": "candidate-ready; private only",
+      "geocoding": "disabled",
+      "publication": "blocked"
+    },
+    {
+      "source_id": "fr.dgal.section-ii",
+      "scope": "DGAL Regulation (EC) 853/2004 Section II poultry and lagomorphs",
+      "input_rows": 1068,
+      "normalized_rows": 1068,
+      "quarantined_rows": 0,
+      "acquisition": "private current capture; raw artifact restricted",
+      "lifecycle": "candidate-ready; private only",
+      "geocoding": "disabled",
+      "publication": "blocked"
+    }
+  ],
+  "synthetic_rehearsal": {
+    "test": "pipeline/tests/e2e/test_france_candidate_import.py",
+    "scope": "both source sections",
+    "candidate_release_created": true,
+    "candidate_release_test_only": true,
+    "candidate_release_promoted": false,
+    "public_api_rows": 0,
+    "geospatial_output": "all candidate rows unmapped with null coordinates",
+    "graph_candidates": "source-local, review-required, not eligible",
+    "suppression": "list/detail/export/public API rechecked",
+    "rerun": "zero-change delta and idempotent candidate import",
+    "private_payloads_included": false
+  },
+  "publication": {
+    "release_created": false,
+    "release_promoted": false,
+    "project_approval": "not-approved",
+    "eligibility": "blocked"
+  },
+  "limitations": [
+    "Two DGAL sections are separate source scopes and do not establish national completeness.",
+    "The checked-in E2E fixture is synthetic and does not reproduce private current rows.",
+    "Terms, privacy, category, identity, authorized review, and project release approval remain open."
+  ]
+}
