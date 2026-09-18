@@ -11,11 +11,31 @@ existing sources of truth:
   and next-action status for each source.
 
 `pipeline/platform_registry.py` joins those files into country contracts and
-source records. It currently materializes 234 sources across the registered
+source records. It currently materializes the current 254-source registry across the registered
 country/cross-border prefixes and is designed for the 100+ country / hundreds
 of source target without copying every source row into a second hand-maintained
 registry. `pipeline/platform_registry.json` records the grouping rule and
 scale target.
+
+## Geocoding reconnaissance profile
+
+`pipeline/geocoding/profiles.json` is a separate, provider-neutral, row-free
+reconnaissance registry. It references source IDs from the authoritative source
+registry and is validated by
+`pipeline/contracts/geocoding_profile.py`. Profiles record source-coordinate
+availability and semantics, official address authority candidates, government
+and open-data options, regional/global fallbacks, language/address structure,
+privacy-minimized query construction, exact/coarse/restricted/unmapped fallback
+states, provider-specific confidence mapping, rate/cost unknowns, terms/logging/
+residency questions, outage/replacement behavior, and human-review gates.
+
+`pipeline/geocoding/recon.py` ranks all registered sources deterministically
+from checked-in readiness/status signals and emits a row-free backlog plus
+aggregate profile summaries. It does not fetch a provider, send a source
+record, change readiness, create a geocode result, approve a release, or grant
+publication eligibility. The public-service Nominatim endpoint is not a bulk
+default; reusable global fallback candidates are self-hosted Nominatim and
+Pelias, with third-party services retained as unreviewed discovery candidates.
 
 ## Contracts
 
