@@ -67,6 +67,29 @@ class CurrentIdentityGraphTests(unittest.TestCase):
         self.assertFalse(any(candidate["match_method"] == "alternate_name_address_exact" for candidate in graph["candidates"]))
         self.assertTrue(any(item["reason"] == "conflicting_official_identifiers" for item in graph["quarantined"]))
 
+    def test_unrelated_official_ids_are_not_false_conflicts(self):
+        payload = load_fixture()
+        report = payload["aphis"]["annual_reports"][0]
+        report["normalized"]["certificate_number"] = "00-R-UNRELATED"
+        report["normalized"]["customer_number"] = "999999"
+        report["normalized"]["account_name"] = "Unrelated report"
+        report["source_values"]["Account Name"] = "Unrelated report"
+        graph = self.build(payload)
+        annual = [item for item in graph["quarantined"] if item["right"]["profile"] == "annual_reports"]
+        self.assertFalse(any(item.get("reason") == "conflicting_official_identifiers" for item in annual))
+        self.assertFalse(any(item["right"]["profile"] == "annual_reports" for item in graph["candidates"]))
+
+    def test_dated_inspections_sharing_an_id_are_not_ambiguous(self):
+        payload = load_fixture()
+        second = copy.deepcopy(payload["aphis"]["inspections"][0])
+        second["source_record_key"] = "inspections:00-R-TEST-001:2026-03-01"
+        second["normalized"]["status_date"] = "2026-03-01"
+        payload["aphis"]["inspections"].append(second)
+        graph = self.build(payload)
+        inspections = [item for item in graph["candidates"] if item["right"]["profile"] == "inspections"]
+        self.assertEqual(len(inspections), 2)
+        self.assertFalse(any(item.get("reason") == "ambiguous_official_identifier" for item in graph["quarantined"]))
+
     def test_ambiguous_alternate_match_is_quarantined(self):
         payload = load_fixture()
         duplicate = copy.deepcopy(payload["aphis"]["annual_reports"][0])

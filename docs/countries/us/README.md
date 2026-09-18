@@ -120,6 +120,16 @@ stale, conflicting, overlapping-ownership, and suppressed relationships are
 quarantined. The checked-in fixture is synthetic/sanitized, private/test-only,
 and does not add a graph migration or public release.
 
+The Wave 2 APHIS accountability proof in
+[`aphis-accountability-wave2.md`](aphis-accountability-wave2.md) exercises that
+contract against a current, operator-saved APHIS subset. It links registrations
+to annual-report and inspection observations only by exact certificate/customer
+IDs, keeps duplicate pagination evidence and ambiguous/conflicting keys in
+private quarantine, provides bounded row-free example queries, and records its
+aggregate evidence in
+[`us-aphis-wave2-accountability-2026-09-18.json`](../../../data/manifests/us-aphis-wave2-accountability-2026-09-18.json).
+It remains private/test-only and does not create a release.
+
 ## Legacy real-data V2 and graph rehearsal
 
 Run `python -m pipeline.scripts.maintenance.rehearse_us_real --root . --output data/manifests/us-real-legacy-graph-rehearsal-2026-09-17.json --private-dir data/graph-rehearsal/us-real-20260917` to replay the checked-in V1-derived US snapshots through the typed FSIS and APHIS private lifecycle contracts and build a private graph ledger. The rehearsal keeps FSIS federal facility/establishment-approval evidence separate from APHIS inspection and annual-report evidence, emits regulator edges only from source scope, and never joins across FSIS and APHIS by name, address, phone, or coordinates. All output rows remain ignored private staging; the checked-in manifest is aggregate-only.

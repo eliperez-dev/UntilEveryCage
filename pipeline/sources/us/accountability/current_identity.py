@@ -296,12 +296,6 @@ def _candidate(
     return result
 
 
-def _pair_key(profile: str, identifier_type: str, value: str, observed_at: str | None) -> tuple[str, str, str, str | None]:
-    # Multiple annual reports/inspections can legitimately share a certificate
-    # over time; duplicate observations on the same date are an ambiguity.
-    return profile, identifier_type, value, observed_at
-
-
 def _records_for(records: Iterable[Mapping[str, Any]], profile: str) -> list[Mapping[str, Any]]:
     if isinstance(records, Mapping):
         records = records.get("accepted", ())
@@ -314,20 +308,33 @@ def _official_pairs(
     right_records: list[Mapping[str, Any]],
     right_profile: str,
 ) -> tuple[list[tuple[Mapping[str, Any], Mapping[str, Any], dict[str, str]]], list[dict[str, Any]]]:
-    right_index: dict[tuple[str, str, str | None], list[Mapping[str, Any]]] = defaultdict(list)
-    collisions: Counter[tuple[str, str, str | None]] = Counter()
+    # Candidate generation must be keyed by an exact shared official value.
+    # Comparing every registration with every report/inspection would turn a
+    # pair of unrelated records with different certificate numbers into a
+    # false ``conflicting_official_identifiers`` quarantine.  It also scales
+    # quadratically on the real APHIS capture.  A conflict is meaningful only
+    # after at least one source-native identifier has made the pair a candidate
+    # (for example, the same customer number but a different certificate).
+    right_index: dict[tuple[str, str], list[Mapping[str, Any]]] = defaultdict(list)
+    collision_keys: dict[tuple[str, str, str | None], set[str]] = defaultdict(set)
     for record in right_records:
+        source_key = _source_key(record)
+        observed_at = _observation_date(record)
         for identifier_type, value in _identifiers(record, right_profile).items():
-            key = _pair_key(right_profile, identifier_type, value, _observation_date(record))
+            key = (identifier_type, value)
             right_index[key].append(record)
-            collisions[key] += 1
+            collision_keys[(identifier_type, value, observed_at)].add(source_key)
 
     pairs: list[tuple[Mapping[str, Any], Mapping[str, Any], dict[str, str]]] = []
     quarantined: list[dict[str, Any]] = []
     seen: set[tuple[str, str, str]] = set()
     for left in left_records:
         left_ids = _identifiers(left, left_profile)
-        for right in right_records:
+        possible_right: dict[str, Mapping[str, Any]] = {}
+        for identifier_type, value in left_ids.items():
+            for right in right_index.get((identifier_type, value), ()):
+                possible_right[_source_key(right)] = right
+        for right in possible_right.values():
             right_ids = _identifiers(right, right_profile)
             shared = {kind: value for kind, value in left_ids.items() if right_ids.get(kind) == value}
             conflicts = [kind for kind in set(left_ids) & set(right_ids) if left_ids[kind] != right_ids[kind]]
@@ -348,7 +355,7 @@ def _official_pairs(
                 continue
             seen.add(identity_key)
             collision = any(
-                collisions[_pair_key(right_profile, kind, value, _observation_date(right))] > 1
+                len(collision_keys[(kind, value, _observation_date(right))]) > 1
                 for kind, value in shared.items()
             )
             if collision:
@@ -399,6 +406,19 @@ def _alternate_pairs(
             continue
         left, left_fields = lefts[0]
         right, right_fields = rights[0]
+        left_ids = _identifiers(left, _profile(left))
+        right_ids = _identifiers(right, _profile(right))
+        conflicts = [kind for kind in set(left_ids) & set(right_ids) if left_ids[kind] != right_ids[kind]]
+        if conflicts:
+            quarantined.append({
+                "reason": "conflicting_official_identifiers",
+                "left_source_record_key": _source_key(left),
+                "right_source_record_key": _source_key(right),
+                "identifier_types": sorted(conflicts),
+                "_left_record": left,
+                "_right_record": right,
+            })
+            continue
         pairs.append((left, right, sorted(set(left_fields + right_fields))))
     return pairs, quarantined
 
