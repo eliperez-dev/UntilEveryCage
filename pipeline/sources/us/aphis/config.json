@@ -1,12 +1,13 @@
 {
   "source_id": "us.aphis",
-  "contract_version": "us-aphis-public-search-v1",
-  "adapter_version": "us-aphis-candidate-v1",
+  "contract_version": "us-aphis-public-search-v2",
+  "adapter_version": "us-aphis-candidate-v2",
   "authority": "USDA Animal and Plant Health Inspection Service, Animal Care",
   "public_search_url": "https://www.aphis.usda.gov/animal-care/awa-services/usda-animal-care-public-search-tool",
   "annual_reports_url": "https://direct.aphis.usda.gov/awa/research-facility-report/annual-summary",
   "inspection_reports_url": "https://direct.aphis.usda.gov/awa/annual-inspection-reports",
-  "profiles": ["registrations", "annual_reports", "inspections"],
+  "documents_url": "https://www.aphis.usda.gov/animal-care/awa-services/usda-animal-care-public-search-tool",
+  "profiles": ["registrations", "annual_reports", "inspections", "documents"],
   "acquisition": "operator-assisted-public-search-export",
   "release_allowed_by_default": false,
   "entity_policy": "registrations, annual reports, inspections, laboratories, and aggregates remain separate evidence types; no facility merge"

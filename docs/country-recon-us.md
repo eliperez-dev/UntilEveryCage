@@ -41,7 +41,7 @@ No safe bounded private fetch was performed, so current hashes/bytes and determi
 
 ## 2026-09-15 recovery slice
 
-The private implementation is in `pipeline/sources/us/`. FSIS now has a profile-aware adapter and refresh command with a sanctioned operator-assisted capture contract. APHIS now has one adapter with explicit `registrations`, `annual_reports`, and `inspections` profiles. All three APHIS populations remain observations, not a laboratory or facility master, and no identity merge with FSIS is performed.
+The private implementation is in `pipeline/sources/us/`. FSIS now has a bundle adapter and refresh command with a sanctioned operator-assisted capture contract: one directory export plus the supplemental demographic export are reconciled only by exact source-native IDs/numbers, and source-provided coordinates, slaughter species/activity fields, processing fields, size, and inspection attributes remain private pending review. APHIS now has one adapter with explicit `registrations`, `annual_reports`, and `inspections` profiles. All three APHIS populations remain observations, not a laboratory or facility master, and no identity merge with FSIS is performed.
 
 The row-free V1 inventory and field/category crosswalk is [`docs/countries/us/v1-field-crosswalk.json`](countries/us/v1-field-crosswalk.json). It records 7,101 rows and 269 columns, maps identity/location/contact/administrative/slaughter/processing/inspection-system/derived fields, and records overlapping legacy field-presence counts. Since no authorized current FSIS artifact was available, current-versus-V1 reconciliation remains blocked; the existing exact-key crosswalk reports `not_observed`, never closure.
 

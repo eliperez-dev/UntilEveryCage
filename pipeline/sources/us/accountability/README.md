@@ -67,3 +67,29 @@ and `publication_gate=blocked` are invariants. Geocoding is disabled.
 to FSIS facility candidates. It is row-free and observation-only: a missing
 current observation is `not-observed`, never closure; it creates no identity,
 suppression, or publication decision and does not inherit V1 assumptions.
+
+## Current identity integration
+
+`current_identity.py` consumes accepted records from the APHIS and FSIS
+source-local adapters and emits a private, deterministic crosswalk handoff.
+It links:
+
+* APHIS registrations to annual reports and inspections by certificate and/or
+  customer number;
+* FSIS establishments to FSIS observation records by establishment and/or
+  approval number.
+
+Each emitted edge retains both source-record keys, profile-specific artifact
+hash/URL/retrieval provenance, the matched identifier types, observation dates,
+confidence, review state, and independent private/publication gates. It does
+not emit canonical IDs, merge source entities, geocode, or write a database.
+
+Name/address agreement is limited to a bounded `candidate` with
+`match_method=alternate_name_address_exact`, low confidence, and mandatory
+review. Name-only, address-only, conflicting, ambiguous, missing-provenance,
+and suppressed/restricted matches are quarantined. Alternate matching is
+never attempted across APHIS and FSIS source families.
+
+The checked-in `fixtures/current_identity.json` is synthetic and test-only.
+No current real source artifact is committed. Existing V1-derived real rows
+remain legacy regression inputs and are not promoted to current evidence.

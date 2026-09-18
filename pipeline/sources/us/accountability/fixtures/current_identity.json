@@ -1,0 +1,46 @@
+{
+  "provenance": {
+    "us.aphis:registrations": {
+      "artifact_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "source_url": "https://example.invalid/aphis/registrations.csv",
+      "retrieved_at_utc": "2026-09-15T00:00:00Z"
+    },
+    "us.aphis:annual_reports": {
+      "artifact_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "source_url": "https://example.invalid/aphis/annual-reports.csv",
+      "retrieved_at_utc": "2026-09-15T00:00:00Z"
+    },
+    "us.aphis:inspections": {
+      "artifact_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "source_url": "https://example.invalid/aphis/inspections.csv",
+      "retrieved_at_utc": "2026-09-15T00:00:00Z"
+    },
+    "us.fsis": {
+      "artifact_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "source_url": "https://example.invalid/fsis/establishments.csv",
+      "retrieved_at_utc": "2026-09-15T00:00:00Z"
+    },
+    "us.fsis.observations": {
+      "artifact_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "source_url": "https://example.invalid/fsis/observations.csv",
+      "retrieved_at_utc": "2026-09-15T00:00:00Z"
+    }
+  },
+  "aphis": {
+    "registrations": [
+      {"source_id": "us.aphis", "source_record_key": "registrations:00-B-TEST-001", "normalized": {"evidence_type": "registrations", "certificate_number": "00-B-TEST-001", "customer_number": "9001", "account_name": "Synthetic Shared Operator", "status_date": "2026-01-01"}, "source_values": {"Account Name": "Synthetic Shared Operator", "Address Line 1": "1 Test Way", "City": "Testville", "State": "TX", "Zip": "75001"}}
+    ],
+    "annual_reports": [
+      {"source_id": "us.aphis", "source_record_key": "annual_reports:00-B-TEST-001:2025", "normalized": {"evidence_type": "annual_reports", "certificate_number": "00-B-TEST-001", "customer_number": "9001", "account_name": "Synthetic Shared Operator", "report_year": "2025"}, "source_values": {"Account Name": "Synthetic Shared Operator", "Address Line 1": "1 Test Way", "City": "Testville", "State": "TX", "Zip": "75001"}}
+    ],
+    "inspections": [
+      {"source_id": "us.aphis", "source_record_key": "inspections:00-B-TEST-001:2026-02-01", "normalized": {"evidence_type": "inspections", "certificate_number": "00-B-TEST-001", "customer_number": "9001", "account_name": "Synthetic Shared Operator", "status_date": "2026-02-01"}, "source_values": {"Account Name": "Synthetic Shared Operator", "Address Line 1": "1 Test Way", "City": "Testville", "State": "TX", "Zip": "75001"}}
+    ]
+  },
+  "fsis": [
+    {"source_id": "us.fsis", "source_record_key": "FSIS-TEST-001", "normalized": {"evidence_type": "fsis_establishments", "establishment_id": "FSIS-TEST-001", "establishment_number": "M-TEST-001", "canonical_name": "Synthetic Shared Plant", "grant_date": "2026-01-01"}, "source_values": {"establishment_name": "Synthetic Shared Plant", "street": "2 Test Way", "city": "Testville", "state": "TX", "zip": "75001"}}
+  ],
+  "fsis_observations": [
+    {"source_id": "us.fsis.observations", "source_record_key": "observation:FSIS-TEST-001:2026-02-01", "normalized": {"evidence_type": "fsis_observations", "establishment_id": "FSIS-TEST-001", "observation_id": "OBS-TEST-001", "observed_at": "2026-02-01", "name": "Synthetic Shared Plant"}, "source_values": {"name": "Synthetic Shared Plant", "street": "2 Test Way", "city": "Testville", "state": "TX", "zip": "75001"}}
+  ]
+}

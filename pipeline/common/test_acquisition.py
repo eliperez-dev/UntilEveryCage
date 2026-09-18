@@ -41,7 +41,7 @@ class AcquisitionContractTests(unittest.TestCase):
     def test_fetch_retries_network_failure_and_records_attempts(self):
         class Response:
             status = 200
-            headers = {"Content-Type": "text/csv", "Content-Length": "7"}
+            headers = {"Content-Type": "text/csv", "Content-Length": "8"}
 
             def __enter__(self):
                 return self

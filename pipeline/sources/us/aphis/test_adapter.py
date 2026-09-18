@@ -1,5 +1,9 @@
 import unittest
+import hashlib
+import tempfile
 from pathlib import Path
+
+from pipeline.contracts.adapter_contract import SourceArtifact
 from .adapter import AphisContractError, AphisPublicSearchAdapter
 
 ROOT=Path(__file__).parent
@@ -30,5 +34,40 @@ class AphisAdapterTests(unittest.TestCase):
 
     def test_unsupported_profile_fails_closed(self):
         with self.assertRaises(AphisContractError): AphisPublicSearchAdapter().parse_bytes(b"Name,Value\nA,B\n")
+
+    def test_customer_variants_and_source_values_are_preserved(self):
+        result = AphisPublicSearchAdapter().parse_bytes((ROOT / "fixtures/annual_reports.csv").read_bytes())
+        record = result["accepted"][0]
+        normalized = record["normalized"]
+        self.assertEqual(normalized["customer_number_x"], "Synthetic Laboratory")
+        self.assertEqual(normalized["customer_number_y"], "2")
+        self.assertEqual(record["source_values"]["Customer Number_x"], "Synthetic Laboratory")
+        self.assertIn("Cats", normalized["animal_use_fields_present"])
+        self.assertEqual(normalized["awa_coverage_state"], "source_profile_only_unknown_completeness")
+
+    def test_amendment_versions_are_distinct_evidence(self):
+        lines = (ROOT / "fixtures/annual_reports.csv").read_text(encoding="utf-8").splitlines()
+        lines[0] += ",Amendment Number"
+        lines[1] += ",1"
+        lines.append(lines[1].rsplit(",1", 1)[0] + ",2")
+        result = AphisPublicSearchAdapter().parse_bytes(("\n".join(lines) + "\n").encode())
+        self.assertEqual(len(result["accepted"]), 2)
+        self.assertEqual({row["normalized"]["evidence_type"] for row in result["accepted"]}, {"amendments"})
+        self.assertNotEqual(result["accepted"][0]["source_record_key"], result["accepted"][1]["source_record_key"])
+
+    def test_short_rows_fail_closed_as_schema_drift(self):
+        with self.assertRaises(AphisContractError):
+            AphisPublicSearchAdapter().parse_bytes(b"Account Name,Certificate Number,Certificate Status\nOnly One Cell\n")
+
+    def test_run_is_idempotent_and_reconciles_every_row(self):
+        raw = (ROOT / "fixtures/inspections.csv").read_bytes()
+        artifact = SourceArtifact("https://example.invalid/aphis.csv", "2026-09-15T00:00:00Z", hashlib.sha256(raw).hexdigest(), len(raw), code_version="test", config_version="test")
+        with tempfile.TemporaryDirectory() as directory:
+            first = AphisPublicSearchAdapter().run(ROOT / "fixtures/inspections.csv", Path(directory) / "one", artifact)
+            second = AphisPublicSearchAdapter().run(ROOT / "fixtures/inspections.csv", Path(directory) / "two", artifact)
+            self.assertEqual(first["normalized_sha256"], second["normalized_sha256"])
+            self.assertEqual(first["parsed_sha256"], second["parsed_sha256"])
+            self.assertEqual(first["input_rows"], first["normalized_rows"] + first["quarantined_rows"])
+            self.assertEqual(first["release_state"], "not-created")
 
 if __name__ == "__main__": unittest.main()

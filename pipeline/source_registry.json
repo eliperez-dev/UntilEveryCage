@@ -216,7 +216,7 @@
       "cadence": "weekly replacement",
       "attribution_licensing_notes": "FSIS authority and directory scope verified; terms/attribution and current export URL must be recorded per run before publication",
       "adapter_status": "implemented_partial",
-      "expected_artifact_schema": "FSIS MPI directory CSV; source values preserved privately; supplemental demographic activity flags remain distinct",
+      "expected_artifact_schema": "FSIS MPI directory CSV plus supplemental establishment-demographic CSV; exact source-native ID/number reconciliation with source-provided coordinates, species slaughter, processing, size, and inspection attributes",
       "blockers": ["Current direct links returned HTTP 403 during reconnaissance; obtain an authorized current export and complete terms, schema, privacy, and project review."]
     },
     {

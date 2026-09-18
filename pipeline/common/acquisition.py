@@ -18,7 +18,7 @@ import urllib.request
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 
 class AcquisitionError(ValueError):
@@ -137,6 +137,8 @@ def fetch_source(
     retry_delay_seconds: float = 0.0,
     max_retry_delay_seconds: float = 30.0,
     sleep_fn: Any = time.sleep,
+    query_context: dict[str, Any] | None = None,
+    artifact_validator: Callable[[Path, dict[str, str]], None] | None = None,
 ) -> dict[str, Any]:
     if not source_id or not url:
         raise AcquisitionError("source_id and url are required")
@@ -182,6 +184,24 @@ def fetch_source(
                 sha256, byte_size = archive_stream(response, download_path, max_bytes=max_bytes)
                 headers = selected_headers(response.headers)
                 final_url = response.geturl()
+                if headers.get("Content-Length") is not None:
+                    try:
+                        expected_size = int(headers["Content-Length"])
+                    except ValueError as error:
+                        raise AcquisitionError(
+                            "source returned an invalid Content-Length header",
+                            failure_class="content-length",
+                            action="inspect the private response evidence before retrying",
+                        ) from error
+                    if expected_size != byte_size:
+                        raise AcquisitionError(
+                            f"source Content-Length={expected_size} but received {byte_size} bytes",
+                            failure_class="truncated-response",
+                            retryable=True,
+                            action="retry a bounded incomplete response; use the assisted capture route if it persists",
+                        )
+                if artifact_validator is not None:
+                    artifact_validator(download_path, headers)
             if artifact_path.exists():
                 if artifact_path.read_bytes() != download_path.read_bytes():
                     raise AcquisitionError("existing run artifact differs from newly acquired bytes", failure_class="artifact-collision", action="use a new run_id and preserve both observations")
@@ -201,27 +221,27 @@ def fetch_source(
                     f"source returned HTTP {error.code}", failure_class=details["failure_class"], retryable=retryable,
                     action="retry a bounded server/rate-limit failure" if retryable else "verify URL, authorization, and terms before another run",
                 )
-                _write_failure(run_dir, source_id, run_id, failure, attempts)
+                _write_failure(run_dir, source_id, run_id, failure, attempts, query_context, url, requested_at, effective_date, publication_date)
                 raise failure from error
         except urllib.error.URLError as error:
             details = {"attempt": attempt_number, "outcome": "failed", "failure_class": "network", "retryable": True, "message": str(error)}
             attempts.append(details)
             if attempt_number == max_attempts:
                 failure = AcquisitionError(f"network error: {error.reason}", failure_class="network", retryable=True, action="retry within the source bound; verify connectivity if it persists")
-                _write_failure(run_dir, source_id, run_id, failure, attempts)
+                _write_failure(run_dir, source_id, run_id, failure, attempts, query_context, url, requested_at, effective_date, publication_date)
                 raise failure from error
         except (TimeoutError, socket.timeout) as error:
             details = {"attempt": attempt_number, "outcome": "failed", "failure_class": "timeout", "retryable": True, "message": str(error)}
             attempts.append(details)
             if attempt_number == max_attempts:
                 failure = AcquisitionError(f"timeout: {error}", failure_class="timeout", retryable=True, action="retry within the source bound; use the manual capture route if it persists")
-                _write_failure(run_dir, source_id, run_id, failure, attempts)
+                _write_failure(run_dir, source_id, run_id, failure, attempts, query_context, url, requested_at, effective_date, publication_date)
                 raise failure from error
         except AcquisitionError as error:
             download_path.unlink(missing_ok=True)
             attempts.append({"attempt": attempt_number, "outcome": "failed", "failure_class": error.failure_class, "retryable": error.retryable, "message": str(error)})
             if not error.retryable or attempt_number == max_attempts:
-                _write_failure(run_dir, source_id, run_id, error, attempts)
+                _write_failure(run_dir, source_id, run_id, error, attempts, query_context, url, requested_at, effective_date, publication_date)
                 raise
         if attempt_number < max_attempts:
             delay = min(max_retry_delay_seconds, retry_delay_seconds * (2 ** (attempt_number - 1)))
@@ -257,11 +277,24 @@ def fetch_source(
         "artifact_state": artifact_state,
         "retention": {"class": "restricted-research-evidence", "public_exposure": False, "review_required": True},
     }
+    if query_context is not None:
+        metadata["query_context"] = query_context
     _atomic_bytes(run_dir / "acquisition-metadata.json", (json.dumps(metadata, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode())
     return metadata
 
 
-def _write_failure(run_dir: Path, source_id: str, run_id: str, error: AcquisitionError, attempts: list[dict[str, Any]]) -> None:
+def _write_failure(
+    run_dir: Path,
+    source_id: str,
+    run_id: str,
+    error: AcquisitionError,
+    attempts: list[dict[str, Any]],
+    query_context: dict[str, Any] | None = None,
+    requested_url: str | None = None,
+    requested_at_utc: str | None = None,
+    effective_date: str | None = None,
+    publication_date: str | None = None,
+) -> None:
     """Leave a private, actionable failure record without creating an artifact."""
     payload = {
         "schema_version": "acquisition-failure-v1", "source_id": source_id, "run_id": run_id,
@@ -269,6 +302,16 @@ def _write_failure(run_dir: Path, source_id: str, run_id: str, error: Acquisitio
         "action": error.action, "attempts": attempts, "artifact_created": False,
         "public_exposure": False,
     }
+    if requested_url is not None:
+        payload["requested_url"] = requested_url
+    if requested_at_utc is not None:
+        payload["requested_at_utc"] = requested_at_utc
+    if effective_date is not None:
+        payload["effective_date"] = effective_date
+    if publication_date is not None:
+        payload["publication_date"] = publication_date
+    if query_context is not None:
+        payload["query_context"] = query_context
     try:
         _atomic_bytes(run_dir / "acquisition-failure.json", (json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode())
     except OSError:
