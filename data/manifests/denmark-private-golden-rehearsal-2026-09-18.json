@@ -1,0 +1,95 @@
+{
+  "acquisition_network_status": "blocked_connection_refused",
+  "candidate_release": {
+    "handoff_rows": 58398,
+    "public_rows": 0,
+    "publication_state": "private-candidate; human-gate-required",
+    "release_created": false,
+    "release_promoted": false
+  },
+  "fail_closed": true,
+  "geocoding": {
+    "address_queue_rows": 25301,
+    "external_requests_made": false,
+    "source_coordinate_states": {
+      "source_point": 33117,
+      "unresolved": 25404
+    },
+    "source_coordinates_queued": 33097,
+    "state": "pending-review; no geocoder calls"
+  },
+  "identity": {
+    "candidate_facility_identifiers": 58398,
+    "candidate_organization_identifiers": 57263,
+    "canonical_cross_source_merge": false,
+    "operator_relationship_candidates": 57263,
+    "source_scoped_identity": "passed"
+  },
+  "limitations": [
+    "The checked-in Smiley XML is a retained local artifact, not a fresh network acquisition; its source/effective date is not independently re-established by this rehearsal.",
+    "The source publisher supplies no dataset effective date; row-count drift against the prior expected count remains a review finding.",
+    "Private API, suppression, and restoration statuses are caller-supplied observations; this command never starts or connects to a server.",
+    "No source rows, addresses, coordinates, geocoder responses, or raw payloads are included in this report."
+  ],
+  "operator_review": {
+    "owner_review": "awaiting-owner-review",
+    "packet": "row-free",
+    "publication_boundary": "awaiting-owner-review; this packet is row-free evidence and cannot approve or promote a release",
+    "release_state": "not-created"
+  },
+  "private_api_frontend": {
+    "contract": {
+      "mode": "in-memory-contract-only",
+      "private_preview": true,
+      "publication_boundary": "awaiting-owner-review",
+      "raw_fields_absent": true,
+      "status": "passed",
+      "test_only": true
+    },
+    "public_api_rows": 0,
+    "status": "blocked_docker_access_denied"
+  },
+  "private_payloads_included": false,
+  "report_version": "denmark-private-golden-rehearsal-v1",
+  "rerun": {
+    "artifact_comparisons": {
+      "candidate_handoff": true,
+      "geocode_queue": true,
+      "graph": true,
+      "normalized": true,
+      "parsed": true,
+      "quarantine": true
+    },
+    "deterministic_artifacts": true,
+    "new_rows": 0,
+    "status": "passed"
+  },
+  "source": {
+    "acquisition_method": "local_file",
+    "byte_size": 59669838,
+    "effective_date": null,
+    "retrieved_at_utc": "2026-09-14T05:41:12Z",
+    "sha256": "383a5deec436d134f81f5fb5ff5fbfe59072f58131cecb1602ef13a2ff229013",
+    "source_id": "dk.smiley",
+    "source_url": "https://pub.fvst.dk/publikationer/Smileydata.xml",
+    "terms_gate": "local preserved artifact; network terms approval not asserted"
+  },
+  "stages": {
+    "accepted_normalized_rows": 58398,
+    "input_rows": 58521,
+    "parse_normalize_validate": "passed",
+    "quarantine_reasons": {
+      "classification_requires_review": 123,
+      "coordinates_source": 33117,
+      "coordinates_unresolved": 25404,
+      "unexpected_row_count": 1
+    },
+    "quarantined_rows": 123,
+    "validation_finding_rows": 123
+  },
+  "status": "passed-private-staging",
+  "suppression_restore": {
+    "required_behavior": "append-only suppression must cover list, detail, map, facets, export, history, reimport, restore, and geocode renewal",
+    "status": "blocked_docker_access_denied"
+  }
+}

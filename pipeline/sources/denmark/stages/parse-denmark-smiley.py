@@ -60,6 +60,7 @@ def parse_file(input_path: Path, output_dir: Path, source_url: str, progress_eve
                     missing_coordinates += 1
                 output.write(json.dumps({
                     "source_id": "dk.smiley",
+                    "source_row": row_count,
                     "source_record_key": row.get("ID_nummer") or row.get("navnelbnr"),
                     "source_artifact_sha256": source_hash,
                     "fields": row,

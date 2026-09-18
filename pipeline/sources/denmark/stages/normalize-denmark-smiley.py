@@ -45,6 +45,7 @@ def normalize_record(envelope: dict) -> dict:
     source = envelope.get("fields", {})
     normalized = {
         "source_id": envelope.get("source_id", "dk.smiley"),
+        "source_row": envelope.get("source_row"),
         "source_record_key": source.get("ID_nummer") or source.get("navnelbnr"),
         "source_artifact_sha256": envelope.get("source_artifact_sha256"),
         "name": source.get("Virksomhed") or source.get("navn1"),

@@ -39,6 +39,35 @@ when acquisition provenance is complete; `private-validated` is only an
 evidence-contract result, not a currentness, approval, geocoding, or
 publication conclusion.
 
+## Deterministic private golden rehearsal
+
+For a retained local artifact, record the fixed source URL and observation time
+before staging, then compare a second run and emit only aggregate evidence:
+
+```powershell
+python pipeline/sources/denmark/stages/acquire-denmark-smiley.py `
+  --local-file static_data/dk/Smiley_xml.xml `
+  --source-url https://pub.fvst.dk/publikationer/Smileydata.xml `
+  --retrieved-at-utc 2026-09-14T05:41:12Z `
+  --output-root data/raw --run-id denmark-golden-local
+
+python pipeline/sources/denmark/run-denmark-pipeline.py `
+  data/raw/dk.smiley/denmark-golden-local/Smileydata.xml `
+  --output-dir data/staging/denmark-golden
+
+python pipeline/scripts/maintenance/rehearse_denmark_private.py `
+  --run-dir data/staging/denmark-golden `
+  --rerun-dir data/staging/denmark-golden-rerun `
+  --output data/reports/denmark-private-golden-rehearsal.json
+```
+
+The rehearsal quarantines validation findings before geocoding or candidate
+handoff, keeps source coordinates distinct from unresolved addresses, verifies
+byte-identical rerun artifacts, and checks the separate private-preview
+contract. It never creates or promotes a release. Docker-backed API,
+suppression, and restoration observations must be supplied by the disposable
+E2E environment and remain separate from this row-free staging report.
+
 ## Full private refresh evidence
 
 The retained full artifact was retrieved from the endpoint above at

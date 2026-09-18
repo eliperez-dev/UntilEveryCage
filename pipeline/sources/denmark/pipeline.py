@@ -14,7 +14,7 @@ from typing import Callable
 
 from pipeline.contracts.private_run import write_private_run_report
 from pipeline.contracts.source_health import build_health_snapshot, write_health_snapshot
-from pipeline.contracts.source_lifecycle import atomic_json, validate_private_manifest
+from pipeline.contracts.source_lifecycle import atomic_json, atomic_jsonl, validate_private_manifest
 from pipeline.contracts.adapter_contract import SourceArtifact
 from pipeline.common.review import write_operator_review_packet
 from pipeline.common.review_packet import write_review_packet
@@ -69,14 +69,56 @@ def artifact_manifest(run_dir: Path, input_path: Path, started_at: str,
     return atomic_json(run_dir / "pipeline-manifest.json", manifest)
 
 
+def _materialize_validated_rows(run_dir: Path) -> tuple[list[dict], list[dict], list[dict]]:
+    """Split classified rows into accepted and quarantined private artifacts."""
+    classified_path = run_dir / "03-classify" / "classified-records.jsonl"
+    findings_path = run_dir / "04-validate" / "validation-findings.jsonl"
+    classified_rows = [json.loads(line) for line in classified_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    findings = [json.loads(line) for line in findings_path.read_text(encoding="utf-8").splitlines() if line.strip()] if findings_path.is_file() else []
+    finding_records = [finding.get("record", finding) if isinstance(finding, dict) else {} for finding in findings]
+    quarantined_keys = {
+        record.get("source_record_key")
+        for record in finding_records
+        if isinstance(record.get("source_record_key"), str) and record.get("source_record_key")
+    }
+    quarantined_source_rows = {
+        record.get("source_row")
+        for record in finding_records
+        if not record.get("source_record_key") and isinstance(record.get("source_row"), int)
+    }
+    reasons_by_key = {
+        record.get("source_record_key"): finding.get("findings", [])
+        for finding, record in zip(findings, finding_records)
+        if isinstance(record.get("source_record_key"), str)
+    }
+    reasons_by_row = {
+        record.get("source_row"): finding.get("findings", [])
+        for finding, record in zip(findings, finding_records)
+        if isinstance(record.get("source_row"), int) and not record.get("source_record_key")
+    }
+    quarantined_rows = [
+        row for row in classified_rows
+        if row.get("source_record_key") in quarantined_keys or row.get("source_row") in quarantined_source_rows
+    ]
+    accepted_rows = [
+        row for row in classified_rows
+        if row.get("source_record_key") not in quarantined_keys and row.get("source_row") not in quarantined_source_rows
+    ]
+    atomic_jsonl(run_dir / "normalized" / "records.jsonl", accepted_rows)
+    atomic_jsonl(
+        run_dir / "quarantined" / "records.jsonl",
+        [{"record": row, "reasons": reasons_by_key.get(row.get("source_record_key"), reasons_by_row.get(row.get("source_row"), []))} for row in quarantined_rows],
+    )
+    return accepted_rows, quarantined_rows, findings
+
+
 def _canonical_evidence(run_dir: Path, input_path: Path, metadata: dict,
                         started_at: str, completed_at: str) -> None:
     """Bridge stage reports into the shared private-run contract.
 
-    Validation findings are retained and counted as anomalies; they are not
-    silently removed from the normalized stage output.  The shared manifest
-    therefore keeps ``normalized_rows`` equal to every parsed row and records
-    findings separately in ``anomaly_counts``.
+    Validation findings are retained in a separate quarantine artifact. The
+    candidate handoff contains only rows without a validation finding; no row
+    is silently dropped and the shared count contract remains reconciled.
     """
     parse_meta = json.loads((run_dir / "01-parse" / "run-metadata.json").read_text(encoding="utf-8"))
     validation = json.loads((run_dir / "04-validate" / "validation-report.json").read_text(encoding="utf-8"))
@@ -88,6 +130,7 @@ def _canonical_evidence(run_dir: Path, input_path: Path, metadata: dict,
         raw_hash, raw_size = sha256_file(input_path), input_path.stat().st_size
     retrieved = metadata.get("retrieved_at_utc")
     source_url = metadata.get("final_url") or metadata.get("requested_url")
+    accepted_rows, quarantined_rows, findings = _materialize_validated_rows(run_dir)
     manifest = {
         "contract_version": "source-lifecycle-v1",
         "source_id": "dk.smiley",
@@ -103,16 +146,17 @@ def _canonical_evidence(run_dir: Path, input_path: Path, metadata: dict,
         "code_version": "denmark-smiley-contract-v1",
         "config_version": "denmark-smiley-contract-v1",
         "input_rows": int(parse_meta["rows_parsed"]),
-        "normalized_rows": int(parse_meta["rows_parsed"]),
-        "quarantined_rows": 0,
+        "normalized_rows": len(accepted_rows),
+        "quarantined_rows": len(quarantined_rows),
         "release_state": "not-created",
         "publication_state": "private-candidate",
         "review_state": "review_required",
         "privacy_gate": "pending",
         "coordinate_gate": "review_required",
         "parsed_sha256": sha256_file(run_dir / "01-parse" / "parsed-rows.jsonl"),
-        "normalized_sha256": sha256_file(run_dir / "03-classify" / "classified-records.jsonl"),
+        "normalized_sha256": sha256_file(run_dir / "normalized" / "records.jsonl"),
         "anomaly_counts": {str(k): int(v) for k, v in validation.get("counts", {}).items()},
+        "validation_finding_rows": len(findings),
         "acquisition": metadata or {"source_url": source_url, "retrieved_at_utc": retrieved},
         "pipeline_started_at_utc": started_at,
         "pipeline_completed_at_utc": completed_at,
@@ -123,14 +167,14 @@ def _canonical_evidence(run_dir: Path, input_path: Path, metadata: dict,
     report = write_private_run_report(
         run_dir,
         manifest,
-        normalized_path=run_dir / "03-classify" / "classified-records.jsonl",
+        normalized_path=run_dir / "normalized" / "records.jsonl",
     )
     # Using the recorded observation time as the default makes local reruns
     # byte-identical. Callers needing wall-clock freshness may override it.
     if retrieved:
         snapshot = build_health_snapshot(run_dir, as_of_utc=retrieved)
         write_health_snapshot(run_dir / "source-health.json", snapshot)
-    classified = run_dir / "03-classify" / "classified-records.jsonl"
+    classified = run_dir / "normalized" / "records.jsonl"
     if classified.is_file() and retrieved and source_url:
         artifact = SourceArtifact(
             source_url=str(source_url), retrieved_at_utc=str(retrieved), sha256=str(raw_hash), byte_size=int(raw_size),
@@ -242,7 +286,11 @@ def main(*, run_stage_fn: Callable[[str, Path, list[str]], None] | None = None,
         if args.expected_rows is not None:
             validation_args.extend(["--expected-rows", str(args.expected_rows)])
         stage("validate", DENMARK_STAGES / "validate-denmark.py", validation_args)
-        stage("geocode_queue", SHARED_STAGES / "create-geocode-queue.py", [str(classify_dir / "classified-records.jsonl"), "--output-dir", str(geocode_dir)])
+        # Never queue a row that validation quarantined.  The original
+        # classified artifact remains available for review; enrichment only
+        # consumes the accepted private normalized projection.
+        _materialize_validated_rows(run_dir)
+        stage("geocode_queue", SHARED_STAGES / "create-geocode-queue.py", [str(run_dir / "normalized" / "records.jsonl"), "--output-dir", str(geocode_dir)])
         if args.geocode_limit is not None:
             geo = [str(geocode_dir / "geocode-queue.jsonl"), "--output", str(run_dir / "06-geocode-results.jsonl"), "--limit", str(args.geocode_limit), "--delay", str(args.geocode_delay), "--provider-config", str(args.geocode_provider_config.resolve()), "--terms-review", str(args.geocode_terms_review.resolve()), "--network"]
             if args.geocode_suppression_keys:

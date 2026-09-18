@@ -89,7 +89,7 @@ class DenmarkSmileyAdapter:
                     continue
                 fields = {child.tag: (child.text or "").strip() or None for child in element}
                 key = fields.get("ID_nummer") or fields.get("navnelbnr")
-                record = {"source_id": SOURCE_ID, "source_record_key": key,
+                record = {"source_id": SOURCE_ID, "source_row": number, "source_record_key": key,
                           "source_artifact_sha256": actual, "source_fields": fields,
                           "normalized": {"name": fields.get("Virksomhed"),
                                          "address": fields.get("Adresse"),

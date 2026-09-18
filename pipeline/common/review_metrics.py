@@ -47,6 +47,20 @@ def _coordinate_state(row: dict[str, Any]) -> str:
         except (TypeError, ValueError):
             pass
         return "invalid_point"
+    if isinstance(coordinates, dict):
+        latitude = coordinates.get("latitude")
+        longitude = coordinates.get("longitude")
+        if latitude not in (None, "") and longitude not in (None, ""):
+            try:
+                lat, lon = float(latitude), float(longitude)
+                if -90 <= lat <= 90 and -180 <= lon <= 180 and not (lat == 0 and lon == 0):
+                    method = _text(coordinates.get("method")) or "unknown"
+                    return f"{method}_point"
+            except (TypeError, ValueError):
+                return "invalid_point"
+        review_status = _text(coordinates.get("review_status"))
+        if review_status:
+            return review_status
     state = _text(normalized.get("coordinate_state"))
     if state:
         return state

@@ -103,13 +103,25 @@ def write_metadata(path: Path, metadata: dict) -> None:
     atomic_json(path, metadata)
 
 
-def archive_local_file(local_file: Path, output_root: Path, *, run_id: str, retrieved_at: str | None = None) -> dict:
+def _validate_timestamp(value: str, field: str) -> str:
+    try:
+        datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise AcquisitionError(f"{field} must be ISO-8601") from error
+    return value
+
+
+def archive_local_file(local_file: Path, output_root: Path, *, run_id: str,
+                       retrieved_at: str | None = None,
+                       source_url: str = DEFAULT_URL) -> dict:
     local_file = local_file.resolve()
     if not local_file.is_file():
         raise AcquisitionError(f"local file does not exist: {local_file}")
     run_dir = output_root / SOURCE_ID / run_id
     artifact_path = run_dir / "Smileydata.xml"
-    retrieved_at = retrieved_at or utc_now()
+    retrieved_at = _validate_timestamp(retrieved_at, "retrieved_at_utc") if retrieved_at else utc_now()
+    if not source_url.strip():
+        raise AcquisitionError("source_url must be non-empty")
     with local_file.open("rb") as stream:
         sha256, byte_size = archive_stream(stream, artifact_path, max_bytes=DEFAULT_MAX_BYTES)
     metadata = {
@@ -118,9 +130,9 @@ def archive_local_file(local_file: Path, output_root: Path, *, run_id: str, retr
         "artifact": artifact_path.name,
         "byte_size": byte_size,
         "config_version": ADAPTER_VERSION,
-        "final_url": "unknown",
+        "final_url": source_url,
         "publication_metadata": {},
-        "requested_url": "unknown",
+        "requested_url": source_url,
         "response_headers": {},
         "retrieved_at_utc": retrieved_at,
         "run_id": run_id,
@@ -183,9 +195,11 @@ def main() -> int:
     mode.add_argument("--fetch", action="store_true", help="Fetch the registry URL; requires a reviewed terms file.")
     mode.add_argument("--local-file", type=Path, help="Archive a local/synthetic XML file without network access.")
     parser.add_argument("--url", default=DEFAULT_URL, help="Requested URL for --fetch.")
+    parser.add_argument("--source-url", default=DEFAULT_URL, help="Official source URL to record for --local-file.")
     parser.add_argument("--terms-review", type=Path, help="Approved JSON terms-review record; required for --fetch.")
     parser.add_argument("--output-root", type=Path, default=Path("data/raw"))
     parser.add_argument("--run-id", default=default_run_id())
+    parser.add_argument("--retrieved-at-utc", help="Fixed ISO-8601 observation time for --local-file reruns.")
     parser.add_argument("--timeout-seconds", type=float, default=30.0)
     parser.add_argument("--max-bytes", type=int, default=DEFAULT_MAX_BYTES)
     args = parser.parse_args()
@@ -193,7 +207,13 @@ def main() -> int:
         if args.fetch:
             metadata = fetch(args.url, args.output_root, run_id=args.run_id, terms_review_path=args.terms_review, timeout_seconds=args.timeout_seconds, max_bytes=args.max_bytes)
         else:
-            metadata = archive_local_file(args.local_file, args.output_root, run_id=args.run_id)
+            metadata = archive_local_file(
+                args.local_file,
+                args.output_root,
+                run_id=args.run_id,
+                retrieved_at=args.retrieved_at_utc,
+                source_url=args.source_url,
+            )
     except AcquisitionError as error:
         print(json.dumps({"status": "failed", "error": str(error)}, sort_keys=True), file=sys.stderr)
         return 2

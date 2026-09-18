@@ -1,9 +1,11 @@
-import hashlib, tempfile, unittest
+import hashlib, importlib.util, tempfile, unittest
 import json
 from pathlib import Path
 from .adapter import DenmarkSmileyAdapter, check_refresh
 from pipeline.contracts.adapter_contract import SourceArtifact
 from pipeline.common.orchestrator import run_private_lifecycle
+from pipeline.common.review_metrics import build_private_review_metrics
+from .pipeline import _materialize_validated_rows
 
 XML = b'<Root><Row><ID_nummer>1</ID_nummer><Virksomhed>Test</Virksomhed></Row><Row><Virksomhed>Unkeyed</Virksomhed></Row></Root>'
 
@@ -84,5 +86,55 @@ class DenmarkAdapterTests(unittest.TestCase):
             run_dir = Path(status["run_dir"])
             self.assertFalse((run_dir / "source-health.json").exists())
             self.assertFalse((run_dir / "release-candidate" / "records.jsonl").exists())
+
+    def test_validation_findings_are_quarantined_before_candidate_handoff(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "03-classify").mkdir()
+            (root / "04-validate").mkdir()
+            good = {"source_id": "dk.smiley", "source_row": 1, "source_record_key": "good", "classification": {"review_status": "approved"}}
+            bad = {"source_id": "dk.smiley", "source_row": 2, "source_record_key": "bad", "classification": {"review_status": "review_required"}}
+            (root / "03-classify/classified-records.jsonl").write_text(
+                json.dumps(good) + "\n" + json.dumps(bad) + "\n", encoding="utf-8"
+            )
+            (root / "04-validate/validation-findings.jsonl").write_text(
+                json.dumps({"record": bad, "findings": [{"severity": "review", "code": "classification_requires_review"}]}) + "\n",
+                encoding="utf-8",
+            )
+            accepted, quarantined, findings = _materialize_validated_rows(root)
+            self.assertEqual([row["source_record_key"] for row in accepted], ["good"])
+            self.assertEqual([row["source_record_key"] for row in quarantined], ["bad"])
+            self.assertEqual(len(findings), 1)
+
+    def test_review_metrics_understand_denmark_source_coordinates(self):
+        metrics = build_private_review_metrics([
+            {"source_id": "dk.smiley", "source_record_key": "1", "normalized": {
+                "coordinates": {"latitude": "55.5", "longitude": "12.3", "method": "source", "review_status": "source"},
+            }},
+            {"source_id": "dk.smiley", "source_record_key": "2", "normalized": {
+                "coordinates": {"latitude": None, "longitude": None, "method": None, "review_status": "unresolved"},
+            }},
+        ])
+        self.assertEqual(metrics["geospatial"]["coordinate_state_counts"], {"source_point": 1, "unresolved": 1})
+
+    def test_local_acquisition_keeps_fixed_provenance_for_reruns(self):
+        path = Path(__file__).parents[2] / "sources" / "denmark" / "stages" / "acquire-denmark-smiley.py"
+        spec = importlib.util.spec_from_file_location("denmark_acquire_test", path)
+        module = importlib.util.module_from_spec(spec)
+        assert spec and spec.loader
+        spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source.xml"
+            source.write_bytes(b"<Root />")
+            metadata = module.archive_local_file(
+                source,
+                root / "raw",
+                run_id="fixed",
+                retrieved_at="2026-09-14T05:41:12Z",
+                source_url="https://pub.fvst.dk/publikationer/Smileydata.xml",
+            )
+            self.assertEqual(metadata["final_url"], "https://pub.fvst.dk/publikationer/Smileydata.xml")
+            self.assertEqual(metadata["retrieved_at_utc"], "2026-09-14T05:41:12Z")
 
 if __name__ == "__main__": unittest.main()

@@ -55,7 +55,7 @@ def validate_file(input_path: Path, output_dir: Path, expected_rows: int | None 
             coordinate_status = record.get("coordinates", {}).get("review_status")
             counts["coordinates_" + str(coordinate_status)] += 1
             if row_findings:
-                finding = {"source_record_key": key, "findings": [{"severity": s, "code": c} for s, c in row_findings]}
+                finding = {"source_row": record.get("source_row"), "source_record_key": key, "findings": [{"severity": s, "code": c} for s, c in row_findings]}
                 rejected.write(json.dumps({"record": record, "findings": finding["findings"]}, ensure_ascii=False, sort_keys=True) + "\n")
                 findings.append(finding)
                 for _, code in row_findings:
