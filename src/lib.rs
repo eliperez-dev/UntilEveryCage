@@ -32,6 +32,8 @@ use std::error::Error;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
+pub mod graph_private;
+
 pub fn v2_error(
     status: StatusCode,
     code: &'static str,
@@ -705,7 +707,7 @@ pub async fn get_dev_test_release_export_handler(
         .into_response()
 }
 
-fn constant_time_token_matches(expected: &str, provided: &str) -> bool {
+pub(crate) fn constant_time_token_matches(expected: &str, provided: &str) -> bool {
     let mut difference = expected.len() ^ provided.len();
     for (left, right) in expected.bytes().zip(provided.bytes()) {
         difference |= usize::from(left ^ right);

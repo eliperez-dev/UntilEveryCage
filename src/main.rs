@@ -68,6 +68,9 @@ pub fn app(state: uec_api::ApiState, proxy: private_environment::ProxyConfig) ->
             "/api/dev/preview/candidates",
             get(uec_api::get_dev_candidate_preview_handler),
         )
+        .route("/api/private/graph/entities", get(uec_api::graph_private::entities))
+        .route("/api/private/graph/entities/{entity_id}/neighborhood", get(uec_api::graph_private::neighborhood))
+        .route("/api/private/graph/queues/{kind}", get(uec_api::graph_private::queue))
         .route(
             "/api/dev/preview/test-release/locations",
             get(uec_api::get_dev_test_release_locations_handler),
