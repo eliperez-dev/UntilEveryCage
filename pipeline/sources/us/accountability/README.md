@@ -74,8 +74,8 @@ suppression, or publication decision and does not inherit V1 assumptions.
 source-local adapters and emits a private, deterministic crosswalk handoff.
 It links:
 
-* APHIS registrations to annual reports and inspections by certificate and/or
-  customer number;
+* APHIS registrations to annual reports, explicit amended-report versions, and
+  inspections by certificate and/or customer number;
 * FSIS establishments to FSIS observation records by establishment and/or
   approval number.
 

@@ -37,6 +37,25 @@ class FsisAdapterTests(unittest.TestCase):
         self.assertEqual(result["orphan_demographic_rows"], 1)
         self.assertIn("unmatched_demographic_identity", result["quarantined"][-1]["reasons"])
 
+    def test_demographic_identifier_conflict_does_not_join_on_one_matching_alias(self):
+        demographic = (
+            b"establishment_id,establishment_number,beef_cow_slaughter\n"
+            b"FSIS-001,WRONG-NUMBER,Yes\n"
+            b"FSIS-002,P002,Yes\n"
+        )
+        result = FsisMpiAdapter().parse_sources((ROOT / "fixtures/valid.csv").read_bytes(), demographic)
+        self.assertEqual(len(result["accepted"]), 1)
+        self.assertEqual(result["matched_demographic_rows"], 1)
+        reasons = [reason for item in result["quarantined"] for reason in item["reasons"]]
+        self.assertIn("conflicting_demographic_identity", reasons)
+
+    def test_multiline_csv_fields_and_header_only_exports_fail_closed(self):
+        multiline = b"establishment_id,establishment_name,state\nFSIS-100,\"Plant\nNorth\",TX\n"
+        result = FsisMpiAdapter().parse_bytes(multiline)
+        self.assertEqual(result["accepted"][0]["normalized"]["canonical_name"], "Plant\nNorth")
+        with self.assertRaises(FsisContractError):
+            FsisMpiAdapter().parse_bytes(b"establishment_id,establishment_name,state\n")
+
     def test_duplicates_missing_name_and_unknown_state_quarantine(self):
         result = FsisMpiAdapter().parse_bytes((ROOT / "fixtures/malformed.csv").read_bytes())
         self.assertEqual(len(result["accepted"]), 0); self.assertEqual(len(result["quarantined"]), 3)

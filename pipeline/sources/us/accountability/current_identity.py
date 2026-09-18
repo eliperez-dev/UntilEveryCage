@@ -36,9 +36,10 @@ PUBLICATION = {
     "publication_status": "not_eligible",
     "release_id": None,
 }
-APHIS_PROFILES = frozenset({"registrations", "annual_reports", "inspections"})
+APHIS_PROFILES = frozenset({"registrations", "annual_reports", "amendments", "inspections"})
 ALTERNATE_PAIRS = {
     ("registrations", "annual_reports"),
+    ("registrations", "amendments"),
     ("registrations", "inspections"),
     ("fsis_establishments", "fsis_observations"),
 }
@@ -132,11 +133,20 @@ def _provenance(
     profile: str,
 ) -> dict[str, str] | None:
     """Resolve per-profile provenance, falling back to source-wide metadata."""
-    values = (
-        provenance.get((source_id, profile))
-        or provenance.get(f"{source_id}:{profile}")
-        or provenance.get(source_id)
-    )
+    profile_keys = [profile]
+    # Amendments are versioned rows in the annual-report capture unless a
+    # separate amendment artifact was explicitly supplied.
+    if profile == "amendments":
+        profile_keys.append("annual_reports")
+    values = None
+    for profile_key in profile_keys:
+        values = (
+            provenance.get((source_id, profile_key))
+            or provenance.get(f"{source_id}:{profile_key}")
+        )
+        if values:
+            break
+    values = values or provenance.get(source_id)
     if not isinstance(values, Mapping):
         return None
     digest = _text(values.get("artifact_sha256") or values.get("sha256"))
@@ -272,9 +282,17 @@ def _candidate(
     if reason:
         result["quarantine_reason"] = reason
         result["reason"] = reason
+    elif method == "exact_official_identifier":
+        matched = ", ".join(sorted((matched_identifiers or {}).keys())) or "source-native identifiers"
+        result["confidence_explanation"] = f"Exact agreement on {matched}; source records remain separate and require review."
+    elif method == "alternate_name_address_exact":
+        result["confidence_explanation"] = "Exact normalized name and complete address agreement is a review candidate only; no official identifier matched."
+    else:
+        result["confidence_explanation"] = "No defensible identity evidence was accepted; retained for private review only."
     if not provenance_ok and not reason:
         result["quarantine_reason"] = "missing_or_invalid_provenance"
         result["assertion_status"] = "quarantined"
+        result["confidence_explanation"] = "Candidate lacks complete artifact provenance and is quarantined."
     return result
 
 
@@ -429,6 +447,8 @@ def build_current_identity_graph(
     """
     registrations = _records_for(aphis_records.get("registrations", ()), "registrations")
     annual_reports = _records_for(aphis_records.get("annual_reports", ()), "annual_reports")
+    amendments = _records_for(aphis_records.get("annual_reports", ()), "amendments")
+    amendments.extend(_records_for(aphis_records.get("amendments", ()), "amendments"))
     inspections = _records_for(aphis_records.get("inspections", ()), "inspections")
     establishments = _records_for(fsis_records, "fsis_establishments")
     observations = _records_for(fsis_observations, "fsis_observations")
@@ -436,6 +456,7 @@ def build_current_identity_graph(
     all_records: list[tuple[Mapping[str, Any], str]] = []
     all_records.extend((record, "registrations") for record in registrations)
     all_records.extend((record, "annual_reports") for record in annual_reports)
+    all_records.extend((record, "amendments") for record in amendments)
     all_records.extend((record, "inspections") for record in inspections)
     all_records.extend((record, "fsis_establishments") for record in establishments)
     all_records.extend((record, "fsis_observations") for record in observations)
@@ -449,6 +470,7 @@ def build_current_identity_graph(
 
     for left_profile, right_profile, left, right in (
         ("registrations", "annual_reports", registrations, annual_reports),
+        ("registrations", "amendments", registrations, amendments),
         ("registrations", "inspections", registrations, inspections),
         ("fsis_establishments", "fsis_observations", establishments, observations),
     ):
@@ -570,9 +592,23 @@ def build_current_identity_graph(
 def write_current_identity_graph(run_dir: str | Path, graph: Mapping[str, Any]) -> dict[str, Any]:
     """Atomically write the row-private candidate handoff and manifest."""
     root = Path(run_dir)
+    source_manifest = graph.get("manifest")
+    if not isinstance(source_manifest, Mapping) or any(
+        (
+            source_manifest.get("storage_state") != "private",
+            source_manifest.get("publication_status") != "not_eligible",
+            source_manifest.get("test_only") is not True,
+            source_manifest.get("auto_merge") is not False,
+        )
+    ):
+        raise ValueError("current identity graph is not a blocked private test-only candidate")
     candidates = list(graph.get("candidates", ()))
     entities = list(graph.get("entities", ()))
     quarantined = list(graph.get("quarantined", ()))
+    for row in (*candidates, *entities, *quarantined):
+        publication = row.get("publication")
+        if row.get("test_only") is not True or not isinstance(publication, Mapping) or publication.get("publication_status") != "not_eligible":
+            raise ValueError("current identity row is not a blocked private test-only candidate")
     _, candidate_sha, _ = atomic_jsonl(root / "candidate" / "identity-links.jsonl", candidates)
     _, entity_sha, _ = atomic_jsonl(root / "candidate" / "entities.jsonl", entities)
     _, quarantine_sha, _ = atomic_jsonl(root / "quarantined" / "identity-links.jsonl", quarantined)

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import io
 import json
 from pathlib import Path
 from typing import Any
@@ -57,7 +58,7 @@ def _csv_download_is_valid(path: Path) -> None:
             action="use the documented browser export workflow; do not bypass the challenge",
         )
     try:
-        rows = list(csv.reader(raw.decode("utf-8-sig").splitlines(), strict=True))
+        rows = list(csv.reader(io.StringIO(raw.decode("utf-8-sig"), newline=""), strict=True))
     except (UnicodeDecodeError, csv.Error) as error:
         raise AcquisitionError(
             "APHIS export is malformed or truncated",

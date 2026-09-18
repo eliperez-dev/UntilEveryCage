@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import io
 import json
 import re
 from collections import Counter
@@ -48,7 +49,7 @@ def _schema_fingerprint(headers: tuple[str, ...]) -> str:
 
 def _csv(content: bytes, *, role: str) -> tuple[tuple[str, ...], list[dict[str, Any]]]:
     try:
-        reader = csv.DictReader(content.decode("utf-8-sig").splitlines(), strict=True)
+        reader = csv.DictReader(io.StringIO(content.decode("utf-8-sig"), newline=""), strict=True)
         headers = tuple(reader.fieldnames or ())
         rows = list(reader)
     except (UnicodeDecodeError, csv.Error) as exc:
@@ -57,7 +58,9 @@ def _csv(content: bytes, *, role: str) -> tuple[tuple[str, ...], list[dict[str, 
         raise FsisContractError(f"missing FSIS {role} header")
     if None in headers or len(set(headers)) != len(headers):
         raise FsisContractError(f"duplicate or unnamed FSIS {role} columns")
-    if any(None in row for row in rows):
+    if not rows:
+        raise FsisContractError(f"FSIS {role} CSV contains no data rows")
+    if any(None in row or any(value is None for value in row.values()) for row in rows):
         raise FsisContractError(f"FSIS {role} schema drift: row has extra columns")
     normalized_headers = {_header_key(header) for header in headers}
     if role == "directory" and not ({"establishment_id", "establishment_number"} & normalized_headers):
@@ -86,6 +89,16 @@ def _key_candidates(row: dict[str, Any]) -> tuple[str, ...]:
         if value and value not in values:
             values.append(value)
     return tuple(values)
+
+
+def _identity_values(row: dict[str, Any]) -> dict[str, str | None]:
+    """Return identity values by source-native kind, not just raw value."""
+    return {
+        "establishment_id": _field(row, "establishment_id", "establishment id", "mpi id"),
+        "establishment_number": _field(
+            row, "establishment_number", "establishment number", "establishment no", "establishment no.", "number"
+        ),
+    }
 
 
 def _identity_key(row: dict[str, Any]) -> str | None:
@@ -227,8 +240,31 @@ def _quarantine(record: dict[str, Any], reasons: Iterable[str]) -> dict[str, Any
 
 
 def _demo_matches(row: dict[str, Any], directory: dict[str, Any]) -> bool:
-    demo_keys = set(_key_candidates(row))
-    return bool(demo_keys & set(_key_candidates(directory)))
+    demo_values = _identity_values(row)
+    directory_values = _identity_values(directory)
+    shared = any(
+        demo_values[k] and directory_values[k] and demo_values[k] == directory_values[k]
+        for k in demo_values
+    )
+    conflicting = any(
+        demo_values[k] and directory_values[k] and demo_values[k] != directory_values[k]
+        for k in demo_values
+    )
+    return shared and not conflicting
+
+
+def _demo_identity_conflict(row: dict[str, Any], directory: dict[str, Any]) -> bool:
+    demo_values = _identity_values(row)
+    directory_values = _identity_values(directory)
+    shared = any(
+        demo_values[k] and directory_values[k] and demo_values[k] == directory_values[k]
+        for k in demo_values
+    )
+    conflicting = any(
+        demo_values[k] and directory_values[k] and demo_values[k] != directory_values[k]
+        for k in demo_values
+    )
+    return shared and conflicting
 
 
 class FsisMpiAdapter:
@@ -273,6 +309,9 @@ class FsisMpiAdapter:
             matching_demo = [demo_index for demo_index, demo in enumerate(demographic_rows) if _demo_matches(demo, row)]
             demographic: dict[str, Any] | None = None
             demographic_line: int | None = None
+            if any(_demo_identity_conflict(demo, row) for demo in demographic_rows):
+                reasons.append("conflicting_demographic_identity")
+                identity_conflicts += 1
             if len(matching_demo) > 1:
                 reasons.append("ambiguous_demographic_identity")
                 identity_conflicts += 1

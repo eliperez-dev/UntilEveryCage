@@ -131,6 +131,29 @@ class UsAccountabilityAdapterTests(unittest.TestCase):
         self.assertEqual(len(result["quarantined"]), 1)
         self.assertEqual(result["quarantined"][0]["reasons"], ("duplicate_relationship_observation",))
 
+    def test_distinct_source_observations_are_not_collapsed_as_duplicates(self):
+        rows = rows_from_fixture()
+        observation = dict(rows[0])
+        observation.update({
+            "object_source_id": "us.fsis.snapshot-2",
+            "evidence_source_id": "us.fsis.snapshot-2",
+            "evidence_source_native_id": "legacy-row:FSIS-001:second-observation",
+            "observation_date": "2026-09-02",
+        })
+        rows.append(observation)
+        result = UsAccountabilityAdapter().parse_bytes(content_for(rows))
+        self.assertEqual(len(result["accepted"]), 13)
+        self.assertFalse(result["quarantined"])
+
+    def test_multiline_fields_and_short_rows_fail_closed(self):
+        rows = rows_from_fixture()
+        rows[0]["evidence_excerpt"] = "First line\nSecond line"
+        result = UsAccountabilityAdapter().parse_bytes(content_for(rows))
+        self.assertEqual(len(result["accepted"]), 12)
+        short = (",".join(REQUIRED_HEADERS) + "\nfacility,us.fsis,FSIS-001\n").encode()
+        with self.assertRaises(AccountabilityContractError):
+            UsAccountabilityAdapter().parse_bytes(short)
+
 
 if __name__ == "__main__":
     unittest.main()

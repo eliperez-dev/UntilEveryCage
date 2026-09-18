@@ -36,6 +36,19 @@ class CurrentIdentityGraphTests(unittest.TestCase):
         aphis_link = next(candidate for candidate in graph["candidates"] if candidate["right"]["profile"] == "annual_reports")
         self.assertEqual(set(aphis_link["evidence"]["provenance"]), {"us.aphis:registrations", "us.aphis:annual_reports"})
         self.assertEqual(len(graph["entities"]), 5)
+        self.assertTrue(all(candidate["confidence_explanation"] for candidate in graph["candidates"]))
+
+    def test_amended_annual_reports_remain_source_versioned_and_linkable(self):
+        payload = load_fixture()
+        amendment = copy.deepcopy(payload["aphis"]["annual_reports"][0])
+        amendment["source_record_key"] = "amendments:00-B-TEST-001:2025:2"
+        amendment["normalized"]["evidence_type"] = "amendments"
+        payload["aphis"]["annual_reports"].append(amendment)
+        graph = self.build(payload)
+        amendment_links = [candidate for candidate in graph["candidates"] if candidate["right"]["profile"] == "amendments"]
+        self.assertEqual(len(amendment_links), 1)
+        self.assertEqual(amendment_links[0]["assertion_status"], "candidate")
+        self.assertTrue(any(entity["entity_type"] == "amendments" for entity in graph["entities"]))
 
     def test_same_name_different_address_is_not_a_join(self):
         payload = load_fixture()
@@ -110,6 +123,13 @@ class CurrentIdentityGraphTests(unittest.TestCase):
                 (Path(directory) / "one" / "candidate" / "identity-links.jsonl").read_bytes(),
                 (Path(directory) / "two" / "candidate" / "identity-links.jsonl").read_bytes(),
             )
+
+    def test_write_rejects_a_promoted_or_non_test_only_graph(self):
+        graph = self.build()
+        graph["manifest"]["test_only"] = False
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(ValueError):
+                write_current_identity_graph(Path(directory) / "blocked", graph)
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import io
 import json
 from collections import Counter
 from pathlib import Path
@@ -59,7 +60,7 @@ def _schema_fingerprint(headers: tuple[str, ...]) -> str:
 def _read(content: bytes) -> tuple[tuple[str, ...], list[dict[str, Any]]]:
     try:
         text = content.decode("utf-8-sig")
-        reader = csv.DictReader(text.splitlines(), strict=True)
+        reader = csv.DictReader(io.StringIO(text, newline=""), strict=True)
         headers = tuple(reader.fieldnames or ())
         rows = list(reader)
     except (UnicodeDecodeError, csv.Error) as exc:
@@ -74,6 +75,8 @@ def _read(content: bytes) -> tuple[tuple[str, ...], list[dict[str, Any]]]:
     # DictReader represents short rows with None-valued cells and extra
     # columns with a None key. Both are schema failures, not missing source
     # values: a genuinely blank cell is represented by an empty string.
+    if not rows:
+        raise AphisContractError("APHIS export contains no data rows")
     if any(None in row or any(value is None for value in row.values()) for row in rows):
         raise AphisContractError("APHIS schema drift or malformed row")
     return headers, rows
@@ -149,6 +152,11 @@ def _observation_key(profile: str, row: dict[str, Any]) -> str | None:
     if profile in {"annual_reports", "amendments"}:
         parts.append(f"year={_year(row) or 'unknown'}")
         parts.append(f"version={_amendment_version(row) or 'original'}")
+    elif profile == "inspections":
+        # A certificate/customer can have multiple inspection observations over
+        # time.  Keep those observations distinct when the source supplies its
+        # observation date; an undated duplicate remains quarantine-worthy.
+        parts.append(f"status_date={_clean(row.get('Status Date')) or 'unknown'}")
     return f"{profile}|" + "|".join(parts)
 
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import io
 import json
 from collections import Counter
 from datetime import date, datetime
@@ -125,7 +126,16 @@ def _relationship(row: dict[str, str], *, observed_at: str, retrieved_at: str, s
         "url": row["evidence_url"],
         "excerpt": row["evidence_excerpt"],
     }
-    identity = {"subject": subject, "object": object_, "relationship_type": row["relationship_type"], "source_native_id": row["evidence_source_native_id"], "observation_date": observed_at}
+    identity = {
+        "subject": subject,
+        "object": object_,
+        "relationship_type": row["relationship_type"],
+        "evidence_source_id": row["evidence_source_id"],
+        "source_native_id": row["evidence_source_native_id"],
+        "observation_date": observed_at,
+        "valid_from": row.get("valid_from") or None,
+        "valid_to": row.get("valid_to") or None,
+    }
     relation_id = "candidate-relationship-" + hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()[:24]
     relation = {
         "relationship_id": relation_id,
@@ -170,7 +180,7 @@ class UsAccountabilityAdapter:
     def parse_bytes(self, content: bytes) -> dict[str, Any]:
         digest = hashlib.sha256(content).hexdigest()
         try:
-            reader = csv.DictReader(content.decode("utf-8-sig").splitlines(), strict=True)
+            reader = csv.DictReader(io.StringIO(content.decode("utf-8-sig"), newline=""), strict=True)
             headers = tuple(reader.fieldnames or ())
             rows = list(reader)
         except (UnicodeDecodeError, csv.Error) as exc:
@@ -179,8 +189,10 @@ class UsAccountabilityAdapter:
             missing = [header for header in REQUIRED_HEADERS if header not in headers]
             extra = [header for header in headers if header not in REQUIRED_HEADERS]
             raise AccountabilityContractError(f"unsupported link-ledger schema; missing={missing}, extra={extra}")
-        if len(headers) != len(set(headers)) or any(None in row for row in rows):
+        if len(headers) != len(set(headers)) or any(None in row or any(value is None for value in row.values()) for row in rows):
             raise AccountabilityContractError("schema drift: duplicate or extra link-ledger columns")
+        if not rows:
+            raise AccountabilityContractError("link-ledger contains no data rows")
 
         accepted: list[dict[str, Any]] = []
         quarantined: list[dict[str, Any]] = []
@@ -238,8 +250,11 @@ class UsAccountabilityAdapter:
                         reasons.append("ambiguous_duplicate_name")
                 relationship_key = (
                     row["subject_type"], row["subject_source_id"],
-                    row["subject_source_native_id"], row["object_source_native_id"],
-                    row["relationship_type"],
+                    row["subject_source_native_id"], row["object_type"],
+                    row["object_source_id"], row["object_source_native_id"],
+                    row["relationship_type"], row["evidence_source_id"],
+                    row["evidence_source_native_id"], row["observation_date"],
+                    row.get("valid_from") or "", row.get("valid_to") or "",
                 )
                 if relationship_key in relationship_keys:
                     reasons.append("duplicate_relationship_observation")

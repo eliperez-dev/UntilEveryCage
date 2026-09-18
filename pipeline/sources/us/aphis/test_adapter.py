@@ -32,6 +32,13 @@ class AphisAdapterTests(unittest.TestCase):
         self.assertEqual(len(result["accepted"]),2)
         self.assertNotEqual(result["accepted"][0]["source_record_key"], result["accepted"][1]["source_record_key"])
 
+    def test_inspections_use_status_date_in_observation_identity(self):
+        raw = (ROOT / "fixtures/inspections.csv").read_text(encoding="utf-8")
+        second = raw.splitlines()[1].replace("2026-02-01", "2026-03-01")
+        result = AphisPublicSearchAdapter().parse_bytes((raw + second + "\n").encode())
+        self.assertEqual(len(result["accepted"]), 2)
+        self.assertNotEqual(result["accepted"][0]["source_record_key"], result["accepted"][1]["source_record_key"])
+
     def test_unsupported_profile_fails_closed(self):
         with self.assertRaises(AphisContractError): AphisPublicSearchAdapter().parse_bytes(b"Name,Value\nA,B\n")
 
@@ -58,6 +65,18 @@ class AphisAdapterTests(unittest.TestCase):
     def test_short_rows_fail_closed_as_schema_drift(self):
         with self.assertRaises(AphisContractError):
             AphisPublicSearchAdapter().parse_bytes(b"Account Name,Certificate Number,Certificate Status\nOnly One Cell\n")
+
+    def test_multiline_csv_fields_and_header_only_exports_fail_closed(self):
+        multiline = (
+            b"Account Name,Customer Number,Certificate Number,License Type,Certificate Status,Status Date\n"
+            b"\"Synthetic\nRegistrant\",1,00-B-0001,Class B,Active,2026-01-01\n"
+        )
+        result = AphisPublicSearchAdapter().parse_bytes(multiline)
+        self.assertEqual(result["accepted"][0]["normalized"]["account_name"], "Synthetic\nRegistrant")
+        with self.assertRaises(AphisContractError):
+            AphisPublicSearchAdapter().parse_bytes(
+                b"Account Name,Customer Number,Certificate Number,License Type,Certificate Status,Status Date\n"
+            )
 
     def test_run_is_idempotent_and_reconciles_every_row(self):
         raw = (ROOT / "fixtures/inspections.csv").read_bytes()
