@@ -1,0 +1,483 @@
+{
+  "accountability_graph": {
+    "accepted_candidate_count": 12,
+    "auto_merge": false,
+    "candidate_sha256": "712432f81a883583fef01f6bd4967c8f74930dabb9a720f7c0df59a568610660",
+    "cross_source_identity_joins_attempted": 0,
+    "entity_count": 13,
+    "input_count": 12,
+    "input_kind": "synthetic/sanitized link-ledger fixture",
+    "name_address_phone_coordinate_joins_attempted": 0,
+    "publication_status": "blocked",
+    "quarantine_count": 0,
+    "quarantine_reasons": {},
+    "raw_candidates_private": true,
+    "relationship_types": {
+      "aggregate_describes": 1,
+      "brand_of": 1,
+      "enforcement_for": 1,
+      "establishment_approval_for": 1,
+      "inspection_observes": 1,
+      "laboratory_supports": 1,
+      "operates": 3,
+      "operator_is_legal_entity": 1,
+      "parent_of": 1,
+      "violation_observed_in": 1
+    },
+    "source_local_identity_only": true
+  },
+  "as_of_utc": "2026-09-18T00:00:00Z",
+  "candidate_release": {
+    "normalized_candidate_count": 5,
+    "project_approval": "not-approved",
+    "public_api_count": 0,
+    "public_export_count": 0,
+    "public_map_count": 0,
+    "quarantine_count": 0,
+    "release_created": false,
+    "release_promoted": false,
+    "sources": 4
+  },
+  "country_code": "US",
+  "current_evidence_boundary": {
+    "aphis": {
+      "captured_for": "private/test-only",
+      "document_artifacts_captured": 0,
+      "failed_capture_count": 3,
+      "profiles": {
+        "annual_reports": {
+          "capture_status": 10,
+          "captured_page_count": 10,
+          "displayed_count": 995
+        },
+        "inspections": {
+          "captured_page_count": 21,
+          "displayed_count": 15726,
+          "remaining_pagination_count": 13626
+        },
+        "registrations": {
+          "captured_page_count": 81,
+          "displayed_count": 2841,
+          "failed_page_count": 3
+        }
+      },
+      "proof_manifest": "us-aphis-wave1-real-data-proof-2026-09-18.json",
+      "publication_gate": "blocked",
+      "release_state": "not-created"
+    },
+    "fsis": {
+      "current_source_claim": false,
+      "direct_csv_http_statuses": {
+        "demographics": 403,
+        "directory": 403
+      },
+      "direct_csv_status": "blocked",
+      "last_updated_observed": "2026-09-14",
+      "page_observed_in_normal_browser": true,
+      "proof_manifest": "us-fsis-proof-2026-09-18.json",
+      "raw_artifacts_captured": false
+    },
+    "interpretation": "aggregate current-evidence boundaries only; no current row payload is used as fixture input",
+    "legacy_data_substitution": false,
+    "state_inspection_programs": {
+      "included": false,
+      "semantics": "no state roster was acquired; absence is not closure"
+    }
+  },
+  "geospatial_readiness": {
+    "candidate_count": 5,
+    "coordinate_review_count": 5,
+    "display_state_totals": {
+      "city": 1,
+      "exact": 2,
+      "restricted": 0,
+      "unmapped": 2
+    },
+    "evidence_state_totals": {
+      "accepted_geocode_coarse": 0,
+      "accepted_geocode_exact": 0,
+      "coarse_city_location": 1,
+      "geocode_unresolved": 3,
+      "source_coordinate_invalid": 0,
+      "source_coordinate_pending_review": 0,
+      "source_coordinate_valid": 2,
+      "unresolved": 2
+    },
+    "geocoding": "disabled; source coordinates remain pending review and missing coordinates remain unknown",
+    "per_source": [
+      {
+        "audit_status": "complete",
+        "available": true,
+        "candidate_count": 1,
+        "coordinate_review_count": 1,
+        "display_states": {
+          "city": 0,
+          "exact": 1,
+          "restricted": 0,
+          "unmapped": 0
+        },
+        "evidence_states": {
+          "accepted_geocode_coarse": 0,
+          "accepted_geocode_exact": 0,
+          "coarse_city_location": 0,
+          "geocode_unresolved": 0,
+          "source_coordinate_invalid": 0,
+          "source_coordinate_pending_review": 0,
+          "source_coordinate_valid": 1,
+          "unresolved": 0
+        },
+        "privacy_review_count": 1,
+        "source_id": "us.aphis",
+        "suppressed_count": 0
+      },
+      {
+        "audit_status": "complete",
+        "available": true,
+        "candidate_count": 1,
+        "coordinate_review_count": 1,
+        "display_states": {
+          "city": 0,
+          "exact": 0,
+          "restricted": 0,
+          "unmapped": 1
+        },
+        "evidence_states": {
+          "accepted_geocode_coarse": 0,
+          "accepted_geocode_exact": 0,
+          "coarse_city_location": 0,
+          "geocode_unresolved": 1,
+          "source_coordinate_invalid": 0,
+          "source_coordinate_pending_review": 0,
+          "source_coordinate_valid": 0,
+          "unresolved": 1
+        },
+        "privacy_review_count": 1,
+        "source_id": "us.aphis",
+        "suppressed_count": 0
+      },
+      {
+        "audit_status": "complete",
+        "available": true,
+        "candidate_count": 1,
+        "coordinate_review_count": 1,
+        "display_states": {
+          "city": 0,
+          "exact": 0,
+          "restricted": 0,
+          "unmapped": 1
+        },
+        "evidence_states": {
+          "accepted_geocode_coarse": 0,
+          "accepted_geocode_exact": 0,
+          "coarse_city_location": 0,
+          "geocode_unresolved": 1,
+          "source_coordinate_invalid": 0,
+          "source_coordinate_pending_review": 0,
+          "source_coordinate_valid": 0,
+          "unresolved": 1
+        },
+        "privacy_review_count": 1,
+        "source_id": "us.aphis",
+        "suppressed_count": 0
+      },
+      {
+        "audit_status": "complete",
+        "available": true,
+        "candidate_count": 2,
+        "coordinate_review_count": 2,
+        "display_states": {
+          "city": 1,
+          "exact": 1,
+          "restricted": 0,
+          "unmapped": 0
+        },
+        "evidence_states": {
+          "accepted_geocode_coarse": 0,
+          "accepted_geocode_exact": 0,
+          "coarse_city_location": 1,
+          "geocode_unresolved": 1,
+          "source_coordinate_invalid": 0,
+          "source_coordinate_pending_review": 0,
+          "source_coordinate_valid": 1,
+          "unresolved": 0
+        },
+        "privacy_review_count": 2,
+        "source_id": "us.fsis",
+        "suppressed_count": 0
+      }
+    ],
+    "privacy_review_count": 5,
+    "sources_available": 4,
+    "sources_checked": 4,
+    "suppressed_count": 0
+  },
+  "limitations_and_blockers": [
+    "FSIS current direct CSV acquisition is blocked by the observed 403 route; the fixture handoff is not a current national facility capture.",
+    "APHIS current proof is profile- and page-bounded, has failed captures and an inspection pagination boundary, and is not an animal-use census.",
+    "State MPI/CIS rosters were not acquired in this rehearsal.",
+    "Sanitized fixtures exercise contracts only; factual accuracy, privacy eligibility, project approval, and publication remain unassessed.",
+    "Geocoding is disabled; source coordinates remain pending review and missing coordinates remain unknown."
+  ],
+  "mechanical_contract_state": "passed",
+  "operator_review_packet": {
+    "approval_effect": "none; operator packet is evidence for later human review",
+    "health_snapshots_present": 4,
+    "qa_packets_present": 4,
+    "release_diffs_present": 4,
+    "review_packets_present": 4,
+    "row_payloads_included": false,
+    "source_packet_count": 4
+  },
+  "outcome": {
+    "human_approval": "not requested or performed",
+    "legacy_substitution": false,
+    "national_completeness": "not assessed or claimed",
+    "private_rehearsal": "complete",
+    "public_exposure": false,
+    "publication_gate": "blocked",
+    "release_state": "not-created"
+  },
+  "private_api_frontend": {
+    "payloads_included": false,
+    "preview_probe": "passed",
+    "private_preview": true,
+    "raw_fields_absent": true,
+    "status": "passed",
+    "test_only": true
+  },
+  "report_version": "us-private-golden-rehearsal-v1",
+  "rerun_idempotency": {
+    "aphis_private_import": {
+      "database_import": false,
+      "public_exposure": false,
+      "same_handoff_sha256": true,
+      "same_imported_count": true
+    },
+    "fsis": {
+      "public_exposure": false,
+      "same_artifact_sha256": true,
+      "same_counts": true,
+      "same_handoff_sha256": true,
+      "same_normalized_sha256": true
+    }
+  },
+  "source_profiles": [
+    {
+      "acquisition": {
+        "method": "preserved_local_artifact_bundle",
+        "roles": {
+          "demographics": {
+            "byte_size": 212,
+            "effective_date": "2026-09-14",
+            "method": "preserved_local_artifact",
+            "retrieved_at_utc": "2026-09-18T00:00:00Z",
+            "sha256": "457184dcde86f3ac0978acbd1c6a959108c34efd8be060b53a00bd84edc83708",
+            "source_url": "https://www.fsis.usda.gov/sites/default/files/media_file/documents/Dataset_Establishment_Demographic_Data.csv"
+          },
+          "directory": {
+            "byte_size": 636,
+            "effective_date": "2026-09-14",
+            "method": "preserved_local_artifact",
+            "retrieved_at_utc": "2026-09-18T00:00:00Z",
+            "sha256": "357f5330441c773bf791eca9121b843f00d5a07a43470672dc93df5a5521e6e4",
+            "source_url": "https://www.fsis.usda.gov/sites/default/files/media_file/documents/MPI_Directory_by_Establishment_Number.csv"
+          }
+        }
+      },
+      "handoff": {
+        "auto_merge": false,
+        "available": true,
+        "candidate_count": 2,
+        "candidate_sha256": "848dc87e860f626e6f508bbbee6b5db2e844a0f6e180ca6fbb26d7aa5d5a6f57",
+        "graph_candidate_count": 2,
+        "publication_state": "private-candidate",
+        "release_state": "not-created"
+      },
+      "operator_artifacts": {
+        "health": true,
+        "qa": true,
+        "release_diff": true,
+        "review_packet": true
+      },
+      "profile": "mpi-directory-plus-demographics",
+      "release": {
+        "geocoding": "disabled",
+        "public_exposure": false,
+        "publication_state": "private-candidate",
+        "state": "not-created"
+      },
+      "source_id": "us.fsis",
+      "source_local_identity": {
+        "identified_count": 2,
+        "identity_scope": "source-local; no cross-source merge"
+      },
+      "stages": {
+        "input_count": 2,
+        "normalized_count": 2,
+        "normalized_sha256": "848dc87e860f626e6f508bbbee6b5db2e844a0f6e180ca6fbb26d7aa5d5a6f57",
+        "quarantine_count": 0,
+        "quarantine_reasons": {},
+        "schema_fingerprint": "4ecc958dfec30b1b1f89e6c2ba9f4ab9705c3b0bce57c762e8d1fb4f4c3c9980"
+      },
+      "status": "candidate-ready"
+    },
+    {
+      "acquisition": {
+        "byte_size": 471,
+        "effective_date": "2025",
+        "method": "preserved_local_artifact",
+        "retrieved_at_utc": "2026-09-18T00:00:00Z",
+        "sha256": "e79a1afc8043e43103f5e19cb78e600df512ce1725ea4c25c022eeaa9c6d0424",
+        "source_url": "https://direct.aphis.usda.gov/awa/research-facility-report/annual-summary"
+      },
+      "handoff": {
+        "auto_merge": false,
+        "available": true,
+        "candidate_count": 1,
+        "candidate_sha256": "e96b2bc3009481c68d8e88f85afa294abba5e9131ed9dc1a9b95f0f2a9e0c83d",
+        "graph_candidate_count": 0,
+        "publication_state": "private-candidate",
+        "release_state": "not-created"
+      },
+      "operator_artifacts": {
+        "health": true,
+        "qa": true,
+        "release_diff": true,
+        "review_packet": true
+      },
+      "profile": "annual_reports",
+      "release": {
+        "geocoding": "disabled",
+        "public_exposure": false,
+        "publication_state": "private-candidate",
+        "state": "not-created"
+      },
+      "source_id": "us.aphis",
+      "source_local_identity": {
+        "identified_count": 1,
+        "identity_scope": "source-local; no cross-source merge"
+      },
+      "stages": {
+        "input_count": 1,
+        "normalized_count": 1,
+        "normalized_sha256": "e96b2bc3009481c68d8e88f85afa294abba5e9131ed9dc1a9b95f0f2a9e0c83d",
+        "quarantine_count": 0,
+        "quarantine_reasons": {},
+        "schema_fingerprint": "a1fd908ab662cadd330310aeddba586c34d170c12a0f75b0dfb367b3f978ccc5"
+      },
+      "status": "candidate-ready"
+    },
+    {
+      "acquisition": {
+        "byte_size": 322,
+        "effective_date": "2026-02-01",
+        "method": "preserved_local_artifact",
+        "retrieved_at_utc": "2026-09-18T00:00:00Z",
+        "sha256": "a0ddedd149dd37b72716458d35e2e5f33c62ad8660416f0bc51459f68815dd11",
+        "source_url": "https://www.aphis.usda.gov/animal-care/awa-services/usda-animal-care-public-search-tool"
+      },
+      "handoff": {
+        "auto_merge": false,
+        "available": true,
+        "candidate_count": 1,
+        "candidate_sha256": "0f4fdcb9e533a60d8574635523f751efdb4ec720e6ab08ba5159924c1d121858",
+        "graph_candidate_count": 0,
+        "publication_state": "private-candidate",
+        "release_state": "not-created"
+      },
+      "operator_artifacts": {
+        "health": true,
+        "qa": true,
+        "release_diff": true,
+        "review_packet": true
+      },
+      "profile": "registrations",
+      "release": {
+        "geocoding": "disabled",
+        "public_exposure": false,
+        "publication_state": "private-candidate",
+        "state": "not-created"
+      },
+      "source_id": "us.aphis",
+      "source_local_identity": {
+        "identified_count": 1,
+        "identity_scope": "source-local; no cross-source merge"
+      },
+      "stages": {
+        "input_count": 1,
+        "normalized_count": 1,
+        "normalized_sha256": "0f4fdcb9e533a60d8574635523f751efdb4ec720e6ab08ba5159924c1d121858",
+        "quarantine_count": 0,
+        "quarantine_reasons": {},
+        "schema_fingerprint": "8a7c46f3068955b88275377da2418a2cb232260eb85327924460a4791f1f1971"
+      },
+      "status": "candidate-ready"
+    },
+    {
+      "acquisition": {
+        "byte_size": 299,
+        "effective_date": "2026-02-01",
+        "method": "preserved_local_artifact",
+        "retrieved_at_utc": "2026-09-18T00:00:00Z",
+        "sha256": "805bb7d51c76e79f7ccfa5d4802d687c6be711c2a13b36bc4f4013f7d6ff7281",
+        "source_url": "https://direct.aphis.usda.gov/awa/annual-inspection-reports"
+      },
+      "handoff": {
+        "auto_merge": false,
+        "available": true,
+        "candidate_count": 1,
+        "candidate_sha256": "accae6846925b83edb4a77f63413af2b5690abb42f5f940afc6f31612c085390",
+        "graph_candidate_count": 0,
+        "publication_state": "private-candidate",
+        "release_state": "not-created"
+      },
+      "operator_artifacts": {
+        "health": true,
+        "qa": true,
+        "release_diff": true,
+        "review_packet": true
+      },
+      "profile": "inspections",
+      "release": {
+        "geocoding": "disabled",
+        "public_exposure": false,
+        "publication_state": "private-candidate",
+        "state": "not-created"
+      },
+      "source_id": "us.aphis",
+      "source_local_identity": {
+        "identified_count": 1,
+        "identity_scope": "source-local; no cross-source merge"
+      },
+      "stages": {
+        "input_count": 1,
+        "normalized_count": 1,
+        "normalized_sha256": "accae6846925b83edb4a77f63413af2b5690abb42f5f940afc6f31612c085390",
+        "quarantine_count": 0,
+        "quarantine_reasons": {},
+        "schema_fingerprint": "4e4b1cf1ebb28e68bc1f65724fb7f645d5d6d7e448444c2b13beae771b339620"
+      },
+      "status": "candidate-ready"
+    }
+  ],
+  "suppression": {
+    "candidate_count_after_suppression": 1,
+    "input_count": 2,
+    "public_exposure": false,
+    "reimport_reapplies_suppression": true,
+    "release_promoted": false,
+    "status": "candidate-ready",
+    "suppressed_count": 1
+  },
+  "validation_quarantine_probe": {
+    "candidate_included_in_release": false,
+    "input_count": 2,
+    "normalized_count": 0,
+    "public_exposure": false,
+    "quarantine_count": 2,
+    "quarantine_reasons": {
+      "duplicate_observation_id": 2
+    },
+    "status": "candidate-ready"
+  }
+}

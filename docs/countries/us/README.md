@@ -168,6 +168,26 @@ filter context. A missing row is `not_observed`, not closure; coordinates must
 retain provider, query, precision and review state, and must not be inferred
 from an address or map point.
 
+### Private golden-country rehearsal
+
+The complete private/test-only contract rehearsal can be run without a current
+row-bearing capture:
+
+```powershell
+python -m pipeline.scripts.maintenance.rehearse_us_private_golden `
+  --root . `
+  --output data/manifests/us-private-golden-rehearsal-2026-09-18.json `
+  --private-dir data/staging/us-private-golden-20260918
+```
+
+The command uses sanitized FSIS and APHIS fixtures for the row-bearing stages;
+the tracked current FSIS/APHIS proof manifests are aggregate context only. It
+exercises assisted-handoff provenance, parsing/normalization/quarantine,
+source-local identity, disabled-geocoding readiness, accountability graph
+candidates, private candidate/API/front-end boundaries, suppression, rerun
+stability, and operator review packets. The tracked outcome is row-free in
+[`us-private-golden-rehearsal-2026-09-18.json`](../../../data/manifests/us-private-golden-rehearsal-2026-09-18.json): the mechanical contract passed, but the release remains `not-created`, public exposure is false, and national completeness/project approval are not claimed.
+
 ## Review checklist
 
 - authority, edition/effective date, URL, terms/attribution, and retention are recorded;
