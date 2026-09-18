@@ -113,6 +113,9 @@ def refresh(
     terms_review_path: str | Path | None = None,
     previous_manifest: str | Path | None = None,
     max_bytes: int = 128 * 1024 * 1024,
+    max_attempts: int = 3,
+    retry_delay_seconds: float = 1.0,
+    max_retry_delay_seconds: float = 30.0,
 ) -> dict[str, Any]:
     if raw_path is not None and directory_path is not None:
         raise ValueError("specify raw_path or directory_path, not both")
@@ -147,9 +150,15 @@ def refresh(
                     coverage="FSIS MPI edition only; state-inspection and APHIS populations excluded",
                     rights_caveat="terms review retained with run", privacy_caveat="private staging; privacy review pending",
                     effective_date=effective_date,
+                    max_attempts=max_attempts,
+                    retry_delay_seconds=retry_delay_seconds,
+                    max_retry_delay_seconds=max_retry_delay_seconds,
                 )
-            except AcquisitionError as exc:
-                raise ValueError(f"{role} acquisition failed closed: {exc}") from exc
+            except AcquisitionError:
+                # Preserve the shared failure class, retryability, and attempt
+                # ledger for the aggregate operator report.  The role remains
+                # identifiable from the private acquisition-failure.json.
+                raise
             paths[role] = Path(acquired["artifact_path"])
             metadata[role] = acquired
     else:
@@ -157,7 +166,11 @@ def refresh(
         if not paths["directory"].is_file():
             raise ValueError(f"directory artifact does not exist: {paths['directory']}")
         observed_at = retrieved_at_utc or utc_now()
-        metadata["directory"] = _local_facts(paths["directory"], role="directory", source_url=source_url, retrieved_at_utc=observed_at, effective_date=effective_date)
+        metadata["directory"] = _local_facts(
+            paths["directory"], role="directory",
+            source_url=CONFIG.get("directory_by_number_url") or source_url,
+            retrieved_at_utc=observed_at, effective_date=effective_date,
+        )
         if demographics_path is not None:
             paths["demographics"] = Path(demographics_path)
             if not paths["demographics"].is_file():
@@ -184,7 +197,13 @@ def refresh(
             config_version=manifest["config_version"], rights_caveat=manifest.get("acquisition", {}).get("rights_caveat"),
             privacy_caveat=manifest.get("acquisition", {}).get("privacy_caveat"), coverage=manifest.get("coverage"),
         )
-        handoff = adapter.write_candidate_handoff(lifecycle_root, bundle_artifact, output_dir=lifecycle_root / "handoff")
+        handoff = adapter.write_candidate_handoff(
+            lifecycle_root,
+            artifacts["directory"],
+            output_dir=lifecycle_root / "handoff",
+            bundle_artifact=bundle_artifact,
+            source_artifacts=manifest.get("source_artifacts"),
+        )
 
     status = {
         "status": "candidate-ready" if handoff else "staged-restricted",
@@ -220,6 +239,9 @@ def main() -> int:
     parser.add_argument("--terms-review", type=Path)
     parser.add_argument("--mode", choices=("dry-run", "handoff"), default="dry-run")
     parser.add_argument("--max-bytes", type=int, default=128 * 1024 * 1024)
+    parser.add_argument("--max-attempts", type=int, default=3)
+    parser.add_argument("--retry-delay-seconds", type=float, default=1.0)
+    parser.add_argument("--max-retry-delay-seconds", type=float, default=30.0)
     args = parser.parse_args()
     try:
         result = refresh(
@@ -227,6 +249,8 @@ def main() -> int:
             fetch=args.fetch, source_url=args.source_url, retrieved_at_utc=args.retrieved_at_utc,
             effective_date=args.effective_date, mode=args.mode, terms_review_path=args.terms_review,
             previous_manifest=args.previous_manifest, max_bytes=args.max_bytes,
+            max_attempts=args.max_attempts, retry_delay_seconds=args.retry_delay_seconds,
+            max_retry_delay_seconds=args.max_retry_delay_seconds,
         )
     except (OSError, ValueError) as exc:
         print(json.dumps({"status": "failed", "error": str(exc)}))

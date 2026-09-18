@@ -9,8 +9,9 @@ from pipeline.source_registry import REGISTRY_PATH, SourceRegistryError, load_re
 class SourceRegistryTests(unittest.TestCase):
     def test_repository_registry_loads_and_references_existing_legacy_paths(self):
         registry = load_registry()
-        self.assertEqual(len(registry["sources"]), 244)
-        self.assertEqual(len({source["source_id"] for source in registry["sources"]}), 244)
+        source_ids = {source["source_id"] for source in registry["sources"]}
+        self.assertGreaterEqual(len(registry["sources"]), 244)
+        self.assertEqual(len(source_ids), len(registry["sources"]))
 
     def test_unknowns_are_explicit(self):
         registry = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))

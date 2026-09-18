@@ -83,6 +83,54 @@ class AcquisitionContractTests(unittest.TestCase):
             self.assertEqual(metadata["attempts"][0]["failure_class"], "network")
             self.assertTrue(Path(metadata["artifact_path"]).exists())
 
+    def test_fetch_retries_interrupted_read_and_removes_partial(self):
+        class Response:
+            status = 200
+            headers = {"Content-Type": "text/csv", "Content-Length": "8"}
+
+            def __init__(self, interrupted=False):
+                self.interrupted = interrupted
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self, _size):
+                if self.interrupted:
+                    raise ConnectionResetError("synthetic interrupted read")
+                if not hasattr(self, "done"):
+                    self.done = True
+                    return b"a,b\n1,2\n"
+                return b""
+
+            def geturl(self):
+                return "https://example.test/source.csv"
+
+        class Opener:
+            def __init__(self):
+                self.calls = 0
+
+            def open(self, _request, timeout):
+                self.calls += 1
+                return Response(interrupted=self.calls == 1)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            terms = root / "terms.json"
+            terms.write_text(json.dumps({"reviewer": "operator", "reference": "test", "reviewed_at": "2026-09-15T00:00:00Z", "decision": "approved", "notes": "synthetic"}), encoding="utf-8")
+            opener = Opener()
+            with patch("pipeline.common.acquisition.urllib.request.build_opener", return_value=opener):
+                metadata = fetch_source(
+                    source_id="test.source", url="https://example.test/source.csv", output_root=root / "raw",
+                    artifact_name="source.csv", terms_review_path=terms, run_id="run-interrupted", max_attempts=2,
+                )
+            self.assertEqual(opener.calls, 2)
+            self.assertEqual(metadata["attempts"][0]["failure_class"], "interrupted-download")
+            self.assertTrue(Path(metadata["artifact_path"]).exists())
+            self.assertFalse(list((root / "raw/test.source/run-interrupted").glob("*.download")))
+
     def test_fetch_non_retryable_content_type_fails_closed_with_private_report(self):
         class Response:
             status = 200

@@ -28,6 +28,13 @@ PROFILES = {
     "inspections": ("Account Name", "Certificate Number", "Certificate Status"),
 }
 
+# The current Public Search Tool's annual-report export is intentionally a
+# compact animal-use table: it omits the registrant/status columns that appear
+# in the older documented fixture shape.  Keep this schema explicit so the
+# live export is accepted without guessing a facility identity from it.
+CURRENT_ANNUAL_REQUIRED = ("Customer Number", "Certificate Number", "Year")
+CURRENT_INSPECTION_REQUIRED = ("Customer Number", "Certificate Number", "Inspection Date")
+
 CUSTOMER_COLUMNS = ("Customer Number", "Customer Number_x", "Customer Number_y")
 AMENDMENT_COLUMNS = (
     "Amendment Number", "Amendment ID", "Amendment Date", "Amended",
@@ -39,6 +46,8 @@ NON_ANIMAL_COLUMNS = {
     *AMENDMENT_COLUMNS, "Address Line 1", "Address Line 2", "City-State-Zip",
     "County", "City", "State", "Zip", "latitude", "longitude",
     "Geocodio Latitude", "Geocodio Longitude", "Exception Report",
+    "Inspection Date", "Direct NCIs", "Non-Critical NCIs", "Critical NCIs",
+    "Teachable Moments", "Site Name", "Legal Name", "License-Registration Type",
 }
 
 
@@ -87,13 +96,20 @@ def _unsupported() -> str:
 
 
 def _profile(headers: tuple[str, ...]) -> str:
+    if set(CURRENT_ANNUAL_REQUIRED).issubset(headers):
+        return "annual_reports"
+    if set(CURRENT_INSPECTION_REQUIRED).issubset(headers):
+        return "inspections"
     matches = [profile for profile, required in PROFILES.items() if set(required).issubset(headers)]
     # License Type and Registration Type are the meaningful discriminator when
     # an export happens to contain the common identity/status columns.
-    if "License Type" in headers and "Registration Type" not in headers:
-        return "registrations" if "registrations" in matches else _unsupported()
     if "Registration Type" in headers:
-        return "annual_reports" if "annual_reports" in matches else _unsupported()
+        # The current registrant export uses Registration Type, while older
+        # fixtures use License Type.  Year is the explicit discriminator for
+        # the annual animal-use view; Registration Type alone is a registry.
+        return "annual_reports" if "Year" in headers else "registrations"
+    if "License Type" in headers:
+        return "registrations" if "registrations" in matches else _unsupported()
     if "inspections" in matches:
         return "inspections"
     return _unsupported()
@@ -115,6 +131,10 @@ def _certificate_or_customer(row: dict[str, Any]) -> str | None:
 
 def _year(row: dict[str, Any]) -> str | None:
     return _clean(row.get("Year"))
+
+
+def _inspection_date(row: dict[str, Any]) -> str | None:
+    return _clean(row.get("Status Date")) or _clean(row.get("Inspection Date"))
 
 
 def _amendment_version(row: dict[str, Any]) -> str | None:
@@ -156,7 +176,7 @@ def _observation_key(profile: str, row: dict[str, Any]) -> str | None:
         # A certificate/customer can have multiple inspection observations over
         # time.  Keep those observations distinct when the source supplies its
         # observation date; an undated duplicate remains quarantine-worthy.
-        parts.append(f"status_date={_clean(row.get('Status Date')) or 'unknown'}")
+        parts.append(f"status_date={_inspection_date(row) or 'unknown'}")
     return f"{profile}|" + "|".join(parts)
 
 
@@ -180,14 +200,18 @@ def _record(profile: str, row: dict[str, Any], line: int) -> dict[str, Any]:
         "country_code": "US",
         "evidence_type": evidence_type,
         "profile": profile,
-        "account_name": _clean(row.get("Account Name")),
+        "account_name": _clean(row.get("Account Name")) or _clean(row.get("Site Name")) or _clean(row.get("Legal Name")),
         "certificate_number": certificate,
         "customer_number": customer,
         "customer_number_x": customers["customer_number_x"],
         "customer_number_y": customers["customer_number_y"],
-        "registration_or_license_type": _clean(row.get("Registration Type")) or _clean(row.get("License Type")),
+        "registration_or_license_type": (
+            _clean(row.get("Registration Type"))
+            or _clean(row.get("License Type"))
+            or _clean(row.get("License-Registration Type"))
+        ),
         "status": _clean(row.get("Certificate Status")),
-        "status_date": _clean(row.get("Status Date")),
+        "status_date": _inspection_date(row),
         "report_year": _year(row),
         "amendment_version": _amendment_version(row),
         "amendment_state": "amended" if evidence_type == "amendments" else "original_or_not_supplied",

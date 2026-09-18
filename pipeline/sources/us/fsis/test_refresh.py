@@ -27,7 +27,12 @@ class FsisRefreshTests(unittest.TestCase):
             self.assertEqual(manifest["publication_state"], "private-candidate")
             self.assertEqual(manifest["source_artifacts"]["demographics"]["byte_size"], len((ROOT / "fixtures/demographics.csv").read_bytes()))
             self.assertEqual(manifest["row_reconciliation"]["matched_demographic_rows"], 2)
-            self.assertTrue((Path(directory) / "run/lifecycle/handoff/manifest.json").exists())
+            handoff_path = Path(directory) / "run/lifecycle/handoff/manifest.json"
+            self.assertTrue(handoff_path.exists())
+            handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
+            self.assertEqual(handoff["handoff_artifact_role"], "directory")
+            self.assertEqual(handoff["source_artifacts"]["demographics"]["sha256"], manifest["source_artifacts"]["demographics"]["sha256"])
+            self.assertEqual(handoff["bundle_artifact"]["sha256"], manifest["sha256"])
 
     def test_schema_drift_blocks_handoff_after_previous_manifest(self):
         with tempfile.TemporaryDirectory() as directory:

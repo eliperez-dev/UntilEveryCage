@@ -161,6 +161,9 @@ def fetch_profile(
     effective_date: str | None = None,
     timeout_seconds: float = 60.0,
     max_bytes: int = 128 * 1024 * 1024,
+    max_attempts: int = 3,
+    retry_delay_seconds: float = 1.0,
+    max_retry_delay_seconds: float = 30.0,
     artifact_name: str | None = None,
 ) -> dict[str, Any]:
     if profile not in ALL_PROFILES:
@@ -192,6 +195,9 @@ def fetch_profile(
         rights_caveat="APHIS source terms and attribution require operator review before publication",
         privacy_caveat="restricted private staging; names, addresses, documents, and coordinates require review",
         query_context=context,
+        max_attempts=max_attempts,
+        retry_delay_seconds=retry_delay_seconds,
+        max_retry_delay_seconds=max_retry_delay_seconds,
         artifact_validator=lambda path, headers: validate_download(profile, path, headers),
     )
     metadata["profile"] = profile
@@ -276,6 +282,9 @@ def main() -> int:
     parser.add_argument("--artifact-name")
     parser.add_argument("--timeout-seconds", type=float, default=60.0)
     parser.add_argument("--max-bytes", type=int, default=128 * 1024 * 1024)
+    parser.add_argument("--max-attempts", type=int, default=3)
+    parser.add_argument("--retry-delay-seconds", type=float, default=1.0)
+    parser.add_argument("--max-retry-delay-seconds", type=float, default=30.0)
     args = parser.parse_args()
     try:
         query_context = parse_query_context(args.query_context)
@@ -306,6 +315,9 @@ def main() -> int:
             effective_date=args.effective_date,
             timeout_seconds=args.timeout_seconds,
             max_bytes=args.max_bytes,
+            max_attempts=args.max_attempts,
+            retry_delay_seconds=args.retry_delay_seconds,
+            max_retry_delay_seconds=args.max_retry_delay_seconds,
             artifact_name=args.artifact_name,
         )
     except (AcquisitionError, OSError, ValueError) as error:

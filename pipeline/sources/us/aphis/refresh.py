@@ -94,6 +94,9 @@ def refresh(
     query_context: dict[str, Any] | None = None,
     timeout_seconds: float = 60.0,
     max_bytes: int = 128 * 1024 * 1024,
+    max_attempts: int = 3,
+    retry_delay_seconds: float = 1.0,
+    max_retry_delay_seconds: float = 30.0,
 ) -> dict[str, Any]:
     if profile not in CSV_PROFILES:
         raise ValueError("refresh parses registrations, annual_reports, or inspections; use acquire.py for documents/amendments")
@@ -114,6 +117,9 @@ def refresh(
             effective_date=effective_date,
             timeout_seconds=timeout_seconds,
             max_bytes=max_bytes,
+            max_attempts=max_attempts,
+            retry_delay_seconds=retry_delay_seconds,
+            max_retry_delay_seconds=max_retry_delay_seconds,
         )
         path = Path(acquisition["artifact_path"])
     else:
@@ -200,6 +206,9 @@ def main() -> int:
     parser.add_argument("--query-context")
     parser.add_argument("--timeout-seconds", type=float, default=60.0)
     parser.add_argument("--max-bytes", type=int, default=128 * 1024 * 1024)
+    parser.add_argument("--max-attempts", type=int, default=3)
+    parser.add_argument("--retry-delay-seconds", type=float, default=1.0)
+    parser.add_argument("--max-retry-delay-seconds", type=float, default=30.0)
     args = parser.parse_args()
     try:
         result = refresh(
@@ -217,6 +226,9 @@ def main() -> int:
             query_context=parse_query_context(args.query_context),
             timeout_seconds=args.timeout_seconds,
             max_bytes=args.max_bytes,
+            max_attempts=args.max_attempts,
+            retry_delay_seconds=args.retry_delay_seconds,
+            max_retry_delay_seconds=args.max_retry_delay_seconds,
         )
     except (AcquisitionError, OSError, ValueError) as error:
         print(json.dumps({"status": "failed", "error": str(error)}, sort_keys=True))

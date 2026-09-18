@@ -41,8 +41,61 @@ No safe bounded private fetch was performed, so current hashes/bytes and determi
 
 ## 2026-09-15 recovery slice
 
+## 2026-09-18 state MPI reconnaissance
+
+FSIS identifies 29 cooperative State Meat and Poultry Inspection programs and
+10 states with a Cooperative Interstate Shipment (CIS) overlay. State sources
+are not a single national directory: they range from dated PDF/XLSX/CSV/HTML
+rosters and interactive maps to contact-mediated licensing routes, and many
+mix official inspected, CIS, custom-exempt, retail/handler, warehouse,
+rendering, and exemption populations. The row-free state route, identifier,
+cadence, scale, access, address/coordinate and automation crosswalk is in
+[`docs/countries/us/state-mpi-source-recon.md`](countries/us/state-mpi-source-recon.md).
+No state roster or CIS workbook was acquired. State coverage remains
+documentation-only and publication-blocked; absence from a later list is
+`not_observed`, not closure.
+
 The private implementation is in `pipeline/sources/us/`. FSIS now has a bundle adapter and refresh command with a sanctioned operator-assisted capture contract: one directory export plus the supplemental demographic export are reconciled only by exact source-native IDs/numbers, and source-provided coordinates, slaughter species/activity fields, processing fields, size, and inspection attributes remain private pending review. APHIS now has one adapter with explicit `registrations`, `annual_reports`, and `inspections` profiles. All three APHIS populations remain observations, not a laboratory or facility master, and no identity merge with FSIS is performed.
 
 The row-free V1 inventory and field/category crosswalk is [`docs/countries/us/v1-field-crosswalk.json`](countries/us/v1-field-crosswalk.json). It records 7,101 rows and 269 columns, maps identity/location/contact/administrative/slaughter/processing/inspection-system/derived fields, and records overlapping legacy field-presence counts. Since no authorized current FSIS artifact was available, current-versus-V1 reconciliation remains blocked; the existing exact-key crosswalk reports `not_observed`, never closure.
 
 Focused adapter, lifecycle, registry, status, and contract tests pass. No raw artifact, current source hash, or publication candidate from a real US source was created. Publication remains blocked pending authorized capture, terms, schema, privacy, coverage, review, and test-only import checks.
+
+## 2026-09-18 US real-data proof boundary
+
+The official MPI page was re-observed in the normal in-app browser. It showed
+`Last Updated: Sep 14, 2026`, the directory-by-name CSV, directory-by-number
+CSV, and establishment-demographic CSV, plus a Tableau dashboard updated
+`9/14/2026 2:30:33 PM`. The dashboard's aggregate count export showed 7,241
+establishments. This is a current aggregate observation only; it is not a
+replacement for the row-level CSV bundle.
+
+The two direct CSV routes still returned HTTP 403 to a bounded read-only
+request. No access-control bypass was attempted. The current-source manifest
+therefore remains `not_captured`, and current row-level totals, current
+coordinates, current species/activity distributions, and current-vs-V1
+identity continuity remain `not_observed` rather than zero or closure
+evidence.
+
+For continuity and private pipeline proof only, the retained legacy FSIS
+directory plus demographic snapshot was rerun through the bundle adapter. It
+contained 7,099 directory rows and 7,105 demographic rows; 7,089 demographic
+rows matched exact source-native IDs/numbers, 16 were orphaned, and 3 had
+identity conflicts. The private lifecycle produced 7,096 normalized rows and
+19 quarantined rows (`conflicting_demographic_identity`: 3,
+`unmatched_demographic_identity`: 16). The run kept raw, parsed, normalized,
+quarantined, and handoff layers separate, retained SHA-256/byte provenance,
+disabled geocoding, and kept `release_state=not-created`,
+`publication_state=private-candidate`, and publication blocked. These numbers
+describe the retained legacy snapshot, not the September 2026 source.
+
+The bundle join now indexes exact native keys before reconciliation, and the
+handoff records both the importer-verifiable directory artifact and the
+separate bundle/file provenance. This fixes the real-bundle candidate handoff
+path without changing identity semantics or publication gates.
+
+The disposable candidate runner reached the test-only preview after the full
+first import, confirming that candidate rows were not visible through the
+ordinary public profile. Its row-level replay and teardown exceeded the
+practical execution window, so the import evidence is recorded as partial;
+no database or release was retained, and no public promotion occurred.

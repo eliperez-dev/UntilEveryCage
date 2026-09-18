@@ -20,6 +20,38 @@ class AphisAdapterTests(unittest.TestCase):
                 self.assertIsNone(row["normalized"]["establishment_id"])
                 self.assertEqual(row["normalized"]["publication_gate"],"blocked")
 
+    def test_current_compact_annual_export_shape_is_supported(self):
+        raw = (
+            "Customer Number,Certificate Number,Year,Dogs,Cats\n"
+            '"2","87-R-0002","2025","","278"\n'
+        ).encode()
+        result = AphisPublicSearchAdapter().parse_bytes(raw)
+        self.assertEqual(result["profile"], "annual_reports")
+        self.assertEqual(len(result["accepted"]), 1)
+        normalized = result["accepted"][0]["normalized"]
+        self.assertIsNone(normalized["account_name"])
+        self.assertEqual(normalized["report_year"], "2025")
+        self.assertIn("Cats", normalized["animal_use_fields_present"])
+
+    def test_current_registrant_export_shape_is_supported(self):
+        raw = (
+            "Account Name,Customer Number,Certificate Number,Registration Type,Certificate Status,Status Date\n"
+            '"Synthetic Registrant","2","87-R-0002","Class R - Research Facility","Active","2026-01-01"\n'
+        ).encode()
+        result = AphisPublicSearchAdapter().parse_bytes(raw)
+        self.assertEqual(result["profile"], "registrations")
+        self.assertEqual(len(result["accepted"]), 1)
+
+    def test_current_inspection_export_shape_is_supported(self):
+        raw = (
+            "Customer Number,Certificate Number,Inspection Date,Direct NCIs,Non-Critical NCIs,Critical NCIs,Teachable Moments,Site Name,Legal Name,License-Registration Type,City,State,Zip\n"
+            '"2","87-R-0002","2026-08-21","","","","","Site","Legal","Class R - Research Facility","Austin","Texas","78701"\n'
+        ).encode()
+        result = AphisPublicSearchAdapter().parse_bytes(raw)
+        self.assertEqual(result["profile"], "inspections")
+        self.assertEqual(len(result["accepted"]), 1)
+        self.assertEqual(result["accepted"][0]["normalized"]["status_date"], "2026-08-21")
+
     def test_annual_report_requires_year_and_duplicate_ids_quarantine(self):
         raw=(ROOT/"fixtures/annual_reports.csv").read_text(encoding="utf-8").replace(",2025,", ",,")
         result=AphisPublicSearchAdapter().parse_bytes(raw.encode())

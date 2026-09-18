@@ -286,6 +286,10 @@ class FsisMpiAdapter:
         duplicate_directory_aliases = {alias for alias, count in directory_alias_counts.items() if count > 1}
         demographic_alias_counts = Counter(alias for row in demographic_rows for alias in _key_candidates(row))
         duplicate_demographic_aliases = {alias for alias, count in demographic_alias_counts.items() if count > 1}
+        demographic_indices_by_alias: dict[str, set[int]] = {}
+        for demographic_index, demographic in enumerate(demographic_rows):
+            for alias in _key_candidates(demographic):
+                demographic_indices_by_alias.setdefault(alias, set()).add(demographic_index)
 
         accepted: list[dict[str, Any]] = []
         quarantined: list[dict[str, Any]] = []
@@ -306,10 +310,20 @@ class FsisMpiAdapter:
                 reasons.append("unknown_state")
             if not _field(row, "establishment_name", "establishment name", "name", "facility_name"):
                 reasons.append("missing_establishment_name")
-            matching_demo = [demo_index for demo_index, demo in enumerate(demographic_rows) if _demo_matches(demo, row)]
+            candidate_demo_indices = {
+                demo_index for alias in aliases
+                for demo_index in demographic_indices_by_alias.get(alias, ())
+            }
+            matching_demo = [
+                demo_index for demo_index in candidate_demo_indices
+                if _demo_matches(demographic_rows[demo_index], row)
+            ]
             demographic: dict[str, Any] | None = None
             demographic_line: int | None = None
-            if any(_demo_identity_conflict(demo, row) for demo in demographic_rows):
+            if any(
+                _demo_identity_conflict(demographic_rows[demo_index], row)
+                for demo_index in candidate_demo_indices
+            ):
                 reasons.append("conflicting_demographic_identity")
                 identity_conflicts += 1
             if len(matching_demo) > 1:
@@ -430,10 +444,35 @@ class FsisMpiAdapter:
         atomic_json(root / "manifest.json", manifest)
         return manifest
 
-    def write_candidate_handoff(self, run_dir: str | Path, artifact: SourceArtifact, *, output_dir: str | Path | None = None) -> dict[str, Any]:
+    def write_candidate_handoff(
+        self,
+        run_dir: str | Path,
+        artifact: SourceArtifact,
+        *,
+        output_dir: str | Path | None = None,
+        bundle_artifact: SourceArtifact | None = None,
+        source_artifacts: dict[str, dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         root = Path(run_dir)
         rows = [json.loads(line) for line in (root / "normalized/records.jsonl").read_text(encoding="utf-8").splitlines() if line]
-        return write_handoff(output_dir or root, rows, artifact, source_id=self.source_id, profile="us-fsis-test-only")
+        handoff_root = Path(output_dir or root)
+        handoff = write_handoff(handoff_root, rows, artifact, source_id=self.source_id, profile="us-fsis-test-only")
+        if bundle_artifact is not None or source_artifacts is not None:
+            path = handoff_root / "manifest.json"
+            manifest = json.loads(path.read_text(encoding="utf-8"))
+            manifest["handoff_artifact_role"] = "directory"
+            if bundle_artifact is not None:
+                manifest["bundle_artifact"] = {
+                    "sha256": bundle_artifact.sha256,
+                    "byte_size": bundle_artifact.byte_size,
+                    "source_url": bundle_artifact.source_url,
+                    "retrieved_at_utc": bundle_artifact.retrieved_at_utc,
+                }
+            if source_artifacts is not None:
+                manifest["source_artifacts"] = source_artifacts
+            atomic_json(path, manifest)
+            handoff.update({key: manifest[key] for key in ("handoff_artifact_role", "bundle_artifact", "source_artifacts") if key in manifest})
+        return handoff
 
 
 def _bytes(value: bytes | str | Path) -> bytes:

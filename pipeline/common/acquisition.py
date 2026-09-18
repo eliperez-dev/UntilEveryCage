@@ -237,6 +237,20 @@ def fetch_source(
                 failure = AcquisitionError(f"timeout: {error}", failure_class="timeout", retryable=True, action="retry within the source bound; use the manual capture route if it persists")
                 _write_failure(run_dir, source_id, run_id, failure, attempts, query_context, url, requested_at, effective_date, publication_date)
                 raise failure from error
+        except OSError as error:
+            # A connection reset or interrupted read can surface as an OSError
+            # instead of URLError.  archive_stream removes the partial file;
+            # keep the retry bounded and record the failure like other network
+            # interruptions.
+            details = {"attempt": attempt_number, "outcome": "failed", "failure_class": "interrupted-download", "retryable": True, "message": str(error)}
+            attempts.append(details)
+            if attempt_number == max_attempts:
+                failure = AcquisitionError(
+                    f"interrupted download: {error}", failure_class="interrupted-download", retryable=True,
+                    action="retry within the source bound; use the manual capture route if it persists",
+                )
+                _write_failure(run_dir, source_id, run_id, failure, attempts, query_context, url, requested_at, effective_date, publication_date)
+                raise failure from error
         except AcquisitionError as error:
             download_path.unlink(missing_ok=True)
             attempts.append({"attempt": attempt_number, "outcome": "failed", "failure_class": error.failure_class, "retryable": error.retryable, "message": str(error)})

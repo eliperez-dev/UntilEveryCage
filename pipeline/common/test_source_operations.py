@@ -29,7 +29,9 @@ class SourceOperationsTests(unittest.TestCase):
         self.assertEqual(schedules["al.aku.approved-food"].cadence, "unknown")
         self.assertEqual(schedules["dk.smiley"].stale_after_hours, 240)
         self.assertEqual(schedules["fr.dgal.section-i"].interval_hours, 24)
-        self.assertIsNone(schedules["us.fsis"].interval_hours)
+        self.assertEqual(schedules["us.fsis"].interval_hours, 168)
+        self.assertEqual(schedules["us.fsis"].max_attempts, 3)
+        self.assertEqual(schedules["us.aphis"].max_attempts, 3)
 
     def test_schedule_validation_rejects_missing_and_inverted_freshness(self):
         with self.assertRaisesRegex(SourceOperationsError, "missing fields"):

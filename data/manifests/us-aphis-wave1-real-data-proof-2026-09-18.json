@@ -1,0 +1,1139 @@
+{
+  "manifest_version": "us-aphis-real-data-proof-v1",
+  "source_id": "us.aphis",
+  "run_id": "20260918T000000Z-aphis-wave1",
+  "captured_for": "private/test-only",
+  "release_state": "not-created",
+  "publication_gate": "blocked",
+  "official_routes": {
+    "public_search_tool": "https://aphis.my.site.com/PublicSearchTool/s/",
+    "annual_reports": "https://aphis.my.site.com/PublicSearchTool/s/annual-reports",
+    "inspection_reports": "https://aphis.my.site.com/PublicSearchTool/s/inspection-reports"
+  },
+  "retrieval": {
+    "annual_reports": {
+      "retrieved_at_utc": "2026-09-18T17:54:55Z",
+      "selected_year": "2025",
+      "displayed_result_count": 995,
+      "raw_pages": 10,
+      "source_rows": 995,
+      "refresh_pages_succeeded": 10
+    },
+    "registrations": {
+      "retrieval_windows_utc": [
+        "2026-09-18T17:58:45Z",
+        "2026-09-18T18:06:26Z"
+      ],
+      "displayed_result_count": 2841,
+      "raw_pages": 81,
+      "raw_source_rows": 4941,
+      "unfiltered_pages": 21,
+      "state_partition_pages": 60,
+      "refresh_pages_succeeded": 78,
+      "refresh_pages_failed": 3,
+      "state_partitioning_used_to_work_around_unfiltered_pagination_boundary": true
+    },
+    "inspections": {
+      "retrieved_at_utc": "2026-09-18T18:17:14Z",
+      "view": "View Inspection Reports",
+      "selected_license_registration_type": "RESEARCH FACILITY",
+      "displayed_result_count": 15726,
+      "raw_pages": 21,
+      "source_rows": 2100,
+      "refresh_pages_succeeded": 21,
+      "pagination_boundary_remaining_rows": 13626
+    }
+  },
+  "normalized": {
+    "annual_reports": {
+      "accepted_page_rows": 995,
+      "quarantined_rows": 0,
+      "distinct_source_observation_keys": 995,
+      "coordinates_present": 0,
+      "coordinate_state": "unknown_not_supplied"
+    },
+    "registrations": {
+      "accepted_page_rows": 4763,
+      "quarantined_rows": 0,
+      "distinct_source_observation_keys": 2811,
+      "coordinates_present": 0,
+      "coordinate_state": "unknown_not_supplied",
+      "note": "Unfiltered and state-partition exports intentionally remain separate evidence pages; duplicate identities are not silently merged."
+    },
+    "inspections": {
+      "accepted_page_rows": 1917,
+      "quarantined_rows": 183,
+      "distinct_source_observation_keys": 1917,
+      "quarantine_reason_counts": {
+        "duplicate_observation_id": 183
+      },
+      "coordinates_present": 0,
+      "coordinate_state": "unknown_not_supplied"
+    }
+  },
+  "documents_and_amendments": {
+    "annual_page_001_visible_links": {
+      "view_report": 100,
+      "download_exception": 21
+    },
+    "attempted_visible_downloads": 2,
+    "acquired_document_artifacts": 0,
+    "limitation": "Observed report links resolved to the visible APHIS Force.com download URLs, but the authorized browser returned ERR_BLOCKED_BY_CLIENT. No hidden endpoint, bypass, or alternate downloader was used; signed URLs are not retained in this tracked report.",
+    "amendment_policy": "Annual/amended evidence remains a separate profile/version; no automatic merge."
+  },
+  "failures": [
+    {
+      "artifact": "registrations_unfiltered_page_020.csv",
+      "reason": "malformed_or_truncated_csv",
+      "retry": "same failure reproduced by a second official Export To CSV action"
+    },
+    {
+      "artifact": "registrations_state_partition_019.csv",
+      "reason": "malformed_or_truncated_csv",
+      "retry": "not_retried_after equivalent source-format failure preserved"
+    },
+    {
+      "artifact": "registrations_state_partition_033.csv",
+      "reason": "malformed_or_truncated_csv",
+      "retry": "not_retried_after equivalent source-format failure preserved"
+    }
+  ],
+  "raw_artifacts": [
+    {
+      "artifact": "annual_reports_page_001.csv",
+      "profile": "annual_reports",
+      "bytes": 6218,
+      "sha256": "896257ad067600430bebe64ddad880b19f5a0aa96c95ed254a623bcbec3e47a9",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "annual_reports_page_002.csv",
+      "profile": "annual_reports",
+      "bytes": 6204,
+      "sha256": "99b2420c539711e139c361ca5af88a8927ebd7c30bf8240f914161ee876bf103",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "annual_reports_page_003.csv",
+      "profile": "annual_reports",
+      "bytes": 6184,
+      "sha256": "8bc90f580feff2da5557a169d076a063b3dd83e83ed9741bb7b4dfb5a777cefd",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "annual_reports_page_004.csv",
+      "profile": "annual_reports",
+      "bytes": 6195,
+      "sha256": "4ad684075cb24d22b096894262e9c272b7fdcb66ee8e35f6ea55be690282da22",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "annual_reports_page_005.csv",
+      "profile": "annual_reports",
+      "bytes": 6181,
+      "sha256": "5095c0407a34571f765f963de872cd96ee6c94b09a85ce116a598a889360c830",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "annual_reports_page_006.csv",
+      "profile": "annual_reports",
+      "bytes": 6256,
+      "sha256": "7e5a93abaafded4781dca7026f1aac81d491711bea3d17ba33ee6ee4109e2342",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "annual_reports_page_007.csv",
+      "profile": "annual_reports",
+      "bytes": 6216,
+      "sha256": "ba39a3aa8b2c70e63988403ee6f61e5ef4f1481ee340766a33da97af546f5c4d",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "annual_reports_page_008.csv",
+      "profile": "annual_reports",
+      "bytes": 6293,
+      "sha256": "bfa20ad6fd9056d6e51579c026d16afa545e444dab4a30c7ba25ba32d7725cb3",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "annual_reports_page_009.csv",
+      "profile": "annual_reports",
+      "bytes": 6382,
+      "sha256": "b6b91a824ffe8c5b95b8e896d0777bf468d3aac7aadf176e221396cfd18bb5b8",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "annual_reports_page_010.csv",
+      "profile": "annual_reports",
+      "bytes": 6046,
+      "sha256": "dfd982c0457ecee4f953b98864687fcb17cdebcdc27fabd09ebb3641e15080b0",
+      "line_count": 96,
+      "source_row_count": 95,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "inspections_research_facility_unfiltered_page_001.csv",
+      "profile": "inspections",
+      "bytes": 16745,
+      "sha256": "7732fa51158e64772dc9435be4e3e9023d6d4f104bb2e4dbfadefcaf7f6cd44d",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "inspections_research_facility_unfiltered_page_002.csv",
+      "profile": "inspections",
+      "bytes": 16766,
+      "sha256": "2c2ef0a21b6e0b2422aab65328f1ae6c58798719011b075cd696c8dde12dc8f8",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "inspections_research_facility_unfiltered_page_003.csv",
+      "profile": "inspections",
+      "bytes": 16541,
+      "sha256": "b30d40edc45bef9c5d3cb7c9d1b254d0d204a56b225b952429eb1f4c99de090c",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "inspections_research_facility_unfiltered_page_004.csv",
+      "profile": "inspections",
+      "bytes": 16912,
+      "sha256": "6fd23e74981ccb7372cb8668d59c2c22ba595f7d32563b517bf1d5a310dc8427",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "inspections_research_facility_unfiltered_page_005.csv",
+      "profile": "inspections",
+      "bytes": 16500,
+      "sha256": "0fea091c3811c009dd53f6aeeb08f5693c82ad998cf5a69c17ab4b26f5977a04",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "inspections_research_facility_unfiltered_page_006.csv",
+      "profile": "inspections",
+      "bytes": 16622,
+      "sha256": "9f6a6b08e3f36cb2203416095feb5dc9262ca1ab1aff742cbed3a2184c05b20a",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "inspections_research_facility_unfiltered_page_007.csv",
+      "profile": "inspections",
+      "bytes": 16540,
+      "sha256": "41e92b98f3d4be81de120011734c7ee29902c97faa3b2b4202d6522bacab1acd",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "inspections_research_facility_unfiltered_page_008.csv",
+      "profile": "inspections",
+      "bytes": 16676,
+      "sha256": "ee3dfe7eafe8e766971a3207d115fab23d599f3bf46abdc59b648dcffe23e4e2",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "inspections_research_facility_unfiltered_page_009.csv",
+      "profile": "inspections",
+      "bytes": 16480,
+      "sha256": "0f55f7bd588615b62b2b16ca10a1db04424c7da354e7babb269143d021b1852e",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "inspections_research_facility_unfiltered_page_010.csv",
+      "profile": "inspections",
+      "bytes": 16205,
+      "sha256": "53ffc0bec754fae8cd5d8ccbd02b7ee7b89ff5ab94f62940f0be935ff000150b",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "inspections_research_facility_unfiltered_page_011.csv",
+      "profile": "inspections",
+      "bytes": 16833,
+      "sha256": "f54160c9e8583d1ca3ec9c275672b8c748f83b326e837d188b2e1ca1a343865c",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "inspections_research_facility_unfiltered_page_012.csv",
+      "profile": "inspections",
+      "bytes": 16623,
+      "sha256": "81d073d40c00f64e7402b991815f17625f0034e395bcff2e55531dee97366d64",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "inspections_research_facility_unfiltered_page_013.csv",
+      "profile": "inspections",
+      "bytes": 16939,
+      "sha256": "ef9784b55d299a33f74b3b7c477e599bad7678d6672d9b3c08c0246cdad3b52f",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "inspections_research_facility_unfiltered_page_014.csv",
+      "profile": "inspections",
+      "bytes": 16491,
+      "sha256": "4135d513b28b5ff2ba3f2522f0c83076ec45c6b18b35855a8f366522a3d7e7b4",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "inspections_research_facility_unfiltered_page_015.csv",
+      "profile": "inspections",
+      "bytes": 16792,
+      "sha256": "785a9bacba504738f3019412ac26c5c2e7e3f6bd3703bb2e3f73ade3041ea663",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "inspections_research_facility_unfiltered_page_016.csv",
+      "profile": "inspections",
+      "bytes": 16689,
+      "sha256": "aff7b8aa99570517dd93336c6ea4b57b47d9e288d57830ef20435c3d01b3b912",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "inspections_research_facility_unfiltered_page_017.csv",
+      "profile": "inspections",
+      "bytes": 16219,
+      "sha256": "c1c58f902d3d8553f20d2da380b53b837a06c0dd80bea17557f19b5aac08735f",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "inspections_research_facility_unfiltered_page_018.csv",
+      "profile": "inspections",
+      "bytes": 16888,
+      "sha256": "8bac2115d825642621e56067545f9ad51e220515e6a43384e9ccc92c69d7c594",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "inspections_research_facility_unfiltered_page_019.csv",
+      "profile": "inspections",
+      "bytes": 16292,
+      "sha256": "6dec7faf32c3e61cffcf1686c5466196cf669f646694a72a58a365d64b355e5a",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "inspections_research_facility_unfiltered_page_020.csv",
+      "profile": "inspections",
+      "bytes": 16464,
+      "sha256": "1856b5f7a463d62bb31f810003a8c947e78726f5a65009272ec8422d58a747ce",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "inspections_research_facility_unfiltered_page_021.csv",
+      "profile": "inspections",
+      "bytes": 16634,
+      "sha256": "2f072d935eaa2e864e39ce339d56838f8d1acc03e340a7e399ff6b8a077c8ffd",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_001.csv",
+      "profile": "registrations",
+      "bytes": 4587,
+      "sha256": "3fe4a1391dfd031c414d2d8e757137d72aa39d223e7eca67f5da9a89f1096f19",
+      "line_count": 28,
+      "source_row_count": 27,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_002.csv",
+      "profile": "registrations",
+      "bytes": 1940,
+      "sha256": "dc2a4da413b73fd10e8810669d950ef20d50beb8a165b60e8995b02dc822ebba",
+      "line_count": 11,
+      "source_row_count": 10,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_003.csv",
+      "profile": "registrations",
+      "bytes": 4349,
+      "sha256": "e1864d4ffd1d560d6c5b71bf0e768ed3630f63a8c603c9995c20b70a8c82b168",
+      "line_count": 26,
+      "source_row_count": 25,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_004.csv",
+      "profile": "registrations",
+      "bytes": 6629,
+      "sha256": "f614e6444bd3d8b69de6b604b854318e9e16cbc691d3cd8a59e49ec08d32e8a0",
+      "line_count": 39,
+      "source_row_count": 38,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_005.csv",
+      "profile": "registrations",
+      "bytes": 17139,
+      "sha256": "64da44b54768447c742388dd8c9008bcbc89097a979f5c1d031ca188f60368e1",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_006.csv",
+      "profile": "registrations",
+      "bytes": 17333,
+      "sha256": "483f4c03e8362c3af0b5b16a360c2c9331a5c4a493e934d278a0da569cea0579",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_007.csv",
+      "profile": "registrations",
+      "bytes": 16800,
+      "sha256": "8879dfc0d5961a6bad1329625e2077968b4ca731d96514c57b43fab8aea5bdcd",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_008.csv",
+      "profile": "registrations",
+      "bytes": 13916,
+      "sha256": "719fe187422044026f8d5e9e34e930d4cfc9a1ba11d8cf01c943db4e3e2c0a0c",
+      "line_count": 83,
+      "source_row_count": 82,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_009.csv",
+      "profile": "registrations",
+      "bytes": 11285,
+      "sha256": "7c7b75fef29c23951eed994d5ea4489a879c1dcabb70de3bb4b94d356f34b1d8",
+      "line_count": 66,
+      "source_row_count": 65,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_010.csv",
+      "profile": "registrations",
+      "bytes": 7566,
+      "sha256": "9e73f2875b380faf2f1f799a28a59cc768a1c0b70ba8d049be25fdfb51dbb5a5",
+      "line_count": 45,
+      "source_row_count": 44,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_011.csv",
+      "profile": "registrations",
+      "bytes": 2082,
+      "sha256": "7012e658c2755699744135e465aad6c187469c43a1b1543bf1c439d3b140222e",
+      "line_count": 12,
+      "source_row_count": 11,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_012.csv",
+      "profile": "registrations",
+      "bytes": 3026,
+      "sha256": "663f39a1d352e3952945cba820c7b9a1e76549fa053eff21a0df9202021f9707",
+      "line_count": 15,
+      "source_row_count": 14,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_013.csv",
+      "profile": "registrations",
+      "bytes": 16063,
+      "sha256": "fc5dd6d5a0164881cea29d7c0b6ac3b54f0b277e6cd3c61315ce698926e73305",
+      "line_count": 92,
+      "source_row_count": 91,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_014.csv",
+      "profile": "registrations",
+      "bytes": 8706,
+      "sha256": "098f74a8021756102bb45ffccc771240d70ced78bcc6b2fa0eb5fdfc081acacb",
+      "line_count": 53,
+      "source_row_count": 52,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_015.csv",
+      "profile": "registrations",
+      "bytes": 913,
+      "sha256": "ad3e8d3c082bb636380ab23566c35984f6da66387c675b9c8a470cac0846eb4e",
+      "line_count": 5,
+      "source_row_count": 4,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_016.csv",
+      "profile": "registrations",
+      "bytes": 2614,
+      "sha256": "b837ed1c98fe711936ffba25f0cdc5d08826883bc58545b1557a2cbccd7af890",
+      "line_count": 16,
+      "source_row_count": 15,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_017.csv",
+      "profile": "registrations",
+      "bytes": 15553,
+      "sha256": "dadd06068a03171836a74020e33ac52a4b9115de45048f34dcf3ddfec6c9c125",
+      "line_count": 90,
+      "source_row_count": 89,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_018.csv",
+      "profile": "registrations",
+      "bytes": 8610,
+      "sha256": "d350bd71729594016836b53e8de70fcd2aa7c2424b23b23896cece46f12d6b7f",
+      "line_count": 50,
+      "source_row_count": 49,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_019.csv",
+      "profile": "registrations",
+      "bytes": 8208,
+      "sha256": "fe79fe20aa22371b6df5c15af6743dfd3f7b7503a8711e6b38c5f89a76ada0ea",
+      "line_count": 50,
+      "source_row_count": 49,
+      "validation": "failed_malformed_csv_preserved"
+    },
+    {
+      "artifact": "registrations_state_partition_020.csv",
+      "profile": "registrations",
+      "bytes": 6758,
+      "sha256": "d77f3516661380beeba79716681b41943bbab6af2f6339debd4a0eedf6e313a2",
+      "line_count": 41,
+      "source_row_count": 40,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_021.csv",
+      "profile": "registrations",
+      "bytes": 3935,
+      "sha256": "655927fc2ca6f29bdc4032d48c0ace5a79fd18bfb8e47914bcd952a880986986",
+      "line_count": 23,
+      "source_row_count": 22,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_022.csv",
+      "profile": "registrations",
+      "bytes": 3814,
+      "sha256": "128ca5d2c41711fe34db6010e28bfee92b392d314ca6aacdeec65302b5576c01",
+      "line_count": 22,
+      "source_row_count": 21,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_023.csv",
+      "profile": "registrations",
+      "bytes": 4538,
+      "sha256": "9324256401a19ca4f5775841aaa1f76c888bbc4800742c625f94e22b092959c5",
+      "line_count": 28,
+      "source_row_count": 27,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_024.csv",
+      "profile": "registrations",
+      "bytes": 18219,
+      "sha256": "6b0373a05cd8a669e7647c2f50929a79d198d56226dc0f3071043a38e413ccc5",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_025.csv",
+      "profile": "registrations",
+      "bytes": 503,
+      "sha256": "eed76bb6e8246a642460b5305ea87f339720229e916f43d50eb09ad6c7e646cc",
+      "line_count": 3,
+      "source_row_count": 2,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_026.csv",
+      "profile": "registrations",
+      "bytes": 16798,
+      "sha256": "2bd180a2a1e76085110e533e8d57ce25bdf4246e61066ce7742a7ad52530a4f6",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_027.csv",
+      "profile": "registrations",
+      "bytes": 11701,
+      "sha256": "31a02afdd2c9f0f84f15c5448317e303c09971861d5623e7bebfa91e8b0895ee",
+      "line_count": 73,
+      "source_row_count": 72,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_028.csv",
+      "profile": "registrations",
+      "bytes": 11203,
+      "sha256": "ae755f4805d582d6bed56cf5446df34feff81d4c8d6ef22e44a2630981faa263",
+      "line_count": 67,
+      "source_row_count": 66,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_029.csv",
+      "profile": "registrations",
+      "bytes": 12415,
+      "sha256": "dbfc431b32e30748edf200486a4c29d10ee2adf8c79622c50610decb996a8282",
+      "line_count": 74,
+      "source_row_count": 73,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_030.csv",
+      "profile": "registrations",
+      "bytes": 3563,
+      "sha256": "5c2890dd66ad6177c309b4206d70af98c3298f2ce10c361781b6c94990294fb6",
+      "line_count": 20,
+      "source_row_count": 19,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_031.csv",
+      "profile": "registrations",
+      "bytes": 11101,
+      "sha256": "113bfac89e7cd8847f646731601e69f3052e7aa0df484c32405a84275e33a354",
+      "line_count": 66,
+      "source_row_count": 65,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_032.csv",
+      "profile": "registrations",
+      "bytes": 3240,
+      "sha256": "11d48c67dbf0f00f6f93e37cf42b14bdff7d0994d2e43e388959fcf5c343c0c8",
+      "line_count": 20,
+      "source_row_count": 19,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_033.csv",
+      "profile": "registrations",
+      "bytes": 4924,
+      "sha256": "26f796e2c7bca529d41b2da8abb7c814fbcda6ce4e1623b907c1d262bed03629",
+      "line_count": 30,
+      "source_row_count": 29,
+      "validation": "failed_malformed_csv_preserved"
+    },
+    {
+      "artifact": "registrations_state_partition_034.csv",
+      "profile": "registrations",
+      "bytes": 2180,
+      "sha256": "435f050992ef02d7f4a1dcf117b6488fd6fd5a799f5030c206def4ec574f4aca",
+      "line_count": 13,
+      "source_row_count": 12,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_035.csv",
+      "profile": "registrations",
+      "bytes": 1509,
+      "sha256": "94330206deb8bd4fddca122792125ebf96baa0b75e4493992c75b7bdd7a06824",
+      "line_count": 9,
+      "source_row_count": 8,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_036.csv",
+      "profile": "registrations",
+      "bytes": 14296,
+      "sha256": "2470d265b211f486ac16e7cc84412878b69ab93d9f5471e5f9a04000c0be3453",
+      "line_count": 85,
+      "source_row_count": 84,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_037.csv",
+      "profile": "registrations",
+      "bytes": 4076,
+      "sha256": "35d9f92a197a4fca86bd2aab4f71a4e6fd36b65f3cd1a75930cf2ca492030ad2",
+      "line_count": 23,
+      "source_row_count": 22,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_038.csv",
+      "profile": "registrations",
+      "bytes": 17980,
+      "sha256": "d2d9bd98ad500d525f296f1b2f5f385658c399ff8463cc95ef096693fd76d0ea",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_039.csv",
+      "profile": "registrations",
+      "bytes": 14004,
+      "sha256": "4d890455237fd8dafd00585188fb1c1a1ee6880f3ee111d767ac676a5f4081f9",
+      "line_count": 83,
+      "source_row_count": 82,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_040.csv",
+      "profile": "registrations",
+      "bytes": 12928,
+      "sha256": "764afac5b89baf855d5150e30f967d550827c9147bac09b02bb3eec2478648a6",
+      "line_count": 76,
+      "source_row_count": 75,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_041.csv",
+      "profile": "registrations",
+      "bytes": 2483,
+      "sha256": "d31b67c35fa06b494ff7014192a7b155460aaf6621f102eae40ff3e7c943fd82",
+      "line_count": 14,
+      "source_row_count": 13,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_042.csv",
+      "profile": "registrations",
+      "bytes": 13829,
+      "sha256": "f40cdba400bb3a770eb36246844061b4df8f4bd7401e9224688d9949a998f327",
+      "line_count": 81,
+      "source_row_count": 80,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_043.csv",
+      "profile": "registrations",
+      "bytes": 6308,
+      "sha256": "d1a5e49cd55690242f424124449c8f190f0c3206bcadb5a9852a27b708481ebf",
+      "line_count": 38,
+      "source_row_count": 37,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_044.csv",
+      "profile": "registrations",
+      "bytes": 3867,
+      "sha256": "1662d3fa2020990432da8caf8e18f3a7ad5e29af0ebda81182d830fefeb906c0",
+      "line_count": 23,
+      "source_row_count": 22,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_045.csv",
+      "profile": "registrations",
+      "bytes": 17441,
+      "sha256": "e49cc06eba3edf1c488d77b832e92a3616d09e7650287f64c4b7b06797a28ddf",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_046.csv",
+      "profile": "registrations",
+      "bytes": 5319,
+      "sha256": "5fcd141efaea4fbbfe7800e2e350779825ea552b61c7cff2e32b01f0322d1872",
+      "line_count": 32,
+      "source_row_count": 31,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_047.csv",
+      "profile": "registrations",
+      "bytes": 2968,
+      "sha256": "70294c8cd7ad8b7498299655f01f3382001a7aa125369256622d5214dffe9a93",
+      "line_count": 18,
+      "source_row_count": 17,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_048.csv",
+      "profile": "registrations",
+      "bytes": 2358,
+      "sha256": "13c63a5664ac8e1b7ce6133281eaafe15ecee797d473325fe58703d74069f58c",
+      "line_count": 15,
+      "source_row_count": 14,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_049.csv",
+      "profile": "registrations",
+      "bytes": 3906,
+      "sha256": "1b64d1741b7ac5386420c4005f34ba0d12a7c2341417863156ff587711c3a2b8",
+      "line_count": 23,
+      "source_row_count": 22,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_050.csv",
+      "profile": "registrations",
+      "bytes": 2937,
+      "sha256": "f71e1981ad1c781be33db2c8a698ea5873ffa3d12398d7877fe273cd4e19d207",
+      "line_count": 18,
+      "source_row_count": 17,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_051.csv",
+      "profile": "registrations",
+      "bytes": 7369,
+      "sha256": "a9692b974dd4504720586b06ef4fca2c18d577551db8eaa441f9ff5933710d32",
+      "line_count": 43,
+      "source_row_count": 42,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_052.csv",
+      "profile": "registrations",
+      "bytes": 17444,
+      "sha256": "293456b77ae6d333928002a45e9dda5d50de19ba026876e4680f83d551bfb5b4",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_053.csv",
+      "profile": "registrations",
+      "bytes": 16606,
+      "sha256": "750f803a72377adf1a68c4af5e1c5682574f5855b68445f6daf8bb72b41c2103",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_054.csv",
+      "profile": "registrations",
+      "bytes": 3720,
+      "sha256": "95a48f929be56462ca26cff8ffad64cadb887d48ea69eeff292ff488606c5761",
+      "line_count": 22,
+      "source_row_count": 21,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_055.csv",
+      "profile": "registrations",
+      "bytes": 2024,
+      "sha256": "eb466d29741e703b9d1aa7d2821823184a624a2e75367822317d1b130c7e432e",
+      "line_count": 12,
+      "source_row_count": 11,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_056.csv",
+      "profile": "registrations",
+      "bytes": 10169,
+      "sha256": "da1a289377d51da355bc7cfb011d7ed364629590707a92d94e8c88c6fb7a3cb8",
+      "line_count": 59,
+      "source_row_count": 58,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_057.csv",
+      "profile": "registrations",
+      "bytes": 12201,
+      "sha256": "0f185c0b5b7cc066806aad87109278876d9b44f47ba7f2b6aae71c6ecc2eac4c",
+      "line_count": 73,
+      "source_row_count": 72,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_058.csv",
+      "profile": "registrations",
+      "bytes": 2606,
+      "sha256": "d643d4e2940f650107db0e0fc0f56dc871204a804e0250131190e7e96f66f320",
+      "line_count": 15,
+      "source_row_count": 14,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_059.csv",
+      "profile": "registrations",
+      "bytes": 10754,
+      "sha256": "dbc11446b989e2f06fed3e10ab50533fbd7583672c9ef4635c9468883b79da3a",
+      "line_count": 64,
+      "source_row_count": 63,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_state_partition_060.csv",
+      "profile": "registrations",
+      "bytes": 828,
+      "sha256": "57209fe95a141b254a488a15d833b5b4ba34878de741fb9dc6a8fbde7986ad31",
+      "line_count": 5,
+      "source_row_count": 4,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_unfiltered_page_001.csv",
+      "profile": "registrations",
+      "bytes": 17664,
+      "sha256": "b41e75b3b8c5a2ac4f42d58a6f5fb3460958522cddc888e75c07e3b5659bc26e",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_unfiltered_page_002.csv",
+      "profile": "registrations",
+      "bytes": 17109,
+      "sha256": "0b19abaff71ef2236ffffe7225cfa7dede7b93c96f40cebd5865d882859852f9",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_unfiltered_page_003.csv",
+      "profile": "registrations",
+      "bytes": 17466,
+      "sha256": "dae4a8661974cd3e8bd34278ba5288546937c839266c1b817e2f66e87dfaa19c",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_unfiltered_page_004.csv",
+      "profile": "registrations",
+      "bytes": 17848,
+      "sha256": "17787f8fc9e6e889793e5c1b50e6ca9f29ce8c18f3fe50adda22e616bfbc7e82",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_unfiltered_page_005.csv",
+      "profile": "registrations",
+      "bytes": 17637,
+      "sha256": "867faeb686d312ffcd609ed2ca5ab312a2c57cd626746e4419289bb1e4a90b5c",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_unfiltered_page_006.csv",
+      "profile": "registrations",
+      "bytes": 17707,
+      "sha256": "cfd45d7442b39bb1a115fd41e6b299349c4113dde086d51c0f88896b22fb4b29",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_unfiltered_page_007.csv",
+      "profile": "registrations",
+      "bytes": 17153,
+      "sha256": "1a045beb93b375561fa5d34b50f1f25095ec3b723f00f6151c0e670c28eee09f",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_unfiltered_page_008.csv",
+      "profile": "registrations",
+      "bytes": 17340,
+      "sha256": "112eac5ffdca2fc9112cd8fc32476e3981fbc1d4adf31c4840474ce2af874ddd",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_unfiltered_page_009.csv",
+      "profile": "registrations",
+      "bytes": 17583,
+      "sha256": "97fbc1065740c1fe070f69a39ae40dc6b6a149c1722a698c0b22038133dc9fa0",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_unfiltered_page_010.csv",
+      "profile": "registrations",
+      "bytes": 16820,
+      "sha256": "b0774111486e04d7a1d6dc74605d08d454b2766e36b73da95405071ba704ef28",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_unfiltered_page_011.csv",
+      "profile": "registrations",
+      "bytes": 17662,
+      "sha256": "aba6b4c1a502bf03c89f4958750ab8c9c09224a2fa8506280c8fa11d1d28f389",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_unfiltered_page_012.csv",
+      "profile": "registrations",
+      "bytes": 17439,
+      "sha256": "29d620b6cfc7537571ea4d58b7d08b303f1ddf74b52c7e8eaf5f43642038ff28",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_unfiltered_page_013.csv",
+      "profile": "registrations",
+      "bytes": 17253,
+      "sha256": "a31a2fe5b8544f6106ad959d672d82a6f6954e6cc8a5cc1dfd99a64aba530962",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_unfiltered_page_014.csv",
+      "profile": "registrations",
+      "bytes": 16911,
+      "sha256": "735d4831c745551b5e0cb005367c9a4a07043b6e4653f43ebd586d0803ef73cc",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_unfiltered_page_015.csv",
+      "profile": "registrations",
+      "bytes": 16442,
+      "sha256": "257130d7ddfa014dd1839b3d993215150d11e84767a6ef7f1fb95d7045367864",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_unfiltered_page_016.csv",
+      "profile": "registrations",
+      "bytes": 17204,
+      "sha256": "aca4e07e4c1b376bab7d9cbbe1d2ee54031c3f288d3d41e04adb22fbfd67bd95",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_unfiltered_page_017.csv",
+      "profile": "registrations",
+      "bytes": 16557,
+      "sha256": "31941e8f05fb93424b62ae826a3bd8145f4a155fd3ca72a8ecb5ebd53e684d38",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_unfiltered_page_018.csv",
+      "profile": "registrations",
+      "bytes": 16814,
+      "sha256": "53db53676d8a930b16ce6b466c27587dec03e91ba5ce6355953fa60a9d593553",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_unfiltered_page_019.csv",
+      "profile": "registrations",
+      "bytes": 16771,
+      "sha256": "cbdce11719d3374988d35c55c9be46d556ba0366bb8f61db10f16c73d08904a0",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    },
+    {
+      "artifact": "registrations_unfiltered_page_020.csv",
+      "profile": "registrations",
+      "bytes": 16729,
+      "sha256": "9184a405d29a335dd5bda84a7ea8fa0a2940ca025b99fe21cc86b5fb576e110c",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "failed_malformed_csv_preserved"
+    },
+    {
+      "artifact": "registrations_unfiltered_page_021.csv",
+      "profile": "registrations",
+      "bytes": 16639,
+      "sha256": "d73a740ceb48a3832a91e962ae52d92518ac8b76bca0094bf65bbe7c7ae99c3b",
+      "line_count": 101,
+      "source_row_count": 100,
+      "validation": "validated_csv"
+    }
+  ],
+  "validation": {
+    "adapter_schema_variants": [
+      "legacy registration/inspection fixtures",
+      "current compact annual report export",
+      "current registrant export with Registration Type",
+      "current inspection export with Inspection Date"
+    ],
+    "rerun_determinism": "same input produced matching normalized and parsed hashes in rerun_a and rerun_b",
+    "amendment_handling": "unit test confirms explicit amendment versions remain distinct evidence",
+    "tests": [
+      "python -m unittest pipeline.sources.us.aphis.test_adapter",
+      "python -m unittest pipeline.sources.us.aphis.test_acquire",
+      "python -m unittest pipeline.sources.us.aphis.test_refresh"
+    ]
+  },
+  "coverage_limitations": [
+    "These are APHIS public-search observations, not a complete census of AWA activity or facility equivalence.",
+    "Registrations, annual reports, inspections, and linked documents remain separate evidence families.",
+    "The inspection query reports 15,726 rows; only 2,100 were exported before the unfiltered pagination boundary.",
+    "Malformed source exports remain private failures; no row repair or silent drop was performed.",
+    "No coordinates were supplied and no geocoding was attempted.",
+    "No names, addresses, raw rows, or candidate records are included in this tracked manifest."
+  ],
+  "privacy": {
+    "raw_and_staging": "ignored private paths only",
+    "tracked_report": "row-free aggregate metadata and hashes",
+    "public_release": "not created"
+  }
+}

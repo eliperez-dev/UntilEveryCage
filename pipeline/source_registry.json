@@ -220,6 +220,18 @@
       "blockers": ["Current direct links returned HTTP 403 during reconnaissance; obtain an authorized current export and complete terms, schema, privacy, and project review."]
     },
     {
+      "source_id": "us.state-mpi",
+      "jurisdiction_scope": "United States; state Meat and Poultry Inspection programs and Cooperative Interstate Shipment overlays",
+      "legacy_paths": [],
+      "url": "https://www.fsis.usda.gov/inspection/state-inspection-programs",
+      "access_method": "state-specific HTML/PDF/XLSX/CSV/map routes or authorized operator-assisted capture; FSIS CIS workbooks are a separate overlay",
+      "cadence": "state-specific and often undocumented; record every visible revision/effective date",
+      "attribution_licensing_notes": "State and FSIS authority are documented; public availability does not establish redistribution permission. Review terms, privacy, and category scope per state before acquisition or publication.",
+      "adapter_status": "reference_only",
+      "expected_artifact_schema": "Source-specific roster observations preserving state-native establishment/license IDs, official/CIS/custom-exempt/retail-handler categories, status, effective/revision dates, address fields, and coordinate provenance when supplied",
+      "blockers": ["No state roster or CIS workbook was acquired; obtain authorized current exports or operator-assisted captures, resolve terms/schema/privacy, and keep state, federal, CIS, custom-exempt, retail/handler, and inactive/expired populations separate."]
+    },
+    {
       "source_id": "us.aphis",
       "jurisdiction_scope": "United States; USDA APHIS Animal Care public search and annual-report data",
       "legacy_paths": ["static_data/us/aphis_data_final.csv"],
@@ -242,6 +254,114 @@
       "adapter_status": "implemented_partial",
       "expected_artifact_schema": "CSV inspection observations; not a facility master record and not silently joined to registrations or FSIS",
       "blockers": ["Verify current inspection export schema and use explicit, reviewable identity matching only; absence is not closure."]
+    },
+    {
+      "source_id": "us.nih.reporter",
+      "jurisdiction_scope": "United States; NIH RePORTER and ExPORTER federal research award/project evidence",
+      "legacy_paths": [],
+      "url": "https://api.reporter.nih.gov/",
+      "access_method": "official JSON API and annual/bulk ExPORTER files; rate-limited deterministic acquisition",
+      "cadence": "API service with annual consolidated project-file release and later updates",
+      "attribution_licensing_notes": "NIH public administrative award data; preserve API/bulk release metadata and review terms, privacy and PI minimization before publication",
+      "adapter_status": "reference_only",
+      "expected_artifact_schema": "Project/application/core-project identifiers, fiscal year, agency, recipient organization/IPF/UEI/DUNS/FIPS/ZIP, dates, funding, title, terms, abstract and publication links",
+      "blockers": ["Funding/project evidence does not prove animal use, physical performance site, operation, or animal counts; validate API version, bulk file refresh, rate limits, text classification, privacy and reviewed organization/site links before integration."]
+    },
+    {
+      "source_id": "us.nih.olaw-assurances",
+      "jurisdiction_scope": "United States; NIH OLAW current approved Domestic and Foreign Animal Welfare Assurances lookup",
+      "legacy_paths": [],
+      "url": "https://grants.nih.gov/policy-and-compliance/policy-topics/animal-welfare/assurance/assured-institutions",
+      "access_method": "official browser lookup table; no public bulk/API contract verified",
+      "cadence": "current-assurance lookup; observation date required",
+      "attribution_licensing_notes": "NIH/OLAW public institutional assurance evidence; do not expose restricted assurance documents or infer project-level use",
+      "adapter_status": "reference_only",
+      "expected_artifact_schema": "Organization name, Assurance ID/legacy ID, assurance type, state/territory, country, observed date and source URL",
+      "blockers": ["Verify durable capture/export semantics, assurance lifecycle, branch/affiliate scope, terms, privacy and exact organization matching; lookup presence is not an animal count or facility census."]
+    },
+    {
+      "source_id": "us.aaalac.accredited",
+      "jurisdiction_scope": "United States; AAALAC International voluntary accreditation directory observations",
+      "legacy_paths": [],
+      "url": "https://www.aaalac.org/accreditation/directory/directory-of-accredited-organizations-search-result/",
+      "access_method": "official public directory search/result pages; no bulk contract verified",
+      "cadence": "ongoing directory updates; observation date required",
+      "attribution_licensing_notes": "Private nonprofit accreditation source; preserve organization/unit distinction, attribution and terms; accreditation is not regulatory registration",
+      "adapter_status": "reference_only",
+      "expected_artifact_schema": "Accrediting organization, accredited unit, location, country/state and observed directory date",
+      "blockers": ["Confirm directory query/export behavior, unit lifecycle, terms, contact/address minimization and exact parent/unit identity matching before use."]
+    },
+    {
+      "source_id": "us.fda.glp-animal-research",
+      "jurisdiction_scope": "United States; FDA laboratory-animal/GLP program and public FDA facility evidence",
+      "legacy_paths": [],
+      "url": "https://www.fda.gov/about-fda/domestic-mous/mou-225-16-010",
+      "access_method": "official policy, MOU and facility pages; no national facility export verified",
+      "cadence": "policy/facility-page specific; unknown nationally",
+      "attribution_licensing_notes": "FDA official source; distinguish GLP inspection/disqualification authority from USDA/OLAW evidence and review security/privacy before retaining facility details",
+      "adapter_status": "reference_only",
+      "expected_artifact_schema": "Policy/oversight statements, explicitly named FDA program/facility observations, GLP inspection or disqualification evidence when publicly supplied",
+      "blockers": ["No public national FDA animal-research register or count route was verified; do not use openFDA adverse-event records as research-use counts."]
+    },
+    {
+      "source_id": "us.va.animal-research",
+      "jurisdiction_scope": "United States; Veterans Affairs animal-research program and oversight evidence",
+      "legacy_paths": [],
+      "url": "https://www.research.va.gov/programs/animal_research/default.cfm",
+      "access_method": "official VA program, policy and facility pages; no national bulk dataset verified",
+      "cadence": "page/policy specific; unknown nationally",
+      "attribution_licensing_notes": "VA official source; facility pages and ORO oversight statements are not a national animal-use register",
+      "adapter_status": "reference_only",
+      "expected_artifact_schema": "Named VA program/facility, policy/assurance/accreditation statement, dated oversight or public report observation",
+      "blockers": ["Identify a public reproducible national VA facility/count route before acquisition; keep local facility pages, assurance identifiers and oversight events separate."]
+    },
+    {
+      "source_id": "us.dod.acuro",
+      "jurisdiction_scope": "United States; DHA/USAMRDC ACURO animal protocol and site-oversight evidence",
+      "legacy_paths": [],
+      "url": "https://mrdc.health.mil/index.cfm/resources/research_protections/acuro",
+      "access_method": "official ACURO policy/reporting/site-visit pages; no national facility or use export verified",
+      "cadence": "policy and reporting specific; unknown nationally",
+      "attribution_licensing_notes": "DoD/DHA official oversight source; public pages may omit sensitive contract, protocol and security details",
+      "adapter_status": "reference_only",
+      "expected_artifact_schema": "Award/protocol/site identifiers only when explicitly public, oversight type, visit/report date, authority and source document",
+      "blockers": ["No public national facility/count dataset was verified; do not infer sites from awardee addresses or expose sensitive operational details."]
+    },
+    {
+      "source_id": "us.nsf.awards",
+      "jurisdiction_scope": "United States; NSF research award/project evidence",
+      "legacy_paths": [],
+      "url": "https://www.nsf.gov/digital/developer",
+      "access_method": "official NSF Award Search API and open-data routes",
+      "cadence": "API/data-source specific; record response and release metadata",
+      "attribution_licensing_notes": "NSF public award evidence; review API terms, identifiers, PI minimization and performance-site semantics",
+      "adapter_status": "reference_only",
+      "expected_artifact_schema": "NSF award number, recipient organization, PI/project text, dates, amount, program and source metadata",
+      "blockers": ["Funding evidence does not prove animal use or site operation; integrate only with explicit animal-relevance and OLAW-assurance semantics."]
+    },
+    {
+      "source_id": "us.nasa.nspires",
+      "jurisdiction_scope": "United States; NASA NSPIRES research solicitation and award evidence",
+      "legacy_paths": [],
+      "url": "https://www.nasa.gov/hrp/for-prospective-researchers/",
+      "access_method": "official NSPIRES web search and solicitation/award pages; no bulk animal-use route verified",
+      "cadence": "solicitation/award specific; record observation date",
+      "attribution_licensing_notes": "NASA public research-award evidence; review portal access, identifiers, privacy and performance-site semantics",
+      "adapter_status": "reference_only",
+      "expected_artifact_schema": "NASA solicitation/proposal/award identifiers, recipient organization, project text, dates and source document metadata",
+      "blockers": ["Funding evidence does not prove animal use or facility location; the OLAW assurance relationship is policy context, not a count or registry join."]
+    },
+    {
+      "source_id": "us.ca.cdph-lab-animals",
+      "jurisdiction_scope": "United States; California Department of Public Health laboratory-animal approval and form evidence",
+      "legacy_paths": [],
+      "url": "https://www.cdph.ca.gov/Programs/cls/operations/Pages/LaboratoryAnimalUseApprovalProgram.aspx",
+      "access_method": "official state program page and LAB 139 application/renewal form; no public statewide bulk export verified",
+      "cadence": "annual approval renewal; record approval/reporting period",
+      "attribution_licensing_notes": "California state source; minimize responsible-person/address fields and review public-record, privacy and redistribution conditions",
+      "adapter_status": "reference_only",
+      "expected_artifact_schema": "Institution/site, responsible program, use type, state approval, exemption basis, prior-year species/count fields and approval date when supplied",
+      "blockers": ["Federal-regulated laboratories are exempt from this state approval; no public bulk registry was verified; pilot only and never a national denominator."]
     },
     {
       "source_id": "au.primesafe.vic.meat-licences",
