@@ -127,7 +127,7 @@ def _coverage_accounting(
         "failed_export_count": len(failed),
         "failure_states": dict(sorted(Counter(str(item.get("state", "unclassified")) for item in failed).items())),
         "not_observed_rows": max(expected - observed, 0) if expected is not None else None,
-        "accounting_state": "complete" if expected is not None and observed >= expected and not failed else "incomplete",
+        "accounting_state": "complete" if expected is not None and observed >= expected and not failed and not manifest["duplicate_page_rows"] else "incomplete",
         "not_observed_semantics": "not observed by this acquisition; not closure, non-use, or evidence of absence",
     }
 

@@ -34,6 +34,15 @@ class RecallAdapterTests(unittest.TestCase):
             self.assertEqual(json.loads((Path(left) / "aggregate-manifest.json").read_text())["quarantined_rows"], 1)
             self.assertFalse("records" in json.dumps(a))
 
+    def test_digits_in_free_text_do_not_create_establishment_join(self):
+        parsed = parse_bytes(json.dumps({"results": [{
+            "recall_number": "FSIS-2026-003",
+            "firm": "Foods 123 LLC",
+            "reason": "Product code 456",
+        }]}).encode("utf-8"))
+        self.assertEqual(len(parsed["accepted"]), 0)
+        self.assertIn("unresolved_establishment_identifier", parsed["quarantined"][0]["reasons"])
+
 
 if __name__ == "__main__":
     unittest.main()

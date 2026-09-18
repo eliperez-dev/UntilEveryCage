@@ -66,6 +66,23 @@ class AphisWave2Tests(unittest.TestCase):
             self.assertEqual(report["completeness"]["inspections"]["not_observed_rows"], 0)
             self.assertEqual(report["completeness"]["inspections"]["accounting_state"], "complete")
 
+    def test_duplicate_pages_do_not_claim_completeness(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            input_root = root / "inputs"
+            input_root.mkdir()
+            rows = {
+                "ExportData-registrations.csv": "Account Name,Customer Number,Certificate Number,Registration Type,Certificate Status,Status Date\nA,2,00-R-0002,Class R - Research Facility,Active,2026-01-01\n",
+                "ExportData-annual_reports.csv": "Customer Number,Certificate Number,Year,Dogs,Cats\n2,00-R-0002,2025,,1\n",
+                "ExportData-inspections.csv": "Customer Number,Certificate Number,Inspection Date,Direct NCIs,Non-Critical NCIs,Critical NCIs,Teachable Moments,Site Name,Legal Name,License-Registration Type,City,State,Zip\n2,00-R-0002,2026-02-01,,,,,S,A,Class R - Research Facility,T,TX,75001\n",
+            }
+            for name, content in rows.items():
+                (input_root / name).write_text(content, encoding="utf-8")
+                (input_root / (Path(name).stem + "-page2.csv")).write_text(content, encoding="utf-8")
+            report = run_wave2(input_root=input_root, run_dir=root / "run", expected_rows={"inspections": 1})
+            self.assertGreater(report["completeness"]["inspections"]["duplicate_page_rows"], 0)
+            self.assertEqual(report["completeness"]["inspections"]["accounting_state"], "incomplete")
+
 
 if __name__ == "__main__":
     unittest.main()

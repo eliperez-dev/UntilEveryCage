@@ -45,7 +45,9 @@ def _establishment_number(row: dict[str, Any]) -> str | None:
     # Source text such as "EST. 1234" is retained as an explicit source clue,
     # but never treated as a join when multiple identifiers occur.
     import re
-    matches = sorted(set(re.findall(r"\b(?:EST\.?\s*)?(\d{1,6})\b", text, re.I)))
+    # Digits in names/reasons are not identity evidence. Require an explicit
+    # establishment marker before creating a source-local join.
+    matches = sorted(set(re.findall(r"\bEST\.?\s*(\d{1,6})\b", text, re.I)))
     return matches[0] if len(matches) == 1 else None
 
 
