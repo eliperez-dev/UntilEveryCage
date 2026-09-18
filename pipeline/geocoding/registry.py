@@ -2,10 +2,12 @@ from collections.abc import Callable
 
 from .base import GeocoderAdapter
 from .dawa import DawaAdapter
+from .geoapify import GeoapifyAdapter
 
 
 ADAPTER_FACTORIES: dict[str, Callable[[], GeocoderAdapter]] = {
     "dawa": DawaAdapter,
+    "geoapify": GeoapifyAdapter,
 }
 
 
