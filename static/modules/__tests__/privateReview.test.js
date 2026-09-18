@@ -38,6 +38,8 @@ test('readiness asset validates the current registry-driven country set with exa
     expect(states).toContain(country.state);
     expect(country).toEqual(expect.objectContaining({ name: expect.any(String), summary: expect.any(String), basis: expect.any(Array) }));
   }
+  expect(matrix.countries.BE.sources[0].attribution.terms_status).toBe('pending-human-review');
+  expect(matrix.countries.BE.sources[0].status.acquisition).toBe('artifact_private_only');
 });
 
 test('safe review page never includes private address, raw payload, geocoder, or requester fields', () => {
@@ -48,4 +50,10 @@ test('safe review page never includes private address, raw payload, geocoder, or
   }
   expect(js).toContain('Withheld by console');
   expect(js.toLowerCase()).toContain('observations remain separate');
+});
+
+test('review packet loader rejects row-shaped payloads and keeps tokens out of storage APIs', async () => {
+  const { validateReviewPacket } = await import('../../private-review.js');
+  expect(() => validateReviewPacket({ schema_version: 'private-review-packet-v2', counts: { input_rows: 1 } })).not.toThrow();
+  expect(() => validateReviewPacket({ schema_version: 'private-review-packet-v2', normalized: { records: [] } })).toThrow('rejected safely');
 });
