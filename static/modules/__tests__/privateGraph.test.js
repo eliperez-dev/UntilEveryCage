@@ -10,5 +10,7 @@ test('private graph surface is explicitly bounded and not a public projection', 
   expect(js).toContain('/api/private/graph/traverse');
   expect(js).toContain('replace');
   const css = await fs.readFile(new URL('../../private-graph.css', import.meta.url), 'utf8');
-  expect(css).toContain('.private-graph');
+  expect(css).toContain('.workspace');
+  expect(css).toContain('.notice');
+  expect(html).toContain('class="workspace"');
 });
