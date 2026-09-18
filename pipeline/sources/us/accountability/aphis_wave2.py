@@ -33,6 +33,7 @@ PROFILE_RETRIEVED_AT = {
     "registrations": "2026-09-18T18:06:26Z",
     "inspections": "2026-09-18T18:17:14Z",
 }
+DEFAULT_EXPECTED_ROWS = {"inspections": 15726}
 PUBLICATION = {
     "storage_state": "private",
     "publication_status": "not_eligible",
@@ -85,11 +86,50 @@ def discover_exports(input_root: str | Path) -> tuple[dict[str, list[Path]], lis
         try:
             profile, _ = _classify(path, adapter)
         except (OSError, ValueError) as error:
-            failures.append({"artifact": path.name, "failure_class": type(error).__name__})
+            lowered = path.name.lower()
+            guessed_profile = next((profile for profile, marker in {
+                "inspections": "inspection", "annual_reports": "annual", "registrations": "registration",
+            }.items() if marker in lowered), None)
+            failures.append({
+                "artifact": path.name,
+                "profile": guessed_profile,
+                "failure_class": type(error).__name__,
+                "state": "malformed_or_unavailable",
+                "detail": str(error),
+            })
             continue
         if profile in {"annual_reports", "registrations", "inspections"}:
             paths[profile].append(path)
     return dict(paths), failures
+
+
+def _coverage_accounting(
+    profile: str,
+    manifest: Mapping[str, Any],
+    failures: Iterable[Mapping[str, Any]],
+    expected_rows: Mapping[str, int],
+) -> dict[str, Any]:
+    """Return conservative, row-free completeness accounting.
+
+    Expected counts are source/UI observations supplied by the operator, not
+    proof that the source is complete or current.  Residual rows are
+    ``not_observed``; they are never interpreted as closure or non-use.
+    """
+    expected = expected_rows.get(profile)
+    observed = int(manifest["input_rows"])
+    failed = [item for item in failures if item.get("profile") == profile]
+    return {
+        "expected_displayed_rows": expected,
+        "observed_input_rows": observed,
+        "accepted_rows": int(manifest["accepted_rows"]),
+        "adapter_quarantined_rows": int(manifest["adapter_quarantined_rows"]),
+        "duplicate_page_rows": int(manifest["duplicate_page_rows"]),
+        "failed_export_count": len(failed),
+        "failure_states": dict(sorted(Counter(str(item.get("state", "unclassified")) for item in failed).items())),
+        "not_observed_rows": max(expected - observed, 0) if expected is not None else None,
+        "accounting_state": "complete" if expected is not None and observed >= expected and not failed else "incomplete",
+        "not_observed_semantics": "not observed by this acquisition; not closure, non-use, or evidence of absence",
+    }
 
 
 def _load_profile(paths: list[Path], profile: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
@@ -206,11 +246,12 @@ def _verify_controls() -> dict[str, bool]:
     }
 
 
-def run_wave2(*, input_root: str | Path, run_dir: str | Path) -> dict[str, Any]:
+def run_wave2(*, input_root: str | Path, run_dir: str | Path, expected_rows: Mapping[str, int] | None = None) -> dict[str, Any]:
     """Run the bounded private proof against saved APHIS exports."""
     root = Path(run_dir)
     root.mkdir(parents=True, exist_ok=True)
     paths, failures = discover_exports(input_root)
+    expected_rows = {**DEFAULT_EXPECTED_ROWS, **(expected_rows or {})}
     if any(not paths.get(profile) for profile in ("registrations", "annual_reports", "inspections")):
         raise ValueError("input root must contain at least one validated export for each APHIS profile")
 
@@ -289,6 +330,10 @@ def run_wave2(*, input_root: str | Path, run_dir: str | Path) -> dict[str, Any]:
         "input_root_private": str(Path(input_root).resolve()),
         "input_failures": failures,
         "profiles": profile_manifests,
+        "completeness": {
+            profile: _coverage_accounting(profile, profile_manifests[profile], failures, expected_rows)
+            for profile in profile_manifests
+        },
         "graph_projection": {
             "source_rows_used": {profile: len(rows) for profile, rows in graph_records.items()},
             "source_rows_excluded_from_graph_projection": len(projection_quarantine),
@@ -334,9 +379,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input-root", type=Path, required=True)
     parser.add_argument("--run-dir", type=Path, required=True)
+    parser.add_argument("--expected-rows", type=Path, help="JSON object of operator-observed displayed row counts")
     args = parser.parse_args()
     try:
-        report = run_wave2(input_root=args.input_root, run_dir=args.run_dir)
+        expected = None
+        if args.expected_rows:
+            expected = json.loads(args.expected_rows.read_text(encoding="utf-8"))
+            if not isinstance(expected, dict) or any(not isinstance(value, int) or value < 0 for value in expected.values()):
+                raise ValueError("--expected-rows must contain a JSON object of non-negative integer counts")
+        report = run_wave2(input_root=args.input_root, run_dir=args.run_dir, expected_rows=expected)
     except (OSError, ValueError, KeyError) as error:
         print(json.dumps({"status": "failed", "error": str(error)}, sort_keys=True))
         return 2

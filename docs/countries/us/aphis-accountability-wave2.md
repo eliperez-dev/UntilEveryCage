@@ -50,6 +50,15 @@ Four additional local export attempts failed adapter validation and remain
 outside the accepted page set. They are recorded as failures in the private
 run and are not treated as zero-row observations.
 
+The runner now writes machine-readable `completeness` accounting for each
+profile. For inspections its default operator-supplied displayed total is
+15,726, so this capture records 13,626 rows as `not_observed` (15,726 minus
+2,100 observed input rows). The accounting also separates accepted rows,
+adapter quarantine, duplicate page rows, and classified failed exports. A
+different displayed total may be supplied with `--expected-rows` as a JSON
+object, but matching that count does not establish source truth or publication
+eligibility; failed exports keep the profile incomplete.
+
 The registration pages include separate pagination/state evidence. 1,952
 source observation keys repeat across those pages. The raw/parsed rows remain
 private; the graph projection excludes all rows in repeated-key groups instead
