@@ -15,6 +15,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import psycopg
+from pipeline.geocoding.base import GeocodeOutcome
 
 try:
     from .fixture import E2EEnvironment
@@ -126,6 +127,74 @@ class SuppressionLifecycleE2ETests(unittest.TestCase):
                     (cls.source_record_id, cls.private_marker, now),
                 )
         cls.env.build_public_read_model("e2e-suppression-old")
+
+    def _queue_geocode(self, provider, query, *, started_at=None):
+        job_id = uuid.uuid4()
+        with psycopg.connect(self.env.database_url) as db:
+            with db.transaction():
+                db.execute(
+                    "INSERT INTO uec.geocode_jobs (job_id,source_record_id,provider_id,query) VALUES (%s,%s,%s,%s)",
+                    (job_id, self.source_record_id, provider, query),
+                )
+                event_type = "started" if started_at else "queued"
+                db.execute(
+                    "INSERT INTO uec.geocode_job_events (job_id,event_type,attempt_number,occurred_at) VALUES (%s,%s,1,%s)",
+                    (job_id, event_type, started_at or datetime.now(timezone.utc)),
+                )
+        return job_id
+
+    def test_a_worker_claims_job_and_records_append_only_result(self):
+        job_id = self._queue_geocode("synthetic-lease", "private lease query")
+
+        class Adapter:
+            def geocode(self, _query):
+                return GeocodeOutcome("review_required", "review_provider_candidate", 55.6, 12.5, "fixture", "building", "fixture", False, {"fixture": True})
+
+        with patch.object(WORKER, "get_adapter", return_value=Adapter()):
+            count = WORKER.run(self.env.database_url, "synthetic-lease", 1, 0, 1, worker_id="e2e-worker")
+        self.assertEqual(count, 1)
+        with psycopg.connect(self.env.database_url) as db:
+            events = db.execute(
+                "SELECT event_type,worker_id FROM uec.geocode_job_events WHERE job_id=%s ORDER BY occurred_at,event_id",
+                (job_id,),
+            ).fetchall()
+            self.assertEqual([row[0] for row in events], ["queued", "started", "review_required"])
+            self.assertEqual(events[-1][1], "e2e-worker")
+            self.assertEqual(db.execute("SELECT count(*) FROM uec.geocode_results WHERE source_record_id=%s AND provider_id='synthetic-lease'", (self.source_record_id,)).fetchone()[0], 1)
+
+    def test_b_worker_recovers_an_expired_lease(self):
+        job_id = self._queue_geocode(
+            "synthetic-stale", "private stale query",
+            started_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        )
+
+        class Adapter:
+            def geocode(self, _query):
+                return GeocodeOutcome("unresolved", "unresolved", None, None, None, None, "fixture", False, [])
+
+        with patch.object(WORKER, "get_adapter", return_value=Adapter()):
+            count = WORKER.run(self.env.database_url, "synthetic-stale", 1, 0, 1, lease_timeout=60, worker_id="recovery-worker")
+        self.assertEqual(count, 1)
+        with psycopg.connect(self.env.database_url) as db:
+            attempts = db.execute("SELECT attempt_number,event_type FROM uec.geocode_job_events WHERE job_id=%s ORDER BY occurred_at,event_id", (job_id,)).fetchall()
+        self.assertEqual(attempts[-2:], [(2, "started"), (2, "unresolved")])
+
+    def test_c_daily_budget_stops_before_provider_call(self):
+        self._queue_geocode("synthetic-budget", "already counted", started_at=datetime.now(timezone.utc))
+        self._queue_geocode("synthetic-budget", "must remain queued")
+
+        class Adapter:
+            calls = 0
+
+            def geocode(self, _query):
+                self.calls += 1
+                raise AssertionError("daily budget must stop before provider call")
+
+        adapter = Adapter()
+        with patch.object(WORKER, "get_adapter", return_value=adapter):
+            count = WORKER.run(self.env.database_url, "synthetic-budget", 1, 0, 1, daily_budget=1)
+        self.assertEqual(count, 0)
+        self.assertEqual(adapter.calls, 0)
 
     def get_json(self, path):
         with urllib.request.urlopen(f"http://localhost:{self.env.api_port}{path}", timeout=10) as response:
