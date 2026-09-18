@@ -59,13 +59,14 @@ class UsRealProofManifestTests(unittest.TestCase):
         self.assertTrue(rehearsal["unmatched_demographic_is_not_closure"])
         self.assertFalse(FORBIDDEN_ROW_KEYS.intersection(set(_walk_keys(manifest))))
 
-    def test_manifest_bytes_are_stable_for_this_checkout(self):
+    def test_manifest_content_is_stable_across_line_endings(self):
         expected = {
-            "us-aphis-wave1-real-data-proof-2026-09-18.json": "fe48126d31e4eb7336579e329f424ccee4f19618d0681e47de35412c045e4e9c",
-            "us-fsis-proof-2026-09-18.json": "26a44a35bf4f34f46967053724384c4ea6c04c7101653bbd6269cd0bbd20d951",
+            "us-aphis-wave1-real-data-proof-2026-09-18.json": "fb5dcfd35efb17c5c0a17e6d08d407e2b32fd99b864ba8bc95f224989362c795",
+            "us-fsis-proof-2026-09-18.json": "6f75f40c41b14c061a388c1c9578b6995bd6b8c17a9fde2948b5fc74adbb3812",
         }
         for name, digest in expected.items():
-            self.assertEqual(hashlib.sha256((MANIFEST_DIR / name).read_bytes()).hexdigest(), digest)
+            normalized = (MANIFEST_DIR / name).read_text(encoding="utf-8").encode("utf-8")
+            self.assertEqual(hashlib.sha256(normalized).hexdigest(), digest)
 
 
 if __name__ == "__main__":
