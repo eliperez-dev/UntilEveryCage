@@ -11,13 +11,12 @@ entry grants publication approval or authorizes live provider calls.
 | Private operator review console | `316d549b`, `88422957`, `898fe019` | consolidated; frontend and focused Python tests pass | include in full consolidation gate |
 | Country geocoding reconnaissance | `6367a176` | consolidated; profile/schema tests pass | include in full consolidation gate |
 | Geoapify adapter and adversarial provider hardening | `d1ba77d2` | consolidated; 16 adapter/import tests pass | run database E2E and full consolidation gate |
-| Durable worker | pending checkpoint commit | transactional claims, stale recovery, budgets, bounded attempts and suppression recheck implemented; seven Docker E2E tests pass | include in full consolidation gate |
+| Durable worker | `19e1e59f` | transactional claims, stale recovery, budgets, bounded attempts and suppression recheck implemented; seven Docker E2E tests pass | full consolidation gate passed |
+| Geocoder operator tooling | pending checkpoint commit | aggregate status/ETA, safe logs, environment-only secret configuration, optional container operation, privacy tests, and operator documentation implemented | full consolidation gate passed |
 
 ## In flight
 
-| Lane | Scope | Exit requirement |
-| --- | --- | --- |
-| Geocoder operator tooling | aggregate status/ETA, safe logs, secret configuration, local/container background operation | committed changes plus privacy tests and operator documentation |
+No lanes remain in flight for this sprint.
 
 ## Consolidation gate
 
@@ -31,5 +30,7 @@ entry grants publication approval or authorizes live provider calls.
 5. A successful geocode cannot create privacy approval, publication approval,
    release membership, or graph certainty.
 6. Focused geocoder tests, database E2E, standard gate, frontend tests, and the
-   Docker E2E suite pass on the consolidated branch.
+   Docker E2E suite pass on the consolidated branch. Verified 2026-09-18:
+   263 standard Python tests (15 skipped), 61 SQL contract tests, 83 Rust tests,
+   25 frontend tests, and the seven-test suppression/geocoder lifecycle suite.
 7. The branch is clean before a checkpoint push and human CI review.

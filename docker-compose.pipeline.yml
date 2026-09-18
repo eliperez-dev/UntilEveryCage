@@ -16,5 +16,20 @@ services:
     volumes:
       - uec-postgres-data:/var/lib/postgresql/data
 
+  geocode-worker:
+    profiles: [geocoding]
+    build: .
+    command:
+      - python
+      - pipeline/scripts/stages/geocode-worker.py
+      - --provider
+      - geoapify
+    environment:
+      UEC_DATABASE_URL: postgresql://uec:uec-local-development-only@postgres:5432/uec
+      GEOAPIFY_API_KEY: ${GEOAPIFY_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   uec-postgres-data:
