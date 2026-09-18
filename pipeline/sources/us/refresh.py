@@ -298,12 +298,20 @@ def diagnose(run_root: str | Path, *, as_of_utc: str | None = None) -> dict[str,
     checks = []
     for item in report.get("sources", []):
         run_dir = Path(str(item.get("run_dir", "")))
+        # FSIS reports its lifecycle directory directly, while APHIS reports
+        # the source run root and keeps the canonical lifecycle artifacts in
+        # a child directory.  Resolve both layouts so diagnostics do not
+        # manufacture a missing-artifact warning for a healthy APHIS run.
+        artifact_roots = [run_dir]
+        lifecycle_dir = run_dir / "lifecycle"
+        if lifecycle_dir.is_dir():
+            artifact_roots.append(lifecycle_dir)
         checks.append({
             "source_id": item.get("source_id"),
             "status": item.get("status"),
-            "run_status_present": (run_dir / "run-status.json").is_file(),
-            "manifest_present": (run_dir / "manifest.json").is_file(),
-            "review_packet_present": (run_dir / "review-packet.json").is_file(),
+            "run_status_present": any((root / "run-status.json").is_file() for root in artifact_roots),
+            "manifest_present": any((root / "manifest.json").is_file() for root in artifact_roots),
+            "review_packet_present": any((root / "review-packet.json").is_file() for root in artifact_roots),
             "previous_valid_available": item.get("previous_valid", {}).get("available", False),
             "public_exposure": item.get("release", {}).get("public_surfaces", PUBLIC_SURFACES),
         })

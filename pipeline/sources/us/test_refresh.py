@@ -62,6 +62,7 @@ class UsOperatorRefreshTests(unittest.TestCase):
             diagnostics = diagnose(root / "run", as_of_utc="2026-09-18T12:00:00Z")
             self.assertEqual(diagnostics["release"]["publication_gate"], "blocked")
             self.assertTrue(all(item["run_status_present"] for item in diagnostics["checks"]))
+            self.assertTrue(all(item["manifest_present"] for item in diagnostics["checks"]))
 
     def test_failed_lane_reports_action_and_preserves_previous_valid_manifest(self):
         with tempfile.TemporaryDirectory() as directory:
