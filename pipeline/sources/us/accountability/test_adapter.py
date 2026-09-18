@@ -122,6 +122,15 @@ class UsAccountabilityAdapterTests(unittest.TestCase):
         with self.assertRaises(AccountabilityContractError):
             UsAccountabilityAdapter().parse_bytes(b"subject_type,object_type\nfacility,operator\n")
 
+    def test_exact_duplicate_relationship_is_quarantined(self):
+        rows = rows_from_fixture()
+        rows.append(dict(rows[0]))
+        result = UsAccountabilityAdapter().parse_bytes(content_for(rows))
+        self.assertEqual(result["input_rows"], 13)
+        self.assertEqual(len(result["accepted"]), 12)
+        self.assertEqual(len(result["quarantined"]), 1)
+        self.assertEqual(result["quarantined"][0]["reasons"], ("duplicate_relationship_observation",))
+
 
 if __name__ == "__main__":
     unittest.main()

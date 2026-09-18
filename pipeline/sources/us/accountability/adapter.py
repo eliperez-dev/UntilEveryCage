@@ -186,6 +186,7 @@ class UsAccountabilityAdapter:
         quarantined: list[dict[str, Any]] = []
         entities: dict[tuple[str, str, str], dict[str, Any]] = {}
         identifiers: dict[tuple[str, str], tuple[str, str]] = {}
+        relationship_keys: set[tuple[str, str, str, str, str]] = set()
         relationship_rows: list[tuple[dict[str, Any], dict[str, str], int]] = []
 
         for line, row in enumerate(rows, 2):
@@ -235,9 +236,17 @@ class UsAccountabilityAdapter:
                     same_name = [key for key, value in identifiers.items() if value[1] == row.get("object_name") and key[0] == row.get("object_source_id")]
                     if len(same_name) > 1 and (row["object_source_id"], row["object_source_native_id"]) not in same_name:
                         reasons.append("ambiguous_duplicate_name")
+                relationship_key = (
+                    row["subject_type"], row["subject_source_id"],
+                    row["subject_source_native_id"], row["object_source_native_id"],
+                    row["relationship_type"],
+                )
+                if relationship_key in relationship_keys:
+                    reasons.append("duplicate_relationship_observation")
                 if not reasons:
                     for identity_key, identity_value in row_identities:
                         identifiers[identity_key] = identity_value
+                    relationship_keys.add(relationship_key)
             except AccountabilityContractError as exc:
                 reasons.append(str(exc).replace(" ", "_"))
                 observed = None
