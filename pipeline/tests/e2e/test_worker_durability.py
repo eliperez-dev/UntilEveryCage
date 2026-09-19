@@ -3,6 +3,7 @@
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import threading
@@ -97,7 +98,11 @@ class WorkerDurabilityE2ETests(unittest.TestCase):
             def log_message(self, _format, *_args):
                 return
 
-        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        # Linux Docker's host-gateway reaches the host interface rather than
+        # loopback. This server is disposable and returns only synthetic data;
+        # bind on all interfaces so both Docker Desktop and Linux Engine can
+        # reach it through the test-only host-gateway route.
+        server = ThreadingHTTPServer(("0.0.0.0", 0), Handler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         return server, thread, state
@@ -120,6 +125,22 @@ class WorkerDurabilityE2ETests(unittest.TestCase):
                 "SELECT count(*) FROM uec.geocode_results WHERE source_record_id=%s AND provider_id=%s",
                 (record_id, provider),
             ).fetchone()[0]
+
+    @staticmethod
+    def _redacted_diagnostics(text):
+        text = text or ""
+        text = re.sub(r"(?i)postgres(?:ql)?://[^\s]+", "postgresql://[redacted]", text)
+        text = text.replace("synthetic query", "[query-redacted]")
+        return text[-2000:]
+
+    def _container_diagnostics(self, container_name):
+        result = subprocess.run(
+            ["docker", "logs", "--tail", "40", container_name],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return self._redacted_diagnostics(result.stdout + result.stderr)
 
     def _docker_worker_command(self, image, database_url, provider_url, *, limit=1, lease_timeout=900):
         harness = (ROOT / "tests" / "e2e" / "docker_worker_sitecustomize.py").resolve()
@@ -434,7 +455,11 @@ class WorkerDurabilityE2ETests(unittest.TestCase):
             server_thread.join(10)
             server.server_close()
         self.assertEqual(result.returncode, 0, result.stderr[-4000:])
-        self.assertEqual(state["calls"], 1)
+        self.assertEqual(
+            state["calls"], 1,
+            "synthetic provider request missing; "
+            f"worker_exit={result.returncode} diagnostics={self._redacted_diagnostics(result.stdout + result.stderr)}",
+        )
         self.assertNotIn("synthetic query", result.stdout)
         self.assertNotIn("GEOAPIFY_API_KEY", result.stdout + result.stderr)
         with psycopg.connect(self.env.database_url) as db:
@@ -459,8 +484,11 @@ class WorkerDurabilityE2ETests(unittest.TestCase):
         try:
             started = subprocess.run(command, cwd=ROOT.parent, capture_output=True, text=True, timeout=30, check=False)
             self.assertEqual(started.returncode, 0, started.stderr[-2000:])
-            self.assertTrue(self._wait_for(lambda: self._result_count(first_record, "synthetic-docker") == 1, 20))
-            self.assertTrue(state["second_started"].wait(20))
+            self.assertTrue(
+                self._wait_for(lambda: self._result_count(first_record, "synthetic-docker") == 1, 20),
+                self._container_diagnostics(container_name),
+            )
+            self.assertTrue(state["second_started"].wait(20), self._container_diagnostics(container_name))
             killed = subprocess.run(["docker", "kill", container_name], capture_output=True, text=True, check=False)
             self.assertEqual(killed.returncode, 0, killed.stderr[-2000:])
             with psycopg.connect(self.env.database_url) as db:
