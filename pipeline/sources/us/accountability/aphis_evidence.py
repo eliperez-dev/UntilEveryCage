@@ -538,6 +538,8 @@ def run_from_handoffs(
     registration_key: str | None = None,
     expected_rows: Mapping[str, int] | None = None,
     document_refs: Mapping[str, Iterable[Mapping[str, Any]]] | None = None,
+    profile_input_rows: Mapping[str, int] | None = None,
+    quarantine_rows_by_profile: Mapping[str, Iterable[Mapping[str, Any]]] | None = None,
 ) -> dict[str, Any]:
     """Consume lane-specific APHIS observation handoffs into one packet.
 
@@ -545,11 +547,16 @@ def run_from_handoffs(
     The source artifact checksum is retained as row provenance; callers that
     also retain the raw files can use the standalone artifact verifier before
     treating those bytes as independently verified.
+
+    ``profile_input_rows`` and ``quarantine_rows_by_profile`` are explicit
+    acquisition-lane accounting inputs. They allow an accepted-only handoff
+    to retain adapter quarantine and source capture totals without guessing
+    that excluded rows were absent.
     """
     records: dict[str, list[dict[str, Any]]] = {profile: [] for profile in PROFILES}
     provenance: dict[tuple[str, str], dict[str, Any]] = {}
     failures: list[dict[str, Any]] = []
-    profile_input_rows: dict[str, int] = {}
+    observed_input_rows: dict[str, int] = {}
     for profile in PROFILES:
         handoff = handoff_dirs.get(profile)
         if handoff is None:
@@ -563,7 +570,7 @@ def run_from_handoffs(
         source_url = _text(manifest.get("source_url"))
         retrieved = _text(manifest.get("retrieved_at_utc"))
         digest = _text(manifest.get("source_artifact_sha256") or manifest.get("checksum_sha256"))
-        profile_input_rows[profile] = len(rows)
+        observed_input_rows[profile] = len(rows)
         provenance[("us.aphis", profile)] = {
             "artifact_sha256": digest,
             "source_url": source_url,
@@ -595,8 +602,9 @@ def run_from_handoffs(
         registration_key=registration_key,
         expected_rows=expected_rows,
         input_failures=failures,
-        profile_input_rows=profile_input_rows,
+        profile_input_rows=profile_input_rows or observed_input_rows,
         document_refs=document_refs,
+        quarantine_rows_by_profile=quarantine_rows_by_profile,
     )
     manifest = write_packet(packet_dir, packet)
     return {"packet": packet, "manifest": manifest, "graph": graph, "input_failures": failures}

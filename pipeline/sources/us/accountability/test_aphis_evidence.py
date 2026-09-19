@@ -152,6 +152,38 @@ class AphisEvidencePacketTests(unittest.TestCase):
             self.assertNotIn("link_missing_or_invalid_provenance", summary["links"]["excluded_reasons"])
             self.assertEqual(summary["publication_status"], "not_eligible")
 
+    def test_handoff_accounting_keeps_adapter_quarantine_distinct_from_missing_rows(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            records = json.loads((Path(__file__).parent / "fixtures" / "current_identity.json").read_text(encoding="utf-8"))["aphis"]
+            handoffs = {}
+            for profile in ("registrations", "annual_reports", "inspections"):
+                handoff = root / profile
+                handoff.mkdir()
+                payload = b"".join((json.dumps(row, sort_keys=True) + "\n").encode() for row in records[profile])
+                (handoff / "records.jsonl").write_bytes(payload)
+                (handoff / "manifest.json").write_text(json.dumps({
+                    "contract_version": "us-aphis-observation-handoff-v1", "source_id": "us.aphis",
+                    "profile": profile, "source_url": "https://example.invalid/" + profile,
+                    "retrieved_at_utc": "2026-09-19T00:00:00Z", "source_artifact_sha256": "a" * 64,
+                    "normalized_rows": len(records[profile]), "normalized_sha256": hashlib.sha256(payload).hexdigest(),
+                    "graph_candidate_emission": False, "auto_merge": False, "release_state": "not-created",
+                    "publication_state": "private-candidate", "review_state": "review_required",
+                    "privacy_gate": "pending", "coordinate_gate": "review_required", "test_only": True,
+                    "row_payloads_included": True,
+                }), encoding="utf-8")
+                handoffs[profile] = handoff
+            quarantine = {"reasons": ["duplicate_observation_id"], "record": {"source_record_key": "inspections:quarantined"}}
+            result = run_from_handoffs(
+                handoffs, root / "packet", profile_input_rows={"inspections": len(records["inspections"]) + 1},
+                quarantine_rows_by_profile={"inspections": [quarantine]},
+            )
+            summary = result["packet"]["row_free_summary"]
+            inspections = summary["profiles"]["inspections"]
+            self.assertEqual(inspections["input_rows"], len(records["inspections"]) + 1)
+            self.assertEqual(inspections["quarantined_rows"], 1)
+            self.assertNotIn("not_observed", summary["timeline_state_counts"])
+
     def test_aggregate_metadata_hash_cannot_be_link_provenance(self):
         records = self._records()
         registration_key = records["registrations"][0]["source_record_key"]
