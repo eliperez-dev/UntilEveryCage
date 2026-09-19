@@ -147,10 +147,20 @@ def _provenance(
         profile_keys.append("annual_reports")
     values = None
     if source_record_key:
-        values = (
-            provenance.get((source_id, profile, source_record_key))
-            or provenance.get(f"{source_id}:{profile}:{source_record_key}")
-        )
+        exact_profiles = [profile]
+        if profile == "amendments":
+            # Amendments are often carried in the annual-report artifact, but
+            # their source-record key remains version-specific. Prefer that
+            # exact row key under either explicit profile spelling before any
+            # profile-level fallback.
+            exact_profiles.append("annual_reports")
+        for exact_profile in exact_profiles:
+            values = (
+                provenance.get((source_id, exact_profile, source_record_key))
+                or provenance.get(f"{source_id}:{exact_profile}:{source_record_key}")
+            )
+            if values:
+                break
     for profile_key in profile_keys:
         if not values:
             values = (

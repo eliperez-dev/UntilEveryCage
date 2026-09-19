@@ -69,6 +69,21 @@ class CurrentIdentityGraphTests(unittest.TestCase):
         self.assertEqual(amendment_links[0]["assertion_status"], "candidate")
         self.assertTrue(any(entity["entity_type"] == "amendments" for entity in graph["entities"]))
 
+    def test_amendment_row_uses_exact_annual_artifact_provenance_before_profile_fallback(self):
+        payload = load_fixture()
+        amendment = copy.deepcopy(payload["aphis"]["annual_reports"][0])
+        amendment["source_record_key"] = "amendments:00-B-TEST-001:2025:2"
+        amendment["normalized"]["evidence_type"] = "amendments"
+        payload["aphis"]["annual_reports"].append(amendment)
+        payload["provenance"][("us.aphis", "annual_reports", amendment["source_record_key"])] = {
+            "artifact_sha256": "e" * 64,
+            "source_url": "https://example.invalid/annual-page.csv",
+            "retrieved_at_utc": "2026-09-19T00:02:00Z",
+        }
+        graph = self.build(payload)
+        link = next(item for item in graph["candidates"] if item["right"]["profile"] == "amendments")
+        self.assertEqual(link["evidence"]["provenance"]["us.aphis:amendments"]["artifact_sha256"], "e" * 64)
+
     def test_same_name_different_address_is_not_a_join(self):
         payload = load_fixture()
         payload["aphis"]["annual_reports"][0]["normalized"]["certificate_number"] = ""

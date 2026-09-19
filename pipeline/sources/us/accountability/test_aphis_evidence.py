@@ -134,6 +134,8 @@ class AphisEvidencePacketTests(unittest.TestCase):
                 (handoff / "manifest.json").write_text(json.dumps({
                     "contract_version": "us-aphis-observation-handoff-v1",
                     "source_id": "us.aphis", "profile": profile,
+                    "evidence_origin": "synthetic",
+                    "capture_classification": "synthetic-test-fixture",
                     "source_url": f"https://example.invalid/{profile}",
                     "retrieved_at_utc": "2026-09-19T00:00:00Z",
                     "source_artifact_sha256": "a" * 64,
@@ -151,8 +153,8 @@ class AphisEvidencePacketTests(unittest.TestCase):
             self.assertGreater(summary["links"]["quarantined_count"], 0)
             self.assertNotIn("link_missing_or_invalid_provenance", summary["links"]["excluded_reasons"])
             self.assertEqual(summary["publication_status"], "not_eligible")
-            self.assertEqual(summary["evidence_origin"], "government-sourced")
-            self.assertEqual(summary["capture_classification"], "real-retained-source-handoff")
+            self.assertEqual(summary["evidence_origin"], "synthetic")
+            self.assertEqual(summary["capture_classification"], "synthetic-test-fixture")
 
     def test_handoff_accounting_keeps_adapter_quarantine_distinct_from_missing_rows(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -185,6 +187,25 @@ class AphisEvidencePacketTests(unittest.TestCase):
             self.assertEqual(inspections["input_rows"], len(records["inspections"]) + 1)
             self.assertEqual(inspections["quarantined_rows"], 1)
             self.assertNotIn("not_observed", summary["timeline_state_counts"])
+
+    def test_explicit_input_total_must_reconcile_with_accepted_and_quarantine(self):
+        records = self._records()
+        with self.assertRaisesRegex(ValueError, "input row reconciliation failed"):
+            build_packet(
+                records_by_profile=records,
+                provenance={},
+                profile_input_rows={"inspections": len(records["inspections"]) + 1},
+                quarantine_rows_by_profile={"inspections": []},
+            )
+
+    def test_expected_total_cannot_be_lower_than_captured_input(self):
+        records = self._records()
+        with self.assertRaisesRegex(ValueError, "expected row count underreported"):
+            build_packet(
+                records_by_profile=records,
+                provenance={},
+                expected_rows={"inspections": len(records["inspections"]) - 1},
+            )
 
     def test_aggregate_metadata_hash_cannot_be_link_provenance(self):
         records = self._records()

@@ -255,6 +255,7 @@ def build_packet(
     """Build deterministic private packet and row-free summary in memory."""
     failures = [dict(item) for item in input_failures]
     expected_rows = dict(expected_rows or {})
+    explicit_input_rows = profile_input_rows is not None
     profile_input_rows = dict(profile_input_rows or {})
     quarantine_rows_by_profile = quarantine_rows_by_profile or {}
     document_refs = document_refs or {}
@@ -270,6 +271,22 @@ def build_packet(
     profile_summary: dict[str, dict[str, Any]] = {}
     for profile in PROFILES:
         rows = accepted[profile]
+        adapter_quarantine = [dict(item) for item in quarantine_rows_by_profile.get(profile, ())]
+        captured_rows = int(profile_input_rows.get(profile, len(rows) + len(adapter_quarantine)))
+        if captured_rows < 0:
+            raise AphisEvidenceError(f"negative input row count for {profile}")
+        if explicit_input_rows and profile in profile_input_rows and captured_rows != len(rows) + len(adapter_quarantine):
+            raise AphisEvidenceError(
+                f"input row reconciliation failed for {profile}: "
+                f"declared={captured_rows}, accepted={len(rows)}, adapter_quarantined={len(adapter_quarantine)}"
+            )
+        expected = expected_rows.get(profile)
+        if expected is not None and int(expected) < 0:
+            raise AphisEvidenceError(f"negative expected row count for {profile}")
+        if expected is not None and captured_rows > int(expected):
+            raise AphisEvidenceError(
+                f"expected row count underreported for {profile}: captured={captured_rows}, expected={expected}"
+            )
         duplicate_keys = {key for key, count in occurrences.items() if count > 1}
         profile_failures = [item for item in failures if _text(item.get("profile")) == profile]
         observed = quarantined = 0
@@ -307,14 +324,11 @@ def build_packet(
             timeline.append(evidence)
             private_rows.append({"evidence": evidence, "record": _safe_record(record)})
             timeline.extend(_document_events(key, document_refs.get(key, ())))
-        adapter_quarantine = [dict(item) for item in quarantine_rows_by_profile.get(profile, ())]
         for item in adapter_quarantine:
             record = item.get("record") if isinstance(item.get("record"), Mapping) else {}
             timeline.append({"state": "quarantined", "profile": profile,
                              "source_record_key": record.get("source_record_key"),
                              "reason": "adapter_quarantine", "reasons": list(item.get("reasons", ()))})
-        expected = expected_rows.get(profile)
-        captured_rows = int(profile_input_rows.get(profile, len(rows) + len(adapter_quarantine)))
         if expected is not None and captured_rows < int(expected):
             timeline.append({"state": "not_observed", "profile": profile, "period": None,
                              "missing_count": int(expected) - captured_rows,
@@ -558,6 +572,8 @@ def run_from_handoffs(
     provenance: dict[tuple[str, str], dict[str, Any]] = {}
     failures: list[dict[str, Any]] = []
     observed_input_rows: dict[str, int] = {}
+    evidence_origins: list[str] = []
+    capture_classifications: list[str] = []
     for profile in PROFILES:
         handoff = handoff_dirs.get(profile)
         if handoff is None:
@@ -571,6 +587,12 @@ def run_from_handoffs(
         source_url = _text(manifest.get("source_url"))
         retrieved = _text(manifest.get("retrieved_at_utc"))
         digest = _text(manifest.get("source_artifact_sha256") or manifest.get("checksum_sha256"))
+        origin = _text(manifest.get("evidence_origin"))
+        classification = _text(manifest.get("capture_classification"))
+        if origin:
+            evidence_origins.append(origin)
+        if classification:
+            capture_classifications.append(classification)
         observed_input_rows[profile] = len(rows)
         provenance[("us.aphis", profile)] = {
             "artifact_sha256": digest,
@@ -607,13 +629,17 @@ def run_from_handoffs(
         document_refs=document_refs,
         quarantine_rows_by_profile=quarantine_rows_by_profile,
     )
+    def _consensus(values: list[str], fallback: str) -> str:
+        distinct = set(values)
+        return next(iter(distinct)) if len(distinct) == 1 else fallback
+
     # ``test_only`` is the existing private/no-publication gate on this
-    # handoff contract. It does not mean the source is synthetic. Keep source
-    # origin explicit so real government evidence is not mislabeled as a test
-    # fixture merely because publication is blocked.
+    # handoff contract. It does not establish source origin. Only explicit,
+    # consistent handoff metadata may classify the evidence; otherwise retain
+    # an unknown state rather than using a URL or source name as a heuristic.
     for value in (packet["row_free_summary"], packet["private_packet"]):
-        value["evidence_origin"] = "government-sourced"
-        value["capture_classification"] = "real-retained-source-handoff"
+        value["evidence_origin"] = _consensus(evidence_origins, "unknown")
+        value["capture_classification"] = _consensus(capture_classifications, "unknown-retained-handoff")
     manifest = write_packet(packet_dir, packet)
     return {"packet": packet, "manifest": manifest, "graph": graph, "input_failures": failures}
 
