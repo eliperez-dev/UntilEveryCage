@@ -36,6 +36,7 @@ Kickoff validation: `npm ci` completed with no vulnerabilities; `python -m unitt
 - APHIS registration/report and inspection lanes are still in progress; their real handoffs require independent replay before integration.
 - APHIS inspection code chain `addcef0c` -> `4518bce6` -> `8b4d3c68` is QA-approved and integrated as `e946d15e`. The authoritative replay accepted 1,075 input rows, 1,071 candidates, and 4 exact-duplicate quarantines, with every source row mapped to verified original-page lineage. Public release/import remains blocked.
 - APHIS registration/annual-report per-row lineage is not yet accepted; the core/evidence owners are correcting that gap before integration.
+- The authoritative APHIS evidence-consumer stack `8430572b` -> `4ee87737` -> `3124696e` -> `285ef119` -> `da17cc34` -> `9b026c13` is code-QA approved and integrated as lane commits through `8dc35b98`. The integrated checks fail closed on quarantine accounting, origin metadata consensus, and original-page lineage; this does not accept the still-held annual/registration rows.
 
 ## Integration ledger
 
@@ -46,9 +47,9 @@ Kickoff validation: `npm ci` completed with no vulnerabilities; `python -m unitt
 | FSIS current parity | Lane 3 handoff under private storage | Pending source handoff and review |
 | France candidate | Lane 4 handoff under private storage | QA-approved and integrated for private candidate/replay |
 | Italy candidate | Lane 5 handoff under private storage | QA-approved and integrated for private candidate/replay |
-| Evidence integration | Lane 6 existing APHIS/FSIS contracts | Pending reviewed handoffs |
+| Evidence integration | Lane 6 existing APHIS/FSIS contracts | Authoritative APHIS consumer stack integrated; core annual/registration lineage still held |
 | Independent QA | Lane 7 replay and review | Pending reviewed handoffs |
-| CI/build/release engineering | Lane 8 | Storage and context boundary implemented; native CI and final integration pending |
+| CI/build/release engineering | Lane 8 | Storage/context boundary implemented; focused integration tests pass; native CI pending for current SHA |
 
 ## Release gate
 
