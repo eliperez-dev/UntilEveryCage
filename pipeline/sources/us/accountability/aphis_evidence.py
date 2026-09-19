@@ -23,6 +23,7 @@ from pipeline.sources.us.aphis.adapter import AphisContractError, AphisPublicSea
 
 
 PACKET_VERSION = "us-aphis-investigation-packet-v1"
+HANDOFF_VERSION = "us-aphis-observation-handoff-v1"
 PROFILES = ("registrations", "annual_reports", "inspections")
 STATES = frozenset({"observed", "not_observed", "quarantined", "failed", "document_not_captured"})
 _SHA256 = re.compile(r"^[0-9a-f]{64}$", re.IGNORECASE)
@@ -476,6 +477,129 @@ def run_from_wave2(
     )
     manifest = write_packet(packet_dir, packet)
     return {"packet": packet, "manifest": manifest}
+
+
+def _read_observation_handoff(handoff_dir: str | Path, expected_profile: str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Read one source-local APHIS handoff without scanning its parent tree.
+
+    Acquisition lanes hand off normalized rows separately.  This boundary
+    verifies the handoff payload and its private contract, while leaving raw
+    artifact-byte verification to an optional manifest/artifact replay.
+    """
+    root = Path(handoff_dir).resolve()
+    manifest_path = root / "manifest.json"
+    records_path = root / "records.jsonl"
+    if not manifest_path.is_file() or not records_path.is_file():
+        raise AphisEvidenceError(f"APHIS handoff is incomplete: {root}")
+    manifest = _json(manifest_path)
+    required = {
+        "contract_version": HANDOFF_VERSION,
+        "source_id": "us.aphis",
+        "profile": expected_profile,
+        "release_state": "not-created",
+        "publication_state": "private-candidate",
+        "review_state": "review_required",
+        "privacy_gate": "pending",
+        "coordinate_gate": "review_required",
+        "graph_candidate_emission": False,
+        "auto_merge": False,
+        "test_only": True,
+        "row_payloads_included": True,
+    }
+    for key, value in required.items():
+        if manifest.get(key) != value:
+            raise AphisEvidenceError(f"APHIS handoff {root} violates {key} contract")
+    payload = records_path.read_bytes()
+    actual_hash = hashlib.sha256(payload).hexdigest()
+    if actual_hash != _text(manifest.get("normalized_sha256")):
+        raise AphisEvidenceError(f"APHIS handoff payload checksum mismatch: {root}")
+    try:
+        rows = [json.loads(line) for line in payload.decode("utf-8").splitlines() if line]
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise AphisEvidenceError(f"APHIS handoff payload is malformed: {root}") from exc
+    if len(rows) != int(manifest.get("normalized_rows", -1)):
+        raise AphisEvidenceError(f"APHIS handoff row count mismatch: {root}")
+    for row in rows:
+        if not isinstance(row, Mapping) or _text(row.get("source_id")) != "us.aphis" or not _text(row.get("source_record_key")):
+            raise AphisEvidenceError(f"APHIS handoff row lacks source identity: {root}")
+        evidence_type = _profile(row)
+        allowed = {expected_profile}
+        if expected_profile == "annual_reports":
+            allowed.add("amendments")
+        if evidence_type not in allowed:
+            raise AphisEvidenceError(f"APHIS handoff row profile mismatch: {root}")
+    return rows, dict(manifest)
+
+
+def run_from_handoffs(
+    handoff_dirs: Mapping[str, str | Path],
+    packet_dir: str | Path,
+    *,
+    registration_key: str | None = None,
+    expected_rows: Mapping[str, int] | None = None,
+    document_refs: Mapping[str, Iterable[Mapping[str, Any]]] | None = None,
+) -> dict[str, Any]:
+    """Consume lane-specific APHIS observation handoffs into one packet.
+
+    ``handoff_dirs`` is explicit by profile and never discovered recursively.
+    The source artifact checksum is retained as row provenance; callers that
+    also retain the raw files can use the standalone artifact verifier before
+    treating those bytes as independently verified.
+    """
+    records: dict[str, list[dict[str, Any]]] = {profile: [] for profile in PROFILES}
+    provenance: dict[tuple[str, str], dict[str, Any]] = {}
+    failures: list[dict[str, Any]] = []
+    profile_input_rows: dict[str, int] = {}
+    for profile in PROFILES:
+        handoff = handoff_dirs.get(profile)
+        if handoff is None:
+            failures.append({"profile": profile, "state": "failed", "failure": "handoff_missing"})
+            continue
+        try:
+            rows, manifest = _read_observation_handoff(handoff, profile)
+        except (OSError, TypeError, ValueError, AphisEvidenceError) as exc:
+            failures.append({"profile": profile, "state": "failed", "failure": f"handoff_invalid:{type(exc).__name__}"})
+            continue
+        source_url = _text(manifest.get("source_url"))
+        retrieved = _text(manifest.get("retrieved_at_utc"))
+        digest = _text(manifest.get("source_artifact_sha256") or manifest.get("checksum_sha256"))
+        profile_input_rows[profile] = len(rows)
+        provenance[("us.aphis", profile)] = {
+            "artifact_sha256": digest,
+            "source_url": source_url,
+            "retrieved_at_utc": retrieved,
+        }
+        for row in rows:
+            row_copy = dict(row)
+            row_copy["_retained_artifact"] = {
+                "artifact_sha256": digest,
+                "source_url": source_url,
+                "retrieved_at_utc": retrieved,
+            }
+            records[profile].append(row_copy)
+            if digest:
+                provenance[("us.aphis", profile, str(row["source_record_key"]))] = dict(row_copy["_retained_artifact"])
+
+    from pipeline.sources.us.accountability.current_identity import build_current_identity_graph
+
+    graph = build_current_identity_graph(
+        aphis_records=records,
+        fsis_records=(),
+        fsis_observations=(),
+        provenance=provenance,
+    )
+    packet = build_packet(
+        records_by_profile=records,
+        provenance=provenance,
+        graph=graph,
+        registration_key=registration_key,
+        expected_rows=expected_rows,
+        input_failures=failures,
+        profile_input_rows=profile_input_rows,
+        document_refs=document_refs,
+    )
+    manifest = write_packet(packet_dir, packet)
+    return {"packet": packet, "manifest": manifest, "graph": graph, "input_failures": failures}
 
 
 def _load_verified_exports(

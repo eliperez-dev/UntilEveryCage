@@ -38,6 +38,25 @@ class CurrentIdentityGraphTests(unittest.TestCase):
         self.assertEqual(len(graph["entities"]), 5)
         self.assertTrue(all(candidate["confidence_explanation"] for candidate in graph["candidates"]))
 
+    def test_row_specific_provenance_overrides_profile_fallback(self):
+        payload = load_fixture()
+        registration = payload["aphis"]["registrations"][0]
+        report = payload["aphis"]["annual_reports"][0]
+        payload["provenance"][("us.aphis", "registrations", registration["source_record_key"])] = {
+            "artifact_sha256": "c" * 64,
+            "source_url": "https://example.invalid/registration-page.csv",
+            "retrieved_at_utc": "2026-09-19T00:00:00Z",
+        }
+        payload["provenance"][("us.aphis", "annual_reports", report["source_record_key"])] = {
+            "artifact_sha256": "d" * 64,
+            "source_url": "https://example.invalid/annual-page.csv",
+            "retrieved_at_utc": "2026-09-19T00:01:00Z",
+        }
+        graph = self.build(payload)
+        link = next(item for item in graph["candidates"] if item["right"]["profile"] == "annual_reports")
+        self.assertEqual(link["evidence"]["provenance"]["us.aphis:registrations"]["artifact_sha256"], "c" * 64)
+        self.assertEqual(link["evidence"]["provenance"]["us.aphis:annual_reports"]["artifact_sha256"], "d" * 64)
+
     def test_amended_annual_reports_remain_source_versioned_and_linkable(self):
         payload = load_fixture()
         amendment = copy.deepcopy(payload["aphis"]["annual_reports"][0])

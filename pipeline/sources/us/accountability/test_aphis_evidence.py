@@ -14,6 +14,7 @@ from .aphis_evidence import (
     build_packet,
     verify_retained_artifacts,
     run_from_wave2,
+    run_from_handoffs,
     write_packet,
 )
 from .aphis_wave2 import run_wave2
@@ -116,6 +117,41 @@ class AphisEvidencePacketTests(unittest.TestCase):
             self.assertTrue((Path(directory) / "private" / "rows.jsonl").exists())
             self.assertNotIn("source_values", (Path(directory) / "row-free-summary.json").read_text(encoding="utf-8"))
 
+    def test_source_local_handoffs_build_exact_private_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            handoffs = {}
+            records = json.loads((Path(__file__).parent / "fixtures" / "current_identity.json").read_text(encoding="utf-8"))["aphis"]
+            for profile in ("registrations", "annual_reports", "inspections"):
+                handoff = root / profile
+                handoff.mkdir()
+                payload = b"".join(
+                    (json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8")
+                    for row in records[profile]
+                )
+                digest = hashlib.sha256(payload).hexdigest()
+                (handoff / "records.jsonl").write_bytes(payload)
+                (handoff / "manifest.json").write_text(json.dumps({
+                    "contract_version": "us-aphis-observation-handoff-v1",
+                    "source_id": "us.aphis", "profile": profile,
+                    "source_url": f"https://example.invalid/{profile}",
+                    "retrieved_at_utc": "2026-09-19T00:00:00Z",
+                    "source_artifact_sha256": "a" * 64,
+                    "normalized_rows": len(records[profile]), "normalized_sha256": digest,
+                    "graph_candidate_emission": False, "auto_merge": False,
+                    "release_state": "not-created", "publication_state": "private-candidate",
+                    "review_state": "review_required", "privacy_gate": "pending",
+                    "coordinate_gate": "review_required", "test_only": True,
+                    "row_payloads_included": True,
+                }), encoding="utf-8")
+                handoffs[profile] = handoff
+            result = run_from_handoffs(handoffs, root / "packet")
+            summary = result["packet"]["row_free_summary"]
+            self.assertEqual(result["input_failures"], [])
+            self.assertGreater(summary["links"]["quarantined_count"], 0)
+            self.assertNotIn("link_missing_or_invalid_provenance", summary["links"]["excluded_reasons"])
+            self.assertEqual(summary["publication_status"], "not_eligible")
+
     def test_aggregate_metadata_hash_cannot_be_link_provenance(self):
         records = self._records()
         registration_key = records["registrations"][0]["source_record_key"]
@@ -191,8 +227,21 @@ class AphisEvidencePacketTests(unittest.TestCase):
             root = Path(directory)
             input_root = root / "input"
             input_root.mkdir()
-            for profile in ("registrations", "annual_reports", "inspections"):
-                shutil.copyfile(ROOT / "fixtures" / f"{profile}.csv", input_root / f"ExportData_{profile}.csv")
+            (input_root / "ExportData_registrations.csv").write_text(
+                "Account Name,Customer Number,Certificate Number,Registration Type,Certificate Status,Status Date\n"
+                '"Synthetic Registrant","2","00-R-0002","Class R - Research Facility","Active","2026-01-01"\n',
+                encoding="utf-8",
+            )
+            (input_root / "ExportData_annual_reports.csv").write_text(
+                "Customer Number,Certificate Number,Year,Dogs,Cats\n"
+                '"2","00-R-0002","2025","","1"\n',
+                encoding="utf-8",
+            )
+            (input_root / "ExportData_inspections.csv").write_text(
+                "Customer Number,Certificate Number,Inspection Date,Direct NCIs,Non-Critical NCIs,Critical NCIs,Teachable Moments,Site Name,Legal Name,License-Registration Type,City,State,Zip\n"
+                '"2","00-R-0002","2026-02-01","","","","","Synthetic Site","Synthetic Registrant","Class R - Research Facility","Testville","TX","75001"\n',
+                encoding="utf-8",
+            )
             wave2_dir = root / "wave2"
             run_wave2(input_root=input_root, run_dir=wave2_dir)
             result = run_from_wave2(wave2_dir, root / "packet")
@@ -202,6 +251,8 @@ class AphisEvidencePacketTests(unittest.TestCase):
             hashes = [item.get("actual_sha256") for item in summary["artifact_verification"]["artifacts"]]
             self.assertTrue(all(hashes))
             self.assertNotIn("aggregate_artifact_sha256", json.dumps(summary))
+            self.assertGreater(summary["links"]["quarantined_count"], 0)
+            self.assertNotIn("link_missing_or_invalid_provenance", summary["links"]["excluded_reasons"])
 
 
 if __name__ == "__main__":

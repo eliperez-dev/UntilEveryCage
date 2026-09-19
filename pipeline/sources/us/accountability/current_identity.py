@@ -131,19 +131,32 @@ def _provenance(
     *,
     source_id: str,
     profile: str,
+    source_record_key: str | None = None,
 ) -> dict[str, str] | None:
-    """Resolve per-profile provenance, falling back to source-wide metadata."""
+    """Resolve row provenance, then profile/source fallback metadata.
+
+    A real capture can span multiple retained source artifacts.  Prefer the
+    source-record-specific key when available so graph edges point to the
+    exact bytes containing each observation; profile/source metadata remains a
+    compatibility fallback for older handoffs and synthetic fixtures.
+    """
     profile_keys = [profile]
     # Amendments are versioned rows in the annual-report capture unless a
     # separate amendment artifact was explicitly supplied.
     if profile == "amendments":
         profile_keys.append("annual_reports")
     values = None
-    for profile_key in profile_keys:
+    if source_record_key:
         values = (
-            provenance.get((source_id, profile_key))
-            or provenance.get(f"{source_id}:{profile_key}")
+            provenance.get((source_id, profile, source_record_key))
+            or provenance.get(f"{source_id}:{profile}:{source_record_key}")
         )
+    for profile_key in profile_keys:
+        if not values:
+            values = (
+                provenance.get((source_id, profile_key))
+                or provenance.get(f"{source_id}:{profile_key}")
+            )
         if values:
             break
     values = values or provenance.get(source_id)
@@ -249,8 +262,18 @@ def _candidate(
     right_source = _text(right.get("source_id")) or "unknown"
     left_key = _source_key(left)
     right_key = _source_key(right)
-    left_provenance = _provenance(provenance, source_id=left_source, profile=left_profile)
-    right_provenance = _provenance(provenance, source_id=right_source, profile=right_profile)
+    left_provenance = _provenance(
+        provenance,
+        source_id=left_source,
+        profile=left_profile,
+        source_record_key=left_key,
+    )
+    right_provenance = _provenance(
+        provenance,
+        source_id=right_source,
+        profile=right_profile,
+        source_record_key=right_key,
+    )
     provenance_ok = left_provenance is not None and right_provenance is not None
     evidence = {
         "source_record_keys": [left_key, right_key],
@@ -482,7 +505,12 @@ def build_current_identity_graph(
     all_records.extend((record, "fsis_observations") for record in observations)
     nodes = []
     for record, profile in all_records:
-        nodes.append(_node(record, profile, _provenance(provenance, source_id=_text(record.get("source_id")) or "unknown", profile=profile)))
+        nodes.append(_node(record, profile, _provenance(
+            provenance,
+            source_id=_text(record.get("source_id")) or "unknown",
+            profile=profile,
+            source_record_key=_source_key(record),
+        )))
     nodes.sort(key=lambda node: node["entity_id"])
 
     candidates: list[dict[str, Any]] = []

@@ -151,6 +151,8 @@ def _load_profile(paths: list[Path], profile: str) -> tuple[list[dict[str, Any]]
             "artifact": metadata["artifact"],
             "artifact_sha256": metadata["sha256"],
             "byte_size": metadata["byte_size"],
+            "source_url": profile_url(profile),
+            "retrieved_at_utc": PROFILE_RETRIEVED_AT[profile],
         }
         records.extend([{**record, "_retained_artifact": row_artifact} for record in result["accepted"]])
         quarantined.extend([
@@ -302,6 +304,19 @@ def run_wave2(*, input_root: str | Path, run_dir: str | Path, expected_rows: Map
         }
         for profile in profile_manifests
     }
+    # Retain exact source-record -> artifact provenance for graph edges.  A
+    # profile can contain many pages, so its aggregate hash is accounting
+    # metadata and cannot prove which bytes contain an individual row.
+    for profile, rows in records_by_profile.items():
+        for record in rows:
+            artifact = record.get("_retained_artifact")
+            source_key = record.get("source_record_key")
+            if isinstance(artifact, Mapping) and source_key:
+                provenance[(SOURCE_ID, profile, str(source_key))] = {
+                    key: artifact[key]
+                    for key in ("artifact_sha256", "source_url", "retrieved_at_utc")
+                    if artifact.get(key)
+                }
     graph = build_current_identity_graph(
         aphis_records=graph_records,
         fsis_records=(),

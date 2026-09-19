@@ -13,6 +13,16 @@ SHA-256 and byte size. A missing artifact, invalid hash, or size mismatch is a
 visible `failed` input. A replay keeps the source retrieval timestamp from its
 manifest and is not a fresh source observation.
 
+When acquisition lanes hand off normalized observations separately, use the
+explicit `run_from_handoffs` boundary with one handoff directory for each of
+`registrations`, `annual_reports`, and `inspections`. Each directory must
+contain the existing `us-aphis-observation-handoff-v1` `manifest.json` and
+`records.jsonl`; the consumer verifies the handoff checksum, row count, source
+identity, and blocked/private state before building the same packet and
+identity graph. The handoff's source-artifact checksum remains row provenance,
+but is not treated as independently verified raw bytes unless a retained raw
+artifact is separately replayed through `verify_retained_artifacts`.
+
 Example private run after an authorized handoff:
 
 ```powershell
@@ -52,6 +62,12 @@ certificate/customer identifier matches retain matched identifier types and
 review state. Conflicts and duplicate evidence remain quarantined. Names and
 addresses are not identity evidence, and no candidate establishes ownership,
 current operation, approval, wrongdoing, or a complete animal-use total.
+
+For a real capture spanning multiple export pages, graph edges retain the
+source-record-specific artifact hash for each side of a link. Profile-level
+aggregate hashes remain accounting metadata only and cannot stand in for the
+bytes containing an individual observation. This is what allows a replay to
+distinguish an exact evidence path from a missing or unverifiable artifact.
 
 All output remains private, `not_eligible`, and `release_state: not-created`.
 Raw and parsed inputs remain outside Git under the retention and removal rules
