@@ -29,6 +29,9 @@ try {
     & docker compose -p $project -f $compose exec -T postgres psql -v ON_ERROR_STOP=1 -U uec -d uec
   if ($LASTEXITCODE -ne 0) { throw "Synthetic fixture seeding failed (exit $LASTEXITCODE)." }
 
+  # The rights proof owns its own disposable PostGIS stack and is mandatory
+  # in the canonical standard run; it must never become an accidental skip.
+  $env:UEC_RUN_RIGHTS_DB = '1'
   python pipeline/tests/run_unittest.py --start-directory pipeline/tests
   if ($LASTEXITCODE -ne 0) { throw "Python tests failed (exit $LASTEXITCODE)." }
 
@@ -36,6 +39,7 @@ try {
   if ($LASTEXITCODE -ne 0) { throw "Country adapter tests failed (exit $LASTEXITCODE)." }
 }
 finally {
+  Remove-Item Env:UEC_RUN_RIGHTS_DB -ErrorAction SilentlyContinue
   $savedPreference = $ErrorActionPreference
   $ErrorActionPreference = 'Continue'
   & docker compose -p $project -f $compose down -v --remove-orphans *> $null
