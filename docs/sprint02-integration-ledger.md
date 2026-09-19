@@ -34,13 +34,15 @@ Kickoff validation: `npm ci` completed with no vulnerabilities; `python -m unitt
 - The combined local validation passed 256 pipeline tests, 25 Jest tests, 7 developer tests, doctor, and diff checks. Native GitHub Actions run [98](https://github.com/eliperez-dev/UntilEveryCage/actions/runs/35461131905) succeeded for exact SHA `fbf4e6824792078a4c3aa5ac1f730e0629039224`.
 - FSIS current files remain blocked after bounded ordinary GETs to the three displayed official routes returned HTTP 403; no response body was retained. The row-free evidence is private at `C:\New Projects\UntilEveryCage\.private\sprint02-20260919\fsis\handoff\bounded-get-20260919.json`.
 - APHIS registration/report and inspection lanes are still in progress; their real handoffs require independent replay before integration.
+- APHIS inspection code chain `addcef0c` -> `4518bce6` -> `8b4d3c68` is QA-approved and integrated as `e946d15e`. The authoritative replay accepted 1,075 input rows, 1,071 candidates, and 4 exact-duplicate quarantines, with every source row mapped to verified original-page lineage. Public release/import remains blocked.
+- APHIS registration/annual-report per-row lineage is not yet accepted; the core/evidence owners are correcting that gap before integration.
 
 ## Integration ledger
 
 | Area | Owner/interface | Acceptance state |
 | --- | --- | --- |
-| APHIS registrations/reports | Lane 1 handoff under private storage | Pending source handoff and review |
-| APHIS inspections | Lane 2 handoff under private storage | Pending source handoff and review |
+| APHIS registrations/reports | Lane 1 handoff under private storage | Pending per-row lineage correction and QA |
+| APHIS inspections | Lane 2 handoff under private storage | QA-approved and integrated for private candidate/replay |
 | FSIS current parity | Lane 3 handoff under private storage | Pending source handoff and review |
 | France candidate | Lane 4 handoff under private storage | QA-approved and integrated for private candidate/replay |
 | Italy candidate | Lane 5 handoff under private storage | QA-approved and integrated for private candidate/replay |
