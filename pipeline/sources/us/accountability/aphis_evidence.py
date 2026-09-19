@@ -481,12 +481,13 @@ def run_from_wave2(
 def _load_verified_exports(
     verification: Mapping[str, Any],
     manifest: Mapping[str, Any],
-) -> tuple[dict[str, list[dict[str, Any]]], dict[str, list[dict[str, Any]]], dict[tuple[str, str], dict[str, Any]], dict[str, int]]:
+) -> tuple[dict[str, list[dict[str, Any]]], dict[str, list[dict[str, Any]]], dict[tuple[str, str], dict[str, Any]], dict[str, int], list[dict[str, Any]]]:
     """Parse only verified manifest-named exports for the standalone CLI."""
     records: dict[str, list[dict[str, Any]]] = defaultdict(list)
     quarantined: dict[str, list[dict[str, Any]]] = defaultdict(list)
     provenance: dict[tuple[str, str], dict[str, Any]] = {}
     input_rows: dict[str, int] = defaultdict(int)
+    failures: list[dict[str, Any]] = []
     adapter = AphisPublicSearchAdapter()
     report_profiles = manifest.get("profile_metadata") if isinstance(manifest.get("profile_metadata"), Mapping) else {}
     for item in verification.get("artifacts", ()):
@@ -499,7 +500,16 @@ def _load_verified_exports(
         try:
             result = adapter.parse_bytes(Path(path).read_bytes())
         except (OSError, AphisContractError) as exc:
-            quarantined[profile].append({"state": "failed", "reasons": [f"adapter_error:{type(exc).__name__}"]})
+            failure = {"profile": profile, "artifact": item.get("artifact"), "state": "failed", "failure": f"adapter_error:{type(exc).__name__}"}
+            failures.append(failure)
+            quarantined[profile].append({"state": "failed", "reasons": [failure["failure"]]})
+            continue
+        if result.get("profile") != profile:
+            failure = {"profile": profile, "artifact": item.get("artifact"), "state": "failed",
+                       "failure": "manifest_profile_mismatch", "parsed_profile": result.get("profile")}
+            failures.append(failure)
+            quarantined[profile].append({"state": "failed", "reasons": [failure["failure"]],
+                                         "parsed_profile": result.get("profile")})
             continue
         artifact = {"artifact_sha256": item.get("actual_sha256"), "source_url": item.get("source_url"),
                     "retrieved_at_utc": item.get("retrieved_at_utc")}
@@ -513,7 +523,7 @@ def _load_verified_exports(
         input_rows[profile] += int(result["input_rows"])
         provenance[("us.aphis", profile)] = artifact
     expected = manifest.get("expected_rows") if isinstance(manifest.get("expected_rows"), Mapping) else {}
-    return dict(records), dict(quarantined), provenance, dict(input_rows)
+    return dict(records), dict(quarantined), provenance, dict(input_rows), failures
 
 
 def _cli() -> int:
@@ -524,8 +534,8 @@ def _cli() -> int:
     args = parser.parse_args()
     manifest = _json(args.manifest)
     verification = verify_retained_artifacts(args.manifest, artifact_root=args.artifact_root)
-    records, quarantined, provenance, input_rows = _load_verified_exports(verification, manifest)
-    failures = [item for item in verification["artifacts"] if item.get("state") != "verified"]
+    records, quarantined, provenance, input_rows, parse_failures = _load_verified_exports(verification, manifest)
+    failures = [item for item in verification["artifacts"] if item.get("state") != "verified"] + parse_failures
     packet = build_packet(
         records_by_profile=records, provenance=provenance,
         expected_rows=manifest.get("expected_rows") if isinstance(manifest.get("expected_rows"), Mapping) else {},

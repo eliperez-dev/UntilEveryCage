@@ -136,6 +136,28 @@ class AphisEvidencePacketTests(unittest.TestCase):
         self.assertFalse(packet["links"])
         self.assertEqual(packet["link_quarantine"][0]["reason"], "link_missing_or_invalid_provenance")
 
+    def test_cli_fails_closed_when_manifest_profile_disagrees_with_csv(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            artifact = root / "annual.csv"
+            shutil.copyfile(ROOT / "fixtures" / "annual_reports.csv", artifact)
+            manifest = root / "input-manifest.json"
+            manifest.write_text(json.dumps({"profiles": {"registrations": {"artifacts": [{
+                "artifact": artifact.name, "path": str(artifact),
+                "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(), "byte_size": artifact.stat().st_size,
+                "source_url": "https://example.invalid/registrations", "retrieved_at_utc": "2026-09-18T00:00:00Z",
+            }]}}}), encoding="utf-8")
+            run_dir = root / "run"
+            completed = subprocess.run([
+                sys.executable, "-m", "pipeline.sources.us.accountability.aphis_evidence",
+                "--manifest", str(manifest), "--run-dir", str(run_dir),
+            ], cwd=Path(__file__).parents[4], capture_output=True, text=True, check=True)
+            output = json.loads(completed.stdout)
+            summary = json.loads((run_dir / "row-free-summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(output["input_failures"][0]["failure"], "manifest_profile_mismatch")
+            self.assertEqual(summary["profiles"]["registrations"]["observed_rows"], 0)
+            self.assertEqual(summary["profiles"]["registrations"]["coverage_state"], "failed")
+
     def test_documented_cli_parses_verified_exports_and_preserves_coverage_gap(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
