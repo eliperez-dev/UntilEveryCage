@@ -108,6 +108,30 @@ class AphisAdapterTests(unittest.TestCase):
         self.assertIn("Inspection Report ID=R-1", result["accepted"][0]["source_record_key"])
         self.assertFalse(result["accepted"][0]["normalized"]["event_identity_unresolved"])
 
+    def test_inspection_lineage_is_preserved_on_derived_rows(self):
+        raw = (
+            "Customer Number,Certificate Number,Inspection Date,Site Name,__capture_page_ordinal,__capture_page_sha256,__capture_page_byte_size,__capture_page_row,__capture_page_retrieved_at_utc,__capture_source_url\n"
+            '"2","87-R-0002","2026-08-21","North Site","3","abc","1234","7","unknown","https://example.invalid/search"\n'
+        ).encode()
+        result = AphisPublicSearchAdapter().parse_bytes(raw)
+        lineage = result["accepted"][0]["normalized"]["source_capture_lineage"]
+        self.assertEqual(lineage["page_ordinal"], 3)
+        self.assertEqual(lineage["page_row"], 7)
+        self.assertEqual(lineage["page_sha256"], "abc")
+        self.assertEqual(lineage["page_byte_size"], "1234")
+        self.assertEqual(lineage["page_retrieved_at_utc"], "unknown")
+        self.assertEqual(lineage["source_url"], "https://example.invalid/search")
+
+    def test_lineage_metadata_does_not_change_exact_payload_identity(self):
+        raw = (
+            "Customer Number,Certificate Number,Inspection Date,Site Name,__capture_page_ordinal,__capture_page_sha256,__capture_page_byte_size,__capture_page_row,__capture_page_retrieved_at_utc,__capture_source_url\n"
+            '"2","87-R-0002","2026-08-21","Same Site","1","abc","1234","7","unknown","https://example.invalid/search"\n'
+            '"2","87-R-0002","2026-08-21","Same Site","2","def","5678","1","unknown","https://example.invalid/search"\n'
+        ).encode()
+        result = AphisPublicSearchAdapter().parse_bytes(raw)
+        self.assertEqual(len(result["accepted"]), 0)
+        self.assertEqual(len(result["quarantined"]), 2)
+
     def test_unsupported_profile_fails_closed(self):
         with self.assertRaises(AphisContractError): AphisPublicSearchAdapter().parse_bytes(b"Name,Value\nA,B\n")
 

@@ -39,6 +39,9 @@ def write_private_handoff(
     payload = _jsonl(rows)
     root = Path(run_dir)
     atomic_bytes(root / "records.jsonl", payload)
+    has_page_lineage = any(
+        row.get("normalized", {}).get("source_capture_lineage") for row in rows
+    )
     manifest = {
         "contract_version": HANDOFF_VERSION,
         "source_id": "us.aphis",
@@ -47,6 +50,14 @@ def write_private_handoff(
         "retrieved_at_utc": artifact.retrieved_at_utc,
         "checksum_sha256": artifact.sha256,
         "source_artifact_sha256": source_sha256,
+        "source_artifact_classification": (
+            "derived_staging_with_original_page_lineage"
+            if has_page_lineage else "preserved_source_artifact"
+        ),
+        "source_row_lineage": (
+            "normalized.source_capture_lineage links each derived row to original page ordinal, page hash, byte size, source row, source URL, and retrieval timestamp scope"
+            if has_page_lineage else "not supplied"
+        ),
         "byte_size": artifact.byte_size,
         "code_version": artifact.code_version,
         "config_version": artifact.config_version,

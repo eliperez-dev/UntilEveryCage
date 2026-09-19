@@ -18,6 +18,7 @@ class CaptureManifestTests(unittest.TestCase):
                     writer.writerow(header)
                     writer.writerows(rows)
             output = root / "capture-manifest.json"
+            lineage = root / "staging" / "inspections-with-lineage.csv"
             manifest = build_capture_manifest(
                 [root / "page-01.csv", root / "page-02.csv"],
                 output_path=output,
@@ -25,12 +26,21 @@ class CaptureManifestTests(unittest.TestCase):
                 retrieved_at_utc="2026-09-19T18:00:00Z",
                 query_context={"earliest_inspection_date": "2025-01-01"},
                 excluded_files=["unrelated-download.csv"],
+                lineage_output_path=lineage,
             )
 
             self.assertEqual(manifest["input_rows"], 3)
             self.assertEqual(manifest["page_count"], 2)
             self.assertEqual([page["ordinal"] for page in manifest["pages"]], [1, 2])
             self.assertEqual(manifest["excluded_files"], ["unrelated-download.csv"])
+            self.assertEqual(manifest["derived_artifact"]["input_rows"], 3)
+            self.assertTrue(manifest["derived_artifact"]["row_sequence_match"])
+            with lineage.open(encoding="utf-8", newline="") as handle:
+                lineage_rows = list(csv.DictReader(handle))
+            self.assertEqual(lineage_rows[1]["__capture_page_ordinal"], "2")
+            self.assertEqual(lineage_rows[1]["__capture_page_row"], "1")
+            self.assertEqual(lineage_rows[1]["__capture_page_retrieved_at_utc"], "unknown")
+            self.assertEqual(lineage_rows[1]["__capture_source_url"], "https://example.invalid/inspection-reports")
             self.assertEqual(json.loads(output.read_text(encoding="utf-8"))["input_rows"], 3)
 
     def test_rejects_header_drift(self):

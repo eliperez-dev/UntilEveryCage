@@ -43,6 +43,10 @@ AMENDMENT_COLUMNS = (
 INSPECTION_REPORT_ID_COLUMNS = (
     "Inspection Report ID", "Inspection ID", "Report ID", "Report Number",
 )
+CAPTURE_LINEAGE_COLUMNS = (
+    "__capture_page_ordinal", "__capture_page_sha256", "__capture_page_byte_size",
+    "__capture_page_row", "__capture_page_retrieved_at_utc", "__capture_source_url",
+)
 NON_ANIMAL_COLUMNS = {
     "Account Name", "Certificate Number", "Certificate Status", "Status Date",
     "Registration Type", "License Type", "Year", *CUSTOMER_COLUMNS,
@@ -52,6 +56,7 @@ NON_ANIMAL_COLUMNS = {
     "Inspection Date", "Direct NCIs", "Non-Critical NCIs", "Critical NCIs",
     "Teachable Moments", "Site Name", "Legal Name", "License-Registration Type",
     *INSPECTION_REPORT_ID_COLUMNS,
+    *CAPTURE_LINEAGE_COLUMNS,
 }
 
 
@@ -184,9 +189,30 @@ def _source_row_fingerprint(row: dict[str, Any]) -> str:
     canonical = {
         str(key): "" if value is None else str(value)
         for key, value in sorted(row.items(), key=lambda item: str(item[0]))
+        if key not in CAPTURE_LINEAGE_COLUMNS
     }
     encoded = json.dumps(canonical, ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _capture_lineage(row: dict[str, Any]) -> dict[str, Any] | None:
+    if not any(_clean(row.get(column)) for column in CAPTURE_LINEAGE_COLUMNS):
+        return None
+    lineage: dict[str, Any] = {
+        "artifact_classification": "derived_staging_with_original_page_lineage",
+        "page_sha256": _clean(row.get("__capture_page_sha256")),
+        "page_byte_size": _clean(row.get("__capture_page_byte_size")),
+        "page_retrieved_at_utc": _clean(row.get("__capture_page_retrieved_at_utc")) or "unknown",
+        "source_url": _clean(row.get("__capture_source_url")),
+    }
+    for output, column in (("page_ordinal", "__capture_page_ordinal"), ("page_row", "__capture_page_row")):
+        value = _clean(row.get(column))
+        if value is not None:
+            try:
+                lineage[output] = int(value)
+            except ValueError:
+                lineage[output] = value
+    return lineage
 
 
 def _is_amendment(row: dict[str, Any]) -> bool:
@@ -227,6 +253,7 @@ def _record(profile: str, row: dict[str, Any], line: int) -> dict[str, Any]:
     observation_key = _observation_key(profile, row)
     provisional_event_key = _provisional_event_key(profile, row)
     native_inspection_id = _native_inspection_id(row) if profile == "inspections" else None
+    capture_lineage = _capture_lineage(row)
     evidence_type = _evidence_type(profile, row)
     animal_use_fields = tuple(sorted(key for key, value in row.items() if key not in NON_ANIMAL_COLUMNS and _clean(value)))
     normalized = {
@@ -239,6 +266,7 @@ def _record(profile: str, row: dict[str, Any], line: int) -> dict[str, Any]:
         "event_identity_unresolved": profile == "inspections" and native_inspection_id is None,
         "event_identity_review_state": "review_required" if profile == "inspections" and native_inspection_id is None else "not_applicable",
         "review_state": "review_required",
+        "source_capture_lineage": capture_lineage,
         "country_code": "US",
         "evidence_type": evidence_type,
         "profile": profile,
@@ -315,6 +343,9 @@ class AphisPublicSearchAdapter:
             "schema_fingerprint": _schema_fingerprint(headers),
             "source_sha256": digest,
             "input_rows": len(rows),
+            "capture_lineage_rows": sum(
+                1 for record in records if record["normalized"].get("source_capture_lineage")
+            ),
             "evidence_type_counts": dict(sorted(Counter(record["normalized"]["evidence_type"] for record in accepted).items())),
         }
 
@@ -351,6 +382,16 @@ class AphisPublicSearchAdapter:
             "geocoding": "disabled",
             "publication_gate": "blocked",
             "test_only": True,
+            "source_artifact_classification": (
+                "derived_staging_with_original_page_lineage"
+                if result["capture_lineage_rows"]
+                else "preserved_source_artifact"
+            ),
+            "source_row_lineage": (
+                "normalized.source_capture_lineage links each derived row to original page ordinal, page hash, page row, and bundle retrieval timestamp"
+                if result["capture_lineage_rows"]
+                else "not supplied"
+            ),
             "coverage": "APHIS Animal Care public-search observations for the captured profile only; AWA coverage, currentness, completeness, and facility equivalence remain unknown; no FSIS/facility merge",
             "coverage_limitations": [
                 "The public-search export is not a complete census of animal use or all AWA-regulated entities.",
