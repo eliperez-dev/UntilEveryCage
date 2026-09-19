@@ -3,6 +3,7 @@
 /node_modules/
 /snapshots/
 /static/v2-preview/
+/.private/
 /\.shuttle*
 /Secrets*.toml
 __pycache__/

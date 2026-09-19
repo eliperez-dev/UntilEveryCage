@@ -1,6 +1,8 @@
 target
 data/
 private/
+.private/
+**/.private/
 staging/
 .tmp/
 tmp/
