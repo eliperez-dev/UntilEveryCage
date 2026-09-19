@@ -217,8 +217,9 @@ export function buildLocationPopup(location, facilityTypeLabel) {
     const grantDate = location.grant_date;
     const phone = location.phone;
     const dbas = location.dbas;
-    const hasCoordinates = Number.isFinite(Number(location.latitude)) && Number.isFinite(Number(location.longitude));
-    const directionsUrl = hasCoordinates
+    const hasCoordinates = (!location.v2 || (location.latitude != null && location.longitude != null && location.latitude !== '' && location.longitude !== ''))
+        && Number.isFinite(Number(location.latitude)) && Number.isFinite(Number(location.longitude));
+    const directionsUrl = hasCoordinates && (!location.v2 || location.v2.displayPrecision === 'exact')
         ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${location.latitude},${location.longitude}`)}`
         : null;
     const coordinateText = hasCoordinates

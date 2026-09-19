@@ -1,0 +1,41 @@
+{
+  "schema_version": "au-private-artifact-metadata-v1",
+  "source_id": "au.npi.facilities",
+  "landing_url": "https://data.gov.au/data/dataset/043f58e0-a188-4458-b61c-04e5b540aea4",
+  "source_url": "https://data.gov.au/data/dataset/043f58e0-a188-4458-b61c-04e5b540aea4/resource/f83cdee9-ebcb-4f24-941b-34bb2f0996cf/download/facilities.csv",
+  "retrieved_at_utc": "2026-09-16T07:15:42.2821369Z",
+  "publication_or_dataset_date": "2026-04-01",
+  "http": {
+    "method": "GET (artifact) and HEAD (header observation)",
+    "status": 200,
+    "content_type": "text/csv; charset=utf-8",
+    "content_disposition": "inline; filename=facilities.csv",
+    "etag": "W/\"1774941864.963-3248241-3908178080\"",
+    "last_modified": "Tue, 31 Mar 2026 07:24:24 GMT",
+    "cache_control": "public, max-age=60, immutable",
+    "vary": "Cookie, Accept-Encoding, Origin",
+    "x_cache": "Hit from cloudfront",
+    "age": "28",
+    "server": "nginx"
+  },
+  "artifact": {
+    "relative_path": "data/raw/australia/npi-facilities.csv",
+    "retention": "ignored private research artifact; never a release",
+    "byte_size": 3248241,
+    "sha256": "a0be4c37d588b391ea81baf240f675b2c9f3d9ee0210f9c451c7371eac11d6c7",
+    "input_rows": 8140,
+    "normalized_rows": null,
+    "quarantined_rows": null,
+    "header_sha256": "8f5ae1618ec0a863d0647d48a4606bea82c9c68317b153503c43968aeb4b6d06",
+    "columns": ["facility_id", "jurisdiction_code", "jurisdiction_facility_id", "registered_business_name", "facility_name", "abn", "acn", "street_address", "suburb", "state", "postcode", "latitude", "longitude", "primary_anzsic_class_code", "primary_anzsic_class_name", "main_activities", "facility_website", "first_report_year", "latest_report_year", "latest_report_id", "latest_report_url", "reports"]
+  },
+  "bounded_observations": {
+    "state_counts": {"ACT": 54, "NSW": 1630, "NT": 208, "QLD": 1884, "SA": 770, "TAS": 311, "VIC": 1636, "WA": 1647},
+    "anzsic_class_counts_relevant_text": {"0171 Poultry Farming (Meat)": 414, "1111 Meat Processing": 100, "1112 Poultry Processing": 28, "1113 Cured Meat and Smallgoods Manufacturing": 9, "1192 Prepared Animal and Bird Feed Manufacturing": 59},
+    "rows_with_missing_latitude_or_longitude": 0,
+    "distinct_facility_id": 8140,
+    "latest_report_year_range": [1998, 2024],
+    "warning": "Counts are private snapshot diagnostics. ANZSIC class is reported business classification, not proof of slaughter, current operation, animal use, ownership, or regulatory approval."
+  },
+  "terms": "Catalogue identifies CC BY 4.0 International; attribution to the Commonwealth of Australia/DCCEEW is required. Confirm dataset-specific reuse and privacy review before any publication."
+}

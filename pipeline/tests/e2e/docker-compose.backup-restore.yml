@@ -1,0 +1,4 @@
+# This drill uses docker compose exec exclusively; never publish PostgreSQL on the host.
+services:
+  postgres:
+    ports: !reset []

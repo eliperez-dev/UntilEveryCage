@@ -5,8 +5,15 @@ import urllib.parse
 import json
 import time
 import sys
+import os
 
-GEOCODIO_API_KEY = "e1cd921cddddc5dddbd6bc965b1cd5c6666c229"
+
+def get_geocodio_api_key():
+    key = os.environ.get("GEOCODIO_API_KEY", "").strip()
+    if not key:
+        raise RuntimeError("GEOCODIO_API_KEY is required for geocoding; set it in the process environment")
+    return key
+
 GEOCODIO_URL = "https://api.geocod.io/v1.7/geocode"
 
 def build_address(row):
@@ -23,7 +30,7 @@ def geocode_address(address):
     try:
         params = urllib.parse.urlencode({
             'q': address,
-            'api_key': GEOCODIO_API_KEY
+            'api_key': get_geocodio_api_key()
         })
         url = f"{GEOCODIO_URL}?{params}"
         

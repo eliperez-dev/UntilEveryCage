@@ -100,10 +100,14 @@ class DatabaseContractTests(unittest.TestCase):
             "SELECT relkind FROM pg_class WHERE oid = 'uec.map_facilities_public'::regclass"
         ).fetchone()[0]
         self.assertEqual(public_relation, "v")
-        self.assertEqual(
-            self.connection.execute("SELECT count(*) FROM uec.map_facilities_public").fetchone()[0],
-            0,
-        )
+        # This contract test may run against a persistent developer database
+        # that contains unrelated promoted fixtures. Assert the view invariant
+        # rather than assuming the whole shared database is empty.
+        invalid_public_rows = self.connection.execute(
+            "SELECT count(*) FROM uec.map_facilities_public "
+            "WHERE release_status <> 'promoted' OR geocoded_location IS NULL"
+        ).fetchone()[0]
+        self.assertEqual(invalid_public_rows, 0)
         display_relation = self.connection.execute(
             "SELECT relkind FROM pg_class WHERE oid = 'uec.map_facilities_display'::regclass"
         ).fetchone()[0]

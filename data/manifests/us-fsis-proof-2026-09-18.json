@@ -1,0 +1,57 @@
+{
+  "manifest_version": "us-fsis-proof-v1",
+  "source_id": "us.fsis",
+  "authority": "USDA Food Safety and Inspection Service",
+  "page_url": "https://www.fsis.usda.gov/inspection/establishments/meat-poultry-and-egg-product-inspection-directory",
+  "page_observed_in_normal_browser": true,
+  "page_last_updated_observed": "2026-09-14",
+  "dashboard_updated_observed": "2026-09-14T14:30:33",
+  "dashboard_aggregate_count_observed": 7241,
+  "direct_csv_acquisition": {
+    "status": "blocked",
+    "directory_by_number_http_status": 403,
+    "demographics_http_status": 403,
+    "bypass_attempted": false,
+    "raw_artifacts_captured": false
+  },
+  "legacy_continuity_rehearsal": {
+    "status": "private-candidate",
+    "current_source_claim": false,
+    "run_dir": "data/staging/reacquisition/us.fsis/legacy-continuity-2026-09-18-handoff/lifecycle",
+    "directory_rows": 7099,
+    "demographic_rows": 7105,
+    "matched_demographic_rows": 7089,
+    "orphan_demographic_rows": 16,
+    "identity_conflicts": 3,
+    "input_rows": 7115,
+    "normalized_rows": 7096,
+    "quarantined_rows": 19,
+    "quarantine_reason_counts": {
+      "conflicting_demographic_identity": 3,
+      "unmatched_demographic_identity": 16
+    },
+    "schema_fingerprint": "e8761847a9f8c843c7fdae4586ef278d075a59fcbb44fa633525359ba6297e75",
+    "demographic_schema_fingerprint": "286f3e59734ca71d0783d69bdd9f575b206982f29b278aca530ac66983f7bdac",
+    "release_state": "not-created",
+    "publication_state": "private-candidate",
+    "geocoding": "disabled",
+    "unmatched_demographic_is_not_closure": true
+  },
+  "private_candidate_import": {
+    "status": "partial",
+    "full_first_import_preview_observed": true,
+    "public_release_promoted": false,
+    "row_free_runner_report": "not-retained",
+    "limitation": "The disposable Docker runner reached the test-only preview with the full first import, but the row-level idempotent replay/teardown exceeded the practical execution window; no public release or persistent database was retained."
+  },
+  "current_row_level_totals": "not_observed",
+  "current_v1_identity_continuity": "not_observed",
+  "publication_eligibility": "blocked",
+  "raw_row_payloads_included": false,
+  "limitations": [
+    "Dashboard aggregate count is not a row-level source capture.",
+    "The private continuity rehearsal uses a retained legacy snapshot with unknown effective date.",
+    "State inspection programs, APHIS populations, privacy review, terms review, and project approval remain outside this proof.",
+    "No source disappearance is interpreted as closure."
+  ]
+}

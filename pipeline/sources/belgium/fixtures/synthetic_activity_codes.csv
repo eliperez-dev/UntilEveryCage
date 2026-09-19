@@ -1,0 +1,5 @@
+lap_code,place_code,place_description,activity_description,product_description,approval_code,approval_description
+LAP-SH,PL-SH,Slaughterhouse,Slaughterhouse,Meat,APP,Approval
+LAP-CS,PL-CS,Cold store,Storage,Meat,AUTH,Authorization
+LAP-CP,PL-CP,Cutting plant,Cutting,Meat,APP,Approval
+LAP-ABP,PL-ABP,Animal by-product facility,Animal by-products,By-products,APP,Approval

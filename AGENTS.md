@@ -6,11 +6,25 @@ The current public application is a Rust/Axum backend in `src/` with a vanilla J
 
 ## Build, Test, and Development Commands
 
-- `cargo run` starts the current application on port 8000.
-- `npm test` runs the Jest suite.
+- `python scripts/dev.py --help` is the preferred V2 developer entrypoint; use
+  `python scripts/dev.py --json doctor` before starting local services.
+- Run `npm ci` once at the repository root before `npm test`; `npm test` runs
+  the legacy/static Jest suite. The Svelte preview has separate dependencies:
+  run `npm --prefix frontend ci` before using its commands.
+- `cargo run` starts the current application on port 8000 when its configured
+  database is available; `python scripts/dev.py up` is the reproducible local
+  V2 setup path.
 - `npm run test:coverage` runs Jest with coverage.
 - `powershell -ExecutionPolicy Bypass -File pipeline/scripts/maintenance/build-legacy-manifest.ps1` regenerates the legacy file inventory and SHA-256 manifest in `data/manifests/`.
 - `python pipeline/scripts/diagnostics/inspect-denmark-smiley.py static_data/dk/Smiley_xml.xml` inspects the Danish XML without transforming it.
+
+For a clean database-backed validation, use
+`pwsh -NoProfile -ExecutionPolicy Bypass -File pipeline/tests/run-standard.ps1`.
+The persistent `uec-local-v2` database rejects changed migration checksums on
+purpose. If local setup reports `migration checksum changed after application`,
+the named volume belongs to an older checkout; preserve it unless it is known
+to be disposable, and follow the reset/troubleshooting instructions in
+`docs/development.md` rather than editing migration history.
 
 ## Data Credibility and Provenance
 

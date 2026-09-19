@@ -1,0 +1,2457 @@
+{
+  "as_of": "2026-09-16T00:00:00Z",
+  "country_counts": {
+    "ca": 1323,
+    "de": 9254,
+    "dk": 1561,
+    "es": 4222,
+    "fr": 3201,
+    "mx": 14836,
+    "nz": 1652,
+    "uk": 7600,
+    "us": 7101
+  },
+  "funnel": {
+    "city_coarse_candidate": 2028,
+    "geocode_candidate": 1,
+    "map_ready_under_current_rules": 48640,
+    "privacy_restricted": 72,
+    "source_coordinate_invalid_or_missing": 2047,
+    "source_coordinate_valid": 48703,
+    "total": 50750,
+    "unresolved": 9
+  },
+  "sample": {
+    "composition": {
+      "ca|address_complete|source_coordinate_valid": 8,
+      "de|city_only|source_coordinate_invalid_or_missing": 4,
+      "de|city_only|source_coordinate_valid": 20,
+      "dk|city_only|source_coordinate_invalid_or_missing": 5,
+      "dk|city_only|source_coordinate_valid": 6,
+      "es|address_complete|source_coordinate_valid": 14,
+      "es|city_only|source_coordinate_valid": 8,
+      "fr|address_missing|source_coordinate_valid": 20,
+      "mx|address_complete|source_coordinate_valid": 20,
+      "mx|city_only|source_coordinate_valid": 15,
+      "nz|city_only|source_coordinate_invalid_or_missing": 3,
+      "nz|city_only|source_coordinate_valid": 8,
+      "uk|address_complete|source_coordinate_valid": 20,
+      "uk|city_only|source_coordinate_valid": 9,
+      "us|address_complete|source_coordinate_valid": 20
+    },
+    "size": 180
+  },
+  "sample_rows": [
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "de",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_invalid_or_missing",
+      "country": "dk",
+      "outcome": "city_coarse_candidate"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "de",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "de",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "nz",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "de",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "de",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "de",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "de",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "de",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "dk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "de",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "us",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "ca",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "nz",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "uk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "us",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "de",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "es",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_invalid_or_missing",
+      "country": "nz",
+      "outcome": "city_coarse_candidate"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "uk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "us",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "es",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "uk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "de",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "uk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "us",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "us",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "us",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "uk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_missing",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "fr",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "de",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "de",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "de",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "uk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "uk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "de",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "de",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_invalid_or_missing",
+      "country": "de",
+      "outcome": "city_coarse_candidate"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "de",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "de",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "uk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_missing",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "fr",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "uk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_missing",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "fr",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "uk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "de",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "de",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "uk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "us",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "uk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "us",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "uk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "us",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_invalid_or_missing",
+      "country": "nz",
+      "outcome": "city_coarse_candidate"
+    },
+    {
+      "address_quality": "address_missing",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "fr",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "uk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "us",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_missing",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "fr",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "uk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_invalid_or_missing",
+      "country": "de",
+      "outcome": "city_coarse_candidate"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "uk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "uk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "uk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "es",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "us",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "es",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "uk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "ca",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "dk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "uk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_invalid_or_missing",
+      "country": "dk",
+      "outcome": "city_coarse_candidate"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "uk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_missing",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "fr",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "uk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "us",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "uk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "uk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "us",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "us",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "nz",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "uk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "ca",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "us",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "ca",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "uk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_missing",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "fr",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "uk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_invalid_or_missing",
+      "country": "dk",
+      "outcome": "city_coarse_candidate"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "us",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "es",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "us",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "us",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "us",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "es",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "us",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "nz",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "uk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "es",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_missing",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "fr",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "es",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "es",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_missing",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "fr",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_invalid_or_missing",
+      "country": "nz",
+      "outcome": "city_coarse_candidate"
+    },
+    {
+      "address_quality": "address_missing",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "fr",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_missing",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "fr",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "nz",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "dk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_missing",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "fr",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "es",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "nz",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "dk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_missing",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "fr",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "es",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "dk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "ca",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "es",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "es",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "es",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_missing",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "fr",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "nz",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_invalid_or_missing",
+      "country": "dk",
+      "outcome": "city_coarse_candidate"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_invalid_or_missing",
+      "country": "de",
+      "outcome": "city_coarse_candidate"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "nz",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_invalid_or_missing",
+      "country": "de",
+      "outcome": "city_coarse_candidate"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "es",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_invalid_or_missing",
+      "country": "dk",
+      "outcome": "city_coarse_candidate"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "es",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_missing",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "fr",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_missing",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "fr",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "es",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_missing",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "fr",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_missing",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "fr",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "ca",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "mx",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "es",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_missing",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "fr",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "ca",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "es",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "dk",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "ca",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_missing",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "fr",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "address_complete",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "es",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "es",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "es",
+      "outcome": "map_ready_under_current_rules"
+    },
+    {
+      "address_quality": "city_only",
+      "coordinate_state": "source_coordinate_valid",
+      "country": "uk",
+      "outcome": "map_ready_under_current_rules"
+    }
+  ],
+  "schema_version": "geospatial-readiness-audit/v2",
+  "source_files": [
+    {
+      "bytes": 361801,
+      "country": "ca",
+      "path": "static_data/ca/locations.csv",
+      "sha256": "544fd7809926143d4e934f1c601e981a07b0137780f86de753ef3c54415e45f4"
+    },
+    {
+      "bytes": 3849223,
+      "country": "de",
+      "path": "static_data/de/locations.csv",
+      "sha256": "88eb00f6ae405489a7e873582aa65610ecaa3c9b475bc0046e9e8c32f48ac809"
+    },
+    {
+      "bytes": 323380,
+      "country": "dk",
+      "path": "static_data/dk/locations.csv",
+      "sha256": "b38f8165d6ea3617a13dbad950d0070490e645473bb851ddd3d907004a33b32f"
+    },
+    {
+      "bytes": 1093952,
+      "country": "es",
+      "path": "static_data/es/locations.csv",
+      "sha256": "93d36d6a760a4435c836348021fb03d98ddb4947345338ea8c199321af3e5347"
+    },
+    {
+      "bytes": 626026,
+      "country": "fr",
+      "path": "static_data/fr/locations.csv",
+      "sha256": "aeddafa5ebc19d63b6dd57777851e3e5590b5d5ddfb9cbeff37a552227e1c615"
+    },
+    {
+      "bytes": 5039068,
+      "country": "mx",
+      "path": "static_data/mx/locations.csv",
+      "sha256": "bc9b3adc80e4673bb8b996c7600b52b78e7973b1a1859608322a293aff9efdee"
+    },
+    {
+      "bytes": 410481,
+      "country": "nz",
+      "path": "static_data/nz/locations.csv",
+      "sha256": "636d80b33cc29dbd68b3c44ddf39c57db84cdd661d1c10dfab4227f8a87a3a87"
+    },
+    {
+      "bytes": 2193258,
+      "country": "uk",
+      "path": "static_data/uk/locations.csv",
+      "sha256": "4a14793c227afe558bfacfe45b05f3ae4e5332a3d502991050257320c5b53511"
+    },
+    {
+      "bytes": 4099548,
+      "country": "us",
+      "path": "static_data/us/locations.csv",
+      "sha256": "2dca259076a16a324ad9565d2d4057aa0f5e6e51bbc25a8dc1c80a4e4fbdf5c7"
+    }
+  ],
+  "strata_counts": {
+    "ca|address_complete|source_coordinate_invalid_or_missing": 1,
+    "ca|address_complete|source_coordinate_valid": 1260,
+    "ca|address_missing|source_coordinate_invalid_or_missing": 2,
+    "ca|city_only|source_coordinate_valid": 60,
+    "de|city_only|source_coordinate_invalid_or_missing": 962,
+    "de|city_only|source_coordinate_valid": 8292,
+    "dk|address_missing|source_coordinate_invalid_or_missing": 7,
+    "dk|address_missing|source_coordinate_valid": 17,
+    "dk|city_only|source_coordinate_invalid_or_missing": 409,
+    "dk|city_only|source_coordinate_valid": 1128,
+    "es|address_complete|source_coordinate_valid": 3271,
+    "es|address_missing|source_coordinate_valid": 30,
+    "es|city_only|source_coordinate_valid": 921,
+    "fr|address_missing|source_coordinate_valid": 3201,
+    "mx|address_complete|source_coordinate_valid": 12258,
+    "mx|city_only|source_coordinate_valid": 2578,
+    "nz|city_only|source_coordinate_invalid_or_missing": 665,
+    "nz|city_only|source_coordinate_valid": 987,
+    "uk|address_complete|source_coordinate_valid": 6979,
+    "uk|address_missing|source_coordinate_valid": 1,
+    "uk|city_only|source_coordinate_invalid_or_missing": 1,
+    "uk|city_only|source_coordinate_valid": 619,
+    "us|address_complete|source_coordinate_valid": 7101
+  },
+  "v1": {
+    "as_of": "2026-09-16T00:00:00Z",
+    "corpus": "V1-legacy-static-data",
+    "country_counts": {
+      "ca": 1323,
+      "de": 9254,
+      "dk": 1561,
+      "es": 4222,
+      "fr": 3201,
+      "mx": 14836,
+      "nz": 1652,
+      "uk": 7600,
+      "us": 7101
+    },
+    "funnel": {
+      "city_coarse_candidate": 2028,
+      "geocode_candidate": 1,
+      "map_ready_under_current_rules": 48640,
+      "privacy_restricted": 72,
+      "source_coordinate_invalid_or_missing": 2047,
+      "source_coordinate_valid": 48703,
+      "total": 50750,
+      "unresolved": 9
+    },
+    "method": "offline deterministic audit; no geocoder calls",
+    "provenance_fields_required_for_any_geocode": [
+      "provider",
+      "query_hash",
+      "queried_at",
+      "precision",
+      "review_state"
+    ],
+    "publication_rule": "map-ready requires current privacy eligibility and release approval; geocoding success alone never grants publication permission",
+    "sample": {
+      "composition": {
+        "ca|address_complete|source_coordinate_valid": 8,
+        "de|city_only|source_coordinate_invalid_or_missing": 4,
+        "de|city_only|source_coordinate_valid": 20,
+        "dk|city_only|source_coordinate_invalid_or_missing": 5,
+        "dk|city_only|source_coordinate_valid": 6,
+        "es|address_complete|source_coordinate_valid": 14,
+        "es|city_only|source_coordinate_valid": 8,
+        "fr|address_missing|source_coordinate_valid": 20,
+        "mx|address_complete|source_coordinate_valid": 20,
+        "mx|city_only|source_coordinate_valid": 15,
+        "nz|city_only|source_coordinate_invalid_or_missing": 3,
+        "nz|city_only|source_coordinate_valid": 8,
+        "uk|address_complete|source_coordinate_valid": 20,
+        "uk|city_only|source_coordinate_valid": 9,
+        "us|address_complete|source_coordinate_valid": 20
+      },
+      "size": 180
+    },
+    "sample_rows": [
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "de",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_invalid_or_missing",
+        "country": "dk",
+        "outcome": "city_coarse_candidate"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "de",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "de",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "nz",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "de",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "de",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "de",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "de",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "de",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "dk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "de",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "us",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "ca",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "nz",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "uk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "us",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "de",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "es",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_invalid_or_missing",
+        "country": "nz",
+        "outcome": "city_coarse_candidate"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "uk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "us",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "es",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "uk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "de",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "uk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "us",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "us",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "us",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "uk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_missing",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "fr",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "de",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "de",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "de",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "uk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "uk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "de",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "de",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_invalid_or_missing",
+        "country": "de",
+        "outcome": "city_coarse_candidate"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "de",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "de",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "uk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_missing",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "fr",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "uk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_missing",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "fr",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "uk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "de",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "de",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "uk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "us",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "uk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "us",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "uk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "us",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_invalid_or_missing",
+        "country": "nz",
+        "outcome": "city_coarse_candidate"
+      },
+      {
+        "address_quality": "address_missing",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "fr",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "uk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "us",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_missing",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "fr",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "uk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_invalid_or_missing",
+        "country": "de",
+        "outcome": "city_coarse_candidate"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "uk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "uk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "uk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "es",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "us",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "es",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "uk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "ca",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "dk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "uk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_invalid_or_missing",
+        "country": "dk",
+        "outcome": "city_coarse_candidate"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "uk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_missing",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "fr",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "uk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "us",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "uk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "uk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "us",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "us",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "nz",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "uk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "ca",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "us",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "ca",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "uk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_missing",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "fr",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "uk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_invalid_or_missing",
+        "country": "dk",
+        "outcome": "city_coarse_candidate"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "us",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "es",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "us",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "us",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "us",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "es",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "us",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "nz",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "uk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "es",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_missing",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "fr",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "es",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "es",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_missing",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "fr",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_invalid_or_missing",
+        "country": "nz",
+        "outcome": "city_coarse_candidate"
+      },
+      {
+        "address_quality": "address_missing",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "fr",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_missing",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "fr",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "nz",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "dk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_missing",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "fr",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "es",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "nz",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "dk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_missing",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "fr",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "es",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "dk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "ca",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "es",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "es",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "es",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_missing",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "fr",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "nz",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_invalid_or_missing",
+        "country": "dk",
+        "outcome": "city_coarse_candidate"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_invalid_or_missing",
+        "country": "de",
+        "outcome": "city_coarse_candidate"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "nz",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_invalid_or_missing",
+        "country": "de",
+        "outcome": "city_coarse_candidate"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "es",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_invalid_or_missing",
+        "country": "dk",
+        "outcome": "city_coarse_candidate"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "es",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_missing",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "fr",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_missing",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "fr",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "es",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_missing",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "fr",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_missing",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "fr",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "ca",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "mx",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "es",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_missing",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "fr",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "ca",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "es",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "dk",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "ca",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_missing",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "fr",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "address_complete",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "es",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "es",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "es",
+        "outcome": "map_ready_under_current_rules"
+      },
+      {
+        "address_quality": "city_only",
+        "coordinate_state": "source_coordinate_valid",
+        "country": "uk",
+        "outcome": "map_ready_under_current_rules"
+      }
+    ],
+    "schema_version": "geospatial-readiness-audit/v1",
+    "source_files": [
+      {
+        "bytes": 361801,
+        "country": "ca",
+        "path": "static_data/ca/locations.csv",
+        "sha256": "544fd7809926143d4e934f1c601e981a07b0137780f86de753ef3c54415e45f4"
+      },
+      {
+        "bytes": 3849223,
+        "country": "de",
+        "path": "static_data/de/locations.csv",
+        "sha256": "88eb00f6ae405489a7e873582aa65610ecaa3c9b475bc0046e9e8c32f48ac809"
+      },
+      {
+        "bytes": 323380,
+        "country": "dk",
+        "path": "static_data/dk/locations.csv",
+        "sha256": "b38f8165d6ea3617a13dbad950d0070490e645473bb851ddd3d907004a33b32f"
+      },
+      {
+        "bytes": 1093952,
+        "country": "es",
+        "path": "static_data/es/locations.csv",
+        "sha256": "93d36d6a760a4435c836348021fb03d98ddb4947345338ea8c199321af3e5347"
+      },
+      {
+        "bytes": 626026,
+        "country": "fr",
+        "path": "static_data/fr/locations.csv",
+        "sha256": "aeddafa5ebc19d63b6dd57777851e3e5590b5d5ddfb9cbeff37a552227e1c615"
+      },
+      {
+        "bytes": 5039068,
+        "country": "mx",
+        "path": "static_data/mx/locations.csv",
+        "sha256": "bc9b3adc80e4673bb8b996c7600b52b78e7973b1a1859608322a293aff9efdee"
+      },
+      {
+        "bytes": 410481,
+        "country": "nz",
+        "path": "static_data/nz/locations.csv",
+        "sha256": "636d80b33cc29dbd68b3c44ddf39c57db84cdd661d1c10dfab4227f8a87a3a87"
+      },
+      {
+        "bytes": 2193258,
+        "country": "uk",
+        "path": "static_data/uk/locations.csv",
+        "sha256": "4a14793c227afe558bfacfe45b05f3ae4e5332a3d502991050257320c5b53511"
+      },
+      {
+        "bytes": 4099548,
+        "country": "us",
+        "path": "static_data/us/locations.csv",
+        "sha256": "2dca259076a16a324ad9565d2d4057aa0f5e6e51bbc25a8dc1c80a4e4fbdf5c7"
+      }
+    ],
+    "strata_counts": {
+      "ca|address_complete|source_coordinate_invalid_or_missing": 1,
+      "ca|address_complete|source_coordinate_valid": 1260,
+      "ca|address_missing|source_coordinate_invalid_or_missing": 2,
+      "ca|city_only|source_coordinate_valid": 60,
+      "de|city_only|source_coordinate_invalid_or_missing": 962,
+      "de|city_only|source_coordinate_valid": 8292,
+      "dk|address_missing|source_coordinate_invalid_or_missing": 7,
+      "dk|address_missing|source_coordinate_valid": 17,
+      "dk|city_only|source_coordinate_invalid_or_missing": 409,
+      "dk|city_only|source_coordinate_valid": 1128,
+      "es|address_complete|source_coordinate_valid": 3271,
+      "es|address_missing|source_coordinate_valid": 30,
+      "es|city_only|source_coordinate_valid": 921,
+      "fr|address_missing|source_coordinate_valid": 3201,
+      "mx|address_complete|source_coordinate_valid": 12258,
+      "mx|city_only|source_coordinate_valid": 2578,
+      "nz|city_only|source_coordinate_invalid_or_missing": 665,
+      "nz|city_only|source_coordinate_valid": 987,
+      "uk|address_complete|source_coordinate_valid": 6979,
+      "uk|address_missing|source_coordinate_valid": 1,
+      "uk|city_only|source_coordinate_invalid_or_missing": 1,
+      "uk|city_only|source_coordinate_valid": 619,
+      "us|address_complete|source_coordinate_valid": 7101
+    }
+  },
+  "v2": {
+    "as_of": "2026-09-16T00:00:00Z",
+    "availability": {
+      "manifests_found": 0,
+      "note": "No V2 records are inferred from V1 rows; absent manifests/records remain unavailable.",
+      "searched_root": "static_data",
+      "sources": []
+    },
+    "corpus": "V2-normalized-manifest-runs",
+    "country_counts": {},
+    "funnel": {
+      "total": 0
+    },
+    "method": "offline deterministic audit; no geocoder calls",
+    "provenance_fields_required_for_any_geocode": [
+      "provider",
+      "query_hash",
+      "queried_at",
+      "precision",
+      "review_state"
+    ],
+    "publication_rule": "map-ready requires current privacy eligibility and release approval; geocoding success alone never grants publication permission",
+    "sample": {
+      "composition": {},
+      "size": 0
+    },
+    "sample_rows": [],
+    "schema_version": "geospatial-readiness-audit/v1",
+    "source_files": [],
+    "strata_counts": {}
+  }
+}

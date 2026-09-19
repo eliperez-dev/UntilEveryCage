@@ -30,36 +30,41 @@ def apply(database_url: str, directory: Path) -> list[str]:
                 raise
             time.sleep(1)
     assert connection is not None
+    # Keep setup and each migration in separate transactions.  A later
+    # migration failure must leave already-applied versions recorded so a
+    # retry can resume, while the failing migration and its ledger row roll
+    # back together.
     with connection:
-        connection.execute("CREATE SCHEMA IF NOT EXISTS uec")
-        connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS uec.schema_migrations (
-                version TEXT PRIMARY KEY,
-                sha256 CHAR(64) NOT NULL,
-                applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        with connection.transaction():
+            connection.execute("CREATE SCHEMA IF NOT EXISTS uec")
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS uec.schema_migrations (
+                    version TEXT PRIMARY KEY,
+                    sha256 CHAR(64) NOT NULL,
+                    applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
             )
-            """
-        )
         for path in files:
             version = path.stem
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
-            row = connection.execute(
-                "SELECT sha256 FROM uec.schema_migrations WHERE version = %s",
-                (version,),
-            ).fetchone()
-            if row:
-                if row[0] != digest:
-                    raise ValueError(f"migration checksum changed after application: {version}")
-                continue
-            sql = path.read_text(encoding="utf-8")
             with connection.transaction():
+                row = connection.execute(
+                    "SELECT sha256 FROM uec.schema_migrations WHERE version = %s",
+                    (version,),
+                ).fetchone()
+                if row:
+                    if row[0] != digest:
+                        raise ValueError(f"migration checksum changed after application: {version}")
+                    continue
+                sql = path.read_text(encoding="utf-8")
                 connection.execute(sql)
                 connection.execute(
                     "INSERT INTO uec.schema_migrations (version, sha256) VALUES (%s, %s)",
                     (version, digest),
                 )
-            applied.append(version)
+                applied.append(version)
     return applied
 
 

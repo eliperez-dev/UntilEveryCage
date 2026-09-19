@@ -1,0 +1,144 @@
+{
+  "corpus_state": "private-regression-only",
+  "generated_at_utc": "2026-09-17T00:00:00Z",
+  "graph": {
+    "accepted_relationship_counts": {
+      "inspection_observes": 1332,
+      "regulatory_authority_for": 1332
+    },
+    "accepted_relationships": 2664,
+    "all_candidates": {
+      "auto_merge": false,
+      "geocoding": "disabled",
+      "publication_gate": "blocked",
+      "review_state": "review_required"
+    },
+    "candidate_rule": "exact source-native IDs in the same legacy source row only",
+    "cross_source_identity_joins_attempted": 0,
+    "dated_relationship_counts": {
+      "legacy-aphis-annual-reports": 2026,
+      "legacy-aphis-inspections": 9014,
+      "legacy-fsis-locations": 14198
+    },
+    "graph_manifest_sha256": "6fd68d2caad56a3b671dc455723b25520a690a8728aff8fa1659c77e53a40458",
+    "ledger_input_rows": 25238,
+    "name_address_phone_coordinate_joins_attempted": 0,
+    "profile_counts": {
+      "legacy-aphis-annual-reports": 2026,
+      "legacy-aphis-inspections": 9014,
+      "legacy-fsis-locations": 14198
+    },
+    "quarantine_reason_counts": {
+      "retrieval_precedes_observation": 5868,
+      "stale_evidence": 16706
+    },
+    "quarantined_relationships": 22574,
+    "relationship_counts": {
+      "aggregate_describes": 1013,
+      "establishment_approval_for": 7099,
+      "inspection_observes": 4507,
+      "regulatory_authority_for": 12619
+    }
+  },
+  "input_kind": "existing-v1-derived-snapshot; not current raw acquisition",
+  "lifecycle": {
+    "aphis-annual-reports": {
+      "candidate_created": true,
+      "coordinate_gate": "review_required",
+      "input_rows": 1013,
+      "normalized_rows": 1013,
+      "privacy_gate": "pending",
+      "publication_state": "private-candidate",
+      "quarantined_rows": 0,
+      "release_state": "not-created",
+      "review_state": "review_required",
+      "schema_fingerprint": "a1fd908ab662cadd330310aeddba586c34d170c12a0f75b0dfb367b3f978ccc5",
+      "sha256": "c243e64ba804ad55cc470644cc9c41678bb542622a7dbba75c938fff9a789ff1",
+      "source_id": "us.aphis",
+      "status": "candidate-ready"
+    },
+    "aphis-inspections": {
+      "candidate_created": true,
+      "coordinate_gate": "review_required",
+      "input_rows": 4507,
+      "normalized_rows": 4507,
+      "privacy_gate": "pending",
+      "publication_state": "private-candidate",
+      "quarantined_rows": 0,
+      "release_state": "not-created",
+      "review_state": "review_required",
+      "schema_fingerprint": "8a7c46f3068955b88275377da2418a2cb232260eb85327924460a4791f1f1971",
+      "sha256": "edbd3cd963b097cd0d72049af9cdc661429e849d3f29b9cb31827d228c1cd1a7",
+      "source_id": "us.aphis",
+      "status": "candidate-ready"
+    },
+    "fsis-locations": {
+      "candidate_created": true,
+      "coordinate_gate": "review_required",
+      "input_rows": 7101,
+      "normalized_rows": 7101,
+      "privacy_gate": "pending",
+      "publication_state": "private-candidate",
+      "quarantined_rows": 0,
+      "release_state": "not-created",
+      "review_state": "review_required",
+      "schema_fingerprint": "9d68e76e6adb5be3a5033a5e99a2b8954d898a39d8eba51ed1cb804f0ae939d9",
+      "sha256": "2dca259076a16a324ad9565d2d4057aa0f5e6e51bbc25a8dc1c80a4e4fbdf5c7",
+      "source_id": "us.fsis",
+      "status": "candidate-ready"
+    }
+  },
+  "limitations": [
+    "The legacy V1 snapshots are not current raw FSIS or APHIS captures and are not represented as current evidence.",
+    "The current FSIS page was observed in a browser with a Sep 14, 2026 update, but exact CSV downloads returned 403 outside that session; no current raw artifact is claimed.",
+    "Graph yield is a candidate count, not accuracy, ownership truth, facility operation, or publication permission.",
+    "A source disappearance is not closure; state inspection programs remain outside this federal-only rehearsal."
+  ],
+  "privacy_and_provenance": {
+    "coordinates": "not used for identity; geocoding disabled",
+    "raw_values": "private adapter output only; not included in report",
+    "source_hashes": {
+      "aphis_annual_reports": "c243e64ba804ad55cc470644cc9c41678bb542622a7dbba75c938fff9a789ff1",
+      "aphis_inspections": "edbd3cd963b097cd0d72049af9cdc661429e849d3f29b9cb31827d228c1cd1a7",
+      "fsis_locations": "2dca259076a16a324ad9565d2d4057aa0f5e6e51bbc25a8dc1c80a4e4fbdf5c7"
+    }
+  },
+  "publication_eligibility": "blocked",
+  "quality": {
+    "accuracy": "not measured; no adjudicated real labels available",
+    "input_rows_reconciled_to_source_local_graph_or_skip": true,
+    "skipped_or_quarantined_before_ledger": {
+      "fsis_missing_observation_date": 2
+    }
+  },
+  "schema_version": "us-real-legacy-graph-rehearsal-v1",
+  "source_boundaries": {
+    "aphis_annual_reports": {
+      "evidence_family": "annual aggregate observations; may be amended",
+      "input_rows": 1013,
+      "jurisdiction": "federal",
+      "source_url": "https://www.aphis.usda.gov/animal-care/awa-services/usda-animal-care-public-search-tool"
+    },
+    "aphis_inspections": {
+      "evidence_family": "inspection observations; no FSIS facility merge",
+      "input_rows": 4507,
+      "jurisdiction": "federal",
+      "source_url": "https://www.aphis.usda.gov/animal-care/awa-services/usda-animal-care-public-search-tool"
+    },
+    "fsis": {
+      "input_rows": 7101,
+      "jurisdiction": "federal",
+      "source_url": "https://www.fsis.usda.gov/sites/default/files/media_file/documents/MPI_Directory_by_Establishment_Number.csv",
+      "state_inspection_programs": "excluded"
+    },
+    "state_programs": {
+      "included": false,
+      "reason": "no state inspection source was supplied or inferred"
+    }
+  },
+  "strata": {
+    "aphis_annual_reports": 1013,
+    "aphis_inspections": 4507,
+    "fsis_locations": 7101
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "schema_version": "1.0",
+  "country": "NL",
+  "purpose": "Private reconnaissance crosswalk for future Netherlands integration; not a release mapping.",
+  "legacy_snapshot": {
+    "status": "no Netherlands V1 file found",
+    "rows": 0,
+    "columns": 0,
+    "paths_checked": ["static_data", "Old CSVs", "dirty-datasets"],
+    "notes": "The repository V1 country set has no static_data/nl or other verified Netherlands facility extract. No legacy reconciliation was performed."
+  },
+  "source_local_identities": {
+    "nvwa_approved_food": {
+      "facility_candidate_key": "erkenningsnummer",
+      "observation_key": ["lijstcode", "erkenningsnummer", "specificatiecode", "activiteit", "producttype", "diersoortEn"],
+      "location_fields": ["adres", "postcode", "plaats"],
+      "activity_fields": ["categorie", "activiteit", "producttype", "diersoortEn", "regelgeving", "erkenningssoort"],
+      "lifecycle_fields": ["aanvangsdatum", "opheffingsdatum"],
+      "notes": "The viewer groups repeated observations by recognition number. Preserve the underlying one-to-many approval/activity observations; recognition number is a source-local candidate key, not a globally proven facility ID."
+    },
+    "cokz_registers": {
+      "facility_candidate_key": "Approval No.",
+      "location_fields": ["Address", "Zip code", "Place"],
+      "organization_fields": ["Name", "Trade"],
+      "notes": "COKZ is a separate competent-authority register family for dairy and eggs. Do not union with NVWA rows without an explicit reviewed identity link."
+    },
+    "rvo_ir": {
+      "facility_candidate_key": "UBN",
+      "location_fields": ["location data"],
+      "notes": "UBN/I&R data is access-controlled and is not a public release source. Use only through an authorized, purpose-approved route."
+    },
+    "kvk_identity": {
+      "organization_key": "kvkNummer",
+      "establishment_key": "vestigingsnummer",
+      "link_fields": ["postcodeRegio", "activiteiten.sbiCode", "actief", "datumAanvang"],
+      "notes": "KVK is identity/link evidence, not a facility master. Sole-proprietor and mixed-address records can be personal data; protected fields and UBO data are excluded."
+    },
+    "planning_and_permits": {
+      "document_key": "DSO/KOOP publication or omgevingsdocument identifier",
+      "geometry_key": "PDOK/DSO geometry identifier",
+      "notes": "Planning/permit evidence is document- and geometry-centered. It does not supply a national animal-facility master key."
+    }
+  },
+  "evidence_crosswalk": {
+    "facility_and_activity": ["NVWA recognition observations", "COKZ approval rows", "authorized RVO UBN evidence"],
+    "organization": ["KVK identity evidence", "source-published operator/trade-name fields"],
+    "inspection_observation": ["NVWA welfare yearbook", "NVWA animal-experiment inspection page", "NVWA red-meat tables"],
+    "enforcement_observation": ["NVWA measure/warning/boeterapport fields and published report period"],
+    "aggregate_claim": ["CBS 7123slac", "CBS 84952NED", "Eurostat apro_mt_pann"],
+    "permit_or_planning_claim": ["DSO/PDOK omgevingsdocument evidence", "KOOP official publication evidence"]
+  },
+  "overlap_rules": [
+    "Deduplicate only within an NVWA list by recognition number for facility-candidate counts; retain every source observation and list code.",
+    "Never sum XML observation rows as facilities: product, activity, species, and specification rows repeat a recognition number.",
+    "Do not union recognition numbers, COKZ Approval No., RVO UBN, KVK numbers, and EU/TRACES identifiers without a reviewed link record.",
+    "Keep CBS and Eurostat aggregates outside facility tables; retain provisional, unknown, and secret status symbols.",
+    "Keep inspections, enforcement, permits, and claims as dated evidence observations; absence from a publication is not closure or non-compliance proof.",
+    "Do not geocode NVWA addresses automatically for release; preserve source precision and privacy review state."
+  ],
+  "release_state": "private-reconnaissance-only"
+}

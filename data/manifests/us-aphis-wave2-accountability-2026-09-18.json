@@ -1,0 +1,129 @@
+{
+  "manifest_version": "us-aphis-accountability-wave2-v1",
+  "source_id": "us.aphis",
+  "captured_for": "private/test-only",
+  "release_state": "not-created",
+  "publication_gate": "blocked",
+  "public_exposure": false,
+  "code_version": "us-aphis-candidate-v2",
+  "config_version": "us-aphis-public-search-v2",
+  "graph_contract_version": "us-current-identity-graph-v1",
+  "public_surfaces": {
+    "api": false,
+    "map": false,
+    "export": false,
+    "cache": false,
+    "history": false
+  },
+  "official_routes": {
+    "registrations": "https://www.aphis.usda.gov/animal-care/awa-services/usda-animal-care-public-search-tool",
+    "annual_reports": "https://direct.aphis.usda.gov/awa/research-facility-report/annual-summary",
+    "inspections": "https://direct.aphis.usda.gov/awa/annual-inspection-reports"
+  },
+  "retrieval": {
+    "annual_reports": {
+      "retrieved_at_utc": "2026-09-18T17:54:55Z",
+      "pages": 10,
+      "byte_size": 62175,
+      "input_rows": 995,
+      "accepted_rows": 995,
+      "quarantined_rows": 0,
+      "distinct_source_observation_keys": 995,
+      "aggregate_artifact_sha256": "ffecea7c20b0c1c5d0cf254f038b29edca8e841e80b8d10f2c09616b4edd35d2"
+    },
+    "registrations": {
+      "retrieved_at_utc": "2026-09-18T18:06:26Z",
+      "validated_pages": 78,
+      "byte_size": 823028,
+      "input_rows": 4763,
+      "accepted_rows": 4763,
+      "quarantined_rows": 0,
+      "distinct_source_observation_keys": 2811,
+      "duplicate_source_observation_keys": 1952,
+      "aggregate_artifact_sha256": "8f92e646823d95962000007cbdc70c8289502cd4995c5165f6fa0d9c1339a4c1",
+      "failed_local_attempts": 4
+    },
+    "inspections": {
+      "retrieved_at_utc": "2026-09-18T18:17:14Z",
+      "view": "Research Facility inspection reports",
+      "displayed_result_count": 15726,
+      "validated_pages": 21,
+      "byte_size": 348851,
+      "input_rows": 2100,
+      "accepted_rows": 1917,
+      "quarantined_rows": 183,
+      "distinct_source_observation_keys": 1917,
+      "aggregate_artifact_sha256": "fe8e1388821e7b3cddfb72448950e1c9eb5c43e771b59e3acc6981fc467db700",
+      "coverage_boundary": "remaining displayed rows were not acquired; not_observed is not closure"
+    }
+  },
+  "graph_projection": {
+    "source_rows_used": {
+      "annual_reports": 995,
+      "registrations": 859,
+      "inspections": 1917
+    },
+    "source_rows_excluded_from_graph_projection": 3904,
+    "exclusion_reasons": {
+      "duplicate_source_observation_key_across_export_pages": 3904,
+      "conflicting_official_identifiers": 95
+    },
+    "source_local_entities": 3771,
+    "exact_identifier_review_candidates": 955,
+    "quarantined_relationships_or_projection_rows": 3999,
+    "candidate_relationship_type": "observation_of_registration",
+    "match_method": "exact_official_identifier",
+    "matched_identifier_types": [
+      "aphis_certificate_number",
+      "aphis_customer_number"
+    ],
+    "confidence": "1.0 exact source-key agreement; not a truth or approval score",
+    "review_state": "review_required",
+    "assertion_status": "candidate"
+  },
+  "bounded_queries": [
+    {
+      "name": "exact_annual_reports_representative",
+      "relationship_profile": "annual_reports",
+      "requested_identifier_types": [
+        "aphis_certificate_number",
+        "aphis_customer_number"
+      ],
+      "result_count_bounded": 1,
+      "candidate_id": "us-identity-candidate-ffaf22e02ed6ee232693ff5a",
+      "identifier_fingerprints": {
+        "aphis_certificate_number": "b1a5261f297e",
+        "aphis_customer_number": "8f330105c018"
+      }
+    },
+    {
+      "name": "exact_inspections_representative",
+      "relationship_profile": "inspections",
+      "requested_identifier_types": [
+        "aphis_certificate_number",
+        "aphis_customer_number"
+      ],
+      "result_count_bounded": 1,
+      "candidate_id": "us-identity-candidate-ffd5e684188148dd0e9884cf",
+      "identifier_fingerprints": {
+        "aphis_certificate_number": "877309f7a25f",
+        "aphis_customer_number": "3756770a030d"
+      }
+    }
+  ],
+  "controls": {
+    "weak_name_address_similarity_not_asserted": true,
+    "suppressed_rows_do_not_enter_candidates": true,
+    "all_candidate_publication_is_blocked": true,
+    "rerun_idempotency_key_equal": true,
+    "geocoding": "disabled",
+    "auto_merge": false
+  },
+  "limitations": [
+    "Raw, parsed, normalized, and quarantine payloads remain in private ignored staging only.",
+    "Exact APHIS identifiers link source observations; they do not establish ownership, operation, approval, or project publication.",
+    "The inspection input is a bounded current subset, not complete current inspection coverage.",
+    "Source terms, privacy review, factual review, project approval, and release publication remain separate gates."
+  ],
+  "test_only": true
+}

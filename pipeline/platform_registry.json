@@ -1,0 +1,14 @@
+{
+  "schema_version": "country-source-platform-v1",
+  "scale_target": {
+    "countries": 100,
+    "sources": 300,
+    "note": "Architecture target only; current registry evidence is not a completeness claim."
+  },
+  "source_of_truth": {
+    "sources": "pipeline/source_registry.json",
+    "status": "docs/source-status.json"
+  },
+  "country_grouping": "uppercase source-id prefix; EU is retained as a cross-border scope",
+  "owner_review_boundary": "awaiting-owner-review"
+}

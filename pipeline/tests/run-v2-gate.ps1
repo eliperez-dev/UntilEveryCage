@@ -3,8 +3,10 @@ $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 Push-Location $root
 try {
-  pwsh -NoProfile -ExecutionPolicy Bypass -File pipeline/tests/run-standard.ps1
-  npm test -- --runInBand
+  & pwsh -NoProfile -ExecutionPolicy Bypass -File pipeline/tests/run-standard.ps1
+  if ($LASTEXITCODE -ne 0) { throw "Standard gate failed (exit $LASTEXITCODE)." }
+  & npm test -- --runInBand
+  if ($LASTEXITCODE -ne 0) { throw "npm tests failed (exit $LASTEXITCODE)." }
   if (-not $SkipDocker) {
     $env:UEC_RUN_E2E = '1'
     pwsh -NoProfile -ExecutionPolicy Bypass -File pipeline/tests/e2e/backup-restore.ps1

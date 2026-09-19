@@ -1,0 +1,2 @@
+# Keep the worker dependency surface separate from source-adapter tooling.
+psycopg[binary]==3.2.9

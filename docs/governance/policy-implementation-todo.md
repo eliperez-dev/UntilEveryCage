@@ -104,4 +104,13 @@ export, aggregate-count, historical/cache, or production operational controls.
 
 ## Current implementation boundary
 
-The documentation is aligned with ETHICS.md. The current database migration rejects updates/deletes on evidence tables; a policy-compliant exceptional-removal path and end-to-end publication enforcement have not been established by this documentation task. Do not treat unchecked work as complete or launch affected public capabilities based on policy text alone. Independent acquisition work may continue within the governing retention/access rules.
+The V2 checkpoint includes a synthetic, tested urgent suppression path with
+durable source-key references, append-only lift decisions, geocoding guards,
+release gates, and backup replay verification. This lane adds a
+production-shaped independently mounted ledger contract, fail-closed Rust
+startup validation, a replay command, migration/config checks, and a recovery
+runbook. That is implementation evidence for private staging only: no
+production instance has been configured or deployed, and the remaining
+deployment audit, authorized review, provider/log verification, and policy
+checklist items below remain open. Do not launch affected public capabilities
+based on this code or policy text alone.
