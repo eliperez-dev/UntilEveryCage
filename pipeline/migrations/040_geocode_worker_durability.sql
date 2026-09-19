@@ -3,7 +3,8 @@
 -- retained. A request reservation is committed before the provider call.
 
 ALTER TABLE uec.geocode_job_events
-    ADD COLUMN IF NOT EXISTS lease_token UUID;
+    ADD COLUMN IF NOT EXISTS lease_token UUID,
+    ADD COLUMN IF NOT EXISTS next_attempt_at TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS uec.geocode_provider_budgets (
     provider_id TEXT NOT NULL,
@@ -37,7 +38,7 @@ CREATE OR REPLACE VIEW uec.geocode_job_current AS
 SELECT DISTINCT ON (job.job_id)
     job.job_id, job.source_record_id, job.provider_id, job.query,
     event.event_type, event.attempt_number, event.retryable, event.details,
-    event.worker_id, event.occurred_at, event.lease_token
+    event.worker_id, event.occurred_at, event.lease_token, event.next_attempt_at
 FROM uec.geocode_jobs AS job
 JOIN uec.geocode_job_events AS event ON event.job_id = job.job_id
 ORDER BY job.job_id, event.occurred_at DESC, event.event_id DESC;

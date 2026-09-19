@@ -86,12 +86,19 @@ class WorkerDurabilityE2ETests(unittest.TestCase):
                 return GeocodeOutcome("unresolved", "fixture", None, None, None, None, "fixture", False, {})
 
         adapter = PausingAdapter()
+        errors = []
+
+        def run_worker():
+            try:
+                WORKER.run(
+                    self.env.database_url, "synthetic-worker", 1, 0, 1,
+                    daily_budget=5, provider_interval=0, worker_id="paused-worker",
+                )
+            except BaseException as error:  # surface thread failures to unittest
+                errors.append(error)
+
         with patch.object(WORKER, "get_adapter", return_value=adapter):
-            thread = threading.Thread(
-                target=WORKER.run,
-                args=(self.env.database_url, "synthetic-worker", 1, 0, 1),
-                kwargs={"daily_budget": 5, "provider_interval": 0, "worker_id": "paused-worker"},
-            )
+            thread = threading.Thread(target=run_worker)
             thread.start()
             self.assertTrue(provider_started.wait(10))
             with psycopg.connect(self.env.database_url) as db:
@@ -103,6 +110,7 @@ class WorkerDurabilityE2ETests(unittest.TestCase):
             release_provider.set()
             thread.join(10)
             self.assertFalse(thread.is_alive())
+        self.assertEqual(errors, [])
 
     def test_reclaimed_lease_fences_late_first_worker_result(self):
         job_id, record_id = self._queue(provider="synthetic-fence")
@@ -121,26 +129,30 @@ class WorkerDurabilityE2ETests(unittest.TestCase):
                 return GeocodeOutcome("accepted", "fixture", 55.0, 12.0, "fixture", "point", "fixture", False, {})
 
         adapter = FencingAdapter()
+        errors = []
+
+        def run_worker(worker_id):
+            try:
+                WORKER.run(
+                    self.env.database_url, "synthetic-fence", 1, 0, 1,
+                    daily_budget=5, provider_interval=0, lease_timeout=1, worker_id=worker_id,
+                )
+            except BaseException as error:
+                errors.append((worker_id, error))
+
         with patch.object(WORKER, "get_adapter", return_value=adapter):
-            first = threading.Thread(
-                target=WORKER.run,
-                args=(self.env.database_url, "synthetic-fence", 1, 0, 1),
-                kwargs={"daily_budget": 5, "provider_interval": 0, "lease_timeout": 1, "worker_id": "first-worker"},
-            )
+            first = threading.Thread(target=run_worker, args=("first-worker",))
             first.start()
             self.assertTrue(first_started.wait(10))
             time.sleep(1.2)
-            second = threading.Thread(
-                target=WORKER.run,
-                args=(self.env.database_url, "synthetic-fence", 1, 0, 1),
-                kwargs={"daily_budget": 5, "provider_interval": 0, "lease_timeout": 1, "worker_id": "second-worker"},
-            )
+            second = threading.Thread(target=run_worker, args=("second-worker",))
             second.start()
             second.join(10)
             self.assertFalse(second.is_alive())
             release_first.set()
             first.join(10)
             self.assertFalse(first.is_alive())
+        self.assertEqual(errors, [])
         with psycopg.connect(self.env.database_url) as db:
             result_count = db.execute(
                 "SELECT count(*) FROM uec.geocode_results WHERE source_record_id=%s AND provider_id='synthetic-fence'",
@@ -167,11 +179,15 @@ class WorkerDurabilityE2ETests(unittest.TestCase):
                 return GeocodeOutcome("unresolved", "fixture", None, None, None, None, "fixture", False, {})
 
         def run_worker(worker_id):
-            WORKER.run(
-                self.env.database_url, "synthetic-budget", 1, 0, 1,
-                daily_budget=1, provider_interval=0, worker_id=worker_id,
-            )
+            try:
+                WORKER.run(
+                    self.env.database_url, "synthetic-budget", 1, 0, 1,
+                    daily_budget=1, provider_interval=0, worker_id=worker_id,
+                )
+            except BaseException as error:
+                errors.append((worker_id, error))
 
+        errors = []
         with patch.object(WORKER, "get_adapter", return_value=CountingAdapter()):
             workers = [threading.Thread(target=run_worker, args=(f"budget-{n}",)) for n in (1, 2)]
             for worker in workers:
@@ -179,6 +195,7 @@ class WorkerDurabilityE2ETests(unittest.TestCase):
             for worker in workers:
                 worker.join(10)
                 self.assertFalse(worker.is_alive())
+        self.assertEqual(errors, [])
         with psycopg.connect(self.env.database_url) as db:
             reservations = db.execute(
                 "SELECT count(*) FROM uec.geocode_request_reservations "

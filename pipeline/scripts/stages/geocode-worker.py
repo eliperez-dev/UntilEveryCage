@@ -34,7 +34,8 @@ def _claim_job(connection, provider_id: str, worker_id: str, max_attempts: int, 
               AND (
                     current.event_type IS NULL
                     OR current.event_type = 'queued'
-                    OR (current.event_type = 'failed' AND current.retryable)
+                    OR (current.event_type = 'failed' AND current.retryable
+                        AND (current.next_attempt_at IS NULL OR current.next_attempt_at <= now()))
                     OR (current.event_type = 'started'
                         AND current.occurred_at < now() - (%s * interval '1 second'))
               )
@@ -160,6 +161,26 @@ def _finish_restricted(connection, job_id, attempt, worker_id, lease_token) -> s
         return "cancelled_restricted"
 
 
+def _defer_job(connection, job_id, attempt, worker_id, lease_token, reason: str, delay_seconds: float) -> str:
+    """Record a retryable deferred terminal event without making a provider call."""
+    delay_seconds = max(delay_seconds, 0.1)
+    with connection.transaction():
+        current = _current_lease(connection, job_id)
+        if not current or current[0] != "started" or current[1] != worker_id or current[2] != lease_token:
+            return "stale_lease"
+        connection.execute("""
+            INSERT INTO uec.geocode_job_events
+                (job_id, event_type, attempt_number, retryable, worker_id,
+                 lease_token, details, next_attempt_at, occurred_at)
+            VALUES (%s, 'failed', %s, true, %s, %s, %s,
+                    now() + (%s * interval '1 second'), %s)
+        """, (
+            job_id, attempt, worker_id, lease_token,
+            json.dumps({"reason": reason}), delay_seconds, datetime.now(timezone.utc),
+        ))
+        return "deferred"
+
+
 def _persist_outcome(
     connection,
     job_id,
@@ -198,8 +219,8 @@ def _persist_outcome(
                  provider_address_id, result, precision, match_method, status,
                  attempt_number, retryable, response, queried_at)
             VALUES (%s, %s, %s, %s, %s,
-                    CASE WHEN %s IS NULL OR %s IS NULL THEN NULL
-                         ELSE ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography END,
+                    CASE WHEN %s::double precision IS NULL OR %s::double precision IS NULL THEN NULL
+                         ELSE ST_SetSRID(ST_MakePoint(%s::double precision, %s::double precision), 4326)::geography END,
                     %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (geocode_result_id) DO NOTHING
         """, (
@@ -252,7 +273,8 @@ def run(
             outcome = None
             status = "running"
             budget_blocked = False
-            for retry_number in range(1, retries + 1):
+            retry_number = 1
+            while retry_number <= retries:
                 if _is_restricted(connection, source_record_id):
                     outcome = None
                     status = _finish_restricted(connection, job_id, attempt, worker_id, lease_token)
@@ -263,10 +285,16 @@ def run(
                 )
                 if reservation_id is None:
                     if reservation_reason == "rate_limited":
-                        time.sleep(max(provider_interval, 0.01))
-                        continue
-                    status = "daily_budget_reached"
-                    budget_blocked = True
+                        status = _defer_job(
+                            connection, job_id, attempt, worker_id, lease_token,
+                            "provider_rate_limited", max(provider_interval, 0.1),
+                        )
+                    else:
+                        status = _defer_job(
+                            connection, job_id, attempt, worker_id, lease_token,
+                            "request_budget_exhausted", 86400,
+                        )
+                        budget_blocked = True
                     break
                 # Restrictions can be added while the reservation transaction is
                 # committing; recheck immediately before the external call.
@@ -283,6 +311,7 @@ def run(
                 if not outcome.retryable or retry_number == retries:
                     break
                 time.sleep(max(delay * retry_number, provider_interval))
+                retry_number += 1
             if budget_blocked:
                 print(f"provider={provider_id} status={status} processed={processed}", flush=True)
                 break
