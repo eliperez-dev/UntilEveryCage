@@ -1,7 +1,7 @@
 {
   "source_id": "us.aphis",
   "contract_version": "us-aphis-public-search-v2",
-  "adapter_version": "us-aphis-candidate-v2",
+  "adapter_version": "us-aphis-candidate-v3",
   "authority": "USDA Animal and Plant Health Inspection Service, Animal Care",
   "public_search_url": "https://www.aphis.usda.gov/animal-care/awa-services/usda-animal-care-public-search-tool",
   "annual_reports_url": "https://direct.aphis.usda.gov/awa/research-facility-report/annual-summary",

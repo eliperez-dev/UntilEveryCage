@@ -71,6 +71,43 @@ class AphisAdapterTests(unittest.TestCase):
         self.assertEqual(len(result["accepted"]), 2)
         self.assertNotEqual(result["accepted"][0]["source_record_key"], result["accepted"][1]["source_record_key"])
 
+    def test_inspections_preserve_same_day_distinct_sites_with_provisional_identity(self):
+        header = "Customer Number,Certificate Number,Inspection Date,Site Name,Legal Name,City,State,Zip,Direct NCIs\n"
+        raw = (
+            header
+            + '"2","87-R-0002","2026-08-21","North Site","Lab","Austin","TX","78701","0"\n'
+            + '"2","87-R-0002","2026-08-21","South Site","Lab","Austin","TX","78701","1"\n'
+        ).encode()
+        result = AphisPublicSearchAdapter().parse_bytes(raw)
+        self.assertEqual(len(result["accepted"]), 2)
+        self.assertEqual(len(result["quarantined"]), 0)
+        self.assertNotEqual(result["accepted"][0]["source_record_key"], result["accepted"][1]["source_record_key"])
+        self.assertEqual(result["accepted"][0]["normalized"]["event_identity_unresolved"], True)
+        self.assertEqual(result["accepted"][0]["normalized"]["event_identity_review_state"], "review_required")
+        self.assertEqual(result["accepted"][0]["normalized"]["provisional_event_key"], result["accepted"][1]["normalized"]["provisional_event_key"])
+
+    def test_inspections_exact_duplicate_rows_remain_explicitly_quarantined(self):
+        raw = (
+            "Customer Number,Certificate Number,Inspection Date,Site Name,Direct NCIs\n"
+            '"2","87-R-0002","2026-08-21","Same Site","0"\n'
+            '"2","87-R-0002","2026-08-21","Same Site","0"\n'
+        ).encode()
+        result = AphisPublicSearchAdapter().parse_bytes(raw)
+        self.assertEqual(len(result["accepted"]), 0)
+        self.assertEqual(len(result["quarantined"]), 2)
+        self.assertEqual(result["quarantined"][0]["reasons"], ("duplicate_observation_id",))
+
+    def test_inspections_use_explicit_native_report_id_when_present(self):
+        raw = (
+            "Customer Number,Certificate Number,Inspection Date,Inspection Report ID,Site Name\n"
+            '"2","87-R-0002","2026-08-21","R-1","North Site"\n'
+            '"2","87-R-0002","2026-08-21","R-2","South Site"\n'
+        ).encode()
+        result = AphisPublicSearchAdapter().parse_bytes(raw)
+        self.assertEqual(len(result["accepted"]), 2)
+        self.assertIn("Inspection Report ID=R-1", result["accepted"][0]["source_record_key"])
+        self.assertFalse(result["accepted"][0]["normalized"]["event_identity_unresolved"])
+
     def test_unsupported_profile_fails_closed(self):
         with self.assertRaises(AphisContractError): AphisPublicSearchAdapter().parse_bytes(b"Name,Value\nA,B\n")
 

@@ -40,6 +40,9 @@ AMENDMENT_COLUMNS = (
     "Amendment Number", "Amendment ID", "Amendment Date", "Amended",
     "Amendment", "Report Version", "Version",
 )
+INSPECTION_REPORT_ID_COLUMNS = (
+    "Inspection Report ID", "Inspection ID", "Report ID", "Report Number",
+)
 NON_ANIMAL_COLUMNS = {
     "Account Name", "Certificate Number", "Certificate Status", "Status Date",
     "Registration Type", "License Type", "Year", *CUSTOMER_COLUMNS,
@@ -48,6 +51,7 @@ NON_ANIMAL_COLUMNS = {
     "Geocodio Latitude", "Geocodio Longitude", "Exception Report",
     "Inspection Date", "Direct NCIs", "Non-Critical NCIs", "Critical NCIs",
     "Teachable Moments", "Site Name", "Legal Name", "License-Registration Type",
+    *INSPECTION_REPORT_ID_COLUMNS,
 }
 
 
@@ -146,19 +150,17 @@ def _amendment_version(row: dict[str, Any]) -> str | None:
     return None
 
 
-def _is_amendment(row: dict[str, Any]) -> bool:
-    marker = _amendment_version(row)
-    if not marker:
-        return False
-    # A version/date/number is explicit. Boolean-ish flags only count when
-    # the source says the row was amended; false remains a base report.
-    column, value = marker.split("=", 1)
-    if column in {"Amended", "Amendment"}:
-        return value.casefold() in {"true", "yes", "y", "1", "amended"}
-    return True
+def _native_inspection_id(row: dict[str, Any]) -> str | None:
+    """Use a report identifier only when the source explicitly supplies it."""
+    for column in INSPECTION_REPORT_ID_COLUMNS:
+        value = _clean(row.get(column))
+        if value:
+            return f"{column}={value}"
+    return None
 
 
-def _observation_key(profile: str, row: dict[str, Any]) -> str | None:
+def _provisional_event_key(profile: str, row: dict[str, Any]) -> str | None:
+    """Return the source-native event key retained for review and tracing."""
     identity = _certificate_or_customer(row)
     if not identity:
         return None
@@ -173,11 +175,45 @@ def _observation_key(profile: str, row: dict[str, Any]) -> str | None:
         parts.append(f"year={_year(row) or 'unknown'}")
         parts.append(f"version={_amendment_version(row) or 'original'}")
     elif profile == "inspections":
-        # A certificate/customer can have multiple inspection observations over
-        # time.  Keep those observations distinct when the source supplies its
-        # observation date; an undated duplicate remains quarantine-worthy.
         parts.append(f"status_date={_inspection_date(row) or 'unknown'}")
     return f"{profile}|" + "|".join(parts)
+
+
+def _source_row_fingerprint(row: dict[str, Any]) -> str:
+    """Fingerprint the complete source row without discarding distinguishing fields."""
+    canonical = {
+        str(key): "" if value is None else str(value)
+        for key, value in sorted(row.items(), key=lambda item: str(item[0]))
+    }
+    encoded = json.dumps(canonical, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _is_amendment(row: dict[str, Any]) -> bool:
+    marker = _amendment_version(row)
+    if not marker:
+        return False
+    # A version/date/number is explicit. Boolean-ish flags only count when
+    # the source says the row was amended; false remains a base report.
+    column, value = marker.split("=", 1)
+    if column in {"Amended", "Amendment"}:
+        return value.casefold() in {"true", "yes", "y", "1", "amended"}
+    return True
+
+
+def _observation_key(profile: str, row: dict[str, Any]) -> str | None:
+    provisional = _provisional_event_key(profile, row)
+    if not provisional:
+        return None
+    if profile != "inspections":
+        return provisional
+    native_id = _native_inspection_id(row)
+    if native_id:
+        return f"inspections|{native_id}"
+    # The compact live export has no native report ID. A full-row fingerprint
+    # preserves same-day/site observations without pretending the event identity
+    # is resolved. Exact source-row duplicates still share this key and quarantine.
+    return f"inspections|source_row_sha256={_source_row_fingerprint(row)}"
 
 
 def _evidence_type(profile: str, row: dict[str, Any]) -> str:
@@ -189,6 +225,8 @@ def _record(profile: str, row: dict[str, Any], line: int) -> dict[str, Any]:
     customers = _customer_values(row)
     customer = customers["customer_number"] or customers["customer_number_y"] or customers["customer_number_x"]
     observation_key = _observation_key(profile, row)
+    provisional_event_key = _provisional_event_key(profile, row)
+    native_inspection_id = _native_inspection_id(row) if profile == "inspections" else None
     evidence_type = _evidence_type(profile, row)
     animal_use_fields = tuple(sorted(key for key, value in row.items() if key not in NON_ANIMAL_COLUMNS and _clean(value)))
     normalized = {
@@ -197,6 +235,10 @@ def _record(profile: str, row: dict[str, Any], line: int) -> dict[str, Any]:
         # silently reinterpret this evidence.
         "establishment_id": None,
         "source_observation_key": observation_key,
+        "provisional_event_key": provisional_event_key,
+        "event_identity_unresolved": profile == "inspections" and native_inspection_id is None,
+        "event_identity_review_state": "review_required" if profile == "inspections" and native_inspection_id is None else "not_applicable",
+        "review_state": "review_required",
         "country_code": "US",
         "evidence_type": evidence_type,
         "profile": profile,
