@@ -21,6 +21,7 @@ jobs:
         run: |
           set +e
           byte_cap=1048576
+          printf '%s\n' '## FSIS route diagnostic (safe metrics)' >> "$GITHUB_STEP_SUMMARY"
           python - <<'PY' | while IFS=$'\t' read -r route url_host url_path url; do
           import json
           from pathlib import Path
@@ -43,7 +44,10 @@ jobs:
               *) expected_path='' ;;
             esac
             if [[ "$url" != "https://www.fsis.usda.gov${expected_path}" || "$url_host" != 'www.fsis.usda.gov' || "$url_path" != "$expected_path" ]]; then
-              printf 'route=%s config_shape=invalid curl_exit=not-run http_status=000 content_type=unknown bytes=0 final_host=- final_path=-\n' "$route"
+              metric_line="route=$route config_shape=invalid curl_exit=not-run http_status=000 content_type=unknown bytes=0 final_host=-"
+              printf '%s\n' "$metric_line"
+              printf '%s\n' "- \`$metric_line\`" >> "$GITHUB_STEP_SUMMARY"
+              printf '::notice title=FSIS route diagnostic::%s\n' "$metric_line"
               continue
             fi
             # The process substitution consumes at most byte_cap bytes and
@@ -56,7 +60,12 @@ jobs:
               final_host="$(python -c 'import sys; from urllib.parse import urlsplit; print(urlsplit(sys.argv[1]).hostname or "-")' "$final_url" 2>/dev/null)"
               final_host="${final_host:-unknown}"
             fi
-            printf 'route=%s requested_host=%s requested_path=%s curl_exit=%s http_status=%s content_type=%s bytes=%s final_host=%s\n' \
+            safe_content_type="$(printf '%s' "${content_type:-unknown}" | tr -c '[:alnum:]._+/-' '_' | cut -c1-128)"
+            safe_final_host="$(printf '%s' "${final_host:--}" | tr -c '[:alnum:].:-' '_' | cut -c1-253)"
+            metric_line=$(printf 'route=%s requested_host=%s requested_path=%s curl_exit=%s http_status=%s content_type=%s bytes=%s final_host=%s' \
               "$route" "$url_host" "$url_path" "$curl_exit" "${http_status:-000}" \
-              "${content_type:-unknown}" "${bytes:-0}" "$final_host"
+              "$safe_content_type" "${bytes:-0}" "$safe_final_host")
+            printf '%s\n' "$metric_line"
+            printf '%s\n' "- \`$metric_line\`" >> "$GITHUB_STEP_SUMMARY"
+            printf '::notice title=FSIS route diagnostic::%s\n' "$metric_line"
           done
