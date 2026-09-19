@@ -16,6 +16,9 @@ class PrivateGraphContractTests(unittest.TestCase):
             self.assertIn("CASE WHEN d.step_direction='out' THEN e.to_type ELSE e.from_type END", text)
             self.assertIn("CASE WHEN d.step_direction='out' THEN e.to_id ELSE e.from_id END", text)
             self.assertIn("ORDER BY o.observed_at DESC, o.relationship_observation_id DESC", text)
+        graph = (ROOT / "src" / "graph_private.rs").read_text(encoding="utf-8")
+        self.assertIn("review_state=$8", graph)
+        self.assertIn("confidence >= $9", graph)
 
     def test_queue_uses_existing_source_record_timestamp(self):
         text = (ROOT / "src" / "graph_private.rs").read_text(encoding="utf-8")

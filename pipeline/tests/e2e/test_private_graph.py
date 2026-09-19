@@ -72,6 +72,31 @@ class PrivateGraphE2ETests(unittest.TestCase):
         self.assertTrue(all(row["storage_state"] == "private" for row in body["data"]))
         self.assertTrue(all(row["privacy_status"] == "suppressed" for row in body["data"]))
         self.assertTrue(all(row["publication_status"] == "not_eligible" for row in body["data"]))
+        _, high_confidence = self.request(
+            f"/api/private/graph/entities/{self.ids['organization_a']}/neighborhood"
+            "?direction=out&depth=1&min_confidence=0.8",
+            self.token,
+        )
+        self.assertEqual({row["relationship_type"] for row in high_confidence["data"]}, {"operator"})
+        self.assertTrue(all(row["confidence"] is not None and row["confidence"] >= 0.8 for row in high_confidence["data"]))
+        _, reviewed = self.request(
+            f"/api/private/graph/entities/{self.ids['organization_a']}/neighborhood"
+            "?direction=out&depth=1&state=review_required",
+            self.token,
+        )
+        self.assertEqual(len(reviewed["data"]), 2)
+        _, no_review_match = self.request(
+            f"/api/private/graph/entities/{self.ids['organization_a']}/neighborhood"
+            "?direction=out&depth=1&state=accepted",
+            self.token,
+        )
+        self.assertEqual(no_review_match["data"], [])
+        _, no_match = self.request(
+            f"/api/private/graph/entities/{self.ids['organization_a']}/neighborhood"
+            "?direction=out&depth=1&min_confidence=0.9",
+            self.token,
+        )
+        self.assertEqual(no_match["data"], [])
 
     def test_entity_search_is_authenticated_bounded_and_deterministic(self):
         _, first = self.request("/api/private/graph/search?q=Synthetic%20graph&limit=100", self.token)
