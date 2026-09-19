@@ -24,6 +24,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from pipeline.common.data_product import SUPPORTED_PROFILES, write_package
+from pipeline.common.source_rights import require_cleared
 
 
 def _utc(value) -> str:
@@ -56,6 +57,7 @@ def export_release(database_url: str, release_id: str, profile: str, output_dir:
                 raise ValueError("release/profile not found")
             if release[2] != "promoted" or release[3]:
                 raise ValueError("only a non-test promoted release can be packaged")
+            require_cleared(connection, release_id)
             rows = connection.execute(
                 """
                 SELECT h.facility_id, h.canonical_name, h.country_code, h.city,
@@ -92,7 +94,9 @@ def export_release(database_url: str, release_id: str, profile: str, output_dir:
 
     projection = []
     for row in rows:
-        rights = _rights(row[21])
+        # require_cleared above proves the decision; attribution remains an
+        # independent presentation obligation and does not grant clearance.
+        rights = "attribution_required" if row[21] and row[21].strip() else "cleared"
         projection.append(
             {
                 "facility_id": str(row[0]), "canonical_name": row[1], "country_code": row[2],
@@ -112,6 +116,7 @@ def export_release(database_url: str, release_id: str, profile: str, output_dir:
                 "release_ruleset_version": release[4], "provenance_source_id": row[17],
                 "provenance_source_name": row[18], "provenance_source_url": row[19],
                 "provenance_retrieved_at": _utc(row[20]), "source_rights_status": rights,
+                "source_attribution": row[21],
                 "publication_eligible": True,
             }
         )
@@ -124,6 +129,7 @@ def export_release(database_url: str, release_id: str, profile: str, output_dir:
             "row_count": len(source_rows),
             "retrieved_at": {"first": min(r["provenance_retrieved_at"] for r in source_rows), "last": max(r["provenance_retrieved_at"] for r in source_rows)},
             "rights_status": sorted({r["source_rights_status"] for r in source_rows}),
+            "attribution": sorted({r["source_attribution"] for r in source_rows if r.get("source_attribution")}),
         }
         for source_id, source_rows in sorted(by_source.items())
     ]

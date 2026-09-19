@@ -20,7 +20,7 @@ python pipeline/scripts/stages/export-release.py RELEASE_ID `
   --output-dir data/releases/RELEASE_ID-official
 ```
 
-The database query uses a repeatable-read snapshot and repeats the release/profile, publication review, privacy screening, and current suppression gates. It does not validate, promote, deploy, or publish a release. Source `attribution` is treated as `attribution_required`; missing attribution is `unknown` and blocks packaging until reuse status is reviewed. This is a conservative source-rights gate, not a claim that attribution alone grants redistribution rights.
+The database query uses a repeatable-read snapshot and repeats the release/profile, publication review, privacy screening, current suppression, and exact source-rights gates. It does not validate, promote, deploy, or publish a release. Source `attribution` remains presentation metadata; it is not a redistribution decision. Packaging requires an attributable, release/profile/source/artifact-scoped `cleared` decision for every contributing immutable artifact. Missing, unknown, restricted, or out-of-scope decisions block closed-world. This build-time check does not implement ongoing revocation or expiry enforcement for an already-served release.
 
 ## Release metadata
 

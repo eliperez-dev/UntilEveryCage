@@ -10,6 +10,12 @@ from pathlib import Path
 
 import psycopg
 
+REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
+
+from pipeline.common.source_rights import evaluate as evaluate_source_rights
+
 
 def evaluate(metrics: dict, expected_records: int | None = None) -> dict:
     findings = []
@@ -79,7 +85,12 @@ def validate(database_url: str, release_id: str, expected_records: int | None, m
             WHERE release_member.release_id = %s
         """, (release_id, release_id)).fetchone()
         names = ["release_records", "distinct_observations", "duplicate_observations", "review_visible", "exact_display_ready", "city_display_ready", "unmapped_display", "coordinate_not_ready", "publication_not_approved", "active_suppression", "rights_not_cleared", "validation_errors"]
-        metrics_dict = dict(zip(names, metrics)); metrics_dict["test_only"] = bool(release[1])
+        metrics_dict = dict(zip(names, metrics))
+        rights_gate = evaluate_source_rights(connection, release_id)
+        metrics_dict["rights_not_cleared"] = len(rights_gate["blockers"])
+        metrics_dict["rights_gate"] = rights_gate["status"]
+        metrics_dict["rights_requirements"] = len(rights_gate["requirements"])
+        metrics_dict["test_only"] = bool(release[1])
         result = evaluate(metrics_dict, expected_records)
         result.update({"release_id": release_id, "release_status_before": release[0], "marked_validated": False})
         if result["status"] == "passed" and mark_validated:

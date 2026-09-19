@@ -12,6 +12,17 @@ from typing import Any
 
 import psycopg
 
+# Keep the documented ``python pipeline/scripts/...`` invocation independent
+# of the caller's PYTHONPATH.
+from pathlib import Path
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+import sys
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
+
+from pipeline.common.source_rights import require_cleared
+
 
 class ReadModelBlocked(ValueError):
     """The read model cannot safely be activated."""
@@ -193,7 +204,7 @@ SELECT eligible.facility_id,
        eligible.provenance_source_url,
        eligible.provenance_retrieved_at,
        CASE WHEN source.attribution IS NULL OR btrim(source.attribution) = ''
-            THEN 'unknown' ELSE 'attribution_required' END AS source_rights_status
+            THEN 'cleared' ELSE 'attribution_required' END AS source_rights_status
 FROM eligible
 JOIN uec.sources source ON source.source_id = eligible.provenance_source_id
 LEFT JOIN LATERAL (
@@ -258,6 +269,7 @@ def build(database_url: str, release_id: str, fail_after_rows: int | None = None
     with psycopg.connect(database_url) as connection:
         with connection.transaction():
             manifest_sha256 = _release_manifest(connection, release_id)
+            require_cleared(connection, release_id)
             rows = connection.execute(SELECT_ROWS, (release_id,)).fetchall()
             content_sha256 = content_digest(rows)
             existing = connection.execute(

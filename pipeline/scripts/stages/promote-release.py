@@ -11,6 +11,12 @@ from pathlib import Path
 
 import psycopg
 
+REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
+
+from pipeline.common.source_rights import require_cleared
+
 
 def can_promote(status: str, test_only: bool = False) -> bool:
     return status == "validated" and not test_only
@@ -66,6 +72,7 @@ def promote(database_url: str, release_id: str, artifacts: list[dict]) -> dict:
                 if target[3]:
                     raise ValueError("test-only releases cannot be validated or promoted")
                 raise ValueError(f"release must be validated before promotion; current status is {target[0]}")
+            rights_gate = require_cleared(connection, release_id)
             unsafe = connection.execute("""
                 SELECT
                   count(*) FILTER (WHERE m.default_visible AND (g.status IS DISTINCT FROM 'accepted' OR g.result IS NULL)),
@@ -82,8 +89,8 @@ def promote(database_url: str, release_id: str, artifacts: list[dict]) -> dict:
                 LEFT JOIN uec.public_access_restricted s ON s.source_record_id=o.source_record_id
                 WHERE m.release_id=%s
             """, (release_id,)).fetchone()
-            if any(unsafe):
-                raise ValueError(f"release safety gates failed: coordinate_not_ready={unsafe[0]}, review_required={unsafe[1]}, publication_not_approved={unsafe[2]}, active_suppression={unsafe[3]}, rights_not_cleared={unsafe[4]}")
+            if any(unsafe) or rights_gate["blockers"]:
+                raise ValueError(f"release safety gates failed: coordinate_not_ready={unsafe[0]}, review_required={unsafe[1]}, publication_not_approved={unsafe[2]}, active_suppression={unsafe[3]}, rights_not_cleared={unsafe[4] + len(rights_gate['blockers'])}")
             demonstration = target[4].get("demonstration") if isinstance(target[4], dict) else None
             if demonstration is not None and demonstration.get("review_status") != "approved":
                 raise ValueError("demonstration release requires an explicit recorded review")
@@ -96,8 +103,7 @@ def promote(database_url: str, release_id: str, artifacts: list[dict]) -> dict:
                   AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted x WHERE x.source_record_id=sr.source_record_id)
             """, (release_id,)).fetchone()
             coverage_rows = connection.execute("""
-                SELECT sr.source_id, count(*)::int, min(artifact.retrieved_at), max(artifact.retrieved_at),
-                       CASE WHEN source.attribution IS NULL OR btrim(source.attribution) = '' THEN 'unknown' ELSE 'attribution_required' END
+                SELECT sr.source_id, count(*)::int, min(artifact.retrieved_at), max(artifact.retrieved_at), source.attribution
                 FROM uec.release_members m
                 JOIN uec.observations o ON o.observation_id=m.observation_id
                 JOIN uec.source_records sr ON sr.source_record_id=o.source_record_id
@@ -111,8 +117,8 @@ def promote(database_url: str, release_id: str, artifacts: list[dict]) -> dict:
             if created_at.tzinfo is None:
                 raise ValueError("database manifest creation time must include a timezone")
             source_coverage = [
-                {"source_id": source_id, "row_count": row_count, "retrieved_at": {"first": utc_iso(first), "last": utc_iso(last)}, "rights_status": rights_status}
-                for source_id, row_count, first, last, rights_status in coverage_rows
+                {"source_id": source_id, "row_count": row_count, "retrieved_at": {"first": utc_iso(first), "last": utc_iso(last)}, "rights_status": "cleared", "attribution": attribution}
+                for source_id, row_count, first, last, attribution in coverage_rows
             ]
             retrieved_at = min((item["retrieved_at"]["first"] for item in source_coverage), default=utc_iso(created_at))
             manifest = {
@@ -141,6 +147,7 @@ def promote(database_url: str, release_id: str, artifacts: list[dict]) -> dict:
                 ],
                 "supersedes": previous[0] if previous else None,
                 "rights_review": (demonstration or {}).get("rights_status") if demonstration else "not-recorded",
+                "source_rights_gate": "cleared",
                 "created_at": utc_iso(created_at),
                 "distributed_artifacts": artifacts,
             }
