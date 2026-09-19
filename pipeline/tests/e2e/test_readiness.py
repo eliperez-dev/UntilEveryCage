@@ -13,7 +13,10 @@ class ReadinessE2ETests(unittest.TestCase):
         env = E2EEnvironment()
         try:
             migrations = sorted((ROOT / "pipeline/migrations").glob("*.sql"))
-            env.start(migration_files=migrations[:1], wait_for_ready=False)
+            # This deliberately exercises the backend's own readiness
+            # response against a partial schema, so skip the normal full
+            # schema preflight for this one negative-path fixture.
+            env.start(migration_files=migrations[:1], wait_for_ready=False, schema_preflight=False)
             env.wait_for_listening()
             self.assertIsNone(env.backend.poll(), "backend must stay alive to report schema readiness")
             try:

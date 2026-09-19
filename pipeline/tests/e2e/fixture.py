@@ -149,7 +149,7 @@ class E2EEnvironment:
             return result
         return result
 
-    def _start_once(self, files, wait_for_ready):
+    def _start_once(self, files, wait_for_ready, schema_preflight):
         self._ensure_build_temp()
         print(f"[e2e] starting {self.project}", flush=True)
         startup = subprocess.run(self.command("up", "-d", "--wait"), cwd=ROOT, capture_output=True, text=True, env=self.compose_env())
@@ -229,27 +229,28 @@ class E2EEnvironment:
             if is_retryable_database_failure(output):
                 raise _RetryableStartupFailure("Postgres became unavailable after migrations")
             raise RuntimeError(f"PostGIS database failed post-migration readiness\n{_sanitize_diagnostics(output)}")
-        required = {
-            "facilities",
-            "organizations",
-            "organization_relationship_observations",
-            "claim_current",
-            "source_entity_crosswalks",
-            "source_records",
-        }
-        with psycopg.connect(self.database_url) as db:
-            names = {
-                row[0]
-                for row in db.execute(
-                    "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace "
-                    "WHERE n.nspname='uec' AND c.relkind IN ('r','p','v','m','f')"
-                ).fetchall()
+        if schema_preflight:
+            required = {
+                "facilities",
+                "organizations",
+                "organization_relationship_observations",
+                "claim_current",
+                "source_entity_crosswalks",
+                "source_records",
             }
-            missing = sorted(required - names)
-            if missing:
-                raise RuntimeError(
-                    f"database/schema preflight failed; missing={missing}"
-                )
+            with psycopg.connect(self.database_url) as db:
+                names = {
+                    row[0]
+                    for row in db.execute(
+                        "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace "
+                        "WHERE n.nspname='uec' AND c.relkind IN ('r','p','v','m','f')"
+                    ).fetchall()
+                }
+                missing = sorted(required - names)
+                if missing:
+                    raise RuntimeError(
+                        f"database/schema preflight failed; missing={missing}"
+                    )
         print("[e2e] building backend", flush=True)
         build_env = os.environ.copy()
         build_env["CARGO_TARGET_DIR"] = str(self.cargo_cache_dir)
@@ -294,12 +295,12 @@ class E2EEnvironment:
             f"exit_code={exit_code}; log_path={log_path}\n{log_text}"
         )
 
-    def start(self, migration_files=None, wait_for_ready=True):
+    def start(self, migration_files=None, wait_for_ready=True, schema_preflight=True):
         files = tuple(migration_files if migration_files is not None else sorted((ROOT / "pipeline/migrations").glob("*.sql")))
         for attempt in range(MAX_START_ATTEMPTS):
             self.start_attempts = attempt + 1
             try:
-                return self._start_once(files, wait_for_ready)
+                return self._start_once(files, wait_for_ready, schema_preflight)
             except _RetryableStartupFailure as exc:
                 diagnostics = self._container_diagnostics()
                 self.stop()
