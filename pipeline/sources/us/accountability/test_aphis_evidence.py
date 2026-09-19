@@ -1,3 +1,4 @@
+import csv
 import hashlib
 import json
 import shutil
@@ -316,6 +317,103 @@ class AphisEvidencePacketTests(unittest.TestCase):
             self.assertNotIn("aggregate_artifact_sha256", json.dumps(summary))
             self.assertGreater(summary["links"]["quarantined_count"], 0)
             self.assertNotIn("link_missing_or_invalid_provenance", summary["links"]["excluded_reasons"])
+
+    def _lineage_handoffs(self, root, *, wrong_row_profile=None, missing_page_profile=None, tampered_page_profile=None):
+        source = json.loads((Path(__file__).parent / "fixtures" / "current_identity.json").read_text(encoding="utf-8"))["aphis"]
+        handoffs = {}
+        lineage_manifests = {}
+        page_roots = {}
+        page_hashes = {}
+        for profile in ("registrations", "annual_reports", "inspections"):
+            profile_root = root / profile
+            page_root = profile_root / "raw-pages"
+            handoff = profile_root / "candidate-handoff"
+            page_root.mkdir(parents=True)
+            handoff.mkdir()
+            row = json.loads(json.dumps(source[profile][0]))
+            fieldnames = list(row["source_values"])
+            page = page_root / "page-01.csv"
+            with page.open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerow(row["source_values"])
+            page_hash = hashlib.sha256(page.read_bytes()).hexdigest()
+            page_hashes[profile] = page_hash
+            source_url = f"https://example.invalid/original/{profile}"
+            capture_manifest = profile_root / "capture-manifest.json"
+            capture_manifest.write_text(json.dumps({"pages": [{
+                "ordinal": 1, "file": "page-01.csv", "sha256": page_hash,
+                "byte_size": page.stat().st_size, "source_url": source_url,
+                "page_retrieved_at_utc": "unknown",
+            }]}), encoding="utf-8")
+            lineage_manifests[profile] = capture_manifest
+            page_roots[profile] = page_root
+            normalized = dict(row["normalized"])
+            normalized["source_capture_lineage"] = {
+                "page_sha256": page_hash, "page_ordinal": 1, "page_row": 1,
+                "page_byte_size": page.stat().st_size, "source_url": source_url,
+                "page_retrieved_at_utc": "unknown",
+            }
+            row["normalized"] = normalized
+            if profile == wrong_row_profile:
+                row["source_values"] = dict(row["source_values"], City="Wrongville")
+            payload = (json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8")
+            (handoff / "records.jsonl").write_bytes(payload)
+            handoff_manifest = {
+                "contract_version": "us-aphis-observation-handoff-v1", "source_id": "us.aphis",
+                "profile": profile, "evidence_origin": "synthetic",
+                "capture_classification": "synthetic-test-fixture",
+                "source_artifact_classification": "derived_staging_with_original_page_lineage",
+                "source_url": f"https://example.invalid/derived/{profile}",
+                "retrieved_at_utc": "2026-09-19T00:00:00Z", "source_artifact_sha256": "d" * 64,
+                "normalized_rows": 1, "normalized_sha256": hashlib.sha256(payload).hexdigest(),
+                "graph_candidate_emission": False, "auto_merge": False, "release_state": "not-created",
+                "publication_state": "private-candidate", "review_state": "review_required",
+                "privacy_gate": "pending", "coordinate_gate": "review_required", "test_only": True,
+                "row_payloads_included": True,
+            }
+            (handoff / "manifest.json").write_text(json.dumps(handoff_manifest), encoding="utf-8")
+            handoffs[profile] = handoff
+            if profile == missing_page_profile:
+                page.unlink()
+            elif profile == tampered_page_profile:
+                page.write_bytes(page.read_bytes() + b"tampered")
+        return handoffs, lineage_manifests, page_roots, page_hashes
+
+    def test_lineage_verifies_original_bytes_and_keeps_derived_hash_separate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            handoffs, manifests, page_roots, page_hashes = self._lineage_handoffs(root)
+            result = run_from_handoffs(
+                handoffs, root / "packet", lineage_manifest_paths=manifests, lineage_page_roots=page_roots,
+            )
+            summary = result["packet"]["row_free_summary"]
+            self.assertEqual(summary["lineage"]["rows_with_original_page_lineage"], {
+                "registrations": 1, "annual_reports": 1, "inspections": 1,
+            })
+            registration = next(
+                row for row in result["packet"]["private_packet"]["rows"]
+                if row["evidence"].get("profile") == "registrations"
+            )
+            provenance = registration["evidence"]["provenance"]
+            self.assertEqual(provenance["artifact_sha256"], page_hashes["registrations"])
+            self.assertEqual(provenance["derived_artifact_sha256"], "d" * 64)
+            self.assertEqual(provenance["artifact_classification"], "original_page")
+
+    def test_lineage_rejects_wrong_payload_missing_page_and_tampered_bytes(self):
+        cases = (
+            ("wrong row", {"wrong_row_profile": "annual_reports"}, "does not match original page row"),
+            ("missing page", {"missing_page_profile": "inspections"}, "lineage page is missing"),
+            ("tampered bytes", {"tampered_page_profile": "registrations"}, "bytes do not match capture manifest"),
+        )
+        for label, options, message in cases:
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                handoffs, manifests, page_roots, _ = self._lineage_handoffs(root, **options)
+                with self.assertRaisesRegex(ValueError, message):
+                    run_from_handoffs(
+                        handoffs, root / "packet", lineage_manifest_paths=manifests, lineage_page_roots=page_roots,
+                    )
 
 
 if __name__ == "__main__":

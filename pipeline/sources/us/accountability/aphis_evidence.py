@@ -10,7 +10,9 @@ geocode, publish, or infer ownership/current operation.
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
+import io
 import json
 import re
 from collections import Counter, defaultdict
@@ -56,6 +58,148 @@ def _json(path: Path) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
         raise AphisEvidenceError(f"manifest {path} must be a JSON object")
     return value
+
+
+def _verified_lineage_pages(
+    manifest_path: str | Path,
+    page_root: str | Path,
+) -> dict[int, dict[str, Any]]:
+    """Verify and parse the explicitly named original capture pages.
+
+    A derived handoff may carry lineage metadata, but that metadata is not
+    evidence by itself.  The capture manifest and page bytes are checked here
+    so a correct-looking embedded hash cannot point at a missing, tampered, or
+    wrong page.
+    """
+    manifest_file = Path(manifest_path).resolve()
+    manifest = _json(manifest_file)
+    pages = manifest.get("pages")
+    if not isinstance(pages, list) or not pages:
+        raise AphisEvidenceError(f"lineage manifest {manifest_file} lacks a non-empty pages list")
+    root = Path(page_root).resolve()
+    if not root.is_dir():
+        raise AphisEvidenceError(f"lineage page root is not a directory: {root}")
+    verified: dict[int, dict[str, Any]] = {}
+    for item in pages:
+        if not isinstance(item, Mapping):
+            raise AphisEvidenceError(f"lineage manifest {manifest_file} has a malformed page entry")
+        ordinal = item.get("ordinal")
+        filename = _text(item.get("file"))
+        declared_hash = _text(item.get("sha256"))
+        declared_size = item.get("byte_size")
+        source_url = _text(item.get("source_url"))
+        if not isinstance(ordinal, int) or ordinal < 1 or not filename:
+            raise AphisEvidenceError(f"lineage manifest {manifest_file} has invalid page identity")
+        if ordinal in verified or not declared_hash or not _SHA256.fullmatch(declared_hash):
+            raise AphisEvidenceError(f"lineage manifest {manifest_file} has invalid page hash")
+        try:
+            declared_size = int(declared_size)
+        except (TypeError, ValueError) as exc:
+            raise AphisEvidenceError(f"lineage manifest {manifest_file} has invalid page size") from exc
+        if declared_size < 0 or not source_url:
+            raise AphisEvidenceError(f"lineage manifest {manifest_file} has incomplete page metadata")
+        candidate = (root / filename).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError as exc:
+            raise AphisEvidenceError(f"lineage page escapes declared root: {filename}") from exc
+        if not candidate.is_file():
+            raise AphisEvidenceError(f"lineage page is missing: {filename}")
+        actual_size = candidate.stat().st_size
+        actual_hash = _sha256(candidate)
+        if actual_size != declared_size or actual_hash.lower() != declared_hash.lower():
+            raise AphisEvidenceError(f"lineage page bytes do not match capture manifest: {filename}")
+        try:
+            with candidate.open("r", encoding="utf-8-sig", newline="") as handle:
+                text = handle.read()
+            reader = csv.DictReader(io.StringIO(text), strict=True)
+            headers = reader.fieldnames
+            rows = list(reader)
+        except (OSError, UnicodeDecodeError, csv.Error) as exc:
+            raise AphisEvidenceError(f"lineage page is not a strict UTF-8 CSV: {filename}") from exc
+        if not headers or any(header is None or not str(header).strip() for header in headers):
+            raise AphisEvidenceError(f"lineage page has invalid CSV headers: {filename}")
+        if any(None in row for row in rows):
+            raise AphisEvidenceError(f"lineage page has malformed CSV rows: {filename}")
+        verified[ordinal] = {
+            "sha256": declared_hash.lower(),
+            "byte_size": declared_size,
+            "source_url": source_url,
+            "page_retrieved_at_utc": _text(item.get("page_retrieved_at_utc")) or "unknown",
+            "rows": rows,
+        }
+    return verified
+
+
+def _string_row(value: Mapping[Any, Any]) -> dict[str, str]:
+    return {str(key): "" if item is None else str(item) for key, item in value.items()}
+
+
+def _verify_row_lineage(
+    record: Mapping[str, Any],
+    pages: Mapping[int, Mapping[str, Any]],
+    *,
+    handoff: Path,
+) -> Mapping[str, Any]:
+    normalized = record.get("normalized") if isinstance(record.get("normalized"), Mapping) else {}
+    lineage = normalized.get("source_capture_lineage") if isinstance(normalized, Mapping) else None
+    if not isinstance(lineage, Mapping):
+        raise AphisEvidenceError(f"lineage-aware APHIS handoff row lacks source_capture_lineage: {handoff}")
+    page_hash = _text(lineage.get("page_sha256"))
+    page_url = _text(lineage.get("source_url"))
+    page_ordinal = lineage.get("page_ordinal")
+    page_row = lineage.get("page_row")
+    page_size = lineage.get("page_byte_size")
+    if not page_hash or not _SHA256.fullmatch(page_hash) or not page_url:
+        raise AphisEvidenceError(f"lineage-aware APHIS handoff row has invalid page provenance: {handoff}")
+    if not isinstance(page_ordinal, int) or page_ordinal < 1 or not isinstance(page_row, int) or page_row < 1:
+        raise AphisEvidenceError(f"lineage-aware APHIS handoff row has invalid page position: {handoff}")
+    try:
+        page_size = int(page_size)
+    except (TypeError, ValueError) as exc:
+        raise AphisEvidenceError(f"lineage-aware APHIS handoff row has invalid page size: {handoff}") from exc
+    if page_size < 0:
+        raise AphisEvidenceError(f"lineage-aware APHIS handoff row has invalid page size: {handoff}")
+    page = pages.get(page_ordinal)
+    if page is None:
+        raise AphisEvidenceError(f"lineage-aware APHIS handoff row references unknown page: {handoff}")
+    if (
+        page_hash.lower() != _text(page.get("sha256"))
+        or page_size != page.get("byte_size")
+        or page_url != page.get("source_url")
+    ):
+        raise AphisEvidenceError(f"lineage-aware APHIS handoff row disagrees with capture manifest: {handoff}")
+    source_rows = page.get("rows")
+    if not isinstance(source_rows, list) or page_row > len(source_rows):
+        raise AphisEvidenceError(f"lineage-aware APHIS handoff row is outside original page: {handoff}")
+    source_values = record.get("source_values")
+    if not isinstance(source_values, Mapping):
+        raise AphisEvidenceError(f"lineage-aware APHIS handoff row does not match original page row: {handoff}")
+    source_values = _string_row(source_values)
+    expected_capture_values = {
+        "__capture_page_byte_size": str(page_size),
+        "__capture_page_ordinal": str(page_ordinal),
+        "__capture_page_retrieved_at_utc": str(_text(lineage.get("page_retrieved_at_utc")) or page.get("page_retrieved_at_utc") or "unknown"),
+        "__capture_page_row": str(page_row),
+        "__capture_page_sha256": page_hash.lower(),
+        "__capture_source_url": page_url,
+    }
+    for key in (key for key in source_values if key.startswith("__capture_")):
+        if key not in expected_capture_values or source_values[key] != expected_capture_values[key]:
+            raise AphisEvidenceError(f"lineage-aware APHIS handoff row has invalid embedded capture metadata: {handoff}")
+    source_values = {key: value for key, value in source_values.items() if not key.startswith("__capture_")}
+    if source_values != _string_row(source_rows[page_row - 1]):
+        raise AphisEvidenceError(f"lineage-aware APHIS handoff row does not match original page row: {handoff}")
+    return {
+        "artifact_sha256": page_hash.lower(),
+        "source_url": page_url,
+        "artifact_classification": "original_page",
+        "page_sha256": page_hash.lower(),
+        "page_ordinal": page_ordinal,
+        "page_row": page_row,
+        "page_byte_size": page_size,
+        "page_retrieved_at_utc": _text(lineage.get("page_retrieved_at_utc")) or page.get("page_retrieved_at_utc") or "unknown",
+    }
 
 
 def _artifact_entries(manifest: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -212,7 +356,14 @@ def _provenance_for(
         return None
     if verified_artifact_hashes is not None and digest.lower() not in verified_artifact_hashes:
         return None
-    return {"artifact_sha256": digest.lower(), "source_url": url, "retrieved_at_utc": retrieved}
+    result = {"artifact_sha256": digest.lower(), "source_url": url, "retrieved_at_utc": retrieved}
+    for key in (
+        "artifact_classification", "page_sha256", "page_ordinal", "page_row",
+        "page_byte_size", "page_retrieved_at_utc", "derived_artifact_sha256",
+    ):
+        if value.get(key) is not None:
+            result[key] = value[key]
+    return result
 
 
 def _safe_record(record: Mapping[str, Any]) -> dict[str, Any]:
@@ -555,6 +706,8 @@ def run_from_handoffs(
     document_refs: Mapping[str, Iterable[Mapping[str, Any]]] | None = None,
     profile_input_rows: Mapping[str, int] | None = None,
     quarantine_rows_by_profile: Mapping[str, Iterable[Mapping[str, Any]]] | None = None,
+    lineage_manifest_paths: Mapping[str, str | Path] | None = None,
+    lineage_page_roots: Mapping[str, str | Path] | None = None,
 ) -> dict[str, Any]:
     """Consume lane-specific APHIS observation handoffs into one packet.
 
@@ -569,11 +722,22 @@ def run_from_handoffs(
     that excluded rows were absent.
     """
     records: dict[str, list[dict[str, Any]]] = {profile: [] for profile in PROFILES}
+    quarantine_rows = {
+        profile: list((quarantine_rows_by_profile or {}).get(profile, ()))
+        for profile in PROFILES
+    }
+    lineage_manifest_paths = dict(lineage_manifest_paths or {})
+    lineage_page_roots = dict(lineage_page_roots or {})
     provenance: dict[tuple[str, str], dict[str, Any]] = {}
     failures: list[dict[str, Any]] = []
     observed_input_rows: dict[str, int] = {}
     evidence_origins: dict[str, str | None] = {profile: None for profile in PROFILES}
     capture_classifications: dict[str, str | None] = {profile: None for profile in PROFILES}
+    lineage_rows: dict[str, int] = {profile: 0 for profile in PROFILES}
+    lineage_unknown_retrieval_rows: dict[str, int] = {profile: 0 for profile in PROFILES}
+    lineage_quarantine_rows: dict[str, int] = {profile: 0 for profile in PROFILES}
+    artifact_classifications: dict[str, str | None] = {profile: None for profile in PROFILES}
+    verified_pages: dict[str, dict[int, dict[str, Any]]] = {}
     for profile in PROFILES:
         handoff = handoff_dirs.get(profile)
         if handoff is None:
@@ -589,24 +753,54 @@ def run_from_handoffs(
         digest = _text(manifest.get("source_artifact_sha256") or manifest.get("checksum_sha256"))
         origin = _text(manifest.get("evidence_origin"))
         classification = _text(manifest.get("capture_classification"))
+        artifact_classification = _text(manifest.get("source_artifact_classification"))
         evidence_origins[profile] = origin
         capture_classifications[profile] = classification
+        artifact_classifications[profile] = artifact_classification
         observed_input_rows[profile] = len(rows)
         provenance[("us.aphis", profile)] = {
             "artifact_sha256": digest,
             "source_url": source_url,
             "retrieved_at_utc": retrieved,
         }
+        if artifact_classification == "derived_staging_with_original_page_lineage":
+            lineage_manifest = lineage_manifest_paths.get(profile)
+            lineage_root = lineage_page_roots.get(profile)
+            if lineage_manifest is None or lineage_root is None:
+                raise AphisEvidenceError(
+                    f"lineage-aware APHIS handoff requires explicit capture manifest and page root: {handoff}"
+                )
+            verified_pages[profile] = _verified_lineage_pages(lineage_manifest, lineage_root)
+
         for row in rows:
             row_copy = dict(row)
-            row_copy["_retained_artifact"] = {
-                "artifact_sha256": digest,
-                "source_url": source_url,
-                "retrieved_at_utc": retrieved,
-            }
+            if artifact_classification == "derived_staging_with_original_page_lineage":
+                row_copy["_retained_artifact"] = {
+                    **_verify_row_lineage(row, verified_pages[profile], handoff=Path(handoff).resolve()),
+                    "retrieved_at_utc": retrieved,
+                    "derived_artifact_sha256": digest,
+                }
+                lineage_rows[profile] += 1
+                if row_copy["_retained_artifact"]["page_retrieved_at_utc"] == "unknown":
+                    lineage_unknown_retrieval_rows[profile] += 1
+            else:
+                row_copy["_retained_artifact"] = {
+                    "artifact_sha256": digest,
+                    "source_url": source_url,
+                    "retrieved_at_utc": retrieved,
+                    "artifact_classification": artifact_classification or "source_artifact",
+                }
             records[profile].append(row_copy)
-            if digest:
+            if row_copy["_retained_artifact"].get("artifact_sha256"):
                 provenance[("us.aphis", profile, str(row["source_record_key"]))] = dict(row_copy["_retained_artifact"])
+
+        if artifact_classification == "derived_staging_with_original_page_lineage":
+            for item in quarantine_rows[profile]:
+                quarantined_record = item.get("record") if isinstance(item, Mapping) else None
+                if not isinstance(quarantined_record, Mapping):
+                    continue
+                _verify_row_lineage(quarantined_record, verified_pages[profile], handoff=Path(handoff).resolve())
+                lineage_quarantine_rows[profile] += 1
 
     from pipeline.sources.us.accountability.current_identity import build_current_identity_graph
 
@@ -625,7 +819,7 @@ def run_from_handoffs(
         input_failures=failures,
         profile_input_rows=profile_input_rows or observed_input_rows,
         document_refs=document_refs,
-        quarantine_rows_by_profile=quarantine_rows_by_profile,
+        quarantine_rows_by_profile=quarantine_rows,
     )
     def _consensus(values: Mapping[str, str | None], fallback: str) -> str:
         if not values or any(not value for value in values.values()):
@@ -640,6 +834,12 @@ def run_from_handoffs(
     for value in (packet["row_free_summary"], packet["private_packet"]):
         value["evidence_origin"] = _consensus(evidence_origins, "unknown")
         value["capture_classification"] = _consensus(capture_classifications, "unknown-retained-handoff")
+        value["lineage"] = {
+            "rows_with_original_page_lineage": dict(lineage_rows),
+            "rows_with_unknown_page_retrieval": dict(lineage_unknown_retrieval_rows),
+            "quarantined_rows_with_original_page_lineage": dict(lineage_quarantine_rows),
+            "source_artifact_classification": dict(artifact_classifications),
+        }
     manifest = write_packet(packet_dir, packet)
     return {"packet": packet, "manifest": manifest, "graph": graph, "input_failures": failures}
 

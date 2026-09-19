@@ -132,7 +132,7 @@ def _provenance(
     source_id: str,
     profile: str,
     source_record_key: str | None = None,
-) -> dict[str, str] | None:
+) -> dict[str, Any] | None:
     """Resolve row provenance, then profile/source fallback metadata.
 
     A real capture can span multiple retained source artifacts.  Prefer the
@@ -177,11 +177,18 @@ def _provenance(
     retrieved = _text(values.get("retrieved_at_utc"))
     if not digest or not _HEX64.fullmatch(digest.lower()) or not url or not _valid_datetime(retrieved):
         return None
-    return {
+    result: dict[str, Any] = {
         "artifact_sha256": digest.lower(),
         "source_url": url,
         "retrieved_at_utc": retrieved,
     }
+    for key in (
+        "artifact_classification", "page_sha256", "page_ordinal", "page_row",
+        "page_byte_size", "page_retrieved_at_utc", "derived_artifact_sha256",
+    ):
+        if values.get(key) is not None:
+            result[key] = values[key]
+    return result
 
 
 def _suppressed(record: Mapping[str, Any]) -> bool:
