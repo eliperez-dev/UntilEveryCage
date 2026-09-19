@@ -151,6 +151,8 @@ class AphisEvidencePacketTests(unittest.TestCase):
             self.assertGreater(summary["links"]["quarantined_count"], 0)
             self.assertNotIn("link_missing_or_invalid_provenance", summary["links"]["excluded_reasons"])
             self.assertEqual(summary["publication_status"], "not_eligible")
+            self.assertEqual(summary["evidence_origin"], "government-sourced")
+            self.assertEqual(summary["capture_classification"], "real-retained-source-handoff")
 
     def test_handoff_accounting_keeps_adapter_quarantine_distinct_from_missing_rows(self):
         with tempfile.TemporaryDirectory() as directory:

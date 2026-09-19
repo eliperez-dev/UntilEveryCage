@@ -40,6 +40,14 @@ signed URLs. The companion editorial note records what the evidence makes
 visible, why it matters to activists, what it cannot establish, and useful
 next research questions.
 
+Adapter quarantine labels such as `duplicate_observation_id` describe a
+provisional source-identity collision. They do not establish that the
+retained rows are factually duplicate observations; collision groups and full
+row equality remain separate review questions. For real source handoffs,
+`test_only` means private/no-publication gating, while the packet separately
+labels the evidence origin as government-sourced retained evidence rather
+than a synthetic fixture.
+
 Each timeline item has one of these states:
 
 * `observed`: an accepted source-local record with its source key, period and

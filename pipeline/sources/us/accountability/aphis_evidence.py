@@ -380,6 +380,7 @@ def build_packet(
         "links": {"candidate_count": len(links), "quarantined_count": len(link_quarantine), "excluded_reasons": dict(sorted(Counter(item["reason"] for item in link_quarantine).items()))},
         "input_failures": failures, "artifact_verification": dict(artifact_verification or {}),
         "coverage_boundary": "bounded retained APHIS source profiles; not a facility master, national census, current-operation, ownership, or animal-use total",
+        "quarantine_semantics": "adapter quarantine reasons such as duplicate_observation_id are provisional source-identity collisions for review, not claims that retained rows are factually duplicate observations",
         "unknowns": ["location/current operation", "ownership/control", "unobserved source rows and reporting periods", "animal-use coverage outside the captured APHIS profiles"],
         "publication": {"api": False, "map": False, "export": False, "cache": False, "history": False},
     }
@@ -606,6 +607,13 @@ def run_from_handoffs(
         document_refs=document_refs,
         quarantine_rows_by_profile=quarantine_rows_by_profile,
     )
+    # ``test_only`` is the existing private/no-publication gate on this
+    # handoff contract. It does not mean the source is synthetic. Keep source
+    # origin explicit so real government evidence is not mislabeled as a test
+    # fixture merely because publication is blocked.
+    for value in (packet["row_free_summary"], packet["private_packet"]):
+        value["evidence_origin"] = "government-sourced"
+        value["capture_classification"] = "real-retained-source-handoff"
     manifest = write_packet(packet_dir, packet)
     return {"packet": packet, "manifest": manifest, "graph": graph, "input_failures": failures}
 
