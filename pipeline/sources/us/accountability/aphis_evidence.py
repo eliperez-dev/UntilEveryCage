@@ -572,8 +572,8 @@ def run_from_handoffs(
     provenance: dict[tuple[str, str], dict[str, Any]] = {}
     failures: list[dict[str, Any]] = []
     observed_input_rows: dict[str, int] = {}
-    evidence_origins: list[str] = []
-    capture_classifications: list[str] = []
+    evidence_origins: dict[str, str | None] = {profile: None for profile in PROFILES}
+    capture_classifications: dict[str, str | None] = {profile: None for profile in PROFILES}
     for profile in PROFILES:
         handoff = handoff_dirs.get(profile)
         if handoff is None:
@@ -589,10 +589,8 @@ def run_from_handoffs(
         digest = _text(manifest.get("source_artifact_sha256") or manifest.get("checksum_sha256"))
         origin = _text(manifest.get("evidence_origin"))
         classification = _text(manifest.get("capture_classification"))
-        if origin:
-            evidence_origins.append(origin)
-        if classification:
-            capture_classifications.append(classification)
+        evidence_origins[profile] = origin
+        capture_classifications[profile] = classification
         observed_input_rows[profile] = len(rows)
         provenance[("us.aphis", profile)] = {
             "artifact_sha256": digest,
@@ -629,8 +627,10 @@ def run_from_handoffs(
         document_refs=document_refs,
         quarantine_rows_by_profile=quarantine_rows_by_profile,
     )
-    def _consensus(values: list[str], fallback: str) -> str:
-        distinct = set(values)
+    def _consensus(values: Mapping[str, str | None], fallback: str) -> str:
+        if not values or any(not value for value in values.values()):
+            return fallback
+        distinct = set(values.values())
         return next(iter(distinct)) if len(distinct) == 1 else fallback
 
     # ``test_only`` is the existing private/no-publication gate on this

@@ -155,6 +155,14 @@ class AphisEvidencePacketTests(unittest.TestCase):
             self.assertEqual(summary["publication_status"], "not_eligible")
             self.assertEqual(summary["evidence_origin"], "synthetic")
             self.assertEqual(summary["capture_classification"], "synthetic-test-fixture")
+            annual_manifest = root / "annual_reports" / "manifest.json"
+            annual_payload = json.loads(annual_manifest.read_text(encoding="utf-8"))
+            annual_payload.pop("evidence_origin")
+            annual_payload.pop("capture_classification")
+            annual_manifest.write_text(json.dumps(annual_payload), encoding="utf-8")
+            mixed = run_from_handoffs(handoffs, root / "mixed-packet")["packet"]["row_free_summary"]
+            self.assertEqual(mixed["evidence_origin"], "unknown")
+            self.assertEqual(mixed["capture_classification"], "unknown-retained-handoff")
 
     def test_handoff_accounting_keeps_adapter_quarantine_distinct_from_missing_rows(self):
         with tempfile.TemporaryDirectory() as directory:
