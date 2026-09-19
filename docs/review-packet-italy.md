@@ -1,6 +1,15 @@
 # Italy private review packet
 
-As of 2026-09-15, `it.853-2004` has catalog-linked private acquisition and candidate lifecycle support. `it.1069-2009` remains a separate, unimplemented candidate. Publication is blocked.
+As of 2026-09-19, `it.853-2004` has a fresh catalog-linked private acquisition
+and candidate lifecycle run. `it.1069-2009` remains a separate, unimplemented
+candidate. Publication is blocked.
+
+The live handoff contains 47,375 source observations, 41,849 normalized rows,
+and 5,526 quarantined repeated recognition/activity observations. The source
+artifact is 49,940,074 bytes with SHA-256
+`06c853fea232bd692e101d3c0b1b660d92ff80f56b2421bdd9e9746b01189dd8`; see the
+row-free [Sprint 02 handoff](reports/italy-sprint02-20260919.md) for the exact
+private path and replay evidence.
 
 - Terms/licensing: the Ministry catalogue indicates Italian Open Data Licence v2.0; attribution and project redistribution review remain open.
 - Privacy: addresses, tax identifiers, and precise source coordinates remain in restricted evidence; normalized/API-shaped rows suppress them pending review.

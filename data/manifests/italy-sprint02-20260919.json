@@ -1,0 +1,63 @@
+{
+  "report_type": "private-source-handoff",
+  "report_version": "italy-sprint02-v1",
+  "source_id": "it.853-2004",
+  "scope": "Italy; Ministry of Health establishments recognized under Regulation (EC) 853/2004; one source row per establishment/activity observation",
+  "excluded_scope": ["it.1069-2009", "legacy Italy CSVs", "public release or promotion"],
+  "source_url": "https://www.dati.salute.gov.it/it/dataset/stabilimenti-italiani-gli-alimenti-di-origine-animale/",
+  "download_url": "https://www.dati.salute.gov.it/sites/default/files/opendata/STAB_POA_8_20260919.csv",
+  "catalog_last_updated": "2026-09-19",
+  "filename_publication_date": "2026-09-19",
+  "retrieved_at_utc": "2026-09-19T18:00:29Z",
+  "source_sha256": "06c853fea232bd692e101d3c0b1b660d92ff80f56b2421bdd9e9746b01189dd8",
+  "source_byte_size": 49940074,
+  "catalog_sha256": "1db2f27a54a1b54a51295da027624baf94f853afb5d05a2d310177b3af2cdcdf",
+  "schema_fingerprint": "3ba24374ea6412c7240218984fac00b2e0e9f84e382ec72c19bbcef1a73c0826",
+  "counts": {
+    "input_rows": 47375,
+    "normalized_rows": 41849,
+    "quarantined_rows": 5526,
+    "ambiguous_repeated_recognition_activity": 5526,
+    "provisional_facility_groups_in_accepted_rows": 25316
+  },
+  "normalized_sha256": "661ef0b5f1a9c30b175c239438a22bdef023745d38fa94a871da0343fe09fb7b",
+  "parsed_sha256": "22f7ebf04255b1d46c1d2828fefb3fbe0e228ce544ac927fae046410ce2b3335",
+  "categories": {
+    "source_category_values_preserved": 18,
+    "source_activity_codes_preserved": 19
+  },
+  "privacy_and_rights": {
+    "addresses_tax_identifiers_and_source_coordinates": "restricted-source-values-only",
+    "registered_location": "not-supplied-by-source",
+    "recognized_establishment_location": "preserved privately; not operating-proof",
+    "geocoding": "disabled",
+    "privacy_gate": "pending-review",
+    "coordinate_gate": "review-required",
+    "rights_gate": "review-required",
+    "publication": "blocked; no release created"
+  },
+  "partitions": {
+    "attempted": ["official catalog", "catalog-discovered 853/2004 CSV"],
+    "captured": ["catalog.html", "source.csv", "acquisition-metadata.json", "private lifecycle candidate and review artifacts"],
+    "failed": ["initial Python urllib transport: TLS handshake failure; ordinary curl HTTPS transport succeeded"],
+    "not_attempted": ["1069/2009 by-products dataset; excluded by sprint scope"]
+  },
+  "private_handoff": {
+    "root": "C:\\New Projects\\UntilEveryCage\\.private\\sprint02-20260919\\italy",
+    "raw_run": "C:\\New Projects\\UntilEveryCage\\.private\\sprint02-20260919\\italy\\raw\\it.853-2004\\20260919T000000Z-live",
+    "staging_run": "C:\\New Projects\\UntilEveryCage\\.private\\sprint02-20260919\\italy\\staging\\20260919T000000Z-live\\06c853fea232bd69-wiuptilp",
+    "status": "candidate-ready; private-validated; no public exposure"
+  },
+  "acquisition_commands": [
+    "curl.exe -fL --http1.1 --tlsv1.2 -A 'UntilEveryCage/controlled-acquisition' -D <run>\\catalog.headers -o <run>\\catalog.html https://www.dati.salute.gov.it/it/dataset/stabilimenti-italiani-gli-alimenti-di-origine-animale/",
+    "discover_csv(<run>\\catalog.html, official catalog URL) -> https://www.dati.salute.gov.it/sites/default/files/opendata/STAB_POA_8_20260919.csv",
+    "curl.exe -fL --http1.1 --tlsv1.2 -A 'UntilEveryCage/controlled-acquisition' -D <run>\\source.headers -o <run>\\source.csv <catalog-discovered-CSV-URL>"
+  ],
+  "verification_commands": [
+    "git -C 'C:\\New Projects\\UntilEveryCage' check-ignore -v --no-index .private/sprint02-20260919/italy/probe",
+    "python -m unittest pipeline.sources.italy.test_acquire pipeline.sources.italy.test_it_853_adapter",
+    "python -m pipeline.sources.italy.refresh --raw '<private-root>\\raw\\it.853-2004\\20260919T000000Z-live\\source.csv' --run-dir '<private-root>\\staging\\20260919T000000Z-live'"
+  ],
+  "code_revision": "worktree baseline 5570b6ab42e74dc5227e08c2cd7c1ac7f08aab96 plus Italy location-semantics change",
+  "release_state": "not-created"
+}

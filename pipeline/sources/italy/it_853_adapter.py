@@ -140,6 +140,17 @@ class Italy853Adapter:
                 "name": clean(row.get("ragione_sociale")),
                 "trading_name": clean(row.get("ragione_sociale")),
                 "address": None,
+                # The Ministry feed supplies the address of the recognized
+                # establishment, not a legal entity's registered office. Keep
+                # both concepts explicit and do not turn the source address
+                # into an operating-site claim without review.
+                "location_role": "recognized-establishment-location",
+                "location_semantics": "source-recognized-establishment-address; not-registered-office; not-operating-proof",
+                "registered_location": None,
+                "registered_location_state": "not-supplied-by-source",
+                "operating_location": None,
+                "operating_location_state": "source-location-not-operating-proof",
+                "source_location_state": "source-address-private-pending-review" if clean(row.get("indirizzo")) else "unknown",
                 "municipality": clean(row.get("comune")),
                 "city": clean(row.get("comune")),
                 "province": clean(row.get("provincia")),
@@ -164,6 +175,7 @@ class Italy853Adapter:
                 "coordinate_precision": "source-precision-unknown" if clean(row.get("longitudine")) or clean(row.get("latitudine")) else "unresolved",
                 "privacy_gate": "pending-review",
                 "coordinate_gate": "review_required",
+                "rights_gate": "review_required",
                 "publication_gate": "blocked",
             }
             record = {

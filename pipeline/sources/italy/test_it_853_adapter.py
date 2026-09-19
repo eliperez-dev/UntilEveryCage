@@ -7,7 +7,7 @@ H="precedente_bollo_cee;num_identificativo_produzione_commercializzazione;ragion
 def row(n="A",a="10",s="Autorizzata"): return f";{n};Name;;Town;;010;Piemonte;X;{a};Activity;P;S;IT;12;45;1;tax;vat;001001;;;{s};2026-09-13;\n"
 class Test(unittest.TestCase):
  def test_safe_mapping(self):
-  r=Italy853Adapter().parse_bytes((H+"\n"+row()).encode())["accepted"][0]; self.assertIsNone(r["normalized"]["coordinates"]); self.assertIsNone(r["normalized"]["address"]); self.assertIn("p_iva",r["source_values"])
+  r=Italy853Adapter().parse_bytes((H+"\n"+row()).encode())["accepted"][0]; self.assertIsNone(r["normalized"]["coordinates"]); self.assertIsNone(r["normalized"]["address"]); self.assertIn("p_iva",r["source_values"]); self.assertEqual(r["normalized"]["location_role"],"recognized-establishment-location"); self.assertEqual(r["normalized"]["registered_location_state"],"not-supplied-by-source"); self.assertEqual(r["normalized"]["operating_location_state"],"source-location-not-operating-proof"); self.assertEqual(r["normalized"]["rights_gate"],"review_required")
  def test_quarantine(self):
   r=Italy853Adapter().parse_bytes((H+"\n"+row()+row("A","10","Unknown")).encode()); self.assertEqual(len(r["accepted"]),1); self.assertIn("unknown_status",r["quarantined"][0]["reasons"])
  def test_sensitive_and_deterministic_identity(self):

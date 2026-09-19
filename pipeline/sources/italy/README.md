@@ -46,3 +46,21 @@ This is private staging evidence, not a completeness, accuracy, project-
 approval, or publication claim. The catalog notes that some coordinates came
 from OpenStreetMap contributors; that provenance does not itself authorize
 precise-coordinate publication.
+
+## Sprint 02 live handoff
+
+The 2026-09-19 private refresh is recorded in
+`data/manifests/italy-sprint02-20260919.json` and
+`docs/reports/italy-sprint02-20260919.md`. The exact raw and staging paths are
+restricted under the sprint's excluded private root; no row-level artifact is
+tracked. The source run had 47,375 observations, 41,849 normalized rows, and
+5,526 quarantined repeated recognition/activity observations. A registered
+office is not supplied by this source: the source address is a recognized-
+establishment location and is not treated as proof of current operation.
+
+The preferred replay command is the `acquire.py --fetch` command above. If the
+local Python TLS stack cannot negotiate the Ministry host, use the ordinary
+HTTPS `curl.exe --http1.1 --tlsv1.2` catalog-then-discovered-CSV capture route
+documented in the private handoff, preserving both response headers and the
+catalog-discovered URL before running `refresh.py`. This is a transport
+fallback only; it does not bypass access controls or change source scope.
