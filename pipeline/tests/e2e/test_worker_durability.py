@@ -381,6 +381,40 @@ class WorkerDurabilityE2ETests(unittest.TestCase):
         self.assertEqual(event, "cancelled")
         self.assertEqual(result_count, 0)
 
+    def test_active_restriction_before_claim_blocks_provider_and_budget(self):
+        job_id, record_id = self._queue(provider="synthetic-preblocked")
+        calls = []
+
+        with psycopg.connect(self.env.database_url) as db:
+            db.execute(
+                "INSERT INTO uec.record_access_events "
+                "(source_record_id,action,reason_category,policy_version,maintainer) "
+                "VALUES (%s,'public_access_revoked','privacy','e2e-worker','synthetic-test')",
+                (record_id,),
+            )
+
+        class MustNotCallAdapter:
+            def geocode(self, _query):
+                calls.append(True)
+                raise AssertionError("an actively restricted queued job must not call a provider")
+
+        with patch.object(WORKER, "get_adapter", return_value=MustNotCallAdapter()):
+            processed = WORKER.run(
+                self.env.database_url, "synthetic-preblocked", 1, 0, 1,
+                daily_budget=1, provider_interval=0, worker_id="preblocked-worker",
+            )
+        with psycopg.connect(self.env.database_url) as db:
+            event = db.execute(
+                "SELECT event_type FROM uec.geocode_job_current WHERE job_id=%s", (job_id,)
+            ).fetchone()[0]
+            reservation_count = db.execute(
+                "SELECT count(*) FROM uec.geocode_request_reservations WHERE job_id=%s", (job_id,)
+            ).fetchone()[0]
+        self.assertEqual(processed, 0)
+        self.assertEqual(calls, [])
+        self.assertEqual(event, "queued")
+        self.assertEqual(reservation_count, 0)
+
     def test_real_worker_image_drains_synthetic_queue_and_exits_without_private_logs(self):
         job_id, record_id = self._queue(provider="synthetic-docker")
         server, server_thread, state = self._provider_server()
