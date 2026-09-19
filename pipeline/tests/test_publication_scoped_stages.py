@@ -61,6 +61,24 @@ class ScopedStageDatabaseTests(unittest.TestCase):
             for release_id in (release_a, release_b):
                 db.execute("INSERT INTO uec.releases (release_id,status,ruleset_version,profile,summary) VALUES (%s,'candidate','synthetic-v1','secondary','{}')", (release_id,))
                 db.execute("INSERT INTO uec.release_members (release_id,facility_id,observation_id,default_visible) VALUES (%s,%s,%s,true)", (release_id, facility_id, observation_id))
+            # Migration 041 adds an exact source/profile/release/artifact
+            # gate to promotion. Seed both synthetic releases so this test
+            # continues to exercise publication scope independently.
+            if db.execute("SELECT to_regclass('uec.source_rights_decisions')").fetchone()[0] is not None:
+                for release_id in (release_a, release_b):
+                    db.execute(
+                        """
+                        INSERT INTO uec.source_rights_decisions
+                            (source_id,profile,release_id,artifact_id,artifact_sha256,
+                             redistribution_status,decision_actor,decision_reference,decided_at)
+                        SELECT %s,'secondary',%s,%s,sha256,'cleared',
+                               'synthetic-publication-scope-test',
+                               'synthetic publication scope fixture',now()
+                        FROM uec.raw_artifacts
+                        WHERE artifact_id=%s
+                        """,
+                        (prefix, release_id, artifact_id, artifact_id),
+                    )
             db.execute("INSERT INTO uec.geocode_results (source_record_id,provider_id,query,match_method,status,result,queried_at) VALUES (%s,'synthetic','synthetic','test','accepted',ST_SetSRID(ST_MakePoint(10,55),4326)::geography,now())", (record_id,))
             has_scope = db.execute("SELECT to_regclass('uec.publication_review_release_scopes')").fetchone()[0] is not None
             if not has_scope:

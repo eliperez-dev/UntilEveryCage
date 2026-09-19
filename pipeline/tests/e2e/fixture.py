@@ -399,7 +399,62 @@ class E2EEnvironment:
 
     def build_public_read_model(self, release_id):
         """Activate a synthetic model through the same atomic operator flow."""
+        self._seed_synthetic_rights_decisions(release_id)
         return _read_model_builder().build(self.database_url, release_id)
+
+    def _seed_synthetic_rights_decisions(self, release_id):
+        """Record exact rights decisions for this disposable release.
+
+        Migration 041 scopes each decision to the immutable source artifact
+        and release profile. Synthetic E2E data can provide an attributable
+        cleared decision for every release member before a model build or
+        export gate is exercised.
+        """
+        now = datetime.now(timezone.utc)
+        with psycopg.connect(self.database_url) as db:
+            with db.transaction():
+                db.execute(
+                    """
+                    INSERT INTO uec.source_rights_decisions (
+                        source_id, profile, release_id, artifact_id,
+                        artifact_sha256, redistribution_status, decision_actor,
+                        decision_reference, decided_at
+                    )
+                    SELECT DISTINCT
+                        source.source_id,
+                        release.profile,
+                        release.release_id,
+                        artifact.artifact_id,
+                        artifact.sha256,
+                        'cleared',
+                        'synthetic-e2e-fixture',
+                        'synthetic rights fixture',
+                        %s
+                    FROM uec.release_members member
+                    JOIN uec.releases release
+                      ON release.release_id = member.release_id
+                    JOIN uec.observations observation
+                      ON observation.observation_id = member.observation_id
+                    JOIN uec.source_records record
+                      ON record.source_record_id = observation.source_record_id
+                    JOIN uec.sources source
+                      ON source.source_id = record.source_id
+                    JOIN uec.raw_artifacts artifact
+                      ON artifact.artifact_id = record.artifact_id
+                    WHERE member.release_id = %s
+                      AND member.default_visible = true
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM uec.source_rights_decisions existing
+                          WHERE existing.source_id = source.source_id
+                            AND existing.profile = release.profile
+                            AND existing.release_id = release.release_id
+                            AND existing.artifact_id = artifact.artifact_id
+                            AND existing.artifact_sha256 = artifact.sha256
+                      )
+                    """,
+                    (now, release_id),
+                )
 
     def create_failed_candidate(self):
         """Create an invalid candidate without touching the promoted release."""
@@ -439,6 +494,7 @@ class E2EEnvironment:
                 db.execute("INSERT INTO uec.geocode_results (source_record_id,provider_id,query,match_method,status,attempt_number,result,queried_at) VALUES (%s,'e2e','synthetic candidate','fixture','accepted',1,ST_SetSRID(ST_MakePoint(12,56),4326)::geography,%s)", (pending_record, now))
                 db.execute("INSERT INTO uec.publication_review_events (source_record_id,release_id,factual_review_status,privacy_screening_status,maintainer_approval,publication_eligible,reviewer_role) VALUES (%s,'e2e-private-candidate','reviewed','passed','approved',true,'maintainer')", (pending_record,))
         self.private_candidate_facility_id = facility
+        self._seed_synthetic_rights_decisions('e2e-private-candidate')
 
     def seed_private_graph_scenario(self):
         """Seed a bounded synthetic graph for authenticated HTTP contract tests."""
