@@ -182,6 +182,15 @@ class SuppressionLifecycleE2ETests(unittest.TestCase):
     def test_c_daily_budget_stops_before_provider_call(self):
         self._queue_geocode("synthetic-budget", "already counted", started_at=datetime.now(timezone.utc))
         self._queue_geocode("synthetic-budget", "must remain queued")
+        with psycopg.connect(self.env.database_url) as db:
+            with db.transaction():
+                db.execute(
+                    """
+                    INSERT INTO uec.geocode_provider_budgets
+                        (provider_id,budget_date,daily_limit,reserved_requests,last_reserved_at)
+                    VALUES ('synthetic-budget',(now() AT TIME ZONE 'UTC')::date,1,1,clock_timestamp())
+                    """
+                )
 
         class Adapter:
             calls = 0

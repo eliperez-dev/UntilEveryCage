@@ -100,6 +100,7 @@ class PublicDiscoveryReadModelE2ETests(unittest.TestCase):
                        WHERE release_id='e2e-promoted'""",
                     (release_id,),
                 )
+        self.env._seed_synthetic_rights_decisions(release_id)
         with self.assertRaisesRegex(RuntimeError, "interrupted"):
             BUILDER.build(self.env.database_url, release_id, fail_after_rows=1)
         with psycopg.connect(self.env.database_url) as db:
