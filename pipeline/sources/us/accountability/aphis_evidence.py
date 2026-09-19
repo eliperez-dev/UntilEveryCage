@@ -63,6 +63,8 @@ def _json(path: Path) -> Mapping[str, Any]:
 def _verified_lineage_pages(
     manifest_path: str | Path,
     page_root: str | Path,
+    *,
+    profile: str | None = None,
 ) -> dict[int, dict[str, Any]]:
     """Verify and parse the explicitly named original capture pages.
 
@@ -72,19 +74,38 @@ def _verified_lineage_pages(
     wrong page.
     """
     manifest_file = Path(manifest_path).resolve()
-    manifest = _json(manifest_file)
-    pages = manifest.get("pages")
+    try:
+        manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise AphisEvidenceError(f"cannot read lineage manifest {manifest_file}: {exc}") from exc
+    if isinstance(manifest, Mapping):
+        pages = manifest.get("pages")
+        if pages is None and isinstance(manifest.get("files"), list):
+            pages = [
+                item for item in manifest["files"]
+                if isinstance(item, Mapping)
+                and (profile is None or _text(item.get("profile")) == profile)
+                and _text(item.get("relative_path"))
+                and "/pages/" in str(item.get("relative_path"))
+            ]
+    else:
+        pages = manifest
     if not isinstance(pages, list) or not pages:
         raise AphisEvidenceError(f"lineage manifest {manifest_file} lacks a non-empty pages list")
     root = Path(page_root).resolve()
     if not root.is_dir():
         raise AphisEvidenceError(f"lineage page root is not a directory: {root}")
     verified: dict[int, dict[str, Any]] = {}
-    for item in pages:
+    for index, item in enumerate(pages, start=1):
         if not isinstance(item, Mapping):
             raise AphisEvidenceError(f"lineage manifest {manifest_file} has a malformed page entry")
-        ordinal = item.get("ordinal")
-        filename = _text(item.get("file"))
+        filename = _text(item.get("file") or item.get("source_filename"))
+        if not filename and _text(item.get("relative_path")):
+            filename = Path(str(item["relative_path"])).name
+        ordinal = item.get("ordinal") or item.get("global_capture_ordinal")
+        if not isinstance(ordinal, int) and filename:
+            match = re.search(r"(?:page-|Page-)(\d+)", filename)
+            ordinal = int(match.group(1)) if match else index
         declared_hash = _text(item.get("sha256"))
         declared_size = item.get("byte_size")
         source_url = _text(item.get("source_url"))
@@ -96,7 +117,7 @@ def _verified_lineage_pages(
             declared_size = int(declared_size)
         except (TypeError, ValueError) as exc:
             raise AphisEvidenceError(f"lineage manifest {manifest_file} has invalid page size") from exc
-        if declared_size < 0 or not source_url:
+        if declared_size < 0:
             raise AphisEvidenceError(f"lineage manifest {manifest_file} has incomplete page metadata")
         candidate = (root / filename).resolve()
         try:
@@ -112,15 +133,26 @@ def _verified_lineage_pages(
         try:
             with candidate.open("r", encoding="utf-8-sig", newline="") as handle:
                 text = handle.read()
-            reader = csv.DictReader(io.StringIO(text), strict=True)
+            # APHIS exports can contain provider quoting irregularities.  The
+            # retained bytes/hash remain authoritative; row-level equality
+            # below is the fail-closed check against any parser recovery.
+            reader = csv.DictReader(io.StringIO(text), strict=False)
             headers = reader.fieldnames
             rows = list(reader)
         except (OSError, UnicodeDecodeError, csv.Error) as exc:
-            raise AphisEvidenceError(f"lineage page is not a strict UTF-8 CSV: {filename}") from exc
+            raise AphisEvidenceError(f"lineage page is not a UTF-8 CSV: {filename}") from exc
         if not headers or any(header is None or not str(header).strip() for header in headers):
             raise AphisEvidenceError(f"lineage page has invalid CSV headers: {filename}")
-        if any(None in row for row in rows):
+        if any(None in row or any(value is None for value in row.values()) for row in rows):
             raise AphisEvidenceError(f"lineage page has malformed CSV rows: {filename}")
+        declared_rows = item.get("row_count") if item.get("row_count") is not None else item.get("data_rows")
+        if declared_rows is not None:
+            try:
+                declared_rows = int(declared_rows)
+            except (TypeError, ValueError) as exc:
+                raise AphisEvidenceError(f"lineage manifest {manifest_file} has invalid row count") from exc
+            if declared_rows < 0 or len(rows) != declared_rows:
+                raise AphisEvidenceError(f"lineage page row count does not match manifest: {filename}")
         verified[ordinal] = {
             "sha256": declared_hash.lower(),
             "byte_size": declared_size,
@@ -166,7 +198,7 @@ def _verify_row_lineage(
     if (
         page_hash.lower() != _text(page.get("sha256"))
         or page_size != page.get("byte_size")
-        or page_url != page.get("source_url")
+        or (page.get("source_url") is not None and page_url != page.get("source_url"))
     ):
         raise AphisEvidenceError(f"lineage-aware APHIS handoff row disagrees with capture manifest: {handoff}")
     source_rows = page.get("rows")
@@ -770,7 +802,7 @@ def run_from_handoffs(
                 raise AphisEvidenceError(
                     f"lineage-aware APHIS handoff requires explicit capture manifest and page root: {handoff}"
                 )
-            verified_pages[profile] = _verified_lineage_pages(lineage_manifest, lineage_root)
+            verified_pages[profile] = _verified_lineage_pages(lineage_manifest, lineage_root, profile=profile)
 
         for row in rows:
             row_copy = dict(row)

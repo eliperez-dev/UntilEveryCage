@@ -318,7 +318,7 @@ class AphisEvidencePacketTests(unittest.TestCase):
             self.assertGreater(summary["links"]["quarantined_count"], 0)
             self.assertNotIn("link_missing_or_invalid_provenance", summary["links"]["excluded_reasons"])
 
-    def _lineage_handoffs(self, root, *, wrong_row_profile=None, missing_page_profile=None, tampered_page_profile=None):
+    def _lineage_handoffs(self, root, *, wrong_row_profile=None, missing_page_profile=None, tampered_page_profile=None, short_page_profile=None):
         source = json.loads((Path(__file__).parent / "fixtures" / "current_identity.json").read_text(encoding="utf-8"))["aphis"]
         handoffs = {}
         lineage_manifests = {}
@@ -337,13 +337,18 @@ class AphisEvidencePacketTests(unittest.TestCase):
                 writer = csv.DictWriter(handle, fieldnames=fieldnames)
                 writer.writeheader()
                 writer.writerow(row["source_values"])
+            if profile == short_page_profile:
+                with page.open("w", encoding="utf-8", newline="") as handle:
+                    writer = csv.writer(handle)
+                    writer.writerow(fieldnames)
+                    writer.writerow([row["source_values"].get(field, "") for field in fieldnames[:-1]])
             page_hash = hashlib.sha256(page.read_bytes()).hexdigest()
             page_hashes[profile] = page_hash
             source_url = f"https://example.invalid/original/{profile}"
             capture_manifest = profile_root / "capture-manifest.json"
             capture_manifest.write_text(json.dumps({"pages": [{
                 "ordinal": 1, "file": "page-01.csv", "sha256": page_hash,
-                "byte_size": page.stat().st_size, "source_url": source_url,
+                "byte_size": page.stat().st_size, "data_rows": 1, "source_url": source_url,
                 "page_retrieved_at_utc": "unknown",
             }]}), encoding="utf-8")
             lineage_manifests[profile] = capture_manifest
@@ -403,6 +408,7 @@ class AphisEvidencePacketTests(unittest.TestCase):
     def test_lineage_rejects_wrong_payload_missing_page_and_tampered_bytes(self):
         cases = (
             ("wrong row", {"wrong_row_profile": "annual_reports"}, "does not match original page row"),
+            ("short row", {"short_page_profile": "annual_reports"}, "malformed CSV rows"),
             ("missing page", {"missing_page_profile": "inspections"}, "lineage page is missing"),
             ("tampered bytes", {"tampered_page_profile": "registrations"}, "bytes do not match capture manifest"),
         )
