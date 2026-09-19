@@ -89,6 +89,7 @@ class E2EEnvironment:
         self.start_attempts = 0
         # Synthetic only: this token is scoped to the disposable test server.
         self.dev_preview_token = "uec-e2e-preview-token"
+        self.private_graph_token = "uec-e2e-private-graph-token"
         self.test_release_id = None
 
     def _ensure_build_temp(self):
@@ -228,11 +229,32 @@ class E2EEnvironment:
             if is_retryable_database_failure(output):
                 raise _RetryableStartupFailure("Postgres became unavailable after migrations")
             raise RuntimeError(f"PostGIS database failed post-migration readiness\n{_sanitize_diagnostics(output)}")
+        required = {
+            "facilities",
+            "organizations",
+            "organization_relationship_observations",
+            "claim_current",
+            "source_entity_crosswalks",
+            "source_records",
+        }
+        with psycopg.connect(self.database_url) as db:
+            names = {
+                row[0]
+                for row in db.execute(
+                    "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace "
+                    "WHERE n.nspname='uec' AND c.relkind IN ('r','p','v','m','f')"
+                ).fetchall()
+            }
+            missing = sorted(required - names)
+            if missing:
+                raise RuntimeError(
+                    f"database/schema preflight failed; missing={missing}"
+                )
         print("[e2e] building backend", flush=True)
         build_env = os.environ.copy()
         build_env["CARGO_TARGET_DIR"] = str(self.cargo_cache_dir)
         subprocess.run(["cargo", "build", "--quiet"], cwd=ROOT, check=True, timeout=180, env=build_env)
-        env = os.environ.copy(); env.update({"UEC_DATABASE_URL": self.database_url, "PORT": str(self.api_port), "UEC_RUNTIME_MODE": "development", "UEC_BIND_HOST": "127.0.0.1", "UEC_DEV_PREVIEW": "true", "UEC_DEV_PREVIEW_TOKEN": self.dev_preview_token})
+        env = os.environ.copy(); env.update({"UEC_DATABASE_URL": self.database_url, "PORT": str(self.api_port), "UEC_RUNTIME_MODE": "development", "UEC_BIND_HOST": "127.0.0.1", "UEC_DEV_PREVIEW": "true", "UEC_DEV_PREVIEW_TOKEN": self.dev_preview_token, "UEC_PRIVATE_GRAPH_TOKEN": self.private_graph_token})
         if self.test_release_id:
             env.update({"UEC_TEST_RELEASE_ID": self.test_release_id, "UEC_TEST_RELEASE_TOKEN": self.dev_preview_token})
         cached_binary = self.cargo_cache_dir / "debug/uec-api.exe"
@@ -417,6 +439,56 @@ class E2EEnvironment:
                 db.execute("INSERT INTO uec.geocode_results (source_record_id,provider_id,query,match_method,status,attempt_number,result,queried_at) VALUES (%s,'e2e','synthetic candidate','fixture','accepted',1,ST_SetSRID(ST_MakePoint(12,56),4326)::geography,%s)", (pending_record, now))
                 db.execute("INSERT INTO uec.publication_review_events (source_record_id,release_id,factual_review_status,privacy_screening_status,maintainer_approval,publication_eligible,reviewer_role) VALUES (%s,'e2e-private-candidate','reviewed','passed','approved',true,'maintainer')", (pending_record,))
         self.private_candidate_facility_id = facility
+
+    def seed_private_graph_scenario(self):
+        """Seed a bounded synthetic graph for authenticated HTTP contract tests."""
+        now = datetime.now(timezone.utc)
+        source_id = f"e2e.private-graph.{uuid.uuid4().hex}"
+        artifact_id = uuid.uuid4()
+        record_id = uuid.uuid4()
+        organization_a, organization_b, organization_c = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+        facility_one, facility_two = uuid.uuid4(), uuid.uuid4()
+        with psycopg.connect(self.database_url) as db:
+            with db.transaction():
+                db.execute(
+                    "INSERT INTO uec.sources (source_id,country_code,name,official_url,access_method) VALUES (%s,'US','Synthetic private graph source','https://example.invalid/private-graph','fixture')",
+                    (source_id,),
+                )
+                db.execute(
+                    "INSERT INTO uec.raw_artifacts (artifact_id,storage_key,sha256,byte_size,retrieved_at) VALUES (%s,%s,%s,1,%s)",
+                    (artifact_id, f"e2e/private-graph/{artifact_id}", uuid.uuid4().hex * 2, now),
+                )
+                db.execute(
+                    "INSERT INTO uec.source_records (source_record_id,source_id,source_record_key,artifact_id,raw_fields,parsed_at,source_state) VALUES (%s,%s,'private-graph',%s,'{}',%s,'rejected')",
+                    (record_id, source_id, artifact_id, now),
+                )
+                db.execute(
+                    "INSERT INTO uec.organizations (organization_id,canonical_name,country_code) VALUES (%s,'Synthetic graph A','US'),(%s,'Synthetic graph B','US'),(%s,'Synthetic graph C','US')",
+                    (organization_a, organization_b, organization_c),
+                )
+                db.execute(
+                    "INSERT INTO uec.facilities (facility_id,canonical_name,country_code) VALUES (%s,'Synthetic graph facility one','US'),(%s,'Synthetic graph facility two','US')",
+                    (facility_one, facility_two),
+                )
+                edges = [
+                    (organization_a, None, organization_b, "operator", 0.8750, now),
+                    (organization_b, None, organization_a, "owner", 0.6250, now.replace(microsecond=max(0, now.microsecond - 1))),
+                    (organization_b, facility_one, None, "supplier", None, now.replace(microsecond=max(0, now.microsecond - 2))),
+                    (organization_c, None, organization_b, "parent", 1.0, now.replace(microsecond=max(0, now.microsecond - 3))),
+                    (organization_a, facility_two, None, "customer", 0.5, now.replace(microsecond=max(0, now.microsecond - 4))),
+                ]
+                for from_id, target_facility, target_org, relationship_type, confidence, observed_at in edges:
+                    db.execute(
+                        "INSERT INTO uec.organization_relationship_observations (source_id,source_record_id,from_organization_id,target_facility_id,target_organization_id,relationship_type,observed_at,confidence,review_state,storage_state,privacy_status,publication_status,note) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'review_required','private','suppressed','not_eligible','synthetic private note')",
+                        (source_id, record_id, from_id, target_facility, target_org, relationship_type, observed_at, confidence),
+                    )
+        self.private_graph_ids = {
+            "organization_a": str(organization_a),
+            "organization_b": str(organization_b),
+            "organization_c": str(organization_c),
+            "facility_one": str(facility_one),
+            "facility_two": str(facility_two),
+        }
 
     def restore_restricted_record(self):
         """Append a restoration event; the original evidence is unchanged."""

@@ -13,7 +13,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install psycopg[binary]
+      - run: pip install -r pipeline/requirements.txt
       - name: Run standard tests in the canonical clean environment
         shell: pwsh
         run: ./pipeline/tests/run-standard.ps1
@@ -26,16 +26,23 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install psycopg[binary]
-      - name: Run Docker-backed API E2E tests
+      - run: pip install -r pipeline/requirements.txt
+      - name: Verify private Docker build context
         shell: pwsh
-        run: ./pipeline/tests/e2e/run-suite.ps1
+        run: ./pipeline/tests/verify-docker-context.ps1
+      - name: Run Docker-backed API E2E tests (core and extended)
+        shell: pwsh
+        run: ./pipeline/tests/e2e/run-suite.ps1 -Suite full
 
   backup-restore:
     # The PostGIS image is Linux-only; Ubuntu includes PowerShell Core for the drill.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r pipeline/requirements.txt
       - name: Run synthetic backup/restore gate
         shell: pwsh
         env:

@@ -1,0 +1,8 @@
+FROM alpine:3.20
+
+WORKDIR /context
+COPY . .
+
+# The CI harness creates this synthetic private marker under data/.  The
+# assertion fails if the Docker ignore rules allow it into the build context.
+RUN test ! -e data/.docker-context-sentinel

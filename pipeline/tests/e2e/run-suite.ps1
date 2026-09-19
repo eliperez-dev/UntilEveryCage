@@ -11,6 +11,7 @@ $core = @(
   'pipeline.tests.e2e.test_seeded_api',
   'pipeline.tests.e2e.test_public_surface_safety',
   'pipeline.tests.e2e.test_candidate_import',
+  'pipeline.tests.e2e.test_private_graph',
   'pipeline.tests.e2e.test_readiness'
 )
 $extended = @(

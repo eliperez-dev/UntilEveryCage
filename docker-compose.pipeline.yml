@@ -18,7 +18,10 @@ services:
 
   geocode-worker:
     profiles: [geocoding]
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    restart: "no"
     command:
       - python
       - pipeline/scripts/stages/geocode-worker.py

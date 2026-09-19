@@ -1,4 +1,17 @@
 target
+data/
+private/
+staging/
+.tmp/
+tmp/
+**/.env
+**/.env.*
+*.env
+*.secret
+*.secrets
+**/*secret*
+**/*credential*
+**/*token*
 Old scripts
 Old CSVs
 .git
