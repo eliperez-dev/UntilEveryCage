@@ -144,8 +144,19 @@ def _load_profile(paths: list[Path], profile: str) -> tuple[list[dict[str, Any]]
             raise ValueError(f"{path.name} parsed as {result['profile']}, expected {profile}")
         _, metadata = _classify(path, adapter)
         artifacts.append(metadata)
-        records.extend(result["accepted"])
-        quarantined.extend(result["quarantined"])
+        # Keep the retained-artifact edge with every private row.  The
+        # aggregate profile hash below is metadata accounting, not a source
+        # artifact hash and must never be used as row provenance.
+        row_artifact = {
+            "artifact": metadata["artifact"],
+            "artifact_sha256": metadata["sha256"],
+            "byte_size": metadata["byte_size"],
+        }
+        records.extend([{**record, "_retained_artifact": row_artifact} for record in result["accepted"]])
+        quarantined.extend([
+            {**item, "record": {**item["record"], "_retained_artifact": row_artifact}}
+            for item in result["quarantined"]
+        ])
     return records, quarantined, artifacts
 
 

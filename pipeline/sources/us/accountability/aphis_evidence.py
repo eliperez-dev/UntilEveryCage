@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from pipeline.contracts.source_lifecycle import atomic_json, atomic_jsonl, read_jsonl
+from pipeline.sources.us.aphis.adapter import AphisContractError, AphisPublicSearchAdapter
 
 
 PACKET_VERSION = "us-aphis-investigation-packet-v1"
@@ -104,11 +105,15 @@ def verify_retained_artifacts(
         artifact_name = _text(item.get("artifact") or item.get("name"))
         declared_path = _text(item.get("path_private") or item.get("artifact_path") or item.get("path"))
         candidate = Path(declared_path) if declared_path else (root / artifact_name if artifact_name else None)
+        if candidate is not None and not candidate.is_absolute():
+            candidate = root / candidate
         result = {
             "profile": profile,
             "artifact": artifact_name,
             "declared_sha256": _text(item.get("sha256")),
             "declared_byte_size": item.get("byte_size") if item.get("byte_size") is not None else item.get("bytes"),
+            "source_url": _text(item.get("source_url") or item.get("requested_url") or item.get("final_url")),
+            "retrieved_at_utc": _text(item.get("retrieved_at_utc")),
             "path": str(candidate.resolve()) if candidate else None,
             "state": "failed",
             "failure": None,
@@ -127,10 +132,17 @@ def verify_retained_artifacts(
                 result["failure"] = "artifact_hash_not_declared_or_invalid"
             elif actual_hash.lower() != str(expected_hash).lower():
                 result["failure"] = "artifact_hash_mismatch"
-            elif expected_size is not None and int(expected_size) != actual_size:
-                result["failure"] = "artifact_size_mismatch"
+            elif expected_size is None:
+                result["failure"] = "artifact_size_not_declared"
             else:
-                result["state"] = "verified"
+                try:
+                    size_matches = int(expected_size) == actual_size
+                except (TypeError, ValueError):
+                    size_matches = False
+                if not size_matches:
+                    result["failure"] = "artifact_size_mismatch"
+                else:
+                    result["state"] = "verified"
         checked.append(result)
     by_profile: dict[str, dict[str, int]] = {}
     for item in checked:
@@ -176,15 +188,28 @@ def _period(record: Mapping[str, Any]) -> dict[str, str] | None:
     return None
 
 
-def _provenance_for(provenance: Mapping[Any, Any], record: Mapping[str, Any], profile: str) -> dict[str, Any] | None:
+def _provenance_for(
+    provenance: Mapping[Any, Any],
+    record: Mapping[str, Any],
+    profile: str,
+    *,
+    verified_artifact_hashes: set[str] | None = None,
+) -> dict[str, Any] | None:
     source_id = _text(record.get("source_id")) or "us.aphis"
-    value = provenance.get((source_id, profile)) or provenance.get(f"{source_id}:{profile}") or provenance.get(source_id)
+    retained = record.get("_retained_artifact")
+    profile_value = provenance.get((source_id, profile)) or provenance.get(f"{source_id}:{profile}") or provenance.get(source_id)
+    if isinstance(retained, Mapping) and isinstance(profile_value, Mapping):
+        value = {**profile_value, **retained}
+    else:
+        value = retained if isinstance(retained, Mapping) else profile_value
     if not isinstance(value, Mapping):
         return None
     digest = _text(value.get("artifact_sha256") or value.get("sha256"))
     url = _text(value.get("source_url") or value.get("final_url"))
     retrieved = _text(value.get("retrieved_at_utc"))
     if not digest or not _SHA256.fullmatch(digest) or not url or not retrieved:
+        return None
+    if verified_artifact_hashes is not None and digest.lower() not in verified_artifact_hashes:
         return None
     return {"artifact_sha256": digest.lower(), "source_url": url, "retrieved_at_utc": retrieved}
 
@@ -223,15 +248,24 @@ def build_packet(
     artifact_verification: Mapping[str, Any] | None = None,
     document_refs: Mapping[str, Iterable[Mapping[str, Any]]] | None = None,
     previous_packet: Mapping[str, Any] | None = None,
+    profile_input_rows: Mapping[str, int] | None = None,
+    quarantine_rows_by_profile: Mapping[str, Iterable[Mapping[str, Any]]] | None = None,
 ) -> dict[str, Any]:
     """Build deterministic private packet and row-free summary in memory."""
     failures = [dict(item) for item in input_failures]
     expected_rows = dict(expected_rows or {})
+    profile_input_rows = dict(profile_input_rows or {})
+    quarantine_rows_by_profile = quarantine_rows_by_profile or {}
     document_refs = document_refs or {}
     accepted: dict[str, list[Mapping[str, Any]]] = {profile: list(records_by_profile.get(profile, ())) for profile in PROFILES}
     occurrences: Counter[str] = Counter(_record_key(record) for rows in accepted.values() for record in rows)
     timeline: list[dict[str, Any]] = []
     private_rows: list[dict[str, Any]] = []
+    verified_hashes = {
+        str(item.get("actual_sha256")).lower()
+        for item in (artifact_verification or {}).get("artifacts", ())
+        if isinstance(item, Mapping) and item.get("state") == "verified" and item.get("actual_sha256")
+    } if artifact_verification else None
     profile_summary: dict[str, dict[str, Any]] = {}
     for profile in PROFILES:
         rows = accepted[profile]
@@ -241,7 +275,10 @@ def build_packet(
         periods: set[str] = set()
         for record in sorted(rows, key=lambda item: _record_key(item)):
             key = _record_key(record)
-            record_provenance = _provenance_for(provenance, record, profile)
+            record_provenance = _provenance_for(
+                provenance, record, profile,
+                verified_artifact_hashes=verified_hashes,
+            )
             state = "quarantined" if key in duplicate_keys or _normalized(record).get("privacy_gate") in {"suppressed", "restricted"} or record_provenance is None else "observed"
             reason = (
                 "duplicate_source_record_key" if key in duplicate_keys else
@@ -269,15 +306,22 @@ def build_packet(
             timeline.append(evidence)
             private_rows.append({"evidence": evidence, "record": _safe_record(record)})
             timeline.extend(_document_events(key, document_refs.get(key, ())))
+        adapter_quarantine = [dict(item) for item in quarantine_rows_by_profile.get(profile, ())]
+        for item in adapter_quarantine:
+            record = item.get("record") if isinstance(item.get("record"), Mapping) else {}
+            timeline.append({"state": "quarantined", "profile": profile,
+                             "source_record_key": record.get("source_record_key"),
+                             "reason": "adapter_quarantine", "reasons": list(item.get("reasons", ()))})
         expected = expected_rows.get(profile)
-        if expected is not None and observed < int(expected):
+        captured_rows = int(profile_input_rows.get(profile, len(rows) + len(adapter_quarantine)))
+        if expected is not None and captured_rows < int(expected):
             timeline.append({"state": "not_observed", "profile": profile, "period": None,
-                             "missing_count": int(expected) - observed,
+                             "missing_count": int(expected) - captured_rows,
                              "reason": "expected_source_rows_not_captured"})
         if profile_failures:
             timeline.extend({"state": "failed", "profile": profile, "period": None, "failure": dict(item)} for item in profile_failures)
         profile_summary[profile] = {
-            "input_rows": len(rows), "observed_rows": observed, "quarantined_rows": quarantined,
+            "input_rows": captured_rows, "observed_rows": observed, "quarantined_rows": quarantined + len(adapter_quarantine),
             "failed_inputs": len(profile_failures), "periods": [json.loads(value) for value in sorted(periods)],
             "coverage_state": "failed" if profile_failures else ("incomplete" if expected is not None and observed < int(expected) else "bounded"),
         }
@@ -292,10 +336,31 @@ def build_packet(
             right = candidate.get("right") if isinstance(candidate.get("right"), Mapping) else {}
             if registration_key and left.get("source_record_key") != registration_key:
                 continue
-            links.append({"state": "observed", "candidate_id": candidate.get("candidate_id"),
-                          "left": dict(left), "right": dict(right), "matched_identifiers": dict(candidate.get("matched_identifiers") or {}),
-                          "review_state": candidate.get("review_state"), "assertion_status": candidate.get("assertion_status"),
-                          "provenance": (candidate.get("evidence") or {}).get("provenance")})
+            candidate_provenance = (candidate.get("evidence") or {}).get("provenance")
+            has_provenance = isinstance(candidate_provenance, Mapping) and all(
+                isinstance(value, Mapping)
+                and _text(value.get("artifact_sha256"))
+                and _text(value.get("source_url"))
+                and _text(value.get("retrieved_at_utc"))
+                and (verified_hashes is None or _text(value.get("artifact_sha256")).lower() in verified_hashes)
+                for value in candidate_provenance.values()
+            )
+            review_state = _text(candidate.get("review_state"))
+            assertion_status = _text(candidate.get("assertion_status"))
+            conflict = bool(candidate.get("conflicting_official_identifiers") or candidate.get("identifier_conflicts"))
+            reason = (
+                "conflicting_official_identifiers" if conflict else
+                "link_missing_or_invalid_provenance" if not has_provenance else
+                "link_review_required" if review_state == "review_required" or assertion_status in {"candidate", "quarantined"} else None
+            )
+            item = {"candidate_id": candidate.get("candidate_id"),
+                    "left": dict(left), "right": dict(right), "matched_identifiers": dict(candidate.get("matched_identifiers") or {}),
+                    "review_state": review_state, "assertion_status": assertion_status,
+                    "provenance": candidate_provenance}
+            if reason:
+                link_quarantine.append({"state": "quarantined", "reason": reason, **item})
+            else:
+                links.append({"state": "observed", **item})
         for candidate in graph.get("quarantined", ()) if isinstance(graph.get("quarantined", ()), Iterable) else ():
             if not isinstance(candidate, Mapping):
                 continue
@@ -362,6 +427,10 @@ def run_from_wave2(
     root = Path(wave2_dir)
     report_path = root / "wave2-report.json"
     report = _json(report_path)
+    input_manifest = root / "input-manifest.json"
+    if not input_manifest.is_file():
+        raise AphisEvidenceError(f"Wave 2 input manifest is missing: {input_manifest}")
+    verification = verify_retained_artifacts(input_manifest)
     records = {
         profile: read_jsonl(root / "private-rows" / f"{profile}-accepted.jsonl")
         if (root / "private-rows" / f"{profile}-accepted.jsonl").is_file() else []
@@ -378,17 +447,73 @@ def run_from_wave2(
     for profile, value in (report.get("profiles") or {}).items():
         if isinstance(value, Mapping):
             provenance[("us.aphis", profile)] = {
-                "artifact_sha256": value.get("aggregate_artifact_sha256"),
+                # Wave 2's aggregate hash covers metadata strings, not source
+                # bytes. Row-level hashes come from _retained_artifact tags.
                 "source_url": value.get("source_url"),
                 "retrieved_at_utc": value.get("retrieved_at_utc"),
             }
+    completeness = report.get("completeness") if isinstance(report.get("completeness"), Mapping) else {}
+    expected = dict(expected_rows or {})
+    input_rows: dict[str, int] = {}
+    for profile, value in completeness.items():
+        if not isinstance(value, Mapping):
+            continue
+        if value.get("expected_displayed_rows") is not None and profile not in expected:
+            expected[profile] = int(value["expected_displayed_rows"])
+        if value.get("observed_input_rows") is not None:
+            input_rows[profile] = int(value["observed_input_rows"])
+    quarantine_rows = {
+        profile: read_jsonl(root / "private-rows" / f"{profile}-adapter-quarantine.jsonl")
+        if (root / "private-rows" / f"{profile}-adapter-quarantine.jsonl").is_file() else []
+        for profile in PROFILES
+    }
     packet = build_packet(
         records_by_profile=records, provenance=provenance, graph=graph,
-        registration_key=registration_key, expected_rows=expected_rows,
+        registration_key=registration_key, expected_rows=expected,
         input_failures=report.get("input_failures") or [], document_refs=document_refs,
+        artifact_verification=verification, profile_input_rows=input_rows,
+        quarantine_rows_by_profile=quarantine_rows,
     )
     manifest = write_packet(packet_dir, packet)
     return {"packet": packet, "manifest": manifest}
+
+
+def _load_verified_exports(
+    verification: Mapping[str, Any],
+    manifest: Mapping[str, Any],
+) -> tuple[dict[str, list[dict[str, Any]]], dict[str, list[dict[str, Any]]], dict[tuple[str, str], dict[str, Any]], dict[str, int]]:
+    """Parse only verified manifest-named exports for the standalone CLI."""
+    records: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    quarantined: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    provenance: dict[tuple[str, str], dict[str, Any]] = {}
+    input_rows: dict[str, int] = defaultdict(int)
+    adapter = AphisPublicSearchAdapter()
+    report_profiles = manifest.get("profile_metadata") if isinstance(manifest.get("profile_metadata"), Mapping) else {}
+    for item in verification.get("artifacts", ()):
+        if not isinstance(item, Mapping) or item.get("state") != "verified":
+            continue
+        profile = _text(item.get("profile"))
+        path = _text(item.get("path"))
+        if not profile or profile not in PROFILES or not path:
+            continue
+        try:
+            result = adapter.parse_bytes(Path(path).read_bytes())
+        except (OSError, AphisContractError) as exc:
+            quarantined[profile].append({"state": "failed", "reasons": [f"adapter_error:{type(exc).__name__}"]})
+            continue
+        artifact = {"artifact_sha256": item.get("actual_sha256"), "source_url": item.get("source_url"),
+                    "retrieved_at_utc": item.get("retrieved_at_utc")}
+        profile_meta = report_profiles.get(profile) if isinstance(report_profiles, Mapping) else None
+        if isinstance(profile_meta, Mapping):
+            artifact["source_url"] = artifact.get("source_url") or profile_meta.get("source_url")
+            artifact["retrieved_at_utc"] = artifact.get("retrieved_at_utc") or profile_meta.get("retrieved_at_utc")
+        for record in result["accepted"]:
+            records[profile].append({**record, "_retained_artifact": artifact})
+        quarantined[profile].extend({**row, "record": {**row["record"], "_retained_artifact": artifact}} for row in result["quarantined"])
+        input_rows[profile] += int(result["input_rows"])
+        provenance[("us.aphis", profile)] = artifact
+    expected = manifest.get("expected_rows") if isinstance(manifest.get("expected_rows"), Mapping) else {}
+    return dict(records), dict(quarantined), provenance, dict(input_rows)
 
 
 def _cli() -> int:
@@ -397,10 +522,19 @@ def _cli() -> int:
     parser.add_argument("--artifact-root", type=Path)
     parser.add_argument("--run-dir", required=True, type=Path)
     args = parser.parse_args()
+    manifest = _json(args.manifest)
     verification = verify_retained_artifacts(args.manifest, artifact_root=args.artifact_root)
-    summary = {"schema_version": PACKET_VERSION, "artifact_verification": verification, "input_failures": verification["artifacts"]}
+    records, quarantined, provenance, input_rows = _load_verified_exports(verification, manifest)
     failures = [item for item in verification["artifacts"] if item.get("state") != "verified"]
-    write_packet(args.run_dir, build_packet(records_by_profile={}, provenance={}, artifact_verification=verification, input_failures=failures))
+    packet = build_packet(
+        records_by_profile=records, provenance=provenance,
+        expected_rows=manifest.get("expected_rows") if isinstance(manifest.get("expected_rows"), Mapping) else {},
+        profile_input_rows=input_rows, quarantine_rows_by_profile=quarantined,
+        artifact_verification=verification, input_failures=failures,
+    )
+    write_packet(args.run_dir, packet)
+    summary = {"schema_version": PACKET_VERSION, "artifact_verification": verification,
+               "input_failures": failures, "row_free_summary": packet["row_free_summary"]}
     print(json.dumps(summary, sort_keys=True))
     return 0
 
