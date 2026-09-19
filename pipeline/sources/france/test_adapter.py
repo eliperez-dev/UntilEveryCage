@@ -22,6 +22,18 @@ class FranceAdapterTests(unittest.TestCase):
         result = FranceDgalSectionIAdapter().parse_bytes(content)
         self.assertEqual(len(result["accepted"]), 1)
         self.assertEqual(result["accepted"][0]["normalized"]["activity_categories"], ("slaughter",))
+        self.assertEqual(result["accepted"][0]["normalized"]["address_state"], "source-value-present-pending-review")
+
+    def test_shared_siret_across_approval_or_category_is_review_signal_not_quarantine(self):
+        content = ("approval_number;legal_name;siret;commune;category;associated activities\n"
+                   "FR-1;Shared One;12345678901234;Town;SH;Abattage\n"
+                   "FR-2;Shared Two;12345678901234;Town;CP;Découpe\n").encode()
+        result = FranceDgalSectionIAdapter().parse_bytes(content)
+        self.assertEqual(len(result["accepted"]), 2)
+        self.assertEqual(len(result["quarantined"]), 0)
+        self.assertEqual(result["identity_conflicted_siret_groups"], 1)
+        self.assertEqual(result["identity_conflicted_rows"], 2)
+        self.assertTrue(all(row["normalized"]["identity_conflict_state"].startswith("shared-siret") for row in result["accepted"]))
 
     def test_section_i_preserves_source_and_quarantines_duplicate(self):
         adapter = FranceDgalSectionIAdapter(); result = adapter.parse_file(FIXTURES / "section_i.csv")

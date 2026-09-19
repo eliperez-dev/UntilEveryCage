@@ -28,3 +28,15 @@ publication approval; the current site-wide Etalab indication still needs
 file-specific confirmation.
 
 Run with `python -m pipeline.sources.france.refresh --section I --raw <restricted.txt> --run-dir <restricted-run>` or `--fetch --terms-review <approved-terms.json>`. Raw artifacts belong in ignored private storage only.
+
+For a two-scope row-free reconciliation after both private lifecycle runs:
+
+`python -m pipeline.sources.france.reconcile --section-i-run <section-i-lifecycle-run> --section-ii-run <section-ii-lifecycle-run> --output <private>/france-reconciliation.json`
+
+The reconciliation reports source totals, input/normalized/quarantine
+partitions, category and location/privacy gate counts, and approval-number
+overlap counts without emitting identifiers. It never treats either section's
+observations as unique facilities and never merges overlap automatically. It
+also carries shared-SIRET identity-review counts when a source entity spans
+distinct approval/category observations; those rows remain source observations
+and are not quarantined solely for that unresolved identity signal.
