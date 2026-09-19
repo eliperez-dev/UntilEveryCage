@@ -1,6 +1,6 @@
 # Sprint 02 integration and storage ledger
 
-Status: lane 8 kickoff checkpoint, 2026-09-19. This is a row-free engineering handoff; it is not a release approval or a claim that source acquisition is complete.
+Status: partial reviewed country checkpoint, 2026-09-19. France and Italy are accepted for private candidate/replay integration; this is not a release approval or a claim that Sprint 02 source acquisition is complete.
 
 ## Ownership and baseline
 
@@ -27,6 +27,14 @@ The Docker context test creates synthetic sentinels under both `data/` and `.pri
 
 Kickoff validation: `npm ci` completed with no vulnerabilities; `python -m unittest scripts.test_dev` passed (7 tests); `python scripts/dev.py --json doctor` passed (database not probed because `UEC_DATABASE_URL` is unset); `git diff --check` passed; both shared-root and lane-worktree `git check-ignore` probes matched `/.private/`. `powershell -ExecutionPolicy Bypass -File pipeline/tests/verify-docker-context.ps1` was attempted with and without escalation but remains blocked because Docker Desktop's Linux engine pipe is unavailable: the client is installed, Docker Desktop processes are running, `com.docker.service` is stopped, and starting that service returns `Cannot open ... service on computer '.'`. No private data or database was used.
 
+## Reviewed country checkpoint
+
+- France commit `707ac93e` was independently replayed from retained Section I/II raw artifacts and approved by QA; it is integrated as `fbf4e682` on `eli/front-end-overhaul` with unresolved identity signals preserved, no automatic merges, and publication/DB import blocked.
+- Italy commits `e04adecf` and `291ad21` were independently replayed byte-for-byte and approved by QA; they are integrated in the same checkpoint with quarantine, location/privacy, rights, and publication gates preserved.
+- The combined local validation passed 256 pipeline tests, 25 Jest tests, 7 developer tests, doctor, and diff checks. Native GitHub Actions run [98](https://github.com/eliperez-dev/UntilEveryCage/actions/runs/35461131905) succeeded for exact SHA `fbf4e6824792078a4c3aa5ac1f730e0629039224`.
+- FSIS current files remain blocked after bounded ordinary GETs to the three displayed official routes returned HTTP 403; no response body was retained. The row-free evidence is private at `C:\New Projects\UntilEveryCage\.private\sprint02-20260919\fsis\handoff\bounded-get-20260919.json`.
+- APHIS registration/report and inspection lanes are still in progress; their real handoffs require independent replay before integration.
+
 ## Integration ledger
 
 | Area | Owner/interface | Acceptance state |
@@ -34,8 +42,8 @@ Kickoff validation: `npm ci` completed with no vulnerabilities; `python -m unitt
 | APHIS registrations/reports | Lane 1 handoff under private storage | Pending source handoff and review |
 | APHIS inspections | Lane 2 handoff under private storage | Pending source handoff and review |
 | FSIS current parity | Lane 3 handoff under private storage | Pending source handoff and review |
-| France candidate | Lane 4 handoff under private storage | Pending source handoff and review |
-| Italy candidate | Lane 5 handoff under private storage | Pending source handoff and review |
+| France candidate | Lane 4 handoff under private storage | QA-approved and integrated for private candidate/replay |
+| Italy candidate | Lane 5 handoff under private storage | QA-approved and integrated for private candidate/replay |
 | Evidence integration | Lane 6 existing APHIS/FSIS contracts | Pending reviewed handoffs |
 | Independent QA | Lane 7 replay and review | Pending reviewed handoffs |
 | CI/build/release engineering | Lane 8 | Storage and context boundary implemented; native CI and final integration pending |
