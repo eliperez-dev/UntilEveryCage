@@ -48,6 +48,7 @@
     "staging_run": "C:\\New Projects\\UntilEveryCage\\.private\\sprint02-20260919\\italy\\staging\\20260919T000000Z-live\\06c853fea232bd69-wiuptilp",
     "status": "candidate-ready; private-validated; no public exposure"
   },
+  "run_id_semantics": "20260919T000000Z-live is an operator-assigned path label, not a retrieval timestamp",
   "acquisition_commands": [
     "curl.exe -fL --http1.1 --tlsv1.2 -A 'UntilEveryCage/controlled-acquisition' -D <run>\\catalog.headers -o <run>\\catalog.html https://www.dati.salute.gov.it/it/dataset/stabilimenti-italiani-gli-alimenti-di-origine-animale/",
     "discover_csv(<run>\\catalog.html, official catalog URL) -> https://www.dati.salute.gov.it/sites/default/files/opendata/STAB_POA_8_20260919.csv",

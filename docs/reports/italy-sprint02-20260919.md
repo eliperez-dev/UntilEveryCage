@@ -23,6 +23,11 @@ The catalog supplied `2026-09-19` as its last-updated date and the filename
 supplied the same publication-date signal. Retrieval was recorded at
 `2026-09-19T18:00:29Z`.
 
+The private run directory name `20260919T000000Z-live` is a deterministic
+operator label only; it is not used as the retrieval timestamp. The private
+acquisition metadata records the catalog response at `18:00:07Z`, the CSV
+response at `18:00:29Z`, and an audit event documenting this distinction.
+
 The repository's Python urllib route encountered a TLS handshake failure. The
 same official catalog-discovered URL was acquired with ordinary `curl.exe`
 HTTPS (`--http1.1 --tlsv1.2`), preserving catalog and source response headers.
