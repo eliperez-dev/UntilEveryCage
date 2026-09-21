@@ -1,0 +1,24 @@
+{
+  "schema_version": "d5-live-readiness-manifest-v1",
+  "scope": "thirteen D2/D3 sources",
+  "report_command": "python pipeline/scripts/diagnostics/d5-live-readiness.py --output <aggregate-report.json>",
+  "execution": "static-audit-no-network",
+  "network_requests": 0,
+  "scheduler_installed": false,
+  "publication": "blocked",
+  "source_rows_in_repository": false,
+  "private_paths_in_report": false,
+  "classifications": {
+    "unattended-live-ready": 0,
+    "authenticated-live-ready": 0,
+    "browser-assisted": 4,
+    "preserved-artifact-only": 0,
+    "terms-blocked": 9,
+    "technically-broken": 0
+  },
+  "limitations": [
+    "This aggregate manifest records repository capability evidence, not a live fetch.",
+    "Terms, privacy, source accuracy, completeness, project approval, and publication remain separate gates.",
+    "The shared runner live-acquisition mode remains fail-closed until authorized source callables are onboarded."
+  ]
+}
