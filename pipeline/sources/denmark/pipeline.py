@@ -289,8 +289,12 @@ def main(*, run_stage_fn: Callable[[str, Path, list[str]], None] | None = None,
         # Never queue a row that validation quarantined.  The original
         # classified artifact remains available for review; enrichment only
         # consumes the accepted private normalized projection.
-        _materialize_validated_rows(run_dir)
-        stage("geocode_queue", SHARED_STAGES / "create-geocode-queue.py", [str(run_dir / "normalized" / "records.jsonl"), "--output-dir", str(geocode_dir)])
+        classified_path = classify_dir / "classified-records.jsonl"
+        normalized_path = run_dir / "normalized" / "records.jsonl"
+        if classified_path.is_file():
+            _materialize_validated_rows(run_dir)
+        geocode_input = normalized_path if normalized_path.is_file() else classified_path
+        stage("geocode_queue", SHARED_STAGES / "create-geocode-queue.py", [str(geocode_input), "--output-dir", str(geocode_dir)])
         if args.geocode_limit is not None:
             geo = [str(geocode_dir / "geocode-queue.jsonl"), "--output", str(run_dir / "06-geocode-results.jsonl"), "--limit", str(args.geocode_limit), "--delay", str(args.geocode_delay), "--provider-config", str(args.geocode_provider_config.resolve()), "--terms-review", str(args.geocode_terms_review.resolve()), "--network"]
             if args.geocode_suppression_keys:
