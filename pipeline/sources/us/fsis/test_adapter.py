@@ -29,6 +29,10 @@ class FsisAdapterTests(unittest.TestCase):
         self.assertEqual(row["processing_activities"]["raw_intact_beef_processing"], "Yes")
         self.assertEqual(row["inspection_attributes"]["inspection_system_nsis"], "Yes")
         self.assertEqual(result["accepted"][0]["source_values"]["demographics"]["establishment_id"], "FSIS-001")
+        self.assertEqual(result["source_metrics"]["source_native_establishments"], 2)
+        self.assertEqual(result["source_metrics"]["duplicate_directory_aliases"], 0)
+        self.assertEqual(result["source_metrics"]["category_coverage"]["slaughter_rows"], 2)
+        self.assertEqual(result["source_metrics"]["category_coverage"]["processing_rows"], 2)
 
     def test_unmatched_demographics_are_quarantined_not_dropped(self):
         demographic = b"establishment_number,goat_slaughter\nNOT-IN-DIRECTORY,Yes\n"

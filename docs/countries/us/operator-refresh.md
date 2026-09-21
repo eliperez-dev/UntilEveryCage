@@ -81,6 +81,24 @@ disabled. A failed lane cannot delete or replace the previous-valid manifest.
 The failure record contains an actionable class and fallback without copying
 source rows into the aggregate report.
 
+## FSIS legacy comparison
+
+The FSIS adapter manifest includes row-free source metrics for directory rows,
+source-native establishments, duplicate identities, and activity-category
+coverage. Compare the checked-in historical snapshot without claiming it is
+current:
+
+```powershell
+python -m pipeline.sources.us.fsis.legacy_compare `
+  --legacy static_data/us/locations.csv `
+  --output <private-handoff>/legacy-comparison.json
+```
+
+When a current parsed artifact exists, pass it with `--current-records` (and
+its adapter manifest with `--current-manifest`) to compute exact-key additions
+and not-observed counts. Without a current artifact both values remain
+`unknown`; not-observed never means closure.
+
 ## Diagnostics and retry behavior
 
 Inspect an existing run without opening raw, parsed, normalized, or quarantine

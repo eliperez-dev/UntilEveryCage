@@ -106,6 +106,64 @@ def _identity_key(row: dict[str, Any]) -> str | None:
     return candidates[0] if candidates else None
 
 
+def _source_metrics(
+    directory_rows: list[dict[str, Any]],
+    demographic_rows: list[dict[str, Any]],
+    parsed_records: Iterable[dict[str, Any]],
+    duplicate_directory_aliases: set[str],
+    duplicate_demographic_aliases: set[str],
+) -> dict[str, Any]:
+    """Return row-free reconciliation facts for the private handoff.
+
+    Counts intentionally keep source rows, source-native identities, and
+    activity categories separate.  A source disappearance is not represented
+    as closure here; comparison code owns that explicit not-observed state.
+    """
+    parsed = list(parsed_records)
+
+    def identity_set(rows: Iterable[dict[str, Any]]) -> set[str]:
+        return {key for row in rows if (key := _identity_key(row))}
+
+    def duplicate_row_count(rows: Iterable[dict[str, Any]], aliases: set[str]) -> int:
+        return sum(1 for row in rows if set(_key_candidates(row)) & aliases)
+
+    categories = Counter()
+    activity_fields = Counter()
+    for item in parsed:
+        normalized = item.get("normalized", {})
+        slaughter = bool(normalized.get("species_slaughtered"))
+        processing = bool(normalized.get("processing_activities"))
+        if slaughter:
+            categories["slaughter"] += 1
+        if processing:
+            categories["processing"] += 1
+        if slaughter and processing:
+            categories["slaughter_and_processing"] += 1
+        if not slaughter and not processing:
+            categories["no_activity_category"] += 1
+        for group in (normalized.get("species_slaughtered", {}), normalized.get("processing_activities", {})):
+            for field in group:
+                activity_fields[field] += 1
+
+    return {
+        "directory_source_rows": len(directory_rows),
+        "demographic_source_rows": len(demographic_rows),
+        "source_native_establishments": len(identity_set(directory_rows)),
+        "missing_directory_identity_rows": sum(1 for row in directory_rows if not _identity_key(row)),
+        "duplicate_directory_aliases": len(duplicate_directory_aliases),
+        "duplicate_directory_rows": duplicate_row_count(directory_rows, duplicate_directory_aliases),
+        "duplicate_demographic_aliases": len(duplicate_demographic_aliases),
+        "duplicate_demographic_rows": duplicate_row_count(demographic_rows, duplicate_demographic_aliases),
+        "category_coverage": {
+            "slaughter_rows": categories["slaughter"],
+            "processing_rows": categories["processing"],
+            "slaughter_and_processing_rows": categories["slaughter_and_processing"],
+            "no_activity_category_rows": categories["no_activity_category"],
+        },
+        "activity_field_row_counts": dict(sorted(activity_fields.items())),
+    }
+
+
 def _coordinate(row: dict[str, Any]) -> tuple[dict[str, Any] | None, str, str | None]:
     latitude = _field(row, "latitude", "lat", "y")
     longitude = _field(row, "longitude", "lon", "lng", "long", "x")
@@ -370,6 +428,13 @@ class FsisMpiAdapter:
             "matched_demographic_rows": len(matched_demographics),
             "orphan_demographic_rows": orphan_demographics,
             "identity_conflicts": identity_conflicts,
+            "source_metrics": _source_metrics(
+                directory_rows,
+                demographic_rows,
+                accepted + [item["record"] for item in quarantined],
+                duplicate_directory_aliases,
+                duplicate_demographic_aliases,
+            ),
         }
 
     def run(self, raw_path: str | Path, run_dir: str | Path, artifact: SourceArtifact) -> dict[str, Any]:
@@ -437,6 +502,7 @@ class FsisMpiAdapter:
                 "orphan_demographic_rows": result["orphan_demographic_rows"],
                 "identity_conflicts": result["identity_conflicts"], "unmatched_demographic_is_not_closure": True,
             },
+            "source_metrics": result["source_metrics"],
             "geocoding": "disabled",
             "coverage": "FSIS-regulated meat, poultry, and egg establishments in the captured edition; state-inspection programs and non-FSIS populations excluded",
             "publication_state": "private-candidate",

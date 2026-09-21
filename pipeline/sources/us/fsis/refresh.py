@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
+import io
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,7 +14,81 @@ from pipeline.common.acquisition import AcquisitionError, fetch_source, utc_now
 from pipeline.contracts.adapter_contract import SourceArtifact
 from pipeline.contracts.source_lifecycle import atomic_json
 
-from .adapter import CONFIG, FsisMpiAdapter
+from .adapter import CONFIG, FsisContractError, FsisMpiAdapter, _csv, _header_key
+
+
+_HTML_SIGNATURES = (
+    b"<!doctype html",
+    b"<html",
+    b"<head",
+    b"<body",
+    b"access denied",
+    b"login required",
+    b"captcha",
+    b"challenge",
+)
+
+_DIRECTORY_NAME_HEADERS = frozenset({"establishment_name", "establishment_name_", "name", "facility_name"})
+_DEMOGRAPHIC_SCHEMA_HEADERS = frozenset({
+    "beef_cow_slaughter", "young_chicken_slaughter", "raw_intact_beef_processing",
+    "inspection_system_nsis", "inspection_system_sis", "slaughter", "processing",
+    "inspection", "size", "haccp", "district", "circuit", "latitude", "longitude",
+    "county", "fips_code", "establishment_type", "type",
+})
+
+
+def _validate_expected_headers(headers: tuple[str, ...], *, role: str) -> None:
+    normalized = {_header_key(header) for header in headers}
+    identity_headers = {"establishment_id", "establishment_number", "number"}
+    if role == "directory":
+        if not normalized & {"establishment_id", "establishment_number"}:
+            raise FsisContractError("unsupported FSIS directory: missing establishment identity fields")
+        if not normalized & _DIRECTORY_NAME_HEADERS:
+            raise FsisContractError("unsupported FSIS directory: missing establishment name field")
+    elif role == "demographics":
+        if not normalized & identity_headers:
+            raise FsisContractError("unsupported FSIS demographics: missing establishment identity fields")
+        if not any(header in _DEMOGRAPHIC_SCHEMA_HEADERS or any(marker in header for marker in _DEMOGRAPHIC_SCHEMA_HEADERS) for header in normalized - identity_headers):
+            raise FsisContractError("unsupported FSIS demographics: missing demographic fields")
+    else:
+        raise FsisContractError(f"unsupported FSIS artifact role: {role}")
+
+
+def _validate_download(path: Path, _headers: dict[str, str], *, role: str) -> None:
+    """Reject HTML/challenge bodies and schema-invalid FSIS downloads."""
+    try:
+        raw = path.read_bytes()
+    except OSError as exc:
+        raise AcquisitionError(
+            f"FSIS {role} artifact could not be read for validation",
+            failure_class="artifact-validation",
+            action="inspect the private acquisition evidence and use browser capture if needed",
+        ) from exc
+    prefix = raw[:64 * 1024].lstrip().lower()
+    if any(signature in prefix for signature in _HTML_SIGNATURES):
+        raise AcquisitionError(
+            f"FSIS {role} response has an HTML/login/challenge signature",
+            failure_class="content-signature",
+            action="use the authorized browser capture route; do not bypass the source control",
+        )
+    try:
+        reader = csv.DictReader(io.StringIO(raw.decode("utf-8-sig"), newline=""), strict=True)
+        headers = tuple(reader.fieldnames or ())
+        if not headers or None in headers or len(set(headers)) != len(headers):
+            raise FsisContractError(f"missing or duplicate FSIS {role} header")
+        _validate_expected_headers(headers, role=role)
+        rows = list(reader)
+        # A complete header-only export is structurally valid. If rows exist,
+        # retain the adapter's row-shape checks so malformed rows still reach
+        # the adapter's quarantine semantics instead of being content-blocked.
+        if rows:
+            _csv(raw, role=role)
+    except (UnicodeDecodeError, csv.Error, FsisContractError) as exc:
+        raise AcquisitionError(
+            f"FSIS {role} response failed the expected CSV schema",
+            failure_class="schema",
+            action="inspect the source edition and use the assisted capture route",
+        ) from exc
 
 
 def assisted_capture_contract(*, source_url: str = CONFIG["directory_url"]) -> dict[str, Any]:
@@ -171,6 +247,7 @@ def refresh(
                     max_attempts=max_attempts,
                     retry_delay_seconds=retry_delay_seconds,
                     max_retry_delay_seconds=max_retry_delay_seconds,
+                    artifact_validator=lambda path, headers, role=role: _validate_download(path, headers, role=role),
                 )
             except AcquisitionError:
                 # Preserve the shared failure class, retryability, and attempt
