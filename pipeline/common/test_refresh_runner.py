@@ -111,6 +111,39 @@ class RefreshRunnerTests(unittest.TestCase):
         self.assertEqual(ok["counts"]["succeeded"], 1)
         self.assertEqual(len(seen), 1)
 
+    def test_operational_metadata_is_row_free_and_tracks_artifact_retry_and_fallback(self):
+        adapter = FakeAdapter(failures=1)
+        catalog = catalog_for(adapter)
+        catalog.sources[adapter.source_id].update({
+            "access_method": "operator-assisted fixture",
+            "cadence": "weekly",
+        })
+        artifact = Path(__file__)
+        result = RefreshRunner(catalog).run(RefreshRequest(
+            source_ids=(adapter.source_id,), mode="local-artifact",
+            artifact_paths={adapter.source_id: str(artifact)}, output_root=self.output("metadata"), retries=1,
+            options={"as_of_utc": "2026-01-01T00:00:00Z"},
+        ))
+        operational = result["results"][0]["operational"]
+        self.assertEqual(result["exit_status"], "ok")
+        self.assertEqual(operational["artifact"]["sha256"], __import__("hashlib").sha256(artifact.read_bytes()).hexdigest())
+        self.assertEqual(operational["retry_outcome"], {"configured_retries": 1, "attempts": 2, "exhausted": False})
+        self.assertEqual(operational["freshness"]["cadence"], "weekly")
+        self.assertIn("operator", operational["assisted_manual_fallback"])
+        self.assertNotIn("artifact_path", operational)
+        self.assertNotIn("traceback", result["results"][0])
+
+    def test_all_eligible_keeps_partial_sources_without_registered_hooks(self):
+        adapter = FakeAdapter()
+        catalog = catalog_for(adapter)
+        catalog.sources["expected.partial"] = {"source_id": "expected.partial", "adapter_status": "implemented_partial", "access_method": "operator-assisted"}
+        catalog.capabilities["expected.partial"] = AdapterCapabilities(source_id="expected.partial", adapter_version="none", schema_version="none", acquisition="assisted_only", geocoding="disabled", publication="human_gate_required")
+        result = RefreshRunner(catalog).run(RefreshRequest(all_eligible=True, mode="fixture", output_root=self.output("all-eligible")))
+        self.assertEqual(result["selected_sources"], ["fixture.one", "expected.partial"])
+        self.assertEqual(result["counts"]["unsupported"], 1)
+        unsupported = result["results"][1]
+        self.assertEqual(unsupported["operational"]["failure_reason"], "adapter_unregistered")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -77,9 +77,21 @@ class RefreshRequest:
             raise ValueError("database_url is required when candidate import is enabled")
 
 
-def canonical_plan(request: RefreshRequest, selected: tuple[str, ...], capabilities: Mapping[str, AdapterCapabilities]) -> dict[str, Any]:
+def canonical_plan(request: RefreshRequest, selected: tuple[str, ...], capabilities: Mapping[str, AdapterCapabilities],
+                   source_operations: Mapping[str, Mapping[str, Any]] | None = None) -> dict[str, Any]:
     """Return the row-free deterministic plan used for run identity."""
-    artifacts = {source: request.artifact_paths.get(source) for source in selected}
+    artifacts = {}
+    for source in selected:
+        value = request.artifact_paths.get(source)
+        if value is None:
+            artifacts[source] = {"available": False, "sha256": None, "byte_size": None}
+            continue
+        path = Path(value)
+        if path.is_file():
+            raw = path.read_bytes()
+            artifacts[source] = {"available": True, "sha256": hashlib.sha256(raw).hexdigest(), "byte_size": len(raw)}
+        else:
+            artifacts[source] = {"available": False, "sha256": None, "byte_size": None}
     versions = {source: capabilities[source].adapter_version for source in selected if source in capabilities}
     payload = {
         "contract_version": REFRESH_CONTRACT_VERSION,
@@ -88,6 +100,7 @@ def canonical_plan(request: RefreshRequest, selected: tuple[str, ...], capabilit
         "source_kinds": {source: capabilities[source].source_kind for source in selected if source in capabilities},
         "retries": request.retries, "import_candidates": request.import_candidates,
         "options": row_free_summary(request.options),
+        "source_operations": row_free_summary(source_operations or {}),
     }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
     payload["plan_hash"] = hashlib.sha256(encoded).hexdigest()
