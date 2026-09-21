@@ -220,14 +220,24 @@ class Italy853Adapter:
             recognition = clean(source_values.get("num_identificativo_produzione_commercializzazione"))
             piva = clean(source_values.get("p_iva"))
             fiscal = clean(source_values.get("cod_fiscale"))
+            organization_identifiers = []
+            if piva:
+                organization_identifiers.append(("italian_vat", piva))
+            if fiscal:
+                organization_identifiers.append(("italian_fiscal_code", fiscal))
             graph_candidates.append(build_identifier_graph_candidate(
                 source_id=self.source_id,
                 source_record_key=source_key,
                 source_values=source_values,
                 facility_identifier=("eu_recognition_number", recognition) if recognition else None,
-                organization_identifier=(("italian_vat", piva) if piva else ("italian_fiscal_code", fiscal) if fiscal else None),
+                organization_identifier=None,
+                organization_identifiers=organization_identifiers,
                 observed_at=artifact.retrieved_at_utc,
                 source_row=record.get("source_row", 1),
+                artifact_sha256=artifact.sha256,
+                signal_bundle=[
+                    {"kind": "source_identifier_cooccurrence", "identifier_types": [kind for kind, _ in organization_identifiers], "connection_type": "exact"},
+                ],
             ))
         graph_manifest = write_graph_candidates(root / "graph", graph_candidates)
         anomaly_counts = Counter(reason for item in quarantined for reason in item["reasons"])

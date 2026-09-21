@@ -277,7 +277,16 @@ def _record(profile: str, row: dict[str, Any], line: int) -> dict[str, Any]:
         "event_period": _year(row),
         "event_type": evidence_type,
         "linkage_candidates": [
-            {"identifier_type": key, "value": value, "identity_scope": "source_scoped"}
+            {
+                "identifier_type": key,
+                "value": value,
+                "identity_scope": "source_scoped",
+                "target_source_id": "us.aphis",
+                "match_method": "exact_source_identifier",
+                "connection_type": "exact",
+                "confidence": None,
+                "signal_bundle": [{"kind": "source_identifier", "identifier_type": key}],
+            }
             for key, value in source_native_ids.items() if key != "inspection_report_id"
         ],
         "facility_identity_state": "not_asserted",

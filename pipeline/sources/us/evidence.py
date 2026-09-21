@@ -102,7 +102,7 @@ class EvidenceEventAdapter:
         handoff = write_private_handoff(
             run_dir / "evidence-handoff", accepted, source_artifact,
             profile=self.config["profile"], source_sha256=source_artifact.sha256,
-            source_id=self.source_id, entity_scope="evidence_event",
+            source_id=self.source_id, entity_scope="evidence_event", graph_candidate_emission=True,
         )
         return {
             "source_kind": self.source_kind,

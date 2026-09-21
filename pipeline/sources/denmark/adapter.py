@@ -5,6 +5,7 @@ publishes coordinates; records with no stable source key are quarantined.
 """
 from __future__ import annotations
 import hashlib, json
+import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
@@ -112,14 +113,25 @@ class DenmarkSmileyAdapter:
             if not isinstance(key, str) or not key:
                 continue
             cvr = fields.get("CVR_nummer") or fields.get("cvrnr")
+            cvr_text = str(cvr).strip() if cvr is not None else ""
+            # CVR is a source-native eight-digit organization identifier.  Do
+            # not turn labels, partial values, or punctuation-bearing values
+            # into an organization node; the facility identity remains valid
+            # even when the organization signal is unavailable.
+            valid_cvr = cvr_text if re.fullmatch(r"\d{8}", cvr_text) else None
             graph_candidates.append(build_identifier_graph_candidate(
                 source_id=SOURCE_ID,
                 source_record_key=key,
                 source_values=fields,
                 facility_identifier=("findsmiley_id", key),
-                organization_identifier=("cvr", str(cvr).strip()) if cvr and str(cvr).strip() else None,
+                organization_identifier=("cvr", valid_cvr) if valid_cvr else None,
                 observed_at=artifact.retrieved_at_utc,
                 source_row=record.get("source_row", 1),
+                artifact_sha256=artifact.sha256,
+                signal_bundle=[
+                    {"kind": "source_identifier_cooccurrence", "identifier_types": ["findsmiley_id"], "connection_type": "exact"},
+                    *([{"kind": "source_identifier_cooccurrence", "identifier_types": ["cvr"], "connection_type": "exact"}] if valid_cvr else []),
+                ],
             ))
         graph_manifest = write_graph_candidates(root / "graph", graph_candidates)
         # This state is deliberately private: validation cannot authorize release.

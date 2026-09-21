@@ -1,0 +1,49 @@
+{
+  "schema_version": "d6-known-connection-controls-v1",
+  "control_origin": "sanitized source-shaped fixtures with explicit source assertions; private real-artifact controls are staged outside Git",
+  "scope": {
+    "sources": [
+      "ca.cfia.federal-meat",
+      "it.853-2004",
+      "us.aphis",
+      "us.fsis"
+    ],
+    "row_payloads_included": false,
+    "private_staging_root": "D:\\UntilEveryCage-private\\d6-graph-mvp"
+  },
+  "positive_controls": {
+    "count": 8,
+    "by_source": {
+      "ca.cfia.federal-meat": 2,
+      "it.853-2004": 2,
+      "us.aphis": 4
+    },
+    "by_method": {
+      "exact_source_identifier": 4,
+      "source_assertion": 4
+    },
+    "control_keys_sha256": "5afb20caa1bd6f0eba41d9e24ac81f698f23a2d6daf73b6223c6bab166a36105"
+  },
+  "negative_controls": {
+    "count": 1,
+    "by_source": {
+      "us.aphis↔us.fsis": 1
+    },
+    "by_method": {
+      "cross_source_identity_forbidden": 1
+    },
+    "control_keys_sha256": "11c0cf74e065e5e21611e2e8534f2e3921b6c24959a15ba92eca2ad2b02bc506"
+  },
+  "invariants": {
+    "automatic_aphis_fsis_links": 0,
+    "names_addresses_coordinates_are_identity_evidence": false,
+    "control_payloads_included": false,
+    "publication_status": "not_eligible",
+    "storage_state": "private"
+  },
+  "limitations": [
+    "Fixture controls prove the adapter and matching contract against known source assertions; they are not a real-world accuracy estimate.",
+    "Real retained rows and their control payloads remain in restricted local staging only.",
+    "No human confirmation, identity merge, claim transfer, publication, or scheduler is implied."
+  ]
+}

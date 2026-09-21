@@ -32,6 +32,7 @@ def write_private_handoff(
     source_sha256: str,
     source_id: str = "us.aphis",
     entity_scope: str = "aphis_observation",
+    graph_candidate_emission: bool = False,
 ) -> dict[str, Any]:
     """Write a source-specific private candidate handoff.
 
@@ -67,7 +68,7 @@ def write_private_handoff(
         "normalized_sha256": hashlib.sha256(payload).hexdigest(),
         "entity_scope": entity_scope,
         "source_native_identity": ["certificate_number", "customer_number", "customer_number_x", "customer_number_y"],
-        "graph_candidate_emission": False,
+        "graph_candidate_emission": bool(graph_candidate_emission and entity_scope == "evidence_event"),
         "auto_merge": False,
         "release_state": "not-created",
         "publication_state": "private-candidate",

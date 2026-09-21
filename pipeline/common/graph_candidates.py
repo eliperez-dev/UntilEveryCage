@@ -28,40 +28,65 @@ def build_identifier_graph_candidate(
     source_values: dict[str, Any],
     facility_identifier: tuple[str, str] | None,
     organization_identifier: tuple[str, str] | None,
+    organization_identifiers: Iterable[tuple[str, str]] | None = None,
     observed_at: str,
     source_row: int = 1,
+    artifact_sha256: str | None = None,
+    signal_bundle: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Build a private candidate without fuzzy matching or canonical IDs."""
     if not _text(source_record_key):
         raise ValueError("source_record_key is required for graph candidate")
-    if not facility_identifier and not organization_identifier:
+    organization_pairs = list(organization_identifiers or ())
+    if organization_identifier:
+        organization_pairs.insert(0, organization_identifier)
+    # Keep a stable, source-local organization list when a row carries more
+    # than one authoritative identifier (for example an Italian VAT and
+    # fiscal-code value).  Duplicate pairs are harmless input noise and must
+    # not create duplicate nodes or edges.
+    organization_pairs = list(dict.fromkeys(
+        (identifier_type, value)
+        for identifier_type, value in organization_pairs
+        if _text(identifier_type) and _text(value)
+    ))
+    if not facility_identifier and not organization_pairs:
         raise ValueError("an explicit facility or organization identifier is required")
     facilities: list[dict[str, Any]] = []
     organizations: list[dict[str, Any]] = []
     facility_ref = None
-    organization_ref = None
+    organization_refs: list[str] = []
     if facility_identifier:
         identifier_type, value = facility_identifier
         facility_ref = _stable_ref("facility", f"{source_id}|{identifier_type}|{value}")
         facilities.append({"local_ref": facility_ref, "source_identifier": {"identifier_type": identifier_type, "value": value, "identity_scope": "source_scoped"}})
-    if organization_identifier:
-        identifier_type, value = organization_identifier
+    for identifier_type, value in organization_pairs:
         organization_ref = _stable_ref("organization", f"{source_id}|{identifier_type}|{value}")
+        organization_refs.append(organization_ref)
         organizations.append({"local_ref": organization_ref, "source_identifier": {"identifier_type": identifier_type, "value": value, "identity_scope": "source_scoped"}})
     relationships = []
-    if organization_ref and facility_ref:
-        relationships.append({
-            "relationship_type": "operator",
-            "from_organization_ref": organization_ref,
-            "target_facility_ref": facility_ref,
-            "assertion_status": "asserted",
-            "observed_at": observed_at,
-            "valid_from": None,
-            "valid_to": None,
-            "confidence": 1.0,
-            "review_state": "review_required",
-            "evidence_method": "explicit source-native identifiers in one source observation",
-        })
+    support = [{"source_record_key": source_record_key}]
+    if artifact_sha256:
+        support.append({"artifact_sha256": artifact_sha256})
+    for organization_ref in organization_refs:
+        if facility_ref:
+            relationships.append({
+                "relationship_type": "operator",
+                "from_organization_ref": organization_ref,
+                "target_facility_ref": facility_ref,
+                "assertion_status": "asserted",
+                "observed_at": observed_at,
+                "valid_from": None,
+                "valid_to": None,
+                # The adapter emits evidence, not a calibrated probability.
+                # D6 scoring owns confidence assignment downstream.
+                "confidence": None,
+                "confidence_basis": "source_asserted_identifier_cooccurrence",
+                "connection_type": "exact",
+                "signal_bundle": signal_bundle or [{"kind": "source_identifier_cooccurrence"}],
+                "review_state": "review_required",
+                "support": support,
+                "evidence_method": "explicit source-native identifiers in one source observation",
+            })
     return {
         "contract_version": CONTRACT_VERSION,
         "source_id": source_id,
@@ -71,6 +96,7 @@ def build_identifier_graph_candidate(
         "facilities": facilities,
         "organizations": organizations,
         "relationships": relationships,
+        "signal_bundle": signal_bundle or [{"kind": "source_identifier_cooccurrence"}],
         "claims": [],
         "crosswalks": [],
         "publication": {
