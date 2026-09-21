@@ -33,6 +33,44 @@
     "scheduler": "not_started",
     "evidence": ["pipeline/common/d3_live_operations.py", "pipeline/sources/d3_facility.py", "pipeline/sources/us/evidence.py", "pipeline/common/evidence_sink.py", "pipeline/tests/test_d3_live_operations.py", "pipeline/sources/us/test_evidence.py"]
   },
+  "d5_real_private_graph": {
+    "operator": "pipeline/scripts/diagnostics/rehearse-real-private-graph.py",
+    "analysis": "pipeline/common/d5_connection_analysis.py",
+    "execution": "authorized private handoffs restored and hash-verified outside the repository",
+    "sources_with_real_handoffs": ["fr.dgal.section-i", "fr.dgal.section-ii", "it.853-2004", "us.fsis", "us.aphis"],
+    "database_import": {
+      "completed_facility_sources": ["fr.dgal.section-i", "fr.dgal.section-ii", "it.853-2004", "us.fsis"],
+      "blocked_evidence_sources": ["us.aphis"],
+      "source_records_inserted": 51607,
+      "facility_entities_inserted": 35073,
+      "source_entity_identifiers_inserted": 51607,
+      "claims_inserted": 98490,
+      "organizations_inserted": 0,
+      "relationship_observations_inserted": 0,
+      "evidence_events_inserted": 0,
+      "public_graph_relationships": 0,
+      "idempotent_rerun": "verified; completed sources inserted zero duplicates",
+      "publication": "blocked"
+    },
+    "connection_analysis": {
+      "fsis_exact_id_observations": 7241,
+      "aphis_exact_source_id_observations": 995,
+      "italy_vat_or_fiscal_identifier_candidates": 39020,
+      "probabilistic_review_candidates_observed": 5000,
+      "automatic_merges": 0,
+      "automatic_aphis_fsis_links": 0,
+      "precision": "unmeasured",
+      "recall": "unmeasured",
+      "human_adjudication": "not performed"
+    },
+    "limitations": [
+      "Real France, Italy, and FSIS source-local identifiers reached the private graph; no cross-source canonical merge was created.",
+      "Italy VAT/fiscal identifiers and probabilistic candidates were observed by the analyzer but were not materialized as organization/candidate-edge rows because those handoffs emitted no organization entities and D5 does not infer them.",
+      "The archived APHIS handoff declares entity_scope=aphis_observation rather than the D4 evidence_event contract, so import remains blocked pending adapter-contract alignment.",
+      "Counts are aggregate-only and do not establish accuracy, approval, privacy eligibility, or publication readiness."
+    ],
+    "evidence": ["docs/d5-real-graph-analysis.md", "docs/D5-ACQUISITION-READINESS.md", "pipeline/common/real_private_graph.py", "pipeline/common/d5_connection_analysis.py"]
+  },
   "sources": [
     {"source_id":"br.sif.registered","metadata":"verified","acquisition":"verified","runtime_health":"not_run","publication_eligibility":"blocked","evidence":["docs/country-recon-br.md","docs/countries/br/v1-field-crosswalk.json","pipeline/source_registry.json"],"next_action":"Keep the current private SIF CSV and provenance restricted; validate repeated-row semantics, status/code meanings, source terms, privacy, reconciliation, and release approval before any adapter or publication."},
     {"source_id":"br.sif.export","metadata":"verified","acquisition":"verified","runtime_health":"not_run","publication_eligibility":"blocked","evidence":["docs/country-recon-br.md","docs/countries/br/v1-field-crosswalk.json","pipeline/source_registry.json"],"next_action":"Model country/product authorizations as separate dated observations keyed to SIF; confirm validity/suspension semantics, terms, privacy, and no-double-counting rules before integration."},

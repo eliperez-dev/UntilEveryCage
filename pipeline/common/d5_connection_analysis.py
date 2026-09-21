@@ -30,16 +30,20 @@ FACILITY_ID_KEYS = frozenset({
     "establishment_id", "establishment_number", "approval_number",
     "plant_number", "plant_id", "facility_id", "recognition_number",
     "eu_recognition_number", "findsmiley_id", "source_establishment_id",
+    "num_identificativo_produzione_commercializzazione",
 })
 ORG_ID_KEYS = frozenset({
     "cvr", "cvr_number", "vat", "vat_number", "italian_vat",
     "fiscal_code", "italian_fiscal_code", "cod_fiscale", "p_iva",
     "operator_id", "operator_number", "customer_number", "abn", "acn",
 })
-NAME_KEYS = frozenset({"name", "trading_name", "operator_name", "account_name", "legal_name", "site_name"})
-CITY_KEYS = frozenset({"city", "town", "municipality", "locality"})
-POSTAL_KEYS = frozenset({"postal_code", "postcode", "zip", "postal", "postnummer"})
-ADDRESS_KEYS = frozenset({"address", "street", "address_line_1", "address1", "address_lines"})
+NAME_KEYS = frozenset({
+    "name", "trading_name", "operator_name", "account_name", "legal_name", "site_name",
+    "establishment_name", "ragione_sociale", "raison_sociale_enseigne_commerciale_name",
+})
+CITY_KEYS = frozenset({"city", "town", "municipality", "locality", "comune"})
+POSTAL_KEYS = frozenset({"postal_code", "postcode", "zip", "postal", "postnummer", "code_postal_postal_code"})
+ADDRESS_KEYS = frozenset({"address", "street", "address_line_1", "address1", "address_lines", "indirizzo"})
 DATE_KEYS = frozenset({"observed_at", "effective_date", "observation_date", "event_date", "status_date", "valid_from", "valid_to"})
 
 
@@ -127,6 +131,7 @@ class _Observed:
     signals: dict[str, str]
     dates: list[str]
     explicit_relationships: int = 0
+    typed_entity_edge: bool = False
     provenance_complete: bool = False
     quarantined: bool = False
     suppressed: bool = False
@@ -140,12 +145,15 @@ def _source_kind(source_id: str, row: Mapping[str, Any]) -> str:
 
 
 def _nested_values(row: Mapping[str, Any]) -> Iterable[tuple[str, Any]]:
-    for container_name in ("normalized", "source_fields", "source_native_ids"):
+    for container_name in ("normalized", "source_fields", "source_native_ids", "source_values"):
         container = row.get(container_name)
         if isinstance(container, Mapping):
             for key, value in container.items():
                 yield str(key).casefold(), value
-    # A graph-candidate itself can carry identifiers in typed entities.
+    # A graph-candidate itself can carry identifiers in typed entities.  Keep
+    # the declared identifier type as the key; yielding the literal wrapper
+    # key (``identifier_type``) loses the source-native semantics needed by
+    # the real-corpus audit.
     for entity_key in ("facilities", "organizations"):
         entities = row.get(entity_key)
         if isinstance(entities, list):
@@ -154,7 +162,9 @@ def _nested_values(row: Mapping[str, Any]) -> Iterable[tuple[str, Any]]:
                     continue
                 identifier = entity.get("source_identifier")
                 if isinstance(identifier, Mapping):
-                    yield str(identifier.get("identifier_type", "")).casefold(), identifier.get("value")
+                    identifier_type = identifier.get("identifier_type")
+                    if identifier_type:
+                        yield str(identifier_type).casefold(), identifier.get("value")
 
 
 def _observed_from_row(row: Mapping[str, Any], fallback_source: str | None = None) -> _Observed:
@@ -187,6 +197,7 @@ def _observed_from_row(row: Mapping[str, Any], fallback_source: str | None = Non
     key = _clean(row.get("source_record_key")) or _clean(row.get("source_row_id")) or _clean(row.get("source_observation_key")) or "row-unknown"
     relationships = row.get("relationships")
     explicit_relationships = len(relationships) if isinstance(relationships, list) else 0
+    typed_entity_edge = bool(row.get("facilities")) and bool(row.get("organizations"))
     source_values = row.get("source_values")
     provenance_complete = bool(
         _clean(row.get("source_record_key") or row.get("source_row_id"))
@@ -195,7 +206,8 @@ def _observed_from_row(row: Mapping[str, Any], fallback_source: str | None = Non
     )
     suppressed = bool(row.get("suppressed") or row.get("public_access_revoked"))
     return _Observed(source_id, kind, key, facility_ids, organization_ids, signals, dates,
-                     explicit_relationships, provenance_complete, bool(row.get("quarantine_reason")), suppressed)
+                     explicit_relationships, typed_entity_edge, provenance_complete,
+                     bool(row.get("quarantine_reason")), suppressed)
 
 
 def load_private_rows(mapping: Mapping[str, str | Path]) -> list[_Observed]:
@@ -320,7 +332,7 @@ def analyze(*, manifests: Mapping[str, Mapping[str, Any]], rows: Iterable[_Obser
             for identifier_type, value in values.items():
                 identifiers[kind] += 1
                 source_identifier_values[(source, kind, identifier_type)].add(value)
-        if row.facility_ids and row.organization_ids:
+        if row.facility_ids and row.organization_ids and row.typed_entity_edge:
             for facility in row.facility_ids.values():
                 for organization in row.organization_ids.values():
                     facility_org_targets[(source, organization)].add(facility)
@@ -401,8 +413,8 @@ def analyze(*, manifests: Mapping[str, Mapping[str, Any]], rows: Iterable[_Obser
         },
         "connectivity": {
             "nodes_observed": sum(bool(row.facility_ids or row.organization_ids) for row in observations),
-            "rows_with_explicit_facility_organization_edge": sum(bool(row.facility_ids and row.organization_ids) for row in observations),
-            "edge_counts_by_source": dict(sorted({source: sum(bool(row.facility_ids and row.organization_ids) or bool(row.explicit_relationships) for row in rows_for_source) for source, rows_for_source in by_source.items()}.items())),
+            "rows_with_explicit_facility_organization_edge": sum(row.typed_entity_edge for row in observations),
+            "edge_counts_by_source": dict(sorted({source: sum(row.typed_entity_edge or bool(row.explicit_relationships) for row in rows_for_source) for source, rows_for_source in by_source.items()}.items())),
             "aphis_fsis_automatic_links": 0,
             "aphis_fsis_review_candidates": 0,
             "aphis_fsis_policy": "evidence and FSIS facility identities remain separate; no automatic cross-source link",

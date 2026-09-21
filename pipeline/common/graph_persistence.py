@@ -217,6 +217,18 @@ def _timestamp(manifest: dict[str, Any]) -> str:
     return str(value) if value else datetime.now(timezone.utc).isoformat()
 
 
+def _observed_at(value: Any, manifest: dict[str, Any]) -> str:
+    """Use the handoff timestamp when a source date is explicitly unknown."""
+    if value:
+        candidate = str(value)
+        try:
+            datetime.fromisoformat(candidate.replace("Z", "+00:00"))
+            return candidate
+        except ValueError:
+            pass
+    return _timestamp(manifest)
+
+
 def _date(value: Any) -> date | None:
     if not value:
         return None
@@ -351,7 +363,7 @@ def _persist_candidate(connection: Any, manifest: dict[str, Any], candidate: dic
             args = (manifest["source_id"], record_id,
                     _facility_id_for_identifier(connection, facilities[relationship["target_facility_ref"]]) if relationship.get("target_facility_ref") else None,
                     _organization_id_for_identifier(connection, organizations[relationship["target_organization_ref"]]) if relationship.get("target_organization_ref") else None,
-                    relationship["unknown_reason"], relationship["observed_at"], relationship.get("confidence"))
+                    relationship["unknown_reason"], _observed_at(relationship.get("observed_at"), manifest), relationship.get("confidence"))
         else:
             from_org = _organization_id_for_identifier(connection, organizations[relationship["from_organization_ref"]])
             target_facility = _facility_id_for_identifier(connection, facilities[relationship["target_facility_ref"]]) if relationship.get("target_facility_ref") else None
@@ -362,15 +374,15 @@ def _persist_candidate(connection: Any, manifest: dict[str, Any], candidate: dic
                 WHERE NOT EXISTS (SELECT 1 FROM uec.organization_relationship_observations WHERE source_id=%s AND source_record_id=%s AND from_organization_id=%s AND target_facility_id IS NOT DISTINCT FROM %s AND target_organization_id IS NOT DISTINCT FROM %s AND relationship_type=%s AND observed_at=%s)"""
             args = (manifest["source_id"], record_id, from_org, target_facility, target_org,
                     relationship["relationship_type"], assertion, _date(relationship.get("valid_from")), _date(relationship.get("valid_to")),
-                    relationship["observed_at"], relationship.get("confidence"), relationship.get("evidence_method"),
-                    manifest["source_id"], record_id, from_org, target_facility, target_org, relationship["relationship_type"], relationship["observed_at"])
+                    _observed_at(relationship.get("observed_at"), manifest), relationship.get("confidence"), relationship.get("evidence_method"),
+                    manifest["source_id"], record_id, from_org, target_facility, target_org, relationship["relationship_type"], _observed_at(relationship.get("observed_at"), manifest))
         connection.execute(sql, args)
     for claim in candidate.get("claims", []):
         facility_id = _facility_id_for_identifier(connection, facilities[claim["facility_ref"]]) if claim.get("facility_ref") else None
         organization_id = _organization_id_for_identifier(connection, organizations[claim["organization_ref"]]) if claim.get("organization_ref") else None
         claim_row = connection.execute(
             """SELECT claim_id FROM uec.claims WHERE source_id=%s AND source_record_id=%s AND claim_domain=%s AND claim_kind=%s AND claim_value=%s::jsonb AND observed_at=%s""",
-            (manifest["source_id"], record_id, claim["claim_domain"], claim["claim_kind"], json.dumps(claim.get("value")), claim["observed_at"]),
+            (manifest["source_id"], record_id, claim["claim_domain"], claim["claim_kind"], json.dumps(claim.get("value")), _observed_at(claim.get("observed_at"), manifest)),
         ).fetchone()
         claim_id = claim_row[0] if claim_row else connection.execute(
             """INSERT INTO uec.claims
@@ -378,7 +390,7 @@ def _persist_candidate(connection: Any, manifest: dict[str, Any], candidate: dic
                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'review_required','private','pending','not_eligible') RETURNING claim_id""",
             (manifest["source_id"], record_id, facility_id, organization_id, claim["claim_domain"], claim["claim_kind"],
              claim.get("value_state", "known"), json.dumps(claim.get("value")), claim.get("unknown_reason"),
-             claim["observed_at"], claim.get("confidence")),
+             _observed_at(claim.get("observed_at"), manifest), claim.get("confidence")),
         ).fetchone()[0]
         for index, support in enumerate(claim.get("support", [])):
             support_record_id = record_id if support.get("source_record_key") == source_record_key else None
@@ -390,7 +402,7 @@ def _persist_candidate(connection: Any, manifest: dict[str, Any], candidate: dic
                 """INSERT INTO uec.claim_support(claim_id,source_record_id,artifact_id,support_role,observed_at,storage_state)
                    SELECT %s,%s,%s,%s,%s,'private'
                    WHERE NOT EXISTS (SELECT 1 FROM uec.claim_support WHERE claim_id=%s AND source_record_id IS NOT DISTINCT FROM %s AND artifact_id IS NOT DISTINCT FROM %s)""",
-                (claim_id, support_record_id, support_artifact_id, role, claim["observed_at"], claim_id, support_record_id, support_artifact_id),
+                (claim_id, support_record_id, support_artifact_id, role, _observed_at(claim.get("observed_at"), manifest), claim_id, support_record_id, support_artifact_id),
             )
     ref_ids = {**facilities, **organizations}
     for crosswalk in candidate.get("crosswalks", []):
@@ -402,7 +414,7 @@ def _persist_candidate(connection: Any, manifest: dict[str, Any], candidate: dic
                SELECT %s,%s,%s,%s,'review_required',%s,%s,'review_required','private','pending','not_eligible',%s,%s
                WHERE NOT EXISTS (SELECT 1 FROM uec.source_entity_crosswalks WHERE left_identifier_id=%s AND right_identifier_id=%s AND source_record_id=%s AND match_method=%s)""",
             (left_id, right_id, manifest["source_id"], record_id, crosswalk["match_method"], crosswalk.get("confidence"),
-             candidate.get("observed_at") or _timestamp(manifest), crosswalk.get("note"), left_id, right_id, record_id, crosswalk["match_method"]),
+             _observed_at(candidate.get("observed_at"), manifest), crosswalk.get("note"), left_id, right_id, record_id, crosswalk["match_method"]),
         )
 
 

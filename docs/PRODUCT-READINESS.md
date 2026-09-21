@@ -22,7 +22,7 @@ publishable facilities unless explicitly labelled that way.
 
 ## Verified checkpoint
 
-- **Baseline:** repository checkpoint `77e95706` (D4 private graph persistence integration; 2026-09-21 UTC).
+- **Baseline:** repository checkpoint `D5 integration commit` (D5 real private graph rehearsal; 2026-09-21 UTC).
 - **Current public product:** V1 remains production and the public default.
 - **V2 frontend:** Svelte/TypeScript fixture and local synthetic preview; it is
   not the production replacement and has no configured external tile service.
@@ -278,6 +278,40 @@ Evidence: `pipeline/common/graph_persistence.py`,
 `pipeline/common/identity_candidates.py`,
 `pipeline/tests/e2e/test_d4_graph_persistence.py`, and
 `data/manifests/d4-private-graph-e2e.json`.
+
+### D5 — Real private-corpus graph rehearsal and acquisition readiness
+
+**Status: Complete for the demonstrated real-private scope; source-specific
+graph and handoff gaps remain explicitly blocked.** Hash-verified retained
+private handoffs for France Sections I/II, Italy 853/2004, FSIS, and APHIS
+were restored outside the repository and exercised against a disposable
+Postgres/PostGIS database. Four facility handoffs imported successfully:
+51,607 source records, 35,073 source-qualified facility entities, 51,607
+source-native identifier observations, and 98,490 claims. A rerun inserted
+zero duplicates. The public graph projection remained empty.
+
+The row-free analyzer observed 7,241 FSIS exact source-ID observations, 995
+APHIS exact source-ID evidence observations, 39,020 Italy VAT/fiscal-identifier
+candidate observations, and 5,000 probabilistic review candidates (the
+configured analysis cap). Automatic merges and APHIS↔FSIS links remained zero;
+precision and recall remain unmeasured because no human adjudication was
+available.
+
+This rehearsal also found two real integration gaps. Italy's handoff emitted
+unknown source observation dates; the importer now falls back to the handoff
+retrieval timestamp for required database lineage fields while retaining the
+source uncertainty. The Italy handoff still emits no organization entities, so
+its VAT/fiscal observations and probabilistic candidates are not materialized
+as graph organization/candidate-edge rows. The archived APHIS handoff declares
+`entity_scope=aphis_observation` rather than the D4 `evidence_event` contract,
+so it remains blocked until the adapter contract is aligned. These are
+recorded blockers, not inferred graph connections.
+
+Evidence: [D5 graph analysis](d5-real-graph-analysis.md),
+[D5 acquisition readiness](D5-ACQUISITION-READINESS.md),
+`pipeline/common/real_private_graph.py`, and
+`pipeline/common/d5_connection_analysis.py`. No raw rows or private paths are
+committed here.
 
 ### Product convergence (remaining release work)
 

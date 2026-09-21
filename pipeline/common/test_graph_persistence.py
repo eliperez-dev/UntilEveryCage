@@ -6,6 +6,7 @@ from pathlib import Path
 
 from pipeline.common.graph_persistence import (
     GraphPersistenceError,
+    _observed_at,
     load_evidence_handoff,
     load_graph_candidate_handoff,
     require_disposable_graph_database,
@@ -45,6 +46,11 @@ def candidate(source_id="synthetic.graph"):
 
 
 class GraphPersistenceContractTests(unittest.TestCase):
+    def test_unknown_source_observation_time_uses_handoff_time(self):
+        manifest = {"retrieved_at_utc": "2026-09-21T00:00:00Z"}
+        self.assertEqual(_observed_at("unknown", manifest), manifest["retrieved_at_utc"])
+        self.assertEqual(_observed_at("2026-09-20T12:30:00Z", manifest), "2026-09-20T12:30:00Z")
+
     def test_loopback_non_default_disposable_guard(self):
         require_disposable_graph_database("postgresql://uec:pw@localhost:5433/uec-test", True)
         for url in ("postgresql://uec:pw@example.com:5433/uec-test", "postgresql://uec:pw@localhost:5432/uec-test", "postgresql://uec:pw@localhost:5433/app"):
