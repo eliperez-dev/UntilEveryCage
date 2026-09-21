@@ -39,6 +39,10 @@ class FsisRefreshTests(unittest.TestCase):
             )
             manifest = result["manifest"]
             self.assertTrue(result["candidate_created"])
+            self.assertEqual(
+                manifest["source_artifacts"]["directory"]["source_url"],
+                "https://www.fsis.usda.gov/inspection/establishments/meat-poultry-and-egg-product-inspection-directory",
+            )
             self.assertEqual(manifest["release_state"], "not-created")
             self.assertEqual(manifest["publication_state"], "private-candidate")
             self.assertEqual(manifest["source_artifacts"]["demographics"]["byte_size"], len((ROOT / "fixtures/demographics.csv").read_bytes()))
@@ -49,6 +53,30 @@ class FsisRefreshTests(unittest.TestCase):
             self.assertEqual(handoff["handoff_artifact_role"], "directory")
             self.assertEqual(handoff["source_artifacts"]["demographics"]["sha256"], manifest["source_artifacts"]["demographics"]["sha256"])
             self.assertEqual(handoff["bundle_artifact"]["sha256"], manifest["sha256"])
+            self.assertEqual(
+                handoff["source_artifacts"]["directory"]["source_url"],
+                manifest["source_artifacts"]["directory"]["source_url"],
+            )
+
+    def test_operator_directory_url_is_preserved_in_local_artifact_provenance(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source_url = "https://www.fsis.usda.gov/sites/default/files/media_file/documents/MPI_Directory_by_Establishment_Name.csv"
+            result = refresh(
+                run_dir=Path(directory) / "run",
+                directory_path=ROOT / "fixtures/valid.csv",
+                source_url=source_url,
+                retrieved_at_utc="2026-09-20T00:00:00Z",
+                effective_date="2026-09-14",
+                mode="handoff",
+            )
+            lifecycle = result["manifest"]
+            self.assertEqual(lifecycle["source_url"], source_url)
+            self.assertEqual(lifecycle["source_artifacts"]["directory"]["source_url"], source_url)
+            handoff = json.loads((Path(directory) / "run/lifecycle/handoff/manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(handoff["bundle_artifact"]["source_url"], source_url)
+            self.assertEqual(handoff["source_artifacts"]["directory"]["source_url"], source_url)
+            normalized = (Path(directory) / "run/lifecycle/handoff/normalized/records.jsonl").read_text(encoding="utf-8")
+            self.assertIn('"source_id": "us.fsis"', normalized)
 
     def test_schema_drift_blocks_handoff_after_previous_manifest(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -94,6 +94,27 @@ class UsOperatorRefreshTests(unittest.TestCase):
             self.assertEqual(fsis["failure"]["failure_class"], "validation-or-runtime")
             self.assertTrue((root / "second/fsis/failure-report.json").exists())
 
+    def test_fsis_source_url_defaults_in_orchestration_and_preserves_explicit_override(self):
+        default_url = "https://www.fsis.usda.gov/inspection/establishments/meat-poultry-and-egg-product-inspection-directory"
+        explicit_url = "https://www.fsis.usda.gov/sites/default/files/media_file/documents/MPI_Directory_by_Establishment_Name.csv"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            base_plan = self._plan(
+                directory=ROOT / "fsis/fixtures/valid.csv",
+                demographics=ROOT / "fsis/fixtures/demographics.csv",
+                aphis=ROOT / "aphis/fixtures/annual_reports.csv",
+            )
+            for index, value in enumerate(("omitted", None)):
+                plan = {**base_plan, "sources": [dict(base_plan["sources"][0])]}
+                if value != "omitted":
+                    plan["sources"][0]["source_url"] = value
+                report = run_us_refresh(plan, plan_base=root, run_root=root / f"default-{index}")
+                self.assertEqual(report["sources"][0]["acquisition"]["roles"]["directory"]["source_url"], default_url)
+            plan = {**base_plan, "sources": [dict(base_plan["sources"][0])]}
+            plan["sources"][0]["source_url"] = explicit_url
+            report = run_us_refresh(plan, plan_base=root, run_root=root / "explicit")
+            self.assertEqual(report["sources"][0]["acquisition"]["roles"]["directory"]["source_url"], explicit_url)
+
 
 if __name__ == "__main__":
     unittest.main()

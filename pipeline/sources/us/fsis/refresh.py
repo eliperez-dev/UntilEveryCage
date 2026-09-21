@@ -263,7 +263,7 @@ def refresh(
         observed_at = retrieved_at_utc or utc_now()
         metadata["directory"] = _local_facts(
             paths["directory"], role="directory",
-            source_url=CONFIG.get("directory_by_number_url") or source_url,
+            source_url=source_url,
             retrieved_at_utc=observed_at, effective_date=effective_date,
         )
         if demographics_path is not None:

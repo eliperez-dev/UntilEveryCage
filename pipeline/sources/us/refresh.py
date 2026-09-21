@@ -17,7 +17,7 @@ from pipeline.common.source_operations import classify_failure, freshness_for, l
 from pipeline.contracts.source_lifecycle import atomic_json
 
 from .aphis.refresh import refresh as refresh_aphis
-from .fsis.refresh import refresh as refresh_fsis
+from .fsis.refresh import CONFIG as FSIS_CONFIG, refresh as refresh_fsis
 
 
 REPORT_VERSION = "us-operator-report-v1"
@@ -208,7 +208,7 @@ def _run_one(spec: dict[str, Any], base: Path, root: Path, mode: str, retry: dic
                 directory_path=directory,
                 demographics_path=demographics,
                 fetch=fetch,
-                source_url=spec.get("source_url") or None,
+                source_url=spec.get("source_url") or FSIS_CONFIG["directory_url"],
                 retrieved_at_utc=spec.get("retrieved_at_utc"),
                 effective_date=spec.get("effective_date"),
                 mode=mode,
