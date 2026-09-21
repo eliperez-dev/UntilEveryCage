@@ -35,7 +35,9 @@ ensures these surfaces do not drift silently.
   exports, history, reimports, and restores.
 - Exact, city/coarse, and unmapped locations remain distinct. A geocode is
   evidence about location, not publication permission.
-- Cursor and offset cannot be combined. Bbox and radius cannot be combined.
+- Cursor is preferred for continuation; offset remains supported for compatibility
+  (bounded to `0..1,000,000`). Cursor and offset cannot be combined. Bbox and
+  radius cannot be combined.
   Pagination is deterministic and bounded.
 - Errors use `{ "api_version": "v2", "error": { "code": "...", "message": "..." } }`.
 - Public responses contain the reviewed projection only. Raw fields, private
@@ -44,6 +46,15 @@ ensures these surfaces do not drift silently.
 - Community-unreviewed data, when eligible, is only available through an
   explicit community profile and carries the persistent warning that it has
   not been verified by Until Every Cage.
+- The frontend does not promise a durable cache, cache-invalidation event, or
+  revocation signal. Each request is evaluated against the current promoted
+  release and suppression state; clients must refresh when release metadata
+  changes.
+
+The current wire deliberately defers evidence IDs/hashes, source
+publication/effective dates and availability, geocoder metadata, independent
+review-event IDs/scope/dates/outcomes, and richer approval metadata. See the
+[product convergence gap ledger](v2-product-convergence-gap-ledger.md).
 
 ## Deliberate non-goals
 

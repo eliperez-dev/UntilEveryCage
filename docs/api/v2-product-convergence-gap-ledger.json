@@ -1,0 +1,58 @@
+{
+  "ledger_id": "uec-v2-product-convergence-gaps-1",
+  "status": "current-contract-gaps",
+  "as_of": "2026-09-20",
+  "contract": "docs/api/v2-contract.json",
+  "location_schema": "docs/api/v2-location.schema.json",
+  "principle": "Deferred fields are not implied by the current wire and must not be invented by clients or documentation.",
+  "gaps": [
+    {
+      "id": "GAP-EVIDENCE-INTEGRITY",
+      "area": "provenance",
+      "deferred": ["evidence_record_id", "evidence_content_hash", "artifact_byte_size"],
+      "current_wire": "provenance_source_id, provenance_source_name, provenance_source_url, and provenance_retrieved_at are present; raw evidence is not public.",
+      "status": "deferred",
+      "unblock_when": "A reviewed evidence identity and safe public disclosure policy are implemented and tested."
+    },
+    {
+      "id": "GAP-SOURCE-DATES-AVAILABILITY",
+      "area": "provenance",
+      "deferred": ["source_publication_date", "source_effective_date", "source_availability_status", "source_last_observed_status"],
+      "current_wire": "first_observed_at and last_observed_at describe project observations, not source publication/effective dates or availability.",
+      "status": "deferred",
+      "unblock_when": "Date semantics and source disappearance/availability states are represented without inferring closure."
+    },
+    {
+      "id": "GAP-GEOCODER-METADATA",
+      "area": "geospatial",
+      "deferred": ["geocoder_provider", "geocoder_query", "geocoded_at", "geocoder_precision", "geocoder_result", "geocoder_review_status"],
+      "current_wire": "display_precision and coordinates are exposed when eligible; provider, query, result, timestamp, and review metadata are not exposed.",
+      "status": "deferred",
+      "unblock_when": "A privacy-reviewed geocoding provenance model and public display rules are implemented."
+    },
+    {
+      "id": "GAP-REVIEW-EVENTS",
+      "area": "review",
+      "deferred": ["review_event_id", "review_scope", "review_date", "review_outcome", "review_evidence_refs"],
+      "current_wire": "factual_review_status and reviewer_role are summary fields only; they are not an event history or acceptance claim.",
+      "status": "deferred",
+      "unblock_when": "Independent community/project events are safely scoped, identified, and rendered with outcome and limitations."
+    },
+    {
+      "id": "GAP-APPROVAL-METADATA",
+      "area": "publication",
+      "deferred": ["approval_event_id", "approval_actor_role", "approval_scope", "approval_decided_at", "approval_basis", "publication_event_id", "publication_decided_at"],
+      "current_wire": "project_approval and release_id/release_ruleset_version identify current summary context; richer approval and publication event metadata are not present.",
+      "status": "deferred",
+      "unblock_when": "Release/profile-scoped approval and publication events have documented authority, scope, and revocation behavior."
+    },
+    {
+      "id": "GAP-FRONTEND-REVOCATION",
+      "area": "operations",
+      "deferred": ["durable_frontend_cache", "cache_invalidation_signal", "revocation_signal", "client_push_update"],
+      "current_wire": "The frontend requests cache:no-store and refreshes from response release metadata; there is no durable cache, invalidation event, or revocation signal promised by V2.",
+      "status": "deferred",
+      "unblock_when": "A tested release/revocation protocol covers concurrent queries, current suppression, caches, exports, restores, and rollback."
+    }
+  ]
+}

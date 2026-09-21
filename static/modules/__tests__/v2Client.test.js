@@ -1,7 +1,7 @@
 import { jest } from '@jest/globals';
 import { V2ApiError, V2Client } from '../v2Client.js';
 import { escapeHtml, normalizeV2Location } from '../v2Adapter.js';
-import { validateV2Envelope, validateV2Location } from '../v2Contract.js';
+import { validateV2Envelope, validateV2Location, V2_LOCATION_FIELDS } from '../v2Contract.js';
 import { exportManager } from '../ExportManager.js';
 import { buildLocationPopup } from '../popupBuilder.js';
 import { exactOfficialLocation, noPromotedRelease, restrictedLocation } from '../__fixtures__/v2-contract-fixtures.js';
@@ -103,6 +103,19 @@ test('contract preserves explicit no-release state without inventing records', (
 
 test('contract rejects privacy-ineligible records before rendering', () => {
     expect(() => validateV2Location(restrictedLocation)).toThrow('not privacy eligible');
+});
+
+test('contract rejects fields not in the frozen public projection', () => {
+    expect(V2_LOCATION_FIELDS).toContain('source_rights_status');
+    expect(V2_LOCATION_FIELDS).not.toContain('evidence_content_hash');
+    expect(() => validateV2Location({ ...exactOfficialLocation, evidence_content_hash: 'deferred' })).toThrow('unsupported field');
+});
+
+test('client preserves compatibility offset as a query parameter', async () => {
+    fetch.mockResolvedValue({ ok: true, json: async () => listPayload([], { profile: 'official', release_id: null, coverage_note: 'No promoted release.' }) });
+    await new V2Client('/api/v2/locations').list({ profile: 'official', offset: 20, limit: 10 });
+    expect(fetch.mock.calls[0][0]).toContain('offset=20');
+    expect(fetch.mock.calls[0][0]).toContain('limit=10');
 });
 
 test('rejects a row whose publication profile differs from the response profile', async () => {

@@ -20,6 +20,14 @@ describe('LocalLocationRepository query contract', () => {
     expect(request).toContain('cursor=cursor-1');
     expect(result.nextCursor).toBe('cursor-2');
   });
+  it('retains compatibility offset while allowing the preferred cursor to remain explicit', async () => {
+    const fetcher = vi.fn().mockResolvedValue(response(envelope([], { ...envelope().meta, next_cursor: null })));
+    await new LocalLocationRepository(fetcher).list('official', { offset: 20, limit: 10 });
+    const request = String(fetcher.mock.calls[0]?.[0]);
+    expect(request).toContain('offset=20');
+    expect(request).toContain('limit=10');
+    expect(request).not.toContain('cursor=');
+  });
 });
 
 describe('current V2 wire edge cases', () => {

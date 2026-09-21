@@ -16,6 +16,27 @@ Clients can discover the current controlled vocabularies at `GET /api/v2/discove
 
 `GET /api/v2/discovery/facets` returns deterministic value/count pairs for the same controlled dimensions, scoped to the selected promoted profile and current public projection. Its metadata includes the selected release, ruleset, release creation time, and an explicit coverage scope. Counts are eligible public facility-projection rows after current suppression; they are not story-wide totals or animal counts. It applies the supplied filters before counting, caps each dimension at 20 values, and returns no addresses, queries, raw payloads, inactive releases, or restricted records.
 
-Clients must treat `(profile, release_id, ruleset_version, query)` as the cache key and discard or refresh cursor pages when release metadata changes.
+Pagination is deterministic and bounded (`limit` defaults to 100 and is capped at
+1,000). `cursor` is the preferred continuation mechanism and contains the last
+returned `facility_id`. `offset` remains supported for compatibility (default 0,
+bounded to 1,000,000); `cursor` and `offset` cannot be combined. Bbox uses
+`min_lon`, `min_lat`, `max_lon`, and `max_lat`; radius uses `latitude`,
+`longitude`, and `radius_km`; a request cannot use both spatial forms.
+
+Clients should treat `(profile, release_id, ruleset_version, query)` as the
+logical snapshot key and discard or refresh cursor pages when release metadata
+changes. The current frontend uses request-level `cache: no-store`; this
+contract does not promise a durable client cache, a server revocation signal, or
+a cache-invalidation event. Current suppression is authoritative on each read,
+including filtered results, exports, history, reimports, and restores.
 
 List and detail metadata use the same coverage scope. Their source identifiers, source URL, retrieval timestamp, review state, release, and ruleset remain record-level provenance; they do not establish a story-wide denominator or an animal count. Narrative aggregate claims must come from a separately sourced, dated editorial ledger.
+
+The current wire intentionally stops at the fields listed in
+[v2-location.schema.json](v2-location.schema.json). It does not promise
+evidence content hashes, source publication/effective dates or availability
+status, geocoder provider/query/precision metadata, independent review-event
+identifiers/scopes/dates/outcomes, or richer release-scoped approval metadata.
+Those are tracked as explicit deferred gaps in the
+[product convergence gap ledger](v2-product-convergence-gap-ledger.md), not
+silently inferred from the current fields.

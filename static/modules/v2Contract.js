@@ -13,30 +13,65 @@ export const V2_LIFECYCLE_STATUSES = Object.freeze([
     'not_seen_recently',
     'status_unknown'
 ]);
+export const V2_LOCATION_FIELDS = Object.freeze([
+    'facility_id', 'canonical_name', 'country_code', 'city', 'category',
+    'publication_profile', 'factual_review_status', 'privacy_screening_status',
+    'project_approval', 'reviewer_role', 'publication_warning', 'display_precision',
+    'latitude', 'longitude', 'first_observed_at', 'last_observed_at',
+    'observation_count', 'lifecycle_status', 'source_type', 'source_rights_status',
+    'provenance_source', 'release_id', 'release_ruleset_version',
+    'provenance_source_id', 'provenance_source_name', 'provenance_source_url',
+    'provenance_retrieved_at'
+]);
 
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const hasString = (record, field) => typeof record[field] === 'string' && record[field].length > 0;
 const hasNullableString = (record, field) => record[field] === null || typeof record[field] === 'string';
+const isDateTime = value => typeof value === 'string' && !Number.isNaN(Date.parse(value));
+const isHttpUrl = value => {
+    try {
+        const protocol = new URL(value).protocol;
+        return protocol === 'http:' || protocol === 'https:';
+    } catch {
+        return false;
+    }
+};
 
 export function validateV2Location(record) {
     if (!isObject(record)) throw new TypeError('V2 location must be an object');
+    const expected = new Set(V2_LOCATION_FIELDS);
+    if (Object.keys(record).some(field => !expected.has(field))) {
+        throw new TypeError('V2 location contains an unsupported field');
+    }
     for (const field of ['facility_id', 'country_code', 'category', 'publication_profile', 'factual_review_status',
         'privacy_screening_status', 'project_approval', 'display_precision', 'lifecycle_status', 'source_type',
         'release_id', 'release_ruleset_version', 'provenance_source_id', 'provenance_source_name',
-        'provenance_source_url', 'provenance_retrieved_at', 'source_rights_status', 'release_id',
-        'release_ruleset_version', 'provenance_source_id', 'provenance_source_name']) {
+        'provenance_source_url', 'provenance_retrieved_at', 'source_rights_status']) {
         if (!hasString(record, field)) throw new TypeError(`V2 location missing ${field}`);
     }
     for (const field of ['canonical_name', 'city', 'reviewer_role']) {
         if (!hasNullableString(record, field)) throw new TypeError(`V2 location has invalid ${field}`);
     }
-    for (const field of ['latitude', 'longitude', 'first_observed_at', 'last_observed_at', 'observation_count', 'provenance_source']) {
-        if (record[field] !== null && (typeof record[field] !== 'number' && typeof record[field] !== 'string')) {
-            throw new TypeError(`V2 location has invalid ${field}`);
-        }
+    for (const field of ['first_observed_at', 'last_observed_at', 'provenance_source']) {
+        if (!hasNullableString(record, field)) throw new TypeError(`V2 location has invalid ${field}`);
+    }
+    for (const field of ['latitude', 'longitude', 'observation_count']) {
+        if (record[field] !== null && typeof record[field] !== 'number') throw new TypeError(`V2 location has invalid ${field}`);
+    }
+    if (record.observation_count !== null && (!Number.isInteger(record.observation_count) || record.observation_count < 0)) {
+        throw new TypeError('V2 location has invalid observation_count');
+    }
+    for (const field of ['latitude', 'longitude']) {
+        if (record[field] !== null && !Number.isFinite(record[field])) throw new TypeError(`V2 location has invalid ${field}`);
+    }
+    for (const field of ['first_observed_at', 'last_observed_at', 'provenance_retrieved_at']) {
+        if (record[field] !== null && !isDateTime(record[field])) throw new TypeError(`V2 location has invalid ${field}`);
     }
     if (!hasNullableString(record, 'publication_warning')) throw new TypeError('V2 location has invalid publication_warning');
     if (!V2_PROFILES.includes(record.publication_profile)) throw new TypeError('V2 location has invalid publication_profile');
+    if (!/^[A-Z]{2}$/.test(record.country_code)) throw new TypeError('V2 location has invalid country_code');
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(record.facility_id)) throw new TypeError('V2 location has invalid facility_id');
+    if (!isHttpUrl(record.provenance_source_url)) throw new TypeError('V2 location has invalid provenance_source_url');
     if (!V2_SOURCE_TYPES.includes(record.source_type)) throw new TypeError('V2 location has invalid source_type');
     if (!V2_DISPLAY_PRECISIONS.includes(record.display_precision)) throw new TypeError('V2 location has invalid display_precision');
     if (!V2_LIFECYCLE_STATUSES.includes(record.lifecycle_status)) throw new TypeError('V2 location has invalid lifecycle_status');
@@ -47,6 +82,11 @@ export function validateV2Location(record) {
     if (record.factual_review_status === 'unreviewed' && record.publication_profile === 'community' &&
         record.publication_warning !== 'Unreviewed community claim — not verified by Until Every Cage') {
         throw new TypeError('unreviewed community location is missing its publication warning');
+    }
+    if ((record.latitude === null) !== (record.longitude === null) ||
+        (record.display_precision === 'unmapped' && (record.latitude !== null || record.longitude !== null)) ||
+        (record.display_precision !== 'unmapped' && (record.latitude === null || record.longitude === null))) {
+        throw new TypeError('V2 location has an invalid coordinate/display precision combination');
     }
     return record;
 }

@@ -32,10 +32,13 @@
     "Official, secondary, and community profiles are independent publication contexts.",
     "Community-unreviewed records require explicit community profile selection and carry a persistent warning.",
     "Bbox and radius are mutually exclusive; cursor and offset are mutually exclusive.",
+    "Cursor is preferred; offset remains a bounded compatibility parameter (0..1000000).",
     "Pagination is deterministic and bounded; clients scope caches to profile, release, ruleset, and query.",
+    "The frontend has no promised durable cache, invalidation event, or revocation signal; current suppression is checked on reads.",
     "Errors use the versioned {api_version, error:{code,message}} envelope.",
     "The API contract does not claim animal totals, national completeness, factual truth, or deployment readiness."
   ],
+  "deferred_contract_gaps": "docs/api/v2-product-convergence-gap-ledger.json",
   "non_goals": [
     "Administrative review UI",
     "Public ingestion or submission endpoint",
