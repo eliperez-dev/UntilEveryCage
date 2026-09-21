@@ -1,15 +1,15 @@
 # Sprint 02 integration and storage ledger
 
-Status: partial reviewed country checkpoint, 2026-09-19. France and Italy are accepted for private candidate/replay integration; this is not a release approval or a claim that Sprint 02 source acquisition is complete.
+Status: partial reviewed candidate/replay checkpoint, 2026-09-20. France, Italy, APHIS core/inspection, evidence integration, and the accepted FSIS backend scope are integrated for private candidate/replay use; this is not a release approval or a claim that Sprint 02 source acquisition is complete.
 
 ## Ownership and baseline
 
 - Contract: [`SPRINT-02-CONTRACT.md`](SPRINT-02-CONTRACT.md)
 - Required baseline: `5570b6ab42e74dc5227e08c2cd7c1ac7f08aab96`
-- Lane worktree: `C:\Users\pnael\.codex\worktrees\8a23\UntilEveryCage`
+- Lane worktree: managed integration worktree (local path intentionally omitted)
 - Lane branch: `codex/sprint02-integration-lane8`
 - Integration target: `origin/eli/front-end-overhaul`
-- Raw evidence boundary: `C:\New Projects\UntilEveryCage\.private\sprint02-20260919\`
+- Raw evidence boundary: private Sprint 02 evidence root outside Git (local path intentionally omitted)
 
 ## Storage checkpoint
 
@@ -18,7 +18,6 @@ The shared private root exists with separate directories for `aphis-core`, `aphi
 Verification commands:
 
 ```powershell
-git -C 'C:\New Projects\UntilEveryCage' check-ignore -v --no-index '.private/sprint02-20260919/aphis-core/probe.bin'
 git check-ignore -v --no-index '.private/sprint02-20260919/probe.bin'
 powershell -ExecutionPolicy Bypass -File pipeline/tests/verify-docker-context.ps1
 ```
@@ -29,28 +28,25 @@ Kickoff validation: `npm ci` completed with no vulnerabilities; `python -m unitt
 
 ## Reviewed country checkpoint
 
-- France commit `707ac93e` was independently replayed from retained Section I/II raw artifacts and approved by QA; it is integrated as `fbf4e682` on `eli/front-end-overhaul` with unresolved identity signals preserved, no automatic merges, and publication/DB import blocked.
-- Italy commits `e04adecf` and `291ad21` were independently replayed byte-for-byte and approved by QA; they are integrated in the same checkpoint with quarantine, location/privacy, rights, and publication gates preserved.
-- The combined local validation passed 256 pipeline tests, 25 Jest tests, 7 developer tests, doctor, and diff checks. Native GitHub Actions run [98](https://github.com/eliperez-dev/UntilEveryCage/actions/runs/35461131905) succeeded for exact SHA `fbf4e6824792078a4c3aa5ac1f730e0629039224`.
-- FSIS current files remain blocked after bounded ordinary GETs to the three displayed official routes returned HTTP 403; no response body was retained. The row-free evidence is private at `C:\New Projects\UntilEveryCage\.private\sprint02-20260919\fsis\handoff\bounded-get-20260919.json`.
-- APHIS registration/report and inspection lanes are still in progress; their real handoffs require independent replay before integration.
-- APHIS inspection code chain `addcef0c` -> `4518bce6` -> `8b4d3c68` is QA-approved and integrated as `e946d15e`. The authoritative replay accepted 1,075 input rows, 1,071 candidates, and 4 exact-duplicate quarantines, with every source row mapped to verified original-page lineage. Public release/import remains blocked.
-- APHIS registration/annual-report per-row lineage is not yet accepted; the core/evidence owners are correcting that gap before integration.
-- The authoritative APHIS evidence-consumer stack `8430572b` -> `4ee87737` -> `3124696e` -> `285ef119` -> `da17cc34` -> `9b026c13` is code-QA approved and integrated as lane commits through `8dc35b98`. The integrated checks fail closed on quarantine accounting, origin metadata consensus, and original-page lineage; this does not accept the still-held annual/registration rows.
+- France and Italy are QA-approved and integrated for private candidate/replay use with unresolved identity signals, quarantine, location/privacy, rights, and publication gates preserved.
+- APHIS core/annual-report and inspection v4 handoffs have final QA acceptance and are integrated for private candidate/replay use. Row-free handoffs, source lineage, quarantine accounting, and publication/DB-import gates remain enforced; public release/import remains blocked.
+- Lane 6 evidence-consumer contracts have final QA acceptance in the current integrated checkpoint. The consumer fails closed on quarantine accounting, origin metadata consensus, and original-page lineage; this is not publication approval.
+- FSIS backend guard, operator-directory URL provenance, and missing-orchestration-URL fallback are accepted in checkpoint `41057011`. QA also recorded successful browser-backed acquisition evidence for the establishment-name directory and demographics; the reusable browser-acquisition implementation remains a separate author lane.
+- Earlier bounded ordinary GETs to official FSIS routes returned HTTP 403. That transport diagnostic is retained as context and does not override the separately reviewed browser-backed evidence; no response body, raw row, private path, or artifact hash is recorded here.
 
 ## Integration ledger
 
 | Area | Owner/interface | Acceptance state |
 | --- | --- | --- |
-| APHIS registrations/reports | Lane 1 handoff under private storage | Pending per-row lineage correction and QA |
-| APHIS inspections | Lane 2 handoff under private storage | QA-approved and integrated for private candidate/replay |
-| FSIS current parity | Lane 3 handoff under private storage | Pending source handoff and review |
+| APHIS registrations/reports | Lane 1 handoff | QA-approved and integrated for private candidate/replay; publication/import blocked |
+| APHIS inspections | Lane 2 handoff | Final QA-approved and integrated for private candidate/replay |
+| FSIS current parity | Lane 3 handoff | Backend guard/provenance/fallback accepted; browser-acquisition implementation remains separate |
 | France candidate | Lane 4 handoff under private storage | QA-approved and integrated for private candidate/replay |
 | Italy candidate | Lane 5 handoff under private storage | QA-approved and integrated for private candidate/replay |
-| Evidence integration | Lane 6 existing APHIS/FSIS contracts | Authoritative APHIS consumer stack integrated; core annual/registration lineage still held |
-| Independent QA | Lane 7 replay and review | Pending reviewed handoffs |
-| CI/build/release engineering | Lane 8 | Storage/context boundary implemented; focused integration tests pass; native CI pending for current SHA |
+| Evidence integration | Lane 6 existing APHIS/FSIS contracts | Final QA-approved and integrated; fail-closed lineage and quarantine gates retained |
+| Independent QA | Lane 7 replay and review | Current handoffs reviewed; durable row-free final signoff in preparation |
+| CI/build/release engineering | Lane 8 | Checkpoint `41057011` accepted; 282 pipeline tests passed and hosted CI [run 116](https://github.com/eliperez-dev/UntilEveryCage/actions/runs/35551000683) passed for exact SHA `4105701131fb990499c75b39c66560e527a04a89` |
 
 ## Release gate
 
-No public release, deployment, or publication approval is implied. Before final integration, lane 8 must verify reviewed commits, migration reservations, private-artifact availability, reproducible commands, native Linux CI for the exact integrated SHA, and the remaining coverage/privacy/rights limitations. Failed acquisition leaves the previous validated release available subject to current restrictions.
+No public release, deployment, or publication approval is implied. Before release, maintainers must still verify migration reservations, private-artifact availability, reproducible commands, exact-SHA CI, and the remaining coverage/privacy/rights limitations. Failed acquisition leaves the previous validated release available subject to current restrictions.
