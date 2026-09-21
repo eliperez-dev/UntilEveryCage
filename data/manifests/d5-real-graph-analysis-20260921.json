@@ -1,0 +1,169 @@
+{
+  "connectivity": {
+    "aphis_fsis_automatic_links": 0,
+    "aphis_fsis_policy": "evidence and FSIS facility identities remain separate; no automatic cross-source link",
+    "aphis_fsis_review_candidates": 0,
+    "edge_counts_by_source": {},
+    "nodes_observed": 0,
+    "rows_with_explicit_facility_organization_edge": 0
+  },
+  "deterministic_connections": {
+    "collision_count": 0,
+    "counts": {},
+    "distinct_identifier_values": 0,
+    "edge_claims_review_required": true,
+    "orphan_facility_rows": 0,
+    "provenance_complete_rows": 0,
+    "provenance_incomplete_rows": 0,
+    "source_scoped_identifier_observations": 0
+  },
+  "gates": {
+    "automatic_merge": false,
+    "geocoding": "disabled",
+    "privacy_status": "pending",
+    "public_projection": "blocked",
+    "publication": "blocked",
+    "storage_state": "private"
+  },
+  "limitations": [
+    "Real row artifacts are supplied only through restricted local JSONL paths; checked-in manifests are aggregate-only.",
+    "Deterministic edges are source evidence candidates and remain review-required.",
+    "Probabilistic candidates use documented multi-signal rules and never merge identities or transfer claims.",
+    "No authorized human adjudication was available; precision and recall remain unmeasured.",
+    "A source disappearance is not inferred as closure."
+  ],
+  "probabilistic_candidates": {
+    "automatic_merge_count": 0,
+    "candidate_generation_capped": false,
+    "claim_transfer_count": 0,
+    "confidence_bands": {},
+    "count": 0,
+    "disclaimer": "Observed candidate yield is not accuracy; no real precision/recall claim is made without human labels.",
+    "review_required_count": 0,
+    "ruleset": "d5-multi-signal-candidates-v1"
+  },
+  "quality_metrics": {
+    "human_adjudication": "not performed",
+    "precision": "unmeasured",
+    "quarantined_rows_observed": 0,
+    "recall": "unmeasured",
+    "suppressed_rows_observed": 0,
+    "temporal_inconsistency_rows": 0,
+    "unresolved_rows": 0
+  },
+  "review_packet": {
+    "deterministic_selection": "sha256(source_id|source_record_key|d5-multi-signal-candidates-v1) sorted by digest",
+    "publication_status": "not_eligible",
+    "raw_rows": "restricted external handoff only",
+    "review_state": "review_required",
+    "sample_entries": [],
+    "sample_size_requested": 50,
+    "schema_version": "d5-private-review-sample-v1"
+  },
+  "schema_version": "d5-real-graph-analysis-v1",
+  "scope": {
+    "execution": "offline_private_analysis",
+    "manifest_sources": [
+      "ca.cfia.federal-meat",
+      "ca.ontario.meat-plants",
+      "dk.smiley",
+      "fr.dgal.section-i",
+      "fr.dgal.section-ii",
+      "fsa_approved_establishments",
+      "fss_approved_establishments",
+      "it.853-2004"
+    ],
+    "private_row_sources": [],
+    "row_payloads_in_report": false
+  },
+  "source_metrics": {
+    "ca.cfia.federal-meat": {
+      "evidence_rows": 0,
+      "facility_nodes_observed": 0,
+      "input_rows": 874,
+      "normalized_rows": 0,
+      "organization_ids_observed": 0,
+      "private_rows_supplied": 0,
+      "publication_blocked": true,
+      "quarantined_rows": 874,
+      "source_kind": "facility_master"
+    },
+    "ca.ontario.meat-plants": {
+      "evidence_rows": 0,
+      "facility_nodes_observed": 0,
+      "input_rows": 460,
+      "normalized_rows": 460,
+      "organization_ids_observed": 0,
+      "private_rows_supplied": 0,
+      "publication_blocked": true,
+      "quarantined_rows": 0,
+      "source_kind": "facility_master"
+    },
+    "dk.smiley": {
+      "evidence_rows": 0,
+      "facility_nodes_observed": 0,
+      "input_rows": 58766,
+      "normalized_rows": 58766,
+      "organization_ids_observed": 0,
+      "private_rows_supplied": 0,
+      "publication_blocked": true,
+      "quarantined_rows": 0,
+      "source_kind": "facility_master"
+    },
+    "fr.dgal.section-i": {
+      "evidence_rows": 0,
+      "facility_nodes_observed": 0,
+      "input_rows": 1448,
+      "normalized_rows": 1448,
+      "organization_ids_observed": 0,
+      "private_rows_supplied": 0,
+      "publication_blocked": true,
+      "quarantined_rows": 0,
+      "source_kind": "facility_master"
+    },
+    "fr.dgal.section-ii": {
+      "evidence_rows": 0,
+      "facility_nodes_observed": 0,
+      "input_rows": 1068,
+      "normalized_rows": 1068,
+      "organization_ids_observed": 0,
+      "private_rows_supplied": 0,
+      "publication_blocked": true,
+      "quarantined_rows": 0,
+      "source_kind": "facility_master"
+    },
+    "fsa_approved_establishments": {
+      "evidence_rows": 0,
+      "facility_nodes_observed": 0,
+      "input_rows": 5342,
+      "normalized_rows": 4300,
+      "organization_ids_observed": 0,
+      "private_rows_supplied": 0,
+      "publication_blocked": true,
+      "quarantined_rows": 1042,
+      "source_kind": "facility_master"
+    },
+    "fss_approved_establishments": {
+      "evidence_rows": 0,
+      "facility_nodes_observed": 0,
+      "input_rows": 725,
+      "normalized_rows": 586,
+      "organization_ids_observed": 0,
+      "private_rows_supplied": 0,
+      "publication_blocked": true,
+      "quarantined_rows": 139,
+      "source_kind": "facility_master"
+    },
+    "it.853-2004": {
+      "evidence_rows": 0,
+      "facility_nodes_observed": 0,
+      "input_rows": 47373,
+      "normalized_rows": 41847,
+      "organization_ids_observed": 0,
+      "private_rows_supplied": 0,
+      "publication_blocked": true,
+      "quarantined_rows": 5526,
+      "source_kind": "facility_master"
+    }
+  }
+}
