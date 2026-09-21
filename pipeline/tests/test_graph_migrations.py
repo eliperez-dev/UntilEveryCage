@@ -37,6 +37,7 @@ class GraphMigrationContractTests(unittest.TestCase):
             "039_private_graph_query_indexes.sql",
             "040_geocode_worker_durability.sql",
             "041_source_rights_decisions.sql",
+            "042_private_graph_ingest.sql",
         ]
         graph_start = migrations.index(expected_graph_suffix[0])
         graph_end = migrations.index(expected_graph_suffix[-1]) + 1
