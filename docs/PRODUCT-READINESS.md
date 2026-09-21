@@ -22,15 +22,16 @@ publishable facilities unless explicitly labelled that way.
 
 ## Verified checkpoint
 
-- **Baseline:** repository checkpoint `56b22705087788c6195002f96e0c132d1abf92e8`.
+- **Baseline:** repository checkpoint `c281690b` (D1 integration; 2026-09-21 UTC).
 - **Current public product:** V1 remains production and the public default.
 - **V2 frontend:** Svelte/TypeScript fixture and local synthetic preview; it is
   not the production replacement and has no configured external tile service.
 - **Public release:** no V2 public release has been created or promoted.
-- **Evidence:** the current [Sprint 02 integration ledger](sprint02-integration-ledger.md),
-  [source status baseline](source-status.md), [current reacquisition notes](current-reacquisition.md),
-  and [current geospatial readiness](current-geospatial-readiness.md) are the
-  latest supporting records at this checkpoint.
+- **Evidence:** D1's [contract convergence ledger](api/v2-product-convergence-gap-ledger.md),
+  [V1 behavioral contract](frontend/v1-behavioral-contract.md), and row-free
+  [data readiness report](../data/manifests/d1-data-readiness-report.json) are
+  the latest supporting records at this checkpoint. Historical source packets
+  remain linked below for provenance and review context.
 
 ### Current private candidate evidence
 
@@ -54,6 +55,26 @@ Supporting source evidence includes the [APHIS refresh](aphis-lane1-refresh-2026
 and [Italy review packet](review-packet-italy.md). No private rows or payloads
 belong in this roadmap.
 
+### D1 real-data-shaped readiness boundary
+
+D1 established a row-free, private readiness boundary for FSIS, Italy, France,
+and Denmark. These are not approved or public facilities:
+
+| Measure | Strict aggregate | Interpretation |
+| --- | ---: | --- |
+| Provisional source-local candidates | 34,840 | FSIS 7,241; Italy 25,316; France union 2,283. No canonical cross-source merge. |
+| Numeric source coordinates | 31,990 | FSIS 7,241; Italy 24,749; coordinate/privacy review pending. |
+| City/postal geocode candidates | 2,850 | Italy 567; France 2,283; coarse placement only, never an exact facility point. |
+| Public API rows | 0 | Publication is blocked pending terms, privacy, review, approval, and release authority. |
+| Denmark observations | 58,766 | Source observations only; facility identity is unresolved and must not be counted as facilities. |
+
+The complete row-free corpus and its limitations are recorded in
+[d1-data-readiness-report.json](../data/manifests/d1-data-readiness-report.json)
+and [d1-real-data-shaped-test-corpus.json](../data/manifests/d1-real-data-shaped-test-corpus.json).
+The offline private rehearsal passed fail-closed because no authorized private
+row handoff was available in the D1 worktree; no database/API import, release,
+promotion, deployment, or human approval was created.
+
 ## Status vocabulary
 
 Use exactly one status for each roadmap item or gate:
@@ -75,7 +96,7 @@ states and must be reported separately.
 | Workstream | Status | Current truth | Next action |
 | --- | --- | --- | --- |
 | Backend and database | Complete and verified | Rust/Axum API, PostGIS schema, migrations, release/profile concepts, provenance, suppression-aware projections, and candidate/import boundaries exist and are tested in synthetic/local environments. | Close the remaining live-wire contract and durable release/revocation gaps. |
-| API contract | Implemented, not exercised | V2 contracts and generated/hand-authored schemas exist, but the complete frontend-facing contract is not yet frozen against a reviewed real release. | Product-convergence sprint: freeze DTOs, release identity, evidence identifiers, source dates, review state, and revocation semantics. |
+| API contract | Complete and verified | D1 froze the current frontend-facing DTO/query contract, wire schemas, compatibility notes, and convergence gaps with targeted drift tests. It is exercised against synthetic/local contracts, not a reviewed real release. | Exercise the frozen contract against a named reviewed private release. |
 | Frontend product | In progress | V2 is a developer preview using fixtures/local synthetic data; V1 vanilla JavaScript remains public. | Approve information architecture and visual direction, then build a production Svelte frontend. |
 | Data acquisition | In progress | Several current private captures and source adapters exist; many countries remain reconnaissance-only or adapter/fixture-only. | Select one bounded first release and complete its source-specific terms and provenance review. |
 | Identity and reconciliation | Blocked: human review | Source-local identities are preserved; held links and quarantines remain substantial. Cross-source merges are not automatic. | Review candidate identity links and publish only scoped, evidenced relationships. |
@@ -110,10 +131,10 @@ required.
 | --- | --- | --- | --- |
 | Governing ethics and privacy controls | In progress | [ETHICS.md](ETHICS.md), [policy checklist](governance/policy-implementation-todo.md) | Close outstanding implementation controls and verify behavior, not just prose. |
 | Source terms and redistribution | Blocked: human review | [source rights decisions](architecture/source-rights-decisions.md), source-specific assessments | Record terms decision for each source in the first release. |
-| Candidate acquisition and provenance | In progress | [source status](source-status.json), [Sprint 02 ledger](sprint02-integration-ledger.md) | Re-run selected sources with retained provenance and safe aggregate validation. |
+| Candidate acquisition and provenance | In progress | [source status](source-status.json), [D1 readiness report](../data/manifests/d1-data-readiness-report.json) | Re-run selected sources with retained provenance and safe aggregate validation; keep Denmark observations separate from facility identity. |
 | Identity and factual review | Blocked: human review | [US source boundary](countries/us/README.md), [Italy packet](review-packet-italy.md) | Adjudicate held links, quarantines, and contradictions without name/address guessing. |
 | Coordinate and address privacy | In progress | [geospatial readiness](current-geospatial-readiness.md), [geocoding operator](geocoding-operator.md) | Complete precision, residential/private-location, provider, and review-state checks. |
-| API and release contract | Implemented, not exercised | [V2 API contract](api/v2-contract.md), [MVP claim evidence](governance/v2-mvp-claim-evidence.md) | Freeze frontend contract against a named reviewed candidate release. |
+| API and release contract | Complete and verified | [V2 API contract](api/v2-contract.md), [D1 convergence ledger](api/v2-product-convergence-gap-ledger.md), [MVP claim evidence](governance/v2-mvp-claim-evidence.md) | Exercise the frozen contract against a named reviewed candidate release. |
 | Suppression and revocation | Blocked: engineering | [suppression runbook](governance/suppression-runbook.md), [release manifest guidance](architecture/release-manifest-verification.md) | Add durable restriction ledger, replay gate, cache invalidation, and V1↔V2 crosswalk. |
 | Frontend accessibility and performance | In progress | [frontend README](../frontend/README.md), [reviewed demonstration plan](reviewed-demonstration-release.md) | Redesign and test responsive, accessible, performant real-data-shaped views. |
 | Deployment and visitor privacy | Blocked: engineering | [visitor privacy inventory](governance/visitor-privacy-inventory.md), [production operations](deployment/production-operations.md) | Verify proxy trust, logging/provider disclosures, rollback, monitoring, and ownership. |
@@ -124,17 +145,31 @@ required.
 
 ### C1 — Repository clarity and canonical readiness
 
-**Status: In progress.** Establish this page as the sole product-level roadmap,
+**Status: Complete and verified.** Established this page as the sole product-level roadmap,
 archive historical overall-roadmap inputs, clarify the Denmark launcher, and
 add deterministic documentation consistency checks. This sprint must not alter
 data, migration history, publication behavior, or policy meaning.
 
-### Product convergence
+### D1 — V2 product convergence
 
-**Status: Not started.** Freeze the minimum V2 API contract, choose the first
-bounded real-data release family, and approve a product information architecture
-and visual direction that make evidence, uncertainty, accountability, and action
-legible. Keep fixture/local synthetic data available while the design converges.
+**Status: Complete and verified for the D1 scope.** Frozen the current V2
+contract and convergence gaps, captured the V1 behavioral requirements, and
+created a row-free FSIS/Italy/France/Denmark readiness boundary. The data
+boundary is a private test shape, not a reviewed release; visual direction and
+production frontend implementation remain on the next branch.
+
+Evidence: [contract ledger](api/v2-product-convergence-gap-ledger.md),
+[V1 behavioral contract](frontend/v1-behavioral-contract.md), and
+[D1 readiness report](../data/manifests/d1-data-readiness-report.json).
+
+**Next branch:** `eli/v2-frontend-overhaul`, based on the completed D1 head.
+
+### Product convergence (remaining release work)
+
+**Status: In progress.** Exercise the frozen contract against a named reviewed
+private release, close the remaining release/revocation gaps, and carry the
+behavioral contract into the frontend overhaul. Keep fixture/local synthetic
+data and the row-free real-data-shaped corpus available during implementation.
 
 ### Production V2 frontend
 

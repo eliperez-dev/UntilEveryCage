@@ -58,6 +58,9 @@ const coordinateRules = (row: { latitude: number | null; longitude: number | nul
 export const locationSchema = z.object(locationShape).strict().superRefine(coordinateRules);
 export const testReleaseLocationSchema = z.object({
   ...locationShape,
+  // The disposable test-release fixture predates the optional normalized
+  // provenance label; keep that private-only compatibility surface readable.
+  provenance_source: textOrNull.optional().default(null),
   publication_profile: z.enum(['official', 'secondary', 'community']).nullable(),
   privacy_screening_status: z.enum(['pending', 'passed', 'failed']),
   project_approval: z.union([z.enum(['pending', 'approved']), z.literal(false), z.literal('not-approved')]),
