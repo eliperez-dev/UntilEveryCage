@@ -6,6 +6,8 @@ import unittest
 from pathlib import Path
 
 from pipeline.common.d3_live_operations import (
+    D3_FACILITY_SOURCE_IDS,
+    D3_EVIDENCE_SOURCE_IDS,
     D3_EXPECTED_SOURCE_IDS,
     D3_REHEARSAL_SOURCE_IDS,
     build_mixed_rehearsal,
@@ -24,6 +26,8 @@ class D3LiveOperationsTests(unittest.TestCase):
         second = build_mixed_rehearsal(run_root=self.root / "fixture-second", mode="fixture")
         self.assertEqual(first["selected_sources"], list(D3_REHEARSAL_SOURCE_IDS))
         self.assertEqual(first["d3"]["mixed_scope"]["expected_d3_sources"], list(D3_EXPECTED_SOURCE_IDS))
+        self.assertEqual(first["d3"]["mixed_scope"]["facility_sources"], list(D3_FACILITY_SOURCE_IDS))
+        self.assertEqual(first["d3"]["mixed_scope"]["evidence_sources"], list(D3_EVIDENCE_SOURCE_IDS))
         self.assertEqual(first["d3"]["live_access"]["network_requests"], 0)
         self.assertEqual(first["plan_hash"], second["plan_hash"])
         self.assertEqual(first["d3"]["fixture_availability"]["us.fsis"]["fixture_available"], True)
@@ -37,7 +41,8 @@ class D3LiveOperationsTests(unittest.TestCase):
         self.assertEqual(result["d3"]["live_access"]["network_requests"], 0)
         self.assertEqual(result["exit_status"], "failed")
         self.assertEqual(result["counts"]["selected"], len(D3_REHEARSAL_SOURCE_IDS))
-        self.assertEqual(result["counts"]["unsupported"], len(D3_EXPECTED_SOURCE_IDS))
+        self.assertEqual(result["counts"]["failed"], len(D3_REHEARSAL_SOURCE_IDS))
+        self.assertEqual(result["counts"]["unsupported"], 0)
         self.assertEqual(result["publication"], {"release_created": False, "promoted": False, "published": False})
         for source in result["results"]:
             self.assertFalse(source["operational"]["previous_valid_state"]["verified"])
@@ -54,6 +59,12 @@ class D3LiveOperationsTests(unittest.TestCase):
 
         self.assertNotIn("artifact_path", set(keys(result)))
         self.assertNotIn("private_path", set(keys(result)))
+
+    def test_local_artifact_mode_runs_all_thirteen_sources(self):
+        result = build_mixed_rehearsal(run_root=self.root / "local-artifact", mode="local-artifact")
+        self.assertEqual(result["selected_sources"], list(D3_REHEARSAL_SOURCE_IDS))
+        self.assertEqual(result["counts"]["succeeded"], len(D3_REHEARSAL_SOURCE_IDS))
+        self.assertEqual(result["counts"]["failed"], 0)
 
 
 if __name__ == "__main__":

@@ -188,14 +188,17 @@ publication, deployment, promotion, or human-approval state changed.
 **Completed next backend step:** D2 shared private pipeline readiness now
 converges the first-wave adapters on one repeatable private lifecycle, with
 aggregate-only manifests, suppression/idempotency checks, and a path to later
-scheduled refreshes. **Next backend step:** onboard the next source cohort and
-wire approved acquisition paths through this same runner; do not add a
-second orchestration architecture.
+scheduled refreshes. D3 extends that same runner to eleven facility adapters
+and two evidence-event adapters; no second orchestration architecture was
+added. **Next backend step:** exercise authorized live acquisition paths and
+onboard the next source cohort through this same runner; do not add scheduling
+until those paths are ready.
 
 ### D2 — Shared private pipeline readiness
 
-**Status: Fixture/private contract complete; live acquisition and database-backed
-refresh remain source-specific follow-up.** The shared runner now supports one
+**Status: Complete and verified for the D2 fixture/private contract and
+disposable database E2E; live acquisition remains source-specific follow-up.**
+The shared runner now supports one
 source, an explicit selection, or all seven registered first-wave sources in a
 deterministic sequential plan. It preserves source artifacts, runs the existing
 private lifecycle, isolates failures, supports bounded retries and resume, and
@@ -206,14 +209,41 @@ fixture-ready sources are `dk.smiley`, `be.locations`,
 
 The row-free synthetic D2 rehearsal passed all seven sources, including exact,
 city, unmapped, restricted, and quarantine states, failure isolation, resume,
-idempotent reporting, and the injected candidate-import boundary. The actual
-Postgres/PostGIS sink is available for disposable E2E but was not run locally
-when Docker was unavailable. These results establish fixture and local-artifact
-pipeline readiness only; they do not establish live acquisition health,
-publication approval, geocoding approval, or a recurring scheduler. See
+idempotent reporting, and the injected candidate-import boundary. The
+disposable Postgres/PostGIS E2E was subsequently run twice: 35 synthetic
+source records, 21 private candidate observations, 21 review events, and zero
+releases were observed, with the second run inserting no duplicates. These
+results establish fixture, local-artifact, and disposable private-import
+readiness only; they do not establish live acquisition health, publication
+approval, geocoding approval, or a recurring scheduler. See
 `pipeline/common/refresh_runner.py`,
 `pipeline/sources/first_wave.py`, and
 `pipeline/tests/test_d2_e2e_readiness.py`.
+
+### D3 — Source expansion and live-readiness boundary
+
+**Status: Complete and verified for fixture/local-artifact orchestration;
+live acquisition and publication remain blocked.** The shared runner now
+registers exactly eleven facility sources (`dk.smiley`, `be.locations`,
+`ca.ontario.meat-plants`, `ca.cfia.federal-meat`, `fr.dgal.section-i`,
+`fr.dgal.section-ii`, `it.853-2004`, `us.fsis`, `de.locations`,
+`fsa_approved_establishments`, and `fss_approved_establishments`) plus two
+evidence-event sources (`us.aphis` and `us.inspections`).
+
+The mixed sequential rehearsal succeeded for all 13 sources in both fixture
+and local-artifact modes. The live-acquisition rehearsal selected all 13,
+made zero network requests, and failed closed for all 13 because source terms
+and operator authorization are not yet satisfied. Facility adapters use the
+candidate boundary; APHIS and inspections use the separate private evidence
+sink and cannot enter the facility importer or graph/public release path.
+
+The D3 result is therefore private pipeline readiness, not live readiness. No
+source is marked runtime healthy, no source is publication-eligible, and no
+scheduler, secret, promotion, deployment, or public release was added. See
+`pipeline/common/d3_live_operations.py`,
+`pipeline/sources/d3_facility.py`,
+`pipeline/sources/us/evidence.py`, and
+`docs/d3-live-operations-onboarding.md`.
 
 ### Product convergence (remaining release work)
 

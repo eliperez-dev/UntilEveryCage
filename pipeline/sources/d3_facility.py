@@ -54,8 +54,32 @@ class GermanyBltuAdapter:
             normalized.append(row)
         parsed = [json.loads(line) for line in (scratch / "parsed" / "records.jsonl").read_text(encoding="utf-8").splitlines() if line]
         quarantined = [json.loads(line) for line in (scratch / "quarantined" / "records.jsonl").read_text(encoding="utf-8").splitlines() if line]
+        parsed_by_id = {
+            str(item.get("source_values", [])[5] if isinstance(item.get("source_values"), list)
+                and len(item.get("source_values", [])) > 5 else "").strip(): item
+            for item in parsed
+        }
         for row in parsed + [item for item in quarantined]:
             row["source_id"] = self.source_id
+        for row in normalized:
+            source_row = parsed_by_id.get(str(row.get("establishment_id", "")).strip())
+            # The legacy BLtU parser emits a source-local normalized shape.
+            # Adapt it here to the shared candidate handoff without changing
+            # that parser's independently tested output contract.
+            row["source_row"] = source_row.get("source_row") if source_row else None
+            row["normalized"] = {
+                "establishment_id": row.get("establishment_id"),
+                "trading_name": row.get("establishment_name"),
+                "city": row.get("city"),
+                "activity_categories": [row.get("type")] if row.get("type") else [],
+                "latitude": row.get("latitude"),
+                "longitude": row.get("longitude"),
+                "coordinate_status": row.get("coordinate_status"),
+            }
+            if source_row:
+                values = source_row.get("source_values", {})
+                headers = source_row.get("source_headers", [])
+                row["source_values"] = dict(zip(headers, values)) if isinstance(values, list) else values
         def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("".join(json.dumps(row, ensure_ascii=False, sort_keys=True, default=list) + "\n" for row in rows), encoding="utf-8")

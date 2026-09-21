@@ -38,6 +38,11 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 
 def _country_code(source_id: str) -> str:
+    # A small set of established source identities predate the dotted source
+    # ID convention. Keep their jurisdiction explicit rather than deriving a
+    # pseudo-country code from the adapter name.
+    if source_id in {"fsa_approved_establishments", "fss_approved_establishments"}:
+        return "GB"
     prefix = source_id.split(".", 1)[0].strip().upper()
     # Cross-border statistical sources are intentionally retained as EU rather
     # than being assigned to a country by inference.
