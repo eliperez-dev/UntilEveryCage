@@ -1,0 +1,58 @@
+{
+  "manifest_version": "d1-real-data-shaped-test-corpus-v1",
+  "fixture_kind": "row-free-aggregate-shape",
+  "deterministic_seed": "d1-readiness-2026-09-21",
+  "private_payloads_included": false,
+  "publication_state": "blocked; test-shape only",
+  "observations": {
+    "us.fsis": {"count": 7241, "identity_unit": "source candidate aggregate"},
+    "it.853-2004": {"count": 41849, "identity_unit": "source observation"},
+    "fr.dgal.section-i": {"count": 1449, "identity_unit": "section observation"},
+    "fr.dgal.section-ii": {"count": 1067, "identity_unit": "section observation"},
+    "dk.smiley": {"count": 58766, "identity_unit": "source observation; not a facility"}
+  },
+  "candidates": {
+    "us.fsis": {"count": 7241, "identity_state": "source-scoped"},
+    "it.853-2004": {"count": 25316, "identity_state": "provisional source grouping"},
+    "fr.dgal.union": {"count": 2283, "identity_state": "provisional union; review overlap"},
+    "total": 34840
+  },
+  "coordinate_states": {
+    "numeric_coordinate": {
+      "us.fsis": 7241,
+      "it.853-2004": 24749,
+      "fr.dgal.union": 0,
+      "total": 31990
+    },
+    "city_or_postal_geocode": {
+      "us.fsis": 0,
+      "it.853-2004": 567,
+      "fr.dgal.union": 2283,
+      "total": 2850
+    },
+    "dk.smiley": {
+      "unresolved": 58766,
+      "approved_numeric_coordinate": 0,
+      "display_state": "blocked pending coordinate/privacy review"
+    }
+  },
+  "quarantine": {
+    "denmark_validation_findings": 57,
+    "record_level_counts": "unknown; do not substitute zero",
+    "fixture_behavior": "quarantine and unresolved states remain separately addressable"
+  },
+  "human_gates": {
+    "terms_and_rights": "pending",
+    "privacy_and_location": "pending",
+    "coordinate_precision": "pending",
+    "classification_and_identity": "pending",
+    "project_approval": "not-recorded",
+    "publication": "blocked"
+  },
+  "fixture_contract": {
+    "rows_are_generated_only_in_disposable_tests": true,
+    "stable_ordering": "source_id then partition key",
+    "no_auto_source_selection": true,
+    "no_release_or_deployment": true
+  }
+}

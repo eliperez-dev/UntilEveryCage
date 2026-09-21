@@ -6,15 +6,34 @@ privacy screening, or maintainer approval. Raw XML, normalized rows, review
 documents, and coordinates remain in restricted ignored storage. Checked-in
 documents and receipts must stay row-free.
 
-The current Denmark source is still blocked for publication. Its source review
-packet records open terms/currentness, coverage/effective-date, category,
-privacy, and release-review questions. No second source is included because no
-additional source currently has all of rights, provenance, privacy, and
-precision gates demonstrated.
+The workflow is source-agnostic: an operator must explicitly choose one source
+and one candidate release. It never ranks sources or automatically chooses the
+source that appears easiest to review. The row-free comparison helper can
+compare two named sources before that choice, for example `us.fsis` and
+`dk.smiley`; comparison does not create a release or imply that either source
+is approved.
+
+The current Denmark and FSIS evidence remain blocked for publication. Their
+source packets record open terms/currentness, coverage/effective-date,
+classification, privacy, coordinate, and release-review questions. The D1
+aggregate comparison is recorded in
+[`data/manifests/d1-data-readiness-report.json`](../data/manifests/d1-data-readiness-report.json)
+and contains no rows or private paths.
+
+For an explicit aggregate comparison, run the diagnostic with both source IDs
+supplied; omitting either source is an error and there is no default:
+
+```powershell
+python pipeline/scripts/diagnostics/compare_reviewed_demo_sources.py `
+  --report data/manifests/d1-data-readiness-report.json `
+  --left-source us.fsis --right-source dk.smiley `
+  --output data/reports/d1-reviewed-demo-source-comparison.json
+```
 
 ## Workflow
 
-1. Acquire and stage Denmark privately using the source-owned pipeline. Keep
+1. Acquire and stage the explicitly selected source privately using its
+   source-owned pipeline. Keep
    raw artifacts and normalized handoffs outside Git. A failed or partial run
    must not change an existing release.
 2. Write a row-free selection document containing the candidate release ID,

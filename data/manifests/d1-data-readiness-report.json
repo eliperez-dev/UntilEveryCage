@@ -1,0 +1,124 @@
+{
+  "as_of_utc": "2026-09-21T00:00:00Z",
+  "candidates": {
+    "by_source": {
+      "fr.dgal.union": 2283,
+      "it.853-2004": 25316,
+      "us.fsis": 7241
+    },
+    "identity_semantics": "provisional/source-scoped candidates; no canonical facility merge",
+    "total": 34840
+  },
+  "coordinate_states": {
+    "city_or_postal_geocode": {
+      "by_source": {
+        "fr.dgal.union": 2283,
+        "it.853-2004": 567,
+        "us.fsis": 0
+      },
+      "display_precision": "city-or-postal; never an exact facility point",
+      "total": 2850
+    },
+    "denmark": {
+      "approved_numeric_coordinates": 0,
+      "display_state": "no coordinate display approved; city/postal display count not supplied",
+      "source_id": "dk.smiley",
+      "unresolved_observations": 58766
+    },
+    "numeric_coordinate": {
+      "by_source": {
+        "fr.dgal.union": 0,
+        "it.853-2004": 24749,
+        "us.fsis": 7241
+      },
+      "review_state": "pending human coordinate/privacy review",
+      "total": 31990
+    }
+  },
+  "corpus_state": "row-free-real-data-shaped-private-readiness",
+  "evidence": {
+    "dk.smiley": {
+      "basis": "retained private run aggregate and source-key identity contract",
+      "facility_identity_claim": "not established",
+      "row_payloads_included": false
+    },
+    "fr.dgal.union": {
+      "basis": "row-free cross-section reconciliation; 233 overlap signals remain review-only",
+      "row_payloads_included": false
+    },
+    "it.853-2004": {
+      "basis": "restricted row-free QA aggregate",
+      "row_payloads_included": false
+    },
+    "us.fsis": {
+      "basis": "official aggregate observation plus restricted candidate metrics",
+      "current_row_artifact": "not captured; direct routes blocked",
+      "row_payloads_included": false
+    }
+  },
+  "human_gates": {
+    "classification_and_identity": "pending review; no automatic merges",
+    "coordinate_precision": "pending review",
+    "privacy_and_location": "pending record screening",
+    "project_approval": "not recorded",
+    "publication": "blocked",
+    "source_terms_and_rights": "pending named review"
+  },
+  "limitations": [
+    "Counts are row-free aggregates from restricted evidence and do not publish source rows.",
+    "Observations, provisional candidates, and facilities are distinct concepts.",
+    "Unknown quarantine and Denmark city/postal counts are not treated as zero.",
+    "No source disappearance is interpreted as closure.",
+    "No release, promotion, deployment, or human approval is created by this report."
+  ],
+  "observations": {
+    "denmark": {
+      "count": 58766,
+      "distinct_source_observation_identity_count": 58766,
+      "facility_identity_count": null,
+      "identity_state": "source-key identity only; facility reconciliation not established",
+      "observation_unit": "source observation; never labeled as a facility",
+      "source_id": "dk.smiley"
+    },
+    "france": {
+      "observation_unit": "source observation; section identities remain separate",
+      "section_i": 1449,
+      "section_ii": 1067,
+      "source_ids": [
+        "fr.dgal.section-i",
+        "fr.dgal.section-ii"
+      ]
+    },
+    "fsis": {
+      "count": 7241,
+      "observation_unit": "source candidate aggregate; not a checked-in row corpus",
+      "source_id": "us.fsis"
+    },
+    "italy": {
+      "count": 41849,
+      "observation_unit": "source observation",
+      "source_id": "it.853-2004"
+    }
+  },
+  "private_rehearsal": {
+    "api_started": false,
+    "database_started": false,
+    "fail_closed": true,
+    "reason": "D1 worktree contains no authorized private row handoff; no private path or row payload was imported",
+    "status": "passed_offline; no authorized private handoff available"
+  },
+  "publication": {
+    "project_approval": "not-recorded",
+    "public_api_rows": 0,
+    "publication_eligibility": "blocked",
+    "release_created": false,
+    "release_promoted": false
+  },
+  "quarantine": {
+    "denmark_validation_findings": 57,
+    "policy": "ambiguous, unsafe, or unreviewed material remains restricted/quarantined",
+    "record_level_counts": "not supplied in this row-free report",
+    "unknown_is_not_zero": true
+  },
+  "schema_version": "d1-data-readiness-v1"
+}
