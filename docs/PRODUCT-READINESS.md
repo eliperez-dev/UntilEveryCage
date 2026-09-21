@@ -185,10 +185,35 @@ of generated caches were removed, and retired worktree content was removed in
 three separately reported groups of 2.83 GiB, 8.24 GiB, and 8.66 GiB. No
 publication, deployment, promotion, or human-approval state changed.
 
-**Next backend step:** D2 shared private pipeline readiness: converge source
-adapters on one repeatable acquisition → cleaning → formatting → candidate
-insertion lifecycle, with aggregate-only manifests, suppression/idempotency
-checks, and a path to later scheduled refreshes.
+**Completed next backend step:** D2 shared private pipeline readiness now
+converges the first-wave adapters on one repeatable private lifecycle, with
+aggregate-only manifests, suppression/idempotency checks, and a path to later
+scheduled refreshes. **Next backend step:** onboard the next source cohort and
+wire approved acquisition paths through this same runner; do not add a
+second orchestration architecture.
+
+### D2 — Shared private pipeline readiness
+
+**Status: Fixture/private contract complete; live acquisition and database-backed
+refresh remain source-specific follow-up.** The shared runner now supports one
+source, an explicit selection, or all seven registered first-wave sources in a
+deterministic sequential plan. It preserves source artifacts, runs the existing
+private lifecycle, isolates failures, supports bounded retries and resume, and
+keeps candidate output review-required with publication disabled. The seven
+fixture-ready sources are `dk.smiley`, `be.locations`,
+`ca.ontario.meat-plants`, `ca.cfia.federal-meat`, `fr.dgal.section-i`,
+`fr.dgal.section-ii`, and `it.853-2004`.
+
+The row-free synthetic D2 rehearsal passed all seven sources, including exact,
+city, unmapped, restricted, and quarantine states, failure isolation, resume,
+idempotent reporting, and the injected candidate-import boundary. The actual
+Postgres/PostGIS sink is available for disposable E2E but was not run locally
+when Docker was unavailable. These results establish fixture and local-artifact
+pipeline readiness only; they do not establish live acquisition health,
+publication approval, geocoding approval, or a recurring scheduler. See
+`pipeline/common/refresh_runner.py`,
+`pipeline/sources/first_wave.py`, and
+`pipeline/tests/test_d2_e2e_readiness.py`.
 
 ### Product convergence (remaining release work)
 

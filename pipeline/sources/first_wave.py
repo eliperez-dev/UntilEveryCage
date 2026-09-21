@@ -11,11 +11,12 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 from pipeline.common.orchestrator import run_private_lifecycle
 from pipeline.contracts.adapter_contract import SourceAdapter, SourceArtifact
 from pipeline.contracts.candidate_handoff import write_handoff
+from pipeline.contracts.refresh import AdapterCapabilities
 
 from .belgium.adapter import BelgiumOperatorsAdapter, CONFIG as BELGIUM_CONFIG
 from .canada.adapter import CfiaFederalMeatAdapter, OntarioMeatPlantsAdapter
@@ -106,6 +107,74 @@ FIRST_WAVE: tuple[SourceDescriptor, ...] = (
 BY_SOURCE_ID = {descriptor.source_id: descriptor for descriptor in FIRST_WAVE}
 
 
+class FirstWaveRefreshAdapter:
+    """Adapt one source-owned lifecycle adapter to the shared D2 runner.
+
+    Acquisition is intentionally not hidden here: fixture mode uses the
+    checked-in synthetic artifact, local-artifact mode uses the caller's
+    preserved path, and live-acquisition fails closed until a source-specific
+    fetch contract is approved.
+    """
+
+    def __init__(self, descriptor: SourceDescriptor) -> None:
+        self.descriptor = descriptor
+        self.source_id = descriptor.source_id
+        self.adapter_version = descriptor.adapter_version
+
+    def refresh(self, *, mode: str, run_dir: Path, artifact: Path | None,
+                options: Mapping[str, Any]) -> Mapping[str, Any]:
+        if mode == "live-acquisition":
+            raise RuntimeError("live acquisition is not wired into the D2 runner; use a preserved local artifact")
+        raw_path = artifact if mode == "local-artifact" else self.descriptor.fixture_paths[0]
+        if raw_path is None or not raw_path.is_file():
+            raise FileNotFoundError(f"preserved artifact is unavailable for {self.source_id}")
+        source_adapter = self.descriptor.adapter()
+        source_artifact = self.descriptor.artifact_for(raw_path)
+        status = run_private_lifecycle(
+            raw_path, run_dir, source_artifact, source_adapter,
+            health_as_of_utc=source_artifact.retrieved_at_utc,
+        )
+        lifecycle_root = Path(status["run_dir"])
+        manifest = status.get("manifest") or {}
+        candidate_handoff = False
+        if status.get("status") == "candidate-ready":
+            normalized = lifecycle_root / "normalized" / "records.jsonl"
+            if isinstance(source_adapter, DenmarkSmileyAdapter):
+                rows = [json.loads(line) for line in normalized.read_text(encoding="utf-8").splitlines() if line]
+                source_adapter.write_candidate_handoff(lifecycle_root / "candidate-handoff", source_artifact, rows)
+            else:
+                rows = [json.loads(line) for line in normalized.read_text(encoding="utf-8").splitlines() if line]
+                write_handoff(lifecycle_root / "candidate-handoff", rows, source_artifact, source_id=self.source_id)
+            candidate_handoff = True
+        return {
+            "lifecycle_status": status.get("status"),
+            "publication_state": status.get("publication_state", "unchanged"),
+            "input_rows": manifest.get("input_rows", 0),
+            "normalized_rows": manifest.get("normalized_rows", 0),
+            "quarantined_rows": manifest.get("quarantined_rows", 0),
+            "candidate_handoff": candidate_handoff,
+            "review_required": True,
+            "release_promoted": bool(status.get("release_promoted", False)),
+            "public_surfaces": {"api": False, "map": False, "csv": False},
+        }
+
+
+def register_first_wave(catalog: Any) -> None:
+    """Register the seven D2 adapters with a :class:`RefreshCatalog`."""
+    for descriptor in FIRST_WAVE:
+        capabilities = AdapterCapabilities(
+            source_id=descriptor.source_id,
+            adapter_version=descriptor.adapter_version,
+            schema_version=descriptor.schema_version,
+            acquisition=descriptor.live_acquisition,
+            geocoding="disabled",
+            publication=descriptor.publication,
+            adapter_path=f"pipeline/sources/{descriptor.country_code.lower()}",
+            country_code=descriptor.country_code.lower(),
+        )
+        catalog.register(FirstWaveRefreshAdapter(descriptor), capabilities)
+
+
 def descriptor_for(source_id: str) -> SourceDescriptor:
     try:
         return BY_SOURCE_ID[source_id]
@@ -122,11 +191,16 @@ def run_fixture(source_id: str, run_dir: str | Path, *, retrieved_at_utc: str = 
     descriptor = descriptor_for(source_id)
     raw_path = descriptor.fixture_paths[0]
     artifact = descriptor.artifact_for(raw_path, retrieved_at_utc=retrieved_at_utc)
-    status = run_private_lifecycle(raw_path, run_dir, artifact, descriptor.adapter(), health_as_of_utc=retrieved_at_utc)
+    source_adapter = descriptor.adapter()
+    status = run_private_lifecycle(raw_path, run_dir, artifact, source_adapter, health_as_of_utc=retrieved_at_utc)
     if status.get("status") == "candidate-ready":
         lifecycle_root = Path(status["run_dir"])
-        rows = [json.loads(line) for line in (lifecycle_root / "normalized" / "records.jsonl").read_text(encoding="utf-8").splitlines() if line]
-        write_handoff(lifecycle_root / "candidate-handoff", rows, artifact, source_id=source_id)
+        if isinstance(source_adapter, DenmarkSmileyAdapter):
+            rows = [json.loads(line) for line in (lifecycle_root / "normalized" / "records.jsonl").read_text(encoding="utf-8").splitlines() if line]
+            source_adapter.write_candidate_handoff(lifecycle_root / "candidate-handoff", artifact, rows)
+        else:
+            rows = [json.loads(line) for line in (lifecycle_root / "normalized" / "records.jsonl").read_text(encoding="utf-8").splitlines() if line]
+            write_handoff(lifecycle_root / "candidate-handoff", rows, artifact, source_id=source_id)
     manifest = status.get("manifest") or {}
     return {
         "source_id": source_id,
@@ -145,4 +219,4 @@ def readiness_report() -> list[dict[str, Any]]:
     return [descriptor.readiness() for descriptor in FIRST_WAVE]
 
 
-__all__ = ["BY_SOURCE_ID", "FIRST_WAVE", "SourceDescriptor", "descriptor_for", "readiness_report", "run_fixture"]
+__all__ = ["BY_SOURCE_ID", "FIRST_WAVE", "FirstWaveRefreshAdapter", "SourceDescriptor", "descriptor_for", "readiness_report", "register_first_wave", "run_fixture"]

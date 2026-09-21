@@ -8,11 +8,15 @@ the default runner remains fast and dependency-free.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import json
+import shutil
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
+
+from pipeline.common.refresh_runner import RefreshCatalog, RefreshRunner
+from pipeline.contracts.refresh import AdapterCapabilities, RefreshRequest
 
 
 REPORT_SCHEMA_VERSION = "d2-disposable-e2e-readiness-v1"
@@ -128,6 +132,45 @@ def _resume_results(resume_report: Mapping[str, object], selected: Sequence[str]
     return {str(item["source_id"]): item for item in values if isinstance(item, Mapping) and "source_id" in item}
 
 
+class _SyntheticRefreshAdapter:
+    """Synthetic D2 adapter used to exercise the production runner."""
+
+    adapter_version = FIXTURE_VERSION
+
+    def __init__(self, source_id: str, *, fail: bool = False) -> None:
+        self.source_id = source_id
+        self.fail = fail
+
+    def refresh(self, *, mode: str, run_dir: Path, artifact: Path | None,
+                options: Mapping[str, object]) -> Mapping[str, object]:
+        if self.fail:
+            raise RuntimeError("injected_fixture_failure")
+        summary = _fixture_summary()
+        return {
+            **summary,
+            "review_required": True,
+            "promoted": False,
+            "public_api_rows": 0,
+            "public_surfaces": {"api": False, "map": False, "csv": False},
+        }
+
+
+def _synthetic_catalog(*, fail_source: str | None = None) -> RefreshCatalog:
+    catalog = RefreshCatalog.__new__(RefreshCatalog)
+    catalog.sources = {source_id: {"source_id": source_id, "adapter_status": "implemented_partial"} for source_id in D2_SOURCE_IDS}
+    catalog.capabilities = {}
+    catalog.adapters = {}
+    for source_id in D2_SOURCE_IDS:
+        capabilities = AdapterCapabilities(
+            source_id=source_id, adapter_version=FIXTURE_VERSION,
+            schema_version=FIXTURE_VERSION, acquisition="fixture",
+            geocoding="disabled", publication="human_gate_required",
+        )
+        catalog.capabilities[source_id] = capabilities
+        catalog.register(_SyntheticRefreshAdapter(source_id, fail=source_id == fail_source), capabilities)
+    return catalog
+
+
 def build_report(*, selected_sources: Sequence[str] | None = None,
                  fail_source: str | None = None,
                  resume_report: Mapping[str, object] | None = None,
@@ -141,27 +184,41 @@ def build_report(*, selected_sources: Sequence[str] | None = None,
     selected = _validate_selection(selected_sources)
     if fail_source is not None and fail_source not in selected:
         raise D2ReadinessError("fail-source must be one of the selected sources")
-    previous = _resume_results(resume_report, selected) if resume_report is not None and database_sink is None else {}
-    results: list[dict[str, object]] = []
-    for source_id in selected:
-        prior = previous.get(source_id)
-        if prior is not None and prior.get("status") in {"passed", "resumed"}:
-            result = dict(prior)
-            result["status"] = "resumed"
-            results.append(result)
-            continue
-        if source_id == fail_source:
-            results.append(_source_result(source_id, "failed", failure_category="injected_fixture_failure"))
-            continue
-        try:
-            inserted = database_sink(source_id, FIXTURE_CASES) if database_sink is not None else 0
+    _resume_results(resume_report, selected) if resume_report is not None else None
+    runner_root = Path(__file__).with_name(".d2-runner")
+    if resume_report is None:
+        shutil.rmtree(runner_root, ignore_errors=True)
+
+    importer = None
+    if database_sink is not None:
+        def importer(run_dir: Path, _database_url: str) -> Mapping[str, object]:
+            source_id = run_dir.name
+            inserted = database_sink(source_id, FIXTURE_CASES)
             if not isinstance(inserted, int) or inserted < 0 or inserted > 3:
                 raise D2ReadinessError("database sink returned an invalid aggregate count")
-            results.append(_source_result(source_id, "passed", database_candidate_rows=inserted))
-        except Exception:
-            # Failure isolation is deliberate: the remaining sources still run
-            # and the aggregate exits nonzero below.
-            results.append(_source_result(source_id, "failed", failure_category="private_candidate_insert_failure"))
+            return {"inserted": inserted, "public_api_rows": 0}
+
+    request = RefreshRequest(
+        source_ids=tuple(selected), mode="fixture", output_root=runner_root,
+        resume=resume_report is not None,
+        import_candidates=database_sink is not None,
+        database_url="postgresql://127.0.0.1/d2-disposable" if database_sink is not None else None,
+    )
+    runner_result = RefreshRunner(_synthetic_catalog(fail_source=fail_source), candidate_importer=importer).run(request)
+    results: list[dict[str, object]] = []
+    for item in runner_result["results"]:
+        source_id = str(item["source_id"])
+        status = "passed" if item["status"] == "succeeded" else item["status"]
+        summary = item.get("summary") if isinstance(item.get("summary"), Mapping) else {}
+        imported = summary.get("candidate_import") if isinstance(summary, Mapping) else {}
+        inserted = int(imported.get("inserted", 0)) if isinstance(imported, Mapping) else 0
+        if status == "failed":
+            attempts = item.get("attempts") if isinstance(item.get("attempts"), list) else []
+            error = str(attempts[0].get("error", "")) if attempts and isinstance(attempts[0], Mapping) else ""
+            category = "injected_fixture_failure" if "injected_fixture_failure" in error else "private_candidate_insert_failure"
+            results.append(_source_result(source_id, "failed", failure_category=category, database_candidate_rows=inserted))
+        else:
+            results.append(_source_result(source_id, status, database_candidate_rows=inserted))
 
     successful = [item for item in results if item["status"] in {"passed", "resumed"}]
     failed = [item for item in results if item["status"] == "failed"]

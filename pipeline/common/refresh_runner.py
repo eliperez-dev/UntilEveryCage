@@ -47,6 +47,10 @@ class RefreshCatalog:
         self.orphan_capabilities = tuple(sorted(set(self.capabilities) - set(self.sources)))
         self.capabilities = {source_id: value for source_id, value in self.capabilities.items() if source_id in self.sources}
         self.adapters: dict[str, RegisteredAdapter] = {}
+        # Source-local code owns parsing/normalization; this is the single
+        # production registration seam used by the D2 runner and CLI.
+        from pipeline.sources.first_wave import register_first_wave
+        register_first_wave(self)
 
     def register(self, adapter: RefreshAdapter, capabilities: AdapterCapabilities | None = None) -> None:
         source_id = str(adapter.source_id)
@@ -64,7 +68,8 @@ class RefreshCatalog:
             # Eligible means an explicitly implemented/partial adapter status;
             # missing hooks are retained in the plan and reported as skips.
             selected = [source_id for source_id, item in self.sources.items()
-                        if item.get("adapter_status") in {"implemented", "implemented_partial"}]
+                        if item.get("adapter_status") in {"implemented", "implemented_partial"}
+                        and source_id in self.adapters]
         else:
             selected = list(request.source_ids)
         if len(set(selected)) != len(selected):
@@ -130,7 +135,7 @@ class RefreshRunner:
             _json(result_path, result)
             return result
         artifact = Path(request.artifact_paths[source_id]) if source_id in request.artifact_paths else None
-        if request.mode in {"fixture", "local-artifact"} and artifact is None:
+        if request.mode == "local-artifact" and artifact is None:
             result = {"source_id": source_id, "status": "failed", "error": "artifact path required for this mode", "mode": request.mode}
             _json(result_path, result)
             return result
