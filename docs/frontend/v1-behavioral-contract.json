@@ -1,0 +1,227 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "contract_id": "uec-v1-behavioral-contract",
+  "contract_version": "1.0.0",
+  "status": "baseline-for-v2-reconciliation",
+  "scope": "The public vanilla-JavaScript V1 map at static/index.html and static/app.js. This is a behavior inventory and migration contract, not a promise of source completeness, factual accuracy, or publication safety.",
+  "source_observation": {
+    "observed_at": "2026-09-20",
+    "source_files": [
+      "static/index.html",
+      "static/app.js",
+      "static/modules/FilterManager.js",
+      "static/modules/SearchManager.js",
+      "static/modules/MapManager.js",
+      "static/modules/ExportManager.js",
+      "static/modules/popupBuilder.js",
+      "static/modules/DataManager.js",
+      "static/modules/translationManager.js",
+      "static/modules/iconUtils.js"
+    ]
+  },
+  "dispositions": {
+    "preserve_user_critical": "Preserve the named V1 interaction and migration state until an equivalent, verified replacement is available. Preserve limitations and country-specific fallbacks as observable behavior or document an intentional change.",
+    "v2_privacy_review_replacement": "V2 may replace V1 exposure only through release-scoped, privacy-eligible projections with source origin, factual review, project approval, publication profile, precision, lifecycle, and provenance shown independently. Government origin is not approval or completeness.",
+    "deferred_to_eli_v2_frontend_overhaul": "No visual redesign, CSS change, new API, or V2 frontend implementation is part of this contract. Responsive/accessibility/performance redesign, a first-class list, and production V2 map architecture remain Eli's follow-on work."
+  },
+  "requirements": [
+    {
+      "id": "V1-SEARCH-001",
+      "area": "search",
+      "title": "Search by facility name",
+      "disposition": "preserve_user_critical",
+      "observed_behavior": "The debounced search filters USDA establishment_name, lab Account Name, and inspection Account Name case-insensitively; the search dropdown returns matching USDA and lab records.",
+      "acceptance": "A non-empty query matching a record's name leaves that record in visible filtered results and in the suggestion list when it is a USDA or lab record.",
+      "evidence": ["static/modules/FilterManager.js", "static/modules/SearchManager.js", "static/app.js"]
+    },
+    {
+      "id": "V1-SEARCH-002",
+      "area": "search",
+      "title": "Search DBA, animal activity text, and facility type",
+      "disposition": "preserve_user_critical",
+      "observed_behavior": "USDA search checks dbas, animals_slaughtered, animals_processed, and the mapped facility type label. Labs check Animals Tested On and laboratory terms; inspection records check license type terms. cow/cows are normalized to cattle for USDA animal text.",
+      "acceptance": "Queries against each supported field are OR matches, case-insensitive, and do not require an exact phrase; an empty query removes the suggestion dropdown.",
+      "evidence": ["static/modules/FilterManager.js", "static/modules/SearchManager.js"]
+    },
+    {
+      "id": "V1-GEO-001",
+      "area": "geography",
+      "title": "Country filtering",
+      "disposition": "preserve_user_critical",
+      "observed_behavior": "The selector exposes All, US, DE, ES, FR, CA, MX, DK, NZ, and UK when data-derived country/state evidence supports them. Country matching uses country-specific state/location heuristics.",
+      "acceptance": "Choosing a country limits all rendered categories and resets the region selector to All; choosing All hides the region selector.",
+      "evidence": ["static/modules/FilterManager.js", "static/app.js", "static/modules/geoUtils.js"]
+    },
+    {
+      "id": "V1-GEO-002",
+      "area": "geography",
+      "title": "State, province, and Denmark city filtering",
+      "disposition": "preserve_user_critical",
+      "observed_behavior": "US, German, Spanish, Canadian, Mexican, and UK region values come from state fields; Denmark uses city values as the region selector. France currently does not narrow by selected state, and missing France/Denmark region data yields a disabled explanatory option.",
+      "acceptance": "A supported state/province/city selection narrows the corresponding records; the France no-region behavior remains explicit until intentionally replaced and tested.",
+      "evidence": ["static/modules/FilterManager.js", "static/modules/geoUtils.js"]
+    },
+    {
+      "id": "V1-TYPE-001",
+      "area": "facility-types",
+      "title": "Facility-type toggles",
+      "disposition": "preserve_user_critical",
+      "observed_behavior": "Six checked-by-default toggles control slaughterhouses, processing plants, labs, breeders, dealers, and exhibitors. USDA rows are mapped into slaughter, processing, breeder, or exhibitor categories; APHIS inspection rows are filtered by Class A/B/C license type.",
+      "acceptance": "Turning one toggle off removes that category from markers, visible counts, and CSV rows without removing unrelated selected categories.",
+      "evidence": ["static/index.html", "static/modules/FilterManager.js", "static/modules/MapManager.js", "static/modules/ExportManager.js"]
+    },
+    {
+      "id": "V1-DISCOVERY-001",
+      "area": "discovery",
+      "title": "Map marker, suggestion, and detail discovery",
+      "disposition": "preserve_user_critical",
+      "observed_behavior": "V1 is map-first: Leaflet markers and the search suggestion dropdown are the result discovery surfaces. Selecting a suggestion centers the map and opens the matching popup; a popup is the detail surface. V1 has no complete result-list view.",
+      "acceptance": "Every visible marker has a popup or an explicit unavailable-location state; a suggestion can focus its marker when coordinates exist; no migration may silently remove map-to-detail discovery.",
+      "evidence": ["static/modules/SearchManager.js", "static/modules/MapManager.js", "static/modules/popupBuilder.js"]
+    },
+    {
+      "id": "V1-MAP-001",
+      "area": "map",
+      "title": "Category markers and clustering",
+      "disposition": "preserve_user_critical",
+      "observed_behavior": "Markers use category colors/icons (slaughter red, processing gray, lab violet, breeder yellow, dealer orange, exhibitor green). A unified Leaflet marker-cluster layer is used when the selected-result count reaches the threshold; otherwise category layers are shown separately.",
+      "acceptance": "Category identity remains available through icon/popup text and clustering does not change the selected-result set. Cluster expansion or a focused search can reach an individual detail.",
+      "evidence": ["static/modules/iconUtils.js", "static/modules/MapManager.js", "static/app.js", "static/index.html"]
+    },
+    {
+      "id": "V1-MAP-002",
+      "area": "map",
+      "title": "Cluster threshold control",
+      "disposition": "preserve_user_critical",
+      "observed_behavior": "The HTML slider advertises 0–10,000 in steps of 200 with a displayed initial value of 1,750; FilterManager initializes its threshold to 2,800 until slider input occurs. This mismatch is an observed V1 defect and must not be silently hidden during reconciliation.",
+      "acceptance": "A replacement either preserves the documented effective threshold semantics or records and tests an intentional correction with user-visible release notes.",
+      "evidence": ["static/index.html", "static/modules/FilterManager.js", "static/app.js"]
+    },
+    {
+      "id": "V1-URL-001",
+      "area": "share-state",
+      "title": "URL-restorable view state",
+      "disposition": "preserve_user_critical",
+      "observed_behavior": "V1 writes lat, lng, zoom, country, state, search, and active layers to the query string. On load it restores layers, country/state, search, and map view when lat/lng/zoom are present.",
+      "acceptance": "A shared URL restores equivalent filters and map viewpoint without adding visitor geolocation, raw queries, or private data beyond the explicit V1 filter/search state.",
+      "evidence": ["static/app.js"]
+    },
+    {
+      "id": "V1-URL-002",
+      "area": "share-state",
+      "title": "Share view action",
+      "disposition": "preserve_user_critical",
+      "observed_behavior": "Share View copies the current URL with navigator.clipboard and gives a temporary Link Copied! state; clipboard failure is logged and does not change filters.",
+      "acceptance": "The action copies only the current share URL and has a visible success/failure outcome; it never copies a visitor's device location.",
+      "evidence": ["static/app.js", "static/index.html"]
+    },
+    {
+      "id": "V1-RESET-001",
+      "area": "reset",
+      "title": "Reset filters",
+      "disposition": "preserve_user_critical",
+      "observed_behavior": "Reset sets country/state to All, hides the state selector, clears search, checks all six category toggles, repopulates region options, reapplies filters, and fits the map. It does not reset cluster threshold, icon scale, or browser URL history by itself.",
+      "acceptance": "Reset produces the documented filter defaults and leaves display controls unchanged unless a replacement explicitly changes that behavior.",
+      "evidence": ["static/app.js", "static/modules/FilterManager.js"]
+    },
+    {
+      "id": "V1-EXPORT-001",
+      "area": "export",
+      "title": "Visible-result CSV export",
+      "disposition": "preserve_user_critical",
+      "observed_behavior": "Download CSV serializes the currently filtered category arrays and selected inspection types, with headers for identity, location, coordinates, contact, and activity fields. CSV values are quoted when needed.",
+      "acceptance": "The download contains exactly the currently loaded and visible selection, applies the category toggles, and does not include suppressed or non-selected categories.",
+      "evidence": ["static/app.js", "static/modules/ExportManager.js"]
+    },
+    {
+      "id": "V1-COVERAGE-001",
+      "area": "coverage",
+      "title": "Visible results are not a complete-coverage claim",
+      "disposition": "v2_privacy_review_replacement",
+      "observed_behavior": "V1 computes an isComplete filename only for an unconstrained state/search/all-toggle selection. V2 export metadata labels partial pages and visible-results scope. Neither condition proves global source completeness, current operation, or animal totals.",
+      "acceptance": "Every export and result summary states loaded visible scope and selected release/profile limitations; a cursor page never says complete, and absence is not closure.",
+      "evidence": ["static/app.js", "static/modules/ExportManager.js", "static/modules/v2Client.js"]
+    },
+    {
+      "id": "V1-ACTION-001",
+      "area": "detail-actions",
+      "title": "Source links, directions, and copyable fields",
+      "disposition": "v2_privacy_review_replacement",
+      "observed_behavior": "Facility, lab, and inspection popups expose source links and Google directions where coordinates are available. Address, IDs/certificates, phone, and DBA are copyable popup fields. V2 city-precision records intentionally omit directions.",
+      "acceptance": "A replacement preserves source attribution and copy affordances only for eligible fields, shows precision/limitations, and never turns a registered/private address into permission to expose or route to a person.",
+      "evidence": ["static/modules/popupBuilder.js", "static/app.js", "static/modules/v2Adapter.js"]
+    },
+    {
+      "id": "V1-I18N-001",
+      "area": "language",
+      "title": "Language selection and translated popup labels",
+      "disposition": "preserve_user_critical",
+      "observed_behavior": "The language selector loads locale resources and popup/category/animal labels are resolved through the translation manager. Checked-in locales are de, en, es, and fr; language changes refresh open popup content.",
+      "acceptance": "Changing language updates control labels and open popup translations without changing filter values or record selection; missing translations remain readable source text.",
+      "evidence": ["static/index.html", "static/modules/translationManager.js", "static/app.js", "static/locales/en.json"]
+    },
+    {
+      "id": "V1-APHIS-001",
+      "area": "aphis",
+      "title": "APHIS reports load lazily from a popup",
+      "disposition": "preserve_user_critical",
+      "observed_behavior": "A lab or inspection popup with a certificate number renders a load button. Clicking it fetches the APHIS query endpoint by certificate and report type, shows loading/no-results/error states, and hides the button after a successful non-empty load.",
+      "acceptance": "Opening a popup does not request report data; one explicit click requests only its certificate/type and renders the result or a retryable error.",
+      "evidence": ["static/modules/popupBuilder.js", "static/modules/constants.js"]
+    },
+    {
+      "id": "V1-APHIS-002",
+      "area": "aphis",
+      "title": "Annual-report exception filter",
+      "disposition": "preserve_user_critical",
+      "observed_behavior": "Loaded annual reports are retained on the result container and a checkbox filters to records with exceptionReport; an empty filtered set is explicitly labeled.",
+      "acceptance": "Toggling exceptions-only changes only the already-loaded annual report list and does not trigger another request.",
+      "evidence": ["static/modules/popupBuilder.js", "static/locales/en.json"]
+    },
+    {
+      "id": "V2-PRIVACY-001",
+      "area": "v2-replacement",
+      "title": "Independent source, review, privacy, approval, and publication context",
+      "disposition": "v2_privacy_review_replacement",
+      "observed_behavior": "V2 normalized rows carry profile, source type, review status, privacy status, project approval, reviewer role, precision, lifecycle, release, and provenance context; the public UI currently allows only the official profile.",
+      "acceptance": "V2 never treats government-sourced as project-approved, factual review as privacy eligibility, or project-published as factual truth; restricted/unscreened records are excluded from public map, detail, and export surfaces.",
+      "evidence": ["static/modules/v2Adapter.js", "static/modules/v2Contract.js", "static/modules/DataManager.js", "docs/ETHICS.md"]
+    },
+    {
+      "id": "V2-PRIVACY-002",
+      "area": "v2-replacement",
+      "title": "Precision-aware location actions",
+      "disposition": "v2_privacy_review_replacement",
+      "observed_behavior": "V2 city-precision popup rows show status/precision and omit Google directions; exact precision with coordinates can retain directions. This is a privacy/review replacement for unconditional V1 routing.",
+      "acceptance": "Location display precision, privacy eligibility, and source/review context remain visible and are applied consistently to maps, details, links, exports, historical views, and caches.",
+      "evidence": ["static/modules/popupBuilder.js", "static/modules/v2Adapter.js", "docs/ETHICS.md"]
+    },
+    {
+      "id": "V2-DEFER-001",
+      "area": "v2-overhaul",
+      "title": "First-class list and accessible map/list/detail parity",
+      "disposition": "deferred_to_eli_v2_frontend_overhaul",
+      "observed_behavior": "V1 has no full result list; map and popup are the primary discovery/detail surfaces.",
+      "acceptance": "Eli's V2 frontend work must add a semantic, keyboard-usable list/detail path with the same filters, provenance, uncertainty, suppression, and export scope as the map; this lane does not implement it.",
+      "evidence": ["static/index.html", "static/modules/MapManager.js", "docs/PRODUCT-READINESS.md"]
+    },
+    {
+      "id": "V2-DEFER-002",
+      "area": "v2-overhaul",
+      "title": "Responsive, accessibility, performance, and visual redesign",
+      "disposition": "deferred_to_eli_v2_frontend_overhaul",
+      "observed_behavior": "V1 is a legacy Leaflet/vanilla-JavaScript interface; this contract does not freeze its CSS or visual layout as a V2 design.",
+      "acceptance": "Eli's V2 frontend work owns responsive 320px/200% zoom, screen-reader, reduced-motion, keyboard, cross-browser, and scale/performance validation without changing this V1 baseline document.",
+      "evidence": ["docs/PRODUCT-READINESS.md", "docs/architecture/adr-map-visualization-platform.md"]
+    },
+    {
+      "id": "V2-DEFER-003",
+      "area": "v2-overhaul",
+      "title": "Server-backed discovery and export implementation",
+      "disposition": "deferred_to_eli_v2_frontend_overhaul",
+      "observed_behavior": "V1 filters loaded arrays in the browser and V2 API pagination/contract work exists separately; this lane does not implement or alter API behavior.",
+      "acceptance": "Any V2 server-backed search, facets, pagination, map loading, or export must retain the visible-results versus complete-coverage distinction and be covered by its own API contract tests.",
+      "evidence": ["static/modules/FilterManager.js", "static/modules/v2Client.js", "docs/api/v2-contract.md"]
+    }
+  ]
+}
