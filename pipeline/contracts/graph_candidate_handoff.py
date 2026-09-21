@@ -162,6 +162,19 @@ def validate_graph_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
             raise ValueError("crosswalks must remain source-scoped")
         _required_text(crosswalk.get("match_method"), "crosswalk.match_method")
         _optional_confidence(crosswalk.get("confidence"), "crosswalk.confidence")
+        if crosswalk.get("confidence_band") not in {None, "exact", "high", "probable", "possible", "low"}:
+            raise ValueError("crosswalk.confidence_band is invalid")
+        for field, expected in (("contributing_features", dict), ("provenance", dict)):
+            if field in crosswalk and not isinstance(crosswalk[field], expected):
+                raise ValueError(f"crosswalk.{field} must be an object")
+        if "contradictory_evidence" in crosswalk and not isinstance(crosswalk["contradictory_evidence"], list):
+            raise ValueError("crosswalk.contradictory_evidence must be a list")
+        if "algorithm_version" in crosswalk:
+            _required_text(crosswalk["algorithm_version"], "crosswalk.algorithm_version")
+        if "disclaimer" in crosswalk:
+            _required_text(crosswalk["disclaimer"], "crosswalk.disclaimer")
+        if crosswalk.get("automatic_merge", False) is not False or crosswalk.get("transfers_claims", False) is not False:
+            raise ValueError("candidate crosswalks cannot merge identities or transfer claims")
 
     return candidate
 
