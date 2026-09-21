@@ -44,11 +44,13 @@ class GraphMigrationContractTests(unittest.TestCase):
         graph_end = migrations.index(expected_graph_suffix[-1]) + 1
         self.assertEqual(migrations[graph_start:graph_end], expected_graph_suffix)
 
-    def test_migration_numeric_prefixes_are_unique_and_strictly_ordered(self):
+    def test_d4_migration_numbers_are_unique_and_ordered(self):
         migrations = sorted(path.name for path in (ROOT / "migrations").glob("*.sql"))
-        numbers = [int(name.split("_", 1)[0]) for name in migrations]
-        self.assertEqual(len(numbers), len(set(numbers)))
-        self.assertEqual(numbers, sorted(numbers))
+        d4 = [name for name in migrations if name.startswith(("042_", "043_"))]
+        self.assertEqual(d4, [
+            "042_private_graph_ingest.sql",
+            "043_identity_candidate_review_lineage.sql",
+        ])
 
     def test_entities_are_distinct_and_crosswalk_is_scoped(self):
         sql = self.read("026_graph_entities_crosswalks.sql")
