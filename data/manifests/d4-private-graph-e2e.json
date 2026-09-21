@@ -1,0 +1,67 @@
+{
+  "schema_version": "d4-private-graph-e2e-manifest-v1",
+  "scope": "synthetic-contract-rehearsal",
+  "source_ids": [
+    "dk.smiley",
+    "be.locations",
+    "ca.ontario.meat-plants",
+    "ca.cfia.federal-meat",
+    "fr.dgal.section-i",
+    "fr.dgal.section-ii",
+    "it.853-2004",
+    "us.fsis",
+    "de.locations",
+    "fsa_approved_establishments",
+    "fss_approved_establishments",
+    "us.aphis",
+    "us.inspections"
+  ],
+  "source_kinds": {
+    "dk.smiley": "facility_master",
+    "be.locations": "facility_master",
+    "ca.ontario.meat-plants": "facility_master",
+    "ca.cfia.federal-meat": "facility_master",
+    "fr.dgal.section-i": "facility_master",
+    "fr.dgal.section-ii": "facility_master",
+    "it.853-2004": "facility_master",
+    "us.fsis": "facility_master",
+    "de.locations": "facility_master",
+    "fsa_approved_establishments": "facility_master",
+    "fss_approved_establishments": "facility_master",
+    "us.aphis": "evidence_event",
+    "us.inspections": "evidence_event"
+  },
+  "execution": {
+    "facility_sources": 11,
+    "evidence_sources": 2,
+    "ordering": "source_ids order; one bounded batch per source",
+    "real_rows_included": false,
+    "private_paths_included": false,
+    "network_requests": 0,
+    "release_created": false,
+    "public_rows": 0
+  },
+  "contracts": [
+    "one facility and eleven facility sources run sequentially",
+    "two evidence sources stay evidence_event and never become facilities",
+    "rerun/idempotency",
+    "interrupted batch resume",
+    "corrupted source failure isolation",
+    "source-kind mismatch rejection",
+    "exact-ID US review candidate",
+    "no automatic APHIS-FSIS merge",
+    "deterministic and probabilistic candidates remain unmerged",
+    "merge/split/reversal lineage",
+    "suppression",
+    "empty public graph",
+    "private authentication fail-closed"
+  ],
+  "scale": {
+    "default_count": 10000,
+    "default_batch_size": 500,
+    "optional_count": 100000,
+    "optional_gate": "UEC_D4_RUN_100K=1",
+    "payloads_retained": false
+  },
+  "publication": "private rehearsal only; no release, promotion, or deployment"
+}
