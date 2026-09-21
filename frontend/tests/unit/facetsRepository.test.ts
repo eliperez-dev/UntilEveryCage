@@ -15,4 +15,19 @@ describe('FacetsRepository', () => {
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(body({ meta: { ...body().meta, release_id: 'old-release' } }))));
     await expect(new FacetsRepository(fetcher).get('official', {}, { releaseId: 'release-1', ruleset: 'rules-1' })).rejects.toThrow(/different profile or promoted release/);
   });
+
+  it('rejects a facet snapshot from a different requested filter scope', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(body({ meta: { ...body().meta, filters: { ...body().meta.filters, category: 'slaughter' } } }))));
+    await expect(new FacetsRepository(fetcher).get('official', { category: 'dairy' }, { releaseId: 'release-1', ruleset: 'rules-1' })).rejects.toMatchObject({ kind: 'invalid-contract' });
+  });
+
+  it('accepts normalized filter metadata from the backend', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(body({ meta: { ...body().meta, filters: { ...body().meta.filters, region: 'North Coast' } } }))));
+    await expect(new FacetsRepository(fetcher).get('official', { region: '  North Coast  ' }, { releaseId: 'release-1', ruleset: 'rules-1' })).resolves.toMatchObject({ releaseId: 'release-1' });
+  });
+
+  it('classifies malformed successful JSON as an invalid contract', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response('{not-json'));
+    await expect(new FacetsRepository(fetcher).get('official', {}, { releaseId: 'release-1', ruleset: 'rules-1' })).rejects.toMatchObject({ kind: 'invalid-contract' });
+  });
 });
