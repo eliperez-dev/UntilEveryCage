@@ -72,9 +72,10 @@ python pipeline/sources/denmark/run-denmark-pipeline.py path/to/private/Smileyda
 
 Acquisition requires an operator-approved terms review and is intentionally
 opt-in. Candidate import, geocoding, release validation, and promotion are
-separate commands and separate gates. The older `pipeline/run-denmark-pipeline.py`
-path remains a compatibility launcher; new source-specific documentation
-should link to the source-owned path.
+separate commands and separate gates. The older
+`pipeline/run-denmark-pipeline.py` path remains a deprecated compatibility
+launcher for one release; new source-specific documentation should link to the
+source-owned path.
 
 ## Known onboarding friction
 
@@ -82,7 +83,8 @@ should link to the source-owned path.
   describes the private V2 pipeline; contributors must choose the pipeline
   path before running `cargo run`.
 - Both historical and source-owned Denmark launchers exist. The source-owned
-  launcher is canonical; the historical path is retained for compatibility.
+  launcher is canonical; the historical path is deprecated and retained for
+  one release for compatibility.
 - Full local V2 API startup requires Docker/Postgres and a Rust build. It is
   not required for adapter contract tests and must use only the disposable
   local configuration in `pipeline/scripts/maintenance/local-v2.ps1`.

@@ -20,13 +20,24 @@ It writes `data/manifests/legacy-files.csv` with one row per legacy input, inclu
 
 ## Controlled Denmark acquisition
 
-The Denmark wrapper archives an artifact only; it never imports, validates for publication, promotes a release, or alters application data. Network retrieval is intentionally opt-in and requires an operator-authored terms review JSON with `reviewer`, `reference`, `reviewed_at`, `decision: "approved"`, and `notes`.
+The canonical Denmark launcher is
+`pipeline/sources/denmark/run-denmark-pipeline.py`. It archives an artifact
+only; it never imports, validates for publication, promotes a release, or
+alters application data. Network retrieval is intentionally opt-in and
+requires an operator-authored terms review JSON with `reviewer`, `reference`,
+`reviewed_at`, `decision: "approved"`, and `notes`.
 
 ```powershell
 python pipeline/scripts/stages/acquire-denmark-smiley.py --fetch --terms-review <operator-approved-terms-review.json>
 ```
 
-Raw XML and its deterministic `acquisition-metadata.json` are written under ignored `data/raw/dk.smiley/<run-id>/`. For offline development, use `--local-file path/to/synthetic.xml`; it needs no terms review and records that distinction. Existing staging runs can continue to take an already archived local XML path. `run-denmark-pipeline.py --fetch --terms-review ...` uses the wrapper first, then performs staging only; database import and release promotion remain separate commands.
+Raw XML and its deterministic `acquisition-metadata.json` are written under
+ignored `data/raw/dk.smiley/<run-id>/`. For offline development, use
+`--local-file path/to/synthetic.xml`; it needs no terms review and records that
+distinction. Existing staging runs can continue to take an already archived
+local XML path. Database import and release promotion remain separate
+commands. The historical `pipeline/run-denmark-pipeline.py` wrapper remains
+available for one release as a deprecated compatibility path.
 
 ## Status vocabulary
 
@@ -72,7 +83,7 @@ Script organization and execution conventions are documented in `scripts/README.
 The orchestrator runs the auditable stages in order and leaves database import as an explicit separate action:
 
 ```powershell
-python pipeline/run-denmark-pipeline.py data/raw/denmark-smiley/<run>/Smileydata.xml
+python pipeline/sources/denmark/run-denmark-pipeline.py data/raw/denmark-smiley/<run>/Smileydata.xml
 ```
 
 Add `--geocode-limit 100` to run a bounded DAWA development sample. Every run gets numbered stage directories and a `pipeline-manifest.json` containing output sizes and SHA-256 checksums.

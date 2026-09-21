@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Compatibility shim for Denmark's source-owned staging runner."""
+"""Deprecated compatibility shim for Denmark's source-owned staging runner.
+
+Use ``pipeline/sources/denmark/run-denmark-pipeline.py`` for new commands.
+This wrapper remains available for one release so existing operator scripts can
+migrate without a behavior change.
+"""
 from __future__ import annotations
 
 from pathlib import Path
