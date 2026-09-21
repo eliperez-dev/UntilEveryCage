@@ -22,7 +22,7 @@ publishable facilities unless explicitly labelled that way.
 
 ## Verified checkpoint
 
-- **Baseline:** repository checkpoint `ae319ccc` (B3 selective private-readiness integration; 2026-09-20 UTC).
+- **Baseline:** repository checkpoint is updated by the D4 integration commit (2026-09-21 UTC).
 - **Current public product:** V1 remains production and the public default.
 - **V2 frontend:** Svelte/TypeScript fixture and local synthetic preview; it is
   not the production replacement and has no configured external tile service.
@@ -101,11 +101,11 @@ states and must be reported separately.
 
 | Workstream | Status | Current truth | Next action |
 | --- | --- | --- | --- |
-| Backend and database | Complete and verified | Rust/Axum API, PostGIS schema, migrations, release/profile concepts, provenance, suppression-aware projections, and candidate/import boundaries exist and are tested in synthetic/local environments. | Close the remaining live-wire contract and durable release/revocation gaps. |
+| Backend and database | Complete and verified | Rust/Axum API, PostGIS schema, migrations, release/profile concepts, provenance, suppression-aware projections, shared private pipeline, and append-only graph/evidence persistence boundaries are tested in synthetic and disposable PostGIS environments. | Close the remaining live-wire contract and durable release/revocation gaps. |
 | API contract | Complete and verified | D1 froze the current frontend-facing DTO/query contract, wire schemas, compatibility notes, and convergence gaps with targeted drift tests. It is exercised against synthetic/local contracts, not a reviewed real release. | Exercise the frozen contract against a named reviewed private release. |
 | Frontend product | In progress | V2 is a developer preview using fixtures/local synthetic data; V1 vanilla JavaScript remains public. | Approve information architecture and visual direction, then build a production Svelte frontend. |
 | Data acquisition | In progress | Several current private captures and source adapters exist; many countries remain reconnaissance-only or adapter/fixture-only. | Select one bounded first release and complete its source-specific terms and provenance review. |
-| Identity and reconciliation | Blocked: human review | Source-local identities are preserved; held links and quarantines remain substantial. Cross-source merges are not automatic. | Review candidate identity links and publish only scoped, evidenced relationships. |
+| Identity and reconciliation | Blocked: human review | Source-local identities, deterministic links, and probabilistic candidate edges are retained with score, confidence band, method, features, contradictions, provenance, disclaimer, and ruleset metadata. Imports remain review-required; cross-source merges and claim transfer are never automatic. | Adjudicate a bounded sample and publish only scoped, evidenced relationships. |
 | Geospatial readiness | In progress | Geocoding is disabled or tightly bounded in current private handoffs; provider, precision, privacy, and review state must remain explicit. | Complete source-specific coordinate/privacy review and a production geocoder/provider decision. |
 | Privacy and suppression | In progress | Policy and synthetic suppression paths exist, but independent durable restriction, replay, cache, and cross-V1/V2 propagation controls remain release gates. | Implement and exercise the durable ledger, pre-service restore gate, and suppression crosswalk. |
 | Operations and deployment | Blocked: engineering | Local/private environments and runbooks exist; production proxy trust, visitor/provider audit, artifact inventory, rollback, and operational ownership are not fully verified. | Complete deployment/provider audit and an operator-run private release drill. |
@@ -244,6 +244,40 @@ scheduler, secret, promotion, deployment, or public release was added. See
 `pipeline/sources/d3_facility.py`,
 `pipeline/sources/us/evidence.py`, and
 `docs/d3-live-operations-onboarding.md`.
+
+### D4 — Accountability graph persistence and evidence linking
+
+**Status: Complete and verified for private persistence and synthetic graph
+rehearsal; human identity evaluation remains open.** The 11 facility and two
+evidence-event D3 handoff types now have a shared append-only private graph
+import boundary. Facility candidates persist source-qualified facilities,
+organizations, relationship observations, claims, and source-scoped
+crosswalks. APHIS and inspection events persist in a separate evidence sink;
+they cannot enter the facility importer or public graph projections.
+
+The importer is loopback-only and requires an explicit disposable database
+marker. It rejects released or universal-identity handoffs, supports bounded
+batches and interrupted-run resume, and is idempotent on identical handoffs.
+All imported rows remain private, review-required, privacy-pending, and
+publication-ineligible. Candidate identity edges retain lower-confidence leads
+with confidence score/band, matching method, contributing features,
+contradictions, provenance, disclaimer, and algorithm version; they never
+execute a merge, transfer claims, or authorize publication. APHIS-to-FSIS
+automatic links remain zero.
+
+The Docker-backed synthetic proof imported one facility handoff for each of 11
+facility sources and one evidence handoff for each of two evidence sources,
+reran all 13 with zero duplicates, and observed zero public graph rows. The
+row-free control-plane rehearsal also covers corruption isolation, kind
+mismatch rejection, lineage events, suppression, fail-closed private access,
+and bounded 10,000-record scale. No real corpus was imported, and no human
+adjudicated sample exists yet; therefore precision, recall, and production
+identity quality remain unmeasured.
+
+Evidence: `pipeline/common/graph_persistence.py`,
+`pipeline/common/identity_candidates.py`,
+`pipeline/tests/e2e/test_d4_graph_persistence.py`, and
+`data/manifests/d4-private-graph-e2e.json`.
 
 ### Product convergence (remaining release work)
 
