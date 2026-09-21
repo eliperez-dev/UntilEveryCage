@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://untileverycage.org/schemas/uec-v2-location-v1.json",
+  "title": "Until Every Cage V2 public location",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["facility_id", "canonical_name", "country_code", "city", "category", "publication_profile", "factual_review_status", "privacy_screening_status", "project_approval", "reviewer_role", "publication_warning", "display_precision", "latitude", "longitude", "first_observed_at", "last_observed_at", "observation_count", "lifecycle_status", "source_type", "source_rights_status", "provenance_source", "release_id", "release_ruleset_version", "provenance_source_id", "provenance_source_name", "provenance_source_url", "provenance_retrieved_at"],
+  "properties": {
+    "facility_id": {"type": "string", "format": "uuid"}, "canonical_name": {"type": ["string", "null"]}, "country_code": {"type": "string", "pattern": "^[A-Z]{2}$"}, "city": {"type": ["string", "null"]}, "category": {"type": "string"},
+    "publication_profile": {"enum": ["official", "secondary", "community"]}, "factual_review_status": {"type": "string"}, "privacy_screening_status": {"const": "passed"}, "project_approval": {"type": "string"}, "reviewer_role": {"type": ["string", "null"]}, "publication_warning": {"type": ["string", "null"]},
+    "display_precision": {"enum": ["exact", "city", "unmapped"]}, "latitude": {"type": ["number", "null"]}, "longitude": {"type": ["number", "null"]}, "first_observed_at": {"type": ["string", "null"], "format": "date-time"}, "last_observed_at": {"type": ["string", "null"], "format": "date-time"}, "observation_count": {"type": ["integer", "null"]},
+    "lifecycle_status": {"enum": ["active_observed", "explicitly_closed", "not_seen_recently", "status_unknown"]}, "source_type": {"enum": ["official", "secondary", "user_submitted"]}, "source_rights_status": {"type": "string"}, "provenance_source": {"type": ["string", "null"]}, "release_id": {"type": "string"}, "release_ruleset_version": {"type": "string"}, "provenance_source_id": {"type": "string"}, "provenance_source_name": {"type": "string"}, "provenance_source_url": {"type": "string", "format": "uri"}, "provenance_retrieved_at": {"type": "string", "format": "date-time"}
+  }
+}

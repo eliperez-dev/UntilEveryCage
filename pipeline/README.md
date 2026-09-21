@@ -4,6 +4,10 @@ Acquisition, retention, geocoding, and release work follow [docs/ETHICS.md](../d
 
 This directory is the local-development home for V2 ingestion code. Acquired and generated data lives under the repository-level `data/` directory. The current application data remains unchanged while the pipeline is being established.
 
+New contributors should start with [pipeline/ONBOARDING.md](ONBOARDING.md),
+which provides the safe fixture-first test path and explains the boundary
+between private staging, release validation, and public publication.
+
 ## First operation
 
 Run the manifest generator from the repository root:
@@ -16,13 +20,24 @@ It writes `data/manifests/legacy-files.csv` with one row per legacy input, inclu
 
 ## Controlled Denmark acquisition
 
-The Denmark wrapper archives an artifact only; it never imports, validates for publication, promotes a release, or alters application data. Network retrieval is intentionally opt-in and requires an operator-authored terms review JSON with `reviewer`, `reference`, `reviewed_at`, `decision: "approved"`, and `notes`.
+The canonical Denmark launcher is
+`pipeline/sources/denmark/run-denmark-pipeline.py`. It archives an artifact
+only; it never imports, validates for publication, promotes a release, or
+alters application data. Network retrieval is intentionally opt-in and
+requires an operator-authored terms review JSON with `reviewer`, `reference`,
+`reviewed_at`, `decision: "approved"`, and `notes`.
 
 ```powershell
 python pipeline/scripts/stages/acquire-denmark-smiley.py --fetch --terms-review <operator-approved-terms-review.json>
 ```
 
-Raw XML and its deterministic `acquisition-metadata.json` are written under ignored `data/raw/dk.smiley/<run-id>/`. For offline development, use `--local-file path/to/synthetic.xml`; it needs no terms review and records that distinction. Existing staging runs can continue to take an already archived local XML path. `run-denmark-pipeline.py --fetch --terms-review ...` uses the wrapper first, then performs staging only; database import and release promotion remain separate commands.
+Raw XML and its deterministic `acquisition-metadata.json` are written under
+ignored `data/raw/dk.smiley/<run-id>/`. For offline development, use
+`--local-file path/to/synthetic.xml`; it needs no terms review and records that
+distinction. Existing staging runs can continue to take an already archived
+local XML path. Database import and release promotion remain separate
+commands. The historical `pipeline/run-denmark-pipeline.py` wrapper remains
+available for one release as a deprecated compatibility path.
 
 ## Status vocabulary
 
@@ -68,7 +83,41 @@ Script organization and execution conventions are documented in `scripts/README.
 The orchestrator runs the auditable stages in order and leaves database import as an explicit separate action:
 
 ```powershell
-python pipeline/run-denmark-pipeline.py data/raw/denmark-smiley/<run>/Smileydata.xml
+python pipeline/sources/denmark/run-denmark-pipeline.py data/raw/denmark-smiley/<run>/Smileydata.xml
 ```
 
 Add `--geocode-limit 100` to run a bounded DAWA development sample. Every run gets numbered stage directories and a `pipeline-manifest.json` containing output sizes and SHA-256 checksums.
+
+## Restricted run comparison
+
+The shared `common/delta.py` comparison is private and aggregate-only: it retains
+both run manifests and fingerprints, classifies added/changed/not-observed/suppressed
+counts, blocks schema changes, and never interprets source absence as closure. Failed
+or partial comparisons retain the prior eligible release reference and expose no
+public surface. Terms, privacy/safety, suppression, review, project approval, and
+publication remain separate gates.
+
+## Private-alpha source operations
+
+The shared operational layer in `common/source_operations.py` adds the
+schedule/freshness inventory in `source_operations.json`, content-addressed raw
+artifact deduplication, append-only run history, row-free review packets and
+release diffs, bounded acquisition retry classification, and local failure
+notification hooks. See [the source operations contract](../docs/architecture/source-operations.md).
+
+Every operational record preserves the prior eligible release reference and
+keeps `release_promoted` false. A changed artifact, unchanged rerun, failed
+attempt, or review-required result is recorded as a new event; no run overwrites
+earlier evidence. The health index is private operational evidence only.
+
+## Small reviewed demonstration release
+
+The bounded real-data demonstration lane is documented in
+[`docs/reviewed-demonstration-release.md`](../docs/reviewed-demonstration-release.md).
+Use `prepare-demonstration-release.py` to copy at most 25 already-ready,
+opaque-ID-selected observations from a private candidate into a new candidate,
+then use `record-demonstration-review.py` for an explicit release-scoped
+maintainer review. Neither command promotes or publishes. The current Denmark
+source remains blocked until terms, coverage, privacy, precision, and project
+approval are actually reviewed; do not create a review document that claims
+those decisions without an authorized maintainer's evidence.

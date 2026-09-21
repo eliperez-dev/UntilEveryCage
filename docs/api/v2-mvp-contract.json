@@ -1,0 +1,49 @@
+{
+  "contract_id": "uec-v2-mvp-backend-contract-1",
+  "status": "frozen-for-sprint-1",
+  "as_of": "2026-09-16",
+  "api_version": "v2",
+  "location_schema": "docs/api/v2-location.schema.json",
+  "source_contract": "docs/api/v2-contract.json",
+  "data_product_version": "uec-public-data-product-v1",
+  "schema_version": "uec-location-projection-v1",
+  "public_endpoints": [
+    "GET /health/live",
+    "GET /health/ready",
+    "GET /health/diagnostics",
+    "GET /api/v2/locations",
+    "GET /api/v2/locations/{facility_id}",
+    "GET /api/v2/locations.csv",
+    "GET /api/v2/releases/manifest",
+    "GET /api/v2/discovery/filters",
+    "GET /api/v2/discovery/facets"
+  ],
+  "development_only_endpoints": [
+    "GET /api/dev/preview/candidates"
+  ],
+  "operator_surfaces": [
+    "bulk_snapshot_cli"
+  ],
+  "invariants": [
+    "Public reads use one promoted, non-test release selected by explicit profile.",
+    "No promoted eligible release is a successful empty list state; manifest/export absence is 404.",
+    "Current suppression is applied to list, detail, facets, exports, history, reimports, and restores.",
+    "Raw source payloads, private addresses, geocoder queries/responses, reviewer identities, and restriction reasons are not public response fields.",
+    "Official, secondary, and community profiles are independent publication contexts.",
+    "Community-unreviewed records require explicit community profile selection and carry a persistent warning.",
+    "Bbox and radius are mutually exclusive; cursor and offset are mutually exclusive.",
+    "Pagination is deterministic and bounded; clients scope caches to profile, release, ruleset, and query.",
+    "Errors use the versioned {api_version, error:{code,message}} envelope.",
+    "The API contract does not claim animal totals, national completeness, factual truth, or deployment readiness."
+  ],
+  "non_goals": [
+    "Administrative review UI",
+    "Public ingestion or submission endpoint",
+    "Public accountability graph endpoint",
+    "Narrative/story frontend",
+    "Device geolocation requirement",
+    "Unbounded bulk API",
+    "Production deployment authorization"
+  ],
+  "change_policy": "Additive changes require contract and schema tests. Breaking response or behavior changes require a new contract_id and versioned migration path."
+}

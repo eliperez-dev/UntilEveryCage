@@ -35,6 +35,9 @@ export class V2Client {
         let isList;
         try {
             validateV2Envelope(body);
+            if (params.profile && body.meta.profile && body.meta.profile !== params.profile) {
+                throw new TypeError('V2 response profile differs from requested profile');
+            }
             isList = Array.isArray(body.data);
         } catch (error) {
             throw new V2ApiError(`V2 response did not match the public API contract: ${error.message}`);

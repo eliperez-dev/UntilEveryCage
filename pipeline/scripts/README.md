@@ -8,11 +8,25 @@ Scripts are grouped by their role in the auditable ingestion workflow:
 - `diagnostics/` contains read-only inspection and sampling tools. These help evaluate a source or service and are not required for a normal full run.
 - `maintenance/` contains repository and migration-support utilities, such as the legacy manifest builder.
 
+For the contributor-facing command sequence, see
+[pipeline/ONBOARDING.md](../ONBOARDING.md). This page documents script roles;
+it is not a second lifecycle tutorial.
+
+`diagnostics/build-source-operations-health.py` reads the private append-only
+source run ledger and the checked-in schedule inventory to emit a deterministic,
+row-free health index. It does not acquire data, update `docs/source-status`,
+promote a release, or make a public health claim.
+
 Run scripts from the repository root so their documented paths and output locations are stable. Each stage should accept explicit input and output paths (or a run identifier), preserve source timestamps and checksums, and emit useful progress logs. Generated artifacts belong under `data/`, not beside the scripts.
 
 ## Adding another country
 
-Country-specific adapters currently live in `stages/` because Denmark is the only active adapter. Once a second country is added, move country logic into a dedicated `stages/<country>/` directory and keep shared orchestration or validation helpers outside country directories. Do not hide source-specific assumptions in shared code.
+Country-owned adapters and source-specific stages live under
+`pipeline/sources/<country>/`; Denmark is the current reference layout. The
+paths under `pipeline/scripts/stages/` remain shared generic stages or
+compatibility shims for legacy commands, while shared orchestration and
+validation helpers stay outside country directories. Do not hide source-
+specific assumptions in shared code.
 
 Keep diagnostics separate from production stages, and add a short entry to this file when a new script category is introduced.
 
@@ -26,3 +40,35 @@ python pipeline/scripts/stages/geocode-worker.py --provider dawa --limit 5 --del
 ```
 
 The worker writes append-only job events and geocode attempts. It does not modify source records or observations. New providers should implement the adapter contract in `pipeline/geocoding/` and reuse the worker’s lifecycle, retry, logging, and persistence behavior.
+
+## Current-corpus geospatial readiness
+
+Audit private normalized candidate handoffs without emitting rows:
+
+```powershell
+python pipeline/scripts/diagnostics/current_geospatial_readiness.py `
+  --manifest data/manifests/current-reacquisition-2026-09-16.json `
+  --root . `
+  --output data/reports/current-geospatial-readiness.json
+```
+
+The report distinguishes source coordinates, accepted geocodes, coarse/city
+signals, unresolved/invalid values, whole-record restrictions, and human review
+queues. It reports missing private handoffs explicitly and never treats
+geocoding success as publication permission. See
+`docs/current-geospatial-readiness.md` for the report contract and provider
+limitations.
+# Private environment controls
+
+`maintenance/private-environment-gate.py` is the clean-checkout and
+deployment-shaped gate. In production it requires explicit runtime/CORS/proxy
+configuration, a separate durable restriction ledger and post-restore
+snapshot, a complete migration inventory, and a trusted release-manifest
+digest. It is validation only: it does not acquire, promote, or publish data.
+
+`maintenance/replay-restriction-ledger.py` applies current payload-free
+suppression references to a restored database in one transaction. It rejects
+missing or ambiguous source keys, supports only whole-record suppression,
+writes a row-free post-replay snapshot, and can emit idempotent SQL for a
+portless recovery container. Run the service startup gate after replay; never
+start public service on a stale restore.

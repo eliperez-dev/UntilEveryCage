@@ -1,0 +1,3 @@
+approval_number,trading_name,address_line_1,address_line_2,address_line_3,postcode,activities,species,competent_authority,nation,status,remarks,published_date,source_url,source_licence
+001234,North Star Foods,Industrial Estate,Unit 4,,AB1 2CD,slaughter;processing,pig;chicken,Food Standards Scotland,Scotland,active,,2026-09-01,https://example.invalid/fss,Open Government Licence v3.0
+078901,Harbour Cold Store,Harbour Road,,,IV3 8XY,storage,unknown,Food Standards Scotland,Scotland,,,2026-09-01,https://example.invalid/fss,Open Government Licence v3.0

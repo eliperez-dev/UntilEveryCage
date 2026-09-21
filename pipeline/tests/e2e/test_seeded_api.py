@@ -1,4 +1,8 @@
-import json, os, subprocess, sys, unittest, urllib.request
+import hashlib
+import json, os, subprocess, sys, unittest, urllib.error, urllib.request
+import uuid
+from datetime import datetime, timezone
+import psycopg
 try:
     from .fixture import E2EEnvironment
 except ImportError:
@@ -17,9 +21,36 @@ class SeededApiE2ETests(unittest.TestCase):
     def test_exact_city_and_unmapped_are_distinct(self):
         rows = self.get('/api/v2/locations?limit=100')['data']
         self.assertEqual({r['display_precision'] for r in rows}, {'exact','city','unmapped'})
+
+    def test_location_precision_contract_never_emits_a_point_for_unmapped(self):
+        rows = {row['canonical_name']: row for row in self.get('/api/v2/locations?limit=100')['data']}
+        exact = rows['E2E exact']
+        city = rows['E2E city']
+        unmapped = rows['E2E unmapped']
+        self.assertEqual(exact['display_precision'], 'exact')
+        self.assertIsInstance(exact['latitude'], float)
+        self.assertIsInstance(exact['longitude'], float)
+        self.assertEqual(city['display_precision'], 'city')
+        self.assertIsInstance(city['latitude'], float)
+        self.assertIsInstance(city['longitude'], float)
+        self.assertEqual(unmapped['display_precision'], 'unmapped')
+        self.assertIsNone(unmapped['latitude'])
+        self.assertIsNone(unmapped['longitude'])
+        for row in (exact, city, unmapped):
+            self.assertNotIn('source_values', row)
+
     def test_restricted_record_is_absent(self):
         names = {r['canonical_name'] for r in self.get('/api/v2/locations?limit=100')['data']}
         self.assertNotIn('E2E restricted', names)
+
+    def test_restricted_detail_is_not_relabelled_or_exposed(self):
+        names = {r['canonical_name'] for r in self.get('/api/v2/locations?limit=100')['data']}
+        self.assertNotIn('E2E restricted', names)
+        with psycopg.connect(self.env.database_url) as db:
+            facility_id = db.execute("SELECT facility_id FROM uec.facilities WHERE canonical_name='E2E restricted'").fetchone()[0]
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            self.get(f'/api/v2/locations/{facility_id}')
+        self.assertEqual(error.exception.code, 404)
 
     def test_official_record_without_publication_approval_is_absent(self):
         names = {r['canonical_name'] for r in self.get('/api/v2/locations?limit=100')['data']}
@@ -62,6 +93,16 @@ class SeededApiE2ETests(unittest.TestCase):
         self.assertEqual(detail['data']['release_id'], detail['meta']['release_id'])
         self.assertEqual(detail['data']['provenance_source_id'], 'e2e.official')
 
+    def test_csv_export_is_escaped_bounded_and_manifest_bound(self):
+        request = urllib.request.Request(f"http://localhost:{self.env.api_port}/api/v2/locations.csv?profile=official")
+        with urllib.request.urlopen(request, timeout=10) as response:
+            self.assertEqual(response.headers['Content-Type'], 'text/csv; charset=utf-8')
+            self.assertEqual(response.headers['X-Uec-Manifest-Sha256'], 'dcf1cb50c078057cac2527936332e35892c2c13ecdcf2f545176acd17897cde7')
+            body = response.read().decode()
+        self.assertIn('release_profile', body)
+        self.assertIn('manifest_sha256', body)
+        self.assertNotIn('E2E restricted', body)
+
     def test_provenance_and_precision_are_returned_for_each_public_record(self):
         response = self.get('/api/v2/locations?limit=100')
         self.assertEqual(response['meta']['release_id'], 'e2e-promoted')
@@ -85,6 +126,25 @@ class SeededApiE2ETests(unittest.TestCase):
             self.assertEqual(row['observation_count'], 1)
             self.assertIsNotNone(row['first_observed_at'])
             self.assertIsNotNone(row['last_observed_at'])
+
+    def test_facets_apply_filters_and_never_include_restricted_record(self):
+        body = self.get('/api/v2/discovery/facets?profile=official&category=slaughter')
+        self.assertEqual(body['meta']['release_id'], 'e2e-promoted')
+        self.assertEqual(body['meta']['ruleset_version'], 'e2e-v1')
+        self.assertEqual(body['meta']['coverage_scope'], 'selected_promoted_release_public_facilities')
+        self.assertIn('not story-wide or animal counts', body['meta']['count_semantics'])
+        self.assertEqual(body['dimensions']['category'], [{'value': 'slaughter', 'count': 1}])
+        self.assertNotIn('restricted', json.dumps(body))
+        empty = self.get('/api/v2/discovery/facets?country_code=ZZ')
+        self.assertEqual(empty['dimensions']['category'], [])
+
+    def test_combination_filters_and_zero_result_are_deterministic(self):
+        rows = self.get('/api/v2/locations?country_code=DK&category=slaughter&display_precision=exact&limit=10')['data']
+        self.assertEqual(len(rows), 1)
+        restricted = self.get('/api/v2/locations?country_code=DK&category=retail_and_prepared_food&limit=10')['data']
+        self.assertEqual(restricted, [])
+        empty = self.get('/api/v2/locations?country_code=ZZ&limit=10')
+        self.assertEqual(empty['data'], [])
 
     def test_failed_candidate_does_not_replace_promoted_release(self):
         self.env.create_failed_candidate()
@@ -111,5 +171,62 @@ class SeededApiE2ETests(unittest.TestCase):
         self.env.restore_restricted_record()
         names = {r['canonical_name'] for r in self.get('/api/v2/locations?limit=100')['data']}
         self.assertIn('E2E restricted', names)
+
+    def test_z1_approval_does_not_follow_source_record_into_new_profile(self):
+        with psycopg.connect(self.env.database_url) as db:
+            facility_id, observation_id = db.execute("SELECT facility_id, observation_id FROM uec.observations o JOIN uec.source_records r USING (source_record_id) WHERE r.source_record_key = 'exact'").fetchone()
+            db.execute("INSERT INTO uec.releases (release_id,status,ruleset_version,profile,summary) VALUES ('e2e-secondary-later','promoted','e2e-v2','secondary','{}')")
+            manifest = '{"eligible_record_count":0,"manifest_version":"v1","profile":"secondary","release_id":"e2e-secondary-later","ruleset_version":"e2e-v2"}'
+            db.execute("INSERT INTO uec.release_manifests (release_id,manifest,manifest_sha256) VALUES ('e2e-secondary-later',%s::jsonb,%s)", (manifest, hashlib.sha256(manifest.encode()).hexdigest()))
+            db.execute("INSERT INTO uec.release_members (release_id,facility_id,observation_id,default_visible) VALUES ('e2e-secondary-later',%s,%s,true)", (facility_id, observation_id))
+        self.env.build_public_read_model('e2e-secondary-later')
+        self.assertEqual(self.get('/api/v2/locations?profile=secondary&limit=100')['data'], [])
+
+    def test_z1b_candidate_review_does_not_revoke_independent_promoted_approval(self):
+        promoted = 'e2e-promoted'
+        candidate = 'e2e-independent-candidate'
+        with psycopg.connect(self.env.database_url) as db:
+            record_id, facility_id, observation_id = db.execute("SELECT r.source_record_id, o.facility_id, o.observation_id FROM uec.observations o JOIN uec.source_records r USING (source_record_id) WHERE r.source_record_key='unmapped'").fetchone()
+            db.execute("INSERT INTO uec.releases (release_id,status,ruleset_version,profile,summary) VALUES (%s,'candidate','e2e-v2','official','{}')", (candidate,))
+            db.execute("INSERT INTO uec.release_members (release_id,facility_id,observation_id,default_visible) VALUES (%s,%s,%s,true)", (candidate, facility_id, observation_id))
+            db.execute("INSERT INTO uec.publication_review_events (source_record_id,release_id,factual_review_status,privacy_screening_status,maintainer_approval,publication_eligible,reviewer_role) VALUES (%s,%s,'reviewed','passed','approved',true,'maintainer')", (record_id, candidate))
+        names = {row['canonical_name']: row for row in self.get('/api/v2/locations?limit=100')['data']}
+        self.assertIn('E2E unmapped', names)
+        self.assertEqual(names['E2E unmapped']['project_approval'], 'approved')
+
+        with psycopg.connect(self.env.database_url) as db:
+            db.execute("INSERT INTO uec.publication_review_events (source_record_id,release_id,factual_review_status,privacy_screening_status,maintainer_approval,publication_eligible,reviewer_role) VALUES (%s,%s,'rejected','passed','denied',false,'maintainer')", (record_id, candidate))
+        names = {row['canonical_name']: row for row in self.get('/api/v2/locations?limit=100')['data']}
+        self.assertIn('E2E unmapped', names)
+        self.assertEqual(names['E2E unmapped']['project_approval'], 'approved')
+
+        with psycopg.connect(self.env.database_url) as db:
+            db.execute("INSERT INTO uec.publication_review_events (source_record_id,release_id,factual_review_status,privacy_screening_status,maintainer_approval,publication_eligible,reviewer_role) VALUES (%s,%s,'rejected','passed','denied',false,'maintainer')", (record_id, promoted))
+        names = {row['canonical_name'] for row in self.get('/api/v2/locations?limit=100')['data']}
+        self.assertNotIn('E2E unmapped', names)
+
+    def test_z2_summary_excludes_suppressed_observation(self):
+        now = datetime.now(timezone.utc)
+        with psycopg.connect(self.env.database_url) as db:
+            facility_id = db.execute("SELECT facility_id FROM uec.facilities WHERE canonical_name='E2E exact'").fetchone()[0]
+            artifact, record, observation = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+            db.execute("INSERT INTO uec.raw_artifacts (artifact_id,storage_key,sha256,byte_size,retrieved_at) VALUES (%s,'e2e/suppressed-summary',%s,1,%s)", (artifact, uuid.uuid4().hex * 2, now))
+            db.execute("INSERT INTO uec.source_records (source_record_id,source_id,source_record_key,artifact_id,raw_fields,parsed_at) VALUES (%s,'e2e.official','suppressed-summary',%s,'{}',%s)", (record, artifact, now))
+            db.execute("INSERT INTO uec.observations (observation_id,facility_id,source_record_id,observed_at,observation,classification,ruleset_id,rule_id,classification_category,classification_review_status,default_visible,first_observed_at) VALUES (%s,%s,%s,%s,'{}','{}','e2e-v1','e2e','slaughter','approved',false,%s)", (observation, facility_id, record, now, now))
+            db.execute("INSERT INTO uec.record_access_events (source_record_id,action,reason_category,policy_version,maintainer) VALUES (%s,'public_access_revoked','privacy','ethics-v1','e2e')", (record,))
+        row = next(r for r in self.get('/api/v2/locations?limit=100')['data'] if r['canonical_name'] == 'E2E exact')
+        self.assertEqual(row['observation_count'], 1)
+
+    def test_z3_facility_suppression_without_source_link_revokes_public_observation(self):
+        with psycopg.connect(self.env.database_url) as db:
+            facility_id = db.execute("SELECT facility_id FROM uec.facilities WHERE canonical_name='E2E exact'").fetchone()[0]
+            self.assertEqual(db.execute("SELECT count(*) FROM uec.facility_source_links WHERE facility_id=%s", (facility_id,)).fetchone()[0], 0)
+            case_id = uuid.uuid4()
+            db.execute("INSERT INTO uec.suppression_cases (case_id,reason_category,status,policy_version,actor,decision) VALUES (%s,'privacy','active','ethics-v1','e2e','suppress')", (case_id,))
+            db.execute("INSERT INTO uec.suppression_references (case_id,facility_id,scope) VALUES (%s,%s,'whole_record')", (case_id, facility_id))
+        names = {r['canonical_name'] for r in self.get('/api/v2/locations?limit=100')['data']}
+        self.assertNotIn('E2E exact', names)
+        with urllib.request.urlopen(f'http://localhost:{self.env.api_port}/api/v2/locations.csv?profile=official', timeout=10) as response:
+            self.assertNotIn('E2E exact', response.read().decode())
 
 if __name__ == '__main__': unittest.main()

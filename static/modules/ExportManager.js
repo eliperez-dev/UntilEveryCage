@@ -40,7 +40,7 @@ class ExportManager {
             typeLabel = facilityMapping.displayLabel;
         }
         
-        return {
+        const row = {
             Type: typeLabel,
             Name: loc.establishment_name || '',
             State: getStateDisplayName(loc.state || ''),
@@ -53,6 +53,30 @@ class ExportManager {
             Phone: loc.phone || '',
             AnimalsProcessed: loc.animals_processed || '',
             AnimalsSlaughtered: loc.animals_slaughtered || ''
+        };
+        if (!loc.v2) return row;
+
+        const provenance = loc.v2.provenance || {};
+        return {
+            ...row,
+            facility_id: loc.facility_id ?? loc.v2.facilityId ?? '',
+            publication_profile: loc.publication_profile ?? loc.v2.profile ?? '',
+            factual_review_status: loc.factual_review_status ?? '',
+            reviewer_role: loc.reviewer_role ?? '',
+            privacy_screening_status: loc.privacy_screening_status ?? '',
+            project_approval: loc.project_approval ?? '',
+            publication_warning: loc.publication_warning ?? '',
+            source_type: loc.source_type ?? loc.v2.sourceType ?? '',
+            display_precision: loc.display_precision ?? loc.v2.displayPrecision ?? '',
+            lifecycle_status: loc.lifecycle_status ?? loc.v2.lifecycleStatus ?? '',
+            release_id: loc.release_id ?? loc.v2.releaseId ?? '',
+            release_ruleset_version: loc.release_ruleset_version ?? loc.v2.rulesetVersion ?? '',
+            provenance_source_id: loc.provenance_source_id ?? provenance.source_id ?? '',
+            provenance_source_name: loc.provenance_source_name ?? provenance.source_name ?? '',
+            provenance_source_url: loc.provenance_source_url ?? provenance.source_url ?? '',
+            provenance_retrieved_at: loc.provenance_retrieved_at ?? provenance.retrieved_at ?? '',
+            selected_profile: loc.v2.profile ?? '',
+            coverage_note: loc.v2.coverageNote ?? ''
         };
     }
 
@@ -164,7 +188,9 @@ class ExportManager {
             includeBreeders,
             includeDealers,
             includeExhibitors,
-            isComplete
+            isComplete,
+            apiVersion,
+            v2Meta
         } = options;
 
         const rows = [];
@@ -199,6 +225,18 @@ class ExportManager {
             return;
         }
         
+        const isV2 = apiVersion === 'v2' || rows.some(row => Object.hasOwn(row, 'publication_profile'));
+        if (isV2) {
+            const isPartial = Boolean(v2Meta?.next_cursor) || !v2Meta;
+            rows.forEach(row => {
+                row.selected_profile = v2Meta?.profile ?? row.selected_profile ?? '';
+                row.coverage_note = v2Meta?.coverage_note ?? row.coverage_note ?? '';
+                row.export_scope = isPartial ? 'partial_page' : 'visible_results';
+                row.export_limitation = isPartial
+                    ? 'Additional pages may be available; this download contains loaded visible results only.'
+                    : 'Loaded visible results only; coverage depends on the selected release and filters.';
+            });
+        }
         const csv = this.toCsv(rows);
             
         const now = new Date();
@@ -206,7 +244,9 @@ class ExportManager {
         const mm = String(now.getMonth() + 1).padStart(2, '0');
         const dd = String(now.getDate()).padStart(2, '0');
         const dateStr = `${yyyy}-${mm}-${dd}`;
-        const suffix = isComplete ? 'complete' : 'filtered';
+        const suffix = isV2
+            ? (v2Meta?.next_cursor || !v2Meta ? 'partial' : 'loaded')
+            : (isComplete ? 'complete' : 'filtered');
         const filename = `untileverycage-visible-${dateStr}-${suffix}.csv`;
         this.downloadText(filename, csv);
     }

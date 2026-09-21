@@ -1,0 +1,13 @@
+{
+  "contract_version": "graph-candidate-handoff-v1",
+  "source_id": "synthetic.us-pilot",
+  "source_record_key": "facility-001",
+  "source_row": 1,
+  "source_values": {"facility_name": "Synthetic Works", "operator_id": "OP-001"},
+  "facilities": [{"local_ref": "facility:1", "source_identifier": {"identifier_type": "permit", "identity_scope": "source_scoped", "value": "FAC-001"}}],
+  "organizations": [{"local_ref": "organization:1", "source_identifier": {"identifier_type": "registration", "identity_scope": "source_scoped", "value": "OP-001"}}],
+  "relationships": [{"from_organization_ref": "organization:1", "target_facility_ref": "facility:1", "relationship_type": "operator", "assertion_status": "asserted", "valid_from": "2025-01-01", "valid_to": null, "observed_at": "2026-09-15T00:00:00Z", "confidence": 0.8, "review_state": "review_required"}],
+  "claims": [{"facility_ref": "facility:1", "claim_domain": "animal_count", "claim_kind": "annual_headcount", "value_state": "known", "claim_value": {"count": 12, "unit": "animals"}, "observed_at": "2026-01-01T00:00:00Z", "confidence": null, "support": [{"source_record_key": "facility-001"}]}],
+  "crosswalks": [],
+  "publication": {"storage_state": "private", "privacy_status": "pending", "review_state": "review_required", "publication_status": "not_eligible", "release_id": null}
+}

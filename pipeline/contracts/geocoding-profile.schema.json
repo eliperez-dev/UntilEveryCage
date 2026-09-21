@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://untileverycage.example/contracts/country-geocoding-profile-v1.json",
+  "title": "Until Every Cage country geocoding profile",
+  "description": "Provider-neutral, row-free reconnaissance contract. Validation also enforces publication and privacy gates in Python.",
+  "type": "object",
+  "required": ["schema_version", "profiles"],
+  "properties": {
+    "schema_version": {"const": "country-geocoding-profile-registry-v1"},
+    "profiles": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/profile"}
+    }
+  },
+  "$defs": {
+    "profile": {
+      "type": "object",
+      "required": [
+        "profile_version", "profile_id", "country_code", "display_name", "source_ids",
+        "source_coordinate_evidence", "address_model", "national_address_authority",
+        "government_open_data_options", "providers", "query_minimization", "fallback_chain",
+        "confidence_policy", "review_gates", "resilience", "operational_estimate",
+        "unresolved_questions", "publication_boundary"
+      ],
+      "properties": {
+        "profile_version": {"const": "country-geocoding-profile-v1"},
+        "country_code": {"type": "string", "pattern": "^[A-Z]{2,3}$"},
+        "source_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "source_coordinate_evidence": {"type": "array", "minItems": 1},
+        "providers": {"type": "array", "minItems": 1},
+        "fallback_chain": {"type": "array", "minItems": 4, "maxItems": 4},
+        "publication_boundary": {"const": "blocked; profile is reconnaissance evidence only; no release eligibility is granted"}
+      }
+    }
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "schema_version": "real-v2-rehearsal-evidence-v1",
+  "rehearsal_id": "candidate-legacy-v2",
+  "branch": "codex/real-v2-rehearsal",
+  "source_corpus": "static_data/*/locations.csv",
+  "legacy_label": "legacy V1-derived snapshot; not current and not publication-approved",
+  "publication_eligibility": "blocked",
+  "selection": {
+    "available_records": 50750,
+    "selected_records": 50000,
+    "method": "stable-sha256-row-fingerprint",
+    "source_profiles": 9,
+    "countries": 9
+  },
+  "stage_counts": {
+    "conversion_input": 50000,
+    "parsed": 50000,
+    "normalized": 50000,
+    "quarantined": 0,
+    "candidate_handoff": 50000,
+    "imported_source_records": 50000,
+    "imported_observations": 50000,
+    "release_members": 50000,
+    "default_visible": 0,
+    "publication_eligible": 0,
+    "approved_coordinates": 0,
+    "map_projection_visible": 0
+  },
+  "source_counts": {
+    "legacy.v1.ca.locations": 1309,
+    "legacy.v1.de.locations": 9121,
+    "legacy.v1.dk.locations": 1539,
+    "legacy.v1.es.locations": 4168,
+    "legacy.v1.fr.locations": 3148,
+    "legacy.v1.mx.locations": 14615,
+    "legacy.v1.nz.locations": 1629,
+    "legacy.v1.uk.locations": 7475,
+    "legacy.v1.us.locations": 6996
+  },
+  "timings_seconds": {
+    "offline_conversion_and_handoff": 19.82,
+    "database_import_and_idempotent_rerun": "measured across bounded batches; exact wall time not captured by runner"
+  },
+  "checks": {
+    "private_test_list": "200 responses served; cursor pagination returned distinct pages",
+    "private_test_detail": "200 before suppression, 404 while revoked, 200 after restoration",
+    "private_test_facets": "200; 50,000 candidate rows; country/category/display_precision/source_type dimensions",
+    "public_v2_list": "200 with empty data because no release is promoted",
+    "test_export": "400 export_too_large at the 1,000-row safety bound",
+    "idempotent_import_rerun": "0 newly inserted rows on all nine partitions",
+    "suppression_events": "append-only revoke/restore; restricted view 1 then 0"
+  },
+  "limitations": [
+    "Inputs are existing V1-derived snapshots; original source retrieval times and raw acquisition bytes are not recreated.",
+    "Rows are private in temporary staging and are not committed; this manifest is row-free.",
+    "The rehearsal validates legacy compatibility and private/test-only behavior, not current V2 source quality or publication readiness.",
+    "Backup/restore was not run in this rehearsal; existing synthetic restore coverage remains separate.",
+    "Facet filtering and bounded export behavior are exercised, but the candidate is intentionally not public or promoted."
+  ]
+}

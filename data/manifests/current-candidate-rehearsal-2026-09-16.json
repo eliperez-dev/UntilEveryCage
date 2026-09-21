@@ -1,0 +1,43 @@
+{
+  "manifest_version": "current-candidate-rehearsal-v1",
+  "evidence_scope": "private disposable test-only candidate release; aggregate row-free evidence",
+  "source_manifest": "data/manifests/current-reacquisition-2026-09-16.json",
+  "release_id": "candidate-current-reacquisition-20260916",
+  "release_status": "candidate",
+  "test_only": true,
+  "public_release_created": false,
+  "source_validation": {
+    "status": "passed",
+    "profiles": 8,
+    "input_rows": 116056,
+    "normalized_rows": 108475,
+    "quarantined_rows": 7581,
+    "reconciliation": "input = normalized + quarantined for every source"
+  },
+  "candidate_import": {
+    "normalized_source_profiles_imported": 7,
+    "candidate_rows_imported": 108475,
+    "candidate_rows_on_rerun": 0,
+    "database_source_records": 108475,
+    "database_facilities": 108475,
+    "database_observations": 108475,
+    "database_release_members": 108475,
+    "database_publication_review_events": 108475
+  },
+  "api_checks": {
+    "public_locations_rows": 0,
+    "test_release_list": "passed",
+    "test_release_detail": "passed",
+    "test_release_facets": "passed",
+    "cursor_pagination": "passed",
+    "bounded_export_guard": "passed; export_too_large above 1000 rows",
+    "raw_fields_absent": true,
+    "suppression_detail_status": 404,
+    "suppression_list_recheck": "passed"
+  },
+  "limitations": [
+    "CFIA parsed as legacy XLS but all 874 rows remain quarantined pending reviewed function-code mapping; no CFIA rows entered the candidate release.",
+    "This evidence does not approve, promote, or publish any source."
+  ],
+  "private_payloads_included": false
+}

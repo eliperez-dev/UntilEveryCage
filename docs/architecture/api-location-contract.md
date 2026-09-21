@@ -9,6 +9,16 @@ with `Retry-After: 60`.
 
 The V2 public API must read from curated database projections, never raw evidence tables. The default query returns only records in a promoted release that are eligible for public access. It is exposed under `/api/v2/locations`; the legacy `/api/locations` endpoint remains separate during migration.
 
+Production startup is fail-closed until the separately stored restriction
+ledger has been replayed into the restored database and matches its
+payload-free snapshot. It also verifies the trusted release manifest digest.
+See [private environment and recovery](../deployment/private-environment.md).
+
+`GET /health/diagnostics` is intentionally coarse: it reports mode, boolean
+configuration state, control names, and privacy-safe status labels. It does not
+return request URLs, query values, paths, forwarded addresses, source rows, or
+restriction references.
+
 Each location response includes the stable location ID, name, `category`, source origin, `publication_profile`, independent `factual_review_status`, `privacy_screening_status`, `project_approval`, optional `reviewer_role`, optional `publication_warning`, display precision, and provenance. These fields are not inferred from source origin. List responses use `{data: [...], api_version: "v2", meta: {...}}`; detail responses use `{data: {...}, api_version: "v2", meta: {...}}`. Provenance includes `first_observed_at`, `last_observed_at`, and `observation_count`; these describe the project's retained observations, not guaranteed opening or operating dates.
 
 Lifecycle is independent from observation history. Valid states are `active_observed`, `explicitly_closed`, `not_seen_recently`, and `status_unknown`. A record disappearing from a later source snapshot must not be labeled closed. `explicitly_closed` requires traceable closure evidence and a recorded lifecycle event.

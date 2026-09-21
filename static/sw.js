@@ -1,12 +1,6 @@
-const CACHE_NAME = 'api-cache-v5';
-const API_URLS = [
-  'https://untileverycage-production.up.railway.app/api/locations',
-  'https://untileverycage-production.up.railway.app/api/aphis-reports',
-  'https://untileverycage-production.up.railway.app/api/inspection-reports',
-  'http://localhost:8000/api/locations',
-  'http://localhost:8000/api/aphis-reports',
-  'http://localhost:8000/api/inspection-reports',
-];
+// Public API responses must not be cached client-side. A cached response can
+// outlive a privacy suppression and become an alternate disclosure path.
+const CACHE_NAME = 'api-cache-v6';
 
 // @ts-ignore
 self.addEventListener('install', (event) => {
@@ -33,36 +27,6 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // @ts-ignore
-  const { request } = event;
-  const url = new URL(request.url);
-
-  // @ts-ignore
-  const isApiRequest = API_URLS.some((apiUrl) => url.href.startsWith(apiUrl));
-
-  if (!isApiRequest) {
-    return;
-  }
-
-  // @ts-ignore
-  event.respondWith(
-    caches.match(request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-
-      return fetch(request).then((response) => {
-        if (!response || response.status !== 200 || response.type === 'error') {
-          return response;
-        }
-
-        const responseToCache = response.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(request, responseToCache);
-        });
-
-        return response;
-      });
-    })
-  );
+  // Deliberately do not intercept API requests. The legacy application and
+  // V2 routes must always reach the current server-side suppression gates.
 });

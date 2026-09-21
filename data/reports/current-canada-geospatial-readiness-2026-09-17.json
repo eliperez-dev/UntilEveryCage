@@ -1,0 +1,136 @@
+{
+  "as_of_utc": "2026-09-17T20:20:33Z",
+  "candidate_state": "private-only; no publication decision implied",
+  "manifest_sha256": "b7424efde8539888a499fcedca0c608d0541b988216d20d2296978fd79b4675d",
+  "privacy_boundary": "aggregate-only; normalized rows, raw artifacts, addresses, coordinates, identifiers, and geocoder payloads are excluded",
+  "publication": {
+    "project_approval": "not-approved",
+    "public_api_rows": 0,
+    "release_created": false,
+    "release_promoted": false
+  },
+  "report_version": "current-geospatial-readiness-v1",
+  "semantics": {
+    "coordinate_review_queue": "Rows needing coordinate/privacy review or explicitly unresolved coordinate handling; geocoding success alone never grants release eligibility.",
+    "display_states": "Mutually exclusive current candidate display states; restricted takes precedence. Exact means a valid source point or accepted exact geocode, city means a declared city/coarse signal without an exact point, and unmapped means no displayable location evidence.",
+    "evidence_states": "Overlapping evidence counters. A row may have source coordinates and a geocoder result; these counters intentionally preserve both facts.",
+    "privacy_review_queue": "Conservative human-review indicators, not a residential determination or publication approval.",
+    "unavailable_sources": "A missing private handoff is not counted as zero and does not establish no coverage."
+  },
+  "sources": [
+    {
+      "acquisition_state": "candidate-ready; private only; all rows quarantined pending reviewed function-code and operator-field mapping",
+      "country_code": "CA",
+      "declared_input_rows": 874,
+      "declared_normalized_rows": 0,
+      "declared_quarantined_rows": 874,
+      "metrics": {
+        "audit_status": "complete",
+        "available": true,
+        "coordinate_review_queue": {
+          "by_reason": {},
+          "rows": 0
+        },
+        "display_states": {
+          "city": 0,
+          "exact": 0,
+          "restricted": 0,
+          "unmapped": 0
+        },
+        "evidence_states": {
+          "accepted_geocode_coarse": 0,
+          "accepted_geocode_exact": 0,
+          "coarse_city_location": 0,
+          "geocode_unresolved": 0,
+          "source_coordinate_invalid": 0,
+          "source_coordinate_pending_review": 0,
+          "source_coordinate_valid": 0,
+          "unresolved": 0
+        },
+        "normalized_bytes": 0,
+        "normalized_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "parse_errors": 0,
+        "privacy_review_queue": {
+          "by_reason": {},
+          "rows": 0
+        },
+        "records": 0,
+        "source_local_identifier_rows": 0,
+        "suppressed_rows": 0
+      },
+      "publication_state": "private-candidate",
+      "source_id": "ca.cfia.federal-meat"
+    },
+    {
+      "acquisition_state": "candidate-ready; private only; human review required",
+      "country_code": "CA",
+      "declared_input_rows": 460,
+      "declared_normalized_rows": 460,
+      "declared_quarantined_rows": 0,
+      "metrics": {
+        "audit_status": "complete",
+        "available": true,
+        "coordinate_review_queue": {
+          "by_reason": {
+            "review_required": 460
+          },
+          "rows": 460
+        },
+        "display_states": {
+          "city": 460,
+          "exact": 0,
+          "restricted": 0,
+          "unmapped": 0
+        },
+        "evidence_states": {
+          "accepted_geocode_coarse": 0,
+          "accepted_geocode_exact": 0,
+          "coarse_city_location": 460,
+          "geocode_unresolved": 460,
+          "source_coordinate_invalid": 0,
+          "source_coordinate_pending_review": 0,
+          "source_coordinate_valid": 0,
+          "unresolved": 0
+        },
+        "normalized_bytes": 1093430,
+        "normalized_sha256": "ffef83bf8f8751dcf0a7344c5feb9637ba5690dd9eb3856a39d1c211e92a536f",
+        "parse_errors": 0,
+        "privacy_review_queue": {
+          "by_reason": {
+            "pending-review": 460
+          },
+          "rows": 460
+        },
+        "records": 460,
+        "source_local_identifier_rows": 460,
+        "suppressed_rows": 0
+      },
+      "publication_state": "private-candidate",
+      "source_id": "ca.ontario.meat-plants"
+    }
+  ],
+  "sources_available": 2,
+  "sources_listed": 2,
+  "sources_unavailable": 0,
+  "sources_with_parse_errors": 0,
+  "totals_available_rows_only": {
+    "coordinate_review_rows": 460,
+    "display_city": 460,
+    "display_exact": 0,
+    "display_restricted": 0,
+    "display_unmapped": 0,
+    "evidence_accepted_geocode_coarse": 0,
+    "evidence_accepted_geocode_exact": 0,
+    "evidence_coarse_city_location": 460,
+    "evidence_geocode_unresolved": 460,
+    "evidence_source_coordinate_invalid": 0,
+    "evidence_source_coordinate_pending_review": 0,
+    "evidence_source_coordinate_valid": 0,
+    "evidence_unresolved": 0,
+    "parse_errors": 0,
+    "privacy_review_rows": 460,
+    "records": 460,
+    "source_local_identifier_rows": 460,
+    "suppressed_rows": 0
+  }
+}

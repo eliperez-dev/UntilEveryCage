@@ -1,0 +1,4 @@
+N° département;N° d'agrément;SIRET;Raison sociale;Adresse;Code postal;Commune;Catégorie;Activités associées;Espèces
+01;FR 01.001.001 CE;12345678901234;Synthetic Ungulate Foods;12 Rue Exemple;01000;Bourg-Test;SH;Abattage;BOVINS
+75;FR 75.002.002 CE;98765432109876;Synthetic Cutting Foods;45 Avenue Test;75000;Paris-Test;CP;Découpe;PORCINS
+75;FR 75.002.002 CE;98765432109876;Synthetic Cutting Foods;45 Avenue Test;75000;Paris-Test;CP;Découpe;PORCINS

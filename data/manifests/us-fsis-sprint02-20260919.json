@@ -1,0 +1,64 @@
+{
+  "manifest_version": "us-fsis-sprint02-capture-v1",
+  "source_id": "us.fsis",
+  "authority": "USDA Food Safety and Inspection Service",
+  "page_url": "https://www.fsis.usda.gov/inspection/establishments/meat-poultry-and-egg-product-inspection-directory",
+  "page_observed_in_normal_browser": true,
+  "page_observed_at": "2026-09-19",
+  "page_last_updated_observed": "2026-09-14",
+  "displayed_file_edition": "2026-09-14",
+  "current_file_routes": [
+    "https://www.fsis.usda.gov/sites/default/files/media_file/documents/MPI_Directory_by_Establishment_Name.csv",
+    "https://www.fsis.usda.gov/sites/default/files/media_file/documents/MPI_Directory_by_Establishment_Number.csv",
+    "https://www.fsis.usda.gov/sites/default/files/media_file/documents/Dataset_Establishment_Demographic_Data.csv"
+  ],
+  "api_documentation": "https://www.fsis.usda.gov/science-data/developer-resources/mpi-api",
+  "official_catalog_check": {
+    "catalog_url": "https://catalog.data.gov/dataset/fsis-mpi-meat-poultry-and-egg-inspection-directory-by-establishment-number",
+    "identifier": "USDA-FSIS-02246",
+    "publisher": "Food Safety and Inspection Service",
+    "catalog_last_updated": "2025-01-22",
+    "distribution_access_url_is_same_fsis_landing_page": true,
+    "alternate_current_artifact": false
+  },
+  "authorization": {
+    "private_acquisition": "authorized by Sprint 02 contract and delegated lane 3 scope",
+    "source_terms_clearance": "unknown",
+    "rights_clearance": "unknown",
+    "publication_authorized": false
+  },
+  "current_raw_artifacts": {
+    "status": "not_captured",
+    "directory_by_number_http_status": 403,
+    "directory_by_name_http_status": 403,
+    "demographics_http_status": 403,
+    "bounded_ordinary_get": {
+      "status": "confirmed_blocked",
+      "max_bytes": 134217728,
+      "max_time_seconds": 90,
+      "raw_artifacts_captured": false,
+      "private_manifest": "private-handoff/bounded-get-20260919.json"
+    },
+    "ordinary_browser_link_capture": "no local artifact path exposed by the permitted in-app browser",
+    "bypass_attempted": false,
+    "raw_artifacts_captured": false
+  },
+  "legacy_comparison": {
+    "status": "current_not_observed",
+    "private_report": "private-handoff/legacy-comparison-20260919.json",
+    "legacy_rows": 7101,
+    "legacy_source_native_establishments": 7101,
+    "additions": null,
+    "not_observed": null,
+    "missing_current_observation_is_not_closure": true
+  },
+  "release_state": "not-created",
+  "publication_state": "blocked",
+  "row_payloads_included": false,
+  "limitations": [
+    "HTTP 403 was recorded without attempting an access-control bypass.",
+    "The dashboard and displayed edition are source observations, not a row-level current artifact.",
+    "No current row-level additions, duplicates, category counts, or identity continuity can be asserted until an authorized artifact capture is available.",
+    "The private handoff contains only row-free capture evidence and the legacy aggregate comparison."
+  ]
+}

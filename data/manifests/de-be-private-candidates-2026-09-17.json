@@ -1,0 +1,82 @@
+{
+  "manifest_version": "1.0",
+  "as_of_utc": "2026-09-17T20:26:41Z",
+  "purpose": "Row-free evidence index for current Germany and Belgium private candidate rehearsals.",
+  "evidence_scope": "private_candidate_only",
+  "private_payloads_included": false,
+  "public_release_created": false,
+  "public_api_rows": 0,
+  "public_map_rows": 0,
+  "public_export_rows": 0,
+  "geocoding": "disabled",
+  "graph_candidates": {
+    "count": 0,
+    "reason": "No cross-source edge was generated without an explicit source-native identifier and reviewable evidence."
+  },
+  "sources": [
+    {
+      "source_id": "be.locations",
+      "stable_url": "https://www.static.favv.be/bo-documents/inter_actieve_actoren_EN.csv",
+      "catalog_url": "https://data.gov.be/en/datasets/favv-afsca-operators",
+      "companion_artifact": "https://www.static.favv.be/bo-documents/inter_PAP_omschrijving_EN.csv",
+      "retrieved_at_utc": "2026-09-17T20:20:48Z",
+      "effective_date": "2026-08-05",
+      "operator_bytes": 87903986,
+      "operator_sha256": "9df1a9626cfbe30229f509e3004abbc291bd5b2aac3cd7437d96cceb124ffbb4",
+      "activity_code_bytes": 101987,
+      "activity_code_sha256": "c50d5ff8db705664a56bef73aec88c94159ff7f810cf6125e978e0e16c5a0812",
+      "operator_schema_fingerprint": "e225b6f7e11d3cf0d441dd96d1da61e57cd817d3d1e8fd2dad066073d3582a1e",
+      "activity_code_schema_fingerprint": "4b48513b1169bb0c64d51f7c1cfad5074b1326c1db971b4f4b1273ad7c729087",
+      "input_rows": 310660,
+      "normalized_rows": 310640,
+      "quarantined_rows": 20,
+      "anomalies": {
+        "duplicate_source_row": 5,
+        "unresolved_activity_code": 15
+      },
+      "source_name_status": "not-supplied-by-source",
+      "status": "candidate-ready",
+      "release_state": "not-created",
+      "blockers": [
+        "CC BY attribution and non-misleading-use requirements remain a human terms gate.",
+        "Postal, municipality, enterprise and identifier fields remain restricted pending privacy review.",
+        "Activity classification, project approval and release review remain open."
+      ]
+    },
+    {
+      "source_id": "de.locations",
+      "stable_url": "https://www.bvl.bund.de/bltu",
+      "portal_url": "https://gis.bvl.bund.de/datenportal/",
+      "retrieved_at_utc": "2026-09-17T20:26:41Z",
+      "effective_date": null,
+      "bytes": 2068022,
+      "sha256": "65e71e324a2d905aff75e145c8e85823172f0e5825205313bdf38cf7dc1a63c0",
+      "schema_fingerprint": "52fd9ed6ecd543cff2f96b99c8bce5a84cea51cc65d000c00793ff0689e37f78",
+      "schema_status": "matched",
+      "input_rows": 15788,
+      "normalized_rows": 2691,
+      "quarantined_rows": 13097,
+      "anomalies": {
+        "malformed_csv_row": 8,
+        "missing_activity_code": 5,
+        "missing_current_approval_id": 4,
+        "missing_establishment_name": 4,
+        "physical_column_count_mismatch": 11,
+        "unmapped_activity_code": 13084
+      },
+      "status": "candidate-ready",
+      "release_state": "not-created",
+      "blockers": [
+        "The export route is session-bound; recurring acquisition and dataset-specific reuse terms require human confirmation.",
+        "The export effective/publication date is unknown.",
+        "Facility names, addresses and coordinates remain restricted; geocoding is disabled.",
+        "Project approval, coverage interpretation and release review remain open."
+      ]
+    }
+  ],
+  "integration_notes": {
+    "adapter_refresh": "Both current captures completed deterministic parse/normalize/quarantine and shared private lifecycle handoff with no drift alarms.",
+    "api_frontend": "No current private rows were imported into a public API or frontend surface; existing API/frontend checks remain synthetic/test-only.",
+    "replay": "Raw artifacts and lifecycle payloads remain in ignored private storage; checked-in evidence is limited to this row-free manifest and documentation."
+  }
+}

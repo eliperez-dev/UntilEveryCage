@@ -1,0 +1,99 @@
+# V2 discovery synthetic 100k benchmark
+
+This is a disposable, synthetic benchmark plan. It must never be populated with
+retained source records, names, addresses, coordinates, or geocoder responses.
+
+## Budgets
+
+- First list page (50 rows): p95 <= 250 ms at the database, p95 <= 800 ms end to end.
+- Cursor page (50 rows): p95 <= 200 ms at the database, p95 <= 700 ms end to end.
+- Text search/filter page: p95 <= 350 ms at the database, p95 <= 1 s end to end.
+- Spatial viewport/radius page: p95 <= 350 ms at the database, p95 <= 1 s end to end.
+- Detail: p95 <= 200 ms at the database, p95 <= 600 ms end to end.
+- Browser memory: <= 128 MB attributable to loaded discovery records at 100k rows.
+
+## Reproduction
+
+The reproducible scale runner requires only PostGIS and the pinned Python
+dependencies; it does not require application migrations because all benchmark
+tables are temporary and synthetic:
+
+```powershell
+$env:UEC_DATABASE_URL = "postgresql://uec:uec-local-development-only@localhost:55434/uec?sslmode=disable"
+python pipeline/scripts/benchmarks/run_discovery_scale.py --json-output .tmp/discovery-scale.json
+```
+
+It creates deterministic 100k and 1m observation sets and runs aggregate
+`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` checks for list, cursor pagination,
+category filters, text filters, bbox, radius, detail, and release/privacy/
+suppression-aware graph joins. The plan checker requires the expected index
+family for each shape and bounds every result page at 50 rows. The JSON report
+contains timings, aggregate buffer counts, plan node types, and index names;
+it never contains query rows or source/private values. Closing the connection
+automatically drops every temporary table. The benchmark is evidence about
+query shape and budget only; it is not publication, release, or production
+load evidence.
+
+The original `pipeline/tests/benchmarks/discovery_100k.sql` remains available
+as a minimal SQL-only query-shape sample.
+
+## Local disposable capture (2026-09-15)
+
+Against PostGIS 16 / PostGIS 3.4 with 100,000 synthetic rows, the captured
+single-query timings were: first page 0.072 ms, cursor page 0.136 ms, text
+search 3.206 ms, bbox 1.578 ms, radius 0.057 ms, and detail lookup 5.848 ms.
+The list/cursor/search/spatial plans used the expected B-tree, trigram GIN, or
+geography GiST indexes. These are cold/warm local database plan samples, not a
+production load test or an end-to-end p95 claim.
+
+## Operational interpretation
+
+Capture reports on the same PostGIS image and representative hardware when
+comparing revisions. A plan regression, increasing shared reads, or a query
+that fails its expected-index check is a release-review input. The measurements
+do not establish capacity, cloud cost, or public-source completeness; those
+require a separate load test with an approved traffic model and deployment
+configuration.
+
+## Sprint 3 5k/25k query-plan capture (2026-09-16)
+
+On a fresh fully migrated PostGIS 16 / PostGIS 3.4 disposable database, the
+same row-free runner was executed with `--scales 5000 25000`. All 16 query
+observations passed their expected-index checks, returned at most 50 rows, and
+reported zero sequential-scan nodes. Aggregate execution times in milliseconds
+were:
+
+| Query shape | 5,000 | 25,000 |
+| --- | ---: | ---: |
+| list | 0.100 | 0.040 |
+| pagination | 0.010 | 0.009 |
+| filters | 0.046 | 0.044 |
+| text filter | 0.042 | 0.047 |
+| bbox | 0.039 | 0.060 |
+| radius | 9.658 | 7.150 |
+| detail | 0.011 | 0.011 |
+| graph-ready join | 0.133 | 0.118 |
+
+These are single-query local plan samples over temporary synthetic tables. They
+demonstrate query-shape/index behavior only and do not establish API latency,
+concurrency capacity, or production readiness. The companion API rehearsal and
+its limitations are recorded in `v2-api-load-rehearsal.md`.
+
+## Scale expectations after the 2026-09-16 hardening
+
+These expectations are deliberately separated from support or capacity claims.
+The following row-free hardening capture used PostGIS 16 / PostGIS 3.4 on
+2026-09-16; the value in each column is the slowest single-query execution
+sample among the eight bounded query shapes (the radius shape was the slowest
+at each scale):
+
+| Synthetic observations | Slowest sample | Evidence-backed expectation |
+| ---: | ---: | --- |
+| 25,000 | 12.588 ms | All eight shapes returned at most 50 rows, used an expected index family, and had zero sequential-scan nodes in this run. |
+| 100,000 | 12.200 ms | The same bounded/indexed query-shape behavior held in this local sample; it remains single-query evidence. |
+| 150,000 | 50.895 ms | The row-free planner capture also passed all checks; radius cost increased materially but stayed below the 350 ms review threshold in this sample. |
+
+These are validation observations, not promises of API latency or capacity. The live public
+projection still evaluates release membership, publication review, privacy
+screening, profile rules, and current suppression on every read. No cache or
+frozen public projection is used to manufacture a scale claim.

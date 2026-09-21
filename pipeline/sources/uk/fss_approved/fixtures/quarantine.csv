@@ -1,0 +1,5 @@
+approval_number,trading_name,address_line_1,address_line_2,address_line_3,postcode,activities,species,competent_authority,nation,status,remarks,published_date,source_url,source_licence
+001111,Duplicate One,Industrial Estate,,,AB1 2CD,slaughter,pig,Food Standards Scotland,Scotland,,,2026-09-01,https://example.invalid/fss,Open Government Licence v3.0
+001111,Duplicate Two,Industrial Estate,,,AB1 2CD,slaughter,pig,Food Standards Scotland,Scotland,,,2026-09-01,https://example.invalid/fss,Open Government Licence v3.0
+002222,Unknown Activity,Works,,,AB1 2CD,rendering,pig,Food Standards Scotland,Scotland,,,2026-09-01,https://example.invalid/fss,Open Government Licence v3.0
+003333,Needs Review,Flat 2,Home Road,,AB1 2CD,processing,pig,Food Standards Scotland,Scotland,active,review,2026-09-01,https://example.invalid/fss,Open Government Licence v3.0

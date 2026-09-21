@@ -1,0 +1,4 @@
+establishment_id,establishment_number,establishment_name,street,city,state,zip,phone,grant_date,type
+FSIS-001,M001,Example Meat Plant,100 Industrial Way,Testville,TX,75001,,2026-01-01,Meat Slaughter
+FSIS-001,M002,Duplicate,200 Industrial Way,Testville,TX,75002,,2026-01-01,Meat Processing
+FSIS-003,M003,,300 Industrial Way,Testville,ZZ,75003,,2026-01-01,Meat Processing

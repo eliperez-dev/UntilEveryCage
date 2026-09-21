@@ -1,0 +1,71 @@
+name: FSIS route diagnostic
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/fsis-route-diagnostic.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Probe official FSIS routes
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bounded no-body route probes
+        shell: bash
+        run: |
+          set +e
+          byte_cap=1048576
+          printf '%s\n' '## FSIS route diagnostic (safe metrics)' >> "$GITHUB_STEP_SUMMARY"
+          python - <<'PY' | while IFS=$'\t' read -r route url_host url_path url; do
+          import json
+          from pathlib import Path
+          from urllib.parse import urlsplit
+
+          config = json.loads(Path("pipeline/sources/us/fsis/config.json").read_text())
+          for route, key in (
+              ("directory-by-name", "directory_by_name_url"),
+              ("directory-by-number", "directory_by_number_url"),
+              ("demographics", "demographics_url"),
+          ):
+              url = config[key]
+              parsed = urlsplit(url)
+              print(f"{route}\t{parsed.hostname or '-'}\t{parsed.path or '/'}\t{url}")
+          PY
+            case "$route" in
+              directory-by-name) expected_path='/sites/default/files/media_file/documents/MPI_Directory_by_Establishment_Name.csv' ;;
+              directory-by-number) expected_path='/sites/default/files/media_file/documents/MPI_Directory_by_Establishment_Number.csv' ;;
+              demographics) expected_path='/sites/default/files/media_file/documents/Dataset_Establishment_Demographic_Data.csv' ;;
+              *) expected_path='' ;;
+            esac
+            if [[ "$url" != "https://www.fsis.usda.gov${expected_path}" || "$url_host" != 'www.fsis.usda.gov' || "$url_path" != "$expected_path" ]]; then
+              metric_line="route=$route config_shape=invalid curl_exit=not-run http_status=000 content_type=unknown bytes=0 final_host=-"
+              printf '%s\n' "$metric_line"
+              printf '%s\n' "- \`$metric_line\`" >> "$GITHUB_STEP_SUMMARY"
+              printf '::notice title=FSIS route diagnostic::%s\n' "$metric_line"
+              continue
+            fi
+            # The process substitution consumes at most byte_cap bytes and
+            # discards them; --max-filesize also protects Content-Length cases.
+            result="$(curl -sS -L --max-time 30 --max-filesize "$byte_cap" -o >(head -c "$byte_cap" >/dev/null) -w '%{http_code}|%{content_type}|%{size_download}|%{url_effective}' "$url" 2>/dev/null)"
+            curl_exit=$?
+            IFS='|' read -r http_status content_type bytes final_url <<< "$result"
+            final_host="-"
+            if [[ "$final_url" == https://* || "$final_url" == http://* ]]; then
+              final_host="$(python -c 'import sys; from urllib.parse import urlsplit; print(urlsplit(sys.argv[1]).hostname or "-")' "$final_url" 2>/dev/null)"
+              final_host="${final_host:-unknown}"
+            fi
+            safe_content_type="$(printf '%s' "${content_type:-unknown}" | tr -c '[:alnum:]._+/-' '_' | cut -c1-128)"
+            safe_final_host="$(printf '%s' "${final_host:--}" | tr -c '[:alnum:].:-' '_' | cut -c1-253)"
+            metric_line=$(printf 'route=%s requested_host=%s requested_path=%s curl_exit=%s http_status=%s content_type=%s bytes=%s final_host=%s' \
+              "$route" "$url_host" "$url_path" "$curl_exit" "${http_status:-000}" \
+              "$safe_content_type" "${bytes:-0}" "$safe_final_host")
+            printf '%s\n' "$metric_line"
+            printf '%s\n' "- \`$metric_line\`" >> "$GITHUB_STEP_SUMMARY"
+            printf '::notice title=FSIS route diagnostic::%s\n' "$metric_line"
+          done

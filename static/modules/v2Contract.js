@@ -23,11 +23,17 @@ export function validateV2Location(record) {
     for (const field of ['facility_id', 'country_code', 'category', 'publication_profile', 'factual_review_status',
         'privacy_screening_status', 'project_approval', 'display_precision', 'lifecycle_status', 'source_type',
         'release_id', 'release_ruleset_version', 'provenance_source_id', 'provenance_source_name',
-        'provenance_source_url', 'provenance_retrieved_at']) {
+        'provenance_source_url', 'provenance_retrieved_at', 'source_rights_status', 'release_id',
+        'release_ruleset_version', 'provenance_source_id', 'provenance_source_name']) {
         if (!hasString(record, field)) throw new TypeError(`V2 location missing ${field}`);
     }
     for (const field of ['canonical_name', 'city', 'reviewer_role']) {
         if (!hasNullableString(record, field)) throw new TypeError(`V2 location has invalid ${field}`);
+    }
+    for (const field of ['latitude', 'longitude', 'first_observed_at', 'last_observed_at', 'observation_count', 'provenance_source']) {
+        if (record[field] !== null && (typeof record[field] !== 'number' && typeof record[field] !== 'string')) {
+            throw new TypeError(`V2 location has invalid ${field}`);
+        }
     }
     if (!hasNullableString(record, 'publication_warning')) throw new TypeError('V2 location has invalid publication_warning');
     if (!V2_PROFILES.includes(record.publication_profile)) throw new TypeError('V2 location has invalid publication_profile');
@@ -50,7 +56,15 @@ export function validateV2Envelope(body) {
         throw new TypeError('V2 response envelope is invalid');
     }
     if (!Array.isArray(body.data) && !isObject(body.data)) throw new TypeError('V2 response data is invalid');
-    if (Array.isArray(body.data)) body.data.forEach(validateV2Location);
-    else validateV2Location(body.data);
+    const records = Array.isArray(body.data) ? body.data : [body.data];
+    if (records.length && !V2_PROFILES.includes(body.meta.profile)) {
+        throw new TypeError('V2 response has invalid profile');
+    }
+    records.forEach(record => {
+        validateV2Location(record);
+        if (record.publication_profile !== body.meta.profile) {
+            throw new TypeError('V2 location publication_profile differs from response profile');
+        }
+    });
     return body;
 }
