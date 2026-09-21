@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 
 from pipeline.contracts.refresh import (
     AdapterCapabilities, RegisteredAdapter, RefreshAdapter, RefreshRequest,
-    canonical_plan, row_free_summary,
+    SOURCE_KINDS, canonical_plan, row_free_summary,
 )
 from pipeline.source_registry import load_registry
 from .adapter_registry import load as load_capabilities
@@ -61,6 +61,14 @@ class RefreshCatalog:
             raise RefreshRunnerError(f"adapter has no capability entry: {source_id}")
         if caps.source_id != source_id:
             raise RefreshRunnerError("adapter and capability source IDs differ")
+        adapter_kind = getattr(adapter, "source_kind", "facility_master")
+        if adapter_kind not in SOURCE_KINDS:
+            raise RefreshRunnerError(f"adapter source_kind is unsupported: {source_id}")
+        if adapter_kind != caps.source_kind:
+            raise RefreshRunnerError(
+                f"adapter and capability source kinds differ for {source_id}: "
+                f"{adapter_kind} != {caps.source_kind}"
+            )
         self.adapters[source_id] = RegisteredAdapter(caps, adapter)
 
     def select(self, request: RefreshRequest) -> tuple[str, ...]:
@@ -87,9 +95,11 @@ def _loopback_database(database_url: str) -> bool:
 
 class RefreshRunner:
     def __init__(self, catalog: RefreshCatalog | None = None,
-                 candidate_importer: Callable[[Path, str], Mapping[str, Any]] | None = None) -> None:
+                 candidate_importer: Callable[[Path, str], Mapping[str, Any]] | None = None,
+                 evidence_importer: Callable[[Path, str], Mapping[str, Any]] | None = None) -> None:
         self.catalog = catalog or RefreshCatalog()
         self.candidate_importer = candidate_importer
+        self.evidence_importer = evidence_importer
 
     def run(self, request: RefreshRequest) -> dict[str, Any]:
         selected = self.catalog.select(request)
@@ -146,11 +156,17 @@ class RefreshRunner:
                 summary = registered.adapter.refresh(mode=request.mode, run_dir=source_dir, artifact=artifact, options=request.options)
                 safe = row_free_summary(summary)
                 if request.import_candidates:
-                    if self.candidate_importer is None:
-                        raise RefreshRunnerError("candidate import requested but no generic importer was provided")
-                    imported = self.candidate_importer(source_dir, str(request.database_url))
+                    if registered.capabilities.source_kind == "evidence_event":
+                        if self.evidence_importer is None:
+                            raise RefreshRunnerError("evidence import requested but no private evidence sink was provided")
+                        imported = self.evidence_importer(source_dir / "evidence-handoff", str(request.database_url))
+                    else:
+                        if self.candidate_importer is None:
+                            raise RefreshRunnerError("candidate import requested but no generic importer was provided")
+                        imported = self.candidate_importer(source_dir, str(request.database_url))
                     safe["candidate_import"] = row_free_summary(imported)
-                result = {"source_id": source_id, "status": "succeeded", "mode": request.mode,
+                result = {"source_id": source_id, "source_kind": registered.capabilities.source_kind,
+                          "status": "succeeded", "mode": request.mode,
                           "attempts": attempt + 1, "elapsed_seconds": round(time.monotonic() - started, 6),
                           "summary": safe, "publication": {"release_created": False, "promoted": False, "published": False}}
                 _json(result_path, result)

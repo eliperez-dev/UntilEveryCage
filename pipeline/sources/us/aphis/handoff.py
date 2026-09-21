@@ -30,6 +30,8 @@ def write_private_handoff(
     *,
     profile: str,
     source_sha256: str,
+    source_id: str = "us.aphis",
+    entity_scope: str = "aphis_observation",
 ) -> dict[str, Any]:
     """Write a source-specific private candidate handoff.
 
@@ -44,7 +46,7 @@ def write_private_handoff(
     )
     manifest = {
         "contract_version": HANDOFF_VERSION,
-        "source_id": "us.aphis",
+        "source_id": source_id,
         "profile": profile,
         "source_url": artifact.source_url,
         "retrieved_at_utc": artifact.retrieved_at_utc,
@@ -63,7 +65,7 @@ def write_private_handoff(
         "config_version": artifact.config_version,
         "normalized_rows": len(rows),
         "normalized_sha256": hashlib.sha256(payload).hexdigest(),
-        "entity_scope": "aphis_observation",
+        "entity_scope": entity_scope,
         "source_native_identity": ["certificate_number", "customer_number", "customer_number_x", "customer_number_y"],
         "graph_candidate_emission": False,
         "auto_merge": False,

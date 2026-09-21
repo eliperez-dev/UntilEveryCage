@@ -16,5 +16,7 @@ def load(path: str | Path) -> dict:
                 raise ValueError(f"adapter entry missing {field}")
         if entry["source_id"] in seen:
             raise ValueError(f"duplicate registered source: {entry['source_id']}")
+        if entry.get("source_kind", "facility_master") not in {"facility_master", "evidence_event"}:
+            raise ValueError(f"adapter entry has unsupported source_kind: {entry['source_id']}")
         seen.add(entry["source_id"])
     return registry

@@ -19,6 +19,7 @@ REQUIRED_FIELDS = {
     "expected_artifact_schema", "blockers",
 }
 VALID_ADAPTER_STATUSES = {"not_started", "reference_only", "implemented_partial", "implemented"}
+VALID_SOURCE_KINDS = {"facility_master", "evidence_event"}
 
 
 class SourceRegistryError(ValueError):
@@ -71,6 +72,8 @@ def validate_registry(payload: object, *, repository_root: Path | None = None) -
                 raise SourceRegistryError(f"{prefix}.url must be an http(s) URL or 'unknown'")
         if source["adapter_status"] not in VALID_ADAPTER_STATUSES:
             raise SourceRegistryError(f"{prefix}.adapter_status is not recognized")
+        if source.get("source_kind", "facility_master") not in VALID_SOURCE_KINDS:
+            raise SourceRegistryError(f"{prefix}.source_kind is not recognized")
         if not isinstance(source["legacy_paths"], list):
             raise SourceRegistryError(f"{prefix}.legacy_paths must be a list")
         if not all(isinstance(item, str) and item for item in source["legacy_paths"]):

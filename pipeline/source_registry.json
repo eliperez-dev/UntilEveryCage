@@ -264,6 +264,7 @@
       "cadence": "unknown; record selected report/search date",
       "attribution_licensing_notes": "APHIS authority and public-search scope verified; export terms, attribution, and privacy handling remain review gates",
       "adapter_status": "implemented_partial",
+      "source_kind": "evidence_event",
       "expected_artifact_schema": "Profile-explicit CSV; registrations, annual reports, inspections, and aggregate summaries are separate evidence types",
       "blockers": ["Capture and verify the current export schema and terms; no facility/laboratory merge or public release until review."]
     },
@@ -276,6 +277,7 @@
       "cadence": "unknown; record selected search date",
       "attribution_licensing_notes": "APHIS inspection evidence; export terms, attribution, redaction/privacy handling, and review outcome remain required",
       "adapter_status": "implemented_partial",
+      "source_kind": "evidence_event",
       "expected_artifact_schema": "CSV inspection observations; not a facility master record and not silently joined to registrations or FSIS",
       "blockers": ["Verify current inspection export schema and use explicit, reviewable identity matching only; absence is not closure."]
     },

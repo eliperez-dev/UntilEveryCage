@@ -14,11 +14,13 @@ from typing import Any, Callable, Mapping, Protocol
 
 REFRESH_CONTRACT_VERSION = "private-refresh-v1"
 MODES = frozenset({"fixture", "local-artifact", "live-acquisition"})
+SOURCE_KINDS = frozenset({"facility_master", "evidence_event"})
 
 
 class RefreshAdapter(Protocol):
     source_id: str
     adapter_version: str
+    source_kind: str
 
     def refresh(self, *, mode: str, run_dir: Path, artifact: Path | None,
                 options: Mapping[str, Any]) -> Mapping[str, Any]: ...
@@ -34,6 +36,7 @@ class AdapterCapabilities:
     publication: str
     adapter_path: str | None = None
     country_code: str | None = None
+    source_kind: str = "facility_master"
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> "AdapterCapabilities":
@@ -41,8 +44,11 @@ class AdapterCapabilities:
         missing = [key for key in required if not value.get(key)]
         if missing:
             raise ValueError("adapter capability missing: " + ", ".join(missing))
+        source_kind = value.get("source_kind", "facility_master")
+        if source_kind not in SOURCE_KINDS:
+            raise ValueError(f"source_kind must be one of {sorted(SOURCE_KINDS)}")
         return cls(**{key: value.get(key) for key in (
-            "source_id", "adapter_version", "schema_version", "acquisition", "geocoding", "publication", "adapter_path", "country_code")})
+            "source_id", "adapter_version", "schema_version", "acquisition", "geocoding", "publication", "adapter_path", "country_code")}, source_kind=source_kind)
 
 
 @dataclass(frozen=True)
@@ -79,6 +85,7 @@ def canonical_plan(request: RefreshRequest, selected: tuple[str, ...], capabilit
         "contract_version": REFRESH_CONTRACT_VERSION,
         "sources": list(selected), "mode": request.mode,
         "artifacts": artifacts, "adapter_versions": versions,
+        "source_kinds": {source: capabilities[source].source_kind for source in selected if source in capabilities},
         "retries": request.retries, "import_candidates": request.import_candidates,
         "options": row_free_summary(request.options),
     }

@@ -160,7 +160,7 @@ class FirstWaveRefreshAdapter:
 
 
 def register_first_wave(catalog: Any) -> None:
-    """Register the seven D2 adapters with a :class:`RefreshCatalog`."""
+    """Register the D2 facility adapters and D3 evidence adapters."""
     for descriptor in FIRST_WAVE:
         capabilities = AdapterCapabilities(
             source_id=descriptor.source_id,
@@ -178,6 +178,8 @@ def register_first_wave(catalog: Any) -> None:
     # cohort while source-local contracts remain isolated.
     from .d3_facility import register_d3
     register_d3(catalog)
+    from pipeline.sources.us.evidence import register_evidence_sources
+    register_evidence_sources(catalog)
 
 
 def descriptor_for(source_id: str) -> SourceDescriptor:

@@ -255,6 +255,15 @@ def _record(profile: str, row: dict[str, Any], line: int) -> dict[str, Any]:
     native_inspection_id = _native_inspection_id(row) if profile == "inspections" else None
     capture_lineage = _capture_lineage(row)
     evidence_type = _evidence_type(profile, row)
+    source_native_ids = {
+        key: value for key, value in {
+            "certificate_number": certificate,
+            "customer_number": customer,
+            "customer_number_x": customers["customer_number_x"],
+            "customer_number_y": customers["customer_number_y"],
+            "inspection_report_id": native_inspection_id,
+        }.items() if value
+    }
     animal_use_fields = tuple(sorted(key for key, value in row.items() if key not in NON_ANIMAL_COLUMNS and _clean(value)))
     normalized = {
         # APHIS identifiers are deliberately source-native. The generic
@@ -263,6 +272,15 @@ def _record(profile: str, row: dict[str, Any], line: int) -> dict[str, Any]:
         "establishment_id": None,
         "source_observation_key": observation_key,
         "provisional_event_key": provisional_event_key,
+        "source_native_ids": source_native_ids,
+        "event_date": _inspection_date(row),
+        "event_period": _year(row),
+        "event_type": evidence_type,
+        "linkage_candidates": [
+            {"identifier_type": key, "value": value, "identity_scope": "source_scoped"}
+            for key, value in source_native_ids.items() if key != "inspection_report_id"
+        ],
+        "facility_identity_state": "not_asserted",
         "event_identity_unresolved": profile == "inspections" and native_inspection_id is None,
         "event_identity_review_state": "review_required" if profile == "inspections" and native_inspection_id is None else "not_applicable",
         "review_state": "review_required",
