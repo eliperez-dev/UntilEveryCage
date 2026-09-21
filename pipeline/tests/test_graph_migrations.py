@@ -52,6 +52,20 @@ class GraphMigrationContractTests(unittest.TestCase):
             "043_identity_candidate_review_lineage.sql",
         ])
 
+    def test_d6_connection_edges_are_thin_private_and_typed(self):
+        migrations = sorted(path.name for path in (ROOT / "migrations").glob("*.sql"))
+        self.assertIn("044_graph_connection_edges.sql", migrations)
+        self.assertGreater(migrations.index("044_graph_connection_edges.sql"), migrations.index("043_identity_candidate_review_lineage.sql"))
+        sql = self.read("044_graph_connection_edges.sql")
+        self.assertIn("CREATE TABLE uec.graph_connection_edges", sql)
+        self.assertIn("connection_type TEXT NOT NULL CHECK (connection_type IN ('exact', 'inferred'))", sql)
+        self.assertIn("from_entity_type TEXT NOT NULL", sql)
+        self.assertIn("to_entity_type TEXT NOT NULL", sql)
+        self.assertIn("ruleset_version TEXT NOT NULL", sql)
+        self.assertIn("publication_status TEXT NOT NULL DEFAULT 'not_eligible'", sql)
+        self.assertIn("storage_state TEXT NOT NULL DEFAULT 'private'", sql)
+        self.assertNotIn("review_state", sql)
+
     def test_entities_are_distinct_and_crosswalk_is_scoped(self):
         sql = self.read("026_graph_entities_crosswalks.sql")
         self.assertIn("CREATE TABLE uec.organizations", sql)
