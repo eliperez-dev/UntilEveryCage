@@ -334,6 +334,11 @@ source assertions and forbidden-pair rules: 47,375 positive controls, two
 negative controls, and zero automatic APHIS↔FSIS edges. No raw rows or private
 paths are committed here.
 
+The D5 collision count remains explicitly classified as zero repetition, zero
+expected fanout, zero true conflict, zero malformed, and zero missing; D5 had
+no private row payloads in its checked-in analyzer, so this is not a
+corpus-wide absence claim.
+
 Evidence: [D6 aggregate report](../data/manifests/d6-real-graph-e2e.json),
 the `044_graph_connection_edges` migration, and the focused D6/API tests.
 France, FSIS, and APHIS graph-edge materialization, real inferred-edge proof,

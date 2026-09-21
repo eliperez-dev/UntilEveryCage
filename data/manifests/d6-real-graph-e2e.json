@@ -31,6 +31,14 @@
     "api_page_inferred": 100,
     "note": "Diagnostic pages are capped at 100; database totals above are the disposable Postgres rehearsal aggregates."
   },
+  "d5_collision_breakdown": {
+    "repetition": 0,
+    "expected_fanout": 0,
+    "true_conflict": 0,
+    "malformed": 0,
+    "missing": 0,
+    "note": "D5 supplied no private row payloads to the checked-in analyzer, so its collision count was zero rather than an assertion of corpus-wide absence."
+  },
   "limitations": [
     "Real Italy source-asserted exact edges were materialized; no inferred edges were materialized in this database rehearsal.",
     "No human review was performed; confidence estimates are ruleset outputs, not measured probabilities.",
