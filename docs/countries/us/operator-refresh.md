@@ -37,6 +37,8 @@ plan file:
   "sources": [
     {
       "source": "fsis",
+      "acquisition_method": "http",
+      "acquisition_authorization": "private-captures/fsis-acquisition-authorization.json",
       "directory": "private-captures/fsis-directory.csv",
       "demographics": "private-captures/fsis-demographics.csv",
       "retrieved_at_utc": "2026-09-18T00:00:00Z",
@@ -111,8 +113,16 @@ python -m pipeline.sources.us.refresh `
   --as-of-utc 2026-09-18T12:00:00Z
 ```
 
-Network acquisition is still opt-in and requires the source-specific approved
-terms record. The shared acquisition primitive retries only bounded network,
+Network acquisition is still opt-in. The `http` method requires the
+source-specific approved terms record; the `firefox` method requires a typed
+owner acquisition-authorization record for the exact FSIS routes and may
+proceed for private staging while terms remain unknown. FSIS plans may set
+`acquisition_method` to `firefox` for a fresh
+temporary Firefox/Selenium browser capture; the browser route preserves exact
+URL, timestamp, hash, byte size, and browser/runtime provenance and accepts a
+navigation timeout only after a complete schema-valid file is present. It does
+not import profiles or credentials and is not a stealth or endpoint-discovery
+framework. The shared acquisition primitive retries only bounded network,
 rate-limit, timeout, and interrupted-download failures. It uses temporary
 partial files, removes them after an interrupted read, and records every
 attempt. HTTP 403, HTML/login/challenge responses, invalid content types,

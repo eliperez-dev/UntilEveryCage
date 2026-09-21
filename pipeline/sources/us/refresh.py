@@ -203,12 +203,15 @@ def _run_one(spec: dict[str, Any], base: Path, root: Path, mode: str, retry: dic
             directory = _path(spec.get("directory"), base)
             demographics = _path(spec.get("demographics"), base)
             fetch = bool(spec.get("fetch"))
+            authorization = _read_json(_path(spec.get("acquisition_authorization"), base)) if spec.get("acquisition_authorization") else None
             result = refresh_fsis(
                 run_dir=source_root,
                 directory_path=directory,
                 demographics_path=demographics,
                 fetch=fetch,
                 source_url=spec.get("source_url") or FSIS_CONFIG["directory_url"],
+                acquisition_method=str(spec.get("acquisition_method") or "http"),
+                acquisition_authorization=authorization,
                 retrieved_at_utc=spec.get("retrieved_at_utc"),
                 effective_date=spec.get("effective_date"),
                 mode=mode,

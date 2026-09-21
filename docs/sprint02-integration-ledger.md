@@ -1,6 +1,6 @@
 # Sprint 02 integration and storage ledger
 
-Status: partial reviewed candidate/replay checkpoint, 2026-09-20. France, Italy, APHIS core/inspection, evidence integration, and the accepted FSIS backend scope are integrated for private candidate/replay use; this is not a release approval or a claim that Sprint 02 source acquisition is complete.
+Status: partial reviewed candidate/replay checkpoint, 2026-09-20. France, Italy, APHIS core/inspection, evidence integration, and the accepted FSIS backend plus bounded Firefox method are integrated for private candidate/replay use; this is not a release approval or a claim that Sprint 02 source acquisition is complete.
 
 ## Ownership and baseline
 
@@ -31,8 +31,8 @@ Kickoff validation: `npm ci` completed with no vulnerabilities; `python -m unitt
 - France and Italy are QA-approved and integrated for private candidate/replay use with unresolved identity signals, quarantine, location/privacy, rights, and publication gates preserved.
 - APHIS core/annual-report and inspection v4 handoffs have final QA acceptance and are integrated for private candidate/replay use. Row-free handoffs, source lineage, quarantine accounting, and publication/DB-import gates remain enforced; public release/import remains blocked.
 - Lane 6 evidence-consumer contracts have final QA acceptance in the current integrated checkpoint. The consumer fails closed on quarantine accounting, origin metadata consensus, and original-page lineage; this is not publication approval.
-- FSIS backend guard, operator-directory URL provenance, and missing-orchestration-URL fallback are accepted in checkpoint `41057011`. QA also recorded successful browser-backed acquisition evidence for the establishment-name directory and demographics; the reusable browser-acquisition implementation remains a separate author lane.
-- Earlier bounded ordinary GETs to official FSIS routes returned HTTP 403. That transport diagnostic is retained as context and does not override the separately reviewed browser-backed evidence; no response body, raw row, private path, or artifact hash is recorded here.
+- FSIS backend guard, operator-directory URL provenance, missing-orchestration-URL fallback, and the bounded Firefox acquisition method are accepted in the final candidate checkpoint. The source-author factual handoff still must provide two complete establishment-name directory runs plus one demographics run; until that row-free proof is received, FSIS source-acquisition acceptance is incomplete.
+- Earlier bounded ordinary GETs to official FSIS routes returned HTTP 403. That transport diagnostic is retained as context; it neither establishes nor negates the pending factual browser handoff, and no response body, raw row, private path, or artifact hash is recorded here.
 
 ## Integration ledger
 
@@ -40,7 +40,7 @@ Kickoff validation: `npm ci` completed with no vulnerabilities; `python -m unitt
 | --- | --- | --- |
 | APHIS registrations/reports | Lane 1 handoff | QA-approved and integrated for private candidate/replay; publication/import blocked |
 | APHIS inspections | Lane 2 handoff | Final QA-approved and integrated for private candidate/replay |
-| FSIS current parity | Lane 3 handoff | Backend guard/provenance/fallback accepted; browser-acquisition implementation remains separate |
+| FSIS current parity | Lane 3 handoff | Backend guard/provenance/fallback and bounded Firefox method integrated; factual two-directory-plus-demographics handoff proof pending |
 | France candidate | Lane 4 handoff under private storage | QA-approved and integrated for private candidate/replay |
 | Italy candidate | Lane 5 handoff under private storage | QA-approved and integrated for private candidate/replay |
 | Evidence integration | Lane 6 existing APHIS/FSIS contracts | Final QA-approved and integrated; fail-closed lineage and quarantine gates retained |

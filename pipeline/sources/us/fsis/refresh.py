@@ -15,6 +15,7 @@ from pipeline.contracts.adapter_contract import SourceArtifact
 from pipeline.contracts.source_lifecycle import atomic_json
 
 from .adapter import CONFIG, FsisContractError, FsisMpiAdapter, _csv, _header_key
+from .firefox_acquisition import acquire_firefox
 
 
 _HTML_SIGNATURES = (
@@ -160,6 +161,18 @@ def _artifact(metadata: dict[str, Any]) -> SourceArtifact:
     )
 
 
+def _load_acquisition_authorization(path: str | Path | None) -> dict[str, Any] | None:
+    if path is None:
+        return None
+    try:
+        value = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(f"acquisition authorization cannot be read: {error}") from error
+    if not isinstance(value, dict):
+        raise ValueError("acquisition authorization must be a JSON object")
+    return value
+
+
 def _drift(manifest: dict[str, Any], previous_manifest: str | Path | None) -> dict[str, Any]:
     if previous_manifest is None:
         return {"checked": False, "blocked": False, "alarms": []}
@@ -199,6 +212,8 @@ def refresh(
     directory_path: str | Path | None = None,
     demographics_path: str | Path | None = None,
     fetch: bool = False,
+    acquisition_method: str = "http",
+    acquisition_authorization: dict[str, Any] | None = None,
     source_url: str = CONFIG["directory_url"],
     retrieved_at_utc: str | None = None,
     effective_date: str | None = None,
@@ -221,34 +236,48 @@ def refresh(
         raise ValueError("specify a directory artifact or fetch")
     if mode not in {"dry-run", "handoff"}:
         raise ValueError("mode must be dry-run or handoff")
+    if acquisition_method not in {"http", "firefox"}:
+        raise ValueError("acquisition_method must be http or firefox")
 
     root = Path(run_dir)
     metadata: dict[str, Any] = {}
     paths: dict[str, Path] = {}
     if fetch:
-        if terms_review_path is None:
+        if acquisition_method == "http" and terms_review_path is None:
             raise ValueError("terms_review_path is required for network acquisition")
+        if acquisition_method == "firefox" and acquisition_authorization is None:
+            raise ValueError("acquisition_authorization is required for Firefox acquisition")
         routes = {
-            "directory": CONFIG.get("directory_by_number_url") or CONFIG["data_url"],
+            "directory": source_url if source_url != CONFIG["directory_url"] else CONFIG.get("directory_by_number_url") or CONFIG["data_url"],
             "demographics": CONFIG.get("demographics_url"),
         }
         for role, url in routes.items():
             if not url:
                 raise ValueError(f"missing configured FSIS {role} URL")
             try:
-                acquired = fetch_source(
-                    source_id=f"{CONFIG['source_id']}.{role}", url=url, output_root=root / "acquisition",
-                    artifact_name=f"{role}.csv", terms_review_path=terms_review_path, max_bytes=max_bytes,
-                    allowed_content_types=("text/csv", "application/csv", "application/octet-stream"),
-                    code_version=CONFIG["adapter_version"], config_version=CONFIG["contract_version"],
-                    coverage="FSIS MPI edition only; state-inspection and APHIS populations excluded",
-                    rights_caveat="terms review retained with run", privacy_caveat="private staging; privacy review pending",
-                    effective_date=effective_date,
-                    max_attempts=max_attempts,
-                    retry_delay_seconds=retry_delay_seconds,
-                    max_retry_delay_seconds=max_retry_delay_seconds,
-                    artifact_validator=lambda path, headers, role=role: _validate_download(path, headers, role=role),
-                )
+                common = {
+                    "source_id": f"{CONFIG['source_id']}.{role}", "url": url, "artifact_name": f"{role}.csv",
+                    "terms_review_path": terms_review_path, "max_bytes": max_bytes,
+                    "code_version": CONFIG["adapter_version"], "config_version": CONFIG["contract_version"],
+                    "coverage": "FSIS MPI edition only; state-inspection and APHIS populations excluded",
+                    "rights_caveat": "terms review retained with run", "privacy_caveat": "private staging; privacy review pending",
+                    "effective_date": effective_date,
+                }
+                if acquisition_method == "firefox":
+                    acquired = acquire_firefox(
+                        **common, acquisition_authorization=acquisition_authorization,
+                        page_url=CONFIG["directory_url"], output_root=root / "acquisition",
+                        max_attempts=max_attempts,
+                        artifact_validator=lambda path, headers, role=role: _validate_download(path, headers, role=role),
+                    )
+                else:
+                    acquired = fetch_source(
+                        **common, output_root=root / "acquisition",
+                        allowed_content_types=("text/csv", "application/csv", "application/octet-stream"),
+                        max_attempts=max_attempts, retry_delay_seconds=retry_delay_seconds,
+                        max_retry_delay_seconds=max_retry_delay_seconds,
+                        artifact_validator=lambda path, headers, role=role: _validate_download(path, headers, role=role),
+                    )
             except AcquisitionError:
                 # Preserve the shared failure class, retryability, and attempt
                 # ledger for the aggregate operator report.  The role remains
@@ -331,6 +360,8 @@ def main() -> int:
     parser.add_argument("--demographics", type=Path)
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--source-url", default=CONFIG["directory_url"])
+    parser.add_argument("--acquisition-method", choices=("http", "firefox"), default="http")
+    parser.add_argument("--acquisition-authorization", type=Path, help="private owner authorization JSON required by the Firefox method")
     parser.add_argument("--retrieved-at-utc")
     parser.add_argument("--effective-date")
     parser.add_argument("--previous-manifest", type=Path)
@@ -343,9 +374,12 @@ def main() -> int:
     parser.add_argument("--max-age-days", type=int, default=14)
     args = parser.parse_args()
     try:
+        acquisition_authorization = _load_acquisition_authorization(args.acquisition_authorization)
         result = refresh(
             run_dir=args.run_dir, raw_path=args.raw, directory_path=args.directory, demographics_path=args.demographics,
             fetch=args.fetch, source_url=args.source_url, retrieved_at_utc=args.retrieved_at_utc,
+            acquisition_method=args.acquisition_method,
+            acquisition_authorization=acquisition_authorization,
             effective_date=args.effective_date, mode=args.mode, terms_review_path=args.terms_review,
             previous_manifest=args.previous_manifest, max_bytes=args.max_bytes,
             max_attempts=args.max_attempts, retry_delay_seconds=args.retry_delay_seconds,
