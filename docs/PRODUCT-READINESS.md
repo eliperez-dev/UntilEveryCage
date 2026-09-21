@@ -1,0 +1,206 @@
+# Product readiness and V2 roadmap
+
+**Canonical authority:** this document is the sole product-level readiness and
+overall V2 roadmap authority. It answers what is complete, what is verified,
+what blocks release, and what comes next. Supporting documents provide
+evidence for particular systems, sources, policies, or review packets; they do
+not replace this page or make an overall completeness claim.
+
+## Authority and scope
+
+This page covers product completeness for the V2 platform and the controlled
+replacement of the current V1 public application. It does not grant publication
+approval, source permission, privacy clearance, or maintainer authority. The
+governing policy is [ETHICS.md](ETHICS.md); its implementation checklist is
+[governance/policy-implementation-todo.md](governance/policy-implementation-todo.md).
+
+Use [source-status.json](source-status.json) for source-level status and
+[governance/v2-mvp-claim-evidence.json](governance/v2-mvp-claim-evidence.json)
+for implementation claims. A count in this document is an aggregate candidate
+or evidence count, never a count of approved, accurate, operating, or
+publishable facilities unless explicitly labelled that way.
+
+## Verified checkpoint
+
+- **Baseline:** repository checkpoint `56b22705087788c6195002f96e0c132d1abf92e8`.
+- **Current public product:** V1 remains production and the public default.
+- **V2 frontend:** Svelte/TypeScript fixture and local synthetic preview; it is
+  not the production replacement and has no configured external tile service.
+- **Public release:** no V2 public release has been created or promoted.
+- **Evidence:** the current [Sprint 02 integration ledger](sprint02-integration-ledger.md),
+  [source status baseline](source-status.md), [current reacquisition notes](current-reacquisition.md),
+  and [current geospatial readiness](current-geospatial-readiness.md) are the
+  latest supporting records at this checkpoint.
+
+### Current private candidate evidence
+
+These figures are retained only as safe aggregates; raw and restricted payloads
+remain private. They describe acquisition/normalization handoffs, not release
+readiness.
+
+| Evidence family | Aggregate observed | State and limitation |
+| --- | ---: | --- |
+| APHIS registrations | 2,552 | normalized private candidate; review, privacy, and approval remain open |
+| APHIS FY2025 annual reports | 995 | separate evidence family; not a facility master |
+| APHIS inspections | 1,075 input / 1,071 accepted / 4 exact duplicates | inspection observations, not a complete inspection history |
+| APHIS combined packet | 4,618 accepted; 2,121 identity links held | identity links remain held for review; no silent merge |
+| FSIS current directory | 7,241 | private current candidate; source terms, identity, location, and review remain open |
+| FSIS legacy comparison | 7,101 | legacy V1-derived comparison; not a currentness claim |
+| France | 2,517 accepted | private candidate; source and publication gates remain open |
+| Italy 853/2004 | 47,375 input / 41,849 accepted / 5,526 quarantined | repeated recognition/activity identities require review |
+
+Supporting source evidence includes the [APHIS refresh](aphis-lane1-refresh-2026-09-19.md),
+[US source boundary](countries/us/README.md), [France handoff](countries/france/sprint02-handoff-20260919.md),
+and [Italy review packet](review-packet-italy.md). No private rows or payloads
+belong in this roadmap.
+
+## Status vocabulary
+
+Use exactly one status for each roadmap item or gate:
+
+- **Complete and verified** — implemented and supported by linked, reproducible evidence.
+- **Implemented, not exercised** — code or documentation exists but the intended path has not been verified.
+- **In progress** — active work has a defined owner and next action.
+- **Blocked: engineering** — a technical dependency prevents progress.
+- **Blocked: human review** — terms, privacy, factual review, approval, or another authorized decision is required.
+- **Deferred** — intentionally sequenced after a named roadmap milestone.
+- **Not started** — no implementation or review work has begun.
+
+Do not infer a green product or publication state from passing tests. Acquisition,
+import, review, geocoding, approval, promotion, and publication are separate
+states and must be reported separately.
+
+## Current product state
+
+| Workstream | Status | Current truth | Next action |
+| --- | --- | --- | --- |
+| Backend and database | Complete and verified | Rust/Axum API, PostGIS schema, migrations, release/profile concepts, provenance, suppression-aware projections, and candidate/import boundaries exist and are tested in synthetic/local environments. | Close the remaining live-wire contract and durable release/revocation gaps. |
+| API contract | Implemented, not exercised | V2 contracts and generated/hand-authored schemas exist, but the complete frontend-facing contract is not yet frozen against a reviewed real release. | Product-convergence sprint: freeze DTOs, release identity, evidence identifiers, source dates, review state, and revocation semantics. |
+| Frontend product | In progress | V2 is a developer preview using fixtures/local synthetic data; V1 vanilla JavaScript remains public. | Approve information architecture and visual direction, then build a production Svelte frontend. |
+| Data acquisition | In progress | Several current private captures and source adapters exist; many countries remain reconnaissance-only or adapter/fixture-only. | Select one bounded first release and complete its source-specific terms and provenance review. |
+| Identity and reconciliation | Blocked: human review | Source-local identities are preserved; held links and quarantines remain substantial. Cross-source merges are not automatic. | Review candidate identity links and publish only scoped, evidenced relationships. |
+| Geospatial readiness | In progress | Geocoding is disabled or tightly bounded in current private handoffs; provider, precision, privacy, and review state must remain explicit. | Complete source-specific coordinate/privacy review and a production geocoder/provider decision. |
+| Privacy and suppression | In progress | Policy and synthetic suppression paths exist, but independent durable restriction, replay, cache, and cross-V1/V2 propagation controls remain release gates. | Implement and exercise the durable ledger, pre-service restore gate, and suppression crosswalk. |
+| Operations and deployment | Blocked: engineering | Local/private environments and runbooks exist; production proxy trust, visitor/provider audit, artifact inventory, rollback, and operational ownership are not fully verified. | Complete deployment/provider audit and an operator-run private release drill. |
+| Publication and release authority | Blocked: human review | No current candidate has completed all source, privacy, factual, project-approval, and release-authority gates. | Obtain authorized review for the bounded first release; do not infer approval from acquisition or tests. |
+
+### Data lifecycle states
+
+The product readiness state is not a single data count:
+
+```text
+acquisition → normalization/quarantine → candidate import → factual/privacy review
+→ geocoding review → project approval for a named release/profile
+→ promotion → publication
+```
+
+An acquired or imported record is not reviewed. A reviewed record is not
+approved. An approved record is not promoted. A promoted record is not public
+until publication is explicitly verified. Suppression and removal can interrupt
+the chain at any stage and also apply to older releases, caches, exports,
+reimports, and restores.
+
+## Launch gates
+
+All gates below must be green for a controlled V2 public cutover. “Green” means
+the linked evidence exists and the relevant human decision is recorded where
+required.
+
+| Gate | Status | Evidence | Next action |
+| --- | --- | --- | --- |
+| Governing ethics and privacy controls | In progress | [ETHICS.md](ETHICS.md), [policy checklist](governance/policy-implementation-todo.md) | Close outstanding implementation controls and verify behavior, not just prose. |
+| Source terms and redistribution | Blocked: human review | [source rights decisions](architecture/source-rights-decisions.md), source-specific assessments | Record terms decision for each source in the first release. |
+| Candidate acquisition and provenance | In progress | [source status](source-status.json), [Sprint 02 ledger](sprint02-integration-ledger.md) | Re-run selected sources with retained provenance and safe aggregate validation. |
+| Identity and factual review | Blocked: human review | [US source boundary](countries/us/README.md), [Italy packet](review-packet-italy.md) | Adjudicate held links, quarantines, and contradictions without name/address guessing. |
+| Coordinate and address privacy | In progress | [geospatial readiness](current-geospatial-readiness.md), [geocoding operator](geocoding-operator.md) | Complete precision, residential/private-location, provider, and review-state checks. |
+| API and release contract | Implemented, not exercised | [V2 API contract](api/v2-contract.md), [MVP claim evidence](governance/v2-mvp-claim-evidence.md) | Freeze frontend contract against a named reviewed candidate release. |
+| Suppression and revocation | Blocked: engineering | [suppression runbook](governance/suppression-runbook.md), [release manifest guidance](architecture/release-manifest-verification.md) | Add durable restriction ledger, replay gate, cache invalidation, and V1↔V2 crosswalk. |
+| Frontend accessibility and performance | In progress | [frontend README](../frontend/README.md), [reviewed demonstration plan](reviewed-demonstration-release.md) | Redesign and test responsive, accessible, performant real-data-shaped views. |
+| Deployment and visitor privacy | Blocked: engineering | [visitor privacy inventory](governance/visitor-privacy-inventory.md), [production operations](deployment/production-operations.md) | Verify proxy trust, logging/provider disclosures, rollback, monitoring, and ownership. |
+| Authorized release approval | Blocked: human review | [reviewed demonstration release](reviewed-demonstration-release.md), [ETHICS.md](ETHICS.md) | Name the release/profile, record approval, and verify every public projection. |
+| Public cutover and rollback | Not started | [V1/V2 reconciliation](architecture/v1-v2-reconciliation.md) | Run private E2E, parallel comparison, cutover rehearsal, then obtain explicit launch approval. |
+
+## Roadmap
+
+### C1 — Repository clarity and canonical readiness
+
+**Status: In progress.** Establish this page as the sole product-level roadmap,
+archive historical overall-roadmap inputs, clarify the Denmark launcher, and
+add deterministic documentation consistency checks. This sprint must not alter
+data, migration history, publication behavior, or policy meaning.
+
+### Product convergence
+
+**Status: Not started.** Freeze the minimum V2 API contract, choose the first
+bounded real-data release family, and approve a product information architecture
+and visual direction that make evidence, uncertainty, accountability, and action
+legible. Keep fixture/local synthetic data available while the design converges.
+
+### Production V2 frontend
+
+**Status: Deferred.** Build the redesigned Svelte frontend against the frozen
+contract, including responsive/accessibility/performance work and complete
+empty, restricted, error, provenance, and uncertainty states. Keep V1 routes and
+rollback available during transition.
+
+### First reviewed private release
+
+**Status: Not started.** Select one bounded candidate family (FSIS is the current
+leading candidate, subject to terms/privacy/review decisions), complete the
+acquisition → import → review → geocoding → approval chain, and create a private
+named release. APHIS research evidence remains a separate family unless an
+explicit scoped relationship is approved.
+
+### Private end-to-end trial
+
+**Status: Not started.** Run the production-shaped frontend and API against the
+reviewed private release. Test discovery, maps, profiles, evidence, exports,
+suppression, revocation, mobile, accessibility, performance, and operator
+recovery without public promotion.
+
+### V1/V2 parallel comparison
+
+**Status: Not started.** Compare route behavior, identity/suppression outcomes,
+coverage labels, and user-critical journeys. Resolve differences explicitly;
+do not silently replace V1 records or call absence closure.
+
+### Controlled cutover
+
+**Status: Not started.** Obtain explicit maintainer approval, deploy the named
+release with public access paused during migration, verify current restrictions,
+provider settings, rollback, monitoring, and visitor-facing disclosures, then
+switch traffic while retaining a defined V1 rollback window.
+
+### Expansion
+
+**Status: Deferred.** Add further countries, source families, accountability
+evidence, and richer story experiences only after the first complete release path
+is repeatable and safe. Each addition gets its own source, privacy, identity,
+geospatial, approval, and publication decision.
+
+## Update discipline
+
+- Update this page in the same integration change as any material readiness change.
+- Every **Complete and verified** claim must link to repository evidence or a named,
+  reproducible test result.
+- Keep aggregate counts separate from row-level payloads; never copy private data here.
+- Keep acquisition, import, review, geocoding, approval, promotion, and publication
+  states explicit; do not collapse them into “complete.”
+- Record the checkpoint commit/date and the evidence scope whenever the baseline changes.
+- If evidence conflicts, mark the item blocked or in progress and record the conflict
+  rather than choosing the more favorable claim.
+- Source-specific status belongs in `source-status.json` and its supporting packet;
+  this document links to it and summarizes only the product consequence.
+
+## Decision-log rules
+
+Record a decision here when it changes product scope, release sequencing, a launch
+gate, a canonical entrypoint, or the meaning of a readiness status. Each entry
+must include date, decision, scope, evidence, owner/authority, and the next review
+point. Policy amendments belong in [governance/ethics-changelog.md](governance/ethics-changelog.md),
+and source rights decisions belong in [architecture/source-rights-decisions.md](architecture/source-rights-decisions.md).
+
+| Date | Decision | Scope | Evidence / authority | Next review |
+| --- | --- | --- | --- | --- |
+| 2026-09-20 | Establish this document as the sole product-level readiness and overall V2 roadmap authority. | V2 product completeness and V1 replacement sequencing. | C1 approved scope; governing policy remains [ETHICS.md](ETHICS.md). | At the next integration sprint or any material gate change. |
+| 2026-09-20 | Keep V1 public and V2 private/local until a reviewed named release completes all launch gates. | All public application surfaces. | [V2 API contract](api/v2-contract.md), [source status](source-status.json), [reviewed release guidance](reviewed-demonstration-release.md). | Before private E2E trial. |

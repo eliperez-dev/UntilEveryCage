@@ -4,7 +4,7 @@ Status: proposed scope, ready to refine. Product names and technology choices re
 
 ## First priority: establish an auditable, continuously maintained data system
 
-This roadmap is governed by [docs/ETHICS.md](docs/ETHICS.md). Every preservation, immutable-history, and reconstruction requirement below is subject to its controlled retention/removal exceptions. Removed sensitive material must not be reconstructed or republished. Government source origin is not a factual accuracy guarantee. [Policy implementation tasks](docs/governance/policy-implementation-todo.md) track the removal runbook, release checks, public policy page, and end-to-end verification; these are publication requirements, not implemented guarantees.
+This roadmap is governed by [docs/ETHICS.md](../../ETHICS.md). Every preservation, immutable-history, and reconstruction requirement below is subject to its controlled retention/removal exceptions. Removed sensitive material must not be reconstructed or republished. Government source origin is not a factual accuracy guarantee. [Policy implementation tasks](../../governance/policy-implementation-todo.md) track the removal runbook, release checks, public policy page, and end-to-end verification; these are publication requirements, not implemented guarantees.
 
 The current datasets are approximately a year old according to the developer and must all be preserved and migrated with an explicit `legacy` tag. Their exact source dates may be unknown. The migration date must never be presented as the date the underlying information was verified.
 

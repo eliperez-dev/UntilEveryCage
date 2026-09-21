@@ -1,5 +1,13 @@
 # Documentation guide
 
+## Product readiness authority
+
+[PRODUCT-READINESS.md](PRODUCT-READINESS.md) is the sole product-level source of
+truth for V2 completeness, launch gates, and the overall roadmap. Supporting
+documents may provide source, architecture, policy, or review evidence, but no
+other active document is the overall V2 roadmap. Dated historical planning and
+integration inputs are preserved in [archive/README.md](archive/README.md).
+
 Documentation is grouped by the kind of decision it records:
 
 - [ETHICS.md](ETHICS.md) — governing policy for credibility, provenance, uncertainty, privacy, and publication; takes precedence over conflicting supporting guidance.

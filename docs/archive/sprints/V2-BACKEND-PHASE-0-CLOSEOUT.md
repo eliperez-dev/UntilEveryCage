@@ -45,4 +45,4 @@ These do not invalidate the verified local/CI backend foundation, but they preve
 
 ## Handoff decision
 
-The backend foundation is complete and certified for frontend contract work and integration. It is not yet authorized as the public production replacement for V1. The release blockers above remain linked to [V2-IMPLEMENTATION-TODO.md](V2-IMPLEMENTATION-TODO.md) and the governing [ETHICS.md](ETHICS.md).
+The backend foundation is complete and certified for frontend contract work and integration. It is not yet authorized as the public production replacement for V1. The release blockers above remain linked to the [canonical product readiness roadmap](../../PRODUCT-READINESS.md) and the governing [ETHICS.md](../../ETHICS.md).

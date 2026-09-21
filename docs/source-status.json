@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "purpose": "Evidence-backed source readiness baseline; not a runtime health monitor or publication approval register.",
-  "latest_private_rehearsal": "docs/country-rehearsal-2026-09-15.json",
+  "latest_private_rehearsal": "docs/archive/rehearsals/country-rehearsal-2026-09-15.json",
   "latest_country_capture": "data/manifests/de-be-private-candidates-2026-09-17.json",
   "status_vocabulary": {
     "metadata": ["verified", "partial", "unknown"],

@@ -26,13 +26,15 @@ but were not removed or redesigned.
   legacy or research inputs referenced by the source inventory and country
   crosswalks. They are data evidence, not dead code, and the governing policy
   requires preserving provenance and recovery boundaries. No files were deleted.
-* `v2-ideas.md` remains a proposed roadmap and is explicitly linked by
-  `docs/V2-IMPLEMENTATION-TODO.md`. It is not presented as completed status, so
-  it is retained rather than silently removed.
-* `docs/V2-SPRINT-2026-09-13.md`, `docs/V2-INTEGRATION-BASELINE.md`, and
-  `docs/V2-REVIEW-CLEANUP-2026-09-13.md` are dated integration evidence with
-  explicit non-production and evidence-scope language. Their overlap is
-  historical reporting, not redundant current instructions.
+* The former `docs/archive/research/v2-ideas.md` proposal and
+  `docs/archive/sprints/V2-IMPLEMENTATION-TODO.md` are now preserved under the
+  archive; current completeness is tracked only in
+  `docs/PRODUCT-READINESS.md`.
+* `docs/archive/sprints/V2-SPRINT-2026-09-13.md`,
+  `docs/archive/sprints/V2-INTEGRATION-BASELINE.md`, and
+  `docs/archive/audits/V2-REVIEW-CLEANUP-2026-09-13.md` are dated integration
+  evidence with explicit non-production and evidence-scope language. Their
+  overlap is historical reporting, not redundant current instructions.
 * `docs/PIPELINE-MIGRATION.md` was last updated on 2026-09-16 and documents the
   shared artifact-boundary migration. Its “next consolidation target” language
   is source-specific status, not an unused entrypoint; it is retained.
