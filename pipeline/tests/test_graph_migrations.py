@@ -38,10 +38,17 @@ class GraphMigrationContractTests(unittest.TestCase):
             "040_geocode_worker_durability.sql",
             "041_source_rights_decisions.sql",
             "042_private_graph_ingest.sql",
+            "043_identity_candidate_review_lineage.sql",
         ]
         graph_start = migrations.index(expected_graph_suffix[0])
         graph_end = migrations.index(expected_graph_suffix[-1]) + 1
         self.assertEqual(migrations[graph_start:graph_end], expected_graph_suffix)
+
+    def test_migration_numeric_prefixes_are_unique_and_strictly_ordered(self):
+        migrations = sorted(path.name for path in (ROOT / "migrations").glob("*.sql"))
+        numbers = [int(name.split("_", 1)[0]) for name in migrations]
+        self.assertEqual(len(numbers), len(set(numbers)))
+        self.assertEqual(numbers, sorted(numbers))
 
     def test_entities_are_distinct_and_crosswalk_is_scoped(self):
         sql = self.read("026_graph_entities_crosswalks.sql")
