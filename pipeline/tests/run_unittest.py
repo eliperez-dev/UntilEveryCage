@@ -16,6 +16,7 @@ ALLOWED_SKIP_REASONS = {
     "set UEC_RUN_E2E=1 to run Docker-backed D2 E2E tests",
     "set UEC_RUN_E2E=1 and UEC_RUN_CORPUS_RESILIENCE=1 to run the Docker-backed corpus rehearsal",
     "database is older than migration 018; Docker E2E applies the current schema",
+    "optional 100k benchmark is opt-in",
 }
 
 
