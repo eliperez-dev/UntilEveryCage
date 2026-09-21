@@ -73,6 +73,10 @@ pub fn app(state: uec_api::ApiState, proxy: private_environment::ProxyConfig) ->
             get(uec_api::graph_private::entities),
         )
         .route(
+            "/api/private/graph/connections",
+            get(uec_api::graph_private::connections),
+        )
+        .route(
             "/api/private/graph/entities/{entity_id}/neighborhood",
             get(uec_api::graph_private::neighborhood),
         )

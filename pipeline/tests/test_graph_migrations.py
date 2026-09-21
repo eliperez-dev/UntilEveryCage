@@ -39,6 +39,7 @@ class GraphMigrationContractTests(unittest.TestCase):
             "041_source_rights_decisions.sql",
             "042_private_graph_ingest.sql",
             "043_identity_candidate_review_lineage.sql",
+            "044_graph_connection_edges.sql",
         ]
         graph_start = migrations.index(expected_graph_suffix[0])
         graph_end = migrations.index(expected_graph_suffix[-1]) + 1

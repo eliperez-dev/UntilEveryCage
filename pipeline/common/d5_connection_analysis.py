@@ -210,6 +210,74 @@ def _observed_from_row(row: Mapping[str, Any], fallback_source: str | None = Non
                      bool(row.get("quarantine_reason")), suppressed)
 
 
+def classify_collision_observations(rows: Iterable[Mapping[str, Any]]) -> dict[str, int]:
+    """Classify source identity anomalies without calling fan-out a collision.
+
+    A repeated source observation is not a collision, and one organization
+    appearing across many facilities is an expected fan-out.  Only one
+    source-scoped facility identifier resolving to multiple organization
+    identifiers is counted as a true conflict/collision.  The function accepts
+    compact ``_Observed``-shaped mappings as well as raw adapter-shaped rows;
+    no input values are returned.
+    """
+    repeated: dict[tuple[str, str, tuple[str, ...], tuple[str, ...]], int] = defaultdict(int)
+    facility_to_orgs: dict[tuple[str, str, str], set[str]] = defaultdict(set)
+    org_to_facilities: dict[tuple[str, str, str], set[str]] = defaultdict(set)
+    repeated_rows = malformed = missing = 0
+    for raw in rows:
+        source_id = _clean(raw.get("source_id")) or "unknown-source"
+        if isinstance(raw.get("facility_ids"), Mapping):
+            facility_ids = {str(key): _clean(value) for key, value in raw["facility_ids"].items()}
+            organization_ids = {str(key): _clean(value) for key, value in (raw.get("organization_ids") or {}).items()}
+        else:
+            values = list(_nested_values(raw))
+            facility_ids = {}
+            organization_ids = {}
+            for key, value in values:
+                normalized_key = re.sub(r"[^a-z0-9]+", "_", key).strip("_")
+                normalized_value = _norm(value)
+                if normalized_key in FACILITY_ID_KEYS:
+                    if _clean(value) and not normalized_value:
+                        malformed += 1
+                    elif normalized_value:
+                        facility_ids.setdefault(normalized_key, normalized_value)
+                if normalized_key in ORG_ID_KEYS:
+                    if _clean(value) and not normalized_value:
+                        malformed += 1
+                    elif normalized_value:
+                        organization_ids.setdefault(normalized_key, normalized_value)
+        facility_values = tuple(sorted(value for value in facility_ids.values() if value))
+        organization_values = tuple(sorted(value for value in organization_ids.values() if value))
+        if not facility_values and not organization_values:
+            missing += 1
+        key = _clean(raw.get("source_record_key")) or _clean(raw.get("source_row_id")) or "row-unknown"
+        # For identified rows, a different source-row key does not make the
+        # same source-native identity a new facility. Missing rows retain the
+        # row key so unrelated empty observations are not collapsed together.
+        signature = ((source_id, facility_values, organization_values)
+                     if facility_values or organization_values
+                     else (source_id, key, facility_values, organization_values))
+        repeated[signature] += 1
+        for facility_type, facility in facility_ids.items():
+            if not facility:
+                continue
+            for organization_type, organization in organization_ids.items():
+                if organization:
+                    facility_to_orgs[(source_id, facility_type, facility)].add(organization)
+                    org_to_facilities[(source_id, organization_type, organization)].add(facility)
+    repeated_rows = sum(max(0, count - 1) for count in repeated.values())
+    true_conflicts = sum(max(0, len(values) - 1) for values in facility_to_orgs.values())
+    expected_fanout = sum(len(values) > 1 for values in org_to_facilities.values())
+    return {
+        "repeated_observations": repeated_rows,
+        "expected_org_many_facility_fanout": expected_fanout,
+        "true_conflicts": true_conflicts,
+        "collision_count": true_conflicts,
+        "malformed": malformed,
+        "missing": missing,
+    }
+
+
 def load_private_rows(mapping: Mapping[str, str | Path]) -> list[_Observed]:
     """Read restricted JSONL handoffs; only compact observations are retained."""
     observations: list[_Observed] = []
@@ -354,7 +422,16 @@ def analyze(*, manifests: Mapping[str, Mapping[str, Any]], rows: Iterable[_Obser
         if len({value[:10] for value in row.dates if len(value) >= 10}) > 1:
             temporal_inconsistencies += 1
 
-    collisions = sum(max(0, len(values) - 1) for values in source_identifier_values.values())
+    collision_classification = classify_collision_observations([
+        {
+            "source_id": row.source_id,
+            "source_record_key": row.key,
+            "facility_ids": row.facility_ids,
+            "organization_ids": row.organization_ids,
+        }
+        for row in observations
+    ])
+    collisions = collision_classification["true_conflicts"]
     orphan_rows = sum(1 for row in observations if row.source_kind == "facility_master" and not row.facility_ids)
     candidate_rows, candidate_capped = _probabilistic_candidates(observations)
     confidence_bands = Counter(item["confidence_band"] for item in candidate_rows)
@@ -396,6 +473,7 @@ def analyze(*, manifests: Mapping[str, Mapping[str, Any]], rows: Iterable[_Obser
             "source_scoped_identifier_observations": sum(identifiers.values()),
             "distinct_identifier_values": sum(len(values) for values in source_identifier_values.values()),
             "collision_count": collisions,
+            "collision_classification": collision_classification,
             "orphan_facility_rows": orphan_rows,
             "provenance_complete_rows": sum(row.provenance_complete for row in observations),
             "provenance_incomplete_rows": provenance_missing,

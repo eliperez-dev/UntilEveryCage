@@ -8,6 +8,7 @@ from pathlib import Path
 from pipeline.common.d5_connection_analysis import (
     RULESET_VERSION,
     _observed_from_row,
+    classify_collision_observations,
     analyze,
     load_private_rows,
     read_aggregate_manifests,
@@ -78,6 +79,26 @@ class D5ConnectionAnalysisTests(unittest.TestCase):
         self.assertEqual(report["connectivity"]["aphis_fsis_review_candidates"], 0)
         self.assertEqual(report["deterministic_connections"]["counts"]["explicit_graph_relationships:ca.cfia.federal-meat"], 1)
         self.assertGreaterEqual(report["quality_metrics"]["unresolved_rows"], 1)
+
+    def test_collision_classifier_distinguishes_repeat_fanout_conflict_malformed_and_missing(self):
+        rows = [
+            {"source_id": "synthetic", "source_record_key": "one", "normalized": {"establishment_id": "F1", "cvr": "ORG1"}},
+            {"source_id": "synthetic", "source_record_key": "two", "normalized": {"establishment_id": "F1", "cvr": "ORG1"}},
+            {"source_id": "synthetic", "source_record_key": "three", "normalized": {"establishment_id": "F2", "cvr": "ORG1"}},
+            {"source_id": "synthetic", "source_record_key": "four", "normalized": {"establishment_id": "F1", "cvr": "ORG2"}},
+            {"source_id": "synthetic", "source_record_key": "five", "normalized": {"establishment_id": "###", "cvr": "ORG3"}},
+            {"source_id": "synthetic", "source_record_key": "six", "normalized": {"name": "no identifiers"}},
+        ]
+        classified = classify_collision_observations(rows)
+        self.assertEqual(classified["repeated_observations"], 1)
+        self.assertEqual(classified["expected_org_many_facility_fanout"], 1)
+        self.assertEqual(classified["true_conflicts"], 1)
+        self.assertEqual(classified["collision_count"], 1)
+        self.assertEqual(classified["malformed"], 1)
+        self.assertEqual(classified["missing"], 1)
+        report = analyze(manifests={}, rows=[_observed_from_row(row) for row in rows])
+        self.assertEqual(report["deterministic_connections"]["collision_count"], 1)
+        self.assertEqual(report["deterministic_connections"]["collision_classification"]["expected_org_many_facility_fanout"], 1)
 
     def test_manifest_is_aggregate_only_and_latest_source_wins(self):
         directory = self.scratch / "manifest"

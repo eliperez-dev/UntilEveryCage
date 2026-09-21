@@ -27,6 +27,19 @@ pub struct GraphQuery {
     pub cursor: Option<Uuid>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ConnectionQuery {
+    pub connection_type: Option<String>,
+    pub min_confidence: Option<f64>,
+    pub include_conflicting: Option<bool>,
+    pub suppressed: Option<bool>,
+    pub source_id: Option<String>,
+    /// Source-qualified identifier (never a universal identity).
+    pub entity_id: Option<String>,
+    pub cursor: Option<Uuid>,
+    pub limit: Option<i64>,
+}
+
 pub(crate) fn authorized(headers: &HeaderMap) -> bool {
     let Some(expected) = std::env::var("UEC_PRIVATE_GRAPH_TOKEN")
         .ok()
@@ -56,6 +69,99 @@ fn denied() -> axum::response::Response {
 }
 fn bad(msg: &'static str) -> axum::response::Response {
     v2_error(StatusCode::BAD_REQUEST, "invalid_graph_query", msg)
+}
+
+/// Return bounded, private connection evidence. This route intentionally
+/// reads the D6 derived edge table only; it never reads or mutates public views.
+pub async fn connections(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Query(p): Query<ConnectionQuery>,
+) -> impl IntoResponse {
+    if !authorized(&headers) {
+        return denied();
+    }
+    let Ok(limit) = limit(p.limit) else {
+        return bad("limit must be between 1 and 100");
+    };
+    if p.connection_type
+        .as_deref()
+        .is_some_and(|value| !["exact", "inferred"].contains(&value))
+    {
+        return bad("connection_type must be exact or inferred");
+    }
+    if p.min_confidence
+        .is_some_and(|value| !value.is_finite() || !(0.0..=1.0).contains(&value))
+    {
+        return bad("min_confidence must be between 0 and 1");
+    }
+    let Some(pool) = state.database else {
+        return v2_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "private_graph_unavailable",
+            "private graph database unavailable",
+        );
+    };
+    let Ok(client) = pool.get().await else {
+        return v2_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "private_graph_unavailable",
+            "private graph database unavailable",
+        );
+    };
+    let include_conflicting = p.include_conflicting.unwrap_or(false);
+    let suppressed = p.suppressed.unwrap_or(false);
+    let rows = match client.query(
+        "SELECT connection_edge_id, edge_key, from_entity_type, from_source_id, from_identifier_type, from_source_identifier, to_entity_type, to_source_id, to_identifier_type, to_source_identifier, relationship_type, connection_type, confidence::double precision, confidence_band, match_method, supporting_source_refs::text, signal_explanation::text, ruleset_version, observed_at, computed_at, conflicting, suppressed FROM uec.graph_connection_edges WHERE ($1::text IS NULL OR connection_type=$1) AND ($2::double precision IS NULL OR confidence >= $2) AND ($3 OR conflicting=false) AND suppressed=$4 AND ($5::text IS NULL OR from_source_id=$5 OR to_source_id=$5) AND ($6::text IS NULL OR from_source_identifier=$6 OR to_source_identifier=$6) AND ($7::uuid IS NULL OR connection_edge_id < $7) ORDER BY observed_at DESC, connection_edge_id DESC LIMIT $8",
+        &[&p.connection_type, &p.min_confidence, &include_conflicting, &suppressed, &p.source_id, &p.entity_id, &p.cursor, &limit],
+    ).await {
+        Ok(value) => value,
+        Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "private_graph_query_failed", "private graph connection query failed"),
+    };
+    let data: Vec<_> = rows.into_iter().map(|row| {
+        let explanation = serde_json::from_str::<serde_json::Value>(&row.get::<_, String>(16)).unwrap_or_else(|_| json!({}));
+        json!({
+            "connection_edge_id": row.get::<_, Uuid>(0),
+            "edge_key": row.get::<_, String>(1),
+            "from": {"entity_type": row.get::<_, String>(2), "source_id": row.get::<_, String>(3), "identifier_type": row.get::<_, String>(4), "source_identifier": row.get::<_, String>(5)},
+            "to": {"entity_type": row.get::<_, String>(6), "source_id": row.get::<_, String>(7), "identifier_type": row.get::<_, String>(8), "source_identifier": row.get::<_, String>(9)},
+            "relationship_type": row.get::<_, String>(10),
+            "connection_type": row.get::<_, String>(11),
+            "confidence": row.get::<_, f64>(12),
+            "confidence_band": row.get::<_, String>(13),
+            "match_method": row.get::<_, String>(14),
+            "evidence_refs": serde_json::from_str::<serde_json::Value>(&row.get::<_, String>(15)).unwrap_or_else(|_| json!([])),
+            "score_contributions": explanation.get("group_contributions").cloned().unwrap_or_else(|| json!({})),
+            "disclaimer": explanation.get("disclaimer").and_then(|v| v.as_str()).unwrap_or("Confidence is a deterministic ruleset estimate, not a measured probability."),
+            "ruleset": row.get::<_, String>(17),
+            "observed_at": row.get::<_, chrono::DateTime<chrono::Utc>>(18),
+            "computed_at": row.get::<_, chrono::DateTime<chrono::Utc>>(19),
+            "conflicting": row.get::<_, bool>(20),
+            "suppressed": row.get::<_, bool>(21),
+        })
+    }).collect();
+    let next_cursor = data
+        .last()
+        .and_then(|item| item.get("connection_edge_id"))
+        .cloned();
+    Json(json!({
+        "api_version": "private-graph-v2",
+        "data": data,
+        "meta": {
+            "private": true,
+            "bounded": true,
+            "limit": limit,
+            "next_cursor": next_cursor,
+            "connection_type": p.connection_type,
+            "min_confidence": p.min_confidence,
+            "include_conflicting": include_conflicting,
+            "suppressed": suppressed,
+            "public_projection": false,
+            "automatic_merge": false,
+            "claim_transfer": false,
+        }
+    }))
+    .into_response()
 }
 
 pub async fn entities(
