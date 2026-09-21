@@ -22,7 +22,7 @@ publishable facilities unless explicitly labelled that way.
 
 ## Verified checkpoint
 
-- **Baseline:** repository checkpoint `D5 integration commit` (D5 real private graph rehearsal; 2026-09-21 UTC).
+- **Baseline:** repository checkpoint `D6 integration commit` (D6 private real-edge cohort; 2026-09-21 UTC).
 - **Current public product:** V1 remains production and the public default.
 - **V2 frontend:** Svelte/TypeScript fixture and local synthetic preview; it is
   not the production replacement and has no configured external tile service.
@@ -313,6 +313,32 @@ Evidence: [D5 graph analysis](d5-real-graph-analysis.md),
 `pipeline/common/d5_connection_analysis.py`. No raw rows or private paths are
 committed here.
 
+### D6 — Private real-edge cohort and graph API convergence
+
+**Status: Complete for a bounded private real-edge cohort; inferred-edge
+materialization and publication remain open.** The duplicate migration was
+resolved to one authoritative `044_graph_connection_edges` schema. Its only
+connection types are `exact` and `inferred`; grouped signals compound with
+diminishing returns and penalties, and every edge carries a versioned
+explanation. The private API exposes confidence, source/entity, conflict,
+suppression, and cursor filters without a human-confirmed workflow or public
+projection.
+
+The disposable Postgres/PostGIS rehearsal materialized 47,375 Italy source
+records, 18,689 organizations, 25,639 facilities, and 25,326 exact
+source-asserted edges. It produced zero public edges and zero inferred edges
+in the database pass. The offline aggregate diagnostic consumed 54,159 rows
+across five authorized handoff families and returned capped pages of 100 exact
+and 100 inferred candidates. Positive and negative controls were proven from
+source assertions and forbidden-pair rules: 47,375 positive controls, two
+negative controls, and zero automatic APHIS↔FSIS edges. No raw rows or private
+paths are committed here.
+
+Evidence: [D6 aggregate report](../data/manifests/d6-real-graph-e2e.json),
+the `044_graph_connection_edges` migration, and the focused D6/API tests.
+France, FSIS, and APHIS graph-edge materialization, real inferred-edge proof,
+and any publication or promotion remain explicit follow-up work.
+
 ### Product convergence (remaining release work)
 
 **Status: In progress.** Exercise the frozen contract against a named reviewed
@@ -391,3 +417,4 @@ and source rights decisions belong in [architecture/source-rights-decisions.md](
 | 2026-09-20 | Establish this document as the sole product-level readiness and overall V2 roadmap authority. | V2 product completeness and V1 replacement sequencing. | C1 approved scope; governing policy remains [ETHICS.md](ETHICS.md). | At the next integration sprint or any material gate change. |
 | 2026-09-20 | Keep V1 public and V2 private/local until a reviewed named release completes all launch gates. | All public application surfaces. | [V2 API contract](api/v2-contract.md), [source status](source-status.json), [reviewed release guidance](reviewed-demonstration-release.md). | Before private E2E trial. |
 | 2026-09-20 | Accept the France, Denmark, and US sanitized private lifecycle rehearsals as backend readiness evidence only; no rehearsal changes approval, publication, or facility identity status. | B3 selective convergence integration. | [France rehearsal](../data/manifests/france-golden-country-private-2026-09-18.json), [Denmark rehearsal](../data/manifests/denmark-private-golden-rehearsal-2026-09-18.json), [US rehearsal](../data/manifests/us-private-golden-rehearsal-2026-09-18.json). | Re-run against a named reviewed private release before frontend cutover. |
+| 2026-09-21 | Accept D6's bounded Italy source-asserted exact-edge cohort as private graph/API readiness evidence; keep inferred materialization and publication blocked. | D6 integration. | [D6 aggregate report](../data/manifests/d6-real-graph-e2e.json), authoritative 044 schema, focused and standard test suites. | Add real inferred-edge materialization and repeat the private E2E trial before frontend cutover. |

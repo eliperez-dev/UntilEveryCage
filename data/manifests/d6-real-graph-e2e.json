@@ -1,0 +1,40 @@
+{
+  "schema_version": "d6-real-graph-e2e-v1",
+  "status": "verified_private_real_edge_cohort",
+  "source_scope": [
+    "it.853-2004",
+    "fr.dgal.section-i",
+    "fr.dgal.section-ii",
+    "us.fsis",
+    "us.aphis"
+  ],
+  "controls": {
+    "authorized_private_handoffs": 5,
+    "positive_source_assertion_controls": 47375,
+    "negative_controls": 2,
+    "automatic_aphis_fsis_edges": 0,
+    "row_payloads_in_report": false
+  },
+  "database": {
+    "input_source_records": 47375,
+    "organizations": 18689,
+    "facilities": 25639,
+    "exact_edges": 25326,
+    "inferred_edges": 0,
+    "public_edges": 0,
+    "edge_storage": "private_not_eligible"
+  },
+  "offline_diagnostic": {
+    "private_rows_consumed": 54159,
+    "sources": 5,
+    "api_page_exact": 100,
+    "api_page_inferred": 100,
+    "note": "Diagnostic pages are capped at 100; database totals above are the disposable Postgres rehearsal aggregates."
+  },
+  "limitations": [
+    "Real Italy source-asserted exact edges were materialized; no inferred edges were materialized in this database rehearsal.",
+    "No human review was performed; confidence estimates are ruleset outputs, not measured probabilities.",
+    "France, FSIS, and APHIS handoffs were exercised by aggregate diagnostics but did not yield graph edges in this database pass.",
+    "No publication, promotion, deployment, or public projection was performed."
+  ]
+}

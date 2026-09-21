@@ -43,8 +43,23 @@ def collect_private_controls(root: Path) -> dict[str, Any]:
         if not records_path.is_file():
             records_path = manifest_path.parent / "graph-candidates.jsonl"
         if not records_path.is_file():
+            records_path = manifest_path.parent / "graph-candidates" / "records.jsonl"
+        if not records_path.is_file():
             continue
         source_id = str(manifest.get("source_id") or "")
+        if not source_id:
+            # Graph-candidate manifests commonly omit source_id because the
+            # parent candidate-handoff manifest owns that provenance.
+            ancestor = manifest_path.parent.parent
+            while ancestor != ancestor.parent and not source_id:
+                parent_manifest = ancestor / "manifest.json"
+                if parent_manifest.is_file():
+                    try:
+                        parent_value = _json(parent_manifest)
+                    except (OSError, json.JSONDecodeError):
+                        parent_value = {}
+                    source_id = str(parent_value.get("source_id") or "")
+                ancestor = ancestor.parent
         if not source_id:
             continue
         rows: list[dict[str, Any]] = []

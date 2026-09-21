@@ -29,7 +29,7 @@ def main(argv: list[str] | None = None) -> int:
     handoffs = _handoffs(args.private_root, set(D4_SOURCE_IDS))
     row_paths: dict[str, Path] = {}
     for source_id, kind, root in handoffs:
-        candidate = root / ("records.jsonl" if kind == "evidence" else "graph-candidates" / "records.jsonl")
+        candidate = root / ("records.jsonl" if kind == "evidence" else Path("graph-candidates") / "records.jsonl")
         if candidate.is_file():
             row_paths[source_id] = candidate
     observations = load_private_rows(row_paths) if row_paths else []

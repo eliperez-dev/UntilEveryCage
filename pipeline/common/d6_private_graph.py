@@ -186,7 +186,12 @@ class ConnectionStore:
         candidates, _ = _probabilistic_candidates(list(rows), limit=limit)
         inserted = 0
         for candidate in candidates:
-            left, right = candidate["source_pair"]
+            pair = list(candidate["source_pair"])
+            # A probabilistic candidate may compare two records from the same
+            # source.  Keep the edge source-scoped instead of assuming every
+            # candidate is cross-source.
+            left = pair[0] if pair else "unknown"
+            right = pair[1] if len(pair) > 1 else left
             edge = ConnectionEdge(
                 edge_id=candidate["candidate_digest"],
                 source_id=left,
