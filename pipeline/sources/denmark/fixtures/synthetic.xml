@@ -1,0 +1,4 @@
+<Root>
+  <Row><ID_nummer>DK-SYN-001</ID_nummer><Virksomhed>Synthetic Denmark Facility</Virksomhed><Adresse>Industrial Road 1</Adresse><Postnummer>1000</Postnummer><By>Testby</By><FVST_branchenummer>10</FVST_branchenummer></Row>
+  <Row><Virksomhed>Missing Identity Fixture</Virksomhed><Adresse>Example Road 2</Adresse></Row>
+</Root>
