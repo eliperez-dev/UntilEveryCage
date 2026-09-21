@@ -63,6 +63,20 @@ class Connection:
 
 
 class MigrationRunnerTests(unittest.TestCase):
+    def test_existing_020_migrations_use_distinct_full_stem_identities(self):
+        migration_dir = Path(__file__).parents[1] / "migrations"
+
+        files = MODULE.migration_files(migration_dir)
+        names = [path.name for path in files]
+        stems = [path.stem for path in files]
+
+        first = "020_release_manifests.sql"
+        second = "020_suppression_aware_v2_history.sql"
+        self.assertIn(first, names)
+        self.assertIn(second, names)
+        self.assertNotEqual(Path(first).stem, Path(second).stem)
+        self.assertLess(stems.index(Path(first).stem), stems.index(Path(second).stem))
+
     def test_failed_migration_is_not_recorded_and_retry_resumes(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
