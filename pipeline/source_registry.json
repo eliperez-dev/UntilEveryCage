@@ -205,7 +205,31 @@
       "attribution_licensing_notes": "Legacy inventory names the Food Standards Agency; confirm the applicable national publication licences and attribution.",
       "adapter_status": "not_started",
       "expected_artifact_schema": "CSV; publication is split across national administrations; exact schemas unknown",
-      "blockers": ["Identify and model each national feed separately before combining; confirm current URLs and terms."]
+      "blockers": ["Legacy umbrella retained for migration traceability only; select the national FSA or FSS identity below and never execute this umbrella source."]
+    },
+    {
+      "source_id": "fsa_approved_establishments",
+      "jurisdiction_scope": "United Kingdom; Food Standards Agency coverage for England, Wales, and Northern Ireland",
+      "legacy_paths": [],
+      "url": "https://data.food.gov.uk/catalog/datasets/",
+      "access_method": "bounded monthly CSV download or assisted local capture",
+      "cadence": "monthly; verify each edition",
+      "attribution_licensing_notes": "Food Standards Agency source; catalogue/licence, privacy, coordinate, and project publication review remain human gates",
+      "adapter_status": "implemented_partial",
+      "expected_artifact_schema": "FSA synthetic or inspected monthly CSV with application number, trading name, national authority, activity, address/withholding and source coordinates",
+      "blockers": ["Fixture and preserved-local-artifact private lifecycle are proven. Live fetch remains separately bounded and must not be inferred from fixture success; Northern Ireland scope is retained as source-provided authority data."]
+    },
+    {
+      "source_id": "fss_approved_establishments",
+      "jurisdiction_scope": "United Kingdom; Food Standards Scotland approved establishments",
+      "legacy_paths": [],
+      "url": "https://www.foodstandards.gov.scot/",
+      "access_method": "bounded CSV download or assisted local capture",
+      "cadence": "source-specific; verify each edition",
+      "attribution_licensing_notes": "Food Standards Scotland source; OGL indication, exact terms, privacy, coordinate, and project publication review remain human gates",
+      "adapter_status": "implemented_partial",
+      "expected_artifact_schema": "FSS approved-establishment CSV with approval number, trading name, authority, activities, source address and status",
+      "blockers": ["Fixture and preserved-local-artifact private lifecycle are proven. Scotland remains a distinct national source and must not be unioned with FSA identities without explicit crosswalk evidence."]
     },
     {
       "source_id": "us.fsis",

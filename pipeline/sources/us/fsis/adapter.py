@@ -438,7 +438,42 @@ class FsisMpiAdapter:
         }
 
     def run(self, raw_path: str | Path, run_dir: str | Path, artifact: SourceArtifact) -> dict[str, Any]:
-        raw = Path(raw_path).read_bytes()
+        path = Path(raw_path)
+        # The shared runner accepts one artifact path per source.  FSIS is
+        # intentionally a two-file operator-assisted bundle, so a directory
+        # path is the explicit local-artifact representation.  Keep the
+        # source-native roles separate and join only on exact identifiers.
+        if path.is_dir():
+            directory_path = path / "directory.csv"
+            if not directory_path.is_file():
+                directory_path = path / "valid.csv"
+            demographics_path = path / "demographics.csv"
+            if not directory_path.is_file():
+                raise ValueError("FSIS bundle directory requires directory.csv or valid.csv")
+            directory = directory_path.read_bytes()
+            demographics = demographics_path.read_bytes() if demographics_path.is_file() else None
+            def role_artifact(content: bytes, role: str) -> SourceArtifact:
+                return SourceArtifact(
+                    source_url=artifact.source_url,
+                    retrieved_at_utc=artifact.retrieved_at_utc,
+                    sha256=hashlib.sha256(content).hexdigest(),
+                    byte_size=len(content),
+                    publication_date=artifact.publication_date,
+                    effective_date=artifact.effective_date,
+                    code_version=artifact.code_version,
+                    config_version=f"{artifact.config_version}:{role}",
+                    rights_caveat=artifact.rights_caveat,
+                    privacy_caveat=artifact.privacy_caveat,
+                    coverage=artifact.coverage,
+                    redirects=artifact.redirects,
+                )
+            artifacts = {"directory": role_artifact(directory, "directory")}
+            raw_paths: dict[str, bytes] = {"directory": directory}
+            if demographics is not None:
+                artifacts["demographics"] = role_artifact(demographics, "demographics")
+                raw_paths["demographics"] = demographics
+            return self.run_sources(raw_paths, run_dir, artifacts)
+        raw = path.read_bytes()
         digest = hashlib.sha256(raw).hexdigest()
         if artifact.sha256 != digest or artifact.byte_size != len(raw):
             raise ValueError("artifact provenance mismatch")

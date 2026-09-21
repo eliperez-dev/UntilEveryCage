@@ -60,7 +60,15 @@ def run_registered_input(raw_path: str | Path, runs_dir: str | Path, config: dic
     raw = Path(raw_path)
     runs = Path(runs_dir)
     runs.mkdir(parents=True, exist_ok=True)
-    run_dir = Path(tempfile.mkdtemp(prefix=f"{hashlib.sha256(raw.read_bytes()).hexdigest()[:16]}-", dir=runs))
+    # A source may require an explicitly declared multi-file local artifact
+    # (FSIS directory + demographics).  Hash the ordered file bytes only for
+    # deterministic run naming; the adapter remains responsible for role
+    # parsing and per-file provenance.
+    if raw.is_dir():
+        input_bytes = b"".join(path.read_bytes() for path in sorted(raw.iterdir()) if path.is_file())
+    else:
+        input_bytes = raw.read_bytes()
+    run_dir = Path(tempfile.mkdtemp(prefix=f"{hashlib.sha256(input_bytes).hexdigest()[:16]}-", dir=runs))
     try:
         manifest = adapter_runner(raw, run_dir, config)
         records = [json.loads(line) for line in (run_dir / "normalized" / "records.jsonl").read_text(encoding="utf-8").splitlines() if line]

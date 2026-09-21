@@ -173,6 +173,11 @@ def register_first_wave(catalog: Any) -> None:
             country_code=descriptor.country_code.lower(),
         )
         catalog.register(FirstWaveRefreshAdapter(descriptor), capabilities)
+    # D3 extends the same control plane with facility-master adapters.  Keep
+    # this registration beside the D2 bridge so one runner can select either
+    # cohort while source-local contracts remain isolated.
+    from .d3_facility import register_d3
+    register_d3(catalog)
 
 
 def descriptor_for(source_id: str) -> SourceDescriptor:
