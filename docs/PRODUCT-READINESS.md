@@ -22,7 +22,7 @@ publishable facilities unless explicitly labelled that way.
 
 ## Verified checkpoint
 
-- **Baseline:** repository checkpoint `9b7df797` (B3 selective private-readiness integration; 2026-09-20 UTC).
+- **Baseline:** repository checkpoint `ae319ccc` (B3 selective private-readiness integration; 2026-09-20 UTC).
 - **Current public product:** V1 remains production and the public default.
 - **V2 frontend:** Svelte/TypeScript fixture and local synthetic preview; it is
   not the production replacement and has no configured external tile service.
@@ -169,6 +169,26 @@ Evidence: [contract ledger](api/v2-product-convergence-gap-ledger.md),
 [D1 readiness report](../data/manifests/d1-data-readiness-report.json).
 
 **Next branch:** `eli/v2-frontend-overhaul`, based on the completed D1 head.
+
+### B3 — Repository consolidation and backend handoff
+
+**Status: Complete and verified for repository operations.** The registered
+worktree set was reduced from 80 to exactly 2: the canonical V2 checkout and
+the retained dirty root checkout. The dirty root was left untouched. Fourteen
+detached heads were retained under durable archive refs and a verified bundle;
+the restricted private archive verified 5,784 evidence files and 3,819
+content-addressed objects with no evidence or commit loss. The private archive
+location and row contents remain intentionally undisclosed.
+
+Cleanup accounting is kept by category rather than added together: 37.72 GiB
+of generated caches were removed, and retired worktree content was removed in
+three separately reported groups of 2.83 GiB, 8.24 GiB, and 8.66 GiB. No
+publication, deployment, promotion, or human-approval state changed.
+
+**Next backend step:** D2 shared private pipeline readiness: converge source
+adapters on one repeatable acquisition → cleaning → formatting → candidate
+insertion lifecycle, with aggregate-only manifests, suppression/idempotency
+checks, and a path to later scheduled refreshes.
 
 ### Product convergence (remaining release work)
 
