@@ -22,7 +22,7 @@ publishable facilities unless explicitly labelled that way.
 
 ## Verified checkpoint
 
-- **Baseline:** repository checkpoint is updated by the D4 integration commit (2026-09-21 UTC).
+- **Baseline:** repository checkpoint `77e95706` (D4 private graph persistence integration; 2026-09-21 UTC).
 - **Current public product:** V1 remains production and the public default.
 - **V2 frontend:** Svelte/TypeScript fixture and local synthetic preview; it is
   not the production replacement and has no configured external tile service.
