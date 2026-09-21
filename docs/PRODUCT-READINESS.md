@@ -22,15 +22,16 @@ publishable facilities unless explicitly labelled that way.
 
 ## Verified checkpoint
 
-- **Baseline:** repository checkpoint `c281690b` (D1 integration; 2026-09-21 UTC).
+- **Baseline:** repository checkpoint `9b7df797` (B3 selective private-readiness integration; 2026-09-20 UTC).
 - **Current public product:** V1 remains production and the public default.
 - **V2 frontend:** Svelte/TypeScript fixture and local synthetic preview; it is
   not the production replacement and has no configured external tile service.
 - **Public release:** no V2 public release has been created or promoted.
 - **Evidence:** D1's [contract convergence ledger](api/v2-product-convergence-gap-ledger.md),
   [V1 behavioral contract](frontend/v1-behavioral-contract.md), and row-free
-  [data readiness report](../data/manifests/d1-data-readiness-report.json) are
-  the latest supporting records at this checkpoint. Historical source packets
+  [data readiness report](../data/manifests/d1-data-readiness-report.json), and
+  the B3 France, Denmark, and US private rehearsal manifests are the latest
+  supporting records at this checkpoint. Historical source packets
   remain linked below for provenance and review context.
 
 ### Current private candidate evidence
@@ -49,6 +50,9 @@ readiness.
 | FSIS legacy comparison | 7,101 | legacy V1-derived comparison; not a currentness claim |
 | France | 2,517 accepted | private candidate; source and publication gates remain open |
 | Italy 853/2004 | 47,375 input / 41,849 accepted / 5,526 quarantined | repeated recognition/activity identities require review |
+| France private lifecycle rehearsal | 2 sections; synthetic candidate release only | rerun, suppression, and zero-public-row checks passed; source terms, identity, geospatial, and approval gates remain open |
+| Denmark private lifecycle rehearsal | 58,398 handoff rows in aggregate report | fail-closed private rehearsal; facility identity, coordinate, review, and publication gates remain open |
+| US private lifecycle rehearsal | 4 source profiles; 5 synthetic candidates | deterministic rerun and private suppression checks passed; no database import, release, promotion, or public exposure |
 
 Supporting source evidence includes the [APHIS refresh](aphis-lane1-refresh-2026-09-19.md),
 [US source boundary](countries/us/README.md), [France handoff](countries/france/sprint02-handoff-20260919.md),
@@ -71,9 +75,11 @@ and Denmark. These are not approved or public facilities:
 The complete row-free corpus and its limitations are recorded in
 [d1-data-readiness-report.json](../data/manifests/d1-data-readiness-report.json)
 and [d1-real-data-shaped-test-corpus.json](../data/manifests/d1-real-data-shaped-test-corpus.json).
-The offline private rehearsal passed fail-closed because no authorized private
-row handoff was available in the D1 worktree; no database/API import, release,
-promotion, deployment, or human approval was created.
+The B3 rehearsals now exercise the private lifecycle with sanitized fixtures and
+row-free aggregate reports for France, Denmark, and the US. They do not assert
+that the corresponding real captures are approved, and they create no public
+API rows, release promotion, deployment, or human approval. Database-backed
+E2E remains an environment-dependent follow-up gate.
 
 ## Status vocabulary
 
@@ -131,7 +137,7 @@ required.
 | --- | --- | --- | --- |
 | Governing ethics and privacy controls | In progress | [ETHICS.md](ETHICS.md), [policy checklist](governance/policy-implementation-todo.md) | Close outstanding implementation controls and verify behavior, not just prose. |
 | Source terms and redistribution | Blocked: human review | [source rights decisions](architecture/source-rights-decisions.md), source-specific assessments | Record terms decision for each source in the first release. |
-| Candidate acquisition and provenance | In progress | [source status](source-status.json), [D1 readiness report](../data/manifests/d1-data-readiness-report.json) | Re-run selected sources with retained provenance and safe aggregate validation; keep Denmark observations separate from facility identity. |
+| Candidate acquisition and provenance | In progress | [source status](source-status.json), [D1 readiness report](../data/manifests/d1-data-readiness-report.json), [B3 private rehearsal manifests](../data/manifests/france-golden-country-private-2026-09-18.json) | Re-run selected sources with retained provenance and safe aggregate validation; keep Denmark observations separate from facility identity. |
 | Identity and factual review | Blocked: human review | [US source boundary](countries/us/README.md), [Italy packet](review-packet-italy.md) | Adjudicate held links, quarantines, and contradictions without name/address guessing. |
 | Coordinate and address privacy | In progress | [geospatial readiness](current-geospatial-readiness.md), [geocoding operator](geocoding-operator.md) | Complete precision, residential/private-location, provider, and review-state checks. |
 | API and release contract | Complete and verified | [V2 API contract](api/v2-contract.md), [D1 convergence ledger](api/v2-product-convergence-gap-ledger.md), [MVP claim evidence](governance/v2-mvp-claim-evidence.md) | Exercise the frozen contract against a named reviewed candidate release. |
@@ -168,8 +174,10 @@ Evidence: [contract ledger](api/v2-product-convergence-gap-ledger.md),
 
 **Status: In progress.** Exercise the frozen contract against a named reviewed
 private release, close the remaining release/revocation gaps, and carry the
-behavioral contract into the frontend overhaul. Keep fixture/local synthetic
-data and the row-free real-data-shaped corpus available during implementation.
+behavioral contract into the frontend overhaul. France, Denmark, and US now
+have sanitized private lifecycle rehearsals, but none is a reviewed release.
+Keep fixture/local synthetic data and the row-free real-data-shaped corpus
+available during implementation.
 
 ### Production V2 frontend
 
@@ -239,3 +247,4 @@ and source rights decisions belong in [architecture/source-rights-decisions.md](
 | --- | --- | --- | --- | --- |
 | 2026-09-20 | Establish this document as the sole product-level readiness and overall V2 roadmap authority. | V2 product completeness and V1 replacement sequencing. | C1 approved scope; governing policy remains [ETHICS.md](ETHICS.md). | At the next integration sprint or any material gate change. |
 | 2026-09-20 | Keep V1 public and V2 private/local until a reviewed named release completes all launch gates. | All public application surfaces. | [V2 API contract](api/v2-contract.md), [source status](source-status.json), [reviewed release guidance](reviewed-demonstration-release.md). | Before private E2E trial. |
+| 2026-09-20 | Accept the France, Denmark, and US sanitized private lifecycle rehearsals as backend readiness evidence only; no rehearsal changes approval, publication, or facility identity status. | B3 selective convergence integration. | [France rehearsal](../data/manifests/france-golden-country-private-2026-09-18.json), [Denmark rehearsal](../data/manifests/denmark-private-golden-rehearsal-2026-09-18.json), [US rehearsal](../data/manifests/us-private-golden-rehearsal-2026-09-18.json). | Re-run against a named reviewed private release before frontend cutover. |
