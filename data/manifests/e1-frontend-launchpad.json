@@ -1,0 +1,12 @@
+{
+  "schema_version": "e1-frontend-launchpad-v1",
+  "status": "integrated-local-verification",
+  "branch": "eli/v2-frontend-overhaul",
+  "base": "7443cc6af92c3b7eddf0a20cba0858349580ce61",
+  "representative_dataset": {"facilities": 96, "graph_edges": 5, "coordinate_states": ["exact", "city", "coarse", "unmapped"], "confidence_bands": ["exact", "high", "medium", "low"], "public_projection_rows": 0},
+  "performance_dataset": {"facilities": 100000, "graph_edges": 150000, "generation": "fixed-seed streamed JSONL; verified outside Git"},
+  "public_graph": {"routes": ["/api/v2/graph/connections", "/api/v2/graph/entities", "/api/v2/graph/entities/{entity_id}/neighborhood"], "page_max": 100, "release_profile_gated": true, "read_only": true, "private_fallback": false},
+  "checks": {"rust_cargo_check_all_targets": "passed", "frontend_typecheck": "passed", "frontend_unit_tests": {"files": 18, "tests": 71}, "frontend_lint": "passed", "frontend_boundary": "passed", "frontend_build": "passed", "dataset_contract_tests": 3, "launchpad_contract_tests": 5},
+  "safety": ["No private rows, raw artifacts, credentials, or private paths are tracked.", "Public graph output remains empty until an eligible promoted release exists.", "Exact and inferred edges remain source-qualified and do not merge identities or transfer claims."],
+  "limitations": ["The local machine's process supervisor may reap detached child processes during automated shell capture; the launchpad's owned lifecycle and health logic are covered by unit tests and must be rechecked from an interactive PowerShell session.", "No public release was created by E1."]
+}

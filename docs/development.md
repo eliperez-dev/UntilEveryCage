@@ -11,6 +11,10 @@ Use `python scripts/dev.py --help` (or `scripts/dev.ps1 --help` on Windows) to d
 ```text
 doctor                 prerequisites, ports, configuration, and optional DB reachability
 up/down/status/probe   local V2 environment
+launchpad              owned Postgres + API + Svelte development stack (one command)
+launchpad-stop         stop only launchpad-owned processes; preserve its database
+launchpad-status/probe launchpad lifecycle and contract probes
+launchpad-reset        explicitly remove only the launchpad database volume
 logs                   recent Compose logs
 test [--full]          JavaScript tests (full runs the configured suite)
 pipeline [pytest args] Python pipeline tests
@@ -71,3 +75,51 @@ python scripts/dev.py up
 This reset is destructive to the local synthetic database and is not part of
 ordinary `down`; do not run it against production or an unknown Compose
 project. The migration ledger exists to prevent accidental history changes.
+
+## One-command frontend launchpad
+
+After both dependency sets are installed, the complete loopback development
+stack can be started with:
+
+```powershell
+python scripts/dev.py launchpad
+```
+
+The command validates Docker, Compose, Python, Cargo, Node, npm, PowerShell,
+the frontend dependencies, and the API/frontend ports before starting
+anything. It owns a distinct Compose project (`uec-v2-launchpad`) and a
+distinct `target/launchpad` process/state directory. It starts the local
+Postgres/PostGIS service, applies the checked-in migrations, starts the Rust
+API on `http://127.0.0.1:8000`, and starts Vite on
+`http://127.0.0.1:4173/v2-preview/`. The launchpad emits only URLs, aggregate
+data mode, release id, and a row-free summary; it never prints credentials,
+private paths, or rows.
+
+The default mode is the checked-in sanitized contract fixture. Private data is
+never discovered automatically. To select a prepared private development
+dataset, set both variables explicitly before starting:
+
+```powershell
+$env:UEC_DEV_DATASET_MODE = 'private'
+$env:UEC_DEV_DATASET_MANIFEST = 'D:\approved\uec\development-manifest.json'
+python scripts/dev.py launchpad
+```
+
+The manifest is an aggregate-only control document owned by the development
+dataset workflow. It must declare `mode: "private"`, `ready: true`, a safe
+`release_id`, and may include integer counts under `row_free_summary`.
+Malformed or missing private configuration fails closed before any service is
+started. The launchpad does not scan directories, acquire data, or import raw
+records.
+
+Use `python scripts/dev.py launchpad-probe` to check API liveness/readiness and
+the Vite preview. Use `python scripts/dev.py launchpad-stop` for an ordinary
+stop; the database volume is preserved. There is no implicit reset command.
+Only the launchpad's explicitly named Compose project and verified Vite
+process lease are eligible for cleanup, so an unrelated container or process
+is not stopped.
+
+If the disposable fallback database must be recreated, use the explicit
+destructive command `python scripts/dev.py launchpad-reset`. It targets only
+the `uec-v2-launchpad` Compose project and its volume, then requires a fresh
+`launchpad` start.

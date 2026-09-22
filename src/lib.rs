@@ -33,6 +33,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
 pub mod graph_private;
+pub mod graph_public;
 
 pub fn v2_error(
     status: StatusCode,

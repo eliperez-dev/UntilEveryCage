@@ -1,0 +1,43 @@
+{
+  "schema_version": "e1-frontend-development-dataset-v1",
+  "manifest_kind": "row-free-development-dataset-catalog",
+  "private_payloads_included": false,
+  "public_projection": {
+    "facility_rows": 0,
+    "graph_edges": 0,
+    "status": "empty_until_explicit_public_release"
+  },
+  "representative": {
+    "mode": "representative",
+    "deterministic_seed": 20260921,
+    "facility_rows": 96,
+    "graph_edges": 5,
+    "coordinate_states": ["exact", "city", "coarse", "unmapped"],
+    "graph_confidence_levels": ["high", "medium", "low"],
+    "countries": ["US", "FR", "IT", "DK", "CA", "DE"],
+    "ui_states": ["loading", "empty", "not_found_404", "rate_limited_429", "unavailable_503", "stale_success", "restricted", "suppressed"]
+  },
+  "performance": {
+    "mode": "performance",
+    "deterministic_seed": 20260921,
+    "minimum_facility_rows": 100000,
+    "minimum_graph_edges": 100000,
+    "last_verified_facility_rows": 100000,
+    "last_verified_graph_edges": 150000,
+    "last_verified_locations_sha256": "960d8342622025620b9dcdb73210dc3a8a44d5adb7a52d69ffdb40f143c78dc5",
+    "last_verified_graph_edges_sha256": "12883e9ca268c828105c23d91616b794a73bc9315952cb029497e59ae6771e64",
+    "generation": "streamed JSONL; generated outside Git; fixed-seed density skew and overlapping-point controls"
+  },
+  "private_mode": {
+    "requires_explicit_operator_manifest": true,
+    "allowlisted_sources": ["dk.smiley", "fr.dgal.section-i", "fr.dgal.section-ii", "it.853-2004", "us.fsis"],
+    "output": "aggregate source inventory only; no retained rows or artifacts are copied",
+    "public_projection": "always empty"
+  },
+  "safety": [
+    "No private paths, raw artifacts, addresses, credentials, or source rows are tracked.",
+    "Synthetic facility IDs remain source-qualified and never imply universal identity merges.",
+    "Exact and inferred graph rows carry distinct confidence, signal, contradiction, and disclaimer fields.",
+    "A release builder must explicitly select publication-eligible rows before any public projection exists."
+  ]
+}

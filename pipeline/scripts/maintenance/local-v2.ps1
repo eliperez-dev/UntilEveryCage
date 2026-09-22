@@ -2,9 +2,12 @@ param([ValidateSet('start','status','stop','probe')][string]$Command='status')
 $ErrorActionPreference='Stop'
 $root=(Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 $compose=Join-Path $root 'docker-compose.pipeline.yml'
-$project='uec-local-v2'; $dbPort=5433; $apiPort=8000
+$project=if ($env:UEC_LOCAL_V2_PROJECT) { $env:UEC_LOCAL_V2_PROJECT } else { 'uec-local-v2' }
+$dbPort=if ($env:UEC_PIPELINE_DB_PORT) { [int]$env:UEC_PIPELINE_DB_PORT } else { 5433 }
+$apiPort=if ($env:PORT) { [int]$env:PORT } else { 8000 }
 $db="postgresql://uec:uec-local-development-only@127.0.0.1:$dbPort/uec?sslmode=disable"
-$stateDir=Join-Path $root 'target\local-v2'; $pidFile=Join-Path $stateDir 'uec-api.pid'; $logFile=Join-Path $stateDir 'uec-api.log'; $errorFile=Join-Path $stateDir 'uec-api-error.log'
+$stateDir=if ($env:UEC_LOCAL_V2_STATE_DIR) { $env:UEC_LOCAL_V2_STATE_DIR } else { Join-Path $root 'target\local-v2' }
+$pidFile=Join-Path $stateDir 'uec-api.pid'; $logFile=Join-Path $stateDir 'uec-api.log'; $errorFile=Join-Path $stateDir 'uec-api-error.log'
 $env:UEC_PIPELINE_DB_PORT="$dbPort"; $env:UEC_DATABASE_URL=$db; $env:PORT="$apiPort"
 $env:UEC_CORS_ORIGIN="http://127.0.0.1:4173"
 

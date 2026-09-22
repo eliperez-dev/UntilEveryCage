@@ -435,10 +435,14 @@ No private rows or private filesystem paths are committed.
 
 ### Production V2 frontend
 
-**Status: Deferred.** Build the redesigned Svelte frontend against the frozen
-contract, including responsive/accessibility/performance work and complete
-empty, restricted, error, provenance, and uncertainty states. Keep V1 routes and
-rollback available during transition.
+**Status: Launchpad and design specification complete; implementation deferred.**
+E1 provides a one-command local stack, deterministic representative and scale
+fixtures, typed public graph client/contract checks, and a documentation-only
+two-destination Map/Database design package grounded in the V1 behavior
+inventory. Build the redesigned Svelte frontend against that package, including
+responsive/accessibility/performance work and complete empty, restricted,
+error, provenance, and uncertainty states. Keep V1 routes and rollback
+available during transition.
 
 ### First reviewed private release
 
@@ -506,3 +510,4 @@ and source rights decisions belong in [architecture/source-rights-decisions.md](
 | 2026-09-21 | Accept D6.1 matcher/persistence wiring and a bounded authorized real-data rehearsal as private runtime evidence; keep full-corpus and release claims blocked. | D6.1 matcher, private persistence, and API. | Integrated commit `7cf766f1`; 343-row retained Italy subset produced 207 inferred edges, one conflicting control, one negative control, 100-row API page, idempotent rerun, and zero public edges; [D6.1 report contract](../pipeline/common/d61_verification.py). | Run the full retained corpus in a bounded production-shaped job; keep public projection empty. |
 | 2026-09-22 | Define exact and inferred as the only private graph connection types; do not add a human-confirmed state or make adjudication a prerequisite for private edge persistence. | D6.2 contract freeze lane. | [Backend contract freeze](api/v2-backend-contract-freeze.md), [graph contract](api/private-graph-contract.md), and graph/API tests. | Revisit only if a future product decision changes graph semantics. |
 | 2026-09-22 | Accept D6.2 as the final reusable-backend architecture checkpoint; freeze major backend redesign while continuing source onboarding, deployment, and release work. | D6.2 integration. | [D6.2 closure manifest](../data/manifests/d62-backend-closure.json), full retained Italy rehearsal, source-boundary checks, legacy ledger, contract-freeze tests, and standard suite. | Begin serious frontend work and treat future backend changes as measured maintenance or source-specific onboarding. |
+| 2026-09-22 | Accept E1 as the frontend launchpad/design checkpoint; keep the existing V2 UI disposable and expose graph relationships only through the release-scoped public projection. | E1 integration. | [Frontend design authority package](frontend/README.md), [development dataset boundary](frontend-development-dataset.md), [public graph contract](api/public-graph-contract.md), launchpad and typed-client tests. | Implement the fresh Map and Database frontend after maintainer review; benchmark map rendering at the documented synthetic scale. |

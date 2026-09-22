@@ -6,6 +6,8 @@ INSERT INTO uec.releases (release_id,status,ruleset_version,profile,summary)
 VALUES ('standard-candidate','candidate','synthetic-test-v1','official','{}');
 INSERT INTO uec.raw_artifacts (artifact_id,storage_key,sha256,byte_size,retrieved_at)
 VALUES ('10000000-0000-0000-0000-000000000001','standard/contract',repeat('c',64),1,now());
+INSERT INTO uec.source_rights_decisions (source_id,profile,release_id,artifact_id,artifact_sha256,redistribution_status,decision_actor,decision_reference,decided_at)
+VALUES ('standard.contract','official','standard-candidate','10000000-0000-0000-0000-000000000001',repeat('c',64),'cleared','synthetic-fixture','standard-contract-fixture',now());
 INSERT INTO uec.source_records (source_record_id,source_id,source_record_key,artifact_id,raw_fields,parsed_at)
 VALUES ('10000000-0000-0000-0000-000000000002','standard.contract','contract','10000000-0000-0000-0000-000000000001','{}',now());
 INSERT INTO uec.facilities (facility_id,canonical_name,country_code,city)

@@ -17,7 +17,10 @@
     "GET /api/v2/locations.csv",
     "GET /api/v2/releases/manifest",
     "GET /api/v2/discovery/filters",
-    "GET /api/v2/discovery/facets"
+    "GET /api/v2/discovery/facets",
+    "GET /api/v2/graph/connections",
+    "GET /api/v2/graph/entities",
+    "GET /api/v2/graph/entities/{entity_id}/neighborhood"
   ],
   "development_only_endpoints": [
     "GET /api/dev/preview/candidates"
@@ -39,13 +42,13 @@
     "Errors use the versioned {api_version, error:{code,message}} envelope.",
     "Private graph connections are only exact or inferred; no human-confirmed graph state is promised.",
     "Inferred connections carry confidence, provenance, explanations, and disclaimers; they do not merge identities or transfer claims.",
+    "The public graph is read-only, release-scoped, suppression-aware, and exposes exact plus inferred rows without a human-confirmed state.",
     "The API contract does not claim animal totals, national completeness, factual truth, or deployment readiness."
   ],
   "deferred_contract_gaps": "docs/api/v2-product-convergence-gap-ledger.json",
   "non_goals": [
     "Administrative review UI",
     "Public ingestion or submission endpoint",
-    "Public accountability graph endpoint",
     "Narrative/story frontend",
     "Device geolocation requirement",
     "Unbounded bulk API",

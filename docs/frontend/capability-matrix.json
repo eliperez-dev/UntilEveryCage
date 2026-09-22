@@ -1,0 +1,26 @@
+{
+  "spec_version": "e1-capability-matrix-1",
+  "status": "design-boundary",
+  "principle": "Do not imply a backend capability that the current public wire contract does not provide.",
+  "capabilities": [
+    {"id":"location_list","area":"map,database","status":"supported_now","backend":"GET /api/v2/locations with cursor, filters, bbox/radius, and bounded limit","frontend":"Map viewport results, database result table, loading/partial-page context"},
+    {"id":"location_detail","area":"detail","status":"supported_now","backend":"GET /api/v2/locations/{facility_id}","frontend":"Stable facility route with drawer/split/fullscreen presentation"},
+    {"id":"facets_and_filter_metadata","area":"map,database","status":"supported_now","backend":"GET /api/v2/discovery/filters and /api/v2/discovery/facets","frontend":"Progressive filter controls, counts with release scope"},
+    {"id":"release_context","area":"all","status":"supported_now","backend":"GET /api/v2/releases/manifest and response meta","frontend":"Persistent release/profile/scope notice and share-state pinning"},
+    {"id":"bounded_csv_export","area":"database","status":"supported_now","backend":"GET /api/v2/locations.csv, bounded rows and profile notice","frontend":"Explicit selected-release export with visible scope and limitation"},
+    {"id":"precision_aware_locations","area":"map,detail","status":"supported_now","backend":"display_precision exact|city|unmapped with nullable coordinates","frontend":"Distinct map symbols/labels; no routing for city/unmapped"},
+    {"id":"lifecycle_and_provenance","area":"detail,database","status":"supported_now","backend":"Projection fields for lifecycle, origin, source, URL, retrieval, release","frontend":"Evidence panel and filterable status; never rewrite source wording"},
+    {"id":"public_graph_edges","area":"map,database,detail","status":"supported_now_release_gated","backend":"GET /api/v2/graph/connections, /api/v2/graph/entities, and one-hop neighborhood; release/profile/suppression/privacy gated read-only projection over private source-qualified evidence","frontend":"Connections section on record detail and searchable/filterable graph rows. Never ship the operator-only private route."},
+    {"id":"graph_confidence_explanation","area":"graph","status":"supported_now_release_gated","backend":"Public edge DTO carries connection_type, confidence, confidence_band, method, grouped signals, contradictions, safe source references, ruleset, observed/computed dates, and persistent disclaimer","frontend":"Exact/high/medium/low presentation with explicit estimate disclaimer"},
+    {"id":"graph_traversal","area":"graph","status":"deferred","backend":"Private neighborhood traversal exists; no public bounded traversal contract is frozen","frontend":"MVP supports one-hop public connections returned by the record endpoint; multi-hop is later"},
+    {"id":"server_text_search","area":"map,database","status":"supported_now","backend":"q over canonical name, city, country, category, source name per filters contract","frontend":"Debounced query with cancellable requests; no client-wide filtering"},
+    {"id":"v1_activity_semantics","area":"search,filters","status":"frontend_composition","backend":"Categories are exposed; animal/activity detail depends on projection fields and source contract","frontend":"Keep V1 OR search intent and category labels where mapped; show unsupported fields as unavailable, not guessed"},
+    {"id":"v1_lazy_aphis_reports","area":"detail","status":"deferred","backend":"No current V2 public APHIS report endpoint in v2-contract.json","frontend":"Do not call legacy route from V2; preserve as a later evidence adapter"},
+    {"id":"historical_observations","area":"detail","status":"deferred","backend":"History exists privately but no public history endpoint is frozen","frontend":"Show first/last observed and count now; history timeline later"},
+    {"id":"record_level_evidence_hashes","area":"detail","status":"deferred","backend":"Current location DTO lacks evidence hashes and geocoder metadata","frontend":"Show available source URL/date; do not invent hashes"},
+    {"id":"community_profile","area":"all","status":"supported_now_with_explicit_selection","backend":"Profiles include official, secondary, community; each response carries profile and warning semantics","frontend":"Never mix profiles; community/unreviewed context must precede access and persist on rows, map, detail, and export"},
+    {"id":"device_geolocation","area":"map","status":"prohibited_by_default","backend":"No backend need","frontend":"Optional future enhancement only with explicit consent; never persist or place in shared URLs/analytics"},
+    {"id":"entity_merges_or_claim_transfer","area":"graph","status":"prohibited","backend":"Graph edges are evidence relationships, not universal identity","frontend":"Never render inferred edge as merged node, ownership fact, or supply-chain proof"},
+    {"id":"private_preview","area":"development","status":"private_only","backend":"Separate /api/dev/preview and private graph routes require local authorization","frontend":"Development-only flag and unmistakable private/not-published banner; never bundled in production"}
+  ]
+}

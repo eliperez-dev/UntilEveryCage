@@ -26,12 +26,22 @@
     "inferred_confidence_kind": "ruleset_estimate_not_probability",
     "human_confirmed_state": false
   },
+  "public_graph": {
+    "api_version": "v2-graph-v1",
+    "contract": "docs/api/public-graph-contract.md",
+    "page_max": 100,
+    "release_gated": true,
+    "read_only": true,
+    "confidence_bands": ["exact", "high", "medium", "low"],
+    "public_projection": true,
+    "private_evidence_fallback": false
+  },
   "invariants": [
     "Private graph edges never merge universal identities.",
     "Private graph edges never transfer claims.",
     "Private graph edges never authorize publication.",
     "Current suppression applies to reads, maps, exports, history, reimports, and restores.",
-    "Public relationship projection remains empty unless a separately approved release contract enables it.",
+    "Public relationship projection is available only through the separately approved release-scoped contract and remains empty until a promoted eligible release exists.",
     "APHIS-to-FSIS automatic links are not generated.",
     "Release/profile, source rights, privacy, factual review, project approval, promotion, and publication are independent gates."
   ],
