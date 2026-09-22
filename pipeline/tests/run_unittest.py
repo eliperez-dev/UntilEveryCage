@@ -18,6 +18,7 @@ ALLOWED_SKIP_REASONS = {
     "database is older than migration 018; Docker E2E applies the current schema",
     "optional 100k benchmark is opt-in",
     "authorized D6 real private root not configured",
+    "set UEC_RUN_D61_REAL=1 after loading an authorized retained handoff",
 }
 
 
