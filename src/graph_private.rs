@@ -138,6 +138,12 @@ pub async fn connections(
             "computed_at": row.get::<_, chrono::DateTime<chrono::Utc>>(19),
             "conflicting": row.get::<_, bool>(20),
             "suppressed": row.get::<_, bool>(21),
+            "inferred_metadata": {
+                "review_state": "review_required",
+                "confidence_kind": "ruleset_estimate_not_probability",
+                "automatic_merge": false,
+                "claim_transfer": false,
+            },
         })
     }).collect();
     let next_cursor = data
@@ -151,6 +157,8 @@ pub async fn connections(
             "private": true,
             "bounded": true,
             "limit": limit,
+            "page_max": MAX_LIMIT,
+            "storage_cap": null,
             "next_cursor": next_cursor,
             "connection_type": p.connection_type,
             "min_confidence": p.min_confidence,

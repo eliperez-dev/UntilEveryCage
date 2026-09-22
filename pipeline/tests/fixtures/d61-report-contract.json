@@ -1,0 +1,65 @@
+{
+  "schema_version": "d6.1-real-verification-v1",
+  "status": "pending-real-rehearsal",
+  "scope": {
+    "execution": "fixture_contract_only",
+    "authorized_handoffs": 0,
+    "private_rows_consumed": 0,
+    "row_payloads_in_report": false
+  },
+  "candidates": {
+    "total": 0,
+    "exact": 0,
+    "inferred": 0,
+    "ruleset_output_only": true
+  },
+  "persisted": {
+    "total": 0,
+    "exact": 0,
+    "inferred": 0,
+    "idempotent": null,
+    "storage_cap": null
+  },
+  "skipped": {
+    "ambiguous_blocks": 0,
+    "reasons": {}
+  },
+  "controls": {
+    "negative": 0,
+    "conflicting": 0,
+    "genuine_inferred_connections": 0,
+    "automatic_merge": false,
+    "claim_transfer": false
+  },
+  "api": {
+    "page_max": 100,
+    "storage_cap": null,
+    "pages_observed": {},
+    "filters": [
+      "connection_type",
+      "min_confidence",
+      "source_id",
+      "entity_id",
+      "include_conflicting",
+      "suppressed",
+      "cursor"
+    ],
+    "inferred_metadata": true,
+    "disclaimer": "Confidence is a deterministic ruleset estimate, not a measured probability."
+  },
+  "publication": {
+    "public_rows": 0,
+    "public_edges": 0,
+    "public_projection": false,
+    "publication_status": "not_eligible"
+  },
+  "real_rehearsal": {
+    "required": true,
+    "executed": false,
+    "genuine_inferred_connections": 0,
+    "assertion": "nonzero genuine inferred connection required"
+  },
+  "blockers": [
+    "mandatory real Docker/Postgres inferred-edge rehearsal is pending"
+  ]
+}

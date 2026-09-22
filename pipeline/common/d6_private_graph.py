@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any, Iterable, Mapping
 
 from pipeline.common.d5_connection_analysis import EVIDENCE_SOURCE_IDS, _Observed, _probabilistic_candidates
+from pipeline.common.d61_verification import D61_PAGE_MAX, build_report
 
 
 CONNECTION_RULESET = "d6-connection-edges-v1"
@@ -47,6 +48,9 @@ class ConnectionEdge:
     observed_at: str = ""
 
     def as_safe_mapping(self) -> dict[str, Any]:
+        disclaimer = self.disclaimer
+        if self.connection_type == "inferred" and "not human verified" not in disclaimer.casefold():
+            disclaimer = disclaimer.rstrip(".") + "; not human verified."
         return {
             "connection_edge_id": self.edge_id,
             "source_id": self.source_id,
@@ -61,9 +65,13 @@ class ConnectionEdge:
             "suppressed": self.suppressed,
             "evidence_refs": [dict(ref) for ref in self.evidence_refs],
             "score_contributions": dict(self.score_contributions),
-            "disclaimer": self.disclaimer,
+            "disclaimer": disclaimer,
             "ruleset": self.ruleset,
             "observed_at": self.observed_at,
+            "inferred_metadata": {
+                "review_state": "review_required" if self.connection_type == "inferred" else "source_asserted",
+                "confidence_kind": "ruleset_estimate_not_probability" if self.connection_type == "inferred" else "source_assertion",
+            },
             "automatic_merge": False,
             "transfers_claims": False,
             "publication_status": "not_eligible",
@@ -135,6 +143,11 @@ class ConnectionStore:
                 "private": True,
                 "bounded": True,
                 "limit": limit,
+                "page_max": D61_PAGE_MAX,
+                # The API bounds response pages; it does not assert a storage
+                # cap.  Keep this explicit so operators do not mistake LIMIT
+                # 100 for a corpus-size ceiling.
+                "storage_cap": None,
                 "next_cursor": page[-1].edge_id if len(page) == limit else None,
                 "connection_type": connection_type,
                 "min_confidence": min_confidence,
@@ -221,6 +234,25 @@ def rehearse(rows: Iterable[_Observed], *, positive_controls: int = 1) -> dict[s
     exact = store.query(connection_type="exact", suppressed=False, limit=MAX_LIMIT)
     inferred_page = store.query(connection_type="inferred", min_confidence=0.0, suppressed=False, limit=MAX_LIMIT)
     positive_verified = len(exact["data"]) >= positive_controls
+    verification = build_report(
+        execution="injected_store_supplementary",
+        authorized_handoffs=0,
+        private_rows_consumed=len(compact),
+        candidate_count=inferred,
+        candidate_exact_count=first["inserted"],
+        candidate_inferred_count=inferred,
+        persisted_exact_count=len(exact["data"]),
+        persisted_inferred_count=len(inferred_page["data"]),
+        skipped_ambiguous_count=0,
+        negative_controls=0,
+        conflicting_controls=sum(edge.conflicting for edge in store.edges.values()),
+        genuine_inferred_connections=0,
+        real_rehearsal_executed=False,
+        idempotent=second["inserted"] == 0,
+        api_pages={"exact": len(exact["data"]), "inferred": len(inferred_page["data"])},
+        public_rows=0,
+        public_edges=0,
+    )
     return {
         "schema_version": "d6-private-graph-api-e2e-v1",
         "scope": {"private_rows_consumed": len(compact), "row_payloads_in_report": False},
@@ -231,4 +263,5 @@ def rehearse(rows: Iterable[_Observed], *, positive_controls: int = 1) -> dict[s
         "status": "verified" if positive_verified else "blocked-real-controls-unavailable",
         "query_contract": {"filters": ["connection_type", "min_confidence", "include_conflicting", "suppressed", "source_id", "entity_id", "cursor", "limit"], "max_limit": MAX_LIMIT, "safe_metadata": True, "provenance": True, "score_contributions": True, "disclaimer": True, "ruleset": True},
         "public": {"rows": 0, "api_unchanged": True, "map_unchanged": True, "export_unchanged": True},
+        "d6_1_verification": verification,
     }
