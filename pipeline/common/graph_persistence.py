@@ -27,6 +27,14 @@ from pipeline.contracts.graph_candidate_handoff import (
     canonical_json_bytes,
     validate_graph_candidate,
 )
+from pipeline.common.graph_edges import (
+    EntityRef,
+    SourceRef,
+    build_connection_edge,
+    persist_connection_edges,
+    score_connection,
+    validate_connection_edge,
+)
 
 
 DISPOSABLE_MARKER = "uec-e2e-disposable-v1"
@@ -37,6 +45,13 @@ _FORBIDDEN_IDENTITY_KEYS = {
     "global_identity", "master_id", "entity_id",
 }
 BatchCommitObserver = Callable[[int, int, int], None]
+ConnectionEdgeBuilder = Callable[[dict[str, Any], dict[str, Any]], Iterable[dict[str, Any]]]
+
+# These are evidence/event sources, not facility-master identity sources.  In
+# particular, an APHIS observation must never be asserted to be an FSIS
+# establishment merely because the two rows happen to share a name or number.
+_APHIS_FSIS_SOURCES = frozenset({"us.aphis", "us.inspections"})
+_FSIS_SOURCES = frozenset({"us.fsis"})
 
 
 class GraphPersistenceError(ValueError):
@@ -348,8 +363,162 @@ def _organization_id_for_identifier(connection: Any, identifier_id: uuid.UUID) -
     return connection.execute("SELECT organization_id FROM uec.source_entity_identifiers WHERE identifier_id=%s", (identifier_id,)).fetchone()[0]
 
 
+def _candidate_entity_maps(candidate: dict[str, Any], source_id: str) -> dict[str, EntityRef]:
+    refs: dict[str, EntityRef] = {}
+    for entity_type in ("facilities", "organizations"):
+        expected = "facility" if entity_type == "facilities" else "organization"
+        for entity in candidate.get(entity_type, ()):
+            if not isinstance(entity, dict):
+                raise GraphPersistenceError("graph candidate entities must be objects")
+            local_ref = entity.get("local_ref")
+            if not isinstance(local_ref, str) or not local_ref:
+                raise GraphPersistenceError("graph candidate entity local_ref is required")
+            identifier = entity.get("source_identifier")
+            if not isinstance(identifier, dict):
+                raise GraphPersistenceError("graph candidate entity source_identifier is required")
+            # Do not infer an endpoint kind from arbitrary matcher payloads;
+            # the handoff's typed collection is authoritative.
+            refs[local_ref] = EntityRef(
+                entity_type=expected,
+                source_id=str(identifier.get("source_id") or source_id),
+                identifier_type=str(identifier.get("identifier_type") or ""),
+                source_identifier=str(identifier.get("value") or ""),
+            )
+    return refs
+
+
+def _forbidden_evidence_facility_pair(left: EntityRef, right: EntityRef) -> bool:
+    sources = {left.source_id, right.source_id}
+    return bool(sources & _APHIS_FSIS_SOURCES) and bool(sources & _FSIS_SOURCES) and left.source_id != right.source_id
+
+
+def _source_refs(candidate: dict[str, Any], manifest: dict[str, Any]) -> list[SourceRef]:
+    source_id = str(candidate.get("source_id") or manifest["source_id"])
+    key = candidate.get("source_record_key") or candidate.get("source_observation_key")
+    if not isinstance(key, str) or not key.strip():
+        raise GraphPersistenceError("connection candidate requires source_record_key")
+    return [SourceRef(source_id=source_id, source_record_key=key)]
+
+
+def _matcher_edge(raw: dict[str, Any], candidate: dict[str, Any], manifest: dict[str, Any]) -> dict[str, Any] | None:
+    """Adapt the matcher lane's result to the shared score/build contract.
+
+    The matcher is deliberately not implemented here.  It may hand us an
+    already-built edge, or endpoint refs plus signal mappings.  This adapter
+    keeps persistence independent of matcher implementation details while
+    making every persisted edge pass the same validation gate.
+    """
+    if not isinstance(raw, dict):
+        raise GraphPersistenceError("matcher edge must be an object")
+    if {"edge_key", "from", "to", "connection_type"}.issubset(raw):
+        edge = validate_connection_edge(raw)
+        if _forbidden_evidence_facility_pair(
+            EntityRef(**{key: edge["from"][key] for key in ("entity_type", "source_id", "identifier_type", "source_identifier")}),
+            EntityRef(**{key: edge["to"][key] for key in ("entity_type", "source_id", "identifier_type", "source_identifier")}),
+        ):
+            return None
+        return edge
+
+    left = raw.get("from") or raw.get("from_ref") or raw.get("left")
+    right = raw.get("to") or raw.get("to_ref") or raw.get("right")
+    if isinstance(left, EntityRef):
+        left_ref = left
+    elif isinstance(left, dict):
+        left_ref = EntityRef(
+            entity_type=str(left.get("entity_type") or ""), source_id=str(left.get("source_id") or manifest["source_id"]),
+            identifier_type=str(left.get("identifier_type") or left.get("source_identifier_type") or ""),
+            source_identifier=str(left.get("source_identifier") or left.get("value") or ""),
+        )
+    else:
+        raise GraphPersistenceError("matcher edge requires a from endpoint")
+    if isinstance(right, EntityRef):
+        right_ref = right
+    elif isinstance(right, dict):
+        right_ref = EntityRef(
+            entity_type=str(right.get("entity_type") or ""), source_id=str(right.get("source_id") or manifest["source_id"]),
+            identifier_type=str(right.get("identifier_type") or right.get("source_identifier_type") or ""),
+            source_identifier=str(right.get("source_identifier") or right.get("value") or ""),
+        )
+    else:
+        raise GraphPersistenceError("matcher edge requires a to endpoint")
+    if _forbidden_evidence_facility_pair(left_ref, right_ref):
+        return None
+    signals = raw.get("signals") or raw.get("signal_bundle") or raw.get("match_signals")
+    if not isinstance(signals, list):
+        raise GraphPersistenceError("matcher edge requires a signal list")
+    scoring = score_connection(signals)
+    if not scoring.eligible:
+        return None
+    observed_at = raw.get("observed_at") or candidate.get("observed_at") or _timestamp(manifest)
+    return build_connection_edge(
+        from_ref=left_ref,
+        to_ref=right_ref,
+        relationship_type=str(raw.get("relationship_type") or "related_to"),
+        scoring=scoring,
+        supporting_source_refs=_source_refs(candidate, manifest),
+        observed_at=observed_at,
+        conflicting=bool(raw.get("conflicting") or raw.get("contradictory_evidence")),
+        suppressed=bool(raw.get("suppressed")),
+        # A retrieval timestamp makes a rerun byte/digest stable while still
+        # preserving a distinct observed timestamp from the source row.
+        computed_at=str(raw.get("computed_at") or manifest.get("retrieved_at_utc") or _timestamp(manifest)),
+    )
+
+
+def build_candidate_connection_edges(candidate: dict[str, Any], manifest: dict[str, Any], *,
+                                     edge_builder: ConnectionEdgeBuilder | None = None) -> list[dict[str, Any]]:
+    """Build exact and matcher-supplied inferred edges for one facility row.
+
+    Exact source assertions come from typed facility/organization references in
+    the handoff.  Inferred candidates are accepted only through ``edge_builder``
+    or the small endpoint/signal adapter above; no fuzzy matching is performed
+    in the persistence layer.
+    """
+    refs = _candidate_entity_maps(candidate, str(manifest["source_id"]))
+    built: list[dict[str, Any]] = []
+    for relationship in candidate.get("relationships", ()):
+        if not isinstance(relationship, dict) or relationship.get("assertion_status", "asserted") in {"unknown", "rejected"}:
+            continue
+        from_ref = refs.get(relationship.get("from_organization_ref"))
+        target_ref = refs.get(relationship.get("target_facility_ref") or relationship.get("target_organization_ref"))
+        if from_ref is None or target_ref is None or _forbidden_evidence_facility_pair(from_ref, target_ref):
+            continue
+        if relationship.get("connection_type") == "inferred":
+            signal_bundle = relationship.get("signal_bundle") or relationship.get("signals")
+            if not isinstance(signal_bundle, list):
+                continue
+            scoring = score_connection(signal_bundle)
+            if scoring.connection_type != "inferred":
+                continue
+        else:
+            scoring = score_connection([{"name": "source_assertion", "details": {"method": relationship.get("evidence_method") or "source_asserted_relationship"}}])
+        built.append(build_connection_edge(
+            from_ref=from_ref, to_ref=target_ref,
+            relationship_type=str(relationship.get("relationship_type")), scoring=scoring,
+            supporting_source_refs=_source_refs(candidate, manifest),
+            observed_at=relationship.get("observed_at") or candidate.get("observed_at") or _timestamp(manifest),
+            conflicting=relationship.get("assertion_status") in {"disputed", "rejected"},
+            computed_at=str(manifest.get("retrieved_at_utc") or _timestamp(manifest)),
+        ))
+
+    # Matcher lanes can attach records without requiring a schema migration.
+    # `connection_candidates` is the preferred name; the aliases keep this
+    # boundary compatible with earlier private handoff prototypes.
+    matcher_candidates = list(candidate.get("connection_candidates") or candidate.get("inferred_candidates") or candidate.get("edges") or ())
+    if edge_builder is not None:
+        matcher_candidates.extend(edge_builder(candidate, manifest))
+    for raw in matcher_candidates:
+        edge = _matcher_edge(raw, candidate, manifest)
+        if edge is not None:
+            built.append(edge)
+    # A matcher may repeat an explicit edge while enriching its explanation;
+    # the deterministic edge key is the single source of truth for persistence.
+    return list({edge["edge_key"]: edge for edge in built}.values())
+
+
 def _persist_candidate(connection: Any, manifest: dict[str, Any], candidate: dict[str, Any],
-                       artifact_id: uuid.UUID, handoff_digest: str) -> None:
+                       artifact_id: uuid.UUID, handoff_digest: str,
+                       *, edge_builder: ConnectionEdgeBuilder | None = None) -> dict[str, int]:
     source_record_key = candidate["source_record_key"]
     record_id = _ensure_record(connection, manifest, artifact_id, source_record_key,
                                candidate.get("source_values") or {}, handoff_digest)
@@ -416,6 +585,9 @@ def _persist_candidate(connection: Any, manifest: dict[str, Any], candidate: dic
             (left_id, right_id, manifest["source_id"], record_id, crosswalk["match_method"], crosswalk.get("confidence"),
              _observed_at(candidate.get("observed_at"), manifest), crosswalk.get("note"), left_id, right_id, record_id, crosswalk["match_method"]),
         )
+    connection_edges = build_candidate_connection_edges(candidate, manifest, edge_builder=edge_builder)
+    edge_counts = persist_connection_edges(connection, connection_edges) if connection_edges else {"inserted": 0, "updated": 0, "total": 0}
+    return edge_counts
 
 
 def _begin_run(connection: Any, manifest: dict[str, Any], source_kind: str, contract_version: str,
@@ -445,7 +617,8 @@ def _mark_failed(connection: Any, run_id: uuid.UUID, error: Exception) -> None:
 
 def import_graph_candidates(database_url: str, handoff_dir: str | Path, *,
                             disposable_db: bool = False, batch_size: int = DEFAULT_BATCH_SIZE,
-                            on_batch_committed: BatchCommitObserver | None = None) -> dict[str, Any]:
+                            on_batch_committed: BatchCommitObserver | None = None,
+                            edge_builder: ConnectionEdgeBuilder | None = None) -> dict[str, Any]:
     """Persist facility candidates in resumable private batches."""
     require_disposable_graph_database(database_url, disposable_db)
     if batch_size <= 0:
@@ -458,10 +631,11 @@ def import_graph_candidates(database_url: str, handoff_dir: str | Path, *,
             _ensure_source_artifact(db, manifest, digest)
             run_id, completed = _begin_run(db, manifest, "facility_master", GRAPH_CONTRACT_VERSION, digest, len(candidates))
         if completed:
-            return {"status": "already_present", "source_id": manifest["source_id"], "source_kind": "facility_master", "run_id": str(run_id), "item_count": len(candidates), "inserted_count": 0, "already_present_count": len(candidates), "rejected_count": 0, "public_rows": 0}
+            return {"status": "already_present", "source_id": manifest["source_id"], "source_kind": "facility_master", "run_id": str(run_id), "item_count": len(candidates), "inserted_count": 0, "already_present_count": len(candidates), "rejected_count": 0, "edge_inserted_count": 0, "edge_updated_count": 0, "edge_count": 0, "public_rows": 0}
         artifact_sha = str(manifest.get("checksum_sha256") or manifest.get("source_artifact_sha256") or digest)
         artifact_id = db.execute("SELECT artifact_id FROM uec.raw_artifacts WHERE sha256=%s", (artifact_sha if len(artifact_sha) == 64 else digest,)).fetchone()[0]
         inserted = already = rejected = 0
+        edge_inserted = edge_updated = 0
         try:
             for offset in range(0, len(candidates), batch_size):
                 batch_inserted = 0
@@ -472,7 +646,9 @@ def import_graph_candidates(database_url: str, handoff_dir: str | Path, *,
                         if existing:
                             already += 1
                             continue
-                        _persist_candidate(db, manifest, candidate, artifact_id, digest)
+                        edge_counts = _persist_candidate(db, manifest, candidate, artifact_id, digest, edge_builder=edge_builder)
+                        edge_inserted += edge_counts["inserted"]
+                        edge_updated += edge_counts["updated"]
                         db.execute("INSERT INTO uec.graph_ingest_items(ingest_run_id,source_id,source_record_key,item_sha256,item_kind,status) VALUES (%s,%s,%s,%s,'facility_candidate','inserted')", (run_id, manifest["source_id"], candidate["source_record_key"], item_digest))
                         inserted += 1
                         batch_inserted += 1
@@ -484,7 +660,7 @@ def import_graph_candidates(database_url: str, handoff_dir: str | Path, *,
             raise
         with db.transaction():
             db.execute("UPDATE uec.graph_ingest_runs SET status='completed', inserted_count=%s, already_present_count=%s, rejected_count=%s, completed_at=now() WHERE ingest_run_id=%s", (inserted, already, rejected, run_id))
-        return {"status": "completed", "source_id": manifest["source_id"], "source_kind": "facility_master", "run_id": str(run_id), "item_count": len(candidates), "inserted_count": inserted, "already_present_count": already, "rejected_count": rejected, "public_rows": 0}
+        return {"status": "completed", "source_id": manifest["source_id"], "source_kind": "facility_master", "run_id": str(run_id), "item_count": len(candidates), "inserted_count": inserted, "already_present_count": already, "rejected_count": rejected, "edge_inserted_count": edge_inserted, "edge_updated_count": edge_updated, "edge_count": edge_inserted + edge_updated, "public_rows": 0}
 
 
 def _persist_evidence_event(connection: Any, manifest: dict[str, Any], row: dict[str, Any],
@@ -570,4 +746,5 @@ def import_evidence_events(database_url: str, handoff_dir: str | Path, *,
 __all__ = [
     "GraphPersistenceError", "load_graph_candidate_handoff", "load_evidence_handoff",
     "import_graph_candidates", "import_evidence_events", "require_disposable_graph_database",
+    "build_candidate_connection_edges", "ConnectionEdgeBuilder",
 ]

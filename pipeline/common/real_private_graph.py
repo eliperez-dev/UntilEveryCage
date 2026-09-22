@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-from pipeline.common.graph_persistence import import_evidence_events, import_graph_candidates
+from pipeline.common.graph_persistence import ConnectionEdgeBuilder, import_evidence_events, import_graph_candidates
 
 
 REPORT_VERSION = "d5-real-private-graph-v1"
@@ -284,6 +284,7 @@ def run_rehearsal(
     selected_sources: Iterable[str] | None = None,
     database_url: str = "",
     disposable_db: bool = False,
+    edge_builder: ConnectionEdgeBuilder | None = None,
 ) -> dict[str, Any]:
     report = build_report(roots, selected_sources=selected_sources)
     source_ids = {item["source_id"] for item in report["sources"]}
@@ -301,7 +302,12 @@ def run_rehearsal(
         for source_id, kind, handoff_root in handoffs:
             importer = import_evidence_events if kind == "evidence" else import_graph_candidates
             try:
-                result = importer(database_url, handoff_root, disposable_db=True)
+                import_kwargs = {"disposable_db": True}
+                if kind == "facility" and edge_builder is not None:
+                    # Keep the matcher lane injected: this rehearsal owns
+                    # source discovery and persistence, not matching rules.
+                    import_kwargs["edge_builder"] = edge_builder
+                result = importer(database_url, handoff_root, **import_kwargs)
                 report["database"]["imports"].append({"source_id": source_id, "kind": kind, "status": "completed", "result": {key: value for key, value in result.items() if isinstance(value, (int, float, bool, str))}})
             except Exception as exc:  # operator report records aggregate blocker, never payload
                 report["database"]["imports"].append({"source_id": source_id, "kind": kind, "status": "blocked", "error_type": type(exc).__name__})

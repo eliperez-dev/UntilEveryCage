@@ -79,6 +79,19 @@ class D4GraphPersistenceE2ETests(unittest.TestCase):
                             "review_state": "review_required", "publication_status": "not_eligible",
                             "release_id": None},
         }
+        if index == 0:
+            # Exercise the D6 matcher handoff without implementing matching in
+            # the importer.  The endpoints stay source-qualified and the
+            # candidate remains private/review-required.
+            candidate["connection_candidates"] = [{
+                "from": {"entity_type": "organization", "source_id": source_id,
+                          "identifier_type": "synthetic-operator", "source_identifier": f"D4-ORG-INFERRED-{index}"},
+                "to": {"entity_type": "facility", "source_id": source_id,
+                        "identifier_type": "synthetic-permit", "source_identifier": f"D4-FAC-INFERRED-{index}"},
+                "relationship_type": "operator",
+                "signals": [{"name": "organization_name_normalized"}, {"name": "postal_match"}],
+                "observed_at": observed,
+            }]
         payload = canonical_json_bytes(candidate)
         return cls._write_jsonl_handoff(
             source_id, "facility", [payload], {
@@ -142,6 +155,9 @@ class D4GraphPersistenceE2ETests(unittest.TestCase):
             self.assertEqual(db.execute("SELECT count(*) FROM uec.graph_ingest_items").fetchone()[0], 13)
             self.assertEqual(db.execute("SELECT count(*) FROM uec.facilities").fetchone()[0], 11)
             self.assertEqual(db.execute("SELECT count(*) FROM uec.graph_evidence_events").fetchone()[0], 2)
+            self.assertEqual(db.execute("SELECT count(*) FROM uec.graph_connection_edges").fetchone()[0], 12)
+            self.assertEqual(db.execute("SELECT count(*) FROM uec.graph_connection_edges WHERE connection_type='exact'").fetchone()[0], 11)
+            self.assertEqual(db.execute("SELECT count(*) FROM uec.graph_connection_edges WHERE connection_type='inferred'").fetchone()[0], 1)
             self.assertEqual(db.execute("SELECT count(*) FROM uec.graph_public_relationships").fetchone()[0], 0)
             self.assertEqual(db.execute("SELECT count(*) FROM uec.graph_public_claims").fetchone()[0], 0)
 

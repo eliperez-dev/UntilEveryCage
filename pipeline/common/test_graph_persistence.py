@@ -6,6 +6,7 @@ from pathlib import Path
 
 from pipeline.common.graph_persistence import (
     GraphPersistenceError,
+    build_candidate_connection_edges,
     _observed_at,
     load_evidence_handoff,
     load_graph_candidate_handoff,
@@ -108,6 +109,55 @@ class GraphPersistenceContractTests(unittest.TestCase):
         (root / "manifest.json").write_text(json.dumps({"contract_version": "us-aphis-observation-handoff-v1", "source_id": "us.aphis", "entity_scope": "facility_master", "normalized_rows": 1, "normalized_sha256": hashlib.sha256(payload).hexdigest(), "release_state": "not-created", "publication_state": "private-candidate"}), encoding="utf-8")
         with self.assertRaises(GraphPersistenceError):
             load_evidence_handoff(root)
+
+    def test_candidate_edges_use_source_qualified_endpoints_and_keep_exact_inferred_distinct(self):
+        row = candidate()
+        row["organizations"] = [{"local_ref": "organization:1", "source_identifier": {"identifier_type": "vat", "value": "IT-1", "identity_scope": "source_scoped"}}]
+        row["relationships"] = [{
+            "relationship_type": "operator", "from_organization_ref": "organization:1",
+            "target_facility_ref": "facility:1", "assertion_status": "asserted",
+            "observed_at": "2026-01-01T00:00:00Z", "valid_from": None, "valid_to": None,
+            "confidence": None, "review_state": "review_required",
+        }]
+        row["connection_candidates"] = [{
+            "from": {"entity_type": "organization", "source_id": "synthetic.graph", "identifier_type": "vat", "source_identifier": "IT-2"},
+            "to": {"entity_type": "facility", "source_id": "synthetic.graph", "identifier_type": "permit", "source_identifier": "FAC-2"},
+            "relationship_type": "operator",
+            "signals": [
+                {"name": "organization_name_normalized"},
+                {"name": "postal_match"},
+            ],
+            "observed_at": "2026-01-01T00:00:00Z",
+        }]
+        edges = build_candidate_connection_edges(row, {"source_id": "synthetic.graph", "retrieved_at_utc": "2026-01-02T00:00:00Z"})
+        self.assertEqual([edge["connection_type"] for edge in edges], ["exact", "inferred"])
+        self.assertEqual({edge["from"]["source_id"] for edge in edges}, {"synthetic.graph"})
+        self.assertTrue(all(edge["storage_state"] == "private" and edge["publication_status"] == "not_eligible" for edge in edges))
+        self.assertNotEqual(edges[0]["edge_key"], edges[1]["edge_key"])
+
+    def test_candidate_edges_do_not_assert_aphis_fsis_links(self):
+        row = candidate(source_id="us.aphis")
+        row["connection_candidates"] = [{
+            "from": {"entity_type": "organization", "source_id": "us.aphis", "identifier_type": "operator_id", "source_identifier": "A-1"},
+            "to": {"entity_type": "facility", "source_id": "us.fsis", "identifier_type": "establishment_id", "source_identifier": "F-1"},
+            "relationship_type": "operator", "signals": [{"name": "source_assertion"}],
+            "observed_at": "2026-01-01T00:00:00Z",
+        }]
+        self.assertEqual(build_candidate_connection_edges(row, {"source_id": "us.aphis"}), [])
+
+    def test_relationship_matcher_signals_are_scored_as_inferred(self):
+        row = candidate()
+        row["organizations"] = [{"local_ref": "organization:1", "source_identifier": {"identifier_type": "vat", "value": "IT-1", "identity_scope": "source_scoped"}}]
+        row["relationships"] = [{
+            "relationship_type": "operator", "from_organization_ref": "organization:1",
+            "target_facility_ref": "facility:1", "assertion_status": "asserted",
+            "connection_type": "inferred", "signal_bundle": [{"name": "organization_name_normalized"}, {"name": "postal_match"}],
+            "observed_at": "2026-01-01T00:00:00Z", "valid_from": None, "valid_to": None,
+            "confidence": None, "review_state": "review_required",
+        }]
+        edges = build_candidate_connection_edges(row, {"source_id": "synthetic.graph"})
+        self.assertEqual(len(edges), 1)
+        self.assertEqual(edges[0]["connection_type"], "inferred")
 
 
 if __name__ == "__main__":

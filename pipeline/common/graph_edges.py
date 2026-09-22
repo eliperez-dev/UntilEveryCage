@@ -380,13 +380,19 @@ def persist_connection_edges(connection: Any, edges: Iterable[Mapping[str, Any]]
           match_method=EXCLUDED.match_method, supporting_source_refs=EXCLUDED.supporting_source_refs,
           signal_explanation=EXCLUDED.signal_explanation, ruleset_version=EXCLUDED.ruleset_version,
           observed_at=EXCLUDED.observed_at, computed_at=EXCLUDED.computed_at,
-          conflicting=EXCLUDED.conflicting, suppressed=EXCLUDED.suppressed"""
+          conflicting=EXCLUDED.conflicting, suppressed=EXCLUDED.suppressed
+        RETURNING (xmax = 0) AS inserted"""
     for raw in edges:
         edge = validate_connection_edge(raw)
         left, right = edge["from"], edge["to"]
         args = (edge["edge_key"], left["entity_type"], left["source_id"], left["identifier_type"], left["source_identifier"], right["entity_type"], right["source_id"], right["identifier_type"], right["source_identifier"], edge["relationship_type"], edge["connection_type"], edge["confidence"], edge["confidence_band"], edge["match_method"], _canonical(edge["supporting_source_refs"]), _canonical(edge["signal_explanation"]), edge["ruleset_version"], edge["observed_at"], edge.get("computed_at") or datetime.now(timezone.utc).isoformat(), edge.get("conflicting", False), edge.get("suppressed", False))
         cursor = connection.execute(sql, args)
-        if getattr(cursor, "rowcount", 1) == 1:
+        marker = None
+        fetchone = getattr(cursor, "fetchone", None)
+        if callable(fetchone):
+            row = fetchone()
+            marker = row[0] if row else None
+        if marker is True or (marker is None and getattr(cursor, "rowcount", 1) == 1):
             inserted += 1
         else:
             updated += 1
