@@ -355,7 +355,8 @@ available during implementation.
 
 ### D6.1 — Real inferred-edge verification and API/reporting gate
 
-**Status: Integrated; mandatory retained-real-data rehearsal pending.** The
+**Status: Verified for a bounded authorized real subset; full-corpus rehearsal
+remains follow-up.** The
 D6.1 aggregate report schema records candidate totals, persisted exact/inferred
 totals, ambiguous blocks and reason counts, negative/conflicting controls, API
 page observations, and the zero-public-output invariant. The matcher now uses
@@ -369,16 +370,18 @@ is a deterministic ruleset estimate rather than a measured probability.
 Inferred edges never merge identities, transfer claims, or authorize
 publication.
 
-The checked-in fixture and injected-store tests are supplementary contract
-checks only. A D6.1 verification report cannot become `verified` until the
-mandatory disposable Docker/Postgres rehearsal consumes an authorized retained
-real handoff and proves at least one genuine inferred connection while the
-public relationship projection remains empty, alongside retained negative and
-conflicting controls. No private rows, raw paths, or real-data fixture are
-committed. Until that rehearsal is run, the runtime count and any
-release/publication claim remain blocked.
+The mandatory disposable Docker/Postgres rehearsal consumed one authorized
+retained Italy handoff subset (343 real rows selected from a 41,849-row source
+handoff) and persisted 207 inferred edges, one conflicting control, and one
+negative control. The API-shaped database page returned 100 inferred edges,
+the rerun was idempotent, and the public relationship projection remained at
+zero. This proves runtime wiring and the private boundary for the bounded
+subset; it is not a claim that the entire retained corpus has been imported.
+No private rows, raw paths, or real-data fixture are committed. Full-corpus
+runtime counts and any release/publication claim remain blocked.
 
-Evidence: integrated at `7cf766f1`; [D6.1 report contract](../pipeline/common/d61_verification.py),
+Evidence: integrated at `7cf766f1` and verified by the operator-retained
+aggregate D6.1 rehearsal report; [D6.1 report contract](../pipeline/common/d61_verification.py),
 [D6.1 diagnostic](../pipeline/scripts/diagnostics/d61-verification.py),
 [aggregate/API tests](../pipeline/tests/test_d61_verification.py), and the
 [mandatory real rehearsal assertion](../pipeline/tests/e2e/d61_rehearsal.py).
@@ -453,4 +456,4 @@ and source rights decisions belong in [architecture/source-rights-decisions.md](
 | 2026-09-20 | Keep V1 public and V2 private/local until a reviewed named release completes all launch gates. | All public application surfaces. | [V2 API contract](api/v2-contract.md), [source status](source-status.json), [reviewed release guidance](reviewed-demonstration-release.md). | Before private E2E trial. |
 | 2026-09-20 | Accept the France, Denmark, and US sanitized private lifecycle rehearsals as backend readiness evidence only; no rehearsal changes approval, publication, or facility identity status. | B3 selective convergence integration. | [France rehearsal](../data/manifests/france-golden-country-private-2026-09-18.json), [Denmark rehearsal](../data/manifests/denmark-private-golden-rehearsal-2026-09-18.json), [US rehearsal](../data/manifests/us-private-golden-rehearsal-2026-09-18.json). | Re-run against a named reviewed private release before frontend cutover. |
 | 2026-09-21 | Accept D6's bounded Italy source-asserted exact-edge cohort as private graph/API readiness evidence; keep inferred materialization and publication blocked. | D6 integration. | [D6 aggregate report](../data/manifests/d6-real-graph-e2e.json), authoritative 044 schema, focused and standard test suites. | Add real inferred-edge materialization and repeat the private E2E trial before frontend cutover. |
-| 2026-09-21 | Accept D6.1 matcher/persistence wiring and bounded API/reporting as implementation evidence; require a real Docker/Postgres inferred-edge control before runtime or release claims. | D6.1 matcher, private persistence, and API. | Integrated commit `7cf766f1`; [D6.1 report contract](../pipeline/common/d61_verification.py), [mandatory rehearsal assertion](../pipeline/tests/e2e/d61_rehearsal.py), and focused tests. | Run the authorized retained real-data rehearsal; keep public projection empty. |
+| 2026-09-21 | Accept D6.1 matcher/persistence wiring and a bounded authorized real-data rehearsal as private runtime evidence; keep full-corpus and release claims blocked. | D6.1 matcher, private persistence, and API. | Integrated commit `7cf766f1`; 343-row retained Italy subset produced 207 inferred edges, one conflicting control, one negative control, 100-row API page, idempotent rerun, and zero public edges; [D6.1 report contract](../pipeline/common/d61_verification.py). | Run the full retained corpus in a bounded production-shaped job; keep public projection empty. |
