@@ -94,6 +94,8 @@ The 2026-09-16 Ireland reconnaissance verified the current FSAI/DAFM/HSE/SFPA so
 
 Australia is represented by 22 source-local evidence layers in `source-status.json` and `pipeline/source_registry.json`. All remain `publication_eligibility=blocked`; no runtime health is claimed. The bounded private artifacts are the NPI CSV (8,140 rows) and the earlier SA EPA GeoJSON capture (4,541 features / 1,695 licences). The detailed route, schema, identity, map/graph, privacy, terms, and blocker crosswalk is [`docs/countries/australia/source-crosswalk.json`](countries/australia/source-crosswalk.json); the decision report is [`docs/country-recon-au.md`](country-recon-au.md).
 
+The NPI source now has a deterministic synthetic/local-artifact adapter and shared-runner registration. This proves private parsing, quarantine, provenance, and candidate handoff only; it does not authorize acquisition, publication, or completeness claims.
+
 The machine-readable file is the source of truth for these statuses. Legacy `.locations` paths may represent composite coverage, but source identities are split where the evidence establishes separate feeds: France Section I/II, Canada Ontario/CFIA, Italy 853/2004/1069/2009, and Australia’s state/federal/environment/animal-use layers. Candidate feeds mentioned in reconnaissance documents are not silently conflated into a single healthy source. Country reconnaissance documents provide evidence and next actions; they do not override this status vocabulary or authorize publication.
 
 ## Poland additions (2026-09-16)

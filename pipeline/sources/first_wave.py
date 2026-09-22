@@ -23,6 +23,7 @@ from .canada.adapter import CfiaFederalMeatAdapter, OntarioMeatPlantsAdapter
 from .denmark.adapter import DenmarkSmileyAdapter
 from .france.adapter import FranceDgalSectionIAdapter, FranceDgalSectionIIAdapter
 from .italy.it_853_adapter import Italy853Adapter
+from .australia.npi import NpiFacilitiesAdapter
 
 
 ROOT = Path(__file__).resolve().parent
@@ -98,6 +99,10 @@ def _italy() -> SourceAdapter:
     return Italy853Adapter()
 
 
+def _australia_npi() -> SourceAdapter:
+    return NpiFacilitiesAdapter()
+
+
 FIRST_WAVE: tuple[SourceDescriptor, ...] = (
     SourceDescriptor("dk.smiley", "DK", "https://pub.fvst.dk/publikationer/Smileydata.xml", _denmark, (ROOT / "denmark" / "fixtures" / "synthetic.xml",), "denmark-smiley-contract-v1", "denmark-smiley-contract-v1", "verified"),
     SourceDescriptor("be.locations", "BE", BELGIUM_CONFIG["operator_url"], _belgium, (ROOT / "belgium" / "fixtures" / "synthetic_operators.csv", ROOT / "belgium" / "fixtures" / "synthetic_activity_codes.csv"), BELGIUM_CONFIG["adapter_version"], BELGIUM_CONFIG["schema_version"], "assisted_only"),
@@ -106,6 +111,7 @@ FIRST_WAVE: tuple[SourceDescriptor, ...] = (
     SourceDescriptor("fr.dgal.section-i", "FR", "https://fichiers-publics.agriculture.gouv.fr/dgal/ListesOfficielles/SSA1_VIAN_ONG_DOM.txt", _france_i, (ROOT / "france" / "fixtures" / "section_i.csv",), "fr-dgal-853-v2", "fr-dgal-853-txt-v2", "verified"),
     SourceDescriptor("fr.dgal.section-ii", "FR", "https://fichiers-publics.agriculture.gouv.fr/dgal/ListesOfficielles/SSA1_VIAN_COL_LAGO.txt", _france_ii, (ROOT / "france" / "fixtures" / "section_ii.csv",), "fr-dgal-853-v2", "fr-dgal-853-txt-v2", "verified"),
     SourceDescriptor("it.853-2004", "IT", "https://www.dati.salute.gov.it/", _italy, (ROOT / "italy" / "fixtures" / "synthetic_853.csv",), "it-853-candidate-v2", "it-853-csv-v2.0", "verified"),
+    SourceDescriptor("au.npi.facilities", "AU", "https://data.gov.au/data/dataset/043f58e0-a188-4458-b61c-04e5b540aea4", _australia_npi, (ROOT / "australia" / "fixtures" / "npi_facilities.csv",), "au-npi-facilities-v1", "au-npi-csv-v1", "assisted_only"),
 )
 
 BY_SOURCE_ID = {descriptor.source_id: descriptor for descriptor in FIRST_WAVE}
@@ -166,6 +172,22 @@ class FirstWaveRefreshAdapter:
         if raw_path is None or not raw_path.is_file():
             raise FileNotFoundError(f"preserved artifact is unavailable for {self.source_id}")
         source_adapter = self.descriptor.adapter()
+        if self.source_id == "au.npi.facilities":
+            try:
+                source_adapter.validate_schema(raw_path.read_bytes())
+            except ValueError as error:
+                if "schema drift" in str(error).lower():
+                    return {
+                        "input_rows": 0,
+                        "normalized_rows": 0,
+                        "quarantined_rows": 0,
+                        "schema_status": "schema-drift",
+                        "drift_alarms": [str(error)],
+                        "candidate_handoff": False,
+                        "review_required": True,
+                        "public_surfaces": {"api": False, "map": False, "csv": False},
+                    }
+                raise
         acquisition = options.get("acquisition")
         if self.source_id == "be.locations" and isinstance(acquisition, Mapping) and acquisition.get("companion_artifact_path"):
             # The Belgian adapter joins two source artifacts.  Use the

@@ -73,9 +73,9 @@ class GeocodingProfileTests(unittest.TestCase):
         self.assertIn("dk.smiley", report["deep_tranche"])
         self.assertNotIn("approved-for-release", json.dumps(report))
 
-    def test_integration_build_has_254_source_backlog_and_profile_summaries(self):
+    def test_integration_build_has_current_source_backlog_and_profile_summaries(self):
         report = build_geocoding_recon()
-        self.assertEqual(report["source_count"], 254)
+        self.assertEqual(report["source_count"], 256)
         self.assertEqual(report["profile_count"], 6)
         self.assertEqual(len(report["profile_summaries"]), 6)
         self.assertEqual(report["platform_integration"]["publication_effect"].split(";")[0], "none")

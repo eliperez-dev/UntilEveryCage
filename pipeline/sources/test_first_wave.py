@@ -8,10 +8,10 @@ from .first_wave import FIRST_WAVE, descriptor_for, readiness_report, run_fixtur
 
 
 class FirstWaveDescriptorTests(unittest.TestCase):
-    def test_exactly_seven_sources_are_registered(self):
+    def test_expected_sources_are_registered(self):
         self.assertEqual(
             {item.source_id for item in FIRST_WAVE},
-            {"dk.smiley", "be.locations", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "fr.dgal.section-i", "fr.dgal.section-ii", "it.853-2004"},
+            {"dk.smiley", "be.locations", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "fr.dgal.section-i", "fr.dgal.section-ii", "it.853-2004", "au.npi.facilities"},
         )
 
     def test_descriptors_are_fixture_and_local_artifact_ready(self):
@@ -50,7 +50,7 @@ class FirstWaveDescriptorTests(unittest.TestCase):
 
     def test_readiness_report_keeps_live_state_separate(self):
         report = readiness_report()
-        self.assertEqual(len(report), 7)
+        self.assertEqual(len(report), 8)
         self.assertTrue(all(item["private_pipeline"] == "fixture_contract_ready" for item in report))
         self.assertTrue(all(item["publication"] == "human_gate_required" for item in report))
         self.assertIn("assisted_only", {item["live_acquisition"] for item in report})

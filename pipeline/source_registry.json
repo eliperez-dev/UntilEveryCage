@@ -481,9 +481,9 @@
       "access_method": "public catalogue download",
       "cadence": "catalogue dataset date 2026-04-01; cadence not explicit",
       "attribution_licensing_notes": "Catalogue identifies CC BY 4.0; attribute Commonwealth of Australia/DCCEEW and complete privacy/release review",
-      "adapter_status": "reference_only",
+      "adapter_status": "implemented_partial",
       "expected_artifact_schema": "CSV/GeoJSON/KMZ; facility_id, jurisdiction IDs, names, ABN/ACN, address, coordinates, ANZSIC, activities, report IDs/URLs",
-      "blockers": ["Observed NPI population is not a complete slaughter registry; no public row release approved."]
+      "blockers": ["Observed NPI population is not a complete slaughter registry; no public row release approved. Local-artifact and synthetic fixture paths are implemented; current acquisition remains assisted until a retained edition and terms review are supplied."]
     },
     {
       "source_id": "au.nsw.epa-poeo",

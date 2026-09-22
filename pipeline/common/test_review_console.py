@@ -60,7 +60,7 @@ class ReviewConsoleTests(unittest.TestCase):
 
     def test_checked_in_registry_produces_a_classification_for_every_country(self):
         snapshot = build_review_console_snapshot(build_platform_registry(), generated_at="2026-09-18T00:00:00Z")
-        self.assertEqual(snapshot["country_count"], 45)
+        self.assertEqual(snapshot["country_count"], 46)
         self.assertEqual(set(snapshot["countries"]), {record["country_code"] for record in snapshot["country_records"]})
         self.assertTrue(all(record["readiness_class"] in READINESS_CLASSES for record in snapshot["country_records"]))
 

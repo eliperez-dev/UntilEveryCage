@@ -111,6 +111,20 @@ states and must be reported separately.
 | Operations and deployment | Blocked: engineering | Local/private environments and runbooks exist; production proxy trust, visitor/provider audit, artifact inventory, rollback, and operational ownership are not fully verified. | Complete deployment/provider audit and an operator-run private release drill. |
 | Publication and release authority | Blocked: human review | No current candidate has completed all source, privacy, factual, project-approval, and release-authority gates. | Obtain authorized review for the bounded first release; do not infer approval from acquisition or tests. |
 
+### E2 Australia NPI source onboarding
+
+E2 added `au.npi.facilities` to the shared source registry and runner. The
+synthetic contract passes schema-drift detection, checksum/provenance handling,
+quarantine, private lifecycle output, and one-source, selected-source, and
+all-eligible sequential runner execution. The checked-in fixture contains 5
+rows: 3 normalized and 2 quarantined, including source-coordinate and
+unresolved-coordinate states. No live network request or public projection was
+performed. The previously retained 8,140-row NPI artifact is represented by
+metadata outside Git but was unavailable in the integration workspace, so its
+counts are not claimed as a completed local-artifact run. Candidate database
+import remains unconfigured for this source and no graph relationships are
+invented. See [E2 aggregate evidence](../data/manifests/e2-australia-npi.json).
+
 ### Data lifecycle states
 
 The product readiness state is not a single data count:
@@ -511,3 +525,4 @@ and source rights decisions belong in [architecture/source-rights-decisions.md](
 | 2026-09-22 | Define exact and inferred as the only private graph connection types; do not add a human-confirmed state or make adjudication a prerequisite for private edge persistence. | D6.2 contract freeze lane. | [Backend contract freeze](api/v2-backend-contract-freeze.md), [graph contract](api/private-graph-contract.md), and graph/API tests. | Revisit only if a future product decision changes graph semantics. |
 | 2026-09-22 | Accept D6.2 as the final reusable-backend architecture checkpoint; freeze major backend redesign while continuing source onboarding, deployment, and release work. | D6.2 integration. | [D6.2 closure manifest](../data/manifests/d62-backend-closure.json), full retained Italy rehearsal, source-boundary checks, legacy ledger, contract-freeze tests, and standard suite. | Begin serious frontend work and treat future backend changes as measured maintenance or source-specific onboarding. |
 | 2026-09-22 | Accept E1 as the frontend launchpad/design checkpoint; keep the existing V2 UI disposable and expose graph relationships only through the release-scoped public projection. | E1 integration. | [Frontend design authority package](frontend/README.md), [development dataset boundary](frontend-development-dataset.md), [public graph contract](api/public-graph-contract.md), launchpad and typed-client tests. | Implement the fresh Map and Database frontend after maintainer review; benchmark map rendering at the documented synthetic scale. |
+| 2026-09-22 | Accept E2 Australia NPI onboarding as an implemented private adapter/runner contract, while keeping live acquisition, local-artifact import, privacy/terms review, and publication blocked. | `au.npi.facilities`. | [E2 aggregate evidence](../data/manifests/e2-australia-npi.json), NPI adapter and shared-runner tests. | Provide the retained artifact for a real local-artifact rehearsal and review source-specific release gates. |

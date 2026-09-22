@@ -1,0 +1,46 @@
+{
+  "schema_version": "e2-source-onboarding-v1",
+  "sprint": "E2",
+  "source_id": "au.npi.facilities",
+  "source_scope": "Australian National Pollutant Inventory reporting facilities; environmental overlay, not complete animal-facility coverage",
+  "adapter": {
+    "status": "implemented_partial",
+    "adapter_version": "au-npi-facilities-v1",
+    "schema_version": "au-npi-csv-v1",
+    "acquisition": "assisted_only",
+    "live_network_requests": 0,
+    "public_projection": {"rows": 0, "edges": 0}
+  },
+  "synthetic_contract": {
+    "input_rows": 5,
+    "normalized_rows": 3,
+    "quarantined_rows": 2,
+    "source_coordinates": 2,
+    "unresolved_coordinates": 1,
+    "schema_drift": "verified",
+    "provenance_checksum": "verified",
+    "private_lifecycle": "verified",
+    "shared_runner": {"one_source": "passed", "selected_sources": "passed", "all_eligible_sources": "passed", "all_selected": 14}
+  },
+  "retained_artifact": {
+    "metadata_status": "recorded_outside_git",
+    "declared_input_rows": 8140,
+    "declared_coordinates": 8140,
+    "declared_distinct_facility_ids": 8140,
+    "local_artifact_e2e": "not_run_artifact_unavailable_in_current_workspace",
+    "publication": "blocked",
+    "note": "The retained raw CSV is not present in this integration workspace; metadata-only counts are not substituted for an adapter run."
+  },
+  "database_e2e": {
+    "candidate_import": "not_run_source_handoff_has_no_configured_database_sink",
+    "graph_import": "not_run_no_relationships_declared",
+    "idempotent_rerun": "verified_at_private_lifecycle_fixture_boundary",
+    "public_rows": 0,
+    "public_edges": 0
+  },
+  "limitations": [
+    "No live acquisition was attempted; the source remains assisted-only and fails closed before network access.",
+    "The NPI is not complete Australian animal-facility coverage.",
+    "Terms, privacy, coordinate precision, project approval, and publication remain human gates."
+  ]
+}
