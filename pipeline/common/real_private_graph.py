@@ -10,16 +10,105 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import sqlite3
+import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-from pipeline.common.d5_connection_analysis import _observed_from_row, iter_probabilistic_candidates
-from pipeline.common.graph_persistence import ConnectionEdgeBuilder, import_evidence_events, import_graph_candidates, load_graph_candidate_handoff
+from pipeline.common.d5_connection_analysis import _iter_probabilistic_candidates, _observed_from_json, _observed_from_row, _observed_json
+from pipeline.common.graph_persistence import ConnectionEdgeBuilder, import_evidence_events, import_graph_candidates, iter_graph_candidate_handoff
 
 
 REPORT_VERSION = "d5-real-private-graph-v1"
 EVIDENCE_CONTRACTS = {"us-aphis-observation-handoff-v1"}
+
+
+def _rss_bytes() -> int | None:
+    try:
+        import psutil  # type: ignore
+        return int(psutil.Process().memory_info().rss)
+    except Exception:
+        try:
+            import resource  # type: ignore
+            value = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+            return value * (1024 if os.name != "nt" else 1)
+        except Exception:
+            return None
+
+
+class _MatcherStage:
+    """Private disk-backed bridge between source handoffs and the matcher."""
+
+    def __init__(self) -> None:
+        parent = Path.cwd() / ".tmp"
+        parent.mkdir(parents=True, exist_ok=True)
+        fd, name = tempfile.mkstemp(prefix="uec-d6-graph-", suffix=".sqlite3", dir=str(parent))
+        os.close(fd)
+        self.path = Path(name)
+        self.db = sqlite3.connect(self.path)
+        self.db.execute("PRAGMA journal_mode=DELETE")
+        self.db.execute("PRAGMA synchronous=OFF")
+        self.db.executescript("""
+            CREATE TABLE observations(source_id TEXT NOT NULL, source_record_key TEXT NOT NULL,
+                payload TEXT NOT NULL, PRIMARY KEY(source_id, source_record_key));
+            CREATE TABLE edges(source_id TEXT NOT NULL, source_record_key TEXT NOT NULL,
+                candidate TEXT NOT NULL, PRIMARY KEY(source_id, source_record_key, candidate));
+            CREATE INDEX edges_lookup ON edges(source_id, source_record_key);
+        """)
+        self.rows_staged = 0
+        self.edges_staged = 0
+
+    def add_handoff(self, handoff_root: Path) -> None:
+        manifest, candidates, _, _ = iter_graph_candidate_handoff(handoff_root)
+        source_id = str(manifest["source_id"])
+        for item in candidates:
+            key = str(item["source_record_key"])
+            observed = _observed_from_row({**item, "source_id": item.get("source_id") or source_id}, source_id)
+            self.db.execute(
+                "INSERT OR REPLACE INTO observations(source_id,source_record_key,payload) VALUES (?,?,?)",
+                (source_id, key, _observed_json(observed)),
+            )
+            self.rows_staged += 1
+        self.db.commit()
+
+    def observed(self) -> Iterable[Any]:
+        for (payload,) in self.db.execute("SELECT payload FROM observations ORDER BY source_id, source_record_key"):
+            yield _observed_from_json(payload)
+
+    def build_candidates(self) -> dict[str, int]:
+        generated, matcher_counters = _iter_probabilistic_candidates(self.observed())
+        for inferred in generated:
+            endpoints = inferred.get("endpoints") or []
+            if len(endpoints) != 2:
+                continue
+            owner = endpoints[0]
+            source_id = str(owner.get("source_id") or "")
+            key = str(owner.get("source_record_key") or "")
+            if not source_id or not key:
+                continue
+            self.db.execute(
+                "INSERT OR IGNORE INTO edges(source_id,source_record_key,candidate) VALUES (?,?,?)",
+                (source_id, key, json.dumps(inferred, ensure_ascii=False, separators=(",", ":"))),
+            )
+            self.edges_staged += 1
+        self.db.commit()
+        return {"rows_staged": self.rows_staged, "inferred_candidates_staged": self.edges_staged, **matcher_counters}
+
+    def edge_builder(self, candidate: dict[str, Any], manifest: dict[str, Any]) -> Iterable[dict[str, Any]]:
+        source_id = str(candidate.get("source_id") or manifest["source_id"])
+        key = str(candidate.get("source_record_key") or "")
+        for (payload,) in self.db.execute("SELECT candidate FROM edges WHERE source_id=? AND source_record_key=? ORDER BY candidate", (source_id, key)):
+            yield json.loads(payload)
+
+    def close(self) -> None:
+        self.db.close()
+        for suffix in ("", "-journal", "-wal", "-shm"):
+            try:
+                self.path.with_name(self.path.name + suffix).unlink()
+            except OSError:
+                pass
 
 
 @dataclass(frozen=True)
@@ -300,52 +389,42 @@ def run_rehearsal(
     if database_url:
         if not disposable_db:
             raise ValueError("database rehearsal requires disposable_db=True")
-        # Build one deterministic matcher index over the retained facility
-        # handoffs before importing them.  The importer remains bounded and
-        # resumable per source, while inferred candidates can legitimately
-        # connect records from different sources.
-        matcher_by_record: dict[tuple[str, str], list[dict[str, Any]]] = {}
-        if edge_builder is None:
-            all_candidates: list[dict[str, Any]] = []
+        phases: dict[str, float] = {}
+        stage_started = time.perf_counter()
+        matcher_stage: _MatcherStage | None = None
+        try:
+            if edge_builder is None:
+                matcher_stage = _MatcherStage()
+                for _, kind, handoff_root in handoffs:
+                    if kind == "facility":
+                        matcher_stage.add_handoff(handoff_root)
+                stage_stats = matcher_stage.build_candidates()
+                phases["matcher_staging_and_generation"] = round(time.perf_counter() - stage_started, 6)
+                edge_builder = matcher_stage.edge_builder
             for source_id, kind, handoff_root in handoffs:
-                if kind != "facility":
-                    continue
+                importer = import_evidence_events if kind == "evidence" else import_graph_candidates
                 try:
-                    manifest, candidates, _ = load_graph_candidate_handoff(handoff_root)
-                except Exception:
-                    continue
-                for item in candidates:
-                    if isinstance(item, dict):
-                        all_candidates.append({**item, "source_id": item.get("source_id") or manifest["source_id"]})
-            observations = [_observed_from_row(item, str(item.get("source_id"))) for item in all_candidates]
-            generated = iter_probabilistic_candidates(observations)
-            candidate_by_record = {(str(item.get("source_id")), str(item.get("source_record_key"))): item for item in all_candidates}
-            for inferred in generated:
-                endpoints = inferred.get("endpoints") or []
-                if len(endpoints) != 2:
-                    continue
-                owner = endpoints[0]
-                owner_key = (str(owner.get("source_id")), str(owner.get("source_record_key")))
-                if owner_key not in candidate_by_record:
-                    continue
-                matcher_by_record.setdefault(owner_key, []).append(inferred)
-
-            def edge_builder(candidate: dict[str, Any], manifest: dict[str, Any]) -> Iterable[dict[str, Any]]:
-                key = (str(candidate.get("source_id") or manifest["source_id"]), str(candidate.get("source_record_key") or ""))
-                return matcher_by_record.get(key, ())
-
-        for source_id, kind, handoff_root in handoffs:
-            importer = import_evidence_events if kind == "evidence" else import_graph_candidates
-            try:
-                import_kwargs = {"disposable_db": True}
-                if kind == "facility" and edge_builder is not None:
-                    # Keep the matcher lane injected: this rehearsal owns
-                    # source discovery and persistence, not matching rules.
-                    import_kwargs["edge_builder"] = edge_builder
-                result = importer(database_url, handoff_root, **import_kwargs)
-                report["database"]["imports"].append({"source_id": source_id, "kind": kind, "status": "completed", "result": {key: value for key, value in result.items() if isinstance(value, (int, float, bool, str))}})
-            except Exception as exc:  # operator report records aggregate blocker, never payload
-                report["database"]["imports"].append({"source_id": source_id, "kind": kind, "status": "blocked", "error_type": type(exc).__name__})
+                    import_kwargs = {"disposable_db": True}
+                    if kind == "facility" and edge_builder is not None:
+                        import_kwargs["edge_builder"] = edge_builder
+                    result = importer(database_url, handoff_root, **import_kwargs)
+                    result_summary = {key: value for key, value in result.items() if isinstance(value, (int, float, bool, str))}
+                    for key in ("phase_timings_seconds", "peak_rss_bytes"):
+                        if key in result:
+                            result_summary[key] = result[key]
+                    report["database"]["imports"].append({"source_id": source_id, "kind": kind, "status": "completed", "result": result_summary})
+                except Exception as exc:  # operator report records aggregate blocker, never payload
+                    report["database"]["imports"].append({"source_id": source_id, "kind": kind, "status": "blocked", "error_type": type(exc).__name__})
+            phases["database_import"] = round(time.perf_counter() - stage_started, 6) - phases.get("matcher_staging_and_generation", 0)
+            report["database"]["runtime"] = {
+                "phase_timings_seconds": phases,
+                "peak_rss_bytes": _rss_bytes(),
+                "staging": stage_stats if matcher_stage is not None else {"external_edge_builder": True},
+                "candidate_processing": "disk-backed observation and edge staging; no global candidate cap",
+            }
+        finally:
+            if matcher_stage is not None:
+                matcher_stage.close()
     report["database"]["completed"] = sum(item["status"] == "completed" for item in report["database"]["imports"])
     report["database"]["blocked"] = sum(item["status"] == "blocked" for item in report["database"]["imports"])
     return report

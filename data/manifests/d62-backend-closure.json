@@ -1,0 +1,59 @@
+{
+  "schema_version": "d62-backend-closure-v1",
+  "scope": "aggregate-only D6.2 backend architecture closure evidence",
+  "generated_at_utc": "2026-09-21T21:30:00Z",
+  "private_graph": {
+    "source_id": "it.853-2004",
+    "accepted_rows": 41849,
+    "quarantined_rows": 5526,
+    "rows_staged": 41849,
+    "blocks_indexed": 48871,
+    "pairs_considered": 67323,
+    "candidate_pairs_emitted": 776,
+    "candidate_pairs_exact_equivalent": 29952,
+    "ambiguous_blocks": 0,
+    "persisted_inferred_edges": 267,
+    "persisted_exact_edges": 0,
+    "conflicting_edges": 1,
+    "placeholder_endpoints": 0,
+    "public_edges": 0,
+    "runtime_seconds": 1047.481044,
+    "python_working_set_bytes_observed": 56586240,
+    "candidate_processing": "disk-backed observation and edge staging; no global candidate cap",
+    "rerun_inserted_duplicates": 0,
+    "rerun_already_present_items": 41849,
+    "api_page_counts_include_conflicting": [100, 100, 67],
+    "api_page_max": 100
+  },
+  "source_boundary": {
+    "registered_sources": 13,
+    "network_default": "fail_closed",
+    "states": ["live", "assisted", "terms-blocked", "schema-drift", "failed"],
+    "previous_validated_state_retained_on_failure": true
+  },
+  "legacy_archive": {
+    "files": 63,
+    "bytes": 153228521,
+    "sha256_verified": 63,
+    "database_migrated": 0,
+    "publication_eligible": 0
+  },
+  "publication": {
+    "public_rows": 0,
+    "public_edges": 0,
+    "release_created": false,
+    "promoted": false
+  },
+  "tests": {
+    "focused_d62": 27,
+    "standard_python": 361,
+    "adapter_contract": 64,
+    "rust": 83,
+    "skipped_standard_e2e": 28
+  },
+  "limitations": [
+    "Source additions, deployment, scheduling, rights, privacy, factual review, and publication remain separate workstreams.",
+    "The completed run and a controlled persisted-checkpoint resume are verified; a process-kill at an arbitrary mid-batch point remains a future operational drill.",
+    "Python RSS instrumentation was unavailable; the reported working set is an OS-level observation and not a psutil reading."
+  ]
+}

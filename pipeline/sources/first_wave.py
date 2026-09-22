@@ -62,11 +62,15 @@ class SourceDescriptor:
 
     def readiness(self) -> dict[str, Any]:
         """Return capability facts without conflating acquisition and approval."""
+        live_callable = self.source_id in {"be.locations", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "fr.dgal.section-i", "fr.dgal.section-ii", "it.853-2004"}
+        operational = "terms-blocked" if live_callable else "assisted"
         return {
             "source_id": self.source_id,
             "fixture_ready": True,
             "local_artifact_ready": True,
             "live_acquisition": self.live_acquisition,
+            "operational_classification": operational,
+            "live_callable": live_callable,
             "private_pipeline": "fixture_contract_ready",
             "publication": self.publication,
             "geocoding": "disabled",
@@ -121,6 +125,39 @@ class FirstWaveRefreshAdapter:
         self.source_id = descriptor.source_id
         self.adapter_version = descriptor.adapter_version
 
+    def acquire(self, *, run_dir: Path, options: Mapping[str, Any]) -> Mapping[str, Any]:
+        """Invoke an existing bounded source fetch, when explicitly granted.
+
+        The runner performs the source-scoped authorization check before this
+        method is called.  This hook only wires existing acquisition modules;
+        it does not create a new HTTP client or discover undocumented routes.
+        """
+        review_paths = options.get("terms_review_paths")
+        review = review_paths.get(self.source_id) if isinstance(review_paths, Mapping) else None
+        review = review or options.get("terms_review_path")
+        if not review:
+            raise RuntimeError("terms review is required for live acquisition")
+        root = run_dir / "acquisition"
+        run_id = run_dir.name
+        timeout = float(options.get("timeout_seconds", 60.0))
+        max_bytes = int(options.get("max_bytes", 128 * 1024 * 1024))
+        if self.source_id == "be.locations":
+            from .belgium.acquire import fetch_pair
+            pair = fetch_pair(output_root=root, terms_review_path=Path(str(review)), run_id=run_id, timeout_seconds=timeout, max_bytes=max_bytes)
+            return {"artifact_path": pair["operator"]["artifact_path"], "companion_artifact_path": pair["activity_codes"]["artifact_path"], "acquisition": pair}
+        if self.source_id in {"ca.ontario.meat-plants", "ca.cfia.federal-meat"}:
+            from .canada.acquire import fetch_source_artifact
+            source = "cfia" if self.source_id == "ca.cfia.federal-meat" else "ontario"
+            return fetch_source_artifact(source=source, output_root=root, terms_review_path=Path(str(review)), run_id=run_id, timeout_seconds=timeout, max_bytes=max_bytes)
+        if self.source_id in {"fr.dgal.section-i", "fr.dgal.section-ii"}:
+            from .france.acquire import fetch_section
+            section = "I" if self.source_id.endswith("section-i") else "II"
+            return fetch_section(section=section, output_root=root, terms_review_path=Path(str(review)), run_id=run_id, timeout_seconds=timeout, max_bytes=max_bytes)
+        if self.source_id == "it.853-2004":
+            from .italy.acquire import fetch
+            return fetch(output_root=root, run_id=run_id, terms_review_path=Path(str(review)), timeout_seconds=timeout, max_bytes=max_bytes)
+        raise RuntimeError(f"no approved live callable for {self.source_id}; use assisted local artifact")
+
     def refresh(self, *, mode: str, run_dir: Path, artifact: Path | None,
                 options: Mapping[str, Any]) -> Mapping[str, Any]:
         if mode == "live-acquisition":
@@ -129,7 +166,40 @@ class FirstWaveRefreshAdapter:
         if raw_path is None or not raw_path.is_file():
             raise FileNotFoundError(f"preserved artifact is unavailable for {self.source_id}")
         source_adapter = self.descriptor.adapter()
+        acquisition = options.get("acquisition")
+        if self.source_id == "be.locations" and isinstance(acquisition, Mapping) and acquisition.get("companion_artifact_path"):
+            # The Belgian adapter joins two source artifacts.  Use the
+            # acquired companion codebook instead of silently falling back to
+            # the checked-in synthetic fixture.
+            companion_path = Path(str(acquisition["companion_artifact_path"]))
+            companion_facts = acquisition.get("acquisition", {}).get("activity_codes", {}) if isinstance(acquisition.get("acquisition"), Mapping) else {}
+            companion_raw = companion_path.read_bytes()
+            companion_artifact = SourceArtifact(
+                source_url=str(companion_facts.get("final_url") or companion_facts.get("requested_url") or self.descriptor.source_url),
+                retrieved_at_utc=str(companion_facts.get("retrieved_at_utc") or SYNTHETIC_RETRIEVED_AT),
+                sha256=hashlib.sha256(companion_raw).hexdigest(), byte_size=len(companion_raw),
+                code_version=self.adapter_version, config_version=self.descriptor.schema_version,
+                rights_caveat="source-specific terms remain a human gate",
+                privacy_caveat="private candidate staging; privacy review remains required",
+                coverage="Belgian activity-code companion artifact; not a facility list",
+            )
+            source_adapter = BelgiumOperatorsAdapter(companion_path, companion_artifact)
+        acquisition = options.get("acquisition") if isinstance(options.get("acquisition"), Mapping) else {}
         source_artifact = self.descriptor.artifact_for(raw_path)
+        acquisition_facts = acquisition
+        if self.source_id == "be.locations" and isinstance(acquisition.get("acquisition"), Mapping):
+            acquisition_facts = acquisition["acquisition"].get("operator", {})
+        if acquisition_facts:
+            source_artifact = SourceArtifact(
+                source_url=str(acquisition_facts.get("final_url") or acquisition_facts.get("requested_url") or source_artifact.source_url),
+                retrieved_at_utc=str(acquisition_facts.get("retrieved_at_utc") or source_artifact.retrieved_at_utc),
+                sha256=str(acquisition_facts.get("sha256") or source_artifact.sha256),
+                byte_size=int(acquisition_facts.get("byte_size") or source_artifact.byte_size),
+                publication_date=acquisition_facts.get("publication_date"), effective_date=acquisition_facts.get("effective_date"),
+                code_version=self.adapter_version, config_version=self.descriptor.schema_version,
+                rights_caveat=source_artifact.rights_caveat, privacy_caveat=source_artifact.privacy_caveat,
+                coverage=source_artifact.coverage, redirects=tuple(acquisition_facts.get("redirects") or ()),
+            )
         status = run_private_lifecycle(
             raw_path, run_dir, source_artifact, source_adapter,
             health_as_of_utc=source_artifact.retrieved_at_utc,
@@ -162,6 +232,7 @@ class FirstWaveRefreshAdapter:
 def register_first_wave(catalog: Any) -> None:
     """Register the D2 facility adapters and D3 evidence adapters."""
     for descriptor in FIRST_WAVE:
+        readiness = descriptor.readiness()
         capabilities = AdapterCapabilities(
             source_id=descriptor.source_id,
             adapter_version=descriptor.adapter_version,
@@ -171,6 +242,8 @@ def register_first_wave(catalog: Any) -> None:
             publication=descriptor.publication,
             adapter_path=f"pipeline/sources/{descriptor.country_code.lower()}",
             country_code=descriptor.country_code.lower(),
+            operational_classification=readiness["operational_classification"],
+            live_callable=readiness["live_callable"],
         )
         catalog.register(FirstWaveRefreshAdapter(descriptor), capabilities)
     # D3 extends the same control plane with facility-master adapters.  Keep

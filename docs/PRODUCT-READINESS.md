@@ -22,7 +22,7 @@ publishable facilities unless explicitly labelled that way.
 
 ## Verified checkpoint
 
-- **Baseline:** repository checkpoint `D6 integration commit` (D6 private real-edge cohort; 2026-09-21 UTC).
+- **Baseline:** repository checkpoint `D6.2 integration` (full retained Italy-corpus runtime, source-boundary contract, legacy ledger, and frontend contract freeze; 2026-09-21 UTC). Major backend architecture is now frozen.
 - **Current public product:** V1 remains production and the public default.
 - **V2 frontend:** Svelte/TypeScript fixture and local synthetic preview; it is
   not the production replacement and has no configured external tile service.
@@ -101,11 +101,11 @@ states and must be reported separately.
 
 | Workstream | Status | Current truth | Next action |
 | --- | --- | --- | --- |
-| Backend and database | Complete and verified | Rust/Axum API, PostGIS schema, migrations, release/profile concepts, provenance, suppression-aware projections, shared private pipeline, and append-only graph/evidence persistence boundaries are tested in synthetic and disposable PostGIS environments. | Close the remaining live-wire contract and durable release/revocation gaps. |
+| Backend and database | Complete and verified for reusable architecture | D6.2 completed the full retained Italy-corpus matcher/import path, source-boundary runner contract, legacy evidence ledger, and frontend-facing contract freeze. Major backend redesign is frozen. | Continue country/source onboarding, deployment operations, and release work without reopening platform architecture unless a measured gap requires it. |
 | API contract | Complete and verified | D1 froze the current frontend-facing DTO/query contract, wire schemas, compatibility notes, and convergence gaps with targeted drift tests. It is exercised against synthetic/local contracts, not a reviewed real release. | Exercise the frozen contract against a named reviewed private release. |
 | Frontend product | In progress | V2 is a developer preview using fixtures/local synthetic data; V1 vanilla JavaScript remains public. | Approve information architecture and visual direction, then build a production Svelte frontend. |
 | Data acquisition | In progress | Several current private captures and source adapters exist; many countries remain reconnaissance-only or adapter/fixture-only. | Select one bounded first release and complete its source-specific terms and provenance review. |
-| Identity and reconciliation | Blocked: human review | Source-local identities, deterministic links, and probabilistic candidate edges are retained with score, confidence band, method, features, contradictions, provenance, disclaimer, and ruleset metadata. Imports remain review-required; cross-source merges and claim transfer are never automatic. | Adjudicate a bounded sample and publish only scoped, evidenced relationships. |
+| Identity and reconciliation | Complete and verified for private graph semantics | Source-qualified exact and inferred edges are retained with score, confidence band, method, signals, contradictions, provenance, disclaimer, and ruleset metadata. The graph has no human-confirmed state; cross-source universal merges and claim transfer are never automatic. | Continue source-specific quality/terms/privacy work; publication still requires independent release approval. |
 | Geospatial readiness | In progress | Geocoding is disabled or tightly bounded in current private handoffs; provider, precision, privacy, and review state must remain explicit. | Complete source-specific coordinate/privacy review and a production geocoder/provider decision. |
 | Privacy and suppression | In progress | Policy and synthetic suppression paths exist, but independent durable restriction, replay, cache, and cross-V1/V2 propagation controls remain release gates. | Implement and exercise the durable ledger, pre-service restore gate, and suppression crosswalk. |
 | Operations and deployment | Blocked: engineering | Local/private environments and runbooks exist; production proxy trust, visitor/provider audit, artifact inventory, rollback, and operational ownership are not fully verified. | Complete deployment/provider audit and an operator-run private release drill. |
@@ -248,7 +248,7 @@ scheduler, secret, promotion, deployment, or public release was added. See
 ### D4 — Accountability graph persistence and evidence linking
 
 **Status: Complete and verified for private persistence and synthetic graph
-rehearsal; human identity evaluation remains open.** The 11 facility and two
+rehearsal.** The 11 facility and two
 evidence-event D3 handoff types now have a shared append-only private graph
 import boundary. Facility candidates persist source-qualified facilities,
 organizations, relationship observations, claims, and source-scoped
@@ -270,9 +270,10 @@ facility sources and one evidence handoff for each of two evidence sources,
 reran all 13 with zero duplicates, and observed zero public graph rows. The
 row-free control-plane rehearsal also covers corruption isolation, kind
 mismatch rejection, lineage events, suppression, fail-closed private access,
-and bounded 10,000-record scale. No real corpus was imported, and no human
-adjudicated sample exists yet; therefore precision, recall, and production
-identity quality remain unmeasured.
+and bounded 10,000-record scale. No real corpus was imported. Precision/recall
+against an adjudicated sample is not a prerequisite for retaining private
+exact or inferred edges; publication quality, source terms, privacy, and
+release approval remain separate gates.
 
 Evidence: `pipeline/common/graph_persistence.py`,
 `pipeline/common/identity_candidates.py`,
@@ -291,11 +292,10 @@ source-native identifier observations, and 98,490 claims. A rerun inserted
 zero duplicates. The public graph projection remained empty.
 
 The row-free analyzer observed 7,241 FSIS exact source-ID observations, 995
-APHIS exact source-ID evidence observations, 39,020 Italy VAT/fiscal-identifier
-candidate observations, and 5,000 probabilistic review candidates (the
-configured analysis cap). Automatic merges and APHIS↔FSIS links remained zero;
-precision and recall remain unmeasured because no human adjudication was
-available.
+APHIS exact source-ID evidence observations, and 39,020 Italy VAT/fiscal-
+identifier candidate observations. Its historical 5,000 probabilistic-candidate
+diagnostic cap is superseded by the D6.1 indexed, resumable matcher; it is not a
+product storage limit. Automatic merges and APHIS↔FSIS links remained zero.
 
 This rehearsal also found two real integration gaps. Italy's handoff emitted
 unknown source observation dates; the importer now falls back to the handoff
@@ -315,8 +315,8 @@ committed here.
 
 ### D6 — Private real-edge cohort and graph API convergence
 
-**Status: Complete for a bounded private real-edge cohort; inferred-edge
-materialization and publication remain open.** The duplicate migration was
+**Status: Historical bounded exact-edge cohort; superseded by D6.1 for inferred
+edge materialization.** The duplicate migration was
 resolved to one authoritative `044_graph_connection_edges` schema. Its only
 connection types are `exact` and `inferred`; grouped signals compound with
 diminishing returns and penalties, and every edge carries a versioned
@@ -326,13 +326,14 @@ projection.
 
 The disposable Postgres/PostGIS rehearsal materialized 47,375 Italy source
 records, 18,689 organizations, 25,639 facilities, and 25,326 exact
-source-asserted edges. It produced zero public edges and zero inferred edges
-in the database pass. The offline aggregate diagnostic consumed 54,159 rows
-across five authorized handoff families and returned capped pages of 100 exact
-and 100 inferred candidates. Positive and negative controls were proven from
-source assertions and forbidden-pair rules: 47,375 positive controls, two
-negative controls, and zero automatic APHIS↔FSIS edges. No raw rows or private
-paths are committed here.
+source-asserted edges. It produced zero public edges and zero inferred edges in
+the database pass because the pre-D6.1 persistence path did not invoke inferred
+materialization. The offline aggregate diagnostic consumed 54,159 rows across
+five authorized handoff families and returned API pages of 100 exact and 100
+inferred candidates. Positive and negative controls were proven from source
+assertions and forbidden-pair rules: 47,375 positive controls, two negative
+controls, and zero automatic APHIS↔FSIS edges. No raw rows or private paths are
+committed here.
 
 The D5 collision count remains explicitly classified as zero repetition, zero
 expected fanout, zero true conflict, zero malformed, and zero missing; D5 had
@@ -341,8 +342,9 @@ corpus-wide absence claim.
 
 Evidence: [D6 aggregate report](../data/manifests/d6-real-graph-e2e.json),
 the `044_graph_connection_edges` migration, and the focused D6/API tests.
-France, FSIS, and APHIS graph-edge materialization, real inferred-edge proof,
-and any publication or promotion remain explicit follow-up work.
+France, FSIS, and APHIS graph-edge materialization and any publication or
+promotion remain source/release follow-up work; D6.1 supplies the private
+inferred-edge proof for its bounded authorized subset.
 
 ### Product convergence (remaining release work)
 
@@ -355,8 +357,8 @@ available during implementation.
 
 ### D6.1 — Real inferred-edge verification and API/reporting gate
 
-**Status: Verified for a bounded authorized real subset; full-corpus rehearsal
-remains follow-up.** The
+**Status: Complete for bounded authorized real materialization; full-corpus
+runtime remains the final D6.2 gate.** The
 D6.1 aggregate report schema records candidate totals, persisted exact/inferred
 totals, ambiguous blocks and reason counts, negative/conflicting controls, API
 page observations, and the zero-public-output invariant. The matcher now uses
@@ -377,14 +379,59 @@ negative control. The API-shaped database page returned 100 inferred edges,
 the rerun was idempotent, and the public relationship projection remained at
 zero. This proves runtime wiring and the private boundary for the bounded
 subset; it is not a claim that the entire retained corpus has been imported.
-No private rows, raw paths, or real-data fixture are committed. Full-corpus
-runtime counts and any release/publication claim remain blocked.
+Inferred edges are algorithmic evidence, not human-confirmed edges, and remain
+private until an independent release/profile permits publication. No private
+rows, raw paths, or real-data fixture are committed. Full-corpus runtime
+counts and any release/publication claim remain blocked.
 
 Evidence: integrated at `7cf766f1` and verified by the operator-retained
 aggregate D6.1 rehearsal report; [D6.1 report contract](../pipeline/common/d61_verification.py),
 [D6.1 diagnostic](../pipeline/scripts/diagnostics/d61-verification.py),
 [aggregate/API tests](../pipeline/tests/test_d61_verification.py), and the
 [mandatory real rehearsal assertion](../pipeline/tests/e2e/d61_rehearsal.py).
+
+### D6.2 — Backend architecture closure and contract freeze
+
+**Status: Complete and verified; final foundational backend sprint.** D6.2 closes the
+remaining seams without adding countries, redesigning graph semantics, or
+introducing scheduling/publication. Its gates are: full retained-corpus
+inferred-edge runtime with bounded memory and deterministic resume;
+source-runner operational states that fail closed before unauthorized network
+access; metadata-only certification of the checked-in legacy archive; and the
+frontend-facing DTO/error/pagination/provenance contract freeze.
+
+When integration evidence passes, this sprint marks the reusable backend
+architecture as complete and frozen for frontend integration. Continuing work
+then becomes source onboarding, source-specific acquisition/terms/privacy,
+deployment, and release operations—not a new backend architecture phase.
+Human review remains a gate for rights, privacy, factual claims, approval, and
+publication. It is not a graph connection state or a prerequisite for private
+exact/inferred edge persistence.
+
+The mandatory disposable Docker/Postgres rehearsal consumed 41,849 accepted
+Italy observations and accounted for 5,526 quarantined source rows. The
+disk-backed matcher staged 41,849 rows, considered 67,323 pairs, emitted 776
+candidate pairs, and persisted 267 distinct private inferred edges (one
+conflicting control). It completed in 1,047.5 seconds with observed Python
+working-set memory of approximately 56 MiB; no global candidate cap was used.
+The rerun reported 41,849 already-present items and inserted zero duplicates;
+a controlled persisted-checkpoint resume also completed from offset 41,849 with
+unchanged edge counts.
+The authenticated private API traversed 267 edges as pages of 100, 100, and 67;
+public rows and edges remained zero. Endpoint placeholders were zero and all
+persisted edges remained private and not eligible for publication.
+
+The source-boundary lane now reports honest live, assisted, terms-blocked,
+schema-drift, and failed states for the 13 registered D3 sources, preserving
+previous validated state and failing closed before unauthorized network access.
+The legacy ledger certifies 63 checked-in artifacts by aggregate hash/size
+metadata only; all remain metadata-only and not eligible for publication.
+
+Evidence: [D6.2 aggregate closure manifest](../data/manifests/d62-backend-closure.json),
+[backend contract freeze](api/v2-backend-contract-freeze.md), [legacy status
+ledger](../data/manifests/legacy-status.json), the standard suite (361 Python
+tests plus 64 adapter/contract tests), Rust tests (83), and the hosted CI run.
+No private rows or private filesystem paths are committed.
 
 ### Production V2 frontend
 
@@ -455,5 +502,7 @@ and source rights decisions belong in [architecture/source-rights-decisions.md](
 | 2026-09-20 | Establish this document as the sole product-level readiness and overall V2 roadmap authority. | V2 product completeness and V1 replacement sequencing. | C1 approved scope; governing policy remains [ETHICS.md](ETHICS.md). | At the next integration sprint or any material gate change. |
 | 2026-09-20 | Keep V1 public and V2 private/local until a reviewed named release completes all launch gates. | All public application surfaces. | [V2 API contract](api/v2-contract.md), [source status](source-status.json), [reviewed release guidance](reviewed-demonstration-release.md). | Before private E2E trial. |
 | 2026-09-20 | Accept the France, Denmark, and US sanitized private lifecycle rehearsals as backend readiness evidence only; no rehearsal changes approval, publication, or facility identity status. | B3 selective convergence integration. | [France rehearsal](../data/manifests/france-golden-country-private-2026-09-18.json), [Denmark rehearsal](../data/manifests/denmark-private-golden-rehearsal-2026-09-18.json), [US rehearsal](../data/manifests/us-private-golden-rehearsal-2026-09-18.json). | Re-run against a named reviewed private release before frontend cutover. |
-| 2026-09-21 | Accept D6's bounded Italy source-asserted exact-edge cohort as private graph/API readiness evidence; keep inferred materialization and publication blocked. | D6 integration. | [D6 aggregate report](../data/manifests/d6-real-graph-e2e.json), authoritative 044 schema, focused and standard test suites. | Add real inferred-edge materialization and repeat the private E2E trial before frontend cutover. |
+| 2026-09-21 | Accept D6's bounded Italy source-asserted exact-edge cohort as historical private graph/API readiness evidence; D6.1 supersedes its inferred-edge wiring gap. | D6 integration. | [D6 aggregate report](../data/manifests/d6-real-graph-e2e.json), authoritative 044 schema, focused and standard test suites. | Complete D6.2 full-corpus runtime and source-boundary gates before frontend cutover. |
 | 2026-09-21 | Accept D6.1 matcher/persistence wiring and a bounded authorized real-data rehearsal as private runtime evidence; keep full-corpus and release claims blocked. | D6.1 matcher, private persistence, and API. | Integrated commit `7cf766f1`; 343-row retained Italy subset produced 207 inferred edges, one conflicting control, one negative control, 100-row API page, idempotent rerun, and zero public edges; [D6.1 report contract](../pipeline/common/d61_verification.py). | Run the full retained corpus in a bounded production-shaped job; keep public projection empty. |
+| 2026-09-22 | Define exact and inferred as the only private graph connection types; do not add a human-confirmed state or make adjudication a prerequisite for private edge persistence. | D6.2 contract freeze lane. | [Backend contract freeze](api/v2-backend-contract-freeze.md), [graph contract](api/private-graph-contract.md), and graph/API tests. | Revisit only if a future product decision changes graph semantics. |
+| 2026-09-22 | Accept D6.2 as the final reusable-backend architecture checkpoint; freeze major backend redesign while continuing source onboarding, deployment, and release work. | D6.2 integration. | [D6.2 closure manifest](../data/manifests/d62-backend-closure.json), full retained Italy rehearsal, source-boundary checks, legacy ledger, contract-freeze tests, and standard suite. | Begin serious frontend work and treat future backend changes as measured maintenance or source-specific onboarding. |

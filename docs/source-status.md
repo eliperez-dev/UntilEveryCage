@@ -18,6 +18,24 @@ This is the canonical human-readable view of [`source-status.json`](source-statu
 
 No last-success timestamp is invented. Private artifacts are not proof of a public release. “Government-sourced” does not mean current, complete, project-approved, or safe to expose.
 
+## Legacy archive boundary
+
+The checked-in V1-era inventory is maintained by
+[`build-legacy-manifest.ps1`](../pipeline/scripts/maintenance/build-legacy-manifest.ps1).
+The companion [`legacy-status.json`](../data/manifests/legacy-status.json) is a
+metadata-only ledger: it records artifact presence, checksum verification,
+unknown lineage/currentness, and the database boundary. The current ledger
+certifies 63 present, SHA-256-verified artifacts (153,228,521 bytes); all are
+`metadata_only_not_migrated` into the V2 database. Some V2 rehearsals use
+separate retained private handoffs, but that does not retroactively classify a
+checked-in V1 file as a migrated V2 record. No legacy artifact is
+publication-eligible from its presence in this repository.
+
+The ledger contains repository-relative paths and aggregate metadata only. It
+does not copy legacy rows, addresses, coordinates, or source payloads. Unknown
+source dates remain unknown, and the manifest generation time is not a source
+currentness claim.
+
 ## Latest private rehearsal
 
 The owner-authorized 2026-09-15 live-country rehearsal remains the historical synthetic/private baseline. On 2026-09-17, current official Germany and Belgium artifacts were captured privately, parsed through the live-schema adapters, and kept publication-blocked. See the row-free [Germany/Belgium candidate manifest](../data/manifests/de-be-private-candidates-2026-09-17.json), plus the detailed country packets.

@@ -1,12 +1,13 @@
 {
   "contract_id": "uec-v2-mvp-backend-contract-1",
-  "status": "frozen-for-sprint-1",
-  "as_of": "2026-09-16",
+  "status": "frozen-for-frontend-integration",
+  "as_of": "2026-09-22",
   "api_version": "v2",
   "location_schema": "docs/api/v2-location.schema.json",
   "source_contract": "docs/api/v2-contract.json",
   "data_product_version": "uec-public-data-product-v1",
   "schema_version": "uec-location-projection-v1",
+  "backend_contract_freeze": "docs/api/v2-backend-contract-freeze.json",
   "public_endpoints": [
     "GET /health/live",
     "GET /health/ready",
@@ -36,6 +37,8 @@
     "Pagination is deterministic and bounded; clients scope caches to profile, release, ruleset, and query.",
     "The frontend has no promised durable cache, invalidation event, or revocation signal; current suppression is checked on reads.",
     "Errors use the versioned {api_version, error:{code,message}} envelope.",
+    "Private graph connections are only exact or inferred; no human-confirmed graph state is promised.",
+    "Inferred connections carry confidence, provenance, explanations, and disclaimers; they do not merge identities or transfer claims.",
     "The API contract does not claim animal totals, national completeness, factual truth, or deployment readiness."
   ],
   "deferred_contract_gaps": "docs/api/v2-product-convergence-gap-ledger.json",

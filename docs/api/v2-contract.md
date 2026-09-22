@@ -2,6 +2,11 @@
 
 The machine-readable contract is [v2-contract.json](v2-contract.json). Successful list/detail response shapes remain unchanged; additive metadata identifies release coverage and prevents facility rows from being mistaken for story-wide or animal totals. Errors use one additive, stable envelope:
 
+The final backend boundary, including private exact/inferred graph semantics,
+is frozen in [v2-backend-contract-freeze.md](v2-backend-contract-freeze.md) and
+its machine-readable companion. This page remains the public location/API
+contract; the graph contract does not make private edges public.
+
 ```json
 {"api_version":"v2","error":{"code":"invalid_profile","message":"profile is unsupported"}}
 ```

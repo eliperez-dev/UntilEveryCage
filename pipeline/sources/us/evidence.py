@@ -50,9 +50,10 @@ class EvidenceEventAdapter:
 
     def _artifact(self, path: Path, options: Mapping[str, Any]) -> SourceArtifact:
         raw = path.read_bytes()
+        acquisition = options.get("acquisition") if isinstance(options.get("acquisition"), Mapping) else {}
         return SourceArtifact(
-            source_url=str(options.get("source_url") or self.config["source_url"]),
-            retrieved_at_utc=str(options.get("retrieved_at_utc") or "2026-01-01T00:00:00Z"),
+            source_url=str(acquisition.get("final_url") or options.get("source_url") or self.config["source_url"]),
+            retrieved_at_utc=str(acquisition.get("retrieved_at_utc") or options.get("retrieved_at_utc") or "2026-01-01T00:00:00Z"),
             sha256=hashlib.sha256(raw).hexdigest(), byte_size=len(raw),
             effective_date=options.get("effective_date"),
             code_version=self.adapter_version, config_version=self.schema_version,
@@ -60,6 +61,23 @@ class EvidenceEventAdapter:
             privacy_caveat="Evidence rows remain private pending privacy and factual review",
             coverage=f"{self.source_id} profile observations only; no facility completeness claim",
         )
+
+    def acquire(self, *, run_dir: Path, options: Mapping[str, Any]) -> Mapping[str, Any]:
+        """Use the existing bounded APHIS documented-download callable."""
+        review_paths = options.get("terms_review_paths")
+        review = review_paths.get(self.source_id) if isinstance(review_paths, Mapping) else None
+        review = review or options.get("terms_review_path")
+        if not review:
+            raise RuntimeError("terms review is required for live acquisition")
+        from .aphis.acquire import fetch_profile
+        profile = self.config["profile"]
+        metadata = fetch_profile(
+            profile=profile, output_root=run_dir / "acquisition",
+            terms_review_path=Path(str(review)), run_id=run_dir.name,
+            timeout_seconds=float(options.get("timeout_seconds", 60.0)),
+            max_bytes=int(options.get("max_bytes", 128 * 1024 * 1024)),
+        )
+        return metadata
 
     def refresh(self, *, mode: str, run_dir: Path, artifact: Path | None,
                 options: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -143,6 +161,7 @@ def register_evidence_sources(catalog: Any) -> None:
                 acquisition="assisted_only", geocoding="disabled",
                 publication="human_gate_required", adapter_path="pipeline/sources/us/evidence.py",
                 country_code="us", source_kind="evidence_event",
+                operational_classification="assisted", live_callable=False,
             ),
         )
 

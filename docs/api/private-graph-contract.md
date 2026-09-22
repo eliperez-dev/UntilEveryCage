@@ -21,3 +21,26 @@ tables. Raw payloads, addresses, geocoder queries, and private notes are not
 returned. No endpoint infers ownership, merges identities, computes targeting
 scores, or publishes a release. Database/auth failures fail closed with a
 versioned error envelope.
+
+## Connection edge semantics
+
+The graph connection API exposes exactly two `connection_type` values:
+
+- `exact` — an authoritative source assertion or shared source identifier;
+- `inferred` — an algorithmic ruleset result with confidence, supporting
+  signals, contradiction handling, source-qualified evidence references, and
+  an uncertainty disclaimer.
+
+There is no `human_confirmed` connection state. Human review may gate source
+rights, privacy, factual claims, release approval, or publication, but it does
+not gate private exact/inferred persistence. Inferred edges remain visible to
+private callers through type, confidence, conflict, source/entity, suppression,
+and cursor filters. They never merge universal identities, transfer claims,
+infer ownership/closure, authorize publication, or create APHIS-to-FSIS links.
+
+The private connection page maximum is 100 and the cursor is deterministic;
+the page bound is not a storage cap. A versioned `{api_version, error:{code,
+message}}` envelope is used for invalid queries, missing authorization, and
+database failures. Current suppression is applied before returning a page.
+Private graph rows are never part of the public location, map, export, or
+release projection unless a separate approved contract explicitly adds them.

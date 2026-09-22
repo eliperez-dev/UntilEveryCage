@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import time
 import uuid
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -46,6 +47,20 @@ _FORBIDDEN_IDENTITY_KEYS = {
 }
 BatchCommitObserver = Callable[[int, int, int], None]
 ConnectionEdgeBuilder = Callable[[dict[str, Any], dict[str, Any]], Iterable[dict[str, Any]]]
+
+
+def _peak_rss_bytes() -> int | None:
+    """Best-effort process RSS instrumentation without adding a dependency."""
+    try:
+        import psutil  # type: ignore
+        return int(psutil.Process().memory_info().rss)
+    except Exception:
+        try:
+            import resource  # type: ignore
+            value = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+            return value * (1024 if os.name != "nt" else 1)
+        except Exception:
+            return None
 
 # These are evidence/event sources, not facility-master identity sources.  In
 # particular, an APHIS observation must never be asserted to be an FSIS
@@ -120,6 +135,115 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def _candidate_paths(root: Path) -> tuple[Path, ...]:
+    """Return candidate payload paths in the same deterministic order used by the loader."""
+    records_path = root / "records.jsonl"
+    if records_path.is_file():
+        return (records_path,)
+    paths = tuple(sorted(root.glob("*/graph-candidate.json")))
+    if not paths:
+        raise GraphPersistenceError("graph candidate handoff records are missing")
+    return paths
+
+
+def _iter_candidate_payloads(root: Path) -> Iterable[dict[str, Any]]:
+    """Decode either the JSONL handoff or the legacy one-file-per-candidate form."""
+    for records_path in _candidate_paths(root):
+        if records_path.name == "records.jsonl":
+            try:
+                handle = records_path.open(encoding="utf-8")
+            except OSError as exc:
+                raise GraphPersistenceError(f"cannot read handoff records: {records_path}") from exc
+            with handle:
+                for line in handle:
+                    if not line.strip():
+                        continue
+                    try:
+                        candidate = json.loads(line)
+                    except json.JSONDecodeError as exc:
+                        raise GraphPersistenceError(f"malformed graph candidate: {records_path}") from exc
+                    if not isinstance(candidate, dict):
+                        raise GraphPersistenceError("handoff records must be JSON objects")
+                    yield candidate
+        else:
+            try:
+                candidate = json.loads(records_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise GraphPersistenceError(f"malformed graph candidate: {records_path}") from exc
+            if not isinstance(candidate, dict):
+                raise GraphPersistenceError("handoff records must be JSON objects")
+            yield candidate
+
+
+def _graph_candidate_root(path: str | Path) -> tuple[Path, dict[str, Any]]:
+    """Resolve a candidate handoff without reading its rows."""
+    root = Path(path)
+    if root.is_file():
+        root = root.parent
+    if (root / "graph-candidates" / "manifest.json").is_file():
+        candidate_root = root / "graph-candidates"
+        _, parent_manifest = _manifest_for(root)
+        _, graph_manifest = _manifest_for(candidate_root)
+        manifest = {**parent_manifest, **graph_manifest}
+    elif (root / "manifest.json").is_file():
+        candidate_root = root
+        _, manifest = _manifest_for(root)
+    else:
+        raise GraphPersistenceError("graph candidate handoff root is not recognizable")
+    _private_manifest(manifest)
+    if manifest.get("contract_version") not in {None, "private-graph-candidate-set-v1", "private-graph-candidate-batch-v1", GRAPH_CONTRACT_VERSION}:
+        raise GraphPersistenceError("unsupported graph candidate handoff contract")
+    if manifest.get("source_kind", "facility_master") == "evidence_event":
+        raise GraphPersistenceError("evidence-event handoffs must use the evidence importer")
+    return candidate_root, manifest
+
+
+def inspect_graph_candidate_handoff(path: str | Path) -> tuple[dict[str, Any], str, int]:
+    """Validate a handoff in a streaming pass and return its digest and count.
+
+    The importer uses this pass before opening a database transaction, then
+    streams the same files a second time.  This preserves the checksum gate
+    without retaining all private rows in process memory.
+    """
+    candidate_root, manifest = _graph_candidate_root(path)
+    source_id = manifest.get("source_id")
+    digest = hashlib.sha256()
+    count = 0
+    for candidate in _iter_candidate_payloads(candidate_root):
+        _reject_global_identity(candidate)
+        try:
+            validate_graph_candidate(candidate)
+        except ValueError as exc:
+            raise GraphPersistenceError(str(exc)) from exc
+        if source_id and candidate.get("source_id") != source_id:
+            raise GraphPersistenceError("candidate source_id does not match handoff manifest")
+        source_id = source_id or candidate["source_id"]
+        digest.update(canonical_json_bytes(candidate))
+        count += 1
+    if not source_id:
+        raise GraphPersistenceError("graph handoff requires source_id")
+    value = digest.hexdigest()
+    expected = manifest.get("records_sha256") or manifest.get("sha256")
+    if expected and expected != value:
+        raise GraphPersistenceError("graph candidate handoff checksum mismatch")
+    return {**manifest, "source_id": source_id, "source_kind": "facility_master"}, value, count
+
+
+def iter_graph_candidate_handoff(path: str | Path) -> tuple[dict[str, Any], Iterable[dict[str, Any]], str, int]:
+    """Return a validated, bounded-memory candidate stream.
+
+    ``inspect_graph_candidate_handoff`` performs validation and digesting before
+    this iterator is consumed.  The iterator itself only holds one decoded row.
+    """
+    manifest, digest, count = inspect_graph_candidate_handoff(path)
+    candidate_root, _ = _graph_candidate_root(path)
+
+    def stream() -> Iterable[dict[str, Any]]:
+        yield from _iter_candidate_payloads(candidate_root)
+
+    return manifest, stream(), digest, count
+
+
 def _manifest_for(root: Path) -> tuple[Path, dict[str, Any]]:
     manifest_path = root / "manifest.json"
     if not manifest_path.is_file():
@@ -138,55 +262,11 @@ def load_graph_candidate_handoff(path: str | Path) -> tuple[dict[str, Any], list
     or a single candidate directory.  The returned digest covers canonical
     candidate bytes, not filesystem paths.
     """
-    root = Path(path)
-    if root.is_file():
-        root = root.parent
-    if (root / "graph-candidates" / "manifest.json").is_file():
-        parent_root = root
-        candidate_root = root / "graph-candidates"
-        _, parent_manifest = _manifest_for(parent_root)
-        _, graph_manifest = _manifest_for(candidate_root)
-        manifest = {**parent_manifest, **graph_manifest}
-    elif (root / "manifest.json").is_file():
-        candidate_root = root
-        _, manifest = _manifest_for(root)
-    else:
-        raise GraphPersistenceError("graph candidate handoff root is not recognizable")
-    _private_manifest(manifest)
-    if manifest.get("contract_version") not in {None, "private-graph-candidate-set-v1", "private-graph-candidate-batch-v1", GRAPH_CONTRACT_VERSION}:
-        raise GraphPersistenceError("unsupported graph candidate handoff contract")
-    source_id = manifest.get("source_id")
-    records_path = candidate_root / "records.jsonl"
-    candidates: list[dict[str, Any]]
-    if records_path.is_file():
-        candidates = _read_jsonl(records_path)
-    else:
-        candidates = []
-        for candidate_path in sorted(candidate_root.glob("*/graph-candidate.json")):
-            try:
-                candidates.append(json.loads(candidate_path.read_text(encoding="utf-8")))
-            except json.JSONDecodeError as exc:
-                raise GraphPersistenceError(f"malformed graph candidate: {candidate_path}") from exc
-    canonical_payload = bytearray()
-    for candidate in candidates:
-        _reject_global_identity(candidate)
-        try:
-            validate_graph_candidate(candidate)
-        except ValueError as exc:
-            raise GraphPersistenceError(str(exc)) from exc
-        if source_id and candidate.get("source_id") != source_id:
-            raise GraphPersistenceError("candidate source_id does not match handoff manifest")
-        source_id = source_id or candidate["source_id"]
-        canonical_payload.extend(canonical_json_bytes(candidate))
-    if not source_id:
-        raise GraphPersistenceError("graph handoff requires source_id")
-    if manifest.get("source_kind", "facility_master") == "evidence_event":
-        raise GraphPersistenceError("evidence-event handoffs must use the evidence importer")
-    digest = hashlib.sha256(bytes(canonical_payload)).hexdigest()
-    expected = manifest.get("records_sha256") or manifest.get("sha256")
-    if expected and expected != digest:
-        raise GraphPersistenceError("graph candidate handoff checksum mismatch")
-    return {**manifest, "source_id": source_id, "source_kind": "facility_master"}, candidates, digest
+    manifest, digest, _ = inspect_graph_candidate_handoff(path)
+    candidate_root, _ = _graph_candidate_root(path)
+    candidates: list[dict[str, Any]] = []
+    candidates.extend(_iter_candidate_payloads(candidate_root))
+    return manifest, candidates, digest
 
 
 def load_evidence_handoff(path: str | Path) -> tuple[dict[str, Any], list[dict[str, Any]], str]:
@@ -687,24 +767,43 @@ def import_graph_candidates(database_url: str, handoff_dir: str | Path, *,
     require_disposable_graph_database(database_url, disposable_db)
     if batch_size <= 0:
         raise GraphPersistenceError("batch size must be positive")
-    manifest, candidates, digest = load_graph_candidate_handoff(handoff_dir)
+    manifest, candidates, digest, item_count = iter_graph_candidate_handoff(handoff_dir)
+    started_at = time.perf_counter()
     with psycopg.connect(database_url) as db:
         _verify_disposable_marker(db)
         db.commit()
         with db.transaction():
             _ensure_source_artifact(db, manifest, digest)
-            run_id, completed = _begin_run(db, manifest, "facility_master", GRAPH_CONTRACT_VERSION, digest, len(candidates))
+            run_id, completed = _begin_run(db, manifest, "facility_master", GRAPH_CONTRACT_VERSION, digest, item_count)
         if completed:
-            return {"status": "already_present", "source_id": manifest["source_id"], "source_kind": "facility_master", "run_id": str(run_id), "item_count": len(candidates), "inserted_count": 0, "already_present_count": len(candidates), "rejected_count": 0, "edge_inserted_count": 0, "edge_updated_count": 0, "edge_count": 0, "public_rows": 0}
+            return {"status": "already_present", "source_id": manifest["source_id"], "source_kind": "facility_master", "run_id": str(run_id), "item_count": item_count, "inserted_count": 0, "already_present_count": item_count, "rejected_count": 0, "edge_inserted_count": 0, "edge_updated_count": 0, "edge_count": 0, "public_rows": 0, "phase_timings_seconds": {"validation_and_staging": round(time.perf_counter() - started_at, 6)}, "peak_rss_bytes": _peak_rss_bytes()}
         artifact_sha = str(manifest.get("checksum_sha256") or manifest.get("source_artifact_sha256") or digest)
         artifact_id = db.execute("SELECT artifact_id FROM uec.raw_artifacts WHERE sha256=%s", (artifact_sha if len(artifact_sha) == 64 else digest,)).fetchone()[0]
-        inserted = already = rejected = 0
+        resume_offset = int(db.execute(
+            "SELECT count(*) FROM uec.graph_ingest_items WHERE ingest_run_id=%s AND status='inserted'",
+            (run_id,),
+        ).fetchone()[0])
+        inserted = resume_offset
+        already = rejected = 0
         edge_inserted = edge_updated = 0
         try:
-            for offset in range(0, len(candidates), batch_size):
+            batch: list[dict[str, Any]] = []
+            offset = resume_offset
+            batch_number = 0
+            candidate_iterator = iter(candidates)
+            for _ in range(resume_offset):
+                try:
+                    next(candidate_iterator)
+                except StopIteration as exc:
+                    raise GraphPersistenceError("handoff ended before the recorded ingest checkpoint") from exc
+            for candidate in candidate_iterator:
+                batch.append(candidate)
+                if len(batch) < batch_size:
+                    continue
+                batch_number += 1
                 batch_inserted = 0
                 with db.transaction():
-                    for candidate in candidates[offset:offset + batch_size]:
+                    for candidate in batch:
                         item_digest = hashlib.sha256(canonical_json_bytes(candidate)).hexdigest()
                         existing = db.execute("SELECT 1 FROM uec.graph_ingest_items WHERE source_id=%s AND item_sha256=%s", (manifest["source_id"], item_digest)).fetchone()
                         if existing:
@@ -717,14 +816,34 @@ def import_graph_candidates(database_url: str, handoff_dir: str | Path, *,
                         inserted += 1
                         batch_inserted += 1
                 if on_batch_committed:
-                    on_batch_committed(offset // batch_size + 1, offset, batch_inserted)
+                    on_batch_committed(batch_number, offset, batch_inserted)
+                offset += len(batch)
+                batch = []
+            if batch:
+                batch_number += 1
+                batch_inserted = 0
+                with db.transaction():
+                    for candidate in batch:
+                        item_digest = hashlib.sha256(canonical_json_bytes(candidate)).hexdigest()
+                        existing = db.execute("SELECT 1 FROM uec.graph_ingest_items WHERE source_id=%s AND item_sha256=%s", (manifest["source_id"], item_digest)).fetchone()
+                        if existing:
+                            already += 1
+                            continue
+                        edge_counts = _persist_candidate(db, manifest, candidate, artifact_id, digest, edge_builder=edge_builder)
+                        edge_inserted += edge_counts["inserted"]
+                        edge_updated += edge_counts["updated"]
+                        db.execute("INSERT INTO uec.graph_ingest_items(ingest_run_id,source_id,source_record_key,item_sha256,item_kind,status) VALUES (%s,%s,%s,%s,'facility_candidate','inserted')", (run_id, manifest["source_id"], candidate["source_record_key"], item_digest))
+                        inserted += 1
+                        batch_inserted += 1
+                if on_batch_committed:
+                    on_batch_committed(batch_number, offset, batch_inserted)
         except Exception as error:
             with db.transaction():
                 _mark_failed(db, run_id, error)
             raise
         with db.transaction():
-            db.execute("UPDATE uec.graph_ingest_runs SET status='completed', inserted_count=%s, already_present_count=%s, rejected_count=%s, completed_at=now() WHERE ingest_run_id=%s", (inserted, already, rejected, run_id))
-        return {"status": "completed", "source_id": manifest["source_id"], "source_kind": "facility_master", "run_id": str(run_id), "item_count": len(candidates), "inserted_count": inserted, "already_present_count": already, "rejected_count": rejected, "edge_inserted_count": edge_inserted, "edge_updated_count": edge_updated, "edge_count": edge_inserted + edge_updated, "public_rows": 0}
+            db.execute("UPDATE uec.graph_ingest_runs SET status='completed', inserted_count=%s, already_present_count=%s, rejected_count=%s, error_summary=NULL, completed_at=now() WHERE ingest_run_id=%s", (inserted, already, rejected, run_id))
+        return {"status": "completed", "source_id": manifest["source_id"], "source_kind": "facility_master", "run_id": str(run_id), "item_count": item_count, "inserted_count": inserted, "already_present_count": already, "rejected_count": rejected, "edge_inserted_count": edge_inserted, "edge_updated_count": edge_updated, "edge_count": edge_inserted + edge_updated, "resume_offset": resume_offset, "public_rows": 0, "phase_timings_seconds": {"validation_and_staging": round(time.perf_counter() - started_at, 6)}, "peak_rss_bytes": _peak_rss_bytes()}
 
 
 def _persist_evidence_event(connection: Any, manifest: dict[str, Any], row: dict[str, Any],
@@ -808,7 +927,7 @@ def import_evidence_events(database_url: str, handoff_dir: str | Path, *,
 
 
 __all__ = [
-    "GraphPersistenceError", "load_graph_candidate_handoff", "load_evidence_handoff",
+    "GraphPersistenceError", "load_graph_candidate_handoff", "inspect_graph_candidate_handoff", "iter_graph_candidate_handoff", "load_evidence_handoff",
     "import_graph_candidates", "import_evidence_events", "require_disposable_graph_database",
     "build_candidate_connection_edges", "ConnectionEdgeBuilder",
 ]

@@ -15,6 +15,9 @@ from typing import Any, Callable, Mapping, Protocol
 REFRESH_CONTRACT_VERSION = "private-refresh-v1"
 MODES = frozenset({"fixture", "local-artifact", "live-acquisition"})
 SOURCE_KINDS = frozenset({"facility_master", "evidence_event"})
+# These values describe the acquisition boundary only.  They intentionally do
+# not imply factual accuracy, publication eligibility, or source completeness.
+ACQUISITION_CLASSIFICATIONS = frozenset({"live", "assisted", "terms-blocked", "schema-drift", "failed"})
 
 
 class RefreshAdapter(Protocol):
@@ -24,6 +27,12 @@ class RefreshAdapter(Protocol):
 
     def refresh(self, *, mode: str, run_dir: Path, artifact: Path | None,
                 options: Mapping[str, Any]) -> Mapping[str, Any]: ...
+
+    # Source packages may expose an existing bounded fetch callable through
+    # this optional hook.  The shared runner checks authorization before
+    # invoking it; adapters must never make a network request merely because
+    # live-acquisition was selected.
+    def acquire(self, *, run_dir: Path, options: Mapping[str, Any]) -> Mapping[str, Any]: ...
 
 
 @dataclass(frozen=True)
@@ -37,6 +46,8 @@ class AdapterCapabilities:
     adapter_path: str | None = None
     country_code: str | None = None
     source_kind: str = "facility_master"
+    operational_classification: str = "assisted"
+    live_callable: bool = False
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> "AdapterCapabilities":
@@ -47,8 +58,11 @@ class AdapterCapabilities:
         source_kind = value.get("source_kind", "facility_master")
         if source_kind not in SOURCE_KINDS:
             raise ValueError(f"source_kind must be one of {sorted(SOURCE_KINDS)}")
+        operational = str(value.get("operational_classification") or ("terms-blocked" if value.get("live_callable") else "assisted"))
+        if operational not in ACQUISITION_CLASSIFICATIONS:
+            raise ValueError(f"operational_classification must be one of {sorted(ACQUISITION_CLASSIFICATIONS)}")
         return cls(**{key: value.get(key) for key in (
-            "source_id", "adapter_version", "schema_version", "acquisition", "geocoding", "publication", "adapter_path", "country_code")}, source_kind=source_kind)
+            "source_id", "adapter_version", "schema_version", "acquisition", "geocoding", "publication", "adapter_path", "country_code")}, source_kind=source_kind, operational_classification=operational, live_callable=bool(value.get("live_callable", False)))
 
 
 @dataclass(frozen=True)
@@ -90,6 +104,13 @@ def canonical_plan(request: RefreshRequest, selected: tuple[str, ...], capabilit
         if path.is_file():
             raw = path.read_bytes()
             artifacts[source] = {"available": True, "sha256": hashlib.sha256(raw).hexdigest(), "byte_size": len(raw)}
+        elif path.is_dir():
+            digest = hashlib.sha256(); size = 0; files = [item for item in sorted(path.rglob("*")) if item.is_file()]
+            for item in files:
+                raw = item.read_bytes(); relative = item.relative_to(path).as_posix().encode("utf-8")
+                digest.update(len(relative).to_bytes(8, "big")); digest.update(relative)
+                digest.update(len(raw).to_bytes(8, "big")); digest.update(raw); size += len(raw)
+            artifacts[source] = {"available": bool(files), "sha256": digest.hexdigest() if files else None, "byte_size": size if files else None}
         else:
             artifacts[source] = {"available": False, "sha256": None, "byte_size": None}
     versions = {source: capabilities[source].adapter_version for source in selected if source in capabilities}

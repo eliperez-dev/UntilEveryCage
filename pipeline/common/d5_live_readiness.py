@@ -180,6 +180,8 @@ def build_readiness_report(*, registry_path: str | Path, schedules_path: str | P
             "checks": {
                 **profile["controls"],
                 "shared_runner_live_mode": False,
+                "shared_runner_live_callable": classification == "terms-blocked",
+                "live_network_authorization_required": True,
                 "network_requests_in_audit": 0,
                 "scheduler_installed": False,
                 "secrets_persisted": False,
@@ -211,6 +213,7 @@ def build_readiness_report(*, registry_path: str | Path, schedules_path: str | P
             "previous_valid_state_preservation": True,
             "failure_isolation": True,
             "operator_exit_reporting": True,
+            "source_scoped_live_callables": sum(1 for report in source_reports if report["checks"]["shared_runner_live_callable"]),
             "persistent_scheduler": False,
             "automatic_publication": False,
         },

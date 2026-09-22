@@ -15,7 +15,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
+import sqlite3
+import tempfile
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from itertools import combinations
@@ -194,6 +197,22 @@ def _observed_from_row(row: Mapping[str, Any], fallback_source: str | None = Non
             signals.setdefault("address", token)
         if key in DATE_KEYS and (date := _clean(value)):
             dates.append(date[:32])
+    # Graph handoffs already type their source-native identifiers.  Preserve
+    # every typed facility/organization identifier, including adapter-specific
+    # types such as ``permit`` that are intentionally not in the generic key
+    # allow-list above.
+    for entity_key, target in (("facilities", facility_ids), ("organizations", organization_ids)):
+        entities = row.get(entity_key)
+        if not isinstance(entities, list):
+            continue
+        for entity in entities:
+            if not isinstance(entity, Mapping) or not isinstance(entity.get("source_identifier"), Mapping):
+                continue
+            identifier = entity["source_identifier"]
+            identifier_type = _norm(identifier.get("identifier_type"))
+            identifier_value = _norm(identifier.get("value") or identifier.get("source_identifier"))
+            if identifier_type and identifier_value:
+                target.setdefault(identifier_type, identifier_value)
     key = _clean(row.get("source_record_key")) or _clean(row.get("source_row_id")) or _clean(row.get("source_observation_key")) or "row-unknown"
     relationships = row.get("relationships")
     explicit_relationships = len(relationships) if isinstance(relationships, list) else 0
@@ -401,100 +420,186 @@ def _score_match(features: list[str], contradictions: list[dict[str, Any]]) -> t
                          "anchor_present": "name" in features and ("postal" in features or ("city" in features and "address" in features))}
 
 
+def _observed_json(row: _Observed) -> str:
+    return json.dumps({
+        "source_id": row.source_id, "source_kind": row.source_kind, "key": row.key,
+        "facility_ids": row.facility_ids, "organization_ids": row.organization_ids,
+        "signals": row.signals, "dates": row.dates,
+        "explicit_relationships": row.explicit_relationships,
+        "typed_entity_edge": row.typed_entity_edge,
+        "provenance_complete": row.provenance_complete,
+        "quarantined": row.quarantined, "suppressed": row.suppressed,
+    }, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _observed_from_json(value: str) -> _Observed:
+    payload = json.loads(value)
+    return _Observed(
+        str(payload["source_id"]), str(payload["source_kind"]), str(payload["key"]),
+        {str(key): str(item) for key, item in (payload.get("facility_ids") or {}).items()},
+        {str(key): str(item) for key, item in (payload.get("organization_ids") or {}).items()},
+        {str(key): str(item) for key, item in (payload.get("signals") or {}).items()},
+        [str(item) for item in payload.get("dates") or []],
+        int(payload.get("explicit_relationships") or 0), bool(payload.get("typed_entity_edge")),
+        bool(payload.get("provenance_complete")), bool(payload.get("quarantined")), bool(payload.get("suppressed")),
+    )
+
+
 def _iter_probabilistic_candidates(rows: Iterable[_Observed], *, start_after: str | None = None,
                                    max_block_size: int = _BLOCK_DEFAULT_MAX) -> tuple[Iterable[dict[str, Any]], dict[str, int]]:
-    """Build deterministic indexed blocks and return an iterator plus counters.
+    """Build deterministic indexed blocks in a disk-backed SQLite stage.
 
     Blocks are keyed by name+postal, name+city, or name+address.  A large
-    block is ambiguous rather than truncated: it is skipped and accounted for
-    explicitly.  ``start_after`` is a candidate digest cursor, allowing a
-    caller to resume without changing ordering.
+    block is ambiguous rather than truncated and is accounted for explicitly.
+    The stage keeps one bounded block in memory and stores observations and
+    candidate pairs on disk, so neither all rows nor all candidates are
+    materialized in the process. ``start_after`` is a digest cursor.
     """
     if max_block_size < 2:
         raise ValueError("max_block_size must be at least 2")
-    observations = sorted((row for row in rows if row.source_kind == "facility_master" and row.signals.get("name") and row.facility_ids),
-                          key=lambda row: (row.source_id, row.key))
-    indexed: dict[tuple[str, str], list[_Observed]] = defaultdict(list)
-    for row in observations:
-        name = row.signals["name"]
-        for signal in _BLOCK_SIGNALS:
-            value = row.signals.get(signal)
-            if value:
-                indexed[(signal, name + "|" + value)].append(row)
-    counters = {"blocks_indexed": len(indexed), "blocks_ambiguous": 0, "rows_in_ambiguous_blocks": 0,
-                "pairs_considered": 0, "pairs_exact_equivalent": 0, "pairs_emitted": 0,
-                "pairs_deduplicated": 0}
-    valid_blocks: list[tuple[tuple[str, str], list[_Observed]]] = []
-    for block_key in sorted(indexed):
-        group = sorted(indexed[block_key], key=lambda row: (row.source_id, row.key))
-        if len(group) > max_block_size:
-            counters["blocks_ambiguous"] += 1
-            counters["rows_in_ambiguous_blocks"] += len(group)
-            continue
-        valid_blocks.append((block_key, group))
+    counters = {"rows_staged": 0, "blocks_indexed": 0, "blocks_ambiguous": 0,
+                "rows_in_ambiguous_blocks": 0, "pairs_considered": 0,
+                "pairs_exact_equivalent": 0, "pairs_emitted": 0,
+                "pairs_deduplicated": 0, "pair_rows_staged": 0}
 
     def generate() -> Iterable[dict[str, Any]]:
-        buffered: dict[tuple[str, str], tuple[_Observed, _Observed, set[str]]] = {}
-        exact_equivalent_pairs: set[tuple[str, str]] = set()
-        for block_key, group in valid_blocks:
-            signal = block_key[0]
-            for left, right in combinations(group, 2):
-                counters["pairs_considered"] += 1
-                pair_key = _pair_identity(left, right)
-                if pair_key in buffered:
-                    counters["pairs_deduplicated"] += 1
-                if _exact_equivalent(left, right):
-                    if pair_key not in exact_equivalent_pairs:
-                        counters["pairs_exact_equivalent"] += 1
-                        exact_equivalent_pairs.add(pair_key)
-                    continue
-                features, _ = _match_features(left, right)
-                if "name" not in features or not ("postal" in features or "city" in features or "address" in features):
-                    continue
-                # One candidate can be supported by multiple blocking keys.
-                item = buffered.setdefault(pair_key, (left, right, set()))
-                item[2].add(f"normalized_name+{signal}")
-                # Materialize only after all blocks have contributed so that
-                # ordering and scores do not depend on input iteration order.
-        materialized: list[dict[str, Any]] = []
-        for pair_key in sorted(buffered):
-            left, right, methods = buffered[pair_key]
-            features, contradictions = _match_features(left, right)
-            score, band, explanation = _score_match(features, contradictions)
-            if not explanation["anchor_present"]:
-                continue
-            left_endpoint = _endpoint_ref(left)
-            right_endpoint = _endpoint_ref(right)
-            if left_endpoint is None or right_endpoint is None:
-                continue
-            digest = _digest(pair_key[0] + "|" + pair_key[1] + "|" + RULESET_VERSION)
-            materialized.append({
-                "candidate_digest": digest,
-                "source_pair": sorted({left.source_id, right.source_id}),
-                "endpoints": [left_endpoint, right_endpoint],
-                "left_endpoint": left_endpoint,
-                "right_endpoint": right_endpoint,
-                "provenance": [{"source_id": left.source_id, "source_record_key": left.key},
-                                {"source_id": right.source_id, "source_record_key": right.key}],
-                "observed_at": min(left.dates + right.dates) if left.dates or right.dates else "",
-                "method": "multi_signal_intersection",
-                "contributing_features": sorted(features),
-                "blocking_methods": sorted(methods),
-                "contradictory_evidence": contradictions,
-                "confidence": score,
-                "confidence_band": band,
-                "score_explanation": explanation,
-                "review_state": "review_required",
-                "automatic_merge": False,
-                "transfers_claims": False,
-                "disclaimer": "Possible source-record connection; not human verified and must not be treated as a canonical identity.",
-                "ruleset": RULESET_VERSION,
-            })
-        for candidate in sorted(materialized, key=lambda item: item["candidate_digest"]):
-            if start_after and candidate["candidate_digest"] <= start_after:
-                continue
-            counters["pairs_emitted"] += 1
-            yield candidate
+        stage_parent = Path.cwd() / ".tmp"
+        try:
+            stage_parent.mkdir(parents=True, exist_ok=True)
+            stage_parent_arg = str(stage_parent)
+        except OSError:
+            stage_parent_arg = None
+        stage_fd, stage_name = tempfile.mkstemp(prefix="uec-d6-match-", suffix=".sqlite3", dir=stage_parent_arg)
+        os.close(stage_fd)
+        stage_path = Path(stage_name)
+        db = sqlite3.connect(stage_path)
+        try:
+                db.execute("PRAGMA journal_mode=DELETE")
+                db.execute("PRAGMA synchronous=OFF")
+                db.executescript("""
+                    CREATE TABLE observed (row_id INTEGER PRIMARY KEY, source_id TEXT NOT NULL,
+                        source_record_key TEXT NOT NULL, payload TEXT NOT NULL);
+                    CREATE TABLE blocks (signal TEXT NOT NULL, block_value TEXT NOT NULL, row_id INTEGER NOT NULL);
+                    CREATE INDEX blocks_order ON blocks(signal, block_value, row_id);
+                    CREATE TABLE pairs (pair_key TEXT PRIMARY KEY, left_row_id INTEGER NOT NULL,
+                        right_row_id INTEGER NOT NULL, methods TEXT NOT NULL, candidate_digest TEXT NOT NULL);
+                    CREATE TABLE excluded (pair_key TEXT PRIMARY KEY);
+                """)
+                for row in rows:
+                    if row.source_kind != "facility_master" or not row.signals.get("name") or not row.facility_ids:
+                        continue
+                    cursor = db.execute("INSERT INTO observed(source_id,source_record_key,payload) VALUES (?,?,?)",
+                                        (row.source_id, row.key, _observed_json(row)))
+                    row_id = int(cursor.lastrowid)
+                    counters["rows_staged"] += 1
+                    name = row.signals["name"]
+                    for signal in _BLOCK_SIGNALS:
+                        value = row.signals.get(signal)
+                        if value:
+                            db.execute("INSERT INTO blocks(signal,block_value,row_id) VALUES (?,?,?)",
+                                       (signal, name + "|" + value, row_id))
+                db.commit()
+                counters["blocks_indexed"] = int(db.execute("SELECT count(*) FROM (SELECT 1 FROM blocks GROUP BY signal, block_value)").fetchone()[0])
+                block_rows = db.execute("SELECT signal, block_value FROM blocks GROUP BY signal, block_value ORDER BY signal, block_value")
+                for signal, block_value in block_rows:
+                    size = int(db.execute("SELECT count(*) FROM blocks WHERE signal=? AND block_value=?", (signal, block_value)).fetchone()[0])
+                    if size > max_block_size:
+                        counters["blocks_ambiguous"] += 1
+                        counters["rows_in_ambiguous_blocks"] += size
+                        continue
+                    staged_group = list(db.execute(
+                        "SELECT observed.row_id, observed.payload FROM blocks JOIN observed ON observed.row_id=blocks.row_id "
+                        "WHERE blocks.signal=? AND blocks.block_value=? ORDER BY observed.source_id, observed.source_record_key, observed.row_id",
+                        (signal, block_value),
+                    ))
+                    group = [
+                        _observed_from_json(payload)
+                        for _, payload in staged_group
+                    ]
+                    row_ids = {
+                        (row.source_id, row.key): int(row_id)
+                        for (row_id, _), row in zip(staged_group, group)
+                    }
+                    for left, right in combinations(group, 2):
+                        counters["pairs_considered"] += 1
+                        pair_key = _pair_identity(left, right)
+                        if _exact_equivalent(left, right):
+                            if db.execute("INSERT OR IGNORE INTO excluded(pair_key) VALUES (?)", ("|".join(pair_key),)).rowcount:
+                                counters["pairs_exact_equivalent"] += 1
+                            db.execute("DELETE FROM pairs WHERE pair_key=?", ("|".join(pair_key),))
+                            continue
+                        features, _ = _match_features(left, right)
+                        if "name" not in features or not ("postal" in features or "city" in features or "address" in features):
+                            continue
+                        key = "|".join(pair_key)
+                        if db.execute("SELECT 1 FROM excluded WHERE pair_key=?", (key,)).fetchone():
+                            continue
+                        existing = db.execute("SELECT methods FROM pairs WHERE pair_key=?", (key,)).fetchone()
+                        method = f"normalized_name+{signal}"
+                        if existing:
+                            methods = set(json.loads(existing[0]))
+                            if method not in methods:
+                                methods.add(method)
+                                db.execute("UPDATE pairs SET methods=? WHERE pair_key=?", (json.dumps(sorted(methods)), key))
+                            counters["pairs_deduplicated"] += 1
+                        else:
+                            digest = _digest(pair_key[0] + "|" + pair_key[1] + "|" + RULESET_VERSION)
+                            left_id = row_ids[(left.source_id, left.key)]
+                            right_id = row_ids[(right.source_id, right.key)]
+                            db.execute("INSERT INTO pairs(pair_key,left_row_id,right_row_id,methods,candidate_digest) VALUES (?,?,?,?,?)",
+                                       (key, left_id, right_id, json.dumps([method]), digest))
+                            counters["pair_rows_staged"] += 1
+                db.commit()
+                final_rows = db.execute(
+                    "SELECT pairs.pair_key,pairs.methods,pairs.candidate_digest,left.payload,right.payload "
+                    "FROM pairs JOIN observed AS left ON left.row_id=pairs.left_row_id "
+                    "JOIN observed AS right ON right.row_id=pairs.right_row_id "
+                    "WHERE pairs.pair_key NOT IN (SELECT pair_key FROM excluded) ORDER BY pairs.candidate_digest"
+                )
+                for pair_key, raw_methods, digest, left_payload, right_payload in final_rows:
+                    left = _observed_from_json(left_payload)
+                    right = _observed_from_json(right_payload)
+                    methods = set(json.loads(raw_methods))
+                    features, contradictions = _match_features(left, right)
+                    score, band, explanation = _score_match(features, contradictions)
+                    if not explanation["anchor_present"]:
+                        continue
+                    left_endpoint = _endpoint_ref(left)
+                    right_endpoint = _endpoint_ref(right)
+                    if left_endpoint is None or right_endpoint is None:
+                        continue
+                    if start_after and digest <= start_after:
+                        continue
+                    counters["pairs_emitted"] += 1
+                    yield {
+                        "candidate_digest": digest,
+                        "source_pair": sorted({left.source_id, right.source_id}),
+                        "endpoints": [left_endpoint, right_endpoint],
+                        "left_endpoint": left_endpoint,
+                        "right_endpoint": right_endpoint,
+                        "provenance": [{"source_id": left.source_id, "source_record_key": left.key},
+                                        {"source_id": right.source_id, "source_record_key": right.key}],
+                        "observed_at": min(left.dates + right.dates) if left.dates or right.dates else "",
+                        "method": "multi_signal_intersection",
+                        "contributing_features": sorted(features),
+                        "blocking_methods": sorted(methods),
+                        "contradictory_evidence": contradictions,
+                        "confidence": score,
+                        "confidence_band": band,
+                        "score_explanation": explanation,
+                        "review_state": "review_required",
+                        "automatic_merge": False,
+                        "transfers_claims": False,
+                        "disclaimer": "Possible source-record connection; not human verified and must not be treated as a canonical identity.",
+                        "ruleset": RULESET_VERSION,
+                    }
+        finally:
+            db.close()
+            for suffix in ("", "-journal", "-wal", "-shm"):
+                try:
+                    stage_path.with_name(stage_path.name + suffix).unlink()
+                except OSError:
+                    pass
     return generate(), counters
 
 
@@ -587,7 +692,22 @@ def analyze(*, manifests: Mapping[str, Mapping[str, Any]], rows: Iterable[_Obser
     collisions = collision_classification["true_conflicts"]
     orphan_rows = sum(1 for row in observations if row.source_kind == "facility_master" and not row.facility_ids)
     candidate_iterator, candidate_generation = _iter_probabilistic_candidates(observations, max_block_size=max_block_size)
-    candidate_rows = list(candidate_iterator)
+    candidate_count = 0
+    confidence_bands: Counter[str] = Counter()
+    review_candidates: list[dict[str, Any]] = []
+    for item in candidate_iterator:
+        candidate_count += 1
+        confidence_bands[item["confidence_band"]] += 1
+        if len(review_candidates) < sample_size:
+            review_candidates.append({
+                "candidate_digest": item["candidate_digest"],
+                "source_pair": item["source_pair"],
+                "endpoints": item["endpoints"],
+                "provenance": item["provenance"],
+                "confidence_band": item["confidence_band"],
+                "method": item["method"],
+                "ruleset": item["ruleset"],
+            })
     candidate_generation["ambiguous_blocks_skipped"] = candidate_generation["blocks_ambiguous"]
     candidate_generation["ambiguous_rows_skipped"] = candidate_generation["rows_in_ambiguous_blocks"]
     candidate_generation["exact_equivalent_pairs_excluded"] = candidate_generation["pairs_exact_equivalent"]
@@ -595,22 +715,10 @@ def analyze(*, manifests: Mapping[str, Mapping[str, Any]], rows: Iterable[_Obser
     # only skipped work is an explicitly counted ambiguous block, never a
     # global first-N truncation.
     candidate_capped = False
-    confidence_bands = Counter(item["confidence_band"] for item in candidate_rows)
     by_source_metrics = {}
     for source_id in sorted(set(manifests) | set(by_source)):
         by_source_metrics[source_id] = _source_metric(source_id, manifests.get(source_id), by_source.get(source_id, []))
 
-    review_candidates = []
-    for item in candidate_rows[:sample_size]:
-        review_candidates.append({
-            "candidate_digest": item["candidate_digest"],
-            "source_pair": item["source_pair"],
-            "endpoints": item["endpoints"],
-            "provenance": item["provenance"],
-            "confidence_band": item["confidence_band"],
-            "method": item["method"],
-            "ruleset": item["ruleset"],
-        })
     for source_id in sorted(by_source):
         source_rows = sorted(by_source[source_id], key=lambda row: row.key)
         for row in source_rows[: max(0, sample_size // max(1, len(by_source)))]:
@@ -643,7 +751,7 @@ def analyze(*, manifests: Mapping[str, Mapping[str, Any]], rows: Iterable[_Obser
             "edge_claims_review_required": True,
         },
         "probabilistic_candidates": {
-            "count": len(candidate_rows),
+            "count": candidate_count,
             "confidence_bands": dict(sorted(confidence_bands.items())),
             "candidate_generation_capped": candidate_capped,
             "candidate_generation": candidate_generation,
@@ -652,7 +760,7 @@ def analyze(*, manifests: Mapping[str, Mapping[str, Any]], rows: Iterable[_Obser
             "ruleset": RULESET_VERSION,
             "automatic_merge_count": 0,
             "claim_transfer_count": 0,
-            "review_required_count": len(candidate_rows),
+            "review_required_count": candidate_count,
             "disclaimer": "Observed candidate yield is not accuracy; no real precision/recall claim is made without human labels.",
         },
         "connectivity": {

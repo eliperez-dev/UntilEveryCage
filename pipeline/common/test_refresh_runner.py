@@ -25,11 +25,28 @@ class FakeAdapter:
         return {"input_rows": 2, "normalized_rows": 2, "quarantined_rows": 0, "mode": mode}
 
 
+class NetworkAdapter(FakeAdapter):
+    source_id = "fixture.network"
+
+    def __init__(self, *, schema_drift: bool = False) -> None:
+        super().__init__()
+        self.acquisition_calls = 0
+        self.schema_drift = schema_drift
+
+    def acquire(self, *, run_dir, options):
+        self.acquisition_calls += 1
+        return {"artifact_path": str(Path(__file__))}
+
+    def refresh(self, *, mode, run_dir, artifact, options):
+        return {"input_rows": 1, "normalized_rows": 1, "quarantined_rows": 0,
+                "schema_status": "schema-drift" if self.schema_drift else "ok"}
+
+
 def catalog_for(*adapters: FakeAdapter, statuses=None) -> RefreshCatalog:
     catalog = RefreshCatalog.__new__(RefreshCatalog)
     statuses = statuses or {}
     catalog.sources = {adapter.source_id: {"source_id": adapter.source_id, "adapter_status": statuses.get(adapter.source_id, "implemented_partial")} for adapter in adapters}
-    catalog.capabilities = {adapter.source_id: AdapterCapabilities(source_id=adapter.source_id, adapter_version=adapter.adapter_version, schema_version="test-v1", acquisition="fixture", geocoding="disabled", publication="human_gate_required") for adapter in adapters}
+    catalog.capabilities = {adapter.source_id: AdapterCapabilities(source_id=adapter.source_id, adapter_version=adapter.adapter_version, schema_version="test-v1", acquisition="fixture", geocoding="disabled", publication="human_gate_required", operational_classification="terms-blocked" if hasattr(adapter, "acquire") else "assisted", live_callable=hasattr(adapter, "acquire")) for adapter in adapters}
     catalog.adapters = {adapter.source_id: RegisteredAdapter(catalog.capabilities[adapter.source_id], adapter) for adapter in adapters}
     return catalog
 
@@ -143,6 +160,41 @@ class RefreshRunnerTests(unittest.TestCase):
         self.assertEqual(result["counts"]["unsupported"], 1)
         unsupported = result["results"][1]
         self.assertEqual(unsupported["operational"]["failure_reason"], "adapter_unregistered")
+
+    def test_live_acquisition_is_blocked_before_network_without_source_grant(self):
+        adapter = NetworkAdapter(); catalog = catalog_for(adapter)
+        result = RefreshRunner(catalog).run(RefreshRequest(
+            source_ids=(adapter.source_id,), mode="live-acquisition",
+            output_root=self.output("terms-blocked"),
+        ))
+        self.assertEqual(adapter.acquisition_calls, 0)
+        item = result["results"][0]
+        self.assertEqual(item["acquisition_classification"], "terms-blocked")
+        self.assertEqual(item["operational"]["operational_classification"], "terms-blocked")
+        self.assertEqual(result["classification_counts"], {"terms-blocked": 1})
+
+    def test_authorized_live_callable_is_invoked_and_schema_drift_blocks_import(self):
+        adapter = NetworkAdapter(schema_drift=True); catalog = catalog_for(adapter)
+        result = RefreshRunner(catalog).run(RefreshRequest(
+            source_ids=(adapter.source_id,), mode="live-acquisition",
+            output_root=self.output("authorized"),
+            options={"authorized_live_sources": [adapter.source_id], "terms_review_paths": {adapter.source_id: "review.json"}},
+        ))
+        self.assertEqual(adapter.acquisition_calls, 1)
+        item = result["results"][0]
+        self.assertEqual(item["status"], "succeeded")
+        self.assertEqual(item["acquisition_classification"], "schema-drift")
+
+    def test_failure_reports_prior_valid_state_without_exposing_path(self):
+        adapter = NetworkAdapter(); catalog = catalog_for(adapter)
+        result = RefreshRunner(catalog).run(RefreshRequest(
+            source_ids=(adapter.source_id,), mode="live-acquisition",
+            output_root=self.output("prior-state"),
+            options={"previous_valid_states": {adapter.source_id: {"verified": True, "artifact_sha256": "a" * 64}}},
+        ))
+        state = result["results"][0]["operational"]["previous_valid_state"]
+        self.assertTrue(state["verified"])
+        self.assertEqual(state["artifact_sha256"], "a" * 64)
 
 
 if __name__ == "__main__":

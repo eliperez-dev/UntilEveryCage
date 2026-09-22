@@ -3,6 +3,14 @@
   "purpose": "Evidence-backed source readiness baseline; not a runtime health monitor or publication approval register.",
   "latest_private_rehearsal": "docs/archive/rehearsals/country-rehearsal-2026-09-15.json",
   "latest_country_capture": "data/manifests/de-be-private-candidates-2026-09-17.json",
+  "legacy_archive": {
+    "manifest": "data/manifests/legacy-files.csv",
+    "status_ledger": "data/manifests/legacy-status.json",
+    "scope": "checked-in V1-era artifacts only; metadata and integrity evidence, not currentness or publication approval",
+    "database_migration_status": "metadata_only_not_migrated",
+    "lineage_state": "unknown_unless_source_recorded_elsewhere",
+    "public_projection": "not_eligible"
+  },
   "status_vocabulary": {
     "metadata": ["verified", "partial", "unknown"],
     "acquisition": ["not_run", "blocked", "artifact_private_only", "verified"],

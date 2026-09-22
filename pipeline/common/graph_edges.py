@@ -367,7 +367,7 @@ def validate_connection_edge(edge: Mapping[str, Any]) -> dict[str, Any]:
 
 def persist_connection_edges(connection: Any, edges: Iterable[Mapping[str, Any]]) -> dict[str, int]:
     """Idempotently upsert derived private edges using a DB-API connection."""
-    inserted = updated = 0
+    inserted = updated = skipped_exact = 0
     sql = """INSERT INTO uec.graph_connection_edges
         (edge_key,from_entity_type,from_source_id,from_identifier_type,from_source_identifier,
          to_entity_type,to_source_id,to_identifier_type,to_source_identifier,relationship_type,
@@ -385,6 +385,39 @@ def persist_connection_edges(connection: Any, edges: Iterable[Mapping[str, Any]]
     for raw in edges:
         edge = validate_connection_edge(raw)
         left, right = edge["from"], edge["to"]
+        endpoint_args = (
+            left["entity_type"], left["source_id"], left["identifier_type"], left["source_identifier"],
+            right["entity_type"], right["source_id"], right["identifier_type"], right["source_identifier"],
+        )
+        if edge["connection_type"] == "inferred":
+            exact = connection.execute(
+                """SELECT 1 FROM uec.graph_connection_edges
+                   WHERE connection_type='exact' AND (
+                     (from_entity_type=%s AND from_source_id=%s AND from_identifier_type=%s AND from_source_identifier=%s
+                      AND to_entity_type=%s AND to_source_id=%s AND to_identifier_type=%s AND to_source_identifier=%s)
+                     OR
+                     (from_entity_type=%s AND from_source_id=%s AND from_identifier_type=%s AND from_source_identifier=%s
+                      AND to_entity_type=%s AND to_source_id=%s AND to_identifier_type=%s AND to_source_identifier=%s)
+                   ) LIMIT 1""",
+                endpoint_args + endpoint_args[4:] + endpoint_args[:4],
+            ).fetchone()
+            if exact:
+                skipped_exact += 1
+                continue
+        else:
+            # An exact source assertion supersedes a previously generated
+            # inferred edge for the same unordered source-qualified pair.
+            connection.execute(
+                """DELETE FROM uec.graph_connection_edges
+                   WHERE connection_type='inferred' AND (
+                     (from_entity_type=%s AND from_source_id=%s AND from_identifier_type=%s AND from_source_identifier=%s
+                      AND to_entity_type=%s AND to_source_id=%s AND to_identifier_type=%s AND to_source_identifier=%s)
+                     OR
+                     (from_entity_type=%s AND from_source_id=%s AND from_identifier_type=%s AND from_source_identifier=%s
+                      AND to_entity_type=%s AND to_source_id=%s AND to_identifier_type=%s AND to_source_identifier=%s)
+                   )""",
+                endpoint_args + endpoint_args[4:] + endpoint_args[:4],
+            )
         args = (edge["edge_key"], left["entity_type"], left["source_id"], left["identifier_type"], left["source_identifier"], right["entity_type"], right["source_id"], right["identifier_type"], right["source_identifier"], edge["relationship_type"], edge["connection_type"], edge["confidence"], edge["confidence_band"], edge["match_method"], _canonical(edge["supporting_source_refs"]), _canonical(edge["signal_explanation"]), edge["ruleset_version"], edge["observed_at"], edge.get("computed_at") or datetime.now(timezone.utc).isoformat(), edge.get("conflicting", False), edge.get("suppressed", False))
         cursor = connection.execute(sql, args)
         marker = None
@@ -396,7 +429,7 @@ def persist_connection_edges(connection: Any, edges: Iterable[Mapping[str, Any]]
             inserted += 1
         else:
             updated += 1
-    return {"inserted": inserted, "updated": updated, "total": inserted + updated}
+    return {"inserted": inserted, "updated": updated, "skipped_exact": skipped_exact, "total": inserted + updated}
 
 
 __all__ = [

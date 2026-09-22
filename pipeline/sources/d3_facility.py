@@ -112,7 +112,36 @@ class D3FacilityRefreshAdapter:
         self.schema_version = schema_version
         self.acquisition = acquisition
 
-    def _artifact(self, path: Path) -> SourceArtifact:
+    def acquire(self, *, run_dir: Path, options: Mapping[str, Any]) -> Mapping[str, Any]:
+        """Expose only the source packages' existing bounded fetch paths."""
+        review_paths = options.get("terms_review_paths")
+        review = review_paths.get(self.source_id) if isinstance(review_paths, Mapping) else None
+        review = review or options.get("terms_review_path")
+        if not review:
+            raise RuntimeError("terms review is required for live acquisition")
+        root = run_dir / "acquisition"
+        run_id = run_dir.name
+        if self.source_id == "fsa_approved_establishments":
+            from pipeline.sources.uk.fsa_approved.refresh import refresh_monthly
+            result = refresh_monthly(run_dir=root, fetch=True, mode="dry-run", terms_review_path=Path(str(review)), max_bytes=int(options.get("max_bytes", 64 * 1024 * 1024)))
+            report = result.get("report", {})
+            metadata = report.get("acquisition_metadata")
+            if not metadata:
+                raise RuntimeError("FSA acquisition did not return metadata")
+            facts = json.loads(Path(str(metadata)).read_text(encoding="utf-8"))
+            return {"artifact_path": str(facts["artifact_path"]), "acquisition": report}
+        if self.source_id == "fss_approved_establishments":
+            from pipeline.sources.uk.fss_approved.refresh import refresh_scotland
+            result = refresh_scotland(run_dir=root, fetch=True, mode="dry-run", terms_review_path=Path(str(review)), max_bytes=int(options.get("max_bytes", 64 * 1024 * 1024)))
+            report = result.get("report", {})
+            metadata = report.get("acquisition_metadata")
+            if not metadata:
+                raise RuntimeError("FSS acquisition did not return metadata")
+            facts = json.loads(Path(str(metadata)).read_text(encoding="utf-8"))
+            return {"artifact_path": str(facts["artifact_path"]), "acquisition": report}
+        raise RuntimeError(f"no approved live callable for {self.source_id}; use assisted local artifact")
+
+    def _artifact(self, path: Path, options: Mapping[str, Any] | None = None) -> SourceArtifact:
         # A directory is a multi-file FSIS bundle; its source adapter records
         # per-role hashes and the bundle digest in the private manifest.
         if path.is_dir():
@@ -122,7 +151,18 @@ class D3FacilityRefreshAdapter:
         else:
             payload = path.read_bytes()
             size = len(payload)
-        return SourceArtifact(source_url=self.source_url, retrieved_at_utc=SYNTHETIC_RETRIEVED_AT,
+        facts: Mapping[str, Any] = {}
+        acquisition = (options or {}).get("acquisition")
+        nested = acquisition.get("acquisition") if isinstance(acquisition, Mapping) else None
+        metadata_path = nested.get("acquisition_metadata") if isinstance(nested, Mapping) else None
+        if metadata_path and Path(str(metadata_path)).is_file():
+            try:
+                value = json.loads(Path(str(metadata_path)).read_text(encoding="utf-8"))
+                if isinstance(value, Mapping):
+                    facts = value
+            except (OSError, ValueError):
+                facts = {}
+        return SourceArtifact(source_url=str(facts.get("final_url") or self.source_url), retrieved_at_utc=str(facts.get("retrieved_at_utc") or SYNTHETIC_RETRIEVED_AT),
                               sha256=hashlib.sha256(payload).hexdigest(), byte_size=size,
                               code_version=self.adapter_version, config_version=self.schema_version,
                               rights_caveat="source-specific terms remain a human gate",
@@ -136,7 +176,7 @@ class D3FacilityRefreshAdapter:
         raw_path = artifact if mode == "local-artifact" else self.fixture_path
         if not raw_path.exists():
             raise FileNotFoundError(f"preserved artifact is unavailable for {self.source_id}: {raw_path}")
-        source_artifact = self._artifact(raw_path)
+        source_artifact = self._artifact(raw_path, options)
         adapter = self._factory()
         status = run_private_lifecycle(raw_path, run_dir, source_artifact, adapter,
                                        health_as_of_utc=source_artifact.retrieved_at_utc)
@@ -168,5 +208,7 @@ def register_d3(catalog: Any) -> None:
     for item in D3_DESCRIPTORS():
         if item["source_id"] not in catalog.sources:
             continue
-        catalog.register(D3FacilityRefreshAdapter(item["source_id"], item["factory"], item["fixture"], item["url"], item["adapter_version"], item["schema_version"], item["acquisition"]), AdapterCapabilities(source_id=item["source_id"], adapter_version=item["adapter_version"], schema_version=item["schema_version"], acquisition=item["acquisition"], geocoding="disabled", publication="human_gate_required", adapter_path=str(item["fixture"].parent), country_code=item["country_code"]))
+        live_callable = item["source_id"] in {"fsa_approved_establishments", "fss_approved_establishments"}
+        classification = "terms-blocked" if live_callable else "assisted"
+        catalog.register(D3FacilityRefreshAdapter(item["source_id"], item["factory"], item["fixture"], item["url"], item["adapter_version"], item["schema_version"], item["acquisition"]), AdapterCapabilities(source_id=item["source_id"], adapter_version=item["adapter_version"], schema_version=item["schema_version"], acquisition=item["acquisition"], geocoding="disabled", publication="human_gate_required", adapter_path=str(item["fixture"].parent), country_code=item["country_code"], operational_classification=classification, live_callable=live_callable))
 
