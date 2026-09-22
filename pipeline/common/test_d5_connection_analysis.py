@@ -8,8 +8,11 @@ from pathlib import Path
 from pipeline.common.d5_connection_analysis import (
     RULESET_VERSION,
     _observed_from_row,
+    _iter_probabilistic_candidates,
     classify_collision_observations,
     analyze,
+    iter_candidate_batches,
+    iter_probabilistic_candidates,
     load_private_rows,
     read_aggregate_manifests,
     write_report,
@@ -132,6 +135,65 @@ class D5ConnectionAnalysisTests(unittest.TestCase):
             self.assertIn(RULESET_VERSION, text)
         finally:
             shutil.rmtree(directory, ignore_errors=True)
+
+    def test_candidates_have_real_source_qualified_endpoints_and_no_placeholders(self):
+        left = self.row("source-a", "left-1", name="Stable Name", city="Town", postal="1000", facility="A-1", org="ORG-A")
+        right = self.row("source-b", "right-1", name="Stable Name", city="Town", postal="1000", facility="B-1", org="ORG-B")
+        candidates = list(iter_probabilistic_candidates([_observed_from_row(right), _observed_from_row(left)]))
+        self.assertEqual(len(candidates), 1)
+        candidate = candidates[0]
+        self.assertEqual([item["source_id"] for item in candidate["endpoints"]], ["source-a", "source-b"])
+        self.assertEqual([item["source_identifier"] for item in candidate["endpoints"]], ["a1", "b1"])
+        self.assertTrue(all(item["identity_scope"] == "source_scoped" for item in candidate["endpoints"]))
+        self.assertNotIn(":left", json.dumps(candidate))
+        self.assertNotIn(":right", json.dumps(candidate))
+
+    def test_candidate_order_is_deterministic_and_resumable(self):
+        rows = []
+        for index in range(6):
+            rows.append(_observed_from_row(self.row(f"source-{index}", f"row-{index}", name="Same", city="Town", postal="1000", facility=f"F-{index}", org=f"O-{index}")))
+        first = list(iter_probabilistic_candidates(rows))
+        second = list(iter_probabilistic_candidates(list(reversed(rows))))
+        self.assertEqual([item["candidate_digest"] for item in first], [item["candidate_digest"] for item in second])
+        resumed = list(iter_probabilistic_candidates(rows, start_after=first[1]["candidate_digest"]))
+        self.assertEqual([item["candidate_digest"] for item in resumed], [item["candidate_digest"] for item in first[2:]])
+        self.assertEqual(sum(len(batch) for batch in iter_candidate_batches(rows, batch_size=2)), len(first))
+
+    def test_ambiguous_block_is_counted_instead_of_global_truncation(self):
+        rows = [_observed_from_row(self.row(f"source-{index}", f"row-{index}", name="Crowded", city="Town", postal="1000", facility=f"F-{index}", org=f"O-{index}")) for index in range(4)]
+        report = analyze(manifests={}, rows=rows, max_block_size=3)
+        generation = report["probabilistic_candidates"]["candidate_generation"]
+        self.assertGreater(generation["blocks_ambiguous"], 0)
+        self.assertEqual(report["probabilistic_candidates"]["count"], 0)
+        self.assertFalse(report["probabilistic_candidates"]["candidate_generation_capped"])
+
+    def test_iterator_has_no_global_five_thousand_candidate_cap(self):
+        rows = []
+        for index in range(5001):
+            name = f"Facility {index}"
+            rows.extend((
+                _observed_from_row(self.row("source-a", f"a-{index}", name=name, city="Town", postal=str(index), facility=f"A-{index}", org=f"OA-{index}")),
+                _observed_from_row(self.row("source-b", f"b-{index}", name=name, city="Town", postal=str(index), facility=f"B-{index}", org=f"OB-{index}")),
+            ))
+        candidates = list(iter_probabilistic_candidates(rows))
+        self.assertEqual(len(candidates), 5001)
+        self.assertEqual(len({item["candidate_digest"] for item in candidates}), 5001)
+
+    def test_contradictory_address_is_retained_and_downgrades_score(self):
+        left = _observed_from_row({**self.row("source-a", "left-1", name="Stable Name", city="Town", postal="1000", facility="A-1", org="ORG-A"), "normalized": {"establishment_id": "A-1", "name": "Stable Name", "city": "Town", "postal_code": "1000", "address": "Main Street", "cvr": "ORG-A"}})
+        right = _observed_from_row({**self.row("source-b", "right-1", name="Stable Name", city="Town", postal="1000", facility="B-1", org="ORG-B"), "normalized": {"establishment_id": "B-1", "name": "Stable Name", "city": "Town", "postal_code": "1000", "address": "Different Street", "cvr": "ORG-B"}})
+        clean = list(iter_probabilistic_candidates([left, _observed_from_row({**self.row("source-c", "right-2", name="Stable Name", city="Town", postal="1000", facility="C-1", org="ORG-A"), "normalized": {"establishment_id": "C-1", "name": "Stable Name", "city": "Town", "postal_code": "1000", "address": "Main Street", "cvr": "ORG-A"}})]))[0]
+        conflict = list(iter_probabilistic_candidates([left, right]))[0]
+        self.assertTrue(any(item["signal"] == "conflicting_address" for item in conflict["contradictory_evidence"]))
+        self.assertLess(conflict["confidence"], clean["confidence"])
+        self.assertFalse(conflict["automatic_merge"])
+
+    def test_repeated_source_native_identifier_is_not_inferred_as_a_pair(self):
+        first = _observed_from_row(self.row("source-a", "row-1", name="Stable Name", city="Town", postal="1000", facility="A-1", org="ORG-A"))
+        repeat = _observed_from_row(self.row("source-a", "row-2", name="Stable Name", city="Town", postal="1000", facility="A-1", org="ORG-A"))
+        iterator, counters = _iter_probabilistic_candidates([first, repeat])
+        self.assertEqual(list(iterator), [])
+        self.assertEqual(counters["pairs_exact_equivalent"], 1)
 
 
 if __name__ == "__main__":

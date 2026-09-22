@@ -195,27 +195,37 @@ class ConnectionStore:
                         already_present += 1
         return {"inserted": inserted, "already_present": already_present, "organizations": len(self.organization_nodes), "facilities": len(self.facility_nodes), "evidence": len(self.evidence_nodes)}
 
-    def import_inferred_candidates(self, rows: Iterable[_Observed], *, limit: int = 5000) -> int:
+    def import_inferred_candidates(self, rows: Iterable[_Observed], *, limit: int | None = None) -> int:
+        """Import source-qualified inferred endpoints.
+
+        ``limit`` is an optional explicit caller page for compatibility with
+        bounded jobs.  There is no product-wide 5,000-row default; callers
+        that need paging should use the matcher cursor/batch API.
+        """
         candidates, _ = _probabilistic_candidates(list(rows), limit=limit)
         inserted = 0
         for candidate in candidates:
-            pair = list(candidate["source_pair"])
-            # A probabilistic candidate may compare two records from the same
-            # source.  Keep the edge source-scoped instead of assuming every
-            # candidate is cross-source.
-            left = pair[0] if pair else "unknown"
-            right = pair[1] if len(pair) > 1 else left
+            endpoints = candidate.get("endpoints") or []
+            if len(endpoints) != 2:
+                # The matcher never emits placeholders.  Keep this store
+                # fail-closed if a legacy candidate is supplied.
+                continue
+            left_endpoint, right_endpoint = endpoints
+            left = str(left_endpoint["source_id"])
+            right = str(right_endpoint["source_id"])
+            left_entity_id = f"facility:{left}:{left_endpoint['identifier_type']}:{left_endpoint['source_identifier']}"
+            right_entity_id = f"facility:{right}:{right_endpoint['identifier_type']}:{right_endpoint['source_identifier']}"
             edge = ConnectionEdge(
                 edge_id=candidate["candidate_digest"],
                 source_id=left,
                 source_record_id=None,
                 connection_type="inferred",
                 left_entity_type="facility",
-                left_entity_id=f"candidate:{candidate['candidate_digest']}:left",
+                left_entity_id=left_entity_id,
                 right_entity_type="facility",
-                right_entity_id=f"candidate:{candidate['candidate_digest']}:right",
+                right_entity_id=right_entity_id,
                 confidence=float(candidate["confidence"]),
-                evidence_refs=({"source_pair": f"{left}|{right}", "candidate_ref": candidate["candidate_digest"]},),
+                evidence_refs=tuple({"source_id": item["source_id"], "source_record_ref": item.get("source_record_key", "")} for item in endpoints),
                 score_contributions={feature: 1.0 for feature in candidate["contributing_features"]},
                 disclaimer=candidate["disclaimer"],
                 ruleset=candidate["ruleset"],

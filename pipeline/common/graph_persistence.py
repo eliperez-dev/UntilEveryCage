@@ -419,6 +419,70 @@ def _matcher_edge(raw: dict[str, Any], candidate: dict[str, Any], manifest: dict
             return None
         return edge
 
+    # The indexed D6 matcher intentionally returns a compact candidate rather
+    # than a database-shaped edge.  Adapt its source-qualified endpoints and
+    # aggregate feature names to the shared scorer here.  This keeps matching
+    # independent from persistence while ensuring every stored edge carries
+    # the same explanation and provenance contract.
+    matcher_endpoints = raw.get("endpoints")
+    if isinstance(matcher_endpoints, list) and len(matcher_endpoints) == 2:
+        left, right = matcher_endpoints
+        if not all(isinstance(item, dict) for item in (left, right)):
+            raise GraphPersistenceError("matcher candidate endpoints must be objects")
+        left_ref = EntityRef(
+            entity_type=str(left.get("entity_type") or ""),
+            source_id=str(left.get("source_id") or ""),
+            identifier_type=str(left.get("identifier_type") or ""),
+            source_identifier=str(left.get("source_identifier") or ""),
+        )
+        right_ref = EntityRef(
+            entity_type=str(right.get("entity_type") or ""),
+            source_id=str(right.get("source_id") or ""),
+            identifier_type=str(right.get("identifier_type") or ""),
+            source_identifier=str(right.get("source_identifier") or ""),
+        )
+        if _forbidden_evidence_facility_pair(left_ref, right_ref):
+            return None
+        signal_names = {
+            "name": "organization_name_normalized",
+            "postal": "postal_match",
+            "city": "city_match",
+            "address": "address_match",
+        }
+        signals = [
+            {"name": signal_names[name], "details": {"basis": "indexed_normalized_block"}}
+            for name in raw.get("contributing_features", ())
+            if name in signal_names
+        ]
+        for contradiction in raw.get("contradictory_evidence", ()):
+            if not isinstance(contradiction, dict):
+                continue
+            name = str(contradiction.get("signal") or "")
+            if name in {"conflicting_identifier", "conflicting_address", "temporal_conflict"}:
+                signals.append({"name": name, "details": {"basis": "indexed_normalized_block"}})
+        scoring = score_connection(signals)
+        if not scoring.eligible or scoring.connection_type != "inferred":
+            return None
+        provenance = raw.get("provenance")
+        refs = []
+        if isinstance(provenance, list):
+            for item in provenance:
+                if isinstance(item, dict) and item.get("source_id") and item.get("source_record_key"):
+                    refs.append(SourceRef(source_id=str(item["source_id"]), source_record_key=str(item["source_record_key"])))
+        if not refs:
+            refs = _source_refs(candidate, manifest)
+        return build_connection_edge(
+            from_ref=left_ref,
+            to_ref=right_ref,
+            relationship_type=str(raw.get("relationship_type") or "related_facility"),
+            scoring=scoring,
+            supporting_source_refs=refs,
+            observed_at=raw.get("observed_at") or candidate.get("observed_at") or _timestamp(manifest),
+            conflicting=bool(raw.get("contradictory_evidence")),
+            suppressed=bool(raw.get("suppressed")),
+            computed_at=str(raw.get("computed_at") or manifest.get("retrieved_at_utc") or _timestamp(manifest)),
+        )
+
     left = raw.get("from") or raw.get("from_ref") or raw.get("left")
     right = raw.get("to") or raw.get("to_ref") or raw.get("right")
     if isinstance(left, EntityRef):

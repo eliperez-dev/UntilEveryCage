@@ -7,6 +7,7 @@ from pathlib import Path
 from pipeline.common.graph_persistence import (
     GraphPersistenceError,
     build_candidate_connection_edges,
+    _matcher_edge,
     _observed_at,
     load_evidence_handoff,
     load_graph_candidate_handoff,
@@ -47,6 +48,25 @@ def candidate(source_id="synthetic.graph"):
 
 
 class GraphPersistenceContractTests(unittest.TestCase):
+
+    def test_indexed_matcher_candidate_becomes_private_inferred_edge(self):
+        raw = {
+            "endpoints": [
+                {"entity_type": "facility", "source_id": "source-a", "identifier_type": "permit", "source_identifier": "A-1", "source_record_key": "row-a"},
+                {"entity_type": "facility", "source_id": "source-b", "identifier_type": "permit", "source_identifier": "B-1", "source_record_key": "row-b"},
+            ],
+            "contributing_features": ["name", "postal"],
+            "provenance": [
+                {"source_id": "source-a", "source_record_key": "row-a"},
+                {"source_id": "source-b", "source_record_key": "row-b"},
+            ],
+        }
+        edge = _matcher_edge(raw, {"source_id": "source-a", "source_record_key": "row-a"}, {"source_id": "source-a", "retrieved_at_utc": "2026-09-21T00:00:00+00:00"})
+        self.assertIsNotNone(edge)
+        self.assertEqual(edge["connection_type"], "inferred")
+        self.assertEqual(edge["from"]["source_identifier"], "A-1")
+        self.assertEqual(edge["publication_status"], "not_eligible")
+        self.assertEqual(len(edge["supporting_source_refs"]), 2)
     def test_unknown_source_observation_time_uses_handoff_time(self):
         manifest = {"retrieved_at_utc": "2026-09-21T00:00:00Z"}
         self.assertEqual(_observed_at("unknown", manifest), manifest["retrieved_at_utc"])

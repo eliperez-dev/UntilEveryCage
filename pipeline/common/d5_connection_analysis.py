@@ -324,63 +324,216 @@ def _candidate_key(left: _Observed, right: _Observed, method: str) -> str:
     return _digest("|".join((left.source_id, left.key, right.source_id, right.key, method)))
 
 
-def _probabilistic_candidates(rows: list[_Observed], limit: int = 5000) -> tuple[list[dict[str, Any]], bool]:
-    """Generate aggregate-only multi-signal candidates.
+_BLOCK_SIGNALS = ("postal", "city", "address")
+_SIGNAL_WEIGHTS = {"name": 0.34, "postal": 0.18, "city": 0.10, "address": 0.22}
+_BLOCK_DEFAULT_MAX = 1000
 
-    Only facility rows participate.  Two compatible signals are required;
-    exact source-native identifiers are handled by deterministic edges.
+
+def _endpoint_ref(row: _Observed) -> dict[str, str] | None:
+    """Return a source-qualified facility endpoint, never a synthetic placeholder."""
+    if not row.facility_ids:
+        return None
+    identifier_type, identifier = sorted(row.facility_ids.items())[0]
+    return {
+        "entity_type": "facility",
+        "source_id": row.source_id,
+        "identifier_type": identifier_type,
+        "source_identifier": identifier,
+        "source_record_key": row.key,
+        "identity_scope": "source_scoped",
+    }
+
+
+def _pair_identity(left: _Observed, right: _Observed) -> tuple[str, str]:
+    """Stable pair key independent of input order."""
+    values = (f"{left.source_id}:{left.key}", f"{right.source_id}:{right.key}")
+    return tuple(sorted(values))  # type: ignore[return-value]
+
+
+def _exact_equivalent(left: _Observed, right: _Observed) -> bool:
+    """Rows repeating one source-native facility are not inferred matches."""
+    if left.source_id != right.source_id:
+        return False
+    if left.key == right.key:
+        return True
+    left_ids = set(left.facility_ids.values())
+    right_ids = set(right.facility_ids.values())
+    return bool(left_ids and right_ids and left_ids.intersection(right_ids))
+
+
+def _match_features(left: _Observed, right: _Observed) -> tuple[list[str], list[dict[str, Any]]]:
+    common = [signal for signal in ("name", "postal", "city", "address")
+              if left.signals.get(signal) and left.signals.get(signal) == right.signals.get(signal)]
+    contradictions: list[dict[str, Any]] = []
+    if left.organization_ids and right.organization_ids and not set(left.organization_ids.values()).intersection(right.organization_ids.values()):
+        contradictions.append({"signal": "conflicting_identifier", "group": "contradiction", "reason": "organization identifiers disagree"})
+    if left.signals.get("address") and right.signals.get("address") and left.signals["address"] != right.signals["address"]:
+        contradictions.append({"signal": "conflicting_address", "group": "contradiction", "reason": "normalized addresses disagree"})
+    if left.dates and right.dates and not set(left.dates).intersection(right.dates):
+        # Dates are observations, not identity.  Keep the contradiction as a
+        # review cue while allowing an otherwise anchored candidate through.
+        contradictions.append({"signal": "temporal_conflict", "group": "contradiction", "reason": "observation dates do not overlap"})
+    return common, contradictions
+
+
+def _score_match(features: list[str], contradictions: list[dict[str, Any]]) -> tuple[float, str, dict[str, Any]]:
+    groups = {"identity": [feature for feature in features if feature == "name"],
+              "location": [feature for feature in features if feature in {"postal", "city", "address"}]}
+    group_contributions: dict[str, float] = {}
+    for group, values in sorted(groups.items()):
+        ordered = sorted(values, key=lambda value: (-_SIGNAL_WEIGHTS[value], value))
+        group_contributions[group] = sum(_SIGNAL_WEIGHTS[value] * (0.68 ** index) for index, value in enumerate(ordered))
+    positive = sum(group_contributions.values())
+    contradiction_weights = {"conflicting_identifier": 0.24, "conflicting_address": 0.14, "temporal_conflict": 0.16}
+    penalty_values = sorted((contradiction_weights.get(item.get("signal", ""), 0.14) for item in contradictions), reverse=True)
+    penalty = sum(value * (0.76 ** index) for index, value in enumerate(penalty_values))
+    score = round(max(0.0, min(1.0, positive - penalty)), 5)
+    if score >= 0.85:
+        band = "high"
+    elif score >= 0.65:
+        band = "probable"
+    elif score >= 0.40:
+        band = "possible"
+    else:
+        band = "low"
+    return score, band, {"group_contributions": {key: round(value, 8) for key, value in sorted(group_contributions.items())},
+                         "positive_contribution": round(positive, 8), "contradiction_penalty": round(penalty, 8),
+                         "anchor_present": "name" in features and ("postal" in features or ("city" in features and "address" in features))}
+
+
+def _iter_probabilistic_candidates(rows: Iterable[_Observed], *, start_after: str | None = None,
+                                   max_block_size: int = _BLOCK_DEFAULT_MAX) -> tuple[Iterable[dict[str, Any]], dict[str, int]]:
+    """Build deterministic indexed blocks and return an iterator plus counters.
+
+    Blocks are keyed by name+postal, name+city, or name+address.  A large
+    block is ambiguous rather than truncated: it is skipped and accounted for
+    explicitly.  ``start_after`` is a candidate digest cursor, allowing a
+    caller to resume without changing ordering.
     """
+    if max_block_size < 2:
+        raise ValueError("max_block_size must be at least 2")
+    observations = sorted((row for row in rows if row.source_kind == "facility_master" and row.signals.get("name") and row.facility_ids),
+                          key=lambda row: (row.source_id, row.key))
     indexed: dict[tuple[str, str], list[_Observed]] = defaultdict(list)
-    for row in rows:
-        if row.source_kind != "facility_master" or not row.signals.get("name"):
-            continue
+    for row in observations:
         name = row.signals["name"]
-        for signal in ("postal", "city", "address"):
+        for signal in _BLOCK_SIGNALS:
             value = row.signals.get(signal)
             if value:
                 indexed[(signal, name + "|" + value)].append(row)
-    pairs: dict[tuple[str, str], set[str]] = defaultdict(set)
-    for group in indexed.values():
-        unique = {(item.source_id, item.key): item for item in group}
-        for left, right in combinations(unique.values(), 2):
-            if left.source_id == right.source_id and left.key == right.key:
+    counters = {"blocks_indexed": len(indexed), "blocks_ambiguous": 0, "rows_in_ambiguous_blocks": 0,
+                "pairs_considered": 0, "pairs_exact_equivalent": 0, "pairs_emitted": 0,
+                "pairs_deduplicated": 0}
+    valid_blocks: list[tuple[tuple[str, str], list[_Observed]]] = []
+    for block_key in sorted(indexed):
+        group = sorted(indexed[block_key], key=lambda row: (row.source_id, row.key))
+        if len(group) > max_block_size:
+            counters["blocks_ambiguous"] += 1
+            counters["rows_in_ambiguous_blocks"] += len(group)
+            continue
+        valid_blocks.append((block_key, group))
+
+    def generate() -> Iterable[dict[str, Any]]:
+        buffered: dict[tuple[str, str], tuple[_Observed, _Observed, set[str]]] = {}
+        exact_equivalent_pairs: set[tuple[str, str]] = set()
+        for block_key, group in valid_blocks:
+            signal = block_key[0]
+            for left, right in combinations(group, 2):
+                counters["pairs_considered"] += 1
+                pair_key = _pair_identity(left, right)
+                if pair_key in buffered:
+                    counters["pairs_deduplicated"] += 1
+                if _exact_equivalent(left, right):
+                    if pair_key not in exact_equivalent_pairs:
+                        counters["pairs_exact_equivalent"] += 1
+                        exact_equivalent_pairs.add(pair_key)
+                    continue
+                features, _ = _match_features(left, right)
+                if "name" not in features or not ("postal" in features or "city" in features or "address" in features):
+                    continue
+                # One candidate can be supported by multiple blocking keys.
+                item = buffered.setdefault(pair_key, (left, right, set()))
+                item[2].add(f"normalized_name+{signal}")
+                # Materialize only after all blocks have contributed so that
+                # ordering and scores do not depend on input iteration order.
+        materialized: list[dict[str, Any]] = []
+        for pair_key in sorted(buffered):
+            left, right, methods = buffered[pair_key]
+            features, contradictions = _match_features(left, right)
+            score, band, explanation = _score_match(features, contradictions)
+            if not explanation["anchor_present"]:
                 continue
-            methods = []
-            common = set(left.signals).intersection(right.signals)
-            if {"name", "postal"}.issubset(common):
-                methods.append("normalized_name+postal")
-            if {"name", "city"}.issubset(common):
-                methods.append("normalized_name+city")
-            if {"name", "address"}.issubset(common):
-                methods.append("normalized_name+address")
-            for method in methods:
-                key = tuple(sorted((f"{left.source_id}:{left.key}", f"{right.source_id}:{right.key}")))
-                pairs[key].add(method)
-    candidates: list[dict[str, Any]] = []
-    for (left_key, right_key), methods in sorted(pairs.items()):
-        if len(candidates) >= limit:
-            break
-        common = sorted(methods)
-        score = 0.82 if "normalized_name+postal" in methods else 0.74 if "normalized_name+address" in methods else 0.68
-        band = "probable" if score >= 0.74 else "possible"
-        candidates.append({
-            "candidate_digest": _digest(left_key + "|" + right_key + "|" + RULESET_VERSION),
-            "source_pair": sorted({left_key.split(":", 1)[0], right_key.split(":", 1)[0]}),
-            "method": "multi_signal_intersection",
-            "contributing_features": common,
-            "contradictory_evidence": [],
-            "confidence": score,
-            "confidence_band": band,
-            "review_state": "review_required",
-            "automatic_merge": False,
-            "transfers_claims": False,
-            "disclaimer": "Possible source-record connection; not human verified and must not be treated as a canonical identity.",
-            "ruleset": RULESET_VERSION,
-        })
-    return candidates, len(pairs) > limit
+            left_endpoint = _endpoint_ref(left)
+            right_endpoint = _endpoint_ref(right)
+            if left_endpoint is None or right_endpoint is None:
+                continue
+            digest = _digest(pair_key[0] + "|" + pair_key[1] + "|" + RULESET_VERSION)
+            materialized.append({
+                "candidate_digest": digest,
+                "source_pair": sorted({left.source_id, right.source_id}),
+                "endpoints": [left_endpoint, right_endpoint],
+                "left_endpoint": left_endpoint,
+                "right_endpoint": right_endpoint,
+                "provenance": [{"source_id": left.source_id, "source_record_key": left.key},
+                                {"source_id": right.source_id, "source_record_key": right.key}],
+                "observed_at": min(left.dates + right.dates) if left.dates or right.dates else "",
+                "method": "multi_signal_intersection",
+                "contributing_features": sorted(features),
+                "blocking_methods": sorted(methods),
+                "contradictory_evidence": contradictions,
+                "confidence": score,
+                "confidence_band": band,
+                "score_explanation": explanation,
+                "review_state": "review_required",
+                "automatic_merge": False,
+                "transfers_claims": False,
+                "disclaimer": "Possible source-record connection; not human verified and must not be treated as a canonical identity.",
+                "ruleset": RULESET_VERSION,
+            })
+        for candidate in sorted(materialized, key=lambda item: item["candidate_digest"]):
+            if start_after and candidate["candidate_digest"] <= start_after:
+                continue
+            counters["pairs_emitted"] += 1
+            yield candidate
+    return generate(), counters
 
 
-def analyze(*, manifests: Mapping[str, Mapping[str, Any]], rows: Iterable[_Observed] = (), sample_size: int = 50) -> dict[str, Any]:
+def iter_probabilistic_candidates(rows: Iterable[_Observed], *, start_after: str | None = None,
+                                  max_block_size: int = _BLOCK_DEFAULT_MAX) -> Iterable[dict[str, Any]]:
+    """Yield all inferred candidates in deterministic digest order.
+
+    This is the resumable matcher API.  It has no global result cap; callers
+    can stop after a page and pass the last ``candidate_digest`` as a cursor.
+    """
+    iterator, _ = _iter_probabilistic_candidates(rows, start_after=start_after, max_block_size=max_block_size)
+    yield from iterator
+
+
+def iter_candidate_batches(rows: Iterable[_Observed], *, batch_size: int = 500,
+                           start_after: str | None = None, max_block_size: int = _BLOCK_DEFAULT_MAX) -> Iterable[list[dict[str, Any]]]:
+    """Yield deterministic candidate pages without imposing a total cap."""
+    if batch_size < 1:
+        raise ValueError("batch_size must be positive")
+    batch: list[dict[str, Any]] = []
+    for candidate in iter_probabilistic_candidates(rows, start_after=start_after, max_block_size=max_block_size):
+        batch.append(candidate)
+        if len(batch) == batch_size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
+
+
+def _probabilistic_candidates(rows: list[_Observed], limit: int | None = None) -> tuple[list[dict[str, Any]], bool]:
+    """Compatibility wrapper; ``limit`` is an explicit caller page, never a global cap."""
+    candidates = list(iter_probabilistic_candidates(rows))
+    if limit is not None:
+        candidates = candidates[:limit]
+    return candidates, False
+
+
+def analyze(*, manifests: Mapping[str, Mapping[str, Any]], rows: Iterable[_Observed] = (), sample_size: int = 50,
+            max_block_size: int = _BLOCK_DEFAULT_MAX) -> dict[str, Any]:
     observations = list(rows)
     by_source: dict[str, list[_Observed]] = defaultdict(list)
     for row in observations:
@@ -433,7 +586,15 @@ def analyze(*, manifests: Mapping[str, Mapping[str, Any]], rows: Iterable[_Obser
     ])
     collisions = collision_classification["true_conflicts"]
     orphan_rows = sum(1 for row in observations if row.source_kind == "facility_master" and not row.facility_ids)
-    candidate_rows, candidate_capped = _probabilistic_candidates(observations)
+    candidate_iterator, candidate_generation = _iter_probabilistic_candidates(observations, max_block_size=max_block_size)
+    candidate_rows = list(candidate_iterator)
+    candidate_generation["ambiguous_blocks_skipped"] = candidate_generation["blocks_ambiguous"]
+    candidate_generation["ambiguous_rows_skipped"] = candidate_generation["rows_in_ambiguous_blocks"]
+    candidate_generation["exact_equivalent_pairs_excluded"] = candidate_generation["pairs_exact_equivalent"]
+    # The iterator is intentionally unbounded at the product layer.  The
+    # only skipped work is an explicitly counted ambiguous block, never a
+    # global first-N truncation.
+    candidate_capped = False
     confidence_bands = Counter(item["confidence_band"] for item in candidate_rows)
     by_source_metrics = {}
     for source_id in sorted(set(manifests) | set(by_source)):
@@ -444,6 +605,8 @@ def analyze(*, manifests: Mapping[str, Mapping[str, Any]], rows: Iterable[_Obser
         review_candidates.append({
             "candidate_digest": item["candidate_digest"],
             "source_pair": item["source_pair"],
+            "endpoints": item["endpoints"],
+            "provenance": item["provenance"],
             "confidence_band": item["confidence_band"],
             "method": item["method"],
             "ruleset": item["ruleset"],
@@ -483,6 +646,9 @@ def analyze(*, manifests: Mapping[str, Mapping[str, Any]], rows: Iterable[_Obser
             "count": len(candidate_rows),
             "confidence_bands": dict(sorted(confidence_bands.items())),
             "candidate_generation_capped": candidate_capped,
+            "candidate_generation": candidate_generation,
+            "ordering": "candidate_digest_ascending",
+            "resumable": True,
             "ruleset": RULESET_VERSION,
             "automatic_merge_count": 0,
             "claim_transfer_count": 0,

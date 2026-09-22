@@ -22,7 +22,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from pipeline.common.d5_connection_analysis import _probabilistic_candidates, load_private_rows
+from pipeline.common.d5_connection_analysis import _iter_probabilistic_candidates, load_private_rows
 from pipeline.common.d61_verification import build_report, validate_report
 from pipeline.common.d4_graph_e2e import D4_SOURCE_IDS
 from pipeline.common.real_private_graph import _handoffs
@@ -54,7 +54,8 @@ def build_diagnostic(private_roots: list[Path], *, real_rehearsal_report: Path |
         if candidate.is_file():
             row_paths[source_id] = candidate
     observations = load_private_rows(row_paths) if row_paths else []
-    candidates, capped = _probabilistic_candidates(observations)
+    iterator, generation = _iter_probabilistic_candidates(observations)
+    candidates = list(iterator)
     exact_candidates = sum(bool(row.facility_ids and row.organization_ids) for row in observations)
     real = _real_counts(real_rehearsal_report) if real_rehearsal_report else {
         "executed": False,
@@ -66,8 +67,8 @@ def build_diagnostic(private_roots: list[Path], *, real_rehearsal_report: Path |
         "idempotent": None,
     }
     reasons = dict(real["skip_reasons"])
-    if capped:
-        reasons["candidate_generation_cap"] = reasons.get("candidate_generation_cap", 0) + 1
+    if generation["blocks_ambiguous"]:
+        reasons["ambiguous_match_block"] = generation["blocks_ambiguous"]
     report = build_report(
         execution="authorized_private_root_offline",
         authorized_handoffs=len(row_paths),
@@ -77,7 +78,7 @@ def build_diagnostic(private_roots: list[Path], *, real_rehearsal_report: Path |
         candidate_inferred_count=len(candidates),
         persisted_exact_count=real["persisted_exact"] if "persisted_exact" in real else 0,
         persisted_inferred_count=real["persisted_inferred"],
-        skipped_ambiguous_count=real["skipped"] + (1 if capped else 0),
+        skipped_ambiguous_count=real["skipped"] + generation["blocks_ambiguous"],
         skipped_reasons=reasons,
         negative_controls=0,
         conflicting_controls=0,

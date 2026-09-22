@@ -14,7 +14,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-from pipeline.common.graph_persistence import ConnectionEdgeBuilder, import_evidence_events, import_graph_candidates
+from pipeline.common.d5_connection_analysis import _observed_from_row, iter_probabilistic_candidates
+from pipeline.common.graph_persistence import ConnectionEdgeBuilder, import_evidence_events, import_graph_candidates, load_graph_candidate_handoff
 
 
 REPORT_VERSION = "d5-real-private-graph-v1"
@@ -299,6 +300,40 @@ def run_rehearsal(
     if database_url:
         if not disposable_db:
             raise ValueError("database rehearsal requires disposable_db=True")
+        # Build one deterministic matcher index over the retained facility
+        # handoffs before importing them.  The importer remains bounded and
+        # resumable per source, while inferred candidates can legitimately
+        # connect records from different sources.
+        matcher_by_record: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        if edge_builder is None:
+            all_candidates: list[dict[str, Any]] = []
+            for source_id, kind, handoff_root in handoffs:
+                if kind != "facility":
+                    continue
+                try:
+                    manifest, candidates, _ = load_graph_candidate_handoff(handoff_root)
+                except Exception:
+                    continue
+                for item in candidates:
+                    if isinstance(item, dict):
+                        all_candidates.append({**item, "source_id": item.get("source_id") or manifest["source_id"]})
+            observations = [_observed_from_row(item, str(item.get("source_id"))) for item in all_candidates]
+            generated = iter_probabilistic_candidates(observations)
+            candidate_by_record = {(str(item.get("source_id")), str(item.get("source_record_key"))): item for item in all_candidates}
+            for inferred in generated:
+                endpoints = inferred.get("endpoints") or []
+                if len(endpoints) != 2:
+                    continue
+                owner = endpoints[0]
+                owner_key = (str(owner.get("source_id")), str(owner.get("source_record_key")))
+                if owner_key not in candidate_by_record:
+                    continue
+                matcher_by_record.setdefault(owner_key, []).append(inferred)
+
+            def edge_builder(candidate: dict[str, Any], manifest: dict[str, Any]) -> Iterable[dict[str, Any]]:
+                key = (str(candidate.get("source_id") or manifest["source_id"]), str(candidate.get("source_record_key") or ""))
+                return matcher_by_record.get(key, ())
+
         for source_id, kind, handoff_root in handoffs:
             importer = import_evidence_events if kind == "evidence" else import_graph_candidates
             try:
