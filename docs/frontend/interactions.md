@@ -4,6 +4,13 @@
 
 Search is server-backed and debounced. A query is sent only after a short idle
 window, is cancellable, and carries the current release/profile and filters.
+The intended primary search is global to the released database: it searches all
+eligible record types and supported fields regardless of current viewport. The
+initial implementation must disclose that the current public contract searches
+facility/location fields; evidence, event, source-record, and organization-wide
+search become active only when their record-index contract exists. It may offer
+an explicit “show on map” action when a selected record is spatial. The map's
+viewport request is separate and never narrows the global search semantics.
 The old V1 intent is preserved: facility names, DBA/organization text, animal
 or activity terms, and category language should remain discoverable where the
 projection exposes those fields. The UI must not claim a field is searchable
@@ -28,10 +35,31 @@ Map/list synchronization rules:
 - Selection changes URL state and opens detail.
 - Selecting a cluster zooms or opens a cluster summary; it does not silently
   pick one facility.
-- A city/coarse point is a region signal, not a precise marker. Its visual
+- A city/coarse result is a region signal, not a precise marker. Its visual
   encoding must not invite routing or street-level targeting.
 - Unmapped records appear in Database and in the Map result rail when filters
   include them, but never as fabricated coordinates.
+
+### Exact and coarse visual grammar
+
+The same map can show both spatial strata, but never with the same symbol:
+
+- exact public coordinates use the current restrained V1 pin family in MVP,
+  with category shape/color and a precision label in detail;
+- city-level records use a translucent bounded-area or halo glyph centered on a
+  city representation, with an explicit approximate label and count. Unless a
+  source supplies an authoritative city boundary, the halo is a display glyph,
+  not a measured uncertainty radius;
+- broader coarse records use a larger, lower-opacity area glyph or boundary
+  overlay, never a facility-shaped pin;
+- clusters show exact/coarse composition when available and never claim that a
+  count represents animals or complete coverage;
+- unmapped records stay in search/list/count contexts only.
+
+Implementation must compare area/halo, city aggregate glyph, and list-first
+alternatives at several zoom levels before choosing the default. A coarse
+representation must not be reverse-engineered into a street address or a
+single facility location.
 
 ## Clusters, density, and city/coarse locations
 
@@ -80,9 +108,9 @@ this release.” Reset restores all filters and query defaults while preserving
 the user's current page destination. Display preferences such as map style or
 marker scale may remain separate from data reset.
 
-## Facility detail
+## Record detail
 
-Detail opens from a list, point, suggestion, or stable URL. It preserves the
+Detail opens from a list, point, graph node, suggestion, or stable URL. It preserves the
 originating query context in a return link and uses a focus trap only when it is
 presented as a modal sheet. Direct routes render a full page with the same
 sections.
@@ -92,7 +120,7 @@ attribution. Directions appear only for a public exact coordinate with an
 eligible precision/review state. City/coarse and unmapped records show a
 location limitation instead.
 
-## Public graph connections
+## Public graph connections and visualization
 
 The graph is public once a release-scoped projection exists. It is not hidden
 from ordinary users, but it is progressively disclosed so a casual visitor is
@@ -123,9 +151,37 @@ to “confirmed” unless the source itself asserts the relationship. The public
 graph must not expose private source identifiers, raw evidence, or restricted
 observations; public references are publication-safe source links/labels.
 
-MVP graph scope is one-hop connections tied to a public facility/organization
-record. Multi-hop traversal, graph canvas, and force-directed layouts are later
-because they increase interpretation risk and performance cost.
+The target MVP graph scope is one-hop connections tied to any public record;
+the current implementation can ship this only for facility/organization graph
+entities until the shared-record DTO gap is closed. Each supported record page
+gets an interactive bounded graph visualization paired with an accessible edge
+list. The visualization supports selecting an edge to show
+its relationship explanation, confidence, signals, contradictions, source
+references, and disclaimer; selecting a node routes to that record's detail
+page. Selecting a facility node can also highlight that record on the map.
+Graph rendering must be bounded, keyboard-reachable through the list, and never
+imply that a line is a geographic route or a fact of ownership.
+
+The MVP canvas renders at most 50 nodes and 100 edges. It uses deterministic
+ordering and preserves every confidence band in the loaded page, including low
+confidence and conflicting rows. The UI always shows a persistent “bounded
+neighborhood” / “canvas limited to the first 100 edges” disclosure, even when
+the API response has no cursor: the canvas cap is a presentation limit, not a
+claim that the neighborhood is complete. If a cursor remains, offer a Load more
+action; the edge list can page at the API maximum of 100 while the canvas stays
+capped. It never implies that the loaded subgraph is complete.
+
+For a shared-parent example, A's one-hop neighborhood shows A → parent
+organization P. Selecting P opens its public graph summary and, where the
+neighborhood contract permits, exposes B as another adjacent node. A direct
+derived A → B sibling edge is not invented or scored by compounding signals;
+that requires a future versioned graph rule and provenance contract.
+
+Multi-hop traversal and an unrestricted graph workspace remain later because
+they increase interpretation risk and performance cost. The MVP canvas uses a
+restrained radial or layered layout; force-directed layout is deferred until a
+bounded, reproducible interaction test shows it improves comprehension without
+creating unstable positions or accessibility problems.
 
 ## Share state
 
@@ -151,12 +207,39 @@ labels as the UI. The client does not reconstruct an “all results” export by
 silently crawling cursors. A later bulk snapshot may link to a release artifact
 with its manifest and checksum.
 
+## Imagery and alternate map views
+
+Satellite imagery is a major selectable basemap, not an afterthought. The map
+style control should include a neutral/vector view and satellite view, with
+provider attribution, licensing, privacy, and cost disclosure. Street View is
+an optional provider integration for eligible exact points; it must be a
+deliberate outbound/provider action and must never be promised for every record.
+Historical imagery comparison is a later provider-dependent feature (for
+example, Esri Wayback where coverage and terms permit), with date/provider
+labels and honest gaps. It cannot be used to manufacture historical facility
+claims.
+
+Heatmaps, alternate data layers, a 3D globe, satellite/history comparison, and
+map-drawn graph edges from a selected facility are tracked in the roadmap. They
+must preserve exact/coarse distinctions and never replace the semantic list.
+
 ## Language and accessibility
 
-Retain the V1 language resource direction (de, en, es, fr) but do not block the
-core product on translating technical source names. Language changes preserve
-filters, focus, selection, and URL state. Every interactive control has a
-visible or programmatic label. Reduced motion disables animated map transitions
-and drawer motion. Keyboard users can reach search, filters, list, map controls,
-detail sections, graph rows, and export without pointer-only gestures.
+Ship English only for MVP. Keep the V1 locale experience as a migration
+reference, but implement stable translation keys and locale bundles now so
+future languages do not require domain or route changes. Language changes must
+preserve filters, focus, selection, and URL state. Every interactive control
+has a visible or programmatic label. Reduced motion disables animated map
+transitions, graph motion, and drawer motion. Keyboard users can reach search,
+filters, list, map controls, detail sections, graph rows, and export without
+pointer-only gestures.
 
+## Community intake (future)
+
+Tips, user-submitted facilities, evidence, and corrections will enter an
+isolated untrusted intake/community dataset. Submission records receive their
+own IDs, timestamps, consent/privacy metadata, abuse/rate controls, moderation
+state, and provenance. They do not automatically appear in the released
+database, graph, map, sitemap, or counts; promotion requires an explicit
+curation/release transition and creates a traceable source relationship rather
+than a silent merge.

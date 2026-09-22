@@ -18,7 +18,8 @@ segmented navigation control; secondary links move into an accessible menu.
 | --- | --- | --- | --- |
 | `/map` | Place-first map discovery | Everyone | Default route; accepts viewport, query, filters, profile, and selected facility state |
 | `/database` | Searchable result table | Researchers, journalists | Accepts query, facets, sort, cursor, profile, and selected facility state |
-| `/locations/{facility_id}` | Stable facility identity | Everyone | Canonical route; renders in context as drawer/split on Map/Database and full page when opened directly |
+| `/records/{record_id}` | Target stable detail for any public record | Everyone | Canonical SEO-friendly route in the shared-record architecture; initial implementation is enabled only for record types with a public DTO |
+| `/locations/{facility_id}` | Implemented facility detail route | Everyone | Current public facility route; becomes/redirects to the canonical record route only when that contract is implemented |
 | `/methodology` | Data and limitations | Everyone | Required trust destination; not a primary tool |
 | `/ethics` | Privacy, safety, corrections | Everyone | Existing governing policy surfaced plainly |
 
@@ -60,7 +61,11 @@ Every public route has:
 
 The map and list are peers. A point never exists only as a visual marker, and a
 list item never loses the ability to locate its map context when coordinates are
-eligible.
+eligible. The intended global search bar searches the entire released database
+(all record types and eligible fields), not merely the currently visible
+viewport. Until the all-record index contract exists, the UI must disclose the
+current facility/location search scope. Viewport loading is always a separate
+bounded query used only to draw the map and its synchronized result rail.
 
 ## Database page
 
@@ -81,18 +86,31 @@ eligible.
 
 The database should feel like a calm research instrument: dense enough for
 comparison, but not a spreadsheet dump. Advanced controls are progressive and
-never hidden behind hover-only interactions.
+never hidden behind hover-only interactions. In the first implementation, the
+table's production scope must match the current public location/search DTO;
+evidence, event, source-record, and community rows remain design targets until
+their public record-index contract exists.
 
-## Facility detail composition
+## Shared record detail composition
 
-The shared detail surface has this order:
+The shared detail surface has this order for facilities, organizations,
+evidence, inspections/events, source records, and later community records. In
+MVP, only record types with a public DTO may use a production route; the others
+are design fixtures and contract backlog, not hidden promises:
 
-1. **Identity**: canonical name, category/activity, country/city, lifecycle.
-2. **Location**: exact/city/unmapped label, map context, precision limitation.
+1. **Identity**: record type, canonical name/title, category/activity, place,
+   lifecycle or event status.
+2. **Location**: exact/city/coarse/unmapped label when spatial, map context,
+   precision limitation. Non-spatial records say clearly that they have no map
+   location.
 3. **Evidence**: source origin, source name/link, retrieval/observation fields,
    release/profile, review/privacy/approval labels available in the DTO.
-4. **Connections**: exact and inferred edges, confidence band, signals,
-   contradictions, source references, ruleset, and disclaimer.
+4. **Graph**: an interactive one-hop graph view plus accessible edge list. Nodes
+   and edges are selectable; selecting an edge opens its relationship,
+   confidence, signals, contradictions, provenance, and disclaimer; selecting a
+   node previews it and opens that record's detail page. A facility node can
+   also highlight its eligible map position. The list remains the authoritative
+   accessible alternative to the visualization.
 5. **Actions**: copy stable URL, share, export selected eligible fields, and
    directions only for eligible exact public coordinates.
 6. **Limitations**: explicit unknowns and what the record does not establish.
@@ -109,5 +127,23 @@ release” with a reason when the contract provides one.
 - Methodology answers **how the system works** and **what it cannot claim**.
 
 Do not put source IDs, confidence math, or raw matching signals in the default
-hero area. Do not bury precision or publication warnings in a tooltip.
+hero area. Do not bury precision or publication warnings in a tooltip. Do not
+make the graph canvas the only way to inspect a relationship.
 
+## Record discoverability and SEO
+
+Every eligible public record gets a deterministic canonical URL, server-rendered
+or statically renderable title/description metadata, Open Graph/Twitter metadata,
+JSON-LD appropriate to the record type, and inclusion in a release-aware sitemap
+when publication policy permits. Metadata must describe the record as a
+source-traceable entry, not imply global completeness or current operation.
+Suppressed/restricted records do not leak through sitemap entries, search
+suggestions, graph neighborhoods, structured data, or not-found wording.
+
+The canonical URL is based on a stable opaque record ID:
+`/records/{record_id}`. An optional readable slug may be appended for display or
+sharing, but the canonical metadata URL remains the ID-only form so contextual
+query parameters and slug changes do not create separate SEO pages. ID
+resolution prevents renames from breaking links. Current facility
+`/locations/{id}` links remain supported until a record-route contract is
+implemented.

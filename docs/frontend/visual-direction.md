@@ -1,12 +1,15 @@
 # Visual direction and tokens
 
-## Direction: field notebook, not dashboard
+## Direction: dark field atlas, not dashboard
 
-The visual system should feel like a well-made field atlas: restrained, legible,
-quiet at rest, and precise when inspected. It should avoid the existing V2's
-heavy panels, decorative gradients, and “control room” density. The subject is
-serious; the interface should not use shock imagery or gamified urgency to make
-the data feel important.
+The visual system should feel like a dark, well-made field atlas: restrained,
+legible, quiet at rest, and precise when inspected. It should be minimal in
+color, labels, and ornament while still feeling authored rather than like blank
+HTML. Avoid the existing V2's heavy panels, decorative gradients, bright
+dashboard conventions, and “control room” density. The subject is serious; the
+interface should not use shock imagery or gamified urgency to make the data feel
+important. Show the evidence and its relationships; let the interface explain
+itself through structure rather than decoration.
 
 ## Type
 
@@ -23,8 +26,9 @@ font request.
 
 ## Palette intent
 
-The base is warm paper/near-white with deep charcoal text and one muted green-
-blue accent. Category colors are functional accents, not a rainbow background:
+The base is near-black charcoal with layered graphite surfaces, warm off-white
+text, muted secondary text, and one restrained signal accent. Category colors
+are sparse functional accents, not a rainbow background:
 
 - slaughter/activity: deep red;
 - processing: slate/graphite;
@@ -34,8 +38,8 @@ blue accent. Category colors are functional accents, not a rainbow background:
 - exhibitor: green.
 
 Each category must also have a shape, label, or pattern equivalent. Confidence
-bands use tone and text, not color alone. A high-confidence inferred edge is not
-colored as exact.
+bands use tone, text, and line treatment, not color alone. A high-confidence
+inferred edge is not colored or worded as exact.
 
 ## Spacing and surfaces
 
@@ -71,10 +75,20 @@ reduced-motion path. No bouncing markers, number counters, or attention pulses.
 Focus rings are visible and high contrast. Hover can enrich a row, but never
 reveals the only source, confidence, or action.
 
-## Map style
+## Map style and imagery
 
-Use a low-contrast base that lets points and boundaries read. Satellite should
-not be the default: it adds external requests, visual noise, and false authority
-for approximate locations. Attribution and tile-provider disclosure are part of
-the visible methodology/credits path.
+Use a low-contrast vector base by default so points and boundaries read, with a
+prominent selectable satellite view for investigation. A MapLibre-compatible
+licensed raster provider is a provider choice—not a hard-coded promise. Mapbox
+Standard Satellite may be evaluated only as a separate Mapbox-compatible
+renderer/provider stack under its own terms; it is not assumed to be a
+drop-in MapLibre style. Street View and historical imagery are optional
+provider layers and must carry their own availability and attribution states.
+Satellite imagery can add context but does not make a location exact or current.
 
+Exact pins use the restrained V1 pin family at launch for continuity. The
+roadmap includes replacing them with a better, accessible symbol system once
+the exact/coarse grammar has been tested. Coarse locations use area/halo/count
+grammar, not a pin recolor. A fallback halo is a visual grouping device, not a
+measured uncertainty radius; only supplied authoritative city/area boundaries
+may be drawn as boundaries.

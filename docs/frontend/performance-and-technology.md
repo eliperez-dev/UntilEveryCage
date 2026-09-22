@@ -8,10 +8,13 @@ as the source of query truth. Benchmark MapLibre GL JS with a WebGL/vector-tile
 source against the existing Leaflet adapter before committing the map engine.
 
 For the target scale—100,000 facilities and approximately 150,000 public graph
-edges—the design recommendation is **MapLibre/WebGL with server-side viewport
-or vector-tile clustering**, unless a documented benchmark shows the current
-Leaflet path meets the same budgets without downloading global data. Leaflet is
-useful as a compatibility/fallback adapter, not the assumed scale architecture.
+edges—the design recommendation is **MapLibre GL JS with WebGL and server-side
+viewport or vector-tile clustering**, unless a documented benchmark shows the
+current Leaflet path meets the same budgets without downloading global data.
+MapLibre's WebGL renderer, vector sources, source clustering, heatmap layers,
+and globe projection make it a strong candidate for the planned map, alternate
+data views, and eventual 3D globe. Leaflet is useful as a compatibility/fallback
+adapter, not the assumed scale architecture.
 
 ## What V1 teaches us
 
@@ -29,7 +32,7 @@ individual detail—while moving data selection server-side.
 | MapLibre + source clustering | WebGL, smooth viewport rendering, native cluster transitions | Tile/style/worker complexity and external tile decisions | Preferred candidate for production |
 | MapLibre + server vector tiles | Best transfer bounds and stable large-scale rendering | Requires tile endpoint/cache/release invalidation design | Preferred when load tests justify it |
 | Worker Supercluster over bounded pages | Portable and testable; no map-server dependency | Client index still limited to fetched subset; transfer can be expensive | Fallback for bounded API responses |
-| Heatmap-first | Visually compelling | Collapses exact/coarse semantics and can imply measured density | Defer; not MVP default |
+| Heatmap-first | Visually compelling; MapLibre supports a GPU-friendly heatmap layer | Collapses exact/coarse semantics and can imply measured density | Defer; not MVP default |
 
 ## Exact, city, and unmapped rendering
 
@@ -39,6 +42,24 @@ unmapped records from spatial placement. Clusters should expose composition when
 the server can provide it. A later heatmap must have separate exact/coarse
 layers, a declared denominator, a declared kernel/radius, and tests against
 sparse and dense countries.
+
+The benchmark corpus must include map view transitions between vector, satellite,
+and (when enabled) globe projection, along with exact/coarse composition. A
+satellite layer is provider-dependent. Prefer a licensed, documented raster
+provider that is compatible with the selected MapLibre source/style pipeline.
+Mapbox Standard Satellite is not assumed to be a drop-in MapLibre style: its
+official compatibility is tied to the compatible Mapbox GL JS v3/SDK v11
+renderer and Mapbox platform terms. If evaluated, it is an alternative stack
+decision with its own attribution, API key handling, privacy, licensing, and
+cost review. Google Street View is an optional exact-point provider integration,
+not a map engine. Historical imagery such as Esri Wayback is possible only
+where provider coverage and terms permit; it is not a globally reliable backend
+capability.
+
+Provider compatibility references: [Mapbox Standard Satellite](https://docs.mapbox.com/map-styles/reference/standard-satellite/),
+[Mapbox GL JS migration requirements](https://docs.mapbox.com/mapbox-gl-js/guides/migrate/),
+and [Mapbox imagery terms](https://www.mapbox.com/imagery). These references
+inform evaluation; they do not select a provider or authorize credentials.
 
 ## Budgets for the first implementation
 
@@ -79,6 +100,8 @@ frontend must avoid amplifying that pressure with request storms.
 - Do not cache around suppression/release checks unless the backend contract
   supplies explicit invalidation semantics.
 - Code-split the Map and Database routes while keeping the shell small.
+- Keep imagery and graph visualization code-split: satellite/street/history
+  controls and the graph canvas should not inflate the first map/database shell.
 
 ## Benchmark plan before engine lock
 
@@ -87,6 +110,8 @@ city, and unmapped strata; 150k edges with exact/high/medium/low/conflicting
 bands; urban and rural distributions; and query mixes from the UI-state matrix.
 Compare Leaflet, MapLibre client clustering, and MapLibre/vector-tile or server
 cluster candidates on transfer size, first point, pan latency, main-thread work,
-memory, keyboard/list fallback, and suppression correctness. The winner is the
-one that meets budgets and semantics, not the one with the most impressive demo.
-
+memory, keyboard/list fallback, suppression correctness, exact/coarse rendering,
+and satellite/vector toggle cost. Include a bounded interactive graph canvas
+test with node/edge selection and an accessible edge-list fallback. The winner
+is the one that meets budgets and semantics, not the one with the most impressive
+demo.

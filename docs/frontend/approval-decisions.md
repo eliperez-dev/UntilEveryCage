@@ -1,30 +1,58 @@
-# Decisions requiring maintainer approval
+# Frontend decisions and remaining implementation choices
 
-The design can proceed without blocking on aesthetic micro-decisions. These
-decisions materially affect product scope or public contract and should be
-recorded before implementation is declared complete.
+The maintainer has made the product-direction decisions below. Remaining
+choices are implementation/provider decisions, not reasons to reopen the basic
+information architecture.
 
-1. **Public graph contract:** approve the narrow one-hop release-scoped graph
-   projection and its exact/inferred confidence vocabulary. Confirm that all
-   inferred edges remain public but prominently qualified and filterable.
-2. **Map engine:** approve MapLibre/WebGL as the preferred candidate after the
-   benchmark, or accept Leaflet if it demonstrably meets the same transfer,
-   memory, and pan budgets.
-3. **Approximate rendering:** approve the area/halo city grammar and defer
-   heatmaps unless exact/coarse semantics can remain unmistakable.
-4. **Profile exposure:** choose whether official is the only public default at
-   launch and whether secondary/community profiles are explicit opt-in routes.
-5. **Export scope:** approve bounded server export for MVP and defer bulk release
-   snapshots to the named release workflow.
-6. **V1 language:** confirm whether de/es/fr remain launch locales or whether
-   English-first implementation ships with translation-ready architecture.
-7. **Visual identity:** approve the “field notebook” direction, restrained
-   palette, and no-shock-imagery stance before visual implementation begins.
+## Decided
 
-## Recommended defaults
+1. **Public graph:** public, release-scoped, read-only graph is a core product
+   feature. Exact and inferred edges remain visible; inferred edges are clearly
+   banded high/medium/low, filterable, and accompanied by evidence/signals,
+   contradictions, provenance, and an estimate disclaimer. A bounded
+   interactive graph plus accessible edge list belongs on shared record detail.
+2. **Shared records:** facilities, organizations, evidence, inspections/events,
+   source records, and future community submissions share stable identity and
+   detail architecture. Every eligible public record receives a canonical URL;
+   only spatial records appear on the map.
+3. **Search:** the prominent search searches the entire released database;
+   viewport results are a separate map query.
+4. **Location grammar:** exact points and city/coarse areas use different
+   same-map visual encodings. No fake centroid facility pins. Heatmaps and
+   other density views remain later until semantics are proven.
+5. **Language:** English-only MVP with translation-ready architecture.
+6. **Visual direction:** dark, minimal, serious, data-driven, restrained, and
+   non-flashy. Reuse V1 pins initially; maintain a replacement path.
+7. **Imagery:** satellite is a major selectable map view. Street View and
+   historical imagery are optional/provider-dependent, with disclosure.
+8. **Community:** future submissions/tips/corrections are isolated untrusted
+   intake, never automatic promotion or merge.
+9. **Release identity recommendation:** use CalVer `YYYY.MM.N` as the human
+   display convention, pending explicit maintainer approval; keep the existing
+   `release_id` and `manifest_sha256` separate, and keep software/API versions
+   as SemVer.
 
-Approve all seven recommendations above, with English-first launch only if
-translation resources are unavailable. Keep the public graph visible from day
-one, but put it below the record's evidence/precision context and use one-hop
-rows rather than a graph canvas. Let measured performance choose the map engine.
+## Remaining implementation decisions
 
+10. **Map engine:** benchmark MapLibre/WebGL against Leaflet; MapLibre is the
+    preferred candidate, but measured transfer, pan, memory, accessibility, and
+    provider behavior decide.
+11. **Coarse encoding:** compare bounded-area, city aggregate glyph, halo, and
+    list-first variants at dense/sparse zooms; retain the clearest honest one.
+12. **Basemap providers:** select vector and satellite providers after checking
+    attribution, licensing, API keys, privacy, cost, and offline/test behavior.
+13. **Graph layout:** MVP uses a bounded radial/layered layout and a required
+    accessible edge list. A force layout is deferred until a bounded usability
+    test justifies it; never remove the edge-list alternative.
+14. **Profile exposure:** official remains the default; decide when secondary or
+    community profiles become explicit opt-in public routes.
+15. **Export:** bounded server export is MVP; decide later bulk release snapshot
+    UX when the named release workflow is exposed.
+
+## Defaults for implementation
+
+Keep the public graph visible from day one, put it below the record's
+evidence/precision context, and ship the canvas with a list alternative. Let
+measured performance and provider terms choose the technical map and imagery
+stack. Do not let optional 3D, heatmap, or provider integrations delay the core
+Map/Database/Record experience.
