@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { parseRoute, type RouteState } from './routeState';
+  let DesignLab: typeof import('../design-lab/DesignLab.svelte').default | null = null;
+  let reviewMode = false;
 
   let route: RouteState = { kind: 'map' };
   let loading = true;
@@ -9,6 +11,7 @@
   const syncRoute = () => {
     try {
       route = parseRoute(window.location.hash);
+      reviewMode = import.meta.env.DEV && new URLSearchParams(window.location.hash.split('?')[1] ?? '').has('f1a');
       loading = false;
       loadError = '';
     } catch {
@@ -18,6 +21,7 @@
   };
 
   onMount(() => {
+    if (import.meta.env.DEV) import('../design-lab/DesignLab.svelte').then(module => DesignLab = module.default);
     syncRoute();
     window.addEventListener('hashchange', syncRoute);
     return () => window.removeEventListener('hashchange', syncRoute);
@@ -29,6 +33,9 @@
   <meta name="description" content="A structural preview of the Until Every Cage application." />
 </svelte:head>
 
+{#if reviewMode && route.kind === 'map' && DesignLab}
+  <svelte:component this={DesignLab} />
+{:else}
 <div class="shell">
   <header class="site-header">
     <a class="wordmark" href="#/map">Until Every Cage</a>
@@ -73,3 +80,4 @@
     {/if}
   </main>
 </div>
+{/if}
