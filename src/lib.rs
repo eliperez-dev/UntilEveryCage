@@ -16,7 +16,7 @@
 
 // Contact the developer directly at untileverycageproject@protonmail.com
 use axum::extract::{Path, Query, State};
-use axum::http::HeaderMap;
+use axum::http::{HeaderMap, HeaderValue};
 use axum::{
     Json,
     http::{Response, StatusCode},
@@ -433,6 +433,277 @@ pub struct ApiState {
     pub dev_preview_token: Option<String>,
     pub dev_test_release_id: Option<String>,
     pub dev_test_release_token: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct RealPreviewPageParams {
+    pub cursor: Option<uuid::Uuid>,
+    pub limit: Option<i64>,
+    pub q: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct RealPreviewViewportParams {
+    pub west: f64,
+    pub south: f64,
+    pub east: f64,
+    pub north: f64,
+    pub cursor: Option<uuid::Uuid>,
+    pub limit: Option<i64>,
+}
+
+fn real_preview_response(status: StatusCode, body: Value) -> Response<axum::body::Body> {
+    let mut response = (status, Json(body)).into_response();
+    response.headers_mut().insert(
+        axum::http::header::CACHE_CONTROL,
+        HeaderValue::from_static("no-store"),
+    );
+    response
+}
+
+fn real_preview_error(
+    status: StatusCode,
+    code: &'static str,
+    message: &'static str,
+) -> Response<axum::body::Body> {
+    real_preview_response(
+        status,
+        json!({"api_version":"real-preview-v1","error":{"code":code,"message":message}}),
+    )
+}
+
+fn real_preview_authorized(
+    state: &ApiState,
+    headers: &HeaderMap,
+) -> Result<(), Response<axum::body::Body>> {
+    let Some(expected) = state.dev_preview_token.as_deref() else {
+        return Err(real_preview_error(
+            StatusCode::NOT_FOUND,
+            "preview_unavailable",
+            "private preview unavailable",
+        ));
+    };
+    if expected.len() < 32 {
+        return Err(real_preview_error(
+            StatusCode::NOT_FOUND,
+            "preview_unavailable",
+            "private preview unavailable",
+        ));
+    }
+    if !preview_request_is_local(headers) {
+        return Err(real_preview_error(
+            StatusCode::FORBIDDEN,
+            "loopback_required",
+            "private preview requires loopback host and origin",
+        ));
+    }
+    let Some(provided) = headers
+        .get(DEV_PREVIEW_TOKEN_HEADER)
+        .and_then(|value| value.to_str().ok())
+    else {
+        return Err(real_preview_error(
+            StatusCode::UNAUTHORIZED,
+            "authentication_required",
+            "private preview authentication required",
+        ));
+    };
+    if !constant_time_token_matches(expected, provided) {
+        return Err(real_preview_error(
+            StatusCode::UNAUTHORIZED,
+            "authentication_failed",
+            "private preview authentication failed",
+        ));
+    }
+    Ok(())
+}
+
+fn real_preview_unavailable() -> Response<axum::body::Body> {
+    real_preview_error(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "preview_unavailable",
+        "private preview data unavailable",
+    )
+}
+
+fn real_preview_candidate(row: &tokio_postgres::Row) -> Value {
+    let kind: String = row.get("location_class");
+    json!({
+        "candidate_id": row.get::<_, uuid::Uuid>("preview_id"),
+        "source_id": row.get::<_, String>("source_id"),
+        "location_class": kind,
+        "display_precision": if kind == "numeric_source_coordinate" { "source_numeric" } else { "city_postal" },
+        "country_code": row.get::<_, Option<String>>("country_code"),
+        "city": row.get::<_, Option<String>>("city"),
+        "postal_code": row.get::<_, Option<String>>("postal_code"),
+        "latitude": row.get::<_, Option<f64>>("latitude"),
+        "longitude": row.get::<_, Option<f64>>("longitude"),
+        "coordinate_precision": row.get::<_, Option<String>>("coordinate_precision"),
+        "coordinate_review_status": if kind == "numeric_source_coordinate" { "pending_human_privacy_review" } else { "coarse_non_point" },
+        "factual_review_status": "not_reviewed",
+        "privacy_screening_status": "pending",
+        "project_approval": false,
+        "publication_status": "not_published",
+        "preview_label": "Private real V2 candidate — not project-approved or published"
+    })
+}
+
+pub async fn get_real_preview_list_handler(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Query(params): Query<RealPreviewPageParams>,
+) -> Response<axum::body::Body> {
+    if let Err(response) = real_preview_authorized(&state, &headers) {
+        return response;
+    }
+    let limit = params.limit.unwrap_or(100);
+    if !(1..=200).contains(&limit) {
+        return real_preview_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_limit",
+            "limit must be between 1 and 200",
+        );
+    }
+    let Some(pool) = state.database else {
+        return real_preview_unavailable();
+    };
+    let Ok(client) = pool.get().await else {
+        return real_preview_unavailable();
+    };
+    let cursor = params.cursor;
+    let query = params
+        .q
+        .unwrap_or_default()
+        .trim()
+        .chars()
+        .take(100)
+        .collect::<String>();
+    let rows = match client.query(
+        "SELECT preview_id,source_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision FROM real_preview.observations WHERE facility_candidate AND location_class <> 'unmapped_private_observation' AND ($1::uuid IS NULL OR preview_id > $1) AND ($2='' OR city ILIKE '%' || $2 || '%' OR postal_code ILIKE '%' || $2 || '%') ORDER BY preview_id LIMIT $3",
+        &[&cursor, &query, &limit],
+    ).await { Ok(rows) => rows, Err(_) => return real_preview_unavailable() };
+    let data: Vec<Value> = rows.iter().map(real_preview_candidate).collect();
+    let next = rows
+        .last()
+        .map(|row| row.get::<_, uuid::Uuid>("preview_id"));
+    real_preview_response(
+        StatusCode::OK,
+        json!({"api_version":"real-preview-v1","data":data,"meta":{"bounded":true,"next_cursor":next,"private_preview":true}}),
+    )
+}
+
+pub async fn get_real_preview_viewport_handler(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Query(params): Query<RealPreviewViewportParams>,
+) -> Response<axum::body::Body> {
+    if let Err(response) = real_preview_authorized(&state, &headers) {
+        return response;
+    }
+    let limit = params.limit.unwrap_or(300);
+    if !(1..=500).contains(&limit)
+        || ![params.west, params.south, params.east, params.north]
+            .iter()
+            .all(|v| v.is_finite())
+        || params.west < -180.0
+        || params.east > 180.0
+        || params.south < -90.0
+        || params.north > 90.0
+        || params.west >= params.east
+        || params.south >= params.north
+    {
+        return real_preview_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_viewport",
+            "viewport bounds or limit are invalid",
+        );
+    }
+    let Some(pool) = state.database else {
+        return real_preview_unavailable();
+    };
+    let Ok(client) = pool.get().await else {
+        return real_preview_unavailable();
+    };
+    let rows = match client.query(
+        "SELECT preview_id,source_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision FROM real_preview.observations WHERE facility_candidate AND location_class='numeric_source_coordinate' AND longitude BETWEEN $1 AND $3 AND latitude BETWEEN $2 AND $4 AND ($5::uuid IS NULL OR preview_id > $5) ORDER BY preview_id LIMIT $6",
+        &[&params.west,&params.south,&params.east,&params.north,&params.cursor,&limit],
+    ).await { Ok(rows) => rows, Err(_) => return real_preview_unavailable() };
+    let data: Vec<Value> = rows.iter().map(real_preview_candidate).collect();
+    let next = rows
+        .last()
+        .map(|row| row.get::<_, uuid::Uuid>("preview_id"));
+    real_preview_response(
+        StatusCode::OK,
+        json!({"api_version":"real-preview-v1","data":data,"meta":{"bounded":true,"next_cursor":next,"private_preview":true}}),
+    )
+}
+
+pub async fn get_real_preview_detail_handler(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+) -> Response<axum::body::Body> {
+    if let Err(response) = real_preview_authorized(&state, &headers) {
+        return response;
+    }
+    let Some(pool) = state.database else {
+        return real_preview_unavailable();
+    };
+    let Ok(client) = pool.get().await else {
+        return real_preview_unavailable();
+    };
+    let row = match client.query_opt("SELECT preview_id,source_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision FROM real_preview.observations WHERE preview_id=$1 AND facility_candidate AND location_class <> 'unmapped_private_observation'", &[&id]).await { Ok(row) => row, Err(_) => return real_preview_unavailable() };
+    match row {
+        Some(row) => real_preview_response(
+            StatusCode::OK,
+            json!({"api_version":"real-preview-v1","data":real_preview_candidate(&row)}),
+        ),
+        None => real_preview_error(
+            StatusCode::NOT_FOUND,
+            "candidate_not_found",
+            "candidate unavailable",
+        ),
+    }
+}
+
+pub async fn get_real_preview_facets_handler(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+) -> Response<axum::body::Body> {
+    if let Err(response) = real_preview_authorized(&state, &headers) {
+        return response;
+    }
+    let Some(pool) = state.database else {
+        return real_preview_unavailable();
+    };
+    let Ok(client) = pool.get().await else {
+        return real_preview_unavailable();
+    };
+    let rows = match client.query("SELECT source_id,location_class,count(*)::bigint FROM real_preview.observations WHERE facility_candidate AND location_class <> 'unmapped_private_observation' GROUP BY source_id,location_class ORDER BY source_id,location_class", &[]).await { Ok(rows) => rows, Err(_) => return real_preview_unavailable() };
+    let data: Vec<Value> = rows.iter().map(|row| json!({"source_id":row.get::<_,String>(0),"location_class":row.get::<_,String>(1),"count":row.get::<_,i64>(2)})).collect();
+    real_preview_response(
+        StatusCode::OK,
+        json!({"api_version":"real-preview-v1","data":data,"meta":{"private_preview":true}}),
+    )
+}
+
+pub async fn get_real_preview_counts_handler(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+) -> Response<axum::body::Body> {
+    if let Err(response) = real_preview_authorized(&state, &headers) {
+        return response;
+    }
+    let Some(pool) = state.database else {
+        return real_preview_unavailable();
+    };
+    let Ok(client) = pool.get().await else {
+        return real_preview_unavailable();
+    };
+    let row = match client.query_one("SELECT count(*) FILTER (WHERE facility_candidate AND location_class <> 'unmapped_private_observation')::bigint,count(*) FILTER (WHERE facility_candidate AND location_class='numeric_source_coordinate')::bigint,count(*) FILTER (WHERE facility_candidate AND location_class='city_postal')::bigint FROM real_preview.observations", &[]).await { Ok(row) => row, Err(_) => return real_preview_unavailable() };
+    real_preview_response(
+        StatusCode::OK,
+        json!({"api_version":"real-preview-v1","data":{"facility_candidate_count":row.get::<_,i64>(0),"numeric_coordinate_count":row.get::<_,i64>(1),"city_postal_count":row.get::<_,i64>(2)},"meta":{"private_preview":true}}),
+    )
 }
 
 const DEV_PREVIEW_TOKEN_HEADER: &str = "x-uec-dev-preview-token";
@@ -1829,6 +2100,82 @@ mod v2_api_tests {
         local.insert("host", "preview.example:8000".parse().unwrap());
         local.remove("origin");
         assert!(!preview_request_is_local(&local));
+    }
+
+    #[tokio::test]
+    async fn real_preview_requires_local_ephemeral_credential_and_disables_cache() {
+        let route = Router::new()
+            .route(
+                "/dev/real-preview/counts",
+                axum::routing::get(get_real_preview_counts_handler),
+            )
+            .with_state(ApiState {
+                database: None,
+                dev_preview_token: Some("local-test-token-with-at-least-32-characters".into()),
+                dev_test_release_id: None,
+                dev_test_release_token: None,
+            });
+        let response = route
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/dev/real-preview/counts")
+                    .header("host", "127.0.0.1:8000")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(response.headers().get("cache-control").unwrap(), "no-store");
+
+        let response = route
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/dev/real-preview/counts")
+                    .header("host", "127.0.0.1:8000")
+                    .header("x-uec-dev-preview-token", "wrong")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+        let response = route
+            .oneshot(
+                Request::builder()
+                    .uri("/dev/real-preview/counts")
+                    .header("host", "preview.example:8000")
+                    .header(
+                        "x-uec-dev-preview-token",
+                        "local-test-token-with-at-least-32-characters",
+                    )
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn real_preview_rejects_unbounded_inputs_before_database_access() {
+        let state = ApiState {
+            database: None,
+            dev_preview_token: Some("local-test-token-with-at-least-32-characters".into()),
+            dev_test_release_id: None,
+            dev_test_release_token: None,
+        };
+        let response = Router::new()
+            .route("/dev/real-preview/viewport", axum::routing::get(get_real_preview_viewport_handler))
+            .with_state(state)
+            .oneshot(Request::builder().uri("/dev/real-preview/viewport?west=-180&south=-90&east=180&north=90&limit=501")
+                .header("host", "127.0.0.1:8000").header("x-uec-dev-preview-token", "local-test-token-with-at-least-32-characters")
+                .body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.headers().get("cache-control").unwrap(), "no-store");
     }
 
     #[tokio::test]

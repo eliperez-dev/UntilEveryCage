@@ -35,6 +35,18 @@ use tower_http::services::ServeDir;
 
 mod private_environment;
 
+async fn private_preview_no_store(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let mut response = next.run(request).await;
+    response.headers_mut().insert(
+        axum::http::header::CACHE_CONTROL,
+        HeaderValue::from_static("no-store"),
+    );
+    response
+}
+
 pub fn app(state: uec_api::ApiState, proxy: private_environment::ProxyConfig) -> Router {
     let cors = cors_layer().expect("CORS configuration must be validated before app startup");
     let metrics = Arc::new(OperationalMetrics::default());
@@ -44,6 +56,19 @@ pub fn app(state: uec_api::ApiState, proxy: private_environment::ProxyConfig) ->
         .route("/health/diagnostics", get(diagnostics))
         .route("/api/locations", get(uec_api::get_locations_handler))
         .route("/api/v2/locations", get(uec_api::get_v2_locations_handler))
+        .nest(
+            "/dev/real-preview",
+            Router::new()
+                .route("/locations", get(uec_api::get_real_preview_list_handler))
+                .route("/viewport", get(uec_api::get_real_preview_viewport_handler))
+                .route(
+                    "/locations/{id}",
+                    get(uec_api::get_real_preview_detail_handler),
+                )
+                .route("/facets", get(uec_api::get_real_preview_facets_handler))
+                .route("/counts", get(uec_api::get_real_preview_counts_handler))
+                .layer(axum::middleware::from_fn(private_preview_no_store)),
+        )
         .route(
             "/api/v2/releases/manifest",
             get(uec_api::get_v2_release_manifest_handler),
