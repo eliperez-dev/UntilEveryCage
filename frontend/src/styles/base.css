@@ -71,7 +71,7 @@ button { min-height: 2.75rem; padding: .5rem 1rem; font: inherit; cursor: pointe
 .lab-filters button, .list-toggle { color: #eee; background: #202324; border: 1px solid #777; }
 .list-toggle { min-height: 2.25rem; margin: 0 0 .5rem; }
 .workspace { display: grid; grid-template-columns: minmax(0, 1fr) 20rem; height: calc(100vh - 10.5rem); border: 1px solid #555; }
-.map-surface { position: relative; overflow: hidden; min-height: 28rem; background-color: #252a29; background-image: linear-gradient(#38403d 1px, transparent 1px), linear-gradient(90deg, #38403d 1px, transparent 1px); background-size: 8% 12%; }
+.map-surface { position: relative; overflow: hidden; overflow: clip; contain: paint; min-height: 28rem; background-color: #252a29; background-image: linear-gradient(#38403d 1px, transparent 1px), linear-gradient(90deg, #38403d 1px, transparent 1px); background-size: 8% 12%; }
 .cartography { position: absolute; inset: 12% 8%; display: flex; justify-content: space-between; color: #69716e; font: 700 .65rem ui-monospace, monospace; }
 .marker { position: absolute; z-index: 2; width: 1.5rem; height: 1.5rem; min-height: 0; padding: 0; border: 1px solid #f2eee5; background: #b35442; color: #fff; translate: -50% -50%; }
 .marker.city { border: 3px double #e1b15e; border-radius: 50%; background: transparent; color: #e1b15e; }

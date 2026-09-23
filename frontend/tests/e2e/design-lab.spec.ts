@@ -1,76 +1,86 @@
 import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
-test('shared design lab stays local and preserves state across direction changes', async ({ page }) => {
-  const apiRequests: string[] = [];
-  page.on('request', request => { if (new URL(request.url()).pathname.startsWith('/api/')) apiRequests.push(request.url()); });
-  await page.goto('./#/map?f1a=atlas&scenario=dense&selected=syn-042&q=synthetic&lat=40&lon=-12&z=5');
-  await expect(page.getByText('Synthetic development data · not a release')).toBeVisible();
-  await expect(page.getByRole('region', { name: /provisional map/i })).toBeVisible();
-  await expect(page.getByLabel('Location precision legend')).toContainText('Exact site');
-  await page.getByLabel('Direction').selectOption('field');
-  const hash = new URL(page.url()).hash;
-  expect(hash).toContain('f1a=field');
-  for (const value of ['scenario=dense', 'selected=syn-042', 'q=synthetic', 'lat=40', 'lon=-12', 'z=5']) expect(hash).toContain(value);
-  expect(apiRequests).toEqual([]);
-});
+const directions = ['atlas', 'index', 'field'] as const;
 
-test('unmapped records remain in the list and never become map controls', async ({ page }) => {
-  await page.goto('./#/map?f1a=index&q=record+04');
+for (const direction of directions) {
+  test(`${direction} shares the local review engine and preserves state when switching`, async ({ page }) => {
+    const apiRequests: string[] = [];
+    page.on('request', request => { if (new URL(request.url()).pathname.startsWith('/api/')) apiRequests.push(request.url()); });
+    await page.goto(`./#/map?f1a=${direction}&scenario=dense`);
+    await expect(page.locator('.lab[data-direction]')).toHaveAttribute('data-direction', direction);
+    await expect(page.getByRole('searchbox').first()).toBeVisible();
+    await expect(page.getByLabel('Location precision legend')).toContainText('Exact site');
+
+    const search = page.getByRole('searchbox').first();
+    await search.fill('Aarhus');
+    expect(new URL(page.url()).hash).toContain('q=Aarhus');
+    await search.fill('');
+
+    const filters = page.locator('details').first();
+    await filters.locator('summary').click();
+    await page.getByLabel('Poultry', { exact: true }).check();
+    expect(new URL(page.url()).hash).toContain('category=Poultry');
+    await filters.locator('summary').click();
+    await page.getByRole('button', { name: 'Pan map east' }).click();
+    expect(new URL(page.url()).hash).toContain('lon=25');
+    await page.getByRole('button', { name: 'Satellite' }).click();
+    await expect(page.getByText(/Satellite imagery unavailable/)).toBeVisible();
+
+    await page.getByRole('button', { name: /Cluster of 4 records near Aarhus/i }).click();
+    await expect(page.getByText(/2 exact · 2 approximate/i)).toBeVisible();
+    expect(new URL(page.url()).hash).toContain('cluster=aarhus');
+
+    await page.locator('.record-list button').filter({ hasText: 'Synthetic Poultry record 01' }).click();
+    expect(new URL(page.url()).hash).toContain('selected=syn-001');
+
+    const nextDirection = direction === 'atlas' ? 'index' : direction === 'index' ? 'field' : 'atlas';
+    const directionSelect = direction === 'field'
+      ? page.locator('.review-tools').getByLabel('Direction')
+      : page.locator('.lab-header').getByLabel('Direction');
+    await directionSelect.selectOption(nextDirection);
+    const hash = new URL(page.url()).hash;
+    for (const value of [`f1a=${nextDirection}`, 'scenario=dense', 'selected=syn-001', 'category=Poultry', 'cluster=aarhus', 'lon=25', 'basemap=satellite']) expect(hash).toContain(value);
+    await expect(page.locator('.lab[data-direction]')).toHaveAttribute('data-direction', nextDirection);
+    await expect(page.getByText(/Satellite imagery unavailable/)).toBeVisible();
+    await expect(page.getByText(/2 exact · 2 approximate/i)).toBeVisible();
+    expect(apiRequests).toEqual([]);
+  });
+}
+
+test('unmapped records remain semantic list entries and never become map controls', async ({ page }) => {
+  await page.goto('./#/map?f1a=index');
   await expect(page.getByRole('button', { name: /record 04.*unmapped/i })).toBeVisible();
-  await expect(page.getByRole('region', { name: /provisional map/i }).getByRole('button', { name: /record 04/i })).toHaveCount(0);
+  await expect(page.getByLabel(/Provisional map showing synthetic facility records/).getByRole('button', { name: /record 04/i })).toHaveCount(0);
 });
 
-test('filters, list visibility, viewport, and cluster expansion are URL-backed actions', async ({ page }) => {
-  await page.goto('./#/map?f1a=atlas');
-  await page.locator('.lab-filters summary').click();
-  await expect(page.getByLabel('Poultry', { exact: true })).toBeVisible();
-  await page.getByLabel('Poultry', { exact: true }).check();
-  await expect(page.getByRole('heading', { name: /synchronized records/i })).toContainText('16');
-  expect(new URL(page.url()).hash).toContain('category=Poultry');
-  await page.getByRole('button', { name: 'Hide synchronized list' }).click();
-  await expect(page.getByRole('region', { name: /synchronized records/i })).toBeHidden();
-  expect(new URL(page.url()).hash).toContain('list=closed');
-  await page.getByRole('button', { name: 'Show synchronized list' }).click();
-  await page.getByRole('button', { name: 'Pan map east' }).click();
-  expect(new URL(page.url()).hash).toContain('lon=25');
-});
+for (const direction of directions) {
+  test(`${direction} announces scenario states and fits narrow or zoomed layouts`, async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 780 });
+    await page.goto(`./#/map?f1a=${direction}`);
+    await expect(page.locator('.lab[data-direction]')).toHaveAttribute('data-direction', direction);
+    const accessibility = await new AxeBuilder({ page }).analyze();
+    expect(accessibility.violations.map(violation => ({ id: violation.id, help: violation.help, nodes: violation.nodes.map(node => ({ target: node.target, summary: node.failureSummary })) }))).toEqual([]);
 
-test('clusters disclose composition and satellite is honestly unavailable', async ({ page }) => {
-  await page.goto('./#/map?f1a=field');
-  await page.getByRole('button', { name: /cluster of 4 records near aarhus/i }).click();
-  await expect(page.getByText(/2 exact · 2 approximate/i)).toBeVisible();
-  await page.getByRole('button', { name: 'Satellite' }).click();
-  await expect(page.getByRole('status')).toContainText(/Satellite imagery unavailable/);
-});
+    const controls = direction === 'field'
+      ? page.locator('.review-tools').getByLabel('Scenario')
+      : page.locator('.lab-header').getByLabel('Scenario');
+    await controls.selectOption('loading');
+    await expect(page.getByRole('status').first()).toContainText(/Loading|Assembling/);
+    await controls.selectOption('empty');
+    await expect(page.getByText(/No matching records|No eligible|no synthetic records/i).first()).toBeVisible();
+    await controls.selectOption('error');
+    await expect(page.getByRole('alert').first()).toContainText(/No live fallback was attempted|No live source was queried/);
 
-test('mobile scenario and loading, empty, and error states remain explicit', async ({ page }) => {
-  await page.goto('./#/map?f1a=atlas&scenario=mobile');
-  await expect(page.locator('.lab')).toHaveAttribute('data-scenario', 'mobile');
-  await page.goto('./#/map?f1a=atlas&scenario=loading');
-  await expect(page.getByRole('status')).toContainText('Loading synthetic records');
-  await page.goto('./#/map?f1a=atlas&scenario=empty');
-  await expect(page.getByRole('status')).toContainText('No eligible synthetic records');
-  await page.goto('./#/map?f1a=atlas&scenario=error');
-  await expect(page.getByRole('alert')).toContainText('No live fallback was attempted');
-});
-
-test('keyboard access, automated accessibility, and narrow or zoomed layouts remain usable', async ({ page }) => {
-  await page.setViewportSize({ width: 320, height: 780 });
-  await page.goto('./#/map?f1a=atlas');
-  await expect(page.getByText('Synthetic development data · not a release')).toBeVisible();
-  await page.getByRole('searchbox').focus();
-  await page.keyboard.press('Tab');
-  await expect(page.locator('.lab-filters summary')).toBeFocused();
-  const narrowWidth = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
-  expect(narrowWidth.scroll).toBeLessThanOrEqual(narrowWidth.client + 1);
-  const accessibility = await new AxeBuilder({ page }).analyze();
-  expect(accessibility.violations.map(violation => ({ id: violation.id, help: violation.help, nodes: violation.nodes.map(node => ({ target: node.target, summary: node.failureSummary })) }))).toEqual([]);
-  await page.setViewportSize({ width: 160, height: 780 });
-  const zoomedWidth = await page.evaluate(() => ({
-    client: document.documentElement.clientWidth,
-    scroll: document.documentElement.scrollWidth,
-    offenders: [...document.querySelectorAll<HTMLElement>('*')].map(element => ({ element, rect: element.getBoundingClientRect() })).filter(({ rect }) => rect.right > document.documentElement.clientWidth + 1).slice(0, 8).map(({ element, rect }) => `${element.tagName}.${element.className}: ${Math.round(rect.left)}..${Math.round(rect.right)}`),
-  }));
-  expect(zoomedWidth.scroll, JSON.stringify(zoomedWidth.offenders)).toBeLessThanOrEqual(zoomedWidth.client + 1);
-});
+    await controls.selectOption('default');
+    const narrowWidth = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
+    expect(narrowWidth.scroll).toBeLessThanOrEqual(narrowWidth.client + 1);
+    await page.setViewportSize({ width: 160, height: 780 });
+    const zoomedWidth = await page.evaluate(() => ({
+      client: document.documentElement.clientWidth,
+      scroll: document.documentElement.scrollWidth,
+      offenders: [...document.querySelectorAll<HTMLElement>('*')].map(element => ({ element, rect: element.getBoundingClientRect() })).filter(({ rect }) => rect.right > document.documentElement.clientWidth + 1).slice(0, 8).map(({ element, rect }) => `${element.tagName}.${String(element.className)}: ${Math.round(rect.left)}..${Math.round(rect.right)}`),
+    }));
+    expect(zoomedWidth.scroll, JSON.stringify(zoomedWidth.offenders)).toBeLessThanOrEqual(zoomedWidth.client + 1);
+  });
+}

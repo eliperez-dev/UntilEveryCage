@@ -12,14 +12,15 @@ describe('F1A shared design lab', () => {
   });
 
   it('round trips search, selection, filters, viewport, list, direction, scenario, and basemap state', () => {
-    const state = decodeLabHash('#/map?f1a=field&scenario=dense&q=pig&selected=syn-042&basemap=satellite&list=closed&lat=40&lon=-12&z=5&category=Pig&category=Dairy&precision=city');
+    const state = decodeLabHash('#/map?f1a=field&scenario=dense&q=pig&selected=syn-042&cluster=aarhus&basemap=satellite&list=closed&lat=40&lon=-12&z=5&category=Pig&category=Dairy&precision=city');
     expect(decodeLabHash(encodeLabHash(state))).toEqual(state);
   });
 
   it('preserves every review state when switching directions', () => {
-    const state = decodeLabHash('#/map?f1a=atlas&scenario=dense&q=pig&selected=syn-042&lat=40&lon=-12&z=5&category=Pig&precision=coarse');
+    const state = decodeLabHash('#/map?f1a=atlas&scenario=dense&q=pig&selected=syn-042&cluster=aarhus&lat=40&lon=-12&z=5&category=Pig&precision=coarse');
     expect(reduceLabState(state, { type: 'direction', value: 'index' })).toMatchObject({
       direction: 'index', scenario: 'dense', query: 'pig', selectedId: 'syn-042',
+      expandedCluster: 'aarhus',
       viewport: { centerLat: 40, centerLon: -12, zoom: 5 }, filters: { categories: ['Pig'], precisions: ['coarse'] },
     });
   });

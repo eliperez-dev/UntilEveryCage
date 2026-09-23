@@ -17,12 +17,14 @@ export function decodeLabHash(hash: string): LabState {
     precisions: unique(q.getAll('precision').filter((value): value is (typeof precisionOptions)[number] => precisionOptions.some(option => option === value))),
   };
   return { ...DEFAULT_LAB_STATE, direction, scenario, query: q.get('q') ?? '', selectedId: q.get('selected'), filters,
+    expandedCluster: q.get('cluster') === 'aarhus' ? 'aarhus' : null,
     basemap: q.get('basemap') === 'satellite' ? 'satellite' : 'vector', listOpen: q.get('list') !== 'closed',
     viewport: { centerLat: safeNumber(q.get('lat'), 45, -90, 90), centerLon: safeNumber(q.get('lon'), 5, -180, 180), zoom: safeNumber(q.get('z'), 2, 1, 18) } };
 }
 export function encodeLabHash(state: LabState): string {
   const q = new URLSearchParams({ f1a: state.direction, scenario: state.scenario });
   if (state.query) q.set('q', state.query); if (state.selectedId) q.set('selected', state.selectedId);
+  if (state.expandedCluster) q.set('cluster', state.expandedCluster);
   if (state.basemap !== 'vector') q.set('basemap', state.basemap); if (!state.listOpen) q.set('list', 'closed');
   if (state.viewport.centerLat !== 45) q.set('lat', String(state.viewport.centerLat));
   if (state.viewport.centerLon !== 5) q.set('lon', String(state.viewport.centerLon));

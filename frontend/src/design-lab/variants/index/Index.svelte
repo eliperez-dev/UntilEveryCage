@@ -36,14 +36,20 @@
       <span class="eyebrow">Spatial overview</span>
       <span>Selection and index remain linked</span>
     </div>
-    <MapSurface
-      records={mappedRecords}
-      {state}
-      onselect={id => dispatch({ type: 'select', value: id })}
-      oncluster={value => dispatch({ type: 'cluster', value })}
-      onbasemap={value => dispatch({ type: 'basemap', value })}
-      onviewport={value => dispatch({ type: 'viewport', value })}
-    />
+    {#if state.scenario === 'loading'}
+      <p class="index-state" role="status">Loading the synthetic map field…</p>
+    {:else if state.scenario === 'error'}
+      <p class="index-state error" role="alert">Records unavailable. No live fallback was attempted.</p>
+    {:else}
+      <MapSurface
+        records={mappedRecords}
+        {state}
+        onselect={id => dispatch({ type: 'select', value: id })}
+        oncluster={value => dispatch({ type: 'cluster', value })}
+        onbasemap={value => dispatch({ type: 'basemap', value })}
+        onviewport={value => dispatch({ type: 'viewport', value })}
+      />
+    {/if}
     <div class="map-footnote">
       <span>Provisional map field</span>
       <span>Exact points · approximate areas · no point for unmapped records</span>
@@ -100,7 +106,7 @@
       <span class="precision-counts">{records.filter(record => record.precision === 'exact').length} exact<br />{records.filter(record => record.precision === 'city' || record.precision === 'coarse').length} approximate<br />{records.filter(record => record.precision === 'unmapped').length} without point</span>
     </div>
 
-    {#if selectedRecord}
+    {#if selectedRecord && state.scenario !== 'loading' && state.scenario !== 'error'}
       <article class="record-reading" aria-labelledby="reading-title">
         <div class="reading-topline"><span>Selected record</span><button type="button" onclick={() => dispatch({ type: 'select', value: null })} aria-label="Close selected record">×</button></div>
         <span class="record-type">{selectedRecord.category} / {selectedRecord.precision} location</span>
@@ -111,8 +117,14 @@
     {/if}
 
     <div class="list-heading"><span>Index entries</span><span>NAME / LOCATION</span></div>
-    <RecordList records={records} selectedId={state.selectedId} hidden={!state.listOpen} onselect={id => dispatch({ type: 'select', value: id })} />
-    {#if records.length === 0}<p class="empty-index" role="status">No eligible synthetic records match this search and these filters.</p>{/if}
+    {#if state.scenario === 'loading'}
+      <p class="empty-index" role="status">Loading synthetic records…</p>
+    {:else if state.scenario === 'error'}
+      <p class="empty-index error" role="alert">The test failure is contained. No live fallback was attempted.</p>
+    {:else}
+      <RecordList records={records} selectedId={state.selectedId} hidden={!state.listOpen} onselect={id => dispatch({ type: 'select', value: id })} />
+      {#if records.length === 0}<p class="empty-index" role="status">No eligible synthetic records match this search and these filters.</p>{/if}
+    {/if}
     <footer class="rail-footer"><span>Development corpus</span><span>Synthetic · not a release</span></footer>
   </aside>
 
@@ -131,19 +143,21 @@
     position: relative;
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(19rem, 25rem);
-    min-height: calc(100dvh - 7rem);
+    height: calc(100dvh - 7rem);
     color: var(--ink);
     background: #171a1a;
     font-family: "Aptos", "Segoe UI", sans-serif;
     font-size: .875rem;
   }
+  .index-state { display: grid; place-content: center; min-height: 100%; margin: 0; padding: 1.5rem; color: #e1dfd7; background: #202725; font: .85rem/1.5 ui-monospace, Consolas, monospace; }
+  .index-state.error, .empty-index.error { color: #f0cbc0; }
 
   .map-column { display: grid; grid-template-rows: auto minmax(30rem, 1fr) auto; min-width: 0; padding: 1rem 1rem 1rem 1.25rem; }
   .map-caption, .map-footnote { display: flex; align-items: center; justify-content: space-between; gap: 1rem; color: var(--muted); font-size: .72rem; }
   .map-caption { padding: .1rem .1rem .75rem; }
   .map-footnote { padding: .6rem .1rem 0; border-top: 1px solid var(--line-soft); font-family: ui-monospace, Consolas, monospace; font-size: .63rem; }
   .eyebrow { margin: 0; color: var(--accent); font: 600 .64rem/1.4 ui-monospace, Consolas, monospace; letter-spacing: .12em; text-transform: uppercase; }
-  .index-rail { display: flex; flex-direction: column; min-width: 0; max-height: calc(100dvh - 7rem); border-left: 1px solid var(--line); background: #1c2020; }
+  .index-rail { display: flex; flex-direction: column; min-width: 0; height: 100%; border-left: 1px solid var(--line); background: #1c2020; }
   .rail-heading { display: flex; align-items: flex-end; justify-content: space-between; padding: 1.05rem 1.1rem .8rem; border-bottom: 1px solid var(--line); }
   .rail-heading h2 { margin: .2rem 0 0; font-size: 1.35rem; font-weight: 500; letter-spacing: -.035em; }
   .mobile-dismiss { display: none; }
