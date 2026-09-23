@@ -4,8 +4,8 @@ import { decodeLabHash, encodeLabHash, reduceLabState } from '../../src/design-l
 import { createLabViewModel } from '../../src/design-lab/viewModel';
 
 describe('F1A shared design lab', () => {
-  it('provides a frozen deterministic 96-record corpus across every precision and category', () => {
-    expect(labRecords).toHaveLength(96);
+  it('provides a frozen deterministic worldwide review corpus across every precision and category', () => {
+    expect(labRecords).toHaveLength(360);
     expect(new Set(labRecords.map(record => record.precision))).toEqual(new Set(['exact', 'city', 'coarse', 'unmapped']));
     expect(new Set(labRecords.map(record => record.category)).size).toBe(6);
     expect(labRecords.filter(record => record.precision === 'unmapped').every(record => record.latitude === null && record.longitude === null)).toBe(true);
@@ -33,7 +33,7 @@ describe('F1A shared design lab', () => {
 
   it('keeps global search results separate from map placement and preserves unmapped rows', () => {
     const model = createLabViewModel(labRecords, decodeLabHash('#/map?q=synthetic'));
-    expect(model.listRecords).toHaveLength(96);
+    expect(model.listRecords).toHaveLength(360);
     expect(model.unmappedCount).toBeGreaterThan(0);
     expect(model.mapRecords.every(record => record.precision !== 'unmapped' && record.latitude !== null && record.longitude !== null)).toBe(true);
     expect(model.listRecords.some(record => record.precision === 'unmapped')).toBe(true);
@@ -51,6 +51,6 @@ describe('F1A shared design lab', () => {
     expect(modelFor('loading').isLoading).toBe(true);
     expect(modelFor('empty').isEmpty).toBe(true);
     expect(modelFor('error').hasError).toBe(true);
-    expect(modelFor('mobile').listRecords).toHaveLength(96);
+    expect(modelFor('mobile').listRecords).toHaveLength(360);
   });
 });

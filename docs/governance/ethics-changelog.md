@@ -39,3 +39,10 @@ Governing document: [ETHICS.md](../ETHICS.md). The policy remains version 1.0 be
 
 - Initial policy covering evidence, history, reproducibility, uncertainty, source separation, publication, individual protection, and corrections.
 - Recorded as the existing project policy when first reviewed; this entry does not assert an additional approval or audit.
+
+### Local real-preview development protocol
+
+- Authorized an explicit, local-only testing exception for a prepared private candidate release through guarded development routes. It preserves the synthetic default, row-free artifact modes, public-projection prohibition, existing privacy/restriction/coordinate gates, and candidate/not-published semantics.
+- Required loopback binding, token-header authentication, in-memory secrets, an explicit process opt-in, no tunnels or remote preview, no exports or analytics, and no commits, logs, browser persistence, or generated artifacts containing real rows or tokens.
+- Rationale: map interaction and scale validation may need realistic spatial distributions, while ordinary frontend development and all distributable artifacts remain synthetic or row-free.
+- Approval reference: developer's explicit local-development authorization in the project conversation.

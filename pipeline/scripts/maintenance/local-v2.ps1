@@ -11,6 +11,25 @@ $pidFile=Join-Path $stateDir 'uec-api.pid'; $logFile=Join-Path $stateDir 'uec-ap
 $env:UEC_PIPELINE_DB_PORT="$dbPort"; $env:UEC_DATABASE_URL=$db; $env:PORT="$apiPort"
 $env:UEC_CORS_ORIGIN="http://127.0.0.1:4173"
 
+function Get-LocalRealPreviewEnvironment {
+  $flag = if ($env:UEC_LOCAL_REAL_PREVIEW) { $env:UEC_LOCAL_REAL_PREVIEW.Trim().ToLowerInvariant() } else { '' }
+  if ($flag -in @('', 'false', '0', 'no')) { return $false }
+  if ($flag -notin @('true', '1', 'yes')) { throw 'UEC_LOCAL_REAL_PREVIEW must be true or false.' }
+  $required = @('UEC_DEV_PREVIEW', 'UEC_DEV_PREVIEW_TOKEN', 'UEC_TEST_RELEASE_ID', 'UEC_TEST_RELEASE_TOKEN')
+  $missing = @($required | Where-Object { [string]::IsNullOrWhiteSpace([string](Get-Item "Env:$_" -ErrorAction SilentlyContinue).Value) })
+  if ($missing.Count) { throw "Local real preview requires: $($required -join ', ')." }
+  if ($env:UEC_DEV_PREVIEW.Trim().ToLowerInvariant() -ne 'true') { throw 'Local real preview requires UEC_DEV_PREVIEW=true.' }
+  return $true
+}
+
+# Direct invocation receives the same deny-by-default treatment as launchpad:
+# credentials/config inherited from a shell do not reach the API unless the
+# complete explicit opt-in above is present.
+$script:LocalRealPreviewEnabled = Get-LocalRealPreviewEnvironment
+if (!$script:LocalRealPreviewEnabled) {
+  @('UEC_DEV_PREVIEW', 'UEC_DEV_PREVIEW_TOKEN', 'UEC_TEST_RELEASE_ID', 'UEC_TEST_RELEASE_TOKEN') | ForEach-Object { Remove-Item "Env:$_" -ErrorAction SilentlyContinue }
+}
+
 function Get-OwnedApiProcess {
   if (!(Test-Path $pidFile)) { return $null }
   $processId=[int](Get-Content $pidFile -Raw).Trim(); $process=Get-Process -Id $processId -ErrorAction SilentlyContinue
@@ -22,6 +41,9 @@ Push-Location $root
 try {
   switch ($Command) {
     'start' {
+      # Validate the complete opt-in before the API inherits private preview
+      # configuration. Values are intentionally never written to logs.
+      $localRealPreview = $script:LocalRealPreviewEnabled
       New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
       & docker compose -p $project -f $compose up -d --wait
       if ($LASTEXITCODE) { throw 'Postgres startup failed.' }
@@ -50,7 +72,8 @@ try {
         $process=Start-Process -FilePath $api -WorkingDirectory $root -WindowStyle Hidden -RedirectStandardOutput $logFile -RedirectStandardError $errorFile -PassThru
         Set-Content -Path $pidFile -Value $process.Id -NoNewline
       }
-      Write-Host "Local V2 ready: http://127.0.0.1:$apiPort (database $dbPort)."
+      $previewMode = if ($localRealPreview) { 'local real preview enabled' } else { 'synthetic fixture mode' }
+      Write-Host "Local V2 ready: http://127.0.0.1:$apiPort (database $dbPort; $previewMode)."
     }
     'status' {
       & docker compose -p $project -f $compose ps

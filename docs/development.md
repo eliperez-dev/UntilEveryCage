@@ -52,6 +52,40 @@ npm run dev
 
 The fixture preview is the default, does not need a database, and is the correct first environment for UI work. `npm run test:e2e:fixture` starts its own local preview. Do not add `?mode=local-v2` until `python scripts/dev.py --json doctor` reports a healthy environment, then use `up`, `probe`, and `npm run test:e2e:local` as documented in the frontend README. `status` distinguishes a running Axum process from a database-only local environment, and `probe` reports a concise next step when the backend is unavailable. Port conflicts and an unavailable Docker engine are environment problems, not a reason to stop an unknown process or silently fall back to fixtures.
 
+### Local real-preview for map testing
+
+Synthetic fixtures remain the default. For a prepared disposable candidate
+release that needs real-location rendering tests, use the guarded local
+real-preview route only after following
+[the preview protocol](deployment/dev-preview.md#local-real-preview-protocol).
+The launchpad never imports or discovers data: it only forwards an explicit,
+complete allowlist to the loopback API. Set these values in the current shell
+(never in a `.env` file or command line) and start the owned stack:
+
+```powershell
+$env:UEC_LOCAL_REAL_PREVIEW = 'true'
+$env:UEC_DEV_PREVIEW = 'true'
+$env:UEC_DEV_PREVIEW_TOKEN = '<memory-only-token>'
+$env:UEC_TEST_RELEASE_ID = '<prepared-candidate-release-id>'
+$env:UEC_TEST_RELEASE_TOKEN = '<memory-only-token>'
+python scripts/dev.py launchpad
+```
+
+All four preview values are required when the flag is true; otherwise the
+launchpad fails closed. It always binds the API and Vite to `127.0.0.1` and
+passes the tokens only to the API child. The Vite child does not inherit them;
+the frontend must retain any user-entered token only in memory and send it as
+the required request header. Do not use a tunnel, browser persistence,
+analytics, CSV export, screenshots with sensitive rows, or a remote host.
+`launchpad-stop` and clearing these variables ends the local session; it does
+not make a candidate published or alter the empty public projection.
+
+The currently approved local rehearsal is a bounded 50,750-row legacy V1
+snapshot (48,703 mapped; 2,047 unmapped), explicitly labeled
+legacy/development-only/not-V2-reviewed and never promotable. Keep map reads
+viewport-bounded; do not mount all rows as DOM markers or serialize the corpus
+into a frontend artifact.
+
 ## Troubleshooting persistent local V2 state
 
 `local-v2.ps1 start` uses the named `uec-local-v2` Compose project and keeps its
@@ -111,6 +145,10 @@ dataset workflow. It must declare `mode: "private"`, `ready: true`, a safe
 Malformed or missing private configuration fails closed before any service is
 started. The launchpad does not scan directories, acquire data, or import raw
 records.
+
+The local real-preview protocol is independent of this dataset selection: it
+does not change the synthetic default, the row-free private-artifact mode, or
+`public_projection.json`.
 
 Use `python scripts/dev.py launchpad-probe` to check API liveness/readiness and
 the Vite preview. Use `python scripts/dev.py launchpad-stop` for an ordinary

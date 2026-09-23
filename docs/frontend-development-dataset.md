@@ -31,6 +31,31 @@ public surface. Development graph rows expose exact/inferred type, confidence,
 signals, contradictions, and disclaimers; they never represent universal
 identity merges.
 
+## Local real-preview exception
+
+The fixture modes above remain the default and remain the only modes that may
+produce frontend dataset artifacts. A separate, operator-started **local real
+preview** may query an already-prepared disposable candidate release through
+the loopback-only `/api/dev/preview/test-release/*` boundary for map rendering
+and interaction testing. It is not a dataset mode, a release, an export, or a
+public projection.
+
+It must be enabled explicitly for one local process, use a selected candidate
+release, and preserve the existing visibility, privacy-screening, restriction,
+and coordinate-review gates. The approved rehearsal corpus is bounded to the
+50,750-row legacy V1 snapshot (48,703 mapped and 2,047 unmapped), labeled
+legacy/development-only/not-V2-reviewed, and is never promoted. The map uses
+viewport-bounded queries rather than a browser-wide row payload. The browser
+requests it only with the
+`X-UEC-Dev-Preview-Token` header held in memory. Do not write real rows,
+tokens, manifests, screenshots containing sensitive details, or source paths
+to Git, frontend fixtures, browser storage, logs, or generated artifacts.
+
+The exception is loopback-only; no tunnel, remote preview, analytics, export,
+or public `/api/v2/*` route is permitted. Stop the local stack and clear the
+process environment after testing. Deleting a release does not erase browser
+caches, logs, or copied files, so those prohibited outputs must never be made.
+
 The launchpad should verify manifest digests and reject a missing manifest,
 digest mismatch, or non-empty public projection. `ui_states.json` supplies
 loading, empty, 404, 429, 503, stale, restricted, suppressed, unmapped, and

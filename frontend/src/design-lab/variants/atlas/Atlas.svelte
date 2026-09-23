@@ -37,7 +37,7 @@
       {:else if model.hasError}
         <div class="atlas-state" role="alert"><span class="state-mark">!</span><strong>Map records unavailable</strong><small>The review fixture failed. No live source was queried.</small></div>
       {:else}
-        <MapSurface records={model.mapRecords} {state} onselect={id => dispatch({ type: 'select', value: id })} oncluster={value => dispatch({ type: 'cluster', value })} onbasemap={value => dispatch({ type: 'basemap', value })} onviewport={value => dispatch({ type: 'viewport', value })} />
+        <MapSurface records={model.mapRecords} {state} onselect={id => dispatch({ type: 'select', value: id })} onaggregate={ids => dispatch({ type: 'aggregate', value: ids })} onbasemap={value => dispatch({ type: 'basemap', value })} onviewport={value => dispatch({ type: 'viewport', value })} />
       {/if}
       {#if model.isEmpty && !model.isLoading && !model.hasError}<div class="empty-note" role="status"><strong>No matching records</strong><span>Adjust global search or precision filters.</span></div>{/if}
     </div>

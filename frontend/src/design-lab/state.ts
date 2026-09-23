@@ -9,7 +9,7 @@ const unique = <T extends string>(values: readonly T[]) => [...new Set(values)];
 export function decodeLabHash(hash: string): LabState {
   const queryString = hash.includes('?') ? hash.slice(hash.indexOf('?') + 1) : '';
   const q = new URLSearchParams(queryString);
-  const direction = DIRECTIONS.find(value => value === q.get('f1a')) ?? DEFAULT_LAB_STATE.direction;
+  const direction = 'field';
   const scenario = SCENARIOS.find(value => value === q.get('scenario')) ?? DEFAULT_LAB_STATE.scenario;
   const precisionOptions = ['exact', 'city', 'coarse', 'unmapped'] as const;
   const filters: LabFilters = {
@@ -40,6 +40,7 @@ export function reduceLabState(state: LabState, action: LabAction): LabState {
     case 'query': return { ...state, query: action.value, selectedId: null };
     case 'select': return { ...state, selectedId: action.value };
     case 'cluster': return { ...state, expandedCluster: action.value };
+    case 'aggregate': return { ...state, aggregateMemberIds: action.value, listOpen: action.value !== null, selectedId: null };
     case 'basemap': return { ...state, basemap: action.value };
     case 'list': return { ...state, listOpen: action.value };
     case 'viewport': return { ...state, viewport: action.value };

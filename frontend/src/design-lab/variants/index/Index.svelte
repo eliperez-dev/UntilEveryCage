@@ -45,7 +45,7 @@
         records={mappedRecords}
         {state}
         onselect={id => dispatch({ type: 'select', value: id })}
-        oncluster={value => dispatch({ type: 'cluster', value })}
+        onaggregate={ids => dispatch({ type: 'aggregate', value: ids })}
         onbasemap={value => dispatch({ type: 'basemap', value })}
         onviewport={value => dispatch({ type: 'viewport', value })}
       />

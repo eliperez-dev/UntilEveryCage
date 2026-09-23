@@ -27,3 +27,35 @@ project-approved or published`; `project_approval` remains `false` and the
 release remains `candidate`. Candidate seed/reset/rebuild belongs to a
 disposable E2E database only. This path is not production deployment or
 publication authorization.
+
+## Local real-preview protocol
+
+For local map testing of a prepared real candidate release, the more specific
+`/api/dev/preview/test-release/*` routes may be enabled only on the developer
+machine. They require all candidate-preview conditions above plus a non-empty
+`UEC_TEST_RELEASE_ID` and `UEC_TEST_RELEASE_TOKEN`. The selected release must
+already be a disposable candidate with existing privacy, restriction, and
+coordinate-review decisions; enabling the route does not import, promote, or
+approve a release.
+
+The approved local rehearsal corpus is the bounded 50,750-row legacy V1
+snapshot (48,703 mapped; 2,047 unmapped). It is labeled
+legacy/development-only/not-V2-reviewed, is never promoted, and is read with
+viewport-bounded queries; it must not be copied into a browser bundle or
+rendered as one DOM marker per row.
+
+With the one-command launchpad, set `UEC_LOCAL_REAL_PREVIEW=true` and all four
+of `UEC_DEV_PREVIEW=true`, `UEC_DEV_PREVIEW_TOKEN`, `UEC_TEST_RELEASE_ID`, and
+`UEC_TEST_RELEASE_TOKEN` in the current process environment. The launchpad
+passes only that allowlist to the loopback API and deliberately removes it from
+the Vite process. It prints neither token values nor rows. An incomplete,
+ambiguous, or disabled configuration fails closed.
+
+Keep tokens in memory and send them only in the
+`X-UEC-Dev-Preview-Token` request header. Never put them in URLs, source,
+`.env` files, browser storage, exports, screenshots, or logs. The route has no
+remote/tunnel mode and must not drive analytics, downloads, or public
+`/api/v2/*` content. The standard frontend dataset remains synthetic and all
+row-free artifact rules remain in effect. On completion, stop the local stack
+and clear the environment values; candidate/release deletion is not a remedy
+for any copied data, cache, or log.

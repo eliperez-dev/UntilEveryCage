@@ -1,4 +1,4 @@
-export const DIRECTIONS = ['atlas', 'index', 'field'] as const;
+export const DIRECTIONS = ['field'] as const;
 export const SCENARIOS = ['default', 'dense', 'loading', 'empty', 'error', 'mobile'] as const;
 export type Direction = (typeof DIRECTIONS)[number];
 export type Scenario = (typeof SCENARIOS)[number];
@@ -13,21 +13,21 @@ export type LabRecord = Readonly<{
 export type Viewport = Readonly<{ centerLat: number; centerLon: number; zoom: number }>;
 export type LabState = Readonly<{
   direction: Direction; scenario: Scenario; query: string; selectedId: string | null;
-  expandedCluster: string | null; basemap: Basemap; listOpen: boolean; viewport: Viewport;
+  expandedCluster: string | null; aggregateMemberIds: readonly string[] | null; basemap: Basemap; listOpen: boolean; viewport: Viewport;
   filters: LabFilters;
 }>;
 export type LabAction =
   | { type: 'direction'; value: Direction } | { type: 'scenario'; value: Scenario }
   | { type: 'query'; value: string } | { type: 'select'; value: string | null }
-  | { type: 'cluster'; value: string | null } | { type: 'basemap'; value: Basemap }
+  | { type: 'cluster'; value: string | null } | { type: 'aggregate'; value: readonly string[] | null } | { type: 'basemap'; value: Basemap }
   | { type: 'list'; value: boolean } | { type: 'viewport'; value: Viewport }
   | { type: 'filters'; value: LabFilters } | { type: 'reset-filters' };
 
 export interface DirectionViewProps { state: LabState; records: readonly LabRecord[]; dispatch(action: LabAction): void }
 
 export const DEFAULT_LAB_STATE: LabState = Object.freeze({
-  direction: 'atlas', scenario: 'default', query: '', selectedId: null,
-  expandedCluster: null, basemap: 'vector', listOpen: true,
+  direction: 'field', scenario: 'default', query: '', selectedId: null,
+  expandedCluster: null, aggregateMemberIds: null, basemap: 'vector', listOpen: false,
   viewport: Object.freeze({ centerLat: 45, centerLon: 5, zoom: 2 }),
   filters: Object.freeze({ categories: Object.freeze([]), precisions: Object.freeze([]) }),
 });

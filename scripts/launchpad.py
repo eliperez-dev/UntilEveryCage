@@ -32,6 +32,13 @@ PRIVATE_MODE = "private"
 FALLBACK_MODE = "sanitized-fallback"
 ALLOWED_MODES = {PRIVATE_MODE, FALLBACK_MODE}
 SAFE_RELEASE_ID = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-")
+REAL_PREVIEW_FLAG = "UEC_LOCAL_REAL_PREVIEW"
+REAL_PREVIEW_ENV = (
+    "UEC_DEV_PREVIEW",
+    "UEC_DEV_PREVIEW_TOKEN",
+    "UEC_TEST_RELEASE_ID",
+    "UEC_TEST_RELEASE_TOKEN",
+)
 
 
 class LaunchpadError(RuntimeError):
@@ -89,6 +96,21 @@ def _release_id(value: object) -> str:
     if any(character not in SAFE_RELEASE_ID for character in value):
         raise LaunchpadError("private dataset manifest has an invalid release_id")
     return value
+
+
+def _local_real_preview_env(values: Mapping[str, str]) -> dict[str, str]:
+    """Return the narrowly allowlisted API preview configuration."""
+    flag = values.get(REAL_PREVIEW_FLAG, "").strip().lower()
+    if flag in ("", "false", "0", "no"):
+        return {}
+    if flag not in ("true", "1", "yes"):
+        raise LaunchpadError(f"{REAL_PREVIEW_FLAG} must be true or false")
+    missing = [name for name in REAL_PREVIEW_ENV if not values.get(name, "").strip()]
+    if missing:
+        raise LaunchpadError(f"{REAL_PREVIEW_FLAG}=true requires " + ", ".join(REAL_PREVIEW_ENV))
+    if values["UEC_DEV_PREVIEW"].strip().lower() != "true":
+        raise LaunchpadError("local real preview requires UEC_DEV_PREVIEW=true")
+    return {name: values[name] for name in REAL_PREVIEW_ENV}
 
 
 def select_dataset(root: Path, env: Mapping[str, str] | None = None) -> DatasetSelection:
@@ -214,6 +236,9 @@ def _write_state(paths: LaunchpadPaths, payload: dict[str, object]) -> None:
 
 def _local_env(paths: LaunchpadPaths) -> dict[str, str]:
     env = os.environ.copy()
+    # Prevent inherited credentials from accidentally enabling preview routes.
+    for name in (REAL_PREVIEW_FLAG, *REAL_PREVIEW_ENV):
+        env.pop(name, None)
     env.update(
         {
             "UEC_LOCAL_V2_PROJECT": PROJECT,
@@ -226,6 +251,9 @@ def _local_env(paths: LaunchpadPaths) -> dict[str, str]:
             "UEC_BIND_HOST": "127.0.0.1",
         }
     )
+    env.update(_local_real_preview_env(os.environ))
+    if env.get("UEC_DEV_PREVIEW") == "true":
+        env[REAL_PREVIEW_FLAG] = "true"
     return env
 
 
@@ -253,10 +281,14 @@ def _frontend_process(paths: LaunchpadPaths) -> subprocess.Popen[str]:
         creationflags = 0
         if os.name == "nt":
             creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
+        frontend_env = os.environ.copy()
+        for name in (REAL_PREVIEW_FLAG, *REAL_PREVIEW_ENV):
+            frontend_env.pop(name, None)
+        frontend_env["VITE_API_ORIGIN"] = f"http://127.0.0.1:{API_PORT}"
         process = subprocess.Popen(
             [node, str(vite), "--host", "127.0.0.1", "--port", str(FRONTEND_PORT)],
             cwd=paths.root,
-            env={**os.environ, "VITE_API_ORIGIN": f"http://127.0.0.1:{API_PORT}"},
+            env=frontend_env,
             stdout=stdout,
             stderr=stderr,
             text=True,

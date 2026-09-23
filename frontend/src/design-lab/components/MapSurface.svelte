@@ -1,59 +1,52 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
+  import * as maplibregl from 'maplibre-gl';
+  import mapLibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
+  import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl';
+  import 'maplibre-gl/dist/maplibre-gl.css';
   import type { LabRecord, LabState, Viewport } from '../contract';
   import PrecisionLegend from './PrecisionLegend.svelte';
 
-  let { records, state, onselect, oncluster, onbasemap, onviewport }: {
-    records: readonly LabRecord[];
-    state: LabState;
-    onselect(id: string): void;
-    oncluster(id: string | null): void;
-    onbasemap(value: 'vector' | 'satellite'): void;
-    onviewport(value: Viewport): void;
-  } = $props();
+  let { records, state, onselect, onaggregate, onbasemap, onviewport }: { records: readonly LabRecord[]; state: LabState; onselect(id: string): void; onaggregate(memberIds: readonly string[]): void; onbasemap(value: 'vector'|'satellite'): void; onviewport(value: Viewport): void } = $props();
+  type Feature = { type:'Feature'; geometry:{type:'Point';coordinates:[number,number]}; properties:Record<string,unknown> };
+  let host: HTMLDivElement; let map: MapLibreMap | undefined; let appliedBasemap: 'vector'|'satellite'|undefined; let syncing=false;
+  const pinColors:Record<string,string>={Poultry:'red',Pig:'grey',Dairy:'violet',Processing:'yellow',Laboratory:'orange',Aquaculture:'green'};
+  const collection=(features:Feature[])=>({type:'FeatureCollection' as const,features});
+  const mapped=$derived(records.filter(record=>record.latitude!==null&&record.longitude!==null));
+  maplibregl.setWorkerUrl(mapLibreWorkerUrl);
 
-  const mapped = $derived(records.filter(record => record.latitude !== null && record.longitude !== null));
-  const clusterMembers = $derived(mapped.filter(record => record.locality === 'Aarhus').slice(0, 4));
-  const clusterExact = $derived(clusterMembers.filter(record => record.precision === 'exact').length);
-  const clusterApproximate = $derived(clusterMembers.filter(record => record.precision === 'city' || record.precision === 'coarse').length);
-  const clusteredIds = $derived(new Set(state.expandedCluster ? [] : clusterMembers.map(record => record.id)));
-  const position = (record: LabRecord) => ({
-    left: `${50 + ((record.longitude! - state.viewport.centerLon) / 360) * state.viewport.zoom * 100}%`,
-    top: `${50 - ((record.latitude! - state.viewport.centerLat) / 180) * state.viewport.zoom * 100}%`,
-  });
-
-  function moveViewport(latDelta: number, lonDelta: number, zoomDelta = 0) {
-    onviewport({
-      centerLat: Math.max(-90, Math.min(90, state.viewport.centerLat + latDelta)),
-      centerLon: Math.max(-180, Math.min(180, state.viewport.centerLon + lonDelta)),
-      zoom: Math.max(1, Math.min(18, state.viewport.zoom + zoomDelta)),
-    });
+  function sourceData(){
+    const exact:Feature[]=mapped.filter(record=>record.precision==='exact').map(record=>({type:'Feature',geometry:{type:'Point',coordinates:[record.longitude!,record.latitude!]},properties:{id:record.id,kind:'exact',weight:1,icon:`pin-${pinColors[record.category]??'red'}`,name:record.name}}));
+    const groups=new Map<string,LabRecord[]>();
+    for(const record of mapped.filter(record=>record.precision==='city'||record.precision==='coarse')){const key=`${record.country}\u0000${record.locality}\u0000${record.precision}`;groups.set(key,[...(groups.get(key)??[]),record]);}
+    const aggregates:Feature[]=[...groups.entries()].map(([key,members])=>{const first=members[0]!;const latitude=members.reduce((sum,member)=>sum+member.latitude!,0)/members.length;const longitude=members.reduce((sum,member)=>sum+member.longitude!,0)/members.length;return {type:'Feature',geometry:{type:'Point',coordinates:[longitude,latitude]},properties:{id:`aggregate:${key}`,kind:'aggregate',precision:first.precision,weight:members.length,name:first.locality,memberIds:JSON.stringify(members.map(member=>member.id))}};});
+    return collection([...exact,...aggregates]);
   }
+  function baseSource(){return state.basemap==='satellite'?{type:'raster' as const,tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],tileSize:256,attribution:'Tiles © Esri'}:{type:'raster' as const,tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,attribution:'© OpenStreetMap contributors'};}
+  function style():any{return {version:8,sources:{base:baseSource(),transport:{type:'raster',tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}'],tileSize:256,attribution:'Transportation © Esri'}},layers:[{id:'base',type:'raster',source:'base'},...(state.basemap==='satellite'?[{id:'transport',type:'raster',source:'transport',paint:{'raster-opacity':.72}}]:[])]};}
+  function setData(){(map?.getSource('locations') as GeoJSONSource|undefined)?.setData(sourceData() as any);}
+  async function loadPins(){if(!map)return;const base=`${import.meta.env.BASE_URL}v1-pins/`;for(const color of new Set(Object.values(pinColors))){const id=`pin-${color}`;if(!map.hasImage(id))map.addImage(id,(await map.loadImage(`${base}marker-icon-2x-${color}.png`)).data);}if(!map.hasImage('pin-shadow'))map.addImage('pin-shadow',(await map.loadImage(`${base}marker-shadow.png`)).data);}
+  const count=['get','representedCount'] as any; const outer=['step',count,'#b5e28c',10,'#f1d357',100,'#fd9c73'] as any; const inner=['step',count,'#6ecc39',10,'#f0c20c',100,'#f18017'] as any;
+  function addLayers(){if(!map||map.getSource('locations'))return;
+    // A single worker-side hierarchy: exact pins (weight 1) and persistent aggregates share the V1 50px cluster space.
+    map.addSource('locations',{type:'geojson',data:sourceData() as any,cluster:true,clusterRadius:50,clusterMaxZoom:9,clusterProperties:{representedCount:['+',['get','weight']]}} as any);
+    const cluster=['has','cluster'];
+    map.addLayer({id:'cluster-outer',type:'circle',source:'locations',filter:cluster,paint:{'circle-color':outer,'circle-radius':20,'circle-opacity':.6}} as any);map.addLayer({id:'cluster-inner',type:'circle',source:'locations',filter:cluster,paint:{'circle-color':inner,'circle-radius':15,'circle-opacity':.72}} as any);map.addLayer({id:'cluster-count',type:'symbol',source:'locations',filter:cluster,layout:{'text-field':['to-string',count],'text-font':['Open Sans Bold'],'text-size':12},paint:{'text-color':'#172019'}} as any);
+    const aggregate=['all',['!',['has','cluster']],['==',['get','kind'],'aggregate']]; const weight=['get','weight'] as any;const aggregateOuter=['step',weight,'#b5e28c',10,'#f1d357',100,'#fd9c73'] as any;const aggregateInner=['step',weight,'#6ecc39',10,'#f0c20c',100,'#f18017'] as any;
+    // Aggregate bubbles keep the V1 cluster grammar but carry a precise, persistent identity.
+    // The label means they cannot be mistaken for a parent cluster after it expands.
+    map.addLayer({id:'aggregate-outer',type:'circle',source:'locations',filter:aggregate,paint:{'circle-color':aggregateOuter,'circle-radius':20,'circle-opacity':.6,'circle-stroke-color':['match',['get','precision'],'city','#315b83','#6b4f2f'],'circle-stroke-width':2}} as any);map.addLayer({id:'aggregate-inner',type:'circle',source:'locations',filter:aggregate,paint:{'circle-color':aggregateInner,'circle-radius':15,'circle-opacity':.72}} as any);map.addLayer({id:'aggregate-count',type:'symbol',source:'locations',filter:aggregate,layout:{'text-field':['to-string',weight],'text-font':['Open Sans Bold'],'text-size':12},paint:{'text-color':'#172019'}} as any);map.addLayer({id:'aggregate-kind',type:'symbol',source:'locations',filter:aggregate,layout:{'text-field':['match',['get','precision'],'city','CITY','AREA'],'text-font':['Open Sans Bold'],'text-size':8,'text-offset':[0,2.7],'text-allow-overlap':true,'text-ignore-placement':true},paint:{'text-color':'#172019','text-halo-color':'#f7f6ef','text-halo-width':1.25}} as any);
+    const exact=['all',['!',['has','cluster']],['==',['get','kind'],'exact']];map.addLayer({id:'exact-shadows',type:'symbol',source:'locations',filter:exact,layout:{'icon-image':'pin-shadow','icon-anchor':'bottom','icon-size':.5,'icon-allow-overlap':true,'icon-ignore-placement':true}} as any);map.addLayer({id:'exact-pins',type:'symbol',source:'locations',filter:exact,layout:{'icon-image':['get','icon'],'icon-anchor':'bottom','icon-size':.5,'icon-allow-overlap':true,'icon-ignore-placement':true}} as any);
+  }
+  function bindInteractions(){if(!map)return;
+    map.on('click','cluster-outer',(event:any)=>{const feature=event.features?.[0],clusterId=feature?.properties?.cluster_id;if(typeof clusterId!=='number')return;(map?.getSource('locations') as GeoJSONSource|undefined)?.getClusterExpansionZoom(clusterId).then(zoom=>map?.easeTo({center:feature.geometry.coordinates,zoom,essential:true}));});
+    map.on('click','exact-pins',(event:any)=>{const id=event.features?.[0]?.properties?.id;if(typeof id==='string')onselect(id);});
+    map.on('click','aggregate-outer',(event:any)=>{try{const ids=JSON.parse(event.features?.[0]?.properties?.memberIds??'[]');if(Array.isArray(ids))onaggregate(ids.filter((id):id is string=>typeof id==='string'));}catch{/* fixture metadata is validated before use */}});
+    for(const layer of ['cluster-outer','exact-pins','aggregate-outer']){map.on('mouseenter',layer,()=>{if(map)map.getCanvas().style.cursor='pointer';});map.on('mouseleave',layer,()=>{if(map)map.getCanvas().style.cursor='';});}
+  }
+  onMount(()=>{appliedBasemap=state.basemap;const instance=new maplibregl.Map({container:host,style:style(),center:[state.viewport.centerLon,state.viewport.centerLat],zoom:state.viewport.zoom,attributionControl:{}});map=instance;instance.getCanvas().setAttribute('aria-label','Record map. Select a cluster to zoom, an exact facility pin for detail, or an aggregate for its records.');instance.addControl(new maplibregl.NavigationControl({showZoom:true,showCompass:true}),'top-left');instance.on('style.load',async()=>{await loadPins();addLayers();bindInteractions();});instance.on('moveend',()=>{if(!syncing){const center=instance.getCenter();onviewport({centerLat:Number(center.lat.toFixed(4)),centerLon:Number(center.lng.toFixed(4)),zoom:instance.getZoom()});}});return()=>instance.remove();});
+  $effect(()=>{const basemap=state.basemap;if(map&&appliedBasemap!==basemap){appliedBasemap=basemap;map.setStyle(style());}});$effect(()=>{records;if(map?.isStyleLoaded())setData();});$effect(()=>{const viewport=state.viewport;if(!map)return;const center=map.getCenter();if(Math.abs(center.lat-viewport.centerLat)<.001&&Math.abs(center.lng-viewport.centerLon)<.001&&map.getZoom()===viewport.zoom)return;syncing=true;map.jumpTo({center:[viewport.centerLon,viewport.centerLat],zoom:viewport.zoom});syncing=false;});
 </script>
 
-<section class="map-surface" aria-label="Provisional map showing synthetic facility records">
-  <div class="cartography" aria-hidden="true"><span>AMERICAS</span><span>EUROPE / AFRICA</span><span>ASIA / PACIFIC</span></div>
-  {#if clusterMembers.length > 1 && !state.expandedCluster}
-    <button class="marker cluster" style:left={position(clusterMembers[0]!).left} style:top={position(clusterMembers[0]!).top} onclick={() => oncluster('aarhus')} aria-label={`Cluster of ${clusterMembers.length} records near Aarhus: ${clusterExact} exact and ${clusterApproximate} approximate; activate to expand`}>{clusterMembers.length}</button>
-  {/if}
-  {#if state.expandedCluster}
-    <aside class="cluster-summary" aria-live="polite"><strong>Aarhus cluster · {clusterMembers.length} synthetic records</strong><span>{clusterExact} exact · {clusterApproximate} approximate</span><button type="button" onclick={() => oncluster(null)}>Collapse cluster</button></aside>
-  {/if}
-  {#each mapped.filter(record => !clusteredIds.has(record.id)) as record (record.id)}
-    <button class:active={record.id === state.selectedId} class="marker {record.precision}" style:left={position(record).left} style:top={position(record).top} onclick={() => onselect(record.id)} aria-label={`${record.name}; ${record.precision} location`}><span>{record.precision === 'exact' ? '•' : record.precision === 'city' ? '◎' : '≈'}</span></button>
-  {/each}
-  <div class="viewport-control" role="group" aria-label="Provisional map viewport controls">
-    <button type="button" aria-label="Pan map north" onclick={() => moveViewport(10, 0)}>↑</button>
-    <button type="button" aria-label="Pan map west" onclick={() => moveViewport(0, -20)}>←</button>
-    <button type="button" aria-label="Pan map south" onclick={() => moveViewport(-10, 0)}>↓</button>
-    <button type="button" aria-label="Pan map east" onclick={() => moveViewport(0, 20)}>→</button>
-    <button type="button" aria-label="Zoom in" onclick={() => moveViewport(0, 0, 1)}>+</button>
-    <button type="button" aria-label="Zoom out" onclick={() => moveViewport(0, 0, -1)}>−</button>
-  </div>
-  <div class="basemap-control" role="group" aria-label="Basemap">
-    <button type="button" aria-pressed={state.basemap === 'vector'} onclick={() => onbasemap('vector')}>Vector</button>
-    <button type="button" aria-pressed={state.basemap === 'satellite'} onclick={() => onbasemap('satellite')}>Satellite</button>
-  </div>
-  {#if state.basemap === 'satellite'}<p class="satellite-note" role="status">Satellite imagery unavailable — a licensed provider has not been selected.</p>{/if}
-  <PrecisionLegend />
-  <small class="attribution">Provisional neutral field · no external tile requests</small>
-</section>
+<section class="map-surface" aria-label="Map showing records"><div class="map-host" bind:this={host}></div><small class="review-disclosure">Synthetic development data</small><div class="basemap-control" role="group" aria-label="Basemap"><button type="button" aria-pressed={state.basemap==='vector'} onclick={()=>onbasemap('vector')}>Street</button><button type="button" aria-pressed={state.basemap==='satellite'} onclick={()=>onbasemap('satellite')}>Satellite</button></div><PrecisionLegend /></section>
+<style>.map-surface{position:relative;overflow:hidden}.map-host{position:absolute;inset:0}.basemap-control{position:absolute;z-index:2;top:1rem;right:1rem;display:flex}.basemap-control button{min-height:2rem;padding:.3rem .5rem;border:1px solid #69716a;color:#f1efe8;background:#171a18;font:.65rem system-ui;cursor:pointer}.basemap-control button+button{border-left:0}.basemap-control button[aria-pressed=true]{color:#171a18;background:#e8ebe4}.review-disclosure{position:absolute;z-index:2;right:.5rem;bottom:.35rem;color:#4a504a;background:#f1efe8cc;padding:.08rem .25rem;font:.52rem system-ui}@media(max-width:40rem){.basemap-control{top:.65rem;right:.65rem}}</style>

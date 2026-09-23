@@ -14,7 +14,9 @@ export type LabViewModel = Readonly<{
 
 export function createLabViewModel(corpus: readonly LabRecord[], state: LabState): LabViewModel {
   const query = state.query.trim().toLocaleLowerCase();
-  const records = state.scenario === 'dense' ? corpus.slice(0, 24) : corpus;
+  // The review corpus is intentionally broad; the dense scenario keeps its visual
+  // state while retaining every deterministic synthetic point for map inspection.
+  const records = corpus;
   const listRecords = state.scenario === 'empty' ? [] : records.filter(record => {
     const searchable = `${record.name} ${record.category} ${record.country} ${record.locality}`.toLocaleLowerCase();
     const matchesQuery = query === '' || searchable.includes(query);
