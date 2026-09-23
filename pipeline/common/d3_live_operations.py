@@ -1,12 +1,14 @@
 """D3 mixed source rehearsal built on the shared private refresh runner.
 
-The rehearsal selects the seven D2 facility lanes plus the D3 facility and
+The rehearsal selects the nine D2 facility lanes plus the D3 facility and
 evidence lanes. Fixture mode runs only preserved synthetic artifacts; live mode
 is a fail-closed capability check and does not make network requests.
 """
 from __future__ import annotations
 
 import json
+import hashlib
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -66,6 +68,7 @@ def build_mixed_rehearsal(*, run_root: str | Path, mode: str = "fixture",
     catalog = RefreshCatalog()
     artifact_paths: dict[str, str] = {}
     if mode == "local-artifact":
+        artifact_metadata: dict[str, dict[str, Any]] = {}
         for source_id in D3_REHEARSAL_SOURCE_IDS:
             registered = catalog.adapters[source_id].adapter
             descriptor = getattr(registered, "descriptor", None)
@@ -76,7 +79,32 @@ def build_mixed_rehearsal(*, run_root: str | Path, mode: str = "fixture",
                 fixture = config.get("fixture") if isinstance(config, dict) else None
             if fixture is None:
                 raise ValueError(f"local-artifact fixture is unavailable for {source_id}")
+            if source_id in {"it.1069-2009", "au.sa.epa.licensed-activities"}:
+                # These lanes require source-specific provenance beside a
+                # local artifact. Stage only their checked-in synthetic files
+                # under this private rehearsal root and generate synthetic,
+                # row-free provenance for the contract run.
+                staged = root / "synthetic-local-artifacts" / source_id / Path(fixture).name
+                staged.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(fixture, staged)
+                raw = staged.read_bytes()
+                facts = {
+                    "source_url": catalog.adapters[source_id].adapter.descriptor.source_url,
+                    "retrieved_at_utc": as_of_utc,
+                    "sha256": hashlib.sha256(raw).hexdigest(),
+                    "byte_size": len(raw),
+                    "terms_review_reference": "synthetic-fixture-only",
+                }
+                if source_id == "it.1069-2009":
+                    (staged.parent / "acquisition-metadata.json").write_text(
+                        json.dumps(facts, sort_keys=True, indent=2) + "\n", encoding="utf-8"
+                    )
+                else:
+                    facts["effective_date"] = "2026-01-01"
+                    artifact_metadata[source_id] = facts
+                fixture = staged
             artifact_paths[source_id] = str(Path(fixture))
+        options["artifact_metadata"] = artifact_metadata
     request = RefreshRequest(
         all_eligible=True,
         mode=mode,

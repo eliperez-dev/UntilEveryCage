@@ -31,7 +31,7 @@ not authorize publication, promotion, a scheduler, or unattended acquisition.
 
 ## Before integration or release review
 
-- [ ] Run the D3 mixed rehearsal: the seven D2 facility lanes plus
+- [ ] Run the D3 mixed rehearsal: the nine D2 facility lanes plus
       `us.fsis`, `us.aphis`, and `us.inspections`.
 - [ ] Treat unsupported or failed lanes as a nonzero operator result; do not
       silently remove them from `--all-eligible` output.

@@ -60,7 +60,7 @@ class D3LiveOperationsTests(unittest.TestCase):
         self.assertNotIn("artifact_path", set(keys(result)))
         self.assertNotIn("private_path", set(keys(result)))
 
-    def test_local_artifact_mode_runs_all_thirteen_sources(self):
+    def test_local_artifact_mode_runs_all_fifteen_sources(self):
         result = build_mixed_rehearsal(run_root=self.root / "local-artifact", mode="local-artifact")
         self.assertEqual(result["selected_sources"], list(D3_REHEARSAL_SOURCE_IDS))
         self.assertEqual(result["counts"]["succeeded"], len(D3_REHEARSAL_SOURCE_IDS))

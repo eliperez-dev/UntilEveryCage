@@ -136,13 +136,13 @@ class D4GraphPersistenceE2ETests(unittest.TestCase):
         (path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
         return path
 
-    def test_all_thirteen_imports_and_rerun_is_idempotent(self):
+    def test_all_fifteen_imports_and_rerun_is_idempotent(self):
         first = []
         for source_id in D4_FACILITY_SOURCE_IDS:
             first.append(import_graph_candidates(self.env.database_url, self.handoffs[(source_id, "facility")], disposable_db=True))
         for source_id in D3_EVIDENCE_SOURCE_IDS:
             first.append(import_evidence_events(self.env.database_url, self.handoffs[(source_id, "evidence")], disposable_db=True))
-        self.assertEqual(len(first), 13)
+        self.assertEqual(len(first), 15)
         self.assertTrue(all(item["inserted_count"] == 1 for item in first))
         second = []
         for source_id in D4_FACILITY_SOURCE_IDS:
@@ -151,12 +151,12 @@ class D4GraphPersistenceE2ETests(unittest.TestCase):
             second.append(import_evidence_events(self.env.database_url, self.handoffs[(source_id, "evidence")], disposable_db=True))
         self.assertTrue(all(item["status"] == "already_present" for item in second))
         with psycopg.connect(self.env.database_url) as db:
-            self.assertEqual(db.execute("SELECT count(*) FROM uec.graph_ingest_runs").fetchone()[0], 13)
-            self.assertEqual(db.execute("SELECT count(*) FROM uec.graph_ingest_items").fetchone()[0], 13)
-            self.assertEqual(db.execute("SELECT count(*) FROM uec.facilities").fetchone()[0], 11)
+            self.assertEqual(db.execute("SELECT count(*) FROM uec.graph_ingest_runs").fetchone()[0], 15)
+            self.assertEqual(db.execute("SELECT count(*) FROM uec.graph_ingest_items").fetchone()[0], 15)
+            self.assertEqual(db.execute("SELECT count(*) FROM uec.facilities").fetchone()[0], 13)
             self.assertEqual(db.execute("SELECT count(*) FROM uec.graph_evidence_events").fetchone()[0], 2)
-            self.assertEqual(db.execute("SELECT count(*) FROM uec.graph_connection_edges").fetchone()[0], 12)
-            self.assertEqual(db.execute("SELECT count(*) FROM uec.graph_connection_edges WHERE connection_type='exact'").fetchone()[0], 11)
+            self.assertEqual(db.execute("SELECT count(*) FROM uec.graph_connection_edges").fetchone()[0], 14)
+            self.assertEqual(db.execute("SELECT count(*) FROM uec.graph_connection_edges WHERE connection_type='exact'").fetchone()[0], 13)
             self.assertEqual(db.execute("SELECT count(*) FROM uec.graph_connection_edges WHERE connection_type='inferred'").fetchone()[0], 1)
             self.assertEqual(db.execute("SELECT count(*) FROM uec.graph_public_relationships").fetchone()[0], 0)
             self.assertEqual(db.execute("SELECT count(*) FROM uec.graph_public_claims").fetchone()[0], 0)

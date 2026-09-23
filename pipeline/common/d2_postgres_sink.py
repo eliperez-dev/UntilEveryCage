@@ -24,6 +24,7 @@ COUNTRY_BY_SOURCE = {
     "fr.dgal.section-ii": "FR",
     "it.853-2004": "IT",
     "it.1069-2009": "IT",
+    "au.sa.epa.licensed-activities": "AU",
 }
 SYNTHETIC_AT = datetime(2026, 1, 1, tzinfo=timezone.utc)
 

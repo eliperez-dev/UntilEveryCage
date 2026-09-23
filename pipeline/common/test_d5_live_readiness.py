@@ -13,9 +13,9 @@ ROOT = Path(__file__).parents[2] / "pipeline"
 
 
 class D5LiveReadinessTests(unittest.TestCase):
-    def test_scope_is_exactly_the_thirteen_d2_d3_sources(self):
+    def test_scope_is_exactly_the_fifteen_d2_d3_sources(self):
         self.assertEqual(tuple(EXPECTED_SOURCE_IDS), tuple(D2_SOURCE_IDS) + tuple(D3_EXPECTED_SOURCE_IDS))
-        self.assertEqual(len(EXPECTED_SOURCE_IDS), 13)
+        self.assertEqual(len(EXPECTED_SOURCE_IDS), 15)
         self.assertEqual(set(EXPECTED_SOURCE_IDS), set(SOURCE_PROFILES))
 
     def test_report_is_row_free_and_fail_closed(self):
@@ -25,9 +25,9 @@ class D5LiveReadinessTests(unittest.TestCase):
             as_of_utc="2026-09-21T00:00:00Z",
         )
         self.assertEqual(report["schema_version"], REPORT_SCHEMA_VERSION)
-        self.assertEqual(report["scope"]["source_count"], 13)
+        self.assertEqual(report["scope"]["source_count"], 15)
         self.assertEqual(report["scope"]["execution"], "static-audit-no-network")
-        self.assertEqual(sum(report["classification_counts"].values()), 13)
+        self.assertEqual(sum(report["classification_counts"].values()), 15)
         self.assertEqual(report["classification_counts"].get("unattended_live-ready", 0), 0)
         self.assertEqual(report["classification_counts"].get("authenticated_live-ready", 0), 0)
         self.assertFalse(report["operational_controls"]["persistent_scheduler"])
@@ -59,7 +59,10 @@ class D5LiveReadinessTests(unittest.TestCase):
         controls = ("timeout", "retry", "provenance", "checksum", "freshness", "no_change", "previous_valid_state")
         for source in report["sources"]:
             for control in controls:
-                self.assertTrue(source["checks"][control], source["source_id"])
+                if source["operational_classification"] == "preserved-artifact-only" and control in {"freshness", "no_change"}:
+                    self.assertFalse(source["checks"][control], source["source_id"])
+                else:
+                    self.assertTrue(source["checks"][control], source["source_id"])
             self.assertIn(source["operational_classification"], {"terms-blocked", "browser-assisted", "preserved-artifact-only", "technically-broken", "unattended_live-ready", "authenticated_live-ready"})
             self.assertTrue(source["operator_command"])
             self.assertTrue(source["authorization_boundary"])

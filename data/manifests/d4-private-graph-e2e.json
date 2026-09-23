@@ -9,6 +9,8 @@
     "fr.dgal.section-i",
     "fr.dgal.section-ii",
     "it.853-2004",
+    "it.1069-2009",
+    "au.sa.epa.licensed-activities",
     "us.fsis",
     "de.locations",
     "fsa_approved_establishments",
@@ -24,6 +26,8 @@
     "fr.dgal.section-i": "facility_master",
     "fr.dgal.section-ii": "facility_master",
     "it.853-2004": "facility_master",
+    "it.1069-2009": "facility_master",
+    "au.sa.epa.licensed-activities": "facility_master",
     "us.fsis": "facility_master",
     "de.locations": "facility_master",
     "fsa_approved_establishments": "facility_master",
@@ -32,7 +36,7 @@
     "us.inspections": "evidence_event"
   },
   "execution": {
-    "facility_sources": 11,
+    "facility_sources": 13,
     "evidence_sources": 2,
     "ordering": "source_ids order; one bounded batch per source",
     "real_rows_included": false,
@@ -42,7 +46,7 @@
     "public_rows": 0
   },
   "contracts": [
-    "one facility and eleven facility sources run sequentially",
+    "one facility and thirteen facility sources run sequentially",
     "two evidence sources stay evidence_event and never become facilities",
     "rerun/idempotency",
     "interrupted batch resume",

@@ -241,6 +241,8 @@ class FirstWaveRefreshAdapter:
         acquisition_facts = acquisition
         if self.source_id == "au.sa.epa.licensed-activities" and mode == "local-artifact":
             metadata = options.get("artifact_metadata")
+            if isinstance(metadata, Mapping) and "source_url" not in metadata:
+                metadata = metadata.get(self.source_id)
             if not isinstance(metadata, Mapping):
                 raise RuntimeError("local SA EPA artifact metadata is required; supply official URL, UTC retrieval time, hash, byte size, and edition date")
             required = ("source_url", "retrieved_at_utc", "sha256", "byte_size")

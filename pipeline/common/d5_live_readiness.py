@@ -1,6 +1,6 @@
 """D5 row-free audit of live acquisition and operational readiness.
 
-This module audits the thirteen D2/D3 sources without contacting a source.  It
+This module audits the fifteen D2/D3 sources without contacting a source.  It
 does not turn a source's fixture or a source-specific fetch function into an
 unattended job.  The report is deliberately explicit about the distinction
 between an existing operator path and a path wired into the shared runner.
@@ -80,6 +80,20 @@ SOURCE_PROFILES: dict[str, dict[str, Any]] = {
         "authorization": "operator_terms_review_required",
         "controls": {"timeout": True, "retry": True, "provenance": True, "checksum": True, "freshness": True, "no_change": True, "previous_valid_state": True},
     },
+    "it.1069-2009": {
+        "source_kind": "facility_master", "classification": "preserved-artifact-only",
+        "path": "operator-preserved ABP artifact with provenance sidecar; terms review reference required",
+        "command": "python scripts/dev.py refresh --source it.1069-2009 --mode local-artifact --artifact <private-capture>",
+        "authorization": "operator_capture_and_terms_review_required",
+        "controls": {"timeout": True, "retry": True, "provenance": True, "checksum": True, "freshness": False, "no_change": False, "previous_valid_state": True},
+    },
+    "au.sa.epa.licensed-activities": {
+        "source_kind": "facility_master", "classification": "preserved-artifact-only",
+        "path": "operator-preserved official GeoJSON with row-free acquisition metadata; terms review required",
+        "command": "python scripts/dev.py refresh --source au.sa.epa.licensed-activities --mode local-artifact --artifact <private-capture>",
+        "authorization": "operator_capture_and_terms_review_required",
+        "controls": {"timeout": True, "retry": True, "provenance": True, "checksum": True, "freshness": False, "no_change": False, "previous_valid_state": True},
+    },
     "us.fsis": {
         "source_kind": "facility_master", "classification": "browser-assisted",
         "path": "operator-assisted official export; direct links were previously blocked and are not retried",
@@ -155,7 +169,7 @@ def build_readiness_report(*, registry_path: str | Path, schedules_path: str | P
     registry = _registry_index(Path(registry_path))
     schedules = load_source_schedules(Path(schedules_path), registry_path=Path(registry_path))
     if set(EXPECTED_SOURCE_IDS) != set(SOURCE_PROFILES):
-        raise ValueError("D5 profile inventory does not match the thirteen-source D2/D3 scope")
+        raise ValueError("D5 profile inventory does not match the fifteen-source D2/D3 scope")
     source_reports: list[dict[str, Any]] = []
     for source_id in EXPECTED_SOURCE_IDS:
         profile = SOURCE_PROFILES[source_id]

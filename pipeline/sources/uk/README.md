@@ -13,4 +13,4 @@ deliberately keeps two separate adapter identities:
 These local identities must not be silently collapsed into `uk.locations` or
 counted as one complete UK pipeline. Until the global registry is split into
 matching canonical IDs, the adapters remain compatibility/private refresh
-lanes and are not part of the D2 seven-source readiness cohort.
+lanes and are not part of the D2 nine-source readiness cohort.

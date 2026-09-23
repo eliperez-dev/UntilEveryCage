@@ -14,7 +14,7 @@ python pipeline/scripts/diagnostics/d5-live-readiness.py `
   --output <private-or-reviewed-aggregate-report.json>
 ```
 
-The report covers exactly the thirteen D2/D3 source IDs. It records the
+The report covers exactly the fifteen D2/D3 source IDs. It records the
 existing operator command, authorization boundary, source kind, cadence, and
 control checks. It must report zero network requests and must not contain rows,
 source values, raw artifacts, credentials, or private filesystem paths.

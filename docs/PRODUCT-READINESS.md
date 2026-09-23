@@ -202,7 +202,7 @@ publication, deployment, promotion, or human-approval state changed.
 **Completed next backend step:** D2 shared private pipeline readiness now
 converges the first-wave adapters on one repeatable private lifecycle, with
 aggregate-only manifests, suppression/idempotency checks, and a path to later
-scheduled refreshes. D3 extends that same runner to eleven facility adapters
+scheduled refreshes. D3 extends that same runner to thirteen facility adapters
 and two evidence-event adapters; no second orchestration architecture was
 added. **Next backend step:** exercise authorized live acquisition paths and
 onboard the next source cohort through this same runner; do not add scheduling
@@ -213,20 +213,21 @@ until those paths are ready.
 **Status: Complete and verified for the D2 fixture/private contract and
 disposable database E2E; live acquisition remains source-specific follow-up.**
 The shared runner now supports one
-source, an explicit selection, or all seven registered first-wave sources in a
+source, an explicit selection, or all nine registered first-wave sources in a
 deterministic sequential plan. It preserves source artifacts, runs the existing
 private lifecycle, isolates failures, supports bounded retries and resume, and
-keeps candidate output review-required with publication disabled. The seven
+keeps candidate output review-required with publication disabled. The nine
 fixture-ready sources are `dk.smiley`, `be.locations`,
 `ca.ontario.meat-plants`, `ca.cfia.federal-meat`, `fr.dgal.section-i`,
-`fr.dgal.section-ii`, and `it.853-2004`.
+`fr.dgal.section-ii`, `it.853-2004`, `it.1069-2009`, and
+`au.sa.epa.licensed-activities`.
 
-The row-free synthetic D2 rehearsal passed all seven sources, including exact,
+The row-free synthetic D2 rehearsal passed all nine sources, including exact,
 city, unmapped, restricted, and quarantine states, failure isolation, resume,
 idempotent reporting, and the injected candidate-import boundary. The
-disposable Postgres/PostGIS E2E was subsequently run twice: 35 synthetic
-source records, 21 private candidate observations, 21 review events, and zero
-releases were observed, with the second run inserting no duplicates. These
+disposable Postgres/PostGIS E2E covers 45 synthetic source records, 27 private
+candidate observations, 27 review events, and zero releases; the second run
+inserts no duplicates. These
 results establish fixture, local-artifact, and disposable private-import
 readiness only; they do not establish live acquisition health, publication
 approval, geocoding approval, or a recurring scheduler. See
@@ -238,15 +239,16 @@ approval, geocoding approval, or a recurring scheduler. See
 
 **Status: Complete and verified for fixture/local-artifact orchestration;
 live acquisition and publication remain blocked.** The shared runner now
-registers exactly eleven facility sources (`dk.smiley`, `be.locations`,
+registers exactly thirteen facility sources (`dk.smiley`, `be.locations`,
 `ca.ontario.meat-plants`, `ca.cfia.federal-meat`, `fr.dgal.section-i`,
-`fr.dgal.section-ii`, `it.853-2004`, `us.fsis`, `de.locations`,
+`fr.dgal.section-ii`, `it.853-2004`, `it.1069-2009`,
+`au.sa.epa.licensed-activities`, `us.fsis`, `de.locations`,
 `fsa_approved_establishments`, and `fss_approved_establishments`) plus two
 evidence-event sources (`us.aphis` and `us.inspections`).
 
-The mixed sequential rehearsal succeeded for all 13 sources in both fixture
-and local-artifact modes. The live-acquisition rehearsal selected all 13,
-made zero network requests, and failed closed for all 13 because source terms
+The mixed sequential rehearsal succeeded for all 15 sources in both fixture
+and local-artifact modes. The live-acquisition rehearsal selected all 15,
+made zero network requests, and failed closed for all 15 because source terms
 and operator authorization are not yet satisfied. Facility adapters use the
 candidate boundary; APHIS and inspections use the separate private evidence
 sink and cannot enter the facility importer or graph/public release path.
@@ -279,9 +281,9 @@ contradictions, provenance, disclaimer, and algorithm version; they never
 execute a merge, transfer claims, or authorize publication. APHIS-to-FSIS
 automatic links remain zero.
 
-The Docker-backed synthetic proof imported one facility handoff for each of 11
+The Docker-backed synthetic proof imported one facility handoff for each of 13
 facility sources and one evidence handoff for each of two evidence sources,
-reran all 13 with zero duplicates, and observed zero public graph rows. The
+reran all 15 with zero duplicates, and observed zero public graph rows. The
 row-free control-plane rehearsal also covers corruption isolation, kind
 mismatch rejection, lineage events, suppression, fail-closed private access,
 and bounded 10,000-record scale. No real corpus was imported. Precision/recall
@@ -436,7 +438,7 @@ public rows and edges remained zero. Endpoint placeholders were zero and all
 persisted edges remained private and not eligible for publication.
 
 The source-boundary lane now reports honest live, assisted, terms-blocked,
-schema-drift, and failed states for the 13 registered D3 sources, preserving
+schema-drift, and failed states for the 15 registered D3 sources, preserving
 previous validated state and failing closed before unauthorized network access.
 The legacy ledger certifies 63 checked-in artifacts by aggregate hash/size
 metadata only; all remain metadata-only and not eligible for publication.

@@ -21,14 +21,14 @@ MANIFEST = ROOT.parent / "data" / "manifests" / "d4-private-graph-e2e.json"
 
 
 class D4GraphE2ETests(unittest.TestCase):
-    def test_manifest_is_row_free_and_covers_thirteen_sources(self):
+    def test_manifest_is_row_free_and_covers_fifteen_sources(self):
         manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
         self.assertEqual(manifest["schema_version"], "d4-private-graph-e2e-manifest-v1")
         self.assertEqual(manifest["source_ids"], list(D4_SOURCE_IDS))
-        self.assertEqual(len(manifest["source_ids"]), 13)
-        self.assertEqual(len(D4_FACILITY_SOURCE_IDS), 11)
-        self.assertEqual(len(manifest["source_kinds"]), 13)
-        self.assertEqual(manifest["execution"]["facility_sources"], 11)
+        self.assertEqual(len(manifest["source_ids"]), 15)
+        self.assertEqual(len(D4_FACILITY_SOURCE_IDS), 13)
+        self.assertEqual(len(manifest["source_kinds"]), 15)
+        self.assertEqual(manifest["execution"]["facility_sources"], 13)
         self.assertEqual(manifest["execution"]["evidence_sources"], 2)
         def keys(value):
             if isinstance(value, dict):
@@ -46,9 +46,9 @@ class D4GraphE2ETests(unittest.TestCase):
     def test_one_facility_eleven_facilities_and_two_evidence_sources_are_sequential(self):
         graph = SyntheticPrivateGraph()
         receipts = [graph.import_batch(source, D4_SOURCE_KINDS[source], (f"fixture-{index}",)) for index, source in enumerate(D4_SOURCE_IDS)]
-        self.assertEqual(len(receipts), 13)
+        self.assertEqual(len(receipts), 15)
         self.assertTrue(all(receipt.status == "completed" for receipt in receipts))
-        self.assertEqual(graph.private_query("d4-private-token"), {"entities": 11, "evidence": 2, "review_required": 0})
+        self.assertEqual(graph.private_query("d4-private-token"), {"entities": 13, "evidence": 2, "review_required": 0})
         report = graph.report()
         self.assertEqual(report["scope"]["execution"], "sequential")
         self.assertEqual(report["public"]["entities"], 0)
