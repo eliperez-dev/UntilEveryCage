@@ -69,6 +69,19 @@ The guard is a reset-scoped regression check, not a claim that V1 behavior is
 correct or that the future V2 is release-ready. Run it with the frontend's
 focused boundary/documentation checks before integrating F0.
 
+## Safety coverage after the shell reset
+
+The structural shell has no record, search, export, location, or private-preview
+data flow. Browser checks therefore assert that public and preview-looking URLs
+stay local, render no records or controls, and make no API requests. Contract
+behavior remains covered outside that empty shell: frontend unit tests cover
+profile validation, malformed and failed responses, query/cursor requests,
+abort handling, export profile/origin checks, and stale-response generations;
+the repository API E2E suites continue to cover publication profiles,
+suppression, private preview authorization, and CSV output. When a future UI
+connects those contracts, restore interaction-level coverage for each exposed
+flow before removing or replacing its contract tests.
+
 ## Post-reset build sequence
 
 The reset is a clean implementation starting point; it does not close the
