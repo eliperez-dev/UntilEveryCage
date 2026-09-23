@@ -66,7 +66,7 @@ and Denmark. These are not approved or public facilities:
 
 | Measure | Strict aggregate | Interpretation |
 | --- | ---: | --- |
-| Provisional source-local candidates | 34,840 | FSIS 7,241; Italy 25,316; France union 2,283. No canonical cross-source merge. |
+| Provisional candidate groups | 35,073 source-scoped | FSIS 7,241; Italy 25,316; France 2,516 (1,449 + 1,067). The separate France union metric is 2,283 after subtracting 233 exact cross-section overlap signals; no records are merged across sources. |
 | Numeric source coordinates | 31,990 | FSIS 7,241; Italy 24,749; coordinate/privacy review pending. |
 | City/postal geocode candidates | 2,850 | Italy 567; France 2,283; coarse placement only, never an exact facility point. |
 | Public API rows | 0 | Publication is blocked pending terms, privacy, review, approval, and release authority. |

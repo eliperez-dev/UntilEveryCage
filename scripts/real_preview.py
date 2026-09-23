@@ -30,7 +30,7 @@ class PreviewError(RuntimeError):
 
 
 def compose(*args: str, capture: bool = True) -> subprocess.CompletedProcess[str]:
-    env = {"PATH": os.environ.get("PATH", ""), "SYSTEMROOT": os.environ.get("SYSTEMROOT", "")}
+    env = os.environ.copy()
     db_password = _password(create=False)
     if db_password:
         env["POSTGRES_PASSWORD"] = db_password
@@ -138,8 +138,23 @@ def _http(url: str, token: str | None = None) -> tuple[int | None, dict[str, obj
         return None, None
 
 
+def _http_status(url: str, token: str | None = None) -> int | None:
+    headers = {"X-UEC-Dev-Preview-Token": token} if token else {}
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=3) as response:
+            response.read()
+            return response.status
+    except urllib.error.HTTPError as error:
+        return error.code
+    except (OSError, urllib.error.URLError):
+        return None
+
+
 def prerequisites() -> None:
-    missing = [name for name in ("docker", "cargo", "node", "npm") if not shutil.which(name)]
+    missing = [name for name in ("docker", "cargo") if not shutil.which(name)]
+    frontend = ROOT / "frontend" / "node_modules" / "vite" / "bin" / "vite.js"
+    if frontend.is_file():
+        missing.extend(name for name in ("node",) if not shutil.which(name))
     if shutil.which("docker") and subprocess.run(["docker", "compose", "version"], capture_output=True).returncode:
         missing.append("docker compose")
     if missing:
@@ -148,12 +163,12 @@ def prerequisites() -> None:
         raise PreviewError("private preview handoff root is unavailable")
     if not IMPORTER.is_file():
         raise PreviewError("lane 1 importer is not installed; expected pipeline/scripts/maintenance/import-real-preview.py")
-    if not (ROOT / "frontend" / "node_modules" / "vite" / "bin" / "vite.js").is_file():
-        raise PreviewError("frontend dependencies are missing (run npm --prefix frontend ci)")
-    for port in (DB_PORT, API_PORT, WEB_PORT):
-        if _socket_busy(port):
-            raise PreviewError(f"required loopback port {port} is occupied by a foreign service")
     verify_resources()
+    owned_containers = _docker_json(["docker", "ps", "--filter", f"label=com.docker.compose.project={PROJECT}", "--format", "{{json .}}"])
+    owned_database_running = any(item.get("Names") == f"{PROJECT}-postgres-1" for item in owned_containers)
+    for port in (DB_PORT, API_PORT, *([WEB_PORT] if frontend.is_file() else [])):
+        if _socket_busy(port) and not (port == DB_PORT and owned_database_running):
+            raise PreviewError(f"required loopback port {port} is occupied by a foreign service")
 
 
 def _run_checked(args: list[str], env: dict[str, str], label: str) -> str:
@@ -163,6 +178,14 @@ def _run_checked(args: list[str], env: dict[str, str], label: str) -> str:
     return result.stdout
 
 
+def _build_api() -> None:
+    # Let rustup/toolchain discovery use the invoking shell while building.
+    # The long-lived API below still receives only its documented runtime env.
+    result = subprocess.run([shutil.which("cargo") or "cargo", "build", "--quiet", "--bin", "uec-api"], cwd=ROOT, env=os.environ.copy(), capture_output=True, text=True)
+    if result.returncode:
+        raise PreviewError("local API build failed; see private local diagnostic output")
+
+
 def up() -> dict[str, object]:
     prerequisites()
     token = secrets.token_urlsafe(32)
@@ -170,9 +193,12 @@ def up() -> dict[str, object]:
     assert password is not None
     db_url = f"postgresql://uec:{password}@127.0.0.1:{DB_PORT}/uec?sslmode=disable"
     env = {"PATH": os.environ.get("PATH", ""), "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""), "HOME": os.environ.get("HOME", ""),
-           "UEC_DATABASE_URL": db_url, "UEC_DEV_PREVIEW_TOKEN": token, "UEC_RUNTIME_MODE": "development", "UEC_ENABLE_DEV_PREVIEW": "true",
+           "UEC_DATABASE_URL": db_url, "UEC_DEV_PREVIEW_TOKEN": token, "UEC_RUNTIME_MODE": "development", "UEC_DEV_PREVIEW": "true",
            "UEC_BIND_HOST": "127.0.0.1", "PORT": str(API_PORT), "UEC_CORS_ORIGIN": f"http://127.0.0.1:{WEB_PORT}",
            "UEC_REAL_PREVIEW_ROOT": str(PRIVATE_ROOT), "UEC_PREVIEW_PROJECT": PROJECT}
+    for key in ("TMP", "TEMP", "USERPROFILE", "CARGO_HOME", "RUSTUP_HOME", "LIB", "INCLUDE", "VCToolsInstallDir", "WindowsSdkDir"):
+        if os.environ.get(key):
+            env[key] = os.environ[key]
     started: list[subprocess.Popen[str]] = []
     try:
         result = compose("up", "-d", "--wait")
@@ -180,35 +206,72 @@ def up() -> dict[str, object]:
             raise PreviewError("isolated preview database failed to start")
         verify_resources(require_container=True)
         _run_checked([sys.executable, str(MIGRATIONS), "--database-url", db_url], env, "preview migrations")
-        output = _run_checked([sys.executable, str(IMPORTER), "--root-env", "UEC_REAL_PREVIEW_ROOT", "--database-url-env", "UEC_DATABASE_URL", "--json"], env, "private preview import")
+        output = _run_checked([sys.executable, str(IMPORTER), "--root", str(PRIVATE_ROOT), "--database-url-env", "UEC_DATABASE_URL", "--json"], env, "private preview import")
         try:
             summary = json.loads(output)
-            if not isinstance(summary, dict) or not all(isinstance(v, int) and v >= 0 for v in summary.values()):
+            if not isinstance(summary, dict) or summary.get("status") != "imported" or not isinstance(summary.get("observation_count"), int):
                 raise ValueError
         except (ValueError, json.JSONDecodeError) as exc:
             raise PreviewError("lane 1 importer violated the aggregate-only JSON contract") from exc
+        _build_api()
         api_log = (ROOT / "target" / "real-preview" / "api.log").open("a", encoding="utf-8")
-        api = subprocess.Popen([shutil.which("cargo") or "cargo", "run", "--quiet", "--bin", "uec-api"], cwd=ROOT, env=env, stdout=api_log, stderr=subprocess.STDOUT)
+        executable = ROOT / "target" / "debug" / ("uec-api.exe" if os.name == "nt" else "uec-api")
+        api = subprocess.Popen([str(executable)], cwd=ROOT, env=env, stdout=api_log, stderr=subprocess.STDOUT)
         api_log.close(); started.append(api)
-        vite_log = (ROOT / "target" / "real-preview" / "vite.log").open("a", encoding="utf-8")
-        vite_env = {"PATH": env["PATH"], "SYSTEMROOT": env["SYSTEMROOT"], "VITE_API_ORIGIN": f"http://127.0.0.1:{API_PORT}"}
-        vite = subprocess.Popen([shutil.which("node") or "node", str(ROOT / "frontend" / "node_modules" / "vite" / "bin" / "vite.js"), "--host", "127.0.0.1", "--port", str(WEB_PORT), "--strictPort"], cwd=ROOT, env=vite_env, stdout=vite_log, stderr=subprocess.STDOUT)
-        vite_log.close(); started.append(vite)
-        _write_state({"project": PROJECT, "api_pid": api.pid, "vite_pid": vite.pid, "ports": [API_PORT, WEB_PORT]})
-        deadline = time.monotonic() + 60
+        vite_path = ROOT / "frontend" / "node_modules" / "vite" / "bin" / "vite.js"
+        vite = None
+        if vite_path.is_file():
+            vite_log = (ROOT / "target" / "real-preview" / "vite.log").open("a", encoding="utf-8")
+            vite_env = {"PATH": env["PATH"], "SYSTEMROOT": env["SYSTEMROOT"], "VITE_API_ORIGIN": f"http://127.0.0.1:{API_PORT}"}
+            vite = subprocess.Popen([shutil.which("node") or "node", str(vite_path), "--host", "127.0.0.1", "--port", str(WEB_PORT), "--strictPort"], cwd=ROOT, env=vite_env, stdout=vite_log, stderr=subprocess.STDOUT)
+            vite_log.close(); started.append(vite)
+        _write_state({"project": PROJECT, "api_pid": api.pid, "vite_pid": vite.pid if vite else None, "ports": [API_PORT, WEB_PORT] if vite else [API_PORT]})
+        deadline = time.monotonic() + 180
         while time.monotonic() < deadline:
-            if api.poll() is not None or vite.poll() is not None:
+            if api.poll() is not None or (vite is not None and vite.poll() is not None):
                 raise PreviewError("preview process exited during startup")
-            if _http(f"http://127.0.0.1:{API_PORT}/health/ready")[0] == 200 and _socket_busy(WEB_PORT):
+            if _http(f"http://127.0.0.1:{API_PORT}/health/ready")[0] == 200 and (vite is None or _socket_busy(WEB_PORT)):
                 break
             time.sleep(.3)
         else:
             raise PreviewError("preview startup probe timed out")
-        return {"status": "ready", "url": f"http://127.0.0.1:{WEB_PORT}/", "aggregates": summary}
+        counts_url = f"http://127.0.0.1:{API_PORT}/dev/real-preview/counts"
+        if _http_status(counts_url) != 401:
+            raise PreviewError("real-preview API authentication check failed")
+        auth_status, payload = _http(counts_url, token)
+        api_counts = payload.get("data") if payload else None
+        if auth_status != 200 or not isinstance(api_counts, dict):
+            raise PreviewError("authenticated real-preview API count probe failed")
+        expected_api_counts = {
+            "facility_candidate_count": summary.get("source_scoped_candidate_count"),
+            "numeric_coordinate_count": summary.get("numeric_coordinate_count"),
+            "city_postal_count": summary.get("city_postal_count"),
+        }
+        if any(api_counts.get(key) != value for key, value in expected_api_counts.items()):
+            raise PreviewError("authenticated API aggregates differ from importer output")
+        list_status, page = _http(f"{counts_url.rsplit('/', 1)[0]}/locations?limit=1", token)
+        page_data = page.get("data") if page else None
+        if list_status != 200 or not isinstance(page_data, list) or not page_data:
+            raise PreviewError("authenticated real-preview candidate list probe failed")
+        candidate = page_data[0]
+        candidate_id = candidate.get("candidate_id") if isinstance(candidate, dict) else None
+        if not isinstance(candidate_id, str) or candidate.get("project_approval") is not False:
+            raise PreviewError("candidate response omitted its safe opaque identity or approval boundary")
+        detail_status, detail = _http(f"{counts_url.rsplit('/', 1)[0]}/locations/{candidate_id}", token)
+        detail_data = detail.get("data") if detail else None
+        if detail_status != 200 or not isinstance(detail_data, dict) or detail_data.get("candidate_id") != candidate_id:
+            raise PreviewError("authenticated real-preview detail probe failed")
+        if any(key in detail_data for key in ("source_identifier", "source_group_key", "source_values", "address", "latitude_raw", "longitude_raw")):
+            raise PreviewError("candidate detail contains a restricted source field")
+        return {"status": "backend_ready_frontend_unavailable" if vite is None else "ready", "api_url": f"http://127.0.0.1:{API_PORT}", "url": f"http://127.0.0.1:{WEB_PORT}/" if vite else None, "aggregates": summary,
+                "api_auth_check": "passed", "authenticated_api_counts": api_counts, "candidate_list_detail_check": "passed",
+                "public_release_count": summary.get("public_release_count"), "public_projection_count": summary.get("public_projection_count")}
     except Exception:
         for process in reversed(started):
             if process.poll() is None:
                 process.terminate()
+        if _state().exists():
+            _state().unlink()
         raise
 
 
@@ -259,7 +322,8 @@ def status() -> dict[str, object]:
     state = _read_state()
     verify_resources()
     db = _socket_busy(DB_PORT)
-    api_port, web_port = _socket_busy(API_PORT), _socket_busy(WEB_PORT)
+    api_port = _socket_busy(API_PORT)
+    web_port = _socket_busy(WEB_PORT) if isinstance(state.get("vite_pid"), int) else False
     api_owned = isinstance(state.get("api_pid"), int) and _process_owned(int(state["api_pid"]), "uec-api")
     web_owned = isinstance(state.get("vite_pid"), int) and _process_owned(int(state["vite_pid"]), "vite.js")
     if (api_port and not api_owned) or (web_port and not web_owned):
@@ -268,13 +332,14 @@ def status() -> dict[str, object]:
     if db and not any(c.get("Names") == f"{PROJECT}-postgres-1" for c in running_containers):
         raise PreviewError("the database port is occupied without the verified real-preview container")
     return {"project": PROJECT, "database": "running" if db else "stopped", "api": api_port and _http(f"http://127.0.0.1:{API_PORT}/health/live")[0] == 200,
-            "frontend": web_port, "owned_process_state": bool(state)}
+            "frontend": web_port, "frontend_available": (ROOT / "frontend" / "node_modules" / "vite" / "bin" / "vite.js").is_file(), "owned_process_state": bool(state)}
 
 
 def probe() -> dict[str, object]:
     ready = _http(f"http://127.0.0.1:{API_PORT}/health/ready")[0] == 200
     web = _socket_busy(WEB_PORT)
-    return {"ok": ready and web, "api_ready": ready, "frontend_loopback": web}
+    frontend_available = (ROOT / "frontend" / "node_modules" / "vite" / "bin" / "vite.js").is_file()
+    return {"ok": ready, "api_ready": ready, "frontend_loopback": web, "frontend_available": frontend_available}
 
 
 def main(argv: Sequence[str] | None = None) -> int:

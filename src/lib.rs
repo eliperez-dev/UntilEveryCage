@@ -528,10 +528,16 @@ fn real_preview_unavailable() -> Response<axum::body::Body> {
 fn real_preview_candidate(row: &tokio_postgres::Row) -> Value {
     let kind: String = row.get("location_class");
     json!({
-        "candidate_id": row.get::<_, uuid::Uuid>("preview_id"),
+        "candidate_id": row.get::<_, uuid::Uuid>("candidate_id"),
         "source_id": row.get::<_, String>("source_id"),
         "location_class": kind,
-        "display_precision": if kind == "numeric_source_coordinate" { "source_numeric" } else { "city_postal" },
+        "display_precision": if kind == "numeric_source_coordinate" {
+            match row.get::<_, Option<String>>("coordinate_precision").as_deref() {
+                Some("numeric" | "exact" | "source_numeric" | "source_coordinates" | "facility_coordinate") => "source_numeric_pending_review",
+                Some("source-provided") => "approximate_source_provided_pending_review",
+                _ => "approximate_source_precision_unknown_pending_review",
+            }
+        } else { "city_postal_coarse" },
         "country_code": row.get::<_, Option<String>>("country_code"),
         "city": row.get::<_, Option<String>>("city"),
         "postal_code": row.get::<_, Option<String>>("postal_code"),
@@ -578,13 +584,13 @@ pub async fn get_real_preview_list_handler(
         .take(100)
         .collect::<String>();
     let rows = match client.query(
-        "SELECT preview_id,source_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision FROM real_preview.observations WHERE facility_candidate AND location_class <> 'unmapped_private_observation' AND ($1::uuid IS NULL OR preview_id > $1) AND ($2='' OR city ILIKE '%' || $2 || '%' OR postal_code ILIKE '%' || $2 || '%') ORDER BY preview_id LIMIT $3",
+        "SELECT candidate_id,source_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision FROM real_preview.candidates WHERE ($1::uuid IS NULL OR candidate_id > $1) AND ($2='' OR city ILIKE '%' || $2 || '%' OR postal_code ILIKE '%' || $2 || '%') ORDER BY candidate_id LIMIT $3",
         &[&cursor, &query, &limit],
     ).await { Ok(rows) => rows, Err(_) => return real_preview_unavailable() };
     let data: Vec<Value> = rows.iter().map(real_preview_candidate).collect();
     let next = rows
         .last()
-        .map(|row| row.get::<_, uuid::Uuid>("preview_id"));
+        .map(|row| row.get::<_, uuid::Uuid>("candidate_id"));
     real_preview_response(
         StatusCode::OK,
         json!({"api_version":"real-preview-v1","data":data,"meta":{"bounded":true,"next_cursor":next,"private_preview":true}}),
@@ -624,13 +630,13 @@ pub async fn get_real_preview_viewport_handler(
         return real_preview_unavailable();
     };
     let rows = match client.query(
-        "SELECT preview_id,source_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision FROM real_preview.observations WHERE facility_candidate AND location_class='numeric_source_coordinate' AND longitude BETWEEN $1 AND $3 AND latitude BETWEEN $2 AND $4 AND ($5::uuid IS NULL OR preview_id > $5) ORDER BY preview_id LIMIT $6",
+        "SELECT candidate_id,source_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision FROM real_preview.candidates WHERE location_class='numeric_source_coordinate' AND longitude BETWEEN $1 AND $3 AND latitude BETWEEN $2 AND $4 AND ($5::uuid IS NULL OR candidate_id > $5) ORDER BY candidate_id LIMIT $6",
         &[&params.west,&params.south,&params.east,&params.north,&params.cursor,&limit],
     ).await { Ok(rows) => rows, Err(_) => return real_preview_unavailable() };
     let data: Vec<Value> = rows.iter().map(real_preview_candidate).collect();
     let next = rows
         .last()
-        .map(|row| row.get::<_, uuid::Uuid>("preview_id"));
+        .map(|row| row.get::<_, uuid::Uuid>("candidate_id"));
     real_preview_response(
         StatusCode::OK,
         json!({"api_version":"real-preview-v1","data":data,"meta":{"bounded":true,"next_cursor":next,"private_preview":true}}),
@@ -651,7 +657,7 @@ pub async fn get_real_preview_detail_handler(
     let Ok(client) = pool.get().await else {
         return real_preview_unavailable();
     };
-    let row = match client.query_opt("SELECT preview_id,source_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision FROM real_preview.observations WHERE preview_id=$1 AND facility_candidate AND location_class <> 'unmapped_private_observation'", &[&id]).await { Ok(row) => row, Err(_) => return real_preview_unavailable() };
+    let row = match client.query_opt("SELECT candidate_id,source_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision FROM real_preview.candidates WHERE candidate_id=$1", &[&id]).await { Ok(row) => row, Err(_) => return real_preview_unavailable() };
     match row {
         Some(row) => real_preview_response(
             StatusCode::OK,
@@ -678,7 +684,7 @@ pub async fn get_real_preview_facets_handler(
     let Ok(client) = pool.get().await else {
         return real_preview_unavailable();
     };
-    let rows = match client.query("SELECT source_id,location_class,count(*)::bigint FROM real_preview.observations WHERE facility_candidate AND location_class <> 'unmapped_private_observation' GROUP BY source_id,location_class ORDER BY source_id,location_class", &[]).await { Ok(rows) => rows, Err(_) => return real_preview_unavailable() };
+    let rows = match client.query("SELECT source_id,location_class,count(*)::bigint FROM real_preview.candidates GROUP BY source_id,location_class ORDER BY source_id,location_class", &[]).await { Ok(rows) => rows, Err(_) => return real_preview_unavailable() };
     let data: Vec<Value> = rows.iter().map(|row| json!({"source_id":row.get::<_,String>(0),"location_class":row.get::<_,String>(1),"count":row.get::<_,i64>(2)})).collect();
     real_preview_response(
         StatusCode::OK,
@@ -699,7 +705,7 @@ pub async fn get_real_preview_counts_handler(
     let Ok(client) = pool.get().await else {
         return real_preview_unavailable();
     };
-    let row = match client.query_one("SELECT count(*) FILTER (WHERE facility_candidate AND location_class <> 'unmapped_private_observation')::bigint,count(*) FILTER (WHERE facility_candidate AND location_class='numeric_source_coordinate')::bigint,count(*) FILTER (WHERE facility_candidate AND location_class='city_postal')::bigint FROM real_preview.observations", &[]).await { Ok(row) => row, Err(_) => return real_preview_unavailable() };
+    let row = match client.query_one("SELECT count(*)::bigint,count(*) FILTER (WHERE location_class='numeric_source_coordinate')::bigint,count(*) FILTER (WHERE location_class='city_postal')::bigint FROM real_preview.candidates", &[]).await { Ok(row) => row, Err(_) => return real_preview_unavailable() };
     real_preview_response(
         StatusCode::OK,
         json!({"api_version":"real-preview-v1","data":{"facility_candidate_count":row.get::<_,i64>(0),"numeric_coordinate_count":row.get::<_,i64>(1),"city_postal_count":row.get::<_,i64>(2)},"meta":{"private_preview":true}}),

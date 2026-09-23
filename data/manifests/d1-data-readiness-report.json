@@ -83,7 +83,7 @@
     "france": {
       "observation_unit": "source observation; section identities remain separate",
       "section_i": 1449,
-      "section_ii": 1067,
+      "section_ii": 1068,
       "source_ids": [
         "fr.dgal.section-i",
         "fr.dgal.section-ii"
