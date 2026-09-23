@@ -1,6 +1,6 @@
 establishment_id,name,address,postcode,municipality,region,activity_code,activity_description,approval_number,status
-BE-SYN-001,Synthetic Abattoir,Industrial Road 1,1000,Brussels,Brussels,LAP-SH,Slaughterhouse,BE-APP-1,current
-BE-SYN-002,Synthetic Cold Store,Warehouse Road 2,2000,Antwerp,Flanders,LAP-CS,Cold storage,BE-AUT-2,current
-BE-SYN-003,Synthetic Mixed Facility,Industrial Road 3,3000,Leuven,Flanders,LAP-SH;LAP-CP,Slaughter and cutting,BE-APP-3,current
-BE-SYN-004,Private Residence Example,Apartment 4,4000,Liege,Wallonia,LAP-CP,Cutting plant,BE-APP-4,current
+BE-SYN-001,Synthetic Abattoir,Industrial Road 1,1000,Brussels,Brussels,593,Slaughterhouse,BE-APP-1,current
+BE-SYN-002,Synthetic Cold Store,Warehouse Road 2,2000,Antwerp,Flanders,669,Cold storage,BE-AUT-2,current
+BE-SYN-003,Synthetic Mixed Facility,Industrial Road 3,3000,Leuven,Flanders,593;894,Slaughter and cutting,BE-APP-3,current
+BE-SYN-004,Private Residence Example,Apartment 4,4000,Liege,Wallonia,894,Cutting plant,BE-APP-4,current
 BE-SYN-005,Unknown Activity,Industrial Road 5,5000,Namur,Wallonia,LAP-UNKNOWN,Unknown,BE-APP-5,current

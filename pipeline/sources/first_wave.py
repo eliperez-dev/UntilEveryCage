@@ -64,7 +64,7 @@ class SourceDescriptor:
     def readiness(self) -> dict[str, Any]:
         """Return capability facts without conflating acquisition and approval."""
         live_callable = self.source_id in {"be.locations", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "fr.dgal.section-i", "fr.dgal.section-ii", "it.853-2004"}
-        operational = "terms-blocked" if live_callable else "assisted"
+        operational = "live" if self.source_id == "be.locations" else ("terms-blocked" if live_callable else "assisted")
         return {
             "source_id": self.source_id,
             "fixture_ready": True,
@@ -105,7 +105,7 @@ def _australia_npi() -> SourceAdapter:
 
 FIRST_WAVE: tuple[SourceDescriptor, ...] = (
     SourceDescriptor("dk.smiley", "DK", "https://pub.fvst.dk/publikationer/Smileydata.xml", _denmark, (ROOT / "denmark" / "fixtures" / "synthetic.xml",), "denmark-smiley-contract-v1", "denmark-smiley-contract-v1", "verified"),
-    SourceDescriptor("be.locations", "BE", BELGIUM_CONFIG["operator_url"], _belgium, (ROOT / "belgium" / "fixtures" / "synthetic_operators.csv", ROOT / "belgium" / "fixtures" / "synthetic_activity_codes.csv"), BELGIUM_CONFIG["adapter_version"], BELGIUM_CONFIG["schema_version"], "assisted_only"),
+    SourceDescriptor("be.locations", "BE", BELGIUM_CONFIG["operator_url"], _belgium, (ROOT / "belgium" / "fixtures" / "synthetic_operators.csv", ROOT / "belgium" / "fixtures" / "synthetic_activity_codes.csv"), BELGIUM_CONFIG["adapter_version"], BELGIUM_CONFIG["schema_version"], "bounded_private_fetch"),
     SourceDescriptor("ca.ontario.meat-plants", "CA", "https://data.ontario.ca/dataset/a763088c-018d-48b7-bf47-3027a8c725b8/resource/ee6d559a-78de-40e6-b2ba-ad3c4a674b96/download/1._all_meat_plants.csv", OntarioMeatPlantsAdapter, (ROOT / "canada" / "fixtures" / "ontario.csv",), "ca-meat-v2-workbook", "ca-meat-tabular-workbook-v1", "verified"),
     SourceDescriptor("ca.cfia.federal-meat", "CA", "https://active.inspection.gc.ca/scripts/meavia/reglist/download.asp?lang=e", CfiaFederalMeatAdapter, (ROOT / "canada" / "fixtures" / "cfia.csv",), "ca-meat-v2-workbook", "ca-meat-tabular-workbook-v1", "assisted_only"),
     SourceDescriptor("fr.dgal.section-i", "FR", "https://fichiers-publics.agriculture.gouv.fr/dgal/ListesOfficielles/SSA1_VIAN_ONG_DOM.txt", _france_i, (ROOT / "france" / "fixtures" / "section_i.csv",), "fr-dgal-853-v2", "fr-dgal-853-txt-v2", "verified"),
@@ -144,12 +144,12 @@ class FirstWaveRefreshAdapter:
         if not review:
             raise RuntimeError("terms review is required for live acquisition")
         root = run_dir / "acquisition"
-        run_id = run_dir.name
+        run_id = str(options.get("acquisition_run_id") or run_dir.name)
         timeout = float(options.get("timeout_seconds", 60.0))
         max_bytes = int(options.get("max_bytes", 128 * 1024 * 1024))
         if self.source_id == "be.locations":
             from .belgium.acquire import fetch_pair
-            pair = fetch_pair(output_root=root, terms_review_path=Path(str(review)), run_id=run_id, timeout_seconds=timeout, max_bytes=max_bytes)
+            pair = fetch_pair(output_root=root, terms_review_path=Path(str(review)), run_id=run_id, timeout_seconds=timeout, max_bytes=max_bytes, max_attempts=2)
             return {"artifact_path": pair["operator"]["artifact_path"], "companion_artifact_path": pair["activity_codes"]["artifact_path"], "acquisition": pair}
         if self.source_id in {"ca.ontario.meat-plants", "ca.cfia.federal-meat"}:
             from .canada.acquire import fetch_source_artifact
@@ -205,7 +205,7 @@ class FirstWaveRefreshAdapter:
                 privacy_caveat="private candidate staging; privacy review remains required",
                 coverage="Belgian activity-code companion artifact; not a facility list",
             )
-            source_adapter = BelgiumOperatorsAdapter(companion_path, companion_artifact)
+            source_adapter = BelgiumOperatorsAdapter(companion_path, companion_artifact, strict_schema=True)
         acquisition = options.get("acquisition") if isinstance(options.get("acquisition"), Mapping) else {}
         source_artifact = self.descriptor.artifact_for(raw_path)
         acquisition_facts = acquisition
@@ -222,23 +222,45 @@ class FirstWaveRefreshAdapter:
                 rights_caveat=source_artifact.rights_caveat, privacy_caveat=source_artifact.privacy_caveat,
                 coverage=source_artifact.coverage, redirects=tuple(acquisition_facts.get("redirects") or ()),
             )
-        status = run_private_lifecycle(
+        try:
+            status = run_private_lifecycle(
             raw_path, run_dir, source_artifact, source_adapter,
             health_as_of_utc=source_artifact.retrieved_at_utc,
-        )
+            )
+        except Exception as error:
+            from .belgium.adapter import BelgiumSchemaError
+            if self.source_id == "be.locations" and isinstance(error, BelgiumSchemaError):
+                return {"input_rows": 0, "normalized_rows": 0, "quarantined_rows": 0,
+                        "schema_status": "schema-drift", "drift_alarms": [str(error)],
+                        "candidate_handoff": False, "review_required": True,
+                        "public_surfaces": {"api": False, "map": False, "csv": False}}
+            raise
         lifecycle_root = Path(status["run_dir"])
         manifest = status.get("manifest") or {}
         candidate_handoff = False
         if status.get("status") == "candidate-ready":
             normalized = lifecycle_root / "normalized" / "records.jsonl"
-            if isinstance(source_adapter, DenmarkSmileyAdapter):
-                rows = [json.loads(line) for line in normalized.read_text(encoding="utf-8").splitlines() if line]
+            rows = [json.loads(line) for line in normalized.read_text(encoding="utf-8").splitlines() if line]
+            if self.source_id == "be.locations":
+                # Private facility-candidate handoff only receives codebook-
+                # classified animal scope and minimized fields. The source
+                # artifacts and full parsed rows remain in restricted storage.
+                rows = [
+                    {"source_id": row["source_id"], "source_row": row["source_row"],
+                     "source_record_key": row["source_record_key"], "source_values": {},
+                     "normalized": {key: row["normalized"].get(key) for key in (
+                         "establishment_id", "country_code", "nation", "municipality", "city",
+                         "activity_categories", "activity_codes", "activity_descriptions",
+                         "coordinate_state", "address_state", "privacy_gate", "publication_gate")}}
+                    for row in rows if row["normalized"].get("activity_categories")
+                ]
+                write_handoff(run_dir / "candidate-handoff", rows, source_artifact, source_id=self.source_id)
+            elif isinstance(source_adapter, DenmarkSmileyAdapter):
                 source_adapter.write_candidate_handoff(lifecycle_root / "candidate-handoff", source_artifact, rows)
             else:
-                rows = [json.loads(line) for line in normalized.read_text(encoding="utf-8").splitlines() if line]
                 write_handoff(lifecycle_root / "candidate-handoff", rows, source_artifact, source_id=self.source_id)
             candidate_handoff = True
-        return {
+        summary = {
             "lifecycle_status": status.get("status"),
             "publication_state": status.get("publication_state", "unchanged"),
             "input_rows": manifest.get("input_rows", 0),
@@ -249,6 +271,25 @@ class FirstWaveRefreshAdapter:
             "release_promoted": bool(status.get("release_promoted", False)),
             "public_surfaces": {"api": False, "map": False, "csv": False},
         }
+        if self.source_id == "be.locations" and status.get("status") == "candidate-ready":
+            normalized = lifecycle_root / "normalized" / "records.jsonl"
+            records = [json.loads(line) for line in normalized.read_text(encoding="utf-8").splitlines() if line]
+            animal = [row for row in records if row["normalized"].get("activity_categories")]
+            facility_keys = {row["normalized"].get("establishment_id") for row in animal if row["normalized"].get("establishment_id")}
+            handoff = json.loads((run_dir / "candidate-handoff" / "manifest.json").read_text(encoding="utf-8"))
+            summary.update({
+                "acquisition_classification": "live" if acquisition else "assisted",
+                "valid_source_activity_rows": len(records),
+                "in_scope_normalized_observations": len(animal),
+                "out_of_scope_rows": len(records) - len(animal),
+                "deduplicated_source_scoped_facility_candidates": len(facility_keys),
+                "candidate_observation_rows": handoff["normalized_rows"],
+                "candidate_handoff_sha256": handoff["normalized_sha256"],
+                "operator_last_modified": (acquisition_facts.get("response_headers") or {}).get("Last-Modified"),
+                "attribution": "Source: FASFC (Belgium); cite this artifact's Last-Modified/latest-update date.",
+                "publication_state": "private-only; not public-release-ready",
+            })
+        return summary
 
 
 def register_first_wave(catalog: Any) -> None:

@@ -11,11 +11,12 @@ from pipeline.contracts.source_lifecycle import atomic_json
 from .adapter import CONFIG
 
 
-def fetch_pair(*, output_root: str | Path, terms_review_path: str | Path, run_id: str | None = None, timeout_seconds: float = 60, max_bytes: int = 128 * 1024 * 1024) -> dict:
+def fetch_pair(*, output_root: str | Path, terms_review_path: str | Path, run_id: str | None = None, timeout_seconds: float = 180, max_bytes: int = 128 * 1024 * 1024, max_attempts: int = 3) -> dict:
     """Fetch operator and companion codebook with independent provenance."""
     root = Path(output_root)
-    operator = fetch_source(source_id=CONFIG["source_id"], url=CONFIG["operator_url"], output_root=root, artifact_name="operators.csv", run_id=run_id, timeout_seconds=timeout_seconds, max_bytes=max_bytes, terms_review_path=terms_review_path, code_version=CONFIG["adapter_version"], config_version=CONFIG["schema_version"], coverage=CONFIG["coverage"], rights_caveat=CONFIG["terms"], privacy_caveat="private staging; operator address and coordinate privacy review pending")
-    codebook = fetch_source(source_id="be.activity-codes", url=CONFIG["activity_code_url"], output_root=root, artifact_name="activity-codes.csv", run_id=run_id, timeout_seconds=timeout_seconds, max_bytes=max_bytes, terms_review_path=terms_review_path, code_version=CONFIG["adapter_version"], config_version=CONFIG["schema_version"], coverage="FASFC LAP/PAP activity codebook; not a facility list", rights_caveat=CONFIG["terms"], privacy_caveat="no facility rows expected")
+    common = {"timeout_seconds": timeout_seconds, "max_bytes": max_bytes, "max_attempts": max_attempts, "retry_delay_seconds": 2, "max_retry_delay_seconds": 8}
+    operator = fetch_source(source_id=CONFIG["source_id"], url=CONFIG["operator_url"], output_root=root, artifact_name="operators.csv", run_id=run_id, terms_review_path=terms_review_path, code_version=CONFIG["adapter_version"], config_version=CONFIG["schema_version"], coverage=CONFIG["coverage"], rights_caveat=CONFIG["terms"], privacy_caveat="restricted private staging; no address/name/identifier fields are copied to the candidate handoff", **common)
+    codebook = fetch_source(source_id="be.activity-codes", url=CONFIG["activity_code_url"], output_root=root, artifact_name="activity-codes.csv", run_id=run_id, terms_review_path=terms_review_path, code_version=CONFIG["adapter_version"], config_version=CONFIG["schema_version"], coverage="FASFC LAP/PAP activity codebook; not a facility list", rights_caveat=CONFIG["terms"], privacy_caveat="no facility rows expected", **common)
     pair = {"operator": operator, "activity_codes": codebook, "source_id": CONFIG["source_id"], "catalog_url": CONFIG["catalog_url"]}
     atomic_json(root / CONFIG["source_id"] / str(run_id or operator["run_id"]) / "pair-metadata.json", pair)
     return pair

@@ -1,5 +1,5 @@
-lap_code,place_code,place_description,activity_description,product_description,approval_code,approval_description
-LAP-SH,PL-SH,Slaughterhouse,Slaughterhouse,Meat,APP,Approval
-LAP-CS,PL-CS,Cold store,Storage,Meat,AUTH,Authorization
-LAP-CP,PL-CP,Cutting plant,Cutting,Meat,APP,Approval
-LAP-ABP,PL-ABP,Animal by-product facility,Animal by-products,By-products,APP,Approval
+lap_code,place_code,place_description,activity_code,activity_description,product_code,product_description,approval_code,approval_description
+593,PL1,Slaughterhouse,AC2,Slaughter,PR40,Meat,APP,Approval
+669,PL31,Cold store,AC84,Storage,PR168,Meat,AUTH,Authorization
+894,PL5,Cutting plant,AC24,Cutting,PR40,Meat,APP,Approval
+687,PL43,By-product facility,AC39,Animal by-products,PR128,By-products,APP,Approval

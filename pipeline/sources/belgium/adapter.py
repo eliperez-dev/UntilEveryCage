@@ -48,27 +48,25 @@ _ALIASES = {
 _CODE_ALIASES = {
     "lap_code": ("lap_code", "lap code", "lap id", "pap_code", "pap code", "pap id", "activity_code", "activity code", "code lap", "code pap"),
     "place_code": ("place_code", "place code", "pl code", "location code", "code lieu", "plaats code"),
-    "place_description": ("place_description", "place description", "location description", "lieu", "plaats"),
-    "activity_description": ("activity_description", "activity description", "activity", "activiteit", "activite", "activiteit omschrijving"),
+    "place_description": ("place_description", "place description", "location description", "lieu", "plaats", "plaats omschrijving", "plaatsomschrijving"),
+    "activity_code": ("activity_code", "activity code", "ac code", "ac id", "activiteit code", "activiteitcode"),
+    "activity_description": ("activity_description", "activity description", "activity", "activiteit", "activite", "activiteit omschrijving", "activiteitomschrijving"),
+    "pap_description": ("pap description", "pap omschrijving", "lap omschrijving"),
+    "product_code": ("product_code", "product code", "product id", "pr code", "pr id"),
     "product_description": ("product_description", "product description", "product", "produit", "productomschrijving", "product omschrijving"),
     "approval_code": ("approval_code", "approval code", "approval form", "code agrement", "erkenningscode", "erkenning code"),
     "approval_description": ("approval_description", "approval description", "approval", "agrement", "erkenning", "erkenning omschrijving"),
 }
-_CATEGORY_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("slaughter", ("slaughter", "abattoir", "slachthuis", "killing", "abattage")),
-    ("cutting", ("cutting", "butchery", "deboning", "uitsnijder", "decoupe", "découpe")),
-    ("processing", ("processing", "meat product", "manufactur", "transformation", "verwerking", "preparation")),
-    ("logistics_and_storage", ("cold store", "cold-storage", "storage", "warehouse", "freezer", "refrigerat", "opslag", "entreposage")),
-    ("animal_by_products", ("animal by-product", "animal byproduct", "abp", "sous-produit", "dierlijke bijproduct")),
-    ("export", ("export", "third country trade", "handel derde landen")),
-)
-_PUBLIC_CATEGORIES = {"slaughter", "cutting", "processing", "logistics_and_storage"}
 _RISK = re.compile(r"\b(flat|apartment|appartement|residential|home|maison|c/o|care of|caravan|woning)\b", re.I)
 
 
 def _key(value: str) -> str:
     text = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
     return re.sub(r"[^a-z0-9]+", " ", text.casefold()).strip()
+
+
+_PAP_SCOPE_SIGNATURES = CONFIG["animal_scope_pap_signatures"]
+_PUBLIC_CATEGORIES = {entry["category"] for entry in _PAP_SCOPE_SIGNATURES.values()}
 
 
 def _clean(value: Any) -> str | None:
@@ -124,13 +122,19 @@ def _split_codes(value: str | None) -> tuple[str, ...]:
     return tuple(dict.fromkeys(part.strip() for part in re.split(r"[;,|]\s*", value or "") if part.strip()))
 
 
-def _categories(values: Iterable[str | None]) -> tuple[str, ...]:
+def _categories(items: Iterable[dict[str, str | None]]) -> tuple[str, ...]:
+    """Classify only explicitly approved PAP ids joined to their code tuple."""
     found: list[str] = []
-    for value in values:
-        text = (value or "").casefold()
-        for category, needles in _CATEGORY_RULES:
-            if any(needle.casefold() in text for needle in needles) and category not in found:
-                found.append(category)
+    signatures = CONFIG["animal_scope_pap_signatures"]
+    for item in items:
+        pap_id = _clean(item.get("lap_code"))
+        signature = signatures.get(pap_id or "")
+        if not signature:
+            continue
+        observed = (item.get("place_code"), item.get("activity_code"), item.get("product_code"))
+        expected = (signature["place_code"], signature["activity_code"], signature["product_code"])
+        if observed == expected and signature["category"] not in found:
+            found.append(signature["category"])
     return tuple(found)
 
 
@@ -143,9 +147,10 @@ class BelgiumOperatorsAdapter:
     adapter_version = CONFIG["adapter_version"]
     schema_version = CONFIG["schema_version"]
 
-    def __init__(self, activity_codes_path: str | Path, activity_artifact: SourceArtifact | None = None):
+    def __init__(self, activity_codes_path: str | Path, activity_artifact: SourceArtifact | None = None, *, strict_schema: bool = False):
         self.activity_codes_path = Path(activity_codes_path)
         self.activity_artifact = activity_artifact
+        self.strict_schema = strict_schema
 
     def _codebook(self) -> tuple[dict[str, dict[str, str | None]], dict[str, Any]]:
         content = self.activity_codes_path.read_bytes()
@@ -154,7 +159,11 @@ class BelgiumOperatorsAdapter:
             if digest != self.activity_artifact.sha256 or len(content) != self.activity_artifact.byte_size:
                 raise ValueError("activity-code artifact provenance mismatch")
         headers, rows, encoding, delimiter = _csv(content)
+        if self.strict_schema and _fingerprint(headers) != CONFIG["expected_activity_code_schema_fingerprint"]:
+            raise BelgiumSchemaError("activity-code schema drift: header fingerprint changed")
         fields = _header_map(headers, _CODE_ALIASES, {"lap_code"})
+        if self.strict_schema and not {"place_code", "activity_code", "product_code"}.issubset(fields):
+            raise BelgiumSchemaError("activity-code schema drift: required classification fields missing")
         codebook: dict[str, dict[str, str | None]] = {}
         ambiguous: set[str] = set()
         for values in rows:
@@ -163,17 +172,27 @@ class BelgiumOperatorsAdapter:
             if not code:
                 continue
             item = {field: _clean(raw.get(header)) for field, header in fields.items()}
+            item["lap_code"] = code
             if code in codebook and codebook[code] != item:
                 ambiguous.add(code)
             codebook[code] = item
         metadata = {"sha256": hashlib.sha256(content).hexdigest(), "byte_size": len(content), "schema_fingerprint": _fingerprint(headers), "column_count": len(headers), "row_count": len(rows), "encoding": encoding, "delimiter": delimiter, "ambiguous_codes": sorted(ambiguous)}
         for code in ambiguous:
             codebook.pop(code, None)
+        if self.strict_schema:
+            for code, signature in CONFIG["animal_scope_pap_signatures"].items():
+                item = codebook.get(code)
+                expected = (signature["place_code"], signature["activity_code"], signature["product_code"])
+                observed = tuple(item.get(field) for field in ("place_code", "activity_code", "product_code")) if item else None
+                if observed != expected:
+                    raise BelgiumSchemaError("activity-code schema drift: approved animal-scope PAP signature changed or is ambiguous")
         return codebook, metadata
 
     def parse_bytes(self, content: bytes) -> dict[str, Any]:
         codebook, codebook_meta = self._codebook()
         headers, rows, encoding, delimiter = _csv(content)
+        if self.strict_schema and _fingerprint(headers) != CONFIG["expected_operator_schema_fingerprint"]:
+            raise BelgiumSchemaError("operator schema drift: header fingerprint changed")
         fields = _header_map(headers, _ALIASES, {"establishment_id", "activity_code"})
         name_header = fields.get("name")
         accepted: list[dict[str, Any]] = []
@@ -193,14 +212,14 @@ class BelgiumOperatorsAdapter:
             first_lines.setdefault(row_key, line)
         for line, raw, codes, value_count, row_key in prepared:
             establishment_id = _clean(raw.get(fields["establishment_id"]))
-            name = _clean(raw.get(name_header)) if name_header else None
+            # Natural-person names are not retained in normalized output even
+            # if a future official schema adds an operator-name column.
+            name = None
             reasons: list[str] = []
             if value_count != len(headers) or any(value is None for value in raw.values()):
                 reasons.append("malformed_row")
             if not establishment_id:
                 reasons.append("missing_establishment_id")
-            if name_header and not name:
-                reasons.append("missing_name")
             if not codes:
                 reasons.append("missing_activity_code")
             if any(code not in codebook for code in codes):
@@ -211,25 +230,31 @@ class BelgiumOperatorsAdapter:
             if address and _RISK.search(address):
                 reasons.append("address_privacy_risk")
             joined = [codebook[code] for code in codes if code in codebook]
-            descriptions = [_clean(raw.get(fields.get("activity_description", "")))] + [item.get("activity_description") for item in joined]
-            categories = _categories(descriptions + [item.get("place_description") for item in joined] + [item.get("product_description") for item in joined])
+            categories = _categories(joined)
             public_categories = tuple(category for category in categories if category in _PUBLIC_CATEGORIES)
             record = {
                 "source_id": self.source_id,
                 "source_row": line,
-                "source_record_key": f"{establishment_id or 'unknown'}|{','.join(codes) or 'unknown'}|{line}",
-                "source_values": raw,
+                "source_record_key": f"{establishment_id or 'unknown'}|{','.join(sorted(codes)) or 'unknown'}|{hashlib.sha256(json.dumps(row_key, ensure_ascii=False, separators=(',', ':')).encode()).hexdigest()}",
+                # The immutable restricted CSV remains the source of record;
+                # parsed evidence does not duplicate direct contact, address,
+                # enterprise, approval, postal, or coordinate values.
+                "source_values": {
+                    field: raw[header]
+                    for field in ("activity_code", "municipality", "region", "status", "effective_date")
+                    if (header := fields.get(field)) is not None
+                },
                 "normalized": {
                     "establishment_id": establishment_id,
-                    "operator_id": _clean(raw.get(fields.get("operator_id", ""))) if "operator_id" in fields else None,
+                    "operator_id": None,
                     "name": name,
-                    "name_state": "source-supplied" if name_header else "not-supplied-by-source",
-                    "trading_name": name,
+                    "name_state": "suppressed-for-privacy-minimization" if name_header else "not-supplied-by-source",
+                    "trading_name": None,
                     "country_code": "BE",
                     "nation": "Belgium",
                     "municipality": _clean(raw.get(fields.get("municipality", ""))) if "municipality" in fields else None,
                     "city": _clean(raw.get(fields.get("municipality", ""))) if "municipality" in fields else None,
-                    "postcode": _clean(raw.get(fields.get("postcode", ""))) if "postcode" in fields else None,
+                    "postcode": None,
                     "address": None,
                     "address_state": "source-present-pending-privacy-review" if address else "unknown",
                     "coordinates": None,
@@ -239,11 +264,11 @@ class BelgiumOperatorsAdapter:
                     "activity_categories": public_categories,
                     "source_activity_categories": categories,
                     "scope_flags": {"slaughterhouse": "slaughter" in categories, "cutting": "cutting" in categories, "processing": "processing" in categories, "storage": "logistics_and_storage" in categories, "animal_by_products": "animal_by_products" in categories, "export": "export" in categories},
-                    "approval_number": _clean(raw.get(fields.get("approval_number", ""))) if "approval_number" in fields else None,
-                    "authorization_number": _clean(raw.get(fields.get("authorization_number", ""))) if "authorization_number" in fields else None,
+                    "approval_number": None,
+                    "authorization_number": None,
                     "status": _clean(raw.get(fields.get("status", ""))) if "status" in fields else None,
                     "effective_date": _clean(raw.get(fields.get("effective_date", ""))) if "effective_date" in fields else None,
-                    "privacy_gate": "pending-review",
+                    "privacy_gate": "pending-review-natural-person-minimized",
                     "coordinate_gate": "review_required",
                     "publication_gate": "blocked",
                 },

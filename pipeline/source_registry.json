@@ -56,12 +56,12 @@
       "jurisdiction_scope": "Belgium; FASFC-registered, approved, or authorized operators, including animal-origin food and other food-chain activities",
       "legacy_paths": [],
       "url": "https://www.static.favv.be/bo-documents/inter_actieve_actoren_EN.csv",
-      "access_method": "published weekly operator CSV plus companion LAP/PAP activity-code CSV; assisted capture supported",
+      "access_method": "bounded live weekly operator CSV plus companion LAP/PAP activity-code CSV through the shared private refresh runner; explicit source-scoped authorization and approved terms record required",
       "cadence": "weekly",
-      "attribution_licensing_notes": "CC Attribution 4.0; attribute FASFC and the last update date, do not imply FASFC affiliation/approval, and do not mislead",
+      "attribution_licensing_notes": "CC Attribution 4.0 is stated on data.gov.be; the operator explicitly approved private processing with FASFC/latest-update attribution, non-misleading use/no implied endorsement, natural-person minimization, and separate activity/facility counts; no legal determination or public release approval",
       "adapter_status": "implemented_partial",
       "expected_artifact_schema": "CP1252 CSV with 20 live identifier/activity/location fields joined by LAP/PAP code to the separate FASFC activity-code CSV; establishment name is not supplied by this snapshot",
-      "blockers": ["A current official pair was captured privately and validated through the deterministic adapter. Five exact duplicates and 15 unresolved activity codes remain quarantined; privacy, source-terms interpretation, classification, coverage, and project publication approval remain human gates."]
+      "blockers": ["Explicit operator approval permits restricted private processing only. Live acquisition must fail closed on either schema fingerprint changing; only exact allowlisted PAP ids with matching place/activity/product code signatures from the official LAP/PAP codebook qualify the narrow animal-related candidate scope. Natural-person and direct-contact fields are minimized from normalized/handoff rows; exact source-establishment identifiers remain restricted in the private database. Public map release remains blocked pending category-coverage, privacy/safety, attribution/latest-update rendering, factual review, and a separate release decision. The all-operator feed does not equal all animal facilities."]
     },
     {
       "source_id": "ca.ontario.meat-plants",

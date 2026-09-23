@@ -1,0 +1,86 @@
+{
+  "manifest_version": "1.0",
+  "as_of_utc": "2026-09-23T19:32:52Z",
+  "source_id": "be.locations",
+  "evidence_scope": "verified_live_private_e2e",
+  "private_payloads_included": false,
+  "public_release_created": false,
+  "public_api_rows": 0,
+  "public_map_rows": 0,
+  "public_export_rows": 0,
+  "publication_eligibility": "blocked",
+  "operator_terms_decision": "approved-for-restricted-private-processing-with-conditions; not a legal determination or public release approval",
+  "official_catalog_url": "https://data.gov.be/en/datasets/favv-afsca-operators",
+  "activity_code_catalog_url": "https://data.gov.be/en/datasets/fasfc-activity-codes",
+  "attribution": "Source: FASFC (Belgium); preserve and display the source's latest-update date; do not mislead or imply endorsement.",
+  "source_updates": {
+    "operator_last_modified_utc": "2026-09-21T05:40:08Z",
+    "operator_effective_date_header": "Mon, 21 Sep 2026 05:40:08 GMT",
+    "codebook_last_modified_utc": "2026-09-21T05:40:03Z",
+    "codebook_effective_date_header": "Mon, 21 Sep 2026 05:40:03 GMT"
+  },
+  "artifacts": {
+    "operators": {
+      "url": "https://www.static.favv.be/bo-documents/inter_actieve_actoren_EN.csv",
+      "retrieved_at_utc": "2026-09-23T19:30:54Z",
+      "byte_size": 87935521,
+      "sha256": "8873b3fcd7dc64bed4b8e4ab1b2ae047d3e7fbdd184f7a677798447c73e88713",
+      "etag": "\"53dca21-65bf7aed7381a\"",
+      "last_modified": "Mon, 21 Sep 2026 05:40:08 GMT"
+    },
+    "activity_codes": {
+      "url": "https://www.static.favv.be/bo-documents/inter_PAP_omschrijving_EN.csv",
+      "retrieved_at_utc": "2026-09-23T19:30:55Z",
+      "byte_size": 101987,
+      "sha256": "89e8c281e0560e44a47e1226112b014cafa796955576ba5414cc6e3563cab225",
+      "etag": "\"18e63-65bf7ae8b75a9\"",
+      "last_modified": "Mon, 21 Sep 2026 05:40:03 GMT"
+    }
+  },
+  "validation": {
+    "operator_schema_fingerprint": "e225b6f7e11d3cf0d441dd96d1da61e57cd817d3d1e8fd2dad066073d3582a1e",
+    "operator_column_count": 20,
+    "operator_encoding": "cp1252",
+    "activity_code_schema_fingerprint": "4b48513b1169bb0c64d51f7c1cfad5074b1326c1db971b4f4b1273ad7c729087",
+    "activity_code_rows": 395,
+    "strict_schema_drift_behavior": "fail-closed"
+  },
+  "counts": {
+    "input_activity_rows": 310764,
+    "valid_source_activity_rows": 310744,
+    "in_scope_normalized_observations": 4033,
+    "in_scope_category_observations": {
+      "animal_by_products": 118,
+      "cutting": 993,
+      "logistics_and_storage": 941,
+      "processing": 1856,
+      "slaughter": 125
+    },
+    "out_of_scope_valid_activity_rows": 306711,
+    "quarantined_activity_rows": 20,
+    "quarantine_reasons": {
+      "duplicate_source_row": 5,
+      "unresolved_activity_code": 15
+    },
+    "candidate_observation_rows": 4033,
+    "deduplicated_source_scoped_facility_candidates": 1793,
+    "private_database_inserted_candidate_observations": 4033,
+    "private_database_rejected_candidate_observations": 0,
+    "public_rows": 0
+  },
+  "handoff_hashes": {
+    "candidate_handoff_sha256": "00f3fdf7adbebf579f4fe9cb58566cc3c63453f3126e4d07edf9db5f1c055080",
+    "graph_candidate_set_sha256": "daf8f77c0b7b4b37ecae9c3aa4ab7f9cfc86d77c5c14809ae996cd053a12e435"
+  },
+  "idempotency": {
+    "disposable_database_import": "completed; 4033 inserted, 0 rejected",
+    "saved_handoff_replay": "passed in a fresh disposable database; second import reported 4033 already present and inserted 0"
+  },
+  "invocation": "python -m pipeline.refresh_private --source be.locations --mode live-acquisition --authorize-live-source be.locations --terms-review be.locations=data/terms-reviews/be.locations.json --output-root data/staging/private-refresh --retries 1 --import-candidates --disposable-db --database-url-env UEC_DATABASE_URL",
+  "publication_blockers": [
+    "The source covers current FASFC operator/activity records, not every animal facility or slaughterhouse.",
+    "The PAP id plus place/activity/product code-signature allowlist is intentionally explicit; unlisted codes remain out of scope and category coverage needs separate review.",
+    "Source-scoped establishment identifiers are retained only in restricted private staging/database and are absent from any public surface; no public projection was created.",
+    "A public map requires separate privacy/safety, factual/category, attribution/latest-update, and release approval."
+  ]
+}
