@@ -19,6 +19,7 @@ ALLOWED_SKIP_REASONS = {
     "optional 100k benchmark is opt-in",
     "authorized D6 real private root not configured",
     "set UEC_RUN_D61_REAL=1 after loading an authorized retained handoff",
+    "set UEC_RUN_LIVE_BE_FASFC=1 for live refresh or UEC_RUN_LIVE_BE_FASFC_REPLAY=1 for a saved-handoff replay",
 }
 
 
