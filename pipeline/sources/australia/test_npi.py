@@ -42,7 +42,9 @@ class NpiAdapterTests(unittest.TestCase):
         self.assertEqual(reasons, {"invalid_source_coordinate", "missing_facility_id"})
 
     def test_missing_column_is_schema_drift(self):
-        raw = FIXTURE.read_bytes().replace(b",reports\r\n", b"\r\n", 1)
+        raw = FIXTURE.read_bytes()
+        line_ending = b"\r\n" if b"\r\n" in raw else b"\n"
+        raw = raw.replace(b",reports" + line_ending, line_ending, 1)
         with self.assertRaisesRegex(ValueError, "schema drift"):
             NpiFacilitiesAdapter().parse_bytes(raw)
 
