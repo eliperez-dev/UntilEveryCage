@@ -11,6 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 LOCAL_V2 = ROOT / "pipeline" / "scripts" / "maintenance" / "local-v2.ps1"
 LAUNCHPAD = ROOT / "scripts" / "launchpad.py"
+REAL_PREVIEW = ROOT / "scripts" / "real_preview.py"
 SUMMARY = {"command": None, "ok": False, "exit_code": None, "checks": []}
 
 def run(args: list[str], *, cwd=ROOT, capture=False) -> int:
@@ -78,6 +79,8 @@ def main() -> int:
         sub.add_parser(name, help=f"local V2 {name}")
     for name in ("launchpad", "launchpad-stop", "launchpad-status", "launchpad-probe", "launchpad-reset"):
         sub.add_parser(name, help=f"one-command frontend launchpad {name.removeprefix('launchpad-') or 'start'}")
+    real_preview = sub.add_parser("real-preview", help="isolated private real-data preview lifecycle")
+    real_preview.add_argument("action", choices=("up", "status", "probe", "down", "reset"))
     sub.add_parser("test", help="root legacy static/Jest tests").add_argument("--full", action="store_true")
     sub.add_parser("pipeline", help="run Python pipeline tests").add_argument("args", nargs=argparse.REMAINDER)
     sub.add_parser("contracts", help="run contract tests")
@@ -96,6 +99,7 @@ def main() -> int:
     diag.add_argument("output"); diag.add_argument("--manifest-root", default="data/manifests")
     args = p.parse_args(); SUMMARY["command"] = args.command
     if args.command in ("doctor", "preflight"): code = doctor(args)
+    elif args.command == "real-preview": code = run([sys.executable, str(REAL_PREVIEW), args.action], capture=args.json)
     elif args.command in ("up", "down", "status", "probe"): code = run(["powershell", "-ExecutionPolicy", "Bypass", "-File", str(LOCAL_V2), {"up":"start","down":"stop"}.get(args.command,args.command)], capture=args.json)
     elif args.command in ("launchpad", "launchpad-stop", "launchpad-status", "launchpad-probe", "launchpad-reset"):
         launchpad_command = {"launchpad": "start", "launchpad-stop": "stop", "launchpad-status": "status", "launchpad-probe": "probe", "launchpad-reset": "reset"}[args.command]
