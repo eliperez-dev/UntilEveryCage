@@ -1,3 +1,43 @@
-import {describe,expect,it} from 'vitest'; import {parseRoute,serializeRoute} from '../../src/app/routeState';
-describe('routeState',()=>{it('parses home and defaults safely',()=>expect(parseRoute('#/')).toEqual({kind:'home',profile:'curated'}));it('parses location profile',()=>expect(parseRoute('#/locations/syn-north-star?profile=community')).toEqual({kind:'location',facilityId:'syn-north-star',profile:'community'}));it('round-trips routes',()=>{expect(serializeRoute({kind:'home',profile:'curated'})).toBe('#/?profile=curated');expect(parseRoute(serializeRoute({kind:'location',facilityId:'syn-river-meadow',profile:'community'}))).toEqual({kind:'location',facilityId:'syn-river-meadow',profile:'community'});});it('does not guess unsupported paths',()=>expect(parseRoute('#/search?q=eggs')).toEqual({kind:'not-found',fragment:'/search?q=eggs'}));});
-describe('V2 profile routes',()=>it('keeps official, secondary, and community profile names explicit',()=>{for(const profile of ['official','secondary','community'] as const) expect(parseRoute(serializeRoute({kind:'home',profile}))).toEqual({kind:'home',profile});}));
+import { describe, expect, it } from 'vitest';
+import { parseRoute, serializeRoute } from '../../src/app/routeState';
+
+describe('routeState', () => {
+  it('defaults the root and empty hash to the map', () => {
+    expect(parseRoute('')).toEqual({ kind: 'map' });
+    expect(parseRoute('#/')).toEqual({ kind: 'map' });
+    expect(parseRoute('#/map')).toEqual({ kind: 'map' });
+  });
+
+  it('parses the database route', () => {
+    expect(parseRoute('#/database')).toEqual({ kind: 'database' });
+  });
+
+  it('parses record routes and ignores unrelated query parameters', () => {
+    expect(parseRoute('#/records/syn-north-star?source=shared')).toEqual({
+      kind: 'record',
+      facilityId: 'syn-north-star',
+    });
+  });
+
+  it('keeps old location links compatible with record pages', () => {
+    expect(parseRoute('#/locations/syn-river-meadow')).toEqual({
+      kind: 'record',
+      facilityId: 'syn-river-meadow',
+    });
+  });
+
+  it('round-trips canonical routes', () => {
+    expect(serializeRoute({ kind: 'map' })).toBe('#/map');
+    expect(serializeRoute({ kind: 'database' })).toBe('#/database');
+    expect(serializeRoute({ kind: 'record', facilityId: 'syn-river-meadow' })).toBe('#/records/syn-river-meadow');
+  });
+
+  it('supports hash fallback below a preview base path', () => {
+    const previewUrl = new URL('https://example.test/v2-preview/#/records/syn-north-star');
+    expect(parseRoute(previewUrl.hash)).toEqual({ kind: 'record', facilityId: 'syn-north-star' });
+  });
+
+  it('does not guess unsupported paths', () => {
+    expect(parseRoute('#/search?q=eggs')).toEqual({ kind: 'not-found', fragment: '/search?q=eggs' });
+  });
+});
