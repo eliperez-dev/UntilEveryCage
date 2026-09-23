@@ -28,7 +28,9 @@ aggregated by EPA licence. Approximate source points are reduced to a coarse
 publication gates. Environmental activity does not establish slaughter,
 animal use, or current operation.
 
-The checked-in fixture is fully synthetic. The existing real artifact remains
+The checked-in fixture is fully synthetic and supports fixture readiness only.
+Preserved-artifact readiness requires the operator-supplied metadata described
+below. Live one-command E2E readiness is not established: the existing real artifact remains
 ignored and private; its tracked checksum and retrieval metadata are evidence,
 not permission to ingest or publish. Terms remain unresolved, so live and
 assisted acquisition fail closed. No release file is created.

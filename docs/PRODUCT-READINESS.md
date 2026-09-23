@@ -227,10 +227,14 @@ city, unmapped, restricted, and quarantine states, failure isolation, resume,
 idempotent reporting, and the injected candidate-import boundary. The
 disposable Postgres/PostGIS E2E covers 45 synthetic source records, 27 private
 candidate observations, 27 review events, and zero releases; the second run
-inserts no duplicates. These
-results establish fixture, local-artifact, and disposable private-import
-readiness only; they do not establish live acquisition health, publication
-approval, geocoding approval, or a recurring scheduler. See
+inserts no duplicates. The tiers are 9 fixture-ready, 9 preserved-artifact
+contract-ready, and 0/2 new sources live one-command E2E-ready. The checked-in
+inputs are synthetic; SA EPA needs operator-supplied artifact metadata, Italy
+ABP needs a preserved capture and provenance sidecar, and live acquisition
+was not run. Source-specific database exercises establish import idempotency
+and fail-closed validation only, not current acquisition. No live acquisition
+health, publication approval, geocoding approval, or recurring scheduler is
+established. See
 `pipeline/common/refresh_runner.py`,
 `pipeline/sources/first_wave.py`, and
 `pipeline/tests/test_d2_e2e_readiness.py`.
@@ -247,9 +251,11 @@ registers exactly thirteen facility sources (`dk.smiley`, `be.locations`,
 evidence-event sources (`us.aphis` and `us.inspections`).
 
 The mixed sequential rehearsal succeeded for all 15 sources in both fixture
-and local-artifact modes. The live-acquisition rehearsal selected all 15,
-made zero network requests, and failed closed for all 15 because source terms
-and operator authorization are not yet satisfied. Facility adapters use the
+and local-artifact modes, using synthetic or explicitly staged artifacts.
+This is fixture and preserved-artifact orchestration evidence, not proof of
+current acquisition. The live-acquisition rehearsal selected all 15, made zero
+network requests, and failed closed because source terms and operator
+authorization are not yet satisfied. Facility adapters use the
 candidate boundary; APHIS and inspections use the separate private evidence
 sink and cannot enter the facility importer or graph/public release path.
 

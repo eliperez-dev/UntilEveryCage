@@ -19,6 +19,13 @@ existing operator command, authorization boundary, source kind, cadence, and
 control checks. It must report zero network requests and must not contain rows,
 source values, raw artifacts, credentials, or private filesystem paths.
 
+Keep the tiers separate: a fixture contract does not establish a preserved
+current artifact, and a preserved-artifact import does not establish a
+current live one-command E2E. For the two newly integrated sources, the
+current counts are 2 fixture-ready, 2 preserved-artifact contract-ready, and
+0 live one-command E2E-ready. Their live acquisition was not run; synthetic
+PostGIS import checks do not change that count.
+
 ## Source onboarding gate
 
 Before a source can be called `unattended-live-ready`, an authorized operator

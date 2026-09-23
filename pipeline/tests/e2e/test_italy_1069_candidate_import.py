@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -34,6 +35,15 @@ class Italy1069CandidateImportE2E(unittest.TestCase):
         cls.env = cls.env.start()
         cls.temp = tempfile.TemporaryDirectory(prefix="uec-it1069-e2e-")
         cls.root = Path(cls.temp.name)
+        cls.artifact = cls.root / "preserved-abp.csv"
+        shutil.copyfile(FIXTURE, cls.artifact)
+        raw = cls.artifact.read_bytes()
+        (cls.artifact.parent / "acquisition-metadata.json").write_text(json.dumps({
+            "source_url": "https://example.invalid/synthetic-abp.csv",
+            "retrieved_at_utc": "2026-01-02T00:00:00Z",
+            "sha256": hashlib.sha256(raw).hexdigest(), "byte_size": len(raw),
+            "terms_review_reference": "synthetic-e2e-reference",
+        }), encoding="utf-8")
 
     @classmethod
     def tearDownClass(cls):
@@ -49,7 +59,7 @@ class Italy1069CandidateImportE2E(unittest.TestCase):
             manifest_path = max(manifests, key=lambda path: path.stat().st_mtime_ns)
             normalized = manifest_path.parent / "normalized" / "records.jsonl"
             command = [sys.executable, str(IMPORTER), "--manifest", str(manifest_path),
-                       "--normalized", str(normalized), "--raw", str(FIXTURE),
+                       "--normalized", str(normalized), "--raw", str(self.artifact),
                        "--release-id", "candidate-it1069-e2e", "--database-url", database_url,
                        "--disposable-db"]
             result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
@@ -61,7 +71,7 @@ class Italy1069CandidateImportE2E(unittest.TestCase):
 
         return RefreshRunner(RefreshCatalog(), candidate_importer=importer)
 
-    def run_import(self, runner: RefreshRunner, output: Path, *, mode="fixture", artifact=None):
+    def run_import(self, runner: RefreshRunner, output: Path, *, mode="local-artifact", artifact=None):
         return runner.run(RefreshRequest(source_ids=("it.1069-2009",), mode=mode,
             artifact_paths={"it.1069-2009": str(artifact)} if artifact else {},
             output_root=output, import_candidates=True, database_url=self.env.database_url))
@@ -69,8 +79,8 @@ class Italy1069CandidateImportE2E(unittest.TestCase):
     def test_runner_import_rerun_and_schema_failure_preserve_candidate_state(self):
         output = self.root / "runner"
         runner = self.make_runner(output)
-        first = self.run_import(runner, output)
-        second = self.run_import(runner, output)
+        first = self.run_import(runner, output, artifact=self.artifact)
+        second = self.run_import(runner, output, artifact=self.artifact)
         self.assertEqual(first["counts"]["succeeded"], 1)
         self.assertEqual(second["counts"]["succeeded"], 1)
         self.assertEqual(first["results"][0]["summary"]["candidate_import"]["inserted"], 2)

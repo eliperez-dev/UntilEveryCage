@@ -38,7 +38,8 @@ schema, recognition semantics, activity/product codes, and optional links to an
 853 recognition number. It is not included in `it.853-2004`, its row counts,
 identity rules, candidate release, health snapshot, or API filters. A
 provisional `it.1069-2009` adapter now has its own source ID, synthetic fixture,
-private manifest, and shared-runner registration. It accepts only the exact
+private manifest, and shared-runner registration. This establishes fixture
+readiness only; the fixture is not an upstream edition. It accepts only the exact
 synthetic CSV contract documented in `it_1069_adapter.py`; that contract is a
 test seam, not a claim about the Ministry export. The parser preserves category
 and activity codes separately, records status/date uncertainty, quarantines
@@ -47,8 +48,10 @@ source-supplied 853 recognition number is kept only in private source values;
 the normalized cross-source link remains unresolved. Source observation IDs
 do not establish facility identity.
 
-Use fixture mode for the checked-in synthetic artifact or local-artifact mode
-for an operator-preserved artifact matching that exact contract. A local
+Preserved-artifact contract readiness requires an operator capture matching
+that exact contract; live one-command E2E readiness is not established because
+live acquisition is disabled. Use fixture mode for the checked-in synthetic
+artifact or local-artifact mode for an operator-preserved artifact. A local
 artifact requires a sibling `acquisition-metadata.json` with `source_url`,
 `retrieved_at_utc`, `sha256`, `byte_size`, and an opaque
 `terms_review_reference`; the digest and size are checked before parsing, and
