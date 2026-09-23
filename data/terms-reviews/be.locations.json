@@ -1,0 +1,7 @@
+{
+  "decision": "approved",
+  "notes": "Human operator explicitly approved private processing of the FASFC operator list and LAP/PAP activity-code catalogue, subject to public outputs being limited to carefully selected animal-related categories; attribution to FASFC and latest-update date; no misleading presentation or implied endorsement; privacy minimization for possible natural-person records; and strict separation of activity observation counts from deduplicated facility counts. This approval records project authorization only and is not legal advice or a guarantee of third-party rights. Retain private inputs; public map remains separately blocked pending category, privacy, and release review.",
+  "reference": "Human operator approval in Codex task; https://www.foodweb.favv-afsca.be/professionelen/praktisch/opendata/ ; https://data.gov.be/en/datasets/favv-afsca-operators ; https://data.gov.be/en/datasets/fasfc-activity-codes ; https://creativecommons.org/licenses/by/4.0/",
+  "reviewed_at": "2026-09-23T18:34:37Z",
+  "reviewer": "human operator (explicit approval recorded in task)"
+}
