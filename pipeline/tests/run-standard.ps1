@@ -32,6 +32,15 @@ try {
   # The rights proof owns its own disposable PostGIS stack and is mandatory
   # in the canonical standard run; it must never become an accidental skip.
   $env:UEC_RUN_RIGHTS_DB = '1'
+  # The isolated real-preview migration contract also requires PostGIS, but
+  # must not run against the standard contract-seed database. Give it a
+  # dedicated disposable database inside this already-isolated Compose stack.
+  $previewTestDatabase = 'uec_real_preview_test_standard'
+  & docker compose -p $project -f $compose exec -T postgres createdb -U uec $previewTestDatabase
+  if ($LASTEXITCODE -ne 0) { throw "Real-preview test database creation failed (exit $LASTEXITCODE)." }
+  & docker compose -p $project -f $compose exec -T postgres psql -v ON_ERROR_STOP=1 -U uec -d $previewTestDatabase -c 'CREATE EXTENSION postgis'
+  if ($LASTEXITCODE -ne 0) { throw "Real-preview PostGIS extension creation failed (exit $LASTEXITCODE)." }
+  $env:UEC_REAL_PREVIEW_TEST_DATABASE_URL = "postgresql://uec:uec-local-development-only@localhost:$port/$previewTestDatabase"
   python pipeline/tests/run_unittest.py --start-directory pipeline/tests
   if ($LASTEXITCODE -ne 0) { throw "Python tests failed (exit $LASTEXITCODE)." }
 
@@ -40,6 +49,7 @@ try {
 }
 finally {
   Remove-Item Env:UEC_RUN_RIGHTS_DB -ErrorAction SilentlyContinue
+  Remove-Item Env:UEC_REAL_PREVIEW_TEST_DATABASE_URL -ErrorAction SilentlyContinue
   $savedPreference = $ErrorActionPreference
   $ErrorActionPreference = 'Continue'
   & docker compose -p $project -f $compose down -v --remove-orphans *> $null
