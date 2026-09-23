@@ -144,7 +144,7 @@ def pick(row: dict[str, Any], *names: str) -> Any:
     return None
 
 
-def parse_row(source: str, row: Any) -> tuple[str, str, str | None, str | None, str | None, float | None, float | None, str | None, Any, str | None]:
+def parse_row(source: str, row: Any) -> tuple[str, str, str | None, str | None, str | None, float | None, float | None, str | None, Any, bool, str | None]:
     if not isinstance(row, dict):
         raise ImportFailure("row_schema_invalid")
     if row.get("source_id") != source or not isinstance(row.get("normalized"), dict):
@@ -166,6 +166,7 @@ def parse_row(source: str, row: Any) -> tuple[str, str, str | None, str | None, 
     precision = precision_raw.strip().lower() if isinstance(precision_raw, str) else None
     lat = lon = None
     numeric = False
+    zero_pair = False
     has_lat = lat_raw is not None and not (isinstance(lat_raw, str) and not lat_raw.strip())
     has_lon = lon_raw is not None and not (isinstance(lon_raw, str) and not lon_raw.strip())
     if has_lat != has_lon:
@@ -175,8 +176,11 @@ def parse_row(source: str, row: Any) -> tuple[str, str, str | None, str | None, 
             lat, lon = float(lat_raw), float(lon_raw)
         except (TypeError, ValueError):
             lat = lon = None
+        if lat is not None and lon is not None and math.isfinite(lat) and math.isfinite(lon):
+            zero_pair = lat == 0 and lon == 0
         if (lat is not None and lon is not None and math.isfinite(lat) and math.isfinite(lon)
-                and (-90 <= lat <= 90 and -180 <= lon <= 180) and precision in NUMERIC_PRECISIONS):
+                and (-90 <= lat <= 90 and -180 <= lon <= 180) and not zero_pair
+                and precision in NUMERIC_PRECISIONS):
             numeric = True
         else:
             lat = lon = None
@@ -200,7 +204,7 @@ def parse_row(source: str, row: Any) -> tuple[str, str, str | None, str | None, 
         raise ImportFailure("source_group_key_missing")
     if not precision and location_class == "city_postal":
         precision = "city_postal"
-    return str(identifier), location_class, country, city, postal, lat, lon, precision, observed, str(group_key).strip()
+    return str(identifier), location_class, country, city, postal, lat, lon, precision, observed, zero_pair, str(group_key).strip()
 
 
 def hash_snapshot(manifests: dict[str, tuple[Path, dict[str, Any]]]) -> str:
@@ -260,7 +264,7 @@ def public_zero_counts(db: psycopg.Connection) -> tuple[int, int]:
 
 def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: int, snapshot: str) -> tuple[int, int, int, int, int, int, int, int, int, int, int, set[str]]:
     count = unmapped_count = mapped_non_candidate_count = candidate_count = 0
-    parsed_rows: list[tuple[str, str, str | None, str | None, str | None, float | None, float | None, str | None, Any, str | None]] = []
+    parsed_rows: list[tuple[str, str, str | None, str | None, str | None, float | None, float | None, str | None, Any, bool, str | None]] = []
     with path.open("r", encoding="utf-8") as stream:
         for line in stream:
             if not line.strip():
@@ -271,9 +275,15 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
                 raise ImportFailure("row_schema_invalid") from None
             parsed = parse_row(source, record)
             parsed_rows.append(parsed)
-    representatives: dict[str, tuple[str, str, str | None, str | None, str | None, float | None, float | None, str | None, Any, str | None]] = {}
+    representatives: dict[str, tuple[str, str, str | None, str | None, str | None, float | None, float | None, str | None, Any, bool, str | None]] = {}
+    zero_coordinate_groups: set[str] = set()
+    usable_coordinate_groups: set[str] = set()
     for parsed in parsed_rows:
-        identifier, klass, country, city, postal, lat, lon, precision, observed, group_key = parsed
+        identifier, klass, country, city, postal, lat, lon, precision, observed, zero_pair, group_key = parsed
+        if zero_pair:
+            zero_coordinate_groups.add(group_key)
+        if klass == "numeric_source_coordinate":
+            usable_coordinate_groups.add(group_key)
         if klass == "unmapped_private_observation":
             continue
         current = representatives.get(group_key)
@@ -282,16 +292,15 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
         if current is None or rank < current_rank:
             representatives[group_key] = parsed
     numeric_count = coarse_count = 0
-    zero_zero_coordinate_count = precision_unknown_coordinate_count = source_provided_coordinate_count = 0
+    precision_unknown_coordinate_count = source_provided_coordinate_count = 0
     for group_key, chosen in representatives.items():
         numeric_count += chosen[1] == "numeric_source_coordinate"
         coarse_count += chosen[1] == "city_postal"
         if chosen[1] == "numeric_source_coordinate":
-            zero_zero_coordinate_count += chosen[5] == 0 and chosen[6] == 0
             precision_unknown_coordinate_count += chosen[7] == "source-precision-unknown"
             source_provided_coordinate_count += chosen[7] == "source-provided"
     for parsed in parsed_rows:
-        identifier, klass, country, city, postal, lat, lon, precision, observed, group_key = parsed
+        identifier, klass, country, city, postal, lat, lon, precision, observed, _, group_key = parsed
         candidate = group_key in representatives and representatives[group_key][0] == identifier
         db.execute(
                 """INSERT INTO real_preview.observations
@@ -309,7 +318,7 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
     for parsed in parsed_rows:
         observations_per_group[parsed[-1]] = observations_per_group.get(parsed[-1], 0) + 1
     for group_key, chosen in representatives.items():
-        identifier, klass, country, city, postal, lat, lon, precision, _, _ = chosen
+        identifier, klass, country, city, postal, lat, lon, precision, _, _, _ = chosen
         preview_id = db.execute(
             "SELECT preview_id FROM real_preview.observations WHERE snapshot_sha256=%s AND source_id=%s AND source_identifier=%s",
             (snapshot, source, identifier),
@@ -321,7 +330,8 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
             (snapshot, source, group_key, preview_id, klass, country, city, postal, lat, lon, precision, observations_per_group[group_key]),
         )
     group_keys = set(representatives)
-    return count, numeric_count, coarse_count, candidate_count, unmapped_count, mapped_non_candidate_count, len(group_keys), len(parsed_rows), zero_zero_coordinate_count, precision_unknown_coordinate_count, source_provided_coordinate_count, group_keys
+    rejected_zero_coordinates = len(zero_coordinate_groups - usable_coordinate_groups)
+    return count, numeric_count, coarse_count, candidate_count, unmapped_count, mapped_non_candidate_count, len(group_keys), len(parsed_rows), rejected_zero_coordinates, precision_unknown_coordinate_count, source_provided_coordinate_count, group_keys
 
 
 def run(root: Path, database_url: str) -> dict[str, Any]:
@@ -348,6 +358,7 @@ def run(root: Path, database_url: str) -> dict[str, Any]:
     numeric_by_source: dict[str, int] = {}
     coarse_by_source: dict[str, int] = {}
     candidate_by_source: dict[str, int] = {}
+    rejected_zero_by_source: dict[str, int] = {}
     group_keys_by_source: dict[str, set[str]] = {}
     with psycopg.connect(database_url) as db, db.transaction():
         total_expected = sum(value for value in expected.values() if isinstance(value, int))
@@ -377,12 +388,14 @@ def run(root: Path, database_url: str) -> dict[str, Any]:
             numeric_by_source[source] = exact
             coarse_by_source[source] = coarse_rows
             candidate_by_source[source] = candidate_rows
+            rejected_zero_by_source[source] = zero_zero_rows
             group_keys_by_source[source] = group_keys
         expected_coordinates = readiness.get("coordinate_states", {})
         expected_numeric_by_source = expected_coordinates.get("numeric_coordinate", {}).get("by_source", {})
         expected_coarse_by_source = expected_coordinates.get("city_or_postal_geocode", {}).get("by_source", {})
         expected_numeric = expected_coordinates.get("numeric_coordinate", {}).get("total")
         expected_coarse = expected_coordinates.get("city_or_postal_geocode", {}).get("total")
+        expected_rejected_zero = expected_coordinates.get("rejected_zero_coordinates", {})
         expected_candidate_by_source = readiness.get("candidates", {}).get("by_source", {})
         derived_by_readiness_source = {
             "fr.dgal.union": ("fr.dgal.section-i", "fr.dgal.section-ii"),
@@ -407,6 +420,10 @@ def run(root: Path, database_url: str) -> dict[str, Any]:
         )
         if (union_numeric, union_coarse) != (expected_numeric, expected_coarse) or union_candidates != readiness.get("candidates", {}).get("total") or not source_aggregates_match:
             raise ImportFailure("readiness_location_mismatch")
+        if (zero_zero_coordinates != expected_rejected_zero.get("total")
+                or {source: count for source, count in rejected_zero_by_source.items() if count}
+                != expected_rejected_zero.get("by_source", {})):
+            raise ImportFailure("readiness_zero_coordinate_mismatch")
         public_release_count, public_projection_count = public_zero_counts(db)
     return {"status": "imported", "observation_count": total, "facility_candidate_count": candidates,
             "source_scoped_candidate_count": candidates, "france_source_scoped_group_count": france_source_groups,
@@ -415,7 +432,9 @@ def run(root: Path, database_url: str) -> dict[str, Any]:
             "approximate_coordinate_group_count": numeric,
             "source_precision_unknown_group_count": precision_unknown_coordinates,
             "source_provided_coordinate_group_count": source_provided_coordinates,
-            "zero_zero_coordinate_group_count": zero_zero_coordinates,
+            "rejected_zero_coordinates": zero_zero_coordinates,
+            "rejected_zero_coordinates_by_source": rejected_zero_by_source,
+            "coordinate_groups": numeric,
             "union_numeric_coordinate_count": union_numeric, "union_city_postal_count": union_coarse,
             "unmapped_observation_count": unmapped, "mapped_non_candidate_observation_count": mapped_non_candidates,
             "source_artifact_hash_verification": "unavailable_private_artifact_not_retained",

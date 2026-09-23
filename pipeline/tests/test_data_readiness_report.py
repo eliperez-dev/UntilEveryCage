@@ -8,7 +8,7 @@ from pipeline.scripts.maintenance.rehearse_candidate_private_frontend import reh
 
 BASE = {
     "fsis": {"candidate_count": 7241, "numeric_coordinate_count": 7241, "city_geocode_count": 0},
-    "italy": {"observation_count": 41849, "provisional_identity_count": 25316, "numeric_coordinate_count": 24749, "city_only_count": 567},
+    "italy": {"observation_count": 41849, "provisional_identity_count": 25316, "numeric_coordinate_count": 24263, "city_only_count": 1053, "rejected_zero_coordinate_count": 486},
     "france": {"section_i_count": 1449, "section_ii_count": 1068, "union_candidate_count": 2283, "numeric_coordinate_count": 0, "city_postal_count": 2283},
     "denmark": {"observation_count": 58766, "validation_finding_count": 57, "legacy_v1_count": 1561},
 }
@@ -26,8 +26,9 @@ class DataReadinessReportTests(unittest.TestCase):
         self.assertFalse(manifest["private_payloads_included"])
         self.assertTrue(manifest["fixture_contract"]["no_auto_source_selection"])
         self.assertEqual(manifest["candidates"]["total"], 34840)
-        self.assertEqual(manifest["coordinate_states"]["numeric_coordinate"]["total"], 31990)
-        self.assertEqual(manifest["coordinate_states"]["city_or_postal_geocode"]["total"], 2850)
+        self.assertEqual(manifest["coordinate_states"]["numeric_coordinate"]["total"], 31504)
+        self.assertEqual(manifest["coordinate_states"]["city_or_postal_geocode"]["total"], 3336)
+        self.assertEqual(manifest["coordinate_states"]["rejected_zero_coordinates"]["total"], 486)
 
     def test_private_rehearsal_is_offline_and_fail_closed_when_handoffs_are_unavailable(self):
         path = Path(__file__).parents[2] / "data" / "manifests" / "current-reacquisition-2026-09-16.json"
@@ -41,8 +42,9 @@ class DataReadinessReportTests(unittest.TestCase):
     def test_requested_counts_reconcile_and_publication_is_blocked(self):
         report = build_report(**BASE)
         self.assertEqual(report["candidates"]["total"], 34840)
-        self.assertEqual(report["coordinate_states"]["numeric_coordinate"]["total"], 31990)
-        self.assertEqual(report["coordinate_states"]["city_or_postal_geocode"]["total"], 2850)
+        self.assertEqual(report["coordinate_states"]["numeric_coordinate"]["total"], 31504)
+        self.assertEqual(report["coordinate_states"]["city_or_postal_geocode"]["total"], 3336)
+        self.assertEqual(report["coordinate_states"]["rejected_zero_coordinates"]["total"], 486)
         self.assertEqual(report["publication"]["public_api_rows"], 0)
         self.assertEqual(report["publication"]["publication_eligibility"], "blocked")
 
@@ -60,7 +62,7 @@ class DataReadinessReportTests(unittest.TestCase):
         self.assertTrue(report["quarantine"]["unknown_is_not_zero"])
 
     def test_drift_fails_closed(self):
-        changed = {**BASE, "italy": {**BASE["italy"], "city_only_count": 568}}
+        changed = {**BASE, "italy": {**BASE["italy"], "city_only_count": 1054}}
         with self.assertRaises(DataReadinessError):
             build_report(**changed)
 

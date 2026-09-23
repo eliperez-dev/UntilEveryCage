@@ -20,16 +20,17 @@
   "coordinate_states": {
     "numeric_coordinate": {
       "us.fsis": 7241,
-      "it.853-2004": 24749,
+      "it.853-2004": 24263,
       "fr.dgal.union": 0,
-      "total": 31990
+      "total": 31504
     },
     "city_or_postal_geocode": {
       "us.fsis": 0,
-      "it.853-2004": 567,
+      "it.853-2004": 1053,
       "fr.dgal.union": 2283,
-      "total": 2850
+      "total": 3336
     },
+    "rejected_zero_coordinates": {"it.853-2004": 486, "total": 486},
     "dk.smiley": {
       "unresolved": 58766,
       "approved_numeric_coordinate": 0,

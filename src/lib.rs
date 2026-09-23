@@ -526,7 +526,21 @@ fn real_preview_unavailable() -> Response<axum::body::Body> {
 }
 
 fn real_preview_candidate(row: &tokio_postgres::Row) -> Value {
-    let kind: String = row.get("location_class");
+    let stored_kind: String = row.get("location_class");
+    let stored_latitude: Option<f64> = row.get("latitude");
+    let stored_longitude: Option<f64> = row.get("longitude");
+    let city: Option<String> = row.get("city");
+    let postal_code: Option<String> = row.get("postal_code");
+    let (kind, latitude, longitude) = safe_real_preview_location(
+        &stored_kind,
+        city.as_deref()
+            .is_some_and(|value| !value.trim().is_empty()),
+        postal_code
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty()),
+        stored_latitude,
+        stored_longitude,
+    );
     json!({
         "candidate_id": row.get::<_, uuid::Uuid>("candidate_id"),
         "source_id": row.get::<_, String>("source_id"),
@@ -539,11 +553,11 @@ fn real_preview_candidate(row: &tokio_postgres::Row) -> Value {
             }
         } else { "city_postal_coarse" },
         "country_code": row.get::<_, Option<String>>("country_code"),
-        "city": row.get::<_, Option<String>>("city"),
-        "postal_code": row.get::<_, Option<String>>("postal_code"),
-        "latitude": row.get::<_, Option<f64>>("latitude"),
-        "longitude": row.get::<_, Option<f64>>("longitude"),
-        "coordinate_precision": row.get::<_, Option<String>>("coordinate_precision"),
+        "city": city,
+        "postal_code": postal_code,
+        "latitude": latitude,
+        "longitude": longitude,
+        "coordinate_precision": if stored_kind == "numeric_source_coordinate" && kind != stored_kind { None::<String> } else { row.get::<_, Option<String>>("coordinate_precision") },
         "coordinate_review_status": if kind == "numeric_source_coordinate" { "pending_human_privacy_review" } else { "coarse_non_point" },
         "factual_review_status": "not_reviewed",
         "privacy_screening_status": "pending",
@@ -551,6 +565,32 @@ fn real_preview_candidate(row: &tokio_postgres::Row) -> Value {
         "publication_status": "not_published",
         "preview_label": "Private real V2 candidate — not project-approved or published"
     })
+}
+
+fn safe_real_preview_location(
+    stored_kind: &str,
+    has_city: bool,
+    has_postal: bool,
+    latitude: Option<f64>,
+    longitude: Option<f64>,
+) -> (String, Option<f64>, Option<f64>) {
+    let usable_numeric = latitude.zip(longitude).is_some_and(|(lat, lon)| {
+        lat.is_finite()
+            && lon.is_finite()
+            && (-90.0..=90.0).contains(&lat)
+            && (-180.0..=180.0).contains(&lon)
+            && (lat != 0.0 || lon != 0.0)
+    });
+    match (stored_kind, usable_numeric) {
+        ("numeric_source_coordinate", true) => (stored_kind.to_owned(), latitude, longitude),
+        ("numeric_source_coordinate", false) if has_city || has_postal => {
+            ("city_postal".into(), None, None)
+        }
+        ("numeric_source_coordinate", false) => ("unmapped_private_observation".into(), None, None),
+        ("city_postal", _) if has_city || has_postal => ("city_postal".into(), None, None),
+        ("city_postal", _) => ("unmapped_private_observation".into(), None, None),
+        _ => (stored_kind.to_owned(), None, None),
+    }
 }
 
 pub async fn get_real_preview_list_handler(
@@ -584,7 +624,7 @@ pub async fn get_real_preview_list_handler(
         .take(100)
         .collect::<String>();
     let rows = match client.query(
-        "SELECT candidate_id,source_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision FROM real_preview.candidates WHERE ($1::uuid IS NULL OR candidate_id > $1) AND ($2='' OR city ILIKE '%' || $2 || '%' OR postal_code ILIKE '%' || $2 || '%') ORDER BY candidate_id LIMIT $3",
+        "SELECT candidate_id,source_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision FROM real_preview.candidates WHERE ((location_class='city_postal' AND (NULLIF(BTRIM(city),'') IS NOT NULL OR NULLIF(BTRIM(postal_code),'') IS NOT NULL)) OR (location_class='numeric_source_coordinate' AND ((latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180 AND (latitude<>0 OR longitude<>0)) OR ((NULLIF(BTRIM(city),'') IS NOT NULL OR NULLIF(BTRIM(postal_code),'') IS NOT NULL) AND NOT (latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180 AND (latitude<>0 OR longitude<>0))))) ) AND ($1::uuid IS NULL OR candidate_id > $1) AND ($2='' OR city ILIKE '%' || $2 || '%' OR postal_code ILIKE '%' || $2 || '%') ORDER BY candidate_id LIMIT $3",
         &[&cursor, &query, &limit],
     ).await { Ok(rows) => rows, Err(_) => return real_preview_unavailable() };
     let data: Vec<Value> = rows.iter().map(real_preview_candidate).collect();
@@ -630,7 +670,7 @@ pub async fn get_real_preview_viewport_handler(
         return real_preview_unavailable();
     };
     let rows = match client.query(
-        "SELECT candidate_id,source_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision FROM real_preview.candidates WHERE location_class='numeric_source_coordinate' AND longitude BETWEEN $1 AND $3 AND latitude BETWEEN $2 AND $4 AND ($5::uuid IS NULL OR candidate_id > $5) ORDER BY candidate_id LIMIT $6",
+        "SELECT candidate_id,source_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision FROM real_preview.candidates WHERE location_class='numeric_source_coordinate' AND latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180 AND (latitude<>0 OR longitude<>0) AND longitude BETWEEN $1 AND $3 AND latitude BETWEEN $2 AND $4 AND ($5::uuid IS NULL OR candidate_id > $5) ORDER BY candidate_id LIMIT $6",
         &[&params.west,&params.south,&params.east,&params.north,&params.cursor,&limit],
     ).await { Ok(rows) => rows, Err(_) => return real_preview_unavailable() };
     let data: Vec<Value> = rows.iter().map(real_preview_candidate).collect();
@@ -657,7 +697,7 @@ pub async fn get_real_preview_detail_handler(
     let Ok(client) = pool.get().await else {
         return real_preview_unavailable();
     };
-    let row = match client.query_opt("SELECT candidate_id,source_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision FROM real_preview.candidates WHERE candidate_id=$1", &[&id]).await { Ok(row) => row, Err(_) => return real_preview_unavailable() };
+    let row = match client.query_opt("SELECT candidate_id,source_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision FROM real_preview.candidates WHERE candidate_id=$1 AND ((location_class='city_postal' AND (NULLIF(BTRIM(city),'') IS NOT NULL OR NULLIF(BTRIM(postal_code),'') IS NOT NULL)) OR (location_class='numeric_source_coordinate' AND ((latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180 AND (latitude<>0 OR longitude<>0)) OR ((NULLIF(BTRIM(city),'') IS NOT NULL OR NULLIF(BTRIM(postal_code),'') IS NOT NULL) AND NOT (latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180 AND (latitude<>0 OR longitude<>0))))) )", &[&id]).await { Ok(row) => row, Err(_) => return real_preview_unavailable() };
     match row {
         Some(row) => real_preview_response(
             StatusCode::OK,
@@ -684,7 +724,7 @@ pub async fn get_real_preview_facets_handler(
     let Ok(client) = pool.get().await else {
         return real_preview_unavailable();
     };
-    let rows = match client.query("SELECT source_id,location_class,count(*)::bigint FROM real_preview.candidates GROUP BY source_id,location_class ORDER BY source_id,location_class", &[]).await { Ok(rows) => rows, Err(_) => return real_preview_unavailable() };
+    let rows = match client.query("SELECT source_id,CASE WHEN location_class='numeric_source_coordinate' AND NOT (latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180 AND (latitude<>0 OR longitude<>0)) THEN 'city_postal' ELSE location_class END AS safe_location_class,count(*)::bigint FROM real_preview.candidates WHERE (location_class='city_postal' AND (NULLIF(BTRIM(city),'') IS NOT NULL OR NULLIF(BTRIM(postal_code),'') IS NOT NULL)) OR (location_class='numeric_source_coordinate' AND ((latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180 AND (latitude<>0 OR longitude<>0)) OR ((NULLIF(BTRIM(city),'') IS NOT NULL OR NULLIF(BTRIM(postal_code),'') IS NOT NULL) AND NOT (latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180 AND (latitude<>0 OR longitude<>0))))) GROUP BY source_id,safe_location_class ORDER BY source_id,safe_location_class", &[]).await { Ok(rows) => rows, Err(_) => return real_preview_unavailable() };
     let data: Vec<Value> = rows.iter().map(|row| json!({"source_id":row.get::<_,String>(0),"location_class":row.get::<_,String>(1),"count":row.get::<_,i64>(2)})).collect();
     real_preview_response(
         StatusCode::OK,
@@ -705,7 +745,7 @@ pub async fn get_real_preview_counts_handler(
     let Ok(client) = pool.get().await else {
         return real_preview_unavailable();
     };
-    let row = match client.query_one("SELECT count(*)::bigint,count(*) FILTER (WHERE location_class='numeric_source_coordinate')::bigint,count(*) FILTER (WHERE location_class='city_postal')::bigint FROM real_preview.candidates", &[]).await { Ok(row) => row, Err(_) => return real_preview_unavailable() };
+    let row = match client.query_one("SELECT count(*)::bigint,count(*) FILTER (WHERE location_class='numeric_source_coordinate' AND latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180 AND (latitude<>0 OR longitude<>0))::bigint,count(*) FILTER (WHERE (location_class='city_postal' AND (NULLIF(BTRIM(city),'') IS NOT NULL OR NULLIF(BTRIM(postal_code),'') IS NOT NULL)) OR (location_class='numeric_source_coordinate' AND (NULLIF(BTRIM(city),'') IS NOT NULL OR NULLIF(BTRIM(postal_code),'') IS NOT NULL) AND NOT (latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180 AND (latitude<>0 OR longitude<>0))))::bigint FROM real_preview.candidates WHERE (location_class='city_postal' AND (NULLIF(BTRIM(city),'') IS NOT NULL OR NULLIF(BTRIM(postal_code),'') IS NOT NULL)) OR (location_class='numeric_source_coordinate' AND ((latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180 AND (latitude<>0 OR longitude<>0)) OR NULLIF(BTRIM(city),'') IS NOT NULL OR NULLIF(BTRIM(postal_code),'') IS NOT NULL))", &[]).await { Ok(row) => row, Err(_) => return real_preview_unavailable() };
     real_preview_response(
         StatusCode::OK,
         json!({"api_version":"real-preview-v1","data":{"facility_candidate_count":row.get::<_,i64>(0),"numeric_coordinate_count":row.get::<_,i64>(1),"city_postal_count":row.get::<_,i64>(2)},"meta":{"private_preview":true}}),
@@ -2053,6 +2093,68 @@ mod v2_api_tests {
     };
     use tokio_postgres::NoTls;
     use tower::ServiceExt;
+
+    #[test]
+    fn real_preview_never_exposes_zero_or_invalid_coordinates_as_points() {
+        assert_eq!(
+            safe_real_preview_location(
+                "numeric_source_coordinate",
+                true,
+                false,
+                Some(0.0),
+                Some(0.0)
+            ),
+            ("city_postal".into(), None, None)
+        );
+        assert_eq!(
+            safe_real_preview_location(
+                "numeric_source_coordinate",
+                false,
+                false,
+                Some(0.0),
+                Some(0.0)
+            ),
+            ("unmapped_private_observation".into(), None, None)
+        );
+        assert_eq!(
+            safe_real_preview_location(
+                "numeric_source_coordinate",
+                false,
+                true,
+                Some(91.0),
+                Some(181.0)
+            ),
+            ("city_postal".into(), None, None)
+        );
+        assert_eq!(
+            safe_real_preview_location(
+                "numeric_source_coordinate",
+                false,
+                false,
+                Some(91.0),
+                Some(181.0)
+            ),
+            ("unmapped_private_observation".into(), None, None)
+        );
+        assert_eq!(
+            safe_real_preview_location(
+                "numeric_source_coordinate",
+                false,
+                false,
+                Some(45.0),
+                Some(12.0)
+            ),
+            ("numeric_source_coordinate".into(), Some(45.0), Some(12.0))
+        );
+        assert_eq!(
+            safe_real_preview_location("city_postal", true, false, Some(0.0), Some(0.0)),
+            ("city_postal".into(), None, None)
+        );
+        assert_eq!(
+            safe_real_preview_location("city_postal", false, false, None, None),
+            ("unmapped_private_observation".into(), None, None)
+        );
+    }
 
     async fn test_state() -> ApiState {
         let mut config = deadpool_postgres::Config::new();

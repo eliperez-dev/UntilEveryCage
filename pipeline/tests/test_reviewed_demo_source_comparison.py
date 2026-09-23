@@ -7,7 +7,7 @@ from pipeline.scripts.diagnostics.data_readiness_report import build_report, Dat
 def _report():
     return build_report(
         fsis={"candidate_count": 7241, "numeric_coordinate_count": 7241, "city_geocode_count": 0},
-        italy={"observation_count": 41849, "provisional_identity_count": 25316, "numeric_coordinate_count": 24749, "city_only_count": 567},
+        italy={"observation_count": 41849, "provisional_identity_count": 25316, "numeric_coordinate_count": 24263, "city_only_count": 1053, "rejected_zero_coordinate_count": 486},
         france={"section_i_count": 1449, "section_ii_count": 1068, "union_candidate_count": 2283, "numeric_coordinate_count": 0, "city_postal_count": 2283},
         denmark={"observation_count": 58766, "validation_finding_count": 57, "legacy_v1_count": 1561},
     )

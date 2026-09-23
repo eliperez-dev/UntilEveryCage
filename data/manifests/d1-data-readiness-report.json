@@ -13,11 +13,11 @@
     "city_or_postal_geocode": {
       "by_source": {
         "fr.dgal.union": 2283,
-        "it.853-2004": 567,
+        "it.853-2004": 1053,
         "us.fsis": 0
       },
       "display_precision": "city-or-postal; never an exact facility point",
-      "total": 2850
+      "total": 3336
     },
     "denmark": {
       "approved_numeric_coordinates": 0,
@@ -28,11 +28,18 @@
     "numeric_coordinate": {
       "by_source": {
         "fr.dgal.union": 0,
-        "it.853-2004": 24749,
+        "it.853-2004": 24263,
         "us.fsis": 7241
       },
       "review_state": "pending human coordinate/privacy review",
-      "total": 31990
+      "total": 31504
+    },
+    "rejected_zero_coordinates": {
+      "by_source": {
+        "it.853-2004": 486
+      },
+      "meaning": "source-scoped candidate groups with a zero/zero pair and no usable non-zero coordinate pair; actual city values permit coarse placement",
+      "total": 486
     }
   },
   "corpus_state": "row-free-real-data-shaped-private-readiness",

@@ -43,6 +43,46 @@ class RealPreviewImporterTests(unittest.TestCase):
         with self.assertRaises(IMPORTER.ImportFailure):
             IMPORTER.parse_row("it.853-2004", {"source_id": "it.853-2004", "source_record_key": "x", "normalized": {"recognition_number": "x", "coordinates": {"latitude": 44.1}}})
 
+    def test_zero_and_out_of_range_coordinates_are_never_numeric_map_points(self):
+        zero_with_city = IMPORTER.parse_row("it.853-2004", {
+            "source_id": "it.853-2004", "source_record_key": "zero-city",
+            "normalized": {"recognition_number": "group-zero-city", "city": "Example",
+                "coordinate_precision": "source-precision-unknown"},
+            "source_values": {"latitudine": "0", "longitudine": "0"},
+        })
+        self.assertEqual(zero_with_city[1], "city_postal")
+        self.assertIsNone(zero_with_city[5])
+        self.assertIsNone(zero_with_city[6])
+        self.assertTrue(zero_with_city[9])
+
+        zero_without_placement = IMPORTER.parse_row("it.853-2004", {
+            "source_id": "it.853-2004", "source_record_key": "zero-unmapped",
+            "normalized": {"recognition_number": "group-zero-unmapped",
+                "coordinate_precision": "source-precision-unknown"},
+            "source_values": {"latitudine": "0", "longitudine": "0"},
+        })
+        self.assertEqual(zero_without_placement[1], "unmapped_private_observation")
+        self.assertIsNone(zero_without_placement[5])
+        self.assertIsNone(zero_without_placement[6])
+
+        invalid_with_city = IMPORTER.parse_row("fr.dgal.section-i", {
+            "source_id": "fr.dgal.section-i", "source_record_key": "invalid-city",
+            "normalized": {"establishment_id": "group-invalid-city", "city": "Example",
+                "coordinates": {"latitude": 91, "longitude": 181, "precision": "numeric"}},
+        })
+        self.assertEqual(invalid_with_city[1], "city_postal")
+        self.assertIsNone(invalid_with_city[5])
+        self.assertIsNone(invalid_with_city[6])
+
+        invalid_without_placement = IMPORTER.parse_row("fr.dgal.section-i", {
+            "source_id": "fr.dgal.section-i", "source_record_key": "invalid-unmapped",
+            "normalized": {"establishment_id": "group-invalid-unmapped",
+                "coordinates": {"latitude": 91, "longitude": 181, "precision": "numeric"}},
+        })
+        self.assertEqual(invalid_without_placement[1], "unmapped_private_observation")
+        self.assertIsNone(invalid_without_placement[5])
+        self.assertIsNone(invalid_without_placement[6])
+
     def test_artifact_hash_is_streamed_and_detected(self):
         with tempfile.TemporaryDirectory(dir=MODULE_PATH.parents[3]) as directory:
             path = Path(directory) / "fixture.jsonl"

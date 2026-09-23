@@ -93,6 +93,7 @@ def build_report(
             "provisional_identity_count",
             "numeric_coordinate_count",
             "city_only_count",
+            "rejected_zero_coordinate_count",
         ),
     )
     france = _source(
@@ -113,7 +114,7 @@ def build_report(
         raise DataReadinessError("FSIS city-geocode count must remain zero")
     if italy["observation_count"] != 41849 or italy["provisional_identity_count"] != 25316:
         raise DataReadinessError("Italy observation/provisional identity totals changed")
-    if italy["numeric_coordinate_count"] != 24749 or italy["city_only_count"] != 567:
+    if (italy["numeric_coordinate_count"], italy["city_only_count"], italy["rejected_zero_coordinate_count"]) != (24263, 1053, 486):
         raise DataReadinessError("Italy coordinate-state totals changed")
     if france["section_i_count"] != 1449 or france["section_ii_count"] != 1068:
         raise DataReadinessError("France section totals changed")
@@ -137,7 +138,7 @@ def build_report(
         + france["numeric_coordinate_count"]
     )
     city_total = fsis["city_geocode_count"] + italy["city_only_count"] + france["city_postal_count"]
-    if (candidate_total, numeric_total, city_total) != (34840, 31990, 2850):
+    if (candidate_total, numeric_total, city_total) != (34840, 31504, 3336):
         raise DataReadinessError("D1 total arithmetic does not reconcile")
 
     report: dict[str, Any] = {
@@ -225,6 +226,11 @@ def build_report(
                 "total": city_total,
                 "display_precision": "city-or-postal; never an exact facility point",
             },
+            "rejected_zero_coordinates": {
+                "by_source": {"it.853-2004": italy["rejected_zero_coordinate_count"]},
+                "total": italy["rejected_zero_coordinate_count"],
+                "meaning": "source-scoped candidate groups with a zero/zero pair and no usable non-zero coordinate pair; actual city values permit coarse placement",
+            },
             "denmark": {
                 "source_id": "dk.smiley",
                 "unresolved_observations": denmark["observation_count"],
@@ -276,7 +282,7 @@ def main() -> int:
     args = parser.parse_args()
     report = build_report(
         fsis={"candidate_count": 7241, "numeric_coordinate_count": 7241, "city_geocode_count": 0},
-        italy={"observation_count": 41849, "provisional_identity_count": 25316, "numeric_coordinate_count": 24749, "city_only_count": 567},
+        italy={"observation_count": 41849, "provisional_identity_count": 25316, "numeric_coordinate_count": 24263, "city_only_count": 1053, "rejected_zero_coordinate_count": 486},
         france={"section_i_count": 1449, "section_ii_count": 1068, "union_candidate_count": 2283, "numeric_coordinate_count": 0, "city_postal_count": 2283},
         denmark={"observation_count": 58766, "validation_finding_count": 57, "legacy_v1_count": 1561},
     )
