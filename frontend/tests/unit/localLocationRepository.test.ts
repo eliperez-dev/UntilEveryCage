@@ -28,6 +28,19 @@ describe('LocalLocationRepository query contract', () => {
     expect(request).toContain('limit=10');
     expect(request).not.toContain('cursor=');
   });
+
+  it('keeps global search and bounded viewport queries separate', async () => {
+    const globalFetcher = vi.fn().mockResolvedValue(response(envelope()));
+    const viewportFetcher = vi.fn().mockResolvedValue(response(envelope()));
+    await new LocalLocationRepository(globalFetcher).list('official', { q: 'North Coast' });
+    await new LocalLocationRepository(viewportFetcher).list('official', { min_lon: 8, min_lat: 54, max_lon: 13, max_lat: 58 });
+    const globalRequest = new URL(String(globalFetcher.mock.calls[0]?.[0]), 'https://example.test');
+    const viewportRequest = new URL(String(viewportFetcher.mock.calls[0]?.[0]), 'https://example.test');
+    expect(globalRequest.searchParams.get('q')).toBe('North Coast');
+    expect(['min_lon', 'min_lat', 'max_lon', 'max_lat'].some(key => globalRequest.searchParams.has(key))).toBe(false);
+    expect(viewportRequest.searchParams.has('q')).toBe(false);
+    expect(['min_lon', 'min_lat', 'max_lon', 'max_lat'].every(key => viewportRequest.searchParams.has(key))).toBe(true);
+  });
 });
 
 describe('current V2 wire edge cases', () => {
