@@ -39,13 +39,13 @@ class D2E2EReadinessTests(unittest.TestCase):
         all_report = build_report()
         self.assertEqual(all_report["scope"]["eligible_sources"], list(D2_SOURCE_IDS))
         self.assertEqual(all_report["scope"]["selected_sources"], list(D2_SOURCE_IDS))
-        self.assertEqual(all_report["aggregate"]["passed_sources"], 7)
-        self.assertEqual(all_report["aggregate"]["candidate_rows"], 21)
+        self.assertEqual(all_report["aggregate"]["passed_sources"], 9)
+        self.assertEqual(all_report["aggregate"]["candidate_rows"], 27)
 
     def test_failure_is_isolated_and_aggregate_is_nonzero(self):
         report = build_report(fail_source="ca.ontario.meat-plants")
         self.assertEqual(report["aggregate"]["failed_sources"], 1)
-        self.assertEqual(report["aggregate"]["passed_sources"], 6)
+        self.assertEqual(report["aggregate"]["passed_sources"], 8)
         self.assertEqual(report["aggregate"]["exit_code"], 1)
         failed = next(item for item in report["sources"] if item["source_id"] == "ca.ontario.meat-plants")
         self.assertEqual(failed["failure_category"], "injected_fixture_failure")
@@ -56,7 +56,7 @@ class D2E2EReadinessTests(unittest.TestCase):
         resumed = build_report(resume_report=first)
         statuses = {item["source_id"]: item["status"] for item in resumed["sources"]}
         self.assertEqual(statuses["fr.dgal.section-i"], "passed")
-        self.assertEqual(sum(status == "resumed" for status in statuses.values()), 6)
+        self.assertEqual(sum(status == "resumed" for status in statuses.values()), 8)
         self.assertEqual(resumed["aggregate"]["failed_sources"], 0)
         self.assertEqual(resumed["aggregate"]["exit_code"], 0)
 

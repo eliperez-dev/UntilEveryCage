@@ -64,9 +64,21 @@ metadata, terms evidence, raw hash/bytes, and supplied file/catalog dates;
 normalized, quarantined, QA, run-status, and private-health evidence. The
 candidate importer and guarded test-only API are explicit development steps;
 they do not promote a release or authorize publication. Regulation 1069/2009
-is registered as `it.1069-2009` but intentionally has no adapter, shared
-counts, candidate release, or API integration. A future link between the two
-must be a reviewed identity/link event, not a union by recognition number.
+is registered as `it.1069-2009` and now has a provisional synthetic-contract
+adapter wired to the shared runner. It has no verified upstream mapping,
+acquisition, source counts, or API integration. The fixture/local adapter is
+strictly a deterministic test seam and fails closed unless the supplied CSV
+matches its explicit synthetic contract. A future link between the two must be
+a reviewed identity/link event, not a union by recognition number.
+
+The ABP adapter represents source observation IDs, category codes, activity
+codes, statuses, and effective dates as separate source dimensions. Category
+and activity vocabularies remain unmapped; normalized facility identity and
+cross-source links remain unset. A local source artifact must not be used until
+its schema and codebooks are verified and an adapter version specifically
+models that evidence. Current blocker: no authorized preserved 1069 artifact
+or schema/codebook/terms evidence is available in this worktree, so upstream
+field mapping and live acquisition cannot be responsibly implemented.
 
 ## Limitations
 

@@ -1,0 +1,3 @@
+source_observation_id,abp_category_code,source_activity_code,source_status,effective_date,linked_853_recognition_number
+SYNTH-ABP-001,CAT-A,ACT-01,active,2026-01-01,
+SYNTH-ABP-002,CAT-B,ACT-02,unknown,,SYNTH-853-ONLY-NO-LINK

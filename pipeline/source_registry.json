@@ -164,12 +164,12 @@
       "jurisdiction_scope": "Italy; Ministry of Health establishments for animal by-products under Regulation (EC) 1069/2009",
       "legacy_paths": [],
       "url": "https://www.dati.salute.gov.it/it/dataset/stabilimenti-italiani-i-sottoprodotti-di-origine-animale/",
-      "access_method": "not acquired; separate catalog candidate",
+      "access_method": "operator-preserved local artifact only until catalog export schema, terms, and semantics are verified",
       "cadence": "daily",
-      "attribution_licensing_notes": "Separate Ministry catalog and Italian Open Data Licence v2.0 indication; no adapter or publication decision.",
-      "adapter_status": "not_started",
-      "expected_artifact_schema": "separate catalog CSV/XML/JSON schema; do not union with 853/2004",
-      "blockers": ["Assess scope, terms, schema, identity/link semantics, privacy, and whether this source belongs in the project before acquisition."]
+      "attribution_licensing_notes": "Separate Ministry catalog and Italian Open Data Licence v2.0 indication; verify file-specific terms and privacy before any use.",
+      "adapter_status": "implemented_partial",
+      "expected_artifact_schema": "provisional synthetic CSV contract only; upstream schema unverified; parser fails closed on drift",
+      "blockers": ["Capture an authorized preserved source artifact with response metadata and verify its exact schema, status/category/activity codebooks, date meaning, and reuse terms before adding any upstream mapping or live acquisition.", "Keep ABP category/activity observations distinct from 853 food approvals; no identity/link inference or publication until separate privacy and project review."]
     },
     {
       "source_id": "mx.locations",

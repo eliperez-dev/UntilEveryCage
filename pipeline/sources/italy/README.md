@@ -36,11 +36,28 @@ separate privacy and project review.
 The Ministry's animal-by-products catalog is a separate source with a separate
 schema, recognition semantics, activity/product codes, and optional links to an
 853 recognition number. It is not included in `it.853-2004`, its row counts,
-identity rules, candidate release, health snapshot, or API filters. A future
-`it.1069-2009` adapter must have its own source ID, acquisition evidence,
-schema dictionary, normalization/quarantine rules, privacy review, and an
-explicit reviewed identity/linking event before any cross-source relationship
-is shown. It must never be silently unioned with 853/2004 facilities.
+identity rules, candidate release, health snapshot, or API filters. A
+provisional `it.1069-2009` adapter now has its own source ID, synthetic fixture,
+private manifest, and shared-runner registration. It accepts only the exact
+synthetic CSV contract documented in `it_1069_adapter.py`; that contract is a
+test seam, not a claim about the Ministry export. The parser preserves category
+and activity codes separately, records status/date uncertainty, quarantines
+malformed or repeated observation IDs, and fails closed on schema drift. Any
+source-supplied 853 recognition number is kept only in private source values;
+the normalized cross-source link remains unresolved. Source observation IDs
+do not establish facility identity.
+
+Use fixture mode for the checked-in synthetic artifact or local-artifact mode
+for an operator-preserved artifact matching that exact contract. A local
+artifact requires a sibling `acquisition-metadata.json` with `source_url`,
+`retrieved_at_utc`, `sha256`, `byte_size`, and an opaque
+`terms_review_reference`; the digest and size are checked before parsing, and
+row-free metadata is copied into the private run. Live acquisition is disabled.
+Do not add upstream field mappings until an authorized preserved capture
+supplies the actual schema, response/hash/date metadata,
+status/category/activity codebooks, date semantics, and file-specific terms.
+ABP category/activity observations remain separate from food approvals; no
+counts, identities, or links are shared with 853/2004.
 
 This is private staging evidence, not a completeness, accuracy, project-
 approval, or publication claim. The catalog notes that some coordinates came

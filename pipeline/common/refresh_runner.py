@@ -408,6 +408,8 @@ class RefreshRunner:
         message = str(error).lower()
         if "injected_fixture_failure" in message:
             return "injected_fixture_failure"
+        if "schema" in message:
+            return "schema validation failed"
         if "row-bearing" in message:
             return "row-bearing summary rejected"
         if "live acquisition" in message or "network acquisition" in message:

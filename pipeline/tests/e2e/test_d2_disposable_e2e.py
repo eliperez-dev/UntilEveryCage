@@ -34,7 +34,7 @@ class D2DisposablePostgisE2ETests(unittest.TestCase):
 
     def test_all_sources_insert_private_candidates_idempotently(self):
         self.assertEqual(self.first["aggregate"]["passed_sources"], len(D2_SOURCE_IDS))
-        self.assertEqual(self.first["aggregate"]["database_candidate_rows"], 21)
+        self.assertEqual(self.first["aggregate"]["database_candidate_rows"], 27)
         self.assertEqual(self.second["aggregate"]["database_candidate_rows"], 0)
         with psycopg.connect(self.env.database_url) as db:
             counts = db.execute(
@@ -45,7 +45,7 @@ class D2DisposablePostgisE2ETests(unittest.TestCase):
                     (SELECT count(*) FROM uec.publication_review_events),
                     (SELECT count(*) FROM uec.releases)"""
             ).fetchone()
-        self.assertEqual(counts, (35, 21, 21, 21, 0))
+        self.assertEqual(counts, (45, 27, 27, 27, 0))
 
     def test_private_insert_never_reaches_public_api(self):
         with urllib.request.urlopen(f"http://127.0.0.1:{self.env.api_port}/api/v2/locations?profile=official") as response:

@@ -20,7 +20,7 @@ from pipeline.contracts.refresh import AdapterCapabilities, RefreshRequest
 
 
 REPORT_SCHEMA_VERSION = "d2-disposable-e2e-readiness-v1"
-FIXTURE_VERSION = "d2-synthetic-display-states-v1"
+FIXTURE_VERSION = "d2-synthetic-display-states-v2"
 D2_SOURCE_IDS = (
     "dk.smiley",
     "be.locations",
@@ -29,6 +29,8 @@ D2_SOURCE_IDS = (
     "fr.dgal.section-i",
     "fr.dgal.section-ii",
     "it.853-2004",
+    "it.1069-2009",
+    "au.sa.epa.licensed-activities",
 )
 DISPLAY_STATES = ("exact", "city", "unmapped", "restricted", "quarantine")
 

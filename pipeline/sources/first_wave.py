@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping
@@ -23,6 +24,7 @@ from .canada.adapter import CfiaFederalMeatAdapter, OntarioMeatPlantsAdapter
 from .denmark.adapter import DenmarkSmileyAdapter
 from .france.adapter import FranceDgalSectionIAdapter, FranceDgalSectionIIAdapter
 from .italy.it_853_adapter import Italy853Adapter
+from .italy.it_1069_adapter import Italy1069Adapter
 from .australia.npi import NpiFacilitiesAdapter
 from .australia.sa_epa import SaEpaLicensedActivitiesAdapter
 
@@ -100,6 +102,10 @@ def _italy() -> SourceAdapter:
     return Italy853Adapter()
 
 
+def _italy_1069() -> SourceAdapter:
+    return Italy1069Adapter()
+
+
 def _australia_npi() -> SourceAdapter:
     return NpiFacilitiesAdapter()
 
@@ -116,6 +122,7 @@ FIRST_WAVE: tuple[SourceDescriptor, ...] = (
     SourceDescriptor("fr.dgal.section-i", "FR", "https://fichiers-publics.agriculture.gouv.fr/dgal/ListesOfficielles/SSA1_VIAN_ONG_DOM.txt", _france_i, (ROOT / "france" / "fixtures" / "section_i.csv",), "fr-dgal-853-v2", "fr-dgal-853-txt-v2", "verified"),
     SourceDescriptor("fr.dgal.section-ii", "FR", "https://fichiers-publics.agriculture.gouv.fr/dgal/ListesOfficielles/SSA1_VIAN_COL_LAGO.txt", _france_ii, (ROOT / "france" / "fixtures" / "section_ii.csv",), "fr-dgal-853-v2", "fr-dgal-853-txt-v2", "verified"),
     SourceDescriptor("it.853-2004", "IT", "https://www.dati.salute.gov.it/", _italy, (ROOT / "italy" / "fixtures" / "synthetic_853.csv",), "it-853-candidate-v2", "it-853-csv-v2.0", "verified"),
+    SourceDescriptor("it.1069-2009", "IT", "https://www.dati.salute.gov.it/it/dataset/stabilimenti-italiani-i-sottoprodotti-di-origine-animale/", _italy_1069, (ROOT / "italy" / "fixtures" / "synthetic_1069.csv",), "it-1069-provisional-v1", "it-1069-synthetic-contract-v1", "assisted_only"),
     SourceDescriptor("au.npi.facilities", "AU", "https://data.gov.au/data/dataset/043f58e0-a188-4458-b61c-04e5b540aea4", _australia_npi, (ROOT / "australia" / "fixtures" / "npi_facilities.csv",), "au-npi-facilities-v1", "au-npi-csv-v1", "assisted_only"),
     SourceDescriptor("au.sa.epa.licensed-activities", "AU", "https://data.sa.gov.au/data/dataset/8fdb86ff-d3d1-4f9e-85a5-bed4080d5ee1", _australia_sa_epa, (ROOT / "australia" / "fixtures" / "sa_epa_activities.geojson",), "au-sa-epa-licensed-activities-v1", "au-sa-epa-geojson-v1", "assisted_only"),
 )
@@ -213,6 +220,23 @@ class FirstWaveRefreshAdapter:
             )
             source_adapter = BelgiumOperatorsAdapter(companion_path, companion_artifact)
         acquisition = options.get("acquisition") if isinstance(options.get("acquisition"), Mapping) else {}
+        if self.source_id == "it.1069-2009" and mode == "local-artifact":
+            # A local copy is not provenance by itself. Require its operator
+            # sidecar before the parser can accept it; row values never enter
+            # this manifest path.
+            sidecar = raw_path.with_name("acquisition-metadata.json")
+            if not sidecar.is_file():
+                raise ValueError("preserved ABP artifact provenance sidecar is required")
+            facts = json.loads(sidecar.read_text(encoding="utf-8"))
+            required_facts = ("source_url", "retrieved_at_utc", "sha256", "byte_size", "terms_review_reference")
+            if not isinstance(facts, Mapping) or any(not facts.get(key) for key in required_facts):
+                raise ValueError("preserved ABP artifact provenance sidecar is incomplete")
+            raw_bytes = raw_path.read_bytes()
+            if facts["sha256"] != hashlib.sha256(raw_bytes).hexdigest() or int(facts["byte_size"]) != len(raw_bytes):
+                raise ValueError("preserved ABP artifact provenance digest mismatch")
+            if not isinstance(facts["terms_review_reference"], str) or not re.fullmatch(r"[A-Za-z0-9._:-]{1,100}", facts["terms_review_reference"]):
+                raise ValueError("preserved ABP terms review reference is invalid")
+            acquisition = {**acquisition, **facts}
         source_artifact = self.descriptor.artifact_for(raw_path)
         acquisition_facts = acquisition
         if self.source_id == "au.sa.epa.licensed-activities" and mode == "local-artifact":
@@ -244,13 +268,16 @@ class FirstWaveRefreshAdapter:
             acquisition_facts = acquisition["acquisition"].get("operator", {})
         if acquisition_facts:
             source_artifact = SourceArtifact(
-                source_url=str(acquisition_facts.get("final_url") or acquisition_facts.get("requested_url") or source_artifact.source_url),
+                source_url=str(acquisition_facts.get("final_url") or acquisition_facts.get("requested_url") or acquisition_facts.get("source_url") or source_artifact.source_url),
                 retrieved_at_utc=str(acquisition_facts.get("retrieved_at_utc") or source_artifact.retrieved_at_utc),
                 sha256=str(acquisition_facts.get("sha256") or source_artifact.sha256),
                 byte_size=int(acquisition_facts.get("byte_size") or source_artifact.byte_size),
                 publication_date=acquisition_facts.get("publication_date"), effective_date=acquisition_facts.get("effective_date"),
                 code_version=self.adapter_version, config_version=self.descriptor.schema_version,
-                rights_caveat=source_artifact.rights_caveat, privacy_caveat=source_artifact.privacy_caveat,
+                rights_caveat=(f"terms pending; review reference {acquisition_facts['terms_review_reference']}"
+                               if self.source_id == "it.1069-2009" and acquisition_facts.get("terms_review_reference")
+                               else source_artifact.rights_caveat),
+                privacy_caveat=source_artifact.privacy_caveat,
                 coverage=source_artifact.coverage, redirects=tuple(acquisition_facts.get("redirects") or ()),
             )
         status = run_private_lifecycle(
@@ -259,6 +286,24 @@ class FirstWaveRefreshAdapter:
         )
         if self.source_id == "au.sa.epa.licensed-activities" and status.get("status") == "failed":
             raise RuntimeError("SA EPA private validation failed; previous validated state is preserved")
+        if status.get("status") == "failed":
+            # Do not let a lifecycle validation failure look like a successful
+            # acquisition to the shared runner. Preserve only a row-free class
+            # signal; exception text can contain source values or local paths.
+            if status.get("error_type") == "ValueError":
+                raise ValueError("schema validation failed")
+            raise RuntimeError("source lifecycle validation failed")
+        if self.source_id == "it.1069-2009" and mode == "local-artifact":
+            # Keep the row-free acquisition facts beside the private run so
+            # the required provenance and terms reference survive a replay.
+            safe_facts = {key: acquisition[key] for key in (
+                "source_url", "retrieved_at_utc", "sha256", "byte_size",
+                "publication_date", "effective_date", "terms_review_reference",
+            ) if key in acquisition}
+            (run_dir / "acquisition-metadata.json").write_text(
+                json.dumps(safe_facts, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+                encoding="utf-8",
+            )
         lifecycle_root = Path(status["run_dir"])
         manifest = status.get("manifest") or {}
         candidate_handoff = False
