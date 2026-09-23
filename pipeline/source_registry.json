@@ -486,6 +486,18 @@
       "blockers": ["Observed NPI population is not a complete slaughter registry; no public row release approved. Local-artifact and synthetic fixture paths are implemented; current acquisition remains assisted until a retained edition and terms review are supplied."]
     },
     {
+      "source_id": "au.sa.epa.licensed-activities",
+      "jurisdiction_scope": "Australia; South Australia EPA licensed activities",
+      "legacy_paths": [],
+      "url": "https://data.sa.gov.au/data/dataset/8fdb86ff-d3d1-4f9e-85a5-bed4080d5ee1",
+      "access_method": "local preserved artifact only; assisted/live acquisition is disabled pending source terms and privacy review",
+      "cadence": "resource edition observed 2026-03-18; update cadence not verified",
+      "attribution_licensing_notes": "CC BY 3.0 Australia; publisher warns points are approximate and may omit latest information; confirm dataset-specific attribution, retention/reuse, privacy and release conditions",
+      "adapter_status": "implemented_partial",
+      "expected_artifact_schema": "GeoJSON FeatureCollection with Point features and OBJECTID, EPALICENCE, ACTIVITY, LICENCE_NAME, PR_LINK; licence parents retain distinct activity child observations",
+      "blockers": ["Do not interpret environmental activity as slaughter, animal use, or current operation; aggregate by licence; points are approximate and coarse; terms, privacy, and project publication remain unresolved."]
+    },
+    {
       "source_id": "au.nsw.epa-poeo",
       "jurisdiction_scope": "Australia; NSW POEO environmental register",
       "legacy_paths": [],
@@ -628,18 +640,6 @@
       "adapter_status": "reference_only",
       "expected_artifact_schema": "Licence/customer number, business/site, permissions, status, and dates if lawfully exposed",
       "blockers": ["No verified public complete licensee export; do not use private notification records."]
-    },
-    {
-      "source_id": "au.sa.epa.licensed-activities",
-      "jurisdiction_scope": "Australia; South Australia EPA licensed activities",
-      "legacy_paths": [],
-      "url": "https://data.sa.gov.au/data/dataset/8fdb86ff-d3d1-4f9e-85a5-bed4080d5ee1",
-      "access_method": "public GeoJSON download",
-      "cadence": "resource edition observed 2026-03-18",
-      "attribution_licensing_notes": "CC BY 3.0 Australia; publisher warns points are approximate and may omit latest information; privacy/release review required",
-      "adapter_status": "reference_only",
-      "expected_artifact_schema": "GeoJSON Point features with EPALICENCE, OBJECTID, ACTIVITY, LICENCE_NAME, PR_LINK, and geometry; aggregate by licence before review",
-      "blockers": ["Private artifact exists; validate activity semantics, approximate points, terms, and licence-to-site identity before integration."]
     },
     {
       "source_id": "au.animal-welfare-and-use",

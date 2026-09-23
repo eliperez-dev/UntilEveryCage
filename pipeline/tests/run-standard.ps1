@@ -35,7 +35,7 @@ try {
   python pipeline/tests/run_unittest.py --start-directory pipeline/tests
   if ($LASTEXITCODE -ne 0) { throw "Python tests failed (exit $LASTEXITCODE)." }
 
-  python -m unittest -q pipeline.germany.test_adapter pipeline.germany.test_orchestrator pipeline.common.test_delta pipeline.common.test_orchestrator pipeline.common.test_registry pipeline.contracts.test_adapter_contract pipeline.contracts.test_candidate_handoff pipeline.sources.denmark.test_adapter pipeline.sources.uk.fsa_approved.test_adapter pipeline.sources.uk.fsa_approved.test_handoff pipeline.sources.uk.fss_approved.test_adapter pipeline.sources.uk.fss_approved.test_handoff pipeline.sources.uk.approved.test_compose
+  python -m unittest -q pipeline.germany.test_adapter pipeline.germany.test_orchestrator pipeline.common.test_delta pipeline.common.test_orchestrator pipeline.common.test_registry pipeline.contracts.test_adapter_contract pipeline.contracts.test_candidate_handoff pipeline.sources.denmark.test_adapter pipeline.sources.australia.test_npi pipeline.sources.australia.test_sa_epa pipeline.sources.uk.fsa_approved.test_adapter pipeline.sources.uk.fsa_approved.test_handoff pipeline.sources.uk.fss_approved.test_adapter pipeline.sources.uk.fss_approved.test_handoff pipeline.sources.uk.approved.test_compose
   if ($LASTEXITCODE -ne 0) { throw "Country adapter tests failed (exit $LASTEXITCODE)." }
 }
 finally {

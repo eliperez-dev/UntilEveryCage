@@ -24,6 +24,7 @@ from .denmark.adapter import DenmarkSmileyAdapter
 from .france.adapter import FranceDgalSectionIAdapter, FranceDgalSectionIIAdapter
 from .italy.it_853_adapter import Italy853Adapter
 from .australia.npi import NpiFacilitiesAdapter
+from .australia.sa_epa import SaEpaLicensedActivitiesAdapter
 
 
 ROOT = Path(__file__).resolve().parent
@@ -103,6 +104,10 @@ def _australia_npi() -> SourceAdapter:
     return NpiFacilitiesAdapter()
 
 
+def _australia_sa_epa() -> SourceAdapter:
+    return SaEpaLicensedActivitiesAdapter()
+
+
 FIRST_WAVE: tuple[SourceDescriptor, ...] = (
     SourceDescriptor("dk.smiley", "DK", "https://pub.fvst.dk/publikationer/Smileydata.xml", _denmark, (ROOT / "denmark" / "fixtures" / "synthetic.xml",), "denmark-smiley-contract-v1", "denmark-smiley-contract-v1", "verified"),
     SourceDescriptor("be.locations", "BE", BELGIUM_CONFIG["operator_url"], _belgium, (ROOT / "belgium" / "fixtures" / "synthetic_operators.csv", ROOT / "belgium" / "fixtures" / "synthetic_activity_codes.csv"), BELGIUM_CONFIG["adapter_version"], BELGIUM_CONFIG["schema_version"], "assisted_only"),
@@ -112,6 +117,7 @@ FIRST_WAVE: tuple[SourceDescriptor, ...] = (
     SourceDescriptor("fr.dgal.section-ii", "FR", "https://fichiers-publics.agriculture.gouv.fr/dgal/ListesOfficielles/SSA1_VIAN_COL_LAGO.txt", _france_ii, (ROOT / "france" / "fixtures" / "section_ii.csv",), "fr-dgal-853-v2", "fr-dgal-853-txt-v2", "verified"),
     SourceDescriptor("it.853-2004", "IT", "https://www.dati.salute.gov.it/", _italy, (ROOT / "italy" / "fixtures" / "synthetic_853.csv",), "it-853-candidate-v2", "it-853-csv-v2.0", "verified"),
     SourceDescriptor("au.npi.facilities", "AU", "https://data.gov.au/data/dataset/043f58e0-a188-4458-b61c-04e5b540aea4", _australia_npi, (ROOT / "australia" / "fixtures" / "npi_facilities.csv",), "au-npi-facilities-v1", "au-npi-csv-v1", "assisted_only"),
+    SourceDescriptor("au.sa.epa.licensed-activities", "AU", "https://data.sa.gov.au/data/dataset/8fdb86ff-d3d1-4f9e-85a5-bed4080d5ee1", _australia_sa_epa, (ROOT / "australia" / "fixtures" / "sa_epa_activities.geojson",), "au-sa-epa-licensed-activities-v1", "au-sa-epa-geojson-v1", "assisted_only"),
 )
 
 BY_SOURCE_ID = {descriptor.source_id: descriptor for descriptor in FIRST_WAVE}
@@ -209,6 +215,31 @@ class FirstWaveRefreshAdapter:
         acquisition = options.get("acquisition") if isinstance(options.get("acquisition"), Mapping) else {}
         source_artifact = self.descriptor.artifact_for(raw_path)
         acquisition_facts = acquisition
+        if self.source_id == "au.sa.epa.licensed-activities" and mode == "local-artifact":
+            metadata = options.get("artifact_metadata")
+            if not isinstance(metadata, Mapping):
+                raise RuntimeError("local SA EPA artifact metadata is required; supply official URL, UTC retrieval time, hash, byte size, and edition date")
+            required = ("source_url", "retrieved_at_utc", "sha256", "byte_size")
+            missing = [field for field in required if metadata.get(field) in (None, "")]
+            if metadata.get("publication_date") in (None, "") and metadata.get("effective_date") in (None, ""):
+                missing.append("effective_date or publication_date")
+            if missing:
+                raise RuntimeError("incomplete local SA EPA artifact metadata: " + ", ".join(missing))
+            if str(metadata["source_url"]) not in {
+                "https://data.sa.gov.au/data/dataset/8fdb86ff-d3d1-4f9e-85a5-bed4080d5ee1",
+                "https://data.sa.gov.au/data/dataset/8fdb86ff-d3d1-4f9e-85a5-bed4080d5ee1/resource/26e076f3-c37f-4089-8f28-3f7c9afd997e/download/topo_epa_activities_wgs84.geojson",
+            }:
+                raise RuntimeError("local SA EPA artifact URL does not match the recorded source")
+            source_artifact = SourceArtifact(
+                source_url=str(metadata["source_url"]), retrieved_at_utc=str(metadata["retrieved_at_utc"]),
+                sha256=str(metadata["sha256"]), byte_size=int(metadata["byte_size"]),
+                publication_date=metadata.get("publication_date"), effective_date=metadata.get("effective_date"),
+                code_version=self.adapter_version, config_version=self.descriptor.schema_version,
+                rights_caveat=str(metadata.get("rights_caveat") or "source terms unresolved; private staging only"),
+                privacy_caveat=str(metadata.get("privacy_caveat") or "privacy review required; private staging only"),
+                coverage=self.descriptor.source_id + "; no completeness claim",
+            )
+            acquisition_facts = {}
         if self.source_id == "be.locations" and isinstance(acquisition.get("acquisition"), Mapping):
             acquisition_facts = acquisition["acquisition"].get("operator", {})
         if acquisition_facts:
@@ -226,11 +257,13 @@ class FirstWaveRefreshAdapter:
             raw_path, run_dir, source_artifact, source_adapter,
             health_as_of_utc=source_artifact.retrieved_at_utc,
         )
+        if self.source_id == "au.sa.epa.licensed-activities" and status.get("status") == "failed":
+            raise RuntimeError("SA EPA private validation failed; previous validated state is preserved")
         lifecycle_root = Path(status["run_dir"])
         manifest = status.get("manifest") or {}
         candidate_handoff = False
         if status.get("status") == "candidate-ready":
-            normalized = lifecycle_root / "normalized" / "records.jsonl"
+            normalized = lifecycle_root / "normalized" / ("licences.jsonl" if self.source_id == "au.sa.epa.licensed-activities" else "records.jsonl")
             if isinstance(source_adapter, DenmarkSmileyAdapter):
                 rows = [json.loads(line) for line in normalized.read_text(encoding="utf-8").splitlines() if line]
                 source_adapter.write_candidate_handoff(lifecycle_root / "candidate-handoff", source_artifact, rows)
