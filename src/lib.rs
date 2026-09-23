@@ -623,14 +623,14 @@ pub async fn get_real_preview_list_handler(
         .chars()
         .take(100)
         .collect::<String>();
+    let query_limit = limit + 1;
     let rows = match client.query(
         "SELECT candidate_id,source_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision FROM real_preview.candidates WHERE ((location_class='city_postal' AND (NULLIF(BTRIM(city),'') IS NOT NULL OR NULLIF(BTRIM(postal_code),'') IS NOT NULL)) OR (location_class='numeric_source_coordinate' AND ((latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180 AND (latitude<>0 OR longitude<>0)) OR ((NULLIF(BTRIM(city),'') IS NOT NULL OR NULLIF(BTRIM(postal_code),'') IS NOT NULL) AND NOT (latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180 AND (latitude<>0 OR longitude<>0))))) ) AND ($1::uuid IS NULL OR candidate_id > $1) AND ($2='' OR city ILIKE '%' || $2 || '%' OR postal_code ILIKE '%' || $2 || '%') ORDER BY candidate_id LIMIT $3",
-        &[&cursor, &query, &limit],
+        &[&cursor, &query, &query_limit],
     ).await { Ok(rows) => rows, Err(_) => return real_preview_unavailable() };
-    let data: Vec<Value> = rows.iter().map(real_preview_candidate).collect();
-    let next = rows
-        .last()
-        .map(|row| row.get::<_, uuid::Uuid>("candidate_id"));
+    let has_next = rows.len() as i64 > limit;
+    let data: Vec<Value> = rows.iter().take(limit as usize).map(real_preview_candidate).collect();
+    let next = has_next.then(|| rows[(limit - 1) as usize].get::<_, uuid::Uuid>("candidate_id"));
     real_preview_response(
         StatusCode::OK,
         json!({"api_version":"real-preview-v1","data":data,"meta":{"bounded":true,"next_cursor":next,"private_preview":true}}),
@@ -669,14 +669,14 @@ pub async fn get_real_preview_viewport_handler(
     let Ok(client) = pool.get().await else {
         return real_preview_unavailable();
     };
+    let query_limit = limit + 1;
     let rows = match client.query(
         "SELECT candidate_id,source_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision FROM real_preview.candidates WHERE location_class='numeric_source_coordinate' AND latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180 AND (latitude<>0 OR longitude<>0) AND longitude BETWEEN $1 AND $3 AND latitude BETWEEN $2 AND $4 AND ($5::uuid IS NULL OR candidate_id > $5) ORDER BY candidate_id LIMIT $6",
-        &[&params.west,&params.south,&params.east,&params.north,&params.cursor,&limit],
+        &[&params.west,&params.south,&params.east,&params.north,&params.cursor,&query_limit],
     ).await { Ok(rows) => rows, Err(_) => return real_preview_unavailable() };
-    let data: Vec<Value> = rows.iter().map(real_preview_candidate).collect();
-    let next = rows
-        .last()
-        .map(|row| row.get::<_, uuid::Uuid>("candidate_id"));
+    let has_next = rows.len() as i64 > limit;
+    let data: Vec<Value> = rows.iter().take(limit as usize).map(real_preview_candidate).collect();
+    let next = has_next.then(|| rows[(limit - 1) as usize].get::<_, uuid::Uuid>("candidate_id"));
     real_preview_response(
         StatusCode::OK,
         json!({"api_version":"real-preview-v1","data":data,"meta":{"bounded":true,"next_cursor":next,"private_preview":true}}),

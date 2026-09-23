@@ -1,9 +1,14 @@
 import { test, expect } from '@playwright/test';
 
+function isApiEndpoint(url: string): boolean {
+  const pathname = new URL(url).pathname.replace(/^\/v2-preview(?=\/)/, '');
+  return pathname.startsWith('/api/') || pathname.startsWith('/dev/real-preview/');
+}
+
 test('public routes stay local and never render fixture or API records', async ({ page }) => {
   const apiRequests: string[] = [];
   page.on('request', request => {
-    if (new URL(request.url()).pathname.includes('/api/')) apiRequests.push(request.url());
+    if (isApiEndpoint(request.url())) apiRequests.push(request.url());
   });
 
   for (const route of ['#/map', '#/database', '#/records/synthetic-record-1', '#/locations/synthetic-record-1']) {
@@ -20,7 +25,7 @@ test('public routes stay local and never render fixture or API records', async (
 test('profile, search, and export inputs cannot reach an API from the shell', async ({ page }) => {
   const apiRequests: string[] = [];
   page.on('request', request => {
-    if (new URL(request.url()).pathname.includes('/api/')) apiRequests.push(request.url());
+    if (isApiEndpoint(request.url())) apiRequests.push(request.url());
   });
 
   await page.goto('./?mode=local-v2#/map?profile=community&query=private%20address');
@@ -32,7 +37,7 @@ test('profile, search, and export inputs cannot reach an API from the shell', as
 
 test('a route change cannot display a stale API response because no request is made', async ({ page }) => {
   let interceptedApiRequests = 0;
-  await page.route('**/api/**', async route => {
+  await page.route(url => isApiEndpoint(url.href), async route => {
     interceptedApiRequests += 1;
     await route.fulfill({ status: 503, body: 'unavailable' });
   });

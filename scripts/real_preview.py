@@ -222,15 +222,23 @@ def up() -> dict[str, object]:
         vite = None
         if vite_path.is_file():
             vite_log = (ROOT / "target" / "real-preview" / "vite.log").open("a", encoding="utf-8")
-            vite_env = {"PATH": env["PATH"], "SYSTEMROOT": env["SYSTEMROOT"], "VITE_API_ORIGIN": f"http://127.0.0.1:{API_PORT}"}
-            vite = subprocess.Popen([shutil.which("node") or "node", str(vite_path), "--host", "127.0.0.1", "--port", str(WEB_PORT), "--strictPort"], cwd=ROOT, env=vite_env, stdout=vite_log, stderr=subprocess.STDOUT)
+            # The preview token is consumed only by vite.config.ts's dev-server
+            # proxy. Do not expose it through VITE_* variables (which Vite
+            # publishes to the client bundle), URLs, or browser storage.
+            vite_env = {"PATH": env["PATH"], "SYSTEMROOT": env["SYSTEMROOT"],
+                        "UEC_DEV_PREVIEW_TOKEN": token,
+                        "VITE_LOCAL_DATA_MODE": "real-preview",
+                        "VITE_API_ORIGIN": f"http://127.0.0.1:{API_PORT}"}
+            vite = subprocess.Popen([shutil.which("node") or "node", str(vite_path), "--host", "127.0.0.1", "--port", str(WEB_PORT), "--strictPort"], cwd=ROOT / "frontend", env=vite_env, stdout=vite_log, stderr=subprocess.STDOUT)
             vite_log.close(); started.append(vite)
         _write_state({"project": PROJECT, "api_pid": api.pid, "vite_pid": vite.pid if vite else None, "ports": [API_PORT, WEB_PORT] if vite else [API_PORT]})
         deadline = time.monotonic() + 180
         while time.monotonic() < deadline:
             if api.poll() is not None or (vite is not None and vite.poll() is not None):
                 raise PreviewError("preview process exited during startup")
-            if _http(f"http://127.0.0.1:{API_PORT}/health/ready")[0] == 200 and (vite is None or _socket_busy(WEB_PORT)):
+            api_ready = _http(f"http://127.0.0.1:{API_PORT}/health/ready")[0] == 200
+            frontend_ready = vite is None or _http_status(f"http://127.0.0.1:{WEB_PORT}/") == 200
+            if api_ready and frontend_ready:
                 break
             time.sleep(.3)
         else:
@@ -331,15 +339,18 @@ def status() -> dict[str, object]:
     running_containers = _docker_json(["docker", "ps", "--filter", f"label=com.docker.compose.project={PROJECT}", "--format", "{{json .}}"])
     if db and not any(c.get("Names") == f"{PROJECT}-postgres-1" for c in running_containers):
         raise PreviewError("the database port is occupied without the verified real-preview container")
+    frontend_available = (ROOT / "frontend" / "node_modules" / "vite" / "bin" / "vite.js").is_file()
+    frontend_ready = web_port and _http_status(f"http://127.0.0.1:{WEB_PORT}/") == 200
     return {"project": PROJECT, "database": "running" if db else "stopped", "api": api_port and _http(f"http://127.0.0.1:{API_PORT}/health/live")[0] == 200,
-            "frontend": web_port, "frontend_available": (ROOT / "frontend" / "node_modules" / "vite" / "bin" / "vite.js").is_file(), "owned_process_state": bool(state)}
+            "frontend": frontend_ready, "frontend_available": frontend_available, "owned_process_state": bool(state)}
 
 
 def probe() -> dict[str, object]:
     ready = _http(f"http://127.0.0.1:{API_PORT}/health/ready")[0] == 200
     web = _socket_busy(WEB_PORT)
     frontend_available = (ROOT / "frontend" / "node_modules" / "vite" / "bin" / "vite.js").is_file()
-    return {"ok": ready, "api_ready": ready, "frontend_loopback": web, "frontend_available": frontend_available}
+    frontend_ready = web and _http_status(f"http://127.0.0.1:{WEB_PORT}/") == 200
+    return {"ok": ready and (not frontend_available or frontend_ready), "api_ready": ready, "frontend_loopback": frontend_ready, "frontend_available": frontend_available}
 
 
 def main(argv: Sequence[str] | None = None) -> int:

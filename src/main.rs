@@ -403,7 +403,14 @@ async fn rate_limit(
     request: Request<axum::body::Body>,
     next: axum::middleware::Next,
 ) -> Response<axum::body::Body> {
-    if request.uri().path().starts_with("/health/") {
+    // Local real-preview pages are small (at most 500 candidates) and the
+    // loopback-only route applies its own token check. A normal world-map
+    // viewport may require more than 60 cursor pages, so counting these
+    // private requests against the public per-client quota makes the map
+    // fail partway through loading. Keep health probes and public limits as-is.
+    if request.uri().path().starts_with("/health/")
+        || request.uri().path().starts_with("/dev/real-preview/")
+    {
         return next.run(request).await;
     }
     let Some(key) = client_key(&request, &config.proxy) else {
@@ -1140,6 +1147,53 @@ mod rate_limit_tests {
         assert_eq!(
             router.oneshot(second_request).await.unwrap().status(),
             StatusCode::OK
+        );
+    }
+
+    #[tokio::test]
+    async fn real_preview_pages_do_not_consume_public_client_quota() {
+        let router = Router::new()
+            .route("/dev/real-preview/counts", get(|| async { StatusCode::OK }))
+            .route("/asset.js", get(|| async { StatusCode::OK }))
+            .layer(axum::middleware::from_fn_with_state(
+                RateLimitState {
+                    limiter: Limiter::default(),
+                    proxy: private_environment::parse_proxy_config("development", None, None)
+                        .unwrap(),
+                },
+                rate_limit,
+            ));
+        let peer: SocketAddr = "127.0.0.1:41000".parse().unwrap();
+        for _ in 0..(RATE_LIMIT + 1) {
+            let mut request = Request::builder()
+                .uri("/dev/real-preview/counts")
+                .body(axum::body::Body::empty())
+                .unwrap();
+            request.extensions_mut().insert(ConnectInfo(peer));
+            assert_eq!(
+                router.clone().oneshot(request).await.unwrap().status(),
+                StatusCode::OK
+            );
+        }
+        for _ in 0..RATE_LIMIT {
+            let mut request = Request::builder()
+                .uri("/asset.js")
+                .body(axum::body::Body::empty())
+                .unwrap();
+            request.extensions_mut().insert(ConnectInfo(peer));
+            assert_eq!(
+                router.clone().oneshot(request).await.unwrap().status(),
+                StatusCode::OK
+            );
+        }
+        let mut limited = Request::builder()
+            .uri("/asset.js")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        limited.extensions_mut().insert(ConnectInfo(peer));
+        assert_eq!(
+            router.oneshot(limited).await.unwrap().status(),
+            StatusCode::TOO_MANY_REQUESTS
         );
     }
 
