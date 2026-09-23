@@ -2,14 +2,16 @@ export const DIRECTIONS = ['field'] as const;
 export const SCENARIOS = ['default', 'dense', 'loading', 'empty', 'error', 'mobile'] as const;
 export type Direction = (typeof DIRECTIONS)[number];
 export type Scenario = (typeof SCENARIOS)[number];
-export type Precision = 'exact' | 'city' | 'coarse' | 'unmapped';
+export type Precision = 'exact' | 'approximate' | 'city' | 'coarse' | 'unmapped';
 export type Basemap = 'vector' | 'satellite';
 export type LabFilters = Readonly<{ categories: readonly string[]; precisions: readonly Precision[] }>;
 
 export type LabRecord = Readonly<{
   id: string; name: string; category: string; country: string; locality: string;
   precision: Precision; latitude: number | null; longitude: number | null;
+  sourceId?: string; reviewStatus?: string; previewLabel?: string;
 }>;
+export type ViewportBounds = Readonly<{ west: number; south: number; east: number; north: number }>;
 export type Viewport = Readonly<{ centerLat: number; centerLon: number; zoom: number }>;
 export type LabState = Readonly<{
   direction: Direction; scenario: Scenario; query: string; selectedId: string | null;
@@ -23,7 +25,25 @@ export type LabAction =
   | { type: 'list'; value: boolean } | { type: 'viewport'; value: Viewport }
   | { type: 'filters'; value: LabFilters } | { type: 'reset-filters' };
 
-export interface DirectionViewProps { state: LabState; records: readonly LabRecord[]; dispatch(action: LabAction): void }
+export interface DirectionViewProps {
+  state: LabState;
+  records: readonly LabRecord[];
+  mapRecords?: readonly LabRecord[];
+  mode?: 'synthetic' | 'real-preview';
+  dataStatus?: 'loading' | 'ready' | 'empty' | 'error' | 'unauthorized';
+  dataError?: string;
+  mapStatus?: 'idle' | 'loading' | 'ready' | 'empty' | 'error' | 'unauthorized';
+  mapError?: string;
+  mapTruncated?: boolean;
+  detailRecord?: LabRecord | null;
+  detailStatus?: 'loading' | 'ready' | 'error' | 'unauthorized';
+  detailError?: string;
+  nextCursor?: string | null;
+  pageLoading?: boolean;
+  onLoadMore?(): void;
+  onViewportBounds?(bounds: ViewportBounds): void;
+  dispatch(action: LabAction): void;
+}
 
 export const DEFAULT_LAB_STATE: LabState = Object.freeze({
   direction: 'field', scenario: 'default', query: '', selectedId: null,

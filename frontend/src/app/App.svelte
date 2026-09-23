@@ -11,7 +11,9 @@
   const syncRoute = () => {
     try {
       route = parseRoute(window.location.hash);
-      reviewMode = import.meta.env.DEV && new URLSearchParams(window.location.hash.split('?')[1] ?? '').has('f1a');
+      const query = new URLSearchParams(window.location.hash.split('?')[1] ?? '');
+      const serverDataMode = document.querySelector<HTMLMetaElement>('meta[name="uec-local-data-mode"]')?.content ?? null;
+      reviewMode = import.meta.env.DEV && (query.has('f1a') || (serverDataMode === 'real-preview' && route.kind === 'map'));
       loading = false;
       loadError = '';
     } catch {
