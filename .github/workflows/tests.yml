@@ -88,4 +88,4 @@ jobs:
       - run: npm run boundary
       - run: npm run build
       - run: npx playwright install --with-deps chromium firefox webkit
-      - run: npx playwright test tests/e2e/fixture-platform.spec.ts tests/e2e/local-safety.spec.ts tests/e2e/private-preview.spec.ts --project=chromium --project=firefox --project=webkit --workers=2
+      - run: npx playwright test tests/e2e/shell-routes.spec.ts tests/e2e/local-safety.spec.ts tests/e2e/private-preview.spec.ts --project=chromium --project=firefox --project=webkit --workers=2
