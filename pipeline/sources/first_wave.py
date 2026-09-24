@@ -24,6 +24,7 @@ from .denmark.adapter import DenmarkSmileyAdapter
 from .france.adapter import FranceDgalSectionIAdapter, FranceDgalSectionIIAdapter
 from .italy.it_853_adapter import Italy853Adapter
 from .australia.npi import NpiFacilitiesAdapter
+from .us.fsis.runner_adapter import FsisRefreshAdapter
 
 
 ROOT = Path(__file__).resolve().parent
@@ -326,6 +327,13 @@ def register_first_wave(catalog: Any) -> None:
     # cohort while source-local contracts remain isolated.
     from .d3_facility import register_d3
     register_d3(catalog)
+    catalog.register(FsisRefreshAdapter(), AdapterCapabilities(
+        source_id="us.fsis", adapter_version="us-fsis-candidate-v2",
+        schema_version="us-fsis-mpi-v1", acquisition="bounded_authorized_browser_download",
+        geocoding="disabled", publication="human_gate_required",
+        adapter_path="pipeline/sources/us/fsis/runner_adapter.py", country_code="us",
+        operational_classification="live", live_callable=True,
+    ))
     from pipeline.sources.us.evidence import register_evidence_sources
     register_evidence_sources(catalog)
 

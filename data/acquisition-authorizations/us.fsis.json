@@ -1,0 +1,25 @@
+{
+  "status": "authorized",
+  "basis": "Explicit project-operator authorization in the FSIS E2E task",
+  "scope": "Acquire the publicly available FSIS MPI Directory by Establishment Number CSV and supplemental Establishment Demographic Data CSV for restricted local preview only.",
+  "allowed_routes": [
+    {
+      "source_id": "us.fsis.directory",
+      "role": "directory",
+      "url": "https://www.fsis.usda.gov/sites/default/files/media_file/documents/MPI_Directory_by_Establishment_Number.csv"
+    },
+    {
+      "source_id": "us.fsis.demographics",
+      "role": "demographics",
+      "url": "https://www.fsis.usda.gov/sites/default/files/media_file/documents/Dataset_Establishment_Demographic_Data.csv"
+    }
+  ],
+  "restrictions": [
+    "Private local preview only; no public release or redistribution approval",
+    "Use only the published official FSIS page and its public export URLs",
+    "No login, paywall, CAPTCHA, challenge, or other access-control bypass",
+    "Fail closed on access or schema changes and do not reuse retained artifacts"
+  ],
+  "recorded_at_utc": "2026-09-23T00:00:00Z",
+  "terms_status": "pending_review"
+}

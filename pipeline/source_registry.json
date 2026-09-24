@@ -236,12 +236,12 @@
       "jurisdiction_scope": "United States; USDA FSIS meat and poultry establishment coverage",
       "legacy_paths": ["static_data/us/locations.csv"],
       "url": "https://www.fsis.usda.gov/inspection/establishments/meat-poultry-and-egg-product-inspection-directory",
-      "access_method": "operator-assisted official CSV export; bounded direct fetch only with terms review",
+      "access_method": "bounded headless Firefox download from the published official CSV links; no login or access-control bypass",
       "cadence": "weekly replacement",
-      "attribution_licensing_notes": "FSIS authority and directory scope verified; terms/attribution and current export URL must be recorded per run before publication",
+      "attribution_licensing_notes": "Attribute USDA Food Safety and Inspection Service (FSIS). Public redistribution terms are not established by the directory page; this project authorizes private preview acquisition only and makes no legal-certainty or public-release claim.",
       "adapter_status": "implemented_partial",
       "expected_artifact_schema": "FSIS MPI directory CSV plus supplemental establishment-demographic CSV; exact source-native ID/number reconciliation with source-provided coordinates, species slaughter, processing, size, and inspection attributes",
-      "blockers": ["Current direct links returned HTTP 403 during reconnaissance; obtain an authorized current export and complete terms, schema, privacy, and project review."]
+      "blockers": ["Public redistribution terms, address privacy, coordinate precision, and project publication require separate human review."]
     },
     {
       "source_id": "us.state-mpi",

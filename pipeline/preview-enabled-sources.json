@@ -48,6 +48,18 @@
       "display_policy": {"kind": "administrative_commune_centre", "precision": "city_reference_approximate", "source": "Etalab / geo.api.gouv.fr API Découpage administratif", "source_url": "https://geo.api.gouv.fr/communes?fields=nom,code,codeDepartement,centre&format=json", "source_reference_url": "https://www.data.gouv.fr/datasets/admin-express-admin-express-cog-admin-express-cog-carto-admin-express-cog-carto-plus-pe", "version": "geo-api-communes-centre-v1", "license": "Licence Ouverte / Open Licence 2.0 (Etalab)", "attribution": "Etalab / IGN; French administrative commune reference", "reference_date": "current endpoint response; upstream release date not supplied", "name_matching": "Exact normalized commune name plus source department number; collisions or unresolved names remain unmapped", "department_field": "department_number"},
       "adapter_version": "fr-dgal-853-v2",
       "schema_version": "fr-dgal-853-txt-v2"
+    },
+    "us.fsis": {
+      "enabled": true,
+      "runner": "pipeline.refresh_private:us.fsis",
+      "terms_review": "data/terms-reviews/us.fsis.json",
+      "terms_decision": "approved",
+      "freshness_max_days": 2,
+      "expected_artifacts": ["directory.csv", "demographics.csv"],
+      "allowed_preview_fields": ["establishment_id", "establishment_number", "canonical_name", "country_code", "city", "state", "postal_code", "county", "fips_code", "district", "circuit", "size", "source_type", "grant_date", "coordinates", "coordinate_state", "address_state", "species_slaughtered", "processing_activities", "inspection_attributes", "activities", "activity_categories", "privacy_gate", "coordinate_gate", "publication_gate"],
+      "display_policy": {"kind": "source_numeric_coordinate", "precision": "source-provided-unspecified", "disclosure": "FSIS source-provided coordinate; precision and address suitability have not been reviewed. Private preview only; not an exact verified facility point."},
+      "adapter_version": "us-fsis-candidate-v2",
+      "schema_version": "us-fsis-mpi-v1"
     }
   }
 }

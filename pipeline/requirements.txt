@@ -1,3 +1,4 @@
 psycopg[binary]==3.2.9
 xlrd==2.0.1
 pyproj==3.7.1
+selenium==4.33.0

@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from pipeline.common.acquisition import AcquisitionError
 
-from .firefox_acquisition import _remove_downloads, acquire_firefox
+from .firefox_acquisition import _edition_date, _remove_downloads, acquire_firefox
 
 
 ROOT = Path(__file__).parent
@@ -72,6 +72,10 @@ def _authorization() -> dict:
 
 
 class FirefoxAcquisitionTests(unittest.TestCase):
+    def test_edition_date_is_read_from_official_link_context(self):
+        self.assertEqual(_edition_date("MPI Directory: Numerically by Establishment Number (CSV) | PDF (Sep 21, 2026)"), "2026-09-21")
+        self.assertIsNone(_edition_date("MPI Directory CSV"))
+
     def test_cleanup_failure_does_not_escape(self):
         with tempfile.TemporaryDirectory() as directory:
             download_dir = Path(directory)
@@ -140,6 +144,24 @@ class FirefoxAcquisitionTests(unittest.TestCase):
                     source_id="us.fsis.directory", page_url="https://example.test/page", url="https://example.test/directory.csv",
                     output_root=root / "raw", artifact_name="directory.csv", terms_review_path=None,
                     acquisition_authorization=malformed, run_id="malformed", navigation_timeout_seconds=0.1, driver_opener=opener,
+                )
+
+    def test_current_official_page_link_is_required_when_requested(self):
+        payload = (ROOT / "fixtures/valid.csv").read_bytes()
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(AcquisitionError, "not present on the official directory page"):
+                acquire_firefox(
+                    source_id="us.fsis.directory", page_url="https://example.test/page",
+                    url="https://example.test/directory.csv", output_root=Path(directory) / "raw",
+                    artifact_name="directory.csv", terms_review_path=_terms(Path(directory)),
+                    acquisition_authorization=_authorization(), run_id="missing-official-link",
+                    navigation_timeout_seconds=0.1, require_public_link=True,
+                    artifact_validator=lambda path, _headers: self.assertEqual(path.read_bytes(), payload),
+                    driver_opener=lambda download_dir: (
+                        FakeDriver(download_dir, payload),
+                        {"browser": "Firefox", "browser_version": "synthetic", "selenium_version": "synthetic",
+                         "profile": "fresh-temporary", "timeout_exception": FakeTimeout, "by": FakeBy},
+                    ),
                 )
     def test_invalid_completed_file_fails_closed_without_retaining_body(self):
         drivers: list[FakeDriver] = []

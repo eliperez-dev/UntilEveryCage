@@ -1,0 +1,10 @@
+{
+  "decision": "approved",
+  "scope": "Private local preview acquisition and processing only",
+  "attribution": "USDA Food Safety and Inspection Service (FSIS)",
+  "reference": "https://www.fsis.usda.gov/inspection/establishments/meat-poultry-and-egg-product-inspection-directory",
+  "notes": "The official FSIS directory page provides the MPI directory CSV exports and supplemental Establishment Demographic Data CSV. Public redistribution terms are not established by the reviewed page. This is a project-operator approval for restricted local preview only, based on explicit authorization for this task. It is not legal advice, does not claim legal certainty, and does not authorize public release. Do not retain or expose raw addresses, phone numbers, DUNS identifiers, or coordinates outside restricted local preview; privacy and coordinate review remain required.",
+  "reviewed_at": "2026-09-23T00:00:00Z",
+  "reviewer": "Codex source review under explicit project operator authorization",
+  "public_release": "blocked"
+}

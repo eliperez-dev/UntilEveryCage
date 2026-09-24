@@ -8,15 +8,33 @@ complete downloaded file passes size and source-schema validation.
 from __future__ import annotations
 
 import hashlib
+import os
+import re
 import shutil
 import tempfile
 import time
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
 from pipeline.common.acquisition import AcquisitionError, require_terms_review, utc_now
 from pipeline.contracts.source_lifecycle import atomic_json
+
+
+def _edition_date(text: str | None) -> str | None:
+    if not text:
+        return None
+    match = re.search(r"\b([A-Z][a-z]{2,8}\s+\d{1,2},\s+\d{4}|\d{4}-\d{2}-\d{2})\b", text)
+    if not match:
+        return None
+    raw = match.group(1)
+    for pattern in ("%Y-%m-%d", "%b %d, %Y", "%B %d, %Y"):
+        try:
+            return datetime.strptime(raw, pattern).date().isoformat()
+        except ValueError:
+            pass
+    return None
 
 
 def _load_selenium() -> Any:
@@ -25,13 +43,14 @@ def _load_selenium() -> Any:
         from selenium import webdriver
         from selenium.common.exceptions import TimeoutException
         from selenium.webdriver.common.by import By
+        from selenium.webdriver.firefox.service import Service
     except ImportError as error:
         raise AcquisitionError(
             "Firefox acquisition requires the optional Selenium package and an installed Firefox browser",
             failure_class="configuration",
             action="install the documented Firefox/Selenium runtime, then rerun with --acquisition-method firefox",
         ) from error
-    return {"selenium": selenium, "webdriver": webdriver, "TimeoutException": TimeoutException, "By": By}
+    return {"selenium": selenium, "webdriver": webdriver, "TimeoutException": TimeoutException, "By": By, "Service": Service}
 
 
 def _open_driver(download_dir: Path) -> tuple[Any, dict[str, Any]]:
@@ -45,7 +64,7 @@ def _open_driver(download_dir: Path) -> tuple[Any, dict[str, Any]]:
     options.set_preference("browser.helperApps.neverAsk.saveToDisk", "text/csv,application/csv,application/octet-stream")
     options.set_preference("pdfjs.disabled", True)
     # Do not set options.profile: Selenium creates a fresh disposable profile.
-    driver = runtime["webdriver"].Firefox(options=options)
+    driver = runtime["webdriver"].Firefox(options=options, service=runtime["Service"](log_output=os.devnull))
     capabilities = getattr(driver, "capabilities", {}) or {}
     return driver, {
         "browser": "Firefox",
@@ -171,6 +190,7 @@ def acquire_firefox(
     privacy_caveat: str | None = None,
     artifact_validator: Callable[[Path, dict[str, str]], None] | None = None,
     driver_opener: Callable[[Path], tuple[Any, dict[str, Any]]] = _open_driver,
+    require_public_link: bool = False,
 ) -> dict[str, Any]:
     if not source_id or not page_url or not url or not artifact_name:
         raise AcquisitionError("source_id, page_url, url, and artifact_name are required", failure_class="configuration")
@@ -200,6 +220,7 @@ def acquire_firefox(
         driver = None
         navigation_mode = "direct-official-url"
         timeout_after_download_start = False
+        source_page_link_context = None
         try:
             driver, runtime = driver_opener(download_dir)
             last_runtime = runtime
@@ -219,6 +240,21 @@ def acquire_firefox(
                         control.send_keys("\ue007")
                         time.sleep(2)
                         break
+                matching_links = [link for link in driver.find_elements(by.CSS_SELECTOR, "a[href]")
+                                  if link.get_attribute("href") == url]
+                if matching_links:
+                    try:
+                        source_page_link_context = " ".join(str(driver.execute_script(
+                            "return arguments[0].parentElement?.innerText || arguments[0].innerText || ''", matching_links[0]
+                        )).split())[:500]
+                    except Exception:
+                        source_page_link_context = " ".join(str(getattr(matching_links[0], "text", "")).split())[:500] or None
+                if require_public_link and not matching_links:
+                    raise AcquisitionError(
+                        "configured FSIS export link was not present on the official directory page",
+                        failure_class="source-link-drift",
+                        action="verify the official FSIS directory page and its published export links",
+                    )
             # The configured official URL is the observed public download
             # route. Navigate to it directly after the landing-page check so
             # duplicate/collapsed links cannot change the selected artifact.
@@ -272,10 +308,11 @@ def acquire_firefox(
                 "requested_url": url,
                 "final_url": url,
                 "page_url": page_url,
+                "source_page_link_context": source_page_link_context,
                 "requested_at_utc": requested_at,
                 "retrieved_at_utc": utc_now(),
                 "effective_date": effective_date or "unknown",
-                "publication_date": publication_date,
+                "publication_date": publication_date or _edition_date(source_page_link_context),
                 "sha256": digest,
                 "byte_size": raw_size,
                 "code_version": code_version,

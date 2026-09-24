@@ -572,6 +572,10 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                 evidence_files = list((source_root / "acquisition" / source_id).glob("*/pair-metadata.json"))
                 evidence = json.loads(evidence_files[0].read_text(encoding="utf-8")) if evidence_files else {}
                 run_id = evidence.get("operator", {}).get("run_id")
+            elif source_id == "us.fsis":
+                evidence_files = list((source_root / "acquisition" / "us.fsis.directory").glob("*/acquisition-metadata.json"))
+                evidence = json.loads(evidence_files[0].read_text(encoding="utf-8")) if len(evidence_files) == 1 else {}
+                run_id = evidence.get("run_id")
             else:
                 evidence_files = list((source_root / "acquisition" / source_id).glob("*/acquisition-metadata.json"))
                 evidence = json.loads(evidence_files[0].read_text(encoding="utf-8")) if evidence_files else {}
@@ -736,6 +740,52 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
             "coordinate_precision_breakdown": {"exact": 0, "city_or_postal_only": import_result.get("city_postal_count"),
                                                 "approximate_city_display": import_result.get("coarse_placeable_facility_count"),
                                                 "unmapped": import_result.get("unmapped_map_candidate_count")},
+        })
+    elif source_id == "us.fsis":
+        source_results = refresh_result.get("results") if isinstance(refresh_result, dict) else None
+        source_result = next((item for item in source_results or []
+                              if isinstance(item, dict) and item.get("source_id") == source_id), None)
+        source_summary = source_result.get("summary") if isinstance(source_result, dict) else None
+        if not isinstance(source_summary, dict):
+            raise PreviewError("FSIS lifecycle summary is unavailable for runtime ledger reconciliation")
+        acquisition_evidence: dict[str, object] = {}
+        for role, source in (("directory", "us.fsis.directory"), ("demographics", "us.fsis.demographics")):
+            acquisition_path = source_dir / "acquisition" / source / run_id / "acquisition-metadata.json"
+            if not acquisition_path.is_file() or acquisition_path.is_symlink():
+                raise PreviewError("FSIS acquisition provenance is unavailable")
+            artifact = json.loads(acquisition_path.read_text(encoding="utf-8"))
+            if artifact.get("run_id") != run_id or artifact.get("source_id") != source:
+                raise PreviewError("FSIS acquisition provenance does not match this preview run")
+            acquisition_evidence[role] = {key: artifact.get(key) for key in (
+                "source_id", "run_id", "requested_url", "final_url", "page_url",
+                "requested_at_utc", "retrieved_at_utc", "effective_date", "publication_date",
+                "sha256", "byte_size", "terms_review", "acquisition_authorization",
+                "attempts", "browser", "navigation_mode", "code_version", "config_version",
+                "rights_caveat", "privacy_caveat", "coverage")}
+        if any(not isinstance(value, str) or len(value) != 64 for value in (
+                import_result.get("normalized_sha256"), source_summary.get("candidate_handoff_sha256"),
+                source_summary.get("schema_fingerprint"), source_summary.get("demographic_schema_fingerprint"))):
+            raise PreviewError("FSIS lifecycle provenance hashes are incomplete")
+        ledger.update({
+            "acquisition": acquisition_evidence,
+            "normalized_sha256": import_result.get("normalized_sha256"),
+            "candidate_handoff_sha256": source_summary.get("candidate_handoff_sha256"),
+            "schema_fingerprint": source_summary.get("schema_fingerprint"),
+            "demographic_schema_fingerprint": source_summary.get("demographic_schema_fingerprint"),
+            "quarantine": {"input_rows": source_summary.get("input_rows"),
+                           "accepted_rows": source_summary.get("normalized_rows"),
+                           "quarantined_rows": source_summary.get("quarantined_rows"),
+                           "reasons": source_summary.get("quarantine_reasons", {})},
+            "row_reconciliation": source_summary.get("row_reconciliation"),
+            "source_counts": {key: import_result.get(key) for key in (
+                "observation_count", "facility_candidate_count", "numeric_coordinate_count",
+                "city_postal_count", "unmapped_observation_count", "mapped_non_candidate_observation_count",
+                "unmapped_map_candidate_count", "public_release_count", "public_projection_count")},
+            "coordinate_precision_breakdown": {
+                "source_provided_unspecified": import_result.get("source_provided_coordinate_group_count"),
+                "source_precision_unknown": import_result.get("source_precision_unknown_group_count"),
+                "exact": 0, "city_or_postal_only": import_result.get("city_postal_count"),
+                "unmapped": import_result.get("unmapped_map_candidate_count")},
         })
     ledger_path = output_root / runner_run_id / "source-preview-ledger.json"
     ledger_path.write_text(json.dumps(ledger, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")

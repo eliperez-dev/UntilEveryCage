@@ -309,7 +309,7 @@ def _resolve_municipality(index: dict[str, Any], value: Any, alias_policy: dict[
 
 
 def validate_preview_fields(path: Path, allowed_fields: set[str]) -> None:
-    top_level = {"source_id", "source_row", "source_row_id", "source_record_key", "source_values", "normalized"}
+    top_level = {"source_id", "source_row", "source_row_id", "source_record_key", "source_values", "source_rows", "normalized"}
     for line in path.read_text(encoding="utf-8").splitlines():
         try:
             row = json.loads(line)
@@ -488,6 +488,56 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
                     or acquisition_evidence.get("final_url") != manifest.get("source_url")
                     or acquisition_evidence.get("retrieved_at_utc") != manifest.get("retrieved_at_utc")):
                 raise ImportFailure("acquisition_provenance_mismatch")
+        elif source_id == "us.fsis":
+            source_artifacts = manifest.get("source_artifacts")
+            bundle = manifest.get("bundle_artifact")
+            if not isinstance(source_artifacts, dict) or not isinstance(bundle, dict):
+                raise ImportFailure("fsis_bundle_provenance_missing")
+            fsis_evidence: dict[str, dict[str, Any]] = {}
+            for role, source in (("directory", "us.fsis.directory"), ("demographics", "us.fsis.demographics")):
+                evidence_path = root / "acquisition" / source / run_id / "acquisition-metadata.json"
+                if not evidence_path.is_file() or evidence_path.is_symlink():
+                    raise ImportFailure("fsis_acquisition_provenance_missing")
+                evidence = json_object(evidence_path)
+                if (evidence.get("source_id") != source or evidence.get("run_id") != run_id
+                        or evidence.get("acquisition_method") != "firefox_browser_download"
+                        or not isinstance(evidence.get("terms_review"), dict)
+                        or evidence["terms_review"].get("decision") != "approved"
+                        or not isinstance(evidence.get("acquisition_authorization"), dict)
+                        or evidence["acquisition_authorization"].get("status") != "authorized"):
+                    raise ImportFailure("fsis_acquisition_provenance_mismatch")
+                artifact_path = evidence.get("artifact_path")
+                if not isinstance(artifact_path, str):
+                    raise ImportFailure("fsis_acquisition_artifact_mismatch")
+                artifact_file = Path(artifact_path)
+                if not artifact_file.is_file() or artifact_file.is_symlink():
+                    raise ImportFailure("fsis_acquisition_artifact_mismatch")
+                actual_hash, actual_size = digest_file(artifact_file)
+                if actual_hash != evidence.get("sha256") or actual_size != evidence.get("byte_size"):
+                    raise ImportFailure("fsis_acquisition_artifact_mismatch")
+                if source_artifacts.get(role, {}).get("sha256") != actual_hash:
+                    raise ImportFailure("fsis_handoff_artifact_mismatch")
+                try:
+                    acquired_at = datetime.fromisoformat(str(evidence.get("retrieved_at_utc")).replace("Z", "+00:00"))
+                except ValueError:
+                    raise ImportFailure("fsis_acquisition_timestamp_invalid") from None
+                if acquired_at.utcoffset() is None or acquired_at > datetime.now(timezone.utc) + timedelta(minutes=5):
+                    raise ImportFailure("fsis_acquisition_timestamp_invalid")
+                if datetime.now(timezone.utc) - acquired_at > timedelta(days=max_age):
+                    raise ImportFailure("fsis_acquisition_artifact_stale")
+                fsis_evidence[role] = evidence
+            if fsis_evidence["directory"].get("sha256") != source_hash:
+                raise ImportFailure("fsis_directory_checksum_mismatch")
+            bundle_digest = hashlib.sha256("".join(
+                f"{role}:{fsis_evidence[role]['sha256']}\n" for role in sorted(fsis_evidence)
+            ).encode()).hexdigest()
+            if bundle.get("sha256") != bundle_digest:
+                raise ImportFailure("fsis_bundle_checksum_mismatch")
+            acquisition_evidence = {role: {
+                key: evidence.get(key) for key in (
+                    "source_id", "run_id", "requested_url", "final_url", "retrieved_at_utc",
+                    "effective_date", "sha256", "byte_size", "terms_review", "browser", "attempts")
+            } for role, evidence in fsis_evidence.items()}
         municipality_index = None
         geometry_policy = policy.get("display_policy", {})
         if geometry_policy.get("kind") in {"administrative_municipality_centroid", "administrative_commune_centre"}:

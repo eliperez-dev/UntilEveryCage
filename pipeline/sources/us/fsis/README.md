@@ -1,24 +1,31 @@
 # FSIS MPI private refresh
 
-This source package is a private, test-only acquisition and transformation
-boundary for the USDA FSIS Meat, Poultry and Egg Product Inspection (MPI)
-Directory. It does not create a public release. State inspection programs,
-APHIS observations, and non-FSIS populations remain outside this source.
+This source package feeds the private preview from the USDA FSIS Meat, Poultry
+and Egg Product Inspection (MPI) Directory. The scheduled operator command is
+non-interactive and refreshes the database the map reads:
+
+```text
+python scripts/real_preview.py refresh --source us.fsis
+```
+
+Run it in an environment with Python pipeline requirements, Firefox, and
+Selenium installed. It downloads the current published directory-by-number
+CSV and supplemental demographics CSV, validates both, runs exact-ID
+reconciliation and quarantine, normalizes observations, and imports the exact
+handoff to the isolated loopback preview database. The frontend has no
+operational refresh control. State inspection programs, APHIS observations,
+and non-FSIS populations remain outside this source.
 
 ## Capture boundary
 
-The official page currently exposes a directory export by establishment name,
-a directory export by establishment number, and a supplemental establishment-
-demographic CSV. Direct HTTP links may return HTTP 403 while a normal Firefox
-download succeeds on the same source route. The refresh command has an
-explicit `--acquisition-method` choice: `http` uses the bounded HTTP primitive;
-`firefox` uses a fresh temporary Firefox profile and Selenium download settings.
-The browser method records the exact URL, retrieval time, hash, byte size,
-browser/runtime version, navigation method, and whether a navigation timeout
-occurred after a complete validated file appeared. It never imports a user
-profile, credentials, cookies, or hidden endpoints. HTML, login pages, 403
-responses, unsupported content types, malformed CSV, incomplete downloads, and
-schema drift fail closed.
+The authorized Firefox method uses a fresh temporary profile and only follows
+the exact public export links present on the official FSIS directory page. It
+records the linked edition label, URL, retrieval time, hash, byte size, browser
+and Selenium versions, and navigation outcome. It never imports a user
+profile, credentials, cookies, or hidden endpoints. Missing official links,
+HTML, login pages, 403 responses, incomplete downloads, malformed CSV, and
+schema drift fail closed. Each of the two required exports must succeed; there
+is no retained-artifact fallback.
 
 For an operator-assisted capture:
 
@@ -29,15 +36,16 @@ python -m pipeline.sources.us.fsis.refresh \
   --run-dir <private-run> --mode dry-run
 ```
 
-For an owner-authorized normal-browser capture, install the optional Selenium
-package in the operator runtime and install system Firefox; these are not
-project runtime dependencies:
+For the scheduled command, install the pinned Python requirements and system
+Firefox in the operator runtime:
 
 ```text
-python -m pip install selenium
+python -m pip install -r pipeline/requirements.txt
 ```
 
-Then choose the browser method explicitly:
+The automated preview runner selects the browser method and project-scoped
+private-preview authorization for FSIS. Operators should schedule the single
+command above. The lower-level module remains available for isolated diagnosis:
 
 ```text
 python -m pipeline.sources.us.fsis.refresh \
@@ -47,17 +55,12 @@ python -m pipeline.sources.us.fsis.refresh \
   --run-dir <private-run> --mode dry-run
 ```
 
-The authorization record must state `status=authorized`, an owner basis,
-source scope, private/no-public restrictions, and `terms_status=unknown` or
-`pending_review`. It records acquisition permission separately; it is not a
-redistribution or licensing approval. Supply `--terms-review` only when a
-separate approved terms record exists; otherwise the browser metadata records
-terms as unknown and publication remains blocked. Each browser attempt is bounded to two fresh sessions by default, retains only
-validated CSV bytes and row-free metadata, and removes incomplete/invalid
-download bodies after preserving the failure record. A browser navigation
-timeout is accepted only after the completed file passes the byte bound and
-the source-role CSV validator. The demographic route is acquired in the same
-run; missing demographics remain an explicit directory-only profile.
+The project authorization record permits private preview acquisition only; it
+does not establish redistribution rights or authorize public release. Each
+browser attempt is bounded to two fresh sessions, retains validated CSV bytes
+and row-free provenance, and removes incomplete or invalid download bodies
+after writing a failure record. A browser navigation timeout is accepted only
+when the complete file passes the byte and source-role CSV checks.
 
 Use `--mode handoff` only after reviewing the private manifest and quarantine.
 `--raw` remains a directory-only compatibility alias. `--fetch` requires a

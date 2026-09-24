@@ -25,6 +25,17 @@ class RealPreviewImporterTests(unittest.TestCase):
             }) + "\n", encoding="utf-8")
             IMPORTER.validate_preview_fields(path, {"recognition_number"})
 
+    def test_role_qualified_source_row_provenance_is_allowed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "records.jsonl"
+            path.write_text(json.dumps({
+                "source_id": "us.fsis", "source_row": 2,
+                "source_record_key": "M-1", "source_rows": {"directory": 2, "demographics": 4},
+                "source_values": {"directory": {}, "demographics": {}},
+                "normalized": {"establishment_id": "M-1"},
+            }) + "\n", encoding="utf-8")
+            IMPORTER.validate_preview_fields(path, {"establishment_id"})
+
     def test_precision_comes_from_coordinate_and_documented_precision_fields(self):
         numeric = IMPORTER.parse_row("it.853-2004", {
             "source_id": "it.853-2004", "source_record_key": "sanitized-fixture",
