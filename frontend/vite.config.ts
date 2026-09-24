@@ -10,7 +10,7 @@ export default defineConfig(({ command }) => {
   const realPreviewProxy: Record<string, string | ProxyOptions> = {};
   if (previewToken && process.env.VITE_LOCAL_DATA_MODE === 'real-preview') {
     realPreviewProxy['/dev/real-preview'] = {
-      target: 'http://127.0.0.1:38001',
+      target: process.env.VITE_API_ORIGIN ?? 'http://127.0.0.1:38001',
       changeOrigin: false,
       configure(proxy) {
         proxy.on('proxyReq', request => request.setHeader('x-uec-dev-preview-token', previewToken));

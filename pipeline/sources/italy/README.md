@@ -9,7 +9,27 @@ SHA-256, byte size, supplied catalog/file dates, source ID, code/configuration
 versions, and terms-review evidence. Network acquisition is bounded and
 requires an approved private terms-review JSON file.
 
-Run private acquisition and staging with:
+Run the complete current acquisition-to-private-preview flow as one
+non-interactive, source-scoped command while the isolated local preview
+database service is running:
+
+```text
+python scripts/real_preview.py refresh --source it.853-2004
+```
+
+The command discovers and downloads the current catalog CSV, records source
+and retrieval provenance, validates the schema, parses and quarantines unsafe
+rows, normalizes the handoff, and atomically imports the exact run under the
+generic preview-enabled policy. It has bounded acquisition timeouts and a
+nonblocking per-source lock. A failed step returns a nonzero status and does
+not replace the existing preview snapshot; it never falls back to stale or
+synthetic data. Omit neither `--source` nor its value: refresh requires an
+explicit source. `--all-due` scheduling is not yet implemented. The browser is
+read-only and loads the updated preview automatically; Playwright verifies
+that the CLI-acquired run is selectable and rendered.
+
+The lower-level commands remain available for restricted diagnosis, but are
+not the acceptance workflow:
 
 ```text
 python -m pipeline.sources.italy.acquire --fetch --terms-review <review.json> --output-root data/raw --run-id <id>
@@ -18,18 +38,22 @@ python -m pipeline.sources.italy.refresh --raw data/raw/it.853-2004/<id>/source.
 
 The refresh uses `run_private_lifecycle`, producing parsed, normalized,
 quarantined, row-free QA, restricted run status, and deterministic private
-health artifacts. It ends at `candidate-ready`; candidate import and guarded
-test-only API checks are separate explicit steps. No release is promoted and
-default/public visibility remains zero.
+health artifacts. The shared runner carries the exact acquired artifact
+through the generic preview policy gate. Preview rows are available only to the
+authenticated local loopback API. No release is promoted and public visibility
+remains zero.
 
 The adapter treats each establishment/activity row as an observation. It
 preserves source values privately, retains source identifiers, represents
 unknown dates/geography/coordinates explicitly, and quarantines malformed
 rows, unknown statuses, missing identifiers/activity codes, invalid dates,
 and repeated recognition/activity identities. Repeated rows are not merged.
-Addresses, tax identifiers, and source coordinates are never copied into the
-normalized public-shaped fields; any future coordinate or address use requires
-separate privacy and project review.
+Addresses and tax identifiers are never copied into normalized fields. Valid
+source coordinates are retained in restricted handoff evidence with
+`source-precision-unknown`, shown as approximate in the private preview, and
+disclosed as unverified. Incomplete or out-of-range pairs are quarantined;
+`(0, 0)` pairs remain non-map evidence. Unmapped rows receive no substitute
+point. Public coordinate use still requires separate review.
 
 ## 1069/2009 boundary
 

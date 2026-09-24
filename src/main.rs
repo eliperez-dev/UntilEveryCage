@@ -19,7 +19,7 @@ use axum::extract::{ConnectInfo, State};
 use axum::http::{HeaderValue, Method};
 use axum::http::{Request, Response, header};
 use axum::{Extension, Json, http::StatusCode, response::IntoResponse};
-use axum::{Router, routing::{get, post}};
+use axum::{Router, routing::get};
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -67,7 +67,6 @@ pub fn app(state: uec_api::ApiState, proxy: private_environment::ProxyConfig) ->
                 )
                 .route("/facets", get(uec_api::get_real_preview_facets_handler))
                 .route("/counts", get(uec_api::get_real_preview_counts_handler))
-                .route("/refresh", post(uec_api::post_real_preview_refresh_handler))
                 .layer(axum::middleware::from_fn(private_preview_no_store)),
         )
         .route(

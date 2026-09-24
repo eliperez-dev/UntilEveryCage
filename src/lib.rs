@@ -440,6 +440,7 @@ pub struct RealPreviewPageParams {
     pub cursor: Option<uuid::Uuid>,
     pub limit: Option<i64>,
     pub q: Option<String>,
+    pub source_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -450,6 +451,7 @@ pub struct RealPreviewViewportParams {
     pub north: f64,
     pub cursor: Option<uuid::Uuid>,
     pub limit: Option<i64>,
+    pub source_id: Option<String>,
 }
 
 fn real_preview_response(status: StatusCode, body: Value) -> Response<axum::body::Body> {
@@ -523,46 +525,6 @@ fn real_preview_unavailable() -> Response<axum::body::Body> {
         "preview_unavailable",
         "private preview data unavailable",
     )
-}
-
-/// Run the policy-enabled local refresh job; the shared preview token is
-/// consumed only by the Vite proxy and never returned to the browser.
-pub async fn post_real_preview_refresh_handler(
-    State(state): State<ApiState>,
-    headers: HeaderMap,
-) -> Response<axum::body::Body> {
-    if let Err(response) = real_preview_authorized(&state, &headers) {
-        return response;
-    }
-    if std::env::var("UEC_RUNTIME_MODE").unwrap_or_else(|_| "development".into()) != "development"
-        || std::env::var("UEC_DEV_PREVIEW").ok().as_deref() != Some("true")
-    {
-        return real_preview_error(StatusCode::NOT_FOUND, "preview_unavailable", "private preview unavailable");
-    }
-    let Ok(root) = std::env::current_dir() else {
-        return real_preview_unavailable();
-    };
-    let script = root.join("scripts").join("real_preview.py");
-    if !script.is_file() {
-        return real_preview_unavailable();
-    }
-    let mut command = tokio::process::Command::new(std::env::var("UEC_PYTHON").unwrap_or_else(|_| "python".into()));
-    command.args([script.to_string_lossy().as_ref(), "refresh", "--source", "be.locations"])
-        .current_dir(root)
-        .kill_on_drop(true)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null());
-    let result = match tokio::time::timeout(Duration::from_secs(900), command.output()).await {
-        Ok(Ok(output)) if output.status.success() => output,
-        Ok(Ok(_)) => return real_preview_error(StatusCode::SERVICE_UNAVAILABLE, "refresh_failed", "source refresh failed; no stale fallback was used"),
-        Ok(Err(_)) => return real_preview_unavailable(),
-        Err(_) => return real_preview_error(StatusCode::GATEWAY_TIMEOUT, "refresh_timeout", "source refresh exceeded its bounded runtime"),
-    };
-    let payload: Value = match serde_json::from_slice::<Value>(&result.stdout) {
-        Ok(value) if value.get("status").and_then(Value::as_str) == Some("imported") => value,
-        _ => return real_preview_error(StatusCode::SERVICE_UNAVAILABLE, "refresh_result_invalid", "source refresh returned no valid readiness result"),
-    };
-    real_preview_response(StatusCode::OK, json!({"api_version":"real-preview-v1","data":payload}))
 }
 
 fn real_preview_candidate(row: &tokio_postgres::Row) -> Value {
@@ -671,8 +633,8 @@ pub async fn get_real_preview_list_handler(
         .collect::<String>();
     let query_limit = limit + 1;
     let rows = match client.query(
-        "SELECT candidate_id,source_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision,display_latitude,display_longitude,display_geometry_source FROM real_preview.candidates WHERE ((location_class='city_postal' AND (NULLIF(BTRIM(city),'') IS NOT NULL OR NULLIF(BTRIM(postal_code),'') IS NOT NULL)) OR (location_class='numeric_source_coordinate' AND ((latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180 AND (latitude<>0 OR longitude<>0)) OR ((NULLIF(BTRIM(city),'') IS NOT NULL OR NULLIF(BTRIM(postal_code),'') IS NOT NULL) AND NOT (latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180 AND (latitude<>0 OR longitude<>0))))) ) AND (NOT EXISTS (SELECT 1 FROM real_preview.source_preview_runs) OR snapshot_sha256 IN (SELECT DISTINCT ON (source_id) snapshot_sha256 FROM real_preview.source_preview_runs ORDER BY source_id,created_at DESC,run_id DESC)) AND ($1::uuid IS NULL OR candidate_id > $1) AND ($2='' OR city ILIKE '%' || $2 || '%' OR postal_code ILIKE '%' || $2 || '%') ORDER BY candidate_id LIMIT $3",
-        &[&cursor, &query, &query_limit],
+        "SELECT candidate_id,source_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision,display_latitude,display_longitude,display_geometry_source FROM real_preview.candidates WHERE ((location_class='city_postal' AND (NULLIF(BTRIM(city),'') IS NOT NULL OR NULLIF(BTRIM(postal_code),'') IS NOT NULL)) OR (location_class='numeric_source_coordinate' AND ((latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180 AND (latitude<>0 OR longitude<>0)) OR ((NULLIF(BTRIM(city),'') IS NOT NULL OR NULLIF(BTRIM(postal_code),'') IS NOT NULL) AND NOT (latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180 AND (latitude<>0 OR longitude<>0))))) ) AND (NOT EXISTS (SELECT 1 FROM real_preview.source_preview_runs) OR snapshot_sha256 IN (SELECT DISTINCT ON (source_id) snapshot_sha256 FROM real_preview.source_preview_runs ORDER BY source_id,created_at DESC,run_id DESC)) AND ($1::uuid IS NULL OR candidate_id > $1) AND ($2='' OR city ILIKE '%' || $2 || '%' OR postal_code ILIKE '%' || $2 || '%') AND ($4::text IS NULL OR source_id=$4) ORDER BY candidate_id LIMIT $3",
+        &[&cursor, &query, &query_limit, &params.source_id],
     ).await { Ok(rows) => rows, Err(_) => return real_preview_unavailable() };
     let has_next = rows.len() as i64 > limit;
     let data: Vec<Value> = rows.iter().take(limit as usize).map(real_preview_candidate).collect();
@@ -717,8 +679,8 @@ pub async fn get_real_preview_viewport_handler(
     };
     let query_limit = limit + 1;
     let rows = match client.query(
-        "SELECT candidate_id,source_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision,display_latitude,display_longitude,display_geometry_source FROM real_preview.candidates WHERE (((location_class='numeric_source_coordinate' AND latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180 AND (latitude<>0 OR longitude<>0)) OR (display_geometry_source IS NOT NULL AND display_latitude BETWEEN -90 AND 90 AND display_longitude BETWEEN -180 AND 180)) AND COALESCE(display_longitude,longitude) BETWEEN $1 AND $3 AND COALESCE(display_latitude,latitude) BETWEEN $2 AND $4) AND (NOT EXISTS (SELECT 1 FROM real_preview.source_preview_runs) OR snapshot_sha256 IN (SELECT DISTINCT ON (source_id) snapshot_sha256 FROM real_preview.source_preview_runs ORDER BY source_id,created_at DESC,run_id DESC)) AND ($5::uuid IS NULL OR candidate_id > $5) ORDER BY candidate_id LIMIT $6",
-        &[&params.west,&params.south,&params.east,&params.north,&params.cursor,&query_limit],
+        "SELECT candidate_id,source_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision,display_latitude,display_longitude,display_geometry_source FROM real_preview.candidates WHERE (((location_class='numeric_source_coordinate' AND latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180 AND (latitude<>0 OR longitude<>0)) OR (display_geometry_source IS NOT NULL AND display_latitude BETWEEN -90 AND 90 AND display_longitude BETWEEN -180 AND 180)) AND COALESCE(display_longitude,longitude) BETWEEN $1 AND $3 AND COALESCE(display_latitude,latitude) BETWEEN $2 AND $4) AND (NOT EXISTS (SELECT 1 FROM real_preview.source_preview_runs) OR snapshot_sha256 IN (SELECT DISTINCT ON (source_id) snapshot_sha256 FROM real_preview.source_preview_runs ORDER BY source_id,created_at DESC,run_id DESC)) AND ($5::uuid IS NULL OR candidate_id > $5) AND ($7::text IS NULL OR source_id=$7) ORDER BY candidate_id LIMIT $6",
+        &[&params.west,&params.south,&params.east,&params.north,&params.cursor,&query_limit,&params.source_id],
     ).await { Ok(rows) => rows, Err(_) => return real_preview_unavailable() };
     let has_next = rows.len() as i64 > limit;
     let data: Vec<Value> = rows.iter().take(limit as usize).map(real_preview_candidate).collect();

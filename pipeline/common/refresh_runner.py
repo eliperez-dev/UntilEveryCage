@@ -103,6 +103,11 @@ class RefreshCatalog:
         entry = self.sources[source_id]
         capability = self.capabilities.get(source_id)
         schedule = getattr(self, "schedules", {}).get(source_id)
+        registered = self.adapters.get(source_id)
+        has_live_fetch_hook = bool(
+            capability and capability.live_callable and registered
+            and callable(getattr(registered.adapter, "acquire", None))
+        )
         access_mode = str(entry.get("access_method") or (capability.acquisition if capability else "unknown"))
         cadence = schedule.cadence if schedule is not None else str(entry.get("cadence") or "unknown")
         fallback = schedule.manual_fallback if schedule is not None else (
@@ -116,7 +121,11 @@ class RefreshCatalog:
             "review_state": str((capability.publication if capability else "human_gate_required")),
             "cadence": cadence,
             "assisted_manual_fallback": fallback,
-            "live_access": "not-authorized-by-runner" if str(capability.acquisition if capability else "").lower() not in {"verified", "bounded_private_fetch"} else "source-specific-hook-required",
+            "live_access": (
+                "source-specific-acquisition-hook-registered" if has_live_fetch_hook else
+                "not-authorized-by-runner" if str(capability.acquisition if capability else "").lower() not in {"verified", "bounded_private_fetch"} else
+                "source-specific-hook-required"
+            ),
         }
 
     def select(self, request: RefreshRequest) -> tuple[str, ...]:

@@ -12,6 +12,18 @@
       "display_policy": {"kind": "administrative_municipality_centroid", "precision": "approximate_city", "source": "Statbel 2025 municipality boundaries", "source_url": "https://statbel.fgov.be/en/open-data/statistical-sectors-2026", "source_file_url": "https://statbel.fgov.be/sites/default/files/files/opendata/Statistische%20sectoren/sh_statbel_statistical_sectors_3812_20250101.geojson.zip", "version": "statbel-municipality-centroids-2025-v2", "license": "CC BY 4.0", "attribution": "Statbel", "reference_date": "2025-01-01", "name_matching": "Exact multilingual municipality names; paired names split on slash; parenthetical province qualifiers removed; explicit submunicipality crosswalks only", "official_subdivision_aliases": {"Glabbeek-Zuurbemde": {"municipality": "Glabbeek", "reference_url": "https://www.glabbeek.be/", "reason": "official municipal site identifies Glabbeek-Zuurbemde as a deelgemeente of Glabbeek"}}},
       "adapter_version": "be-fasfc-private-v3",
       "schema_version": "be-fasfc-csv-v3"
+    },
+    "it.853-2004": {
+      "enabled": true,
+      "runner": "pipeline.refresh_private:it.853-2004",
+      "terms_review": "data/terms-reviews/it.853-2004.json",
+      "terms_decision": "approved",
+      "freshness_max_days": 1,
+      "expected_artifacts": ["source.csv"],
+      "allowed_preview_fields": ["establishment_id", "recognition_number", "source_activity_code", "facility_grouping", "facility_identity_state", "observation_identity_state", "name", "trading_name", "address", "location_role", "location_semantics", "registered_location", "registered_location_state", "operating_location", "operating_location_state", "source_location_state", "municipality", "city", "province", "region", "country_code", "nation", "geography_precision", "geography_state", "classification", "classification_state", "classification_decision", "activity_state", "activity_code", "activity_description", "products", "status", "status_state", "dates", "date_state", "coordinates", "coordinate_state", "coordinate_precision", "privacy_gate", "coordinate_gate", "rights_gate", "publication_gate"],
+      "display_policy": {"kind": "source_numeric_coordinate", "precision": "source-precision-unknown", "disclosure": "Approximate source location; coordinate precision and provenance are unknown; private preview only. Not an exact facility point."},
+      "adapter_version": "it-853-candidate-v2",
+      "schema_version": "it-853-csv-v2.0"
     }
   }
 }

@@ -127,6 +127,22 @@ class Italy853Adapter:
                 value = clean(row.get(field))
                 if _date_state(value) == "invalid":
                     reasons.append(f"invalid_{field}")
+            latitude_raw = clean(row.get("latitudine"))
+            longitude_raw = clean(row.get("longitudine"))
+            coordinates = None
+            if bool(latitude_raw) != bool(longitude_raw):
+                reasons.append("incomplete_coordinate_pair")
+            elif latitude_raw and longitude_raw:
+                try:
+                    latitude, longitude = float(latitude_raw), float(longitude_raw)
+                except ValueError:
+                    reasons.append("invalid_source_coordinates")
+                else:
+                    if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+                        reasons.append("source_coordinates_out_of_range")
+                    else:
+                        coordinates = {"latitude": latitude, "longitude": longitude,
+                                       "precision": "source-precision-unknown"}
             municipality_code = clean(row.get("codice_comune"))
             geography_precision = "municipality-code" if municipality_code and len(municipality_code) == 6 else "unknown"
             normalized_dates = {field: _normalize_date(clean(row.get(field))) for field in DATE_FIELDS}
@@ -170,8 +186,8 @@ class Italy853Adapter:
                 "status_state": "known" if status else "unknown",
                 "dates": normalized_dates,
                 "date_state": {field: _date_state(clean(row.get(field))) for field in DATE_FIELDS},
-                "coordinates": None,
-                "coordinate_state": "source-value-present-pending-review" if clean(row.get("longitudine")) or clean(row.get("latitudine")) else "unknown",
+                "coordinates": coordinates,
+                "coordinate_state": "source-value-present-pending-review" if coordinates else "unknown",
                 "coordinate_precision": "source-precision-unknown" if clean(row.get("longitudine")) or clean(row.get("latitudine")) else "unresolved",
                 "privacy_gate": "pending-review",
                 "coordinate_gate": "review_required",

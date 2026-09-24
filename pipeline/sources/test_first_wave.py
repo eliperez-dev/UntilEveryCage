@@ -51,7 +51,9 @@ class FirstWaveDescriptorTests(unittest.TestCase):
     def test_readiness_report_keeps_live_state_separate(self):
         report = readiness_report()
         self.assertEqual(len(report), 8)
-        self.assertTrue(all(item["private_pipeline"] == "fixture_contract_ready" for item in report))
+        italy = next(item for item in report if item["source_id"] == "it.853-2004")
+        self.assertEqual(italy["private_pipeline"], "one_action_preview_import_ready")
+        self.assertTrue(all(item["private_pipeline"] == "fixture_contract_ready" for item in report if item["source_id"] != "it.853-2004"))
         self.assertTrue(all(item["publication"] == "human_gate_required" for item in report))
         self.assertIn("assisted_only", {item["live_acquisition"] for item in report})
 

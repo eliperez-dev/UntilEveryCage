@@ -1,0 +1,7 @@
+{
+  "decision": "approved",
+  "notes": "The Ministry dataset page identifies this 853/2004 dataset as licensed under Italian Open Data Licence v2.0 and names the Ministry of Health as the source. The official IODL v2.0 description permits reuse for any purpose subject to attribution. The catalog separately credits some coordinates to OpenStreetMap contributors; those values remain source-precision-unknown and are used only in this local private preview pending separate review of coordinate-level provenance. This decision records project authorization for private acquisition, processing, and loopback preview with attribution; it is not legal advice, a conclusion about every embedded third-party right, or public-release approval.",
+  "reference": "https://www.dati.salute.gov.it/it/dataset/stabilimenti-italiani-gli-alimenti-di-origine-animale/ ; https://www.dati.gov.it/iodl/2.0/ ; https://docs.italia.it/italia/daf/lg-patrimonio-pubblico/it/stabile/licenzecosti.html",
+  "reviewed_at": "2026-09-23T00:00:00Z",
+  "reviewer": "Codex source terms review under explicit project operator authorization"
+}

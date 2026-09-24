@@ -32,8 +32,6 @@ export type RealPreviewCounts = Readonly<{ facilityCandidateCount: number; numer
 export type RealPreviewFacet = Readonly<{ sourceId: string; locationClass: string; count: number }>;
 
 export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
-export type RealPreviewRefresh = Readonly<{runId:string; observations:number; facilityCandidates:number; mapVisibleCount:number}>;
-
 export class RealPreviewError extends Error {
   constructor(readonly kind: 'unauthorized' | 'loopback' | 'not-found' | 'unavailable' | 'network' | 'invalid-response', message: string) {
     super(message);
@@ -125,17 +123,19 @@ export function mapRealPreviewCandidate(candidate: RealPreviewCandidate): LabRec
     longitude: candidate.longitude,
     sourceId: candidate.sourceId,
     reviewStatus: candidate.coordinateReviewStatus,
-    previewLabel: candidate.previewLabel,
+    previewLabel: candidate.displayPrecision === 'approximate_source_precision_unknown_pending_review'
+      ? 'Approximate source coordinate · precision unknown; private preview only · not approved or published'
+      : candidate.previewLabel,
+    coordinatePrecision: candidate.coordinatePrecision,
   });
 }
 
 export function createRealPreviewRepository(fetcher: FetchLike = fetch): {
-  list(options?: { query?: string; cursor?: string | null; limit?: number; signal?: AbortSignal }): Promise<RealPreviewPage>;
-  viewport(bounds: ViewportBounds, options?: { cursor?: string | null; limit?: number; signal?: AbortSignal }): Promise<RealPreviewPage>;
+  list(options?: { query?: string; sourceId?: string | null; cursor?: string | null; limit?: number; signal?: AbortSignal }): Promise<RealPreviewPage>;
+  viewport(bounds: ViewportBounds, options?: { sourceId?: string | null; cursor?: string | null; limit?: number; signal?: AbortSignal }): Promise<RealPreviewPage>;
   detail(id: string, signal?: AbortSignal): Promise<RealPreviewCandidate>;
   counts(signal?: AbortSignal): Promise<RealPreviewCounts>;
   facets(signal?: AbortSignal): Promise<readonly RealPreviewFacet[]>;
-  refresh(signal?: AbortSignal): Promise<RealPreviewRefresh>;
 } {
   async function request<T>(path: string, signal?: AbortSignal, parse?: (body: unknown) => T, method = 'GET'): Promise<T> {
     let response: Response;
@@ -168,14 +168,16 @@ export function createRealPreviewRepository(fetcher: FetchLike = fetch): {
     return Object.freeze({ records: Object.freeze(envelope.data.map(parseRealPreviewCandidate)), nextCursor: meta.next_cursor as string | null });
   };
   return {
-    list({ query = '', cursor = null, limit = 200, signal } = {}) {
+    list({ query = '', sourceId = null, cursor = null, limit = 200, signal } = {}) {
       const params = new URLSearchParams({ limit: String(limit) });
+      if (sourceId) params.set('source_id', sourceId);
       if (query.trim()) params.set('q', query.trim().slice(0, 100));
       if (cursor) params.set('cursor', cursor);
       return request(`/locations?${params}`, signal, parsePage);
     },
-    viewport(bounds, { cursor = null, limit = 500, signal } = {}) {
+    viewport(bounds, { sourceId = null, cursor = null, limit = 500, signal } = {}) {
       const params = new URLSearchParams({ west: String(bounds.west), south: String(bounds.south), east: String(bounds.east), north: String(bounds.north), limit: String(limit) });
+      if (sourceId) params.set('source_id', sourceId);
       if (cursor) params.set('cursor', cursor);
       return request(`/viewport?${params}`, signal, parsePage);
     },
@@ -208,15 +210,6 @@ export function createRealPreviewRepository(fetcher: FetchLike = fetch): {
           return Object.freeze({ sourceId: row.source_id, locationClass: row.location_class, count: Number(row.count) });
         }));
       });
-    },
-    refresh(signal) {
-      return request('/refresh', signal, body => {
-        const envelope = object(body); const data = object(envelope.data);
-        if (envelope.api_version !== 'real-preview-v1' || data.status !== 'imported' || typeof data.run_id !== 'string'
-          || ![data.observations, data.facility_candidates, data.map_visible_count].every(value => Number.isInteger(value) && Number(value) >= 0))
-          throw new RealPreviewError('invalid-response', 'The local source refresh returned an invalid result.');
-        return Object.freeze({ runId: data.run_id, observations: Number(data.observations), facilityCandidates: Number(data.facility_candidates), mapVisibleCount: Number(data.map_visible_count) });
-      }, 'POST');
     },
   };
 }

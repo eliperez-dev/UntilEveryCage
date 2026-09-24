@@ -15,12 +15,21 @@ SPEC.loader.exec_module(IMPORTER)
 
 
 class RealPreviewImporterTests(unittest.TestCase):
+    def test_generic_source_row_id_provenance_is_allowed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "records.jsonl"
+            path.write_text(json.dumps({
+                "source_id": "it.853-2004", "source_row": 2,
+                "source_row_id": "sha256:fixture", "source_record_key": "record-2",
+                "source_values": {"column": "private"}, "normalized": {"recognition_number": "id-2"},
+            }) + "\n", encoding="utf-8")
+            IMPORTER.validate_preview_fields(path, {"recognition_number"})
+
     def test_precision_comes_from_coordinate_and_documented_precision_fields(self):
         numeric = IMPORTER.parse_row("it.853-2004", {
             "source_id": "it.853-2004", "source_record_key": "sanitized-fixture",
             "normalized": {"recognition_number": "group-1", "city": "Example",
-                "coordinate_precision": "source-precision-unknown"},
-            "source_values": {"latitudine": "44.1", "longitudine": "11.2"},
+                "coordinates": {"latitude": 44.1, "longitude": 11.2, "precision": "source-precision-unknown"}},
         })
         self.assertEqual(numeric[1], "numeric_source_coordinate")
         self.assertEqual(numeric[5:7], (44.1, 11.2))
@@ -47,8 +56,7 @@ class RealPreviewImporterTests(unittest.TestCase):
         zero_with_city = IMPORTER.parse_row("it.853-2004", {
             "source_id": "it.853-2004", "source_record_key": "zero-city",
             "normalized": {"recognition_number": "group-zero-city", "city": "Example",
-                "coordinate_precision": "source-precision-unknown"},
-            "source_values": {"latitudine": "0", "longitudine": "0"},
+                "coordinates": {"latitude": 0, "longitude": 0, "precision": "source-precision-unknown"}},
         })
         self.assertEqual(zero_with_city[1], "city_postal")
         self.assertIsNone(zero_with_city[5])
@@ -58,8 +66,7 @@ class RealPreviewImporterTests(unittest.TestCase):
         zero_without_placement = IMPORTER.parse_row("it.853-2004", {
             "source_id": "it.853-2004", "source_record_key": "zero-unmapped",
             "normalized": {"recognition_number": "group-zero-unmapped",
-                "coordinate_precision": "source-precision-unknown"},
-            "source_values": {"latitudine": "0", "longitudine": "0"},
+                "coordinates": {"latitude": 0, "longitude": 0, "precision": "source-precision-unknown"}},
         })
         self.assertEqual(zero_without_placement[1], "unmapped_private_observation")
         self.assertIsNone(zero_without_placement[5])
@@ -123,10 +130,11 @@ class RealPreviewImporterTests(unittest.TestCase):
     def test_source_mismatch_in_expected_layout_is_rejected(self):
         with tempfile.TemporaryDirectory(dir=MODULE_PATH.parents[3]) as directory:
             root = Path(directory)
+            mismatch_source = next(iter(IMPORTER.LEGACY_ALLOWED))
             for source in IMPORTER.LEGACY_ALLOWED:
                 target = root / "d6-graph-mvp" / "handoffs" / source / "manifest.json"
                 target.parent.mkdir(parents=True)
-                target.write_text(json.dumps({"source_id": "us.aphis" if source == "it.853-2004" else source, "normalized_sha256": "a" * 64}), encoding="utf-8")
+                target.write_text(json.dumps({"source_id": "us.aphis" if source == mismatch_source else source, "normalized_sha256": "a" * 64}), encoding="utf-8")
             with self.assertRaises(IMPORTER.ImportFailure) as failure:
                 IMPORTER.find_manifests(root)
             self.assertEqual(failure.exception.code, "manifest_source_mismatch")
@@ -135,7 +143,7 @@ class RealPreviewImporterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=MODULE_PATH.parents[3]) as directory:
             root = Path(directory)
             for source in IMPORTER.LEGACY_ALLOWED:
-                for suffix in (("", "-alternate") if source == "it.853-2004" else ("",)):
+                for suffix in (("", "-alternate") if source == next(iter(IMPORTER.LEGACY_ALLOWED)) else ("",)):
                     handoff = root / "d6-graph-mvp" / "handoffs" / f"{source}{suffix}"
                     (handoff / "normalized").mkdir(parents=True)
                     if not suffix:
@@ -145,9 +153,10 @@ class RealPreviewImporterTests(unittest.TestCase):
                     else:
                         normalized_hash = "a" * 64
                     (handoff / "manifest.json").write_text(json.dumps({"source_id": source, "normalized_sha256": normalized_hash}), encoding="utf-8")
-            alt = root / "d6-graph-mvp" / "handoffs" / "it.853-2004-alternate" / "normalized" / "records.jsonl"
+            alternate_source = next(iter(IMPORTER.LEGACY_ALLOWED))
+            alt = root / "d6-graph-mvp" / "handoffs" / f"{alternate_source}-alternate" / "normalized" / "records.jsonl"
             alt.write_text("{}\n", encoding="utf-8")
-            (alt.parent.parent / "manifest.json").write_text(json.dumps({"source_id": "it.853-2004", "normalized_sha256": hashlib.sha256(alt.read_bytes()).hexdigest()}), encoding="utf-8")
+            (alt.parent.parent / "manifest.json").write_text(json.dumps({"source_id": alternate_source, "normalized_sha256": hashlib.sha256(alt.read_bytes()).hexdigest()}), encoding="utf-8")
             with self.assertRaises(IMPORTER.ImportFailure) as failure:
                 IMPORTER.find_manifests(root)
             self.assertEqual(failure.exception.code, "duplicate_handoff")

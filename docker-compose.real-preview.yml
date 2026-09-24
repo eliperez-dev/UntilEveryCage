@@ -12,7 +12,7 @@ services:
       retries: 60
       start_period: 10s
     ports:
-      - "127.0.0.1:55433:5432"
+      - "127.0.0.1:${UEC_REAL_PREVIEW_DB_PORT:-55433}:5432"
     volumes:
       - uec-real-preview-e2e-source-postgres:/var/lib/postgresql/data
 volumes:

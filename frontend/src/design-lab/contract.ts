@@ -9,7 +9,7 @@ export type LabFilters = Readonly<{ categories: readonly string[]; precisions: r
 export type LabRecord = Readonly<{
   id: string; name: string; category: string; country: string; locality: string;
   precision: Precision; latitude: number | null; longitude: number | null;
-  sourceId?: string; reviewStatus?: string; previewLabel?: string;
+  sourceId?: string; reviewStatus?: string; previewLabel?: string; coordinatePrecision?: string | null;
 }>;
 export type ViewportBounds = Readonly<{ west: number; south: number; east: number; north: number }>;
 export type Viewport = Readonly<{ centerLat: number; centerLon: number; zoom: number }>;
@@ -40,9 +40,6 @@ export interface DirectionViewProps {
   detailError?: string;
   nextCursor?: string | null;
   pageLoading?: boolean;
-  refreshStatus?: 'idle' | 'running' | 'error';
-  refreshMessage?: string;
-  onRefresh?(): void;
   onLoadMore?(): void;
   onViewportBounds?(bounds: ViewportBounds): void;
   dispatch(action: LabAction): void;

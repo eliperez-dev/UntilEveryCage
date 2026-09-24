@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import contextlib
 import os
 import secrets
 import shutil
@@ -21,7 +22,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 PROJECT = "uec-real-preview-e2e-source"
 VOLUME = "uec-real-preview-e2e-source-postgres"
-DB_PORT, API_PORT, WEB_PORT = 55433, 38001, 34174
+DB_PORT = int(os.environ.get("UEC_REAL_PREVIEW_DB_PORT", "55433"))
+API_PORT = int(os.environ.get("UEC_REAL_PREVIEW_API_PORT", "38001"))
+WEB_PORT = int(os.environ.get("UEC_REAL_PREVIEW_WEB_PORT", "34174"))
 PRIVATE_ROOT = Path(os.environ.get("UEC_REAL_PREVIEW_ROOT", r"D:\UntilEveryCage-private"))
 IMPORTER = ROOT / "pipeline" / "scripts" / "maintenance" / "import-real-preview.py"
 MIGRATIONS = ROOT / "pipeline" / "scripts" / "maintenance" / "apply-migrations.py"
@@ -31,8 +34,64 @@ class PreviewError(RuntimeError):
     pass
 
 
+@contextlib.contextmanager
+def source_lock(source_id: str):
+    if not source_id or any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-" for ch in source_id):
+        raise PreviewError("invalid source identifier")
+    lock_dir = ROOT / "target" / "real-preview" / "locks"
+    lock_dir.mkdir(parents=True, exist_ok=True)
+    handle = (lock_dir / f"{source_id}.lock").open("a+b")
+    try:
+        try:
+            if os.name == "nt":
+                import msvcrt
+                handle.seek(0)
+                if handle.tell() == 0:
+                    handle.write(b"0")
+                    handle.flush()
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (OSError, BlockingIOError):
+            raise PreviewError("source refresh already running") from None
+        yield
+    finally:
+        try:
+            if os.name == "nt":
+                import msvcrt
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        except OSError:
+            pass
+        handle.close()
+
+
+def _local_database_url() -> str:
+    configured = os.environ.get("UEC_DATABASE_URL")
+    if configured:
+        from urllib.parse import urlsplit
+        parsed = urlsplit(configured)
+        if parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
+            raise PreviewError("preview refresh accepts only a loopback database")
+        return configured
+    password = _password(create=False)
+    if not password:
+        raise PreviewError("preview database password is missing")
+    verify_resources(require_container=True)
+    if not _socket_busy(DB_PORT):
+        raise PreviewError("owned preview database is not accepting local connections")
+    from urllib.parse import quote
+    return f"postgresql://uec:{quote(password, safe='')}@127.0.0.1:{DB_PORT}/uec?sslmode=disable"
+
+
 def compose(*args: str, capture: bool = True) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
+    env["UEC_REAL_PREVIEW_DB_PORT"] = str(DB_PORT)
     db_password = _password(create=False)
     if db_password:
         env["POSTGRES_PASSWORD"] = db_password
@@ -152,6 +211,44 @@ def _http_status(url: str, token: str | None = None) -> int | None:
         return None
 
 
+def _italy_acquisition_evidence(source_dir: Path, source_id: str, run_id: str) -> dict[str, object]:
+    """Return row-free official acquisition provenance for the runtime ledger."""
+    path = source_dir / "acquisition" / source_id / run_id / "acquisition-metadata.json"
+    try:
+        metadata = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        raise PreviewError("Italy acquisition metadata is unavailable for runtime ledger reconciliation") from None
+    if (not isinstance(metadata, dict) or metadata.get("source_id") != source_id
+            or metadata.get("run_id") != run_id or metadata.get("catalog_url") is None
+            or metadata.get("final_url") is None or metadata.get("retrieved_at_utc") is None
+            or metadata.get("adapter_version") is None or metadata.get("config_version") is None):
+        raise PreviewError("Italy acquisition metadata does not match the exact preview run")
+    raw_sha256 = metadata.get("sha256")
+    catalog_sha256 = metadata.get("catalog_sha256")
+    byte_size = metadata.get("byte_size")
+    if (not isinstance(raw_sha256, str) or len(raw_sha256) != 64
+            or any(character not in "0123456789abcdef" for character in raw_sha256.lower())
+            or not isinstance(catalog_sha256, str) or len(catalog_sha256) != 64
+            or any(character not in "0123456789abcdef" for character in catalog_sha256.lower())
+            or not isinstance(byte_size, int) or byte_size <= 0):
+        raise PreviewError("Italy acquisition metadata has invalid content digests")
+    return {
+        "source_id": source_id,
+        "run_id": run_id,
+        "catalog_url": metadata["catalog_url"],
+        "catalog_final_url": metadata.get("catalog_final_url"),
+        "catalog_sha256": catalog_sha256,
+        "artifact_url": metadata["final_url"],
+        "retrieved_at_utc": metadata["retrieved_at_utc"],
+        "requested_at_utc": metadata.get("requested_at_utc"),
+        "raw_sha256": raw_sha256,
+        "raw_byte_size": byte_size,
+        "publication_date": metadata.get("filename_publication_date"),
+        "adapter_version": metadata["adapter_version"],
+        "config_version": metadata["config_version"],
+    }
+
+
 def prerequisites() -> None:
     missing = [name for name in ("docker", "cargo") if not shutil.which(name)]
     frontend = ROOT / "frontend" / "node_modules" / "vite" / "bin" / "vite.js"
@@ -197,7 +294,8 @@ def up() -> dict[str, object]:
     env = {"PATH": os.environ.get("PATH", ""), "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""), "HOME": os.environ.get("HOME", ""),
            "UEC_DATABASE_URL": db_url, "UEC_DEV_PREVIEW_TOKEN": token, "UEC_RUNTIME_MODE": "development", "UEC_DEV_PREVIEW": "true",
            "UEC_BIND_HOST": "127.0.0.1", "PORT": str(API_PORT), "UEC_CORS_ORIGIN": f"http://127.0.0.1:{WEB_PORT}",
-           "UEC_REAL_PREVIEW_ROOT": str(PRIVATE_ROOT), "UEC_PREVIEW_PROJECT": PROJECT}
+           "UEC_REAL_PREVIEW_ROOT": str(PRIVATE_ROOT), "UEC_PREVIEW_PROJECT": PROJECT,
+           "UEC_REAL_PREVIEW_EMPTY_BOOTSTRAP": os.environ.get("UEC_REAL_PREVIEW_EMPTY_BOOTSTRAP", "0")}
     for key in ("TMP", "TEMP", "USERPROFILE", "CARGO_HOME", "RUSTUP_HOME", "LIB", "INCLUDE", "VCToolsInstallDir", "WindowsSdkDir"):
         if os.environ.get(key):
             env[key] = os.environ[key]
@@ -208,13 +306,22 @@ def up() -> dict[str, object]:
             raise PreviewError("isolated preview database failed to start")
         verify_resources(require_container=True)
         _run_checked([sys.executable, str(MIGRATIONS), "--database-url", db_url], env, "preview migrations")
-        output = _run_checked([sys.executable, str(IMPORTER), "--root", str(PRIVATE_ROOT), "--database-url-env", "UEC_DATABASE_URL", "--json"], env, "private preview import")
-        try:
-            summary = json.loads(output)
-            if not isinstance(summary, dict) or summary.get("status") != "imported" or not isinstance(summary.get("observation_count"), int):
-                raise ValueError
-        except (ValueError, json.JSONDecodeError) as exc:
-            raise PreviewError("lane 1 importer violated the aggregate-only JSON contract") from exc
+        if env.get("UEC_REAL_PREVIEW_EMPTY_BOOTSTRAP") == "1" and not any(PRIVATE_ROOT.iterdir()):
+            # An explicitly empty local workspace is valid for source-first
+            # acquisition: it must never be populated with fixtures or stale
+            # artifacts just to make the preview server start.
+            summary = {"status": "imported", "observation_count": 0,
+                       "source_scoped_candidate_count": 0, "numeric_coordinate_count": 0,
+                       "city_postal_count": 0, "public_release_count": 0,
+                       "public_projection_count": 0}
+        else:
+            output = _run_checked([sys.executable, str(IMPORTER), "--root", str(PRIVATE_ROOT), "--database-url-env", "UEC_DATABASE_URL", "--json"], env, "private preview import")
+            try:
+                summary = json.loads(output)
+                if not isinstance(summary, dict) or summary.get("status") != "imported" or not isinstance(summary.get("observation_count"), int):
+                    raise ValueError
+            except (ValueError, json.JSONDecodeError) as exc:
+                raise PreviewError("lane 1 importer violated the aggregate-only JSON contract") from exc
         _build_api()
         api_log = (ROOT / "target" / "real-preview" / "api.log").open("a", encoding="utf-8")
         executable = ROOT / "target" / "debug" / ("uec-api.exe" if os.name == "nt" else "uec-api")
@@ -261,8 +368,17 @@ def up() -> dict[str, object]:
             raise PreviewError("authenticated API aggregates differ from importer output")
         list_status, page = _http(f"{counts_url.rsplit('/', 1)[0]}/locations?limit=1", token)
         page_data = page.get("data") if page else None
-        if list_status != 200 or not isinstance(page_data, list) or not page_data:
+        if list_status != 200 or not isinstance(page_data, list):
             raise PreviewError("authenticated real-preview candidate list probe failed")
+        if not page_data and summary.get("source_scoped_candidate_count") == 0:
+            return {"status": "backend_ready_frontend_unavailable" if vite is None else "ready",
+                    "api_url": f"http://127.0.0.1:{API_PORT}",
+                    "url": f"http://127.0.0.1:{WEB_PORT}/" if vite else None,
+                    "aggregates": summary, "api_auth_check": "passed",
+                    "authenticated_api_counts": api_counts,
+                    "candidate_list_detail_check": "passed-empty-private-preview",
+                    "public_release_count": summary.get("public_release_count"),
+                    "public_projection_count": summary.get("public_projection_count")}
         candidate = page_data[0]
         candidate_id = candidate.get("candidate_id") if isinstance(candidate, dict) else None
         if not isinstance(candidate_id, str) or candidate.get("project_approval") is not False:
@@ -355,7 +471,7 @@ def probe() -> dict[str, object]:
     return {"ok": ready and (not frontend_available or frontend_ready), "api_ready": ready, "frontend_loopback": frontend_ready, "frontend_available": frontend_available}
 
 
-def refresh_source(source_id: str = "be.locations", existing_runner_run_id: str | None = None) -> dict[str, object]:
+def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_id: str | None = None) -> dict[str, object]:
     """Freshly acquire one policy-enabled source and import its exact handoff."""
     import uuid
     policy_path = ROOT / "pipeline" / "preview-enabled-sources.json"
@@ -363,8 +479,9 @@ def refresh_source(source_id: str = "be.locations", existing_runner_run_id: str 
     source_policy = policy.get("sources", {}).get(source_id)
     if not isinstance(source_policy, dict) or source_policy.get("enabled") is not True:
         raise PreviewError("source is not enabled for private preview")
-    if not os.environ.get("UEC_DATABASE_URL"):
-        raise PreviewError("preview database is not configured")
+    database_url = _local_database_url()
+    env = os.environ.copy()
+    env["UEC_DATABASE_URL"] = database_url
     run_id = f"preview-{source_id.replace('.', '-')}-{uuid.uuid4()}"
     output_root = ROOT / "target" / "real-preview" / "runs"
     job_dir = ROOT / "target" / "real-preview" / "jobs"
@@ -389,14 +506,16 @@ def refresh_source(source_id: str = "be.locations", existing_runner_run_id: str 
             runner_run_id = existing_runner_run_id
             source_root = output_root / runner_run_id / "sources" / source_id
             run_manifest = json.loads((output_root / runner_run_id / "manifest.json").read_text(encoding="utf-8"))
-            pair_files = list((source_root / "acquisition" / source_id).glob("*/pair-metadata.json"))
-            if not pair_files:
-                write_job("failed", "lifecycle", "paired_acquisition_provenance_missing")
-                raise PreviewError("completed source run lacks paired acquisition provenance")
-            pair = json.loads(pair_files[0].read_text(encoding="utf-8"))
-            run_id = pair.get("operator", {}).get("run_id")
+            if source_id == "be.locations":
+                evidence_files = list((source_root / "acquisition" / source_id).glob("*/pair-metadata.json"))
+                evidence = json.loads(evidence_files[0].read_text(encoding="utf-8")) if evidence_files else {}
+                run_id = evidence.get("operator", {}).get("run_id")
+            else:
+                evidence_files = list((source_root / "acquisition" / source_id).glob("*/acquisition-metadata.json"))
+                evidence = json.loads(evidence_files[0].read_text(encoding="utf-8")) if evidence_files else {}
+                run_id = evidence.get("run_id")
             if not isinstance(run_id, str) or not run_id:
-                write_job("failed", "lifecycle", "paired_acquisition_run_id_missing")
+                write_job("failed", "lifecycle", "acquisition_run_id_missing")
                 raise PreviewError("completed source run lacks its unique acquisition id")
             job.update({"run_id": run_id, "runner_run_id": runner_run_id})
             job_path = job_dir / f"{run_id}.json"
@@ -410,7 +529,7 @@ def refresh_source(source_id: str = "be.locations", existing_runner_run_id: str 
                 "--mode", "live-acquisition", "--authorize-live-source", source_id,
                 "--terms-review", f"{source_id}={review}", "--output-root", str(output_root),
                 "--retries", "1", "--timeout-seconds", "180", "--run-id", run_id,
-            ], cwd=ROOT, env=os.environ.copy(), capture_output=True, text=True, timeout=600)
+            ], cwd=ROOT, env=env, capture_output=True, text=True, timeout=600)
             try:
                 refresh_result = json.loads(refresh.stdout)
             except json.JSONDecodeError:
@@ -444,7 +563,7 @@ def refresh_source(source_id: str = "be.locations", existing_runner_run_id: str 
             "--database-url-env", "UEC_DATABASE_URL", "--json",
             *( ["--municipality-index", str(municipality_index)] if municipality_index is not None else []),
             "--run-id", run_id, "--run-manifest", str(output_root / runner_run_id / "manifest.json"),
-        ], cwd=ROOT, env=os.environ.copy(), capture_output=True, text=True, timeout=600)
+        ], cwd=ROOT, env=env, capture_output=True, text=True, timeout=600)
         try:
             import_result = json.loads(imported.stdout)
         except json.JSONDecodeError:
@@ -466,29 +585,77 @@ def refresh_source(source_id: str = "be.locations", existing_runner_run_id: str 
         "preview_policy_version": policy.get("contract_version"),
         "public_rows": import_result.get("public_release_count", 0) + import_result.get("public_projection_count", 0),
         "map_visible_count": import_result.get("numeric_coordinate_count", 0) + import_result.get("coarse_placeable_facility_count", 0),
-        "map_readiness": "coarse-city-reference" if geography and import_result.get("coarse_placeable_facility_count", 0) else "unmapped",
+        "map_readiness": "coarse-city-reference" if geography and import_result.get("coarse_placeable_facility_count", 0) else ("source-precision-unknown" if import_result.get("numeric_coordinate_count", 0) else "unmapped"),
     }
+    if source_id == "it.853-2004":
+        acquisition_evidence = _italy_acquisition_evidence(source_dir, source_id, run_id)
+        source_results = refresh_result.get("results") if isinstance(refresh_result, dict) else None
+        source_result = next((item for item in source_results or []
+                              if isinstance(item, dict) and item.get("source_id") == source_id), None)
+        source_summary = source_result.get("summary") if isinstance(source_result, dict) else None
+        if not isinstance(source_summary, dict):
+            raise PreviewError("Italy lifecycle summary is unavailable for runtime ledger reconciliation")
+        normalized_sha256 = import_result.get("normalized_sha256")
+        handoff_sha256 = source_summary.get("candidate_handoff_sha256")
+        schema_fingerprint = source_summary.get("schema_fingerprint")
+        quarantine_reasons = source_summary.get("quarantine_reasons")
+        if any(not isinstance(value, str) or len(value) != 64 for value in
+               (normalized_sha256, handoff_sha256, schema_fingerprint)) or not isinstance(quarantine_reasons, dict):
+            raise PreviewError("Italy lifecycle provenance is incomplete for runtime ledger reconciliation")
+        ledger.update({
+            "acquisition": acquisition_evidence,
+            "normalized_sha256": normalized_sha256,
+            "candidate_handoff_sha256": handoff_sha256,
+            "schema_fingerprint": schema_fingerprint,
+            "quarantine": {
+                "input_rows": source_summary.get("input_rows"),
+                "candidate_observation_rows": source_summary.get("candidate_observation_rows"),
+                "quarantined_rows": source_summary.get("quarantined_rows"),
+                "reasons": quarantine_reasons,
+            },
+            "source_counts": {
+                key: import_result.get(key) for key in (
+                    "observation_count", "facility_candidate_count", "numeric_coordinate_count",
+                    "city_postal_count", "unmapped_observation_count", "mapped_non_candidate_observation_count",
+                    "unmapped_map_candidate_count", "public_release_count", "public_projection_count",
+                )
+            },
+            "coordinate_precision_breakdown": {
+                "source_precision_unknown": import_result.get("source_precision_unknown_group_count"),
+                "source_provided_unspecified": import_result.get("source_provided_coordinate_group_count"),
+                "exact": 0,
+                "city_or_postal_only": import_result.get("city_postal_count"),
+                "unmapped": import_result.get("unmapped_map_candidate_count"),
+            },
+        })
     ledger_path = output_root / runner_run_id / "source-preview-ledger.json"
     ledger_path.write_text(json.dumps(ledger, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
     job.update({"runner_run_id": runner_run_id, "observation_count": import_result.get("observation_count"),
                 "facility_candidate_count": import_result.get("facility_candidate_count"),
                 "map_visible_count": ledger["map_visible_count"], "public_rows": ledger["public_rows"]})
     write_job("succeeded", "preview_ready")
-    return {"status": "imported", "run_id": run_id,
+    return {"status": "imported", "source_id": source_id, "run_id": run_id,
             "observations": import_result.get("observation_count"),
             "facility_candidates": import_result.get("facility_candidate_count"),
             "map_visible_count": ledger["map_visible_count"],
             "ledger": str(ledger_path)}
 
 
+def refresh_source(source_id: str = "be.locations", existing_runner_run_id: str | None = None) -> dict[str, object]:
+    with source_lock(source_id):
+        return _refresh_source_locked(source_id, existing_runner_run_id)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("up", "status", "probe", "down", "reset", "refresh"))
-    parser.add_argument("--source", default="be.locations")
+    parser.add_argument("--source")
     parser.add_argument("--existing-run", help="complete a prior exact live lifecycle run without reacquisition")
     args = parser.parse_args(argv)
     try:
+        if args.action == "refresh" and not args.source:
+            raise PreviewError("refresh requires an explicit --source")
         result = (refresh_source(args.source, args.existing_run) if args.action == "refresh" else
                   {"up": up, "status": status, "probe": probe, "down": down, "reset": reset}[args.action]())
         if result is None:

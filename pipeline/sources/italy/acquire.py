@@ -14,6 +14,8 @@ import html.parser
 import json
 import os
 import re
+import shutil
+import subprocess
 import tempfile
 import urllib.error
 import urllib.parse
@@ -37,6 +39,93 @@ CSV_LINK = re.compile(r"^/sites/default/files/opendata/STAB_POA_8_(?P<date>\d{8}
 
 class AcquisitionError(ValueError):
     """The source could not be safely acquired into private storage."""
+
+
+class _CurlResponse:
+    """File-backed response returned by the ordinary HTTPS curl fallback."""
+
+    def __init__(self, root: Path, body: Path, final_url: str, headers: dict[str, str]) -> None:
+        self._root = root
+        self._body = body.open("rb")
+        self.status = 200
+        self.headers = headers
+        self._final_url = final_url
+
+    def __enter__(self) -> "_CurlResponse":
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.close()
+
+    def read(self, size: int = -1) -> bytes:
+        return self._body.read(size)
+
+    def geturl(self) -> str:
+        return self._final_url
+
+    def close(self) -> None:
+        self._body.close()
+        import shutil as _shutil
+        _shutil.rmtree(self._root, ignore_errors=True)
+
+
+def _curl_response(url: str, *, timeout_seconds: float, max_bytes: int) -> _CurlResponse:
+    curl = shutil.which("curl.exe") or shutil.which("curl")
+    if curl is None:
+        raise AcquisitionError("Python HTTPS failed and no system curl executable is available")
+    if max_bytes <= 0:
+        raise AcquisitionError("max_bytes must be positive")
+    root = Path(tempfile.mkdtemp(prefix="uec-italy-curl-"))
+    body = root / "response.bin"
+    headers_path = root / "headers.txt"
+    try:
+        result = subprocess.run(
+            [curl, "--fail", "--silent", "--show-error", "--location",
+             "--proto", "=https", "--proto-redir", "=https",
+             "--max-time", str(timeout_seconds), "--max-filesize", str(max_bytes),
+             "--dump-header", str(headers_path), "--output", str(body),
+             "--write-out", "%{http_code}\n%{url_effective}\n%{content_type}", url],
+            capture_output=True, text=True, timeout=timeout_seconds + 5, check=False,
+        )
+        if result.returncode:
+            message = result.stderr.lower()
+            code = "HTTP 403" if "403" in message else "HTTPS curl acquisition failed"
+            raise AcquisitionError(code)
+        output = result.stdout.splitlines()
+        if len(output) < 3 or not output[0].isdigit() or not 200 <= int(output[0]) < 300:
+            raise AcquisitionError("system curl returned invalid HTTP metadata")
+        final_url = output[1]
+        parsed = urllib.parse.urlparse(final_url)
+        if parsed.scheme != "https" or parsed.hostname != CATALOG_HOST or parsed.username or parsed.password:
+            raise AcquisitionError("system curl followed a redirect outside the Ministry HTTPS host")
+        raw_headers = headers_path.read_text(encoding="iso-8859-1")
+        blocks = [block for block in re.split(r"\r?\n\r?\n", raw_headers) if block.strip().startswith("HTTP/")]
+        if not blocks:
+            raise AcquisitionError("system curl returned no HTTP response headers")
+        headers: dict[str, str] = {}
+        for line in blocks[-1].splitlines()[1:]:
+            name, separator, value = line.partition(":")
+            if separator:
+                headers[name.strip()] = value.strip()
+        if output[2]:
+            headers.setdefault("Content-Type", output[2])
+        if body.stat().st_size > max_bytes:
+            raise AcquisitionError(f"download exceeds max_bytes={max_bytes}")
+        return _CurlResponse(root, body, final_url, headers)
+    except Exception:
+        shutil.rmtree(root, ignore_errors=True)
+        raise
+
+
+def _open(url: str, *, timeout_seconds: float, max_bytes: int,
+          opener: Callable[..., Any] | None = None) -> Any:
+    request = urllib.request.Request(url, headers={"User-Agent": "UntilEveryCage/controlled-acquisition"})
+    if opener is not None:
+        return opener(request, timeout=timeout_seconds)
+    try:
+        return urllib.request.urlopen(request, timeout=timeout_seconds)
+    except urllib.error.URLError:
+        return _curl_response(url, timeout_seconds=timeout_seconds, max_bytes=max_bytes)
 
 
 def utc_now() -> str:
@@ -182,11 +271,9 @@ def fetch(
     opener: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
     terms_review = require_terms_review(terms_review_path)
-    open_url = opener or urllib.request.urlopen
     requested_at = utc_now()
-    catalog_request = urllib.request.Request(catalog_url, headers={"User-Agent": "UntilEveryCage/controlled-acquisition"})
     try:
-        with open_url(catalog_request, timeout=timeout_seconds) as catalog_response:
+        with _open(catalog_url, timeout_seconds=timeout_seconds, max_bytes=4 * 1024 * 1024, opener=opener) as catalog_response:
             if not 200 <= catalog_response.status < 300:
                 raise AcquisitionError(f"catalog returned HTTP {catalog_response.status}")
             if not _safe_content_type(catalog_response.headers, {"text/html", "application/xhtml+xml"}):
@@ -203,7 +290,7 @@ def fetch(
     csv_url, filename_date = discover_csv(catalog_bytes, catalog_final_url)
     try:
         csv_request = urllib.request.Request(csv_url, headers={"User-Agent": "UntilEveryCage/controlled-acquisition"})
-        with open_url(csv_request, timeout=timeout_seconds) as response:
+        with _open(csv_url, timeout_seconds=timeout_seconds, max_bytes=max_bytes, opener=opener) as response:
             if not 200 <= response.status < 300:
                 raise AcquisitionError(f"CSV returned HTTP {response.status}")
             if not _safe_content_type(response.headers, SAFE_CONTENT_TYPES):
@@ -213,6 +300,9 @@ def fetch(
             digest, byte_size = _archive_stream(response, artifact_path, max_bytes=max_bytes)
             response_headers = _headers(response)
             final_url = response.geturl()
+            parsed_final = urllib.parse.urlparse(final_url)
+            if parsed_final.scheme != "https" or parsed_final.hostname != CATALOG_HOST or parsed_final.username or parsed_final.password:
+                raise AcquisitionError("CSV download redirected outside the Ministry HTTPS host")
     except urllib.error.HTTPError as error:
         raise AcquisitionError(f"CSV returned HTTP {error.code}") from error
     except urllib.error.URLError as error:

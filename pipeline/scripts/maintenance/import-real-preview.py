@@ -18,13 +18,12 @@ from urllib.parse import urlsplit
 import psycopg
 
 POLICY = Path(__file__).parents[2] / "preview-enabled-sources.json"
-LEGACY_ALLOWED = {"fr.dgal.section-i", "fr.dgal.section-ii", "it.853-2004", "us.fsis"}
+LEGACY_ALLOWED = {"fr.dgal.section-i", "fr.dgal.section-ii", "us.fsis"}
 PREVIEW_ENABLED = set(json.loads(POLICY.read_text(encoding="utf-8"))["sources"])
 ALLOWED = LEGACY_ALLOWED | PREVIEW_ENABLED
 EXPECTED_OBSERVATIONS = {
     "fr.dgal.section-i": 1449,
     "fr.dgal.section-ii": 1068,
-    "it.853-2004": 41849,
     "us.fsis": 7241,
 }
 REPORT = Path(__file__).parents[3] / "data" / "manifests" / "d1-data-readiness-report.json"
@@ -165,9 +164,6 @@ def parse_row(source: str, row: Any) -> tuple[str, str, str | None, str | None, 
         coordinates = {}
     lat_raw = pick(coordinates, "latitude")
     lon_raw = pick(coordinates, "longitude")
-    if lat_raw is None and source == "it.853-2004":
-        lat_raw = source_values.get("latitudine")
-        lon_raw = source_values.get("longitudine")
     precision_raw = pick(coordinates, "precision") or pick(normalized, "coordinate_precision", "geography_precision")
     precision = precision_raw.strip().lower() if isinstance(precision_raw, str) else None
     lat = lon = None
@@ -304,7 +300,7 @@ def _resolve_municipality(index: dict[str, Any], value: Any, alias_policy: dict[
 
 
 def validate_preview_fields(path: Path, allowed_fields: set[str]) -> None:
-    top_level = {"source_id", "source_row", "source_record_key", "source_values", "normalized"}
+    top_level = {"source_id", "source_row", "source_row_id", "source_record_key", "source_values", "normalized"}
     for line in path.read_text(encoding="utf-8").splitlines():
         try:
             row = json.loads(line)
@@ -438,21 +434,21 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
             raise ImportFailure("runtime_source_run_not_live")
         if run_manifest_path.parent.name != runtime_manifest.get("run_id"):
             raise ImportFailure("runtime_handoff_run_mismatch")
-        acquisition_pair = None
+        acquisition_evidence = None
         if source_id == "be.locations":
             pair_path = root / "acquisition" / source_id / run_id / "pair-metadata.json"
             if not pair_path.is_file() or pair_path.is_symlink():
                 raise ImportFailure("paired_acquisition_provenance_missing")
-            acquisition_pair = json_object(pair_path)
-            if acquisition_pair.get("source_id") != source_id or not isinstance(acquisition_pair.get("operator"), dict) or not isinstance(acquisition_pair.get("activity_codes"), dict):
+            acquisition_evidence = json_object(pair_path)
+            if acquisition_evidence.get("source_id") != source_id or not isinstance(acquisition_evidence.get("operator"), dict) or not isinstance(acquisition_evidence.get("activity_codes"), dict):
                 raise ImportFailure("paired_acquisition_provenance_invalid")
-            if acquisition_pair["operator"].get("sha256") != source_hash:
+            if acquisition_evidence["operator"].get("sha256") != source_hash:
                 raise ImportFailure("paired_acquisition_manifest_mismatch")
-            if acquisition_pair["activity_codes"].get("sha256") != source_summary.get("activity_code_sha256"):
+            if acquisition_evidence["activity_codes"].get("sha256") != source_summary.get("activity_code_sha256"):
                 raise ImportFailure("paired_codebook_run_mismatch")
-            if acquisition_pair["activity_codes"].get("run_id") != run_id or acquisition_pair["operator"].get("run_id") != run_id:
+            if acquisition_evidence["activity_codes"].get("run_id") != run_id or acquisition_evidence["operator"].get("run_id") != run_id:
                 raise ImportFailure("paired_acquisition_run_mismatch")
-            for artifact in (acquisition_pair["operator"], acquisition_pair["activity_codes"]):
+            for artifact in (acquisition_evidence["operator"], acquisition_evidence["activity_codes"]):
                 try:
                     artifact_time = datetime.fromisoformat(str(artifact.get("retrieved_at_utc")).replace("Z", "+00:00"))
                 except ValueError:
@@ -461,6 +457,17 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
                     raise ImportFailure("paired_acquisition_timestamp_invalid")
                 if datetime.now(timezone.utc) - artifact_time > timedelta(days=policy["freshness_max_days"]):
                     raise ImportFailure("paired_acquisition_artifact_stale")
+        elif source_id == "it.853-2004":
+            acquisition_path = root / "acquisition" / source_id / run_id / "acquisition-metadata.json"
+            if not acquisition_path.is_file() or acquisition_path.is_symlink():
+                raise ImportFailure("acquisition_provenance_missing")
+            acquisition_evidence = json_object(acquisition_path)
+            if (acquisition_evidence.get("source_id") != source_id
+                    or acquisition_evidence.get("run_id") != run_id
+                    or acquisition_evidence.get("sha256") != source_hash
+                    or acquisition_evidence.get("final_url") != manifest.get("source_url")
+                    or acquisition_evidence.get("retrieved_at_utc") != manifest.get("retrieved_at_utc")):
+                raise ImportFailure("acquisition_provenance_mismatch")
         municipality_index = None
         if policy.get("display_policy", {}).get("kind") == "administrative_municipality_centroid":
             if municipality_index_path is None or not municipality_index_path.is_file() or municipality_index_path.is_symlink():
@@ -506,7 +513,6 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
     expected = {
         "fr.dgal.section-i": observations.get("france", {}).get("section_i"),
         "fr.dgal.section-ii": observations.get("france", {}).get("section_ii"),
-        "it.853-2004": observations.get("italy", {}).get("count"),
         "us.fsis": observations.get("fsis", {}).get("count"),
     }
     if source_id is not None:
@@ -561,7 +567,6 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
         expected_candidate_by_source = readiness.get("candidates", {}).get("by_source", {})
         derived_by_readiness_source = {
             "fr.dgal.union": ("fr.dgal.section-i", "fr.dgal.section-ii"),
-            "it.853-2004": ("it.853-2004",),
             "us.fsis": ("us.fsis",),
         }
         if source_id is not None:
@@ -586,8 +591,11 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
                     or input_count != accepted_count + quarantined_count):
                 raise ImportFailure("runtime_counts_do_not_reconcile")
             map_visible_count = numeric + placeable_rows
+            unmapped_map_candidate_count = candidates - numeric - coarse
+            if unmapped_map_candidate_count < 0:
+                raise ImportFailure("runtime_location_classes_do_not_reconcile")
             runtime_details = {"quarantine_reasons": source_summary.get("quarantine_reasons", {}),
-                               "source_artifacts": acquisition_pair,
+                               "source_artifacts": acquisition_evidence,
                                "geometry_reference": ({**{key: index_payload.get(key) for key in ("source", "source_url", "license", "reference_date", "retrieved_at_utc", "source_last_modified", "source_sha256", "source_byte_size", "method", "version")}, "derived_index_sha256": digest_file(municipality_index_path)[0]} if municipality_index is not None else None),
                                "fresh_live_run": True, "preview_policy_version": json_object(POLICY).get("contract_version")}
             db.execute("""INSERT INTO real_preview.source_preview_runs
@@ -604,6 +612,11 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
             return {"status": "imported", "source_id": source_id, "run_id": run_id,
                     "observation_count": total, "facility_candidate_count": candidates,
                     "source_scoped_candidate_count": candidates, "numeric_coordinate_count": numeric,
+                    "approximate_coordinate_group_count": numeric,
+                    "source_precision_unknown_group_count": precision_unknown_coordinates,
+                    "source_provided_coordinate_group_count": source_provided_coordinates,
+                    "rejected_zero_coordinates": zero_zero_coordinates,
+                    "unmapped_map_candidate_count": unmapped_map_candidate_count,
                     "city_postal_count": coarse, "unmapped_observation_count": unmapped,
                     "coarse_placeable_facility_count": placeable_rows,
                     "unmapped_facility_count": unplaceable_rows,
@@ -621,9 +634,6 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
             numeric_by_source["fr.dgal.section-i"] + numeric_by_source["fr.dgal.section-ii"] == expected_numeric_by_source.get("fr.dgal.union", 0)
             and coarse_by_source["fr.dgal.section-i"] + coarse_by_source["fr.dgal.section-ii"] - france_overlap == expected_coarse_by_source.get("fr.dgal.union", 0)
             and france_source_groups - france_overlap == expected_candidate_by_source.get("fr.dgal.union", 0)
-            and numeric_by_source["it.853-2004"] == expected_numeric_by_source.get("it.853-2004", 0)
-            and coarse_by_source["it.853-2004"] == expected_coarse_by_source.get("it.853-2004", 0)
-            and candidate_by_source["it.853-2004"] == expected_candidate_by_source.get("it.853-2004", 0)
             and numeric_by_source["us.fsis"] == expected_numeric_by_source.get("us.fsis", 0)
             and coarse_by_source["us.fsis"] == expected_coarse_by_source.get("us.fsis", 0)
             and candidate_by_source["us.fsis"] == expected_candidate_by_source.get("us.fsis", 0)

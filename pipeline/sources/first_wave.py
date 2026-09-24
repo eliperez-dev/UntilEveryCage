@@ -64,7 +64,7 @@ class SourceDescriptor:
     def readiness(self) -> dict[str, Any]:
         """Return capability facts without conflating acquisition and approval."""
         live_callable = self.source_id in {"be.locations", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "fr.dgal.section-i", "fr.dgal.section-ii", "it.853-2004"}
-        operational = "live" if self.source_id == "be.locations" else ("terms-blocked" if live_callable else "assisted")
+        operational = "live" if self.source_id in {"be.locations", "it.853-2004"} else ("terms-blocked" if live_callable else "assisted")
         return {
             "source_id": self.source_id,
             "fixture_ready": True,
@@ -72,7 +72,7 @@ class SourceDescriptor:
             "live_acquisition": self.live_acquisition,
             "operational_classification": operational,
             "live_callable": live_callable,
-            "private_pipeline": "fixture_contract_ready",
+            "private_pipeline": "one_action_preview_import_ready" if self.source_id == "it.853-2004" else "fixture_contract_ready",
             "publication": self.publication,
             "geocoding": "disabled",
             "review_required": True,
@@ -122,8 +122,8 @@ class FirstWaveRefreshAdapter:
 
     Acquisition is intentionally not hidden here: fixture mode uses the
     checked-in synthetic artifact, local-artifact mode uses the caller's
-    preserved path, and live-acquisition fails closed until a source-specific
-    fetch contract is approved.
+    preserved path, and live-acquisition uses only a registered source-owned
+    fetch contract after the runner's authorization and terms gates.
     """
 
     def __init__(self, descriptor: SourceDescriptor) -> None:
@@ -161,7 +161,9 @@ class FirstWaveRefreshAdapter:
             return fetch_section(section=section, output_root=root, terms_review_path=Path(str(review)), run_id=run_id, timeout_seconds=timeout, max_bytes=max_bytes)
         if self.source_id == "it.853-2004":
             from .italy.acquire import fetch
-            return fetch(output_root=root, run_id=run_id, terms_review_path=Path(str(review)), timeout_seconds=timeout, max_bytes=max_bytes)
+            metadata = fetch(output_root=root, run_id=run_id, terms_review_path=Path(str(review)), timeout_seconds=timeout, max_bytes=max_bytes)
+            metadata["artifact_path"] = str(root / self.source_id / run_id / metadata["artifact"])
+            return metadata
         raise RuntimeError(f"no approved live callable for {self.source_id}; use assisted local artifact")
 
     def refresh(self, *, mode: str, run_dir: Path, artifact: Path | None,
@@ -258,7 +260,7 @@ class FirstWaveRefreshAdapter:
             elif isinstance(source_adapter, DenmarkSmileyAdapter):
                 source_adapter.write_candidate_handoff(lifecycle_root / "candidate-handoff", source_artifact, rows)
             else:
-                write_handoff(lifecycle_root / "candidate-handoff", rows, source_artifact, source_id=self.source_id)
+                write_handoff(run_dir / "candidate-handoff", rows, source_artifact, source_id=self.source_id)
             candidate_handoff = True
         summary = {
             "lifecycle_status": status.get("status"),
@@ -271,6 +273,15 @@ class FirstWaveRefreshAdapter:
             "release_promoted": bool(status.get("release_promoted", False)),
             "public_surfaces": {"api": False, "map": False, "csv": False},
         }
+        if candidate_handoff:
+            handoff_root = lifecycle_root / "candidate-handoff" if isinstance(source_adapter, DenmarkSmileyAdapter) else run_dir / "candidate-handoff"
+            handoff_manifest = json.loads((handoff_root / "manifest.json").read_text(encoding="utf-8"))
+            summary.update({
+                "candidate_observation_rows": handoff_manifest.get("normalized_rows"),
+                "candidate_handoff_sha256": handoff_manifest.get("normalized_sha256"),
+                "schema_fingerprint": manifest.get("schema_fingerprint"),
+                "quarantine_reasons": manifest.get("anomaly_counts", {}),
+            })
         if self.source_id == "be.locations" and status.get("status") == "candidate-ready":
             normalized = lifecycle_root / "normalized" / "records.jsonl"
             records = [json.loads(line) for line in normalized.read_text(encoding="utf-8").splitlines() if line]
