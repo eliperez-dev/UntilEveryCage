@@ -64,7 +64,7 @@ class SourceDescriptor:
     def readiness(self) -> dict[str, Any]:
         """Return capability facts without conflating acquisition and approval."""
         live_callable = self.source_id in {"be.locations", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "fr.dgal.section-i", "fr.dgal.section-ii", "it.853-2004"}
-        operational = "live" if self.source_id in {"be.locations", "it.853-2004"} else ("terms-blocked" if live_callable else "assisted")
+        operational = "live" if self.source_id in {"be.locations", "it.853-2004", "fr.dgal.section-i", "fr.dgal.section-ii"} else ("terms-blocked" if live_callable else "assisted")
         return {
             "source_id": self.source_id,
             "fixture_ready": True,
@@ -221,7 +221,7 @@ class FirstWaveRefreshAdapter:
                 byte_size=int(acquisition_facts.get("byte_size") or source_artifact.byte_size),
                 publication_date=acquisition_facts.get("publication_date"), effective_date=acquisition_facts.get("effective_date"),
                 code_version=self.adapter_version, config_version=self.descriptor.schema_version,
-                rights_caveat=source_artifact.rights_caveat, privacy_caveat=source_artifact.privacy_caveat,
+                rights_caveat=str(acquisition_facts.get("rights_caveat") or source_artifact.rights_caveat), privacy_caveat=source_artifact.privacy_caveat,
                 coverage=source_artifact.coverage, redirects=tuple(acquisition_facts.get("redirects") or ()),
             )
         try:

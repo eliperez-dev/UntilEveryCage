@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import contextlib
 import os
+import re
 import secrets
 import shutil
 import signal
@@ -20,8 +21,8 @@ from typing import Sequence
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-PROJECT = "uec-real-preview-e2e-source"
-VOLUME = "uec-real-preview-e2e-source-postgres"
+PROJECT = os.environ.get("UEC_REAL_PREVIEW_PROJECT", "uec-real-preview-e2e-source")
+VOLUME = os.environ.get("UEC_REAL_PREVIEW_VOLUME", "uec-real-preview-e2e-source-postgres")
 DB_PORT = int(os.environ.get("UEC_REAL_PREVIEW_DB_PORT", "55433"))
 API_PORT = int(os.environ.get("UEC_REAL_PREVIEW_API_PORT", "38001"))
 WEB_PORT = int(os.environ.get("UEC_REAL_PREVIEW_WEB_PORT", "34174"))
@@ -32,6 +33,27 @@ MIGRATIONS = ROOT / "pipeline" / "scripts" / "maintenance" / "apply-migrations.p
 
 class PreviewError(RuntimeError):
     pass
+
+
+def _runtime_dir() -> Path:
+    """Return project-scoped local secrets/state without breaking the legacy default."""
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,96}", PROJECT):
+        raise PreviewError("real-preview project name is invalid")
+    base = ROOT / "target" / "real-preview"
+    if PROJECT == "uec-real-preview-e2e-source":
+        return base
+    return base / "projects" / PROJECT
+
+
+def _legacy_state_for_project() -> Path | None:
+    legacy = ROOT / "target" / "real-preview" / "processes.json"
+    if legacy == _state() or not legacy.is_file():
+        return None
+    try:
+        value = json.loads(legacy.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return legacy if isinstance(value, dict) and value.get("project") == PROJECT else None
 
 
 @contextlib.contextmanager
@@ -99,7 +121,29 @@ def compose(*args: str, capture: bool = True) -> subprocess.CompletedProcess[str
 
 
 def _password(*, create: bool) -> str | None:
-    path = ROOT / "target" / "real-preview" / "db-password"
+    path = _runtime_dir() / "db-password"
+    if not path.is_file():
+        # One-time compatibility for a stack started before runtime files became
+        # project-scoped. Only accept it when this exact project owns a legacy
+        # process marker, Docker container, or exact labeled persistent volume.
+        legacy = ROOT / "target" / "real-preview" / "db-password"
+        legacy_state = _legacy_state_for_project()
+        try:
+            owns_container = bool(_docker_json(["docker", "ps", "-a", "--filter", f"label=com.docker.compose.project={PROJECT}", "--format", "{{json .}}"]))
+        except PreviewError:
+            owns_container = False
+        try:
+            owned_volumes = _docker_json(["docker", "volume", "ls", "--filter", f"label=com.docker.compose.project={PROJECT}", "--format", "{{json .}}"])
+        except PreviewError:
+            owned_volumes = []
+        owns_volume = any(item.get("Name") == VOLUME and f"com.docker.compose.project={PROJECT}" in str(item.get("Labels", "")) for item in owned_volumes)
+        if legacy.is_file() and (legacy_state is not None or owns_container or owns_volume):
+            password = legacy.read_text(encoding="ascii").strip()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(password, encoding="ascii")
+            if os.name != "nt":
+                path.chmod(0o600)
+            return password
     if path.is_file():
         return path.read_text(encoding="ascii").strip()
     if not create:
@@ -129,6 +173,8 @@ def _docker_json(args: list[str]) -> list[dict[str, object]]:
 
 
 def verify_resources(*, require_container: bool = False) -> None:
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,96}", VOLUME):
+        raise PreviewError("real-preview volume name is invalid")
     containers = _docker_json(["docker", "ps", "-a", "--filter", f"label=com.docker.compose.project={PROJECT}", "--format", "{{json .}}"])
     for item in containers:
         labels = item.get("Labels", "")
@@ -147,11 +193,15 @@ def verify_resources(*, require_container: bool = False) -> None:
 
 
 def _state() -> Path:
-    return ROOT / "target" / "real-preview" / "processes.json"
+    return _runtime_dir() / "processes.json"
 
 
 def _read_state() -> dict[str, object]:
     path = _state()
+    legacy = _legacy_state_for_project()
+    if not path.exists() and legacy is not None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        legacy.replace(path)
     if not path.exists():
         return {}
     try:
@@ -273,7 +323,19 @@ def prerequisites() -> None:
 def _run_checked(args: list[str], env: dict[str, str], label: str) -> str:
     result = subprocess.run(args, cwd=ROOT, env=env, capture_output=True, text=True)
     if result.returncode:
-        raise PreviewError(f"{label} failed; see private local diagnostic output")
+        # Child command output can contain addresses or other source fields; only
+        # expose stable, allowlisted error codes to the scheduler's stderr.
+        code = None
+        try:
+            for output in (result.stdout, result.stderr):
+                candidate = json.loads(output).get("error_code")
+                if isinstance(candidate, str) and candidate.replace("_", "").isalnum():
+                    code = candidate
+                    break
+        except (json.JSONDecodeError, AttributeError):
+            pass
+        suffix = f" (code={code})" if code else ""
+        raise PreviewError(f"{label} failed{suffix}; private details were not emitted")
     return result.stdout
 
 
@@ -439,7 +501,7 @@ def reset() -> None:
     result = compose("down", "-v", "--remove-orphans")
     if result.returncode:
         raise PreviewError("verified disposable preview volume could not be removed")
-    password_path = ROOT / "target" / "real-preview" / "db-password"
+    password_path = _runtime_dir() / "db-password"
     if password_path.exists():
         password_path.unlink()
 
@@ -557,6 +619,18 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
             municipality_index = source_dir / "geography" / "municipality-centroids.json"
             job["geometry_sha256"] = geography.get("sha256")
             write_job("running", "transactional_preview_import")
+        elif source_id in {"fr.dgal.section-i", "fr.dgal.section-ii"}:
+            write_job("running", "administrative_geography")
+            from pipeline.sources.france.commune_reference import acquire_centres
+            try:
+                geography = acquire_centres(output_root=source_dir / "geography", run_id=run_id,
+                                           timeout_seconds=60.0)
+            except Exception:
+                write_job("failed", "administrative_geography", "approved_commune_reference_acquisition_failed")
+                raise PreviewError("approved French administrative commune reference acquisition failed") from None
+            municipality_index = Path(str(geography["path"]))
+            job["geometry_sha256"] = geography.get("derived_index_sha256")
+            write_job("running", "transactional_preview_import")
         imported = subprocess.run([
             sys.executable, str(ROOT / "pipeline" / "scripts" / "maintenance" / "import-real-preview.py"),
             "--root", str(source_dir), "--manifest", str(handoff_manifest), "--source-id", source_id,
@@ -573,7 +647,7 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
             code = import_result.get("error_code")
             safe_code = code if isinstance(code, str) and code.replace("_", "").isalnum() else "transactional_import_failed"
             write_job("failed", "transactional_preview_import", safe_code)
-            raise PreviewError("transactional preview import failed; see private job ledger")
+            raise PreviewError(f"transactional preview import failed (code={safe_code}); see private job ledger")
     except subprocess.TimeoutExpired:
         write_job("failed", str(job.get("phase", "acquisition")), "bounded_job_timeout")
         raise PreviewError("source refresh exceeded its bounded runtime") from None
@@ -627,6 +701,41 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                 "city_or_postal_only": import_result.get("city_postal_count"),
                 "unmapped": import_result.get("unmapped_map_candidate_count"),
             },
+        })
+    elif source_id in {"fr.dgal.section-i", "fr.dgal.section-ii"}:
+        acquisition_path = source_dir / "acquisition" / source_id / run_id / "acquisition-metadata.json"
+        if not acquisition_path.is_file() or acquisition_path.is_symlink():
+            raise PreviewError("France lifecycle acquisition provenance is unavailable")
+        acquisition_evidence = json.loads(acquisition_path.read_text(encoding="utf-8"))
+        source_results = refresh_result.get("results") if isinstance(refresh_result, dict) else None
+        source_result = next((item for item in source_results or []
+                              if isinstance(item, dict) and item.get("source_id") == source_id), None)
+        source_summary = source_result.get("summary") if isinstance(source_result, dict) else None
+        if not isinstance(source_summary, dict):
+            raise PreviewError("France lifecycle summary is unavailable for runtime ledger reconciliation")
+        if any(not isinstance(value, str) or len(value) != 64 for value in
+               (import_result.get("normalized_sha256"), source_summary.get("candidate_handoff_sha256"), source_summary.get("schema_fingerprint"))):
+            raise PreviewError("France lifecycle hashes are incomplete for runtime ledger reconciliation")
+        ledger.update({
+            "acquisition": {key: acquisition_evidence.get(key) for key in (
+                "source_id", "run_id", "requested_url", "final_url", "retrieved_at_utc", "effective_date",
+                "sha256", "byte_size", "response_headers", "terms_review", "attempts", "rights_caveat",
+                "privacy_caveat", "coverage", "adapter_version", "code_version", "config_version")},
+            "schema_fingerprint": source_summary.get("schema_fingerprint"),
+            "normalized_sha256": import_result.get("normalized_sha256"),
+            "candidate_handoff_sha256": source_summary.get("candidate_handoff_sha256"),
+            "quarantine": {"input_rows": source_summary.get("input_rows"),
+                           "accepted_rows": source_summary.get("normalized_rows"),
+                           "quarantined_rows": source_summary.get("quarantined_rows"),
+                           "reasons": source_summary.get("quarantine_reasons", {})},
+            "source_counts": {key: import_result.get(key) for key in (
+                "observation_count", "facility_candidate_count", "numeric_coordinate_count",
+                "city_postal_count", "unmapped_observation_count", "mapped_non_candidate_observation_count",
+                "unmapped_map_candidate_count", "coarse_placeable_facility_count", "unmapped_facility_count",
+                "public_release_count", "public_projection_count")},
+            "coordinate_precision_breakdown": {"exact": 0, "city_or_postal_only": import_result.get("city_postal_count"),
+                                                "approximate_city_display": import_result.get("coarse_placeable_facility_count"),
+                                                "unmapped": import_result.get("unmapped_map_candidate_count")},
         })
     ledger_path = output_root / runner_run_id / "source-preview-ledger.json"
     ledger_path.write_text(json.dumps(ledger, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")

@@ -24,6 +24,30 @@
       "display_policy": {"kind": "source_numeric_coordinate", "precision": "source-precision-unknown", "disclosure": "Approximate source location; coordinate precision and provenance are unknown; private preview only. Not an exact facility point."},
       "adapter_version": "it-853-candidate-v2",
       "schema_version": "it-853-csv-v2.0"
+    },
+    "fr.dgal.section-i": {
+      "enabled": true,
+      "runner": "pipeline.refresh_private:fr.dgal.section-i",
+      "terms_review": "data/terms-reviews/fr.dgal.section-i.json",
+      "terms_decision": "approved",
+      "freshness_max_days": 2,
+      "expected_artifacts": ["source.txt"],
+      "allowed_preview_fields": ["establishment_id", "recognition_number", "facility_grouping", "identity_review", "name", "trading_name", "siret", "identity_conflict_state", "address", "address_state", "postal_code", "municipality", "city", "department_number", "country_code", "nation", "jurisdiction_level", "source_section", "source_category", "source_activity", "species", "activity_categories", "classification_state", "observation_state", "disappearance_semantics", "coordinates", "coordinate_state", "privacy_gate", "coordinate_gate", "publication_gate"],
+      "display_policy": {"kind": "administrative_commune_centre", "precision": "city_reference_approximate", "source": "Etalab / geo.api.gouv.fr API Découpage administratif", "source_url": "https://geo.api.gouv.fr/communes?fields=nom,code,codeDepartement,centre&format=json", "source_reference_url": "https://www.data.gouv.fr/datasets/admin-express-admin-express-cog-admin-express-cog-carto-admin-express-cog-carto-plus-pe", "version": "geo-api-communes-centre-v1", "license": "Licence Ouverte / Open Licence 2.0 (Etalab)", "attribution": "Etalab / IGN; French administrative commune reference", "reference_date": "current endpoint response; upstream release date not supplied", "name_matching": "Exact normalized commune name plus source department number; collisions or unresolved names remain unmapped", "department_field": "department_number"},
+      "adapter_version": "fr-dgal-853-v2",
+      "schema_version": "fr-dgal-853-txt-v2"
+    },
+    "fr.dgal.section-ii": {
+      "enabled": true,
+      "runner": "pipeline.refresh_private:fr.dgal.section-ii",
+      "terms_review": "data/terms-reviews/fr.dgal.section-ii.json",
+      "terms_decision": "approved",
+      "freshness_max_days": 2,
+      "expected_artifacts": ["source.txt"],
+      "allowed_preview_fields": ["establishment_id", "recognition_number", "facility_grouping", "identity_review", "name", "trading_name", "siret", "identity_conflict_state", "address", "address_state", "postal_code", "municipality", "city", "department_number", "country_code", "nation", "jurisdiction_level", "source_section", "source_category", "source_activity", "species", "activity_categories", "classification_state", "observation_state", "disappearance_semantics", "coordinates", "coordinate_state", "privacy_gate", "coordinate_gate", "publication_gate"],
+      "display_policy": {"kind": "administrative_commune_centre", "precision": "city_reference_approximate", "source": "Etalab / geo.api.gouv.fr API Découpage administratif", "source_url": "https://geo.api.gouv.fr/communes?fields=nom,code,codeDepartement,centre&format=json", "source_reference_url": "https://www.data.gouv.fr/datasets/admin-express-admin-express-cog-admin-express-cog-carto-admin-express-cog-carto-plus-pe", "version": "geo-api-communes-centre-v1", "license": "Licence Ouverte / Open Licence 2.0 (Etalab)", "attribution": "Etalab / IGN; French administrative commune reference", "reference_date": "current endpoint response; upstream release date not supplied", "name_matching": "Exact normalized commune name plus source department number; collisions or unresolved names remain unmapped", "department_field": "department_number"},
+      "adapter_version": "fr-dgal-853-v2",
+      "schema_version": "fr-dgal-853-txt-v2"
     }
   }
 }

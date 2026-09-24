@@ -1,42 +1,61 @@
-# France DGAL Section I/II private pipeline
+# France DGAL Sections I and II private preview
 
-Status: implemented private candidate pipeline; no release or public API exposure.
+Sections I (`fr.dgal.section-i`, domestic ungulates) and II
+(`fr.dgal.section-ii`, poultry and lagomorphs) are separate source identities.
+The Ministry's current 853/2004 page links each TXT file and says the lists are
+updated daily. Each run downloads the selected section directly, retains the
+original restricted artifact and acquisition metadata, validates the current
+schema, quarantines malformed or unclassified rows, normalizes accepted
+observations, and atomically imports the exact handoff into the local private
+preview database.
 
-The source registry keeps the Ministry's daily Regulation (EC) 853/2004 lists
-as two identities: Section I (`SSA1_VIAN_ONG_DOM.txt`, domestic ungulates) and
-Section II (`SSA1_VIAN_COL_LAGO.txt`, poultry and lagomorphs). The Ministry's
-current 853/2004 page and the file host are the authoritative route evidence.
-The adapter preserves every source cell in restricted parsed evidence and
-derives only conservative category labels from the source category/activity
-strings. Approval number is a source identifier, not permission to merge rows
-or evidence that the site is operating.
+One scheduler-safe command refreshes one source and updates the map's database
+in one run:
 
-Lifecycle:
+```text
+python scripts/real_preview.py refresh --source fr.dgal.section-i
+python scripts/real_preview.py refresh --source fr.dgal.section-ii
+```
 
-`bounded fetch or assisted capture -> immutable hash/size/URL metadata ->
-encoding/delimiter/schema validation -> parsed JSONL -> normalized JSONL with
-street address/coordinates suppressed -> quarantine JSONL -> row-free QA,
-health, and operator review packet -> private candidate handoff`.
+The Ministry source page states daily updates, so source operations schedule a
+daily check. The source lock, bounded retries, run ledger, schema checks, and
+atomic importer apply to both commands. A failed fetch or schema change stops
+the run without a stale or fixture replacement. Re-running an identical source
+snapshot is an idempotent database import.
 
-The adapter supports UTF-8/CP1252, semicolon/tab/comma/pipe-delimited inputs,
-stable schema fingerprints, duplicate detection, missing identity/name/commune
-quarantine, explicit unclassified activity quarantine, deterministic row IDs,
-and reruns. A missing row in a later snapshot is `not observed`, never closure.
-Geocoding is disabled. Address, SIRET, names, and any future coordinates remain
-restricted pending privacy review. Terms/attribution evidence is not treated as
-publication approval; the current site-wide Etalab indication still needs
-file-specific confirmation.
+## Terms and attribution evidence
 
-Run with `python -m pipeline.sources.france.refresh --section I --raw <restricted.txt> --run-dir <restricted-run>` or `--fetch --terms-review <approved-terms.json>`. Raw artifacts belong in ignored private storage only.
+The current [Ministry DGAL page](https://agriculture.gouv.fr/liste-des-etablissements-agrees-ce-conformement-au-reglement-ce-ndeg8532004-lists-ue-approved)
+links the two [Section I](https://fichiers-publics.agriculture.gouv.fr/dgal/ListesOfficielles/SSA1_VIAN_ONG_DOM.txt)
+and [Section II](https://fichiers-publics.agriculture.gouv.fr/dgal/ListesOfficielles/SSA1_VIAN_COL_LAGO.txt)
+files and states that the lists are updated daily. The Ministry's
+[legal notice](https://agriculture.gouv.fr/mentions-legales) permits reuse of
+information or data not covered by copyright for non-commercial purposes,
+subject to preserving the integrity of reproduced material and citing the
+Ministry; commercial or advertising reuse requires prior permission. Neither
+the linked TXT files nor the 853/2004 page currently states a separate
+file-specific licence. Per-source evidence is retained in
+`data/terms-reviews/fr.dgal.section-i.json` and
+`data/terms-reviews/fr.dgal.section-ii.json`. The evidence authorizes bounded
+non-commercial acquisition and private preview under the Ministry notice; it
+does not claim legal certainty or approve a public release. Attribution names
+the Ministry/DGAL, section, source URL, and retrieval/update timestamp.
 
-For a two-scope row-free reconciliation after both private lifecycle runs:
+## Geography and privacy
 
-`python -m pipeline.sources.france.reconcile --section-i-run <section-i-lifecycle-run> --section-ii-run <section-ii-lifecycle-run> --output <private>/france-reconciliation.json`
+The source handoff supplies commune, postal code, and department, not facility
+coordinates. For display only, the importer acquires commune centre points from
+[geo.api.gouv.fr's administrative divisions API](https://geo.api.gouv.fr/decoupage-administratif/communes).
+The endpoint response, retrieval metadata, source and derived hashes, API
+version, and current reference fingerprint are retained privately. Its
+underlying IGN Admin Express COG dataset is published with the
+[Licence Ouverte 2.0](https://www.data.gouv.fr/datasets/admin-express-admin-express-cog-admin-express-cog-carto-admin-express-cog-carto-plus-pe).
+Resolution uses exact normalized commune name plus the source department code;
+homonyms and unresolved names remain unmapped and counted. Display geometry is
+always `city_reference_approximate`, an approximate commune centre, never a
+facility point.
 
-The reconciliation reports source totals, input/normalized/quarantine
-partitions, category and location/privacy gate counts, and approval-number
-overlap counts without emitting identifiers. It never treats either section's
-observations as unique facilities and never merges overlap automatically. It
-also carries shared-SIRET identity-review counts when a source entity spans
-distinct approval/category observations; those rows remain source observations
-and are not quarantined solely for that unresolved identity signal.
+Addresses and SIRET values remain only in restricted evidence. Name, duplicate,
+category, and cross-approval identity reviews remain open; a listed observation
+does not prove that a facility is operating. No public rows or release membership
+are created by this preview pipeline.

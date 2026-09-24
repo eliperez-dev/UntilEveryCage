@@ -17,4 +17,4 @@ services:
       - uec-real-preview-e2e-source-postgres:/var/lib/postgresql/data
 volumes:
   uec-real-preview-e2e-source-postgres:
-    name: uec-real-preview-e2e-source-postgres
+    name: ${UEC_REAL_PREVIEW_VOLUME:-uec-real-preview-e2e-source-postgres}

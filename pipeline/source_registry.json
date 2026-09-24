@@ -129,11 +129,11 @@
       "legacy_paths": ["static_data/fr/locations.csv", "france-data.kml"],
       "url": "https://fichiers-publics.agriculture.gouv.fr/dgal/ListesOfficielles/SSA1_VIAN_ONG_DOM.txt",
       "access_method": "bounded TXT fetch or assisted local capture",
-      "cadence": "daily; Ministry page checked 2026-09-15",
-      "attribution_licensing_notes": "Ministry page indicates Etalab 2.0 for site content; file-specific terms and attribution confirmation remain pending",
+      "cadence": "daily; Ministry Section I/II source page states the lists are updated daily",
+      "attribution_licensing_notes": "DGAL page links this Section I text file; Ministry legal notice permits non-commercial reuse of data not covered by copyright subject to integrity and attribution, while commercial/advertising use needs prior permission. Private preview only; no public-release approval.",
       "adapter_status": "implemented_partial",
       "expected_artifact_schema": "Delimited TXT; department, approval number, SIRET, name, address, commune, category, activities, and species",
-      "blockers": ["Privacy/coordinate review, file-specific terms, category codebook, and project publication approval remain pending."]
+      "blockers": ["Privacy/coordinate review, category codebook, identity review, and project publication approval remain pending."]
     },
     {
       "source_id": "fr.dgal.section-ii",
@@ -141,11 +141,11 @@
       "legacy_paths": [],
       "url": "https://fichiers-publics.agriculture.gouv.fr/dgal/ListesOfficielles/SSA1_VIAN_COL_LAGO.txt",
       "access_method": "bounded TXT fetch or assisted local capture",
-      "cadence": "daily; Ministry page checked 2026-09-15",
-      "attribution_licensing_notes": "Ministry page indicates Etalab 2.0 for site content; file-specific terms and attribution confirmation remain pending",
+      "cadence": "daily; Ministry Section I/II source page states the lists are updated daily",
+      "attribution_licensing_notes": "DGAL page links this Section II text file; Ministry legal notice permits non-commercial reuse of data not covered by copyright subject to integrity and attribution, while commercial/advertising use needs prior permission. Private preview only; no public-release approval.",
       "adapter_status": "implemented_partial",
       "expected_artifact_schema": "Delimited TXT; same source fields as Section I, with Section II scope retained",
-      "blockers": ["Section II is separate from Section I; privacy/coordinate review, terms, codebook, and project publication approval remain pending."]
+      "blockers": ["Section II remains a separate source; privacy/coordinate review, category/species review, identity review, and project publication approval remain pending."]
     },
     {
       "source_id": "it.853-2004",

@@ -46,6 +46,20 @@ class RealPreviewImporterTests(unittest.TestCase):
         self.assertEqual(unmapped[1], "unmapped_private_observation")
         self.assertEqual(unmapped[-1], "group-3")
 
+    def test_french_commune_resolution_requires_department_to_disambiguate(self):
+        reference = {
+            "paris|75": {"municipality": "Paris", "department_code": "75", "latitude": 48.8566, "longitude": 2.3522},
+            "paris|974": {"municipality": "Paris", "department_code": "974", "latitude": -20.8823, "longitude": 55.4504},
+        }
+        policy = {"department_field": "department_number"}
+        mainland, match = IMPORTER._resolve_municipality(reference, "Paris", policy, "75")
+        self.assertEqual(mainland["department_code"], "75")
+        self.assertEqual(match, "exact_name")
+        overseas, _ = IMPORTER._resolve_municipality(reference, "Paris", policy, "974")
+        self.assertEqual(overseas["department_code"], "974")
+        self.assertIsNone(IMPORTER._resolve_municipality(reference, "Paris", policy, None)[0])
+        self.assertIsNone(IMPORTER._resolve_municipality(reference, "Unresolved", policy, "75")[0])
+
     def test_undocumented_or_partial_coordinates_fail_closed(self):
         with self.assertRaises(IMPORTER.ImportFailure):
             IMPORTER.parse_row("it.853-2004", {"source_id": "it.853-2004", "source_record_key": "x", "normalized": {}})
