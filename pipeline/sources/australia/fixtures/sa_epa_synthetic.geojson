@@ -1,0 +1,10 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {"type":"Feature","properties":{"OBJECTID":101,"EPALICENCE":9001,"ACTIVITY":"Animal Husbandry and Other Activities","LICENCE_NAME":"Synthetic Piggery Example","PR_LINK":"https://www.epa.sa.gov.au/environmental_authorisations"},"geometry":{"type":"Point","coordinates":[138.6,-34.9]}},
+    {"type":"Feature","properties":{"OBJECTID":102,"EPALICENCE":9002,"ACTIVITY":"Food Production and Animal Plant Processing","LICENCE_NAME":"Synthetic Slaughter Works Example","PR_LINK":"https://www.epa.sa.gov.au/environmental_authorisations"},"geometry":{"type":"Point","coordinates":[138.7,-34.8]}},
+    {"type":"Feature","properties":{"OBJECTID":103,"EPALICENCE":9003,"ACTIVITY":"Food Production and Animal Plant Processing","LICENCE_NAME":"Synthetic Dairy Example","PR_LINK":"https://www.epa.sa.gov.au/environmental_authorisations"},"geometry":{"type":"Point","coordinates":[0,0]}},
+    {"type":"Feature","properties":{"OBJECTID":104,"EPALICENCE":9004,"ACTIVITY":"Food Production and Animal Plant Processing","LICENCE_NAME":"Synthetic Plant Foods Example","PR_LINK":"https://www.epa.sa.gov.au/environmental_authorisations"},"geometry":{"type":"Point","coordinates":[138.9,-34.7]}},
+    {"type":"Feature","properties":{"OBJECTID":105,"EPALICENCE":9005,"ACTIVITY":"Animal Husbandry and Other Activities","LICENCE_NAME":"Synthetic Poultry Example","PR_LINK":"https://www.epa.sa.gov.au/environmental_authorisations"},"geometry":{"type":"Point","coordinates":[141.5,-30.0]}}
+  ]
+}

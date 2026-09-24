@@ -1,0 +1,11 @@
+{
+  "source_id": "au.sa.epa.licensed-activities",
+  "decision": "approved",
+  "license": "Creative Commons Attribution 3.0 Australia",
+  "license_url": "http://creativecommons.org/licenses/by/3.0/au/",
+  "reference": "https://data.sa.gov.au/data/dataset/8fdb86ff-d3d1-4f9e-85a5-bed4080d5ee1 ; https://data.gov.au/data/dataset/https-www-waterconnect-sa-gov-au-content-downloads-dewnr-topo-epa-activities-sag-shp-zip/resource/26e076f3-c37f-4089-8f28-3f7c9afd997e",
+  "notes": "The current data.gov.au resource record identifies the title as EPA Licensed Activities, the direct data.sa.gov.au GeoJSON URL, and CC BY 3.0 Australia. This authorizes attributed acquisition, processing, and local private-preview display only. The source says its points are approximate, can poorly represent licences covering large areas, and may omit the latest register information. Source rows are not project-approved or public-release-ready.",
+  "private_preview_only": true,
+  "reviewed_at": "2026-09-24T00:00:00Z",
+  "reviewer": "Project operator authorization for this source-integration sprint"
+}

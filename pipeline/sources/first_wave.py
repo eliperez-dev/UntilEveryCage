@@ -25,6 +25,7 @@ from .france.adapter import FranceDgalSectionIAdapter, FranceDgalSectionIIAdapte
 from .italy.it_853_adapter import Italy853Adapter
 from .italy.it_1069_adapter import Italy1069Adapter
 from .australia.npi import NpiFacilitiesAdapter
+from .australia.sa_epa import SouthAustraliaEpaAdapter
 from .us.fsis.runner_adapter import FsisRefreshAdapter
 
 
@@ -65,8 +66,8 @@ class SourceDescriptor:
 
     def readiness(self) -> dict[str, Any]:
         """Return capability facts without conflating acquisition and approval."""
-        live_callable = self.source_id in {"be.locations", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "fr.dgal.section-i", "fr.dgal.section-ii", "it.853-2004", "it.1069-2009"}
-        operational = "live" if self.source_id in {"be.locations", "it.853-2004", "it.1069-2009", "fr.dgal.section-i", "fr.dgal.section-ii"} else ("terms-blocked" if live_callable else "assisted")
+        live_callable = self.source_id in {"be.locations", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "fr.dgal.section-i", "fr.dgal.section-ii", "it.853-2004", "it.1069-2009", "au.sa.epa.licensed-activities"}
+        operational = "live" if self.source_id in {"be.locations", "it.853-2004", "it.1069-2009", "fr.dgal.section-i", "fr.dgal.section-ii", "au.sa.epa.licensed-activities"} else ("terms-blocked" if live_callable else "assisted")
         return {
             "source_id": self.source_id,
             "fixture_ready": bool(self.fixture_paths),
@@ -74,7 +75,7 @@ class SourceDescriptor:
             "live_acquisition": self.live_acquisition,
             "operational_classification": operational,
             "live_callable": live_callable,
-            "private_pipeline": "one_action_preview_import_ready" if self.source_id in {"it.853-2004", "it.1069-2009"} else "fixture_contract_ready",
+            "private_pipeline": "one_action_preview_import_ready" if self.source_id in {"it.853-2004", "it.1069-2009", "au.sa.epa.licensed-activities"} else "fixture_contract_ready",
             "publication": self.publication,
             "geocoding": "disabled",
             "review_required": True,
@@ -109,6 +110,10 @@ def _australia_npi() -> SourceAdapter:
     return NpiFacilitiesAdapter()
 
 
+def _australia_sa_epa() -> SourceAdapter:
+    return SouthAustraliaEpaAdapter()
+
+
 FIRST_WAVE: tuple[SourceDescriptor, ...] = (
     SourceDescriptor("dk.smiley", "DK", "https://pub.fvst.dk/publikationer/Smileydata.xml", _denmark, (ROOT / "denmark" / "fixtures" / "synthetic.xml",), "denmark-smiley-contract-v1", "denmark-smiley-contract-v1", "verified"),
     SourceDescriptor("be.locations", "BE", BELGIUM_CONFIG["operator_url"], _belgium, (ROOT / "belgium" / "fixtures" / "synthetic_operators.csv", ROOT / "belgium" / "fixtures" / "synthetic_activity_codes.csv"), BELGIUM_CONFIG["adapter_version"], BELGIUM_CONFIG["schema_version"], "bounded_private_fetch"),
@@ -119,6 +124,7 @@ FIRST_WAVE: tuple[SourceDescriptor, ...] = (
     SourceDescriptor("it.853-2004", "IT", "https://www.dati.salute.gov.it/", _italy, (ROOT / "italy" / "fixtures" / "synthetic_853.csv",), "it-853-candidate-v2", "it-853-csv-v2.0", "verified"),
     SourceDescriptor("it.1069-2009", "IT", "https://www.dati.salute.gov.it/it/dataset/stabilimenti-italiani-i-sottoprodotti-di-origine-animale/", _italy_1069, (), "it-1069-candidate-v2", "it-1069-csv-current-2026-09", "bounded_private_fetch"),
     SourceDescriptor("au.npi.facilities", "AU", "https://data.gov.au/data/dataset/043f58e0-a188-4458-b61c-04e5b540aea4", _australia_npi, (ROOT / "australia" / "fixtures" / "npi_facilities.csv",), "au-npi-facilities-v1", "au-npi-csv-v1", "assisted_only"),
+    SourceDescriptor("au.sa.epa.licensed-activities", "AU", "https://data.sa.gov.au/data/dataset/8fdb86ff-d3d1-4f9e-85a5-bed4080d5ee1/resource/26e076f3-c37f-4089-8f28-3f7c9afd997e/download/topo_epa_activities_wgs84.geojson", _australia_sa_epa, (ROOT / "australia" / "fixtures" / "sa_epa_synthetic.geojson",), "au-sa-epa-licensed-activities-v1", "au-sa-epa-geojson-v1", "bounded_private_fetch"),
 )
 
 BY_SOURCE_ID = {descriptor.source_id: descriptor for descriptor in FIRST_WAVE}
@@ -173,6 +179,10 @@ class FirstWaveRefreshAdapter:
             return metadata
         if self.source_id == "it.1069-2009":
             from .italy.acquire_1069 import fetch
+            return fetch(output_root=root, run_id=run_id, terms_review_path=Path(str(review)),
+                         timeout_seconds=timeout, max_bytes=max_bytes)
+        if self.source_id == "au.sa.epa.licensed-activities":
+            from .australia.sa_epa import fetch
             return fetch(output_root=root, run_id=run_id, terms_review_path=Path(str(review)),
                          timeout_seconds=timeout, max_bytes=max_bytes)
         raise RuntimeError(f"no approved live callable for {self.source_id}; use assisted local artifact")
@@ -233,7 +243,7 @@ class FirstWaveRefreshAdapter:
                 publication_date=acquisition_facts.get("publication_date"), effective_date=acquisition_facts.get("effective_date"),
                 code_version=self.adapter_version, config_version=self.descriptor.schema_version,
                 rights_caveat=str(acquisition_facts.get("rights_caveat") or source_artifact.rights_caveat), privacy_caveat=source_artifact.privacy_caveat,
-                coverage=source_artifact.coverage, redirects=tuple(acquisition_facts.get("redirects") or ()),
+                coverage=str(acquisition_facts.get("coverage") or source_artifact.coverage), redirects=tuple(acquisition_facts.get("redirects") or ()),
             )
         try:
             status = run_private_lifecycle(
@@ -275,6 +285,8 @@ class FirstWaveRefreshAdapter:
                 # relationship contract; keep this lane observation-only.
                 write_handoff(run_dir / "candidate-handoff", rows, source_artifact,
                               source_id=self.source_id, emit_graph_candidates=False)
+            elif isinstance(source_adapter, SouthAustraliaEpaAdapter):
+                source_adapter.write_candidate_handoff(run_dir / "candidate-handoff", source_artifact, rows)
             else:
                 write_handoff(run_dir / "candidate-handoff", rows, source_artifact, source_id=self.source_id)
             candidate_handoff = True
@@ -317,6 +329,30 @@ class FirstWaveRefreshAdapter:
                 "candidate_handoff_sha256": handoff["normalized_sha256"],
                 "operator_last_modified": (acquisition_facts.get("response_headers") or {}).get("Last-Modified"),
                 "attribution": "Source: FASFC (Belgium); cite this artifact's Last-Modified/latest-update date.",
+                "publication_state": "private-only; not public-release-ready",
+            })
+        if self.source_id == "au.sa.epa.licensed-activities" and status.get("status") == "candidate-ready":
+            records_path = lifecycle_root / "normalized" / "records.jsonl"
+            records = [json.loads(line) for line in records_path.read_text(encoding="utf-8").splitlines() if line]
+            facility_keys = {row["normalized"].get("establishment_id") for row in records
+                             if row["normalized"].get("establishment_id")}
+            summary.update({
+                "acquisition_classification": "live" if acquisition else "assisted",
+                "source_title": manifest.get("source_title"),
+                "source_feature_count": manifest.get("source_feature_count"),
+                "accepted_rows": manifest.get("accepted_rows"),
+                "rejected_rows": manifest.get("rejected_rows"),
+                "out_of_scope_rows": manifest.get("out_of_scope_rows"),
+                "quarantined_coordinate_claims": manifest.get("quarantined_coordinate_claims"),
+                "coordinate_quarantine_reasons": manifest.get("coordinate_quarantine_reasons", {}),
+                "activity_counts": manifest.get("activity_counts", {}),
+                "observed_activity_categories": manifest.get("observed_activity_categories", []),
+                "deduplicated_source_scoped_facility_candidates": len(facility_keys),
+                "candidate_observation_rows": manifest.get("normalized_rows", 0),
+                "source_license": manifest.get("license"),
+                "source_canonical_url": manifest.get("canonical_url"),
+                "source_as_of": manifest.get("effective_date"),
+                "graph_relationships_emitted": 0,
                 "publication_state": "private-only; not public-release-ready",
             })
         return summary
@@ -376,6 +412,9 @@ def run_fixture(source_id: str, run_dir: str | Path, *, retrieved_at_utc: str = 
     if status.get("status") == "candidate-ready":
         lifecycle_root = Path(status["run_dir"])
         if isinstance(source_adapter, DenmarkSmileyAdapter):
+            rows = [json.loads(line) for line in (lifecycle_root / "normalized" / "records.jsonl").read_text(encoding="utf-8").splitlines() if line]
+            source_adapter.write_candidate_handoff(lifecycle_root / "candidate-handoff", artifact, rows)
+        elif isinstance(source_adapter, SouthAustraliaEpaAdapter):
             rows = [json.loads(line) for line in (lifecycle_root / "normalized" / "records.jsonl").read_text(encoding="utf-8").splitlines() if line]
             source_adapter.write_candidate_handoff(lifecycle_root / "candidate-handoff", artifact, rows)
         else:

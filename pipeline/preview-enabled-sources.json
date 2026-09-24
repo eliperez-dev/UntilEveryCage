@@ -1,6 +1,18 @@
 {
   "contract_version": "preview-enabled-source-v1",
   "sources": {
+    "au.sa.epa.licensed-activities": {
+      "enabled": true,
+      "runner": "pipeline.refresh_private:au.sa.epa.licensed-activities",
+      "terms_review": "data/terms-reviews/au.sa.epa.licensed-activities.json",
+      "terms_decision": "approved",
+      "freshness_max_days": 35,
+      "expected_artifacts": ["source.geojson"],
+      "allowed_preview_fields": ["establishment_id", "facility_grouping", "country_code", "nation", "region", "activity_categories", "activity_code", "activity_description", "activity_scope_rule", "source_observed_at", "source_activity_category", "source_row_objectid", "source_canonical_url", "coordinates", "coordinate_state", "coordinate_precision", "privacy_gate", "rights_gate", "publication_gate"],
+      "display_policy": {"kind": "source_numeric_coordinate", "precision": "source-precision-unknown", "disclosure": "South Australia EPA source points are approximate and of unspecified point precision. They may not represent the licensed area; not a facility-exact location. Private preview only; not project-approved or publicly released."},
+      "adapter_version": "au-sa-epa-licensed-activities-v1",
+      "schema_version": "au-sa-epa-geojson-v1"
+    },
     "be.locations": {
       "enabled": true,
       "runner": "pipeline.refresh_private:be.locations",

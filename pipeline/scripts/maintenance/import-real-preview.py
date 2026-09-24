@@ -509,6 +509,43 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
                     or acquisition_evidence.get("final_url") != manifest.get("source_url")
                     or acquisition_evidence.get("retrieved_at_utc") != manifest.get("retrieved_at_utc")):
                 raise ImportFailure("acquisition_provenance_mismatch")
+        elif source_id == "au.sa.epa.licensed-activities":
+            acquisition_path = root / "acquisition" / source_id / run_id / "acquisition-metadata.json"
+            expected_artifact = root / "acquisition" / source_id / run_id / "source.geojson"
+            if not acquisition_path.is_file() or acquisition_path.is_symlink():
+                raise ImportFailure("acquisition_provenance_missing")
+            acquisition_evidence = json_object(acquisition_path)
+            artifact_value = acquisition_evidence.get("artifact_path")
+            if (not isinstance(artifact_value, str) or Path(artifact_value).resolve() != expected_artifact.resolve()
+                    or not expected_artifact.is_file() or expected_artifact.is_symlink()):
+                raise ImportFailure("acquisition_artifact_mismatch")
+            artifact_hash, artifact_size = digest_file(expected_artifact)
+            try:
+                acquired_at = datetime.fromisoformat(str(acquisition_evidence.get("retrieved_at_utc")).replace("Z", "+00:00"))
+            except ValueError:
+                raise ImportFailure("acquisition_timestamp_invalid") from None
+            terms_evidence = acquisition_evidence.get("terms_review")
+            if (acquisition_evidence.get("source_id") != source_id
+                    or acquisition_evidence.get("source_title") != "EPA Licensed Activities"
+                    or acquisition_evidence.get("run_id") != run_id
+                    or acquisition_evidence.get("canonical_url") != manifest.get("source_url")
+                    or acquisition_evidence.get("final_url") != manifest.get("source_url")
+                    or acquisition_evidence.get("sha256") != source_hash
+                    or artifact_hash != source_hash
+                    or acquisition_evidence.get("byte_size") != artifact_size
+                    or acquisition_evidence.get("license") != "Creative Commons Attribution 3.0 Australia"
+                    or acquisition_evidence.get("license_url") != "http://creativecommons.org/licenses/by/3.0/au/"
+                    or not acquisition_evidence.get("catalog_resource_updated_at")
+                    or acquisition_evidence.get("effective_date") != source_summary.get("source_as_of")
+                    or acquisition_evidence.get("retrieved_at_utc") != manifest.get("retrieved_at_utc")
+                    or not isinstance(terms_evidence, dict)
+                    or terms_evidence.get("source_id") != source_id
+                    or terms_evidence.get("decision") != "approved"
+                    or terms_evidence.get("private_preview_only") is not True
+                    or acquired_at.utcoffset() is None
+                    or acquired_at > datetime.now(timezone.utc) + timedelta(minutes=5)
+                    or datetime.now(timezone.utc) - acquired_at > timedelta(days=max_age)):
+                raise ImportFailure("acquisition_provenance_mismatch")
         elif source_id == "us.fsis":
             source_artifacts = manifest.get("source_artifacts")
             bundle = manifest.get("bundle_artifact")
@@ -695,6 +732,11 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
                 raise ImportFailure("runtime_location_classes_do_not_reconcile")
             runtime_details = {"quarantine_reasons": source_summary.get("quarantine_reasons", {}),
                                "source_artifacts": acquisition_evidence,
+                               "source_specific_counts": {key: source_summary.get(key) for key in (
+                                   "source_title", "source_feature_count", "accepted_rows", "rejected_rows",
+                                   "out_of_scope_rows", "quarantined_coordinate_claims", "coordinate_quarantine_reasons",
+                                   "activity_counts", "observed_activity_categories", "source_license",
+                                   "source_canonical_url", "source_as_of", "graph_relationships_emitted")},
                                "geometry_reference": ({**{key: index_payload.get(key) for key in ("source", "source_url", "license", "reference_date", "retrieved_at_utc", "source_last_modified", "source_sha256", "source_byte_size", "method", "version")}, "derived_index_sha256": digest_file(municipality_index_path)[0]} if municipality_index is not None else None),
                                "fresh_live_run": True, "preview_policy_version": json_object(POLICY).get("contract_version")}
             db.execute("""INSERT INTO real_preview.source_preview_runs

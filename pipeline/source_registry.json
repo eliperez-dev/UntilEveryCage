@@ -631,15 +631,15 @@
     },
     {
       "source_id": "au.sa.epa.licensed-activities",
-      "jurisdiction_scope": "Australia; South Australia EPA licensed activities",
+      "jurisdiction_scope": "South Australia; EPA licensed activities (this source does not cover all Australian jurisdictions)",
       "legacy_paths": [],
       "url": "https://data.sa.gov.au/data/dataset/8fdb86ff-d3d1-4f9e-85a5-bed4080d5ee1",
-      "access_method": "public GeoJSON download",
-      "cadence": "resource edition observed 2026-03-18",
-      "attribution_licensing_notes": "CC BY 3.0 Australia; publisher warns points are approximate and may omit latest information; privacy/release review required",
-      "adapter_status": "reference_only",
-      "expected_artifact_schema": "GeoJSON Point features with EPALICENCE, OBJECTID, ACTIVITY, LICENCE_NAME, PR_LINK, and geometry; aggregate by licence before review",
-      "blockers": ["Private artifact exists; validate activity semantics, approximate points, terms, and licence-to-site identity before integration."]
+      "access_method": "official live GeoJSON download; catalog title/resource/license verified at data.gov.au",
+      "cadence": "monthly refresh; resource data last updated 2026-03-18, metadata modified 2026-04-28",
+      "attribution_licensing_notes": "Creative Commons Attribution 3.0 Australia; attribute South Australian EPA and link this resource. Points are approximate, may not represent large licensed areas, and may omit the latest public register information. Local private preview only; publication review required.",
+      "adapter_status": "implemented",
+      "expected_artifact_schema": "GeoJSON Point FeatureCollection with OBJECTID, EPALICENCE, ACTIVITY, LICENCE_NAME, PR_LINK, and WGS84 coordinates; ACTIVITY is a broad Schedule 1 category, not an individual activity code",
+      "blockers": []
     },
     {
       "source_id": "au.animal-welfare-and-use",

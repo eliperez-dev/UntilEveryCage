@@ -835,7 +835,62 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                 "source_provided_unspecified": import_result.get("source_provided_coordinate_group_count"),
                 "source_precision_unknown": import_result.get("source_precision_unknown_group_count"),
                 "exact": 0, "city_or_postal_only": import_result.get("city_postal_count"),
-                "unmapped": import_result.get("unmapped_map_candidate_count")},
+            "unmapped": import_result.get("unmapped_map_candidate_count")},
+        })
+    elif source_id == "au.sa.epa.licensed-activities":
+        acquisition_path = source_dir / "acquisition" / source_id / run_id / "acquisition-metadata.json"
+        if not acquisition_path.is_file() or acquisition_path.is_symlink():
+            raise PreviewError("SA EPA live acquisition provenance is unavailable")
+        acquisition_evidence = json.loads(acquisition_path.read_text(encoding="utf-8"))
+        source_results = refresh_result.get("results") if isinstance(refresh_result, dict) else None
+        source_result = next((item for item in source_results or []
+                              if isinstance(item, dict) and item.get("source_id") == source_id), None)
+        source_summary = source_result.get("summary") if isinstance(source_result, dict) else None
+        if not isinstance(source_summary, dict):
+            raise PreviewError("SA EPA lifecycle summary is unavailable for runtime ledger reconciliation")
+        if any(not isinstance(value, str) or len(value) != 64 for value in (
+                import_result.get("normalized_sha256"), source_summary.get("candidate_handoff_sha256"),
+                source_summary.get("schema_fingerprint"))):
+            raise PreviewError("SA EPA lifecycle hashes are incomplete")
+        ledger.update({
+            "acquisition": {key: acquisition_evidence.get(key) for key in (
+                "source_id", "source_title", "run_id", "catalog_url", "catalog_final_url",
+                "catalog_sha256", "catalog_metadata_modified", "catalog_resource_updated_at",
+                "requested_url", "final_url", "canonical_url", "requested_at_utc", "retrieved_at_utc",
+                "publication_date", "effective_date", "license", "license_url", "sha256", "byte_size",
+                "content_type", "response_headers", "adapter_version", "config_version", "terms_review")},
+            "normalized_sha256": import_result.get("normalized_sha256"),
+            "candidate_handoff_sha256": source_summary.get("candidate_handoff_sha256"),
+            "schema_fingerprint": source_summary.get("schema_fingerprint"),
+            "coverage_scope": "South Australia only",
+            "activity_scope": {
+                "method": "exact ACTIVITY category plus the source-title Schedule 1 term whitelist",
+                "counts_by_candidate_family": source_summary.get("activity_counts", {}),
+                "source_activity_categories_observed": source_summary.get("observed_activity_categories", []),
+            },
+            "quarantine": {
+                "input_rows": source_summary.get("input_rows"),
+                "accepted_rows": source_summary.get("accepted_rows"),
+                "rejected_rows": source_summary.get("rejected_rows"),
+                "quarantined_rows": source_summary.get("quarantined_rows"),
+                "out_of_scope_rows": source_summary.get("out_of_scope_rows"),
+                "quarantined_coordinate_claims": source_summary.get("quarantined_coordinate_claims"),
+                "reasons": source_summary.get("quarantine_reasons", {}),
+                "coordinate_reasons": source_summary.get("coordinate_quarantine_reasons", {}),
+            },
+            "source_counts": {key: import_result.get(key) for key in (
+                "observation_count", "facility_candidate_count", "api_listable_count", "numeric_coordinate_count",
+                "city_postal_count", "unmapped_facility_count", "unmapped_map_candidate_count",
+                "public_release_count", "public_projection_count")},
+            "coordinate_precision_breakdown": {
+                "approximate_source_precision_unspecified": import_result.get("source_precision_unknown_group_count"),
+                "source_provided_unspecified": import_result.get("source_provided_coordinate_group_count"),
+                "exact": 0, "city_or_postal_only": import_result.get("city_postal_count"),
+                "unmapped": import_result.get("unmapped_map_candidate_count"),
+            },
+            "graph_relationships_emitted": 0,
+            "graph_relationships_reason": "No verified cross-source identity or relationship contract exists for these records.",
+            "public_rows": 0,
         })
     ledger_path = output_root / runner_run_id / "source-preview-ledger.json"
     ledger_path.write_text(json.dumps(ledger, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
