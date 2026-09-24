@@ -23,6 +23,7 @@ from .canada.adapter import CfiaFederalMeatAdapter, OntarioMeatPlantsAdapter
 from .denmark.adapter import DenmarkSmileyAdapter
 from .france.adapter import FranceDgalSectionIAdapter, FranceDgalSectionIIAdapter
 from .italy.it_853_adapter import Italy853Adapter
+from .italy.it_1069_adapter import Italy1069Adapter
 from .australia.npi import NpiFacilitiesAdapter
 from .us.fsis.runner_adapter import FsisRefreshAdapter
 
@@ -64,16 +65,16 @@ class SourceDescriptor:
 
     def readiness(self) -> dict[str, Any]:
         """Return capability facts without conflating acquisition and approval."""
-        live_callable = self.source_id in {"be.locations", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "fr.dgal.section-i", "fr.dgal.section-ii", "it.853-2004"}
-        operational = "live" if self.source_id in {"be.locations", "it.853-2004", "fr.dgal.section-i", "fr.dgal.section-ii"} else ("terms-blocked" if live_callable else "assisted")
+        live_callable = self.source_id in {"be.locations", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "fr.dgal.section-i", "fr.dgal.section-ii", "it.853-2004", "it.1069-2009"}
+        operational = "live" if self.source_id in {"be.locations", "it.853-2004", "it.1069-2009", "fr.dgal.section-i", "fr.dgal.section-ii"} else ("terms-blocked" if live_callable else "assisted")
         return {
             "source_id": self.source_id,
-            "fixture_ready": True,
-            "local_artifact_ready": True,
+            "fixture_ready": bool(self.fixture_paths),
+            "local_artifact_ready": self.source_id != "it.1069-2009",
             "live_acquisition": self.live_acquisition,
             "operational_classification": operational,
             "live_callable": live_callable,
-            "private_pipeline": "one_action_preview_import_ready" if self.source_id == "it.853-2004" else "fixture_contract_ready",
+            "private_pipeline": "one_action_preview_import_ready" if self.source_id in {"it.853-2004", "it.1069-2009"} else "fixture_contract_ready",
             "publication": self.publication,
             "geocoding": "disabled",
             "review_required": True,
@@ -100,6 +101,10 @@ def _italy() -> SourceAdapter:
     return Italy853Adapter()
 
 
+def _italy_1069() -> SourceAdapter:
+    return Italy1069Adapter()
+
+
 def _australia_npi() -> SourceAdapter:
     return NpiFacilitiesAdapter()
 
@@ -112,6 +117,7 @@ FIRST_WAVE: tuple[SourceDescriptor, ...] = (
     SourceDescriptor("fr.dgal.section-i", "FR", "https://fichiers-publics.agriculture.gouv.fr/dgal/ListesOfficielles/SSA1_VIAN_ONG_DOM.txt", _france_i, (ROOT / "france" / "fixtures" / "section_i.csv",), "fr-dgal-853-v2", "fr-dgal-853-txt-v2", "verified"),
     SourceDescriptor("fr.dgal.section-ii", "FR", "https://fichiers-publics.agriculture.gouv.fr/dgal/ListesOfficielles/SSA1_VIAN_COL_LAGO.txt", _france_ii, (ROOT / "france" / "fixtures" / "section_ii.csv",), "fr-dgal-853-v2", "fr-dgal-853-txt-v2", "verified"),
     SourceDescriptor("it.853-2004", "IT", "https://www.dati.salute.gov.it/", _italy, (ROOT / "italy" / "fixtures" / "synthetic_853.csv",), "it-853-candidate-v2", "it-853-csv-v2.0", "verified"),
+    SourceDescriptor("it.1069-2009", "IT", "https://www.dati.salute.gov.it/it/dataset/stabilimenti-italiani-i-sottoprodotti-di-origine-animale/", _italy_1069, (), "it-1069-candidate-v2", "it-1069-csv-current-2026-09", "bounded_private_fetch"),
     SourceDescriptor("au.npi.facilities", "AU", "https://data.gov.au/data/dataset/043f58e0-a188-4458-b61c-04e5b540aea4", _australia_npi, (ROOT / "australia" / "fixtures" / "npi_facilities.csv",), "au-npi-facilities-v1", "au-npi-csv-v1", "assisted_only"),
 )
 
@@ -165,6 +171,10 @@ class FirstWaveRefreshAdapter:
             metadata = fetch(output_root=root, run_id=run_id, terms_review_path=Path(str(review)), timeout_seconds=timeout, max_bytes=max_bytes)
             metadata["artifact_path"] = str(root / self.source_id / run_id / metadata["artifact"])
             return metadata
+        if self.source_id == "it.1069-2009":
+            from .italy.acquire_1069 import fetch
+            return fetch(output_root=root, run_id=run_id, terms_review_path=Path(str(review)),
+                         timeout_seconds=timeout, max_bytes=max_bytes)
         raise RuntimeError(f"no approved live callable for {self.source_id}; use assisted local artifact")
 
     def refresh(self, *, mode: str, run_dir: Path, artifact: Path | None,
@@ -260,6 +270,11 @@ class FirstWaveRefreshAdapter:
                 write_handoff(run_dir / "candidate-handoff", rows, source_artifact, source_id=self.source_id)
             elif isinstance(source_adapter, DenmarkSmileyAdapter):
                 source_adapter.write_candidate_handoff(lifecycle_root / "candidate-handoff", source_artifact, rows)
+            elif self.source_id == "it.1069-2009":
+                # The current 1069 file does not provide a verified graph
+                # relationship contract; keep this lane observation-only.
+                write_handoff(run_dir / "candidate-handoff", rows, source_artifact,
+                              source_id=self.source_id, emit_graph_candidates=False)
             else:
                 write_handoff(run_dir / "candidate-handoff", rows, source_artifact, source_id=self.source_id)
             candidate_handoff = True
@@ -283,6 +298,8 @@ class FirstWaveRefreshAdapter:
                 "schema_fingerprint": manifest.get("schema_fingerprint"),
                 "quarantine_reasons": manifest.get("anomaly_counts", {}),
             })
+            if self.source_id == "it.1069-2009":
+                summary["coordinate_rejections"] = manifest.get("coordinate_rejections", {})
         if self.source_id == "be.locations" and status.get("status") == "candidate-ready":
             normalized = lifecycle_root / "normalized" / "records.jsonl"
             records = [json.loads(line) for line in normalized.read_text(encoding="utf-8").splitlines() if line]

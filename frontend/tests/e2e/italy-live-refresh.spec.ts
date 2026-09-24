@@ -7,7 +7,7 @@ test('CLI-acquired Italy run is visible and selectable in the read-only preview'
   const sourceId = process.env.UEC_E2E_SOURCE_ID ?? 'it.853-2004';
   const runId = process.env.UEC_E2E_EXISTING_RUN_ID;
   const ledgerPath = process.env.UEC_E2E_EXISTING_LEDGER_PATH;
-  if (sourceId !== 'it.853-2004' || !runId || !ledgerPath) throw new Error('Provide source ID, completed CLI run ID, and runtime ledger path.');
+  if (!['it.853-2004', 'it.1069-2009'].includes(sourceId) || !runId || !ledgerPath) throw new Error('Provide an Italy source ID, completed CLI run ID, and runtime ledger path.');
   const ledger = JSON.parse(readFileSync(resolve(ledgerPath), 'utf8'));
   expect(ledger.status).toBe('imported');
   expect(ledger.source_id).toBe(sourceId);
@@ -28,7 +28,7 @@ test('CLI-acquired Italy run is visible and selectable in the read-only preview'
 
   const requestUrls: string[] = [];
   page.on('request', request => requestUrls.push(request.url()));
-  await page.goto('/#/map?f1a=field&source=it.853-2004&lat=42.5&lon=12.5&z=5');
+  await page.goto(`/#/map?f1a=field&source=${encodeURIComponent(sourceId)}&lat=42.5&lon=12.5&z=5`);
   await expect(page.locator('[data-data-mode="real-preview"]')).toBeVisible();
   const readiness = await page.evaluate(async () => {
     const response = await fetch('/dev/real-preview/counts', { cache: 'no-store' });
@@ -39,13 +39,13 @@ test('CLI-acquired Italy run is visible and selectable in the read-only preview'
   expect(readiness.body.data.facility_candidate_count).toBe(ledger.preview_import.facility_candidate_count);
   expect(readiness.body.data.map_visible_count).toBe(ledger.map_visible_count);
 
-  const feature = page.getByRole('button', { name: 'Open approximate source location for it.853-2004' }).first();
+  const feature = page.getByRole('button', { name: `Open approximate source location for ${sourceId}` }).first();
   await expect(feature).toBeVisible({ timeout: 90_000 });
   const featureLabel = await feature.innerText();
   const locality = featureLabel.split(' · ').slice(1).join(' · ').trim();
   expect(locality).not.toBe('');
   await page.getByRole('searchbox').fill(locality);
-  await expect(page.getByText(/it\.853-2004/).first()).toBeVisible();
+  await expect(page.getByText(sourceId, { exact: false }).first()).toBeVisible();
   await page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.flyTo({ center: [13, 42], zoom: 8, duration: 0 }));
   await page.waitForFunction(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
@@ -57,6 +57,10 @@ test('CLI-acquired Italy run is visible and selectable in the read-only preview'
   await expect(detail.getByText('Approximate source coordinate · precision unknown', { exact: true })).toBeVisible();
   await expect(detail.getByText(/precision unknown; private preview only.*not approved or published/i)).toBeVisible();
   await expect(detail.getByText('pending_human_privacy_review')).toBeVisible();
+  const apiRequests = requestUrls.map(url => new URL(url)).filter(url => url.pathname.startsWith('/dev/real-preview/'));
+  expect(apiRequests.some(url => url.pathname.endsWith('/locations') && url.searchParams.get('source_id') === sourceId && url.searchParams.has('q'))).toBe(true);
+  expect(apiRequests.some(url => url.pathname.endsWith('/viewport') && url.searchParams.get('source_id') === sourceId)).toBe(true);
+  expect(apiRequests.some(url => /^\/dev\/real-preview\/locations\/[0-9a-f-]+$/i.test(url.pathname))).toBe(true);
   expect(requestUrls.some(url => new URL(url).pathname === '/dev/real-preview/refresh')).toBe(false);
   expect(requestUrls.join('\n')).not.toMatch(/postgresql:|password|secret|uec-dev-preview-token/i);
   expect(await page.locator('body').innerText()).not.toMatch(/x-uec-dev-preview-token|postgresql:|uec-dev-preview-token/i);

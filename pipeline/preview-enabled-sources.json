@@ -25,6 +25,18 @@
       "adapter_version": "it-853-candidate-v2",
       "schema_version": "it-853-csv-v2.0"
     },
+    "it.1069-2009": {
+      "enabled": true,
+      "runner": "pipeline.refresh_private:it.1069-2009",
+      "terms_review": "data/terms-reviews/it.1069-2009.json",
+      "terms_decision": "approved",
+      "freshness_max_days": 1,
+      "expected_artifacts": ["source.csv"],
+      "allowed_preview_fields": ["establishment_id", "recognition_number", "facility_grouping", "facility_identity_state", "observation_identity_state", "name", "trading_name", "address", "location_role", "location_semantics", "source_location_state", "municipality", "city", "municipality_code", "province", "region", "region_code", "country_code", "nation", "regulation", "classification", "activity_code", "activity_description", "products", "product_specification", "authorized_export_countries", "previous_approval_number", "linked_853_recognition_number", "linked_853_recognition_number_state", "status", "status_state", "source_updated_at", "source_updated_at_state", "coordinates", "coordinate_state", "coordinate_precision", "coordinate_provenance_state", "privacy_gate", "coordinate_gate", "rights_gate", "publication_gate"],
+      "display_policy": {"kind": "source_numeric_coordinate", "precision": "source-precision-unknown", "disclosure": "Approximate Ministry source coordinate; the Ministry says some coordinates came from OpenStreetMap contributors, but row-level origin and precision are unspecified. Private preview only; not an exact verified facility point."},
+      "adapter_version": "it-1069-candidate-v2",
+      "schema_version": "it-1069-csv-current-2026-09"
+    },
     "fr.dgal.section-i": {
       "enabled": true,
       "runner": "pipeline.refresh_private:fr.dgal.section-i",

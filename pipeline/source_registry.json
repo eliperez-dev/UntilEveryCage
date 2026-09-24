@@ -164,12 +164,12 @@
       "jurisdiction_scope": "Italy; Ministry of Health establishments for animal by-products under Regulation (EC) 1069/2009",
       "legacy_paths": [],
       "url": "https://www.dati.salute.gov.it/it/dataset/stabilimenti-italiani-i-sottoprodotti-di-origine-animale/",
-      "access_method": "not acquired; separate catalog candidate",
+      "access_method": "official open-data catalog -> same-origin dated CSV discovery",
       "cadence": "daily",
-      "attribution_licensing_notes": "Separate Ministry catalog and Italian Open Data Licence v2.0 indication; no adapter or publication decision.",
-      "adapter_status": "not_started",
-      "expected_artifact_schema": "separate catalog CSV/XML/JSON schema; do not union with 853/2004",
-      "blockers": ["Assess scope, terms, schema, identity/link semantics, privacy, and whether this source belongs in the project before acquisition."]
+      "attribution_licensing_notes": "Separate Ministry catalog identifies IODL v2.0; attribute Ministry of Health and link the license. Catalog notes some coordinates were sourced from OpenStreetMap contributors; row-level coordinate origin is unspecified. Private preview only; public-release approval remains separate.",
+      "adapter_status": "implemented_partial",
+      "expected_artifact_schema": "catalog-discovered UTF-8 semicolon CSV with the observed current 24-column header pinned separately from the differing published v2.0 PDF dictionary; source scoped and kept separate from 853/2004",
+      "blockers": ["Strict private CLI-to-API/frontend E2E passed for one current run; runtime health is not monitored. Review 1069-specific status/identity semantics, row-level coordinate provenance/privacy, coverage, current-schema/PDF discrepancy, and project publication approval before any public release."]
     },
     {
       "source_id": "mx.locations",

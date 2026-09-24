@@ -1,0 +1,77 @@
+{
+  "schema_version": "source-private-e2e-run-v1",
+  "source_id": "it.1069-2009",
+  "run_id": "preview-it-1069-2009-15e39b27-a753-4aa5-8c6b-a5c6e4e201de",
+  "runner_run_id": "refresh-4a78a4e8d57f9f66",
+  "status": "strict_private_preview_e2e_passed",
+  "runtime_health": "one_live_run_verified; recurring_health_not_monitored",
+  "acquired_at_utc": "2026-09-24T09:10:46Z",
+  "catalog": {
+    "url": "https://www.dati.salute.gov.it/it/dataset/stabilimenti-italiani-i-sottoprodotti-di-origine-animale/",
+    "sha256": "3d6670dd24f5b27fc264a85da656c79850976d69d8d0c24f6ce0d256bec3c628",
+    "reported_last_updated": "2026-09-24"
+  },
+  "artifact": {
+    "requested_url": "https://www.dati.salute.gov.it/sites/default/files/opendata/STAB_SPOA_9_20260924.csv",
+    "final_url": "https://www.dati.salute.gov.it/sites/default/files/opendata/STAB_SPOA_9_20260924.csv",
+    "filename_publication_date": "2026-09-24",
+    "last_modified": "Thu, 24 Sep 2026 04:46:04 GMT",
+    "byte_size": 7724521,
+    "sha256": "a5acada1bb7c610b8006627fbbc1b115d91510c2d8070f68ceab49611bdc4cf9"
+  },
+  "versions": {
+    "acquisition": "it-1069-acquisition-v1",
+    "adapter": "it-1069-candidate-v2",
+    "schema": "it-1069-csv-current-2026-09",
+    "schema_fingerprint": "aa12398ed211bda0d1195be497dcc857f364e7713ecebc2dbbeb68c76053be63",
+    "normalized_sha256": "e49c9534766f9b99590f723e0a6acf153b9af2853b14c009478a3f367dcb950f",
+    "candidate_handoff_sha256": "e49c9534766f9b99590f723e0a6acf153b9af2853b14c009478a3f367dcb950f"
+  },
+  "reconciliation": {
+    "raw_rows": 9955,
+    "accepted_observations": 9955,
+    "whole_row_quarantined": 0,
+    "out_of_scope": 0,
+    "coordinate_claim_rejections": {
+      "invalid_source_coordinates": 12,
+      "source_coordinates_out_of_range": 1436,
+      "zero_zero_source_coordinates": 433
+    },
+    "api_listable_facility_candidates": 6533,
+    "numeric_map_visible_candidates": 5293,
+    "city_postal_only_candidates": 1240,
+    "approved_administrative_coarse_placeable_candidates": 0,
+    "unmapped_observations": 0,
+    "unmapped_map_candidates": 0,
+    "facility_groups_without_approved_administrative_placement": 6533,
+    "public_rows": 0
+  },
+  "terms": {
+    "decision": "private_preview_reuse_approved; no public-release decision",
+    "review_record": "data/terms-reviews/it.1069-2009.json",
+    "license": "Italian Open Data Licence v2.0",
+    "license_url": "https://www.dati.gov.it/content/italian-open-data-license-v20",
+    "attribution": "Ministry of Health; do not imply endorsement",
+    "coordinate_caveat": "Catalog says some coordinates came from OpenStreetMap contributors; row-level provenance and precision unspecified; retained only in private preview, rendered approximate, publication blocked.",
+    "legal_note": "Terms record is not legal advice and does not decide embedded third-party rights or authorize public release."
+  },
+  "limitations": [
+    "The published v2.0 PDF schema dictionary differs from the observed current dated CSV header; the adapter pins the observed current schema and fails closed on drift.",
+    "The current CSV does not provide an 853/2004 recognition link; no cross-source link or union was inferred.",
+    "No approved Italian administrative geography was available in this lane. City/postal-only candidates remain listable, not mapped; no facility points were invented.",
+    "Status/category semantics, row-level coordinate provenance/privacy, completeness, and public-release eligibility still require human review."
+  ],
+  "verification": {
+    "command": "python scripts/real_preview.py refresh --source it.1069-2009",
+    "exact_run_replay": "passed without reacquisition; idempotent",
+    "graph_candidates": "disabled; this lane emits no graph or cross-source relationship candidates",
+    "read_only_frontend": "frontend/tests/e2e/italy-live-refresh.spec.ts; source-scoped search, viewport, list and detail API; rendered MapLibre feature; accessible selection and precision/privacy disclosure; no refresh request or secret exposure; passed 1/1",
+    "focused_tests": "20 passed",
+    "standard_harness": "passed",
+    "frontend_check": "passed",
+    "frontend_unit": "86 passed",
+    "frontend_lint": "passed",
+    "frontend_boundary": "passed",
+    "frontend_build": "passed"
+  }
+}

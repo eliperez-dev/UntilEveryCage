@@ -604,6 +604,17 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
             if refresh.returncode or refresh_result.get("exit_status") != "ok":
                 write_job("failed", "lifecycle", "source_lifecycle_failed")
                 raise PreviewError("source acquisition or lifecycle failed; no preview import was attempted")
+            if source_id == "it.1069-2009":
+                results = refresh_result.get("results")
+                result = next((item for item in results or []
+                               if isinstance(item, dict) and item.get("source_id") == source_id), None)
+                summary = result.get("summary") if isinstance(result, dict) else None
+                if (not isinstance(summary, dict) or result.get("status") != "succeeded"
+                        or summary.get("lifecycle_status") != "candidate-ready"
+                        or summary.get("candidate_handoff") is not True
+                        or not isinstance(summary.get("candidate_handoff_sha256"), str)):
+                    write_job("failed", "lifecycle", "source_candidate_handoff_missing")
+                    raise PreviewError("Italy 1069 lifecycle did not produce a validated candidate handoff; no preview import was attempted")
             runner_run_id = refresh_result.get("run_id")
             if not isinstance(runner_run_id, str) or not runner_run_id:
                 write_job("failed", "lifecycle", "source_run_id_missing")
@@ -705,6 +716,45 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                 "city_or_postal_only": import_result.get("city_postal_count"),
                 "unmapped": import_result.get("unmapped_map_candidate_count"),
             },
+        })
+    elif source_id == "it.1069-2009":
+        acquisition_path = source_dir / "acquisition" / source_id / run_id / "acquisition-metadata.json"
+        if not acquisition_path.is_file() or acquisition_path.is_symlink():
+            raise PreviewError("Italy 1069 acquisition provenance is unavailable")
+        acquisition_evidence = json.loads(acquisition_path.read_text(encoding="utf-8"))
+        source_results = refresh_result.get("results") if isinstance(refresh_result, dict) else None
+        source_result = next((item for item in source_results or []
+                              if isinstance(item, dict) and item.get("source_id") == source_id), None)
+        source_summary = source_result.get("summary") if isinstance(source_result, dict) else None
+        if not isinstance(source_summary, dict):
+            raise PreviewError("Italy 1069 lifecycle summary is unavailable for runtime ledger reconciliation")
+        if any(not isinstance(value, str) or len(value) != 64 for value in (
+                import_result.get("normalized_sha256"), source_summary.get("candidate_handoff_sha256"),
+                source_summary.get("schema_fingerprint"))):
+            raise PreviewError("Italy 1069 lifecycle hashes are incomplete")
+        ledger.update({
+            "acquisition": {key: acquisition_evidence.get(key) for key in (
+                "source_id", "run_id", "requested_url", "final_url", "requested_at_utc", "retrieved_at_utc",
+                "effective_date", "publication_metadata", "sha256", "byte_size", "terms_review",
+                "adapter_version", "config_version", "response_headers", "catalog_url", "catalog_final_url",
+                "catalog_sha256")},
+            "normalized_sha256": import_result.get("normalized_sha256"),
+            "candidate_handoff_sha256": source_summary.get("candidate_handoff_sha256"),
+            "schema_fingerprint": source_summary.get("schema_fingerprint"),
+            "quarantine": {"input_rows": source_summary.get("input_rows"),
+                           "accepted_rows": source_summary.get("normalized_rows"),
+                           "quarantined_rows": source_summary.get("quarantined_rows"),
+                           "reasons": source_summary.get("quarantine_reasons", {})},
+            "coordinate_rejections": source_summary.get("coordinate_rejections", {}),
+            "source_counts": {key: import_result.get(key) for key in (
+                "observation_count", "facility_candidate_count", "numeric_coordinate_count",
+                "city_postal_count", "unmapped_observation_count", "mapped_non_candidate_observation_count",
+                "unmapped_map_candidate_count", "public_release_count", "public_projection_count")},
+            "coordinate_precision_breakdown": {
+                "source_precision_unknown": import_result.get("source_precision_unknown_group_count"),
+                "source_provided_unspecified": import_result.get("source_provided_coordinate_group_count"),
+                "exact": 0, "city_or_postal_only": import_result.get("city_postal_count"),
+                "unmapped": import_result.get("unmapped_map_candidate_count")},
         })
     elif source_id in {"fr.dgal.section-i", "fr.dgal.section-ii"}:
         acquisition_path = source_dir / "acquisition" / source_id / run_id / "acquisition-metadata.json"

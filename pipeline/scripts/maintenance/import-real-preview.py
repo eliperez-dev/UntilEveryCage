@@ -477,6 +477,27 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
                     or acquisition_evidence.get("final_url") != manifest.get("source_url")
                     or acquisition_evidence.get("retrieved_at_utc") != manifest.get("retrieved_at_utc")):
                 raise ImportFailure("acquisition_provenance_mismatch")
+        elif source_id == "it.1069-2009":
+            acquisition_path = root / "acquisition" / source_id / run_id / "acquisition-metadata.json"
+            if not acquisition_path.is_file() or acquisition_path.is_symlink():
+                raise ImportFailure("acquisition_provenance_missing")
+            acquisition_evidence = json_object(acquisition_path)
+            artifact_value = acquisition_evidence.get("artifact_path")
+            if not isinstance(artifact_value, str):
+                raise ImportFailure("acquisition_artifact_path_missing")
+            acquired_file = Path(artifact_value)
+            if not acquired_file.is_file() or acquired_file.is_symlink() or acquired_file.resolve() != (root / "acquisition" / source_id / run_id / "source.csv").resolve():
+                raise ImportFailure("acquisition_artifact_path_invalid")
+            artifact_hash, artifact_size = digest_file(acquired_file)
+            if (acquisition_evidence.get("source_id") != source_id
+                    or acquisition_evidence.get("run_id") != run_id
+                    or acquisition_evidence.get("sha256") != source_hash
+                    or artifact_hash != source_hash or artifact_size != acquisition_evidence.get("byte_size")
+                    or acquisition_evidence.get("final_url") != manifest.get("source_url")
+                    or acquisition_evidence.get("retrieved_at_utc") != manifest.get("retrieved_at_utc")
+                    or not isinstance(acquisition_evidence.get("terms_review"), dict)
+                    or acquisition_evidence["terms_review"].get("decision") != "approved"):
+                raise ImportFailure("acquisition_provenance_mismatch")
         elif source_id in {"fr.dgal.section-i", "fr.dgal.section-ii"}:
             acquisition_path = root / "acquisition" / source_id / run_id / "acquisition-metadata.json"
             if not acquisition_path.is_file() or acquisition_path.is_symlink():

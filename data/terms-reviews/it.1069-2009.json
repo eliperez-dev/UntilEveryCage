@@ -1,0 +1,7 @@
+{
+  "decision": "approved",
+  "notes": "The Ministry of Health open-data catalog identifies this separate Regulation (EC) 1069/2009 animal-by-products dataset as licensed under Italian Open Data Licence v2.0 and names the Ministry as its source. IODL v2.0 permits reuse subject to source/licensor attribution, linking the license where possible, not implying Ministry endorsement, and taking reasonable measures against misleading use. This review authorizes current public-source acquisition, processing, and private loopback preview only. The catalog states that some coordinates were sourced from OpenStreetMap contributors but does not identify which rows; coordinates remain source-precision-unknown and private pending row-level provenance/privacy review. This record is not legal advice, does not determine every embedded third-party right, and does not authorize public release.",
+  "reference": "https://www.dati.salute.gov.it/it/dataset/stabilimenti-italiani-i-sottoprodotti-di-origine-animale/ ; https://www.dati.gov.it/content/italian-open-data-license-v20 ; https://www.dati.salute.gov.it/dati/documenti/ID_9_Dataset_Stabilimenti_italiani_per_sottoprodotti_di_origine_animale_v2.0.pdf",
+  "reviewed_at": "2026-09-24T00:00:00Z",
+  "reviewer": "Codex source terms review under explicit project operator authorization"
+}

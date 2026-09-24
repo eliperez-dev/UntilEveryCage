@@ -17,7 +17,7 @@ The strongest candidate is the Italian Ministry of Health open-data catalog rath
 - 853 schema dictionary: <https://www.dati.salute.gov.it/dati/documenti/ID_8_Dataset_Stabilimenti_Italiani_per_gli_alimenti_di_origine_animale_v2.0.pdf>
 - 1069 schema dictionary: <https://www.dati.salute.gov.it/dati/documenti/ID_9_Dataset_Stabilimenti_italiani_per_sottoprodotti_di_origine_animale_v2.0.pdf>
 
-The catalog reported 853 data last updated 2026-09-13 and daily frequency; the 1069 catalog reported last updated 2026-09-11 and daily frequency. Private retrieval was 2026-09-14T05:44:54.7132759Z UTC. The 853 artifact is 49,927,230 bytes (SHA-256 `af1ec6eb7b530fef8dd420cdd08215b36d1b29cb202cf355b87a95fc938d6fea`) with 47,370 data rows; the separate 1069 artifact is 7,708,707 bytes (SHA-256 `4071c10f00f59070f75435988c7b22858bbd24abdc456613d448ff873bd9a2ce`) with 9,935 data rows. Raw files and sanitized metadata remain under ignored `data/raw/italy/` and are not release inputs.
+The catalog reported 853 data last updated 2026-09-13 and daily frequency; the 1069 catalog reported last updated 2026-09-11 and daily frequency. Private retrieval was 2026-09-14T05:44:54.7132759Z UTC. The 853 artifact is 49,927,230 bytes (SHA-256 `af1ec6eb7b530fef8dd420cdd08215b36d1b29cb202cf355b87a95fc938d6fea`) with 47,370 data rows; the separate 1069 artifact is 7,708,707 bytes (SHA-256 `4071c10f00f59070f75435988c7b22858bbd24abdc456613d448ff873bd9a2ce`) with 9,935 data rows. Those are historical reconnaissance artifacts, not the later E2E run below. Raw files and sanitized metadata remain under ignored `data/raw/italy/` and are not release inputs.
 
 The catalog identifies the Ministry of Health/DGSAN Office 2 and Italian Open Data Licence v2.0. It warns that some coordinates came from OpenStreetMap contributors; this is source metadata, not permission to publish precise points.
 
@@ -29,7 +29,7 @@ The dictionary does not settle cross-snapshot identity for repeated activities, 
 
 ## Meaning and schema
 
-The 853/2004 sections are regulatory product/activity sections, not animal species or a simple facility type. Observed concepts include approval number, name, VAT/tax identifiers, town/region, category, associated activities, species, remarks, recognition number, activity/status fields, codes, products, export countries, coordinates, geolocation status, and last-update date. The separate 1069/2009 dataset covers animal by-products with its own recognition number, plant/activity/product codes, coordinates, status, and an optional 853 recognition link.
+The 853/2004 sections are regulatory product/activity sections, not animal species or a simple facility type. Observed concepts include approval number, name, VAT/tax identifiers, town/region, category, associated activities, species, remarks, recognition number, activity/status fields, codes, products, export countries, coordinates, geolocation status, and last-update date. The separate 1069/2009 dataset covers animal by-products with its own recognition number, plant/activity/product codes, coordinates, and status. Although its published PDF dictionary describes an optional 853 recognition link, the current CSV does not contain that field; this adapter does not infer or create a cross-source link.
 
 Keep the datasets separate and preserve original source values. Treat activity/status and coordinates as evidence requiring interpretation and review, not proof of current animal use, safety, completeness, or permission to expose a precise location.
 
@@ -46,27 +46,29 @@ The repository’s historical Italy CSV and scraper are legacy/unverified inputs
 | Source | Discovered | Acquisition | Adapter / validation | Terms / privacy / publication | Blocker / next action |
 |---|---|---|---|---|---|
 | Ministry 853/2004 food establishments | Official catalog and regulatory sections verified | Private current CSV acquired; provenance recorded | Private candidate adapter and shared-contract handoff implemented; bounded real QA quarantines ambiguous duplicates | Italian Open Data Licence v2.0; coordinate provenance partly OSM; ETHICS privacy/approval gates apply | Validate broader snapshots and resolve identity, coded values, and privacy treatment before publication |
-| Ministry 1069/2009 by-products | Separate official catalog/dictionary verified | Private current CSV acquired; provenance recorded | Kept separate; no adapter | Same licence and privacy/approval gates | Decide whether scope belongs in project, then validate separately |
+| Ministry 1069/2009 by-products | Separate official catalog/dictionary verified | 2026-09-24 current dated CSV acquired and imported in one isolated private CLI run; exact-run replay idempotent | Dedicated observed-current-CSV-schema-pinned adapter, coordinate-claim rejection separate from row quarantine, source-scoped handoff and generic preview integration; read-only Playwright/API/map proof passed | Catalog identifies IODL v2.0; Ministry attribution required; catalog warns some coordinates are OSM sourced; private-only terms review recorded | Published PDF dictionary differs from current CSV header; city/postal candidates have no approved municipality reference; retain publication/privacy/coordinate review gates |
 | Servlet HTML interface | Official interface identified | Not acquired; JS/cookie challenge | Historical HTML parser is brittle; no API claim | No export/terms contract verified; do not scrape through challenge | Prefer catalog downloads or request authorized export/documented endpoint |
 
 ## Integration recommendation
 
-Build a deterministic catalog-download adapter with an explicit dataset variant and format. Validate encoding, delimiter/header, recognition identifiers, status vocabulary, category/activity codes, dates, coordinate ranges, duplicate identifiers, and count changes. Quarantine schema drift and malformed rows. Geocoding, if approved later, must be a separate derived event with provider/query/time/precision/review fields.
+The source-specific command is `python scripts/real_preview.py refresh --source it.1069-2009`. It discovers the dated CSV from the current Ministry catalog and keeps the result source-scoped. The adapter pins the observed current 24-column CSV header (which differs from the catalog-linked v2.0 PDF dictionary), validates row shape, recognition identifiers, status values and coordinate ranges, and separately rejects invalid coordinate claims without dropping the otherwise valid establishment observation. The 2026-09-24 run accepted 9,955/9,955 observations with no whole-row quarantine; it rejected 12 unparsable, 1,436 out-of-range, and 433 zero/zero coordinate claims, leaving coordinates null for those observations. The current artifact does not supply a linked 853 recognition field, so none is inferred and no cross-source graph edges are emitted. No approved Italian municipality reference is included: 1,240 city/postal-only candidate groups remain listable but are not rendered as mapped points; 5,293 candidate groups have source coordinates rendered approximate/precision-unknown. The row-free run record is [here](../data/manifests/italy-1069-preview-e2e-20260924.json). The preview is private and public rows remain zero.
 
 Private aggregate QA of the 853 snapshot found 41,844 distinct recognition/activity pairs; 4,529 pairs repeat, covering 10,055 rows. Multiplicity was 3,666 pairs occurring twice, 739 three times, 114 four times, and 10 five times. The adapter therefore retains source-row identity and quarantines repeated pair collisions rather than merging them; this is not evidence of duplicate facilities or an operating-status conclusion.
 
 Do not publish names, addresses, tax identifiers, or precise coordinates merely because the Ministry publishes them. Apply residential/private-location screening, source-origin labels, project approval, and publication profile independently. Government-sourced does not mean current, complete, project-approved, or safe to expose.
 
-The private parity implementation is source-scoped as `it.853-2004`: the
+The private preview implementation is source-scoped as `it.853-2004` and
+`it.1069-2009`, each with a separate current source acquisition and candidate
+set. The 853 source's
 catalog-linked acquisition records the catalog/download boundary, response
 metadata, terms evidence, raw hash/bytes, and supplied file/catalog dates;
 `pipeline.common.orchestrator.run_private_lifecycle` then emits parsed,
 normalized, quarantined, QA, run-status, and private-health evidence. The
 candidate importer and guarded test-only API are explicit development steps;
-they do not promote a release or authorize publication. Regulation 1069/2009
-is registered as `it.1069-2009` but intentionally has no adapter, shared
-counts, candidate release, or API integration. A future link between the two
-must be a reviewed identity/link event, not a union by recognition number.
+they do not promote a release or authorize publication. The 1069 source now
+uses the same generic preview importer under its own ID; its separate counts
+are not added to 853. A future link between the two must be a reviewed
+identity/link event, not a union by recognition number.
 
 ## Limitations
 
