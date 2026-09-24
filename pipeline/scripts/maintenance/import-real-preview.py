@@ -548,7 +548,8 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
                     or index_payload.get("license") != geometry_policy.get("license")
                     or index_payload.get("version") != geometry_policy.get("version")):
                 raise ImportFailure("approved_coarse_geometry_provenance_invalid")
-            if index_payload.get("source_url") != geometry_policy.get("source_url"):
+            expected_file_url = geometry_policy.get("source_file_url") or geometry_policy.get("source_url")
+            if index_payload.get("source_url") != expected_file_url:
                 raise ImportFailure("approved_coarse_geometry_source_mismatch")
             if (geometry_policy.get("source_reference_url")
                     and index_payload.get("source_reference_url") != geometry_policy.get("source_reference_url")):

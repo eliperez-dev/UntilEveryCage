@@ -95,7 +95,12 @@ class FsisRefreshAdapter:
                 options: Mapping[str, Any]) -> Mapping[str, Any]:
         acquisition = options.get("acquisition")
         facts = acquisition.get("acquisition") if isinstance(acquisition, Mapping) else None
-        if mode in {"fixture", "local-artifact"}:
+        # The mixed D3 rehearsal's local-artifact mode supplies its checked-in
+        # fixture artifact without acquisition metadata. The live refresh runner
+        # also invokes adapters in local-artifact mode after acquisition, but
+        # always supplies both role-specific provenance records. Distinguish the
+        # two by provenance, never by the mode name alone.
+        if mode == "fixture" or (mode == "local-artifact" and not isinstance(facts, Mapping)):
             directory_path = Path(__file__).parent / "fixtures" / "valid.csv"
             demographics_path = Path(__file__).parent / "fixtures" / "demographics.csv"
             retrieved_at = "2026-01-01T00:00:00Z"

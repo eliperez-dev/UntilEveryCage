@@ -92,12 +92,12 @@ def acquire_centroids(*, output_root: Path, run_id: str, timeout_seconds: int = 
         lon, lat = transformer.transform(weighted_x / area, weighted_y / area)
         if not (-90 <= lat <= 90 and -180 <= lon <= 180):
             continue
-        for name in names[code]:
+        for name in sorted(names[code]):
             normalized = _norm(name)
             if normalized:
                 by_name[normalized] = {"municipality": name, "refnis": code, "latitude": lat, "longitude": lon}
     output = output_root / "municipality-centroids.json"
-    payload = json.dumps({"source": "Statbel", "source_url": final_url, "license": LICENSE,
+    payload = json.dumps({"source": "Statbel 2025 municipality boundaries", "source_url": final_url, "license": LICENSE,
                           "reference_date": "2025-01-01", "retrieved_at_utc": retrieved_at,
                           "source_last_modified": last_modified, "source_sha256": digest,
                           "source_byte_size": size, "crs": "EPSG:3812 transformed to EPSG:4326",
