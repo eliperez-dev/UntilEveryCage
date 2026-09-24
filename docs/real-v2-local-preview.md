@@ -4,11 +4,11 @@ Start with `python scripts/dev.py real-preview up`; inspect with `status` and
 `probe`; stop with `python scripts/dev.py real-preview down`. `down` preserves
 the isolated database. `python scripts/dev.py real-preview reset` is the
 explicit destructive operation and removes only the Compose resources bearing
-the exact `uec-real-preview` project and `uec-real-preview-postgres` volume
+the exact `uec-real-preview-e2e-source` project and `uec-real-preview-e2e-source-postgres` volume
 markers.
 
-The API and Postgres use loopback ports 38000 and 55432. If the lane-3 frontend
-is installed, it listens at `http://127.0.0.1:34173/`; otherwise `up` reports
+The API and Postgres use loopback ports 38001 and 55433. If the lane-3 frontend
+is installed, it listens at `http://127.0.0.1:34174/`; otherwise `up` reports
 `backend_ready_frontend_unavailable` after making the API usable. The API exposes
 35,073 source-scoped candidate groups (31,990 coordinate groups and 3,083 coarse
 groups). Of the coordinate groups, 24,749 have `source-precision-unknown`, 7,241

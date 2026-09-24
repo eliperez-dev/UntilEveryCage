@@ -20,6 +20,8 @@
   let dataError = '';
   let nextCursor: string | null = null;
   let pageLoading = false;
+  let refreshStatus: 'idle' | 'running' | 'error' = 'idle';
+  let refreshMessage = '';
   let counts: RealPreviewCounts | null = null;
   let viewportStatus: 'idle' | 'loading' | 'ready' | 'empty' | 'error' | 'unauthorized' = 'idle';
   let viewportError = '';
@@ -30,6 +32,7 @@
   let listAbort: AbortController | undefined;
   let viewportAbort: AbortController | undefined;
   let detailAbort: AbortController | undefined;
+  let currentBounds: ViewportBounds | null = null;
   const MAX_MAP_PAGES = 64; // 32,000 map candidates at the API's 500-row page bound.
 
   function dispatch(action: LabAction) { state = reduceLabState(state, action); history.replaceState(null, '', encodeLabHash(state)); }
@@ -67,6 +70,7 @@
 
   async function loadViewport(bounds: ViewportBounds) {
     if (mode !== 'real-preview') return;
+    currentBounds = bounds;
     viewportAbort?.abort();
     const controller = new AbortController();
     viewportAbort = controller;
@@ -101,6 +105,26 @@
       if (controller.signal.aborted) return;
       viewportStatus = errorState(error);
       viewportError = error instanceof Error ? error.message : 'The map records could not be loaded.';
+    }
+  }
+
+  async function refreshSource() {
+    if (mode !== 'real-preview' || refreshStatus === 'running') return;
+    listAbort?.abort(); viewportAbort?.abort(); detailAbort?.abort();
+    apiRecords = []; viewportRecords = []; counts = null; nextCursor = null;
+    dataStatus = 'loading'; viewportStatus = 'loading'; detailRecord = null;
+    refreshStatus = 'running'; refreshMessage = 'Acquiring current FASFC and Statbel data…';
+    try {
+      const result = await repository.refresh();
+      await Promise.all([loadPage(state.query, true), repository.counts().then(value => { counts = value; })]);
+      if (currentBounds) await loadViewport(currentBounds);
+      refreshStatus = 'idle';
+      refreshMessage = `${result.observations.toLocaleString()} observations · ${result.facilityCandidates.toLocaleString()} facilities · ${result.mapVisibleCount.toLocaleString()} map locations · run ${result.runId}`;
+    } catch (error) {
+      refreshStatus = 'error';
+      apiRecords = []; viewportRecords = []; counts = null; nextCursor = null;
+      dataStatus = 'error'; viewportStatus = 'error';
+      refreshMessage = error instanceof Error ? error.message : 'Belgium source refresh failed. The current preview was not replaced.';
     }
   }
 
@@ -155,10 +179,10 @@
   <main aria-label="Map preview"><h1 class="sr-only">Investigative map</h1>
     <Field {state} records={mode === 'real-preview' ? apiRecords : model.listRecords} mapRecords={mode === 'real-preview' ? viewportRecords : model.mapRecords} {mode}
       dataStatus={dataStatus} {dataError} mapStatus={viewportStatus} mapError={viewportError} mapTruncated={viewportTruncated}
-      {detailRecord} {detailStatus} {detailError} {nextCursor} {pageLoading}
-      onLoadMore={() => void loadPage(state.query, false)} onViewportBounds={loadViewport} {dispatch}/>
+      {detailRecord} {detailStatus} {detailError} {nextCursor} {pageLoading} {refreshStatus} {refreshMessage}
+      onLoadMore={() => void loadPage(state.query, false)} onViewportBounds={loadViewport} onRefresh={refreshSource} {dispatch}/>
     {#if mode === 'real-preview' && counts}
-      <p class="private-counts" role="status">{counts.facilityCandidateCount.toLocaleString()} private candidates · {counts.numericCoordinateCount.toLocaleString()} numeric coordinates · {counts.cityPostalCount.toLocaleString()} city or postal records</p>
+      <p class="private-counts" role="status">{counts.facilityCandidateCount.toLocaleString()} private candidates · {counts.mapVisibleCount.toLocaleString()} map locations · {counts.cityPostalCount.toLocaleString()} city or postal</p>
     {/if}
   </main>
 </div>

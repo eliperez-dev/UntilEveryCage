@@ -95,7 +95,7 @@ class RealPreviewImporterTests(unittest.TestCase):
     def test_explicit_layout_selects_handoffs_and_ignores_aphis_and_historical_duplicates(self):
         with tempfile.TemporaryDirectory(dir=MODULE_PATH.parents[3]) as directory:
             root = Path(directory)
-            for source in sorted(IMPORTER.ALLOWED):
+            for source in sorted(IMPORTER.LEGACY_ALLOWED):
                 handoff = root / "d6-graph-mvp" / "handoffs" / source
                 normalized = handoff / "normalized" / "records.jsonl"
                 normalized.parent.mkdir(parents=True)
@@ -117,13 +117,13 @@ class RealPreviewImporterTests(unittest.TestCase):
             historical.write_text(json.dumps({"source_id": "it.853-2004", "normalized_sha256": "a" * 64}), encoding="utf-8")
             manifests = IMPORTER.find_manifests(root)
             artifacts = IMPORTER.resolve_artifacts(root, manifests)
-            self.assertEqual(set(artifacts), IMPORTER.ALLOWED)
+            self.assertEqual(set(artifacts), IMPORTER.LEGACY_ALLOWED)
             self.assertTrue(all(path.suffix == ".jsonl" for path in artifacts.values()))
 
     def test_source_mismatch_in_expected_layout_is_rejected(self):
         with tempfile.TemporaryDirectory(dir=MODULE_PATH.parents[3]) as directory:
             root = Path(directory)
-            for source in IMPORTER.ALLOWED:
+            for source in IMPORTER.LEGACY_ALLOWED:
                 target = root / "d6-graph-mvp" / "handoffs" / source / "manifest.json"
                 target.parent.mkdir(parents=True)
                 target.write_text(json.dumps({"source_id": "us.aphis" if source == "it.853-2004" else source, "normalized_sha256": "a" * 64}), encoding="utf-8")
@@ -134,7 +134,7 @@ class RealPreviewImporterTests(unittest.TestCase):
     def test_second_valid_normalized_handoff_for_same_source_is_rejected(self):
         with tempfile.TemporaryDirectory(dir=MODULE_PATH.parents[3]) as directory:
             root = Path(directory)
-            for source in IMPORTER.ALLOWED:
+            for source in IMPORTER.LEGACY_ALLOWED:
                 for suffix in (("", "-alternate") if source == "it.853-2004" else ("",)):
                     handoff = root / "d6-graph-mvp" / "handoffs" / f"{source}{suffix}"
                     (handoff / "normalized").mkdir(parents=True)
@@ -165,7 +165,7 @@ class RealPreviewImporterTests(unittest.TestCase):
             apis.parent.mkdir()
             apis.write_text(json.dumps({"source_id": "us.aphis"}), encoding="utf-8")
             found = IMPORTER.find_manifests(root)
-            self.assertEqual(set(found), IMPORTER.ALLOWED)
+            self.assertEqual(set(found), IMPORTER.LEGACY_ALLOWED)
             self.assertEqual(IMPORTER.excluded_sibling_sources(root), ["us.aphis"])
 
     def test_public_zero_gate_fails_closed_if_any_public_projection_exists(self):

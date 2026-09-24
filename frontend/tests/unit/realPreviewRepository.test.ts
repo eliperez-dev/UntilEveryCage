@@ -87,7 +87,7 @@ describe('private real-preview repository', () => {
     };
     const repository = createRealPreviewRepository(fetcher);
     expect((await repository.detail(candidateId)).sourceId).toBe('fr.dgal.section-i');
-    expect(await repository.counts()).toEqual({ facilityCandidateCount: 35073, numericCoordinateCount: 31504, cityPostalCount: 3569 });
+    expect(await repository.counts()).toEqual({ facilityCandidateCount: 35073, numericCoordinateCount: 31504, cityPostalCount: 3569, mapVisibleCount: 31504 });
     expect(await repository.facets()).toEqual([{ sourceId: 'fr.dgal.section-i', locationClass: 'numeric_source_coordinate', count: 100 }]);
   });
 });

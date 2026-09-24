@@ -40,6 +40,9 @@ export interface DirectionViewProps {
   detailError?: string;
   nextCursor?: string | null;
   pageLoading?: boolean;
+  refreshStatus?: 'idle' | 'running' | 'error';
+  refreshMessage?: string;
+  onRefresh?(): void;
   onLoadMore?(): void;
   onViewportBounds?(bounds: ViewportBounds): void;
   dispatch(action: LabAction): void;

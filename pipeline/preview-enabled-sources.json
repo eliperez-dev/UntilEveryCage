@@ -1,0 +1,17 @@
+{
+  "contract_version": "preview-enabled-source-v1",
+  "sources": {
+    "be.locations": {
+      "enabled": true,
+      "runner": "pipeline.refresh_private:be.locations",
+      "terms_review": "data/terms-reviews/be.locations.json",
+      "terms_decision": "approved",
+      "freshness_max_days": 14,
+      "expected_artifacts": ["operators.csv", "activity-codes.csv", "statbel-municipalities-2025.geojson.zip"],
+      "allowed_preview_fields": ["source_id", "source_row", "source_record_key", "source_values", "normalized", "establishment_id", "country_code", "nation", "municipality", "city", "activity_categories", "activity_codes", "activity_descriptions", "coordinate_state", "address_state", "privacy_gate", "publication_gate"],
+      "display_policy": {"kind": "administrative_municipality_centroid", "precision": "approximate_city", "source": "Statbel 2025 municipality boundaries", "source_url": "https://statbel.fgov.be/en/open-data/statistical-sectors-2026", "source_file_url": "https://statbel.fgov.be/sites/default/files/files/opendata/Statistische%20sectoren/sh_statbel_statistical_sectors_3812_20250101.geojson.zip", "version": "statbel-municipality-centroids-2025-v2", "license": "CC BY 4.0", "attribution": "Statbel", "reference_date": "2025-01-01", "name_matching": "Exact multilingual municipality names; paired names split on slash; parenthetical province qualifiers removed; explicit submunicipality crosswalks only", "official_subdivision_aliases": {"Glabbeek-Zuurbemde": {"municipality": "Glabbeek", "reference_url": "https://www.glabbeek.be/", "reason": "official municipal site identifies Glabbeek-Zuurbemde as a deelgemeente of Glabbeek"}}},
+      "adapter_version": "be-fasfc-private-v3",
+      "schema_version": "be-fasfc-csv-v3"
+    }
+  }
+}

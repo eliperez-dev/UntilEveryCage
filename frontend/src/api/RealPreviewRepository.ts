@@ -5,7 +5,8 @@ export type RealPreviewPrecision =
   | 'source_numeric_pending_review'
   | 'approximate_source_provided_pending_review'
   | 'approximate_source_precision_unknown_pending_review'
-  | 'city_postal_coarse';
+  | 'city_postal_coarse'
+  | 'city_reference_approximate';
 
 export type RealPreviewCandidate = Readonly<{
   candidateId: string;
@@ -27,10 +28,11 @@ export type RealPreviewCandidate = Readonly<{
 }>;
 
 export type RealPreviewPage = Readonly<{ records: readonly RealPreviewCandidate[]; nextCursor: string | null }>;
-export type RealPreviewCounts = Readonly<{ facilityCandidateCount: number; numericCoordinateCount: number; cityPostalCount: number }>;
+export type RealPreviewCounts = Readonly<{ facilityCandidateCount: number; numericCoordinateCount: number; cityPostalCount: number; mapVisibleCount:number }>;
 export type RealPreviewFacet = Readonly<{ sourceId: string; locationClass: string; count: number }>;
 
 export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+export type RealPreviewRefresh = Readonly<{runId:string; observations:number; facilityCandidates:number; mapVisibleCount:number}>;
 
 export class RealPreviewError extends Error {
   constructor(readonly kind: 'unauthorized' | 'loopback' | 'not-found' | 'unavailable' | 'network' | 'invalid-response', message: string) {
@@ -46,6 +48,7 @@ const DISPLAY_PRECISIONS = new Set<RealPreviewPrecision>([
   'approximate_source_provided_pending_review',
   'approximate_source_precision_unknown_pending_review',
   'city_postal_coarse',
+  'city_reference_approximate',
 ]);
 
 function object(value: unknown): Record<string, unknown> {
@@ -85,7 +88,9 @@ export function parseRealPreviewCandidate(value: unknown): RealPreviewCandidate 
     throw new RealPreviewError('invalid-response', 'The private preview returned an unsafe coordinate.');
   }
   if (kind === 'numeric_source_coordinate' && latitude === null) throw new RealPreviewError('invalid-response', 'The private preview returned a numeric record without coordinates.');
-  if (kind !== 'numeric_source_coordinate' && latitude !== null) throw new RealPreviewError('invalid-response', 'The private preview attached a point to a non-numeric record.');
+  if (kind !== 'numeric_source_coordinate' && latitude !== null
+    && !(kind === 'city_postal' && displayPrecision === 'city_reference_approximate')) throw new RealPreviewError('invalid-response', 'The private preview attached a point to a non-numeric record.');
+  if (displayPrecision === 'city_reference_approximate' && (kind !== 'city_postal' || latitude === null)) throw new RealPreviewError('invalid-response', 'The private preview returned an invalid city reference point.');
   const projectApproval = row.project_approval;
   if (projectApproval !== false) throw new RealPreviewError('invalid-response', 'The private preview omitted its approval boundary.');
   if (typeof row.coordinate_review_status !== 'string' || typeof row.factual_review_status !== 'string'
@@ -105,6 +110,7 @@ export function parseRealPreviewCandidate(value: unknown): RealPreviewCandidate 
 
 export function mapRealPreviewCandidate(candidate: RealPreviewCandidate): LabRecord {
   const precision = candidate.locationClass === 'unmapped_private_observation' ? 'unmapped'
+    : candidate.displayPrecision === 'city_reference_approximate' ? 'city'
     : candidate.locationClass === 'city_postal' || candidate.displayPrecision === 'city_postal_coarse' ? 'coarse'
       : candidate.displayPrecision === 'source_numeric_pending_review' ? 'exact' : 'approximate';
   const place = candidate.city ?? candidate.postalCode ?? candidate.countryCode ?? 'Unmapped candidate';
@@ -129,11 +135,12 @@ export function createRealPreviewRepository(fetcher: FetchLike = fetch): {
   detail(id: string, signal?: AbortSignal): Promise<RealPreviewCandidate>;
   counts(signal?: AbortSignal): Promise<RealPreviewCounts>;
   facets(signal?: AbortSignal): Promise<readonly RealPreviewFacet[]>;
+  refresh(signal?: AbortSignal): Promise<RealPreviewRefresh>;
 } {
-  async function request<T>(path: string, signal?: AbortSignal, parse?: (body: unknown) => T): Promise<T> {
+  async function request<T>(path: string, signal?: AbortSignal, parse?: (body: unknown) => T, method = 'GET'): Promise<T> {
     let response: Response;
     try {
-      const init: RequestInit = { method: 'GET', cache: 'no-store', headers: { Accept: 'application/json' } };
+      const init: RequestInit = { method, cache: 'no-store', headers: { Accept: 'application/json' } };
       if (signal) init.signal = signal;
       response = await fetcher(`${API}${path}`, init);
     } catch (error) {
@@ -186,7 +193,9 @@ export function createRealPreviewRepository(fetcher: FetchLike = fetch): {
         const data = object(envelope.data);
         const values = [data.facility_candidate_count, data.numeric_coordinate_count, data.city_postal_count];
         if (envelope.api_version !== 'real-preview-v1' || !values.every(value => Number.isInteger(value) && Number(value) >= 0)) throw new RealPreviewError('invalid-response', 'The private preview returned invalid counts.');
-        return Object.freeze({ facilityCandidateCount: Number(values[0]), numericCoordinateCount: Number(values[1]), cityPostalCount: Number(values[2]) });
+        const mapVisibleCount=data.map_visible_count;
+        if(mapVisibleCount!==undefined&&(!Number.isInteger(mapVisibleCount)||Number(mapVisibleCount)<0))throw new RealPreviewError('invalid-response','The private preview returned invalid map counts.');
+        return Object.freeze({ facilityCandidateCount: Number(values[0]), numericCoordinateCount: Number(values[1]), cityPostalCount: Number(values[2]), mapVisibleCount: mapVisibleCount===undefined?Number(values[1]):Number(mapVisibleCount) });
       });
     },
     facets(signal) {
@@ -199,6 +208,15 @@ export function createRealPreviewRepository(fetcher: FetchLike = fetch): {
           return Object.freeze({ sourceId: row.source_id, locationClass: row.location_class, count: Number(row.count) });
         }));
       });
+    },
+    refresh(signal) {
+      return request('/refresh', signal, body => {
+        const envelope = object(body); const data = object(envelope.data);
+        if (envelope.api_version !== 'real-preview-v1' || data.status !== 'imported' || typeof data.run_id !== 'string'
+          || ![data.observations, data.facility_candidates, data.map_visible_count].every(value => Number.isInteger(value) && Number(value) >= 0))
+          throw new RealPreviewError('invalid-response', 'The local source refresh returned an invalid result.');
+        return Object.freeze({ runId: data.run_id, observations: Number(data.observations), facilityCandidates: Number(data.facility_candidates), mapVisibleCount: Number(data.map_visible_count) });
+      }, 'POST');
     },
   };
 }

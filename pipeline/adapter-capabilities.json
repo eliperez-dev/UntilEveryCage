@@ -1,6 +1,7 @@
 {
   "schema_version": "adapter-capabilities-v1",
   "adapters": [
+    {"country_code": "be", "source_id": "be.locations", "adapter_version": "be-fasfc-private-v3", "schema_version": "be-fasfc-csv-v3", "adapter_path": "pipeline/sources/belgium/adapter.py", "acquisition": "bounded_private_fetch", "operational_classification": "live", "live_callable": true, "geocoding": "disabled", "publication": "human_gate_required"},
     {"country_code": "de", "source_id": "de.locations", "adapter_version": "de-bltu-adapter-2", "schema_version": "de-bltu-v2", "adapter_path": "pipeline/sources/d3_facility.py", "acquisition": "assisted_only", "operational_classification": "assisted", "live_callable": false, "geocoding": "disabled", "publication": "human_gate_required"},
     {"country_code": "fr", "source_id": "fr.dgal.section-i", "adapter_version": "fr-dgal-853-v1", "schema_version": "fr-dgal-853-txt-v1", "adapter_path": "pipeline/sources/france/adapter.py", "acquisition": "bounded_private_fetch", "operational_classification": "terms-blocked", "live_callable": true, "geocoding": "disabled", "publication": "human_gate_required"},
     {"country_code": "fr", "source_id": "fr.dgal.section-ii", "adapter_version": "fr-dgal-853-v1", "schema_version": "fr-dgal-853-txt-v1", "adapter_path": "pipeline/sources/france/adapter.py", "acquisition": "bounded_private_fetch", "operational_classification": "terms-blocked", "live_callable": true, "geocoding": "disabled", "publication": "human_gate_required"},

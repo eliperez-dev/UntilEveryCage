@@ -50,7 +50,7 @@ class LifecycleTests(unittest.TestCase):
 
     def test_http_never_places_token_in_url(self):
         token = "secret-value"
-        request = rp.urllib.request.Request("http://127.0.0.1:38000/health/ready", headers={"X-Uec-Dev-Preview-Token": token})
+        request = rp.urllib.request.Request(f"http://127.0.0.1:{rp.API_PORT}/health/ready", headers={"X-Uec-Dev-Preview-Token": token})
         self.assertNotIn(token, request.full_url)
 
 

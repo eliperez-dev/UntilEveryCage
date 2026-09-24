@@ -280,6 +280,7 @@ class FirstWaveRefreshAdapter:
             summary.update({
                 "acquisition_classification": "live" if acquisition else "assisted",
                 "valid_source_activity_rows": len(records),
+                "activity_code_sha256": ((acquisition.get("acquisition") or {}).get("activity_codes") or {}).get("sha256"),
                 "in_scope_normalized_observations": len(animal),
                 "out_of_scope_rows": len(records) - len(animal),
                 "deduplicated_source_scoped_facility_candidates": len(facility_keys),

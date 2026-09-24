@@ -17,9 +17,11 @@ from pathlib import Path
 from typing import Sequence
 
 ROOT = Path(__file__).resolve().parents[1]
-PROJECT = "uec-real-preview"
-VOLUME = "uec-real-preview-postgres"
-DB_PORT, API_PORT, WEB_PORT = 55432, 38000, 34173
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+PROJECT = "uec-real-preview-e2e-source"
+VOLUME = "uec-real-preview-e2e-source-postgres"
+DB_PORT, API_PORT, WEB_PORT = 55433, 38001, 34174
 PRIVATE_ROOT = Path(os.environ.get("UEC_REAL_PREVIEW_ROOT", r"D:\UntilEveryCage-private"))
 IMPORTER = ROOT / "pipeline" / "scripts" / "maintenance" / "import-real-preview.py"
 MIGRATIONS = ROOT / "pipeline" / "scripts" / "maintenance" / "apply-migrations.py"
@@ -353,13 +355,142 @@ def probe() -> dict[str, object]:
     return {"ok": ready and (not frontend_available or frontend_ready), "api_ready": ready, "frontend_loopback": frontend_ready, "frontend_available": frontend_available}
 
 
+def refresh_source(source_id: str = "be.locations", existing_runner_run_id: str | None = None) -> dict[str, object]:
+    """Freshly acquire one policy-enabled source and import its exact handoff."""
+    import uuid
+    policy_path = ROOT / "pipeline" / "preview-enabled-sources.json"
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    source_policy = policy.get("sources", {}).get(source_id)
+    if not isinstance(source_policy, dict) or source_policy.get("enabled") is not True:
+        raise PreviewError("source is not enabled for private preview")
+    if not os.environ.get("UEC_DATABASE_URL"):
+        raise PreviewError("preview database is not configured")
+    run_id = f"preview-{source_id.replace('.', '-')}-{uuid.uuid4()}"
+    output_root = ROOT / "target" / "real-preview" / "runs"
+    job_dir = ROOT / "target" / "real-preview" / "jobs"
+    job_path = job_dir / f"{run_id}.json"
+    job: dict[str, object] = {"ledger_version": "source-preview-job-v1", "source_id": source_id,
+                              "run_id": run_id, "status": "running", "phase": "acquisition",
+                              "started_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                              "public_rows": 0}
+
+    def write_job(status: str, phase: str, error_code: str | None = None) -> None:
+        job.update({"status": status, "phase": phase,
+                    "updated_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+        if error_code:
+            job["error_code"] = error_code
+        job_dir.mkdir(parents=True, exist_ok=True)
+        temporary = job_path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(job, sort_keys=True) + "\n", encoding="utf-8")
+        temporary.replace(job_path)
+
+    try:
+        if existing_runner_run_id:
+            runner_run_id = existing_runner_run_id
+            source_root = output_root / runner_run_id / "sources" / source_id
+            run_manifest = json.loads((output_root / runner_run_id / "manifest.json").read_text(encoding="utf-8"))
+            pair_files = list((source_root / "acquisition" / source_id).glob("*/pair-metadata.json"))
+            if not pair_files:
+                write_job("failed", "lifecycle", "paired_acquisition_provenance_missing")
+                raise PreviewError("completed source run lacks paired acquisition provenance")
+            pair = json.loads(pair_files[0].read_text(encoding="utf-8"))
+            run_id = pair.get("operator", {}).get("run_id")
+            if not isinstance(run_id, str) or not run_id:
+                write_job("failed", "lifecycle", "paired_acquisition_run_id_missing")
+                raise PreviewError("completed source run lacks its unique acquisition id")
+            job.update({"run_id": run_id, "runner_run_id": runner_run_id})
+            job_path = job_dir / f"{run_id}.json"
+            refresh_result = run_manifest
+            write_job("running", "administrative_geography")
+        else:
+            write_job("running", "acquisition")
+            review = ROOT / str(source_policy["terms_review"])
+            refresh = subprocess.run([
+                sys.executable, "-m", "pipeline.refresh_private", "--source", source_id,
+                "--mode", "live-acquisition", "--authorize-live-source", source_id,
+                "--terms-review", f"{source_id}={review}", "--output-root", str(output_root),
+                "--retries", "1", "--timeout-seconds", "180", "--run-id", run_id,
+            ], cwd=ROOT, env=os.environ.copy(), capture_output=True, text=True, timeout=600)
+            try:
+                refresh_result = json.loads(refresh.stdout)
+            except json.JSONDecodeError:
+                write_job("failed", "acquisition", "acquisition_result_invalid")
+                raise PreviewError("source acquisition failed; inspect private job evidence") from None
+            if refresh.returncode or refresh_result.get("exit_status") != "ok":
+                write_job("failed", "lifecycle", "source_lifecycle_failed")
+                raise PreviewError("source acquisition or lifecycle failed; no preview import was attempted")
+            runner_run_id = refresh_result.get("run_id")
+            if not isinstance(runner_run_id, str) or not runner_run_id:
+                write_job("failed", "lifecycle", "source_run_id_missing")
+                raise PreviewError("source runner returned no unique run identifier")
+        source_dir = output_root / runner_run_id / "sources" / source_id
+        handoff_manifest = source_dir / "candidate-handoff" / "manifest.json"
+        geography = None
+        municipality_index = None
+        if source_id == "be.locations":
+            write_job("running", "administrative_geography")
+            from pipeline.sources.belgium.municipality_reference import acquire_centroids
+            try:
+                geography = acquire_centroids(output_root=source_dir / "geography", run_id=run_id)
+            except Exception:
+                write_job("failed", "administrative_geography", "approved_geometry_acquisition_failed")
+                raise PreviewError("approved administrative geography acquisition failed") from None
+            municipality_index = source_dir / "geography" / "municipality-centroids.json"
+            job["geometry_sha256"] = geography.get("sha256")
+            write_job("running", "transactional_preview_import")
+        imported = subprocess.run([
+            sys.executable, str(ROOT / "pipeline" / "scripts" / "maintenance" / "import-real-preview.py"),
+            "--root", str(source_dir), "--manifest", str(handoff_manifest), "--source-id", source_id,
+            "--database-url-env", "UEC_DATABASE_URL", "--json",
+            *( ["--municipality-index", str(municipality_index)] if municipality_index is not None else []),
+            "--run-id", run_id, "--run-manifest", str(output_root / runner_run_id / "manifest.json"),
+        ], cwd=ROOT, env=os.environ.copy(), capture_output=True, text=True, timeout=600)
+        try:
+            import_result = json.loads(imported.stdout)
+        except json.JSONDecodeError:
+            write_job("failed", "transactional_preview_import", "import_result_invalid")
+            raise PreviewError("preview import failed; no readiness ledger was written") from None
+        if imported.returncode or import_result.get("status") != "imported":
+            code = import_result.get("error_code")
+            safe_code = code if isinstance(code, str) and code.replace("_", "").isalnum() else "transactional_import_failed"
+            write_job("failed", "transactional_preview_import", safe_code)
+            raise PreviewError("transactional preview import failed; see private job ledger")
+    except subprocess.TimeoutExpired:
+        write_job("failed", str(job.get("phase", "acquisition")), "bounded_job_timeout")
+        raise PreviewError("source refresh exceeded its bounded runtime") from None
+    ledger = {
+        "ledger_version": "source-preview-runtime-v1", "source_id": source_id,
+        "run_id": run_id, "status": "imported", "retrieved_at_utc": refresh_result.get("completed_at_utc"),
+        "source_run": refresh_result, "preview_import": import_result,
+        "coarse_geometry": geography,
+        "preview_policy_version": policy.get("contract_version"),
+        "public_rows": import_result.get("public_release_count", 0) + import_result.get("public_projection_count", 0),
+        "map_visible_count": import_result.get("numeric_coordinate_count", 0) + import_result.get("coarse_placeable_facility_count", 0),
+        "map_readiness": "coarse-city-reference" if geography and import_result.get("coarse_placeable_facility_count", 0) else "unmapped",
+    }
+    ledger_path = output_root / runner_run_id / "source-preview-ledger.json"
+    ledger_path.write_text(json.dumps(ledger, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    job.update({"runner_run_id": runner_run_id, "observation_count": import_result.get("observation_count"),
+                "facility_candidate_count": import_result.get("facility_candidate_count"),
+                "map_visible_count": ledger["map_visible_count"], "public_rows": ledger["public_rows"]})
+    write_job("succeeded", "preview_ready")
+    return {"status": "imported", "run_id": run_id,
+            "observations": import_result.get("observation_count"),
+            "facility_candidates": import_result.get("facility_candidate_count"),
+            "map_visible_count": ledger["map_visible_count"],
+            "ledger": str(ledger_path)}
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("up", "status", "probe", "down", "reset"))
+    parser.add_argument("action", choices=("up", "status", "probe", "down", "reset", "refresh"))
+    parser.add_argument("--source", default="be.locations")
+    parser.add_argument("--existing-run", help="complete a prior exact live lifecycle run without reacquisition")
     args = parser.parse_args(argv)
     try:
-        result = {"up": up, "status": status, "probe": probe, "down": down, "reset": reset}[args.action]()
+        result = (refresh_source(args.source, args.existing_run) if args.action == "refresh" else
+                  {"up": up, "status": status, "probe": probe, "down": down, "reset": reset}[args.action]())
         if result is None:
             result = {"status": "stopped", "database": "preserved"} if args.action == "down" else {"status": "reset", "database": "removed"}
         print(json.dumps(result, sort_keys=True))
