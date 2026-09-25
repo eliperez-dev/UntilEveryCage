@@ -22,6 +22,27 @@ contracts              database and adapter contract tests
 review-packet RUN_DIR  deterministic, row-free private review packet
 ```
 
+### Run CFIA strict live private E2E
+
+For the bounded CFIA source lane, run one command from the repository root:
+
+```powershell
+python scripts/real_preview.py strict-live-private-e2e --source ca.cfia.federal-meat
+```
+
+It starts a uniquely named disposable loopback Postgres/PostGIS preview,
+performs one authorized CFIA public download with the tracked source terms
+record, runs provenance/schema/function-code validation and quarantine,
+atomically imports the private candidate handoff, verifies read-only search,
+detail, and viewport behavior, writes a row-free certificate, and removes the
+disposable database volume. Raw workbook and row-bearing private lifecycle
+artifacts remain under ignored local staging; do not commit them. CFIA has no
+source coordinates, so candidates are searchable/listable but remain off the
+map. The official result page and workbook counts differ, and the listing is
+stale-dated; this run proves bounded processing of the acquired artifact only,
+not source completeness, current facility status, privacy clearance, or
+publication eligibility. No public rows are created.
+
 ### Certify one strict private real-preview run
 
 `python scripts/certify_real_preview.py --source <source-id> --ledger <path-to-source-preview-ledger.json>`

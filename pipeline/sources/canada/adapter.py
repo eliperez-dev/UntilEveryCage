@@ -7,6 +7,7 @@ import json
 import re
 import html
 import io
+import sys
 import zipfile
 import xml.etree.ElementTree as ET
 from collections import Counter
@@ -60,6 +61,67 @@ def _joined_source_codes(row: dict[str, str]) -> str | None:
     return "; ".join(values) or None
 
 
+def _cfia_activity(row: dict[str, str]) -> tuple[tuple[str, ...], bool, bool]:
+    """Map CFIA's numbered workbook columns using its published key.
+
+    The column number is the function number; the cell contains its species or
+    subtype suffix (for example ``CODES_3=fx`` means boning/cutting for poultry
+    and red meat). Export markets and detained/imported-product inspection are
+    not operation categories. They are recognized and retained in source
+    values, but do not independently establish a meat-production facility.
+    """
+    columns = {re.sub(r"[^a-z0-9]", "", str(header).lower()): str(raw).strip()
+               for header, raw in row.items()}
+    slot_names = ("codes1", "codes2", "codes3", "code4", "code5", "codes6",
+                  "code7", "code8", "codes9", "codes10")
+    if not any(name in columns for name in slot_names) and "trichina" not in columns:
+        return (), False, False
+
+    valid = True
+    categories: list[str] = []
+    activity_seen = False
+    expected = {
+        "codes1": (set("abcdefghij"), "slaughter"),
+        "codes2": (set("fxg"), "processing"),
+        "codes3": (set("fxg"), "cutting"),
+        "code4": ({"y"}, "processing"),
+        "code5": ({"y"}, "processing"),
+        "codes6": (set("fxg"), "processing"),
+        "code7": ({"y"}, "logistics_and_storage"),
+        "code8": ({"y"}, "processing"),
+        "codes10": (set("ab"), "logistics_and_storage"),
+    }
+    for name, (allowed, category) in expected.items():
+        raw = columns.get(name, "")
+        if not raw:
+            continue
+        compact = re.sub(r"[\s,;/]+", "", raw.lower())
+        if not compact or any(char not in allowed for char in compact):
+            valid = False
+            continue
+        activity_seen = True
+        if category not in categories:
+            categories.append(category)
+
+    # Function 9 is an inspection/import category, not a processing operation.
+    raw_nine = columns.get("codes9", "")
+    if raw_nine:
+        compact = re.sub(r"[\s,;/]+", "", raw_nine.upper())
+        if not compact or not re.fullmatch(r"(?:US|[ABC])+", compact):
+            valid = False
+
+    # Function 12 marks a trichina-treatment facility.
+    trichina = columns.get("trichina", "")
+    if trichina:
+        if trichina.strip().lower() != "y":
+            valid = False
+        else:
+            activity_seen = True
+            if "processing" not in categories:
+                categories.append("processing")
+    return tuple(categories), not valid, activity_seen
+
+
 def _fingerprint(headers: tuple[str, ...]) -> str:
     return hashlib.sha256(json.dumps(tuple(re.sub(r"\s+", " ", h).strip().lower() for h in headers), separators=(",", ":")).encode()).hexdigest()
 
@@ -86,7 +148,10 @@ def _read_xls(content: bytes, aliases: dict[str, tuple[str, ...]], *, required: 
     except ImportError as error:  # pragma: no cover - exercised in env checks
         raise TabularSchemaError("legacy XLS requires pinned xlrd dependency") from error
     try:
-        book = xlrd.open_workbook(file_contents=content, on_demand=True)
+        # xlrd's OLE2 consistency diagnostics default to stdout and would
+        # corrupt the shared runner's row-free JSON contract. Keep them on
+        # stderr while preserving the established parser/quarantine behavior.
+        book = xlrd.open_workbook(file_contents=content, on_demand=True, logfile=sys.stderr)
         sheet = next((candidate for candidate in book.sheets() if candidate.nrows and candidate.ncols), None)
         if sheet is None:
             raise TabularSchemaError("workbook has no populated worksheets")
@@ -163,7 +228,7 @@ class CanadaMeatAdapter:
     def __init__(self, source_id: str, jurisdiction_level: str, jurisdiction: str, source_url: str, coverage: str, require_categories: bool = False) -> None:
         self.source_id, self.jurisdiction_level, self.jurisdiction, self.source_url, self.coverage = source_id, jurisdiction_level, jurisdiction, source_url, coverage
         self.require_categories = require_categories
-        self.adapter_version, self.schema_version = "ca-meat-v2-workbook", "ca-meat-tabular-workbook-v1"
+        self.adapter_version, self.schema_version = "ca-meat-v3-cfia-column-crosswalk", "ca-meat-tabular-workbook-v2"
 
     def parse_bytes(self, content: bytes) -> dict[str, Any]:
         required = ("plant_number", "name")
@@ -181,11 +246,14 @@ class CanadaMeatAdapter:
             plant_number, name = _clean(value(row, mapping, "plant_number")), _clean(value(row, mapping, "name"))
             key = occurrence_key(row, mapping, ("plant_number", "name", "city", "province", "function_codes", "animal_class")); occurrences[key] += 1
             plant_type, functions, animal_class = _clean(value(row, mapping, "plant_type")), _clean(_joined_source_codes(row) or value(row, mapping, "function_codes")), _clean(value(row, mapping, "animal_class"))
-            categories = _categories(plant_type, functions, animal_class)
+            cfia_categories, cfia_unknown, cfia_activity_seen = _cfia_activity(row) if self.require_categories else ((), False, False)
+            categories = cfia_categories or _categories(plant_type, functions, animal_class)
             reasons: list[str] = []
             if not plant_number: reasons.append("missing_plant_number")
             if not name: reasons.append("missing_operator_or_plant_name")
-            if self.require_categories and not categories: reasons.append("unknown_function_code")
+            if self.require_categories and cfia_unknown: reasons.append("unknown_function_code")
+            if self.require_categories and not categories and not cfia_unknown:
+                reasons.append("unsupported_or_missing_facility_activity" if cfia_activity_seen or _joined_source_codes(row) else "unknown_function_code")
             if occurrences[key] > 1: reasons.append("duplicate_source_row")
             normalized = {
                 "establishment_id": plant_number, "recognition_number": plant_number, "facility_grouping": f"provisional-{self.jurisdiction_level}-plant-number", "identity_review": "required-before-merge",

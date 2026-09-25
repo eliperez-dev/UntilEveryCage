@@ -229,9 +229,13 @@ def manifest_provenance(manifest: dict[str, Any]) -> tuple[str, str, int, str, d
     config = manifest.get("config_version")
     count = manifest.get("normalized_rows")
     parsed_url = urlsplit(url) if isinstance(url, str) else None
+    allowed_query = (manifest.get("source_id") == "ca.cfia.federal-meat" and parsed_url is not None
+                     and parsed_url.hostname == "active.inspection.gc.ca"
+                     and parsed_url.path == "/scripts/meavia/reglist/download.asp"
+                     and parsed_url.query == "lang=e")
     if (not isinstance(source_hash, str) or len(source_hash) != 64 or not isinstance(normalized_hash, str)
         or len(normalized_hash) != 64 or not parsed_url or parsed_url.scheme not in {"http", "https"}
-        or not parsed_url.hostname or parsed_url.username or parsed_url.password or parsed_url.query or parsed_url.fragment
+        or not parsed_url.hostname or parsed_url.username or parsed_url.password or (parsed_url.query and not allowed_query) or parsed_url.fragment
         or not isinstance(retrieved, str) or not isinstance(code, str) or not code
         or not isinstance(config, str) or not config or not isinstance(count, int) or count < 0):
         raise ImportFailure("manifest_provenance_invalid")

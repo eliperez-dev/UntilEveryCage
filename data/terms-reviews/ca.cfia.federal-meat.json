@@ -1,0 +1,7 @@
+{
+  "decision": "approved",
+  "notes": "Human operator explicitly approved this bounded official public retrieval and private-preview E2E only. Canada.ca terms permit non-commercial reproduction with due diligence, attribution to CFIA, complete title, and original URL. CFIA's consolidated listing states that it is a convenience reference with no official sanction; the listing reports last update 2023-12-04. Preserve both limitations, do not claim current completeness, do not redistribute or publish source rows, and repeat terms/currency review before any future refresh or release. This approval is project authorization for private staging, not legal advice or a public-release decision.",
+  "reference": "Human operator authorization in task; https://active.inspection.gc.ca/scripts/meavia/reglist/reglist.asp?lang=e ; https://active.inspection.gc.ca/scripts/meavia/reglist/download.asp?lang=e ; https://www.canada.ca/en/transparency/terms.html",
+  "reviewed_at": "2026-09-25T19:25:00Z",
+  "reviewer": "human operator (explicit task authorization recorded in Codex)"
+}

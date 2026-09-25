@@ -51,6 +51,19 @@ class CanadaAdapterTests(unittest.TestCase):
         adapter = CfiaFederalMeatAdapter(); result = adapter.parse_file(FIXTURES / "cfia.csv")
         self.assertEqual(len(result["accepted"]), 2); self.assertEqual(len(result["quarantined"]), 1); self.assertEqual(result["accepted"][0]["normalized"]["activity_categories"], ("slaughter", "cutting")); self.assertEqual(result["accepted"][1]["normalized"]["activity_categories"], ("logistics_and_storage",)); self.assertEqual(result["quarantined"][0]["reasons"], ("unknown_function_code",))
 
+    def test_cfia_current_numbered_workbook_code_columns(self):
+        result = CfiaFederalMeatAdapter().parse_bytes(
+            b"Establishment Number,Operator Name,CODES_1,CODES_3,CODES_6,CODE_7,CODES_9,CODES_10,EXPORT,TRICHINA\n"
+            b'0007,Synthetic Slaughter Plant,"a,h,i",fx,x,Y,B/US,A,D,Y\n'
+            b"0008,Synthetic Inspection Facility,,,,,B/US,,,\n"
+            b"0009,Synthetic Unknown Plant,,q,,,,,,\n"
+        )
+        self.assertEqual(len(result["accepted"]), 1)
+        row = result["accepted"][0]
+        self.assertEqual(row["normalized"]["activity_categories"], ("slaughter", "cutting", "processing", "logistics_and_storage"))
+        self.assertEqual(row["source_values"]["EXPORT"], "D")
+        self.assertEqual({item["reasons"][0] for item in result["quarantined"]}, {"unknown_function_code", "unsupported_or_missing_facility_activity"})
+
     def test_federal_and_provincial_lifecycles_are_separate(self):
         with tempfile.TemporaryDirectory() as d:
             for adapter, fixture in ((OntarioMeatPlantsAdapter(), "ontario.csv"), (CfiaFederalMeatAdapter(), "cfia.csv")):

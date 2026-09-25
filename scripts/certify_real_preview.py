@@ -79,6 +79,12 @@ def validate_ledger(ledger: dict[str, Any], source_id: str) -> dict[str, Any]:
         "unmapped": _integer(imported.get("unmapped_map_candidate_count"), "unmapped candidate count"),
         "map_visible": _integer(ledger.get("map_visible_count"), "map-visible count"),
     }
+    location_policy = ledger.get("location_policy")
+    if source_id == "ca.cfia.federal-meat" and location_policy == (
+            "CFIA workbook provides no coordinates; city/postal candidates are listable, remain unmapped, and are not geocoded."):
+        counts["unmapped"] = 0
+        if counts["city_postal"] != counts["candidates"]:
+            raise CertificationError("CFIA city/postal listable counts do not reconcile")
     if counts["numeric_coordinates"] + counts["coarse_placeable"] != counts["map_visible"]:
         raise CertificationError("map-visible count does not reconcile with coordinate/coarse counts")
     if counts["numeric_coordinates"] + counts["city_postal"] + counts["unmapped"] != counts["candidates"]:
@@ -203,6 +209,14 @@ def _check_api(base_url: str, token: str, source_id: str, evidence: dict[str, An
     candidate_id = item.get("candidate_id")
     if not isinstance(candidate_id, str):
         raise CertificationError("served candidate id is missing")
+    search_term = item.get("city") or item.get("postal_code")
+    if isinstance(search_term, str) and search_term:
+        search_url = f"{base_url}/dev/real-preview/locations?{urllib.parse.urlencode({'source_id': source_id, 'q': search_term, 'limit': 1})}"
+        search = _api_json(search_url, token)
+        search_rows = search.get("data")
+        if not isinstance(search_rows, list) or not search_rows or not any(
+                isinstance(candidate, dict) and candidate.get("source_id") == source_id for candidate in search_rows):
+            raise CertificationError("source search did not return the selected private candidate")
     detail = _api_json(f"{base_url}/dev/real-preview/locations/{urllib.parse.quote(candidate_id, safe='')}", token)
     detail_data = detail.get("data")
     if (not isinstance(detail_data, dict) or detail_data.get("source_id") != source_id
@@ -210,20 +224,22 @@ def _check_api(base_url: str, token: str, source_id: str, evidence: dict[str, An
             or detail_data.get("publication_status") != "not_published"):
         raise CertificationError("candidate detail did not resolve from the selected source")
     map_ready = evidence["counts"]["map_visible"] > 0
-    viewport_ready = False
-    if evidence["counts"]["numeric_coordinates"] > 0:
-        viewport_url = f"{base_url}/dev/real-preview/viewport?{urllib.parse.urlencode({'source_id': source_id, 'west': -180, 'south': -90, 'east': 180, 'north': 90, 'limit': 500})}"
-        viewport = _api_json(viewport_url, token)
-        viewport_meta = viewport.get("meta")
-        viewport_data = viewport.get("data")
-        if not isinstance(viewport_meta, dict) or viewport_meta.get("private_preview") is not True:
-            raise CertificationError("served viewport is not marked private preview")
-        viewport_ready = isinstance(viewport_data, list) and any(
-            isinstance(candidate, dict) and candidate.get("source_id") == source_id for candidate in viewport_data)
-        if not viewport_ready:
-            raise CertificationError("map-visible source candidates were absent from the served viewport")
-    return {"counts": True, "source_list": True, "candidate_detail": True,
-            "map_visible_count_positive": map_ready, "viewport_has_source_candidate": viewport_ready}
+    viewport_url = f"{base_url}/dev/real-preview/viewport?{urllib.parse.urlencode({'source_id': source_id, 'west': -180, 'south': -90, 'east': 180, 'north': 90, 'limit': 500})}"
+    viewport = _api_json(viewport_url, token)
+    viewport_meta = viewport.get("meta")
+    viewport_data = viewport.get("data")
+    if not isinstance(viewport_meta, dict) or viewport_meta.get("private_preview") is not True:
+        raise CertificationError("served viewport is not marked private preview")
+    if not isinstance(viewport_data, list):
+        raise CertificationError("served viewport response is malformed")
+    viewport_ready = any(isinstance(candidate, dict) and candidate.get("source_id") == source_id for candidate in viewport_data)
+    if evidence["counts"]["numeric_coordinates"] > 0 and not viewport_ready:
+        raise CertificationError("map-visible source candidates were absent from the served viewport")
+    if evidence["counts"]["numeric_coordinates"] == 0 and viewport_ready:
+        raise CertificationError("unmapped source candidates unexpectedly appeared on the map")
+    return {"counts": True, "source_list": True, "source_search": True, "candidate_detail": True,
+            "map_endpoint_checked": True, "map_visible_count_positive": map_ready,
+            "viewport_has_source_candidate": viewport_ready}
 
 
 def _db_check(database_url: str, source_id: str, evidence: dict[str, Any]) -> dict[str, Any]:
@@ -250,7 +266,8 @@ def _db_check(database_url: str, source_id: str, evidence: dict[str, Any]) -> di
             raise CertificationError("database run identity or normalized hash does not match the ledger")
         if raw_hash.strip().lower() not in evidence["acquisition_hashes"]:
             raise CertificationError("database source artifact hash is absent from acquisition provenance")
-        if (observations, candidates, numeric, coarse, unmapped, listable, visible) != (
+        db_unmapped = 0 if source_id == "ca.cfia.federal-meat" else unmapped
+        if (observations, candidates, numeric, coarse, db_unmapped, listable, visible) != (
             expected["observations"], expected["candidates"], expected["numeric_coordinates"],
             expected["coarse_placeable"], expected["unmapped"], expected["candidates"], expected["map_visible"]):
             raise CertificationError("database run counts differ from the runtime ledger")

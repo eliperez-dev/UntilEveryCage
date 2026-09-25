@@ -29,6 +29,7 @@ WEB_PORT = int(os.environ.get("UEC_REAL_PREVIEW_WEB_PORT", "34174"))
 PRIVATE_ROOT = Path(os.environ.get("UEC_REAL_PREVIEW_ROOT", r"D:\UntilEveryCage-private"))
 IMPORTER = ROOT / "pipeline" / "scripts" / "maintenance" / "import-real-preview.py"
 MIGRATIONS = ROOT / "pipeline" / "scripts" / "maintenance" / "apply-migrations.py"
+ACTIVE_PREVIEW_TOKEN: str | None = None
 
 
 class PreviewError(RuntimeError):
@@ -114,6 +115,7 @@ def _local_database_url() -> str:
 def compose(*args: str, capture: bool = True) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["UEC_REAL_PREVIEW_DB_PORT"] = str(DB_PORT)
+    env["UEC_REAL_PREVIEW_VOLUME"] = VOLUME
     db_password = _password(create=False)
     if db_password:
         env["POSTGRES_PASSWORD"] = db_password
@@ -334,6 +336,22 @@ def _run_checked(args: list[str], env: dict[str, str], label: str) -> str:
                     break
         except (json.JSONDecodeError, AttributeError):
             pass
+        if code is None:
+            diagnostic = (result.stdout + "\n" + result.stderr).lower()
+            if "password authentication failed" in diagnostic:
+                code = "database_authentication_failed"
+            elif "connection refused" in diagnostic:
+                code = "database_connection_refused"
+            elif "timed out" in diagnostic or "timeout expired" in diagnostic:
+                code = "database_connection_timed_out"
+            elif "operationalerror" in diagnostic or "could not connect" in diagnostic:
+                code = "database_connection_failed"
+            elif "permissionerror" in diagnostic or "access is denied" in diagnostic:
+                code = "local_permission_failed"
+            elif "modulenotfounderror" in diagnostic or "no module named" in diagnostic:
+                code = "python_dependency_missing"
+            elif "undefinedtable" in diagnostic or "syntaxerror" in diagnostic or "programmingerror" in diagnostic:
+                code = "database_migration_rejected"
         suffix = f" (code={code})" if code else ""
         raise PreviewError(f"{label} failed{suffix}; private details were not emitted")
     return result.stdout
@@ -348,8 +366,10 @@ def _build_api() -> None:
 
 
 def up() -> dict[str, object]:
+    global ACTIVE_PREVIEW_TOKEN
     prerequisites()
     token = secrets.token_urlsafe(32)
+    ACTIVE_PREVIEW_TOKEN = token
     password = _password(create=True)
     assert password is not None
     db_url = f"postgresql://uec:{password}@127.0.0.1:{DB_PORT}/uec?sslmode=disable"
@@ -726,6 +746,44 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                 "unmapped": import_result.get("unmapped_map_candidate_count"),
             },
         })
+    elif source_id == "ca.cfia.federal-meat":
+        acquisition_path = source_dir / "acquisition" / source_id / run_id / "acquisition-metadata.json"
+        if not acquisition_path.is_file() or acquisition_path.is_symlink():
+            raise PreviewError("CFIA acquisition provenance is unavailable")
+        acquisition_evidence = json.loads(acquisition_path.read_text(encoding="utf-8"))
+        source_results = refresh_result.get("results") if isinstance(refresh_result, dict) else None
+        source_result = next((item for item in source_results or []
+                              if isinstance(item, dict) and item.get("source_id") == source_id), None)
+        source_summary = source_result.get("summary") if isinstance(source_result, dict) else None
+        if not isinstance(source_summary, dict) or acquisition_evidence.get("source_id") != source_id:
+            raise PreviewError("CFIA lifecycle or acquisition identity is unavailable")
+        if any(not isinstance(value, str) or len(value) != 64 for value in (
+                import_result.get("normalized_sha256"), source_summary.get("candidate_handoff_sha256"),
+                source_summary.get("schema_fingerprint"))) or not isinstance(source_summary.get("quarantine_reasons"), dict):
+            raise PreviewError("CFIA lifecycle hashes or quarantine summary are incomplete")
+        ledger.update({
+            "acquisition": {key: acquisition_evidence.get(key) for key in (
+                "source_id", "run_id", "requested_url", "final_url", "requested_at_utc", "retrieved_at_utc",
+                "effective_date", "publication_date", "sha256", "byte_size", "response_headers",
+                "terms_review", "rights_caveat", "privacy_caveat", "coverage", "adapter_version", "config_version")},
+            "normalized_sha256": import_result.get("normalized_sha256"),
+            "candidate_handoff_sha256": source_summary.get("candidate_handoff_sha256"),
+            "schema_fingerprint": source_summary.get("schema_fingerprint"),
+            "quarantine": {"input_rows": source_summary.get("input_rows"),
+                           "accepted_rows": source_summary.get("candidate_observation_rows"),
+                           "quarantined_rows": source_summary.get("quarantined_rows"),
+                           "reasons": source_summary.get("quarantine_reasons", {})},
+            "source_counts": {key: import_result.get(key) for key in (
+                "observation_count", "facility_candidate_count", "numeric_coordinate_count", "city_postal_count",
+                "unmapped_observation_count", "unmapped_facility_count",
+                "public_release_count", "public_projection_count")},
+            "preview_import": {**import_result,
+                               "unmapped_map_candidate_count": 0},
+            "coordinate_precision_breakdown": {"exact": 0, "source_numeric": 0,
+                                                "city_or_postal_only": import_result.get("city_postal_count"),
+                                                "unmapped": import_result.get("unmapped_facility_count")},
+            "location_policy": "CFIA workbook provides no coordinates; city/postal candidates are listable, remain unmapped, and are not geocoded.",
+        })
     elif source_id == "be.locations":
         acquisition_path = source_dir / "acquisition" / source_id / run_id / "pair-metadata.json"
         if not acquisition_path.is_file() or acquisition_path.is_symlink():
@@ -964,17 +1022,103 @@ def refresh_source(source_id: str = "be.locations", existing_runner_run_id: str 
         return _refresh_source_locked(source_id, existing_runner_run_id)
 
 
+def strict_live_private_e2e(source_id: str) -> dict[str, object]:
+    """Run one bounded live source acquisition through disposable private preview and certification."""
+    global PROJECT, VOLUME, DB_PORT, API_PORT, WEB_PORT, PRIVATE_ROOT, ACTIVE_PREVIEW_TOKEN
+    if source_id != "ca.cfia.federal-meat":
+        raise PreviewError("strict-live-private-e2e currently supports only the assigned CFIA source")
+    import uuid
+    suffix = uuid.uuid4().hex[:10]
+    project = f"uec-preview-cfia-{suffix}"
+    private_root = ROOT / "data" / "staging" / "strict-preview" / suffix
+    ports = ((55440, 55489), (38020, 38069), (34180, 34229))
+    selected_ports: list[int] = []
+    for low, high in ports:
+        selected = next((port for port in range(low, high + 1)
+                         if not _socket_busy(port) and port not in selected_ports), None)
+        if selected is None:
+            raise PreviewError("no free loopback port is available for the disposable source preview")
+        selected_ports.append(selected)
+    old = (PROJECT, VOLUME, DB_PORT, API_PORT, WEB_PORT, PRIVATE_ROOT,
+           os.environ.get("UEC_DATABASE_URL"), os.environ.get("UEC_REAL_PREVIEW_EMPTY_BOOTSTRAP"))
+    PROJECT = project
+    VOLUME = f"{project}-postgres"
+    DB_PORT, API_PORT, WEB_PORT = selected_ports
+    PRIVATE_ROOT = private_root
+    if private_root.exists() and any(private_root.iterdir()):
+        raise PreviewError("unique private preview workspace unexpectedly already contains data")
+    private_root.mkdir(parents=True, exist_ok=True)
+    os.environ.pop("UEC_DATABASE_URL", None)
+    os.environ["UEC_REAL_PREVIEW_EMPTY_BOOTSTRAP"] = "1"
+    started = False
+    primary_error: BaseException | None = None
+    try:
+        if _docker_json(["docker", "volume", "ls", "--filter", f"name={VOLUME}", "--format", "{{json .}}"]):
+            raise PreviewError("unique disposable database volume already exists; refusing to reuse it")
+        started = True
+        up()
+        token = ACTIVE_PREVIEW_TOKEN
+        if not token:
+            raise PreviewError("disposable preview startup did not retain its token in memory")
+        preview = refresh_source(source_id)
+        if preview.get("status") != "imported":
+            raise PreviewError("source refresh did not complete the private preview import")
+        ledger_path = Path(str(preview.get("ledger", "")))
+        certificate_module_path = ROOT / "scripts" / "certify_real_preview.py"
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("uec_cfia_certificate", certificate_module_path)
+        if spec is None or spec.loader is None:
+            raise PreviewError("strict preview certification module is unavailable")
+        certificate_module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = certificate_module
+        spec.loader.exec_module(certificate_module)
+        certificate = certificate_module.certify(
+            source_id, ledger_path, _local_database_url(), f"http://127.0.0.1:{API_PORT}", token)
+        certificate_path = ledger_path.with_name("source-preview-certificate.json")
+        temporary = certificate_path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(certificate, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+        temporary.replace(certificate_path)
+        return {"status": "certified", "source_id": source_id, "run_id": certificate["run_id"],
+                "certificate": str(certificate_path), "counts": certificate["counts"],
+                "checks": certificate["checks"], "publication": "not_authorized", "public_rows": 0}
+    except BaseException as error:
+        primary_error = error
+        raise
+    finally:
+        cleanup_error: BaseException | None = None
+        if started:
+            try:
+                reset()
+            except BaseException as error:
+                cleanup_error = error
+        PROJECT, VOLUME, DB_PORT, API_PORT, WEB_PORT, PRIVATE_ROOT = old[:6]
+        if old[6] is None:
+            os.environ.pop("UEC_DATABASE_URL", None)
+        else:
+            os.environ["UEC_DATABASE_URL"] = old[6]
+        if old[7] is None:
+            os.environ.pop("UEC_REAL_PREVIEW_EMPTY_BOOTSTRAP", None)
+        else:
+            os.environ["UEC_REAL_PREVIEW_EMPTY_BOOTSTRAP"] = old[7]
+        ACTIVE_PREVIEW_TOKEN = None
+        if cleanup_error is not None and primary_error is None:
+            raise PreviewError("strict preview succeeded but its disposable database could not be removed") from cleanup_error
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("up", "status", "probe", "down", "reset", "refresh"))
+    parser.add_argument("action", choices=("up", "status", "probe", "down", "reset", "refresh", "strict-live-private-e2e"))
     parser.add_argument("--source")
     parser.add_argument("--existing-run", help="complete a prior exact live lifecycle run without reacquisition")
     args = parser.parse_args(argv)
     try:
         if args.action == "refresh" and not args.source:
             raise PreviewError("refresh requires an explicit --source")
+        if args.action in {"refresh", "strict-live-private-e2e"} and not args.source:
+            raise PreviewError(f"{args.action} requires an explicit --source")
         result = (refresh_source(args.source, args.existing_run) if args.action == "refresh" else
+                  strict_live_private_e2e(args.source) if args.action == "strict-live-private-e2e" else
                   {"up": up, "status": status, "probe": probe, "down": down, "reset": reset}[args.action]())
         if result is None:
             result = {"status": "stopped", "database": "preserved"} if args.action == "down" else {"status": "reset", "database": "removed"}

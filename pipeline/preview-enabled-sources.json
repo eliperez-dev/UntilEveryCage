@@ -29,6 +29,20 @@
       "adapter_version": "be-fasfc-private-v3",
       "schema_version": "be-fasfc-csv-v3"
     },
+    "ca.cfia.federal-meat": {
+      "enabled": true,
+      "runtime_classification": "production-e2e",
+      "public_release": false,
+      "runner": "pipeline.refresh_private:ca.cfia.federal-meat",
+      "terms_review": "data/terms-reviews/ca.cfia.federal-meat.json",
+      "terms_decision": "approved",
+      "freshness_max_days": 1200,
+      "expected_artifacts": ["source.xls"],
+      "allowed_preview_fields": ["establishment_id", "recognition_number", "facility_grouping", "identity_review", "name", "operator_name", "trading_name", "address", "city", "postal_code", "province", "country_code", "nation", "jurisdiction_level", "jurisdiction", "source_plant_type", "source_function_codes", "animal_class", "activity_categories", "address_state", "coordinates", "coordinate_state", "coordinate_gate", "privacy_gate", "publication_gate", "classification_state", "observation_state", "disappearance_semantics"],
+      "display_policy": {"kind": "source_city_postal_list_only", "precision": "no-source-coordinates", "disclosure": "The source provides city/postal location fields but no facility coordinates. Records remain unmapped in this preview; no address-derived pin or geocoding is performed. Private preview only; CFIA states its consolidation is a convenience reference with no official sanction and its listing was last updated 2023-12-04."},
+      "adapter_version": "ca-meat-v3-cfia-column-crosswalk",
+      "schema_version": "ca-meat-tabular-workbook-v2"
+    },
     "it.853-2004": {
       "enabled": true,
       "runtime_classification": "production-e2e",
