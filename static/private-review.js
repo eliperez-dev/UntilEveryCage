@@ -628,7 +628,7 @@ function renderReadiness() {
   if (!matrix || !legend) return;
   legend.innerHTML = READINESS_STATES.map((stateName) => `<span class="legend-item">${escapeHtml(stateName)}</span>`).join('');
   if (state.readinessError || !state.readiness || !isRecord(state.readiness.countries)) {
-    matrix.innerHTML = '<div class="error-state"><strong>Readiness context unavailable.</strong> The console fails closed and does not infer country status from candidate rows.</div>';
+    matrix.innerHTML = '<div class="error-state"><strong>Readiness context unavailable.</strong> The console fails closed and does not infer country status from candidate rows. Generate the local asset with <code>python scripts/dev.py review-console-snapshot</code>.</div>';
     return;
   }
   const entries = Object.entries(state.readiness.countries).sort(([, left], [, right]) => displayValue(left.name).localeCompare(displayValue(right.name)));

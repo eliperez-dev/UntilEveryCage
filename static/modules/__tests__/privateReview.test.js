@@ -1,7 +1,20 @@
-import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 
 const root = (file) => readFileSync(resolve(process.cwd(), file), 'utf8');
+
+function generateReadinessMatrix() {
+  const dir = mkdtempSync(resolve(tmpdir(), 'uec-readiness-'));
+  const output = resolve(dir, 'readiness-matrix.json');
+  try {
+    execFileSync('python', ['pipeline/scripts/diagnostics/build-review-console-snapshot.py', output], { cwd: process.cwd() });
+    return JSON.parse(readFileSync(output, 'utf8'));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 test('private review console is read-only and uses the existing authenticated read contracts', () => {
   const html = root('static/private-review.html');
@@ -24,8 +37,8 @@ test('private review console is read-only and uses the existing authenticated re
   expect(css).toContain('@media');
 });
 
-test('readiness asset validates the current registry-driven country set with exact states', () => {
-  const matrix = JSON.parse(root('static/private-review/readiness-matrix.json'));
+test('readiness generator produces a valid registry-driven snapshot without requiring committed output', () => {
+  const matrix = generateReadinessMatrix();
   const states = ['infrastructure-only', 'acquisition-ready', 'private-candidate-ready', 'human-review-ready', 'publication-eligible', 'blocked'];
   expect(matrix.derived_context).toBe(true);
   expect(matrix.states).toEqual(states);
@@ -58,6 +71,6 @@ test('review packet loader rejects row-shaped payloads and keeps tokens out of s
   expect(() => validateReviewPacket({ schema_version: 'private-review-packet-v2', normalized: { records: [] } })).toThrow('rejected safely');
   expect(() => validateReviewPacket({ schema_version: 'private-review-packet-v2', counts: { input_rows: 1 }, provenance: { raw_payload_alias: 'withheld' } })).toThrow('rejected safely');
   expect(() => validateReviewPacket({ schema_version: 'private-review-packet-v2', quarantine: { reasons: { raw_payload_alias: 'withheld' } } })).toThrow('rejected safely');
-  expect(() => validateReadinessPayload(JSON.parse(root('static/private-review/readiness-matrix.json')))).not.toThrow();
+  expect(() => validateReadinessPayload(generateReadinessMatrix())).not.toThrow();
   expect(() => validateReadinessPayload({ schema_version: 'private-review-console-v1', derived_context: true, countries: {} })).toThrow('rejected safely');
 });

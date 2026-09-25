@@ -88,7 +88,8 @@ def main() -> int:
     sub.add_parser("preflight", help="alias for doctor: verify local prerequisites before a run")
     sub.add_parser("platform-registry", help="validate the joined country/source registry")
     rc = sub.add_parser("review-console-snapshot", help="build the row-free private review-console readiness snapshot")
-    rc.add_argument("output", default=str(ROOT / "static" / "private-review" / "readiness-matrix.json"), nargs="?")
+    rc.add_argument("output", default=str(ROOT / "static" / "private-review" / "readiness-matrix.json"), nargs="?",
+                    help="output path (default: ignored local static/private-review/readiness-matrix.json)")
     pf = sub.add_parser("private-frontend", help="rehearse a candidate against the private frontend preview boundary")
     pf.add_argument("manifest"); pf.add_argument("output"); pf.add_argument("--root", default=str(ROOT)); pf.add_argument("--base-url"); pf.add_argument("--token")
     rp = sub.add_parser("review-packet", help="generate a private row-free review packet")
