@@ -236,6 +236,8 @@ def main(*, run_stage_fn: Callable[[str, Path, list[str]], None] | None = None,
     parser.add_argument("--raw-output-root", type=Path, default=PROJECT_ROOT / "data/raw")
     parser.add_argument("--run-id", help="Acquisition run ID for --fetch.")
     parser.add_argument("--rules", type=Path, default=PROJECT_ROOT / "pipeline/config/denmark-classification-v1.json")
+    parser.add_argument("--location-references", type=Path,
+                        help="Previously fetched local Denmark reference JSONL; no lookup occurs during refresh.")
     parser.add_argument("--output-dir", type=Path, help="Run directory; defaults to data/staging/<UTC run>")
     parser.add_argument("--expected-rows", type=int)
     parser.add_argument("--geocode-limit", type=int)
@@ -281,7 +283,10 @@ def main(*, run_stage_fn: Callable[[str, Path, list[str]], None] | None = None,
         geocode_dir = run_dir / "05-geocode-queue"
         stage("parse", DENMARK_STAGES / "parse-denmark-smiley.py", [str(input_path), "--output-dir", str(parse_dir)])
         stage("normalize", DENMARK_STAGES / "normalize-denmark-smiley.py", [str(parse_dir / "parsed-rows.jsonl"), "--output-dir", str(normalize_dir)])
-        stage("classify", DENMARK_STAGES / "classify-denmark.py", [str(normalize_dir / "normalized-records.jsonl"), "--rules", str(args.rules.resolve()), "--output-dir", str(classify_dir)])
+        classify_args = [str(normalize_dir / "normalized-records.jsonl"), "--rules", str(args.rules.resolve()), "--output-dir", str(classify_dir)]
+        if args.location_references:
+            classify_args.extend(["--location-references", str(args.location_references.resolve())])
+        stage("classify", DENMARK_STAGES / "classify-denmark.py", classify_args)
         validation_args = [str(classify_dir / "classified-records.jsonl"), "--output-dir", str(validate_dir)]
         if args.expected_rows is not None:
             validation_args.extend(["--expected-rows", str(args.expected_rows)])

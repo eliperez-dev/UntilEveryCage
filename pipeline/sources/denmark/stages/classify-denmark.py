@@ -6,6 +6,12 @@ import collections
 import json
 import logging
 from pathlib import Path
+import sys
+
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+from pipeline.sources.denmark.location import classify_location, load_local_references
 
 LOGGER = logging.getLogger("uec.denmark.classify")
 
@@ -14,7 +20,7 @@ def load_rules(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def classify_record(record: dict, ruleset: dict) -> dict:
+def classify_record(record: dict, ruleset: dict, location_references: list[dict] | None = None) -> dict:
     code = record.get("activity", {}).get("code")
     decision = ruleset["fallback"]
     for rule in ruleset["rules"]:
@@ -30,11 +36,14 @@ def classify_record(record: dict, ruleset: dict) -> dict:
         "default_visible": decision["default_visible"],
         "optional_filter": decision.get("optional_filter"),
     }
+    result["location"] = classify_location(result, location_references)
     return result
 
 
-def classify_file(input_path: Path, rules_path: Path, output_dir: Path, progress_every: int = 10000) -> Path:
+def classify_file(input_path: Path, rules_path: Path, output_dir: Path, progress_every: int = 10000,
+                  location_references_path: Path | None = None) -> Path:
     ruleset = load_rules(rules_path)
+    location_references = load_local_references(location_references_path)
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / "classified-records.jsonl"
     report_path = output_dir / "classification-report.json"
@@ -44,7 +53,7 @@ def classify_file(input_path: Path, rules_path: Path, output_dir: Path, progress
         for count, line in enumerate(source, start=1):
             if not line.strip():
                 continue
-            record = classify_record(json.loads(line), ruleset)
+            record = classify_record(json.loads(line), ruleset, location_references)
             classification = record["classification"]
             counts.update([classification["category"], classification["review_status"]])
             output.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
@@ -70,6 +79,8 @@ if __name__ == "__main__":
     parser.add_argument("input", type=Path)
     parser.add_argument("--rules", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--location-references", type=Path,
+                        help="Previously acquired local Denmark locality/postal reference JSONL; never fetched here.")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%SZ")
-    classify_file(args.input, args.rules, args.output_dir)
+    classify_file(args.input, args.rules, args.output_dir, location_references_path=args.location_references)
