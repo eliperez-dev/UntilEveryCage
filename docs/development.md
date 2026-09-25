@@ -22,6 +22,29 @@ contracts              database and adapter contract tests
 review-packet RUN_DIR  deterministic, row-free private review packet
 ```
 
+### Certify one strict private real-preview run
+
+`python scripts/certify_real_preview.py --source <source-id> --ledger <path-to-source-preview-ledger.json>`
+verifies one already completed source run. It does not acquire data. The source
+must be explicitly enabled for private production E2E, and the command requires
+the exact run ledger, its loopback Postgres database, and the running loopback
+preview API. Supply the database URL through `UEC_DATABASE_URL` and keep a
+32-character-or-longer preview token in `UEC_DEV_PREVIEW_TOKEN` in the current
+process environment; neither value is printed or written by the command. The
+API address defaults to `http://127.0.0.1:38001` and can be changed with
+`--api-url` only to another loopback HTTP address.
+
+The row-free JSON certificate binds acquisition and runner IDs to provenance
+hashes, quarantine and candidate counts, database rows, zero public projections,
+coordinate validity, and the served private API's run/count/list/detail/map
+readiness. A failure exits nonzero without producing a certificate. Live source
+acquisition remains a separate explicit operator action through
+`scripts/real_preview.py refresh --source <source-id>`; certification itself
+never fetches or imports source data. A passing result is a point-in-time,
+source/run-scoped private-preview check. It does not establish source
+completeness, factual accuracy, privacy clearance, publication approval, release
+eligibility, or recurring runtime health.
+
 `python scripts/dev.py --json doctor` (and any command with the global `--json` flag) emits one machine-readable JSON object. Child-command output is captured so it cannot corrupt JSON output. Diagnostics report only whether environment variables are set; values and database credentials are never printed. `up` may apply migrations and seed/promote the synthetic local fixture through the existing `local-v2.ps1` workflow. It does not publish project data.
 
 ## First checkout

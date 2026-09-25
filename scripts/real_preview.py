@@ -726,6 +726,51 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                 "unmapped": import_result.get("unmapped_map_candidate_count"),
             },
         })
+    elif source_id == "be.locations":
+        acquisition_path = source_dir / "acquisition" / source_id / run_id / "pair-metadata.json"
+        if not acquisition_path.is_file() or acquisition_path.is_symlink():
+            raise PreviewError("Belgium paired acquisition provenance is unavailable")
+        pair = json.loads(acquisition_path.read_text(encoding="utf-8"))
+        source_results = refresh_result.get("results") if isinstance(refresh_result, dict) else None
+        source_result = next((item for item in source_results or []
+                              if isinstance(item, dict) and item.get("source_id") == source_id), None)
+        source_summary = source_result.get("summary") if isinstance(source_result, dict) else None
+        if not isinstance(source_summary, dict) or pair.get("source_id") != source_id:
+            raise PreviewError("Belgium lifecycle summary or acquisition identity is unavailable")
+        artifacts = {}
+        for role in ("operator", "activity_codes"):
+            artifact = pair.get(role)
+            if not isinstance(artifact, dict) or artifact.get("run_id") != run_id:
+                raise PreviewError("Belgium paired acquisition run identity does not match")
+            if not isinstance(artifact.get("sha256"), str) or len(artifact["sha256"]) != 64:
+                raise PreviewError("Belgium paired acquisition hash is unavailable")
+            artifacts[role] = {key: artifact.get(key) for key in (
+                "source_id", "run_id", "requested_url", "final_url", "retrieved_at_utc", "sha256",
+                "byte_size", "response_headers", "terms_review", "attempts", "rights_caveat", "privacy_caveat")}
+        if any(not isinstance(value, str) or len(value) != 64 for value in (
+                import_result.get("normalized_sha256"), source_summary.get("candidate_handoff_sha256"),
+                source_summary.get("schema_fingerprint"))):
+            raise PreviewError("Belgium lifecycle hashes are incomplete")
+        ledger.update({
+            "acquisition": artifacts,
+            "normalized_sha256": import_result.get("normalized_sha256"),
+            "candidate_handoff_sha256": source_summary.get("candidate_handoff_sha256"),
+            "schema_fingerprint": source_summary.get("schema_fingerprint"),
+            "quarantine": {"input_rows": source_summary.get("input_rows"),
+                           "accepted_rows": source_summary.get("valid_source_activity_rows"),
+                           "quarantined_rows": source_summary.get("quarantined_rows"),
+                           "out_of_scope_rows": source_summary.get("out_of_scope_rows", 0),
+                           "reasons": source_summary.get("quarantine_reasons", {})},
+            "source_counts": {key: import_result.get(key) for key in (
+                "observation_count", "facility_candidate_count", "numeric_coordinate_count",
+                "city_postal_count", "unmapped_observation_count", "mapped_non_candidate_observation_count",
+                "unmapped_map_candidate_count", "coarse_placeable_facility_count",
+                "public_release_count", "public_projection_count")},
+            "coordinate_precision_breakdown": {
+                "exact": 0, "city_or_postal_only": import_result.get("city_postal_count"),
+                "approximate_city_display": import_result.get("coarse_placeable_facility_count"),
+                "unmapped": import_result.get("unmapped_map_candidate_count")},
+        })
     elif source_id == "it.1069-2009":
         acquisition_path = source_dir / "acquisition" / source_id / run_id / "acquisition-metadata.json"
         if not acquisition_path.is_file() or acquisition_path.is_symlink():
