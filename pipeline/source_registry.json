@@ -109,7 +109,7 @@
       "attribution_licensing_notes": "Official Find Smiley data page records public-data reuse terms: attribute Fødevarestyrelsen, do not use its logo, and keep displayed smileys current; no project publication approval.",
       "adapter_status": "implemented_partial",
       "expected_artifact_schema": "XML source artifact -> parsed JSONL -> normalized/classified JSONL; source fields are preserved",
-      "blockers": ["Publisher supplies no dataset effective date; source coverage is limited to data available on Find Smiley and is not a completeness claim. Denmark candidate rows require explicit source-key mapping before disposable DB import."]
+      "blockers": ["Publisher supplies no dataset effective date; source coverage is limited to data available on Find Smiley and is not a completeness claim. Exact source IDs map deterministically to private preview candidates; no source coordinates are supplied and address privacy review remains pending."]
     },
     {
       "source_id": "es.locations",

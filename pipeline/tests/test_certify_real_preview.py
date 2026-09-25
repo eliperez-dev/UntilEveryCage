@@ -43,6 +43,22 @@ class CertificationLedgerTests(unittest.TestCase):
         self.assertEqual(result["quarantined_rows"], 1)
         self.assertEqual(result["acquisition_hashes"], ["a" * 64, "b" * 64])
 
+    def test_denmark_uses_out_of_scope_unmapped_semantics_without_double_counting(self):
+        value = ledger()
+        value["source_id"] = "dk.smiley"
+        value["source_run"]["results"][0]["source_id"] = "dk.smiley"
+        value["preview_import"].update({
+            "observation_count": 1, "facility_candidate_count": 1,
+            "numeric_coordinate_count": 0, "city_postal_count": 1,
+            "unmapped_map_candidate_count": 0, "unmapped_facility_count": 1,
+        })
+        value["quarantine"].update({"input_rows": 1, "accepted_rows": 1, "quarantined_rows": 0})
+        value["map_visible_count"] = 0
+        value["coordinate_precision_breakdown"] = {"exact": 0, "unmapped": 1}
+        result = CERT.validate_ledger(value, "dk.smiley")
+        self.assertEqual(result["counts"]["unmapped"], 1)
+        self.assertEqual(result["counts"]["unmapped_map_candidates"], 0)
+
     def test_wrong_source_fails_closed(self):
         with self.assertRaises(CERT.CertificationError):
             CERT.validate_ledger(ledger(), "us.fsis")

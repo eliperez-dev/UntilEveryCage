@@ -45,14 +45,20 @@ class DenmarkSmileyAdapter:
             if not key or key in seen:
                 raise ValueError("Denmark candidate contains missing or duplicate source identity")
             seen.add(key)
+            classification = row.get("classification", {})
             handoff_rows.append({"source_id": SOURCE_ID, "source_row": row.get("source_row", 0),
+                                 "source_record_key": key,
                                  "source_values": fields, "normalized": {
                                      "establishment_id": key, "trading_name": fields.get("Virksomhed"),
-                                     "address_lines": [fields.get("Adresse")], "postcode": fields.get("Postnummer"),
+                                     "city": fields.get("By"), "postal_code": fields.get("Postnummer"),
+                                     "country_code": "DK", "coordinate_precision": "city_postal",
+                                     "coordinates": None,
                                      "activities": [fields.get("FVST_branchenummer")] if fields.get("FVST_branchenummer") else [],
-                                     "species": None, "competent_authority": "Fødevarestyrelsen",
-                                     "nation": "Denmark", "authority_nation_key": "Denmark", "status": None,
-                                     "remarks": None, "published_date": None, "coordinates": None,
+                                     "activity_code": fields.get("FVST_branchenummer"),
+                                     "classification_category": classification.get("category"),
+                                     "classification_review_status": classification.get("review_status"),
+                                     "in_default_map_scope": classification.get("default_visible", False),
+                                     "classification_optional_filter": classification.get("optional_filter"),
                                      "privacy_gate": "pending", "coordinate_gate": "review_required",
                                      "publication_gate": "blocked"}})
         return write_handoff(run_dir, handoff_rows, artifact, source_id=SOURCE_ID)

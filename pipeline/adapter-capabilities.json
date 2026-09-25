@@ -1,6 +1,7 @@
 {
   "schema_version": "adapter-capabilities-v1",
   "adapters": [
+    {"country_code": "dk", "source_id": "dk.smiley", "adapter_version": "denmark-smiley-contract-v1", "schema_version": "denmark-smiley-contract-v1", "adapter_path": "pipeline/sources/denmark/adapter.py", "acquisition": "assisted_only", "operational_classification": "assisted", "live_callable": false, "geocoding": "disabled", "publication": "human_gate_required"},
     {"country_code": "au", "source_id": "au.sa.epa.licensed-activities", "adapter_version": "au-sa-epa-licensed-activities-v1", "schema_version": "au-sa-epa-geojson-v1", "adapter_path": "pipeline/sources/australia/sa_epa.py", "acquisition": "bounded_private_fetch", "operational_classification": "live", "live_callable": true, "geocoding": "disabled", "publication": "human_gate_required"},
     {"country_code": "be", "source_id": "be.locations", "adapter_version": "be-fasfc-private-v3", "schema_version": "be-fasfc-csv-v3", "adapter_path": "pipeline/sources/belgium/adapter.py", "acquisition": "bounded_private_fetch", "operational_classification": "live", "live_callable": true, "geocoding": "disabled", "publication": "human_gate_required"},
     {"country_code": "de", "source_id": "de.locations", "adapter_version": "de-bltu-adapter-2", "schema_version": "de-bltu-v2", "adapter_path": "pipeline/sources/d3_facility.py", "acquisition": "assisted_only", "operational_classification": "assisted", "live_callable": false, "geocoding": "disabled", "publication": "human_gate_required"},

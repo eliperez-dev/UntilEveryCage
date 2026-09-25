@@ -27,6 +27,7 @@ DB_PORT = int(os.environ.get("UEC_REAL_PREVIEW_DB_PORT", "55433"))
 API_PORT = int(os.environ.get("UEC_REAL_PREVIEW_API_PORT", "38001"))
 WEB_PORT = int(os.environ.get("UEC_REAL_PREVIEW_WEB_PORT", "34174"))
 PRIVATE_ROOT = Path(os.environ.get("UEC_REAL_PREVIEW_ROOT", r"D:\UntilEveryCage-private"))
+SESSION_TOKEN: str | None = None
 IMPORTER = ROOT / "pipeline" / "scripts" / "maintenance" / "import-real-preview.py"
 MIGRATIONS = ROOT / "pipeline" / "scripts" / "maintenance" / "apply-migrations.py"
 ACTIVE_PREVIEW_TOKEN: str | None = None
@@ -366,9 +367,10 @@ def _build_api() -> None:
 
 
 def up() -> dict[str, object]:
-    global ACTIVE_PREVIEW_TOKEN
+    global SESSION_TOKEN, ACTIVE_PREVIEW_TOKEN
     prerequisites()
     token = secrets.token_urlsafe(32)
+    SESSION_TOKEN = token
     ACTIVE_PREVIEW_TOKEN = token
     password = _password(create=True)
     assert password is not None
@@ -618,21 +620,69 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
             write_job("running", "administrative_geography")
         else:
             write_job("running", "acquisition")
-            review = ROOT / str(source_policy["terms_review"])
-            refresh = subprocess.run([
-                sys.executable, "-m", "pipeline.refresh_private", "--source", source_id,
-                "--mode", "live-acquisition", "--authorize-live-source", source_id,
-                "--terms-review", f"{source_id}={review}", "--output-root", str(output_root),
-                "--retries", "1", "--timeout-seconds", "180", "--run-id", run_id,
-            ], cwd=ROOT, env=env, capture_output=True, text=True, timeout=600)
-            try:
-                refresh_result = json.loads(refresh.stdout)
-            except json.JSONDecodeError:
-                write_job("failed", "acquisition", "acquisition_result_invalid")
-                raise PreviewError("source acquisition failed; inspect private job evidence") from None
-            if refresh.returncode or refresh_result.get("exit_status") != "ok":
-                write_job("failed", "lifecycle", "source_lifecycle_failed")
-                raise PreviewError("source acquisition or lifecycle failed; no preview import was attempted")
+            if source_id == "dk.smiley":
+                # The Denmark adapter has source-specific validation and
+                # quarantine stages; keep that lifecycle in the source-owned
+                # runner while binding its output to the common private
+                # preview run and importer contracts.
+                runner_run_id = run_id
+                source_root = output_root / runner_run_id / "sources" / source_id
+                source_root.mkdir(parents=True, exist_ok=True)
+                review = ROOT / str(source_policy["terms_review"])
+                staged = subprocess.run([
+                    sys.executable, str(ROOT / "pipeline" / "sources" / "denmark" / "run-denmark-pipeline.py"),
+                    "--fetch", "--terms-review", str(review), "--raw-output-root",
+                    str(source_root / "acquisition"), "--run-id", run_id,
+                    "--output-dir", str(source_root),
+                ], cwd=ROOT, env=env, capture_output=True, text=True, timeout=900)
+                if staged.returncode:
+                    write_job("failed", "lifecycle", "source_lifecycle_failed")
+                    raise PreviewError("source acquisition or lifecycle failed; no preview import was attempted")
+                handoff_manifest_path = source_root / "candidate-handoff" / "manifest.json"
+                try:
+                    handoff_manifest = json.loads(handoff_manifest_path.read_text(encoding="utf-8"))
+                    acquisition = json.loads((source_root / "acquisition" / source_id / run_id / "acquisition-metadata.json").read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    write_job("failed", "lifecycle", "source_candidate_handoff_missing")
+                    raise PreviewError("Denmark lifecycle did not produce complete acquisition and handoff evidence") from None
+                preview_fields = source_policy.get("allowed_preview_fields")
+                schema_fingerprint = __import__("hashlib").sha256(
+                    json.dumps(preview_fields, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+                ).hexdigest()
+                summary = {
+                    "lifecycle_status": "candidate-ready", "candidate_handoff": True,
+                    "candidate_handoff_sha256": handoff_manifest.get("normalized_sha256"),
+                    "schema_fingerprint": schema_fingerprint,
+                    "input_rows": (json.loads((source_root / "01-parse" / "run-metadata.json").read_text(encoding="utf-8")).get("rows_parsed")),
+                    "candidate_observation_rows": handoff_manifest.get("normalized_rows"),
+                    "quarantined_rows": json.loads((source_root / "manifest.json").read_text(encoding="utf-8")).get("quarantined_rows"),
+                    "out_of_scope_rows": 0,
+                }
+                refresh_result = {
+                    "run_id": runner_run_id, "completed_at_utc": acquisition.get("retrieved_at_utc"),
+                    "results": [{"source_id": source_id, "status": "succeeded",
+                                 "acquisition_classification": "live", "summary": summary}],
+                    "publication": {"release_created": False, "promoted": False, "published": False},
+                }
+                runtime_manifest = output_root / runner_run_id / "manifest.json"
+                runtime_manifest.parent.mkdir(parents=True, exist_ok=True)
+                runtime_manifest.write_text(json.dumps(refresh_result, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+            else:
+                review = ROOT / str(source_policy["terms_review"])
+                refresh = subprocess.run([
+                    sys.executable, "-m", "pipeline.refresh_private", "--source", source_id,
+                    "--mode", "live-acquisition", "--authorize-live-source", source_id,
+                    "--terms-review", f"{source_id}={review}", "--output-root", str(output_root),
+                    "--retries", "1", "--timeout-seconds", "180", "--run-id", run_id,
+                ], cwd=ROOT, env=env, capture_output=True, text=True, timeout=600)
+                try:
+                    refresh_result = json.loads(refresh.stdout)
+                except json.JSONDecodeError:
+                    write_job("failed", "acquisition", "acquisition_result_invalid")
+                    raise PreviewError("source acquisition failed; inspect private job evidence") from None
+                if refresh.returncode or refresh_result.get("exit_status") != "ok":
+                    write_job("failed", "lifecycle", "source_lifecycle_failed")
+                    raise PreviewError("source acquisition or lifecycle failed; no preview import was attempted")
             if source_id == "it.1069-2009":
                 results = refresh_result.get("results")
                 result = next((item for item in results or []
@@ -705,7 +755,35 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
         "map_visible_count": import_result.get("numeric_coordinate_count", 0) + import_result.get("coarse_placeable_facility_count", 0),
         "map_readiness": "coarse-city-reference" if geography and import_result.get("coarse_placeable_facility_count", 0) else ("source-precision-unknown" if import_result.get("numeric_coordinate_count", 0) else "unmapped"),
     }
-    if source_id == "it.853-2004":
+    if source_id == "dk.smiley":
+        acquisition_path = source_dir / "acquisition" / source_id / run_id / "acquisition-metadata.json"
+        acquisition = json.loads(acquisition_path.read_text(encoding="utf-8"))
+        source_result = next((item for item in refresh_result.get("results", [])
+                              if isinstance(item, dict) and item.get("source_id") == source_id), None)
+        summary = source_result.get("summary") if isinstance(source_result, dict) else None
+        if not isinstance(summary, dict):
+            raise PreviewError("Denmark lifecycle summary is unavailable for runtime ledger reconciliation")
+        ledger.update({
+            "acquisition": {"source_id": source_id, "run_id": run_id,
+                            "requested_url": acquisition.get("requested_url"),
+                            "final_url": acquisition.get("final_url"),
+                            "retrieved_at_utc": acquisition.get("retrieved_at_utc"),
+                            "raw_sha256": acquisition.get("sha256"),
+                            "byte_size": acquisition.get("byte_size"),
+                            "publication_metadata": acquisition.get("publication_metadata"),
+                            "effective_date": None},
+            "normalized_sha256": import_result.get("normalized_sha256"),
+            "candidate_handoff_sha256": summary.get("candidate_handoff_sha256"),
+            "schema_fingerprint": summary.get("schema_fingerprint"),
+            "quarantine": {"input_rows": summary.get("input_rows"),
+                           "candidate_observation_rows": summary.get("candidate_observation_rows"),
+                           "quarantined_rows": summary.get("quarantined_rows"),
+                           "out_of_scope_rows": summary.get("out_of_scope_rows", 0)},
+            "coordinate_precision_breakdown": {
+                "exact": 0, "city_or_postal_only": import_result.get("city_postal_count"),
+                "unmapped": import_result.get("unmapped_map_candidate_count")},
+        })
+    elif source_id == "it.853-2004":
         acquisition_evidence = _italy_acquisition_evidence(source_dir, source_id, run_id)
         source_results = refresh_result.get("results") if isinstance(refresh_result, dict) else None
         source_result = next((item for item in source_results or []
@@ -1104,21 +1182,51 @@ def strict_live_private_e2e(source_id: str) -> dict[str, object]:
         if cleanup_error is not None and primary_error is None:
             raise PreviewError("strict preview succeeded but its disposable database could not be removed") from cleanup_error
 
+def strict_refresh(source_id: str) -> dict[str, object]:
+    """Run one live source refresh and certificate inside a fresh local session."""
+    global SESSION_TOKEN
+    # Restart the exact owned development stack so refresh and read probes use
+    # a token held only in this process, never on disk or in command output.
+    current = status()
+    if current.get("api") or current.get("database") == "running":
+        down()
+    SESSION_TOKEN = None
+    startup = up()
+    if SESSION_TOKEN is None:
+        raise PreviewError("preview session token was not retained in process memory")
+    try:
+        refreshed = refresh_source(source_id)
+        from scripts.certify_real_preview import certify
+        ledger_path = Path(str(refreshed.get("ledger")))
+        certificate = certify(source_id, ledger_path, _local_database_url(),
+                              f"http://127.0.0.1:{API_PORT}", SESSION_TOKEN)
+        certificate_path = ledger_path.parent / "certificate.json"
+        temporary = certificate_path.with_suffix(".json.tmp")
+        temporary.write_text(json.dumps(certificate, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+        temporary.replace(certificate_path)
+        return {"status": "certified", "source_id": source_id,
+                "run_id": certificate["run_id"], "counts": certificate["counts"],
+                "checks": certificate["checks"], "claims": certificate["claims"],
+                "certificate": str(certificate_path),
+                "preview_status": startup.get("status")}
+    finally:
+        down()
+        SESSION_TOKEN = None
+
 
 def main(argv: Sequence[str] | None = None) -> int:
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("up", "status", "probe", "down", "reset", "refresh", "strict-live-private-e2e"))
+    parser.add_argument("action", choices=("up", "status", "probe", "down", "reset", "refresh", "strict-live-private-e2e", "strict-refresh"))
     parser.add_argument("--source")
     parser.add_argument("--existing-run", help="complete a prior exact live lifecycle run without reacquisition")
     args = parser.parse_args(argv)
     try:
-        if args.action == "refresh" and not args.source:
-            raise PreviewError("refresh requires an explicit --source")
-        if args.action in {"refresh", "strict-live-private-e2e"} and not args.source:
+        if args.action in {"refresh", "strict-live-private-e2e", "strict-refresh"} and not args.source:
             raise PreviewError(f"{args.action} requires an explicit --source")
-        result = (refresh_source(args.source, args.existing_run) if args.action == "refresh" else
-                  strict_live_private_e2e(args.source) if args.action == "strict-live-private-e2e" else
+        result = (strict_live_private_e2e(args.source) if args.action == "strict-live-private-e2e" else
+                  strict_refresh(args.source) if args.action == "strict-refresh" else
+                  refresh_source(args.source, args.existing_run) if args.action == "refresh" else
                   {"up": up, "status": status, "probe": probe, "down": down, "reset": reset}[args.action]())
         if result is None:
             result = {"status": "stopped", "database": "preserved"} if args.action == "down" else {"status": "reset", "database": "removed"}

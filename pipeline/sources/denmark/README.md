@@ -79,3 +79,43 @@ privacy review and 0 were default-visible. A rerun left those counts unchanged.
 The database volume was removed after the check. The guarded API was not run
 against the full candidate; the existing synthetic DK-shaped E2E covers public
 exclusion and preview gates. No release or publication approval follows.
+
+## Strict live private-preview E2E
+
+On 2026-09-25, this scheduler-safe command acquired the linked XML and ran
+provenance, parsing, normalization, classification, validation/quarantine,
+source-key mapping, transactional private-preview import, idempotent replay,
+authenticated list/detail probes, and certification in one bounded run:
+
+```powershell
+python scripts/real_preview.py strict-refresh --source dk.smiley
+```
+
+Configure dedicated loopback database/API ports, an existing private input
+root, and an isolated Docker project through `UEC_REAL_PREVIEW_*` environment
+variables. The command restarts only that exact owned project, creates no
+release, writes a row-free certificate under
+`target/real-preview/runs/<run-id>/certificate.json`, and stops its containers
+afterward while retaining the ignored local volume for restricted inspection.
+Do not use a shared or production database.
+
+The certified artifact was 59,820,594 bytes (SHA-256
+`68a379c4b864336db808ebe90ccc7fdd55f155025530c4474e21b5ca99389702`),
+retrieved at `2026-09-25T20:09:49Z`. The publisher supplied
+`Last-Modified: 2026-09-25T19:56:00Z` and an ETag. It parsed and classified
+58,726 rows with 58,726 unique source keys. Of these, 58,677 passed validation
+and mapped one-to-one to candidates; 49 (48 temporary/change-status and 1
+unknown category) were quarantined for review. The accepted handoff retained
+classification state: 565 were in default map scope and 58,112 were out of
+scope. There were no source coordinates; all 58,677 candidates had no usable
+facility map point. Authenticated counts/list/detail checks passed, replay was
+idempotent, and public rows/projections were zero. The frontend package was not
+installed, so no browser rendering check ran; API list/detail passed, while
+map-visible and viewport candidate counts were correctly zero.
+
+This demonstrates one private run only. Find Smiley supplies no dataset
+effective date; the HTTP `Last-Modified` is not a dataset effective date.
+Coverage is Find Smiley only, not a Denmark census. Source terms evidence is
+limited to private staging; attribution/current-smiley conditions, address
+privacy, category review, recurring health, and public release remain separate
+gates.

@@ -470,6 +470,34 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
                     raise ImportFailure("paired_acquisition_timestamp_invalid")
                 if datetime.now(timezone.utc) - artifact_time > timedelta(days=policy["freshness_max_days"]):
                     raise ImportFailure("paired_acquisition_artifact_stale")
+        elif source_id == "dk.smiley":
+            acquisition_path = root / "acquisition" / source_id / run_id / "acquisition-metadata.json"
+            if not acquisition_path.is_file() or acquisition_path.is_symlink():
+                raise ImportFailure("acquisition_provenance_missing")
+            acquisition_evidence = json_object(acquisition_path)
+            acquisition_artifact = acquisition_path.parent / "Smileydata.xml"
+            if not acquisition_artifact.is_file() or acquisition_artifact.is_symlink():
+                raise ImportFailure("acquisition_artifact_missing")
+            artifact_hash, artifact_size = digest_file(acquisition_artifact)
+            if (acquisition_evidence.get("source_id") != source_id
+                    or acquisition_evidence.get("run_id") != run_id
+                    or acquisition_evidence.get("sha256") != source_hash
+                    or artifact_hash != source_hash
+                    or artifact_size != acquisition_evidence.get("byte_size")
+                    or acquisition_evidence.get("final_url") != manifest.get("source_url")
+                    or acquisition_evidence.get("retrieved_at_utc") != manifest.get("retrieved_at_utc")
+                    or not isinstance(acquisition_evidence.get("terms_review"), dict)
+                    or acquisition_evidence["terms_review"].get("decision") != "approved"):
+                raise ImportFailure("acquisition_provenance_invalid")
+            acquisition_time = acquisition_evidence.get("retrieved_at_utc")
+            try:
+                acquisition_timestamp = datetime.fromisoformat(str(acquisition_time).replace("Z", "+00:00"))
+            except ValueError:
+                raise ImportFailure("acquisition_timestamp_invalid") from None
+            if acquisition_timestamp.utcoffset() is None or acquisition_timestamp > datetime.now(timezone.utc) + timedelta(minutes=5):
+                raise ImportFailure("acquisition_timestamp_invalid")
+            if datetime.now(timezone.utc) - acquisition_timestamp > timedelta(days=policy["freshness_max_days"]):
+                raise ImportFailure("source_artifact_stale")
         elif source_id == "it.853-2004":
             acquisition_path = root / "acquisition" / source_id / run_id / "acquisition-metadata.json"
             if not acquisition_path.is_file() or acquisition_path.is_symlink():

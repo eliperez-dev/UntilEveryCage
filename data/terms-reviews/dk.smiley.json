@@ -1,0 +1,8 @@
+{
+  "reviewer": "Until Every Cage source operator (Codex-assisted task)",
+  "reference": "https://www.findsmiley.dk/om-smiley/statistik-og-data/hent-smileydata",
+  "reviewed_at": "2026-09-25T19:23:46Z",
+  "decision": "approved",
+  "scope": "Private/local acquisition, validation, and authenticated loopback preview testing only. This is not authorization for public release or redistribution.",
+  "notes": "Live official source page states Find Smiley data is covered by public-data reuse terms, requires attribution to Fødevarestyrelsen, prohibits use of its logo, and requires displayed smileys to remain current and comply with design rules. Preserve attribution in any later reviewed display; do not use the logo or display stale smileys. Dataset effective date is not supplied. This narrow decision permits the task's private test-only acquisition and processing; public terms, privacy, classification, factual review, currentness, and release approval remain separate gates. Evidence checked 2026-09-25; exact XML URL is https://pub.fvst.dk/publikationer/Smileydata.xml."
+}

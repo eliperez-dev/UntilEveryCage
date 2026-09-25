@@ -10,6 +10,7 @@ from pipeline.source_runtime_classification import (
 VERIFIED_PRIVATE_E2E = {
     "au.sa.epa.licensed-activities",
     "be.locations",
+    "dk.smiley",
     "fr.dgal.section-i",
     "fr.dgal.section-ii",
     "it.853-2004",

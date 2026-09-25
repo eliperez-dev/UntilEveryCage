@@ -1,6 +1,20 @@
 {
   "contract_version": "preview-enabled-source-v1",
   "sources": {
+    "dk.smiley": {
+      "enabled": true,
+      "runtime_classification": "production-e2e",
+      "public_release": false,
+      "runner": "scripts/real_preview.py:dk.smiley",
+      "terms_review": "data/terms-reviews/dk.smiley.json",
+      "terms_decision": "approved",
+      "freshness_max_days": 1,
+      "expected_artifacts": ["Smileydata.xml"],
+      "allowed_preview_fields": ["establishment_id", "trading_name", "country_code", "nation", "city", "postal_code", "coordinate_precision", "coordinates", "activity_code", "activities", "classification_category", "classification_review_status", "in_default_map_scope", "classification_optional_filter", "privacy_gate", "coordinate_gate", "publication_gate"],
+      "display_policy": {"kind": "unmapped_or_city_postal", "precision": "city_postal_or_unmapped", "disclosure": "Find Smiley has no source coordinates. City/postal labels, when available, are not facility points; records with neither remain unmapped. Private preview only; address privacy and source currentness remain under review."},
+      "adapter_version": "denmark-smiley-contract-v1",
+      "schema_version": "denmark-smiley-contract-v1"
+    },
     "au.sa.epa.licensed-activities": {
       "enabled": true,
       "runtime_classification": "production-e2e",

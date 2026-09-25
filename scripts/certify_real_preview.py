@@ -76,7 +76,11 @@ def validate_ledger(ledger: dict[str, Any], source_id: str) -> dict[str, Any]:
         "numeric_coordinates": _integer(imported.get("numeric_coordinate_count"), "numeric coordinate count"),
         "city_postal": _integer(imported.get("city_postal_count"), "city/postal count"),
         "coarse_placeable": _integer(imported.get("coarse_placeable_facility_count", 0), "coarse placeable count"),
-        "unmapped": _integer(imported.get("unmapped_map_candidate_count"), "unmapped candidate count"),
+        "unmapped": _integer(
+            imported.get("unmapped_facility_count", imported.get("unmapped_map_candidate_count")),
+            "unmapped facility count"),
+        "unmapped_map_candidates": _integer(
+            imported.get("unmapped_map_candidate_count"), "unmapped map candidate count"),
         "map_visible": _integer(ledger.get("map_visible_count"), "map-visible count"),
     }
     location_policy = ledger.get("location_policy")
@@ -87,7 +91,9 @@ def validate_ledger(ledger: dict[str, Any], source_id: str) -> dict[str, Any]:
             raise CertificationError("CFIA city/postal listable counts do not reconcile")
     if counts["numeric_coordinates"] + counts["coarse_placeable"] != counts["map_visible"]:
         raise CertificationError("map-visible count does not reconcile with coordinate/coarse counts")
-    if counts["numeric_coordinates"] + counts["city_postal"] + counts["unmapped"] != counts["candidates"]:
+    location_unmapped = (counts["unmapped_map_candidates"] if source_id == "dk.smiley"
+                         else counts["unmapped"])
+    if counts["numeric_coordinates"] + counts["city_postal"] + location_unmapped != counts["candidates"]:
         raise CertificationError("candidate location classes do not reconcile")
     precision = ledger.get("coordinate_precision_breakdown")
     if not isinstance(precision, dict) or _integer(precision.get("exact"), "exact coordinate count") != 0:
