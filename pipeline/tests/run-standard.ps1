@@ -41,6 +41,8 @@ try {
   & docker compose -p $project -f $compose exec -T postgres psql -v ON_ERROR_STOP=1 -U uec -d $previewTestDatabase -c 'CREATE EXTENSION postgis'
   if ($LASTEXITCODE -ne 0) { throw "Real-preview PostGIS extension creation failed (exit $LASTEXITCODE)." }
   $env:UEC_REAL_PREVIEW_TEST_DATABASE_URL = "postgresql://uec:uec-local-development-only@localhost:$port/$previewTestDatabase"
+  python pipeline/scripts/maintenance/repository_hygiene.py
+  if ($LASTEXITCODE -ne 0) { throw "Repository hygiene checks failed (exit $LASTEXITCODE)." }
   python pipeline/tests/run_unittest.py --start-directory pipeline/tests
   if ($LASTEXITCODE -ne 0) { throw "Python tests failed (exit $LASTEXITCODE)." }
 

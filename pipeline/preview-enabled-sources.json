@@ -3,6 +3,8 @@
   "sources": {
     "au.sa.epa.licensed-activities": {
       "enabled": true,
+      "runtime_classification": "production-e2e",
+      "public_release": false,
       "runner": "pipeline.refresh_private:au.sa.epa.licensed-activities",
       "terms_review": "data/terms-reviews/au.sa.epa.licensed-activities.json",
       "terms_decision": "approved",
@@ -15,6 +17,8 @@
     },
     "be.locations": {
       "enabled": true,
+      "runtime_classification": "production-e2e",
+      "public_release": false,
       "runner": "pipeline.refresh_private:be.locations",
       "terms_review": "data/terms-reviews/be.locations.json",
       "terms_decision": "approved",
@@ -27,6 +31,8 @@
     },
     "it.853-2004": {
       "enabled": true,
+      "runtime_classification": "production-e2e",
+      "public_release": false,
       "runner": "pipeline.refresh_private:it.853-2004",
       "terms_review": "data/terms-reviews/it.853-2004.json",
       "terms_decision": "approved",
@@ -39,6 +45,8 @@
     },
     "it.1069-2009": {
       "enabled": true,
+      "runtime_classification": "production-e2e",
+      "public_release": false,
       "runner": "pipeline.refresh_private:it.1069-2009",
       "terms_review": "data/terms-reviews/it.1069-2009.json",
       "terms_decision": "approved",
@@ -51,6 +59,8 @@
     },
     "fr.dgal.section-i": {
       "enabled": true,
+      "runtime_classification": "production-e2e",
+      "public_release": false,
       "runner": "pipeline.refresh_private:fr.dgal.section-i",
       "terms_review": "data/terms-reviews/fr.dgal.section-i.json",
       "terms_decision": "approved",
@@ -63,6 +73,8 @@
     },
     "fr.dgal.section-ii": {
       "enabled": true,
+      "runtime_classification": "production-e2e",
+      "public_release": false,
       "runner": "pipeline.refresh_private:fr.dgal.section-ii",
       "terms_review": "data/terms-reviews/fr.dgal.section-ii.json",
       "terms_decision": "approved",
@@ -75,6 +87,8 @@
     },
     "us.fsis": {
       "enabled": true,
+      "runtime_classification": "production-e2e",
+      "public_release": false,
       "runner": "pipeline.refresh_private:us.fsis",
       "terms_review": "data/terms-reviews/us.fsis.json",
       "terms_decision": "approved",

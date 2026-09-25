@@ -536,6 +536,15 @@ def probe() -> dict[str, object]:
 def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_id: str | None = None) -> dict[str, object]:
     """Freshly acquire one policy-enabled source and import its exact handoff."""
     import uuid
+    from pipeline.source_runtime_classification import (
+        RuntimeClassificationError,
+        require_production_preview_source,
+    )
+
+    try:
+        require_production_preview_source(source_id)
+    except RuntimeClassificationError as error:
+        raise PreviewError(str(error)) from error
     policy_path = ROOT / "pipeline" / "preview-enabled-sources.json"
     policy = json.loads(policy_path.read_text(encoding="utf-8"))
     source_policy = policy.get("sources", {}).get(source_id)
