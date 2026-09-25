@@ -112,6 +112,22 @@ def _materialize_validated_rows(run_dir: Path) -> tuple[list[dict], list[dict], 
     return accepted_rows, quarantined_rows, findings
 
 
+def _write_geocode_eligible_candidates(input_path: Path, output_path: Path) -> int:
+    """Feed the shared queue builder only explicitly approved exact candidates."""
+    rows = [
+        json.loads(line)
+        for line in input_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    eligible = [
+        row for row in rows
+        if (row.get("location") or {}).get("exact_geocode_eligible") is True
+        and ((row.get("location") or {}).get("exact_geocode_candidate") or {}).get("eligible") is True
+    ]
+    atomic_jsonl(output_path, eligible)
+    return len(eligible)
+
+
 def _canonical_evidence(run_dir: Path, input_path: Path, metadata: dict,
                         started_at: str, completed_at: str) -> None:
     """Bridge stage reports into the shared private-run contract.
@@ -298,7 +314,9 @@ def main(*, run_stage_fn: Callable[[str, Path, list[str]], None] | None = None,
         normalized_path = run_dir / "normalized" / "records.jsonl"
         if classified_path.is_file():
             _materialize_validated_rows(run_dir)
-        geocode_input = normalized_path if normalized_path.is_file() else classified_path
+        geocode_source = normalized_path if normalized_path.is_file() else classified_path
+        geocode_input = run_dir / "05-geocode-queue" / "eligible-candidates.jsonl"
+        _write_geocode_eligible_candidates(geocode_source, geocode_input)
         stage("geocode_queue", SHARED_STAGES / "create-geocode-queue.py", [str(geocode_input), "--output-dir", str(geocode_dir)])
         if args.geocode_limit is not None:
             geo = [str(geocode_dir / "geocode-queue.jsonl"), "--output", str(run_dir / "06-geocode-results.jsonl"), "--limit", str(args.geocode_limit), "--delay", str(args.geocode_delay), "--provider-config", str(args.geocode_provider_config.resolve()), "--terms-review", str(args.geocode_terms_review.resolve()), "--network"]
