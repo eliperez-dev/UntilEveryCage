@@ -64,7 +64,7 @@
       "claim": "All intended current sources have fresh, reproducible acquisition and normalized handoffs.",
       "status": "prototype_only",
       "evidence": [
-        {"path": "docs/architecture/data-pipeline-plan.md", "line": 86},
+        {"path": "docs/architecture/source-lifecycle.md", "line": 3},
         {"path": "docs/current-geospatial-readiness.md", "line": 42},
         {"path": "docs/current-reacquisition.md", "line": 1}
       ],

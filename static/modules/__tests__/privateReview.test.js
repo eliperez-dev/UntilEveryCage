@@ -52,7 +52,7 @@ test('readiness generator produces a valid registry-driven snapshot without requ
     expect(country).toEqual(expect.objectContaining({ name: expect.any(String), summary: expect.any(String), basis: expect.any(Array) }));
   }
   expect(matrix.countries.BE.sources[0].attribution.terms_status).toBe('pending-human-review');
-  expect(matrix.countries.BE.sources[0].status.acquisition).toBe('artifact_private_only');
+  expect(matrix.countries.BE.sources[0].status.acquisition).toBe('verified');
 });
 
 test('safe review page never includes private address, raw payload, geocoder, or requester fields', () => {

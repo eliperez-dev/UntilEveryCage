@@ -49,6 +49,6 @@ by the active canonical record.
   not archived.
 
 Country reconnaissance currently lives at `country-recon-<code>.md`, with
-detailed country directories under [`countries/`](countries/). Use the
+detailed country directories under [`countries/`](countries/README.md). Use the
 [source index](sources/README.md) to find the appropriate country page. Do not
 infer current source status from historical evidence.

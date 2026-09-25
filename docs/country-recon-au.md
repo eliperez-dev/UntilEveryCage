@@ -112,3 +112,5 @@ Stage 4: use ABN/ACN joins to reduce duplicate organization representations, the
 ## Safety and publication boundary
 
 All proposed outputs are government-sourced observations pending project review. No Australia source is project-approved or project-published. Raw NPI and any future captures remain in ignored private storage. Public defaults must exclude unreviewed or unapproved claims, suppress private/residential details and precise coordinates when required, and label source origin, observation date, review state, uncertainty and limitations. Acquisition success is not publication authorization.
+
+The source-scoped South Australia EPA private preview can be refreshed with `python scripts/real_preview.py refresh --source au.sa.epa.licensed-activities`.
