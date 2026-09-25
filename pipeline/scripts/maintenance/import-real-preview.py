@@ -405,6 +405,23 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
             (snapshot, source, group_key, preview_id, klass, country, city, postal, lat, lon, precision, observations_per_group[group_key], display_lat, display_lon,
              f"{(municipality_policy or {}).get('source', 'Administrative commune reference')}; approximate city location, not facility coordinates; name_match={place_match}" if display_lat is not None else None),
         )
+        enrichment_state, enrichment_reason = (
+            ("source_coordinate", "source_coordinate_present") if klass == "numeric_source_coordinate" else
+            ("resolved", "local_coarse_reference_available") if display_lat is not None and display_lon is not None else
+            ("coarse_eligible", "city_or_postal_reference_input") if klass == "city_postal" else
+            ("insufficient", "no_usable_location_input")
+        )
+        db.execute(
+            """INSERT INTO real_preview.enrichment_state_events
+            (candidate_id,snapshot_sha256,source_id,source_record_key,state_code,reason_code)
+            SELECT candidate.candidate_id,%s,%s,%s,%s,%s
+            FROM real_preview.candidates candidate
+            WHERE candidate.snapshot_sha256=%s AND candidate.source_id=%s AND candidate.source_group_key=%s
+              AND NOT EXISTS (SELECT 1 FROM real_preview.enrichment_state_events event
+                              WHERE event.candidate_id=candidate.candidate_id)""",
+            (snapshot, source, group_key, enrichment_state, enrichment_reason,
+             snapshot, source, group_key),
+        )
     group_keys = set(representatives)
     rejected_zero_coordinates = len(zero_coordinate_groups - usable_coordinate_groups)
     return count, numeric_count, coarse_count, candidate_count, unmapped_count, mapped_non_candidate_count, len(group_keys), len(parsed_rows), rejected_zero_coordinates, precision_unknown_coordinate_count, source_provided_coordinate_count, group_keys, coarse_placeable, len(group_keys) - coarse_placeable

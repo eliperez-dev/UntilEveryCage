@@ -61,3 +61,31 @@ allowed. Retryable outcomes create one reservation per retry.
 
 Rows in the reservation ledger and worker events are private operational
 evidence. Reports and logs should contain aggregate counts and status only.
+
+## Real-preview separation
+
+`python scripts/real_preview.py refresh --source ID` ends after acquisition,
+classification, and private candidate import. It does not call a geocoder or
+wait for enrichment. Source adapters may provide a separate normalized
+candidate handoff with `candidate_id`, `snapshot_sha256`, `source_id`,
+`source_record_key`, and eligibility (`coarse` or `exact`). A restricted
+`normalized_query` is required only when a reviewed source/provider privacy
+profile permits external submission. Raw source rows and addresses are not
+valid handoff fields. Preview-target provider submission remains fail-closed
+until that profile and the shared worker target bridge are implemented.
+
+The shared schema links preview candidates to the existing durable geocode job
+machinery; it does not add another lease, retry, or provider budget
+implementation. Candidate state is append-only and current state is mutually
+exclusive in `real_preview.candidate_enrichment_reconciliation`. Use
+`python pipeline/scripts/diagnostics/real-preview-enrichment-status.py` for
+aggregate state/reason counts only. It emits no candidate IDs, queries, or
+provider evidence.
+
+The importer initializes source-coordinate, local coarse-reference, or
+insufficient states. Local reference geometry remains approximate. The schema
+provides a place for later provider-derived display evidence with provenance
+and `pending_human_review`; it cannot create release or publication membership.
+Exact-provider submissions for preview candidates remain disabled until the
+relevant source/provider privacy profile is explicitly authorized and the
+worker bridge is added.
