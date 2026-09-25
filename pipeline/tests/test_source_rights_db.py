@@ -9,6 +9,7 @@ import os
 import socket
 import subprocess
 import tempfile
+import time
 import unittest
 import uuid
 from datetime import datetime, timezone
@@ -55,12 +56,47 @@ class SourceRightsPostgresTests(unittest.TestCase):
         cls.port = _free_port()
         cls.database_url = f"postgresql://uec:uec-e2e@localhost:{cls.port}/uec"
         cls.compose_env = {**os.environ, "UEC_E2E_DB_PORT": str(cls.port)}
-        cls._compose("up", "-d", "--wait", "postgres", check=True)
-        for migration in sorted((REPOSITORY_ROOT / "pipeline" / "migrations").glob("*.sql")):
-            cls._compose(
-                "exec", "-T", "postgres", "psql", "-v", "ON_ERROR_STOP=1", "-U", "uec", "-d", "uec",
-                input_text=migration.read_text(encoding="utf-8"),
-            )
+        try:
+            cls._compose("up", "-d", "--wait", "postgres", check=True)
+            # The PostGIS image can briefly expose its bootstrap server after
+            # the Compose health check succeeds. Wait until the target DB has
+            # reported the same postmaster start time several times first.
+            stable_postmaster = None
+            stable_checks = 0
+            for _ in range(120):
+                ready = cls._compose(
+                    "exec", "-T", "postgres", "psql", "-At", "-U", "uec", "-d", "uec",
+                    "-c", "SELECT pg_postmaster_start_time()",
+                )
+                postmaster = ready.stdout.strip() if ready.returncode == 0 else ""
+                if postmaster and postmaster == stable_postmaster:
+                    stable_checks += 1
+                else:
+                    stable_postmaster = postmaster or None
+                    stable_checks = 1 if postmaster else 0
+                if stable_checks >= 3:
+                    break
+                time.sleep(0.25)
+            else:
+                raise RuntimeError("PostGIS source-rights database did not stabilize before migrations")
+            for migration in sorted((REPOSITORY_ROOT / "pipeline" / "migrations").glob("*.sql")):
+                cls._compose(
+                    "exec", "-T", "postgres", "psql", "-v", "ON_ERROR_STOP=1", "-U", "uec", "-d", "uec",
+                    input_text=migration.read_text(encoding="utf-8"),
+                    check=True,
+                )
+            with psycopg.connect(cls.database_url) as db:
+                missing = db.execute(
+                    "SELECT count(*) FROM unnest(%s::text[]) required(name) "
+                    "WHERE to_regclass('uec.' || name) IS NULL",
+                    (["sources", "source_rights_decisions", "releases", "raw_artifacts"],),
+                ).fetchone()[0]
+            if missing:
+                raise RuntimeError("PostGIS source-rights database is missing required migrated tables")
+        except BaseException:
+            # setUpClass failures skip tearDownClass; clean up our unique stack.
+            cls._compose("down", "-v", "--remove-orphans", check=False)
+            raise
 
     @classmethod
     def tearDownClass(cls):
@@ -76,6 +112,8 @@ class SourceRightsPostgresTests(unittest.TestCase):
             env=cls.compose_env,
             input=input_text,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             capture_output=True,
             timeout=180,
             check=False,
