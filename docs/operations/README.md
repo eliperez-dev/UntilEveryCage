@@ -12,6 +12,7 @@ runbooks and operational contracts. Product-wide release readiness is owned by
 | Geocoding | [operator](../geocoding-operator.md), [worker](../geocoding-worker.md) | **Canonical** |
 | Performance and recovery | [performance index](../performance/README.md), [E2E backup/restore](../../pipeline/tests/e2e/BACKUP-RESTORE.md) | **Canonical** |
 | Credential guidance | [Geocodio credentials](../security/geocodio-credentials.md) | **Reference**; never store credentials here |
+| Parallel implementation | [parallel agent workflow](parallel-agent-workflow.md) | **Canonical** operating contract |
 
 Operational evidence should be placed in generated reports/manifests and
 summarized in its canonical runbook or readiness authority. Temporary run logs,

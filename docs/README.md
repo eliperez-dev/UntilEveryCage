@@ -36,6 +36,7 @@ by the active canonical record.
 | Operations | [operations/README.md](operations/README.md) | Development, deployment, source refresh, geocoding, recovery, and performance — **Canonical** runbooks/specifications. |
 | Governance | [governance/README.md](governance/README.md) | Ethics amendments, implementation gaps, privacy, suppression, and evidence — **Canonical** policy/records; machine ledgers are **Generated**. |
 | Product readiness | [PRODUCT-READINESS.md](PRODUCT-READINESS.md) | Sole product completion/roadmap authority — **Canonical**; [source status](source-status.md) remains source-scoped. |
+| Parallel implementation workflow | [operations/parallel-agent-workflow.md](operations/parallel-agent-workflow.md) | Assignment, ownership, evidence, and integration contract — **Canonical**. |
 | Historical evidence | [archive/README.md](archive/README.md) | Exceptional unique audits/rehearsals only — **Historical evidence**; not a source of current direction or readiness. |
 
 ### Labels
