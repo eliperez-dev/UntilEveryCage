@@ -1,8 +1,19 @@
 # Italy source reconnaissance (V2)
 
-Status: reconnaissance only. Two current catalog artifacts were acquired privately for schema/provenance inspection; no adapter, release, publication, or row-level fixture was created. No row-level values are retained in this document.
+Status: reconnaissance and private source specifications, with two Italian source scopes now verified through strict live private E2E. No release, publication, or row-level fixture is created in Git; source values remain restricted.
 
-Checked 2026-09-13. This document is source-status evidence, not publication approval or a healthy-pipeline claim.
+The initial reconnaissance was checked 2026-09-13. Latest source-level evidence is summarized below and in [`source-status.md`](source-status.md); this is not publication approval or recurring runtime health.
+
+## Current bounded E2E evidence — 2026-09-24
+
+The official catalog-discovered live CSV routes completed strict private E2E
+for both source IDs. `it.853-2004` produced 40,912 observations and 24,751
+private candidates. `it.1069-2009` produced 9,955 observations and 6,533
+private candidates. The scopes are separate and must not be summed as unique
+facilities. Public rows remain zero and no recurring operational monitor is
+configured. Review the current CSV/PDF dictionary mismatch, activity/category
+semantics, source terms, coordinate/address privacy and provenance, and release
+approval before any publication.
 
 ## Executive finding
 

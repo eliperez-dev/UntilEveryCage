@@ -52,7 +52,7 @@
       "claim": "Legacy data can be retained as explicitly private legacy evidence rather than relabeled as fresh verification.",
       "status": "implemented_tested",
       "evidence": [
-        {"path": "docs/archive/research/v2-ideas.md", "line": 13},
+        {"path": "docs/ETHICS.md", "line": 1},
         {"path": "docs/real-v2-rehearsal.md", "line": 1},
         {"path": "pipeline/tests/test_real_v2_rehearsal.py", "line": 1}
       ],
@@ -273,7 +273,7 @@
       "status": "prototype_only",
       "evidence": [
         {"path": "docs/architecture/adr-graph-foundation.md", "line": 1},
-        {"path": "docs/review-packet-us-accountability.md", "line": 1},
+        {"path": "docs/api/private-graph-contract.md", "line": 1},
         {"path": "docs/architecture/adr-map-visualization-platform.md", "line": 68}
       ],
       "limit": "The current graph work is a private evidence foundation and pilot; no public graph import, inference, or UI is claimed."
@@ -356,7 +356,7 @@
       "claim": "The flagship scale story is a finished, citable, accessible public experience that connects the horror of scale to local evidence without overclaiming.",
       "status": "prototype_only",
       "evidence": [
-        {"path": "docs/archive/research/v2-ideas.md", "line": 242},
+        {"path": "docs/VISION.md", "line": 1},
         {"path": "docs/story/flagship-scale-evidence-spec.md", "line": 1},
         {"path": "docs/story/storyboard.md", "line": 1}
       ],
@@ -368,7 +368,7 @@
       "claim": "An invited activist, journalist, or researcher can independently start the MVP, inspect provenance, use filters/exports, understand limitations, and provide feedback.",
       "status": "planned",
       "evidence": [
-        {"path": "docs/archive/research/v2-ideas.md", "line": 29},
+        {"path": "docs/VISION.md", "line": 1},
         {"path": "docs/api/v2-contract.md", "line": 1},
         {"path": "docs/governance/policy-implementation-todo.md", "line": 39}
       ],

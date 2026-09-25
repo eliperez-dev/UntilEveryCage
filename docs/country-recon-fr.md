@@ -1,8 +1,17 @@
 # France source reconnaissance
 
-Status: private candidate implementation and source assessment. No release, publication, or row-level fixture is created in Git; real artifacts remain restricted and ignored.
+Status: source reconnaissance plus a strict live private E2E for the two separate DGAL scopes. No release, publication, or row-level fixture is created in Git; real artifacts remain restricted and ignored. Current source status is maintained in [`source-status.md`](source-status.md).
 
-Last checked: 2026-09-14 UTC under `docs/ETHICS.md`, policy version 1.0, last reviewed 2026-09-12. This document is source-status evidence, not publication approval or a healthy-pipeline claim.
+Reconnaissance checked 2026-09-14 UTC under `docs/ETHICS.md`, policy version 1.0, last reviewed 2026-09-12. A later bounded strict live private E2E was verified 2026-09-24. This document is source-status evidence, not publication approval or a recurring-health claim.
+
+## Current bounded E2E evidence — 2026-09-24
+
+Section I produced 1,449 observations and 1,449 private candidates; Section II
+produced 1,069 observations and 1,068 private candidates. The scopes remain
+separate and their counts are not unique-facility totals. This one-time run
+does not establish complete coverage or approve publication. Terms, source
+category/identity review, address privacy, geospatial review, factual review,
+and release approval remain open. The public projection contains zero rows.
 
 ## Readiness
 

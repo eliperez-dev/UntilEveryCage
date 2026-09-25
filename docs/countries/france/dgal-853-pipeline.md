@@ -2,6 +2,10 @@
 
 Sections I (`fr.dgal.section-i`, domestic ungulates) and II
 (`fr.dgal.section-ii`, poultry and lagomorphs) are separate source identities.
+Both completed a one-time strict live private E2E on 2026-09-24; current safe
+counts and outstanding release gates are maintained in
+[`../../source-status.md`](../../source-status.md). This specification describes
+the pipeline contract, not recurring runtime health or publication approval.
 The Ministry's current 853/2004 page links each TXT file and says the lists are
 updated daily. Each run downloads the selected section directly, retains the
 original restricted artifact and acquisition metadata, validates the current

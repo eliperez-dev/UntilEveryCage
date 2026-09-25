@@ -30,7 +30,15 @@ APHIS is a separate evidence family. The [Animal Care Public Search Tool](https:
 
 ## Acquisition boundary
 
-FSIS direct links returned HTTP 403 during the prior reconnaissance. This sprint does not bypass that control. `pipeline.sources.us.fsis.refresh` provides a reproducible operator-assisted capture contract: an authorized operator saves one current directory CSV plus the demographic CSV shown on the official page, records the edition/date and final URL for each, and runs the private adapter. Direct fetch is available only with a terms-review JSON and the shared bounded acquisition primitive; HTML, login, 403, content-type, and schema failures remain fail-closed.
+FSIS direct links returned HTTP 403 during prior reconnaissance. On 2026-09-24,
+an authorized bounded browser download of official current CSVs completed a
+strict live private E2E with 7,240 observations and 7,240 candidates. This
+one-time result does not bypass the direct-access control, establish recurring
+health, or authorize release. `pipeline.sources.us.fsis.refresh` records the
+operator-assisted capture contract: current directory and demographics CSVs,
+edition/date, final URL, and provenance. Direct fetch remains available only
+with a terms-review JSON and the shared bounded acquisition primitive; HTML,
+login, 403, content-type, and schema failures remain fail-closed.
 
 APHIS is UI-mediated. `pipeline.sources.us.aphis.refresh` records the selected profile, official route, query/export context, retrieval time, hash, byte size, source dates, and separate evidence type. `pipeline.sources.us.aphis.acquire` can fetch only a terms-reviewed URL for a documented download control; it rejects empty, malformed, HTML/challenge, truncated, and invalid-signature responses before committing bytes. No hidden endpoint automation is required.
 
@@ -74,6 +82,14 @@ python -m pipeline.sources.us.aphis.acquire `
 
 The fetch path writes `acquisition-metadata.json` and a row-free `manifest.json`; failures write `acquisition-failure.json` with the failure class, attempts, query context, and no committed artifact. Reuse a new run ID for every observation. A failed or empty capture must not replace or delete the previous validated artifact. All APHIS outputs remain restricted private research evidence, with `release_state=not-created`, `publication_state=private-research-evidence`, and `publication_gate=blocked` until separate human review and approval.
 
+Completeness accounting must keep provider totals, acquired input rows,
+accepted rows, adapter quarantine, duplicate page rows, and failed exports
+separate. Duplicate export pages keep a profile incomplete even when their
+inflated input total matches the displayed provider count. FSIS recall-to-
+establishment inference requires an explicit source `EST` marker; digits in a
+firm name or narrative reason are not an establishment key. These boundaries
+are enforced in the source adapters and their focused tests.
+
 ### 2026-09-18 US Real-Data Proof
 
 The private Wave 1 browser capture is summarized in the row-free
@@ -99,7 +115,7 @@ Both adapters preserve source values only in restricted staging and emit parsed,
 
 ## V1 reconciliation
 
-[`v1-field-crosswalk.json`](v1-field-crosswalk.json) is the row-free inventory and field/category map. The checked-in FSIS V1 snapshot has 7,101 rows and 269 columns. Its slaughter and processing flags overlap, so the counts are field-presence observations rather than totals. Until an authorized current artifact exists, V1 rows are not claimed current and a missing current observation is `not-observed`, never closure.
+[`v1-field-crosswalk.json`](v1-field-crosswalk.json) is the row-free inventory and field/category map. The checked-in FSIS V1 snapshot has 7,101 rows and 269 columns. Its slaughter and processing flags overlap, so the counts are field-presence observations rather than totals. A current official capture now exists privately, but the V1 snapshot remains legacy and no row-level current-vs-legacy conclusion is implied; a missing current observation is `not-observed`, never closure.
 
 ## Accountability pilot
 
@@ -136,7 +152,7 @@ Run `python -m pipeline.scripts.maintenance.rehearse_us_real --root . --output d
 
 The 2026-09-17 rehearsal measured 7,101 FSIS rows, 4,507 APHIS inspection rows, and 1,013 APHIS annual-report rows. It produced 25,238 explicit source-local ledger assertions; 2,664 survived the stale/retrieval safety checks and 22,574 were quarantined for review. These are candidate and queue counts, not accuracy, ownership, operating-status, approval, or publication claims. State inspection programs remain excluded.
 
-The current FSIS page was observed in a normal browser with a September 14, 2026 update and three CSV routes, but the exact file routes returned HTTP 403 to bounded direct acquisition. See the row-free [current-route manifest](../../../data/manifests/us-fsis-current-route-2026-09-17.json).
+The current FSIS page was observed in a normal browser with a September 14, 2026 update and three CSV routes. The exact file routes returned HTTP 403 to bounded direct acquisition in the earlier probe; an authorized bounded browser download completed the 2026-09-24 strict private E2E. The [current-route manifest](../../../data/manifests/us-fsis-current-route-2026-09-17.json) records the earlier direct-route observation, not the later private acquisition.
 
 ### Current APHIS accountability demonstration
 

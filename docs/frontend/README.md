@@ -30,21 +30,21 @@ The product principle is **quiet on first contact, powerful when investigated**.
 
 ## Reading order
 
-- [principles and audiences](principles.md)
-- [backend capability matrix](capability-matrix.json)
-- [information architecture](information-architecture.md)
-- [wireframes](wireframes.md)
-- [interaction specification](interactions.md)
-- [UI state matrix](ui-state-matrix.json)
-- [content, terminology, and safety](content-and-safety.md)
-- [visual direction and tokens](visual-direction.md)
-- [performance and technology assessment](performance-and-technology.md)
-- [MVP cuts and implementation sequence](implementation-sequence.md)
-- [release and shared record model](release-and-record-model.md)
-- [future roadmap](roadmap.md)
-- [maintainer approval decisions](approval-decisions.md)
+- [principles and audiences](principles.md) — **Canonical**
+- [backend capability matrix](capability-matrix.json) — **Canonical** interface inventory
+- [information architecture](information-architecture.md) — **Canonical**
+- [wireframes](wireframes.md) — **Canonical**
+- [interaction specification](interactions.md) — **Canonical**
+- [UI state matrix](ui-state-matrix.json) — **Canonical** interface states
+- [content, terminology, and safety](content-and-safety.md) — **Canonical**
+- [visual direction and tokens](visual-direction.md) — **Canonical**
+- [performance and technology assessment](performance-and-technology.md) — **Reference**
+- [MVP cuts and implementation sequence](implementation-sequence.md) — **Canonical**
+- [release and shared record model](release-and-record-model.md) — **Canonical**
+- [future roadmap](roadmap.md) — **Reference**, subordinate to product readiness
+- [maintainer approval decisions](approval-decisions.md) — **Canonical**
 
-The normative V1 migration inventory is [v1-behavioral-contract.md](v1-behavioral-contract.md).
+The normative V1 migration inventory is [v1-behavioral-contract.md](v1-behavioral-contract.md) — **Reference** for migration.
 The design review explicitly includes the actual V1 implementation in
 `static/app.js`, `static/modules/MapManager.js`, `SearchManager.js`,
 `FilterManager.js`, `popupBuilder.js`, `ExportManager.js`, and
@@ -52,7 +52,7 @@ The design review explicitly includes the actual V1 implementation in
 behavior, category semantics, URL-restorable map state, popup/detail discovery,
 exports, lazy reports, and locale behavior are migration inputs rather than
 visual constraints.
-The product-level readiness tracker is [../PRODUCT-READINESS.md](../PRODUCT-READINESS.md).
+The product-level readiness tracker is [../PRODUCT-READINESS.md](../PRODUCT-READINESS.md) — **Canonical**.
 The roadmap in this folder is subordinate to that tracker; it must not become
 a competing completion ledger.
 

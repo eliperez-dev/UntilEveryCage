@@ -1,8 +1,20 @@
 # Belgium source reconnaissance
 
-Status: reconnaissance plus private/test-only adapter implementation. A current official operator/codebook pair was captured on 2026-09-17 into ignored private storage; no real facility rows, names, addresses, contacts, coordinates, release, or publication are retained in Git. Synthetic fixtures contain no real operators.
+Status: source reconnaissance, private adapter implementation, and strict live private E2E. The operator/codebook pair completed one live private run on 2026-09-24: 4,033 source observations and 1,793 source-scoped candidates. No real facility rows, names, addresses, contacts, coordinates, release, or publication are retained in Git. Synthetic fixtures contain no real operators; current status is in [source-status](source-status.md).
 
 Last checked: 2026-09-17 UTC under `docs/ETHICS.md`, policy version 1.0, last reviewed 2026-09-12. This is source-status evidence, not publication approval or a runtime-health claim.
+
+## Terms and private processing scope
+
+The source catalogue indicates CC BY 4.0. A recorded operator decision permits
+restricted private processing of the FASFC operator list and LAP/PAP codebook.
+Any eventual public use requires carefully selected animal-related categories,
+FASFC and latest-update attribution, no implication of FASFC endorsement,
+minimization of possible natural-person fields, and counts that distinguish
+activity observations from deduplicated candidates. This is an operator
+authorization for private processing, not legal advice or a blanket rights or
+publication clearance. The current public release remains blocked pending
+source-specific category, privacy/safety, factual-review, and release decisions.
 
 The implementation is in [`pipeline/sources/belgium/`](../pipeline/sources/belgium/). It requires two independently preserved official artifacts: the operator CSV at `https://www.static.favv.be/bo-documents/inter_actieve_actoren_EN.csv` and the LAP/PAP codebook at `https://www.static.favv.be/bo-documents/inter_PAP_omschrijving_EN.csv`. The bounded assisted command is repeatable when a browser or authorized operator supplies both files:
 

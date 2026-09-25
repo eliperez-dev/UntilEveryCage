@@ -103,3 +103,18 @@ not included in the committed aggregate result and geocoding is disabled.
 Raw, parsed, normalized, and quarantine payloads must remain outside Git under
 the retention and removal rules in `docs/ETHICS.md`. The proof does not create
 a database release or alter any public API, map, export, cache, or history.
+
+## Separate APHIS profile captures — 2026-09-19
+
+A later profile-specific capture is separate from the Wave 2 aggregation above.
+The annual-report export contained 995 FY2025 rows across ten pages; the
+research-registration recovery combined 59 original CSVs from 52 displayed
+state/territory filters into 2,552 rows with unique
+`(Customer Number, Certificate Number)` keys and a total matching the provider
+display. A prior direct unfiltered registration attempt stopped after 21 pages;
+its missing partitions were recorded as incomplete and were not used as the
+recovery input. Inspection processing received 1,075 rows, accepted 1,071, and
+quarantined four exact duplicate rows. These are distinct profile observations,
+not a facility master, completeness claim for all APHIS records, or publication
+approval. The retained row-level artifacts and exact per-page hashes remain in
+restricted storage; only this safe summary belongs in Git.

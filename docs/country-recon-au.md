@@ -1,6 +1,6 @@
 # Australia source reconnaissance
 
-Status: private reconnaissance and metadata handoff only; no Australia row-level release, adapter, candidate import, or publication approval. Checked 2026-09-16 UTC. The report records current primary routes, not a complete or current national facility census.
+Status: private reconnaissance plus a bounded live private E2E for one South Australia EPA activity source; no Australian row-level release or publication approval. Source-level status is current to 2026-09-24; the broader reconnaissance was checked 2026-09-16 UTC. This is not a complete or current national facility census.
 
 ## Decision summary
 
@@ -14,6 +14,17 @@ Australia does not expose one authoritative public national slaughterhouse regis
 6. ABN Lookup and the weekly ASIC Company Dataset support exact organization crosswalks, but neither is a beneficial-ownership graph. Public ABR data omits detailed contacts and industry code; ASIC's public snapshot is selected company-register data and may lag real-time ASIC Connect.
 
 Publication remains blocked. Current evidence is sufficient to build a metadata-only registry and an NPI adapter contract; it is not sufficient to publish Australian facility rows, precise coordinates, animal-use claims, ownership claims, or enforcement conclusions.
+
+## Current bounded E2E evidence — 2026-09-24
+
+`au.sa.epa.licensed-activities` completed a strict live private E2E from the
+official GeoJSON network route: 43 source observations produced 41 private
+candidates. This is a selected source-scoped activity result, not a restatement
+of the earlier 4,541-feature/1,695-licence artifact totals in the matrix
+below. The public projection remains empty; no recurring operational monitor
+is configured. Terms, licence-level aggregation, multi-activity children,
+approximate-point semantics, and privacy remain review gates. See the current
+[source status](source-status.md) and [source crosswalk](countries/australia/source-crosswalk.json).
 
 ## Source matrix
 

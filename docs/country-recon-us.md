@@ -1,6 +1,6 @@
 # United States source reconnaissance (V2)
 
-Scope/date: private reconnaissance of checked-in V1 material and current primary routes, observed 2026-09-13 UTC. No row-level names, contacts, addresses, coordinates, or raw artifacts are retained here. This is not publication approval or a healthy-pipeline claim.
+Scope/date: private reconnaissance of checked-in V1 material and current primary routes, first observed 2026-09-13 UTC. On 2026-09-24 an authorized bounded browser download of current official FSIS CSVs completed a strict live private E2E with 7,240 observations and 7,240 candidates. No row-level names, contacts, addresses, coordinates, or raw artifacts are retained here. This is not publication approval or recurring runtime health.
 
 ## Finding
 
@@ -10,7 +10,7 @@ V1’s “USDA” layer is the FSIS Meat, Poultry and Egg Product Inspection (MP
 
 | V1 component | Primary route | Evidence / readiness | Caveats and blocker |
 |---|---|---|---|
-| FSIS establishments/demographics | [FSIS MPI Directory](https://www.fsis.usda.gov/inspection/establishments) and [inspected establishments](https://www.fsis.usda.gov/inspection/fsis-inspected-establishments) | Official page observed in a normal browser on 2026-09-17; current page update observed as 2026-09-14 and three CSV routes exposed, but exact CSV routes returned HTTP 403 to bounded direct acquisition; no current raw hash/bytes claimed | Weekly replacement; FSIS coverage is not all slaughter/processing sites and state programs are separate; use operator-assisted capture contract |
+| FSIS establishments/demographics | [FSIS MPI Directory](https://www.fsis.usda.gov/inspection/establishments) and [inspected establishments](https://www.fsis.usda.gov/inspection/fsis-inspected-establishments) | Direct requests to the official CSV routes returned HTTP 403 during 2026-09-17 reconnaissance; an authorized bounded browser download of current official CSVs completed strict live private E2E on 2026-09-24 with 7,240 observations and 7,240 candidates | Weekly replacement; FSIS coverage is not all slaughter/processing sites and state programs are separate; this one-time private result does not authorize publication or imply recurring health |
 | APHIS research annual use | [Annual Usage Summary](https://www.aphis.usda.gov/awa/research-facility-report/annual-summary), [Public Search Tool](https://direct.aphis.usda.gov/animal-care/awa-services/usda-animal-care-public-search-tool), [annual reports](https://efile.aphis.usda.gov/PublicSearchTool/s/annual-reports) | Official fiscal-year/search routes identified; not privately fetched | Interactive/UI-mediated, no documented bulk API/rate contract; amended annual reports may differ; use sanctioned route only |
 | APHIS inspections/registrants | [AWA inspections and annual reports](https://www.aphis.usda.gov/awa/annual-inspection-reports) | Separate public-search/inspection population identified; not reproduced | Redactions/changes and FOIA boundary; absence/presence does not prove operation or violation |
 
@@ -22,22 +22,21 @@ Legacy FSIS activity strings are multi-valued and overlap: Meat Slaughter 1,103;
 
 Acquire only official FSIS downloads or documented APHIS public-search/export workflows with UTC retrieval, effective/publication date, byte size, SHA-256, URL, and adapter/config version. Validate content type, signatures, headers, IDs, dates, coordinates, duplicates, and category vocabulary; quarantine HTML/login responses and sharp changes. Preserve raw/parsed layers separately in ignored restricted staging, keep source values/identifiers, avoid names/phones in logs, and never fuzzy-merge FSIS, APHIS annual reports, and inspections. Suppress personal names, direct contacts, residential/private locations, and precise points where ETHICS.md requires. A successful fetch is not publication approval.
 
-## 2026-09-14 FSIS access blocker
+## Historical 2026-09-14 to 2026-09-17 FSIS direct-access finding
 
-The official FSIS MPI Directory route remains the identified source, but the
-current CSV links could not be safely acquired on 2026-09-14: ordinary direct
-and browser page access returned HTTP 403. Stale 2025 links were not used, and
-no artifact, byte count, or hash was retained. This is an access blocker, not
-evidence that the source is unavailable or that its terms permit reuse.
+The official FSIS MPI Directory route remains the identified source. During
+the earlier reconnaissance, ordinary direct and page access to current CSV
+links returned HTTP 403. Stale 2025 links were not used. This historical
+direct-access finding is superseded as to acquisition by the authorized
+2026-09-24 browser download; source rights, privacy, validation, and release
+remain separate decisions.
 
-Next step: obtain an authorized current FSIS export route or access context,
-then privately record the final URL, retrieval time, effective/publication date,
-content type, byte size, SHA-256, terms, and schema before any adapter or
-publication decision.
+See the current [source-status row](source-status.md) for the private E2E
+result and outstanding review gates.
 
 ## Blockers and recommendation
 
-No safe bounded private fetch was performed, so current hashes/bytes and deterministic reproduction are intentionally unavailable. FSIS is the strongest automation candidate because recurring CSV downloads and source descriptions are available. APHIS is secondary/manual/UI-mediated and should be an explicitly versioned, human-reviewed annual-report adapter or restricted manual input. Do not build a laboratory-supplier layer from APHIS records without a separately identified, licensed source. Existing Selenium/compiler code is not production-grade: obsolete selectors, no provenance manifest, quarantine, terms/schema/privacy gates, and unsafe duplicate handling.
+No public release follows from a safe private acquisition or E2E. FSIS remains subject to the current source status and source-rights, privacy, review, and release gates. APHIS is a separate UI-mediated evidence family; do not build a laboratory-supplier layer from APHIS records without a separately identified, licensed source. Historical Selenium/compiler code is not production-grade: obsolete selectors, no provenance manifest, quarantine, terms/schema/privacy gates, and unsafe duplicate handling.
 
 ## 2026-09-15 recovery slice
 

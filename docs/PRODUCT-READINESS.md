@@ -22,23 +22,25 @@ publishable facilities unless explicitly labelled that way.
 
 ## Verified checkpoint
 
-- **Baseline:** repository checkpoint `D6.2 integration` (full retained Italy-corpus runtime, source-boundary contract, legacy ledger, and frontend contract freeze; 2026-09-21 UTC). Major backend architecture is now frozen.
+- **Baseline:** D6.2 remains the reusable-backend architecture checkpoint (2026-09-21 UTC). On 2026-09-24, seven named official sources completed strict live private E2E through acquisition, candidate processing, disposable-database import, and run verification. Their combined private result is 64,701 observations, 42,875 candidates, 41,110 map-visible candidates, and 1,765 listable but unmapped candidates. SQL verification confirmed zero public rows. These are source-scoped private observations, not publication approval or recurring service health.
 - **Current public product:** V1 remains production and the public default.
 - **V2 frontend:** Svelte/TypeScript fixture and local synthetic preview; it is
   not the production replacement and has no configured external tile service.
 - **Public release:** no V2 public release has been created or promoted.
 - **Evidence:** D1's [contract convergence ledger](api/v2-product-convergence-gap-ledger.md),
   [V1 behavioral contract](frontend/v1-behavioral-contract.md), and row-free
-  [data readiness report](../data/manifests/d1-data-readiness-report.json), and
-  the B3 France, Denmark, and US private rehearsal manifests are the latest
-  supporting records at this checkpoint. Historical source packets
-  remain linked below for provenance and review context.
+  [data readiness report](../data/manifests/d1-data-readiness-report.json)
+  support the architecture history. The latest source-level acquisition and
+  private E2E state is summarized in the strict-live section below and
+  [source-status](source-status.md); earlier B3 manifests remain historical
+  backend rehearsal evidence.
 
-### Current private candidate evidence
+### Earlier private candidate snapshots
 
-These figures are retained only as safe aggregates; raw and restricted payloads
-remain private. They describe acquisition/normalization handoffs, not release
-readiness.
+These earlier safe aggregates are retained as checkpoint history; the
+2026-09-24 strict-live section below supersedes them as the latest source-level
+acquisition baseline. They describe acquisition/normalization handoffs, not
+release readiness. Raw and restricted payloads remain private.
 
 | Evidence family | Aggregate observed | State and limitation |
 | --- | ---: | --- |
@@ -54,10 +56,24 @@ readiness.
 | Denmark private lifecycle rehearsal | 58,398 handoff rows in aggregate report | fail-closed private rehearsal; facility identity, coordinate, review, and publication gates remain open |
 | US private lifecycle rehearsal | 4 source profiles; 5 synthetic candidates | deterministic rerun and private suppression checks passed; no database import, release, promotion, or public exposure |
 
-Supporting source evidence includes the [APHIS refresh](aphis-lane1-refresh-2026-09-19.md),
-[US source boundary](countries/us/README.md), [France handoff](countries/france/sprint02-handoff-20260919.md),
-and [Italy review packet](review-packet-italy.md). No private rows or payloads
+Supporting source evidence is routed from [source status](source-status.md) to
+canonical country pages and row-free manifests. No private rows or payloads
 belong in this roadmap.
+
+### Strict live private E2E verification — 2026-09-24
+
+All seven bounded source runs used official live data. The database contained
+private candidates only; the public projection remained empty. A one-time live
+E2E is not a recurring operational monitor, does not establish source
+completeness, and does not resolve source-specific terms, privacy, identity,
+classification, factual-review, or release-approval gates.
+
+The per-source acquisition routes, observation/candidate counts, recurring
+monitor state, and open source-specific gates are in the canonical
+[source-status table](source-status.md#current-baseline).
+Across the combined candidate set, 41,110 were map-visible and 1,765 were
+listable but unmapped. These are private readiness counts only. No public rows
+were created, and no source is authorized for public release by this result.
 
 ### D1 real-data-shaped readiness boundary
 
@@ -104,7 +120,7 @@ states and must be reported separately.
 | --- | --- | --- | --- |
 | Backend and database | Complete and verified for reusable architecture | D6.2 completed the full retained Italy-corpus matcher/import path, source-boundary runner contract, legacy evidence ledger, and frontend-facing contract freeze. Major backend redesign is frozen. | Continue country/source onboarding, deployment operations, and release work without reopening platform architecture unless a measured gap requires it. |
 | API contract | Complete and verified | D1 froze the current frontend-facing DTO/query contract, wire schemas, compatibility notes, and convergence gaps with targeted drift tests. It is exercised against synthetic/local contracts, not a reviewed real release. | Exercise the frozen contract against a named reviewed private release. |
-| Frontend product | In progress | V2 remains a private developer preview; V1 vanilla JavaScript remains public. The [F0 reset ledger](frontend-reset-ledger.md) records the archived preview baseline, reset boundary, acceptance gates, and build sequence. The subordinate [frontend design backlog](frontend/roadmap.md) retains the approved direction and later stages. | Complete the preview-only reset under the ledger and pass its V1/scope guards, then build the approved Map and Database frontend; close linked contract gaps before enabling unsupported record families. |
+| Frontend product | In progress | V2 remains a private developer preview; V1 vanilla JavaScript remains public. The [frontend specification](frontend/README.md), [V1 behavior contract](frontend/v1-behavioral-contract.md), and staged [implementation sequence](frontend/implementation-sequence.md) are the active design and migration references. | Build the approved Map and Database frontend; close linked contract gaps before enabling unsupported record families. |
 | Data acquisition | In progress | Several current private captures and source adapters exist; many countries remain reconnaissance-only or adapter/fixture-only. | Select one bounded first release and complete its source-specific terms and provenance review. |
 | Identity and reconciliation | Complete and verified for private graph semantics | Source-qualified exact and inferred edges are retained with score, confidence band, method, signals, contradictions, provenance, disclaimer, and ruleset metadata. The graph has no human-confirmed state; cross-source universal merges and claim transfer are never automatic. | Continue source-specific quality/terms/privacy work; publication still requires independent release approval. |
 | Geospatial readiness | In progress | Geocoding is disabled or tightly bounded in current private handoffs; provider, precision, privacy, and review state must remain explicit. | Complete source-specific coordinate/privacy review and a production geocoder/provider decision. |
@@ -153,7 +169,7 @@ required.
 | Governing ethics and privacy controls | In progress | [ETHICS.md](ETHICS.md), [policy checklist](governance/policy-implementation-todo.md) | Close outstanding implementation controls and verify behavior, not just prose. |
 | Source terms and redistribution | Blocked: human review | [source rights decisions](architecture/source-rights-decisions.md), source-specific assessments | Record terms decision for each source in the first release. |
 | Candidate acquisition and provenance | In progress | [source status](source-status.json), [D1 readiness report](../data/manifests/d1-data-readiness-report.json), [B3 private rehearsal manifests](../data/manifests/france-golden-country-private-2026-09-18.json) | Re-run selected sources with retained provenance and safe aggregate validation; keep Denmark observations separate from facility identity. |
-| Identity and factual review | Blocked: human review | [US source boundary](countries/us/README.md), [Italy packet](review-packet-italy.md) | Adjudicate held links, quarantines, and contradictions without name/address guessing. |
+| Identity and factual review | Blocked: human review | [US source boundary](countries/us/README.md), [Italy source research](country-recon-it.md) | Adjudicate held links, quarantines, and contradictions without name/address guessing. |
 | Coordinate and address privacy | In progress | [geospatial readiness](current-geospatial-readiness.md), [geocoding operator](geocoding-operator.md) | Complete precision, residential/private-location, provider, and review-state checks. |
 | API and release contract | Complete and verified | [V2 API contract](api/v2-contract.md), [D1 convergence ledger](api/v2-product-convergence-gap-ledger.md), [MVP claim evidence](governance/v2-mvp-claim-evidence.md) | Exercise the frozen contract against a named reviewed candidate release. |
 | Suppression and revocation | Blocked: engineering | [suppression runbook](governance/suppression-runbook.md), [release manifest guidance](architecture/release-manifest-verification.md) | Add durable restriction ledger, replay gate, cache invalidation, and V1↔V2 crosswalk. |
@@ -527,4 +543,4 @@ and source rights decisions belong in [architecture/source-rights-decisions.md](
 | 2026-09-22 | Accept D6.2 as the final reusable-backend architecture checkpoint; freeze major backend redesign while continuing source onboarding, deployment, and release work. | D6.2 integration. | [D6.2 closure manifest](../data/manifests/d62-backend-closure.json), full retained Italy rehearsal, source-boundary checks, legacy ledger, contract-freeze tests, and standard suite. | Begin serious frontend work and treat future backend changes as measured maintenance or source-specific onboarding. |
 | 2026-09-22 | Accept E1 as the frontend launchpad/design checkpoint; keep the existing V2 UI disposable and expose graph relationships only through the release-scoped public projection. | E1 integration. | [Frontend design authority package](frontend/README.md), [development dataset boundary](frontend-development-dataset.md), [public graph contract](api/public-graph-contract.md), launchpad and typed-client tests. | Implement the fresh Map and Database frontend after maintainer review; benchmark map rendering at the documented synthetic scale. |
 | 2026-09-22 | Accept E2 Australia NPI onboarding as an implemented private adapter/runner contract, while keeping live acquisition, local-artifact import, privacy/terms review, and publication blocked. | `au.npi.facilities`. | [E2 aggregate evidence](../data/manifests/e2-australia-npi.json), NPI adapter and shared-runner tests. | Provide the retained artifact for a real local-artifact rehearsal and review source-specific release gates. |
-| 2026-09-22 | Record the F0 reset boundary: archive the disposable V2 preview at `archive/v2-preview-before-reset-2026-09-22` (`60c7a750`), preserve V1 and frozen backend/data surfaces, and retain the approved frontend stages. | Frontend reset and continuation. | [F0 reset safety ledger](frontend-reset-ledger.md), [V1 behavioral contract](frontend/v1-behavioral-contract.md), and [frontend implementation sequence](frontend/implementation-sequence.md). | Complete the reset with V1/scope guards, then proceed through shell, contracts, list/map/details, and quality gates. |
+| 2026-09-22 | Keep V1 public during the V2 redesign; treat the earlier V2 preview as disposable and retain the approved Map/Database design and migration stages. | Frontend direction and V1/V2 transition. | [Frontend design package](frontend/README.md), [V1 behavioral contract](frontend/v1-behavioral-contract.md), and [frontend implementation sequence](frontend/implementation-sequence.md). | Revisit only if the approved design or cutover gates change. |

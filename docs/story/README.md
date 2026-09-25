@@ -16,7 +16,9 @@ The first prototype should move through:
 
 The mechanism is inspired by scale demonstrations that use scrolling distance and familiar comparisons to make very large quantities legible. The reference mechanism is not evidence for any animal claim and should not be copied as public factual support.
 
-See [claim-ledger.md](claim-ledger.md), [storyboard.md](storyboard.md), and [user-test-plan.md](user-test-plan.md).
+See [claim-ledger.md](claim-ledger.md) — **Canonical** claim boundary,
+[storyboard.md](storyboard.md) — **Reference** prototype, and
+[user-test-plan.md](user-test-plan.md) — **Reference** validation plan.
 
 ## Initial source-verification result
 
