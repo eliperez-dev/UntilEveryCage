@@ -1214,14 +1214,156 @@ def strict_refresh(source_id: str) -> dict[str, object]:
         SESSION_TOKEN = None
 
 
+def _operator_database_url(database_url: str | None) -> str:
+    if not database_url:
+        return _local_database_url()
+    from urllib.parse import urlsplit
+    if urlsplit(database_url).hostname not in {"127.0.0.1", "localhost", "::1"}:
+        raise PreviewError("geospatial operations accept only a loopback database")
+    return database_url
+
+
+def enrich_locations(source_id: str | None, limit: int, database_url: str | None = None) -> dict[str, object]:
+    """Resolve only from local source-owned references; never call a provider."""
+    import psycopg
+    from pipeline.sources.denmark.location import classify_location
+    from pipeline.sources.canada.location import resolve_local_reference
+    selected_source = None if source_id is None else source_id
+    allowed = {"dk.smiley", "ca.cfia.federal-meat", "ca.ontario.meat-plants"}
+    if selected_source is not None and selected_source not in allowed:
+        raise PreviewError("source has no local-only enrichment adapter")
+    db_url = _operator_database_url(database_url)
+    resolved = blocked = unresolved = examined = 0
+    with psycopg.connect(db_url) as connection:
+        rows = connection.execute("""
+            SELECT candidate.candidate_id, candidate.snapshot_sha256, candidate.source_id,
+                   candidate.source_group_key, candidate.location_class, candidate.country_code,
+                   candidate.city, candidate.postal_code, candidate.latitude, candidate.longitude,
+                   COALESCE(current.state_code, CASE WHEN candidate.location_class='numeric_source_coordinate'
+                     THEN 'source_coordinate' ELSE 'unresolved' END) AS current_state
+            FROM real_preview.candidates candidate
+            JOIN (SELECT DISTINCT ON (source_id) source_id,snapshot_sha256
+                  FROM real_preview.source_preview_runs
+                  ORDER BY source_id,created_at DESC,run_id DESC) latest
+              USING(source_id,snapshot_sha256)
+            LEFT JOIN real_preview.enrichment_state_current current USING(candidate_id)
+            WHERE (%s::text IS NULL OR candidate.source_id=%s)
+              AND (current.state_code IS NULL OR current.state_code IN ('coarse_eligible','exact_eligible','retryable'))
+            ORDER BY candidate.source_id,candidate.candidate_id LIMIT %s
+        """, (selected_source, selected_source, limit)).fetchall()
+        for row in rows:
+            candidate_id, snapshot, source, group_key, location_class, country, city, postal, lat, lon, current_state = row
+            examined += 1
+            state, reason, coarse = "unresolved", "local_reference_unavailable", None
+            if location_class == "numeric_source_coordinate":
+                state, reason = "source_coordinate", "source_coordinate_present"
+            elif source == "dk.smiley":
+                refs = connection.execute("""
+                    SELECT city_name,postal_code,ST_Y(reference_location::geometry),
+                           ST_X(reference_location::geometry),reference_source,source_reference_id,'DK'
+                    FROM uec.city_reference_points WHERE country_code='DK'
+                      AND reference_source IS NOT NULL AND source_reference_id IS NOT NULL
+                      AND (postal_code IS NULL OR postal_code=%s)
+                    ORDER BY city_name,postal_code NULLS LAST,source_reference_id
+                """, (postal,)).fetchall()
+                ref_rows = [dict(city_name=r[0], postal_code=r[1], reference_latitude=r[2],
+                                 reference_longitude=r[3], reference_source=r[4],
+                                 source_reference_id=r[5], country_code=r[6]) for r in refs]
+                outcome = classify_location({"address": {"postal_code": postal, "city": city}}, ref_rows)
+                coarse = outcome.get("coarse_display_reference")
+                if coarse:
+                    state, reason = "resolved", "local_coarse_reference_available"
+                else:
+                    state = "unresolved"
+                    reason = "local_reference_ambiguous" if outcome.get("state") == "ambiguous_reference" else "local_reference_unavailable"
+            elif source.startswith("ca."):
+                refs = connection.execute("""
+                    SELECT city_name,postal_code,ST_Y(reference_location::geometry),
+                           ST_X(reference_location::geometry),reference_source,source_reference_id,'CA'
+                    FROM uec.city_reference_points WHERE country_code='CA'
+                      AND reference_source IS NOT NULL AND source_reference_id IS NOT NULL
+                      AND ((%s::text IS NOT NULL AND lower(city_name)=lower(%s))
+                           OR (%s::text IS NOT NULL AND postal_code=%s))
+                    ORDER BY city_name,postal_code NULLS LAST,source_reference_id
+                """, (city, city, postal, postal)).fetchall()
+                ref_rows = [dict(city_name=r[0], postal_code=r[1], reference_latitude=r[2],
+                                 reference_longitude=r[3], reference_source=r[4],
+                                 source_reference_id=r[5], country_code=r[6]) for r in refs]
+                coarse = resolve_local_reference(city, postal, ref_rows)
+                if coarse:
+                    state, reason = "resolved", "local_coarse_reference_available"
+                else:
+                    state, reason = "provider_blocked", "external_provider_disabled"
+            else:
+                state, reason = "unresolved", "no_usable_location_input"
+            with connection.transaction():
+                if coarse:
+                    source_label = str(coarse.get("source") or "local Denmark locality reference")
+                    source_ref_id = str(coarse.get("source_reference_id") or "unavailable")
+                    source_text = f"{source_label}; approximate locality reference; not facility coordinates"
+                    connection.execute("""
+                        INSERT INTO real_preview.local_reference_display_evidence
+                          (candidate_id,snapshot_sha256,source_id,reference_latitude,reference_longitude,
+                           display_precision,display_geometry_source,reference_source_id,reference_source)
+                        VALUES (%s,%s,%s,%s,%s,'locality_reference_coarse',%s,%s,%s)
+                        ON CONFLICT DO NOTHING
+                    """, (candidate_id, snapshot, source, coarse["latitude"], coarse["longitude"],
+                          source_text, source_ref_id, source_label))
+                connection.execute("""
+                    INSERT INTO real_preview.enrichment_state_events
+                      (candidate_id,snapshot_sha256,source_id,source_record_key,state_code,reason_code)
+                    VALUES (%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT DO NOTHING
+                """, (candidate_id, snapshot, source, group_key, state, reason))
+            resolved += state == "resolved"
+            blocked += state == "provider_blocked"
+            unresolved += state == "unresolved"
+    return {"status": "ok", "scope": "all_sources" if source_id is None else "one_source",
+            "source_id": source_id, "examined": examined, "resolved": resolved,
+            "provider_blocked": blocked, "unresolved": unresolved,
+            "mode": "local_reference_only", "external_provider_calls": 0,
+            "publication": "none", "privacy": "private_approximate"}
+
+
+def geospatial_status(source_id: str | None, database_url: str | None = None) -> dict[str, object]:
+    import psycopg
+    db_url = _operator_database_url(database_url)
+    with psycopg.connect(db_url) as connection:
+        rows = connection.execute("""
+            SELECT state_code,reason_code,count(*)::bigint
+            FROM real_preview.candidate_enrichment_reconciliation
+            WHERE (%s::text IS NULL OR source_id=%s)
+            GROUP BY state_code,reason_code ORDER BY state_code,reason_code
+        """, (source_id, source_id)).fetchall()
+    return {"status": "ok", "scope": "all_sources" if source_id is None else "one_source",
+            "source_id": source_id, "candidate_count": sum(int(r[2]) for r in rows),
+            "states": [{"state": r[0], "reason": r[1], "count": int(r[2])} for r in rows],
+            "privacy": "aggregate_only", "publication": "none"}
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("up", "status", "probe", "down", "reset", "refresh", "strict-live-private-e2e", "strict-refresh"))
+    parser.add_argument("action", choices=("up", "status", "probe", "down", "reset", "refresh", "strict-live-private-e2e", "strict-refresh", "enrich-locations", "geospatial-status"))
     parser.add_argument("--source")
     parser.add_argument("--existing-run", help="complete a prior exact live lifecycle run without reacquisition")
+    parser.add_argument("--all", action="store_true", help="enrich all source snapshots")
+    parser.add_argument("--limit", type=int, default=100, help="maximum local candidates to inspect")
+    parser.add_argument("--database-url", help="loopback database URL; defaults to the owned preview database")
     args = parser.parse_args(argv)
     try:
+        if args.action == "enrich-locations":
+            if bool(args.source) == bool(args.all):
+                raise PreviewError("enrich-locations requires exactly one of --source or --all")
+            if args.limit < 1 or args.limit > 10000:
+                raise PreviewError("--limit must be between 1 and 10000")
+            result = enrich_locations(args.source, args.limit, args.database_url)
+            print(json.dumps(result, sort_keys=True))
+            return 0
+        if args.action == "geospatial-status":
+            result = geospatial_status(args.source, args.database_url)
+            print(json.dumps(result, sort_keys=True))
+            return 0
         if args.action in {"refresh", "strict-live-private-e2e", "strict-refresh"} and not args.source:
             raise PreviewError(f"{args.action} requires an explicit --source")
         result = (strict_live_private_e2e(args.source) if args.action == "strict-live-private-e2e" else

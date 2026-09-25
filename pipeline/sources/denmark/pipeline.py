@@ -314,9 +314,14 @@ def main(*, run_stage_fn: Callable[[str, Path, list[str]], None] | None = None,
         normalized_path = run_dir / "normalized" / "records.jsonl"
         if classified_path.is_file():
             _materialize_validated_rows(run_dir)
-        geocode_source = normalized_path if normalized_path.is_file() else classified_path
         geocode_input = run_dir / "05-geocode-queue" / "eligible-candidates.jsonl"
-        _write_geocode_eligible_candidates(geocode_source, geocode_input)
+        geocode_source = normalized_path if normalized_path.is_file() else classified_path
+        if geocode_source.is_file():
+            _write_geocode_eligible_candidates(geocode_source, geocode_input)
+        else:
+            # Dry orchestration/test harnesses may not materialize stage
+            # outputs; keep the queue input explicitly empty in that case.
+            atomic_jsonl(geocode_input, [])
         stage("geocode_queue", SHARED_STAGES / "create-geocode-queue.py", [str(geocode_input), "--output-dir", str(geocode_dir)])
         if args.geocode_limit is not None:
             geo = [str(geocode_dir / "geocode-queue.jsonl"), "--output", str(run_dir / "06-geocode-results.jsonl"), "--limit", str(args.geocode_limit), "--delay", str(args.geocode_delay), "--provider-config", str(args.geocode_provider_config.resolve()), "--terms-review", str(args.geocode_terms_review.resolve()), "--network"]

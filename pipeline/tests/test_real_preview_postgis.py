@@ -6,11 +6,7 @@ from pathlib import Path
 
 import psycopg
 
-MIGRATIONS = [
-    Path(__file__).parents[1] / "migrations" / "045_real_preview_private.sql",
-    Path(__file__).parents[1] / "migrations" / "046_real_preview_source_groups.sql",
-    Path(__file__).parents[1] / "migrations" / "047_real_preview_nonzero_coordinates.sql",
-]
+MIGRATIONS = sorted((Path(__file__).parents[1] / "migrations").glob("*.sql"))
 DATABASE_URL = os.environ.get("UEC_REAL_PREVIEW_TEST_DATABASE_URL")
 
 
@@ -45,6 +41,27 @@ class RealPreviewPostgisTests(unittest.TestCase):
                 connection.execute(candidate_insert, numeric_candidate)
                 connection.execute(candidate_insert, numeric_candidate)
                 connection.execute(candidate_insert, ("a" * 64, "fr.dgal.section-i", "source-group-2", coarse_observation_id, "city_postal", "FR", "Example", None, None))
+                coarse_candidate_id = connection.execute(
+                    "SELECT candidate_id FROM real_preview.candidates WHERE source_group_key='source-group-2'"
+                ).fetchone()[0]
+                connection.execute("""
+                    INSERT INTO real_preview.local_reference_display_evidence
+                      (candidate_id,snapshot_sha256,source_id,reference_latitude,reference_longitude,
+                       display_precision,display_geometry_source,reference_source_id,reference_source)
+                    VALUES (%s,%s,%s,48.8,2.3,'locality_reference_coarse',
+                            'synthetic municipality reference; approximate, not facility coordinates',
+                            'synthetic-ref-1','synthetic reference dataset')
+                """, (coarse_candidate_id, "a" * 64, "fr.dgal.section-i"))
+                display = connection.execute(
+                    "SELECT display_latitude,display_longitude,display_geometry_source FROM real_preview.candidates WHERE candidate_id=%s",
+                    (coarse_candidate_id,),
+                ).fetchone()
+                self.assertEqual(display[:2], (48.8, 2.3))
+                self.assertIn("approximate", display[2])
+                self.assertEqual(connection.execute(
+                    "SELECT display_precision FROM real_preview.local_reference_display_evidence WHERE candidate_id=%s",
+                    (coarse_candidate_id,),
+                ).fetchone()[0], "locality_reference_coarse")
                 with self.assertRaises(psycopg.Error):
                     with connection.transaction():
                         connection.execute(candidate_insert, ("a" * 64, "it.853-2004", "source-group-zero", numeric_observation_id, "numeric_source_coordinate", "IT", "Example", 0.0, 0.0))

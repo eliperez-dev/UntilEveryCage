@@ -566,6 +566,7 @@ fn real_preview_candidate(row: &tokio_postgres::Row) -> Value {
         "latitude": if is_city_reference { display_latitude } else { latitude },
         "longitude": if is_city_reference { display_longitude } else { longitude },
         "coordinate_precision": if is_city_reference { Some("administrative-reference-centre-approximate".to_string()) } else if stored_kind == "numeric_source_coordinate" && kind != stored_kind { None::<String> } else { row.get::<_, Option<String>>("coordinate_precision") },
+        "coordinate_provenance": if is_city_reference { display_geometry_source.clone() } else { None::<String> },
         "coordinate_review_status": if is_city_reference { "approximate_city_location_not_facility_point" } else if kind == "numeric_source_coordinate" { "pending_human_privacy_review" } else { "coarse_non_point" },
         "factual_review_status": "not_reviewed",
         "privacy_screening_status": "pending",

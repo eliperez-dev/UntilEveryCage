@@ -4,6 +4,7 @@ import json
 import zipfile
 import tempfile
 import unittest
+from pipeline.sources.canada.location import resolve_local_reference
 from pathlib import Path
 
 from pipeline.common.orchestrator import run_private_lifecycle
@@ -15,6 +16,14 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 
 class CanadaAdapterTests(unittest.TestCase):
+    def test_canadian_local_reference_requires_a_unique_verified_exact_match(self):
+        reference = {"country_code": "CA", "city_name": "Montréal", "postal_code": "H0H0H0",
+                    "reference_latitude": 45.5, "reference_longitude": -73.6,
+                    "reference_source": "synthetic local reference", "source_reference_id": "synthetic-1"}
+        self.assertEqual(resolve_local_reference("Montréal", "H0H 0H0", [reference])["precision"], "locality_reference_coarse")
+        self.assertIsNone(resolve_local_reference("Montréal", "H0H 0H0", []))
+        self.assertIsNone(resolve_local_reference("Montréal", "H0H 0H0", [reference, dict(reference, source_reference_id="synthetic-2")]))
+
     def test_cfia_xlsx_preserves_cell_text_and_detects_workbook_schema(self):
         files = {
             "xl/workbook.xml": '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Registry" sheetId="1" r:id="rId1"/></sheets></workbook>',
