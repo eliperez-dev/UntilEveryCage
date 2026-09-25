@@ -21,6 +21,12 @@ ACQUISITION_CLASSIFICATIONS = frozenset({"live", "assisted", "terms-blocked", "s
 
 
 class RefreshAdapter(Protocol):
+    """Strict refresh control-plane hook, distinct from ``SourceAdapter.run``.
+
+    Implementations select an already-preserved local/fixture artifact and
+    return aggregate facts only.  Live acquisition is an optional capability
+    called only after the runner's authorization and terms checks.
+    """
     source_id: str
     adapter_version: str
     source_kind: str
@@ -33,6 +39,22 @@ class RefreshAdapter(Protocol):
     # invoking it; adapters must never make a network request merely because
     # live-acquisition was selected.
     def acquire(self, *, run_dir: Path, options: Mapping[str, Any]) -> Mapping[str, Any]: ...
+
+
+def validate_refresh_adapter(adapter: Any) -> None:
+    """Fail early when a registered object does not implement the refresh seam.
+
+    ``source_kind`` remains optional for compatibility and defaults to the
+    existing facility-master behavior. ``acquire`` is deliberately optional.
+    """
+    for field in ("source_id", "adapter_version"):
+        if not isinstance(getattr(adapter, field, None), str) or not getattr(adapter, field).strip():
+            raise ValueError(f"refresh adapter requires non-empty {field}")
+    if not callable(getattr(adapter, "refresh", None)):
+        raise ValueError("refresh adapter requires callable refresh")
+    acquire = getattr(adapter, "acquire", None)
+    if acquire is not None and not callable(acquire):
+        raise ValueError("refresh adapter acquire must be callable when provided")
 
 
 @dataclass(frozen=True)

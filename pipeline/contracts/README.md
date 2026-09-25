@@ -16,6 +16,22 @@ cannot promote or publish a release. See
 [`SOURCE-ADAPTER-TEMPLATE.md`](SOURCE-ADAPTER-TEMPLATE.md) for the country
 implementation template.
 
+## Strict private refresh interface
+
+`contracts.refresh.RefreshAdapter` is a separate control-plane interface used
+by `common.refresh_runner.RefreshCatalog`. It requires `source_id`,
+`adapter_version`, and callable `refresh`; `source_kind` remains optional for
+compatibility and defaults to `facility_master`. A bounded `acquire` hook is
+optional. The runner validates this shape on registration, gates live
+acquisition before calling it, and accepts only row-free aggregate summaries.
+
+The source-owned `SourceAdapter.run(raw_path, run_dir, SourceArtifact)` still
+owns parsing, normalization, and private stage artifacts. Bridges such as
+`pipeline.sources.first_wave.FirstWaveRefreshAdapter` connect the runner to
+that lifecycle contract. These interfaces do not enable real-preview import,
+release promotion, or publication; those retain their independent gates.
+See the template for the minimal bridge shape and synthetic conformance tests.
+
 ## Shared private-run QA seam
 
 `private_run.run_typed_adapter` provides the common runner for typed

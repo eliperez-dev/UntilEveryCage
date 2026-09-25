@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 from pipeline.contracts.refresh import (
     ACQUISITION_CLASSIFICATIONS, AdapterCapabilities, RegisteredAdapter,
     RefreshAdapter, RefreshRequest, SOURCE_KINDS, canonical_plan, row_free_summary,
+    validate_refresh_adapter,
 )
 from pipeline.source_registry import load_registry
 from .adapter_registry import load as load_capabilities
@@ -79,6 +80,10 @@ class RefreshCatalog:
         register_first_wave(self)
 
     def register(self, adapter: RefreshAdapter, capabilities: AdapterCapabilities | None = None) -> None:
+        try:
+            validate_refresh_adapter(adapter)
+        except ValueError as exc:
+            raise RefreshRunnerError(str(exc)) from exc
         source_id = str(adapter.source_id)
         if source_id not in self.sources:
             raise RefreshRunnerError(f"adapter source is not in authoritative registry: {source_id}")
