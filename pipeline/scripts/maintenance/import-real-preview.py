@@ -149,7 +149,49 @@ def pick(row: dict[str, Any], *names: str) -> Any:
     return None
 
 
-def parse_row(source: str, row: Any) -> tuple[str, str, str | None, str | None, str | None, float | None, float | None, str | None, Any, str | None, bool, str | None]:
+def safe_preview_text(value: Any, limit: int) -> str | None:
+    """Accept a short normalized scalar, never a source_values/raw payload."""
+    if not isinstance(value, str):
+        return None
+    value = " ".join(value.split())
+    if not value or len(value) > limit or any(ord(char) < 32 or ord(char) == 127 for char in value):
+        return None
+    return value
+
+
+def safe_https_url(value: Any) -> str | None:
+    value = safe_preview_text(value, 2048)
+    if value is None:
+        return None
+    try:
+        parsed = urlsplit(value)
+        if (parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password
+                or parsed.query or parsed.fragment or any(ord(char) < 32 for char in value)):
+            return None
+        return value
+    except ValueError:
+        return None
+
+
+SOURCE_NAMES = {
+    "fr.dgal.section-i": "French Ministry of Agriculture — DGAL Section I",
+    "fr.dgal.section-ii": "French Ministry of Agriculture — DGAL Section II",
+    "it.853-2004": "Italian Ministry of Health — Regulation 853/2004",
+    "us.fsis": "USDA Food Safety and Inspection Service",
+}
+
+
+def parse_observed_at(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        result = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return result if result.utcoffset() is not None else None
+
+
+def parse_row(source: str, row: Any) -> tuple[Any, ...]:
     if not isinstance(row, dict):
         raise ImportFailure("row_schema_invalid")
     if row.get("source_id") != source or not isinstance(row.get("normalized"), dict):
@@ -194,7 +236,7 @@ def parse_row(source: str, row: Any) -> tuple[str, str, str | None, str | None, 
     country = country.strip().upper() if isinstance(country, str) and len(country.strip()) == 2 else None
     department = pick(normalized, "department_number")
     department = department.strip() if isinstance(department, str) and department.strip() else None
-    observed = pick(normalized, "source_observed_at", "observed_at", "observation_date")
+    observed = parse_observed_at(pick(normalized, "source_observed_at", "observed_at", "observation_date"))
     if numeric:
         location_class = "numeric_source_coordinate"
     elif (city or postal) and precision in {"city", "postal", "city_or_postal", "city-or-postal", "coarse"}:
@@ -208,7 +250,25 @@ def parse_row(source: str, row: Any) -> tuple[str, str, str | None, str | None, 
         raise ImportFailure("source_group_key_missing")
     if not precision and location_class == "city_postal":
         precision = "city_postal"
-    return str(identifier), location_class, country, city, postal, lat, lon, precision, observed, zero_pair, department, str(group_key).strip()
+    privacy_gate = pick(normalized, "privacy_gate", "privacy_status")
+    privacy_allows_name = isinstance(privacy_gate, str) and privacy_gate.strip().lower().replace("_", "-") in {
+        "eligible", "privacy-cleared", "passed", "clear", "public-eligible"
+    }
+    name = None
+    if privacy_allows_name:
+        name = safe_preview_text(pick(normalized, "canonical_name", "trading_name", "name"), 200)
+    activity = safe_preview_text(pick(normalized, "source_activity", "activity_description", "activity_label"), 240)
+    if activity is None:
+        raw_activity = pick(normalized, "activity_categories", "activities", "processing_activities")
+        if isinstance(raw_activity, list):
+            parts = [safe_preview_text(item, 100) for item in raw_activity]
+            activity = safe_preview_text("; ".join(part for part in parts if part), 240)
+    activity_source = "source" if activity else None
+    evidence_summary = safe_preview_text(pick(normalized, "evidence_summary"), 500)
+    record_url = safe_https_url(pick(normalized, "source_record_url"))
+    return (str(identifier), location_class, country, city, postal, lat, lon, precision, observed,
+            zero_pair, department, name, activity, activity_source, record_url, evidence_summary,
+            str(group_key).strip())
 
 
 def hash_snapshot(manifests: dict[str, tuple[Path, dict[str, Any]]]) -> str:
@@ -333,7 +393,7 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
                 municipality_index: dict[str, Any] | None = None,
                 municipality_policy: dict[str, Any] | None = None) -> tuple[int, int, int, int, int, int, int, int, int, int, int, set[str], int, int]:
     count = unmapped_count = mapped_non_candidate_count = candidate_count = 0
-    parsed_rows: list[tuple[str, str, str | None, str | None, str | None, float | None, float | None, str | None, Any, str | None, bool, str | None]] = []
+    parsed_rows: list[tuple[Any, ...]] = []
     with path.open("r", encoding="utf-8") as stream:
         for line in stream:
             if not line.strip():
@@ -344,11 +404,12 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
                 raise ImportFailure("row_schema_invalid") from None
             parsed = parse_row(source, record)
             parsed_rows.append(parsed)
-    representatives: dict[str, tuple[str, str, str | None, str | None, str | None, float | None, float | None, str | None, Any, str | None, bool, str | None]] = {}
+    representatives: dict[str, tuple[Any, ...]] = {}
     zero_coordinate_groups: set[str] = set()
     usable_coordinate_groups: set[str] = set()
     for parsed in parsed_rows:
-        identifier, klass, country, city, postal, lat, lon, precision, observed, zero_pair, department, group_key = parsed
+        identifier, klass, country, city, postal, lat, lon, precision, observed, zero_pair, department = parsed[:11]
+        group_key = parsed[-1]
         if zero_pair:
             zero_coordinate_groups.add(group_key)
         if klass == "numeric_source_coordinate":
@@ -369,7 +430,8 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
             precision_unknown_coordinate_count += chosen[7] == "source-precision-unknown"
             source_provided_coordinate_count += chosen[7] == "source-provided"
     for parsed in parsed_rows:
-        identifier, klass, country, city, postal, lat, lon, precision, observed, _, department, group_key = parsed
+        identifier, klass, country, city, postal, lat, lon, precision, observed, _, department = parsed[:11]
+        group_key = parsed[-1]
         candidate = group_key in representatives and representatives[group_key][0] == identifier
         db.execute(
                 """INSERT INTO real_preview.observations
@@ -388,7 +450,7 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
         observations_per_group[parsed[-1]] = observations_per_group.get(parsed[-1], 0) + 1
     coarse_placeable = 0
     for group_key, chosen in representatives.items():
-        identifier, klass, country, city, postal, lat, lon, precision, _, _, department, _ = chosen
+        identifier, klass, country, city, postal, lat, lon, precision, observed, _, department, display_name, activity_label, activity_source, source_record_url, evidence_summary, _ = chosen
         place, place_match = _resolve_municipality(municipality_index or {}, city, municipality_policy or {}, department)
         display_lat = place.get("latitude") if isinstance(place, dict) else None
         display_lon = place.get("longitude") if isinstance(place, dict) else None
@@ -400,10 +462,11 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
         ).fetchone()[0]
         db.execute(
             """INSERT INTO real_preview.candidates
-            (snapshot_sha256,source_id,source_group_key,representative_observation_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision,observation_count,display_latitude,display_longitude,display_geometry_source)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (snapshot_sha256,source_id,source_group_key) DO NOTHING""",
+            (snapshot_sha256,source_id,source_group_key,representative_observation_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision,observation_count,display_latitude,display_longitude,display_geometry_source,display_name,activity_label,activity_source,source_record_url,evidence_summary,source_name,observed_at)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (snapshot_sha256,source_id,source_group_key) DO NOTHING""",
             (snapshot, source, group_key, preview_id, klass, country, city, postal, lat, lon, precision, observations_per_group[group_key], display_lat, display_lon,
-             f"{(municipality_policy or {}).get('source', 'Administrative commune reference')}; approximate city location, not facility coordinates; name_match={place_match}" if display_lat is not None else None),
+             f"{(municipality_policy or {}).get('source', 'Administrative commune reference')}; approximate city location, not facility coordinates; name_match={place_match}" if display_lat is not None else None,
+             display_name, activity_label, activity_source, source_record_url, evidence_summary, SOURCE_NAMES.get(source), observed),
         )
         enrichment_state, enrichment_reason = (
             ("source_coordinate", "source_coordinate_present") if klass == "numeric_source_coordinate" else

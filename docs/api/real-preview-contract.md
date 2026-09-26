@@ -12,7 +12,24 @@ Every request requires `Host` and any `Origin` to use a loopback name or address
 | `GET /dev/real-preview/facets` | Candidate counts by source and location class | Aggregate only |
 | `GET /dev/real-preview/counts` | Candidate totals by numeric and city/postal placement | Aggregate only |
 
-Candidate objects contain an opaque preview ID, source ID, location class, country code, optional city and postal code, coordinate values only for numeric source-coordinate candidates, and the documented coordinate precision. Coordinate review is reported as pending human privacy review; factual review is not reviewed and privacy screening is pending. They never contain source identifiers, raw source values, full addresses, geocoder queries, private notes, release IDs, or approval claims. Every object is labeled as private and not project-approved or published.
+Candidate objects contain an opaque preview ID, source ID, location class, country code, optional city and postal code, coordinate values only for numeric source-coordinate candidates, and the documented coordinate precision. Coordinate review is reported as pending human privacy review; factual review is not reviewed and privacy screening is pending. They never contain upstream source keys, raw source values, full addresses, geocoder queries, private notes, release IDs, or approval claims. Every object is labeled as private and not project-approved or published.
+
+Candidate list, viewport, and detail objects also include the following display and provenance fields:
+
+| Field | Semantics |
+| --- | --- |
+| `display_name` | A short normalized name, populated only when the row's normalized `privacy_gate` explicitly says `eligible`, `privacy-cleared`, `passed`, `clear`, or `public-eligible`. Missing or any other gate value suppresses it. It is not an approval or publication decision. |
+| `activity_label` | A short string selected from allowlisted normalized source activity fields (`source_activity`, `activity_description`, `activity_label`, or simple string members of the activity lists). It is source-supplied wording, not a project classification. |
+| `activity_source` | `source` when an activity label is present; otherwise null. |
+| `source_name` | Maintained human-readable label for the allowlisted `source_id`. |
+| `source_record_id` | The generated opaque `candidate_id` UUID. It is stable only for that imported candidate snapshot and never exposes an upstream record key. |
+| `source_url` | Retrieval URL from the matching source manifest, returned only when it parses as an HTTPS URI without credentials. Otherwise null. |
+| `source_record_url` | Optional normalized record link, returned only when it is HTTPS, has no credentials, query, or fragment, and passes the bounded string check. Current imported source contracts do not supply this field, so it is null unless a future source explicitly allowlists it. |
+| `retrieved_at` | The acquisition timestamp from the matching source manifest. A candidate without a matching manifest is omitted; this is not the observation date. |
+| `observed_at` | A timezone-aware source observation date from the normalized record (`source_observed_at`, `observed_at`, or `observation_date`); invalid, naive, or unavailable dates become null. |
+| `evidence_summary` | Optional short normalized summary, only when that field is explicitly allowlisted for the source. It does not copy source payloads or notes; currently unavailable summaries are null. |
+
+The importer reads these optional values only from allowlisted normalized fields, never from `source_values`, source rows, or raw artifacts. Text is bounded and type-checked. A missing or unsafe value is represented as null. The route still requires the existing process opt-in, loopback binding, local `Host`/`Origin`, and token authentication, retains the active source/snapshot eligibility filters, and returns `Cache-Control: no-store`. No new field changes the public `/api/v2/*` projection, candidate review state, privacy state, release membership, or publication status.
 
 Candidate rows are source-scoped groups derived only from the normalized source identity fields: France `establishment_id`/`recognition_number`, Italy `recognition_number`, and FSIS `establishment_number`. Every source observation remains stored separately; one deterministic representative per group is marked for candidate routes. No cross-source identity merge occurs. France's 233 exact cross-section overlap signals remain separate candidate groups; the row-free France union metric subtracts those signals for comparison only.
 

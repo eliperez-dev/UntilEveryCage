@@ -35,12 +35,26 @@ class RealPreviewPostgisTests(unittest.TestCase):
                 connection.execute(insert, ("a" * 64, "us.fsis", "synthetic-private-key", "unmapped_private_observation", False,
                     "US", None, None, None, None, None))
                 candidate_insert = """INSERT INTO real_preview.candidates
-                    (snapshot_sha256,source_id,source_group_key,representative_observation_id,location_class,country_code,city,latitude,longitude,observation_count)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,1) ON CONFLICT DO NOTHING"""
-                numeric_candidate = ("a" * 64, "it.853-2004", "source-group-1", numeric_observation_id, "numeric_source_coordinate", "IT", "Example", 44.1, 11.2)
+                    (snapshot_sha256,source_id,source_group_key,representative_observation_id,location_class,country_code,city,latitude,longitude,observation_count,
+                     display_name,activity_label,activity_source,evidence_summary,source_record_url,source_name,observed_at)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,1,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING"""
+                numeric_candidate = ("a" * 64, "it.853-2004", "source-group-1", numeric_observation_id, "numeric_source_coordinate", "IT", "Example", 44.1, 11.2,
+                    "Synthetic Facility", "Meat processing", "source", "Synthetic evidence summary", "https://example.test/record", "Synthetic source", "2026-09-20T12:00:00Z")
                 connection.execute(candidate_insert, numeric_candidate)
                 connection.execute(candidate_insert, numeric_candidate)
-                connection.execute(candidate_insert, ("a" * 64, "fr.dgal.section-i", "source-group-2", coarse_observation_id, "city_postal", "FR", "Example", None, None))
+                connection.execute(candidate_insert, ("a" * 64, "fr.dgal.section-i", "source-group-2", coarse_observation_id, "city_postal", "FR", "Example", None, None,
+                    None, None, None, None, None, None, None))
+                safe_fields = connection.execute("""
+                    SELECT display_name,activity_label,activity_source,evidence_summary,source_record_url,source_name,observed_at
+                    FROM real_preview.candidates WHERE source_group_key='source-group-1'
+                """).fetchone()
+                self.assertEqual(safe_fields[:6], ("Synthetic Facility", "Meat processing", "source", "Synthetic evidence summary", "https://example.test/record", "Synthetic source"))
+                self.assertIsNotNone(safe_fields[6])
+                with self.assertRaises(psycopg.Error):
+                    with connection.transaction():
+                        connection.execute(candidate_insert, ("a" * 64, "it.853-2004", "source-group-invalid-url", numeric_observation_id,
+                            "numeric_source_coordinate", "IT", "Example", 44.1, 11.2, None, None, None, None,
+                            "http://example.test/record", None, None))
                 coarse_candidate_id = connection.execute(
                     "SELECT candidate_id FROM real_preview.candidates WHERE source_group_key='source-group-2'"
                 ).fetchone()[0]

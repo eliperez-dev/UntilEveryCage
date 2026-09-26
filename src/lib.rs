@@ -527,6 +527,22 @@ fn real_preview_unavailable() -> Response<axum::body::Body> {
     )
 }
 
+fn real_preview_https_url(value: Option<String>) -> Option<String> {
+    let value = value?;
+    if value.len() > 2048 || value.chars().any(char::is_control) {
+        return None;
+    }
+    let uri = value.parse::<axum::http::Uri>().ok()?;
+    let authority = uri.authority()?;
+    if uri.scheme_str() != Some("https")
+        || authority.host().is_empty()
+        || authority.as_str().contains('@')
+    {
+        return None;
+    }
+    Some(value)
+}
+
 fn real_preview_candidate(row: &tokio_postgres::Row) -> Value {
     let stored_kind: String = row.get("location_class");
     let stored_latitude: Option<f64> = row.get("latitude");
@@ -549,8 +565,19 @@ fn real_preview_candidate(row: &tokio_postgres::Row) -> Value {
     let is_city_reference = kind == "city_postal"
         && display_geometry_source.is_some()
         && safe_real_preview_location("numeric_source_coordinate", false, false, display_latitude, display_longitude).1.is_some();
+    let candidate_id: uuid::Uuid = row.get("candidate_id");
     json!({
-        "candidate_id": row.get::<_, uuid::Uuid>("candidate_id"),
+        "candidate_id": candidate_id,
+        "display_name": row.get::<_, Option<String>>("display_name"),
+        "activity_label": row.get::<_, Option<String>>("activity_label"),
+        "activity_source": row.get::<_, Option<String>>("activity_source"),
+        "source_name": row.get::<_, Option<String>>("source_name"),
+        "source_record_id": candidate_id,
+        "source_url": real_preview_https_url(row.get::<_, Option<String>>("source_url")),
+        "source_record_url": real_preview_https_url(row.get::<_, Option<String>>("source_record_url")),
+        "retrieved_at": row.get::<_, chrono::DateTime<chrono::Utc>>("retrieved_at"),
+        "observed_at": row.get::<_, Option<chrono::DateTime<chrono::Utc>>>("observed_at"),
+        "evidence_summary": row.get::<_, Option<String>>("evidence_summary"),
         "source_id": row.get::<_, String>("source_id"),
         "location_class": kind,
         "display_precision": if kind == "numeric_source_coordinate" {
@@ -634,7 +661,7 @@ pub async fn get_real_preview_list_handler(
         .collect::<String>();
     let query_limit = limit + 1;
     let rows = match client.query(
-        "SELECT candidate_id,source_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision,display_latitude,display_longitude,display_geometry_source FROM real_preview.candidates WHERE ((location_class='city_postal' AND (NULLIF(BTRIM(city),'') IS NOT NULL OR NULLIF(BTRIM(postal_code),'') IS NOT NULL)) OR (location_class='numeric_source_coordinate' AND ((latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180 AND (latitude<>0 OR longitude<>0)) OR ((NULLIF(BTRIM(city),'') IS NOT NULL OR NULLIF(BTRIM(postal_code),'') IS NOT NULL) AND NOT (latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180 AND (latitude<>0 OR longitude<>0))))) ) AND (NOT EXISTS (SELECT 1 FROM real_preview.source_preview_runs) OR snapshot_sha256 IN (SELECT DISTINCT ON (source_id) snapshot_sha256 FROM real_preview.source_preview_runs ORDER BY source_id,created_at DESC,run_id DESC)) AND ($1::uuid IS NULL OR candidate_id > $1) AND ($2='' OR city ILIKE '%' || $2 || '%' OR postal_code ILIKE '%' || $2 || '%') AND ($4::text IS NULL OR source_id=$4) ORDER BY candidate_id LIMIT $3",
+        "SELECT candidate.*,manifest.source_url,manifest.retrieved_at FROM real_preview.candidates candidate JOIN real_preview.source_manifests manifest ON manifest.snapshot_sha256=candidate.snapshot_sha256 AND manifest.source_id=candidate.source_id WHERE ((candidate.location_class='city_postal' AND (NULLIF(BTRIM(candidate.city),'') IS NOT NULL OR NULLIF(BTRIM(candidate.postal_code),'') IS NOT NULL)) OR (candidate.location_class='numeric_source_coordinate' AND ((candidate.latitude BETWEEN -90 AND 90 AND candidate.longitude BETWEEN -180 AND 180 AND (candidate.latitude<>0 OR candidate.longitude<>0)) OR ((NULLIF(BTRIM(candidate.city),'') IS NOT NULL OR NULLIF(BTRIM(candidate.postal_code),'') IS NOT NULL) AND NOT (candidate.latitude BETWEEN -90 AND 90 AND candidate.longitude BETWEEN -180 AND 180 AND (candidate.latitude<>0 OR candidate.longitude<>0))))) ) AND (NOT EXISTS (SELECT 1 FROM real_preview.source_preview_runs) OR candidate.snapshot_sha256 IN (SELECT DISTINCT ON (source_id) snapshot_sha256 FROM real_preview.source_preview_runs ORDER BY source_id,created_at DESC,run_id DESC)) AND ($1::uuid IS NULL OR candidate.candidate_id > $1) AND ($2='' OR candidate.city ILIKE '%' || $2 || '%' OR candidate.postal_code ILIKE '%' || $2 || '%') AND ($4::text IS NULL OR candidate.source_id=$4) ORDER BY candidate.candidate_id LIMIT $3",
         &[&cursor, &query, &query_limit, &params.source_id],
     ).await { Ok(rows) => rows, Err(_) => return real_preview_unavailable() };
     let has_next = rows.len() as i64 > limit;
@@ -680,7 +707,7 @@ pub async fn get_real_preview_viewport_handler(
     };
     let query_limit = limit + 1;
     let rows = match client.query(
-        "SELECT candidate_id,source_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision,display_latitude,display_longitude,display_geometry_source FROM real_preview.candidates WHERE (((location_class='numeric_source_coordinate' AND latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180 AND (latitude<>0 OR longitude<>0)) OR (display_geometry_source IS NOT NULL AND display_latitude BETWEEN -90 AND 90 AND display_longitude BETWEEN -180 AND 180)) AND COALESCE(display_longitude,longitude) BETWEEN $1 AND $3 AND COALESCE(display_latitude,latitude) BETWEEN $2 AND $4) AND (NOT EXISTS (SELECT 1 FROM real_preview.source_preview_runs) OR snapshot_sha256 IN (SELECT DISTINCT ON (source_id) snapshot_sha256 FROM real_preview.source_preview_runs ORDER BY source_id,created_at DESC,run_id DESC)) AND ($5::uuid IS NULL OR candidate_id > $5) AND ($7::text IS NULL OR source_id=$7) ORDER BY candidate_id LIMIT $6",
+        "SELECT candidate.*,manifest.source_url,manifest.retrieved_at FROM real_preview.candidates candidate JOIN real_preview.source_manifests manifest ON manifest.snapshot_sha256=candidate.snapshot_sha256 AND manifest.source_id=candidate.source_id WHERE (((candidate.location_class='numeric_source_coordinate' AND candidate.latitude BETWEEN -90 AND 90 AND candidate.longitude BETWEEN -180 AND 180 AND (candidate.latitude<>0 OR candidate.longitude<>0)) OR (candidate.display_geometry_source IS NOT NULL AND candidate.display_latitude BETWEEN -90 AND 90 AND candidate.display_longitude BETWEEN -180 AND 180)) AND COALESCE(candidate.display_longitude,candidate.longitude) BETWEEN $1 AND $3 AND COALESCE(candidate.display_latitude,candidate.latitude) BETWEEN $2 AND $4) AND (NOT EXISTS (SELECT 1 FROM real_preview.source_preview_runs) OR candidate.snapshot_sha256 IN (SELECT DISTINCT ON (source_id) snapshot_sha256 FROM real_preview.source_preview_runs ORDER BY source_id,created_at DESC,run_id DESC)) AND ($5::uuid IS NULL OR candidate.candidate_id > $5) AND ($7::text IS NULL OR candidate.source_id=$7) ORDER BY candidate.candidate_id LIMIT $6",
         &[&params.west,&params.south,&params.east,&params.north,&params.cursor,&query_limit,&params.source_id],
     ).await { Ok(rows) => rows, Err(_) => return real_preview_unavailable() };
     let has_next = rows.len() as i64 > limit;
@@ -706,7 +733,7 @@ pub async fn get_real_preview_detail_handler(
     let Ok(client) = pool.get().await else {
         return real_preview_unavailable();
     };
-    let row = match client.query_opt("SELECT candidate_id,source_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision,display_latitude,display_longitude,display_geometry_source FROM real_preview.candidates WHERE candidate_id=$1 AND ((location_class='city_postal' AND (NULLIF(BTRIM(city),'') IS NOT NULL OR NULLIF(BTRIM(postal_code),'') IS NOT NULL)) OR (location_class='numeric_source_coordinate' AND ((latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180 AND (latitude<>0 OR longitude<>0)) OR ((NULLIF(BTRIM(city),'') IS NOT NULL OR NULLIF(BTRIM(postal_code),'') IS NOT NULL) AND NOT (latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180 AND (latitude<>0 OR longitude<>0))))) ) AND (NOT EXISTS (SELECT 1 FROM real_preview.source_preview_runs) OR snapshot_sha256 IN (SELECT DISTINCT ON (source_id) snapshot_sha256 FROM real_preview.source_preview_runs ORDER BY source_id,created_at DESC,run_id DESC))", &[&id]).await { Ok(row) => row, Err(_) => return real_preview_unavailable() };
+    let row = match client.query_opt("SELECT candidate.*,manifest.source_url,manifest.retrieved_at FROM real_preview.candidates candidate JOIN real_preview.source_manifests manifest ON manifest.snapshot_sha256=candidate.snapshot_sha256 AND manifest.source_id=candidate.source_id WHERE candidate.candidate_id=$1 AND ((candidate.location_class='city_postal' AND (NULLIF(BTRIM(candidate.city),'') IS NOT NULL OR NULLIF(BTRIM(candidate.postal_code),'') IS NOT NULL)) OR (candidate.location_class='numeric_source_coordinate' AND ((candidate.latitude BETWEEN -90 AND 90 AND candidate.longitude BETWEEN -180 AND 180 AND (candidate.latitude<>0 OR candidate.longitude<>0)) OR ((NULLIF(BTRIM(candidate.city),'') IS NOT NULL OR NULLIF(BTRIM(candidate.postal_code),'') IS NOT NULL) AND NOT (candidate.latitude BETWEEN -90 AND 90 AND candidate.longitude BETWEEN -180 AND 180 AND (candidate.latitude<>0 OR candidate.longitude<>0))))) ) AND (NOT EXISTS (SELECT 1 FROM real_preview.source_preview_runs) OR candidate.snapshot_sha256 IN (SELECT DISTINCT ON (source_id) snapshot_sha256 FROM real_preview.source_preview_runs ORDER BY source_id,created_at DESC,run_id DESC))", &[&id]).await { Ok(row) => row, Err(_) => return real_preview_unavailable() };
     match row {
         Some(row) => real_preview_response(
             StatusCode::OK,
@@ -2108,6 +2135,17 @@ mod v2_api_tests {
     };
     use tokio_postgres::NoTls;
     use tower::ServiceExt;
+
+    #[test]
+    fn real_preview_source_links_are_https_only_and_uncredentialed() {
+        assert_eq!(
+            real_preview_https_url(Some("https://example.test/source".into())),
+            Some("https://example.test/source".into())
+        );
+        assert!(real_preview_https_url(Some("http://example.test/source".into())).is_none());
+        assert!(real_preview_https_url(Some("https://user@example.test/source".into())).is_none());
+        assert!(real_preview_https_url(Some("not a URL".into())).is_none());
+    }
 
     #[test]
     fn real_preview_never_exposes_zero_or_invalid_coordinates_as_points() {

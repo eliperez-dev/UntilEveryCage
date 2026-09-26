@@ -57,6 +57,31 @@ class RealPreviewImporterTests(unittest.TestCase):
         self.assertEqual(unmapped[1], "unmapped_private_observation")
         self.assertEqual(unmapped[-1], "group-3")
 
+    def test_optional_display_evidence_is_allowlisted_and_privacy_gated(self):
+        pending = IMPORTER.parse_row("it.853-2004", {
+            "source_id": "it.853-2004", "source_record_key": "synthetic-row",
+            "normalized": {"recognition_number": "synthetic-group", "name": "Example Works",
+                "privacy_gate": "pending-review", "activity_description": "Cutting",
+                "evidence_summary": "Synthetic source summary", "source_record_url": "http://example.test/record"},
+        })
+        self.assertIsNone(pending[11], "names remain omitted until the source privacy gate permits display")
+        self.assertEqual(pending[12:14], ("Cutting", "source"))
+        self.assertIsNone(pending[14], "record links must use HTTPS")
+        self.assertEqual(pending[15], "Synthetic source summary")
+
+        eligible = IMPORTER.parse_row("it.853-2004", {
+            "source_id": "it.853-2004", "source_record_key": "synthetic-row",
+            "normalized": {"recognition_number": "synthetic-group", "name": "Example Works",
+                "privacy_gate": "privacy-cleared", "observation_date": "2026-09-20T12:00:00Z",
+                "source_record_url": "https://example.test/record"},
+        })
+        self.assertEqual(eligible[11], "Example Works")
+        self.assertEqual(eligible[14], "https://example.test/record")
+        self.assertEqual(eligible[8].isoformat(), "2026-09-20T12:00:00+00:00")
+        self.assertIsNone(IMPORTER.safe_https_url("https://user@example.test/record"))
+        self.assertIsNone(IMPORTER.safe_https_url("https://example.test/record?token=private"))
+        self.assertEqual(IMPORTER.SOURCE_NAMES["us.fsis"], "USDA Food Safety and Inspection Service")
+
     def test_french_commune_resolution_requires_department_to_disambiguate(self):
         reference = {
             "paris|75": {"municipality": "Paris", "department_code": "75", "latitude": 48.8566, "longitude": 2.3522},
