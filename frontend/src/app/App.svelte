@@ -2,6 +2,8 @@
   import { onMount } from 'svelte';
   import { parseRoute, type RouteState } from './routeState';
   let DesignLab: typeof import('../design-lab/DesignLab.svelte').default | null = null;
+  let DatabaseResearch: typeof import('./DatabaseResearch.svelte').default | null = null;
+  let RecordPage: typeof import('./RecordPage.svelte').default | null = null;
   let reviewMode = false;
 
   let route: RouteState = { kind: 'map' };
@@ -13,7 +15,7 @@
       route = parseRoute(window.location.hash);
       const query = new URLSearchParams(window.location.hash.split('?')[1] ?? '');
       const serverDataMode = document.querySelector<HTMLMetaElement>('meta[name="uec-local-data-mode"]')?.content ?? null;
-      reviewMode = import.meta.env.DEV && (query.has('f1a') || (serverDataMode === 'real-preview' && route.kind === 'map'));
+      reviewMode = import.meta.env.DEV && (query.has('f1a') || (serverDataMode === 'real-preview' && (route.kind === 'map' || route.kind === 'database' || route.kind === 'record')));
       loading = false;
       loadError = '';
     } catch {
@@ -23,7 +25,11 @@
   };
 
   onMount(() => {
-    if (import.meta.env.DEV) import('../design-lab/DesignLab.svelte').then(module => DesignLab = module.default);
+    if (import.meta.env.DEV) {
+      import('../design-lab/DesignLab.svelte').then(module => DesignLab = module.default);
+      import('./DatabaseResearch.svelte').then(module => DatabaseResearch = module.default);
+      import('./RecordPage.svelte').then(module => RecordPage = module.default);
+    }
     syncRoute();
     window.addEventListener('hashchange', syncRoute);
     return () => window.removeEventListener('hashchange', syncRoute);
@@ -37,6 +43,12 @@
 
 {#if reviewMode && route.kind === 'map' && DesignLab}
   <svelte:component this={DesignLab} />
+{:else if reviewMode && route.kind === 'database' && DatabaseResearch}
+  <svelte:component this={DatabaseResearch} />
+{:else if reviewMode && route.kind === 'record' && RecordPage}
+  <svelte:component this={RecordPage} id={route.facilityId} />
+{:else if reviewMode && (route.kind === 'map' || route.kind === 'database' || route.kind === 'record')}
+  <main class="review-loading" aria-live="polite"><p role="status">Preparing the private-preview workspace…</p><small>The map module and its local data boundary are loading.</small></main>
 {:else}
 <div class="shell">
   <header class="site-header">
@@ -83,3 +95,8 @@
   </main>
 </div>
 {/if}
+
+<style>
+  .review-loading{display:grid;place-content:center;min-height:100dvh;padding:2rem;background:#171a18;color:#f1efe8;font:1rem system-ui;text-align:center}
+  .review-loading small{margin-top:.55rem;color:#b9c1b7;font-size:.76rem}
+</style>

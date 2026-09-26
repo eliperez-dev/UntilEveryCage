@@ -11,6 +11,16 @@ export type RealPreviewPrecision =
 export type RealPreviewCandidate = Readonly<{
   candidateId: string;
   sourceId: string;
+  displayName: string | null;
+  activityLabel: string | null;
+  activitySource: string | null;
+  sourceName: string | null;
+  sourceRecordId: string | null;
+  sourceUrl: string | null;
+  sourceRecordUrl: string | null;
+  retrievedAt: string | null;
+  observedAt: string | null;
+  evidenceSummary: string | null;
   locationClass: 'numeric_source_coordinate' | 'city_postal' | 'unmapped_private_observation';
   displayPrecision: RealPreviewPrecision;
   countryCode: string | null;
@@ -60,6 +70,22 @@ function nullableString(value: unknown): string | null {
   return value;
 }
 
+function nullableHttpsUrl(value: unknown): string | null {
+  const url = nullableString(value);
+  if (url === null) return null;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password) throw new Error('unsafe URL');
+  } catch {
+    throw new RealPreviewError('invalid-response', 'The private preview returned an unsafe source link.');
+  }
+  return url;
+}
+
+function optionalNullableString(row: Record<string, unknown>, field: string): string | null {
+  return row[field] === undefined ? null : nullableString(row[field]);
+}
+
 function nullableCoordinate(value: unknown): number | null {
   if (value === null || value === undefined) return null;
   if (typeof value !== 'number' || !Number.isFinite(value)) throw new RealPreviewError('invalid-response', 'The private preview returned an invalid coordinate.');
@@ -97,7 +123,18 @@ export function parseRealPreviewCandidate(value: unknown): RealPreviewCandidate 
     throw new RealPreviewError('invalid-response', 'The private preview omitted its review status.');
   }
   return Object.freeze({
-    candidateId, sourceId, locationClass: kind, displayPrecision: displayPrecision as RealPreviewPrecision,
+    candidateId, sourceId,
+    displayName: optionalNullableString(row, 'display_name'),
+    activityLabel: optionalNullableString(row, 'activity_label'),
+    activitySource: optionalNullableString(row, 'activity_source'),
+    sourceName: optionalNullableString(row, 'source_name'),
+    sourceRecordId: optionalNullableString(row, 'source_record_id'),
+    sourceUrl: nullableHttpsUrl(row.source_url),
+    sourceRecordUrl: nullableHttpsUrl(row.source_record_url),
+    retrievedAt: optionalNullableString(row, 'retrieved_at'),
+    observedAt: optionalNullableString(row, 'observed_at'),
+    evidenceSummary: optionalNullableString(row, 'evidence_summary'),
+    locationClass: kind, displayPrecision: displayPrecision as RealPreviewPrecision,
     countryCode: nullableString(row.country_code), city: nullableString(row.city), postalCode: nullableString(row.postal_code),
     latitude, longitude, coordinatePrecision: nullableString(row.coordinate_precision),
     coordinateReviewStatus: row.coordinate_review_status, factualReviewStatus: row.factual_review_status,
@@ -106,23 +143,36 @@ export function parseRealPreviewCandidate(value: unknown): RealPreviewCandidate 
   });
 }
 
-export function mapRealPreviewCandidate(candidate: RealPreviewCandidate): LabRecord {
+export function mapRealPreviewCandidate(candidate: RealPreviewCandidate): LabRecord & Pick<RealPreviewCandidate, 'displayName' | 'activityLabel' | 'activitySource' | 'sourceName' | 'sourceRecordId' | 'sourceUrl' | 'sourceRecordUrl' | 'retrievedAt' | 'observedAt' | 'evidenceSummary'> {
   const precision = candidate.locationClass === 'unmapped_private_observation' ? 'unmapped'
     : candidate.displayPrecision === 'city_reference_approximate' ? 'city'
     : candidate.locationClass === 'city_postal' || candidate.displayPrecision === 'city_postal_coarse' ? 'coarse'
       : candidate.displayPrecision === 'source_numeric_pending_review' ? 'exact' : 'approximate';
-  const place = candidate.city ?? candidate.postalCode ?? candidate.countryCode ?? 'Unmapped candidate';
   return Object.freeze({
     id: candidate.candidateId,
-    name: `${place} · ${candidate.sourceId}`,
-    category: 'Facility candidate',
+    name: candidate.displayName ?? 'Name unavailable',
+    category: candidate.activityLabel ?? 'Activity unavailable',
     country: candidate.countryCode ?? 'Unknown country',
     locality: candidate.city ?? candidate.postalCode ?? 'No mapped locality',
     precision,
     latitude: candidate.latitude,
     longitude: candidate.longitude,
     sourceId: candidate.sourceId,
+    displayName: candidate.displayName,
+    activityLabel: candidate.activityLabel,
+    activitySource: candidate.activitySource,
+    sourceName: candidate.sourceName,
+    sourceRecordId: candidate.sourceRecordId,
+    sourceUrl: candidate.sourceUrl,
+    sourceRecordUrl: candidate.sourceRecordUrl,
+    retrievedAt: candidate.retrievedAt,
+    observedAt: candidate.observedAt,
+    evidenceSummary: candidate.evidenceSummary,
     reviewStatus: candidate.coordinateReviewStatus,
+    factualReviewStatus: candidate.factualReviewStatus,
+    privacyScreeningStatus: candidate.privacyScreeningStatus,
+    publicationStatus: candidate.publicationStatus,
+    projectApproval: candidate.projectApproval,
     previewLabel: candidate.displayPrecision === 'approximate_source_precision_unknown_pending_review'
       ? 'Approximate source coordinate · precision unknown; private preview only · not approved or published'
       : candidate.previewLabel,
@@ -133,6 +183,7 @@ export function mapRealPreviewCandidate(candidate: RealPreviewCandidate): LabRec
 export function createRealPreviewRepository(fetcher: FetchLike = fetch): {
   list(options?: { query?: string; sourceId?: string | null; cursor?: string | null; limit?: number; signal?: AbortSignal }): Promise<RealPreviewPage>;
   viewport(bounds: ViewportBounds, options?: { sourceId?: string | null; cursor?: string | null; limit?: number; signal?: AbortSignal }): Promise<RealPreviewPage>;
+  reference(key: string, options?: { sourceId?: string | null; cursor?: string | null; limit?: number; signal?: AbortSignal }): Promise<RealPreviewPage>;
   detail(id: string, signal?: AbortSignal): Promise<RealPreviewCandidate>;
   counts(signal?: AbortSignal): Promise<RealPreviewCounts>;
   facets(signal?: AbortSignal): Promise<readonly RealPreviewFacet[]>;
@@ -180,6 +231,13 @@ export function createRealPreviewRepository(fetcher: FetchLike = fetch): {
       if (sourceId) params.set('source_id', sourceId);
       if (cursor) params.set('cursor', cursor);
       return request(`/viewport?${params}`, signal, parsePage);
+    },
+    reference(key, { sourceId = null, cursor = null, limit = 100, signal } = {}) {
+      if (!/^[a-f0-9]{32}$/i.test(key)) return Promise.reject(new RealPreviewError('not-found', 'This map reference is no longer available.'));
+      const params = new URLSearchParams({ limit: String(limit) });
+      if (sourceId) params.set('source_id', sourceId);
+      if (cursor) params.set('cursor', cursor);
+      return request(`/map/references/${encodeURIComponent(key)}?${params}`, signal, parsePage);
     },
     detail(id, signal) {
       if (!UUID.test(id)) return Promise.reject(new RealPreviewError('not-found', 'This private preview record is no longer available.'));

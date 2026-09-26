@@ -9,6 +9,7 @@
     "build": "npm run check && vite build && node scripts/check-design-lab-boundary.mjs",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "test:performance": "playwright test tests/e2e/real-preview-performance.spec.ts",
     "test:e2e:fixture": "playwright test tests/e2e/shell-routes.spec.ts tests/e2e/local-safety.spec.ts",
     "test:e2e:local": "node scripts/run-local-e2e.mjs",
     "lint": "eslint .",

@@ -16,7 +16,9 @@ export function decodeLabHash(hash: string): LabState {
     categories: unique(q.getAll('category').filter(value => ['Poultry', 'Pig', 'Dairy', 'Processing', 'Laboratory', 'Aquaculture'].includes(value))),
     precisions: unique(q.getAll('precision').filter((value): value is (typeof precisionOptions)[number] => precisionOptions.some(option => option === value))),
   };
-  return { ...DEFAULT_LAB_STATE, direction, scenario, query: q.get('q') ?? '', selectedId: q.get('selected'), filters,
+  const source = q.get('source');
+  const sourceId = source && /^[A-Za-z0-9.-]{1,80}$/.test(source) ? source : null;
+  return { ...DEFAULT_LAB_STATE, direction, scenario, query: q.get('q') ?? '', selectedId: q.get('selected'), sourceId, filters,
     expandedCluster: q.get('cluster') === 'aarhus' ? 'aarhus' : null,
     basemap: q.get('basemap') === 'satellite' ? 'satellite' : 'vector', listOpen: q.get('list') !== 'closed',
     viewport: { centerLat: safeNumber(q.get('lat'), 45, -90, 90), centerLon: safeNumber(q.get('lon'), 5, -180, 180), zoom: safeNumber(q.get('z'), 2, 1, 18) } };
@@ -24,6 +26,7 @@ export function decodeLabHash(hash: string): LabState {
 export function encodeLabHash(state: LabState): string {
   const q = new URLSearchParams({ f1a: state.direction, scenario: state.scenario });
   if (state.query) q.set('q', state.query); if (state.selectedId) q.set('selected', state.selectedId);
+  if (state.sourceId) q.set('source', state.sourceId);
   if (state.expandedCluster) q.set('cluster', state.expandedCluster);
   if (state.basemap !== 'vector') q.set('basemap', state.basemap); if (!state.listOpen) q.set('list', 'closed');
   if (state.viewport.centerLat !== 45) q.set('lat', String(state.viewport.centerLat));
@@ -39,6 +42,7 @@ export function reduceLabState(state: LabState, action: LabAction): LabState {
     case 'scenario': return { ...state, scenario: action.value };
     case 'query': return { ...state, query: action.value, selectedId: null };
     case 'select': return { ...state, selectedId: action.value };
+    case 'source': return { ...state, sourceId: action.value, selectedId: null, aggregateMemberIds: null };
     case 'cluster': return { ...state, expandedCluster: action.value };
     case 'aggregate': return { ...state, aggregateMemberIds: action.value, listOpen: action.value !== null, selectedId: null };
     case 'basemap': return { ...state, basemap: action.value };

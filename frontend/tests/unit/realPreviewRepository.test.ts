@@ -57,6 +57,37 @@ describe('private real-preview repository', () => {
     expect(parseRealPreviewCandidate(record({ latitude: 0, longitude: -30 })).latitude).toBe(0);
   });
 
+  it('accepts nullable future allowlisted fields and renders a missing name honestly', () => {
+    const parsed = parseRealPreviewCandidate(record({
+      display_name: 'Example facility',
+      activity_label: null,
+      activity_source: 'source classification',
+      source_name: 'Example authority',
+      source_record_id: 'safe-row-17',
+      source_url: 'https://example.test/source',
+      source_record_url: null,
+      retrieved_at: '2026-01-02T03:04:05Z',
+      observed_at: null,
+      evidence_summary: 'Summary supplied by the allowlisted API.',
+    }));
+    expect(parsed).toMatchObject({
+      displayName: 'Example facility', activityLabel: null, activitySource: 'source classification',
+      sourceName: 'Example authority', sourceRecordId: 'safe-row-17',
+      sourceUrl: 'https://example.test/source', sourceRecordUrl: null,
+      retrievedAt: '2026-01-02T03:04:05Z', observedAt: null,
+      evidenceSummary: 'Summary supplied by the allowlisted API.',
+    });
+    const absent = parseRealPreviewCandidate(record());
+    expect(absent.displayName).toBeNull();
+    expect(absent.evidenceSummary).toBeNull();
+    expect(mapRealPreviewCandidate(absent).name).toBe('Name unavailable');
+  });
+
+  it('rejects unsafe URLs in future source-link fields', () => {
+    expect(() => parseRealPreviewCandidate(record({ source_url: 'javascript:alert(1)' }))).toThrow(RealPreviewError);
+    expect(() => parseRealPreviewCandidate(record({ source_record_url: 'http://example.test/record' }))).toThrow(RealPreviewError);
+  });
+
   it('maps the bounded global city/postal cursor and viewport cursor contracts without sending credentials from the browser', async () => {
     const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
     const fetcher: FetchLike = vi.fn(async (input, init) => {
