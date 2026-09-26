@@ -8,6 +8,8 @@ Every request requires `Host` and any `Origin` to use a loopback name or address
 | --- | --- | --- |
 | `GET /dev/real-preview/locations` | Keyset page of explicitly marked source-scoped candidates, including unmapped candidates | `limit` defaults to 100, max 200; `cursor` is the prior opaque `candidate_id`; `q` searches allowlisted name, activity label/source, source name/ID, city, and postal code fields, truncated to 100 characters; optional `default_map_scope` filters `true`/`false` |
 | `GET /dev/real-preview/viewport` | Keyset page of default-map-scope candidates with usable source or explicitly approximate display coordinates in a viewport | Required `west`, `south`, `east`, `north`; `limit` defaults to 300, max 500; `cursor` is the prior opaque `candidate_id` |
+| `GET /dev/real-preview/map/tiles/{z}/{x}/{y}` | Server-generated, lightweight MapLibre vector tile | Zoom 0–14 and valid XYZ coordinates; optional source-scoped `source_id`; content type is `application/vnd.mapbox-vector-tile`; contains only opaque map keys, opaque cluster lineage, feature kind, count, coordinate treatment, expansion zoom, and geometry |
+| `GET /dev/real-preview/map/references/{reference_key}` | Keyset page of candidates represented by an administrative MVT reference | `reference_key` is the opaque 32-character tile feature key; `limit` defaults to 100, max 200; optional cursor and source-scoped `source_id` |
 | `GET /dev/real-preview/locations/{candidate_id}` | Candidate detail | Opaque UUID identifier |
 | `GET /dev/real-preview/facets` | Candidate counts by source and location class | Aggregate only |
 | `GET /dev/real-preview/counts` | Candidate totals by location class, default-map scope, and map visibility | Aggregate only |
@@ -40,3 +42,40 @@ The list, detail, facets, and counts routes use the newest source snapshot and r
 The importer verifies the selected normalized artifact against its manifest hash. The candidate projection version participates in the combined snapshot identity, so deploying this change creates a new immutable private snapshot from retained normalized inputs and safely reimports unmapped groups and map-scope flags; an idempotent replay of the old snapshot cannot mutate its rows. The retained preview root currently does not include the original source artifacts for hash re-verification; this limitation is reported in the aggregate-only importer result. This local preview does not establish source completeness, release eligibility, factual approval, privacy clearance, or publication readiness.
 
 All pages are bounded and keyset ordered. Search uses only the persisted safe projection fields named above; it does not inspect source payload, address, or private notes. The map viewport always excludes candidates with `default_map_scope=false`, while list/search can include them or filter to either scope. There is no export endpoint. The public `/api/v2/*` contract is unchanged.
+
+## Local map-tile projection
+
+`/map/tiles` is a local-only MapLibre vector-tile projection, protected by the
+same loopback and runtime-token gate as every other preview route. It is not a
+candidate-detail API: properties are limited to an opaque stable `feature_key`,
+an opaque `parent_key` for low-zoom cluster descendants, `kind`, `count`,
+`precision`, and `next_zoom`. Names, addresses, source values,
+city/postal labels, review notes, and raw payloads are never included.
+
+The route selects only the latest retained snapshot per source. A valid optional
+`source_id` is an ASCII lowercase source token (letters, digits, `.` and `-`, at
+most 128 bytes); invalid selectors are rejected before database access.
+Both the tile and reference-member queries require `default_map_scope=true`.
+Out-of-scope candidates remain available to authenticated list/search/detail
+routes, but cannot enter a default-map cluster or appear as a reference member.
+
+Selecting a `city_reference` map feature may request its opaque `feature_key`
+from `/map/references`. That authenticated, paginated response uses the normal
+candidate envelope and the same latest-snapshot/source constraints as the tile.
+It is the only path that returns members; a vector tile itself never contains
+member IDs, names, or record details. The returned city/commune candidates keep
+their `city_reference_approximate` treatment and are not reclassified as
+facility points.
+
+At zooms 0–9, numeric source coordinates and administrative references both
+contribute to one deterministic WebMercator cluster hierarchy, server-side. At
+zooms 10–14 numeric locations are lightweight individual source-coordinate
+features, while city/commune references become independently visible
+`city_reference` aggregates. A reference is never displayed as a facility pin:
+its geometry is an approximate administrative reference centre and `count` is
+the number of source-scoped candidates represented there. `next_zoom` is a
+navigation hint, not a claim that an administrative reference resolves into
+facility coordinates. Low-zoom grid-cluster features include `parent_key` when
+their genuine parent exists at the preceding zoom. It is a deterministic opaque
+lineage key only: clients may use it to animate a clicked parent into the
+children actually returned at the next zoom, but it cannot reveal members.

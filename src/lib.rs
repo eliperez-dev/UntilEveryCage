@@ -28,7 +28,9 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::error::Error;
+use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
@@ -435,6 +437,106 @@ pub struct ApiState {
     pub dev_test_release_token: Option<String>,
 }
 
+/// Bump when tile properties or rendering semantics change.  Keeping it in
+/// the key prevents an in-process deploy from serving bytes encoded for an
+/// older frontend contract.
+const REAL_PREVIEW_MVT_CONTRACT_VERSION: u8 = 1;
+const REAL_PREVIEW_MVT_CACHE_TTL: Duration = Duration::from_secs(45);
+const REAL_PREVIEW_MVT_CACHE_MAX_ENTRIES: usize = 768;
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct RealPreviewMvtTileCacheKey {
+    contract_version: u8,
+    snapshot_boundary: String,
+    source_id: Option<String>,
+    z: u8,
+    x: u32,
+    y: u32,
+}
+
+#[derive(Clone)]
+struct RealPreviewMvtTileCacheEntry {
+    bytes: Arc<[u8]>,
+    inserted_at: Instant,
+    last_used: u64,
+}
+
+struct RealPreviewMvtTileCacheInner {
+    entries: HashMap<RealPreviewMvtTileCacheKey, RealPreviewMvtTileCacheEntry>,
+    clock: u64,
+}
+
+/// A bounded LRU-ish tile-byte cache.  The lock only guards a HashMap lookup
+/// or insertion; database work is always performed after it is released.
+pub struct RealPreviewMvtTileCache {
+    inner: StdMutex<RealPreviewMvtTileCacheInner>,
+}
+
+/// Private, process-local acceleration only. This is never an HTTP cache:
+/// preview responses still carry `no-store` and no request credential is a
+/// cache key. A process-level cache also keeps normal API state construction
+/// simple for public routes that never touch the private tile projection.
+static REAL_PREVIEW_MVT_TILE_CACHE: Lazy<RealPreviewMvtTileCache> =
+    Lazy::new(RealPreviewMvtTileCache::default);
+
+impl Default for RealPreviewMvtTileCache {
+    fn default() -> Self {
+        Self {
+            inner: StdMutex::new(RealPreviewMvtTileCacheInner {
+                entries: HashMap::new(),
+                clock: 0,
+            }),
+        }
+    }
+}
+
+impl RealPreviewMvtTileCache {
+    fn get(&self, key: &RealPreviewMvtTileCacheKey) -> Option<Arc<[u8]>> {
+        let mut inner = self.inner.lock().expect("MVT tile cache lock is not poisoned");
+        let now = Instant::now();
+        if inner
+            .entries
+            .get(key)
+            .is_some_and(|entry| now.duration_since(entry.inserted_at) > REAL_PREVIEW_MVT_CACHE_TTL)
+        {
+            inner.entries.remove(key);
+            return None;
+        }
+        inner.clock = inner.clock.wrapping_add(1);
+        let clock = inner.clock;
+        inner.entries.get_mut(key).map(|entry| {
+            entry.last_used = clock;
+            Arc::clone(&entry.bytes)
+        })
+    }
+
+    fn insert(&self, key: RealPreviewMvtTileCacheKey, bytes: Vec<u8>) -> Arc<[u8]> {
+        let mut inner = self.inner.lock().expect("MVT tile cache lock is not poisoned");
+        inner.clock = inner.clock.wrapping_add(1);
+        let bytes: Arc<[u8]> = bytes.into();
+        let clock = inner.clock;
+        inner.entries.insert(
+            key,
+            RealPreviewMvtTileCacheEntry {
+                bytes: Arc::clone(&bytes),
+                inserted_at: Instant::now(),
+                last_used: clock,
+            },
+        );
+        if inner.entries.len() > REAL_PREVIEW_MVT_CACHE_MAX_ENTRIES {
+            if let Some(oldest) = inner
+                .entries
+                .iter()
+                .min_by_key(|(_, entry)| entry.last_used)
+                .map(|(key, _)| key.clone())
+            {
+                inner.entries.remove(&oldest);
+            }
+        }
+        bytes
+    }
+}
+
 #[derive(Deserialize)]
 pub struct RealPreviewPageParams {
     pub cursor: Option<uuid::Uuid>,
@@ -455,6 +557,25 @@ pub struct RealPreviewViewportParams {
     pub source_id: Option<String>,
 }
 
+/// The tile route intentionally accepts only a small, source-shaped selector.
+/// It is never reflected into a response and is still passed as a bound SQL
+/// parameter.  This keeps the private map source from becoming a general
+/// purpose query surface.
+#[derive(Deserialize)]
+pub struct RealPreviewTileParams {
+    pub source_id: Option<String>,
+}
+
+/// Resolves a deliberately opaque administrative-reference key emitted by the
+/// MVT projection.  The key is only meaningful to this private preview
+/// endpoint; the tile continues to carry no member payload.
+#[derive(Deserialize)]
+pub struct RealPreviewReferenceParams {
+    pub cursor: Option<uuid::Uuid>,
+    pub limit: Option<i64>,
+    pub source_id: Option<String>,
+}
+
 fn real_preview_response(status: StatusCode, body: Value) -> Response<axum::body::Body> {
     let mut response = (status, Json(body)).into_response();
     response.headers_mut().insert(
@@ -462,6 +583,15 @@ fn real_preview_response(status: StatusCode, body: Value) -> Response<axum::body
         HeaderValue::from_static("no-store"),
     );
     response
+}
+
+fn real_preview_tile_response(status: StatusCode, bytes: Vec<u8>) -> Response<axum::body::Body> {
+    Response::builder()
+        .status(status)
+        .header(axum::http::header::CONTENT_TYPE, "application/vnd.mapbox-vector-tile")
+        .header(axum::http::header::CACHE_CONTROL, "no-store")
+        .body(axum::body::Body::from(bytes))
+        .expect("a static private-preview tile response is valid")
 }
 
 fn real_preview_error(
@@ -632,6 +762,292 @@ fn safe_real_preview_location(
         ("city_postal", _) => ("unmapped_private_observation".into(), None, None),
         _ => (stored_kind.to_owned(), None, None),
     }
+}
+
+fn valid_real_preview_tile_source(value: Option<&str>) -> bool {
+    value.is_none_or(|source| {
+        !source.is_empty()
+            && source.len() <= 128
+            && source
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'.' | b'-'))
+    })
+}
+
+fn valid_real_preview_reference_key(value: &str) -> bool {
+    value.len() == 32 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+/// Number of deterministic WebMercator cells along one 512px MVT tile edge.
+/// Raise this to create more, smaller clusters; lower it to create fewer,
+/// larger clusters. The same value is used at every zoom, keeping parent/child
+/// lineage stable across adjacent tiles.
+const REAL_PREVIEW_CLUSTER_CELLS_PER_TILE_SIDE: f64 = 8.0;
+
+/// A development-only, lightweight MVT projection for the local private
+/// preview.  It deliberately contains neither candidate display fields nor
+/// source payload. At low zooms every placeable record contributes to one
+/// deterministic WebMercator hierarchy, including administrative references.
+/// Once that hierarchy resolves, those references remain labelled aggregates
+/// rather than being silently promoted to facility points.
+pub async fn get_real_preview_map_tile_handler(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Path((z, x, y)): Path<(u8, u32, u32)>,
+    Query(params): Query<RealPreviewTileParams>,
+) -> Response<axum::body::Body> {
+    if let Err(response) = real_preview_authorized(&state, &headers) {
+        return response;
+    }
+    // z=14 is intentionally the endpoint ceiling.  Above it MapLibre can
+    // overzoom the last tile while a selected candidate obtains its complete
+    // detail from the existing detail route.
+    if z > 14 || x >= (1_u32 << z) || y >= (1_u32 << z)
+        || !valid_real_preview_tile_source(params.source_id.as_deref())
+    {
+        return real_preview_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_map_tile",
+            "tile coordinates or source filter are invalid",
+        );
+    }
+    let Some(pool) = state.database else {
+        return real_preview_unavailable();
+    };
+    let Ok(client) = pool.get().await else {
+        return real_preview_unavailable();
+    };
+
+    // A tile is valid only for the newest source snapshot(s). Resolve that
+    // small boundary before looking up bytes, so an import naturally selects a
+    // fresh cache namespace without a cache-wide purge or mutable database
+    // coordination. The boundary never leaves this process.
+    let snapshot_boundary: String = match client
+        .query_one(
+            "WITH sources AS (SELECT source_id FROM real_preview.source_preview_runs UNION SELECT source_id FROM real_preview.source_manifests), latest AS (SELECT sources.source_id,COALESCE((SELECT run.snapshot_sha256 FROM real_preview.source_preview_runs run WHERE run.source_id=sources.source_id ORDER BY run.created_at DESC,run.run_id DESC LIMIT 1),(SELECT manifest.snapshot_sha256 FROM real_preview.source_manifests manifest WHERE manifest.source_id=sources.source_id ORDER BY manifest.retrieved_at DESC,manifest.snapshot_sha256 DESC LIMIT 1)) AS snapshot_sha256 FROM sources) SELECT COALESCE(string_agg(source_id || ':' || snapshot_sha256, ',' ORDER BY source_id), 'no-snapshots') FROM latest WHERE ($1::text IS NULL OR source_id=$1)",
+            &[&params.source_id],
+        )
+        .await
+    {
+        Ok(row) => row.get(0),
+        Err(_) => return real_preview_unavailable(),
+    };
+    let cache_key = RealPreviewMvtTileCacheKey {
+        contract_version: REAL_PREVIEW_MVT_CONTRACT_VERSION,
+        snapshot_boundary,
+        source_id: params.source_id.clone(),
+        z,
+        x,
+        y,
+    };
+    if let Some(bytes) = REAL_PREVIEW_MVT_TILE_CACHE.get(&cache_key) {
+        return real_preview_tile_response(StatusCode::OK, bytes.to_vec());
+    }
+
+    // Eight cells per tile side is roughly a 64px cluster radius at a 512px
+    // tile: close to V1's 50px visual clustering without producing the large,
+    // sparse blobs from the earlier four-cell projection. The grid is in
+    // EPSG:3857, anchored at the world origin, so feature keys and boundaries
+    // remain stable across adjacent tiles.
+    let grid_size = 40_075_016.685_578_49_f64 / f64::from(1_u32 << z)
+        / REAL_PREVIEW_CLUSTER_CELLS_PER_TILE_SIDE;
+    let cluster_zoom = z < 10;
+    let sql = r#"
+WITH
+-- Calculate the buffered geographic envelope before touching candidate
+-- coordinates. This is intentionally a raw lon/lat range predicate: it lets
+-- the existing partial B-tree map indexes discard the rest of the preview
+-- corpus before PostGIS transforms or grid aggregation occur.
+tile AS (
+  SELECT bounds,
+         ST_Transform(ST_Expand(bounds, $5::double precision), 4326) AS geographic_bounds
+  FROM (SELECT ST_TileEnvelope($1::integer, $2::integer, $3::integer) AS bounds) world_tile
+),
+sources AS (
+  SELECT source_id FROM real_preview.source_preview_runs
+  UNION
+  SELECT source_id FROM real_preview.source_manifests
+),
+latest AS (
+  SELECT sources.source_id,
+         COALESCE(
+           (SELECT run.snapshot_sha256 FROM real_preview.source_preview_runs run
+            WHERE run.source_id = sources.source_id
+            ORDER BY run.created_at DESC, run.run_id DESC LIMIT 1),
+           (SELECT manifest.snapshot_sha256 FROM real_preview.source_manifests manifest
+            WHERE manifest.source_id = sources.source_id
+            ORDER BY manifest.retrieved_at DESC, manifest.snapshot_sha256 DESC LIMIT 1)
+         ) AS snapshot_sha256
+  FROM sources
+),
+coordinate_candidates AS (
+  -- Keep the two coordinate representations separate. COALESCE in a single
+  -- predicate prevents PostgreSQL from using either of the purpose-built map
+  -- indexes and used to transform/group nearly every candidate for each tile.
+  SELECT c.candidate_id, c.source_id, c.location_class, c.coordinate_precision,
+         NULL::text AS display_geometry_source, c.longitude AS longitude, c.latitude AS latitude
+  FROM real_preview.candidates c CROSS JOIN tile
+  WHERE c.default_map_scope = true
+    AND c.display_geometry_source IS NULL
+    AND c.location_class = 'numeric_source_coordinate'
+    AND c.latitude BETWEEN -90 AND 90 AND c.longitude BETWEEN -180 AND 180
+    AND (c.latitude <> 0 OR c.longitude <> 0)
+    AND c.longitude BETWEEN ST_XMin(tile.geographic_bounds) AND ST_XMax(tile.geographic_bounds)
+    AND c.latitude BETWEEN ST_YMin(tile.geographic_bounds) AND ST_YMax(tile.geographic_bounds)
+    AND (c.source_id, c.snapshot_sha256) IN (SELECT source_id, snapshot_sha256 FROM latest)
+    AND ($4::text IS NULL OR c.source_id = $4)
+  UNION ALL
+  SELECT c.candidate_id, c.source_id, c.location_class, c.coordinate_precision,
+         c.display_geometry_source, c.display_longitude AS longitude, c.display_latitude AS latitude
+  FROM real_preview.candidates c CROSS JOIN tile
+  WHERE c.default_map_scope = true
+    AND c.display_geometry_source IS NOT NULL
+    AND c.display_latitude BETWEEN -90 AND 90 AND c.display_longitude BETWEEN -180 AND 180
+    AND (c.display_latitude <> 0 OR c.display_longitude <> 0)
+    AND c.display_longitude BETWEEN ST_XMin(tile.geographic_bounds) AND ST_XMax(tile.geographic_bounds)
+    AND c.display_latitude BETWEEN ST_YMin(tile.geographic_bounds) AND ST_YMax(tile.geographic_bounds)
+    AND (c.source_id, c.snapshot_sha256) IN (SELECT source_id, snapshot_sha256 FROM latest)
+    AND ($4::text IS NULL OR c.source_id = $4)
+),
+placeable AS (
+  SELECT candidate_id, source_id, location_class, coordinate_precision,
+         display_geometry_source,
+         ST_Transform(ST_SetSRID(ST_MakePoint(longitude, latitude), 4326), 3857) AS geom
+  FROM coordinate_candidates
+),
+numeric AS (
+  SELECT * FROM placeable WHERE display_geometry_source IS NULL
+),
+reference_features AS (
+  SELECT md5('city-reference:' || ST_X(geom)::text || ':' || ST_Y(geom)::text) AS feature_key,
+         NULL::text AS parent_key,
+         'city_reference'::text AS kind,
+         count(*)::integer AS count,
+         'city_reference_approximate'::text AS precision,
+         14::integer AS next_zoom,
+         ST_Centroid(ST_Collect(geom)) AS geom
+  FROM placeable
+  WHERE display_geometry_source IS NOT NULL
+  GROUP BY ST_X(geom), ST_Y(geom)
+),
+low_zoom_clusters AS (
+  SELECT md5('cluster:' || ST_X(group_geom)::text || ':' || ST_Y(group_geom)::text || ':' || $1::text) AS feature_key,
+         CASE WHEN $1::integer = 0 THEN NULL::text
+              ELSE md5('cluster:' || ST_X(ST_SnapToGrid(group_geom, $5::double precision * 2))::text || ':' || ST_Y(ST_SnapToGrid(group_geom, $5::double precision * 2))::text || ':' || ($1::integer - 1)::text)
+          END AS parent_key,
+         'cluster'::text AS kind,
+         sum(weight)::integer AS count,
+         'mixed_location_cluster'::text AS precision,
+         LEAST($1::integer + 1, 14) AS next_zoom,
+         ST_Centroid(ST_Collect(geom)) AS geom
+  FROM (
+    SELECT ST_SnapToGrid(geom, $5::double precision) AS group_geom, geom, 1::bigint AS weight FROM numeric
+    UNION ALL
+    SELECT ST_SnapToGrid(geom, $5::double precision) AS group_geom, geom, count(*)::bigint AS weight
+    FROM placeable WHERE display_geometry_source IS NOT NULL GROUP BY geom
+  ) cells
+  WHERE $6::boolean
+  GROUP BY group_geom
+),
+numeric_features AS (
+  SELECT candidate_id::text AS feature_key,
+         NULL::text AS parent_key,
+         'source_coordinate'::text AS kind,
+         1::integer AS count,
+         CASE WHEN coordinate_precision IN ('numeric','exact','source_numeric','source_coordinates','facility_coordinate') THEN 'source_numeric_pending_review'
+              WHEN coordinate_precision = 'source-provided' THEN 'approximate_source_provided_pending_review'
+              ELSE 'approximate_source_precision_unknown_pending_review' END AS precision,
+         14::integer AS next_zoom,
+         geom
+  FROM numeric WHERE NOT $6::boolean
+),
+features AS (
+  SELECT * FROM low_zoom_clusters
+  UNION ALL
+  SELECT * FROM numeric_features
+  UNION ALL
+  SELECT * FROM reference_features WHERE NOT $6::boolean
+),
+tile_features AS (
+   SELECT feature_key, parent_key, kind, count, precision, next_zoom,
+          -- A 512-unit MVT buffer duplicates edge symbols into neighbour tiles.
+          -- It pairs with MapLibre's tile fade so a pan never exposes a blank seam.
+          ST_AsMVTGeom(geom, tile.bounds, 4096, 512, true) AS geom
+  FROM features CROSS JOIN tile
+  WHERE geom && ST_Expand(tile.bounds, $5::double precision)
+)
+SELECT COALESCE(ST_AsMVT(tile_features, 'uec_preview', 4096, 'geom'), ''::bytea) FROM tile_features
+"#;
+    let row = match client
+        .query_one(
+            sql,
+            &[
+                &(i32::from(z)),
+                &(x as i32),
+                &(y as i32),
+                &params.source_id,
+                &grid_size,
+                &cluster_zoom,
+            ],
+        )
+        .await
+    {
+        Ok(row) => row,
+        Err(_) => return real_preview_unavailable(),
+    };
+    let bytes = REAL_PREVIEW_MVT_TILE_CACHE.insert(cache_key, row.get::<_, Vec<u8>>(0));
+    real_preview_tile_response(StatusCode::OK, bytes.to_vec())
+}
+
+/// Pages the real candidates represented by one administrative reference MVT
+/// feature.  This is intentionally separate from the tile projection: a tile
+/// has only an opaque key/count/geometry, while this authenticated endpoint
+/// returns the normal private-preview candidate envelope when the user asks to
+/// inspect that reference.
+pub async fn get_real_preview_reference_handler(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Path(reference_key): Path<String>,
+    Query(params): Query<RealPreviewReferenceParams>,
+) -> Response<axum::body::Body> {
+    if let Err(response) = real_preview_authorized(&state, &headers) {
+        return response;
+    }
+    let limit = params.limit.unwrap_or(100);
+    if !valid_real_preview_reference_key(&reference_key)
+        || !(1..=200).contains(&limit)
+        || !valid_real_preview_tile_source(params.source_id.as_deref())
+    {
+        return real_preview_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_map_reference",
+            "reference key, page, or source filter is invalid",
+        );
+    }
+    let Some(pool) = state.database else {
+        return real_preview_unavailable();
+    };
+    let Ok(client) = pool.get().await else {
+        return real_preview_unavailable();
+    };
+    let query_limit = limit + 1;
+    // The expression deliberately mirrors `reference_features` in the MVT
+    // query.  It only resolves administrative display geometries and retains
+    // the current-snapshot/source boundaries used by every preview endpoint.
+    let rows = match client.query(
+        "WITH sources AS (SELECT source_id FROM real_preview.source_preview_runs UNION SELECT source_id FROM real_preview.source_manifests), latest AS (SELECT sources.source_id,COALESCE((SELECT run.snapshot_sha256 FROM real_preview.source_preview_runs run WHERE run.source_id=sources.source_id ORDER BY run.created_at DESC,run.run_id DESC LIMIT 1),(SELECT source_manifest.snapshot_sha256 FROM real_preview.source_manifests source_manifest WHERE source_manifest.source_id=sources.source_id ORDER BY source_manifest.retrieved_at DESC,source_manifest.snapshot_sha256 DESC LIMIT 1)) AS snapshot_sha256 FROM sources) SELECT candidate.*,manifest.source_url,manifest.retrieved_at FROM real_preview.candidates candidate JOIN real_preview.source_manifests manifest ON manifest.snapshot_sha256=candidate.snapshot_sha256 AND manifest.source_id=candidate.source_id WHERE candidate.default_map_scope=true AND candidate.display_geometry_source IS NOT NULL AND candidate.display_latitude BETWEEN -90 AND 90 AND candidate.display_longitude BETWEEN -180 AND 180 AND (candidate.display_latitude<>0 OR candidate.display_longitude<>0) AND md5('city-reference:' || ST_X(ST_Transform(ST_SetSRID(ST_MakePoint(candidate.display_longitude,candidate.display_latitude),4326),3857))::text || ':' || ST_Y(ST_Transform(ST_SetSRID(ST_MakePoint(candidate.display_longitude,candidate.display_latitude),4326),3857))::text)=$1 AND (candidate.source_id,candidate.snapshot_sha256) IN (SELECT source_id,snapshot_sha256 FROM latest) AND ($2::uuid IS NULL OR candidate.candidate_id>$2) AND ($4::text IS NULL OR candidate.source_id=$4) ORDER BY candidate.candidate_id LIMIT $3",
+        &[&reference_key, &params.cursor, &query_limit, &params.source_id],
+    ).await {
+        Ok(rows) => rows,
+        Err(_) => return real_preview_unavailable(),
+    };
+    let has_next = rows.len() as i64 > limit;
+    let data: Vec<Value> = rows.iter().take(limit as usize).map(real_preview_candidate).collect();
+    let next = has_next.then(|| rows[(limit - 1) as usize].get::<_, uuid::Uuid>("candidate_id"));
+    real_preview_response(
+        StatusCode::OK,
+        json!({"api_version":"real-preview-v1","data":data,"meta":{"bounded":true,"next_cursor":next,"private_preview":true,"reference_key":reference_key}}),
+    )
 }
 
 pub async fn get_real_preview_list_handler(
@@ -2336,6 +2752,139 @@ mod v2_api_tests {
             .oneshot(Request::builder().uri("/dev/real-preview/viewport?west=-180&south=-90&east=180&north=90&limit=501")
                 .header("host", "127.0.0.1:8000").header("x-uec-dev-preview-token", "local-test-token-with-at-least-32-characters")
                 .body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.headers().get("cache-control").unwrap(), "no-store");
+    }
+
+    #[tokio::test]
+    async fn real_preview_map_tiles_reject_invalid_coordinates_and_source_filters() {
+        let state = ApiState {
+            database: None,
+            dev_preview_token: Some("local-test-token-with-at-least-32-characters".into()),
+            dev_test_release_id: None,
+            dev_test_release_token: None,
+        };
+        let router = Router::new()
+            .route(
+                "/dev/real-preview/map/tiles/{z}/{x}/{y}",
+                axum::routing::get(get_real_preview_map_tile_handler),
+            )
+            .with_state(state);
+        let response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/dev/real-preview/map/tiles/2/4/0")
+                    .header("host", "127.0.0.1:8000")
+                    .header(
+                        "x-uec-dev-preview-token",
+                        "local-test-token-with-at-least-32-characters",
+                    )
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.headers().get("cache-control").unwrap(), "no-store");
+
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri("/dev/real-preview/map/tiles/2/1/1?source_id=bad%2Fsource")
+                    .header("host", "127.0.0.1:8000")
+                    .header(
+                        "x-uec-dev-preview-token",
+                        "local-test-token-with-at-least-32-characters",
+                    )
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn real_preview_mvt_tile_cache_separates_snapshot_filter_and_coordinates() {
+        let cache = RealPreviewMvtTileCache::default();
+        let key = RealPreviewMvtTileCacheKey {
+            contract_version: REAL_PREVIEW_MVT_CONTRACT_VERSION,
+            snapshot_boundary: "snapshot-a".into(),
+            source_id: None,
+            z: 4,
+            x: 3,
+            y: 5,
+        };
+        cache.insert(key.clone(), vec![1, 2, 3]);
+        assert_eq!(cache.get(&key).as_deref(), Some(&[1, 2, 3][..]));
+
+        let changed_snapshot = RealPreviewMvtTileCacheKey {
+            snapshot_boundary: "snapshot-b".into(),
+            ..key.clone()
+        };
+        let source_filtered = RealPreviewMvtTileCacheKey {
+            source_id: Some("us.fsis".into()),
+            ..key.clone()
+        };
+        let adjacent_tile = RealPreviewMvtTileCacheKey { x: 4, ..key };
+        assert!(cache.get(&changed_snapshot).is_none());
+        assert!(cache.get(&source_filtered).is_none());
+        assert!(cache.get(&adjacent_tile).is_none());
+    }
+
+    #[test]
+    fn real_preview_cluster_lineage_partitions_children_without_crossing_sources() {
+        // This mirrors the world-anchored `ST_SnapToGrid` hierarchy in the tile
+        // query: one child zoom halves the grid size, so snapping the child cell
+        // to the parent grid is `round(child_cell / 2)`. The source id remains a
+        // query boundary; lineage must never merge counts across that boundary.
+        fn parent_cell(child_cell: i32) -> i32 { (f64::from(child_cell) / 2.0).round() as i32 }
+        let children = [
+            ("us.fsis", 4, 6, 3_i32),
+            ("us.fsis", 4, 6, 7_i32),
+            ("it.853-2004", 4, 6, 11_i32),
+            ("it.853-2004", 5, 7, 13_i32),
+        ];
+        let mut parents = std::collections::BTreeMap::<(&str, i32, i32), i32>::new();
+        for (source, x, y, count) in children {
+            *parents.entry((source, parent_cell(x), parent_cell(y))).or_default() += count;
+        }
+        assert_eq!(parents.get(&("us.fsis", 2, 3)), Some(&10));
+        assert_eq!(parents.get(&("it.853-2004", 2, 3)), Some(&11));
+        assert_eq!(parents.get(&("it.853-2004", 3, 4)), Some(&13));
+        assert_eq!(parents.values().sum::<i32>(), 34);
+        assert_ne!(parents.get(&("us.fsis", 2, 3)), parents.get(&("it.853-2004", 2, 3)));
+    }
+
+    #[tokio::test]
+    async fn real_preview_reference_rejects_non_opaque_keys_before_database_access() {
+        let state = ApiState {
+            database: None,
+            dev_preview_token: Some("local-test-token-with-at-least-32-characters".into()),
+            dev_test_release_id: None,
+            dev_test_release_token: None,
+        };
+        let router = Router::new()
+            .route(
+                "/dev/real-preview/map/references/{reference_key}",
+                axum::routing::get(get_real_preview_reference_handler),
+            )
+            .with_state(state);
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri("/dev/real-preview/map/references/not-an-opaque-key")
+                    .header("host", "127.0.0.1:8000")
+                    .header(
+                        "x-uec-dev-preview-token",
+                        "local-test-token-with-at-least-32-characters",
+                    )
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         assert_eq!(response.headers().get("cache-control").unwrap(), "no-store");
     }
