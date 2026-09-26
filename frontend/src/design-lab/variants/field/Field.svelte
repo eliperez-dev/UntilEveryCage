@@ -232,10 +232,10 @@
       role="search"
       onsubmit={(event) => event.preventDefault()}
     >
-      <label for="field-search">Search city/postal across preview records</label><input
+      <label for="field-search">Search across preview records</label><input
         id="field-search"
         type="search"
-        placeholder="City or postal code"
+        placeholder="Name, activity, source, or place"
         value={state.query}
         oninput={(event) =>
           dispatch({ type: "query", value: event.currentTarget.value })}

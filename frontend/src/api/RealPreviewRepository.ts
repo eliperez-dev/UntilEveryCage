@@ -23,6 +23,8 @@ export type RealPreviewCandidate = Readonly<{
   evidenceSummary: string | null;
   locationClass: 'numeric_source_coordinate' | 'city_postal' | 'unmapped_private_observation';
   displayPrecision: RealPreviewPrecision;
+  defaultMapScope: boolean;
+  mapScopeReason: string | null;
   countryCode: string | null;
   city: string | null;
   postalCode: string | null;
@@ -39,8 +41,8 @@ export type RealPreviewCandidate = Readonly<{
 }>;
 
 export type RealPreviewPage = Readonly<{ records: readonly RealPreviewCandidate[]; nextCursor: string | null }>;
-export type RealPreviewCounts = Readonly<{ facilityCandidateCount: number; numericCoordinateCount: number; cityPostalCount: number; mapVisibleCount:number }>;
-export type RealPreviewFacet = Readonly<{ sourceId: string; locationClass: string; count: number }>;
+export type RealPreviewCounts = Readonly<{ facilityCandidateCount: number; numericCoordinateCount: number; cityPostalCount: number; mapVisibleCount:number; unmappedCandidateCount: number | null; defaultMapScopeCandidateCount: number | null; outOfDefaultMapScopeCandidateCount: number | null }>;
+export type RealPreviewFacet = Readonly<{ sourceId: string; locationClass: string; defaultMapScope: boolean; count: number }>;
 
 export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 export class RealPreviewError extends Error {
@@ -108,6 +110,7 @@ export function parseRealPreviewCandidate(value: unknown): RealPreviewCandidate 
     throw new RealPreviewError('invalid-response', 'The private preview returned an invalid record.');
   }
   const kind = locationClass as RealPreviewCandidate['locationClass'];
+  if (row.default_map_scope !== undefined && typeof row.default_map_scope !== 'boolean') throw new RealPreviewError('invalid-response', 'The private preview returned an invalid map scope.');
   if (latitude === null !== (longitude === null)) throw new RealPreviewError('invalid-response', 'The private preview returned an incomplete coordinate pair.');
   if (latitude !== null && (latitude < -90 || latitude > 90 || longitude! < -180 || longitude! > 180 || (latitude === 0 && longitude === 0))) {
     throw new RealPreviewError('invalid-response', 'The private preview returned an unsafe coordinate.');
@@ -136,6 +139,8 @@ export function parseRealPreviewCandidate(value: unknown): RealPreviewCandidate 
     observedAt: optionalNullableString(row, 'observed_at'),
     evidenceSummary: optionalNullableString(row, 'evidence_summary'),
     locationClass: kind, displayPrecision: displayPrecision as RealPreviewPrecision,
+    defaultMapScope: row.default_map_scope === undefined ? true : row.default_map_scope as boolean,
+    mapScopeReason: optionalNullableString(row, 'map_scope_reason'),
     countryCode: nullableString(row.country_code), city: nullableString(row.city), postalCode: nullableString(row.postal_code),
     latitude, longitude, coordinatePrecision: nullableString(row.coordinate_precision),
     coordinateProvenance: optionalNullableString(row, 'coordinate_provenance'),
@@ -160,6 +165,8 @@ export function mapRealPreviewCandidate(candidate: RealPreviewCandidate): LabRec
     latitude: candidate.latitude,
     longitude: candidate.longitude,
     sourceId: candidate.sourceId,
+    defaultMapScope: candidate.defaultMapScope,
+    mapScopeReason: candidate.mapScopeReason,
     displayName: candidate.displayName,
     activityLabel: candidate.activityLabel,
     activitySource: candidate.activitySource,
@@ -184,7 +191,7 @@ export function mapRealPreviewCandidate(candidate: RealPreviewCandidate): LabRec
 }
 
 export function createRealPreviewRepository(fetcher: FetchLike = fetch): {
-  list(options?: { query?: string; sourceId?: string | null; cursor?: string | null; limit?: number; signal?: AbortSignal }): Promise<RealPreviewPage>;
+  list(options?: { query?: string; sourceId?: string | null; defaultMapScope?: boolean | null; cursor?: string | null; limit?: number; signal?: AbortSignal }): Promise<RealPreviewPage>;
   viewport(bounds: ViewportBounds, options?: { sourceId?: string | null; cursor?: string | null; limit?: number; signal?: AbortSignal }): Promise<RealPreviewPage>;
   reference(key: string, options?: { sourceId?: string | null; cursor?: string | null; limit?: number; signal?: AbortSignal }): Promise<RealPreviewPage>;
   detail(id: string, signal?: AbortSignal): Promise<RealPreviewCandidate>;
@@ -222,9 +229,10 @@ export function createRealPreviewRepository(fetcher: FetchLike = fetch): {
     return Object.freeze({ records: Object.freeze(envelope.data.map(parseRealPreviewCandidate)), nextCursor: meta.next_cursor as string | null });
   };
   return {
-    list({ query = '', sourceId = null, cursor = null, limit = 200, signal } = {}) {
+    list({ query = '', sourceId = null, defaultMapScope = null, cursor = null, limit = 200, signal } = {}) {
       const params = new URLSearchParams({ limit: String(limit) });
       if (sourceId) params.set('source_id', sourceId);
+      if (defaultMapScope !== null) params.set('default_map_scope', String(defaultMapScope));
       if (query.trim()) params.set('q', query.trim().slice(0, 100));
       if (cursor) params.set('cursor', cursor);
       return request(`/locations?${params}`, signal, parsePage);
@@ -258,7 +266,13 @@ export function createRealPreviewRepository(fetcher: FetchLike = fetch): {
         if (envelope.api_version !== 'real-preview-v1' || !values.every(value => Number.isInteger(value) && Number(value) >= 0)) throw new RealPreviewError('invalid-response', 'The private preview returned invalid counts.');
         const mapVisibleCount=data.map_visible_count;
         if(mapVisibleCount!==undefined&&(!Number.isInteger(mapVisibleCount)||Number(mapVisibleCount)<0))throw new RealPreviewError('invalid-response','The private preview returned invalid map counts.');
-        return Object.freeze({ facilityCandidateCount: Number(values[0]), numericCoordinateCount: Number(values[1]), cityPostalCount: Number(values[2]), mapVisibleCount: mapVisibleCount===undefined?Number(values[1]):Number(mapVisibleCount) });
+        const optionalCount = (field: string): number | null => {
+          const value = data[field];
+          if (value === undefined) return null;
+          if (!Number.isInteger(value) || Number(value) < 0) throw new RealPreviewError('invalid-response', 'The private preview returned invalid counts.');
+          return Number(value);
+        };
+        return Object.freeze({ facilityCandidateCount: Number(values[0]), numericCoordinateCount: Number(values[1]), cityPostalCount: Number(values[2]), mapVisibleCount: mapVisibleCount===undefined?Number(values[1]):Number(mapVisibleCount), unmappedCandidateCount: optionalCount('unmapped_candidate_count'), defaultMapScopeCandidateCount: optionalCount('default_map_scope_candidate_count'), outOfDefaultMapScopeCandidateCount: optionalCount('out_of_default_map_scope_candidate_count') });
       });
     },
     facets(signal) {
@@ -268,7 +282,8 @@ export function createRealPreviewRepository(fetcher: FetchLike = fetch): {
         return Object.freeze(envelope.data.map(item => {
           const row = object(item);
           if (typeof row.source_id !== 'string' || typeof row.location_class !== 'string' || !Number.isInteger(row.count) || Number(row.count) < 0) throw new RealPreviewError('invalid-response', 'The private preview returned invalid source summaries.');
-          return Object.freeze({ sourceId: row.source_id, locationClass: row.location_class, count: Number(row.count) });
+          if (row.default_map_scope !== undefined && typeof row.default_map_scope !== 'boolean') throw new RealPreviewError('invalid-response', 'The private preview returned invalid source summaries.');
+          return Object.freeze({ sourceId: row.source_id, locationClass: row.location_class, defaultMapScope: row.default_map_scope === undefined ? true : row.default_map_scope, count: Number(row.count) });
         }));
       });
     },

@@ -29,7 +29,9 @@
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
   const sourceLabel = (value: string | null) => value ?? "All source feeds";
   const treatment = (record: LabRecord) =>
-    record.latitude === null || record.longitude === null
+    record.defaultMapScope === false
+      ? `Outside the default map scope${record.mapScopeReason ? ` · ${record.mapScopeReason.replaceAll('_', ' ')}` : ''} · list/search only`
+      : record.latitude === null || record.longitude === null
       ? "No map position · list/search only"
       : record.precision === "city"
         ? "Administrative city reference · approximate"
@@ -162,12 +164,12 @@
   const sources = $derived(
     [...new Set(facets.map((facet) => facet.sourceId))].sort(),
   );
-  const unmapped = $derived(
+  const noMap = $derived(
     records.filter(
-      (record) => record.latitude === null || record.longitude === null,
+      (record) => record.defaultMapScope === false || record.latitude === null || record.longitude === null,
     ).length,
   );
-  const mapped = $derived(records.length - unmapped);
+  const mapped = $derived(records.length - noMap);
   const selected = $derived(
     records.find((record) => record.id === selectedId) ?? null,
   );
@@ -215,8 +217,9 @@
         <h1 id="database-title">Research index</h1>
         <p>
           Search all accessible preview candidates—not just the current map view.
-          The current API searches city and postal code; records without map
-          positions remain in these paginated results.
+          Search names, activities, sources, cities, and postal codes across
+          the private index. Records without map positions remain in these
+          paginated results.
         </p>
       </div>
       <dl class="index-context">
@@ -230,18 +233,18 @@
         </div>
         <div>
           <dt>No-map in loaded records</dt>
-          <dd>{unmapped}</dd>
+          <dd>{noMap}</dd>
         </div>
       </dl>
     </section>
     <section class="index-shell" aria-label="Database search">
       <aside class="facets" aria-label="Research filters">
         <label class="search-label" for="database-query"
-          >City/postal search</label
+          >Search records</label
         ><input
           id="database-query"
           type="search"
-          placeholder="City or postal code…"
+          placeholder="Name, activity, source, or place…"
           value={query}
           oninput={(event) => onSearch(event.currentTarget.value)}
         />
@@ -278,12 +281,8 @@
         >
           <h2 id="location-treatment-title">Location treatment</h2>
           <p>Mapped in loaded records: {mapped}</p>
-          <p>No map position in loaded records: {unmapped}</p>
-          <small
-              >The current API searches city and postal fields across the full
-              candidate index. Name, activity, source, and evidence search are not
-              available yet.</small
-          >
+          <p>Not on the default map in loaded records: {noMap}</p>
+          <small>Search covers safe name, activity, source, city, and postal fields. Evidence text is not searched.</small>
         </section>
       </aside>
       <section class="records" aria-live="polite">
@@ -295,7 +294,7 @@
                 : status === "empty"
                   ? "No matching records"
                   : `${records.length} loaded records`}</strong
-            ><span>{query ? `City/postal query: “${query}”` : "All accessible candidates"}</span>
+            ><span>{query ? `Query: “${query}”` : "All accessible candidates"}</span>
           </p>
           <p class="quiet">
             Results retain source and location context across API pages.
@@ -315,9 +314,9 @@
             <p>{error}</p>
             <button type="button" onclick={() => void load(true)}>Retry</button>
           </div>{:else if status === "empty"}<div class="state-card">
-            <strong>No records match this city/postal search.</strong>
+            <strong>No records match this search.</strong>
             <p>
-              Try another city or postal code, or select a source feed. Records
+              Try another term or select a source feed. Records
               without map positions remain listed when the API returns them.
             </p>
             <button
@@ -337,7 +336,7 @@
                     class="record-place"
                     >{record.locality}, {record.country}</span
                   ><span
-                    class:unmapped={record.latitude === null || record.longitude === null}
+                    class:unmapped={record.defaultMapScope === false || record.latitude === null || record.longitude === null}
                     class="record-treatment">{treatment(record)}</span
                   ><span class="record-source"
                     >{record.sourceName ?? record.sourceId ?? "Source unavailable"}</span
@@ -392,7 +391,7 @@
             </div>
           </dl>
           <a class="dossier-link" href={`#/records/${encodeURIComponent(selected.id)}`}>Open full record <span>→</span></a>
-          {#if selected.latitude !== null && selected.longitude !== null}<a class="dossier-link" href={mapHref(selected.id)}>Open in map workspace <span>→</span></a>{/if}
+          {#if selected.defaultMapScope !== false && selected.latitude !== null && selected.longitude !== null}<a class="dossier-link" href={mapHref(selected.id)}>Open in map workspace <span>→</span></a>{/if}
           <p class="quiet">
             Fields not supplied by the current private-preview API remain unavailable.
           </p>{:else}<p class="eyebrow">SELECT A RECORD</p>

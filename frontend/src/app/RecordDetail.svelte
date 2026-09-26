@@ -50,6 +50,10 @@
     coordinatePrecision?: string | null;
     coordinateProvenance?: string | null;
     coordinate_provenance?: string | null;
+    defaultMapScope?: boolean | null;
+    default_map_scope?: boolean | null;
+    mapScopeReason?: string | null;
+    map_scope_reason?: string | null;
     displayPrecision?: string | null;
     display_precision?: string | null;
   };
@@ -134,6 +138,12 @@
       'coordinateProvenance' in record ? record.coordinateProvenance : null,
       'coordinate_provenance' in record ? record.coordinate_provenance : null,
     ),
+  );
+  const defaultMapScope = $derived(
+    'defaultMapScope' in record ? record.defaultMapScope : 'default_map_scope' in record ? record.default_map_scope : null,
+  );
+  const mapScopeReason = $derived(
+    value('mapScopeReason' in record ? record.mapScopeReason : null, 'map_scope_reason' in record ? record.map_scope_reason : null),
   );
   const factualStatus = $derived(
     value(
@@ -286,6 +296,12 @@
         <div>
           <dt>Map reference origin</dt>
           <dd>{humanizeValue(coordinateProvenance)}</dd>
+        </div>
+      {/if}
+      {#if defaultMapScope === false}
+        <div>
+          <dt>Map scope</dt>
+          <dd>Outside the default map{#if mapScopeReason} · {humanizeValue(mapScopeReason)}{/if}</dd>
         </div>
       {/if}
     </dl>

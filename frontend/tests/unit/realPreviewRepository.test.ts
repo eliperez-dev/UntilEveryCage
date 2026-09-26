@@ -70,6 +70,8 @@ describe('private real-preview repository', () => {
       observed_at: null,
       evidence_summary: 'Summary supplied by the allowlisted API.',
       coordinate_provenance: 'municipality_admin_centre',
+      default_map_scope: false,
+      map_scope_reason: 'outside_default_map_scope',
     }));
     expect(parsed).toMatchObject({
       displayName: 'Example facility', activityLabel: null, activitySource: 'source classification',
@@ -78,6 +80,8 @@ describe('private real-preview repository', () => {
       retrievedAt: '2026-01-02T03:04:05Z', observedAt: null,
       evidenceSummary: 'Summary supplied by the allowlisted API.',
       coordinateProvenance: 'municipality_admin_centre',
+      defaultMapScope: false,
+      mapScopeReason: 'outside_default_map_scope',
     });
     const absent = parseRealPreviewCandidate(record());
     expect(absent.displayName).toBeNull();
@@ -114,13 +118,13 @@ describe('private real-preview repository', () => {
 
   it('maps detail, aggregate counts, and source facets from the API envelopes', async () => {
     const fetcher: FetchLike = async input => {
-      if (String(input).endsWith('/counts')) return response({ api_version: 'real-preview-v1', data: { facility_candidate_count: 35073, numeric_coordinate_count: 31504, city_postal_count: 3569 } });
-      if (String(input).endsWith('/facets')) return response({ api_version: 'real-preview-v1', data: [{ source_id: 'fr.dgal.section-i', location_class: 'numeric_source_coordinate', count: 100 }] });
+      if (String(input).endsWith('/counts')) return response({ api_version: 'real-preview-v1', data: { facility_candidate_count: 35073, numeric_coordinate_count: 31504, city_postal_count: 3569, unmapped_candidate_count: 20, default_map_scope_candidate_count: 35000, out_of_default_map_scope_candidate_count: 73 } });
+      if (String(input).endsWith('/facets')) return response({ api_version: 'real-preview-v1', data: [{ source_id: 'fr.dgal.section-i', location_class: 'numeric_source_coordinate', default_map_scope: true, count: 100 }] });
       return response({ api_version: 'real-preview-v1', data: record() });
     };
     const repository = createRealPreviewRepository(fetcher);
     expect((await repository.detail(candidateId)).sourceId).toBe('fr.dgal.section-i');
-    expect(await repository.counts()).toEqual({ facilityCandidateCount: 35073, numericCoordinateCount: 31504, cityPostalCount: 3569, mapVisibleCount: 31504 });
-    expect(await repository.facets()).toEqual([{ sourceId: 'fr.dgal.section-i', locationClass: 'numeric_source_coordinate', count: 100 }]);
+    expect(await repository.counts()).toEqual({ facilityCandidateCount: 35073, numericCoordinateCount: 31504, cityPostalCount: 3569, mapVisibleCount: 31504, unmappedCandidateCount: 20, defaultMapScopeCandidateCount: 35000, outOfDefaultMapScopeCandidateCount: 73 });
+    expect(await repository.facets()).toEqual([{ sourceId: 'fr.dgal.section-i', locationClass: 'numeric_source_coordinate', defaultMapScope: true, count: 100 }]);
   });
 });
