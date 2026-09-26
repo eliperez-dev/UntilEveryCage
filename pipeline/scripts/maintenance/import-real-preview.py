@@ -286,6 +286,14 @@ def hash_snapshot(manifests: dict[str, tuple[Path, dict[str, Any]]]) -> str:
     return digest.hexdigest()
 
 
+def snapshot_identity(manifests: dict[str, tuple[Path, dict[str, Any]]],
+                      geometry_fingerprint: str | None = None) -> str:
+    snapshot = hash_snapshot(manifests)
+    if geometry_fingerprint is not None:
+        snapshot = hashlib.sha256(f"{snapshot}:{geometry_fingerprint}".encode("ascii")).hexdigest()
+    return snapshot
+
+
 def manifest_provenance(manifest: dict[str, Any]) -> tuple[str, str, int, str, datetime, str, str]:
     source_hash = manifest.get("checksum_sha256")
     normalized_hash = manifest.get("normalized_sha256")
@@ -749,12 +757,12 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
     excluded_sources = excluded_sibling_sources(root)
     ignored_alternates = ignored_alternate_handoffs(root)
     artifacts = resolve_artifacts(root, manifests)
+    snapshot = snapshot_identity(manifests)
     if source_id is not None:
         allowed_fields = policy.get("allowed_preview_fields")
         if not isinstance(allowed_fields, list) or not all(isinstance(field, str) for field in allowed_fields):
             raise ImportFailure("preview_policy_invalid")
         validate_preview_fields(artifacts[source_id], set(allowed_fields))
-        snapshot = hash_snapshot(manifests)
         if municipality_index is not None:
             # Retrieval timestamps change on each official refresh; only geography and
             # the approved resolution policy belong in the idempotency identity.
@@ -762,7 +770,7 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
                 "resolver_version": policy.get("display_policy", {}).get("version"),
                 "municipalities": municipality_index,
             }, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")).hexdigest()
-            snapshot = hashlib.sha256(f"{snapshot}:{geometry_fingerprint}".encode("ascii")).hexdigest()
+            snapshot = snapshot_identity(manifests, geometry_fingerprint)
     readiness = json_object(REPORT) if source_id is None else {}
     observations = readiness.get("observations", {})
     expected = {

@@ -9,6 +9,27 @@ import { expect, test, type Page } from '@playwright/test';
 
 const enabled = Boolean(process.env.UEC_REAL_PREVIEW_URL);
 const query = process.env.UEC_PERF_SEARCH_QUERY ?? 'ROMA CAPITALE';
+// Use a deterministic European fallback that exercises the current Italy/France
+// private-preview fixtures. Deployments with other enabled sources can provide
+// their own safe map center without changing the measurement harness.
+function readViewport(): { lat: number; lon: number; zoom: number } {
+  const raw = process.env.UEC_PERF_VIEWPORT ?? '46.5,2.2,5';
+  const [lat, lon, zoom, ...extra] = raw.split(',').map(Number);
+  if (extra.length || !Number.isFinite(lat) || lat < -85 || lat > 85 ||
+      !Number.isFinite(lon) || lon < -180 || lon > 180 ||
+      !Number.isFinite(zoom) || zoom < 0 || zoom > 22) {
+    throw new Error('UEC_PERF_VIEWPORT must be lat,lon,zoom within Web Mercator bounds.');
+  }
+  return { lat, lon, zoom };
+}
+const viewport = readViewport();
+const mapRoute = (zoom = viewport.zoom, selectedId?: string) => {
+  const params = new URLSearchParams({
+    f1a: 'field', lat: String(viewport.lat), lon: String(viewport.lon), z: String(zoom), list: 'closed',
+  });
+  if (selectedId) params.set('selected', selectedId);
+  return `/#/map?${params.toString()}`;
+};
 type InteractionSample = {
   /** Number of actual MVT HTTP responses observed during this interaction. */
   mvtResponses?: number;
@@ -188,7 +209,7 @@ test.describe('real-preview map performance', () => {
     );
 
     const initialStart = performance.now();
-    await page.goto('/#/map?f1a=field&lat=39.5&lon=-98.35&z=3.4&list=closed', { waitUntil: 'domcontentloaded' });
+    await page.goto(mapRoute(), { waitUntil: 'domcontentloaded' });
     initialListResponse = await initialList;
     const tileResponse = await firstTile;
     expect(tileResponse.headers()['content-type']).toContain('application/vnd.mapbox-vector-tile');
@@ -224,21 +245,21 @@ test.describe('real-preview map performance', () => {
       const url = new URL(response.url());
       return url.pathname.endsWith('/dev/real-preview/locations') && url.searchParams.get('q') === query && response.status() === 200;
     });
-    await page.getByRole('searchbox', { name: /search city\/postal across preview records/i }).fill(query);
+    await page.getByRole('searchbox', { name: /search across preview records/i }).fill(query);
     await searchResponse;
     await expect(page.getByRole('button', { name: /results/i })).toBeVisible();
     reportMetric(metrics, 'searchResults', searchStart);
 
     const detailStart = performance.now();
     const detailResponse = page.waitForResponse(response => new URL(response.url()).pathname.endsWith(`/locations/${selectedId}`) && response.status() === 200);
-    await page.goto(`/#/map?f1a=field&selected=${selectedId}&lat=39.5&lon=-98.35&z=4&list=closed`, { waitUntil: 'domcontentloaded' });
+    await page.goto(mapRoute(Math.max(4, viewport.zoom - 1), selectedId), { waitUntil: 'domcontentloaded' });
     await detailResponse;
     await expect(page.locator('.reading-sheet.dossier')).toBeVisible();
     reportMetric(metrics, 'detailSelection', detailStart);
 
-    // Belgium provides city-reference features in the populated preview. The click is
-    // projected through MapLibre, so this measures the same canvas interaction users use.
-    await page.goto('/#/map?f1a=field&lat=50.7&lon=4.6&z=10&list=closed', { waitUntil: 'domcontentloaded' });
+    // Try the configured preview center for optional reference-member timing. The
+    // click is projected through MapLibre, matching the canvas interaction users use.
+    await page.goto(mapRoute(Math.min(12, viewport.zoom + 5)), { waitUntil: 'domcontentloaded' });
     await waitForMvtLayers(page);
     const reference = await page.evaluate(() => {
       const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;

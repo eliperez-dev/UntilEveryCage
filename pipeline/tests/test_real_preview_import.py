@@ -43,6 +43,14 @@ class RealPreviewImporterTests(unittest.TestCase):
         self.assertEqual(digest, IMPORTER.hash_snapshot(manifests))
         self.assertNotEqual(digest, old_digest)
 
+    def test_all_source_import_has_snapshot_identity(self):
+        manifests = {
+            source: (Path("unused"), {"normalized_sha256": hashlib.sha256(source.encode()).hexdigest()})
+            for source in sorted(IMPORTER.LEGACY_ALLOWED)
+        }
+        self.assertEqual(IMPORTER.snapshot_identity(manifests), IMPORTER.hash_snapshot(manifests))
+        self.assertEqual(len(IMPORTER.snapshot_identity(manifests)), 64)
+
     def test_precision_comes_from_coordinate_and_documented_precision_fields(self):
         numeric = IMPORTER.parse_row("it.853-2004", {
             "source_id": "it.853-2004", "source_record_key": "sanitized-fixture",
