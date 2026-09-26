@@ -9,7 +9,7 @@ export type LabFilters = Readonly<{ categories: readonly string[]; precisions: r
 export type LabRecord = Readonly<{
   id: string; name: string; category: string; country: string; locality: string;
   precision: Precision; latitude: number | null; longitude: number | null;
-  sourceId?: string; reviewStatus?: string; previewLabel?: string; coordinatePrecision?: string | null;
+  sourceId?: string; reviewStatus?: string; previewLabel?: string; coordinatePrecision?: string | null; coordinateProvenance?: string | null;
   factualReviewStatus?: string; privacyScreeningStatus?: string; publicationStatus?: string;
   projectApproval?: boolean;
 }>;

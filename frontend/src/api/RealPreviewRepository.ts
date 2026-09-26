@@ -29,6 +29,7 @@ export type RealPreviewCandidate = Readonly<{
   latitude: number | null;
   longitude: number | null;
   coordinatePrecision: string | null;
+  coordinateProvenance: string | null;
   coordinateReviewStatus: string;
   factualReviewStatus: string;
   privacyScreeningStatus: string;
@@ -137,6 +138,7 @@ export function parseRealPreviewCandidate(value: unknown): RealPreviewCandidate 
     locationClass: kind, displayPrecision: displayPrecision as RealPreviewPrecision,
     countryCode: nullableString(row.country_code), city: nullableString(row.city), postalCode: nullableString(row.postal_code),
     latitude, longitude, coordinatePrecision: nullableString(row.coordinate_precision),
+    coordinateProvenance: optionalNullableString(row, 'coordinate_provenance'),
     coordinateReviewStatus: row.coordinate_review_status, factualReviewStatus: row.factual_review_status,
     privacyScreeningStatus: row.privacy_screening_status, projectApproval: false,
     publicationStatus: row.publication_status, previewLabel: row.preview_label,
@@ -177,6 +179,7 @@ export function mapRealPreviewCandidate(candidate: RealPreviewCandidate): LabRec
       ? 'Approximate source coordinate · precision unknown; private preview only · not approved or published'
       : candidate.previewLabel,
     coordinatePrecision: candidate.coordinatePrecision,
+    coordinateProvenance: candidate.coordinateProvenance,
   });
 }
 

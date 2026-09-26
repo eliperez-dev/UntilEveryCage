@@ -305,9 +305,9 @@
     </details>
   </header>
   <section class="map-stage" aria-label="Investigative map field">
-    {#if state.scenario === "loading"}<div class="status" role="status">
+    {#if mode === "synthetic" && state.scenario === "loading"}<div class="status" role="status">
         Loading records…
-      </div>{:else if state.scenario === "error"}<div
+      </div>{:else if mode === "synthetic" && state.scenario === "error"}<div
         class="status"
         role="alert"
       >
@@ -336,7 +336,7 @@
       >
         Loading search results…
       </div>{/if}
-    {#if state.scenario === "empty" || (state.scenario !== "loading" && state.scenario !== "error" && ((mode === "real-preview" && dataStatus === "empty") || (mode === "synthetic" && records.length === 0)))}<div
+    {#if (mode === "synthetic" && (state.scenario === "empty" || (state.scenario !== "loading" && state.scenario !== "error" && records.length === 0))) || (mode === "real-preview" && dataStatus === "empty")}<div
         class="status"
         role="status"
       >

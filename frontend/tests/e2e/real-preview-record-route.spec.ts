@@ -32,3 +32,9 @@ test('map selection can open the same full record without losing the route', asy
   await expect.poll(() => new URL(page.url()).hash).toMatch(/^#\/records\/[0-9a-f-]{36}$/i);
   await expect(page.getByRole('article')).toBeVisible();
 });
+
+test('fixture scenario flags cannot replace the populated real map', async ({ page }) => {
+  await page.goto('./#/map?f1a=field&scenario=empty');
+  await expect(page.getByRole('region', { name: 'Map showing records' })).toBeVisible();
+  await expect(page.getByText('No records match this search and these filters.')).toHaveCount(0);
+});

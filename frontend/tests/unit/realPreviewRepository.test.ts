@@ -69,6 +69,7 @@ describe('private real-preview repository', () => {
       retrieved_at: '2026-01-02T03:04:05Z',
       observed_at: null,
       evidence_summary: 'Summary supplied by the allowlisted API.',
+      coordinate_provenance: 'municipality_admin_centre',
     }));
     expect(parsed).toMatchObject({
       displayName: 'Example facility', activityLabel: null, activitySource: 'source classification',
@@ -76,6 +77,7 @@ describe('private real-preview repository', () => {
       sourceUrl: 'https://example.test/source', sourceRecordUrl: null,
       retrievedAt: '2026-01-02T03:04:05Z', observedAt: null,
       evidenceSummary: 'Summary supplied by the allowlisted API.',
+      coordinateProvenance: 'municipality_admin_centre',
     });
     const absent = parseRealPreviewCandidate(record());
     expect(absent.displayName).toBeNull();

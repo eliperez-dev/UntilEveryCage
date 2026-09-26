@@ -48,6 +48,8 @@
     projectApproval?: string | boolean | null;
     previewLabel?: string | null;
     coordinatePrecision?: string | null;
+    coordinateProvenance?: string | null;
+    coordinate_provenance?: string | null;
     displayPrecision?: string | null;
     display_precision?: string | null;
   };
@@ -125,6 +127,12 @@
       record.reviewStatus,
       'coordinateReviewStatus' in record ? record.coordinateReviewStatus : null,
       'coordinate_review_status' in record ? record.coordinate_review_status : null,
+    ),
+  );
+  const coordinateProvenance = $derived(
+    value(
+      'coordinateProvenance' in record ? record.coordinateProvenance : null,
+      'coordinate_provenance' in record ? record.coordinate_provenance : null,
     ),
   );
   const factualStatus = $derived(
@@ -272,6 +280,12 @@
         <div>
           <dt>Coordinate review</dt>
           <dd>{humanizeValue(coordinateStatus)}</dd>
+        </div>
+      {/if}
+      {#if coordinateProvenance}
+        <div>
+          <dt>Map reference origin</dt>
+          <dd>{humanizeValue(coordinateProvenance)}</dd>
         </div>
       {/if}
     </dl>
