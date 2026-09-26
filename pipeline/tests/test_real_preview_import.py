@@ -147,8 +147,8 @@ class RealPreviewImporterTests(unittest.TestCase):
         sql, params = database.candidates[0]
         self.assertIn("default_map_scope,map_scope_reason", sql)
         self.assertEqual(params[4], "unmapped_private_observation")
-        self.assertFalse(params[23])
-        self.assertEqual(params[24], "general-food")
+        self.assertFalse(params[22])
+        self.assertEqual(params[23], "general-food")
 
     def test_french_commune_resolution_requires_department_to_disambiguate(self):
         reference = {

@@ -32,18 +32,20 @@ class RealPreviewPostgisTests(unittest.TestCase):
                 connection.execute(insert, row)
                 coarse_observation_id = connection.execute(insert + " RETURNING preview_id", ("a" * 64, "fr.dgal.section-i", "synthetic-coarse-key", "city_postal", True,
                     "FR", "Example", None, None, None, "city")).fetchone()[0]
-                connection.execute(insert, ("a" * 64, "us.fsis", "synthetic-private-key", "unmapped_private_observation", False,
-                    "US", None, None, None, None, None))
+                unmapped_observation_id = connection.execute(insert + " RETURNING preview_id", ("a" * 64, "us.fsis", "synthetic-private-key", "unmapped_private_observation", True,
+                    "US", None, None, None, None, None)).fetchone()[0]
                 candidate_insert = """INSERT INTO real_preview.candidates
                     (snapshot_sha256,source_id,source_group_key,representative_observation_id,location_class,country_code,city,latitude,longitude,observation_count,
-                     display_name,activity_label,activity_source,evidence_summary,source_record_url,source_name,observed_at)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,1,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING"""
+                     display_name,activity_label,activity_source,evidence_summary,source_record_url,source_name,observed_at,default_map_scope,map_scope_reason)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,1,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING"""
                 numeric_candidate = ("a" * 64, "it.853-2004", "source-group-1", numeric_observation_id, "numeric_source_coordinate", "IT", "Example", 44.1, 11.2,
-                    "Synthetic Facility", "Meat processing", "source", "Synthetic evidence summary", "https://example.test/record", "Synthetic source", "2026-09-20T12:00:00Z")
+                    "Synthetic Facility", "Meat processing", "source", "Synthetic evidence summary", "https://example.test/record", "Synthetic source", "2026-09-20T12:00:00Z", True, None)
                 connection.execute(candidate_insert, numeric_candidate)
                 connection.execute(candidate_insert, numeric_candidate)
                 connection.execute(candidate_insert, ("a" * 64, "fr.dgal.section-i", "source-group-2", coarse_observation_id, "city_postal", "FR", "Example", None, None,
-                    None, None, None, None, None, None, None))
+                    None, None, None, None, None, None, None, True, None))
+                connection.execute(candidate_insert, ("a" * 64, "us.fsis", "source-group-3", unmapped_observation_id, "unmapped_private_observation", "US", None, None, None,
+                    None, None, None, None, None, None, None, False, "general-food"))
                 safe_fields = connection.execute("""
                     SELECT display_name,activity_label,activity_source,evidence_summary,source_record_url,source_name,observed_at
                     FROM real_preview.candidates WHERE source_group_key='source-group-1'
@@ -54,7 +56,7 @@ class RealPreviewPostgisTests(unittest.TestCase):
                     with connection.transaction():
                         connection.execute(candidate_insert, ("a" * 64, "it.853-2004", "source-group-invalid-url", numeric_observation_id,
                             "numeric_source_coordinate", "IT", "Example", 44.1, 11.2, None, None, None, None,
-                            "http://example.test/record", None, None))
+                            "http://example.test/record", None, None, True, None))
                 coarse_candidate_id = connection.execute(
                     "SELECT candidate_id FROM real_preview.candidates WHERE source_group_key='source-group-2'"
                 ).fetchone()[0]
@@ -78,11 +80,23 @@ class RealPreviewPostgisTests(unittest.TestCase):
                 ).fetchone()[0], "locality_reference_coarse")
                 with self.assertRaises(psycopg.Error):
                     with connection.transaction():
-                        connection.execute(candidate_insert, ("a" * 64, "it.853-2004", "source-group-zero", numeric_observation_id, "numeric_source_coordinate", "IT", "Example", 0.0, 0.0))
+                        connection.execute(candidate_insert, ("a" * 64, "it.853-2004", "source-group-zero", numeric_observation_id, "numeric_source_coordinate", "IT", "Example", 0.0, 0.0,
+                            None, None, None, None, None, None, None, True, None))
                 self.assertEqual(connection.execute("SELECT count(*) FROM real_preview.observations").fetchone()[0], 3)
-                self.assertEqual(connection.execute("SELECT count(*) FROM real_preview.observations WHERE facility_candidate").fetchone()[0], 2)
+                self.assertEqual(connection.execute("SELECT count(*) FROM real_preview.observations WHERE facility_candidate").fetchone()[0], 3)
                 self.assertEqual(connection.execute("SELECT count(*) FROM real_preview.observations WHERE location_class='unmapped_private_observation'").fetchone()[0], 1)
-                self.assertEqual(connection.execute("SELECT count(*) FROM real_preview.candidates").fetchone()[0], 2)
+                self.assertEqual(connection.execute("SELECT count(*) FROM real_preview.candidates").fetchone()[0], 3)
+                scope_counts = connection.execute("""
+                    SELECT count(*) FILTER (WHERE default_map_scope),
+                           count(*) FILTER (WHERE NOT default_map_scope),
+                           count(*) FILTER (WHERE location_class='unmapped_private_observation'),
+                           count(*) FILTER (WHERE default_map_scope AND location_class='numeric_source_coordinate')
+                    FROM real_preview.candidates
+                """).fetchone()
+                self.assertEqual(scope_counts, (2, 1, 1, 1))
+                self.assertEqual(connection.execute(
+                    "SELECT map_scope_reason FROM real_preview.candidates WHERE source_group_key='source-group-3'"
+                ).fetchone()[0], "general-food")
                 for relation in (
                     "uec.release_members",
                     "uec.map_facilities_public_discovery",
