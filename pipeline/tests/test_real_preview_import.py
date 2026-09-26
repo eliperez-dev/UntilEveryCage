@@ -36,6 +36,13 @@ class RealPreviewImporterTests(unittest.TestCase):
             }) + "\n", encoding="utf-8")
             IMPORTER.validate_preview_fields(path, {"establishment_id"})
 
+    def test_candidate_projection_version_creates_a_new_immutable_snapshot_identity(self):
+        manifests = {"dk.smiley": (Path("unused"), {"normalized_sha256": "a" * 64})}
+        digest = IMPORTER.hash_snapshot(manifests)
+        old_digest = hashlib.sha256(b"dk.smiley" + bytes.fromhex("a" * 64)).hexdigest()
+        self.assertEqual(digest, IMPORTER.hash_snapshot(manifests))
+        self.assertNotEqual(digest, old_digest)
+
     def test_precision_comes_from_coordinate_and_documented_precision_fields(self):
         numeric = IMPORTER.parse_row("it.853-2004", {
             "source_id": "it.853-2004", "source_record_key": "sanitized-fixture",
@@ -81,6 +88,67 @@ class RealPreviewImporterTests(unittest.TestCase):
         self.assertIsNone(IMPORTER.safe_https_url("https://user@example.test/record"))
         self.assertIsNone(IMPORTER.safe_https_url("https://example.test/record?token=private"))
         self.assertEqual(IMPORTER.SOURCE_NAMES["us.fsis"], "USDA Food Safety and Inspection Service")
+    def test_denmark_default_map_scope_classification_is_preserved(self):
+        row = IMPORTER.parse_row("dk.smiley", {
+            "source_id": "dk.smiley", "source_record_key": "synthetic-row",
+            "normalized": {
+                "establishment_id": "synthetic-group",
+                "city": "Example", "postal_code": "1234", "in_default_map_scope": False,
+                "classification_optional_filter": "general-food",
+            },
+        })
+        self.assertEqual(row[1], "city_postal")
+        self.assertFalse(row[16])
+        self.assertEqual(row[17], "general-food")
+        self.assertEqual(row[18], "synthetic-group")
+
+        unclassified = IMPORTER.parse_row("dk.smiley", {
+            "source_id": "dk.smiley", "source_record_key": "synthetic-row",
+            "normalized": {"establishment_id": "synthetic-group"},
+        })
+        self.assertFalse(unclassified[16], "missing Denmark scope classification must fail closed")
+
+    def test_unmapped_source_group_is_a_listable_candidate_without_coordinates(self):
+        row = IMPORTER.parse_row("dk.smiley", {
+            "source_id": "dk.smiley", "source_record_key": "synthetic-row",
+            "normalized": {"establishment_id": "synthetic-group", "name": "Example", "in_default_map_scope": True},
+        })
+        self.assertEqual(row[1], "unmapped_private_observation")
+        self.assertIsNone(row[5])
+        self.assertIsNone(row[6])
+        self.assertTrue(row[16])
+        self.assertEqual(row[18], "synthetic-group")
+
+    def test_import_creates_unmapped_source_group_candidate_with_scope_metadata(self):
+        class Result:
+            def fetchone(self):
+                return ("opaque-preview-observation",)
+
+        class Database:
+            def __init__(self):
+                self.candidates = []
+
+            def execute(self, sql, params=()):
+                if "INSERT INTO real_preview.candidates" in sql:
+                    self.candidates.append((sql, params))
+                return Result()
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "rows.jsonl"
+            path.write_text(json.dumps({
+                "source_id": "dk.smiley", "source_record_key": "synthetic-row",
+                "normalized": {"establishment_id": "synthetic-group", "in_default_map_scope": False,
+                    "classification_optional_filter": "general-food"},
+            }) + "\n", encoding="utf-8")
+            database = Database()
+            imported = IMPORTER.import_rows(database, "dk.smiley", path, 1, "a" * 64)
+        self.assertEqual(imported[3], 1)
+        self.assertEqual(len(database.candidates), 1)
+        sql, params = database.candidates[0]
+        self.assertIn("default_map_scope,map_scope_reason", sql)
+        self.assertEqual(params[4], "unmapped_private_observation")
+        self.assertFalse(params[23])
+        self.assertEqual(params[24], "general-food")
 
     def test_french_commune_resolution_requires_department_to_disambiguate(self):
         reference = {

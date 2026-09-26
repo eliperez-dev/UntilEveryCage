@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 import psycopg
 
 POLICY = Path(__file__).parents[2] / "preview-enabled-sources.json"
+SNAPSHOT_PROJECTION_VERSION = "real-preview-candidate-projection-v2"
 LEGACY_ALLOWED = {"fr.dgal.section-i", "fr.dgal.section-ii", "us.fsis"}
 PREVIEW_ENABLED = set(json.loads(POLICY.read_text(encoding="utf-8"))["sources"])
 ALLOWED = LEGACY_ALLOWED | PREVIEW_ENABLED
@@ -266,13 +267,18 @@ def parse_row(source: str, row: Any) -> tuple[Any, ...]:
     activity_source = "source" if activity else None
     evidence_summary = safe_preview_text(pick(normalized, "evidence_summary"), 500)
     record_url = safe_https_url(pick(normalized, "source_record_url"))
+    map_scope = normalized.get("in_default_map_scope", source != "dk.smiley")
+    if not isinstance(map_scope, bool):
+        map_scope = source != "dk.smiley"
+    map_scope_reason = safe_preview_text(pick(normalized, "map_scope_reason", "classification_optional_filter"), 160)
     return (str(identifier), location_class, country, city, postal, lat, lon, precision, observed,
             zero_pair, department, name, activity, activity_source, record_url, evidence_summary,
-            str(group_key).strip())
+            map_scope, map_scope_reason, str(group_key).strip())
 
 
 def hash_snapshot(manifests: dict[str, tuple[Path, dict[str, Any]]]) -> str:
     digest = hashlib.sha256()
+    digest.update(SNAPSHOT_PROJECTION_VERSION.encode())
     for source in sorted(manifests):
         path, manifest = manifests[source]
         digest.update(source.encode())
@@ -414,8 +420,6 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
             zero_coordinate_groups.add(group_key)
         if klass == "numeric_source_coordinate":
             usable_coordinate_groups.add(group_key)
-        if klass == "unmapped_private_observation":
-            continue
         current = representatives.get(group_key)
         rank = (0 if klass == "numeric_source_coordinate" else 1, identifier)
         current_rank = ((0 if current[1] == "numeric_source_coordinate" else 1), current[0]) if current else None
@@ -450,7 +454,9 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
         observations_per_group[parsed[-1]] = observations_per_group.get(parsed[-1], 0) + 1
     coarse_placeable = 0
     for group_key, chosen in representatives.items():
-        identifier, klass, country, city, postal, lat, lon, precision, observed, _, department, display_name, activity_label, activity_source, source_record_url, evidence_summary, _ = chosen
+        identifier, klass, country, city, postal, lat, lon, precision, observed, _, department = chosen[:11]
+        display_name, activity_label, activity_source, source_record_url, evidence_summary = chosen[11:16]
+        default_map_scope, map_scope_reason = chosen[16:18]
         place, place_match = _resolve_municipality(municipality_index or {}, city, municipality_policy or {}, department)
         display_lat = place.get("latitude") if isinstance(place, dict) else None
         display_lon = place.get("longitude") if isinstance(place, dict) else None
@@ -462,11 +468,12 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
         ).fetchone()[0]
         db.execute(
             """INSERT INTO real_preview.candidates
-            (snapshot_sha256,source_id,source_group_key,representative_observation_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision,observation_count,display_latitude,display_longitude,display_geometry_source,display_name,activity_label,activity_source,source_record_url,evidence_summary,source_name,observed_at)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (snapshot_sha256,source_id,source_group_key) DO NOTHING""",
+            (snapshot_sha256,source_id,source_group_key,representative_observation_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision,observation_count,display_latitude,display_longitude,display_geometry_source,display_name,activity_label,activity_source,source_record_url,evidence_summary,source_name,observed_at,default_map_scope,map_scope_reason)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (snapshot_sha256,source_id,source_group_key) DO NOTHING""",
             (snapshot, source, group_key, preview_id, klass, country, city, postal, lat, lon, precision, observations_per_group[group_key], display_lat, display_lon,
              f"{(municipality_policy or {}).get('source', 'Administrative commune reference')}; approximate city location, not facility coordinates; name_match={place_match}" if display_lat is not None else None,
-             display_name, activity_label, activity_source, source_record_url, evidence_summary, SOURCE_NAMES.get(source), observed),
+             display_name, activity_label, activity_source, source_record_url, evidence_summary, SOURCE_NAMES.get(source), observed,
+             default_map_scope, map_scope_reason),
         )
         enrichment_state, enrichment_reason = (
             ("source_coordinate", "source_coordinate_present") if klass == "numeric_source_coordinate" else
@@ -850,7 +857,8 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
                                    "activity_counts", "observed_activity_categories", "source_license",
                                    "source_canonical_url", "source_as_of", "graph_relationships_emitted")},
                                "geometry_reference": ({**{key: index_payload.get(key) for key in ("source", "source_url", "license", "reference_date", "retrieved_at_utc", "source_last_modified", "source_sha256", "source_byte_size", "method", "version")}, "derived_index_sha256": digest_file(municipality_index_path)[0]} if municipality_index is not None else None),
-                               "fresh_live_run": True, "preview_policy_version": json_object(POLICY).get("contract_version")}
+                               "fresh_live_run": True, "preview_policy_version": json_object(POLICY).get("contract_version"),
+                               "preview_candidate_projection_version": SNAPSHOT_PROJECTION_VERSION}
             db.execute("""INSERT INTO real_preview.source_preview_runs
                 (run_id,source_id,snapshot_sha256,source_url,retrieved_at,source_artifact_sha256,normalized_sha256,
                  adapter_version,schema_version,input_count,accepted_count,quarantined_count,out_of_scope_count,
