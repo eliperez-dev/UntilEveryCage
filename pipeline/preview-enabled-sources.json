@@ -29,6 +29,18 @@
       "adapter_version": "au-sa-epa-licensed-activities-v1",
       "schema_version": "au-sa-epa-geojson-v1"
     },
+    "es.cat.feed-sandach": {
+      "enabled": true,
+      "runner": "pipeline.refresh_private:es.cat.feed-sandach",
+      "terms_review": "data/terms-reviews/es.cat.feed-sandach.json",
+      "terms_decision": "approved",
+      "freshness_max_days": 120,
+      "expected_artifacts": ["source.csv"],
+      "allowed_preview_fields": ["establishment_id", "source_record_key", "country_code", "nation", "autonomous_community", "jurisdiction_level", "source_scope", "municipality", "city", "municipality_code", "postal_code", "comarca", "comarca_code", "province", "activity", "sector", "registered_at", "coordinates", "coordinate_state", "coordinate_precision", "privacy_gate", "coordinate_gate", "rights_gate", "publication_gate"],
+      "display_policy": {"kind": "list_only_unmapped", "precision": "not_supplied", "disclosure": "Catalonia-only register; source provides no coordinates; no facility point is displayed."},
+      "adapter_version": "es-cat-feed-sandach-v1",
+      "schema_version": "es-cat-socrata-m48e-zdz9-v1"
+    },
     "be.locations": {
       "enabled": true,
       "runtime_classification": "production-e2e",

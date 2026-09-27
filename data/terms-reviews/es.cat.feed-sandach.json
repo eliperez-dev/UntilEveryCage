@@ -1,0 +1,7 @@
+{
+  "decision": "approved",
+  "notes": "The Generalitat open-data dataset is published by the Department of Agriculture, Livestock, Fisheries and Food. Official Generalitat open-data reuse guidance permits reuse, distribution, public communication, and transformation subject to attribution of the source and department, update date, preservation of content and meaning, and no implication of endorsement; dataset-specific terms prevail. The dataset catalog identifies Catalonia coverage and quarterly updates. This review authorizes bounded public-source acquisition and private preview only. The dataset includes establishment/company names and street addresses; the adapter deliberately excludes those fields from normalized rows and handoff. No coordinates are supplied, so no facility point is inferred. This is not legal advice, does not resolve possible personal data or third-party rights, and does not approve public release.",
+  "reference": "https://analisi.transparenciacatalunya.cat/d/m48e-zdz9 ; https://administraciodigital.gencat.cat/ca/dades/dades-obertes/informacio-practica/llicencies ; https://web.gencat.cat/ca/generalitat/dades-indicadors/dades-obertes/llicencies",
+  "reviewed_at": "2026-09-27T00:00:00Z",
+  "reviewer": "Codex source terms review under explicit project operator authorization"
+}

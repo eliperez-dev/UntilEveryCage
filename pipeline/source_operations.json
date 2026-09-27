@@ -2,6 +2,7 @@
   "schema_version": "1.0",
   "purpose": "Private-alpha scheduling, freshness, retention, and bounded retry expectations. This file does not authorize publication.",
   "schedules": [
+    {"source_id":"es.cat.feed-sandach","cadence":"quarterly","interval_hours":2160,"stale_after_hours":3000,"max_attempts":2,"backoff_seconds":1,"max_backoff_seconds":30,"manual_fallback":"fail closed; rediscover current Generalitat metadata and schema; never reuse a retained export"},
     {"source_id":"be.locations","cadence":"weekly","interval_hours":168,"stale_after_hours":240,"max_attempts":3,"backoff_seconds":1,"max_backoff_seconds":30,"manual_fallback":"use the authorized two-file operator capture"},
     {"source_id":"br.sif.export","cadence":"monthly","interval_hours":720,"stale_after_hours":960,"max_attempts":1,"backoff_seconds":0,"max_backoff_seconds":0,"manual_fallback":"retain the authorized MAPA SIF export CSV capture"},
     {"source_id":"br.sif.registered","cadence":"monthly","interval_hours":720,"stale_after_hours":960,"max_attempts":1,"backoff_seconds":0,"max_backoff_seconds":0,"manual_fallback":"retain the authorized MAPA SIF registered CSV capture"},

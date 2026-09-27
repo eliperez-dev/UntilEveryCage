@@ -14,6 +14,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Sequence
@@ -473,6 +474,27 @@ def up() -> dict[str, object]:
             raise PreviewError("authenticated real-preview detail probe failed")
         if any(key in detail_data for key in ("source_identifier", "source_group_key", "source_values", "address", "latitude_raw", "longitude_raw")):
             raise PreviewError("candidate detail contains a restricted source field")
+        if candidate.get("source_id") != source_id:
+            raise PreviewError("candidate omitted its source scope")
+        search_term = next((candidate.get(key) for key in ("city", "municipality", "trading_name", "name")
+                            if isinstance(candidate.get(key), str) and candidate.get(key)), None)
+        if not isinstance(search_term, str):
+            raise PreviewError("candidate omitted a safe searchable label")
+        query = urllib.parse.urlencode({"source_id": source_id, "q": search_term, "limit": 20})
+        search_status, search = _http(f"{counts_url.rsplit('/', 1)[0]}/locations?{query}", token)
+        search_rows = search.get("data") if search else None
+        if search_status != 200 or not isinstance(search_rows, list) or not any(
+                isinstance(row, dict) and row.get("candidate_id") == candidate_id for row in search_rows):
+            raise PreviewError("authenticated source-scoped search probe failed")
+        viewport_query = urllib.parse.urlencode({"source_id": source_id, "west": -180, "south": -90,
+                                                 "east": 180, "north": 90, "limit": 100})
+        viewport_status, viewport = _http(f"{counts_url.rsplit('/', 1)[0]}/viewport?{viewport_query}", token)
+        viewport_rows = viewport.get("data") if viewport else None
+        if viewport_status != 200 or viewport_rows != []:
+            raise PreviewError("viewport must be empty because the source has no approved coordinates")
+        if source_id == "es.cat.feed-sandach":
+            if detail_data.get("display_precision") != "city_postal_coarse":
+                raise PreviewError("Catalonia detail omitted source scope or coarse-location precision")
         return {"status": "backend_ready_frontend_unavailable" if vite is None else "ready", "api_url": f"http://127.0.0.1:{API_PORT}", "url": f"http://127.0.0.1:{WEB_PORT}/" if vite else None, "aggregates": summary,
                 "api_auth_check": "passed", "authenticated_api_counts": api_counts, "candidate_list_detail_check": "passed",
                 "public_release_count": summary.get("public_release_count"), "public_projection_count": summary.get("public_projection_count")}
@@ -683,7 +705,7 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                 if refresh.returncode or refresh_result.get("exit_status") != "ok":
                     write_job("failed", "lifecycle", "source_lifecycle_failed")
                     raise PreviewError("source acquisition or lifecycle failed; no preview import was attempted")
-            if source_id == "it.1069-2009":
+            if source_id in {"it.1069-2009", "es.cat.feed-sandach"}:
                 results = refresh_result.get("results")
                 result = next((item for item in results or []
                                if isinstance(item, dict) and item.get("source_id") == source_id), None)
@@ -693,7 +715,7 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                         or summary.get("candidate_handoff") is not True
                         or not isinstance(summary.get("candidate_handoff_sha256"), str)):
                     write_job("failed", "lifecycle", "source_candidate_handoff_missing")
-                    raise PreviewError("Italy 1069 lifecycle did not produce a validated candidate handoff; no preview import was attempted")
+                    raise PreviewError("source lifecycle did not produce a validated candidate handoff; no preview import was attempted")
             runner_run_id = refresh_result.get("run_id")
             if not isinstance(runner_run_id, str) or not runner_run_id:
                 write_job("failed", "lifecycle", "source_run_id_missing")
@@ -1024,6 +1046,36 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                 "exact": 0, "city_or_postal_only": import_result.get("city_postal_count"),
                 "unmapped": import_result.get("unmapped_map_candidate_count")},
         })
+    elif source_id == "es.cat.feed-sandach":
+        acquisition_path = source_dir / "acquisition" / source_id / run_id / "acquisition-metadata.json"
+        if not acquisition_path.is_file() or acquisition_path.is_symlink():
+            raise PreviewError("Catalonia acquisition provenance is unavailable")
+        acquisition_evidence = json.loads(acquisition_path.read_text(encoding="utf-8"))
+        source_results = refresh_result.get("results") if isinstance(refresh_result, dict) else None
+        source_result = next((item for item in source_results or []
+                              if isinstance(item, dict) and item.get("source_id") == source_id), None)
+        source_summary = source_result.get("summary") if isinstance(source_result, dict) else None
+        if not isinstance(source_summary, dict) or any(not isinstance(value, str) or len(value) != 64 for value in (
+                acquisition_evidence.get("sha256"), import_result.get("normalized_sha256"),
+                source_summary.get("candidate_handoff_sha256"), source_summary.get("schema_fingerprint"))):
+            raise PreviewError("Catalonia lifecycle hashes or summary are incomplete")
+        ledger.update({
+            "acquisition": {key: acquisition_evidence.get(key) for key in (
+                "source_id", "run_id", "requested_url", "final_url", "provenance_url", "retrieved_at_utc",
+                "publication_metadata", "sha256", "byte_size", "terms_review", "adapter_version", "config_version",
+                "metadata_sha256", "metadata_final_url")},
+            "normalized_sha256": import_result.get("normalized_sha256"),
+            "candidate_handoff_sha256": source_summary.get("candidate_handoff_sha256"),
+            "schema_fingerprint": source_summary.get("schema_fingerprint"),
+            "quarantine": {"input_rows": source_summary.get("input_rows"),
+                           "accepted_rows": source_summary.get("normalized_rows"),
+                           "quarantined_rows": source_summary.get("quarantined_rows"),
+                           "reasons": source_summary.get("quarantine_reasons", {})},
+            "source_counts": {key: import_result.get(key) for key in (
+                "observation_count", "facility_candidate_count", "city_postal_count", "unmapped_facility_count",
+                "map_visible_count", "public_release_count", "public_projection_count")},
+            "location_policy": "Catalonia source supplies municipality/postal fields but no coordinates; no geometry lookup or point inference; all remain unmapped.",
+        })
     elif source_id in {"fr.dgal.section-i", "fr.dgal.section-ii"}:
         acquisition_path = source_dir / "acquisition" / source_id / run_id / "acquisition-metadata.json"
         if not acquisition_path.is_file() or acquisition_path.is_symlink():
@@ -1181,12 +1233,12 @@ def refresh_source(source_id: str = "be.locations", existing_runner_run_id: str 
 def strict_live_private_e2e(source_id: str) -> dict[str, object]:
     """Run one bounded live source acquisition through disposable private preview and certification."""
     global PROJECT, VOLUME, DB_PORT, API_PORT, WEB_PORT, PRIVATE_ROOT, ACTIVE_PREVIEW_TOKEN
-    if source_id not in {"ca.cfia.federal-meat", "au.npi.facilities", "fsa_approved_establishments"}:
+    if source_id not in {"ca.cfia.federal-meat", "au.npi.facilities", "fsa_approved_establishments", "es.cat.feed-sandach"}:
         raise PreviewError("strict-live-private-e2e supports only assigned source lanes")
     import uuid
     suffix = uuid.uuid4().hex[:10]
     safe_source = {"ca.cfia.federal-meat": "cfia", "au.npi.facilities": "au-npi",
-                   "fsa_approved_establishments": "fsa"}[source_id]
+                   "fsa_approved_establishments": "fsa", "es.cat.feed-sandach": "es-cat"}[source_id]
     project = f"uec-preview-{safe_source}-{suffix}"
     private_root = ROOT / "data" / "staging" / "strict-preview" / suffix
     ports = ((55440, 55489), (38020, 38069), (34180, 34229))
@@ -1223,7 +1275,7 @@ def strict_live_private_e2e(source_id: str) -> dict[str, object]:
             raise PreviewError("first source refresh did not complete the private preview import")
         preview = first_preview
         ledger_path = Path(str(preview.get("ledger", "")))
-        if source_id in {"au.npi.facilities", "fsa_approved_establishments"}:
+        if source_id in {"au.npi.facilities", "fsa_approved_establishments", "es.cat.feed-sandach"}:
             # Replay the identical immutable handoff in the same disposable
             # database. This explicitly proves conflict-safe importer
             # idempotency, rather than inferring it from two fresh databases.
@@ -1274,8 +1326,8 @@ def strict_live_private_e2e(source_id: str) -> dict[str, object]:
         return {"status": "certified", "source_id": source_id, "run_id": certificate["run_id"],
                 "certificate": str(certificate_path), "counts": certificate["counts"],
                 "checks": certificate["checks"],
-                "refreshes": 2 if source_id == "fsa_approved_establishments" else 1,
-                "idempotent_replay": source_id == "fsa_approved_establishments",
+                "refreshes": 1, "idempotent_replay": source_id in {
+                    "au.npi.facilities", "fsa_approved_establishments", "es.cat.feed-sandach"},
                 "publication": "not_authorized", "public_rows": 0}
     except BaseException as error:
         primary_error = error

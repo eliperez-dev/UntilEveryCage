@@ -24,6 +24,7 @@ from .denmark.adapter import DenmarkSmileyAdapter
 from .france.adapter import FranceDgalSectionIAdapter, FranceDgalSectionIIAdapter
 from .italy.it_853_adapter import Italy853Adapter
 from .italy.it_1069_adapter import Italy1069Adapter
+from .spain_cat.adapter import CataloniaFeedSandachAdapter
 from .australia.npi import NpiFacilitiesAdapter
 from .australia.sa_epa import SouthAustraliaEpaAdapter
 from .us.fsis.runner_adapter import FsisRefreshAdapter
@@ -67,8 +68,8 @@ class SourceDescriptor:
 
     def readiness(self) -> dict[str, Any]:
         """Return capability facts without conflating acquisition and approval."""
-        live_callable = self.source_id in {"be.locations", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "fsa_approved_establishments", "fr.dgal.section-i", "fr.dgal.section-ii", "it.853-2004", "it.1069-2009", "au.sa.epa.licensed-activities", "au.npi.facilities"}
-        operational = "live" if self.source_id in {"be.locations", "ca.cfia.federal-meat", "fsa_approved_establishments", "it.853-2004", "it.1069-2009", "fr.dgal.section-i", "fr.dgal.section-ii", "au.sa.epa.licensed-activities", "au.npi.facilities"} else ("terms-blocked" if live_callable else "assisted")
+        live_callable = self.source_id in {"be.locations", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "fsa_approved_establishments", "fr.dgal.section-i", "fr.dgal.section-ii", "it.853-2004", "it.1069-2009", "es.cat.feed-sandach", "au.sa.epa.licensed-activities", "au.npi.facilities"}
+        operational = "live" if self.source_id in {"be.locations", "ca.cfia.federal-meat", "fsa_approved_establishments", "it.853-2004", "it.1069-2009", "fr.dgal.section-i", "fr.dgal.section-ii", "es.cat.feed-sandach", "au.sa.epa.licensed-activities", "au.npi.facilities"} else ("terms-blocked" if live_callable else "assisted")
         return {
             "source_id": self.source_id,
             "fixture_ready": bool(self.fixture_paths),
@@ -76,7 +77,7 @@ class SourceDescriptor:
             "live_acquisition": self.live_acquisition,
             "operational_classification": operational,
             "live_callable": live_callable,
-            "private_pipeline": "one_action_preview_import_ready" if self.source_id in {"it.853-2004", "it.1069-2009", "au.sa.epa.licensed-activities", "au.npi.facilities", "fsa_approved_establishments"} else "fixture_contract_ready",
+            "private_pipeline": "one_action_preview_import_ready" if self.source_id in {"it.853-2004", "it.1069-2009", "es.cat.feed-sandach", "au.sa.epa.licensed-activities", "au.npi.facilities", "fsa_approved_establishments"} else "fixture_contract_ready",
             "publication": self.publication,
             "geocoding": "disabled",
             "review_required": True,
@@ -105,6 +106,9 @@ def _italy() -> SourceAdapter:
 
 def _italy_1069() -> SourceAdapter:
     return Italy1069Adapter()
+
+def _spain_cat() -> SourceAdapter:
+    return CataloniaFeedSandachAdapter()
 
 
 def _australia_npi() -> SourceAdapter:
@@ -147,6 +151,7 @@ FIRST_WAVE: tuple[SourceDescriptor, ...] = (
     SourceDescriptor("it.1069-2009", "IT", "https://www.dati.salute.gov.it/it/dataset/stabilimenti-italiani-i-sottoprodotti-di-origine-animale/", _italy_1069, (), "it-1069-candidate-v2", "it-1069-csv-current-2026-09", "bounded_private_fetch"),
     SourceDescriptor("au.npi.facilities", "AU", "https://data.gov.au/data/dataset/043f58e0-a188-4458-b61c-04e5b540aea4", _australia_npi, (ROOT / "australia" / "fixtures" / "npi_facilities.csv",), "au-npi-facilities-v2", "au-npi-csv-v2", "bounded_private_fetch"),
     SourceDescriptor("au.sa.epa.licensed-activities", "AU", "https://data.sa.gov.au/data/dataset/8fdb86ff-d3d1-4f9e-85a5-bed4080d5ee1/resource/26e076f3-c37f-4089-8f28-3f7c9afd997e/download/topo_epa_activities_wgs84.geojson", _australia_sa_epa, (ROOT / "australia" / "fixtures" / "sa_epa_synthetic.geojson",), "au-sa-epa-licensed-activities-v1", "au-sa-epa-geojson-v1", "bounded_private_fetch"),
+    SourceDescriptor("es.cat.feed-sandach", "ES", "https://analisi.transparenciacatalunya.cat/d/m48e-zdz9", _spain_cat, (), "es-cat-feed-sandach-v1", "es-cat-socrata-m48e-zdz9-v1", "bounded_private_fetch"),
 )
 
 BY_SOURCE_ID = {descriptor.source_id: descriptor for descriptor in FIRST_WAVE}
@@ -225,6 +230,10 @@ class FirstWaveRefreshAdapter:
                 privacy_caveat="addresses and coordinates suppressed; restricted private staging",
                 artifact_validator=lambda path, _headers: FsaApprovedEstablishmentsAdapter().parse_bytes(path.read_bytes()),
             )
+        if self.source_id == "es.cat.feed-sandach":
+            from .spain_cat.acquire import fetch
+            return fetch(output_root=root, run_id=run_id, terms_review_path=Path(str(review)),
+                         timeout_seconds=timeout, max_bytes=max_bytes)
         raise RuntimeError(f"no approved live callable for {self.source_id}; use assisted local artifact")
 
     def refresh(self, *, mode: str, run_dir: Path, artifact: Path | None,
@@ -278,7 +287,7 @@ class FirstWaveRefreshAdapter:
             acquisition_facts = acquisition["acquisition"].get("operator", {})
         if acquisition_facts:
             source_artifact = SourceArtifact(
-                source_url=str(acquisition_facts.get("final_url") or acquisition_facts.get("requested_url") or source_artifact.source_url),
+                source_url=str(acquisition_facts.get("provenance_url") or acquisition_facts.get("final_url") or acquisition_facts.get("requested_url") or source_artifact.source_url),
                 retrieved_at_utc=str(acquisition_facts.get("retrieved_at_utc") or source_artifact.retrieved_at_utc),
                 sha256=str(acquisition_facts.get("sha256") or source_artifact.sha256),
                 byte_size=int(acquisition_facts.get("byte_size") or source_artifact.byte_size),
@@ -329,6 +338,12 @@ class FirstWaveRefreshAdapter:
                               source_id=self.source_id, emit_graph_candidates=False)
             elif isinstance(source_adapter, SouthAustraliaEpaAdapter):
                 source_adapter.write_candidate_handoff(run_dir / "candidate-handoff", source_artifact, rows)
+            elif self.source_id == "es.cat.feed-sandach":
+                safe_rows = [{"source_id": row["source_id"], "source_row": row["source_row"],
+                              "source_record_key": row["source_record_key"], "source_values": {},
+                              "normalized": row["normalized"]} for row in rows]
+                write_handoff(run_dir / "candidate-handoff", safe_rows, source_artifact,
+                              source_id=self.source_id, emit_graph_candidates=False)
             else:
                 write_handoff(run_dir / "candidate-handoff", rows, source_artifact, source_id=self.source_id)
             candidate_handoff = True

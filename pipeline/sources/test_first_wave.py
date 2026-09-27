@@ -11,7 +11,7 @@ class FirstWaveDescriptorTests(unittest.TestCase):
     def test_expected_sources_are_registered(self):
         self.assertEqual(
             {item.source_id for item in FIRST_WAVE},
-            {"dk.smiley", "be.locations", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "fsa_approved_establishments", "fr.dgal.section-i", "fr.dgal.section-ii", "it.853-2004", "it.1069-2009", "au.npi.facilities", "au.sa.epa.licensed-activities"},
+            {"dk.smiley", "be.locations", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "fsa_approved_establishments", "fr.dgal.section-i", "fr.dgal.section-ii", "it.853-2004", "it.1069-2009", "es.cat.feed-sandach", "au.npi.facilities", "au.sa.epa.licensed-activities"},
         )
 
     def test_descriptors_are_fixture_and_local_artifact_ready(self):
@@ -51,10 +51,11 @@ class FirstWaveDescriptorTests(unittest.TestCase):
 
     def test_readiness_report_keeps_live_state_separate(self):
         report = readiness_report()
-        self.assertEqual(len(report), 11)
+        self.assertEqual(len(report), 12)
         italy = next(item for item in report if item["source_id"] == "it.853-2004")
         self.assertEqual(italy["private_pipeline"], "one_action_preview_import_ready")
-        ready = {"it.853-2004", "it.1069-2009", "au.sa.epa.licensed-activities", "fsa_approved_establishments"}
+        ready = {"it.853-2004", "it.1069-2009", "es.cat.feed-sandach", "au.sa.epa.licensed-activities", "au.npi.facilities", "fsa_approved_establishments"}
+        self.assertTrue(all(item["private_pipeline"] == "one_action_preview_import_ready" for item in report if item["source_id"] in ready))
         self.assertTrue(all(item["private_pipeline"] == "fixture_contract_ready" for item in report if item["source_id"] not in ready))
         self.assertTrue(all(item["publication"] == "human_gate_required" for item in report))
         self.assertIn("assisted_only", {item["live_acquisition"] for item in report})

@@ -22,6 +22,14 @@ The official pages are publicly reachable in web search, but a bounded direct fe
 4. Validate animal-facility coverage separately from feed, SANDACH, retail, restaurant, and general food sectors. Keep any legacy CSV as comparison-only until source identity and transformation history are proven.
 5. Apply privacy/terms review, coarse-location policy, suppression controls, and maintainer publication approval before any adapter or release work.
 
-## Recommendation
+## Implemented regional E2E lane: Catalonia feed/SANDACH register
 
-HOLD. Spain has a credible official discovery route, but current acquisition, export/schema fingerprint, file-specific rights, effective-date semantics, coverage boundaries, and privacy handling are unresolved. A later adapter can proceed only after one permitted current artifact is privately staged and reviewed; no pipeline implementation is authorized by this reconnaissance.
+The official Generalitat dataset [Registre d'establiments del sector de l'alimentació animal i de l'àmbit dels SANDACH](https://analisi.transparenciacatalunya.cat/d/m48e-zdz9) is a current machine-readable regional source. Its official Socrata metadata and export use dataset ID `m48e-zdz9`; the observed export has a pinned 13-column schema and was updated 2026-07-03. Catalog metadata describes quarterly updates and Catalonia coverage. Scope is limited to Catalonia feed-sector operators and specified SANDACH categories; this is not a national Spain register and does not replace or merge with 853/2004.
+
+Official Generalitat open-data reuse guidance allows reuse subject to attribution of the source/department and update date, preservation of content and meaning, and no implied endorsement; dataset-specific terms prevail. A source-specific review authorizes acquisition and private preview only, records remaining privacy/third-party-rights uncertainty, and does not authorize release. The live adapter fetches current metadata and export, fingerprints schema and byte digests, quarantines required-field failures, excludes establishment/company names and street addresses from handoff, and has no coordinates or geocoding. Municipality/postal evidence can support private list/search, but all facilities remain unmapped; public release remains closed.
+
+Latest verified execution (2026-09-27): 12,341 source observations; 12,117 accepted into minimized handoff; 224 quarantined for missing required identity/scope fields. Two strict one-command preview runs against an isolated database produced the same normalized hash and observation count; the second reported exact replay idempotency. Preview import reported 4,367 grouped candidates, 12,117 observations, zero map-visible records, and zero public rows. This regional lane does not reconcile the legacy all-Spain CSV or claim national coverage. Review exact personal-data and any dataset-specific rights before any publication decision.
+
+## Remaining Spain-wide work
+
+National AESAN RGSEAA, MAPA SILUM/SANDACH, and regional registers have distinct sector scopes and terms. They require independent verification and source IDs; none may be silently unioned. `Old CSVs/spain-data.csv` remains a reconciliation-only V1 baseline, not an acquisition source.

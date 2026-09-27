@@ -172,6 +172,18 @@
       "blockers": ["Strict private CLI-to-API/frontend E2E passed for one current run; runtime health is not monitored. Review 1069-specific status/identity semantics, row-level coordinate provenance/privacy, coverage, current-schema/PDF discrepancy, and project publication approval before any public release."]
     },
     {
+      "source_id": "es.cat.feed-sandach",
+      "jurisdiction_scope": "Catalonia autonomous community, Spain; feed-sector and specified animal-by-product register categories only; not national coverage",
+      "legacy_paths": [],
+      "url": "https://analisi.transparenciacatalunya.cat/d/m48e-zdz9",
+      "access_method": "official Generalitat Socrata dataset metadata plus current CSV export endpoint",
+      "cadence": "quarterly (source catalog metadata; re-discover current metadata timestamp each retrieval)",
+      "attribution_licensing_notes": "Generalitat Open Data reuse terms apply unless dataset-specific terms override; attribute Departament d'Agricultura, Ramaderia, Pesca i Alimentació and update date. Names/addresses are excluded from normalized handoff. Private preview only; no public release approval.",
+      "adapter_status": "implemented_partial",
+      "expected_artifact_schema": "UTF-8 CSV, current 13-column Socrata schema pinned; 12,341 current rows per 2026-07-03 metadata snapshot",
+      "blockers": ["Catalonia-only scope; do not represent as Spain-wide. Source includes names and street addresses which are excluded from preview. No source coordinates; remain listable but unmapped. Review specific rights/privacy and project release gate before publication."]
+    },
+    {
       "source_id": "mx.locations",
       "jurisdiction_scope": "Mexico; mixed official-register and INEGI-derived legacy coverage",
       "legacy_paths": ["static_data/mx/locations.csv", "Old CSVs/mexico"],
