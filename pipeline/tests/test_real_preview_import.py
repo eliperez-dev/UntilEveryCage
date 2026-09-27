@@ -15,6 +15,12 @@ SPEC.loader.exec_module(IMPORTER)
 
 
 class RealPreviewImporterTests(unittest.TestCase):
+    def test_every_enabled_preview_source_has_a_maintained_safe_label(self):
+        enabled_path = Path(__file__).parents[1] / "preview-enabled-sources.json"
+        enabled = json.loads(enabled_path.read_text(encoding="utf-8"))["sources"]
+        self.assertEqual(set(enabled), set(IMPORTER.SOURCE_NAMES))
+        self.assertTrue(all(IMPORTER.SOURCE_NAMES[source].strip() for source in enabled))
+
     def test_generic_source_row_id_provenance_is_allowed(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "records.jsonl"

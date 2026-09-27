@@ -18,7 +18,7 @@ from urllib.parse import urlsplit
 import psycopg
 
 POLICY = Path(__file__).parents[2] / "preview-enabled-sources.json"
-SNAPSHOT_PROJECTION_VERSION = "real-preview-candidate-projection-v2"
+SNAPSHOT_PROJECTION_VERSION = "real-preview-candidate-projection-v3"
 LEGACY_ALLOWED = {"fr.dgal.section-i", "fr.dgal.section-ii", "us.fsis"}
 PREVIEW_ENABLED = set(json.loads(POLICY.read_text(encoding="utf-8"))["sources"])
 ALLOWED = LEGACY_ALLOWED | PREVIEW_ENABLED
@@ -175,8 +175,13 @@ def safe_https_url(value: Any) -> str | None:
 
 
 SOURCE_NAMES = {
+    "au.sa.epa.licensed-activities": "South Australian Environment Protection Authority — Licensed Activities",
+    "be.locations": "Belgian Federal Agency for the Safety of the Food Chain — Operator Register",
+    "ca.cfia.federal-meat": "Canadian Food Inspection Agency — Federal Meat Establishments",
+    "dk.smiley": "Danish Veterinary and Food Administration — Find Smiley",
     "fr.dgal.section-i": "French Ministry of Agriculture — DGAL Section I",
     "fr.dgal.section-ii": "French Ministry of Agriculture — DGAL Section II",
+    "it.1069-2009": "Italian Ministry of Health — Regulation 1069/2009",
     "it.853-2004": "Italian Ministry of Health — Regulation 853/2004",
     "us.fsis": "USDA Food Safety and Inspection Service",
 }
