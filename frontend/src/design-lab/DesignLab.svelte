@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { LabAction, LabRecord, LabState, MapDiagnostics, ViewportBounds } from './contract';
+  import type { LabAction, LabRecord, LabState, MapDiagnostics } from './contract';
   import { labRecords, LAB_SENTINEL } from './fixtures';
   import { decodeLabHash, encodeLabHash, reduceLabState } from './state';
   import { createLabViewModel } from './viewModel';
@@ -15,7 +15,6 @@
   let model = createLabViewModel(mode === 'synthetic' ? labRecords : [], state);
   $: if (mode === 'synthetic') model = createLabViewModel(labRecords, state);
   const repository = createRealPreviewRepository();
-  const useMvtMap = false;
   let sourceId: string | null = state.sourceId;
   $: sourceId = state.sourceId;
   let apiRecords: LabRecord[] = [];
@@ -26,8 +25,6 @@
   let counts: RealPreviewCounts | null = null;
   let facets: readonly RealPreviewFacet[] = [];
   let facetsStatus: 'loading' | 'ready' | 'error' | 'unauthorized' = 'loading';
-  let viewportStatus: 'idle' | 'loading' | 'ready' | 'empty' | 'error' | 'unauthorized' = 'idle';
-  let viewportError = '';
   let detailRecord: LabRecord | null = null;
   let detailStatus: 'loading' | 'ready' | 'error' | 'unauthorized' = 'ready';
   let detailError = '';
@@ -41,25 +38,6 @@
   let aggregateNextCursor: string | null = null;
   let aggregateLoading = false;
   let aggregateError = '';
-  let viewportRecords: LabRecord[] = [];
-  const viewportCache = new Map<string, { records: readonly LabRecord[]; truncated: boolean; touched: number }>();
-  const viewportRequests = new Map<string, AbortController>();
-  let viewportGeneration = 0;
-  const TILE_CACHE_LIMIT = 72;
-  const MAX_PAGES_PER_TILE = 8;
-  const MAX_CONCURRENT_TILE_REQUESTS = 4;
-  let mapZoomHint = state.viewport.zoom;
-  let activeTileKeys = new Set<string>();
-  let currentTileCount = 0;
-  let currentReadyTileCount = 0;
-  let cacheHits = 0; let cacheMisses = 0; let inFlightTiles = 0; let lastFetchMs: number | null = null;
-  let viewportTruncated = false;
-  let currentBounds: ViewportBounds | null = null;
-  let renderedTileKeys = new Set<string>();
-  function neededTiles(bounds: ViewportBounds) {
-    void bounds;
-    return new Map<string, { key: string; bounds: ViewportBounds }>();
-  }
   let mapDiagnostics: MapDiagnostics = { zoom: state.viewport.zoom, currentTiles: 0, readyTiles: 0, cacheEntries: 0, cacheCapacity: 0, cacheHits: 0, cacheMisses: 0, inFlight: 0, lastFetchMs: null, renderedRecords: 0, sourceId, truncated: false, sourceMaterializeMs: null, clusterReadyMs: null, zoomSettleMs: null };
   // This is intentionally memory-only. Private preview rows and credentials never reach
   // browser persistence; the repository continues to issue no-store network requests.
@@ -142,72 +120,6 @@
     }
   }
   $: mapDiagnostics = { ...mapDiagnostics, zoom: state.viewport.zoom, sourceId, sourceMaterializeMs, clusterReadyMs, zoomSettleMs };
-  let renderedTileKeys = new Set<string>();
-  function materializeCachedRecords(keys = renderedTileKeys) {
-    // The LRU may remember a much larger route around the world. It is an instant
-    // re-entry cache, not the live MapLibre source: render only current buffered
-    // coverage (and, briefly, the immediately previous coverage during a pan).
-    const values = [...keys].flatMap(key => viewportCache.get(key)?.records ?? []);
-    viewportRecords = [...new Map(values.map(record => [record.id, record])).values()];
-  }
-  function materializeNow() {
-    materializeCachedRecords();
-  }
-  function evictTiles() {
-    if (viewportCache.size <= TILE_CACHE_LIMIT) return;
-    const oldest = [...viewportCache.entries()].sort((a, b) => a[1].touched - b[1].touched).slice(0, viewportCache.size - TILE_CACHE_LIMIT);
-    for (const [key] of oldest) viewportCache.delete(key);
-  }
-  async function fetchTile(key: string, bounds: ViewportBounds, generation: number) {
-    if (viewportCache.has(key) || viewportRequests.has(key)) return;
-    const startedAt = performance.now();
-    const controller = new AbortController(); viewportRequests.set(key, controller); inFlightTiles = viewportRequests.size;
-    try {
-      const records: LabRecord[] = []; let cursor: string | null = null; let pages = 0; let truncated = false;
-      do {
-        const page = await repository.viewport(bounds, { sourceId, cursor, limit: 500, signal: controller.signal });
-        records.push(...page.records.map(mapRealPreviewCandidate)); cursor = page.nextCursor; pages += 1;
-        if (pages >= MAX_PAGES_PER_TILE && cursor) { truncated = true; cursor = null; }
-      } while (cursor && !controller.signal.aborted);
-      // Do not discard a tile merely because the camera moved again: if it was not
-      // obsolete enough to abort, it is valuable warm coverage for a return pan.
-      if (controller.signal.aborted) return;
-      viewportCache.set(key, { records: [...new Map(records.map(record => [record.id, record])).values()], truncated, touched: Date.now() });
-      evictTiles(); currentReadyTileCount = [...activeTileKeys].filter(activeKey => viewportCache.has(activeKey)).length;
-    } finally { if (viewportRequests.get(key) === controller) { viewportRequests.delete(key); inFlightTiles = viewportRequests.size; } if (!controller.signal.aborted) lastFetchMs = Math.round(performance.now() - startedAt); }
-  }
-  async function loadViewport(bounds: ViewportBounds) {
-    void bounds;
-    return;
-    /* Legacy grid path is unreachable; the map feed is source-filtered once. */
-    if (mode !== 'real-preview' || useMvtMap) return;
-    currentBounds = bounds; mapZoomHint = state.viewport.zoom;
-    const generation = ++viewportGeneration;
-    const wanted = neededTiles(bounds);
-    activeTileKeys = new Set(wanted.keys());
-    currentTileCount = wanted.size;
-    // A request is only obsolete when it no longer intersects the buffered viewport.
-    for (const [key, request] of viewportRequests) if (!wanted.has(key)) request.abort();
-    for (const key of wanted.keys()) { const cached = viewportCache.get(key); if (cached) cached.touched = Date.now(); }
-    const cachedTiles = [...wanted.keys()].filter(key => viewportCache.has(key));
-    cacheHits += cachedTiles.length;
-    // Keep the previous bounded source stable while the next tile set is fetched.
-    // That avoids a full Supercluster rebuild for every tile arrival or pan start.
-    // Once this generation is complete, replace it once with the exact wanted set.
-    const missing = [...wanted.values()].filter(tile => !viewportCache.has(tile.key));
-    cacheMisses += missing.length;
-    currentReadyTileCount = cachedTiles.length;
-    viewportTruncated = [...wanted.keys()].some(key => viewportCache.get(key)?.truncated);
-    if (!missing.length) { renderedTileKeys = new Set(wanted.keys()); materializeNow(); currentReadyTileCount = wanted.size; viewportStatus = viewportRecords.length ? 'ready' : 'empty'; return; }
-    viewportStatus = 'loading'; viewportError = '';
-    let index = 0;
-    const worker = async () => { while (index < missing.length) { const tile = missing[index++]!; try { await fetchTile(tile.key, tile.bounds, generation); } catch (error) { if (!viewportRequests.has(tile.key) && generation !== viewportGeneration) continue; if (!viewportError) viewportError = error instanceof Error ? error.message : 'The map records could not be loaded.'; } } };
-    await Promise.all(Array.from({ length: Math.min(MAX_CONCURRENT_TILE_REQUESTS, missing.length) }, worker));
-    if (generation !== viewportGeneration) return;
-    renderedTileKeys = new Set(wanted.keys()); materializeNow(); currentReadyTileCount = [...wanted.keys()].filter(key => viewportCache.has(key)).length;
-    viewportTruncated = [...wanted.keys()].some(key => viewportCache.get(key)?.truncated);
-    viewportStatus = viewportError ? errorState(new RealPreviewError('network', viewportError)) : viewportRecords.length ? 'ready' : 'empty';
-  }
 
   let observedListKey: string | undefined;
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
@@ -219,15 +131,6 @@
     searchTimer = setTimeout(() => void loadPage(query, true), 180);
   }
 
-  let observedMapSource: string | null | undefined;
-  $: if (mode === 'real-preview' && observedMapSource !== sourceId) {
-    observedMapSource = sourceId;
-    viewportGeneration += 1;
-    for (const request of viewportRequests.values()) request.abort();
-    viewportRequests.clear(); viewportCache.clear(); renderedTileKeys = new Set(); viewportRecords = [];
-    cacheHits = 0; cacheMisses = 0; inFlightTiles = 0; lastFetchMs = null; currentTileCount = 0; currentReadyTileCount = 0;
-    if (currentBounds && !useMvtMap) void loadViewport(currentBounds);
-  }
 
   let observedSelection: string | null | undefined;
   $: if (mode === 'real-preview' && observedSelection !== state.selectedId) {
@@ -266,17 +169,17 @@
       removeEventListener('hashchange', sync);
       removeEventListener('popstate', sync);
       if (searchTimer) clearTimeout(searchTimer);
-      summaryAbort?.abort(); listAbort?.abort(); referenceAbort?.abort(); for (const request of viewportRequests.values()) request.abort(); detailAbort?.abort();
+      summaryAbort?.abort(); listAbort?.abort(); referenceAbort?.abort(); detailAbort?.abort();
     };
   });
 </script>
 <svelte:head><title>Until Every Cage — Map</title></svelte:head>
 <div class="lab" data-review-sentinel={mode === 'synthetic' ? LAB_SENTINEL : undefined} data-direction="field" data-scenario={state.scenario} data-data-mode={mode}>
   <main aria-label="Map preview"><h1 class="sr-only">Investigative map</h1>
-    <Field {state} records={mode === 'real-preview' ? apiRecords : model.listRecords} mapRecords={mode === 'real-preview' ? viewportRecords : model.mapRecords} {mode}
-      dataStatus={dataStatus} {dataError} mapStatus={viewportStatus} mapError={viewportError} mapTruncated={viewportTruncated}
+    <Field {state} records={mode === 'real-preview' ? apiRecords : model.listRecords} mapRecords={mode === 'real-preview' ? [] : model.mapRecords} {mode}
+      dataStatus={dataStatus} {dataError}
       {detailRecord} {detailStatus} {detailError} {nextCursor} {pageLoading}
-      {facets} {facetsStatus} {mapDiagnostics} {aggregateMemberRecords} {aggregateNextCursor} {aggregateLoading} {aggregateError} onMapTiming={timing=>{sourceMaterializeMs=timing.sourceMaterializeMs;clusterReadyMs=timing.clusterReadyMs;if(timing.zoomSettleMs!==undefined)zoomSettleMs=timing.zoomSettleMs;}} onLoadMore={() => void loadPage(state.query, false)} onMapReference={(key, refSourceId) => void loadReference(key, true, refSourceId)} onLoadMoreAggregate={() => { if (aggregateReferenceKey) void loadReference(aggregateReferenceKey, false); }} onViewportBounds={loadViewport} {dispatch}/>
+      {facets} {facetsStatus} {mapDiagnostics} {aggregateMemberRecords} {aggregateNextCursor} {aggregateLoading} {aggregateError} onMapTiming={timing=>{sourceMaterializeMs=timing.sourceMaterializeMs;clusterReadyMs=timing.clusterReadyMs;if(timing.zoomSettleMs!==undefined)zoomSettleMs=timing.zoomSettleMs;}} onLoadMore={() => void loadPage(state.query, false)} onMapReference={(key, refSourceId) => void loadReference(key, true, refSourceId)} onLoadMoreAggregate={() => { if (aggregateReferenceKey) void loadReference(aggregateReferenceKey, false); }} {dispatch}/>
     {#if mode === 'real-preview' && counts}
       <p class="private-counts" role="status">{counts.facilityCandidateCount.toLocaleString()} private candidates · {counts.mapVisibleCount.toLocaleString()} map locations · {counts.cityPostalCount.toLocaleString()} city or postal</p>
     {/if}

@@ -1,13 +1,9 @@
 <script lang="ts">
   /**
    * MapSurface is the composition boundary:
-   * - mapSurfaceLayers owns the base style, server tile URL, and layer contracts;
-   * - mvtLineage owns pure parent/child transaction decisions;
-   * - this component owns Svelte state, MapLibre event wiring, and the canvas DOM.
-   *
-   * JSON clustering remains a supported fixture/fallback path. The real preview
-   * uses the server-owned MVT hierarchy, whose continuity and lineage state must
-   * be invalidated whenever source filtering or a basemap style changes.
+   * This component owns MapLibre event wiring. The private preview uses one
+   * in-memory native cluster source; camera movement must never reload it.
+   * Synthetic fixtures retain their own transition controller.
    */
   import { onMount } from "svelte";
   import * as maplibregl from "maplibre-gl";
@@ -91,6 +87,7 @@
   const mapFeedRepository = createRealPreviewMapFeedRepository();
   let feedAbort: AbortController | undefined;
   let feedGeneration = 0;
+  let requestedFeedSourceId: string | null | undefined;
   let feedStatus = $state<"loading" | "ready" | "error">("loading");
   let pendingReference = $state<
     | Readonly<{ key: string; count: number; observedLoading: boolean }>
@@ -331,6 +328,10 @@
   async function loadRealPreviewFeed() {
     const instance = map;
     if (!instance) return;
+    const sourceId = mapState.sourceId;
+    if (requestedFeedSourceId === sourceId &&
+        (feedStatus === "loading" || (feedStatus === "ready" && instance.getSource("locations")))) return;
+    requestedFeedSourceId = sourceId;
     feedAbort?.abort();
     const controller = new AbortController();
     feedAbort = controller;
@@ -338,7 +339,7 @@
     feedStatus = "loading";
     mvtError = "";
     try {
-      const result = await mapFeedRepository.load(mapState.sourceId, controller.signal);
+      const result = await mapFeedRepository.load(sourceId, controller.signal);
       if (controller.signal.aborted || map !== instance || generation !== feedGeneration) return;
       if (instance.getSource("locations")) setRealPreviewMapData(instance, result.collection);
       else addRealPreviewMapLayers(instance, result.collection);
@@ -465,7 +466,7 @@
       // Each projection owns exactly one overlay canvas. The fixture fallback
       // must not mount the real-preview MVT transition system, or vice versa.
       if (usingMvt) mvtMotionController.attach(host.parentElement);
-      else jsonMotionController.attach(host.parentElement);
+      else if (mode === "synthetic") jsonMotionController.attach(host.parentElement);
     }
     return () => {
       mvtMotionController?.dispose();
@@ -484,7 +485,7 @@
           mvtMotionController?.prepareJoin(instance.getZoom());
         return;
       }
-      jsonMotionController?.onZoomStart(event);
+      if (mode === "synthetic") jsonMotionController?.onZoomStart(event);
     };
     queueMicrotask(() => {
       instance = map;
@@ -565,12 +566,12 @@
       const feature = event.features?.[0],
         clusterId = feature?.properties?.cluster_id;
       if (typeof clusterId !== "number") return;
-      jsonMotionController?.playExpansion(feature, clusterId);
+      if (mode === "synthetic") jsonMotionController?.playExpansion(feature, clusterId);
       (map?.getSource("locations") as GeoJSONSource | undefined)
         ?.getClusterExpansionZoom(clusterId)
         .then((zoom) => {
           if (!map) return;
-          jsonMotionController?.armExpansion(map);
+          if (mode === "synthetic") jsonMotionController?.armExpansion(map);
           map.easeTo({
             center: feature.geometry.coordinates,
             zoom,
@@ -696,7 +697,7 @@
     });
     instance.on("movestart", (event: any) => {
       if (usingMvt) mvtCameraStartedAt ??= performance.now();
-      if (!usingMvt) {
+      if (mode === "synthetic") {
         jsonMotionController?.cancel();
       }
     });

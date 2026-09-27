@@ -19,6 +19,6 @@ describe('real-preview native clustering layers', () => {
     expect(sources.locations).toMatchObject({ cluster: true, clusterRadius: 50, clusterMaxZoom: 14, clusterProperties: { representedCount: ['+', ['get', 'weight']] } });
     expect(layers.find(layer => layer.id === 'clusters')?.filter).toEqual(['has', 'cluster']);
     expect(layers.find(layer => layer.id === 'aggregate-outer')?.filter).toEqual(['all', ['!', ['has', 'cluster']], ['==', ['get', 'kind'], 'reference']]);
-    expect(layers.find(layer => layer.id === 'source-coordinate-points')?.filter).toEqual(['all', ['!', ['has', 'cluster']], ['==', ['get', 'kind'], 'source-coordinate']);
+    expect(layers.find(layer => layer.id === 'source-coordinate-points')?.filter).toEqual(['all', ['!', ['has', 'cluster']], ['==', ['get', 'kind'], 'source-coordinate']]);
   });
 });

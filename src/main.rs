@@ -61,6 +61,7 @@ pub fn app(state: uec_api::ApiState, proxy: private_environment::ProxyConfig) ->
             Router::new()
                 .route("/locations", get(uec_api::get_real_preview_list_handler))
                 .route("/viewport", get(uec_api::get_real_preview_viewport_handler))
+                .route("/map/feed", get(uec_api::get_real_preview_map_feed_handler))
                 .route(
                     "/map/tiles/{z}/{x}/{y}",
                     get(uec_api::get_real_preview_map_tile_handler),

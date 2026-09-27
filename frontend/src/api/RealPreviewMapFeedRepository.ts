@@ -65,7 +65,7 @@ export function createRealPreviewMapFeedRepository(fetcher: typeof fetch = fetch
       const response = await fetcher(`/dev/real-preview/map/feed${params.size ? `?${params}` : ''}`, {
         credentials: 'same-origin',
         cache: 'no-store',
-        signal,
+        ...(signal ? { signal } : {}),
       });
       if (!response.ok) {
         const message = response.status === 401 || response.status === 403
