@@ -13,6 +13,7 @@ export type JsonMapMode = 'synthetic' | 'real-preview';
 
 export type JsonMapFeature = Readonly<{
   type: 'Feature';
+  id?: string | number;
   geometry: Readonly<{ type: 'Point'; coordinates: [number, number] }>;
   properties: Record<string, unknown>;
 }>;

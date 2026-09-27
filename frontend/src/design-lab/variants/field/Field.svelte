@@ -21,7 +21,6 @@
     mapError = "",
     mapTruncated = false,
     mapDiagnostics,
-    useMvtMap = false,
     onMapTiming,
     detailRecord = null,
     detailStatus = "ready",
@@ -377,12 +376,11 @@
         {mapError}
         {mapTruncated}
         {mapDiagnostics}
-        {useMvtMap}
         referenceLoading={aggregateLoading}
         onmaptiming={(timing) => onMapTiming?.(timing)}
         onselect={selectRecord}
         onaggregate={(ids) => dispatch({ type: "aggregate", value: ids })}
-        onreference={(key) => onMapReference?.(key)}
+        onreference={(key, sourceId) => onMapReference?.(key, sourceId)}
         onbasemap={(value) => dispatch({ type: "basemap", value })}
         onviewport={(value) => dispatch({ type: "viewport", value })}
         onbounds={(bounds) => onViewportBounds?.(bounds)}

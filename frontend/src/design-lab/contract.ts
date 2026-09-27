@@ -47,10 +47,6 @@ export interface DirectionViewProps {
   mapError?: string;
   mapTruncated?: boolean;
   mapDiagnostics?: MapDiagnostics;
-  /** Use the local server's lightweight MVT map projection instead of the
-   * bounded JSON viewport fallback.  This is deliberately opt-in while the
-   * preview tile route is being smoke tested. */
-  useMvtMap?: boolean;
   onMapTiming?(timing: MapTiming): void;
   detailRecord?: LabRecord | null;
   detailStatus?: 'loading' | 'ready' | 'error' | 'unauthorized';
@@ -58,8 +54,8 @@ export interface DirectionViewProps {
   nextCursor?: string | null;
   pageLoading?: boolean;
   onLoadMore?(): void;
-  /** Resolves an opaque administrative-reference key emitted only by the local MVT projection. */
-  onMapReference?(key: string): void;
+  /** Resolves an opaque administrative-reference key emitted by the private map feed. */
+  onMapReference?(key: string, sourceId?: string): void;
   aggregateMemberRecords?: readonly LabRecord[];
   aggregateNextCursor?: string | null;
   aggregateLoading?: boolean;

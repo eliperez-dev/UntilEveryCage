@@ -36,6 +36,8 @@
     createBaseStyle,
     removeLocationLayers,
   } from "./mapSurfaceLayers";
+  import { addRealPreviewMapLayers, setRealPreviewMapData } from "./realPreviewMapLayers";
+  import { createRealPreviewMapFeedRepository } from "../../api/RealPreviewMapFeedRepository";
 
   let {
     records,
@@ -45,7 +47,6 @@
     mapError = "",
     mapTruncated = false,
     mapDiagnostics,
-    useMvtMap = false,
     referenceLoading = false,
     onmaptiming,
     onselect,
@@ -68,12 +69,11 @@
     mapError?: string;
     mapTruncated?: boolean;
     mapDiagnostics?: MapDiagnostics | undefined;
-    useMvtMap?: boolean;
     referenceLoading?: boolean;
     onmaptiming?(timing: MapTiming): void;
     onselect(id: string): void;
     onaggregate(memberIds: readonly string[]): void;
-    onreference?(key: string): void;
+    onreference?(key: string, sourceId?: string): void;
     onbasemap(value: "vector" | "satellite"): void;
     onviewport(value: Viewport): void;
     onbounds?(bounds: ViewportBounds): void;
@@ -88,6 +88,10 @@
   let syncing = false;
   let interactionsBound = false;
   let mvtError = $state("");
+  const mapFeedRepository = createRealPreviewMapFeedRepository();
+  let feedAbort: AbortController | undefined;
+  let feedGeneration = 0;
+  let feedStatus = $state<"loading" | "ready" | "error">("loading");
   let pendingReference = $state<
     | Readonly<{ key: string; count: number; observedLoading: boolean }>
     | undefined
@@ -174,7 +178,7 @@
   const diagnosticsEnabled = $derived(
     import.meta.env.DEV && mode === "real-preview",
   );
-  const usingMvt = $derived(mode === "real-preview" && useMvtMap);
+  const usingMvt = false;
   const hitRate = $derived.by(() => {
     const total =
       (mapDiagnostics?.cacheHits ?? 0) + (mapDiagnostics?.cacheMisses ?? 0);
@@ -314,11 +318,36 @@
   async function addLayers() {
     if (!map || map.getSource("locations")) return;
     loadClusterImages();
+    if (mode === "real-preview") {
+      await loadRealPreviewFeed();
+      return;
+    }
     await loadJsonFallbackImages(
       map,
       `${import.meta.env.BASE_URL}v1-pins/`,
     );
     addJsonLocationLayers(map, createJsonMapCollection(mapped, mode));
+  }
+  async function loadRealPreviewFeed() {
+    const instance = map;
+    if (!instance) return;
+    feedAbort?.abort();
+    const controller = new AbortController();
+    feedAbort = controller;
+    const generation = ++feedGeneration;
+    feedStatus = "loading";
+    mvtError = "";
+    try {
+      const result = await mapFeedRepository.load(mapState.sourceId, controller.signal);
+      if (controller.signal.aborted || map !== instance || generation !== feedGeneration) return;
+      if (instance.getSource("locations")) setRealPreviewMapData(instance, result.collection);
+      else addRealPreviewMapLayers(instance, result.collection);
+      feedStatus = "ready";
+    } catch (error) {
+      if (controller.signal.aborted || generation !== feedGeneration) return;
+      feedStatus = "error";
+      mvtError = error instanceof Error ? error.message : "The private map feed could not be loaded.";
+    }
   }
   function addMvtLayers() {
     if (!map) return;
@@ -551,16 +580,25 @@
           });
         });
     });
-    for (const layer of [
-      "exact-pins",
-      "approximate-points",
-      "source-coordinate-points",
-    ])
+    for (const layer of mode === "real-preview"
+      ? ["source-coordinate-points"]
+      : ["exact-pins", "approximate-points", "source-coordinate-points"])
       map.on("click", layer, (event: any) => {
-        const id = event.features?.[0]?.properties?.id;
+        const properties = event.features?.[0]?.properties;
+        const id = mode === "real-preview" ? properties?.key : properties?.id;
         if (typeof id === "string") onselect(id);
       });
     map.on("click", "aggregate-outer", (event: any) => {
+      if (mode === "real-preview") {
+        const properties = event.features?.[0]?.properties;
+        const key = properties?.key;
+        if (typeof key === "string") {
+          const count = Number(properties?.weight);
+          pendingReference = { key, count: Number.isFinite(count) ? count : 0, observedLoading: false };
+          onreference?.(key, typeof properties?.source_id === "string" ? properties.source_id : undefined);
+        }
+        return;
+      }
       try {
         const ids = JSON.parse(
           event.features?.[0]?.properties?.memberIds ?? "[]",
@@ -571,13 +609,9 @@
         /* fixture metadata is validated before use */
       }
     });
-    for (const layer of [
-      "clusters",
-      "exact-pins",
-      "approximate-points",
-      "source-coordinate-points",
-      "aggregate-outer",
-    ]) {
+    for (const layer of mode === "real-preview"
+      ? ["clusters", "source-coordinate-points", "aggregate-outer"]
+      : ["clusters", "exact-pins", "approximate-points", "source-coordinate-points", "aggregate-outer"]) {
       map.on("mouseenter", layer, () => {
         if (map) map.getCanvas().style.cursor = "pointer";
       });
@@ -717,13 +751,16 @@
   });
   $effect(() => {
     records;
-    if (map?.isStyleLoaded() && !usingMvt) setData();
+    if (mode === "synthetic" && map?.isStyleLoaded() && !usingMvt) setData();
   });
   $effect(() => {
     const source = mapState.sourceId;
     if (usingMvt && map?.isStyleLoaded()) {
       source;
       replaceMapProjection();
+    } else if (mode === "real-preview" && map?.isStyleLoaded()) {
+      source;
+      void loadRealPreviewFeed();
     }
   });
   $effect(() => {
@@ -763,7 +800,7 @@
     if (event.key === "Escape") diagnosticsOpen = false;
   }}
 />
-{#if usingMvt && mvtError}<small class="map-status mvt-status" role="alert"
+{#if mode === "real-preview" && feedStatus === "error"}<small class="map-status mvt-status" role="alert"
     >{mvtError}</small
   >{/if}
 <section
@@ -786,12 +823,9 @@
       class="map-status reference-status"
       role="status"
       >Loading {pendingReference.count || "represented"} reference records…</small
-    >{:else if mode === "real-preview" && mapStatus === "loading" && !usingMvt}<small
+    >{:else if mode === "real-preview" && feedStatus === "loading"}<small
       class="map-status"
       role="status">Loading map records…</small
-    >{:else if mode === "real-preview" && (mapStatus === "error" || mapStatus === "unauthorized")}<small
-      class="map-status"
-      role="alert">{mapError}</small
     >{:else if mode === "real-preview" && mapTruncated && !usingMvt}<small
       class="map-status"
       role="status"
