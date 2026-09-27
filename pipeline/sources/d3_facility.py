@@ -208,6 +208,12 @@ def register_d3(catalog: Any) -> None:
     for item in D3_DESCRIPTORS():
         if item["source_id"] not in catalog.sources:
             continue
+        # FSA is registered by the monthly first-wave bridge, which preserves
+        # acquisition sidecars and emits the shared-runner handoff at the
+        # expected source root. Keep the legacy D3 descriptor for fixture
+        # inventory only; do not replace the scheduler-safe adapter.
+        if item["source_id"] == "fsa_approved_establishments" and item["source_id"] in catalog.adapters:
+            continue
         live_callable = item["source_id"] in {"fsa_approved_establishments", "fss_approved_establishments"}
         classification = "terms-blocked" if live_callable else "assisted"
         catalog.register(D3FacilityRefreshAdapter(item["source_id"], item["factory"], item["fixture"], item["url"], item["adapter_version"], item["schema_version"], item["acquisition"]), AdapterCapabilities(source_id=item["source_id"], adapter_version=item["adapter_version"], schema_version=item["schema_version"], acquisition=item["acquisition"], geocoding="disabled", publication="human_gate_required", adapter_path=str(item["fixture"].parent), country_code=item["country_code"], operational_classification=classification, live_callable=live_callable))

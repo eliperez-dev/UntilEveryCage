@@ -5,8 +5,10 @@ entry, `uk.locations`, because the checked-in V1 dataset combined multiple UK
 jurisdictions. The source-owned registry in `pipeline/sources/uk/registry.json`
 deliberately keeps two separate adapter identities:
 
-- `fsa_approved_establishments`: FSA coverage for England, Wales, and
-  Northern Ireland, subject to the source's own scope.
+- `fsa_approved_establishments`: the monthly FSA catalogue feed for England and
+  Wales. The feed itself marks Jersey, Isle of Man, and Guernsey rows; those are
+  quarantined. Northern Ireland uses a separate catalogue/feed and is outside
+  this adapter's live monthly scope.
 - `fss_approved_establishments`: Food Standards Scotland coverage for
   Scotland.
 

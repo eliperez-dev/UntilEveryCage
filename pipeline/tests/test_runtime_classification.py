@@ -12,6 +12,7 @@ VERIFIED_PRIVATE_E2E = {
     "be.locations",
     "ca.cfia.federal-meat",
     "dk.smiley",
+    "fsa_approved_establishments",
     "fr.dgal.section-i",
     "fr.dgal.section-ii",
     "it.853-2004",

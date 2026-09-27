@@ -71,6 +71,20 @@
       "adapter_version": "au-npi-facilities-v2",
       "schema_version": "au-npi-csv-v2"
     },
+    "fsa_approved_establishments": {
+      "enabled": true,
+      "runtime_classification": "production-e2e",
+      "public_release": false,
+      "runner": "pipeline.refresh_private:fsa_approved_establishments",
+      "terms_review": "data/terms-reviews/fsa_approved_establishments.json",
+      "terms_decision": "approved",
+      "freshness_max_days": 60,
+      "expected_artifacts": ["source.csv"],
+      "allowed_preview_fields": ["establishment_id", "trading_name", "activities", "activity_categories", "species", "competent_authority", "nation", "authority_nation_key", "status", "published_date", "coordinates", "coordinate_state", "coordinate_precision", "coordinate_gate", "privacy_gate", "publication_gate"],
+      "display_policy": {"kind": "unmapped_source_records_only", "precision": "no-coordinate-disclosure", "disclosure": "The FSA monthly feed's address and coordinate fields are withheld from this private preview pending privacy review. Records are listable but unmapped; no geocoding or map pins are created. England and Wales only; Northern Ireland (FSS) and Scotland (FSS) remain separate sources. Private preview only; no public release."},
+      "adapter_version": "fsa-uk-v2-2",
+      "schema_version": "fsa-uk-approved-v1"
+    },
     "it.853-2004": {
       "enabled": true,
       "runtime_classification": "production-e2e",

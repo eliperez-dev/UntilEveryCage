@@ -209,15 +209,15 @@
     },
     {
       "source_id": "fsa_approved_establishments",
-      "jurisdiction_scope": "United Kingdom; Food Standards Agency coverage for England, Wales, and Northern Ireland",
+      "jurisdiction_scope": "England and Wales monthly Food Standards Agency approved-establishments feed; Northern Ireland and Scotland remain separate FSS scopes",
       "legacy_paths": [],
-      "url": "https://data.food.gov.uk/catalog/datasets/",
+      "url": "https://www.data.gov.uk/dataset/2c80e0ce-ee1c-4f26-ba6f-1e1ae1bd8ee9/approved-food-establishments",
       "access_method": "bounded monthly CSV download or assisted local capture",
       "cadence": "monthly; verify each edition",
       "attribution_licensing_notes": "Food Standards Agency source; catalogue/licence, privacy, coordinate, and project publication review remain human gates",
       "adapter_status": "implemented_partial",
       "expected_artifact_schema": "FSA synthetic or inspected monthly CSV with application number, trading name, national authority, activity, address/withholding and source coordinates",
-      "blockers": ["Fixture and preserved-local-artifact private lifecycle are proven. Live fetch remains separately bounded and must not be inferred from fixture success; Northern Ireland scope is retained as source-provided authority data."]
+      "blockers": ["Private preview is not public release approval; row-level privacy, source completeness, currentness and address/coordinate handling remain gated. The monthly feed covers England and Wales only; do not combine the Northern Ireland or Scotland FSS sources."]
     },
     {
       "source_id": "fss_approved_establishments",

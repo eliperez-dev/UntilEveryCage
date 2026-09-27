@@ -15,6 +15,24 @@ SPEC.loader.exec_module(IMPORTER)
 
 
 class RealPreviewImporterTests(unittest.TestCase):
+    def test_fsa_records_are_listable_but_unmapped_and_name_gated(self):
+        normalized = {
+            "establishment_id": "A-1", "trading_name": "Example Foods",
+            "activities": ["Fresh Fishery Products Plant"], "activity_categories": ["processing"],
+            "nation": "England", "privacy_gate": "privacy-review-required",
+            "coordinate_gate": "privacy-review-required", "coordinates": None,
+            "coordinate_state": "source-precision-unspecified", "publication_gate": "blocked",
+        }
+        parsed = IMPORTER.parse_row("fsa_approved_establishments", {
+            "source_id": "fsa_approved_establishments", "source_record_key": "England|A-1",
+            "source_values": {}, "normalized": normalized,
+        })
+        self.assertEqual(parsed[1], "unmapped_private_observation")
+        self.assertIsNone(parsed[5])
+        self.assertIsNone(parsed[6])
+        self.assertIsNone(parsed[11], "trading names stay hidden while row-level privacy review is pending")
+        self.assertEqual(parsed[-1], "England|A-1", "the same application number in Wales remains a distinct source identity")
+
     def test_every_enabled_preview_source_has_a_maintained_safe_label(self):
         enabled_path = Path(__file__).parents[1] / "preview-enabled-sources.json"
         enabled = json.loads(enabled_path.read_text(encoding="utf-8"))["sources"]

@@ -36,18 +36,20 @@ does not copy legacy rows, addresses, coordinates, or source payloads. Unknown
 source dates remain unknown, and the manifest generation time is not a source
 currentness claim.
 
-## Latest strict live private E2E — 2026-09-24
+## Latest strict live private E2E — 2026-09-27
 
-Seven named official sources completed strict live private E2E through acquisition,
+Eight named official sources completed strict live private E2E through acquisition,
 candidate processing, disposable-database import, and run verification. The
-combined SQL-verified result is 64,701 observations, 42,875 candidates, 41,110
-map-visible candidates, and 1,765 listable but unmapped candidates. The public
+combined SQL-verified result is 68,992 observations, 47,166 candidates, 41,110
+map-visible candidates, and 6,056 listable but unmapped candidates. The FSA
+snapshot contributed 4,291 unmapped observations; its acquisition and private
+database import were repeated twice with idempotent replay. The public
 projection contained zero rows. This verifies a one-time source-scoped private
 run; a recurring operational monitor has not yet run or been configured, and
 public release is not authorized. Source-specific rights, privacy, identity,
 classification, factual review, and release gates remain separate.
 
-All seven rows remain `runtime_health=not_run` because no recurring operational
+All eight rows remain `runtime_health=not_run` because no recurring operational
 monitor is configured, and `publication_eligibility=blocked`. Here,
 `acquisition=verified` records the strict live private E2E and replay evidence;
 it does not imply that public rows exist or may be released. The 2026-09-15
@@ -74,7 +76,8 @@ The 2026-09-16 Ireland reconnaissance verified the current FSAI/DAFM/HSE/SFPA so
 | `it.1069-2009` | verified | verified | not_run | blocked | Strict live private E2E verified: 9,955 observations and 6,533 candidates from the official catalog-discovered live CSV; one-time run only, with no recurring monitor configured. Keep 1069 distinct from 853, resolve the PDF dictionary/CSV schema mismatch, and review category/status, coordinate privacy/provenance, terms, and release gates; see `data/manifests/italy-1069-preview-e2e-20260924.json` and `docs/country-recon-it.md` |
 | `mx.locations` | verified | blocked | not_run | blocked | DENUE/SENASICA/DGSIAP reconnaissance; resolve token, directory, terms, and schema |
 | `nz.locations` | verified | blocked | not_run | blocked | MPI/Stats NZ reconnaissance; resolve 403/access and aggregate-vs-facility boundaries |
-| `uk.locations` | partial | artifact_private_only | unknown | blocked | FSA and FSS private V2 lifecycle paths, nation-qualified identity, coordinate precision states, and synthetic handoff tests pass; no real UK candidate has been imported or previewed; privacy/coordinate, source-rights, duplicate, coverage, and release review remain open; NI/Scotland stay separate; see `docs/country-recon-uk.md` and `docs/countries/uk/fss-approved-establishments-source-assessment.md` |
+| `uk.locations` | partial | artifact_private_only | unknown | blocked | Legacy umbrella only. The England/Wales FSA and Scotland/Northern Ireland FSS identities remain separate; see `docs/country-recon-uk.md` |
+| `fsa_approved_establishments` | verified | verified | not_run | blocked | Strict live private E2E passed 2026-09-27: 5,342 source rows, 4,291 accepted/listable and 1,051 quarantined; two refreshes verified idempotent replay. Zero coordinates/map pins and zero public rows. One-time evidence only; review row privacy, completeness, currentness, and publication separately. England and Wales only; keep both FSS identities separate; see `pipeline/sources/uk/fsa_approved/README.md` |
 | `dk.smiley` | verified | verified | not_run | blocked | One strict live private-preview E2E passed on 2026-09-25: 58,726 source rows, 58,677 accepted candidates, 49 quarantined, zero public rows; no source coordinates, so map-visible count was zero. This is a one-time run, not recurring health, completeness, privacy clearance, or publication approval. Review categories, address privacy, currentness, and release gates; see `pipeline/sources/denmark/README.md` |
 | `de.locations` | partial | artifact_private_only | not_run | blocked | Current public general-list export parsed privately: 15,788 input, 2,691 normalized, 13,097 quarantined; session-bound export route, unknown effective date, terms/privacy/coverage and project approval remain unresolved; see `docs/germany-source-assessment.md` and `data/manifests/de-be-private-candidates-2026-09-17.json` |
 | `ca.ontario.meat-plants` | verified | not_run | not_run | blocked | Ontario private adapter/refresh is implemented; keep plant/contact/coordinate fields restricted pending privacy and licence review, and do not generalize Ontario coverage nationally |

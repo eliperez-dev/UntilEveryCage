@@ -179,6 +179,7 @@ SOURCE_NAMES = {
     "au.sa.epa.licensed-activities": "South Australian Environment Protection Authority — Licensed Activities",
     "be.locations": "Belgian Federal Agency for the Safety of the Food Chain — Operator Register",
     "ca.cfia.federal-meat": "Canadian Food Inspection Agency — Federal Meat Establishments",
+    "fsa_approved_establishments": "Food Standards Agency — Approved Food Establishments (England and Wales)",
     "dk.smiley": "Danish Veterinary and Food Administration — Find Smiley",
     "fr.dgal.section-i": "French Ministry of Agriculture — DGAL Section I",
     "fr.dgal.section-ii": "French Ministry of Agriculture — DGAL Section II",
@@ -252,7 +253,8 @@ def parse_row(source: str, row: Any) -> tuple[Any, ...]:
         location_class = "city_postal"
     else:
         location_class = "unmapped_private_observation"
-    group_key = pick(normalized, "establishment_id", "recognition_number", "establishment_number")
+    group_key = (identifier if source == "fsa_approved_establishments" else
+                 pick(normalized, "establishment_id", "recognition_number", "establishment_number"))
     if not isinstance(group_key, (str, int)) or not str(group_key).strip():
         raise ImportFailure("source_group_key_missing")
     if not precision and location_class == "city_postal":

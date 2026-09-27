@@ -132,10 +132,10 @@ def refresh_monthly(
     else:
         input_path = Path(raw_path)  # type: ignore[arg-type]
         raw = input_path.read_bytes()
-    retrieved_at_utc = retrieved_at_utc or utc_now()
-    effective_date = effective_date or "unknown"
     if not fetch:
-        acquisition = _local_acquisition_metadata(input_path, source_url=source_url, retrieved_at_utc=retrieved_at_utc, effective_date=effective_date)
+        acquisition = _local_acquisition_metadata(input_path, source_url=source_url, retrieved_at_utc=retrieved_at_utc or utc_now(), effective_date=effective_date)
+    retrieved_at_utc = retrieved_at_utc or acquisition.get("retrieved_at_utc") or utc_now()
+    effective_date = effective_date or acquisition.get("effective_date") or "unknown"
     _write_json(root / "acquisition-metadata.json", acquisition)
     adapter = FsaApprovedEstablishmentsAdapter()
     result = adapter.parse_bytes(raw)

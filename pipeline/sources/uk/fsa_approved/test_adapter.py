@@ -15,11 +15,11 @@ class FsaAdapterTests(unittest.TestCase):
 
     def test_authority_and_nation_are_isolated_and_source_values_preserved(self):
         result = self.adapter.parse_file(FIXTURES / "valid.csv")
-        self.assertEqual(len(result.accepted), 3)
+        self.assertEqual(len(result.accepted), 2)
         self.assertEqual(result.accepted[0]["normalized"]["establishment_id"], "00017")
         self.assertEqual(result.accepted[0]["normalized"]["nation"], "England")
         self.assertEqual(result.accepted[1]["normalized"]["competent_authority"], "Food Standards Agency")
-        self.assertEqual(result.accepted[2]["normalized"]["competent_authority"], "Food Standards Agency Northern Ireland")
+        self.assertEqual(len([item for item in result.quarantined if "unknown_nation" in item["reasons"]]), 1)
         self.assertEqual(result.accepted[0]["source_values"]["source_licence"], "terms-pending")
         self.assertIsNone(result.accepted[0]["normalized"]["coordinates"])
 
@@ -27,11 +27,11 @@ class FsaAdapterTests(unittest.TestCase):
         result = self.adapter.parse_file(FIXTURES / "quarantine.csv")
         reasons = [item["reasons"] for item in result.quarantined]
         self.assertIn(("duplicate_id_within_nation",), reasons)
-        self.assertIn(("missing_establishment_id",), reasons)
-        self.assertIn(("unknown_activity",), reasons)
-        self.assertIn(("unknown_status",), reasons)
-        self.assertIn(("address_privacy_risk",), reasons)
-        self.assertIn(("authority_nation_mismatch",), reasons)
+        self.assertTrue(any("missing_establishment_id" in reason for reason in reasons))
+        self.assertTrue(any("unknown_activity" in reason for reason in reasons))
+        self.assertTrue(any("unknown_status" in reason for reason in reasons))
+        self.assertTrue(any("address_privacy_risk" in reason for reason in reasons))
+        self.assertTrue(any("authority_nation_mismatch" in reason for reason in reasons))
 
     def test_schema_drift_fails_closed(self):
         with self.assertRaises(FsaContractError):
@@ -77,10 +77,30 @@ class FsaAdapterTests(unittest.TestCase):
         monthly = "AppNo,TradingName,Country,CompetentAuthority,X,Y,AddressWithheld,All_Activities,Address1,Town,Postcode\nA-1,House Foods,England,Food Standards Agency,-0.12,51.50,No,CP,House Farm,London,SW1\n"
         result = self.adapter.parse_bytes(monthly.encode("cp1252"))
         self.assertEqual(len(result.accepted), 1)
-        self.assertEqual(result.accepted[0]["normalized"]["address_lines"], ("House Farm", None, None))
+        self.assertNotIn("address_lines", result.accepted[0]["normalized"])
         self.assertEqual(result.accepted[0]["normalized"]["privacy_gate"], "privacy-review-required")
         self.assertEqual(result.accepted[0]["normalized"]["coordinate_gate"], "privacy-review-required")
         self.assertIsNone(result.accepted[0]["normalized"]["coordinates"])
+
+    def test_monthly_fsa_animal_product_activity_crosswalk_is_explicit_and_crop_only_stays_out(self):
+        monthly = (
+            "AppNo,TradingName,Country,CompetentAuthority,X,Y,AddressWithheld,All_Activities,Address1,Town,Postcode\n"
+            "A-1,Egg packer,England,Food Standards Agency,-0.12,51.50,No,Packing Centre (Egg),Industrial Road,London,SW1\n"
+            "A-2,Fish plant,Wales,Food Standards Agency,-3.18,51.48,No,Fresh Fishery Products Plant (Fish),Harbour Road,Cardiff,CF1\n"
+            "A-3,Dispatch,England,Food Standards Agency,-0.11,51.51,No,Dispatch Centre (LBM),Dock Road,London,SW2\n"
+            "A-4,Crop plant,England,Food Standards Agency,-0.10,51.52,No,Producing plant (Sprouts),Farm Road,London,SW3\n"
+            "A-5,Generic market,England,Food Standards Agency,-0.09,51.53,No,Wholesale Market,Market Road,London,SW4\n"
+        )
+        result = self.adapter.parse_bytes(monthly.encode("cp1252"))
+        self.assertEqual(len(result.accepted), 3)
+        categories = [row["normalized"]["activity_categories"] for row in result.accepted]
+        self.assertEqual(categories[0], ("processing",))
+        self.assertEqual(categories[1], ("processing",))
+        self.assertEqual(categories[2], ("logistics_and_storage",))
+        self.assertEqual(
+            {item["record"]["normalized"]["establishment_id"]: item["reasons"] for item in result.quarantined},
+            {"A-4": ("no_relevant_activity",), "A-5": ("no_relevant_activity",)},
+        )
 
     def test_monthly_explicit_private_address_indicator_remains_quarantined(self):
         monthly = "AppNo,TradingName,Country,CompetentAuthority,X,Y,AddressWithheld,All_Activities,Address1,Town,Postcode\nA-1,Private Foods,England,Food Standards Agency,-0.12,51.50,No,CP,Flat 2,London,SW1\n"

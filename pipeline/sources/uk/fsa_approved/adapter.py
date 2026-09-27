@@ -20,6 +20,32 @@ AUTHORITY_BY_NATION=CONFIG["authority_by_nation"]
 MONTHLY_REQUIRED=frozenset({"AppNo","TradingName","Country","CompetentAuthority","X","Y","AddressWithheld","All_Activities"})
 MONTHLY_COUNTRIES=frozenset({"England","Wales"})
 
+# The monthly FSA feed contains animal-product activities outside the short
+# SH/CP/MP/CS code set shared with the Scotland adapter. Keep this mapping
+# source-local and deliberately narrow; crop-only and generic market activities
+# remain unresolved until explicitly reviewed.
+_FSA_MONTHLY_ACTIVITY_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("processing", (
+        "packing centre (egg)", "liquid egg plant", "re-wrappingand repackaging establishment",
+        "factory vessel (fish)", "fresh fishery products plant", "mince meat establishment",
+        "game handling establishment", "mechanically separated meat establishment",
+    )),
+    ("logistics_and_storage", (
+        "dispatch centre (lbm)", "purification centre (lbm)", "auction hall (fish)",
+        "wholesale market (fish)", "collection centre (dairy)",
+    )),
+)
+
+
+def _monthly_activity_categories(activities: tuple[str, ...]) -> tuple[str, ...]:
+    """Add only observed FSA monthly activity types to shared categories."""
+    categories = list(classify_activities(activities))
+    text = " ".join(activities).casefold()
+    for category, markers in _FSA_MONTHLY_ACTIVITY_RULES:
+        if any(marker in text for marker in markers) and category not in categories:
+            categories.append(category)
+    return tuple(categories)
+
 class FsaContractError(ValueError):
     """The artifact does not satisfy a supported source contract."""
 
@@ -73,7 +99,7 @@ def _monthly_record(row,line):
     acts=tuple(x for x in (_clean(row.get("All_Activities")),_clean(row.get("Part_A__All_sections_")),_clean(row.get("Part B All sections "))) if x)
     privacy_gate="restricted-withheld-address" if withheld else "privacy-review-required"
     coordinate_gate="restricted-withheld-address" if withheld else "privacy-review-required"
-    ident=_clean(row.get("AppNo"));nation=_clean(row.get("Country"));return {"source_id":CONFIG["source_id"],"source_row":line,"source_record_key":f"{nation or 'unknown'}|{ident or 'unknown'}","source_values":dict(row),"normalized":{"establishment_id":ident,"trading_name":_clean(row.get("TradingName")),"address_lines":None if withheld else tuple(_clean(row.get(k)) for k in ("Address1","Address2","Address3")),"postcode":_clean(row.get("Postcode")),"activities":acts,"activity_categories":classify_activities(acts),"species":_clean(row.get("Species")),"competent_authority":_clean(row.get("CompetentAuthority")),"nation":nation,"authority_nation_key":nation,"status":None,"remarks":_clean(row.get("Remarks")),"published_date":None,"coordinates":None,"coordinate_state":status,"coordinate_precision":"withheld" if withheld else "source-precision-unspecified","coordinate_gate":coordinate_gate,"privacy_gate":privacy_gate,"publication_gate":"blocked"}}
+    ident=_clean(row.get("AppNo"));nation=_clean(row.get("Country"));return {"source_id":CONFIG["source_id"],"source_row":line,"source_record_key":f"{nation or 'unknown'}|{ident or 'unknown'}","source_values":dict(row),"normalized":{"establishment_id":ident,"trading_name":_clean(row.get("TradingName")),"activities":acts,"activity_categories":_monthly_activity_categories(acts),"species":_clean(row.get("Species")),"competent_authority":_clean(row.get("CompetentAuthority")),"nation":nation,"authority_nation_key":nation,"status":None,"published_date":None,"coordinates":None,"coordinate_state":status,"coordinate_precision":"withheld" if withheld else "source-precision-unspecified","coordinate_gate":coordinate_gate,"privacy_gate":privacy_gate,"publication_gate":"blocked"}}
 
 class FsaApprovedEstablishmentsAdapter:
     source_id=CONFIG["source_id"];schema_version=CONFIG["contract_version"];adapter_version=CONFIG["adapter_version"]
@@ -118,7 +144,7 @@ class FsaApprovedEstablishmentsAdapter:
             if (country,ident) in duplicates:reasons.append("duplicate_id_within_nation")
             if country not in MONTHLY_COUNTRIES:reasons.append("unknown_nation")
             if not any(_clean(v.get(k)) for k in ("All_Activities","Part_A__All_sections_","Part B All sections ")):reasons.append("missing_activity")
-            elif not classify_activities(_split(_clean(v.get("All_Activities")) or _clean(v.get("Part_A__All_sections_")) or _clean(v.get("Part B All sections ")))):reasons.append("no_relevant_activity")
+            elif not _monthly_activity_categories(_split(_clean(v.get("All_Activities")) or _clean(v.get("Part_A__All_sections_")) or _clean(v.get("Part B All sections ")))):reasons.append("no_relevant_activity")
             if _clean(v.get("Remarks")):reasons.append("remarks_present")
             withheld=(_clean(v.get("AddressWithheld")) or "").lower()=="yes"
             if not withheld and address_privacy_risk(*(v.get(k) for k in ("Address1","Address2","Address3","Town","Postcode"))):reasons.append("address_privacy_risk")

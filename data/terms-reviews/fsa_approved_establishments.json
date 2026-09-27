@@ -1,0 +1,7 @@
+{
+  "decision": "approved",
+  "notes": "The FSA National Data Library catalogue identifies the publisher as the Food Standards Agency, labels the dataset Approved Food Establishments in England and Wales, lists the 1 September 2026 CSV snapshot, and states UK Open Government Licence (OGL). This approval is limited to private, restricted acquisition and processing under the operator's explicit source-lane instruction. It does not approve redistribution, public release, precise-coordinate exposure, or any records from Northern Ireland or Scotland. Preserve attribution and source snapshot date; retain raw rows only in ignored restricted staging; suppress AddressWithheld addresses and coordinates; review source coordinates before any use; keep remarks and privacy-risk rows quarantined. Source scope, live schema, activity mappings, and row-level privacy remain validation obligations.",
+  "reference": "Human operator instruction in Codex task to proceed with the FSA source lane; https://www.data.gov.uk/dataset/2c80e0ce-ee1c-4f26-ba6f-1e1ae1bd8ee9/approved-food-establishments",
+  "reviewed_at": "2026-09-27T20:33:55Z",
+  "reviewer": "project operator (source-lane approval recorded in Codex task)"
+}

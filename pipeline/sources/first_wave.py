@@ -27,6 +27,7 @@ from .italy.it_1069_adapter import Italy1069Adapter
 from .australia.npi import NpiFacilitiesAdapter
 from .australia.sa_epa import SouthAustraliaEpaAdapter
 from .us.fsis.runner_adapter import FsisRefreshAdapter
+from .uk.fsa_approved.adapter import FsaApprovedEstablishmentsAdapter
 
 
 ROOT = Path(__file__).resolve().parent
@@ -66,8 +67,8 @@ class SourceDescriptor:
 
     def readiness(self) -> dict[str, Any]:
         """Return capability facts without conflating acquisition and approval."""
-        live_callable = self.source_id in {"be.locations", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "fr.dgal.section-i", "fr.dgal.section-ii", "it.853-2004", "it.1069-2009", "au.sa.epa.licensed-activities", "au.npi.facilities"}
-        operational = "live" if self.source_id in {"be.locations", "ca.cfia.federal-meat", "it.853-2004", "it.1069-2009", "fr.dgal.section-i", "fr.dgal.section-ii", "au.sa.epa.licensed-activities", "au.npi.facilities"} else ("terms-blocked" if live_callable else "assisted")
+        live_callable = self.source_id in {"be.locations", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "fsa_approved_establishments", "fr.dgal.section-i", "fr.dgal.section-ii", "it.853-2004", "it.1069-2009", "au.sa.epa.licensed-activities", "au.npi.facilities"}
+        operational = "live" if self.source_id in {"be.locations", "ca.cfia.federal-meat", "fsa_approved_establishments", "it.853-2004", "it.1069-2009", "fr.dgal.section-i", "fr.dgal.section-ii", "au.sa.epa.licensed-activities", "au.npi.facilities"} else ("terms-blocked" if live_callable else "assisted")
         return {
             "source_id": self.source_id,
             "fixture_ready": bool(self.fixture_paths),
@@ -75,7 +76,7 @@ class SourceDescriptor:
             "live_acquisition": self.live_acquisition,
             "operational_classification": operational,
             "live_callable": live_callable,
-            "private_pipeline": "one_action_preview_import_ready" if self.source_id in {"it.853-2004", "it.1069-2009", "au.sa.epa.licensed-activities", "au.npi.facilities"} else "fixture_contract_ready",
+            "private_pipeline": "one_action_preview_import_ready" if self.source_id in {"it.853-2004", "it.1069-2009", "au.sa.epa.licensed-activities", "au.npi.facilities", "fsa_approved_establishments"} else "fixture_contract_ready",
             "publication": self.publication,
             "geocoding": "disabled",
             "review_required": True,
@@ -114,11 +115,32 @@ def _australia_sa_epa() -> SourceAdapter:
     return SouthAustraliaEpaAdapter()
 
 
+class _FsaTypedBridge:
+    """Adapt FSA's mapping-based source contract to the typed lifecycle seam."""
+    source_id = FsaApprovedEstablishmentsAdapter.source_id
+    adapter_version = FsaApprovedEstablishmentsAdapter.adapter_version
+
+    def run(self, raw_path: str | Path, run_dir: str | Path, artifact: SourceArtifact) -> dict[str, Any]:
+        return FsaApprovedEstablishmentsAdapter().run(raw_path, run_dir, {
+            "source_url": artifact.source_url, "retrieved_at_utc": artifact.retrieved_at_utc,
+            "checksum_sha256": artifact.sha256, "byte_size": artifact.byte_size,
+            "effective_date": artifact.effective_date, "publication_date": artifact.publication_date,
+            "code_version": artifact.code_version, "config_version": artifact.config_version,
+            "rights_caveat": artifact.rights_caveat, "privacy_caveat": artifact.privacy_caveat,
+            "coverage": artifact.coverage,
+        })
+
+
+def _fsa() -> SourceAdapter:
+    return _FsaTypedBridge()
+
+
 FIRST_WAVE: tuple[SourceDescriptor, ...] = (
     SourceDescriptor("dk.smiley", "DK", "https://pub.fvst.dk/publikationer/Smileydata.xml", _denmark, (ROOT / "denmark" / "fixtures" / "synthetic.xml",), "denmark-smiley-contract-v1", "denmark-smiley-contract-v1", "verified"),
     SourceDescriptor("be.locations", "BE", BELGIUM_CONFIG["operator_url"], _belgium, (ROOT / "belgium" / "fixtures" / "synthetic_operators.csv", ROOT / "belgium" / "fixtures" / "synthetic_activity_codes.csv"), BELGIUM_CONFIG["adapter_version"], BELGIUM_CONFIG["schema_version"], "bounded_private_fetch"),
     SourceDescriptor("ca.ontario.meat-plants", "CA", "https://data.ontario.ca/dataset/a763088c-018d-48b7-bf47-3027a8c725b8/resource/ee6d559a-78de-40e6-b2ba-ad3c4a674b96/download/1._all_meat_plants.csv", OntarioMeatPlantsAdapter, (ROOT / "canada" / "fixtures" / "ontario.csv",), "ca-meat-v2-workbook", "ca-meat-tabular-workbook-v1", "verified"),
     SourceDescriptor("ca.cfia.federal-meat", "CA", "https://active.inspection.gc.ca/scripts/meavia/reglist/download.asp?lang=e", CfiaFederalMeatAdapter, (ROOT / "canada" / "fixtures" / "cfia.csv",), "ca-meat-v3-cfia-column-crosswalk", "ca-meat-tabular-workbook-v2", "bounded_private_fetch"),
+    SourceDescriptor("fsa_approved_establishments", "GB", "https://fsaopendata.blob.core.windows.net/opendatacatalog/Approved-Establishments-01-09-26.csv", _fsa, (ROOT / "uk" / "fsa_approved" / "fixtures" / "valid.csv",), "fsa-uk-v2-2", "fsa-uk-approved-v1", "bounded_private_fetch"),
     SourceDescriptor("fr.dgal.section-i", "FR", "https://fichiers-publics.agriculture.gouv.fr/dgal/ListesOfficielles/SSA1_VIAN_ONG_DOM.txt", _france_i, (ROOT / "france" / "fixtures" / "section_i.csv",), "fr-dgal-853-v2", "fr-dgal-853-txt-v2", "verified"),
     SourceDescriptor("fr.dgal.section-ii", "FR", "https://fichiers-publics.agriculture.gouv.fr/dgal/ListesOfficielles/SSA1_VIAN_COL_LAGO.txt", _france_ii, (ROOT / "france" / "fixtures" / "section_ii.csv",), "fr-dgal-853-v2", "fr-dgal-853-txt-v2", "verified"),
     SourceDescriptor("it.853-2004", "IT", "https://www.dati.salute.gov.it/", _italy, (ROOT / "italy" / "fixtures" / "synthetic_853.csv",), "it-853-candidate-v2", "it-853-csv-v2.0", "verified"),
@@ -189,6 +211,20 @@ class FirstWaveRefreshAdapter:
             from .australia.npi import fetch
             return fetch(output_root=root, run_id=run_id, terms_review_path=Path(str(review)),
                          timeout_seconds=timeout, max_bytes=max_bytes)
+        if self.source_id == "fsa_approved_establishments":
+            from pipeline.common.acquisition import fetch_source
+            from .uk.fsa_approved.adapter import CONFIG
+            return fetch_source(
+                source_id=self.source_id, url=self.descriptor.source_url, output_root=root,
+                artifact_name="source.csv", terms_review_path=Path(str(review)), run_id=run_id,
+                timeout_seconds=timeout, max_bytes=max_bytes, allowed_content_types=(
+                    "text/csv", "application/csv", "application/octet-stream"),
+                code_version=self.adapter_version, config_version=self.descriptor.schema_version,
+                coverage="Food Standards Agency monthly approved establishments; England and Wales only",
+                rights_caveat="UK Open Government Licence indicated by official catalogue; private preview only",
+                privacy_caveat="addresses and coordinates suppressed; restricted private staging",
+                artifact_validator=lambda path, _headers: FsaApprovedEstablishmentsAdapter().parse_bytes(path.read_bytes()),
+            )
         raise RuntimeError(f"no approved live callable for {self.source_id}; use assisted local artifact")
 
     def refresh(self, *, mode: str, run_dir: Path, artifact: Path | None,
@@ -233,6 +269,8 @@ class FirstWaveRefreshAdapter:
                 coverage="Belgian activity-code companion artifact; not a facility list",
             )
             source_adapter = BelgiumOperatorsAdapter(companion_path, companion_artifact, strict_schema=True)
+        if self.source_id == "fsa_approved_establishments":
+            raw_path = artifact
         acquisition = options.get("acquisition") if isinstance(options.get("acquisition"), Mapping) else {}
         source_artifact = self.descriptor.artifact_for(raw_path)
         acquisition_facts = acquisition
@@ -316,6 +354,25 @@ class FirstWaveRefreshAdapter:
             })
             if self.source_id == "it.1069-2009":
                 summary["coordinate_rejections"] = manifest.get("coordinate_rejections", {})
+        if self.source_id == "fsa_approved_establishments" and status.get("status") == "candidate-ready":
+            normalized = lifecycle_root / "normalized" / "records.jsonl"
+            rows = [json.loads(line) for line in normalized.read_text(encoding="utf-8").splitlines() if line]
+            # Keep the handoff projection narrow: source_values remains in the
+            # restricted lifecycle artifact, while normalized contains no address,
+            # postcode, remarks, or coordinate values.
+            handoff_rows = [{**row, "source_values": {}} for row in rows]
+            write_handoff(run_dir / "candidate-handoff", handoff_rows, source_artifact,
+                          source_id=self.source_id, emit_graph_candidates=False)
+            handoff_manifest = json.loads((run_dir / "candidate-handoff" / "manifest.json").read_text(encoding="utf-8"))
+            summary.update({
+                "acquisition_classification": "live" if acquisition else "assisted",
+                "candidate_handoff": True,
+                "candidate_observation_rows": handoff_manifest.get("normalized_rows"),
+                "candidate_handoff_sha256": handoff_manifest.get("normalized_sha256"),
+                "schema_fingerprint": manifest.get("schema_fingerprint"),
+                "quarantine_reasons": manifest.get("anomaly_counts", {}),
+                "publication_state": "private-only; not public-release-ready",
+            })
         if self.source_id == "be.locations" and status.get("status") == "candidate-ready":
             normalized = lifecycle_root / "normalized" / "records.jsonl"
             records = [json.loads(line) for line in normalized.read_text(encoding="utf-8").splitlines() if line]
