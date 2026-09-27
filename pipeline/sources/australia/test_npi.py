@@ -1,4 +1,5 @@
 import hashlib
+import io
 import json
 import shutil
 import tempfile
@@ -8,12 +9,14 @@ from pathlib import Path
 from pipeline.common.orchestrator import run_private_lifecycle
 from pipeline.contracts.adapter_contract import SourceArtifact
 from pipeline.sources.australia.npi import (
-    ADAPTER_VERSION, SCHEMA_VERSION, NpiFacilitiesAdapter, SOURCE_ID, SOURCE_URL,
+    ADAPTER_VERSION, CATALOG_URL, LICENSE_TITLE, LICENSE_URL, RESOURCE_ID,
+    RESOURCE_URL, SCHEMA_VERSION, NpiFacilitiesAdapter, SOURCE_ID, SOURCE_URL, fetch,
 )
 
 
 ROOT = Path(__file__).parent
 FIXTURE = ROOT / "fixtures" / "npi_facilities.csv"
+TERMS_REVIEW = ROOT.parents[2] / "data" / "terms-reviews" / "au.npi.facilities.json"
 
 
 def artifact_for(raw: bytes) -> SourceArtifact:
@@ -36,7 +39,9 @@ class NpiAdapterTests(unittest.TestCase):
         self.assertEqual(result["input_rows"], 5)
         self.assertEqual(len(result["accepted"]), 3)
         self.assertEqual(len(result["quarantined"]), 2)
-        self.assertEqual(result["accepted"][0]["normalized"]["coordinate_state"], "source")
+        self.assertEqual(result["accepted"][0]["normalized"]["coordinate_state"], "source-value-present-pending-privacy-review")
+        self.assertIsNone(result["accepted"][0]["normalized"]["coordinates"])
+        self.assertEqual(result["accepted"][0]["source_values"]["latitude"], "-32.9283")
         self.assertEqual(result["accepted"][2]["normalized"]["coordinate_state"], "not-supplied-by-source")
         reasons = {reason for item in result["quarantined"] for reason in item["reasons"]}
         self.assertEqual(reasons, {"invalid_source_coordinate", "missing_facility_id"})
@@ -45,6 +50,78 @@ class NpiAdapterTests(unittest.TestCase):
         raw = FIXTURE.read_bytes().replace(b",reports\r\n", b"\r\n", 1)
         with self.assertRaisesRegex(ValueError, "schema drift"):
             NpiFacilitiesAdapter().parse_bytes(raw)
+
+    def test_industry_codes_remain_source_claims_not_operation_facts(self):
+        result = NpiFacilitiesAdapter().parse_bytes(FIXTURE.read_bytes())
+        poultry = result["accepted"][2]["normalized"]
+        meat = result["accepted"][0]["normalized"]
+        self.assertEqual(poultry["animal_relevance"], "poultry-meat-farming-industry-candidate")
+        self.assertEqual(poultry["activity_categories"], [])
+        self.assertEqual(poultry["operation_state"], "unknown; NPI reporting does not prove current operation")
+        self.assertEqual(meat["animal_relevance"], "meat-processing-industry-candidate")
+        self.assertEqual(meat["activity_categories"], ["processing"])
+        self.assertEqual(meat["privacy_gate"], "pending-review")
+        self.assertEqual(meat["coordinate_gate"], "review_required")
+        self.assertFalse(meat["in_default_map_scope"])
+        self.assertIsNone(meat["coordinates"])
+
+    def test_live_fetch_checks_official_catalogue_and_records_immutable_provenance(self):
+        raw = FIXTURE.read_bytes()
+        catalog = {
+            "success": True,
+            "result": {
+                "id": "043f58e0-a188-4458-b61c-04e5b540aea4",
+                "title": "National Pollutant Inventory",
+                "license_title": LICENSE_TITLE,
+                "license_url": LICENSE_URL,
+                "metadata_modified": "2026-09-27T00:00:00Z",
+                "resources": [{"id": RESOURCE_ID, "name": "Facilities", "format": "CSV", "url": RESOURCE_URL,
+                               "last_modified": "2026-03-31T07:24:23Z", "size": len(raw)}],
+            },
+        }
+
+        class Response(io.BytesIO):
+            status = 200
+            def __init__(self, body, url, content_type):
+                super().__init__(body)
+                self._url = url
+                self.headers = {"Content-Type": content_type, "ETag": '"fixture"'}
+            def geturl(self):
+                return self._url
+
+        class Opener:
+            def __init__(self, payloads):
+                self.payloads = payloads
+                self.requests = []
+            def urlopen(self, request, timeout):
+                url = request.full_url
+                self.requests.append(url)
+                body, content_type = self.payloads[url]
+                return Response(body, url, content_type)
+
+        payloads = {
+            CATALOG_URL: (json.dumps(catalog).encode(), "application/json"),
+            RESOURCE_URL: (raw, "text/csv; charset=utf-8"),
+        }
+        opener = Opener(payloads)
+        directory = Path(tempfile.mkdtemp(prefix="uec-au-npi-fetch-"))
+        try:
+            metadata = fetch(output_root=directory, run_id="fetch-test-001",
+                             terms_review_path=TERMS_REVIEW,
+                             opener=opener)
+            artifact = Path(metadata["artifact_path"])
+            self.assertEqual(artifact.read_bytes(), raw)
+            self.assertEqual(metadata["sha256"], hashlib.sha256(raw).hexdigest())
+            self.assertEqual(metadata["license"], LICENSE_TITLE)
+            self.assertEqual(metadata["retrieved_at_utc"].endswith("Z"), True)
+            self.assertEqual(len(opener.requests), 2)
+            with self.assertRaisesRegex(FileExistsError, "already exists"):
+                fetch(output_root=directory, run_id="fetch-test-001",
+                      terms_review_path=TERMS_REVIEW,
+                      opener=opener)
+            self.assertEqual(len(opener.requests), 2)
+        finally:
+            shutil.rmtree(directory, ignore_errors=True)
 
     def test_private_lifecycle_is_deterministic_and_private(self):
         raw = FIXTURE.read_bytes()

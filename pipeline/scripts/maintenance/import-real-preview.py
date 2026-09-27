@@ -175,6 +175,7 @@ def safe_https_url(value: Any) -> str | None:
 
 
 SOURCE_NAMES = {
+    "au.npi.facilities": "Australian Department of Climate Change, Energy, the Environment and Water — National Pollutant Inventory",
     "au.sa.epa.licensed-activities": "South Australian Environment Protection Authority — Licensed Activities",
     "be.locations": "Belgian Federal Agency for the Safety of the Food Chain — Operator Register",
     "ca.cfia.federal-meat": "Canadian Food Inspection Agency — Federal Meat Establishments",
@@ -678,6 +679,43 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
                     or acquired_at > datetime.now(timezone.utc) + timedelta(minutes=5)
                     or datetime.now(timezone.utc) - acquired_at > timedelta(days=max_age)):
                 raise ImportFailure("acquisition_provenance_mismatch")
+        elif source_id == "au.npi.facilities":
+            acquisition_path = root / "acquisition" / source_id / run_id / "acquisition-metadata.json"
+            expected_artifact = root / "acquisition" / source_id / run_id / "source.csv"
+            if not acquisition_path.is_file() or acquisition_path.is_symlink():
+                raise ImportFailure("acquisition_provenance_missing")
+            acquisition_evidence = json_object(acquisition_path)
+            artifact_value = acquisition_evidence.get("artifact_path")
+            if (not isinstance(artifact_value, str) or Path(artifact_value).resolve() != expected_artifact.resolve()
+                    or not expected_artifact.is_file() or expected_artifact.is_symlink()):
+                raise ImportFailure("acquisition_artifact_mismatch")
+            artifact_hash, artifact_size = digest_file(expected_artifact)
+            try:
+                acquired_at = datetime.fromisoformat(str(acquisition_evidence.get("retrieved_at_utc")).replace("Z", "+00:00"))
+            except ValueError:
+                raise ImportFailure("acquisition_timestamp_invalid") from None
+            terms_evidence = acquisition_evidence.get("terms_review")
+            if (acquisition_evidence.get("source_id") != source_id
+                    or acquisition_evidence.get("source_title") != "National Pollutant Inventory"
+                    or acquisition_evidence.get("run_id") != run_id
+                    or acquisition_evidence.get("catalog_url") != "https://data.gov.au/data/api/3/action/package_show?id=043f58e0-a188-4458-b61c-04e5b540aea4"
+                    or acquisition_evidence.get("catalog_resource_updated_at") != acquisition_evidence.get("effective_date")
+                    or acquisition_evidence.get("requested_url") != "https://data.gov.au/data/dataset/043f58e0-a188-4458-b61c-04e5b540aea4/resource/f83cdee9-ebcb-4f24-941b-34bb2f0996cf/download/facilities.csv"
+                    or acquisition_evidence.get("final_url") != acquisition_evidence.get("requested_url")
+                    or acquisition_evidence.get("canonical_url") != manifest.get("source_url")
+                    or acquisition_evidence.get("sha256") != source_hash or artifact_hash != source_hash
+                    or acquisition_evidence.get("byte_size") != artifact_size
+                    or acquisition_evidence.get("license") != "Creative Commons Attribution 4.0 International"
+                    or acquisition_evidence.get("license_url") != "http://creativecommons.org/licenses/by/4.0"
+                    or acquisition_evidence.get("retrieved_at_utc") != manifest.get("retrieved_at_utc")
+                    or not isinstance(terms_evidence, dict)
+                    or terms_evidence.get("source_id") != source_id
+                    or terms_evidence.get("decision") != "approved"
+                    or terms_evidence.get("private_preview_only") is not True
+                    or acquired_at.utcoffset() is None
+                    or acquired_at > datetime.now(timezone.utc) + timedelta(minutes=5)
+                    or datetime.now(timezone.utc) - acquired_at > timedelta(days=max_age)):
+                raise ImportFailure("acquisition_provenance_mismatch")
         elif source_id == "us.fsis":
             source_artifacts = manifest.get("source_artifacts")
             bundle = manifest.get("bundle_artifact")
@@ -872,6 +910,12 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
                                "geometry_reference": ({**{key: index_payload.get(key) for key in ("source", "source_url", "license", "reference_date", "retrieved_at_utc", "source_last_modified", "source_sha256", "source_byte_size", "method", "version")}, "derived_index_sha256": digest_file(municipality_index_path)[0]} if municipality_index is not None else None),
                                "fresh_live_run": True, "preview_policy_version": json_object(POLICY).get("contract_version"),
                                "preview_candidate_projection_version": SNAPSHOT_PROJECTION_VERSION}
+            if source_id == "au.npi.facilities":
+                runtime_details["source_specific_counts"].update({
+                    key: source_summary.get(key) for key in (
+                        "coordinate_counts", "industry_relevance_counts", "primary_anzsic_code_counts",
+                        "address_review_signal_counts")
+                })
             db.execute("""INSERT INTO real_preview.source_preview_runs
                 (run_id,source_id,snapshot_sha256,source_url,retrieved_at,source_artifact_sha256,normalized_sha256,
                  adapter_version,schema_version,input_count,accepted_count,quarantined_count,out_of_scope_count,

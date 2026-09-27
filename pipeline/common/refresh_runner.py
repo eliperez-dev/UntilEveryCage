@@ -450,6 +450,18 @@ class RefreshRunner:
         artifact_meta: dict[str, Any] = {"available": False, "sha256": None, "byte_size": None}
         if artifact is not None:
             artifact_meta = _artifact_digest(artifact)
+        elif (isinstance(summary.get("source_artifact_sha256"), str)
+              and len(str(summary.get("source_artifact_sha256"))) == 64
+              and isinstance(summary.get("source_artifact_byte_size"), int)
+              and int(summary.get("source_artifact_byte_size")) >= 0):
+            # Source-specific live acquisition can report verified artifact
+            # facts without leaking its private filesystem path into the
+            # row-free runner result.
+            artifact_meta = {
+                "available": True,
+                "sha256": summary["source_artifact_sha256"],
+                "byte_size": summary["source_artifact_byte_size"],
+            }
         acquired_at = summary.get("retrieved_at_utc") or summary.get("acquisition_timestamp_utc")
         previous = summary.get("previous_valid_state")
         if isinstance(previous, Mapping):

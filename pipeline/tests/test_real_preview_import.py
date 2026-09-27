@@ -122,6 +122,26 @@ class RealPreviewImporterTests(unittest.TestCase):
         })
         self.assertFalse(unclassified[16], "missing Denmark scope classification must fail closed")
 
+    def test_australia_npi_coordinates_are_withheld_and_city_search_remains_listable(self):
+        row = IMPORTER.parse_row("au.npi.facilities", {
+            "source_id": "au.npi.facilities", "source_record_key": "NPI-1",
+            "normalized": {"establishment_id": "NPI-1", "name": "Sensitive facility",
+                "city": "Example", "postal_code": "2000", "country_code": "AU",
+                "coordinates": None, "coordinate_state": "source-value-present-pending-privacy-review",
+                "coordinate_precision": "source-provided; precision semantics not documented",
+                "privacy_gate": "pending-review", "in_default_map_scope": False,
+                "map_scope_reason": "pending privacy review"},
+            "source_values": {"street_address": "1 private road", "latitude": "-33.1", "longitude": "151.2"},
+        })
+        self.assertEqual(row[1], "city_postal")
+        self.assertEqual((row[2], row[3], row[4]), ("AU", "Example", "2000"))
+        self.assertIsNone(row[5])
+        self.assertIsNone(row[6])
+        self.assertIsNone(row[11], "pending privacy must suppress the facility name")
+        self.assertFalse(row[16], "NPI records must remain outside default map scope")
+        self.assertEqual(IMPORTER.SOURCE_NAMES["au.npi.facilities"],
+                         "Australian Department of Climate Change, Energy, the Environment and Water — National Pollutant Inventory")
+
     def test_unmapped_source_group_is_a_listable_candidate_without_coordinates(self):
         row = IMPORTER.parse_row("dk.smiley", {
             "source_id": "dk.smiley", "source_record_key": "synthetic-row",

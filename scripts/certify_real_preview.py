@@ -89,6 +89,10 @@ def validate_ledger(ledger: dict[str, Any], source_id: str) -> dict[str, Any]:
         counts["unmapped"] = 0
         if counts["city_postal"] != counts["candidates"]:
             raise CertificationError("CFIA city/postal listable counts do not reconcile")
+    if source_id == "au.npi.facilities":
+        counts["unmapped"] = 0
+        if counts["city_postal"] != counts["candidates"] or counts["numeric_coordinates"] != 0:
+            raise CertificationError("Australia NPI privacy-safe city/postal candidate counts do not reconcile")
     if counts["numeric_coordinates"] + counts["coarse_placeable"] != counts["map_visible"]:
         raise CertificationError("map-visible count does not reconcile with coordinate/coarse counts")
     location_unmapped = (counts["unmapped_map_candidates"] if source_id == "dk.smiley"
@@ -272,7 +276,7 @@ def _db_check(database_url: str, source_id: str, evidence: dict[str, Any]) -> di
             raise CertificationError("database run identity or normalized hash does not match the ledger")
         if raw_hash.strip().lower() not in evidence["acquisition_hashes"]:
             raise CertificationError("database source artifact hash is absent from acquisition provenance")
-        db_unmapped = 0 if source_id == "ca.cfia.federal-meat" else unmapped
+        db_unmapped = 0 if source_id in {"ca.cfia.federal-meat", "au.npi.facilities"} else unmapped
         if (observations, candidates, numeric, coarse, db_unmapped, listable, visible) != (
             expected["observations"], expected["candidates"], expected["numeric_coordinates"],
             expected["coarse_placeable"], expected["unmapped"], expected["candidates"], expected["map_visible"]):

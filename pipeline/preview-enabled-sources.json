@@ -57,6 +57,20 @@
       "adapter_version": "ca-meat-v3-cfia-column-crosswalk",
       "schema_version": "ca-meat-tabular-workbook-v2"
     },
+    "au.npi.facilities": {
+      "enabled": true,
+      "runtime_classification": "production-e2e",
+      "public_release": false,
+      "runner": "pipeline.refresh_private:au.npi.facilities",
+      "terms_review": "data/terms-reviews/au.npi.facilities.json",
+      "terms_decision": "approved",
+      "freshness_max_days": 365,
+      "expected_artifacts": ["source.csv"],
+      "allowed_preview_fields": ["establishment_id", "name", "trading_name", "registered_business_name", "facility_name", "address", "address_state", "location_role", "location_semantics", "residential_or_mixed_use_screen", "address_review_signals", "city", "postal_code", "country_code", "state", "coordinates", "coordinate_state", "coordinate_precision", "privacy_gate", "coordinate_gate", "publication_gate", "activity_categories", "main_activities", "animal_relevance", "primary_anzsic_class_code", "primary_anzsic_class_name", "first_report_year", "latest_report_year", "latest_report_id", "observation_state", "operation_state", "classification_state", "in_default_map_scope", "map_scope_reason"],
+      "display_policy": {"kind": "unmapped_city_postal", "precision": "city_postal_or_unmapped", "disclosure": "NPI reporting facilities are environmental reporting records, not proof of current operation or a complete animal-facility register. Source addresses and coordinates remain private pending site-identity, residential/mixed-use, and precision review; this preview intentionally has zero map pins. Private preview only; CC BY 4.0 attribution applies."},
+      "adapter_version": "au-npi-facilities-v2",
+      "schema_version": "au-npi-csv-v2"
+    },
     "it.853-2004": {
       "enabled": true,
       "runtime_classification": "production-e2e",

@@ -1,0 +1,11 @@
+{
+  "source_id": "au.npi.facilities",
+  "decision": "approved",
+  "license": "Creative Commons Attribution 4.0 International",
+  "license_url": "http://creativecommons.org/licenses/by/4.0",
+  "reference": "https://data.gov.au/data/dataset/043f58e0-a188-4458-b61c-04e5b540aea4",
+  "notes": "The official data.gov.au catalogue currently identifies the National Pollutant Inventory dataset as CC BY 4.0 and lists the Facilities CSV resource. This task authorization covers acquisition, processing, restricted local staging, and an isolated private preview with attribution to the Commonwealth of Australia, DCCEEW, and the NPI. It does not approve row-level publication. Facility addresses and coordinates require residential, mixed-use, site-identity, and precision review. NPI reporting and ANZSIC codes do not establish current operation or complete animal-facility coverage.",
+  "private_preview_only": true,
+  "reviewed_at": "2026-09-27T00:00:00Z",
+  "reviewer": "Project operator authorization for the Australia NPI source-integration sprint"
+}

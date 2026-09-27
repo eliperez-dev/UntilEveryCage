@@ -1,13 +1,13 @@
 {
   "schema_version": "1.0",
   "purpose": "Private bounded Australia source reconnaissance artifacts; not release inputs.",
-  "retrieved_at": "2026-09-16T00:17:32-07:00",
+  "retrieved_at": "2026-09-27T14:02:15-07:00",
   "artifacts": [
     {
       "source_id": "au.npi.facilities",
       "url": "https://data.gov.au/data/dataset/043f58e0-a188-4458-b61c-04e5b540aea4/resource/f83cdee9-ebcb-4f24-941b-34bb2f0996cf/download/facilities.csv",
-      "local_path": "data/raw/australia/npi-facilities.csv",
-      "retrieved_at": "2026-09-16T07:15:42.2821369Z",
+      "local_path": "data/staging/private-refresh/refresh-575290f05d20c06e/sources/au.npi.facilities/acquisition/au.npi.facilities/au-npi-strict-20260927-2050/source.csv",
+      "retrieved_at": "2026-09-27T21:02:15.622032Z",
       "content_type": "text/csv",
       "byte_size": 3248241,
       "sha256": "a0be4c37d588b391ea81baf240f675b2c9f3d9ee0210f9c451c7371eac11d6c7",
@@ -15,7 +15,7 @@
       "unique_key": "facility_id",
       "unique_key_count": 8140,
       "schema": ["facility_id", "jurisdiction_code", "jurisdiction_facility_id", "registered_business_name", "facility_name", "abn", "acn", "street_address", "suburb", "state", "postcode", "latitude", "longitude", "primary_anzsic_class_code", "primary_anzsic_class_name", "main_activities", "facility_website", "first_report_year", "latest_report_year", "latest_report_id", "latest_report_url", "reports"],
-      "retention": "ignored private raw artifact; do not commit or publish"
+      "retention": "ignored private raw artifact; 8,116 source-coordinate pairs are retained only in restricted source evidence and withheld from normalized preview until privacy review; do not commit or publish"
     },
     {
       "source_id": "au.sa.epa.licensed-activities",

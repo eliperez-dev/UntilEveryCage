@@ -66,8 +66,8 @@ class SourceDescriptor:
 
     def readiness(self) -> dict[str, Any]:
         """Return capability facts without conflating acquisition and approval."""
-        live_callable = self.source_id in {"be.locations", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "fr.dgal.section-i", "fr.dgal.section-ii", "it.853-2004", "it.1069-2009", "au.sa.epa.licensed-activities"}
-        operational = "live" if self.source_id in {"be.locations", "ca.cfia.federal-meat", "it.853-2004", "it.1069-2009", "fr.dgal.section-i", "fr.dgal.section-ii", "au.sa.epa.licensed-activities"} else ("terms-blocked" if live_callable else "assisted")
+        live_callable = self.source_id in {"be.locations", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "fr.dgal.section-i", "fr.dgal.section-ii", "it.853-2004", "it.1069-2009", "au.sa.epa.licensed-activities", "au.npi.facilities"}
+        operational = "live" if self.source_id in {"be.locations", "ca.cfia.federal-meat", "it.853-2004", "it.1069-2009", "fr.dgal.section-i", "fr.dgal.section-ii", "au.sa.epa.licensed-activities", "au.npi.facilities"} else ("terms-blocked" if live_callable else "assisted")
         return {
             "source_id": self.source_id,
             "fixture_ready": bool(self.fixture_paths),
@@ -75,7 +75,7 @@ class SourceDescriptor:
             "live_acquisition": self.live_acquisition,
             "operational_classification": operational,
             "live_callable": live_callable,
-            "private_pipeline": "one_action_preview_import_ready" if self.source_id in {"it.853-2004", "it.1069-2009", "au.sa.epa.licensed-activities"} else "fixture_contract_ready",
+            "private_pipeline": "one_action_preview_import_ready" if self.source_id in {"it.853-2004", "it.1069-2009", "au.sa.epa.licensed-activities", "au.npi.facilities"} else "fixture_contract_ready",
             "publication": self.publication,
             "geocoding": "disabled",
             "review_required": True,
@@ -123,7 +123,7 @@ FIRST_WAVE: tuple[SourceDescriptor, ...] = (
     SourceDescriptor("fr.dgal.section-ii", "FR", "https://fichiers-publics.agriculture.gouv.fr/dgal/ListesOfficielles/SSA1_VIAN_COL_LAGO.txt", _france_ii, (ROOT / "france" / "fixtures" / "section_ii.csv",), "fr-dgal-853-v2", "fr-dgal-853-txt-v2", "verified"),
     SourceDescriptor("it.853-2004", "IT", "https://www.dati.salute.gov.it/", _italy, (ROOT / "italy" / "fixtures" / "synthetic_853.csv",), "it-853-candidate-v2", "it-853-csv-v2.0", "verified"),
     SourceDescriptor("it.1069-2009", "IT", "https://www.dati.salute.gov.it/it/dataset/stabilimenti-italiani-i-sottoprodotti-di-origine-animale/", _italy_1069, (), "it-1069-candidate-v2", "it-1069-csv-current-2026-09", "bounded_private_fetch"),
-    SourceDescriptor("au.npi.facilities", "AU", "https://data.gov.au/data/dataset/043f58e0-a188-4458-b61c-04e5b540aea4", _australia_npi, (ROOT / "australia" / "fixtures" / "npi_facilities.csv",), "au-npi-facilities-v1", "au-npi-csv-v1", "assisted_only"),
+    SourceDescriptor("au.npi.facilities", "AU", "https://data.gov.au/data/dataset/043f58e0-a188-4458-b61c-04e5b540aea4", _australia_npi, (ROOT / "australia" / "fixtures" / "npi_facilities.csv",), "au-npi-facilities-v2", "au-npi-csv-v2", "bounded_private_fetch"),
     SourceDescriptor("au.sa.epa.licensed-activities", "AU", "https://data.sa.gov.au/data/dataset/8fdb86ff-d3d1-4f9e-85a5-bed4080d5ee1/resource/26e076f3-c37f-4089-8f28-3f7c9afd997e/download/topo_epa_activities_wgs84.geojson", _australia_sa_epa, (ROOT / "australia" / "fixtures" / "sa_epa_synthetic.geojson",), "au-sa-epa-licensed-activities-v1", "au-sa-epa-geojson-v1", "bounded_private_fetch"),
 )
 
@@ -183,6 +183,10 @@ class FirstWaveRefreshAdapter:
                          timeout_seconds=timeout, max_bytes=max_bytes)
         if self.source_id == "au.sa.epa.licensed-activities":
             from .australia.sa_epa import fetch
+            return fetch(output_root=root, run_id=run_id, terms_review_path=Path(str(review)),
+                         timeout_seconds=timeout, max_bytes=max_bytes)
+        if self.source_id == "au.npi.facilities":
+            from .australia.npi import fetch
             return fetch(output_root=root, run_id=run_id, terms_review_path=Path(str(review)),
                          timeout_seconds=timeout, max_bytes=max_bytes)
         raise RuntimeError(f"no approved live callable for {self.source_id}; use assisted local artifact")
@@ -353,6 +357,24 @@ class FirstWaveRefreshAdapter:
                 "source_canonical_url": manifest.get("canonical_url"),
                 "source_as_of": manifest.get("effective_date"),
                 "graph_relationships_emitted": 0,
+                "publication_state": "private-only; not public-release-ready",
+            })
+        if self.source_id == "au.npi.facilities" and status.get("status") == "candidate-ready":
+            summary.update({
+                "acquisition_classification": "live" if acquisition else "assisted",
+                "retrieved_at_utc": manifest.get("retrieved_at_utc"),
+                "publication_date": manifest.get("publication_date"),
+                "effective_date": manifest.get("effective_date"),
+                "source_license": acquisition.get("license") if isinstance(acquisition, Mapping) else None,
+                "source_canonical_url": acquisition.get("canonical_url") if isinstance(acquisition, Mapping) else self.descriptor.source_url,
+                "source_artifact_sha256": manifest.get("checksum_sha256"),
+                "source_artifact_byte_size": manifest.get("byte_size"),
+                "coordinate_counts": manifest.get("coordinate_counts", {}),
+                "industry_relevance_counts": manifest.get("industry_relevance_counts", {}),
+                "primary_anzsic_code_counts": manifest.get("primary_anzsic_code_counts", {}),
+                "address_review_signal_counts": manifest.get("address_review_signal_counts", {}),
+                "public_projection_rows": manifest.get("public_projection", {}).get("rows", 0),
+                "public_projection_edges": manifest.get("public_projection", {}).get("edges", 0),
                 "publication_state": "private-only; not public-release-ready",
             })
         return summary

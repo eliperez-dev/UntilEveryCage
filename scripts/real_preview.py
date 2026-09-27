@@ -862,6 +862,51 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                                                 "unmapped": import_result.get("unmapped_facility_count")},
             "location_policy": "CFIA workbook provides no coordinates; city/postal candidates are listable, remain unmapped, and are not geocoded.",
         })
+    elif source_id == "au.npi.facilities":
+        acquisition_path = source_dir / "acquisition" / source_id / run_id / "acquisition-metadata.json"
+        if not acquisition_path.is_file() or acquisition_path.is_symlink():
+            raise PreviewError("Australia NPI acquisition provenance is unavailable")
+        acquisition_evidence = json.loads(acquisition_path.read_text(encoding="utf-8"))
+        source_results = refresh_result.get("results") if isinstance(refresh_result, dict) else None
+        source_result = next((item for item in source_results or []
+                              if isinstance(item, dict) and item.get("source_id") == source_id), None)
+        source_summary = source_result.get("summary") if isinstance(source_result, dict) else None
+        if not isinstance(source_summary, dict) or source_result.get("status") != "succeeded":
+            raise PreviewError("Australia NPI lifecycle summary is unavailable")
+        required_hashes = (import_result.get("normalized_sha256"),
+                           source_summary.get("candidate_handoff_sha256"),
+                           source_summary.get("schema_fingerprint"))
+        if any(not isinstance(value, str) or len(value) != 64 for value in required_hashes):
+            raise PreviewError("Australia NPI lifecycle hashes are incomplete")
+        input_count = source_summary.get("input_rows")
+        candidate_count = source_summary.get("candidate_observation_rows")
+        quarantined_count = source_summary.get("quarantined_rows")
+        if (not all(isinstance(value, int) and value >= 0 for value in
+                    (input_count, candidate_count, quarantined_count))
+                or input_count != candidate_count + quarantined_count):
+            raise PreviewError("Australia NPI lifecycle row counts do not reconcile")
+        ledger.update({
+            "acquisition": {key: acquisition_evidence.get(key) for key in (
+                "source_id", "source_title", "run_id", "requested_url", "final_url", "canonical_url",
+                "catalog_url", "catalog_sha256", "catalog_metadata_modified", "catalog_resource_updated_at",
+                "requested_at_utc", "retrieved_at_utc", "effective_date", "publication_date",
+                "sha256", "byte_size", "license", "license_url", "terms_review", "rights_caveat",
+                "privacy_caveat", "adapter_version", "config_version")},
+            "normalized_sha256": import_result.get("normalized_sha256"),
+            "candidate_handoff_sha256": source_summary.get("candidate_handoff_sha256"),
+            "schema_fingerprint": source_summary.get("schema_fingerprint"),
+            "quarantine": {"input_rows": input_count, "accepted_rows": candidate_count,
+                           "quarantined_rows": quarantined_count,
+                           "reasons": source_summary.get("quarantine_reasons", {})},
+            "source_counts": {key: import_result.get(key) for key in (
+                "observation_count", "facility_candidate_count", "numeric_coordinate_count",
+                "city_postal_count", "unmapped_observation_count", "unmapped_facility_count",
+                "public_release_count", "public_projection_count")},
+            "coordinate_precision_breakdown": {"exact": 0, "source_provided_unspecified": 0,
+                                                "city_or_postal_only": import_result.get("city_postal_count"),
+                                                "unmapped": import_result.get("unmapped_map_candidate_count")},
+            "location_policy": "NPI source coordinates are preserved only in restricted raw/source values pending privacy and precision review; normalized preview coordinates are withheld and map-visible count is intentionally zero.",
+        })
     elif source_id == "be.locations":
         acquisition_path = source_dir / "acquisition" / source_id / run_id / "pair-metadata.json"
         if not acquisition_path.is_file() or acquisition_path.is_symlink():
@@ -1103,11 +1148,11 @@ def refresh_source(source_id: str = "be.locations", existing_runner_run_id: str 
 def strict_live_private_e2e(source_id: str) -> dict[str, object]:
     """Run one bounded live source acquisition through disposable private preview and certification."""
     global PROJECT, VOLUME, DB_PORT, API_PORT, WEB_PORT, PRIVATE_ROOT, ACTIVE_PREVIEW_TOKEN
-    if source_id != "ca.cfia.federal-meat":
-        raise PreviewError("strict-live-private-e2e currently supports only the assigned CFIA source")
+    if source_id not in {"ca.cfia.federal-meat", "au.npi.facilities"}:
+        raise PreviewError("strict-live-private-e2e currently supports only the assigned CFIA and Australia NPI sources")
     import uuid
     suffix = uuid.uuid4().hex[:10]
-    project = f"uec-preview-cfia-{suffix}"
+    project = f"uec-preview-{source_id.replace('.', '-')}-{suffix}"
     private_root = ROOT / "data" / "staging" / "strict-preview" / suffix
     ports = ((55440, 55489), (38020, 38069), (34180, 34229))
     selected_ports: list[int] = []
@@ -1142,6 +1187,40 @@ def strict_live_private_e2e(source_id: str) -> dict[str, object]:
         if preview.get("status") != "imported":
             raise PreviewError("source refresh did not complete the private preview import")
         ledger_path = Path(str(preview.get("ledger", "")))
+        if source_id == "au.npi.facilities":
+            # Replay the identical immutable handoff in the same disposable
+            # database. This explicitly proves conflict-safe importer
+            # idempotency, rather than inferring it from two fresh databases.
+            ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+            runner_run_id = (ledger.get("source_run") or {}).get("run_id")
+            source_root = ROOT / "target" / "real-preview" / "runs" / str(runner_run_id) / "sources" / source_id
+            runner_manifest = ROOT / "target" / "real-preview" / "runs" / str(runner_run_id) / "manifest.json"
+            handoff_manifest = source_root / "candidate-handoff" / "manifest.json"
+            replay_env = os.environ.copy()
+            replay_env["UEC_DATABASE_URL"] = _local_database_url()
+            replay = subprocess.run([
+                sys.executable, str(IMPORTER), "--root", str(source_root),
+                "--manifest", str(handoff_manifest), "--source-id", source_id,
+                "--database-url-env", "UEC_DATABASE_URL", "--json", "--run-id", str(ledger.get("run_id")),
+                "--run-manifest", str(runner_manifest),
+            ], cwd=ROOT, env=replay_env, capture_output=True, text=True, timeout=600)
+            try:
+                replay_result = json.loads(replay.stdout)
+            except json.JSONDecodeError:
+                raise PreviewError("Australia NPI idempotent replay returned invalid aggregate evidence") from None
+            original = ledger.get("preview_import")
+            if (replay.returncode or replay_result.get("status") != "imported"
+                    or replay_result.get("idempotent_replay") is not True
+                    or not isinstance(original, dict)
+                    or any(replay_result.get(key) != original.get(key) for key in (
+                        "observation_count", "facility_candidate_count", "numeric_coordinate_count",
+                        "city_postal_count", "map_visible_count", "normalized_sha256",
+                        "public_release_count", "public_projection_count"))):
+                raise PreviewError("Australia NPI idempotent replay did not preserve counts and privacy gates")
+            ledger["preview_import"] = replay_result
+            temporary_ledger = ledger_path.with_suffix(".json.tmp")
+            temporary_ledger.write_text(json.dumps(ledger, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+            temporary_ledger.replace(ledger_path)
         certificate_module_path = ROOT / "scripts" / "certify_real_preview.py"
         import importlib.util
         spec = importlib.util.spec_from_file_location("uec_cfia_certificate", certificate_module_path)

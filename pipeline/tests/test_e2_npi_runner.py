@@ -43,8 +43,8 @@ class NpiRunnerTests(unittest.TestCase):
                 output_root=Path(directory),
             ))
             item = result["results"][0]
-            self.assertEqual(item["acquisition_classification"], "assisted")
-            self.assertIn("operator-assisted", item["operational"]["failure_reason"])
+            self.assertEqual(item["acquisition_classification"], "terms-blocked")
+            self.assertIn("explicit source authorization", item["operational"]["failure_reason"])
         finally:
             shutil.rmtree(directory, ignore_errors=True)
 

@@ -59,6 +59,23 @@ class CertificationLedgerTests(unittest.TestCase):
         self.assertEqual(result["counts"]["unmapped"], 1)
         self.assertEqual(result["counts"]["unmapped_map_candidates"], 0)
 
+    def test_australia_npi_city_postal_candidates_are_not_double_counted_as_unmapped(self):
+        value = ledger()
+        value["source_id"] = "au.npi.facilities"
+        value["source_run"]["results"][0]["source_id"] = "au.npi.facilities"
+        value["map_visible_count"] = 0
+        value["preview_import"].update({
+            "observation_count": 2, "facility_candidate_count": 2,
+            "numeric_coordinate_count": 0, "city_postal_count": 2,
+            "unmapped_facility_count": 2, "unmapped_map_candidate_count": 0,
+            "coarse_placeable_facility_count": 0,
+        })
+        value["quarantine"].update({"input_rows": 3, "accepted_rows": 2, "quarantined_rows": 1})
+        value["coordinate_precision_breakdown"] = {"exact": 0, "city_or_postal_only": 2, "unmapped": 0}
+        result = CERT.validate_ledger(value, "au.npi.facilities")
+        self.assertEqual(result["counts"]["unmapped"], 0)
+        self.assertEqual(result["counts"]["map_visible"], 0)
+
     def test_wrong_source_fails_closed(self):
         with self.assertRaises(CERT.CertificationError):
             CERT.validate_ledger(ledger(), "us.fsis")

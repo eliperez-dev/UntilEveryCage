@@ -478,12 +478,12 @@
       "jurisdiction_scope": "Australia; National Pollutant Inventory facilities",
       "legacy_paths": [],
       "url": "https://data.gov.au/data/dataset/043f58e0-a188-4458-b61c-04e5b540aea4",
-      "access_method": "public catalogue download",
-      "cadence": "catalogue dataset date 2026-04-01; cadence not explicit",
+      "access_method": "live HTTPS CSV download after official data.gov.au catalogue, resource ID, update-date, URL, and CC BY 4.0 checks; source-scoped authorization and terms record required",
+      "cadence": "annual NPI reporting; current Facilities CSV resource last modified 2026-03-31; catalogue metadata refreshed 2026-09-27",
       "attribution_licensing_notes": "Catalogue identifies CC BY 4.0; attribute Commonwealth of Australia/DCCEEW and complete privacy/release review",
       "adapter_status": "implemented_partial",
-      "expected_artifact_schema": "CSV/GeoJSON/KMZ; facility_id, jurisdiction IDs, names, ABN/ACN, address, coordinates, ANZSIC, activities, report IDs/URLs",
-      "blockers": ["Observed NPI population is not a complete slaughter registry; no public row release approved. Local-artifact and synthetic fixture paths are implemented; current acquisition remains assisted until a retained edition and terms review are supplied."]
+      "expected_artifact_schema": "Official UTF-8 CSV Facilities resource with facility_id, jurisdiction IDs, names, ABN/ACN, address, coordinates, primary ANZSIC, activities, report IDs/URLs; strict schema and checksum validation; invalid coordinates quarantined",
+      "blockers": ["NPI is an emissions-reporting population, not a complete slaughter or animal-facility registry; ANZSIC is not proof of current activity. Raw addresses and coordinates remain private; normalized coordinates and default map scope are withheld pending residential, mixed-use, site-identity, and precision review. No project approval or public row release exists."]
     },
     {
       "source_id": "au.nsw.epa-poeo",
