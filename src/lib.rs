@@ -566,6 +566,17 @@ pub struct RealPreviewTileParams {
     pub source_id: Option<String>,
 }
 
+/// Compact private map payload used by the browser's local cluster index.
+/// Numeric candidates remain one feature each; coarse administrative places
+/// are grouped by reference geometry and source so source filters preserve
+/// their represented weight.
+#[derive(Deserialize)]
+pub struct RealPreviewMapFeedParams {
+    pub source_id: Option<String>,
+}
+
+const REAL_PREVIEW_MAP_FEED_MAX_FEATURES: i64 = 200_000;
+
 /// Resolves a deliberately opaque administrative-reference key emitted by the
 /// MVT projection.  The key is only meaningful to this private preview
 /// endpoint; the tile continues to carry no member payload.
@@ -1009,6 +1020,151 @@ SELECT COALESCE(ST_AsMVT(tile_features, 'uec_preview', 4096, 'geom'), ''::bytea)
     };
     let bytes = REAL_PREVIEW_MVT_TILE_CACHE.insert(cache_key, row.get::<_, Vec<u8>>(0));
     real_preview_tile_response(StatusCode::OK, bytes.to_vec())
+}
+
+/// Returns the bounded current-snapshot map projection in one response rather
+/// than requiring the browser to traverse every private candidate page. The
+/// projection is intentionally an allowlist: key, kind, precision, source,
+/// coordinates, and represented weight only.
+pub async fn get_real_preview_map_feed_handler(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Query(params): Query<RealPreviewMapFeedParams>,
+) -> Response<axum::body::Body> {
+    if let Err(response) = real_preview_authorized(&state, &headers) {
+        return response;
+    }
+    if !valid_real_preview_tile_source(params.source_id.as_deref()) {
+        return real_preview_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_map_feed",
+            "map feed source filter is invalid",
+        );
+    }
+    let Some(pool) = state.database else {
+        return real_preview_unavailable();
+    };
+    let Ok(client) = pool.get().await else {
+        return real_preview_unavailable();
+    };
+
+    // Keep one row per numeric coordinate and group coarse references by both
+    // the stable geometry key and source_id. Fetch one beyond the bound so the
+    // endpoint can fail closed instead of silently dropping represented rows.
+    let rows = match client.query(
+        r#"
+WITH sources AS (
+  SELECT source_id FROM real_preview.source_preview_runs
+  UNION
+  SELECT source_id FROM real_preview.source_manifests
+), latest AS (
+  SELECT sources.source_id,
+         COALESCE(
+           (SELECT run.snapshot_sha256 FROM real_preview.source_preview_runs run
+            WHERE run.source_id=sources.source_id
+            ORDER BY run.created_at DESC,run.run_id DESC LIMIT 1),
+           (SELECT manifest.snapshot_sha256 FROM real_preview.source_manifests manifest
+            WHERE manifest.source_id=sources.source_id
+            ORDER BY manifest.retrieved_at DESC,manifest.snapshot_sha256 DESC LIMIT 1)
+         ) AS snapshot_sha256
+  FROM sources
+), current_map AS (
+  SELECT candidate.candidate_id, candidate.source_id,
+         candidate.location_class, candidate.coordinate_precision,
+         candidate.display_geometry_source,
+         CASE WHEN candidate.display_geometry_source IS NULL THEN candidate.longitude
+              ELSE candidate.display_longitude END AS longitude,
+         CASE WHEN candidate.display_geometry_source IS NULL THEN candidate.latitude
+              ELSE candidate.display_latitude END AS latitude
+  FROM real_preview.candidates candidate
+  JOIN real_preview.source_manifests manifest
+    ON manifest.source_id=candidate.source_id
+   AND manifest.snapshot_sha256=candidate.snapshot_sha256
+  WHERE candidate.default_map_scope=true
+    AND (candidate.source_id,candidate.snapshot_sha256) IN
+        (SELECT source_id,snapshot_sha256 FROM latest)
+    AND ($1::text IS NULL OR candidate.source_id=$1)
+    AND ((candidate.display_geometry_source IS NULL
+          AND candidate.location_class='numeric_source_coordinate'
+          AND candidate.latitude BETWEEN -90 AND 90
+          AND candidate.longitude BETWEEN -180 AND 180
+          AND (candidate.latitude<>0 OR candidate.longitude<>0))
+      OR (candidate.display_geometry_source IS NOT NULL
+          AND candidate.display_latitude BETWEEN -90 AND 90
+          AND candidate.display_longitude BETWEEN -180 AND 180
+          AND (candidate.display_latitude<>0 OR candidate.display_longitude<>0)))
+), projected AS (
+  SELECT candidate_id::text AS feature_key,
+         'source_coordinate'::text AS kind,
+         CASE WHEN coordinate_precision IN ('numeric','exact','source_numeric','source_coordinates','facility_coordinate') THEN 'source_numeric_pending_review'
+              WHEN coordinate_precision='source-provided' THEN 'approximate_source_provided_pending_review'
+              ELSE 'approximate_source_precision_unknown_pending_review' END AS precision,
+         source_id, latitude, longitude, 1::bigint AS weight
+  FROM current_map WHERE display_geometry_source IS NULL
+  UNION ALL
+  SELECT md5('city-reference:' || ST_X(geom)::text || ':' || ST_Y(geom)::text) AS feature_key,
+         'city_reference'::text AS kind,
+         'city_reference_approximate'::text AS precision,
+         source_id,
+         ST_Y(ST_Transform(geom,4326)) AS latitude,
+         ST_X(ST_Transform(geom,4326)) AS longitude,
+         count(*)::bigint AS weight
+  FROM (
+    SELECT source_id,
+           ST_Transform(ST_SetSRID(ST_MakePoint(longitude,latitude),4326),3857) AS geom
+    FROM current_map WHERE display_geometry_source IS NOT NULL
+  ) reference_geometries
+  GROUP BY source_id, geom
+)
+SELECT feature_key,kind,precision,source_id,latitude,longitude,weight
+FROM projected
+ORDER BY source_id,kind,feature_key
+LIMIT $2
+"#,
+        &[&params.source_id, &(REAL_PREVIEW_MAP_FEED_MAX_FEATURES + 1)],
+    ).await {
+        Ok(rows) => rows,
+        Err(_) => return real_preview_unavailable(),
+    };
+    if rows.len() as i64 > REAL_PREVIEW_MAP_FEED_MAX_FEATURES {
+        return real_preview_error(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "map_feed_too_large",
+            "map feed exceeds the bounded feature limit",
+        );
+    }
+    let data: Vec<Value> = rows.iter().map(|row| json!({
+        "key": row.get::<_, String>(0),
+        "kind": row.get::<_, String>(1),
+        "precision": row.get::<_, String>(2),
+        "source_id": row.get::<_, String>(3),
+        "latitude": row.get::<_, f64>(4),
+        "longitude": row.get::<_, f64>(5),
+        "weight": row.get::<_, i64>(6),
+    })).collect();
+    let total_weight: i64 = rows.iter().map(|row| row.get::<_, i64>(6)).sum();
+    let mut source_weights = std::collections::BTreeMap::<String, i64>::new();
+    for row in &rows {
+        *source_weights.entry(row.get::<_, String>(3)).or_default() += row.get::<_, i64>(6);
+    }
+    let mut response = real_preview_response(StatusCode::OK, json!({
+        "api_version":"real-preview-v1",
+        "data":data,
+        "meta":{
+            "bounded":true,
+            "private_preview":true,
+            "scope":"default_map_scope",
+            "zoom_max":14,
+            "feature_limit":REAL_PREVIEW_MAP_FEED_MAX_FEATURES,
+            "total_weight":total_weight,
+            "source_weights":source_weights
+        }
+    }));
+    response.headers_mut().insert(
+        axum::http::header::VARY,
+        HeaderValue::from_static("accept-encoding"),
+    );
+    response
 }
 
 /// Pages the real candidates represented by one administrative reference MVT
@@ -2837,6 +2993,70 @@ mod v2_api_tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn real_preview_map_feed_preserves_auth_no_store_and_source_validation() {
+        let state = ApiState {
+            database: None,
+            dev_preview_token: Some("local-test-token-with-at-least-32-characters".into()),
+            dev_test_release_id: None,
+            dev_test_release_token: None,
+        };
+        let router = Router::new()
+            .route("/dev/real-preview/map/feed", axum::routing::get(get_real_preview_map_feed_handler))
+            .with_state(state);
+        let request = |uri: &str, token: Option<&str>| {
+            let mut builder = Request::builder().uri(uri).header("host", "127.0.0.1:8000");
+            if let Some(token) = token {
+                builder = builder.header(DEV_PREVIEW_TOKEN_HEADER, token);
+            }
+            builder.body(Body::empty()).unwrap()
+        };
+        let missing_auth = router.clone().oneshot(request("/dev/real-preview/map/feed", None)).await.unwrap();
+        assert_eq!(missing_auth.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(missing_auth.headers().get("cache-control").unwrap(), "no-store");
+
+        let invalid_source = router.oneshot(request(
+            "/dev/real-preview/map/feed?source_id=bad%2Fsource",
+            Some("local-test-token-with-at-least-32-characters"),
+        )).await.unwrap();
+        assert_eq!(invalid_source.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(invalid_source.headers().get("cache-control").unwrap(), "no-store");
+    }
+
+    #[test]
+    fn compact_map_units_conserve_weight_at_every_cluster_zoom() {
+        // A numeric point contributes one; a coarse reference contributes its
+        // grouped member count. Any z0–14 cluster partition must preserve sum.
+        let units = [("us.fsis", 1_i64), ("us.fsis", 7), ("it.853-2004", 3)];
+        let expected: i64 = units.iter().map(|(_, weight)| weight).sum();
+        for zoom in 0..=14 {
+            let mut clusters = std::collections::BTreeMap::<(&str, i64), i64>::new();
+            for (source, weight) in units {
+                // The cell id models any deterministic partition at this zoom;
+                // source remains part of the key to prevent cross-source merges.
+                let cell = (zoom as i64 + weight) % (i64::from(zoom) + 1);
+                *clusters.entry((source, cell)).or_default() += weight;
+            }
+            assert_eq!(clusters.values().sum::<i64>(), expected);
+            assert_eq!(
+                clusters
+                    .iter()
+                    .filter(|((source, _), _)| *source == "us.fsis")
+                    .map(|(_, weight)| *weight)
+                    .sum::<i64>(),
+                8
+            );
+            assert_eq!(
+                clusters
+                    .iter()
+                    .filter(|((source, _), _)| *source == "it.853-2004")
+                    .map(|(_, weight)| *weight)
+                    .sum::<i64>(),
+                3
+            );
+        }
     }
 
     #[test]
