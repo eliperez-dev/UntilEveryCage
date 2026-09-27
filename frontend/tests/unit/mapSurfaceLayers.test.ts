@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   JSON_LOCATION_LAYER_IDS,
-  MVT_CLUSTER_MAX_ZOOM,
   MVT_LOCATION_LAYER_IDS,
+  addMvtLocationLayers,
+  createBaseStyle,
   mvtTileUrl,
   removeLocationLayers,
 } from '../../src/design-lab/components/mapSurfaceLayers';
@@ -20,8 +21,17 @@ describe('MapSurface layer contract', () => {
     ]);
   });
 
-  it('uses a single exported threshold for cluster/reference handoff', () => {
-    expect(MVT_CLUSTER_MAX_ZOOM).toBe(10);
+  it('keeps transport below location overlays and delegates zoom visibility to tiles', () => {
+    const style = createBaseStyle('satellite') as { layers: { id: string }[] };
+    expect(style.layers.map((layer) => layer.id)).toEqual(['base', 'transport']);
+    const layers: any[] = [];
+    addMvtLocationLayers({
+      addSource() {}, addLayer: (layer) => layers.push(layer),
+      getLayer: () => undefined, getSource: () => undefined,
+      removeLayer() {}, removeSource() {},
+    });
+    expect(layers.filter((layer) => layer.id.startsWith('mvt-'))).toHaveLength(MVT_LOCATION_LAYER_IDS.length);
+    expect(layers.every((layer) => layer.minzoom === undefined && layer.maxzoom === undefined)).toBe(true);
   });
 
   it('tears down both projections before the selected path attaches', () => {

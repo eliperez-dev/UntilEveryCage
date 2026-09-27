@@ -80,7 +80,11 @@
   } = $props();
   let host: HTMLDivElement;
   let map: MapLibreMap | undefined;
-  let appliedBasemap: "vector" | "satellite" | undefined;
+  let appliedBasemap = $state<"vector" | "satellite" | undefined>();
+  let basemapSwitching = $state(false);
+  let pendingBasemap = $state<"vector" | "satellite" | undefined>();
+  let basemapError = $state("");
+  let basemapRequest = 0;
   let syncing = false;
   let interactionsBound = false;
   let mvtError = $state("");
@@ -181,32 +185,76 @@
   function style(): any {
     return createBaseStyle(mapState.basemap);
   }
-  /**
-   * Street/satellite is a raster swap, not a new map style. Keeping the style
-   * avoids tearing down the MVT source and every location layer just to change
-   * the backdrop beneath them.
-   */
-  function applyBasemapTiles(basemap: "vector" | "satellite") {
-    if (!map) return;
-    const nextStyle = createBaseStyle(basemap) as any;
-    const baseTiles = nextStyle.sources?.base?.tiles;
-    const base = map.getSource("base") as any;
-    if (Array.isArray(baseTiles) && typeof base?.setTiles === "function")
-      base.setTiles(baseTiles);
-
-    if (!map.getLayer("transport")) {
-      map.addLayer({
-        id: "transport",
+  function rasterTiles(basemap: "vector" | "satellite"): string[] {
+    return ((createBaseStyle(basemap) as any).sources.base.tiles as string[]);
+  }
+  /** A source can report loaded after an error, so tile failures reject the handoff. */
+  function waitForRaster(instance: MapLibreMap, sourceId: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => finish(false), 10000);
+      const onError = (event: any) => {
+        if (event?.sourceId === sourceId) finish(false);
+      };
+      const onData = (event: any) => {
+        if (event?.sourceId === sourceId && instance.isSourceLoaded(sourceId))
+          finish(true);
+      };
+      function finish(ok: boolean) {
+        clearTimeout(timeout);
+        instance.off("error", onError);
+        instance.off("sourcedata", onData);
+        ok ? resolve() : reject(new Error("Basemap tiles unavailable"));
+      }
+      instance.on("error", onError);
+      instance.on("sourcedata", onData);
+    });
+  }
+  async function applyBasemapTiles(basemap: "vector" | "satellite") {
+    const instance = map;
+    if (!instance || basemapSwitching || appliedBasemap === basemap) return;
+    const request = ++basemapRequest;
+    basemapSwitching = true;
+    pendingBasemap = basemap;
+    basemapError = "";
+    const previous = appliedBasemap ?? "vector";
+    try {
+      // The candidate loads beneath transport and every location layer while
+      // the current base stays visible. Selection and MVT sources are untouched.
+      instance.addSource("candidate-base", {
         type: "raster",
-        source: "transport",
-        paint: { "raster-opacity": 0 },
-      } as any);
+        tiles: rasterTiles(basemap),
+        tileSize: 256,
+      });
+      instance.addLayer(
+        { id: "candidate-base", type: "raster", source: "candidate-base" },
+        "transport",
+      );
+      await waitForRaster(instance, "candidate-base");
+      if (request !== basemapRequest || map !== instance) return;
+      const base = instance.getSource("base") as any;
+      if (typeof base?.setTiles !== "function") throw new Error("Basemap source cannot switch");
+      base.setTiles(rasterTiles(basemap));
+      await waitForRaster(instance, "base");
+      if (request !== basemapRequest || map !== instance) return;
+      instance.setPaintProperty("transport", "raster-opacity", basemap === "satellite" ? 0.72 : 0);
+      appliedBasemap = basemap;
+      onbasemap(basemap);
+    } catch {
+      if (map === instance) {
+        (instance.getSource("base") as any)?.setTiles?.(rasterTiles(previous));
+        try { await waitForRaster(instance, "base"); } catch { /* keep the last selected mode */ }
+        basemapError = `${basemap === "satellite" ? "Satellite" : "Street"} imagery is unavailable. ${previous === "satellite" ? "Satellite" : "Street"} remains selected.`;
+      }
+    } finally {
+      if (map === instance) {
+        if (instance.getLayer("candidate-base")) instance.removeLayer("candidate-base");
+        if (instance.getSource("candidate-base")) instance.removeSource("candidate-base");
+      }
+      if (request === basemapRequest) {
+        basemapSwitching = false;
+        pendingBasemap = undefined;
+      }
     }
-    map.setPaintProperty(
-      "transport",
-      "raster-opacity",
-      basemap === "satellite" ? 0.72 : 0,
-    );
   }
   function setData() {
     if (usingMvt) return;
@@ -652,6 +700,7 @@
       }
     });
     return () => {
+      basemapRequest++;
       if (boundsTimer) clearTimeout(boundsTimer);
       mvtMotionController?.cancel();
       jsonMotionController?.cancel();
@@ -663,8 +712,7 @@
   $effect(() => {
     const basemap = mapState.basemap;
     if (map && appliedBasemap !== basemap) {
-      appliedBasemap = basemap;
-      applyBasemapTiles(basemap);
+      void applyBasemapTiles(basemap);
     }
   });
   $effect(() => {
@@ -708,14 +756,6 @@
   $effect(() => {
     if (diagnosticsOpen && usingMvt && map) updateMvtDiagnostics(map);
   });
-  // Pre-effect runs before the style effect below, so a basemap swap cannot retain
-  // a transient cluster frame from the previous style generation.
-  $effect.pre(() => {
-    mapState.basemap;
-    jsonMotionController?.cancel();
-    mvtMotionController?.cancel();
-    mvtMotionController?.clearLineage();
-  });
 </script>
 
 <svelte:window
@@ -736,7 +776,13 @@
     >{mode === "real-preview"
       ? "Private real V2 preview · not approved or published"
       : "Synthetic development data"}</small
-  >{#if pendingReference}<small
+  >{#if basemapSwitching && pendingBasemap}<small
+      class="map-status"
+      role="status"
+      aria-live="polite"
+      >Loading {pendingBasemap === "satellite" ? "Satellite" : "Street"} imagery…</small
+    >{:else if basemapError}<small class="map-status" role="alert">{basemapError}</small
+    >{:else if pendingReference}<small
       class="map-status reference-status"
       role="status"
       >Loading {pendingReference.count || "represented"} reference records…</small
@@ -906,12 +952,14 @@
   <div class="basemap-control" role="group" aria-label="Basemap">
     <button
       type="button"
-      aria-pressed={mapState.basemap === "vector"}
-      onclick={() => onbasemap("vector")}>Street</button
+      aria-pressed={appliedBasemap === "vector"}
+      disabled={basemapSwitching}
+      onclick={() => void applyBasemapTiles("vector")}>Street</button
     ><button
       type="button"
-      aria-pressed={mapState.basemap === "satellite"}
-      onclick={() => onbasemap("satellite")}>Satellite</button
+      aria-pressed={appliedBasemap === "satellite"}
+      disabled={basemapSwitching}
+      onclick={() => void applyBasemapTiles("satellite")}>Satellite</button
     >
   </div>
   <PrecisionLegend {mode} />
@@ -1041,6 +1089,13 @@
   .basemap-control button[aria-pressed="true"] {
     color: #171a18;
     background: #e8ebe4;
+  }
+  .basemap-control button:focus-visible {
+    outline: 2px solid #f1efe8;
+    outline-offset: 2px;
+  }
+  .basemap-control button:disabled {
+    cursor: wait;
   }
   .review-disclosure {
     position: absolute;

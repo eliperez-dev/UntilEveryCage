@@ -26,12 +26,6 @@ export const MVT_LOCATION_LAYER_IDS = [
 export const MVT_SOURCE_ID = 'preview-mvt';
 export const MVT_SOURCE_LAYER = 'uec_preview';
 
-/**
- * The backend controls spatial density. This component must not re-cluster MVT
- * data, otherwise tile boundaries and server lineage would diverge.
- */
-export const MVT_CLUSTER_MAX_ZOOM = 10;
-
 export function mvtTileUrl(sourceId?: string): string[] {
   const sourceFilter = sourceId
     ? `?source_id=${encodeURIComponent(sourceId)}`
@@ -88,9 +82,7 @@ export function createBaseStyle(basemap: BasemapKind): Record<string, unknown> {
     },
     layers: [
       { id: 'base', type: 'raster', source: 'base' },
-      ...(basemap === 'satellite'
-        ? [{ id: 'transport', type: 'raster', source: 'transport', paint: { 'raster-opacity': 0.72 } }]
-        : []),
+      { id: 'transport', type: 'raster', source: 'transport', paint: { 'raster-opacity': basemap === 'satellite' ? 0.72 : 0 } },
     ],
   };
 }
@@ -120,7 +112,7 @@ export function addMvtLocationLayers(map: MapLike, sourceId?: string): void {
 
   map.addLayer({
     id: 'mvt-clusters', type: 'symbol', source, 'source-layer': sourceLayer,
-    minzoom: 0, maxzoom: MVT_CLUSTER_MAX_ZOOM, filter: kind('cluster'),
+    filter: kind('cluster'),
     layout: {
       'icon-image': ['step', count, 'cluster-low', 10, 'cluster-mid', 100, 'cluster-high'],
       'icon-size': 1, 'icon-allow-overlap': true, 'icon-ignore-placement': true,
@@ -131,18 +123,18 @@ export function addMvtLocationLayers(map: MapLike, sourceId?: string): void {
   });
   map.addLayer({
     id: 'mvt-reference-outer', type: 'circle', source, 'source-layer': sourceLayer,
-    minzoom: MVT_CLUSTER_MAX_ZOOM, filter: references,
+    filter: references,
     paint: { 'circle-color': referenceFill, 'circle-radius': 18, 'circle-opacity': 0.96, 'circle-stroke-color': referenceStroke, 'circle-stroke-width': 3 },
   });
   map.addLayer({
     id: 'mvt-reference-count', type: 'symbol', source, 'source-layer': sourceLayer,
-    minzoom: MVT_CLUSTER_MAX_ZOOM, filter: references,
+    filter: references,
     layout: { 'text-field': ['to-string', count], 'text-font': ['Open Sans Bold'], 'text-size': 12 },
     paint: { 'text-color': '#f1efe8' },
   });
   map.addLayer({
     id: 'mvt-reference-kind', type: 'symbol', source, 'source-layer': sourceLayer,
-    minzoom: MVT_CLUSTER_MAX_ZOOM, filter: references,
+    filter: references,
     layout: { 'text-field': ['match', ['get', 'kind'], 'city_reference', 'CITY REF', 'AREA REF'], 'text-font': ['Open Sans Bold'], 'text-size': 9, 'text-offset': [0, 2.8], 'text-allow-overlap': true, 'text-ignore-placement': true },
     paint: { 'text-color': referenceStroke, 'text-halo-color': '#171a18', 'text-halo-width': 1.5 },
   });
