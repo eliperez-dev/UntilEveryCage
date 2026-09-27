@@ -63,8 +63,20 @@
     // The map can emit a final viewport event while a link is navigating away.
     // Never let that event replace the destination record/database route.
     if (!location.hash.startsWith('#/map')) return;
+    const wasSelected = state.selectedId !== null;
     state = reduceLabState(state, action);
-    history.replaceState(null, '', encodeLabHash(state));
+    const nextHash = encodeLabHash(state);
+    if (action.type === 'select' && action.value && !wasSelected) {
+      // Selection is a navigable map state: Back dismisses the dossier. Other
+      // frequent map updates (especially viewport movement) stay replace-only.
+      history.pushState({ ...history.state, uecMapSelection: true }, '', nextHash);
+    } else if (action.type === 'select' && !action.value && history.state?.uecMapSelection) {
+      // Return to the immediately preceding unselected map entry. A direct
+      // selected URL has no marker and is cleared in place below.
+      history.back();
+    } else {
+      history.replaceState(history.state, '', nextHash);
+    }
   }
 
   function errorState(error: unknown): 'error' | 'unauthorized' {
@@ -266,6 +278,7 @@
       if (location.hash.startsWith('#/map')) state = decodeLabHash(location.hash);
     };
     addEventListener('hashchange', sync);
+    addEventListener('popstate', sync);
     let summaryAbort: AbortController | undefined;
     if (mode === 'real-preview') {
       summaryAbort = new AbortController();
@@ -274,6 +287,7 @@
     }
     return () => {
       removeEventListener('hashchange', sync);
+      removeEventListener('popstate', sync);
       if (searchTimer) clearTimeout(searchTimer);
       summaryAbort?.abort(); listAbort?.abort(); referenceAbort?.abort(); for (const request of viewportRequests.values()) request.abort(); detailAbort?.abort();
     };

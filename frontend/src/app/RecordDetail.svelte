@@ -80,13 +80,18 @@
       'candidate_id' in record ? record.candidate_id : null,
     ) ?? '',
   );
-  const name = $derived(
+  const safeDisplayName = $derived(
     value(
       'displayName' in record ? record.displayName : null,
       'display_name' in record ? record.display_name : null,
-      record.name,
-    ) ?? 'Name unavailable',
+    ),
   );
+  const nameWithheld = $derived(
+    ('displayName' in record || 'display_name' in record) && !safeDisplayName,
+  );
+  const name = $derived(nameWithheld
+    ? 'Facility candidate'
+    : safeDisplayName ?? value(record.name) ?? 'Facility candidate');
   const activity = $derived(
     value(
       'activityLabel' in record ? record.activityLabel : null,
@@ -266,6 +271,9 @@
   <p class="context">PRIVATE DEVELOPMENT PREVIEW · NOT PUBLICATION-APPROVED</p>
   <p class="kind">Facility candidate</p>
   <h1 id="record-title">{name}</h1>
+  {#if nameWithheld}
+    <dl class="identity"><div><dt>Name</dt><dd>Name not shown — privacy review pending</dd></div></dl>
+  {/if}
   {#if activity}
     <p class="activity">
       {activity}{#if activitySource}<span> · {activitySource}</span>{/if}
@@ -443,6 +451,10 @@
   .place {
     margin: 0.25rem 0;
     color: #d5d9d3;
+  }
+
+  .identity {
+    margin: 0.55rem 0 0.7rem;
   }
 
   .activity span,

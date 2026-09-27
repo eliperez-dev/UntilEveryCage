@@ -367,7 +367,7 @@
             </div>
             <div>
               <dt>Facility name</dt>
-              <dd>{selected.displayName ?? "Name unavailable"}</dd>
+              <dd>{selected.displayName ?? "Name not shown — privacy review pending"}</dd>
             </div>
             <div>
               <dt>Activity/category</dt>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from "svelte";
   import type {
     DirectionViewProps,
     LabRecord,
@@ -139,6 +140,62 @@
   // the disclosure, without an unreachable loading/empty/error state machine.
   const relationshipUnavailableReason =
     "The private-preview relationship projection has not been supplied for this record.";
+  let selectionOrigin: HTMLElement | null = null;
+  let selectionOriginRecordId: string | null = null;
+  let resultsToggle: HTMLButtonElement;
+  let hadSelection = false;
+  let activeSelectionId: string | null = null;
+  let pendingRailFocusId: string | null = null;
+  $effect(() => {
+    if (state.selectedId) {
+      hadSelection = true;
+      if (activeSelectionId !== state.selectedId) {
+        activeSelectionId = state.selectedId;
+        pendingRailFocusId = state.selectedId;
+      }
+      // A Forward navigation can restore the dossier without calling
+      // selectRecord again. Keep its row as the dismissal fallback.
+      selectionOriginRecordId ??= state.selectedId;
+      // Wait for evidence loading to finish: the loading and ready rails are
+      // separate branches, so focusing the loading close button would leave
+      // focus on BODY when that branch is replaced.
+      if (pendingRailFocusId === state.selectedId && detailStatus !== "loading") {
+        const id = state.selectedId;
+        pendingRailFocusId = null;
+        void tick().then(() => {
+          if (state.selectedId === id) {
+            document.querySelector<HTMLButtonElement>(".dossier-header button")?.focus();
+          }
+        });
+      }
+    } else if (hadSelection) {
+      hadSelection = false;
+      activeSelectionId = null;
+      pendingRailFocusId = null;
+      void tick().then(() => {
+        const restoredRecord = selectionOriginRecordId
+          ? [...document.querySelectorAll<HTMLElement>("[data-record-id]")]
+              .find((item) => item.dataset.recordId === selectionOriginRecordId)
+          : null;
+        const target = selectionOrigin?.isConnected
+          ? selectionOrigin
+          : restoredRecord ?? resultsToggle;
+        target?.focus();
+        selectionOrigin = null;
+        selectionOriginRecordId = null;
+      });
+    }
+  });
+  function selectRecord(id: string) {
+    selectionOrigin = document.activeElement instanceof HTMLElement && document.activeElement !== document.body
+      ? document.activeElement
+      : null;
+    selectionOriginRecordId = selectionOrigin?.dataset.recordId ?? null;
+    dispatch({ type: "select", value: id });
+  }
+  function dismissSelection() {
+    dispatch({ type: "select", value: null });
+  }
   function aggregateContextFor(items: readonly LabRecord[]) {
     const mostFrequent = (values: readonly string[]) => {
       const counts = new Map<string, number>();
@@ -181,7 +238,7 @@
   }
   function closeOverlay() {
     if (state.selectedId) {
-      dispatch({ type: "select", value: null });
+      dismissSelection();
       return;
     }
     if (aggregateOpen) {
@@ -191,7 +248,7 @@
     if (state.listOpen) dispatch({ type: "list", value: false });
   }
   function onKeydown(event: KeyboardEvent) {
-    if (event.key === "Escape") {
+    if (event.key === "Escape" && (state.selectedId || aggregateOpen || state.listOpen)) {
       event.preventDefault();
       closeOverlay();
     }
@@ -323,7 +380,7 @@
         {useMvtMap}
         referenceLoading={aggregateLoading}
         onmaptiming={(timing) => onMapTiming?.(timing)}
-        onselect={(id) => dispatch({ type: "select", value: id })}
+        onselect={selectRecord}
         onaggregate={(ids) => dispatch({ type: "aggregate", value: ids })}
         onreference={(key) => onMapReference?.(key)}
         onbasemap={(value) => dispatch({ type: "basemap", value })}
@@ -355,6 +412,7 @@
       </div>{/if}
     <button
       class="results-toggle"
+      bind:this={resultsToggle}
       type="button"
       aria-expanded={state.listOpen}
       aria-controls="field-record-list"
@@ -392,7 +450,7 @@
           </p>{/if}<RecordList
           records={aggregateRecords}
           selectedId={state.selectedId}
-          onselect={(id) => dispatch({ type: "select", value: id })}
+          onselect={selectRecord}
         />{#if mode === "real-preview" && nextCursor && !aggregateOpen}<button
             type="button"
             disabled={pageLoading}
@@ -420,24 +478,22 @@
           </p>{/if}
       </aside>{/if}
     {#if state.selectedId && mode === "real-preview" && detailStatus === "loading"}<aside
-        class="reading-sheet"
+        class="reading-sheet dossier"
         role="status"
       >
-        Loading record evidence…
+        <header class="dossier-header"><span>Record evidence</span><button type="button" aria-label="Close record detail" onclick={dismissSelection}>×</button></header>
+        <p class="dossier-message">Loading record evidence…</p>
       </aside>{:else if state.selectedId && mode === "real-preview" && (detailStatus === "error" || detailStatus === "unauthorized")}<aside
-        class="reading-sheet"
+        class="reading-sheet dossier"
         role="alert"
       >
-        <button
-          type="button"
-          class="close"
-          aria-label="Close record detail"
-          onclick={() => dispatch({ type: "select", value: null })}>×</button
-        >{detailError}
+        <header class="dossier-header"><span>Record evidence</span><button type="button" aria-label="Close record detail" onclick={dismissSelection}>×</button></header>
+        <p class="dossier-message">{detailError}</p>
       </aside>{:else if selected}<aside class="reading-sheet dossier" aria-label="Record evidence">
-        {#if aggregateOpen}<button type="button" class="back" onclick={() => dispatch({ type: "select", value: null })}>← Members</button>{/if}
-        <a class="full-record" href={`#/records/${encodeURIComponent(selected.id)}`}>Open full record</a>
-        <RecordDetail record={selected} presentation="rail" onclose={() => dispatch({ type: "select", value: null })} />
+        <header class="dossier-header"><span>Record evidence</span><button type="button" aria-label="Close record detail" onclick={dismissSelection}>×</button></header>
+        {#if aggregateOpen}<button type="button" class="back" onclick={dismissSelection}>← Members</button>{/if}
+        <a class="full-record" href={`#/records/${encodeURIComponent(selected.id)}`}>Open full record <span aria-hidden="true">↗</span></a>
+        <RecordDetail record={selected} presentation="rail" />
         <section
           class="connections-evidence"
           aria-labelledby="connections-title"
@@ -727,6 +783,10 @@
   .results :global(.record-list button.active) {
     background: #2a302c;
   }
+  .results :global(.record-list button:focus) {
+    outline: 2px solid #eee7d6;
+    outline-offset: -2px;
+  }
   .results :global(.record-list small) {
     display: block;
     color: var(--muted);
@@ -776,7 +836,11 @@
     border-top: 2px solid #a5b8a6;
     padding: 0;
   }
-  .full-record { display:block; margin:0 1.1rem; padding:.55rem 0; color:#ddd4bb; font-size:.75rem; text-underline-offset:2px; }
+  .dossier-header { position:sticky; top:0; z-index:2; display:flex; align-items:center; justify-content:space-between; min-height:2.7rem; padding:.3rem .65rem .3rem 1.1rem; border-bottom:1px solid var(--line); background:#171a18; color:#c6cec4; font-size:.68rem; letter-spacing:.04em; }
+  .dossier-header button { min-width:2.2rem; min-height:2.2rem; border:1px solid var(--line); color:var(--ink); background:#202421; font-size:1.25rem; cursor:pointer; }
+  .dossier-header button:focus-visible, .full-record:focus-visible { outline:2px solid #eee7d6; outline-offset:2px; }
+  .dossier-message { margin:1.1rem; }
+  .full-record { display:flex; align-items:center; justify-content:space-between; margin:0; padding:.8rem 1.1rem; border-bottom:1px solid var(--line); color:#eee5ce; font-size:.75rem; text-underline-offset:2px; }
   .dossier .connections-evidence { margin:1rem 1.1rem 1.2rem; }
   .eyebrow {
     margin: 0 0 0.3rem;

@@ -157,7 +157,9 @@ export function mapRealPreviewCandidate(candidate: RealPreviewCandidate): LabRec
       : candidate.displayPrecision === 'source_numeric_pending_review' ? 'exact' : 'approximate';
   return Object.freeze({
     id: candidate.candidateId,
-    name: candidate.displayName ?? 'Name unavailable',
+    // A null display_name is a privacy gate, not an unknown name to infer from
+    // activity or locality. Keep the record type distinct from a facility name.
+    name: candidate.displayName ?? 'Facility candidate',
     category: candidate.activityLabel ?? 'Activity unavailable',
     country: candidate.countryCode ?? 'Unknown country',
     locality: candidate.city ?? candidate.postalCode ?? 'No mapped locality',

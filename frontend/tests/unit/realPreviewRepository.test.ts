@@ -86,7 +86,8 @@ describe('private real-preview repository', () => {
     const absent = parseRealPreviewCandidate(record());
     expect(absent.displayName).toBeNull();
     expect(absent.evidenceSummary).toBeNull();
-    expect(mapRealPreviewCandidate(absent).name).toBe('Name unavailable');
+    expect(mapRealPreviewCandidate(absent).name).toBe('Facility candidate');
+    expect(mapRealPreviewCandidate(parsed).name).toBe('Example facility');
   });
 
   it('rejects unsafe URLs in future source-link fields', () => {

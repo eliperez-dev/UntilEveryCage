@@ -7,8 +7,9 @@ import { describe, expect, it } from 'vitest';
 const component = readFileSync(resolve(process.cwd(), 'src/app/RecordDetail.svelte'), 'utf8');
 
 describe('private preview record detail surface', () => {
-  it('renders absent identity as unavailable and keeps optional fields conditional', () => {
-    expect(component).toContain("?? 'Name unavailable'");
+  it('renders a gated identity as not shown and keeps optional fields conditional', () => {
+    expect(component).toContain('Name not shown — privacy review pending');
+    expect(component).toContain("? 'Facility candidate'");
     expect(component).toContain('{#if activity}');
     expect(component).toContain('{#if evidence}');
     expect(component).toContain('{#if retrieved}');
