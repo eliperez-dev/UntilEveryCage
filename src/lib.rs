@@ -696,6 +696,8 @@ fn real_preview_candidate(row: &tokio_postgres::Row) -> Value {
     let is_city_reference = kind == "city_postal"
         && display_geometry_source.is_some()
         && safe_real_preview_location("numeric_source_coordinate", false, false, display_latitude, display_longitude).1.is_some();
+    let reference_disclosure = is_city_reference
+        .then(|| real_preview_reference_disclosure(display_geometry_source.as_deref()));
     let candidate_id: uuid::Uuid = row.get("candidate_id");
     json!({
         "candidate_id": candidate_id,
@@ -717,7 +719,7 @@ fn real_preview_candidate(row: &tokio_postgres::Row) -> Value {
                 Some("source-provided") => "approximate_source_provided_pending_review",
                 _ => "approximate_source_precision_unknown_pending_review",
             }
-        } else if is_city_reference { "city_reference_approximate" } else { "city_postal_coarse" },
+        } else if let Some((display_precision, _, _)) = reference_disclosure { display_precision } else { "city_postal_coarse" },
         "country_code": row.get::<_, Option<String>>("country_code"),
         "default_map_scope": row.get::<_, bool>("default_map_scope"),
         "map_scope_reason": row.get::<_, Option<String>>("map_scope_reason"),
@@ -725,15 +727,23 @@ fn real_preview_candidate(row: &tokio_postgres::Row) -> Value {
         "postal_code": postal_code,
         "latitude": if is_city_reference { display_latitude } else { latitude },
         "longitude": if is_city_reference { display_longitude } else { longitude },
-        "coordinate_precision": if is_city_reference { Some("administrative-reference-centre-approximate".to_string()) } else if stored_kind == "numeric_source_coordinate" && kind != stored_kind { None::<String> } else { row.get::<_, Option<String>>("coordinate_precision") },
+        "coordinate_precision": if let Some((_, coordinate_precision, _)) = reference_disclosure { Some(coordinate_precision.to_string()) } else if stored_kind == "numeric_source_coordinate" && kind != stored_kind { None::<String> } else { row.get::<_, Option<String>>("coordinate_precision") },
         "coordinate_provenance": if is_city_reference { display_geometry_source.clone() } else { None::<String> },
-        "coordinate_review_status": if is_city_reference { "approximate_city_location_not_facility_point" } else if kind == "numeric_source_coordinate" { "pending_human_privacy_review" } else { "coarse_non_point" },
+        "coordinate_review_status": if let Some((_, _, review_status)) = reference_disclosure { review_status } else if kind == "numeric_source_coordinate" { "pending_human_privacy_review" } else { "coarse_non_point" },
         "factual_review_status": "not_reviewed",
         "privacy_screening_status": "pending",
         "project_approval": false,
         "publication_status": "not_published",
         "preview_label": if is_city_reference { "Approximate city location — not a facility point; private preview only" } else { "Private real V2 candidate — not project-approved or published" }
     })
+}
+
+fn real_preview_reference_disclosure(source: Option<&str>) -> (&'static str, &'static str, &'static str) {
+    if source.is_some_and(|value| value.contains("approximate locality reference; not facility coordinates")) {
+        ("locality_reference_coarse", "locality_reference_coarse", "locality_reference_not_facility_or_centroid")
+    } else {
+        ("city_reference_approximate", "administrative-reference-centre-approximate", "approximate_city_location_not_facility_point")
+    }
 }
 
 const REAL_PREVIEW_LATEST_SNAPSHOT: &str = "candidate.snapshot_sha256 = COALESCE((SELECT run.snapshot_sha256 FROM real_preview.source_preview_runs run WHERE run.source_id=candidate.source_id ORDER BY run.created_at DESC,run.run_id DESC LIMIT 1),(SELECT manifest.snapshot_sha256 FROM real_preview.source_manifests manifest WHERE manifest.source_id=candidate.source_id ORDER BY manifest.retrieved_at DESC,manifest.snapshot_sha256 DESC LIMIT 1))";
@@ -923,7 +933,9 @@ reference_features AS (
          NULL::text AS parent_key,
          'city_reference'::text AS kind,
          count(*)::integer AS count,
-         'city_reference_approximate'::text AS precision,
+         CASE WHEN bool_and(display_geometry_source LIKE '%approximate locality reference; not facility coordinates%')
+              THEN 'locality_reference_coarse'::text
+              ELSE 'city_reference_approximate'::text END AS precision,
          14::integer AS next_zoom,
          ST_Centroid(ST_Collect(geom)) AS geom
   FROM placeable
@@ -2562,6 +2574,28 @@ mod v2_api_tests {
         assert!(real_preview_https_url(Some("http://example.test/source".into())).is_none());
         assert!(real_preview_https_url(Some("https://user@example.test/source".into())).is_none());
         assert!(real_preview_https_url(Some("not a URL".into())).is_none());
+    }
+
+    #[test]
+    fn local_capital_core_reference_is_disclosed_as_coarse_not_facility_or_centroid() {
+        assert_eq!(
+            real_preview_reference_disclosure(Some(
+                "Idescat capital-core point; approximate locality reference; not facility coordinates",
+            )),
+            (
+                "locality_reference_coarse",
+                "locality_reference_coarse",
+                "locality_reference_not_facility_or_centroid",
+            )
+        );
+        assert_eq!(
+            real_preview_reference_disclosure(Some("Etalab commune centre")),
+            (
+                "city_reference_approximate",
+                "administrative-reference-centre-approximate",
+                "approximate_city_location_not_facility_point",
+            )
+        );
     }
 
     #[test]

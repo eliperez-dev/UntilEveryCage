@@ -1,0 +1,20 @@
+{
+  "decision": "approved_for_private_coarse_locality_enrichment_only",
+  "dataset_id": "wpyq-we8x",
+  "dataset_name": "Caps de municipi de Catalunya georeferenciats",
+  "publisher": "Generalitat de Catalunya open data portal",
+  "coordinate_source": "Institut Cartogràfic i Geològic de Catalunya (ICGC)",
+  "source": "https://analisi.transparenciacatalunya.cat/d/wpyq-we8x",
+  "download": "https://analisi.transparenciacatalunya.cat/api/v3/views/wpyq-we8x/export.csv?accessType=DOWNLOAD",
+  "license": "Llicència oberta d'ús d'informació - Catalunya; dataset-specific terms prevail",
+  "license_url": "https://web.gencat.cat/ca/generalitat/dades-indicadors/dades-obertes/llicencies",
+  "last_updated": "2024-11-27",
+  "coordinate_method": "ICGC Base municipal de Catalunya 1:5.000 v2.1; central point of each municipal capital nucleus",
+  "code_fields": {
+    "Codi municipi": "6-digit Idescat municipality code",
+    "Codi municipi INE": "5-digit INE municipality code"
+  },
+  "notes": "The dataset describes municipality-capital localities, not municipality centroids or establishment locations. Generalitat reuse terms allow reuse, distribution, communication, and transformation with attribution and disclosure of the latest update date, subject to dataset-specific terms. Import is limited to private approximate display evidence; no public release, facility-point claim, or external geocoder use is authorized.",
+  "reviewed_at": "2026-09-27T00:00:00Z",
+  "reviewer": "Codex source terms review under explicit project operator authorization"
+}

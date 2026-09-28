@@ -15,6 +15,20 @@ SPEC.loader.exec_module(IMPORTER)
 
 
 class RealPreviewImporterTests(unittest.TestCase):
+    def test_catalonia_preserves_five_and_six_digit_codes_without_normalizing(self):
+        for code in ("08019", "080193"):
+            self.assertEqual(
+                IMPORTER.administrative_code_for_row(
+                    "es.cat.feed-sandach", {"municipality_code": code}
+                ),
+                code,
+            )
+        for code in ("0801", "0801930", "08A19"):
+            with self.assertRaises(IMPORTER.ImportFailure):
+                IMPORTER.administrative_code_for_row(
+                    "es.cat.feed-sandach", {"municipality_code": code}
+                )
+
     def test_fsa_records_are_listable_but_unmapped_and_name_gated(self):
         normalized = {
             "establishment_id": "A-1", "trading_name": "Example Foods",

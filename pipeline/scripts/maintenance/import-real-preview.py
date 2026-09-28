@@ -285,6 +285,20 @@ def parse_row(source: str, row: Any) -> tuple[Any, ...]:
             map_scope, map_scope_reason, str(group_key).strip())
 
 
+def administrative_code_for_row(source: str, normalized: dict[str, Any]) -> str | None:
+    """Return only an allowlisted stable code; never infer it from display text."""
+    if source != "es.cat.feed-sandach":
+        return None
+    value = normalized.get("municipality_code")
+    # The live register contains both official INE (5-digit) and Idescat
+    # (6-digit) municipality codes. Preserve the source value exactly; the
+    # reviewed ICGC reference carries both codes, so resolution needs no alias
+    # inference or name matching.
+    if value is not None and (not isinstance(value, str) or not value.isdigit() or len(value) not in {5, 6}):
+        raise ImportFailure("administrative_code_invalid")
+    return value
+
+
 def hash_snapshot(manifests: dict[str, tuple[Path, dict[str, Any]]]) -> str:
     digest = hashlib.sha256()
     digest.update(SNAPSHOT_PROJECTION_VERSION.encode())

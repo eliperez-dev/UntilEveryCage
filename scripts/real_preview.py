@@ -1408,6 +1408,15 @@ def enrich_locations(source_id: str | None, limit: int, database_url: str | None
     db_url = _operator_database_url(database_url)
     resolved = blocked = unresolved = examined = 0
     with psycopg.connect(db_url) as connection:
+        if selected_source == "es.cat.feed-sandach":
+            # ICGC points are locality context for private list/detail review,
+            # not facility locations; keep these candidates outside map scope.
+            connection.execute("""
+                UPDATE real_preview.candidates
+                SET default_map_scope=false, map_scope_reason='list_only_locality_reference'
+                WHERE source_id=%s AND location_class <> 'numeric_source_coordinate'
+                  AND default_map_scope=true
+            """, (selected_source,))
         rows = connection.execute("""
             SELECT candidate.candidate_id, candidate.snapshot_sha256, candidate.source_id,
                    candidate.source_group_key, candidate.location_class, candidate.country_code,
@@ -1467,13 +1476,41 @@ def enrich_locations(source_id: str | None, limit: int, database_url: str | None
                     state, reason = "resolved", "local_coarse_reference_available"
                 else:
                     state, reason = "provider_blocked", "external_provider_disabled"
+            elif source == "es.cat.feed-sandach":
+                refs = connection.execute("""
+                    SELECT admin_name,admin_code,reference_latitude,reference_longitude,
+                           reference_source_id,reference_source_url,source_dataset_date,
+                           source_artifact_sha256
+                    FROM real_preview.local_admin_reference_points
+                    WHERE country_code='ES' AND admin_code=%s
+                    ORDER BY reference_source_id
+                """, (connection.execute(
+                    "SELECT municipality_code FROM real_preview.candidates WHERE candidate_id=%s",
+                    (candidate_id,)).fetchone()[0],)).fetchall()
+                if len(refs) == 1:
+                    ref = refs[0]
+                    coarse = {"latitude": ref[2], "longitude": ref[3],
+                              "source": "ICGC municipality capital-locality point",
+                              "source_reference_id": ref[4], "source_url": ref[5],
+                              "dataset_date": ref[6].isoformat(), "source_sha256": ref[7].strip()}
+                    state, reason = "resolved", "municipality_capital_locality_reference"
+                elif len(refs) > 1:
+                    state, reason = "conflict", "municipality_reference_multiple_sources"
+                else:
+                    state, reason = "unresolved", "municipality_reference_unavailable"
             else:
                 state, reason = "unresolved", "no_usable_location_input"
             with connection.transaction():
                 if coarse:
                     source_label = str(coarse.get("source") or "local Denmark locality reference")
                     source_ref_id = str(coarse.get("source_reference_id") or "unavailable")
-                    source_text = f"{source_label}; approximate locality reference; not facility coordinates"
+                    source_url = coarse.get("source_url")
+                    dataset_date = coarse.get("dataset_date")
+                    source_hash = coarse.get("source_sha256")
+                    source_text = (f"{source_label}; source id {source_ref_id}; {source_url}; dataset date {dataset_date}; source artifact SHA-256 {source_hash}; approximate locality reference; not facility coordinates"
+                                   if source_url and dataset_date and source_hash else
+                                   (f"{source_label}; source id {source_ref_id}; {source_url}; approximate locality reference; not facility coordinates"
+                                    if source_url else f"{source_label}; approximate locality reference; not facility coordinates"))
                     connection.execute("""
                         INSERT INTO real_preview.local_reference_display_evidence
                           (candidate_id,snapshot_sha256,source_id,reference_latitude,reference_longitude,
@@ -1496,6 +1533,117 @@ def enrich_locations(source_id: str | None, limit: int, database_url: str | None
             "provider_blocked": blocked, "unresolved": unresolved,
             "mode": "local_reference_only", "external_provider_calls": 0,
             "publication": "none", "privacy": "private_approximate"}
+
+
+def import_location_references(reference_file: str, source_id: str, source_url: str,
+                               dataset_date: str, database_url: str | None = None) -> dict[str, object]:
+    """Import reviewed Idescat JSON or the exact ICGC capital-locality CSV, never candidate payloads."""
+    allowed_sources = {
+        "es.cat.idescat.municipality-capital-core": {
+            "hosts": {"www.idescat.cat", "www.idescat.es", "www.idescat.com"},
+            "path": None,
+        },
+        "es.cat.icgc.municipality-capital-localities": {
+            "hosts": {"analisi.transparenciacatalunya.cat"},
+            "path": "/api/v3/views/wpyq-we8x/export.csv",
+        },
+    }
+    source_policy = allowed_sources.get(source_id)
+    if source_policy is None:
+        raise PreviewError("reference source is not allowlisted")
+    parsed = urllib.parse.urlsplit(source_url)
+    query_ok = True
+    if source_policy["path"] is not None:
+        try:
+            query_ok = urllib.parse.parse_qs(parsed.query, strict_parsing=True) == {"accessType": ["DOWNLOAD"]}
+        except ValueError:
+            query_ok = False
+    if (len(source_url) > 2048 or parsed.scheme != "https"
+            or parsed.hostname not in source_policy["hosts"]
+            or (source_policy["path"] is not None and parsed.path != source_policy["path"])
+            or not query_ok
+            or parsed.username or parsed.password or parsed.fragment
+            or any(ord(char) < 32 for char in source_url)):
+        raise PreviewError("reference URL is not an approved source HTTPS endpoint")
+    try:
+        import datetime
+        import hashlib
+        date_value = datetime.date.fromisoformat(dataset_date)
+        source_bytes = Path(reference_file).read_bytes()
+        source_sha256 = hashlib.sha256(source_bytes).hexdigest()
+        if source_id == "es.cat.icgc.municipality-capital-localities":
+            import csv
+            import io
+            expected_headers = (
+                "Municipi", "Municipi forma indexada", "Cap de municipi", "Cap de municipi indexada",
+                "Codi municipi", "Codi municipi INE", "Comarca", "Codi comarca",
+                "Abreviatura comarca", "Província", "Codi província", "UTM X", "UTM Y",
+                "Longitud", "Latitud", "Georeferència",
+            )
+            reader = csv.DictReader(io.StringIO(source_bytes.decode("utf-8-sig"), newline=""), strict=True)
+            if tuple(reader.fieldnames or ()) != expected_headers:
+                raise PreviewError("ICGC reference schema is invalid")
+            records = []
+            for row in reader:
+                if None in row or any(not isinstance(value, str) for value in row.values()):
+                    raise PreviewError("ICGC reference row schema is invalid")
+                try:
+                    latitude, longitude = float(row["Latitud"]), float(row["Longitud"])
+                except (TypeError, ValueError):
+                    raise PreviewError("ICGC reference coordinate is invalid") from None
+                capital_name = row["Cap de municipi"].strip()
+                for field, code_length in (("Codi municipi", 6), ("Codi municipi INE", 5)):
+                    code = row[field].strip()
+                    if (not code.isdigit() or len(code) != code_length or not capital_name
+                            or not (-90 <= latitude <= 90 and -180 <= longitude <= 180)
+                            or (latitude == 0 and longitude == 0)):
+                        raise PreviewError("ICGC reference row failed validation")
+                    records.append({"admin_code": code, "admin_name": capital_name,
+                                    "latitude": latitude, "longitude": longitude})
+        else:
+            records = json.loads(source_bytes.decode("utf-8-sig"))
+    except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError):
+        raise PreviewError("reference file or dataset date is invalid") from None
+    if not isinstance(records, list) or not records or len(records) > 10000:
+        raise PreviewError("reference file must contain 1-10000 administrative points")
+    safe = []
+    seen = set()
+    for item in records:
+        if not isinstance(item, dict):
+            raise PreviewError("reference record schema is invalid")
+        code, name = item.get("admin_code"), item.get("admin_name")
+        try:
+            lat, lon = float(item["latitude"]), float(item["longitude"])
+        except (KeyError, TypeError, ValueError):
+            raise PreviewError("reference coordinate is invalid") from None
+        if (not isinstance(code, str) or not code.isdigit() or len(code) not in {5, 6}
+                or not isinstance(name, str) or not name.strip() or len(name) > 160
+                or not (-90 <= lat <= 90 and -180 <= lon <= 180) or (lat == 0 and lon == 0)
+                or code in seen):
+            raise PreviewError("reference record failed validation")
+        safe.append((code, name.strip(), lat, lon))
+        seen.add(code)
+    normalized_reference_sha256 = hashlib.sha256(
+        json.dumps(safe, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    import psycopg
+    with psycopg.connect(_operator_database_url(database_url)) as connection:
+        with connection.transaction():
+            with connection.cursor() as cursor:
+                cursor.executemany("""
+                    INSERT INTO real_preview.local_admin_reference_points
+                      (country_code,admin_code,admin_name,reference_latitude,reference_longitude,
+                       reference_precision,reference_source_id,reference_source_url,source_dataset_date,
+                       source_artifact_sha256,normalized_reference_sha256)
+                    VALUES ('ES',%s,%s,%s,%s,'municipality_capital_locality',%s,%s,%s,%s,%s)
+                    ON CONFLICT (country_code,admin_code,reference_source_id) DO NOTHING
+                """, [(code, name, lat, lon, source_id, source_url, date_value,
+                       source_sha256, normalized_reference_sha256) for code, name, lat, lon in safe])
+    return {"status": "ok", "imported_or_existing": len(safe), "reference_source_id": source_id,
+            "reference_precision": "municipality_capital_locality", "privacy": "reference_data_only",
+            "source_artifact_sha256": source_sha256,
+            "normalized_reference_sha256": normalized_reference_sha256,
+            "external_provider_calls": 0, "publication": "none"}
 
 
 def geospatial_status(source_id: str | None, database_url: str | None = None) -> dict[str, object]:
