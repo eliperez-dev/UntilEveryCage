@@ -58,17 +58,23 @@ class SourceRightsPostgresTests(unittest.TestCase):
         cls.compose_env = {**os.environ, "UEC_E2E_DB_PORT": str(cls.port)}
         try:
             cls._compose("up", "-d", "--wait", "postgres", check=True)
-            # The PostGIS image can briefly expose its bootstrap server after
-            # the Compose health check succeeds. Wait until the target DB has
-            # reported the same postmaster start time several times first.
+            # Compose health only proves that PostgreSQL accepts connections;
+            # the PostGIS image may still be running its target-database init
+            # scripts. Wait for both the disposable marker and PostGIS catalog
+            # entry, as well as a stable postmaster, before applying migrations.
             stable_postmaster = None
             stable_checks = 0
             for _ in range(120):
                 ready = cls._compose(
                     "exec", "-T", "postgres", "psql", "-At", "-U", "uec", "-d", "uec",
-                    "-c", "SELECT pg_postmaster_start_time()",
+                    "-c", "SELECT pg_postmaster_start_time()::text || '|' || "
+                    "EXISTS (SELECT 1 FROM uec.disposable_import_guard "
+                    "WHERE marker='uec-e2e-disposable-v1')::text || '|' || "
+                    "EXISTS (SELECT 1 FROM pg_extension WHERE extname='postgis')::text",
                 )
-                postmaster = ready.stdout.strip() if ready.returncode == 0 else ""
+                fields = ready.stdout.strip().split("|") if ready.returncode == 0 else []
+                initialized = len(fields) == 3 and fields[1:] == ["true", "true"]
+                postmaster = fields[0] if initialized else ""
                 if postmaster and postmaster == stable_postmaster:
                     stable_checks += 1
                 else:

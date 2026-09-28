@@ -9,10 +9,12 @@ from pipeline.source_runtime_classification import (
 
 VERIFIED_PRIVATE_E2E = {
     "au.sa.epa.licensed-activities",
+    "au.npi.facilities",
     "be.locations",
     "ca.cfia.federal-meat",
     "dk.smiley",
     "fsa_approved_establishments",
+    "es.cat.feed-sandach",
     "fr.dgal.section-i",
     "fr.dgal.section-ii",
     "it.853-2004",

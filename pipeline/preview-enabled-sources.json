@@ -31,6 +31,8 @@
     },
     "es.cat.feed-sandach": {
       "enabled": true,
+      "runtime_classification": "production-e2e",
+      "public_release": false,
       "runner": "pipeline.refresh_private:es.cat.feed-sandach",
       "terms_review": "data/terms-reviews/es.cat.feed-sandach.json",
       "terms_decision": "approved",

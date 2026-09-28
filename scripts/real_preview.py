@@ -1074,6 +1074,9 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
             "source_counts": {key: import_result.get(key) for key in (
                 "observation_count", "facility_candidate_count", "city_postal_count", "unmapped_facility_count",
                 "map_visible_count", "public_release_count", "public_projection_count")},
+            "coordinate_precision_breakdown": {"exact": 0, "source_provided_unspecified": 0,
+                                                "city_or_postal_only": import_result.get("city_postal_count"),
+                                                "unmapped": 0},
             "location_policy": "Catalonia source supplies municipality/postal fields but no coordinates; no geometry lookup or point inference; all remain unmapped.",
         })
     elif source_id in {"fr.dgal.section-i", "fr.dgal.section-ii"}:
@@ -1230,7 +1233,7 @@ def refresh_source(source_id: str = "be.locations", existing_runner_run_id: str 
         return _refresh_source_locked(source_id, existing_runner_run_id)
 
 
-def strict_live_private_e2e(source_id: str) -> dict[str, object]:
+def strict_live_private_e2e(source_id: str, existing_runner_run_id: str | None = None) -> dict[str, object]:
     """Run one bounded live source acquisition through disposable private preview and certification."""
     global PROJECT, VOLUME, DB_PORT, API_PORT, WEB_PORT, PRIVATE_ROOT, ACTIVE_PREVIEW_TOKEN
     if source_id not in {"ca.cfia.federal-meat", "au.npi.facilities", "fsa_approved_establishments", "es.cat.feed-sandach"}:
@@ -1270,7 +1273,7 @@ def strict_live_private_e2e(source_id: str) -> dict[str, object]:
         token = ACTIVE_PREVIEW_TOKEN
         if not token:
             raise PreviewError("disposable preview startup did not retain its token in memory")
-        first_preview = refresh_source(source_id)
+        first_preview = refresh_source(source_id, existing_runner_run_id)
         if first_preview.get("status") != "imported":
             raise PreviewError("first source refresh did not complete the private preview import")
         preview = first_preview
@@ -1536,7 +1539,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         if args.action in {"refresh", "strict-live-private-e2e", "strict-refresh"} and not args.source:
             raise PreviewError(f"{args.action} requires an explicit --source")
-        result = (strict_live_private_e2e(args.source) if args.action == "strict-live-private-e2e" else
+        result = (strict_live_private_e2e(args.source, args.existing_run) if args.action == "strict-live-private-e2e" else
                   strict_refresh(args.source) if args.action == "strict-refresh" else
                   refresh_source(args.source, args.existing_run) if args.action == "refresh" else
                   {"up": up, "status": status, "probe": probe, "down": down, "reset": reset}[args.action]())

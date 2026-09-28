@@ -58,7 +58,7 @@ class FirstWaveDescriptorTests(unittest.TestCase):
         self.assertTrue(all(item["private_pipeline"] == "one_action_preview_import_ready" for item in report if item["source_id"] in ready))
         self.assertTrue(all(item["private_pipeline"] == "fixture_contract_ready" for item in report if item["source_id"] not in ready))
         self.assertTrue(all(item["publication"] == "human_gate_required" for item in report))
-        self.assertIn("assisted_only", {item["live_acquisition"] for item in report})
+        self.assertTrue({item["live_acquisition"] for item in report} <= {"verified", "bounded_private_fetch"})
 
 
 if __name__ == "__main__":

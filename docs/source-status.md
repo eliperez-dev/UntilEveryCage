@@ -38,18 +38,20 @@ currentness claim.
 
 ## Latest strict live private E2E — 2026-09-27
 
-Eight named official sources completed strict live private E2E through acquisition,
+Ten named official sources completed strict live private E2E through acquisition,
 candidate processing, disposable-database import, and run verification. The
-combined SQL-verified result is 68,992 observations, 47,166 candidates, 41,110
-map-visible candidates, and 6,056 listable but unmapped candidates. The FSA
-snapshot contributed 4,291 unmapped observations; its acquisition and private
-database import were repeated twice with idempotent replay. The public
+combined SQL-verified result is 89,225 observations, 59,649 candidates, 41,110
+map-visible candidates, and 18,539 listable but unmapped candidates. The FSA
+snapshot contributed 4,291 unmapped candidates. AU NPI contributed 8,116
+listable candidates and Catalonia contributed 4,367 municipality-grouped
+candidates; both had zero map-visible candidates. Exact same-database importer
+replay verified idempotency for AU NPI, FSA, and Catalonia. The public
 projection contained zero rows. This verifies a one-time source-scoped private
 run; a recurring operational monitor has not yet run or been configured, and
 public release is not authorized. Source-specific rights, privacy, identity,
 classification, factual review, and release gates remain separate.
 
-All eight rows remain `runtime_health=not_run` because no recurring operational
+All ten rows remain `runtime_health=not_run` because no recurring operational
 monitor is configured, and `publication_eligibility=blocked`. Here,
 `acquisition=verified` records the strict live private E2E and replay evidence;
 it does not imply that public rows exist or may be released. The 2026-09-15
@@ -77,7 +79,9 @@ The 2026-09-16 Ireland reconnaissance verified the current FSAI/DAFM/HSE/SFPA so
 | `mx.locations` | verified | blocked | not_run | blocked | DENUE/SENASICA/DGSIAP reconnaissance; resolve token, directory, terms, and schema |
 | `nz.locations` | verified | blocked | not_run | blocked | MPI/Stats NZ reconnaissance; resolve 403/access and aggregate-vs-facility boundaries |
 | `uk.locations` | partial | artifact_private_only | unknown | blocked | Legacy umbrella only. The England/Wales FSA and Scotland/Northern Ireland FSS identities remain separate; see `docs/country-recon-uk.md` |
-| `fsa_approved_establishments` | verified | verified | not_run | blocked | Strict live private E2E passed 2026-09-27: 5,342 source rows, 4,291 accepted/listable and 1,051 quarantined; two refreshes verified idempotent replay. Zero coordinates/map pins and zero public rows. One-time evidence only; review row privacy, completeness, currentness, and publication separately. England and Wales only; keep both FSS identities separate; see `pipeline/sources/uk/fsa_approved/README.md` |
+| `fsa_approved_establishments` | verified | verified | not_run | blocked | Strict live private E2E passed 2026-09-27: 5,342 source rows, 4,291 accepted/listable and 1,051 quarantined; exact same-database importer replay verified idempotency. Zero coordinates/map pins and zero public rows. One-time evidence only; review row privacy, completeness, currentness, and publication separately. England and Wales only; keep both FSS identities separate; see `pipeline/sources/uk/fsa_approved/README.md` |
+| `au.npi.facilities` | verified | verified | not_run | blocked | Strict live private E2E passed 2026-09-27: 8,140 source rows, 8,116 accepted/listable and 24 quarantined; exact same-database importer replay verified idempotency. Zero map-visible and public rows. One-time evidence only; not complete facility coverage or publication approval; see `docs/country-recon-au.md` |
+| `es.cat.feed-sandach` | verified | verified | not_run | blocked | Strict live private E2E passed 2026-09-27: 12,341 input rows, 12,117 observations, 224 quarantined, 4,367 municipality-grouped/listable candidates; exact same-database importer replay verified idempotency. Zero map-visible and public rows. Catalonia only; no Spain-wide or publication claim; see `docs/country-recon-es.md` |
 | `dk.smiley` | verified | verified | not_run | blocked | One strict live private-preview E2E passed on 2026-09-25: 58,726 source rows, 58,677 accepted candidates, 49 quarantined, zero public rows; no source coordinates, so map-visible count was zero. This is a one-time run, not recurring health, completeness, privacy clearance, or publication approval. Review categories, address privacy, currentness, and release gates; see `pipeline/sources/denmark/README.md` |
 | `de.locations` | partial | artifact_private_only | not_run | blocked | Current public general-list export parsed privately: 15,788 input, 2,691 normalized, 13,097 quarantined; session-bound export route, unknown effective date, terms/privacy/coverage and project approval remain unresolved; see `docs/germany-source-assessment.md` and `data/manifests/de-be-private-candidates-2026-09-17.json` |
 | `ca.ontario.meat-plants` | verified | not_run | not_run | blocked | Ontario private adapter/refresh is implemented; keep plant/contact/coordinate fields restricted pending privacy and licence review, and do not generalize Ontario coverage nationally |
@@ -112,7 +116,7 @@ The 2026-09-16 Ireland reconnaissance verified the current FSAI/DAFM/HSE/SFPA so
 
 Australia is represented by 22 source-local evidence layers in `source-status.json` and `pipeline/source_registry.json`. All remain `publication_eligibility=blocked`; no recurring runtime monitor is claimed. `au.sa.epa.licensed-activities` has a verified one-time strict live private E2E result of 43 observations and 41 candidates; this does not authorize release. The earlier NPI CSV (8,140 rows) and SA EPA GeoJSON capture (4,541 features / 1,695 licences) remain separate historical artifacts. The detailed route, schema, identity, map/graph, privacy, terms, and blocker crosswalk is [`docs/countries/australia/source-crosswalk.json`](countries/australia/source-crosswalk.json); the source research is [`docs/country-recon-au.md`](country-recon-au.md).
 
-The NPI source now has a deterministic synthetic/local-artifact adapter and shared-runner registration. This proves private parsing, quarantine, provenance, and candidate handoff only; it does not authorize acquisition, publication, or completeness claims.
+The NPI source now has a deterministic adapter and shared-runner registration plus one strict live private E2E: 8,116 listable candidates, zero map-visible candidates, and zero public rows. This is one-time evidence only; it does not authorize publication or completeness claims.
 
 The machine-readable file is the source of truth for these statuses. Legacy `.locations` paths may represent composite coverage, but source identities are split where the evidence establishes separate feeds: France Section I/II, Canada Ontario/CFIA, Italy 853/2004/1069/2009, and Australia’s state/federal/environment/animal-use layers. Candidate feeds mentioned in reconnaissance documents are not silently conflated into a single healthy source. Country reconnaissance documents provide evidence and next actions; they do not override this status vocabulary or authorize publication.
 

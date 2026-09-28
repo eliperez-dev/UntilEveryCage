@@ -130,17 +130,26 @@ states and must be reported separately.
 
 ### E2 Australia NPI source onboarding
 
-E2 added `au.npi.facilities` to the shared source registry and runner. The
-synthetic contract passes schema-drift detection, checksum/provenance handling,
-quarantine, private lifecycle output, and one-source, selected-source, and
-all-eligible sequential runner execution. The checked-in fixture contains 5
-rows: 3 normalized and 2 quarantined, including source-coordinate and
-unresolved-coordinate states. No live network request or public projection was
-performed. The previously retained 8,140-row NPI artifact is represented by
-metadata outside Git but was unavailable in the integration workspace, so its
-counts are not claimed as a completed local-artifact run. Candidate database
-import remains unconfigured for this source and no graph relationships are
-invented. See [E2 aggregate evidence](../data/manifests/e2-australia-npi.json).
+E2 added `au.npi.facilities` to the shared source registry and runner. Its
+strict live private E2E now verifies 8,140 input rows, 8,116 listable
+candidates, and 24 quarantined rows. An exact same-database importer replay
+preserved those counts; no coordinates were map-visible and no public rows
+were written. This one-time result does not establish complete NPI coverage,
+recurring health, privacy clearance, or publication approval. Preserve annual
+release/correction history and keep source addresses/coordinates private.
+Synthetic contract tests still cover schema-drift detection and lifecycle
+outputs. See [E2 aggregate evidence](../data/manifests/e2-australia-npi.json)
+and [source status](source-status.md).
+
+### Catalonia SANDACH source onboarding
+
+The `es.cat.feed-sandach` lane completed one strict live private E2E for the
+Catalonia feed register: 12,117 accepted observations, 224 quarantined rows,
+and 4,367 municipality-grouped/listable candidates. Exact same-database replay
+preserved the aggregate and the authenticated source-scoped list/search/detail
+checks passed; the no-coordinate source returned an empty viewport and zero
+public rows. This is Catalonia-only, one-time verification, not Spain-wide
+coverage, privacy clearance, recurring monitoring, or publication approval.
 
 ### Data lifecycle states
 

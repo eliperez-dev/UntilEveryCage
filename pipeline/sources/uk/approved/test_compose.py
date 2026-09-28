@@ -35,10 +35,12 @@ class UkCompositionTests(unittest.TestCase):
             manifest = compose_sources(inputs, root / "country")
             rows = [json.loads(line) for line in (root / "country/reviewable/records.jsonl").read_text().splitlines()]
             self.assertEqual(manifest["source_ids"], ["fsa_approved_establishments", "fss_approved_establishments"])
-            self.assertEqual(len(rows), 5)
+            self.assertEqual(len(rows), 4)
             fsa_rows = [r for r in rows if r["source_id"] == "fsa_approved_establishments"]
-            self.assertEqual({r["source_record_id"] for r in fsa_rows}, {"00017", "NI-004"})
-            self.assertEqual({r["source_record"]["normalized"]["nation"] for r in fsa_rows}, {"England", "Wales", "Northern Ireland"})
+            self.assertEqual({r["source_record_id"] for r in fsa_rows}, {"00017"})
+            self.assertEqual({r["source_record"]["normalized"]["nation"] for r in fsa_rows}, {"England", "Wales"})
+            fss_rows = [r for r in rows if r["source_id"] == "fss_approved_establishments"]
+            self.assertEqual({r["source_record"]["normalized"]["nation"] for r in fss_rows}, {"Scotland"})
             self.assertTrue(all("manifest" in row["source_state"] for row in rows))
             self.assertFalse((root / "country/released/records.jsonl").exists())
 

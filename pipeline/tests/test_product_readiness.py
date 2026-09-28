@@ -71,15 +71,16 @@ class ProductReadinessDocumentationTests(unittest.TestCase):
         payload = json.loads((ROOT / "docs" / "source-status.json").read_text(encoding="utf-8"))
         e2e = payload["latest_strict_live_private_e2e"]
         self.assertEqual(e2e["as_of"], "2026-09-27")
-        self.assertEqual(e2e["observations"], 68992)
-        self.assertEqual(e2e["private_candidates"], 47166)
+        self.assertEqual(e2e["observations"], 89225)
+        self.assertEqual(e2e["private_candidates"], 59649)
         self.assertEqual(e2e["map_visible_candidates"], 41110)
-        self.assertEqual(e2e["listable_unmapped_candidates"], 6056)
+        self.assertEqual(e2e["listable_unmapped_candidates"], 18539)
         self.assertEqual(e2e["public_rows"], 0)
         self.assertEqual(e2e["publication"], "not_authorized")
         expected = {
-            "au.sa.epa.licensed-activities", "be.locations", "fsa_approved_establishments", "fr.dgal.section-i",
-            "fr.dgal.section-ii", "it.853-2004", "it.1069-2009", "us.fsis",
+            "au.npi.facilities", "au.sa.epa.licensed-activities", "be.locations", "es.cat.feed-sandach",
+            "fsa_approved_establishments", "fr.dgal.section-i", "fr.dgal.section-ii", "it.853-2004",
+            "it.1069-2009", "us.fsis",
         }
         self.assertEqual(set(e2e["verified_sources"]), expected)
         by_id = {row["source_id"]: row for row in payload["sources"]}
