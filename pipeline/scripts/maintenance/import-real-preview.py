@@ -276,10 +276,18 @@ def parse_row(source: str, row: Any) -> tuple[Any, ...]:
     activity_source = "source" if activity else None
     evidence_summary = safe_preview_text(pick(normalized, "evidence_summary"), 500)
     record_url = safe_https_url(pick(normalized, "source_record_url"))
-    map_scope = normalized.get("in_default_map_scope", source != "dk.smiley")
+    default_map_scope = source != "dk.smiley"
+    map_scope = (
+        False if source == "es.cat.feed-sandach"
+        else normalized.get("in_default_map_scope", default_map_scope)
+    )
     if not isinstance(map_scope, bool):
-        map_scope = source != "dk.smiley"
-    map_scope_reason = safe_preview_text(pick(normalized, "map_scope_reason", "classification_optional_filter"), 160)
+        map_scope = default_map_scope
+    map_scope_reason = ("list_only_locality_reference" if source == "es.cat.feed-sandach" else
+                        safe_preview_text(pick(normalized, "map_scope_reason", "classification_optional_filter"), 160))
+    # Validate and preserve the source-owned administrative key separately
+    # from the display projection; it is used only for offline coarse lookup.
+    administrative_code_for_row(source, normalized)
     return (str(identifier), location_class, country, city, postal, lat, lon, precision, observed,
             zero_pair, department, name, activity, activity_source, record_url, evidence_summary,
             map_scope, map_scope_reason, str(group_key).strip())
@@ -431,6 +439,7 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
                 municipality_policy: dict[str, Any] | None = None) -> tuple[int, int, int, int, int, int, int, int, int, int, int, set[str], int, int]:
     count = unmapped_count = mapped_non_candidate_count = candidate_count = 0
     parsed_rows: list[tuple[Any, ...]] = []
+    administrative_codes: dict[str, str | None] = {}
     with path.open("r", encoding="utf-8") as stream:
         for line in stream:
             if not line.strip():
@@ -441,6 +450,9 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
                 raise ImportFailure("row_schema_invalid") from None
             parsed = parse_row(source, record)
             parsed_rows.append(parsed)
+            code = administrative_code_for_row(source, record["normalized"])
+            if code is not None:
+                administrative_codes[parsed[0]] = code
     representatives: dict[str, tuple[Any, ...]] = {}
     zero_coordinate_groups: set[str] = set()
     usable_coordinate_groups: set[str] = set()
@@ -488,6 +500,7 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
         identifier, klass, country, city, postal, lat, lon, precision, observed, _, department = chosen[:11]
         display_name, activity_label, activity_source, source_record_url, evidence_summary = chosen[11:16]
         default_map_scope, map_scope_reason = chosen[16:18]
+        municipality_code = administrative_codes.get(str(identifier))
         place, place_match = _resolve_municipality(municipality_index or {}, city, municipality_policy or {}, department)
         display_lat = place.get("latitude") if isinstance(place, dict) else None
         display_lon = place.get("longitude") if isinstance(place, dict) else None
@@ -499,12 +512,12 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
         ).fetchone()[0]
         db.execute(
             """INSERT INTO real_preview.candidates
-            (snapshot_sha256,source_id,source_group_key,representative_observation_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision,observation_count,display_latitude,display_longitude,display_geometry_source,display_name,activity_label,activity_source,source_record_url,evidence_summary,source_name,observed_at,default_map_scope,map_scope_reason)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (snapshot_sha256,source_id,source_group_key) DO NOTHING""",
+            (snapshot_sha256,source_id,source_group_key,representative_observation_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision,observation_count,display_latitude,display_longitude,display_geometry_source,display_name,activity_label,activity_source,source_record_url,evidence_summary,source_name,observed_at,default_map_scope,map_scope_reason,municipality_code)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (snapshot_sha256,source_id,source_group_key) DO NOTHING""",
             (snapshot, source, group_key, preview_id, klass, country, city, postal, lat, lon, precision, observations_per_group[group_key], display_lat, display_lon,
              f"{(municipality_policy or {}).get('source', 'Administrative commune reference')}; approximate city location, not facility coordinates; name_match={place_match}" if display_lat is not None else None,
              display_name, activity_label, activity_source, source_record_url, evidence_summary, SOURCE_NAMES.get(source), observed,
-             default_map_scope, map_scope_reason),
+             default_map_scope, map_scope_reason, municipality_code),
         )
         enrichment_state, enrichment_reason = (
             ("source_coordinate", "source_coordinate_present") if klass == "numeric_source_coordinate" else

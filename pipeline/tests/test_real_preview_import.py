@@ -15,6 +15,22 @@ SPEC.loader.exec_module(IMPORTER)
 
 
 class RealPreviewImporterTests(unittest.TestCase):
+    def test_catalonia_locality_candidates_are_searchable_but_outside_default_map_scope(self):
+        parsed = IMPORTER.parse_row("es.cat.feed-sandach", {
+            "source_id": "es.cat.feed-sandach",
+            "source_record_key": "synthetic-catalonia-group",
+            "source_values": {},
+            "normalized": {
+                "establishment_id": "synthetic-register-key",
+                "municipality_code": "080193",
+                "country_code": "ES",
+                "city": "Synthetic locality",
+                "postal_code": "08000",
+            },
+        })
+        self.assertFalse(parsed[16])
+        self.assertEqual(parsed[17], "list_only_locality_reference")
+
     def test_catalonia_preserves_five_and_six_digit_codes_without_normalizing(self):
         for code in ("08019", "080193"):
             self.assertEqual(

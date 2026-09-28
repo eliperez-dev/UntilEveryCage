@@ -1402,21 +1402,12 @@ def enrich_locations(source_id: str | None, limit: int, database_url: str | None
     from pipeline.sources.denmark.location import classify_location
     from pipeline.sources.canada.location import resolve_local_reference
     selected_source = None if source_id is None else source_id
-    allowed = {"dk.smiley", "ca.cfia.federal-meat", "ca.ontario.meat-plants"}
+    allowed = {"dk.smiley", "ca.cfia.federal-meat", "ca.ontario.meat-plants", "es.cat.feed-sandach"}
     if selected_source is not None and selected_source not in allowed:
         raise PreviewError("source has no local-only enrichment adapter")
     db_url = _operator_database_url(database_url)
     resolved = blocked = unresolved = examined = 0
     with psycopg.connect(db_url) as connection:
-        if selected_source == "es.cat.feed-sandach":
-            # ICGC points are locality context for private list/detail review,
-            # not facility locations; keep these candidates outside map scope.
-            connection.execute("""
-                UPDATE real_preview.candidates
-                SET default_map_scope=false, map_scope_reason='list_only_locality_reference'
-                WHERE source_id=%s AND location_class <> 'numeric_source_coordinate'
-                  AND default_map_scope=true
-            """, (selected_source,))
         rows = connection.execute("""
             SELECT candidate.candidate_id, candidate.snapshot_sha256, candidate.source_id,
                    candidate.source_group_key, candidate.location_class, candidate.country_code,
