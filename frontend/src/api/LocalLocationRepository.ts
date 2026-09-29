@@ -19,7 +19,7 @@ export const mapWireLocation = (r: WireLocation): Location => ({
     retrievedAt: r.provenance_retrieved_at, displayPrecision: r.display_precision, lifecycleStatus: r.lifecycle_status, observationCount: r.observation_count,
   },
 });
-const query = (profile: LocalProfile, filters: LocationFilters) => { const params = new URLSearchParams({ profile }); for (const [key, value] of Object.entries(filters)) if (value !== undefined && value !== '') params.set(key, String(value)); return `/api/v2/locations?${params}`; };
+const query = (profile: LocalProfile, filters: LocationFilters, releaseId?: string) => { const params = new URLSearchParams({ profile }); for (const [key, value] of Object.entries(filters)) if (value !== undefined && value !== '') params.set(key, String(value)); if (releaseId !== undefined) params.set('release_id', releaseId); return `/api/v2/locations?${params}`; };
 // Eligibility is a conservative client-side check, not a publication decision;
 // the server's current public projection and suppression rules remain authoritative.
 const eligible = (row: WireLocation, profile: LocalProfile, releaseId: string, ruleset: string): boolean =>
@@ -31,21 +31,24 @@ const eligible = (row: WireLocation, profile: LocalProfile, releaseId: string, r
 export class LocalLocationRepository {
   readonly #base: string | undefined;
   constructor(private readonly fetcher: FetchLike = globalThis.fetch, baseUrl?: string) { this.#base = localOrigin(baseUrl); }
-  private async json(path: string, signal?: AbortSignal) { const init: RequestInit = { cache: 'no-store' }; if (signal) init.signal = signal; const response = await this.fetcher.call(globalThis, `${this.#base ?? ''}${path}`, init); if (!response.ok) { let code: string | undefined; let message = `Local V2 request failed with status ${response.status}.`; try { const payload = await response.json() as { error?: { code?: string; message?: string } }; code = payload.error?.code; message = payload.error?.message ?? message; } catch { /* Keep the status-safe message. */ } const kind: ApiError['kind'] = response.status === 404 ? 'restricted' : response.status === 429 ? 'rate-limited' : response.status >= 500 ? 'unavailable' : 'http'; throw fail(kind, message, response.status, code); } try { return await response.json(); } catch { throw fail('invalid-contract', 'Local V2 response was not valid JSON.'); } }
-  async list(profile: LocalProfile = 'official', filters: LocationFilters = {}, signal?: AbortSignal): Promise<LocalListResult> {
+  private async json(path: string, signal?: AbortSignal) { const init: RequestInit = { cache: 'no-store' }; if (signal) init.signal = signal; const response = await this.fetcher.call(globalThis, `${this.#base ?? ''}${path}`, init); if (!response.ok) { let code: string | undefined; let message = `Local V2 request failed with status ${response.status}.`; try { const payload = await response.json() as { error?: { code?: string; message?: string } }; code = payload.error?.code; message = payload.error?.message ?? message; } catch { /* Keep the status-safe message. */ } const restricted = response.status === 404 || response.status === 410; const kind: ApiError['kind'] = restricted ? 'restricted' : response.status === 429 ? 'rate-limited' : response.status >= 500 ? 'unavailable' : 'http'; throw fail(kind, restricted ? 'This location snapshot is unavailable.' : message, response.status, code); } try { return await response.json(); } catch { throw fail('invalid-contract', 'Local V2 response was not valid JSON.'); } }
+  async list(profile: LocalProfile = 'official', filters: LocationFilters = {}, signal?: AbortSignal, releaseId?: string): Promise<LocalListResult> {
     try {
-      const b = envelopeSchema.safeParse(await this.json(query(profile, filters), signal));
+      const b = envelopeSchema.safeParse(await this.json(query(profile, filters, releaseId), signal));
       if (!b.success || b.data.meta.profile !== profile) throw fail('invalid-contract', 'Local V2 list response was rejected.');
+      if (b.data.meta.release_id === null && releaseId !== undefined) throw fail('restricted', 'The requested location release is unavailable.');
       if (b.data.meta.release_id === null) throw fail('no-release', b.data.meta.coverage_note);
       const { release_id, ruleset_version } = b.data.meta;
+      if (releaseId !== undefined && release_id !== releaseId) throw fail('restricted', 'The requested location release is unavailable.');
       if (ruleset_version === undefined || b.data.data.some(row => !eligible(row, profile, release_id, ruleset_version))) throw fail('invalid-contract', 'Local V2 list snapshot was rejected.');
       return { locations: b.data.data.map(mapWireLocation), releaseId: release_id, profile, coverageNote: b.data.meta.coverage_note, coverageScope: b.data.meta.coverage_scope ?? 'selected promoted release public facilities', countSemantics: b.data.meta.count_semantics ?? 'Eligible public facility projection rows, not animals or a story-wide total.', nextCursor: b.data.meta.next_cursor ?? null, ruleset: ruleset_version };
     } catch (e) { if (e && typeof e === 'object' && 'kind' in e) throw e; if (e instanceof DOMException && e.name === 'AbortError') throw fail('aborted', 'Local V2 request was aborted.'); if (e instanceof TypeError) throw fail('network', 'Local V2 request could not connect.'); throw fail('invalid-contract', 'Local V2 response could not be read safely.'); }
   }
-  async detail(id: string, profile: LocalProfile = 'official', signal?: AbortSignal) {
+  async detail(id: string, profile: LocalProfile = 'official', signal?: AbortSignal, releaseId?: string) {
     try {
-      const b = detailEnvelopeSchema.safeParse(await this.json(`/api/v2/locations/${encodeURIComponent(id)}?profile=${profile}`, signal));
-      if (!b.success || b.data.meta.profile !== profile || !eligible(b.data.data, profile, b.data.meta.release_id, b.data.meta.ruleset_version) || b.data.data.facility_id !== id) throw fail('invalid-contract', 'Local V2 detail response was rejected.');
+      const params = new URLSearchParams({ profile }); if (releaseId !== undefined) params.set('release_id', releaseId);
+      const b = detailEnvelopeSchema.safeParse(await this.json(`/api/v2/locations/${encodeURIComponent(id)}?${params}`, signal));
+      if (!b.success || b.data.meta.profile !== profile || (releaseId !== undefined && b.data.meta.release_id !== releaseId) || !eligible(b.data.data, profile, b.data.meta.release_id, b.data.meta.ruleset_version) || b.data.data.facility_id !== id) throw fail(releaseId !== undefined && b.success && b.data.meta.release_id !== releaseId ? 'restricted' : 'invalid-contract', 'Local V2 detail response was rejected.');
       return { location: mapWireLocation(b.data.data), releaseId: b.data.meta.release_id, profile };
     } catch (e) { if (e && typeof e === 'object' && 'kind' in e) throw e; if (e instanceof DOMException && e.name === 'AbortError') throw fail('aborted', 'Local V2 request was aborted.'); if (e instanceof TypeError) throw fail('network', 'Local V2 request could not connect.'); throw fail('invalid-contract', 'Local V2 response could not be read safely.'); }
   }

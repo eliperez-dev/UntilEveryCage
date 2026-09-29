@@ -4,6 +4,7 @@
   let DesignLab: typeof import('../design-lab/DesignLab.svelte').default | null = null;
   let DatabaseResearch: typeof import('./DatabaseResearch.svelte').default | null = null;
   let RecordPage: typeof import('./RecordPage.svelte').default | null = null;
+  let PublicReleaseMap: typeof import('./PublicReleaseMap.svelte').default | null = null;
   let reviewMode = false;
 
   let route: RouteState = { kind: 'map' };
@@ -25,6 +26,7 @@
   };
 
   onMount(() => {
+    import('./PublicReleaseMap.svelte').then(module => PublicReleaseMap = module.default);
     if (import.meta.env.DEV) {
       import('../design-lab/DesignLab.svelte').then(module => DesignLab = module.default);
       import('./DatabaseResearch.svelte').then(module => DatabaseResearch = module.default);
@@ -75,10 +77,11 @@
         <a href="#/map">Return to the map</a>
       </section>
     {:else if route.kind === 'map'}
-      <section aria-labelledby="page-heading">
-        <h1 id="page-heading">Map</h1>
-        <p>This page is a structural shell. Map content is not connected yet.</p>
-      </section>
+      {#if PublicReleaseMap}
+        <svelte:component this={PublicReleaseMap} />
+      {:else}
+        <p class="state" role="status">Preparing the map…</p>
+      {/if}
     {:else if route.kind === 'database'}
       <section aria-labelledby="page-heading">
         <h1 id="page-heading">Database</h1>

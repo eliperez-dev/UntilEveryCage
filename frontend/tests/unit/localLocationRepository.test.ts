@@ -3,6 +3,16 @@ const row={facility_id:'550e8400-e29b-41d4-a716-446655440000',canonical_name:'Lo
 const response=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{'content-type':'application/json'}});const envelope=(data=[row],meta={release_id:'rel-1',ruleset_version:'rules-1',profile:'official',next_cursor:null,coverage_note:'Local promoted release.'})=>({data,api_version:'v2',meta});
 describe('LocalLocationRepository',()=>{it('maps a valid Rust-shaped envelope',async()=>{const result=await new LocalLocationRepository(vi.fn().mockResolvedValue(response(envelope()))).list();expect(result.locations[0]).toMatchObject({id:row.facility_id,name:'Local V2 Fixture',lat:55});});it('fails closed when no release is promoted',async()=>{await expect(new LocalLocationRepository(vi.fn().mockResolvedValue(response(envelope([],{release_id:null,profile:'official',coverage_note:'No promoted release.'})))).list()).rejects.toMatchObject({kind:'no-release'});});it('classifies server failures as unavailable',async()=>{await expect(new LocalLocationRepository(vi.fn().mockResolvedValue(response({},503))).list()).rejects.toMatchObject({kind:'unavailable',status:503});});it('rejects malformed or restricted payloads',async()=>{await expect(new LocalLocationRepository(vi.fn().mockResolvedValue(response({...envelope(),api_version:'v1'}))).list()).rejects.toMatchObject({kind:'invalid-contract'});await expect(new LocalLocationRepository(vi.fn().mockResolvedValue(response(envelope([{...row,privacy_screening_status:'failed'}])))).list()).rejects.toMatchObject({kind:'invalid-contract'});});});
 describe('LocalLocationRepository query contract', () => {
+  it('pins the public list to the requested release and rejects a different response release', async () => {
+    const fetcher = vi.fn().mockResolvedValue(response(envelope()));
+    const result = await new LocalLocationRepository(fetcher).list('official', {}, undefined, 'rel-1');
+    expect(new URL(String(fetcher.mock.calls[0]?.[0]), 'https://example.test').searchParams.get('release_id')).toBe('rel-1');
+    expect(result.releaseId).toBe('rel-1');
+
+    const otherRelease = vi.fn().mockResolvedValue(response(envelope([row], { ...envelope().meta, release_id: 'rel-2' })));
+    await expect(new LocalLocationRepository(otherRelease).list('official', {}, undefined, 'rel-1')).rejects.toMatchObject({ kind: 'restricted' });
+  });
+
   it('passes server-side search, region, supported filters, and opaque cursor', async () => {
     const fetcher = vi.fn().mockResolvedValue(response(envelope([], { ...envelope().meta, next_cursor: 'cursor-2' })));
     const result = await new LocalLocationRepository(fetcher).list('official', { q: 'North Coast', country_code: 'DK', region: 'North Coast', category: 'dairy', source_type: 'official', display_precision: 'city', lifecycle_status: 'active_observed', min_lon: 8, min_lat: 54, max_lon: 13, max_lat: 58, cursor: 'cursor-1' });
@@ -53,6 +63,11 @@ describe('current V2 wire edge cases', () => {
     await expect(new LocalLocationRepository(unavailable).list()).rejects.toMatchObject({ kind: 'unavailable', code: 'database_pool_unavailable', status: 503 });
     const restricted = vi.fn().mockResolvedValue(new Response(JSON.stringify({ api_version: 'v2', error: { code: 'location_not_found', message: 'location not found' } }), { status: 404 }));
     await expect(new LocalLocationRepository(restricted).detail(row.facility_id)).rejects.toMatchObject({ kind: 'restricted', code: 'location_not_found', status: 404 });
+  });
+  it.each([404, 410])('fails closed with a safe restricted state for public list status %s', async status => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { code: 'suppressed', message: 'sensitive server detail' } }), { status }));
+    await expect(new LocalLocationRepository(fetcher).list('official', {}, undefined, 'rel-1')).rejects.toMatchObject({ kind: 'restricted', status, message: 'This location snapshot is unavailable.' });
+    expect(String(fetcher.mock.calls[0]?.[0])).toContain('/api/v2/locations?');
   });
 });
 

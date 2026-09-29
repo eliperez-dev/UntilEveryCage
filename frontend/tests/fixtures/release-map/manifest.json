@@ -1,0 +1,27 @@
+{
+  "api_version": "v2",
+  "data": {
+    "release_id": "synthetic-release-2026-09",
+    "profile": "official",
+    "manifest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "manifest": {
+      "map_artifact": {
+        "schema_version": "release-map-v1",
+        "release_id": "synthetic-release-2026-09",
+        "profile": "official",
+        "generated_at": "2026-09-20T00:00:00Z",
+        "suppression_generation": 7,
+        "attribution": ["Synthetic test map data"],
+        "bounds": [-10, -5, 10, 5],
+        "min_zoom": 0,
+        "max_zoom": 8,
+        "tile_url_template": "/api/v2/releases/synthetic-release-2026-09/map/{z}/{x}/{y}.mvt",
+        "source_layer": "uec_map",
+        "feature_schema_version": "map-feature-v1",
+        "hashes": {"tiles": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+        "etags": {"tiles": "\"synthetic-tiles-v1\""},
+        "cache_policy": {"immutable": true, "max_age_seconds": 86400}
+      }
+    }
+  }
+}
