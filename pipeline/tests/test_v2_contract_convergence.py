@@ -26,7 +26,19 @@ class V2ContractConvergenceTests(unittest.TestCase):
         self.assertEqual(frozen, set(self.contract["endpoints"]))
         routes = set(re.findall(r'\.route\(\s*"([^"]+)"', (ROOT / "src" / "main.rs").read_text(encoding="utf-8")))
         contract_routes = {endpoint[4:].split("?", 1)[0] for endpoint in self.contract["endpoints"] if endpoint.startswith("GET ")}
-        self.assertTrue(contract_routes <= routes)
+        def registered(path):
+            if path in routes:
+                return True
+            # Axum's named trailing wildcard covers a concrete documented XYZ
+            # tile template such as /{z}/{x}/{y}.mvt.
+            for route in routes:
+                marker = "/{*"
+                if marker in route:
+                    prefix = route.split(marker, 1)[0]
+                    if path.startswith(prefix + "/") and path[len(prefix) + 1:]:
+                        return True
+            return False
+        self.assertTrue(all(registered(path) for path in contract_routes))
 
     def test_offset_compatibility_and_cursor_preference_are_explicit(self):
         locations = self.contract["endpoints"]["GET /api/v2/locations"]

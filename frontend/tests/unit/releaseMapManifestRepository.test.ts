@@ -27,6 +27,9 @@ describe('release map manifest contract', () => {
     const ineligible = clone();
     artifact(ineligible).eligible = false;
     expect(parseReleaseMapManifest(ineligible)).toBeNull();
+    const revoked = clone();
+    revoked.data.suppression_generation = 8;
+    expect(parseReleaseMapManifest(revoked)).toBeNull();
   });
 
   it('rejects release, profile, schema, and unsafe tile URL mismatches', () => {

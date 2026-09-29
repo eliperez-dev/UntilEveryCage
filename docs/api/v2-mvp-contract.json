@@ -16,6 +16,7 @@
     "GET /api/v2/locations/{facility_id}",
     "GET /api/v2/locations.csv",
     "GET /api/v2/releases/manifest",
+    "GET /api/v2/releases/{release_id}/map/tiles/{z}/{x}/{y}.mvt",
     "GET /api/v2/discovery/filters",
     "GET /api/v2/discovery/facets",
     "GET /api/v2/graph/connections",

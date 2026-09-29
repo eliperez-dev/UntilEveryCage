@@ -194,7 +194,7 @@ class E2EEnvironment:
         for migration in files:
             print(f"[e2e] applying {migration.name}", flush=True)
             result = subprocess.run(
-                self.command("exec", "-T", "postgres", "psql", "-v", "ON_ERROR_STOP=1", "-U", "uec", "-d", "uec"),
+                self.command("exec", "-T", "postgres", "psql", "-1", "-v", "ON_ERROR_STOP=1", "-U", "uec", "-d", "uec"),
                 input=migration.read_text(encoding="utf-8"),
                 cwd=ROOT,
                 capture_output=True,

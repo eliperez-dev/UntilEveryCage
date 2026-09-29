@@ -3,6 +3,7 @@
   "data": {
     "release_id": "synthetic-release-2026-09",
     "profile": "official",
+    "suppression_generation": 7,
     "manifest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "manifest": {
       "map_artifact": {

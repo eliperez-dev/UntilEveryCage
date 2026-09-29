@@ -87,7 +87,7 @@ class SourceRightsPostgresTests(unittest.TestCase):
                 raise RuntimeError("PostGIS source-rights database did not stabilize before migrations")
             for migration in sorted((REPOSITORY_ROOT / "pipeline" / "migrations").glob("*.sql")):
                 cls._compose(
-                    "exec", "-T", "postgres", "psql", "-v", "ON_ERROR_STOP=1", "-U", "uec", "-d", "uec",
+                    "exec", "-T", "postgres", "psql", "-1", "-v", "ON_ERROR_STOP=1", "-U", "uec", "-d", "uec",
                     input_text=migration.read_text(encoding="utf-8"),
                     check=True,
                 )

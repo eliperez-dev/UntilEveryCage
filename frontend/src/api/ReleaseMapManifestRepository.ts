@@ -54,12 +54,13 @@ function cacheMap(value: unknown): Readonly<Record<string, string | number | boo
   return Object.freeze(row as Record<string, string | number | boolean>);
 }
 
-function parseArtifact(value: unknown, releaseId: string, profile: ReleaseProfile): ReleaseMapManifest | null {
+function parseArtifact(value: unknown, releaseId: string, profile: ReleaseProfile, currentGeneration: string | number): ReleaseMapManifest | null {
   const row = record(value);
   if (!row) throw new ReleaseMapManifestError('invalid-contract', 'The public map manifest was invalid.');
   if (row.eligible === false || row.status === 'ineligible') return null;
   if ((row.eligible !== undefined && row.eligible !== true)
     || (row.status !== undefined && row.status !== 'eligible')) throw new ReleaseMapManifestError('invalid-contract', 'The map manifest eligibility was invalid.');
+  if (String(row.suppression_generation) !== String(currentGeneration)) return null;
   const bounds = row.bounds;
   const hashes = stringMap(row.hashes, true);
   const etags = stringMap(row.etags);
@@ -104,7 +105,8 @@ export function parseReleaseMapManifest(payload: unknown, expectedReleaseId?: st
   const data = record(envelope?.data);
   if (!envelope || envelope.api_version !== 'v2' || !data || !nonempty(data.release_id)
     || typeof data.profile !== 'string' || !PROFILES.has(data.profile as ReleaseProfile)
-    || !nonempty(data.manifest_sha256) || !SHA256.test(data.manifest_sha256)) {
+    || !nonempty(data.manifest_sha256) || !SHA256.test(data.manifest_sha256)
+    || !(nonempty(data.suppression_generation) || (typeof data.suppression_generation === 'number' && Number.isSafeInteger(data.suppression_generation) && data.suppression_generation >= 0))) {
     throw new ReleaseMapManifestError('invalid-contract', 'The release manifest response was rejected safely.');
   }
   const profile = data.profile as ReleaseProfile;
@@ -116,7 +118,7 @@ export function parseReleaseMapManifest(payload: unknown, expectedReleaseId?: st
   if (!manifest) throw new ReleaseMapManifestError('invalid-contract', 'The release manifest body was invalid.');
   const artifact = manifest.map_artifact;
   if (artifact === undefined || artifact === null) return null;
-  return parseArtifact(artifact, data.release_id, profile);
+  return parseArtifact(artifact, data.release_id, profile, data.suppression_generation);
 }
 
 /** Reads only the public release manifest. Network or validation failure never selects private preview data. */
