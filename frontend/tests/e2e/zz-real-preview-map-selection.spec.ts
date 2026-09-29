@@ -7,6 +7,7 @@ test('real-preview map uses one weighted native-cluster feed and does not refetc
     const url = new URL(request.url());
     requested.push(url.pathname + url.search);
   });
+  const feedPending = page.waitForResponse(response => new URL(response.url()).pathname.endsWith('/map/feed') && response.status() === 200);
   await page.goto('/#/map?f1a=field&lat=50.7&lon=4.6&z=8&list=closed');
   const countsResponse = await page.waitForResponse(response => new URL(response.url()).pathname.endsWith('/counts') && response.status() === 200);
   const counts = await countsResponse.json();
@@ -16,7 +17,7 @@ test('real-preview map uses one weighted native-cluster feed and does not refetc
   const latestRun = counts.meta.runtime_ledger.find((entry: { source_id?: string }) => entry.source_id === 'be.locations');
   expect(latestRun?.run_id).toMatch(/^preview-be-locations-[0-9a-f-]{36}$/i);
 
-  const feedResponse = await page.waitForResponse(response => new URL(response.url()).pathname.endsWith('/map/feed') && response.status() === 200);
+  const feedResponse = await feedPending;
   const feed = await feedResponse.json();
   expect(feed.meta).toMatchObject({ bounded: true, private_preview: true, scope: 'default_map_scope', zoom_max: 14 });
   expect(feed.data.length).toBeGreaterThan(0);

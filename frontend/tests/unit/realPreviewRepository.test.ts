@@ -41,9 +41,14 @@ describe('private real-preview repository', () => {
     const exact = mapRealPreviewCandidate(parseRealPreviewCandidate(record()));
     const approximate = mapRealPreviewCandidate(parseRealPreviewCandidate(record({ display_precision: 'approximate_source_precision_unknown_pending_review' })));
     const coarse = mapRealPreviewCandidate(parseRealPreviewCandidate(record({ location_class: 'city_postal', display_precision: 'city_postal_coarse', latitude: null, longitude: null, coordinate_precision: null, city: 'Lyon' })));
+    const localityCandidate = parseRealPreviewCandidate(record({ location_class: 'city_postal', display_precision: 'locality_reference_coarse', latitude: 41.39, longitude: 2.17, coordinate_precision: 'municipality_capital_locality', default_map_scope: false, city: 'Barcelona' }));
+    const localityReference = mapRealPreviewCandidate(localityCandidate);
     const unmapped = mapRealPreviewCandidate(parseRealPreviewCandidate(record({ location_class: 'unmapped_private_observation', display_precision: 'city_postal_coarse', latitude: null, longitude: null, coordinate_precision: null })));
-    expect([exact.precision, approximate.precision, coarse.precision, unmapped.precision]).toEqual(['exact', 'approximate', 'coarse', 'unmapped']);
+    expect([exact.precision, approximate.precision, coarse.precision, localityReference.precision, unmapped.precision]).toEqual(['exact', 'approximate', 'coarse', 'coarse', 'unmapped']);
     expect(coarse.latitude).toBeNull();
+    expect(localityCandidate.displayPrecision).toBe('locality_reference_coarse');
+    expect(localityCandidate.defaultMapScope).toBe(false);
+    expect(localityReference.precision).toBe('coarse');
     expect(unmapped.latitude).toBeNull();
   });
 

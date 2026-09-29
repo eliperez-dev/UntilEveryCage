@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import contextlib
+import hashlib
 import os
 import re
 import secrets
@@ -983,15 +984,23 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
             artifacts[role] = {key: artifact.get(key) for key in (
                 "source_id", "run_id", "requested_url", "final_url", "retrieved_at_utc", "sha256",
                 "byte_size", "response_headers", "terms_review", "attempts", "rights_caveat", "privacy_caveat")}
+        schema_fingerprint = source_summary.get("schema_fingerprint")
+        if not isinstance(schema_fingerprint, str) or len(schema_fingerprint) != 64:
+            preview_fields = source_policy.get("allowed_preview_fields")
+            if not isinstance(preview_fields, list) or not all(isinstance(field, str) for field in preview_fields):
+                raise PreviewError("Belgium allowlisted preview-field contract is unavailable")
+            schema_fingerprint = hashlib.sha256(json.dumps(
+                preview_fields, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+            ).encode("utf-8")).hexdigest()
         if any(not isinstance(value, str) or len(value) != 64 for value in (
                 import_result.get("normalized_sha256"), source_summary.get("candidate_handoff_sha256"),
-                source_summary.get("schema_fingerprint"))):
+                schema_fingerprint)):
             raise PreviewError("Belgium lifecycle hashes are incomplete")
         ledger.update({
             "acquisition": artifacts,
             "normalized_sha256": import_result.get("normalized_sha256"),
             "candidate_handoff_sha256": source_summary.get("candidate_handoff_sha256"),
-            "schema_fingerprint": source_summary.get("schema_fingerprint"),
+            "schema_fingerprint": schema_fingerprint,
             "quarantine": {"input_rows": source_summary.get("input_rows"),
                            "accepted_rows": source_summary.get("valid_source_activity_rows"),
                            "quarantined_rows": source_summary.get("quarantined_rows"),

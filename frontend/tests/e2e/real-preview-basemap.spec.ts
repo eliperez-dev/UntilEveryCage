@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test('basemap control changes loaded imagery while retaining MVT overlays', async ({ page }) => {
+test('basemap control changes imagery while retaining native map overlays', async ({ page }) => {
   test.skip(!process.env.UEC_REAL_PREVIEW_URL, 'Requires a populated local real preview');
   test.setTimeout(90_000);
   await page.route('**/World_Imagery/**', async route => {
@@ -13,7 +13,7 @@ test('basemap control changes loaded imagery while retaining MVT overlays', asyn
   await expect(street).toHaveAttribute('aria-pressed', 'true');
   await page.waitForFunction(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
-    return map?.isStyleLoaded() && map.getLayer('mvt-clusters') && map.isSourceLoaded('preview-mvt');
+    return map?.isStyleLoaded() && map.getLayer('clusters') && map.isSourceLoaded('locations');
   });
   const inspect = () => page.evaluate(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
@@ -22,8 +22,8 @@ test('basemap control changes loaded imagery while retaining MVT overlays', asyn
     return {
       tiles: style.sources.base.tiles,
       transport: layers.indexOf('transport'),
-      overlays: ['mvt-clusters', 'mvt-reference-outer', 'mvt-source-coordinates'].map(id => layers.indexOf(id)),
-      mvtLoaded: map.isSourceLoaded('preview-mvt'),
+      overlays: ['clusters', 'aggregate-outer', 'source-coordinate-points'].map(id => layers.indexOf(id)),
+      sourceLoaded: map.isSourceLoaded('locations'),
     };
   });
   const before = await inspect();
@@ -37,7 +37,7 @@ test('basemap control changes loaded imagery while retaining MVT overlays', asyn
   expect(after.tiles[0]).toContain('World_Imagery');
   expect(after.tiles).not.toEqual(before.tiles);
   expect(after.overlays.every((index: number) => index > after.transport)).toBe(true);
-  expect(after.mvtLoaded).toBe(true);
+  expect(after.sourceLoaded).toBe(true);
   await street.click();
   await expect(street).toHaveAttribute('aria-pressed', 'true', { timeout: 30_000 });
   expect((await inspect()).tiles[0]).toContain('tile.openstreetmap.org');

@@ -6,7 +6,8 @@ export type RealPreviewPrecision =
   | 'approximate_source_provided_pending_review'
   | 'approximate_source_precision_unknown_pending_review'
   | 'city_postal_coarse'
-  | 'city_reference_approximate';
+  | 'city_reference_approximate'
+  | 'locality_reference_coarse';
 
 export type RealPreviewCandidate = Readonly<{
   candidateId: string;
@@ -60,6 +61,7 @@ const DISPLAY_PRECISIONS = new Set<RealPreviewPrecision>([
   'approximate_source_precision_unknown_pending_review',
   'city_postal_coarse',
   'city_reference_approximate',
+  'locality_reference_coarse',
 ]);
 
 function object(value: unknown): Record<string, unknown> {
@@ -117,8 +119,9 @@ export function parseRealPreviewCandidate(value: unknown): RealPreviewCandidate 
   }
   if (kind === 'numeric_source_coordinate' && latitude === null) throw new RealPreviewError('invalid-response', 'The private preview returned a numeric record without coordinates.');
   if (kind !== 'numeric_source_coordinate' && latitude !== null
-    && !(kind === 'city_postal' && displayPrecision === 'city_reference_approximate')) throw new RealPreviewError('invalid-response', 'The private preview attached a point to a non-numeric record.');
+    && !(kind === 'city_postal' && ['city_reference_approximate', 'locality_reference_coarse'].includes(displayPrecision))) throw new RealPreviewError('invalid-response', 'The private preview attached a point to a non-numeric record.');
   if (displayPrecision === 'city_reference_approximate' && (kind !== 'city_postal' || latitude === null)) throw new RealPreviewError('invalid-response', 'The private preview returned an invalid city reference point.');
+  if (displayPrecision === 'locality_reference_coarse' && (kind !== 'city_postal' || latitude === null)) throw new RealPreviewError('invalid-response', 'The private preview returned an invalid locality reference point.');
   const projectApproval = row.project_approval;
   if (projectApproval !== false) throw new RealPreviewError('invalid-response', 'The private preview omitted its approval boundary.');
   if (typeof row.coordinate_review_status !== 'string' || typeof row.factual_review_status !== 'string'
