@@ -81,8 +81,19 @@ Migration `005_coarse_location_display.sql` adds the city-reference table and `u
 Promote only after validation and final maintainer review:
 
 ```powershell
-python pipeline/scripts/stages/promote-release.py <validated-release-id>
+python pipeline/scripts/maintenance/build_public_map_artifacts.py <validated-release-id> --output-root <private-artifact-root>
+python pipeline/scripts/stages/promote-release.py <validated-release-id> --no-distributed-artifacts --map-artifact-manifest <private-artifact-root>/<validated-release-id>/<profile>/map-artifact.json
 ```
+
+The MVT builder writes release/profile-scoped tiles privately and records their
+checksums and current suppression generation. Promotion validates the staged
+tile hashes, profile, and generation before embedding the `map_artifact` object
+in the immutable release manifest. Configure the API's
+`UEC_PUBLIC_MAP_ARTIFACT_ROOT` to the same artifact root; tiles remain
+unavailable through the public route until the release and manifest are
+promoted, and become unavailable when current suppression eligibility changes.
+Tile bytes expose only the `uec_map` source layer and its frozen property
+allowlist from [the V2 API contract](../docs/api/v2-contract.md).
 
 Script organization and execution conventions are documented in `scripts/README.md`.
 

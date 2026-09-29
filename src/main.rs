@@ -83,6 +83,10 @@ pub fn app(state: uec_api::ApiState, proxy: private_environment::ProxyConfig) ->
             get(uec_api::get_v2_release_manifest_handler),
         )
         .route(
+            "/api/v2/releases/{release_id}/map/tiles/{*tile_path}",
+            get(uec_api::get_v2_map_tile_handler),
+        )
+        .route(
             "/api/v2/locations.csv",
             get(uec_api::get_v2_locations_export_handler),
         )
@@ -454,6 +458,7 @@ fn request_route_class(path: &str) -> &'static str {
         "/api/v2/discovery/filters" => "v2_discovery_filters",
         "/api/v2/discovery/facets" => "v2_discovery_facets",
         "/api/v2/releases/manifest" => "v2_release_manifest",
+        path if path.starts_with("/api/v2/releases/") && path.contains("/map/tiles/") => "v2_map_tile",
         path if path.starts_with("/api/v2/locations/") => "v2_location_detail",
         path if path.starts_with("/api/v2/") => "v2_other",
         path if path.starts_with("/api/") => "api_other",
@@ -993,6 +998,10 @@ mod config_tests {
         assert_eq!(
             request_route_class("/api/v2/locations/synthetic-id"),
             "v2_location_detail"
+        );
+        assert_eq!(
+            request_route_class("/api/v2/releases/private-release/map/tiles/4/8/6.mvt"),
+            "v2_map_tile"
         );
         assert_eq!(payload["route_class"], "v2_location_detail");
         assert_eq!(payload["status"], 429);

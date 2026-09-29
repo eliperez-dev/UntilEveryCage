@@ -30,6 +30,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::error::Error;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
@@ -174,8 +175,25 @@ fn canonical_json(value: &Value) -> String {
     }
 }
 
+fn release_manifest_etag(manifest_sha256: &str, suppression_generation: i64) -> String {
+    format!("\"{manifest_sha256}-{suppression_generation}\"")
+}
+
+fn if_none_match(headers: &HeaderMap, etag: &str) -> bool {
+    headers
+        .get(axum::http::header::IF_NONE_MATCH)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| {
+            value.split(',').any(|candidate| {
+                let candidate = candidate.trim();
+                candidate == "*" || candidate == etag || candidate.strip_prefix("W/") == Some(etag)
+            })
+        })
+}
+
 pub async fn get_v2_release_manifest_handler(
     State(state): State<ApiState>,
+    headers: HeaderMap,
     Query(params): Query<ProfileParams>,
 ) -> impl IntoResponse {
     let profile = params.profile.as_deref().unwrap_or("official");
@@ -233,7 +251,173 @@ pub async fn get_v2_release_manifest_handler(
             "release manifest integrity check failed",
         );
     }
-    Json(json!({"api_version":"v2", "data": {"release_id": row.get::<_,String>(0), "profile": row.get::<_,String>(1), "manifest": manifest, "manifest_sha256": digest}})).into_response()
+    let suppression_generation: i64 = match client.query_one(
+        "SELECT generation FROM uec.public_suppression_generation",
+        &[],
+    ).await {
+        Ok(row) => row.get(0),
+        Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "suppression_generation_unavailable", "current publication eligibility unavailable"),
+    };
+    let etag = release_manifest_etag(&digest, suppression_generation);
+    let cache_control = HeaderValue::from_static("public, max-age=0, must-revalidate");
+    if if_none_match(&headers, &etag) {
+        return Response::builder()
+            .status(StatusCode::NOT_MODIFIED)
+            .header(axum::http::header::ETAG, etag)
+            .header(axum::http::header::CACHE_CONTROL, cache_control)
+            .header("x-uec-suppression-generation", suppression_generation.to_string())
+            .body(axum::body::Body::empty())
+            .expect("manifest 304 response is valid")
+            .into_response();
+    }
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(axum::http::header::ETAG, etag)
+        .header(axum::http::header::CACHE_CONTROL, cache_control)
+        .header("x-uec-suppression-generation", suppression_generation.to_string())
+        .header("content-type", "application/json")
+        .body(axum::body::Body::from(Json(json!({"api_version":"v2", "data": {"release_id": row.get::<_,String>(0), "profile": row.get::<_,String>(1), "manifest": manifest, "manifest_sha256": digest, "suppression_generation": suppression_generation}})).to_string()))
+        .expect("manifest response is valid")
+        .into_response()
+}
+
+#[derive(Deserialize)]
+pub struct PublicMapTilePath {
+    release_id: String,
+    tile_path: String,
+}
+
+#[derive(Deserialize)]
+pub struct PublicMapTileParams {
+    profile: Option<String>,
+}
+
+/// Serve an immutable MVT only while its release/profile and suppression
+/// generation remain currently eligible. The staged artifact directory is
+/// private until promotion makes the manifest lookup succeed.
+pub async fn get_v2_map_tile_handler(
+    State(state): State<ApiState>,
+    Path(path): Path<PublicMapTilePath>,
+    headers: HeaderMap,
+    Query(params): Query<PublicMapTileParams>,
+) -> impl IntoResponse {
+    if path.release_id.is_empty()
+        || path.release_id.len() > 160
+        || !path.release_id.bytes().all(|value| value.is_ascii_alphanumeric() || matches!(value, b'.' | b'_' | b'-'))
+        || path.release_id == "."
+        || path.release_id == ".."
+    {
+        return v2_error(StatusCode::BAD_REQUEST, "invalid_map_tile", "tile coordinates or release ID are invalid");
+    }
+    let profile = params.profile.as_deref().unwrap_or("official");
+    if !V2_PROFILES.contains(&profile) {
+        return v2_error(StatusCode::BAD_REQUEST, "invalid_profile", "profile is unsupported");
+    }
+    let parts = path.tile_path.split('/').collect::<Vec<_>>();
+    if parts.len() != 3 {
+        return v2_error(StatusCode::BAD_REQUEST, "invalid_map_tile", "tile coordinates are invalid");
+    }
+    let (Ok(z), Ok(x), Ok(y)) = (parts[0].parse::<u8>(), parts[1].parse::<u32>(), parts[2].strip_suffix(".mvt").unwrap_or("").parse::<u32>()) else {
+        return v2_error(StatusCode::BAD_REQUEST, "invalid_map_tile", "tile coordinates are invalid");
+    };
+    if z > 14 || x >= (1u32 << z) || y >= (1u32 << z) {
+        return v2_error(StatusCode::BAD_REQUEST, "invalid_map_tile", "tile coordinates are invalid");
+    }
+    let Some(pool) = state.database else {
+        return v2_error(StatusCode::SERVICE_UNAVAILABLE, "database_not_configured", "V2 database is not configured");
+    };
+    let client = match pool.get().await {
+        Ok(client) => client,
+        Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "database_pool_unavailable", "database pool unavailable"),
+    };
+    let release_row = match client.query_opt(
+        "SELECT manifest.manifest::text,manifest.manifest_sha256 FROM uec.releases release JOIN uec.release_manifests manifest ON manifest.release_id=release.release_id WHERE release.release_id=$1 AND release.profile=$2 AND release.status='promoted' AND release.test_only IS NOT TRUE",
+        &[&path.release_id, &profile],
+    ).await {
+        Ok(row) => row,
+        Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "map_tile_unavailable", "public map tile unavailable"),
+    };
+    let Some(release_row) = release_row else {
+        return v2_error(StatusCode::GONE, "release_unavailable", "displayed release is no longer eligible");
+    };
+    let manifest_text: String = release_row.get(0);
+    let manifest: Value = match serde_json::from_str(&manifest_text) {
+        Ok(manifest) => manifest,
+        Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "release_manifest_invalid", "release manifest integrity check failed"),
+    };
+    let manifest_digest: String = release_row.get(1);
+    if format!("{:x}", Sha256::digest(canonical_json(&manifest).as_bytes())) != manifest_digest {
+        return v2_error(StatusCode::SERVICE_UNAVAILABLE, "release_manifest_invalid", "release manifest integrity check failed");
+    }
+    let map_artifact = &manifest["map_artifact"];
+    let allowed_properties = json!(["feature_key", "kind", "count", "exact_count", "coarse_count", "next_zoom", "record_id", "category_key"]);
+    let expected_template = format!("/api/v2/releases/{}/map/tiles/{{z}}/{{x}}/{{y}}.mvt?profile={}", path.release_id, profile);
+    if map_artifact["release_id"] != path.release_id
+        || map_artifact["profile"] != profile
+        || map_artifact["source_layer"] != "uec_map"
+        || map_artifact["feature_schema_version"] != "uec-map-feature-v1"
+        || map_artifact["feature_properties"] != allowed_properties
+        || map_artifact["min_zoom"].as_u64() != Some(0)
+        || map_artifact["max_zoom"].as_u64() != Some(14)
+        || map_artifact["tile_url_template"] != expected_template
+        || map_artifact["cache_policy"]["max_age_seconds"].as_u64() != Some(0)
+        || map_artifact["cache_policy"]["cache_control"] != "public, max-age=0, must-revalidate"
+    {
+        return v2_error(StatusCode::NOT_FOUND, "map_artifact_not_found", "public map tile unavailable");
+    }
+    let suppression_generation: i64 = match client.query_one("SELECT generation FROM uec.public_suppression_generation", &[]).await {
+        Ok(row) => row.get(0),
+        Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "suppression_generation_unavailable", "current publication eligibility unavailable"),
+    };
+    if map_artifact["suppression_generation"].as_i64() != Some(suppression_generation) {
+        return v2_error(StatusCode::GONE, "map_artifact_revoked", "map artifact is no longer eligible");
+    }
+    let Some(tile) = map_artifact["tiles"].as_array().and_then(|tiles| tiles.iter().find(|tile| {
+        tile["z"].as_u64() == Some(u64::from(z))
+            && tile["x"].as_u64() == Some(u64::from(x))
+            && tile["y"].as_u64() == Some(u64::from(y))
+    })) else {
+        return v2_error(StatusCode::NOT_FOUND, "map_tile_not_found", "map tile contains no public features");
+    };
+    let Some(root) = std::env::var_os("UEC_PUBLIC_MAP_ARTIFACT_ROOT").map(PathBuf::from) else {
+        return v2_error(StatusCode::SERVICE_UNAVAILABLE, "map_artifact_unavailable", "public map artifacts are not configured");
+    };
+    let tile_path = root.join(&path.release_id).join(profile).join(z.to_string()).join(x.to_string()).join(format!("{y}.mvt"));
+    let bytes = match std::fs::read(&tile_path) {
+        Ok(bytes) if bytes.len() <= 2 * 1024 * 1024 => bytes,
+        _ => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "map_artifact_unavailable", "public map artifact is unavailable"),
+    };
+    let expected_digest = tile["sha256"].as_str().unwrap_or_default();
+    let actual_digest = format!("{:x}", Sha256::digest(&bytes));
+    if expected_digest.len() != 64 || actual_digest != expected_digest {
+        return v2_error(StatusCode::SERVICE_UNAVAILABLE, "map_artifact_invalid", "public map artifact integrity check failed");
+    }
+    let etag = format!("\"{expected_digest}\"");
+    let max_age = map_artifact["cache_policy"]["max_age_seconds"].as_u64().unwrap_or(0).min(30);
+    let cache_control = format!("public, max-age={max_age}, must-revalidate");
+    if if_none_match(&headers, &etag) {
+        return Response::builder()
+            .status(StatusCode::NOT_MODIFIED)
+            .header(axum::http::header::ETAG, etag)
+            .header(axum::http::header::CACHE_CONTROL, cache_control)
+            .header("x-uec-release-id", path.release_id)
+            .header("x-uec-profile", profile)
+            .header("x-uec-suppression-generation", suppression_generation.to_string())
+            .body(axum::body::Body::empty())
+            .expect("map tile 304 response is valid")
+            .into_response();
+    }
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(axum::http::header::CONTENT_TYPE, "application/vnd.mapbox-vector-tile")
+        .header(axum::http::header::ETAG, etag)
+        .header(axum::http::header::CACHE_CONTROL, cache_control)
+        .header("x-uec-release-id", path.release_id)
+        .header("x-uec-profile", profile)
+        .header("x-uec-suppression-generation", suppression_generation.to_string())
+        .body(axum::body::Body::from(bytes))
+        .expect("map tile response is valid")
+        .into_response()
 }
 
 #[derive(Serialize)]
@@ -2138,6 +2322,8 @@ pub struct V2LocationParams {
     pub category: Option<String>,
     pub source_type: Option<String>,
     pub profile: Option<String>,
+    /// Pin every page of a discovery query to the manifest release currently displayed.
+    pub release_id: Option<String>,
     pub display_precision: Option<String>,
     pub lifecycle_status: Option<String>,
     pub q: Option<String>,
@@ -2447,7 +2633,7 @@ pub async fn get_v2_locations_handler(
         }
     };
     let requested_profile = params.profile.as_deref().unwrap_or("official");
-    let release = transaction.query_opt("SELECT r.release_id, r.ruleset_version, r.created_at, r.profile, (model.release_id IS NOT NULL AND manifest.release_id IS NOT NULL) FROM uec.releases r LEFT JOIN uec.public_discovery_read_models model ON model.release_id=r.release_id LEFT JOIN uec.release_manifests manifest ON manifest.release_id=r.release_id AND manifest.manifest_sha256=model.manifest_sha256 WHERE r.status = 'promoted' AND r.test_only IS NOT TRUE AND r.profile = $1 ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1", &[&requested_profile]).await;
+    let release = transaction.query_opt("SELECT r.release_id, r.ruleset_version, r.created_at, r.profile, (model.release_id IS NOT NULL AND manifest.release_id IS NOT NULL) FROM uec.releases r LEFT JOIN uec.public_discovery_read_models model ON model.release_id=r.release_id LEFT JOIN uec.release_manifests manifest ON manifest.release_id=r.release_id AND manifest.manifest_sha256=model.manifest_sha256 WHERE r.status = 'promoted' AND r.test_only IS NOT TRUE AND r.profile = $1 AND ($2::text IS NULL OR r.release_id = $2) ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1", &[&requested_profile, &params.release_id]).await;
     let release = match release {
         Ok(release) => release,
         Err(_) => {
@@ -2460,6 +2646,9 @@ pub async fn get_v2_locations_handler(
     };
     let Some(release) = release else {
         let _ = transaction.commit().await;
+        if params.release_id.is_some() {
+            return v2_error(StatusCode::GONE, "release_unavailable", "displayed release is no longer eligible");
+        }
         return Json(serde_json::json!({"data": [], "api_version": "v2", "meta": {"release_id": null, "profile": requested_profile, "coverage_note": "No promoted release is currently available."}})).into_response();
     };
     let promoted_release_id: String = release.get(0);
@@ -2615,12 +2804,15 @@ pub async fn get_v2_location_detail_handler(
             "profile is unsupported",
         );
     }
-    let release = match transaction.query_opt("SELECT r.release_id, r.ruleset_version, r.created_at, r.profile, (model.release_id IS NOT NULL AND manifest.release_id IS NOT NULL) FROM uec.releases r LEFT JOIN uec.public_discovery_read_models model ON model.release_id=r.release_id LEFT JOIN uec.release_manifests manifest ON manifest.release_id=r.release_id AND manifest.manifest_sha256=model.manifest_sha256 WHERE r.status = 'promoted' AND r.test_only IS NOT TRUE AND r.profile = $1 ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1", &[&requested_profile]).await {
+    let release = match transaction.query_opt("SELECT r.release_id, r.ruleset_version, r.created_at, r.profile, (model.release_id IS NOT NULL AND manifest.release_id IS NOT NULL) FROM uec.releases r LEFT JOIN uec.public_discovery_read_models model ON model.release_id=r.release_id LEFT JOIN uec.release_manifests manifest ON manifest.release_id=r.release_id AND manifest.manifest_sha256=model.manifest_sha256 WHERE r.status = 'promoted' AND r.test_only IS NOT TRUE AND r.profile = $1 AND ($2::text IS NULL OR r.release_id=$2) ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1", &[&requested_profile, &params.release_id]).await {
         Ok(release) => release,
         Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "release_query_failed", "V2 release query failed"),
     };
     let Some(release) = release else {
         let _ = transaction.commit().await;
+        if params.release_id.is_some() {
+            return v2_error(StatusCode::GONE, "release_unavailable", "displayed release is no longer eligible");
+        }
         return v2_error(
             StatusCode::NOT_FOUND,
             "location_not_found",
@@ -2708,6 +2900,7 @@ pub async fn get_v2_location_detail_handler(
 #[derive(Deserialize)]
 pub struct ProfileParams {
     pub profile: Option<String>,
+    pub release_id: Option<String>,
 }
 
 #[cfg(test)]
@@ -2720,6 +2913,43 @@ mod v2_api_tests {
     };
     use tokio_postgres::NoTls;
     use tower::ServiceExt;
+
+    #[test]
+    fn manifest_validator_etag_changes_when_suppression_generation_changes() {
+        assert_ne!(release_manifest_etag("abc", 7), release_manifest_etag("abc", 8));
+        assert_eq!(release_manifest_etag("abc", 7), "\"abc-7\"");
+    }
+
+    #[test]
+    fn conditional_etag_matches_lists_and_weak_get_validators() {
+        let mut headers = HeaderMap::new();
+        headers.insert(axum::http::header::IF_NONE_MATCH, "\"old\", W/\"abc-7\"".parse().unwrap());
+        assert!(if_none_match(&headers, "\"abc-7\""));
+        headers.insert(axum::http::header::IF_NONE_MATCH, "\"old\"".parse().unwrap());
+        assert!(!if_none_match(&headers, "\"abc-7\""));
+    }
+
+    #[tokio::test]
+    async fn public_map_tile_rejects_out_of_range_coordinates_before_database_access() {
+        let state = ApiState {
+            database: None,
+            dev_preview_token: None,
+            dev_test_release_id: None,
+            dev_test_release_token: None,
+        };
+        let response = get_v2_map_tile_handler(
+            axum::extract::State(state),
+            Path(PublicMapTilePath {
+                release_id: "release-a".into(),
+                tile_path: "15/0/0.mvt".into(),
+            }),
+            HeaderMap::new(),
+            Query(PublicMapTileParams { profile: None }),
+        )
+        .await
+        .into_response();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
 
     #[test]
     fn real_preview_source_links_are_https_only_and_uncredentialed() {

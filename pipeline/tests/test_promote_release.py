@@ -38,6 +38,12 @@ class ReleasePromotionTests(unittest.TestCase):
         source = SCRIPT.read_text(encoding="utf-8")
         self.assertIn('"supersedes": previous[0] if previous else None', source)
         self.assertIn('"rights_review":', source)
+        self.assertIn('"suppression_generation": suppression_generation', source)
+
+    def test_suppression_generation_covers_publication_and_location_changes(self):
+        migration = (SCRIPT.parents[2] / "migrations" / "054_public_suppression_generation.sql").read_text(encoding="utf-8")
+        for table in ("record_access_events", "suppression_case_events", "publication_review_events", "source_rights_decisions", "geocode_results"):
+            self.assertIn(table, migration)
 
     def test_artifact_inventory_hashes_real_bytes(self):
         with tempfile.TemporaryDirectory() as directory:

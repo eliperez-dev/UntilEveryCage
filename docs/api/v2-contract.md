@@ -29,11 +29,41 @@ bounded to 1,000,000); `cursor` and `offset` cannot be combined. Bbox uses
 `longitude`, and `radius_km`; a request cannot use both spatial forms.
 
 Clients should treat `(profile, release_id, ruleset_version, query)` as the
-logical snapshot key and discard or refresh cursor pages when release metadata
-changes. The current frontend uses request-level `cache: no-store`; this
-contract does not promise a durable client cache, a server revocation signal, or
-a cache-invalidation event. Current suppression is authoritative on each read,
-including filtered results, exports, history, reimports, and restores.
+logical snapshot key and send the displayed `release_id` on list and detail
+requests. A pinned list/detail only serves that currently promoted eligible
+release/profile. If it has been withdrawn, the API returns `410 release_unavailable`;
+if a detail is absent or currently suppressed, it returns `404 location_not_found`.
+Clients discard or refresh cursor pages when release metadata changes. Current
+suppression is authoritative on every read, including filtered results,
+exports, history, reimports, and restores.
+
+## Public cached map tiles
+
+An eligible map release carries a versioned `map_artifact` object. It identifies
+the release and profile, generation time, current suppression generation,
+attribution, bounds, zoom range, immutable XYZ `.mvt` URL template, the sole
+source layer (`uec_map`), feature schema version, per-tile SHA-256/ETag values,
+and bounded cache policy. Fetch tile bytes from
+`GET /api/v2/releases/{release_id}/map/tiles/{z}/{x}/{y}.mvt?profile={profile}`.
+The route verifies the active release/profile, canonical manifest, current
+suppression generation, and the requested tile checksum before returning MVT.
+Manifest and tile responses use ETags and
+`Cache-Control: public, max-age=0, must-revalidate`, so stored bytes can be
+reused only after the current eligibility check succeeds. Tile properties are restricted to `feature_key`,
+`kind`, `count`, `exact_count`, `coarse_count`, `next_zoom`, optional exact-leaf
+`record_id`, and `category_key`; geometry carries location. Names, evidence,
+addresses, and tokens are never tile properties. Server-side aggregation
+provides low-zoom clusters; MapLibre native clustering is not applied to this
+vector source. Exact and coarse leaves remain distinct. Coarse leaves are
+uncertainty aggregates and never resolve as exact records. Unmapped records
+remain list/search-only.
+
+Tiles are release/profile scoped immutable artifacts and become available only
+after promotion. A cached tile may be used for first paint only after the
+client has confirmed that its release and suppression generation remain
+eligible; stale cached bytes alone are not authorization to display a feature.
+List and detail calls pin to the displayed release/profile, and current
+suppression can make an old record return 404 or withdraw a release with 410.
 
 List and detail metadata use the same coverage scope. Their source identifiers, source URL, retrieval timestamp, review state, release, and ruleset remain record-level provenance; they do not establish a story-wide denominator or an animal count. Narrative aggregate claims must come from a separately sourced, dated editorial ledger.
 

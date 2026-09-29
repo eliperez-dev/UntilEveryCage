@@ -56,13 +56,72 @@ def inventory_artifacts(paths: list[Path], no_distributed_artifacts: bool) -> li
     return sorted(artifacts, key=lambda artifact: artifact["name"])
 
 
+def validate_map_artifact(path: Path, release_id: str, profile: str, suppression_generation: int) -> dict:
+    artifact = json.loads(path.read_text(encoding="utf-8"))
+    if (artifact.get("schema_version") != "uec-public-map-artifact-v1"
+            or artifact.get("release_id") != release_id
+            or artifact.get("profile") != profile
+            or artifact.get("source_layer") != "uec_map"
+            or artifact.get("feature_schema_version") != "uec-map-feature-v1"):
+        raise ValueError("map artifact identity or schema does not match the release")
+    allowed_properties = ["feature_key", "kind", "count", "exact_count", "coarse_count", "next_zoom", "record_id", "category_key"]
+    if artifact.get("feature_properties") != allowed_properties:
+        raise ValueError("map artifact feature property allowlist is invalid")
+    if not artifact.get("count_semantics") or not artifact.get("feature_key_semantics") or not artifact.get("next_zoom_semantics"):
+        raise ValueError("map artifact feature semantics are incomplete")
+    if artifact.get("suppression_generation") != suppression_generation:
+        raise ValueError("map artifacts were built against a stale suppression generation")
+    if artifact.get("min_zoom") != 0 or artifact.get("max_zoom") != 14:
+        raise ValueError("map artifact zoom range is unsupported")
+    if not isinstance(artifact.get("generated_at"), str) or not isinstance(artifact.get("attribution"), list):
+        raise ValueError("map artifact timestamp or attribution is invalid")
+    bounds = artifact.get("bounds")
+    if bounds is not None and (not isinstance(bounds, list) or len(bounds) != 4 or any(not isinstance(value, (int, float)) for value in bounds)):
+        raise ValueError("map artifact bounds are invalid")
+    if artifact.get("tile_url_template") != f"/api/v2/releases/{release_id}/map/tiles/{{z}}/{{x}}/{{y}}.mvt?profile={profile}":
+        raise ValueError("map tile URL template is invalid")
+    tiles = artifact.get("tiles")
+    if not isinstance(tiles, list):
+        raise ValueError("map tile inventory is missing")
+    seen = set()
+    for tile in tiles:
+        try:
+            z, x, y = (tile[name] for name in ("z", "x", "y"))
+            digest = tile["sha256"]
+            byte_size = tile["byte_size"]
+        except (KeyError, TypeError):
+            raise ValueError("map tile inventory entry is invalid") from None
+        if any(not isinstance(value, int) for value in (z, x, y, byte_size)) or not 0 <= z <= 14 or not 0 <= x < 2**z or not 0 <= y < 2**z:
+            raise ValueError("map tile coordinates or size are invalid")
+        if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
+            raise ValueError("map tile checksum is invalid")
+        if tile.get("etag") != f'"{digest}"':
+            raise ValueError("map tile ETag does not match its checksum")
+        key = (z, x, y)
+        if key in seen:
+            raise ValueError("map tile inventory contains duplicate coordinates")
+        seen.add(key)
+        tile_path = path.parent / str(z) / str(x) / f"{y}.mvt"
+        if not tile_path.is_file():
+            raise ValueError("map tile inventory references a missing tile")
+        content = tile_path.read_bytes()
+        if len(content) != byte_size or hashlib.sha256(content).hexdigest() != digest:
+            raise ValueError("map tile checksum does not match staged bytes")
+    cache = artifact.get("cache_policy")
+    if not isinstance(cache, dict) or not isinstance(cache.get("max_age_seconds"), int) or cache["max_age_seconds"] != 0:
+        raise ValueError("map artifact cache policy is unbounded")
+    if cache.get("cache_control") != f"public, max-age={cache['max_age_seconds']}, must-revalidate":
+        raise ValueError("map artifact cache policy does not match its bounded TTL")
+    return artifact
+
+
 def utc_iso(value) -> str:
     if value.tzinfo is None:
         raise ValueError("database timestamp must include a timezone")
     return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def promote(database_url: str, release_id: str, artifacts: list[dict]) -> dict:
+def promote(database_url: str, release_id: str, artifacts: list[dict], map_artifact: dict | None = None) -> dict:
     with psycopg.connect(database_url) as connection:
         with connection.transaction():
             target = connection.execute("SELECT status, profile, ruleset_version, test_only, summary FROM uec.releases WHERE release_id = %s FOR UPDATE", (release_id,)).fetchone()
@@ -116,6 +175,12 @@ def promote(database_url: str, release_id: str, artifacts: list[dict]) -> dict:
             created_at = connection.execute("SELECT now()").fetchone()[0]
             if created_at.tzinfo is None:
                 raise ValueError("database manifest creation time must include a timezone")
+            suppression_generation = connection.execute(
+                "SELECT generation FROM uec.public_suppression_generation"
+            ).fetchone()[0]
+            if map_artifact is not None:
+                if map_artifact.get("profile") != target[1] or map_artifact.get("suppression_generation") != suppression_generation:
+                    raise ValueError("map artifacts are profile-mismatched or stale")
             source_coverage = [
                 {"source_id": source_id, "row_count": row_count, "retrieved_at": {"first": utc_iso(first), "last": utc_iso(last)}, "rights_status": "cleared", "attribution": attribution}
                 for source_id, row_count, first, last, attribution in coverage_rows
@@ -131,6 +196,7 @@ def promote(database_url: str, release_id: str, artifacts: list[dict]) -> dict:
                 "ruleset_version": target[2],
                 "schema_version": "uec-location-projection-v1",
                 "generated_at": utc_iso(created_at),
+                "suppression_generation": suppression_generation,
                 "retrieved_at": retrieved_at,
                 "source_ids": summary[1],
                 "source_coverage": source_coverage,
@@ -151,6 +217,8 @@ def promote(database_url: str, release_id: str, artifacts: list[dict]) -> dict:
                 "created_at": utc_iso(created_at),
                 "distributed_artifacts": artifacts,
             }
+            if map_artifact is not None:
+                manifest["map_artifact"] = map_artifact
             # Python's sorted-key JSON is the canonical representation shared by consumers.
             canonical = canonical_json(manifest)
             digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
@@ -165,6 +233,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("release_id")
     parser.add_argument("--manifest", type=Path)
+    parser.add_argument("--map-artifact-manifest", type=Path, help="Validated private MVT manifest produced before promotion")
     artifacts = parser.add_mutually_exclusive_group(required=True)
     artifacts.add_argument("--artifact", type=Path, action="append", help="Distributed file to checksum; repeat for every file")
     artifacts.add_argument("--no-distributed-artifacts", action="store_true", help="Declare that this release has no distributed files")
@@ -176,7 +245,15 @@ if __name__ == "__main__":
         if args.manifest and args.artifact and args.manifest.resolve() in {path.resolve() for path in args.artifact}:
             raise ValueError("the output manifest cannot be one of its distributed artifacts")
         artifact_inventory = inventory_artifacts(args.artifact or [], args.no_distributed_artifacts)
-        result = promote(args.database_url, args.release_id, artifact_inventory)
+        map_artifact = None
+        if args.map_artifact_manifest:
+            with psycopg.connect(args.database_url) as connection:
+                release = connection.execute("SELECT status,test_only,profile FROM uec.releases WHERE release_id=%s", (args.release_id,)).fetchone()
+                generation = connection.execute("SELECT generation FROM uec.public_suppression_generation").fetchone()[0]
+            if not release or release[0] != "validated" or release[1]:
+                raise ValueError("map manifest is accepted only for a validated non-test release")
+            map_artifact = validate_map_artifact(args.map_artifact_manifest, args.release_id, release[2], generation)
+        result = promote(args.database_url, args.release_id, artifact_inventory, map_artifact)
         serialized = json.dumps({key: value for key, value in result.items() if key != "manifest"}, indent=2) + "\n"
         print(serialized, end="")
         if args.manifest:
