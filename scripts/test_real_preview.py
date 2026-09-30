@@ -77,6 +77,10 @@ class LifecycleTests(unittest.TestCase):
                 self.assertEqual(rp.main(["offline-reset"]), 0)
                 reset.assert_called_once_with()
                 self.assertEqual(rp.PROJECT, "uec-offline-fsis-private")
+            with patch.object(rp, "offline_resume", return_value={"ok": True}) as resume:
+                self.assertEqual(rp.main(["offline-resume"]), 0)
+                resume.assert_called_once_with()
+                self.assertEqual(rp.PROJECT, "uec-offline-fsis-private")
         finally:
             rp.PROJECT, rp.VOLUME = previous_project, previous_volume
 
@@ -106,6 +110,36 @@ class LifecycleTests(unittest.TestCase):
             state_path.return_value.read_text.return_value = json.dumps({"project": "uec-local-v2"})
             with self.assertRaisesRegex(rp.PreviewError, "invalid ownership"):
                 rp._read_state()
+
+    def test_windows_missing_process_is_not_reported_as_running(self):
+        completed = rp.subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        with patch.object(rp.os, "name", "nt"), patch.object(rp.shutil, "which", return_value="powershell"), patch.object(rp.subprocess, "run", return_value=completed):
+            self.assertFalse(rp._pid_exists(12345))
+
+    def test_offline_resume_requires_exact_hashed_baseline_and_zero_publication(self):
+        def rows_for(expected):
+            return [(source, "a" * 64, "b" * 64, "c" * 64, *counts, 0,
+                     counts[0], counts[1], 1) for source, counts in expected.items()]
+        valid = rows_for(rp.OFFLINE_RESUME_EXPECTED)
+        summary = rp._validate_offline_resume_aggregates(
+            valid, {"releases": 0, "release_members": 0},
+            {"054_public_suppression_generation"}, rp.OFFLINE_RESUME_REQUIRED_TABLES)
+        self.assertEqual(summary, {
+            "observation_count": 90164, "source_scoped_candidate_count": 60218,
+            "numeric_coordinate_count": 36840, "coarse_placeable_count": 1793,
+            "map_visible_count": 38633, "unmapped_facility_count": 21585,
+            "public_release_count": 0, "public_projection_count": 0,
+        })
+        invalid_cases = [
+            (valid[:-1], {"releases": 0}, {"054_public_suppression_generation"}, rp.OFFLINE_RESUME_REQUIRED_TABLES),
+            ([("extra.source", *valid[0][1:]), *valid], {"releases": 0}, {"054_public_suppression_generation"}, rp.OFFLINE_RESUME_REQUIRED_TABLES),
+            ([(*valid[0][:2], "not-a-hash", *valid[0][3:]), *valid[1:]], {"releases": 0}, {"054_public_suppression_generation"}, rp.OFFLINE_RESUME_REQUIRED_TABLES),
+            (valid, {"releases": 1}, {"054_public_suppression_generation"}, rp.OFFLINE_RESUME_REQUIRED_TABLES),
+            (valid, {"releases": 0}, set(), rp.OFFLINE_RESUME_REQUIRED_TABLES),
+        ]
+        for rows, publication, migrations, tables in invalid_cases:
+            with self.subTest(publication=publication, migrations=migrations, sources=len(rows)), self.assertRaises(rp.PreviewError):
+                rp._validate_offline_resume_aggregates(rows, publication, migrations, tables)
 
     def test_http_never_places_token_in_url(self):
         token = "secret-value"

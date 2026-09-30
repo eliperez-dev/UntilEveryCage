@@ -33,6 +33,21 @@ SESSION_TOKEN: str | None = None
 IMPORTER = ROOT / "pipeline" / "scripts" / "maintenance" / "import-real-preview.py"
 MIGRATIONS = ROOT / "pipeline" / "scripts" / "maintenance" / "apply-migrations.py"
 ACTIVE_PREVIEW_TOKEN: str | None = None
+OFFLINE_RESUME_EXPECTED = {
+    "au.npi.facilities": (8116, 8116, 0, 0, 0),
+    "au.sa.epa.licensed-activities": (43, 41, 41, 0, 41),
+    "be.locations": (4032, 1794, 0, 1793, 1793),
+    "es.cat.feed-sandach": (12117, 4367, 0, 0, 0),
+    "fr.dgal.section-i": (1449, 1449, 0, 0, 0),
+    "fr.dgal.section-ii": (1068, 1067, 0, 0, 0),
+    "fsa_approved_establishments": (4291, 4291, 0, 0, 0),
+    "it.1069-2009": (9958, 6536, 5295, 0, 5295),
+    "it.853-2004": (41849, 25316, 24263, 0, 24263),
+    "us.fsis": (7241, 7241, 7241, 0, 7241),
+}
+OFFLINE_RESUME_REQUIRED_TABLES = {
+    "observations", "candidates", "source_manifests", "source_preview_runs",
+}
 
 
 class PreviewError(RuntimeError):
@@ -518,6 +533,175 @@ def up(*, offline_handoff: bool = False) -> dict[str, object]:
         raise
 
 
+def _validate_offline_resume_aggregates(rows: list[tuple[object, ...]], publication_counts: dict[str, int],
+                                        migration_versions: set[str], schema_tables: set[str]) -> dict[str, int]:
+    """Fail closed unless the retained offline snapshot is the exact reviewed aggregate baseline."""
+    by_source: dict[str, tuple[int, int, int, int, int]] = {}
+    for row in rows:
+        (source_id, snapshot_sha256, source_sha256, normalized_sha256, observations, candidates,
+         numeric, coarse, map_visible, public_rows, physical_observations,
+         physical_candidates, manifest_matches) = row
+        if not isinstance(source_id, str) or source_id in by_source:
+            raise PreviewError("offline preview has duplicate or invalid source run identities")
+        for digest in (snapshot_sha256, source_sha256, normalized_sha256):
+            if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest.lower()):
+                raise PreviewError("offline preview source manifest hashes are invalid")
+        if manifest_matches != 1 or physical_observations != observations or physical_candidates != candidates:
+            raise PreviewError("offline preview latest source snapshot does not match retained DB rows")
+        if public_rows != 0:
+            raise PreviewError("offline preview source ledger reports public rows")
+        values = (int(observations), int(candidates), int(numeric), int(coarse), int(map_visible))
+        by_source[source_id] = values
+    if by_source != OFFLINE_RESUME_EXPECTED:
+        raise PreviewError("offline preview latest source set or aggregate counts differ from the verified baseline")
+    if "054_public_suppression_generation" not in migration_versions:
+        raise PreviewError("offline preview schema is missing migration 054")
+    if not OFFLINE_RESUME_REQUIRED_TABLES.issubset(schema_tables):
+        raise PreviewError("offline preview schema is incomplete")
+    if any(count != 0 for count in publication_counts.values()):
+        raise PreviewError("offline preview contains release, projection, or profile rows")
+    observations = sum(values[0] for values in by_source.values())
+    candidates = sum(values[1] for values in by_source.values())
+    numeric = sum(values[2] for values in by_source.values())
+    coarse = sum(values[3] for values in by_source.values())
+    map_visible = sum(values[4] for values in by_source.values())
+    if numeric + coarse != map_visible or candidates - map_visible != 21585:
+        raise PreviewError("offline preview map/unmapped aggregate relationship is invalid")
+    return {"observation_count": observations, "source_scoped_candidate_count": candidates,
+            "numeric_coordinate_count": numeric, "coarse_placeable_count": coarse,
+            "map_visible_count": map_visible, "unmapped_facility_count": candidates - map_visible,
+            "public_release_count": 0, "public_projection_count": 0}
+
+
+def offline_resume() -> dict[str, object]:
+    """Resume the exact offline private snapshot without importing or activating anything."""
+    global SESSION_TOKEN, ACTIVE_PREVIEW_TOKEN
+    verify_resources(require_container=True)
+    state = _read_state()
+    if state and any(_pid_exists(int(state[key])) for key in ("api_pid", "vite_pid") if isinstance(state.get(key), int)):
+        raise PreviewError("owned offline preview processes are already running")
+    if _socket_busy(API_PORT) or _socket_busy(WEB_PORT):
+        raise PreviewError("offline resume ports are occupied by an unverified service")
+    db_url = _local_database_url()
+    import psycopg
+    from psycopg import sql
+    with psycopg.connect(db_url) as connection, connection.cursor() as cursor:
+        cursor.execute("""
+            WITH latest AS (
+              SELECT DISTINCT ON (source_id) source_id,snapshot_sha256,source_artifact_sha256,normalized_sha256,
+                     imported_observation_count,facility_count,numeric_coordinate_count,coarse_placeable_count,
+                     map_visible_count,public_rows
+              FROM real_preview.source_preview_runs ORDER BY source_id,created_at DESC,run_id DESC
+            )
+            SELECT l.source_id,l.snapshot_sha256,l.source_artifact_sha256,l.normalized_sha256,
+                   l.imported_observation_count,l.facility_count,l.numeric_coordinate_count,
+                   l.coarse_placeable_count,l.map_visible_count,l.public_rows,
+                   (SELECT count(*) FROM real_preview.observations o
+                    WHERE o.source_id=l.source_id AND o.snapshot_sha256=l.snapshot_sha256),
+                   (SELECT count(*) FROM real_preview.candidates c
+                    WHERE c.source_id=l.source_id AND c.snapshot_sha256=l.snapshot_sha256),
+                   (SELECT count(*) FROM real_preview.source_manifests m
+                    WHERE m.source_id=l.source_id AND m.snapshot_sha256=l.snapshot_sha256
+                      AND m.source_artifact_sha256=l.source_artifact_sha256
+                      AND m.normalized_sha256=l.normalized_sha256)
+            FROM latest l ORDER BY l.source_id
+        """)
+        source_rows = cursor.fetchall()
+        cursor.execute("SELECT version FROM uec.schema_migrations")
+        migrations = {row[0] for row in cursor.fetchall()}
+        cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='real_preview' AND table_type='BASE TABLE'")
+        schema_tables = {row[0] for row in cursor.fetchall()}
+        cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='uec' AND table_type='BASE TABLE' AND (table_name ILIKE '%release%' OR table_name ILIKE '%projection%' OR table_name ILIKE '%profile%')")
+        publication_tables = [row[0] for row in cursor.fetchall()]
+        publication_counts: dict[str, int] = {}
+        for table in publication_tables:
+            cursor.execute(sql.SQL("SELECT count(*) FROM uec.{}").format(sql.Identifier(table)))
+            publication_counts[table] = int(cursor.fetchone()[0])
+    summary = _validate_offline_resume_aggregates(source_rows, publication_counts, migrations, schema_tables)
+
+    token = secrets.token_urlsafe(32)
+    SESSION_TOKEN = ACTIVE_PREVIEW_TOKEN = token
+    env = {"PATH": os.environ.get("PATH", ""), "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""),
+           "HOME": os.environ.get("HOME", ""), "UEC_DATABASE_URL": db_url,
+           "UEC_DEV_PREVIEW_TOKEN": token, "UEC_RUNTIME_MODE": "development",
+           "UEC_DEV_PREVIEW": "true", "UEC_BIND_HOST": "127.0.0.1", "PORT": str(API_PORT),
+           "UEC_CORS_ORIGIN": f"http://127.0.0.1:{WEB_PORT}", "UEC_REAL_PREVIEW_ROOT": str(PRIVATE_ROOT),
+           "UEC_PREVIEW_PROJECT": PROJECT}
+    for key in ("TMP", "TEMP", "USERPROFILE", "CARGO_HOME", "RUSTUP_HOME", "LIB", "INCLUDE", "VCToolsInstallDir", "WindowsSdkDir"):
+        if os.environ.get(key):
+            env[key] = os.environ[key]
+    started: list[subprocess.Popen[str]] = []
+    wrote_state = False
+    try:
+        _build_api()
+        api_log = (ROOT / "target" / "real-preview" / "api.log").open("a", encoding="utf-8")
+        executable = ROOT / "target" / "debug" / ("uec-api.exe" if os.name == "nt" else "uec-api")
+        api = subprocess.Popen([str(executable)], cwd=ROOT, env=env, stdout=api_log, stderr=subprocess.STDOUT)
+        api_log.close(); started.append(api)
+        vite_path = ROOT / "frontend" / "node_modules" / "vite" / "bin" / "vite.js"
+        vite = None
+        if vite_path.is_file():
+            vite_log = (ROOT / "target" / "real-preview" / "vite.log").open("a", encoding="utf-8")
+            vite_env = {"PATH": env["PATH"], "SYSTEMROOT": env["SYSTEMROOT"],
+                        "UEC_DEV_PREVIEW_TOKEN": token, "VITE_LOCAL_DATA_MODE": "real-preview",
+                        "VITE_API_ORIGIN": f"http://127.0.0.1:{API_PORT}"}
+            vite = subprocess.Popen([shutil.which("node") or "node", str(vite_path), "--host", "127.0.0.1", "--port", str(WEB_PORT), "--strictPort"], cwd=ROOT / "frontend", env=vite_env, stdout=vite_log, stderr=subprocess.STDOUT)
+            vite_log.close(); started.append(vite)
+        _write_state({"project": PROJECT, "preview_mode": "offline_resumed", "api_pid": api.pid,
+                      "vite_pid": vite.pid if vite else None, "ports": [API_PORT, WEB_PORT] if vite else [API_PORT]})
+        wrote_state = True
+        deadline = time.monotonic() + 180
+        while time.monotonic() < deadline:
+            if api.poll() is not None or (vite is not None and vite.poll() is not None):
+                raise PreviewError("offline preview process exited during resume")
+            if _http(f"http://127.0.0.1:{API_PORT}/health/ready")[0] == 200 and (vite is None or _http_status(f"http://127.0.0.1:{WEB_PORT}/") == 200):
+                break
+            time.sleep(.3)
+        else:
+            raise PreviewError("offline preview resume probe timed out")
+        counts_url = f"http://127.0.0.1:{API_PORT}/dev/real-preview/counts"
+        if _http_status(counts_url) != 401:
+            raise PreviewError("offline preview authentication boundary is invalid")
+        status, payload = _http(counts_url, token)
+        api_counts = payload.get("data") if payload else None
+        expected = {"facility_candidate_count": summary["source_scoped_candidate_count"],
+                    "numeric_coordinate_count": summary["numeric_coordinate_count"],
+                    "coarse_placeable_count": summary["coarse_placeable_count"],
+                    "map_visible_count": summary["map_visible_count"]}
+        if status != 200 or not isinstance(api_counts, dict) or any(api_counts.get(key) != value for key, value in expected.items()):
+            raise PreviewError("resumed API aggregates differ from validated latest snapshots")
+        list_status, page = _http(f"{counts_url.rsplit('/', 1)[0]}/locations?limit=1", token)
+        page_data = page.get("data") if page else None
+        if list_status != 200 or not isinstance(page_data, list) or not page_data:
+            raise PreviewError("resumed private candidate list probe failed")
+        candidate = page_data[0]
+        candidate_id = candidate.get("candidate_id") if isinstance(candidate, dict) else None
+        if not isinstance(candidate_id, str) or candidate.get("project_approval") is not False:
+            raise PreviewError("resumed candidate response crossed the approval boundary")
+        detail_status, detail = _http(f"{counts_url.rsplit('/', 1)[0]}/locations/{candidate_id}", token)
+        detail_data = detail.get("data") if detail else None
+        if detail_status != 200 or not isinstance(detail_data, dict) or detail_data.get("candidate_id") != candidate_id:
+            raise PreviewError("resumed private candidate detail probe failed")
+        if any(key in detail_data for key in ("source_identifier", "source_group_key", "source_values", "address", "latitude_raw", "longitude_raw")):
+            raise PreviewError("resumed candidate detail contains a restricted source field")
+        return {"status": "ready", "api_url": f"http://127.0.0.1:{API_PORT}",
+                "url": f"http://127.0.0.1:{WEB_PORT}/", "aggregates": summary,
+                "authenticated_api_counts": api_counts, "api_auth_check": "passed",
+                "candidate_list_detail_check": "passed", "public_release_count": 0,
+                "public_projection_count": 0, "preview_mode": "offline_resumed"}
+    except Exception:
+        for process in reversed(started):
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+        if wrote_state and _state().exists():
+            _state().unlink()
+        raise
+
+
 def down() -> None:
     state = _read_state()
     for key, marker in (("vite_pid", "vite.js"), ("api_pid", "uec-api")):
@@ -540,7 +724,12 @@ def down() -> None:
 
 def _pid_exists(pid: int) -> bool:
     if os.name == "nt":
-        return bool(_process_owned(pid, ""))
+        ps = shutil.which("powershell") or shutil.which("pwsh")
+        if not ps:
+            return False
+        script = f"$p=Get-CimInstance Win32_Process -Filter 'ProcessId={pid}' -ErrorAction SilentlyContinue; if($p){{ 'running' }}"
+        result = subprocess.run([ps, "-NoProfile", "-Command", script], capture_output=True, text=True)
+        return result.returncode == 0 and result.stdout.strip() == "running"
     try:
         os.kill(pid, 0); return True
     except OSError:
@@ -1676,7 +1865,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     global PROJECT, VOLUME
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("up", "status", "probe", "down", "reset", "offline-up", "offline-status", "offline-probe", "offline-down", "offline-reset", "refresh", "strict-live-private-e2e", "strict-refresh", "enrich-locations", "geospatial-status"))
+    parser.add_argument("action", choices=("up", "status", "probe", "down", "reset", "offline-up", "offline-status", "offline-probe", "offline-down", "offline-reset", "offline-resume", "refresh", "strict-live-private-e2e", "strict-refresh", "enrich-locations", "geospatial-status"))
     parser.add_argument("--source")
     parser.add_argument("--existing-run", help="complete a prior exact live lifecycle run without reacquisition")
     parser.add_argument("--all", action="store_true", help="enrich all source snapshots")
@@ -1703,6 +1892,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.action in {"refresh", "strict-live-private-e2e", "strict-refresh"} and not args.source:
             raise PreviewError(f"{args.action} requires an explicit --source")
         result = (up(offline_handoff=True) if args.action == "offline-up" else
+                  offline_resume() if args.action == "offline-resume" else
                   status() if args.action == "offline-status" else
                   probe() if args.action == "offline-probe" else
                   down() if args.action == "offline-down" else
