@@ -175,6 +175,7 @@
   const diagnosticsEnabled = $derived(
     import.meta.env.DEV && mode === "real-preview",
   );
+  const isRealPreview = () => mode === "real-preview";
   const usingMvt = mode === "real-preview";
   const hitRate = $derived.by(() => {
     const total =
@@ -581,16 +582,16 @@
           });
         });
     });
-    for (const layer of mode === "real-preview"
+    for (const layer of isRealPreview()
       ? ["source-coordinate-points"]
       : ["exact-pins", "approximate-points", "source-coordinate-points"])
       map.on("click", layer, (event: any) => {
         const properties = event.features?.[0]?.properties;
-        const id = mode === "real-preview" ? properties?.key : properties?.id;
+        const id = isRealPreview() ? properties?.key : properties?.id;
         if (typeof id === "string") onselect(id);
       });
     map.on("click", "aggregate-outer", (event: any) => {
-      if (mode === "real-preview") {
+      if (isRealPreview()) {
         const properties = event.features?.[0]?.properties;
         const key = properties?.key;
         if (typeof key === "string") {
@@ -610,7 +611,7 @@
         /* fixture metadata is validated before use */
       }
     });
-    for (const layer of mode === "real-preview"
+    for (const layer of isRealPreview()
       ? ["clusters", "source-coordinate-points", "aggregate-outer"]
       : ["clusters", "exact-pins", "approximate-points", "source-coordinate-points", "aggregate-outer"]) {
       map.on("mouseenter", layer, () => {
