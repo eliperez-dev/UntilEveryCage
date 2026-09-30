@@ -134,7 +134,18 @@ def promote(database_url: str, release_id: str, artifacts: list[dict], map_artif
             rights_gate = require_cleared(connection, release_id)
             unsafe = connection.execute("""
                 SELECT
-                  count(*) FILTER (WHERE m.default_visible AND (g.status IS DISTINCT FROM 'accepted' OR g.result IS NULL)),
+                  count(*) FILTER (WHERE m.default_visible AND (
+                    g.status IS NULL
+                    OR g.status = 'failed'
+                    OR (g.status = 'accepted' AND (
+                        g.result IS NULL
+                        OR (ST_X(g.result::geometry) = 0 AND ST_Y(g.result::geometry) = 0)
+                    ))
+                    OR (g.status = 'unresolved' AND g.result IS NOT NULL)
+                    OR (g.status = 'review_required' AND city.reference_location IS NOT NULL
+                        AND ST_X(city.reference_location::geometry) = 0
+                        AND ST_Y(city.reference_location::geometry) = 0)
+                  )),
                   count(*) FILTER (WHERE o.classification_review_status <> 'approved' AND m.default_visible),
                   count(*) FILTER (WHERE r.release_id IS NULL OR r.publication_eligible IS DISTINCT FROM true OR r.privacy_screening_status IS DISTINCT FROM 'passed' OR r.maintainer_approval IS DISTINCT FROM 'approved'),
                   count(*) FILTER (WHERE s.source_record_id IS NOT NULL),
@@ -143,6 +154,14 @@ def promote(database_url: str, release_id: str, artifacts: list[dict], map_artif
                 JOIN uec.releases release ON release.release_id = m.release_id
                 JOIN uec.observations o ON o.observation_id = m.observation_id
                 LEFT JOIN LATERAL (SELECT status, result FROM uec.geocode_results WHERE source_record_id=o.source_record_id ORDER BY queried_at DESC, geocode_result_id DESC LIMIT 1) g ON true
+                LEFT JOIN uec.facilities facility ON facility.facility_id=m.facility_id
+                LEFT JOIN LATERAL (
+                  SELECT reference_location FROM uec.city_reference_points
+                  WHERE country_code=facility.country_code
+                    AND lower(city_name)=lower(facility.city)
+                    AND (postal_code IS NULL OR postal_code=facility.postal_code)
+                  ORDER BY postal_code NULLS LAST LIMIT 1
+                ) city ON true
                 LEFT JOIN uec.publication_review_release_current r
                   ON r.source_record_id=o.source_record_id AND r.release_id=m.release_id
                 LEFT JOIN uec.public_access_restricted s ON s.source_record_id=o.source_record_id

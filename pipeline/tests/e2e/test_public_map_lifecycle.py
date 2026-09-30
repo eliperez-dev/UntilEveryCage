@@ -39,6 +39,12 @@ _PROMOTE_SPEC = importlib.util.spec_from_file_location(
 PROMOTE = importlib.util.module_from_spec(_PROMOTE_SPEC)
 assert _PROMOTE_SPEC.loader
 _PROMOTE_SPEC.loader.exec_module(PROMOTE)
+_VALIDATE_SPEC = importlib.util.spec_from_file_location(
+    "validate_release_map_lifecycle", ROOT / "pipeline/scripts/stages/validate-release.py"
+)
+VALIDATE = importlib.util.module_from_spec(_VALIDATE_SPEC)
+assert _VALIDATE_SPEC.loader
+_VALIDATE_SPEC.loader.exec_module(VALIDATE)
 
 
 DEFAULT_SNAPSHOT = Path(
@@ -286,37 +292,87 @@ class PublicMapLifecycleE2ETests(unittest.TestCase):
                 "VALUES (%s,'official',%s,%s,%s,'cleared','TEST-ONLY fixture','TEST-ONLY hypothetical rights decision',%s)",
                 (SOURCE_ID, RELEASE_ID, artifact_id, snapshot_digest, now),
             )
-            # This transition is confined to the throwaway database. It permits
-            # the private prepromotion builder to exercise all precision classes;
-            # it is not a validation or approval claim.
-            db.execute("UPDATE uec.releases SET status='validated' WHERE release_id=%s", (RELEASE_ID,))
+        # Seed and reject the malformed candidate before building the good
+        # release so its TEST-ONLY gate events are part of the artifact's
+        # captured suppression generation.
+        cls._prepare_unsafe_coordinate_candidate(now, artifact_id, snapshot_digest)
+        validation = VALIDATE.validate(cls.env.database_url, RELEASE_ID, 4, True)
+        cls.validation_metrics = validation["metrics"]
+        if validation["status"] != "passed":
+            raise AssertionError(f"TEST-ONLY lifecycle candidate did not validate: {validation['findings']}")
+        if (cls.validation_metrics["exact_display_ready"], cls.validation_metrics["city_display_ready"],
+                cls.validation_metrics["unmapped_display"], cls.validation_metrics["coordinate_not_ready"]) != (2, 1, 1, 0):
+            raise AssertionError("TEST-ONLY exact/coarse/unmapped release metrics do not match the fixture")
 
         build_result = BUILDER.build(cls.env.database_url, RELEASE_ID, cls.artifact_root)
         cls.artifact_path = Path(build_result["map_artifact_manifest"])
         cls.map_artifact = json.loads(cls.artifact_path.read_text(encoding="utf-8"))
         cls.generation = cls.map_artifact["suppression_generation"]
         PROMOTE.validate_map_artifact(cls.artifact_path, RELEASE_ID, "official", cls.generation)
-        # Promotion simulation only: the disposable release/manifest is never
-        # copied to another database or activated outside the loopback test API.
-        manifest = {
-            "manifest_version": "test-only-map-lifecycle-v1",
-            "release_id": RELEASE_ID,
-            "profile": "official",
-            "release_status": "promoted",
-            "test_only_simulation": True,
-            "suppression_generation": cls.generation,
-            "map_artifact": cls.map_artifact,
-        }
-        manifest_bytes = json.dumps(manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-        manifest_digest = hashlib.sha256(manifest_bytes.encode("utf-8")).hexdigest()
-        with psycopg.connect(cls.env.database_url) as db, db.transaction():
-            db.execute(
-                "INSERT INTO uec.release_manifests (release_id,manifest,manifest_sha256) VALUES (%s,%s::jsonb,%s)",
-                (RELEASE_ID, manifest_bytes, manifest_digest),
-            )
-            db.execute("UPDATE uec.releases SET status='promoted' WHERE release_id=%s", (RELEASE_ID,))
+        # The real validate/promote predicates run only in this disposable
+        # database. These TEST-ONLY approvals are not human decisions and the
+        # ephemeral release is served only by the loopback E2E server.
+        cls.promoted = PROMOTE.promote(cls.env.database_url, RELEASE_ID, [], cls.map_artifact)
+        cls.env.build_public_read_model(RELEASE_ID)
         cls.records = records
         cls.facilities = facilities
+
+    @classmethod
+    def _prepare_unsafe_coordinate_candidate(cls, now, artifact_id, snapshot_digest):
+        release_id = "e2e-map-unsafe-coordinate"
+        record_id, facility_id, observation_id = (uuid.uuid4() for _ in range(3))
+        with psycopg.connect(cls.env.database_url) as db, db.transaction():
+            db.execute(
+                "INSERT INTO uec.releases (release_id,status,ruleset_version,profile,test_only,summary) "
+                "VALUES (%s,'candidate','e2e-map-v1','official',false,'{\"test_only_simulation\":true}')",
+                (release_id,),
+            )
+            db.execute(
+                "INSERT INTO uec.source_records (source_record_id,source_id,source_record_key,artifact_id,raw_fields,parsed_at) "
+                "VALUES (%s,%s,'test-only-invalid-zero-point',%s,'{}',%s)",
+                (record_id, SOURCE_ID, artifact_id, now),
+            )
+            db.execute(
+                "INSERT INTO uec.facilities (facility_id,canonical_name,country_code,city) "
+                "VALUES (%s,'TEST-ONLY invalid zero coordinate','US','TEST-ONLY coarse place')",
+                (facility_id,),
+            )
+            db.execute(
+                "INSERT INTO uec.observations (observation_id,facility_id,source_record_id,observed_at,observation,classification,ruleset_id,rule_id,classification_category,classification_review_status,default_visible,first_observed_at) "
+                "VALUES (%s,%s,%s,%s,'{}','{}','e2e-map-v1','test-only','slaughter','approved',true,%s)",
+                (observation_id, facility_id, record_id, now, now),
+            )
+            db.execute(
+                "INSERT INTO uec.release_members (release_id,facility_id,observation_id,default_visible) VALUES (%s,%s,%s,true)",
+                (release_id, facility_id, observation_id),
+            )
+            db.execute(
+                "INSERT INTO uec.geocode_results (source_record_id,provider_id,query,match_method,status,attempt_number,result,queried_at) "
+                "VALUES (%s,'test-only','TEST-ONLY invalid','test-fixture','accepted',1,ST_SetSRID(ST_MakePoint(0,0),4326)::geography,%s)",
+                (record_id, now),
+            )
+            db.execute(
+                "INSERT INTO uec.publication_review_events (source_record_id,release_id,factual_review_status,privacy_screening_status,maintainer_approval,publication_eligible,reviewer_role,note) "
+                "VALUES (%s,%s,'reviewed','passed','approved',true,'maintainer',%s)",
+                (record_id, release_id, TEST_ONLY_NOTE),
+            )
+            db.execute(
+                "INSERT INTO uec.source_rights_decisions (source_id,profile,release_id,artifact_id,artifact_sha256,redistribution_status,decision_actor,decision_reference,decided_at) "
+                "VALUES (%s,'official',%s,%s,%s,'cleared','TEST-ONLY fixture','TEST-ONLY hypothetical rights decision',%s)",
+                (SOURCE_ID, release_id, artifact_id, snapshot_digest, now),
+            )
+        validation = VALIDATE.validate(cls.env.database_url, release_id, 1, False)
+        if validation["status"] != "blocked" or validation["metrics"]["coordinate_not_ready"] != 1:
+            raise AssertionError("malformed TEST-ONLY coordinate was not blocked during validation")
+        with psycopg.connect(cls.env.database_url) as db:
+            db.execute("UPDATE uec.releases SET status='validated' WHERE release_id=%s", (release_id,))
+        try:
+            PROMOTE.promote(cls.env.database_url, release_id, [])
+        except ValueError as error:
+            if "coordinate_not_ready=1" not in str(error):
+                raise
+        else:
+            raise AssertionError("promotion accepted a malformed TEST-ONLY zero coordinate")
 
     def test_manifest_tiles_precision_cache_pinning_and_suppression_revocation(self):
         base = f"http://127.0.0.1:{self.env.api_port}"
@@ -336,6 +392,13 @@ class PublicMapLifecycleE2ETests(unittest.TestCase):
         self.assertEqual(status_304, 304)
         self.assertEqual(map_artifact["tiles"], self.map_artifact["tiles"])
         self.assertEqual(PROMOTE.validate_map_artifact(self.artifact_path, RELEASE_ID, "official", self.generation)["source_layer"], "uec_map")
+
+        list_status, _, list_body = _get(base + "/api/v2/locations?limit=10&release_id=" + RELEASE_ID)
+        self.assertEqual(list_status, 200)
+        listed = json.loads(list_body)["data"]
+        self.assertEqual(len(listed), 4)
+        self.assertEqual({row["display_precision"] for row in listed}, {"exact", "city", "unmapped"})
+        self.assertEqual(sum(row["display_precision"] == "unmapped" for row in listed), 1)
 
         high_zoom_tiles = [tile for tile in map_artifact["tiles"] if tile["z"] == 14]
         self.assertTrue(high_zoom_tiles)
@@ -414,6 +477,8 @@ class PublicMapLifecycleE2ETests(unittest.TestCase):
         status_revoked, _, revoked_body = _get(tile_url)
         self.assertEqual(status_revoked, 410)
         self.assertEqual(json.loads(revoked_body)["error"]["code"], "map_artifact_revoked")
+        with psycopg.connect(self.env.database_url) as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM uec.release_manifests WHERE release_id='e2e-map-unsafe-coordinate'").fetchone()[0], 0)
 
 
 if __name__ == "__main__":

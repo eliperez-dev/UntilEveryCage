@@ -14,6 +14,17 @@ class ReleaseValidationTests(unittest.TestCase):
         report = MODULE.evaluate({"release_records": 10, "duplicate_observations": 0, "validation_errors": 0, "review_visible": 0, "coordinate_not_ready": 0, "publication_not_approved": 0, "active_suppression": 0, "rights_not_cleared": 0}, 10)
         self.assertEqual(report["status"], "passed")
 
+    def test_city_and_unmapped_locations_are_not_coordinate_blockers(self):
+        report = MODULE.evaluate({
+            "release_records": 3, "duplicate_observations": 0, "validation_errors": 0,
+            "review_visible": 0, "exact_display_ready": 1, "city_display_ready": 1,
+            "unmapped_display": 1, "coordinate_not_ready": 0,
+            "publication_not_approved": 0, "active_suppression": 0, "rights_not_cleared": 0,
+        }, 3)
+        self.assertEqual(report["status"], "passed")
+        self.assertEqual(report["metrics"]["city_display_ready"], 1)
+        self.assertEqual(report["metrics"]["unmapped_display"], 1)
+
     def test_incomplete_or_unsafe_release_is_blocked(self):
         report = MODULE.evaluate({"release_records": 9, "duplicate_observations": 1, "validation_errors": 2, "review_visible": 1, "coordinate_not_ready": 2, "publication_not_approved": 3, "active_suppression": 1, "rights_not_cleared": 2}, 10)
         self.assertEqual(report["status"], "blocked")

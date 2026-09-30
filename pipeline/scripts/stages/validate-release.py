@@ -64,10 +64,28 @@ def validate(database_url: str, release_id: str, expected_records: int | None, m
                 count(DISTINCT release_member.observation_id)::int AS distinct_observations,
                 (count(*) - count(DISTINCT release_member.observation_id))::int AS duplicate_observations,
                 count(*) FILTER (WHERE observation.classification_review_status <> 'approved' AND release_member.default_visible)::int AS review_visible,
-                count(*) FILTER (WHERE release_member.default_visible AND latest.status = 'accepted' AND latest.result IS NOT NULL)::int AS exact_display_ready,
-                count(*) FILTER (WHERE release_member.default_visible AND latest.status = 'review_required' AND city.reference_location IS NOT NULL)::int AS city_display_ready,
-                count(*) FILTER (WHERE release_member.default_visible AND (latest.status IS NULL OR (latest.status <> 'accepted' AND city.reference_location IS NULL)))::int AS unmapped_display,
-                count(*) FILTER (WHERE release_member.default_visible AND (latest.status <> 'accepted' OR latest.result IS NULL))::int AS coordinate_not_ready,
+                count(*) FILTER (WHERE release_member.default_visible AND latest.status = 'accepted' AND latest.result IS NOT NULL
+                    AND (ST_X(latest.result::geometry) <> 0 OR ST_Y(latest.result::geometry) <> 0))::int AS exact_display_ready,
+                count(*) FILTER (WHERE release_member.default_visible AND latest.status = 'review_required' AND city.reference_location IS NOT NULL
+                    AND (ST_X(city.reference_location::geometry) <> 0 OR ST_Y(city.reference_location::geometry) <> 0))::int AS city_display_ready,
+                count(*) FILTER (WHERE release_member.default_visible AND NOT (
+                    (latest.status = 'accepted' AND latest.result IS NOT NULL
+                        AND (ST_X(latest.result::geometry) <> 0 OR ST_Y(latest.result::geometry) <> 0))
+                    OR (latest.status = 'review_required' AND city.reference_location IS NOT NULL
+                        AND (ST_X(city.reference_location::geometry) <> 0 OR ST_Y(city.reference_location::geometry) <> 0))
+                ))::int AS unmapped_display,
+                count(*) FILTER (WHERE release_member.default_visible AND (
+                    latest.status IS NULL
+                    OR latest.status = 'failed'
+                    OR (latest.status = 'accepted' AND (
+                        latest.result IS NULL
+                        OR (ST_X(latest.result::geometry) = 0 AND ST_Y(latest.result::geometry) = 0)
+                    ))
+                    OR (latest.status = 'unresolved' AND latest.result IS NOT NULL)
+                    OR (latest.status = 'review_required' AND city.reference_location IS NOT NULL
+                        AND ST_X(city.reference_location::geometry) = 0
+                        AND ST_Y(city.reference_location::geometry) = 0)
+                ))::int AS coordinate_not_ready,
                 count(*) FILTER (WHERE review.release_id IS NULL OR review.publication_eligible IS DISTINCT FROM true OR review.privacy_screening_status IS DISTINCT FROM 'passed' OR review.maintainer_approval IS DISTINCT FROM 'approved')::int AS publication_not_approved,
                 count(*) FILTER (WHERE restricted.source_record_id IS NOT NULL)::int AS active_suppression,
                 count(*) FILTER (WHERE release_member.default_visible AND (release.summary->'demonstration' IS NOT NULL AND release.summary->'demonstration'->>'rights_status' IS DISTINCT FROM 'cleared'))::int AS rights_not_cleared,

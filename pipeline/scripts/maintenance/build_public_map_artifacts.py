@@ -63,6 +63,8 @@ def _point(wkt: str | None) -> tuple[float, float] | None:
         raise ValueError("public map projection contains a non-finite coordinate")
     if not (-180 <= longitude <= 180 and -90 <= latitude <= 90):
         raise ValueError("public map projection contains an invalid coordinate")
+    if longitude == 0 and latitude == 0:
+        raise ValueError("public map projection contains an unusable zero coordinate")
     return longitude, latitude
 
 

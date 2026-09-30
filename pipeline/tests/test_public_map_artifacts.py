@@ -52,6 +52,10 @@ class PublicMapArtifactTests(unittest.TestCase):
         self.assertIsNone(coarse["record_id"])
         self.assertEqual(coarse["coarse_count"], 1)
 
+    def test_zero_zero_is_not_a_usable_public_map_coordinate(self):
+        with self.assertRaisesRegex(ValueError, "unusable zero coordinate"):
+            MODULE._point("POINT (0 0)")
+
     def test_coincident_exact_records_remain_distinct_at_max_zoom(self):
         facilities = [
             {"record_id": "exact-a", "longitude": 12, "latitude": 55, "kind": "exact", "category_key": "farm"},
