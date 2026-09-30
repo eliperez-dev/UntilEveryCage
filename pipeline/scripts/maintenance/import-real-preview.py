@@ -18,7 +18,7 @@ from urllib.parse import urlsplit
 import psycopg
 
 POLICY = Path(__file__).parents[2] / "preview-enabled-sources.json"
-SNAPSHOT_PROJECTION_VERSION = "real-preview-candidate-projection-v3"
+SNAPSHOT_PROJECTION_VERSION = "real-preview-candidate-projection-v4"
 LEGACY_ALLOWED = {"fr.dgal.section-i", "fr.dgal.section-ii", "us.fsis"}
 PREVIEW_ENABLED = set(json.loads(POLICY.read_text(encoding="utf-8"))["sources"])
 ALLOWED = LEGACY_ALLOWED | PREVIEW_ENABLED
@@ -227,6 +227,20 @@ def parse_row(source: str, row: Any) -> tuple[Any, ...]:
     coordinates = normalized.get("coordinates")
     if not isinstance(coordinates, dict):
         coordinates = {}
+    # The retained Italy-853 handoff predates the normalized-coordinate
+    # projection, but its official CSV coordinate columns are explicitly
+    # parsed by Italy853Adapter and covered by its adapter contract tests.
+    # Recover only those two source-owned fields for this private projection;
+    # never apply the fallback to other sources or expose source_values.
+    if source == "it.853-2004" and not coordinates:
+        source_latitude = source_values.get("latitudine")
+        source_longitude = source_values.get("longitudine")
+        if source_latitude is not None or source_longitude is not None:
+            coordinates = {
+                "latitude": source_latitude,
+                "longitude": source_longitude,
+                "precision": "source-precision-unknown",
+            }
     lat_raw = pick(coordinates, "latitude")
     lon_raw = pick(coordinates, "longitude")
     precision_raw = pick(coordinates, "precision") or pick(normalized, "coordinate_precision", "geography_precision")

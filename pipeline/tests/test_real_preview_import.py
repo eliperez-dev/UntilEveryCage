@@ -191,6 +191,36 @@ class RealPreviewImporterTests(unittest.TestCase):
         self.assertNotIn(row[7], {"exact", "numeric", "facility_coordinate"})
         self.assertEqual(row[-1], "retained-group")
 
+    def test_italy_853_official_source_values_recover_only_unverified_coordinates(self):
+        row = IMPORTER.parse_row("it.853-2004", {
+            "source_id": "it.853-2004", "source_record_key": "sanitized-italy-row",
+            "source_values": {"latitudine": "45.2", "longitudine": "12.5"},
+            "normalized": {"recognition_number": "group-italy", "city": "Example",
+                "coordinates": None, "coordinate_precision": "source-precision-unknown"},
+        })
+        self.assertEqual(row[1], "numeric_source_coordinate")
+        self.assertEqual(row[5:7], (45.2, 12.5))
+        self.assertEqual(row[7], "source-precision-unknown")
+
+        zero_pair = IMPORTER.parse_row("it.853-2004", {
+            "source_id": "it.853-2004", "source_record_key": "sanitized-zero-row",
+            "source_values": {"latitudine": "0", "longitudine": "0"},
+            "normalized": {"recognition_number": "group-zero", "city": "Example",
+                "coordinates": None, "coordinate_precision": "source-precision-unknown"},
+        })
+        self.assertEqual(zero_pair[1], "city_postal")
+        self.assertEqual(zero_pair[5:7], (None, None))
+        self.assertTrue(zero_pair[9])
+
+    def test_source_values_coordinates_are_not_used_for_other_sources(self):
+        row = IMPORTER.parse_row("us.fsis", {
+            "source_id": "us.fsis", "source_record_key": "sanitized-fsis-row",
+            "source_values": {"latitudine": "45.2", "longitudine": "12.5"},
+            "normalized": {"establishment_number": "group-fsis"},
+        })
+        self.assertEqual(row[1], "unmapped_private_observation")
+        self.assertEqual(row[5:7], (None, None))
+
     def test_optional_display_evidence_is_allowlisted_and_privacy_gated(self):
         pending = IMPORTER.parse_row("it.853-2004", {
             "source_id": "it.853-2004", "source_record_key": "synthetic-row",
