@@ -367,6 +367,13 @@ def manifest_provenance(manifest: dict[str, Any]) -> tuple[str, str, int, str, d
     return source_hash, normalized_hash, count, url, timestamp, code, config
 
 
+def map_unmapped_candidate_count(candidate_count: int, map_visible_count: int) -> int:
+    """Candidates without a permitted map feature, not observations without location hints."""
+    if candidate_count < 0 or map_visible_count < 0 or map_visible_count > candidate_count:
+        raise ImportFailure("offline_map_count_inconsistent")
+    return candidate_count - map_visible_count
+
+
 def public_zero_counts(db: psycopg.Connection) -> tuple[int, int]:
     release_count = 0
     projection_count = 0
@@ -638,6 +645,60 @@ def import_offline_handoffs(root: Path, database_url: str) -> dict[str, Any]:
     total_observations = total_candidates = total_visible = total_provided = total_numeric = total_city_postal = 0
     total_accepted = total_quarantined = 0
     public_releases = public_projection = 0
+    expected_by_source = {item["source"]: item for item in verified}
+    with psycopg.connect(database_url) as db:
+        public_zero_counts(db)
+        run_ids = [f"{run_id}-{source}" for source in OFFLINE_HANDOFF_SOURCES]
+        existing = db.execute("""SELECT run_id,source_id,snapshot_sha256,normalized_sha256,input_count,accepted_count,
+            quarantined_count,imported_observation_count,facility_count,numeric_coordinate_count,
+            coarse_placeable_count,unmapped_count,map_visible_count,public_rows,runtime_details
+            FROM real_preview.source_preview_runs WHERE run_id=ANY(%s)""", (run_ids,)).fetchall()
+        if len(existing) == len(OFFLINE_HANDOFF_SOURCES):
+            existing_by_source = {row[1]: row for row in existing}
+            if set(existing_by_source) != set(OFFLINE_HANDOFF_SOURCES):
+                raise ImportFailure("offline_existing_import_source_mismatch")
+            existing_is_valid = True
+            for source, item in expected_by_source.items():
+                row = existing_by_source[source]
+                details = row[14] if isinstance(row[14], dict) else {}
+                if (row[2].strip() != snapshot or row[3].strip() != item["normalized_hash"]
+                        or row[5] != item["expected_rows"] or row[6] != item["quarantined"]
+                        or row[13] != 0 or details.get("offline_handoff") is not True
+                        or details.get("fresh_live_run") is not False):
+                    existing_is_valid = False
+                    break
+            if not existing_is_valid:
+                raise ImportFailure("offline_existing_import_mismatch")
+            for source, row in existing_by_source.items():
+                coarse, provided, exact, unmapped_observations = db.execute("""SELECT
+                    count(*) FILTER (WHERE location_class='city_postal'),
+                    count(*) FILTER (WHERE source_id='us.fsis' AND coordinate_precision='source-provided'),
+                    count(*) FILTER (WHERE coordinate_precision IN ('numeric','exact','source_numeric','source_coordinates','facility_coordinate')),
+                    (SELECT count(*) FROM real_preview.observations WHERE snapshot_sha256=%s AND source_id=%s AND location_class='unmapped_private_observation')
+                    FROM real_preview.candidates WHERE snapshot_sha256=%s AND source_id=%s""",
+                    (snapshot, source, snapshot, source)).fetchone()
+                counts_by_source[source] = {"accepted_normalized_rows": int(row[5]), "quarantined_source_rows": int(row[6]),
+                    "observations": int(row[7]), "candidates": int(row[8]),
+                    "source_provided_unverified": int(provided), "exact": int(exact), "coarse": int(coarse),
+                    "coarse_placeable": int(row[10]),
+                    # Map-unmapped means no honest point or approved coarse geometry.
+                    # It is distinct from observations that lack all location hints.
+                    "unmapped_candidates": map_unmapped_candidate_count(int(row[8]), int(row[12])),
+                    "unmapped_observations": int(unmapped_observations), "map_visible": int(row[12])}
+                total_observations += int(row[7]); total_candidates += int(row[8]); total_visible += int(row[12])
+                total_provided += int(provided); total_numeric += int(row[9]); total_city_postal += int(coarse)
+                total_accepted += int(row[5]); total_quarantined += int(row[6])
+            public_releases, public_projection = public_zero_counts(db)
+            return {"status": "imported", "source_id": "offline-retained-handoffs", "run_id": run_id,
+                    "offline_handoff": True, "fresh_live_run": False, "source_bundle_bytes_retained": False,
+                    "observation_count": total_observations, "source_scoped_candidate_count": total_candidates,
+                    "numeric_coordinate_count": total_numeric, "city_postal_count": total_city_postal,
+                    "accepted_normalized_rows": total_accepted, "quarantined_source_rows": total_quarantined,
+                    "counts": {"observations": total_observations, "candidates": total_candidates,
+                               "source_provided_unverified": total_provided, "exact": sum(v["exact"] for v in counts_by_source.values()),
+                               "coarse": total_city_postal, "unmapped_candidates": sum(v["unmapped_candidates"] for v in counts_by_source.values()),
+                               "map_visible": total_visible, "public_release_count": public_releases,
+                               "public_projection_count": public_projection}, "by_source": counts_by_source}
     with psycopg.connect(database_url) as db, db.transaction():
         public_zero_counts(db)
         db.execute("INSERT INTO real_preview.imports(snapshot_sha256,observation_count) VALUES (%s,%s) ON CONFLICT DO NOTHING",
@@ -673,7 +734,8 @@ def import_offline_handoffs(root: Path, database_url: str) -> dict[str, Any]:
             counts_by_source[source] = {"accepted_normalized_rows": expected_rows, "quarantined_source_rows": quarantined,
                 "observations": observations, "candidates": candidates,
                 "source_provided_unverified": source_provided if source == "us.fsis" else 0,
-                "exact": 0, "coarse": coarse, "coarse_placeable": placeable, "unmapped_candidates": unplaceable,
+                "exact": 0, "coarse": coarse, "coarse_placeable": placeable,
+                "unmapped_candidates": map_unmapped_candidate_count(candidates, numeric + placeable),
                 "unmapped_observations": unmapped, "map_visible": numeric + placeable,
                 "rejected_zero_coordinates": rejected_zero, "precision_unknown": precision_unknown}
             total_observations += observations
@@ -687,6 +749,7 @@ def import_offline_handoffs(root: Path, database_url: str) -> dict[str, Any]:
         public_releases, public_projection = public_zero_counts(db)
     return {"status": "imported", "source_id": "offline-retained-handoffs", "run_id": run_id,
             "offline_handoff": True, "fresh_live_run": False,
+            "observation_count": total_observations,
             "source_scoped_candidate_count": total_candidates,
             "numeric_coordinate_count": total_numeric, "city_postal_count": total_city_postal,
             "source_bundle_bytes_retained": False,

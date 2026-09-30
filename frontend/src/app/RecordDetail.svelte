@@ -207,7 +207,11 @@
     [value(record.locality), value(record.country)].filter(Boolean).join(', ') ||
       'Location unavailable',
   );
-  const precisionLabel = $derived(precisionLabelFor(precision));
+  const precisionLabel = $derived(
+    (record.sourceId === 'us.fsis' || record.previewLabel?.startsWith('FSIS source-provided')) && record.coordinatePrecision === 'source-provided'
+      ? 'Source-provided coordinate · precision unverified (not exact; private rehearsal only)'
+      : precisionLabelFor(precision),
+  );
 
   function humanizeValue(raw: string | null): string | null {
     if (!raw) return null;
@@ -226,6 +230,9 @@
     } catch { return null; }
   }
   function precisionLabelFor(raw: string): string {
+    if (raw === 'source_provided_unverified') {
+      return 'Source-provided coordinate · precision unverified (not exact; private rehearsal only)';
+    }
     if (raw === 'exact' || raw.includes('source_numeric')) {
       return 'Source coordinate · review status shown below';
     }

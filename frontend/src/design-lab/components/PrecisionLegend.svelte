@@ -10,6 +10,7 @@
       ? "Numeric source coordinate · review pending"
       : "Exact site"}</span
   ><span><i class="glyph approximate"></i>Approximate source coordinate</span
+  ><span><i class="glyph unverified"></i>Source-provided · unverified (private rehearsal)</span
   ><span><i class="glyph cluster"></i>Parent cluster</span
   >{#if mode === "synthetic"}<span
       ><i class="glyph cluster city"></i>CITY aggregate</span
@@ -113,6 +114,11 @@
     border: 2px solid #262820;
     border-radius: 50%;
     background: #d8c99b;
+  }
+  .unverified {
+    border: 2px solid #171a18;
+    border-radius: 50%;
+    background: #e0a45d;
   }
   .cluster {
     border-radius: 50%;

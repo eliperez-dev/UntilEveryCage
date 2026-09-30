@@ -52,6 +52,19 @@ describe('private real-preview repository', () => {
     expect(unmapped.latitude).toBeNull();
   });
 
+  it('keeps FSIS source-provided coordinates in the visibly unverified private category', () => {
+    const fsis = mapRealPreviewCandidate(parseRealPreviewCandidate(record({
+      source_id: 'us.fsis',
+      display_precision: 'source_provided_unverified',
+      coordinate_precision: 'source-provided',
+    })));
+    expect(fsis).toMatchObject({
+      sourceId: 'us.fsis',
+      precision: 'approximate',
+      coordinatePrecision: 'source-provided',
+    });
+  });
+
   it('rejects zero-zero, out-of-range, non-finite, and incomplete coordinate pairs', () => {
     for (const bad of [
       record({ latitude: 0, longitude: 0 }),

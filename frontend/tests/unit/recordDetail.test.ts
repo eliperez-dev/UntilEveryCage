@@ -22,6 +22,7 @@ describe('private preview record detail surface', () => {
     expect(component).toContain('City reference · approximate');
     expect(component).toContain('Coarse city/postal area');
     expect(component).toContain('Approximate source coordinate');
+    expect(component).toContain('Source-provided coordinate · precision unverified (not exact; private rehearsal only)');
     expect(component).toContain('Unmapped · no map location supplied');
     expect(component).toContain('Coordinate review');
     expect(component).toContain('Factual review');

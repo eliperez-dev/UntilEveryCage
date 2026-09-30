@@ -29,7 +29,9 @@
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
   const sourceLabel = (value: string | null) => value ?? "All source feeds";
   const treatment = (record: LabRecord) =>
-    record.defaultMapScope === false
+    record.sourceId === 'us.fsis' && record.coordinatePrecision === 'source-provided'
+      ? 'Source-provided coordinate · precision unverified · private rehearsal, not approved'
+      : record.defaultMapScope === false
       ? `Outside the default map scope${record.mapScopeReason ? ` · ${record.mapScopeReason.replaceAll('_', ' ')}` : ''} · list/search only`
       : record.latitude === null || record.longitude === null
       ? "No map position · list/search only"

@@ -97,7 +97,9 @@
   const v1Logo = `${import.meta.env.BASE_URL}assets/icon.png`;
   const precisionLabel = (record: LabRecord) =>
     mode === "real-preview"
-      ? record.precision === "city"
+      ? record.sourceId === 'us.fsis' && record.coordinatePrecision === 'source-provided'
+        ? 'Source-provided coordinate · precision unverified · private rehearsal, not approved'
+        : record.precision === "city"
         ? "Approximate city location · not a facility point"
         : record.precision === "exact"
           ? "Numeric source coordinate · pending review"

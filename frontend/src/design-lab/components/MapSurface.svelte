@@ -175,7 +175,7 @@
   const diagnosticsEnabled = $derived(
     import.meta.env.DEV && mode === "real-preview",
   );
-  const usingMvt = false;
+  const usingMvt = mode === "real-preview";
   const hitRate = $derived.by(() => {
     const total =
       (mapDiagnostics?.cacheHits ?? 0) + (mapDiagnostics?.cacheMisses ?? 0);

@@ -458,6 +458,11 @@ class RealPreviewImporterTests(unittest.TestCase):
             IMPORTER.public_zero_counts(PublicRowsDatabase())
         self.assertEqual(failure.exception.code, "public_rows_present")
 
+    def test_map_unmapped_excludes_private_preview_features_but_counts_nonplaceable_groups(self):
+        self.assertEqual(IMPORTER.map_unmapped_candidate_count(35_073, 7_241), 27_832)
+        with self.assertRaises(IMPORTER.ImportFailure):
+            IMPORTER.map_unmapped_candidate_count(10, 11)
+
 
 if __name__ == "__main__":
     unittest.main()
