@@ -61,6 +61,25 @@ class LifecycleTests(unittest.TestCase):
             self.assertEqual(rp.main(["refresh"]), 2)
             refresh.assert_not_called()
 
+    def test_offline_actions_are_scoped_to_a_dedicated_owned_project(self):
+        previous_project, previous_volume = rp.PROJECT, rp.VOLUME
+        try:
+            with patch.object(rp, "up", return_value={"ok": True}) as up:
+                self.assertEqual(rp.main(["offline-up"]), 0)
+                up.assert_called_once_with(offline_handoff=True)
+                self.assertEqual(rp.PROJECT, "uec-offline-fsis-private")
+                self.assertEqual(rp.VOLUME, "uec-offline-fsis-private-postgres")
+            with patch.object(rp, "down", return_value=None) as down:
+                self.assertEqual(rp.main(["offline-down"]), 0)
+                down.assert_called_once_with()
+                self.assertEqual(rp.PROJECT, "uec-offline-fsis-private")
+            with patch.object(rp, "reset", return_value=None) as reset:
+                self.assertEqual(rp.main(["offline-reset"]), 0)
+                reset.assert_called_once_with()
+                self.assertEqual(rp.PROJECT, "uec-offline-fsis-private")
+        finally:
+            rp.PROJECT, rp.VOLUME = previous_project, previous_volume
+
     def test_default_private_root_is_private_drive(self):
         self.assertEqual(str(rp.PRIVATE_ROOT), r"D:\UntilEveryCage-private")
 

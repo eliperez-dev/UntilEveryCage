@@ -80,7 +80,7 @@ def main() -> int:
     for name in ("launchpad", "launchpad-stop", "launchpad-status", "launchpad-probe", "launchpad-reset"):
         sub.add_parser(name, help=f"one-command frontend launchpad {name.removeprefix('launchpad-') or 'start'}")
     real_preview = sub.add_parser("real-preview", help="isolated private real-data preview lifecycle")
-    real_preview.add_argument("action", choices=("up", "status", "probe", "down", "reset"))
+    real_preview.add_argument("action", choices=("up", "status", "probe", "down", "reset", "offline-up", "offline-status", "offline-probe", "offline-down", "offline-reset"))
     sub.add_parser("test", help="root legacy static/Jest tests").add_argument("--full", action="store_true")
     sub.add_parser("pipeline", help="run Python pipeline tests").add_argument("args", nargs=argparse.REMAINDER)
     sub.add_parser("contracts", help="run contract tests")

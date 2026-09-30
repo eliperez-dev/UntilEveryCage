@@ -31,7 +31,7 @@ REPORT = Path(__file__).parents[3] / "data" / "manifests" / "d1-data-readiness-r
 CHUNK = 1024 * 1024
 NUMERIC_PRECISIONS = {
     "numeric", "exact", "source_numeric", "source_coordinates", "facility_coordinate",
-    "source-provided", "source-precision-unknown",
+    "source-provided", "source-provided-unspecified", "source-precision-unknown",
 }
 
 
@@ -48,6 +48,20 @@ def digest_file(path: Path) -> tuple[str, int]:
             digest.update(block)
             size += len(block)
     return digest.hexdigest(), size
+
+
+def count_jsonl_rows(path: Path) -> int:
+    count = 0
+    with path.open("rb") as stream:
+        for line in stream:
+            if not line.strip():
+                raise ImportFailure("offline_handoff_row_invalid")
+            try:
+                json.loads(line)
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                raise ImportFailure("offline_handoff_row_invalid") from None
+            count += 1
+    return count
 
 
 def json_object(path: Path) -> dict[str, Any]:
@@ -475,7 +489,7 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
         coarse_count += chosen[1] == "city_postal"
         if chosen[1] == "numeric_source_coordinate":
             precision_unknown_coordinate_count += chosen[7] == "source-precision-unknown"
-            source_provided_coordinate_count += chosen[7] == "source-provided"
+            source_provided_coordinate_count += chosen[7] in {"source-provided", "source-provided-unspecified"}
     for parsed in parsed_rows:
         identifier, klass, country, city, postal, lat, lon, precision, observed, _, department = parsed[:11]
         group_key = parsed[-1]
@@ -539,6 +553,151 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
     group_keys = set(representatives)
     rejected_zero_coordinates = len(zero_coordinate_groups - usable_coordinate_groups)
     return count, numeric_count, coarse_count, candidate_count, unmapped_count, mapped_non_candidate_count, len(group_keys), len(parsed_rows), rejected_zero_coordinates, precision_unknown_coordinate_count, source_provided_coordinate_count, group_keys, coarse_placeable, len(group_keys) - coarse_placeable
+
+
+OFFLINE_HANDOFF_SOURCES = ("fr.dgal.section-i", "fr.dgal.section-ii", "it.853-2004", "us.fsis")
+
+
+def verify_offline_handoff(root: Path, source: str) -> dict[str, Any]:
+    """Verify one retained normalized handoff using local files only."""
+    if root.is_symlink() or not root.is_dir():
+        raise ImportFailure("offline_handoff_root_unavailable")
+    if source not in OFFLINE_HANDOFF_SOURCES:
+        raise ImportFailure("offline_source_not_supported")
+    policy = json_object(POLICY).get("sources", {}).get(source)
+    terms_path = Path(__file__).parents[3] / str(policy.get("terms_review", "")) if isinstance(policy, dict) else Path()
+    if (not isinstance(policy, dict) or policy.get("enabled") is not True
+            or json_object(terms_path).get("decision") != "approved"):
+        raise ImportFailure("offline_preview_policy_blocked")
+    manifest_path = root / "d6-graph-mvp" / "handoffs" / source / "manifest.json"
+    normalized_path = manifest_path.parent / "normalized" / "records.jsonl"
+    graph_manifest_path = manifest_path.parent / "graph-candidates" / "manifest.json"
+    graph_records_path = graph_manifest_path.parent / "records.jsonl"
+    for path in (manifest_path, normalized_path, graph_manifest_path, graph_records_path):
+        if not path.is_file() or path.is_symlink():
+            raise ImportFailure("offline_handoff_artifact_missing")
+    manifest = json_object(manifest_path)
+    graph_manifest = json_object(graph_manifest_path)
+    if (manifest.get("source_id") != source
+            or manifest.get("contract_version") != "candidate-handoff-v1"
+            or manifest.get("publication_state") != "private-candidate"
+            or manifest.get("release_state") != "not-created"
+            or manifest.get("review_state") != "review_required"
+            or manifest.get("privacy_gate") != "pending"
+            or manifest.get("coordinate_gate") != "review_required"
+            or manifest.get("code_version") != policy.get("adapter_version")
+            or manifest.get("config_version") != policy.get("schema_version")
+            or graph_manifest.get("schema_version") != "private-graph-candidate-set-v1"
+            or graph_manifest.get("review_state") != "review_required"
+            or graph_manifest.get("privacy_status") != "pending"
+            or graph_manifest.get("publication_status") != "not_eligible"
+            or graph_manifest.get("storage_state") != "private"
+            or graph_manifest.get("auto_merge") is not False):
+        raise ImportFailure("offline_handoff_provenance_mismatch")
+    source_hash, normalized_hash, expected_rows, source_url, retrieved, code, config = manifest_provenance(manifest)
+    normalized_actual, _ = digest_file(normalized_path)
+    graph_actual, _ = digest_file(graph_records_path)
+    if normalized_actual != normalized_hash:
+        raise ImportFailure("offline_normalized_hash_mismatch")
+    if graph_actual != graph_manifest.get("records_sha256"):
+        raise ImportFailure("offline_graph_hash_mismatch")
+    graph_rows = graph_manifest.get("candidate_rows")
+    quarantined = graph_manifest.get("quarantined_source_rows")
+    if (not isinstance(graph_rows, int) or graph_rows != expected_rows
+            or count_jsonl_rows(graph_records_path) != graph_rows
+            or not isinstance(quarantined, int) or quarantined < 0):
+        raise ImportFailure("offline_handoff_count_mismatch")
+    allowed_fields = policy.get("allowed_preview_fields")
+    if not isinstance(allowed_fields, list) or not all(isinstance(field, str) for field in allowed_fields):
+        raise ImportFailure("preview_policy_invalid")
+    validate_preview_fields(normalized_path, set(allowed_fields))
+    manifests = {source: (manifest_path, manifest)}
+    snapshot = snapshot_identity(manifests)
+    return {"source": source, "policy": policy, "manifest_path": manifest_path,
+            "normalized_path": normalized_path, "graph_manifest_path": graph_manifest_path,
+            "graph_records_path": graph_records_path, "manifest": manifest,
+            "graph_manifest": graph_manifest, "source_hash": source_hash,
+            "normalized_hash": normalized_hash, "source_url": source_url,
+            "retrieved": retrieved, "code": code, "config": config,
+            "expected_rows": expected_rows, "quarantined": quarantined,
+            "normalized_actual": normalized_actual, "graph_actual": graph_actual,
+            "snapshot": snapshot}
+
+
+def verify_offline_handoffs(root: Path) -> list[dict[str, Any]]:
+    """Verify the selected retained handoffs; never discovers or reacquires sources."""
+    return [verify_offline_handoff(root, source) for source in OFFLINE_HANDOFF_SOURCES]
+
+
+def import_offline_handoffs(root: Path, database_url: str) -> dict[str, Any]:
+    """Import only verified retained packets without network or live-run claims."""
+    verified = verify_offline_handoffs(root)
+    snapshot = snapshot_identity({item["source"]: (item["manifest_path"], item["manifest"]) for item in verified})
+    run_id = f"offline-handoff-{snapshot[:20]}"
+    counts_by_source: dict[str, Any] = {}
+    total_observations = total_candidates = total_visible = total_provided = total_numeric = total_city_postal = 0
+    total_accepted = total_quarantined = 0
+    public_releases = public_projection = 0
+    with psycopg.connect(database_url) as db, db.transaction():
+        public_zero_counts(db)
+        db.execute("INSERT INTO real_preview.imports(snapshot_sha256,observation_count) VALUES (%s,%s) ON CONFLICT DO NOTHING",
+                   (snapshot, sum(item["expected_rows"] for item in verified)))
+        for item in verified:
+            source, manifest = item["source"], item["manifest"]
+            source_hash, normalized_hash = item["source_hash"], item["normalized_hash"]
+            source_url, retrieved, code, config = item["source_url"], item["retrieved"], item["code"], item["config"]
+            expected_rows, quarantined = item["expected_rows"], item["quarantined"]
+            db.execute("""INSERT INTO real_preview.source_manifests
+                (snapshot_sha256,source_id,source_artifact_sha256,normalized_sha256,normalized_rows,source_url,retrieved_at,code_version,config_version)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""",
+                (snapshot, source, source_hash, normalized_hash, expected_rows, source_url, retrieved, code, config))
+            (observations, numeric, coarse, candidates, unmapped, mapped_non_candidates, _, _, rejected_zero,
+             precision_unknown, source_provided, _, placeable, unplaceable) = import_rows(
+                db, source, item["normalized_path"], expected_rows, snapshot)
+            details = {"offline_handoff": True, "fresh_live_run": False, "test_only_simulated_reviews": False,
+                       "source_manifest_sha256": hashlib.sha256(item["manifest_path"].read_bytes()).hexdigest(),
+                       "graph_manifest_sha256": hashlib.sha256(item["graph_manifest_path"].read_bytes()).hexdigest(),
+                       "graph_records_sha256": item["graph_actual"],
+                       "accepted_normalized_rows": expected_rows, "quarantined_source_rows": quarantined,
+                       "classification_note": "Pending records remain unapproved; only source-provided unverified coordinates are rendered in the local private rehearsal."}
+            db.execute("""INSERT INTO real_preview.source_preview_runs
+                (run_id,source_id,snapshot_sha256,source_url,retrieved_at,source_artifact_sha256,normalized_sha256,
+                 adapter_version,schema_version,input_count,accepted_count,quarantined_count,out_of_scope_count,
+                 imported_observation_count,facility_count,numeric_coordinate_count,coarse_placeable_count,unmapped_count,
+                 api_listable_count,map_visible_count,idempotent_replay,public_rows,runtime_details)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,0,%s,%s,%s,%s,%s,%s,%s,false,0,%s)
+                ON CONFLICT (run_id) DO NOTHING""",
+                (f"{run_id}-{source}", source, snapshot, source_url, retrieved, source_hash, normalized_hash, code, config,
+                 expected_rows + quarantined, expected_rows, quarantined, observations, candidates, numeric, placeable,
+                 unplaceable, candidates, numeric + placeable, psycopg.types.json.Jsonb(details)))
+            counts_by_source[source] = {"accepted_normalized_rows": expected_rows, "quarantined_source_rows": quarantined,
+                "observations": observations, "candidates": candidates,
+                "source_provided_unverified": source_provided if source == "us.fsis" else 0,
+                "exact": 0, "coarse": coarse, "coarse_placeable": placeable, "unmapped_candidates": unplaceable,
+                "unmapped_observations": unmapped, "map_visible": numeric + placeable,
+                "rejected_zero_coordinates": rejected_zero, "precision_unknown": precision_unknown}
+            total_observations += observations
+            total_candidates += candidates
+            total_visible += numeric + placeable
+            total_numeric += numeric
+            total_city_postal += coarse
+            total_provided += source_provided if source == "us.fsis" else 0
+            total_accepted += expected_rows
+            total_quarantined += quarantined
+        public_releases, public_projection = public_zero_counts(db)
+    return {"status": "imported", "source_id": "offline-retained-handoffs", "run_id": run_id,
+            "offline_handoff": True, "fresh_live_run": False,
+            "source_scoped_candidate_count": total_candidates,
+            "numeric_coordinate_count": total_numeric, "city_postal_count": total_city_postal,
+            "source_bundle_bytes_retained": False,
+            "accepted_normalized_rows": total_accepted, "quarantined_source_rows": total_quarantined,
+            "counts": {"observations": total_observations, "candidates": total_candidates,
+                       "source_provided_unverified": total_provided, "exact": 0,
+                       "coarse": sum(item["coarse"] for item in counts_by_source.values()),
+                       "unmapped_candidates": sum(item["unmapped_candidates"] for item in counts_by_source.values()),
+                       "map_visible": total_visible, "public_release_count": public_releases,
+                       "public_projection_count": public_projection},
+            "by_source": counts_by_source}
 
 
 def run(root: Path, database_url: str, *, source_id: str | None = None,
@@ -1042,15 +1201,21 @@ def main() -> int:
     parser.add_argument("--municipality-index", type=Path, help="provenanced Statbel municipality centroid index")
     parser.add_argument("--run-id", help="unique live acquisition/run identifier")
     parser.add_argument("--run-manifest", type=Path, help="exact shared refresh-run manifest")
+    parser.add_argument("--offline-handoff", action="store_true", help="import only the hash-verified retained FSIS private handoff; never reacquire")
     args = parser.parse_args()
     result: dict[str, Any]
     try:
         database_url = os.environ.get(args.database_url_env)
         if not database_url:
             raise ImportFailure("database_configuration_missing")
-        result = run(args.root, database_url, source_id=args.source_id, manifest_path=args.manifest,
-                     municipality_index_path=args.municipality_index, run_id=args.run_id,
-                     run_manifest_path=args.run_manifest)
+        if args.offline_handoff:
+            if args.source_id not in (None, "us.fsis"):
+                raise ImportFailure("offline_source_not_supported")
+            result = import_offline_handoffs(args.root, database_url)
+        else:
+            result = run(args.root, database_url, source_id=args.source_id, manifest_path=args.manifest,
+                         municipality_index_path=args.municipality_index, run_id=args.run_id,
+                         run_manifest_path=args.run_manifest)
     except ImportFailure as error:
         result = {"status": "failed", "error_code": error.code, "observation_count": 0,
                   "facility_candidate_count": 0, "numeric_coordinate_count": 0, "city_postal_count": 0,

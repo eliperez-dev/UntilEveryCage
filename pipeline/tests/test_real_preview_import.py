@@ -5,6 +5,7 @@ import importlib.util
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 MODULE_PATH = Path(__file__).parents[1] / "scripts" / "maintenance" / "import-real-preview.py"
@@ -15,6 +16,59 @@ SPEC.loader.exec_module(IMPORTER)
 
 
 class RealPreviewImporterTests(unittest.TestCase):
+    def _offline_fixture(self, root: Path, *, source_id: str = "us.fsis") -> None:
+        handoff = root / "d6-graph-mvp" / "handoffs" / "us.fsis"
+        normalized_dir = handoff / "normalized"
+        graph_dir = handoff / "graph-candidates"
+        normalized_dir.mkdir(parents=True)
+        graph_dir.mkdir()
+        normalized = json.dumps({"source_id": "us.fsis", "source_record_key": "test-only-key",
+            "source_values": {}, "normalized": {"establishment_number": "test-only-group",
+                "city": "Example", "coordinates": {}}}, separators=(",", ":")).encode() + b"\n"
+        (normalized_dir / "records.jsonl").write_bytes(normalized)
+        graph_records = b"{}\n"
+        (graph_dir / "records.jsonl").write_bytes(graph_records)
+        manifest = {"source_id": source_id, "contract_version": "candidate-handoff-v1",
+            "publication_state": "private-candidate", "release_state": "not-created",
+            "review_state": "review_required", "privacy_gate": "pending", "coordinate_gate": "review_required",
+            "code_version": "us-fsis-candidate-v2", "config_version": "us-fsis-mpi-v1",
+            "checksum_sha256": "a" * 64, "normalized_sha256": hashlib.sha256(normalized).hexdigest(),
+            "source_url": "https://www.fsis.usda.gov/sites/default/files/media_file/documents/MPI_Directory_by_Establishment_Number.csv",
+            "retrieved_at_utc": "2026-09-20T00:00:00Z", "normalized_rows": 1}
+        (handoff / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        graph_manifest = {"schema_version": "private-graph-candidate-set-v1", "records_sha256": hashlib.sha256(graph_records).hexdigest(),
+            "candidate_rows": 1, "quarantined_source_rows": 0, "review_state": "review_required",
+            "privacy_status": "pending", "publication_status": "not_eligible", "storage_state": "private", "auto_merge": False}
+        (graph_dir / "manifest.json").write_text(json.dumps(graph_manifest), encoding="utf-8")
+
+    def test_offline_handoff_hash_mismatch_fails_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._offline_fixture(root)
+            normalized = root / "d6-graph-mvp/handoffs/us.fsis/normalized/records.jsonl"
+            normalized.write_bytes(normalized.read_bytes() + b" ")
+            with self.assertRaisesRegex(IMPORTER.ImportFailure, "offline_normalized_hash_mismatch"):
+                IMPORTER.verify_offline_handoff(root, "us.fsis")
+
+    def test_offline_handoff_source_mismatch_fails_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._offline_fixture(root, source_id="us.aphis")
+            with self.assertRaisesRegex(IMPORTER.ImportFailure, "offline_handoff_provenance_mismatch"):
+                IMPORTER.verify_offline_handoff(root, "us.fsis")
+
+    def test_offline_handoff_uses_only_local_hash_checked_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._offline_fixture(root)
+            with patch("urllib.request.urlopen", side_effect=AssertionError("network is forbidden")):
+                verified = IMPORTER.verify_offline_handoff(root, "us.fsis")
+            self.assertEqual(verified["source"], "us.fsis")
+            self.assertEqual(verified["expected_rows"], 1)
+            self.assertEqual(verified["quarantined"], 0)
+            self.assertEqual(verified["normalized_actual"], verified["normalized_hash"])
+            self.assertEqual(verified["graph_actual"], verified["graph_manifest"]["records_sha256"])
+
     def test_catalonia_locality_candidates_are_searchable_but_outside_default_map_scope(self):
         parsed = IMPORTER.parse_row("es.cat.feed-sandach", {
             "source_id": "es.cat.feed-sandach",
@@ -125,6 +179,17 @@ class RealPreviewImporterTests(unittest.TestCase):
         })
         self.assertEqual(unmapped[1], "unmapped_private_observation")
         self.assertEqual(unmapped[-1], "group-3")
+
+    def test_fsis_source_provided_coordinate_remains_unverified_precision(self):
+        row = IMPORTER.parse_row("us.fsis", {
+            "source_id": "us.fsis", "source_record_key": "retained-source-key",
+            "normalized": {"establishment_number": "retained-group", "city": "Example",
+                "coordinates": {"latitude": 40.1, "longitude": -75.2, "precision": "source-provided"}},
+        })
+        self.assertEqual(row[1], "numeric_source_coordinate", "private preview may render source-provided positions")
+        self.assertEqual(row[7], "source-provided")
+        self.assertNotIn(row[7], {"exact", "numeric", "facility_coordinate"})
+        self.assertEqual(row[-1], "retained-group")
 
     def test_optional_display_evidence_is_allowlisted_and_privacy_gated(self):
         pending = IMPORTER.parse_row("it.853-2004", {

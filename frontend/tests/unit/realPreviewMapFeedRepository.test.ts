@@ -11,6 +11,11 @@ const envelope = {
 };
 
 describe('real-preview native map feed', () => {
+  it('preserves the private FSIS unverified precision instead of relabeling it exact or coarse', () => {
+    const payload = { ...envelope, data: [{ ...envelope.data[0], precision: 'source_provided_unverified' }] };
+    const feature = parseRealPreviewMapFeed(payload).collection.features[0];
+    expect(feature?.properties).toMatchObject({ kind: 'source-coordinate', precision: 'source_provided_unverified' });
+  });
   it('projects only minimal coordinates, kind, opaque key, precision, and weight', () => {
     const result = parseRealPreviewMapFeed(envelope);
     expect(result.collection.features).toHaveLength(2);

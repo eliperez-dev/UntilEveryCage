@@ -4,6 +4,7 @@ import type { ViewportBounds } from '../design-lab/contract';
 export type RealPreviewPrecision =
   | 'source_numeric_pending_review'
   | 'approximate_source_provided_pending_review'
+  | 'source_provided_unverified'
   | 'approximate_source_precision_unknown_pending_review'
   | 'city_postal_coarse'
   | 'city_reference_approximate'
@@ -58,6 +59,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const DISPLAY_PRECISIONS = new Set<RealPreviewPrecision>([
   'source_numeric_pending_review',
   'approximate_source_provided_pending_review',
+  'source_provided_unverified',
   'approximate_source_precision_unknown_pending_review',
   'city_postal_coarse',
   'city_reference_approximate',

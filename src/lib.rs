@@ -909,11 +909,10 @@ fn real_preview_candidate(row: &tokio_postgres::Row) -> Value {
         "source_id": row.get::<_, String>("source_id"),
         "location_class": kind,
         "display_precision": if kind == "numeric_source_coordinate" {
-            match row.get::<_, Option<String>>("coordinate_precision").as_deref() {
-                Some("numeric" | "exact" | "source_numeric" | "source_coordinates" | "facility_coordinate") => "source_numeric_pending_review",
-                Some("source-provided") => "approximate_source_provided_pending_review",
-                _ => "approximate_source_precision_unknown_pending_review",
-            }
+            real_preview_coordinate_precision(
+                row.get::<_, String>("source_id").as_str(),
+                row.get::<_, Option<String>>("coordinate_precision").as_deref(),
+            )
         } else if let Some((display_precision, _, _)) = reference_disclosure { display_precision } else { "city_postal_coarse" },
         "country_code": row.get::<_, Option<String>>("country_code"),
         "default_map_scope": row.get::<_, bool>("default_map_scope"),
@@ -929,8 +928,19 @@ fn real_preview_candidate(row: &tokio_postgres::Row) -> Value {
         "privacy_screening_status": "pending",
         "project_approval": false,
         "publication_status": "not_published",
-        "preview_label": if is_city_reference { "Approximate city location — not a facility point; private preview only" } else { "Private real V2 candidate — not project-approved or published" }
+        "preview_label": if is_city_reference { "Approximate city location — not a facility point; private preview only" }
+            else if row.get::<_, String>("source_id") == "us.fsis" && row.get::<_, Option<String>>("coordinate_precision").as_deref() == Some("source-provided") { "FSIS source-provided coordinate — precision unverified; private rehearsal only; not approved or published" }
+            else { "Private real V2 candidate — not project-approved or published" }
     })
+}
+
+fn real_preview_coordinate_precision(source_id: &str, precision: Option<&str>) -> &'static str {
+    match (source_id, precision) {
+        ("us.fsis", Some("source-provided")) => "source_provided_unverified",
+        (_, Some("numeric" | "exact" | "source_numeric" | "source_coordinates" | "facility_coordinate")) => "source_numeric_pending_review",
+        (_, Some("source-provided")) => "approximate_source_provided_pending_review",
+        _ => "approximate_source_precision_unknown_pending_review",
+    }
 }
 
 fn real_preview_reference_disclosure(source: Option<&str>) -> (&'static str, &'static str, &'static str) {
@@ -1161,7 +1171,8 @@ numeric_features AS (
          NULL::text AS parent_key,
          'source_coordinate'::text AS kind,
          1::integer AS count,
-         CASE WHEN coordinate_precision IN ('numeric','exact','source_numeric','source_coordinates','facility_coordinate') THEN 'source_numeric_pending_review'
+         CASE WHEN source_id = 'us.fsis' AND coordinate_precision = 'source-provided' THEN 'source_provided_unverified'
+              WHEN coordinate_precision IN ('numeric','exact','source_numeric','source_coordinates','facility_coordinate') THEN 'source_numeric_pending_review'
               WHEN coordinate_precision = 'source-provided' THEN 'approximate_source_provided_pending_review'
               ELSE 'approximate_source_precision_unknown_pending_review' END AS precision,
          14::integer AS next_zoom,
@@ -1280,7 +1291,8 @@ WITH sources AS (
 ), projected AS (
   SELECT candidate_id::text AS feature_key,
          'source_coordinate'::text AS kind,
-         CASE WHEN coordinate_precision IN ('numeric','exact','source_numeric','source_coordinates','facility_coordinate') THEN 'source_numeric_pending_review'
+         CASE WHEN source_id = 'us.fsis' AND coordinate_precision = 'source-provided' THEN 'source_provided_unverified'
+              WHEN coordinate_precision IN ('numeric','exact','source_numeric','source_coordinates','facility_coordinate') THEN 'source_numeric_pending_review'
               WHEN coordinate_precision='source-provided' THEN 'approximate_source_provided_pending_review'
               ELSE 'approximate_source_precision_unknown_pending_review' END AS precision,
          source_id, latitude, longitude, 1::bigint AS weight
@@ -2960,6 +2972,24 @@ mod v2_api_tests {
         assert!(real_preview_https_url(Some("http://example.test/source".into())).is_none());
         assert!(real_preview_https_url(Some("https://user@example.test/source".into())).is_none());
         assert!(real_preview_https_url(Some("not a URL".into())).is_none());
+    }
+
+    #[test]
+    fn fsis_source_coordinates_keep_a_private_unverified_precision_category() {
+        assert_eq!(
+            real_preview_coordinate_precision("us.fsis", Some("source-provided")),
+            "source_provided_unverified"
+        );
+        assert_ne!(
+            real_preview_coordinate_precision("us.fsis", Some("source-provided")),
+            "source_numeric_pending_review"
+        );
+        assert_eq!(
+            real_preview_coordinate_precision("other.source", Some("source-provided")),
+            "approximate_source_provided_pending_review"
+        );
+        let source = include_str!("lib.rs");
+        assert!(source.matches("CASE WHEN source_id = 'us.fsis' AND coordinate_precision = 'source-provided' THEN 'source_provided_unverified'").count() >= 2);
     }
 
     #[test]

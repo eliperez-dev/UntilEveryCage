@@ -368,7 +368,7 @@ def _build_api() -> None:
         raise PreviewError("local API build failed; see private local diagnostic output")
 
 
-def up() -> dict[str, object]:
+def up(*, offline_handoff: bool = False) -> dict[str, object]:
     global SESSION_TOKEN, ACTIVE_PREVIEW_TOKEN
     prerequisites()
     token = secrets.token_urlsafe(32)
@@ -401,7 +401,10 @@ def up() -> dict[str, object]:
                        "city_postal_count": 0, "public_release_count": 0,
                        "public_projection_count": 0}
         else:
-            output = _run_checked([sys.executable, str(IMPORTER), "--root", str(PRIVATE_ROOT), "--database-url-env", "UEC_DATABASE_URL", "--json"], env, "private preview import")
+            import_args = [sys.executable, str(IMPORTER), "--root", str(PRIVATE_ROOT), "--database-url-env", "UEC_DATABASE_URL", "--json"]
+            if offline_handoff:
+                import_args.extend(["--offline-handoff", "--source-id", "us.fsis"])
+            output = _run_checked(import_args, env, "private preview import")
             try:
                 summary = json.loads(output)
                 if not isinstance(summary, dict) or summary.get("status") != "imported" or not isinstance(summary.get("observation_count"), int):
@@ -426,7 +429,7 @@ def up() -> dict[str, object]:
                         "VITE_API_ORIGIN": f"http://127.0.0.1:{API_PORT}"}
             vite = subprocess.Popen([shutil.which("node") or "node", str(vite_path), "--host", "127.0.0.1", "--port", str(WEB_PORT), "--strictPort"], cwd=ROOT / "frontend", env=vite_env, stdout=vite_log, stderr=subprocess.STDOUT)
             vite_log.close(); started.append(vite)
-        _write_state({"project": PROJECT, "api_pid": api.pid, "vite_pid": vite.pid if vite else None, "ports": [API_PORT, WEB_PORT] if vite else [API_PORT]})
+        _write_state({"project": PROJECT, "preview_mode": "offline_fsis_handoff" if offline_handoff else "retained_private_handoffs", "api_pid": api.pid, "vite_pid": vite.pid if vite else None, "ports": [API_PORT, WEB_PORT] if vite else [API_PORT]})
         deadline = time.monotonic() + 180
         while time.monotonic() < deadline:
             if api.poll() is not None or (vite is not None and vite.poll() is not None):
@@ -446,13 +449,15 @@ def up() -> dict[str, object]:
         if auth_status != 200 or not isinstance(api_counts, dict):
             raise PreviewError("authenticated real-preview API count probe failed")
         expected_api_counts = {
-            "facility_candidate_count": summary.get("source_scoped_candidate_count"),
-            "numeric_coordinate_count": summary.get("numeric_coordinate_count"),
-            "city_postal_count": summary.get("city_postal_count"),
+            "facility_candidate_count": summary.get("source_scoped_candidate_count", summary.get("counts", {}).get("candidates")),
+            "numeric_coordinate_count": summary.get("numeric_coordinate_count", summary.get("counts", {}).get("source_provided_unverified")),
+            "city_postal_count": summary.get("city_postal_count", summary.get("counts", {}).get("coarse")),
         }
         if any(api_counts.get(key) != value for key, value in expected_api_counts.items()):
             raise PreviewError("authenticated API aggregates differ from importer output")
-        list_status, page = _http(f"{counts_url.rsplit('/', 1)[0]}/locations?limit=1", token)
+        requested_source = "us.fsis" if offline_handoff else None
+        list_suffix = f"?source_id={urllib.parse.quote(requested_source, safe='')}&limit=1" if requested_source else "?limit=1"
+        list_status, page = _http(f"{counts_url.rsplit('/', 1)[0]}/locations{list_suffix}", token)
         page_data = page.get("data") if page else None
         if list_status != 200 or not isinstance(page_data, list):
             raise PreviewError("authenticated real-preview candidate list probe failed")
@@ -467,7 +472,8 @@ def up() -> dict[str, object]:
                     "public_projection_count": summary.get("public_projection_count")}
         candidate = page_data[0]
         candidate_id = candidate.get("candidate_id") if isinstance(candidate, dict) else None
-        if not isinstance(candidate_id, str) or candidate.get("project_approval") is not False:
+        source_id = candidate.get("source_id") if isinstance(candidate, dict) else None
+        if not isinstance(candidate_id, str) or candidate.get("project_approval") is not False or not isinstance(source_id, str):
             raise PreviewError("candidate response omitted its safe opaque identity or approval boundary")
         detail_status, detail = _http(f"{counts_url.rsplit('/', 1)[0]}/locations/{candidate_id}", token)
         detail_data = detail.get("data") if detail else None
@@ -491,7 +497,11 @@ def up() -> dict[str, object]:
                                                  "east": 180, "north": 90, "limit": 100})
         viewport_status, viewport = _http(f"{counts_url.rsplit('/', 1)[0]}/viewport?{viewport_query}", token)
         viewport_rows = viewport.get("data") if viewport else None
-        if viewport_status != 200 or viewport_rows != []:
+        if offline_handoff:
+            if (viewport_status != 200 or not isinstance(viewport_rows, list)
+                    or not any(isinstance(row, dict) and row.get("display_precision") == "source_provided_unverified" for row in viewport_rows)):
+                raise PreviewError("offline viewport did not preserve its private unverified-coordinate classification")
+        elif viewport_status != 200 or viewport_rows != []:
             raise PreviewError("viewport must be empty because the source has no approved coordinates")
         if source_id == "es.cat.feed-sandach":
             if detail_data.get("display_precision") != "city_postal_coarse":
@@ -1663,9 +1673,10 @@ def geospatial_status(source_id: str | None, database_url: str | None = None) ->
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    global PROJECT, VOLUME
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("up", "status", "probe", "down", "reset", "refresh", "strict-live-private-e2e", "strict-refresh", "enrich-locations", "geospatial-status"))
+    parser.add_argument("action", choices=("up", "status", "probe", "down", "reset", "offline-up", "offline-status", "offline-probe", "offline-down", "offline-reset", "refresh", "strict-live-private-e2e", "strict-refresh", "enrich-locations", "geospatial-status"))
     parser.add_argument("--source")
     parser.add_argument("--existing-run", help="complete a prior exact live lifecycle run without reacquisition")
     parser.add_argument("--all", action="store_true", help="enrich all source snapshots")
@@ -1673,6 +1684,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--database-url", help="loopback database URL; defaults to the owned preview database")
     args = parser.parse_args(argv)
     try:
+        if args.action.startswith("offline-"):
+            # Dedicated ownership namespace for this retained, offline snapshot.
+            PROJECT = "uec-offline-fsis-private"
+            VOLUME = "uec-offline-fsis-private-postgres"
         if args.action == "enrich-locations":
             if bool(args.source) == bool(args.all):
                 raise PreviewError("enrich-locations requires exactly one of --source or --all")
@@ -1687,7 +1702,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         if args.action in {"refresh", "strict-live-private-e2e", "strict-refresh"} and not args.source:
             raise PreviewError(f"{args.action} requires an explicit --source")
-        result = (strict_live_private_e2e(args.source, args.existing_run) if args.action == "strict-live-private-e2e" else
+        result = (up(offline_handoff=True) if args.action == "offline-up" else
+                  status() if args.action == "offline-status" else
+                  probe() if args.action == "offline-probe" else
+                  down() if args.action == "offline-down" else
+                  reset() if args.action == "offline-reset" else
+                  strict_live_private_e2e(args.source, args.existing_run) if args.action == "strict-live-private-e2e" else
                   strict_refresh(args.source) if args.action == "strict-refresh" else
                   refresh_source(args.source, args.existing_run) if args.action == "refresh" else
                   {"up": up, "status": status, "probe": probe, "down": down, "reset": reset}[args.action]())

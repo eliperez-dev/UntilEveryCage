@@ -141,7 +141,7 @@ export function addMvtLocationLayers(map: MapLike, sourceId?: string): void {
   map.addLayer({
     id: 'mvt-source-coordinates', type: 'circle', source, 'source-layer': sourceLayer,
     filter: kind('source_coordinate'),
-    paint: { 'circle-radius': 6.5, 'circle-color': '#d8c99b', 'circle-opacity': 0.94, 'circle-stroke-color': '#171a18', 'circle-stroke-width': 2.5 },
+    paint: { 'circle-radius': 7, 'circle-color': ['match', ['get', 'precision'], 'source_provided_unverified', '#e0a45d', '#d8c99b'], 'circle-opacity': 0.94, 'circle-stroke-color': '#171a18', 'circle-stroke-width': 2.5 },
   });
 }
 

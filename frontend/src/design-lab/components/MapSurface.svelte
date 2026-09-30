@@ -812,7 +812,9 @@
   <div class="map-host" bind:this={host}></div>
   <small class="review-disclosure"
     >{mode === "real-preview"
-      ? "Private real V2 preview · not approved or published"
+      ? mapState.sourceId === "us.fsis"
+        ? "Local private rehearsal · FSIS source-provided coordinates, precision unverified · not approved or published"
+        : "Private real V2 preview · not approved or published"
       : "Synthetic development data"}</small
   >{#if basemapSwitching && pendingBasemap}<small
       class="map-status"

@@ -46,7 +46,7 @@ test('fresh FSIS CLI run is reconciled and selectable in the read-only preview',
   expect(api.search.data.some((entry: any) => entry.candidate_id === api.item.candidate_id)).toBe(true);
   expect(api.detail.data.candidate_id).toBe(api.item.candidate_id);
   expect(api.item.source_id).toBe(sourceId);
-  expect(api.item.display_precision).toBe('approximate_source_provided_pending_review');
+  expect(api.item.display_precision).toBe('source_provided_unverified');
   expect(api.viewport.data.some((entry: any) => entry.source_id === sourceId)).toBe(true);
 
   const feature = page.getByRole('button', { name: /^Open approximate source location for us\.fsis$/ }).first();
