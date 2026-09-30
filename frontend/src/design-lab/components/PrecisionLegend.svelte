@@ -1,10 +1,11 @@
 <script lang="ts">
   let { mode = "synthetic" }: { mode?: "synthetic" | "real-preview" } =
     $props();
+  let expanded = $state(false);
 </script>
 
-<div class="precision-legend" aria-label="Map symbol legend">
-  <strong>Map symbols</strong><span
+<div class="precision-legend" class:expanded aria-label="Map symbol legend">
+  <strong>Map symbols</strong><button type="button" class="legend-toggle" aria-expanded={expanded} onclick={() => (expanded = !expanded)}>Map symbols <span aria-hidden="true">{expanded ? "−" : "+"}</span></button><span
     ><i class:coordinate={mode === "real-preview"} class="glyph exact"
     ></i>{mode === "real-preview"
       ? "Numeric source coordinate · review pending"
@@ -15,7 +16,7 @@
   >{#if mode === "synthetic"}<span
       ><i class="glyph cluster city"></i>CITY aggregate</span
     ><span><i class="glyph cluster coarse"></i>AREA aggregate</span>{:else}<span
-      ><i class="glyph reference city"></i>City reference · approximate, not a
+      ><i class="glyph reference city"></i>Approx · city reference, not a
       facility point</span
     ><span
       ><i class="glyph reference coarse"></i>Area reference · no approved map
@@ -49,6 +50,7 @@
   .precision-legend strong {
     font-size: 0.65rem;
   }
+  .legend-toggle { display: none; }
   .precision-legend small {
     display: flex;
     max-width: 15rem;
@@ -106,7 +108,7 @@
     height: 0.72rem;
     border: 2px solid #171a18;
     border-radius: 50%;
-    background: #d8c99b;
+    background: #c83232;
     box-shadow: none;
     transform: none;
   }
@@ -140,15 +142,37 @@
     background: #292117;
     border-color: #c9a36e;
   }
+  .reference.city {
+    border: 0;
+    background: #79b9dad9;
+    box-shadow: 0 0 0 3px #79b9da99;
+  }
   .unmapped {
     height: 0.35rem;
     border-bottom: 1px solid #e9ebe6;
   }
   @media (max-width: 40rem) {
     .precision-legend {
-      bottom: 0.65rem;
+      bottom: 7.8rem;
       left: 0.65rem;
       font-size: 0.58rem;
     }
+    .precision-legend strong { display: none; }
+    .legend-toggle {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      min-width: 7.1rem;
+      padding: 0;
+      border: 0;
+      color: #f1efe8;
+      background: none;
+      font: 600 0.68rem system-ui;
+      text-align: left;
+      cursor: pointer;
+    }
+    .legend-toggle:focus-visible { outline: 2px solid #f1efe8; outline-offset: 4px; }
+    .precision-legend:not(.expanded) > span,
+    .precision-legend:not(.expanded) > small { display: none; }
   }
 </style>

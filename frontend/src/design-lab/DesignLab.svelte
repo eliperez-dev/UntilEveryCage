@@ -23,6 +23,8 @@
   let nextCursor: string | null = null;
   let pageLoading = false;
   let counts: RealPreviewCounts | null = null;
+  let coverageOpen = false;
+  $: if (state.listOpen && coverageOpen) coverageOpen = false;
   let facets: readonly RealPreviewFacet[] = [];
   let facetsStatus: 'loading' | 'ready' | 'error' | 'unauthorized' = 'loading';
   let detailRecord: LabRecord | null = null;
@@ -176,13 +178,62 @@
 <svelte:head><title>Until Every Cage — Map</title></svelte:head>
 <div class="lab" data-review-sentinel={mode === 'synthetic' ? LAB_SENTINEL : undefined} data-direction="field" data-scenario={state.scenario} data-data-mode={mode}>
   <main aria-label="Map preview"><h1 class="sr-only">Investigative map</h1>
-    <Field {state} records={mode === 'real-preview' ? apiRecords : model.listRecords} mapRecords={mode === 'real-preview' ? [] : model.mapRecords} {mode}
+    <Field {state} {coverageOpen} records={mode === 'real-preview' ? apiRecords : model.listRecords} mapRecords={mode === 'real-preview' ? [] : model.mapRecords} {mode}
       dataStatus={dataStatus} {dataError}
       {detailRecord} {detailStatus} {detailError} {nextCursor} {pageLoading}
       {facets} {facetsStatus} {mapDiagnostics} {aggregateMemberRecords} {aggregateNextCursor} {aggregateLoading} {aggregateError} onMapTiming={timing=>{sourceMaterializeMs=timing.sourceMaterializeMs;clusterReadyMs=timing.clusterReadyMs;if(timing.zoomSettleMs!==undefined)zoomSettleMs=timing.zoomSettleMs;}} onLoadMore={() => void loadPage(state.query, false)} onMapReference={(key, refSourceId) => void loadReference(key, true, refSourceId)} onLoadMoreAggregate={() => { if (aggregateReferenceKey) void loadReference(aggregateReferenceKey, false); }} {dispatch}/>
     {#if mode === 'real-preview' && counts}
-      <p class="private-counts" role="status">{counts.facilityCandidateCount.toLocaleString()} private candidates · {counts.mapVisibleCount.toLocaleString()} map locations · {counts.cityPostalCount.toLocaleString()} city or postal</p>
+      <aside class:expanded={coverageOpen} class="private-counts" aria-label="Map information">
+        <button type="button" aria-expanded={coverageOpen} aria-controls="coverage-details" disabled={state.listOpen} title={state.listOpen ? 'Close Search to inspect map information' : undefined} onclick={() => coverageOpen = !coverageOpen}>
+          <span>Preview</span><strong>{counts.mapVisibleCount.toLocaleString()} mapped</strong><span aria-hidden="true">{coverageOpen ? '−' : '+'}</span>
+        </button>
+        {#if coverageOpen}<div id="coverage-details" class="coverage-details">
+          <p>Private development preview · not publication-approved. Counts describe the current private projection, not complete worldwide coverage.</p>
+          <dl>
+            <div><dt>Map-visible locations</dt><dd>{counts.mapVisibleCount.toLocaleString()}</dd></div>
+            <div><dt>Approx. city / postal</dt><dd>{counts.cityPostalCount.toLocaleString()}</dd></div>
+            <div><dt>Candidate records</dt><dd>{counts.facilityCandidateCount.toLocaleString()}</dd></div>
+          </dl>
+          <small>Source: {state.sourceId ?? 'All available sources'} · Map position and candidate counts are not one-to-one.</small>
+        </div>{/if}
+      </aside>
     {/if}
   </main>
 </div>
-<style>.lab,main{height:100dvh;overflow:hidden}.sr-only{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}.private-counts{position:fixed;z-index:6;bottom:.45rem;right:.55rem;max-width:40vw;margin:0;padding:.18rem .32rem;border:1px solid #48504b;background:#171a18e8;color:#c6cbc4;font:500 .58rem system-ui}@media(max-width:40rem){.private-counts{max-width:48vw;font-size:.5rem}}</style>
+<style>
+  .lab, main { height: 100dvh; overflow: hidden; }
+  .sr-only { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+  .private-counts {
+    position: fixed;
+    z-index: 6;
+    bottom: 0.35rem;
+    left: 50%;
+    width: max-content;
+    max-width: calc(100vw - .8rem);
+    margin: 0;
+    border: 1px solid #48504b;
+    background: #171a18f2;
+    color: #d9ded5;
+    font: 500 .7rem/1.3 system-ui;
+    font-variant-numeric: tabular-nums;
+    transform: translateX(-50%);
+  }
+  .private-counts > button { display:flex; align-items:center; gap:.45rem; min-height:1.6rem; padding:.2rem .45rem; border:0; background:none; color:#d9ded5; cursor:pointer; font:inherit; }
+  .private-counts > button:disabled { cursor:default; }
+  .private-counts > button:focus-visible { outline:2px solid #f1efe8; outline-offset:2px; }
+  .private-counts > button strong { color:#f1efe8; font-weight:700; white-space:nowrap; }
+  .private-counts.expanded { width:min(19rem, calc(100vw - .8rem)); bottom:2.8rem; }
+  .coverage-details { padding:.15rem .65rem .65rem; border-top:1px solid #48504b; }
+  .coverage-details p, .coverage-details small { display:block; margin:.4rem 0; color:#bac3ba; font-size:.67rem; line-height:1.4; }
+  .coverage-details dl { margin:.45rem 0; }
+  .coverage-details dl div { display:flex; justify-content:space-between; gap:1rem; padding:.22rem 0; border-bottom:1px solid #343a36; }
+  .coverage-details dt { color:#c0c8c0; }
+  .coverage-details dd { margin:0; color:#f1efe8; font-weight:700; }
+  .lab:has(.private-counts.expanded) :global(.diagnostics-toggle) { display:none; }
+  @media (max-width: 40rem) {
+    .private-counts { font-size:.72rem; }
+    /* MapLibre's attribution sits above the mobile bottom edge. Keep the
+       full scope disclosure entirely clear of that control. */
+    .private-counts.expanded { bottom:5.3rem; }
+  }
+</style>

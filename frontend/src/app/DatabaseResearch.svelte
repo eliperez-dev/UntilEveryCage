@@ -8,6 +8,7 @@
     type RealPreviewFacet,
   } from "../api/RealPreviewRepository";
   import type { LabRecord } from "../design-lab/contract";
+  import PreviewMasthead from "./PreviewMasthead.svelte";
   const repository = createRealPreviewRepository();
   type Status = "loading" | "ready" | "empty" | "error" | "unauthorized";
   // Continue using the API cursor until it is exhausted; the UI stays paginated.
@@ -46,15 +47,17 @@
               : "Approximate source coordinate · pending review";
   const statusText = (record: LabRecord) =>
     record.publicationStatus?.replaceAll("_", " ") ?? "Not supplied";
-  const mapHref = (id = selectedId) => {
+  const mapHref = (id = selectedId, focusSelected = false) => {
     const params = new URLSearchParams({
       f1a: "field",
       scenario: "default",
       ...mapContext,
     });
-    if (query) params.set("q", query);
+    // Database queries may contain addresses. Carry only the record ID and map
+    // camera preferences into a shareable map URL.
     if (sourceId) params.set("source", sourceId);
     if (id) params.set("selected", id);
+    if (id && focusSelected) params.set("focus", "selected");
     return `#/map?${params}`;
   };
   const write = (changes: {
@@ -200,18 +203,7 @@
 
 <svelte:head><title>Until Every Cage — Database</title></svelte:head>
 <div class="database-research">
-  <header class="masthead">
-    <a class="wordmark" href={mapHref()}
-      ><img src={`${import.meta.env.BASE_URL}assets/icon.png`} alt="" />Until
-      Every Cage</a
-    >
-    <nav aria-label="Primary">
-      <a href={mapHref()}>Map</a><a aria-current="page" href="#/database"
-        >Database</a
-      >
-    </nav>
-    <p>PRIVATE DEVELOPMENT PREVIEW <span>·</span> NOT PUBLICATION-APPROVED</p>
-  </header>
+  <PreviewMasthead current="database" mapHref={mapHref()} databaseHref="#/database" />
   <main aria-labelledby="database-title">
     <section class="intro">
       <div>
@@ -393,7 +385,7 @@
             </div>
           </dl>
           <a class="dossier-link" href={`#/records/${encodeURIComponent(selected.id)}`}>Open full record <span>→</span></a>
-          {#if selected.defaultMapScope !== false && selected.latitude !== null && selected.longitude !== null}<a class="dossier-link" href={mapHref(selected.id)}>Open in map workspace <span>→</span></a>{/if}
+          {#if selected.defaultMapScope !== false && selected.latitude !== null && selected.longitude !== null}<a class="dossier-link" href={mapHref(selected.id, true)}>Open on map <span>→</span></a>{/if}
           <p class="quiet">
             Fields not supplied by the current private-preview API remain unavailable.
           </p>{:else}<p class="eyebrow">SELECT A RECORD</p>
@@ -423,56 +415,6 @@
   }
   .database-research * {
     box-sizing: border-box;
-  }
-  .masthead {
-    display: grid;
-    grid-template-columns: 1fr auto 1fr;
-    align-items: center;
-    gap: 1.25rem;
-    min-height: 4.8rem;
-    padding: 0.75rem clamp(1rem, 3vw, 3.2rem);
-    border-bottom: 1px solid var(--line);
-    background: #141916;
-  }
-  .wordmark {
-    display: flex;
-    align-items: center;
-    gap: 0.58rem;
-    color: var(--ink);
-    font:
-      600 1rem Georgia,
-      serif;
-    text-decoration: none;
-  }
-  .wordmark img {
-    width: 2rem;
-    height: 2rem;
-  }
-  .masthead nav {
-    display: flex;
-    gap: 1.2rem;
-    font-size: 0.77rem;
-  }
-  .masthead nav a {
-    color: var(--muted);
-    text-decoration: none;
-  }
-  .masthead nav a[aria-current] {
-    color: var(--ink);
-    text-decoration: underline;
-    text-underline-offset: 0.35rem;
-  }
-  .masthead > p {
-    justify-self: end;
-    margin: 0;
-    color: #bbc7b9;
-    font:
-      0.59rem ui-monospace,
-      monospace;
-    letter-spacing: 0.1em;
-  }
-  .masthead > p span {
-    color: #687468;
   }
   main {
     max-width: 96rem;
@@ -755,22 +697,20 @@
     }
   }
   @media (max-width: 43rem) {
-    .masthead {
-      grid-template-columns: 1fr auto;
-    }
-    .masthead > p {
-      display: none;
-    }
     main {
       padding: 1rem;
+      max-width: 100%;
     }
     .intro {
       display: grid;
       gap: 1.2rem;
     }
+    .intro > div, .intro p, .facets, .records, .selection { min-width: 0; overflow-wrap: anywhere; }
     .index-context {
       align-self: auto;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
     }
+    .index-context div { min-width: 0; padding-inline: .5rem; }
     .index-shell {
       display: block;
       border: 0;
@@ -784,8 +724,9 @@
       border-bottom: 0;
     }
     .facets fieldset {
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+    .facets fieldset label { min-width:0; overflow-wrap:anywhere; }
     .precision-note {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -810,9 +751,6 @@
     }
     .selection dl {
       grid-template-columns: 1fr;
-    }
-    .masthead nav {
-      gap: 0.75rem;
     }
   }
 </style>

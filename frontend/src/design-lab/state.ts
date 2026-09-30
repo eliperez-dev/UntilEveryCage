@@ -20,12 +20,14 @@ export function decodeLabHash(hash: string): LabState {
   const sourceId = source && /^[A-Za-z0-9.-]{1,80}$/.test(source) ? source : null;
   return { ...DEFAULT_LAB_STATE, direction, scenario, query: q.get('q') ?? '', selectedId: q.get('selected'), sourceId, filters,
     expandedCluster: q.get('cluster') === 'aarhus' ? 'aarhus' : null,
-    basemap: q.get('basemap') === 'satellite' ? 'satellite' : 'vector', listOpen: q.get('list') !== 'closed',
+    basemap: q.get('basemap') === 'satellite' ? 'satellite' : q.get('basemap') === 'muted' ? 'muted' : 'vector', listOpen: q.get('list') !== 'closed',
     viewport: { centerLat: safeNumber(q.get('lat'), 45, -90, 90), centerLon: safeNumber(q.get('lon'), 5, -180, 180), zoom: safeNumber(q.get('z'), 2, 1, 18) } };
 }
 export function encodeLabHash(state: LabState): string {
   const q = new URLSearchParams({ f1a: state.direction, scenario: state.scenario });
-  if (state.query) q.set('q', state.query); if (state.selectedId) q.set('selected', state.selectedId);
+  // Search input may contain a home address. Keep it in memory rather than
+  // browser history or a shareable URL; old q links are still decoded above.
+  if (state.selectedId) q.set('selected', state.selectedId);
   if (state.sourceId) q.set('source', state.sourceId);
   if (state.expandedCluster) q.set('cluster', state.expandedCluster);
   if (state.basemap !== 'vector') q.set('basemap', state.basemap); if (!state.listOpen) q.set('list', 'closed');

@@ -49,6 +49,8 @@ export function parseRealPreviewMapFeed(payload: unknown): RealPreviewMapFeed {
         kind: kind === 'city_reference' ? 'reference' : 'source-coordinate',
         precision,
         weight,
+        // Only references need a latitude correction for the map-scale disc.
+        ...(kind === 'city_reference' ? { cosLatitude: Math.max(0.087, Math.cos(row.latitude * Math.PI / 180)) } : {}),
       },
     };
   });

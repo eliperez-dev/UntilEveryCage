@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick } from "svelte";
+  import { writable } from "svelte/store";
   import type {
     DirectionViewProps,
     LabRecord,
@@ -8,12 +9,16 @@
   } from "../../contract";
   import type { RealPreviewFacet } from "../../../api/RealPreviewRepository";
   import MapSurface from "../../components/MapSurface.svelte";
+  import WorldLocator from "../../components/WorldLocator.svelte";
   import RecordList from "../../components/RecordList.svelte";
   import RecordDetail from "../../../app/RecordDetail.svelte";
+  import PreviewMasthead from "../../../app/PreviewMasthead.svelte";
+  import type { PlaceSuggestion } from "../../../features/placeSearch/placeSearch";
   let {
     state,
     records,
     mapRecords,
+    coverageOpen = false,
     mode = "synthetic",
     dataStatus = "ready",
     dataError = "",
@@ -39,6 +44,7 @@
     facetsStatus = "loading",
     dispatch,
   }: DirectionViewProps & {
+    coverageOpen?: boolean;
     mapDiagnostics?: MapDiagnostics;
     facets?: readonly RealPreviewFacet[];
     facetsStatus?: "loading" | "ready" | "error" | "unauthorized";
@@ -94,7 +100,6 @@
       ? state.filters.categories.length + state.filters.precisions.length
       : 0,
   );
-  const v1Logo = `${import.meta.env.BASE_URL}assets/icon.png`;
   const precisionLabel = (record: LabRecord) =>
     mode === "real-preview"
       ? record.sourceId === 'us.fsis' && record.coordinatePrecision === 'source-provided'
@@ -143,7 +148,44 @@
     "The private-preview relationship projection has not been supplied for this record.";
   let selectionOrigin: HTMLElement | null = null;
   let selectionOriginRecordId: string | null = null;
-  let resultsToggle: HTMLButtonElement;
+  // `state` is a prop in this component, so $state is interpreted as a store
+  // subscription rather than Svelte's rune. Use a store for this DOM binding.
+  const searchToggle = writable<HTMLButtonElement | undefined>(undefined);
+  const debugOpen = writable(false);
+  const initialSelectedId = (() => {
+    if (typeof location === "undefined") return null;
+    const route = new URLSearchParams(location.hash.split("?")[1] ?? "");
+    return route.get("focus") === "selected" ? route.get("selected") : null;
+  })();
+  let initialSelectionFlightHandled = false;
+  const placeSuggestions = writable<readonly PlaceSuggestion[]>([]);
+  const flightTarget = writable<{
+    id: number;
+    longitude: number;
+    latitude: number;
+    zoom: number;
+  } | null>(null);
+  let flightSequence = 0;
+  let placeSearchGeneration = 0;
+  let placeSearchModule: Promise<typeof import("../../../features/placeSearch/placeSearch")> | undefined;
+  // The gazetteer is lazy and local: typing a place never contacts a geocoder.
+  $effect(() => {
+    const query = state.query.trim();
+    if (!state.listOpen || query.length < 2 || aggregateOpen) {
+      placeSuggestions.set([]);
+      return;
+    }
+    const generation = ++placeSearchGeneration;
+    placeSearchModule ??= import("../../../features/placeSearch/placeSearch");
+    void placeSearchModule.then(({ searchPlaces }) => {
+      if (generation === placeSearchGeneration) {
+        placeSuggestions.set(searchPlaces(query, 5));
+      }
+    }).catch(() => {
+      if (generation === placeSearchGeneration) placeSuggestions.set([]);
+    });
+    return () => { placeSearchGeneration++; };
+  });
   let hadSelection = false;
   let activeSelectionId: string | null = null;
   let pendingRailFocusId: string | null = null;
@@ -180,7 +222,7 @@
           : null;
         const target = selectionOrigin?.isConnected
           ? selectionOrigin
-          : restoredRecord ?? resultsToggle;
+          : restoredRecord ?? $searchToggle;
         target?.focus();
         selectionOrigin = null;
         selectionOriginRecordId = null;
@@ -193,6 +235,34 @@
       : null;
     selectionOriginRecordId = selectionOrigin?.dataset.recordId ?? null;
     dispatch({ type: "select", value: id });
+  }
+  function flyTo(longitude: number, latitude: number, zoom: number) {
+    flightTarget.set({ id: ++flightSequence, longitude, latitude, zoom });
+  }
+  $effect(() => {
+    if (initialSelectionFlightHandled || !initialSelectedId || detailStatus !== "ready" || detailRecord?.id !== initialSelectedId) return;
+    initialSelectionFlightHandled = true;
+    if (detailRecord.latitude != null && detailRecord.longitude != null) {
+      flyTo(detailRecord.longitude, detailRecord.latitude,
+        detailRecord.precision === "city" ? 8 : detailRecord.precision === "exact" ? 12 : 10);
+    }
+  });
+  function selectSearchRecord(id: string) {
+    const record = recordPool.find((item) => item.id === id);
+    if (record?.latitude !== null && record?.longitude !== null &&
+        record?.latitude !== undefined && record?.longitude !== undefined) {
+      // A city reference remains an approximation; do not zoom into a parcel.
+      flyTo(record.longitude, record.latitude,
+        record.precision === "city" ? 8 : record.precision === "exact" ? 12 : 10);
+    }
+    selectRecord(id);
+  }
+  function selectPlace(place: PlaceSuggestion) {
+    // Natural Earth supplies a city-centre navigation point, not a facility.
+    flyTo(place.longitude, place.latitude, 10);
+    // Keep the drawer in the hit-test tree until this pointer click finishes.
+    // Removing it synchronously can send the tail of the gesture to the map.
+    setTimeout(() => dispatch({ type: "list", value: false }), 0);
   }
   function dismissSelection() {
     dispatch({ type: "select", value: null });
@@ -263,105 +333,24 @@
   const databaseHref = $derived(
     (() => {
       const q = new URLSearchParams();
-      if (state.query) q.set("q", state.query);
       if (state.sourceId) q.set("source", state.sourceId);
       if (state.selectedId) q.set("selected", state.selectedId);
       q.set("lat", String(state.viewport.centerLat));
       q.set("lon", String(state.viewport.centerLon));
       q.set("z", String(state.viewport.zoom));
       if (!state.listOpen) q.set("list", "closed");
-      if (state.basemap === "satellite") q.set("basemap", "satellite");
+      if (state.basemap !== "vector") q.set("basemap", state.basemap);
       return `#/database?${q}`;
     })(),
+  );
+  const mapHref = $derived(
+    `#/map?${new URLSearchParams({ f1a: "field", scenario: state.scenario, ...Object.fromEntries(new URLSearchParams(databaseHref.split("?")[1] ?? "")) })}`,
   );
 </script>
 
 <svelte:window onkeydown={onKeydown} />
 <section class="field-view">
-  <header class="spine">
-    <a
-      class="brand"
-      href="#/map?f1a=field"
-      aria-label="Until Every Cage map home"
-      ><img src={v1Logo} alt="" /><span>Until Every Cage</span></a
-    >
-    <form
-      class="search"
-      role="search"
-      onsubmit={(event) => event.preventDefault()}
-    >
-      <label for="field-search">Search across preview records</label><input
-        id="field-search"
-        type="search"
-        placeholder="Name, activity, source, or place"
-        value={state.query}
-        oninput={(event) =>
-          dispatch({ type: "query", value: event.currentTarget.value })}
-      />
-    </form>
-    <details class="filters">
-      <summary
-        >Filters {#if state.sourceId}<b>1</b>{:else if active}<b>{active}</b
-          >{/if}</summary
-      >
-      <div class="filter-sheet">
-        <strong>Refine results</strong>{#if mode === "real-preview"}<fieldset
-            class="source-filter"
-          >
-            <legend>Source</legend>{#if facetsStatus === "loading"}<small
-                >Loading sources…</small
-              >{:else if facetsStatus === "error" || facetsStatus === "unauthorized"}<small
-                role="alert"
-                >Sources unavailable. Search remains available.</small
-              >{:else}<label
-                ><input
-                  type="radio"
-                  name="source"
-                  checked={state.sourceId === null}
-                  onchange={() => dispatch({ type: "source", value: null })}
-                />All sources</label
-              >{#each sources as value}<label
-                  ><input
-                    type="radio"
-                    name="source"
-                    checked={state.sourceId === value}
-                    onchange={() => dispatch({ type: "source", value })}
-                  />{value}</label
-                >{/each}{/if}
-          </fieldset>{:else}<p class="category-key">
-            <i class="poultry"></i>Poultry <i class="pig"></i>Pig
-            <i class="dairy"></i>Dairy <i class="processing"></i>Processing
-            <i class="laboratory"></i>Lab <i class="aquaculture"></i>Aquaculture
-          </p>
-          <fieldset>
-            <legend>Category</legend>{#each categories as value}<label
-                ><input
-                  type="checkbox"
-                  checked={state.filters.categories.includes(value)}
-                  onchange={(event) =>
-                    category(value, event.currentTarget.checked)}
-                />{value}</label
-              >{/each}
-          </fieldset>
-          <fieldset>
-            <legend>Location precision</legend>{#each precisions as value}<label
-                ><input
-                  type="checkbox"
-                  checked={state.filters.precisions.includes(value)}
-                  onchange={(event) =>
-                    precision(value, event.currentTarget.checked)}
-                />{value}</label
-              >{/each}
-          </fieldset>{/if}<button
-          type="button"
-          onclick={() =>
-            mode === "real-preview"
-              ? dispatch({ type: "source", value: null })
-              : dispatch({ type: "reset-filters" })}>Clear filters</button
-        >
-      </div>
-    </details>
-  </header>
+  <PreviewMasthead current="map" {mapHref} {databaseHref} />
   <section class="map-stage" aria-label="Investigative map field">
     {#if mode === "synthetic" && state.scenario === "loading"}<div class="status" role="status">
         Loading records…
@@ -378,12 +367,15 @@
         {mapError}
         {mapTruncated}
         {mapDiagnostics}
+        flightTarget={$flightTarget}
+        suppressDiagnostics={state.listOpen && !selected}
         referenceLoading={aggregateLoading}
         onmaptiming={(timing) => onMapTiming?.(timing)}
         onselect={selectRecord}
         onaggregate={(ids) => dispatch({ type: "aggregate", value: ids })}
         onreference={(key, sourceId) => onMapReference?.(key, sourceId)}
         onbasemap={(value) => dispatch({ type: "basemap", value })}
+        ondebugopenchange={(open) => debugOpen.set(open)}
         onviewport={(value) => dispatch({ type: "viewport", value })}
         onbounds={(bounds) => onViewportBounds?.(bounds)}
       />{/if}
@@ -410,33 +402,70 @@
       >
         {dataError}
       </div>{/if}
-    <button
-      class="results-toggle"
-      bind:this={resultsToggle}
+    {#if !state.listOpen || selected}<button
+      class="search-toggle"
+      bind:this={$searchToggle}
       type="button"
-      aria-expanded={state.listOpen}
+      aria-expanded={state.listOpen && !selected}
       aria-controls="field-record-list"
       onclick={() => dispatch({ type: "list", value: !state.listOpen })}
-      >Results <b>{resultCount}</b></button
-    >
-    <a class="database-link" href={databaseHref}>Database</a>
+      ><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg><span class="search-toggle-copy"><strong>Search map</strong><small>{state.query || state.sourceId ? "Search or filters active" : "Places, facilities, sources"}</small></span></button>{/if}
     {#if state.listOpen && !selected}<aside
         class="results"
         id="field-record-list"
         aria-label={aggregateOpen
           ? "Aggregate member records"
-          : "Synchronized results"}
+          : "Search, filters, and results"}
       >
         <header>
-          <strong
-            >{aggregateOpen ? "Members" : "Results"}
-            <span>{resultCount}</span></strong
-          ><button
+          <strong>Search records</strong><button
             type="button"
-            aria-label="Close results"
+            aria-label="Close search panel"
             onclick={() => dispatch({ type: "list", value: false })}>×</button
           >
         </header>
+        <div class="search-tools">
+          <form class="search" role="search" onsubmit={(event) => event.preventDefault()}>
+            <label for="field-search">Search across preview records</label>
+            <input id="field-search" type="search" placeholder="Name, activity, source, or place"
+              value={state.query} oninput={(event) => dispatch({ type: "query", value: event.currentTarget.value })} />
+          </form>
+          <details class="filters">
+            <summary>Filters {#if state.sourceId}<b>1</b>{:else if active}<b>{active}</b>{/if}</summary>
+            <div class="filter-sheet">
+              {#if mode === "real-preview"}
+                <fieldset class="source-filter">
+                  <legend>Source</legend>
+                  {#if facetsStatus === "loading"}<small>Loading sources…</small>
+                  {:else if facetsStatus === "error" || facetsStatus === "unauthorized"}<small role="alert">Sources unavailable. Search remains available.</small>
+                  {:else}
+                    <label><input type="radio" name="source" checked={state.sourceId === null} onchange={() => dispatch({ type: "source", value: null })} />All sources</label>
+                    {#each sources as value}<label><input type="radio" name="source" checked={state.sourceId === value} onchange={() => dispatch({ type: "source", value })} />{value}</label>{/each}
+                  {/if}
+                </fieldset>
+              {:else}
+                <p class="category-key"><i class="poultry"></i>Poultry <i class="pig"></i>Pig <i class="dairy"></i>Dairy <i class="processing"></i>Processing <i class="laboratory"></i>Lab <i class="aquaculture"></i>Aquaculture</p>
+                <fieldset><legend>Category</legend>{#each categories as value}<label><input type="checkbox" checked={state.filters.categories.includes(value)} onchange={(event) => category(value, event.currentTarget.checked)} />{value}</label>{/each}</fieldset>
+                <fieldset><legend>Location precision</legend>{#each precisions as value}<label><input type="checkbox" checked={state.filters.precisions.includes(value)} onchange={(event) => precision(value, event.currentTarget.checked)} />{value}</label>{/each}</fieldset>
+              {/if}
+              <button type="button" onclick={() => mode === "real-preview" ? dispatch({ type: "source", value: null }) : dispatch({ type: "reset-filters" })}>Clear filters</button>
+            </div>
+          </details>
+        </div>
+        {#if $placeSuggestions.length > 0}
+          <section class="place-suggestions" aria-label="Places">
+            <div class="results-heading"><strong>Places</strong><span>City centres</span></div>
+            <ol>
+              {#each $placeSuggestions as place (place.id)}
+                <li><button type="button" onclick={(event) => { event.stopPropagation(); selectPlace(place); }}>
+                  <strong>{place.label}</strong>
+                  <small>Navigate to city centre · Natural Earth, not a facility location</small>
+                </button></li>
+              {/each}
+            </ol>
+          </section>
+        {/if}
+        <div class="results-heading"><strong>{aggregateOpen ? "Members" : "Facility records"}</strong><span>{resultCount} loaded</span></div>
         {#if aggregateOpen}<div class="member-context">
             <strong>{aggregateContext.place}</strong><span
               >{aggregateContext.treatment}</span
@@ -450,7 +479,7 @@
           </p>{/if}<RecordList
           records={aggregateRecords}
           selectedId={state.selectedId}
-          onselect={selectRecord}
+          onselect={selectSearchRecord}
         />{#if mode === "real-preview" && nextCursor && !aggregateOpen}<button
             type="button"
             disabled={pageLoading}
@@ -558,6 +587,7 @@
           >Open member records</button
         >
       </aside>{/if}
+    <div class="world-position" hidden={$debugOpen || coverageOpen}><WorldLocator latitude={state.viewport.centerLat} longitude={state.viewport.centerLon} basemap={state.basemap} onbasemap={(value) => dispatch({ type: "basemap", value })} /></div>
   </section>
 </section>
 
@@ -579,36 +609,9 @@
   .field-view * {
     box-sizing: border-box;
   }
-  .spine {
-    position: absolute;
-    z-index: 5;
-    inset: 0 0 auto;
-    display: grid;
-    grid-template-columns: auto minmax(12rem, 34rem) auto;
-    gap: 0.7rem;
-    align-items: center;
-    height: 4.5rem;
-    padding: 0.65rem 1rem;
-    border-bottom: 1px solid var(--line);
-    background: #171a18;
-  }
-  .brand {
-    display: flex;
-    align-items: center;
-    gap: 0.55rem;
-    color: inherit;
-    text-decoration: none;
-    font:
-      600 0.9rem Georgia,
-      serif;
-  }
-  .brand img {
-    width: 2rem;
-    height: 2rem;
-    object-fit: contain;
-  }
+  .field-view :global(.masthead) { position: relative; z-index: 5; }
   .search {
-    height: 2.5rem;
+    height: 2.6rem;
     border: 1px solid #69716a;
     background: #111312;
   }
@@ -629,11 +632,9 @@
     background: transparent;
     font: inherit;
   }
-  .filters {
-    position: relative;
-  }
+  .filters { position:relative; min-width:8.25rem; }
   .filters summary,
-  .results-toggle,
+  .search-toggle,
   .filter-sheet button {
     min-height: 2.4rem;
     padding: 0.4rem 0.65rem;
@@ -647,21 +648,22 @@
   .filters summary::-webkit-details-marker {
     display: none;
   }
-  .filters summary b,
-  .results-toggle b {
+  .filters summary b {
     margin-left: 0.3rem;
     padding: 0.06rem 0.3rem;
     border: 1px solid #7b837c;
   }
   .filter-sheet {
-    position: absolute;
-    top: 3rem;
-    right: 0;
-    width: 20rem;
-    padding: 0.9rem;
+    position:absolute;
+    z-index:8;
+    top:calc(100% + .3rem);
+    right:0;
+    width:min(20rem, calc(100vw - 2rem));
+    max-height:min(26rem, 65vh);
+    overflow:auto;
+    padding: 0.55rem 0.4rem;
     border: 1px solid var(--line);
     background: #1b1f1d;
-    box-shadow: 0 0.6rem 1.5rem #0008;
   }
   .category-key {
     display: flex;
@@ -709,13 +711,15 @@
   }
   .map-stage {
     position: absolute;
-    inset: 4.5rem 0 0;
+    inset: 4.8rem 0 0;
   }
   .map-stage :global(.map-surface),
   .map-stage :global(.map-host) {
     position: absolute;
     inset: 0;
   }
+  .world-position { position: absolute; z-index: 3; right: 0.5rem; bottom: 1.65rem; }
+  .map-stage:has(.reading-sheet) .world-position { display: none; }
   .status {
     position: absolute;
     z-index: 4;
@@ -726,19 +730,27 @@
     background: #171a18;
     transform: translate(-50%, -50%);
   }
-  .results-toggle {
+  .search-toggle {
     position: absolute;
     z-index: 4;
     top: 1rem;
     left: 1rem;
   }
+  .search-toggle { display:flex; align-items:center; gap:.55rem; min-width:13rem; text-align:left; }
+  .search-toggle svg { width:1.15rem; height:1.15rem; flex:none; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; }
+  .search-toggle-copy { display:grid; gap:.12rem; }
+  .search-toggle-copy strong { font-size:.72rem; font-weight:650; }
+  .search-toggle-copy small { color:var(--muted); font-size:.59rem; }
+  .search-toggle:focus-visible { outline:2px solid #f1efe8; outline-offset:2px; }
   .results {
     position: absolute;
     z-index: 5;
     top: 1rem;
-    bottom: 1rem;
+    bottom: 2rem;
     left: 1rem;
-    width: min(21rem, calc(100% - 2rem));
+    display: flex;
+    flex-direction: column;
+    width: min(35rem, calc(100% - 2rem));
     border: 1px solid var(--line);
     background: #171a18;
   }
@@ -756,7 +768,8 @@
     cursor: pointer;
   }
   .results :global(.record-list) {
-    height: calc(100% - 3rem);
+    flex: 1 1 auto;
+    min-height: 0;
     overflow: auto;
     border: 0;
     background: transparent;
@@ -800,9 +813,20 @@
     font-size: 0.68rem;
     line-height: 1.35;
   }
-  .results:has(.member-disclosure) :global(.record-list) {
-    height: calc(100% - 5.9rem);
-  }
+  .search-tools { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:start; gap:.55rem; flex:0 0 auto; padding:.65rem; border-bottom:1px solid var(--line); }
+  .search-tools .search { min-width:0; }
+  .filters summary { display:flex; align-items:center; justify-content:center; min-height:2.6rem; }
+  .results-heading { display: flex; flex-shrink: 0; justify-content: space-between; gap: 0.5rem; padding: 0.55rem 0.65rem; border-bottom: 1px solid var(--line); font-size: 0.73rem; }
+  .results-heading span { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .place-suggestions { flex: 0 0 auto; max-height: min(12rem, 32vh); overflow-y: auto; border-bottom: 1px solid var(--line); }
+  .place-suggestions ol { margin: 0; padding: 0; list-style: none; }
+  .place-suggestions li + li { border-top: 1px solid #343a36; }
+  .place-suggestions button { display: block; width: 100%; padding: 0.62rem 0.7rem; border: 0; color: var(--ink); background: #1b2528; text-align: left; cursor: pointer; }
+  .place-suggestions button:hover, .place-suggestions button:focus-visible { background: #253236; }
+  .place-suggestions button:focus-visible { outline: 2px solid #b9d5dc; outline-offset: -2px; }
+  .place-suggestions strong, .place-suggestions small { display: block; }
+  .place-suggestions strong { font-size: 0.77rem; }
+  .place-suggestions small { margin-top: 0.18rem; color: #afc3c7; font-size: 0.66rem; line-height: 1.35; }
   .reading-sheet {
     position: absolute;
     z-index: 5;
@@ -888,40 +912,14 @@
     cursor: pointer;
   }
   @media (max-width: 40rem) {
-    .spine {
-      grid-template-columns: auto 1fr auto;
-      height: 7rem;
-      padding: 0.5rem 0.65rem;
-    }
-    .brand span {
-      display: none;
-    }
-    .search {
-      grid-column: 1/3;
-      grid-row: 2;
-    }
-    .filters {
-      grid-column: 3;
-      grid-row: 2;
-    }
-    .filters summary {
-      font-size: 0;
-      width: 2.7rem;
-    }
-    .filters summary::after {
-      content: "☰";
-      font-size: 1rem;
-    }
-    .map-stage {
-      inset: 7rem 0 0;
-    }
+    .map-stage { inset: 4.8rem 0 0; }
+    .search-toggle { top: 0.65rem; left: 0.65rem; }
     .results {
-      top: auto;
-      right: 0;
-      bottom: 0;
-      left: 0;
+      top: 0.65rem;
+      right: 0.65rem;
+      bottom: 3rem;
+      left: 0.65rem;
       width: auto;
-      height: min(48dvh, 26rem);
     }
     .reading-sheet {
       top: auto;
@@ -932,33 +930,16 @@
       height: auto;
       max-height: 67dvh;
     }
-    .map-stage:has(.reading-sheet) .results-toggle {
-      display: none;
-    }
-  }
-  .database-link {
-    position: absolute;
-    z-index: 4;
-    top: 1rem;
-    left: 8.4rem;
-    min-height: 2.4rem;
-    padding: 0.62rem 0.72rem;
-    border: 1px solid #69716a;
-    color: var(--ink);
-    background: #171a18;
-    font: 0.72rem system-ui;
-    text-decoration: none;
-  }
-  @media (max-width: 40rem) {
-    .database-link {
-      top: 1rem;
-      left: 7.7rem;
-      min-height: 2.25rem;
-      padding: 0.54rem 0.6rem;
-    }
-    .map-stage:has(.reading-sheet) .database-link {
-      display: none;
-    }
+    .map-stage:has(.reading-sheet) .search-toggle { display: none; }
+    .world-position { bottom: 7.5rem; right: 0.4rem; }
+    .map-stage:has(.results) .world-position { display: none; }
+    /* Header menus take precedence over the Map lens on a narrow screen. */
+    :global(body:has(.masthead .header-menu) .world-position) { display:none; }
+    .search-tools { grid-template-columns:1fr; }
+    .filters { width:100%; }
+    .filters summary { justify-content:flex-start; }
+    .filter-sheet { right:auto; left:0; }
+    .search-toggle { min-width:11.8rem; }
   }
   .member-context {
     display: grid;
@@ -1010,16 +991,7 @@
     font: 0.72rem system-ui;
     cursor: pointer;
   }
-  .results:has(.member-context) :global(.record-list) {
-    height: calc(100% - 9.35rem);
-  }
   @media (max-width: 40rem) {
-    .results:has(.member-context) {
-      height: min(54dvh, 31rem);
-    }
-    .results:has(.member-context) :global(.record-list) {
-      height: calc(100% - 9.35rem);
-    }
     .aggregate-sheet {
       top: 0.75rem;
       right: 0.65rem;
@@ -1081,9 +1053,6 @@
       top: 6.2rem;
       z-index: 1;
       background: #171a18;
-    }
-    .map-stage:has(.reading-sheet) .results-toggle {
-      display: none;
     }
   }
   .connections-evidence {

@@ -133,7 +133,7 @@ export function addJsonLocationLayers(map: MapLibreMap, data: JsonMapCollection)
   map.addLayer({
     id: 'clusters', type: 'symbol', source: 'locations', filter: cluster,
     layout: {
-      'icon-image': ['step', representedCount, 'cluster-low', 10, 'cluster-mid', 100, 'cluster-high'],
+      'icon-image': ['step', representedCount, 'cluster-low', 10, 'cluster-mid', 100, 'cluster-high', 1001, 'cluster-very-high'],
       'icon-size': 1, 'icon-allow-overlap': true, 'icon-ignore-placement': true,
       'text-field': ['to-string', representedCount], 'text-font': ['Open Sans Bold'], 'text-size': 12,
       'text-allow-overlap': true, 'text-ignore-placement': true,

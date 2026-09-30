@@ -7,16 +7,22 @@
 export const JSON_LOCATION_LAYER_IDS = [
   'clusters',
   'aggregate-outer',
+  'approx-reference-points',
   'aggregate-count',
   'aggregate-kind',
   'approximate-points',
   'source-coordinate-points',
+  'v1-source-shadows',
+  'v1-source-pins',
   'exact-shadows',
   'exact-pins',
 ] as const;
 
 export const MVT_LOCATION_LAYER_IDS = [
   'mvt-clusters',
+  'mvt-approx-reference-area',
+  'mvt-approx-reference-outline',
+  'mvt-reference-center',
   'mvt-reference-outer',
   'mvt-reference-count',
   'mvt-reference-kind',
@@ -47,7 +53,14 @@ type MapLike = {
   removeSource(id: string): void;
 };
 
-export type BasemapKind = 'vector' | 'satellite';
+export type BasemapKind = 'vector' | 'muted' | 'satellite';
+
+/** Desaturate existing OSM imagery without adding a provider or tile request. */
+export function baseRasterPaint(basemap: BasemapKind): Record<string, number> {
+  return basemap === 'muted'
+    ? { 'raster-saturation': -1, 'raster-contrast': 0.12, 'raster-brightness-min': 0.08, 'raster-brightness-max': 0.92 }
+    : { 'raster-saturation': 0, 'raster-contrast': 0, 'raster-brightness-min': 0, 'raster-brightness-max': 1 };
+}
 
 /** The deliberately restrained raster base style used by both data projections. */
 export function createBaseStyle(basemap: BasemapKind): Record<string, unknown> {
@@ -81,7 +94,7 @@ export function createBaseStyle(basemap: BasemapKind): Record<string, unknown> {
       },
     },
     layers: [
-      { id: 'base', type: 'raster', source: 'base' },
+      { id: 'base', type: 'raster', source: 'base', paint: baseRasterPaint(basemap) },
       { id: 'transport', type: 'raster', source: 'transport', paint: { 'raster-opacity': basemap === 'satellite' ? 0.72 : 0 } },
     ],
   };
@@ -101,6 +114,10 @@ export function addMvtLocationLayers(map: MapLike, sourceId?: string): void {
     minzoom: 0,
     maxzoom: 14,
   });
+  map.addSource('mvt-reference-areas', {
+    type: 'geojson',
+    data: { type: 'FeatureCollection', features: [] },
+  });
 
   const kind = (value: string) => ['==', ['get', 'kind'], value];
   const count = ['coalesce', ['get', 'count'], 1];
@@ -110,6 +127,14 @@ export function addMvtLocationLayers(map: MapLike, sourceId?: string): void {
   const source = MVT_SOURCE_ID;
   const sourceLayer = MVT_SOURCE_LAYER;
 
+  map.addLayer({
+    id: 'mvt-approx-reference-area', type: 'fill', source: 'mvt-reference-areas',
+    paint: { 'fill-color': '#79b9da', 'fill-opacity': 0.14 },
+  });
+  map.addLayer({
+    id: 'mvt-approx-reference-outline', type: 'line', source: 'mvt-reference-areas',
+    paint: { 'line-color': '#79b9da', 'line-opacity': 0.48, 'line-width': 1 },
+  });
   map.addLayer({
     id: 'mvt-clusters', type: 'symbol', source, 'source-layer': sourceLayer,
     filter: kind('cluster'),
@@ -123,8 +148,17 @@ export function addMvtLocationLayers(map: MapLike, sourceId?: string): void {
   });
   map.addLayer({
     id: 'mvt-reference-outer', type: 'circle', source, 'source-layer': sourceLayer,
-    filter: references,
+    filter: kind('coarse_reference'),
     paint: { 'circle-color': referenceFill, 'circle-radius': 18, 'circle-opacity': 0.96, 'circle-stroke-color': referenceStroke, 'circle-stroke-width': 3 },
+  });
+  map.addLayer({
+    id: 'mvt-reference-center', type: 'symbol', source, 'source-layer': sourceLayer,
+    filter: kind('city_reference'),
+    layout: {
+      'icon-image': 'cluster-approx', 'icon-size': 0.8,
+      'icon-allow-overlap': true, 'icon-ignore-placement': true,
+    },
+    paint: { 'icon-opacity': 0.95 },
   });
   map.addLayer({
     id: 'mvt-reference-count', type: 'symbol', source, 'source-layer': sourceLayer,
@@ -135,7 +169,7 @@ export function addMvtLocationLayers(map: MapLike, sourceId?: string): void {
   map.addLayer({
     id: 'mvt-reference-kind', type: 'symbol', source, 'source-layer': sourceLayer,
     filter: references,
-    layout: { 'text-field': ['match', ['get', 'kind'], 'city_reference', 'CITY REF', 'AREA REF'], 'text-font': ['Open Sans Bold'], 'text-size': 9, 'text-offset': [0, 2.8], 'text-allow-overlap': true, 'text-ignore-placement': true },
+    layout: { 'visibility': 'none', 'text-field': ['match', ['get', 'kind'], 'city_reference', 'CITY REF', 'AREA REF'], 'text-font': ['Open Sans Bold'], 'text-size': 9, 'text-offset': [0, 2.8], 'text-allow-overlap': true, 'text-ignore-placement': true },
     paint: { 'text-color': referenceStroke, 'text-halo-color': '#171a18', 'text-halo-width': 1.5 },
   });
   map.addLayer({
@@ -150,5 +184,6 @@ export function removeLocationLayers(map: MapLike): void {
     if (map.getLayer(id)) map.removeLayer(id);
   }
   if (map.getSource('locations')) map.removeSource('locations');
+  if (map.getSource('mvt-reference-areas')) map.removeSource('mvt-reference-areas');
   if (map.getSource(MVT_SOURCE_ID)) map.removeSource(MVT_SOURCE_ID);
 }

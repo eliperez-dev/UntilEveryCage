@@ -52,6 +52,6 @@ describe('MapSurface layer contract', () => {
       ...JSON_LOCATION_LAYER_IDS,
       ...MVT_LOCATION_LAYER_IDS,
     ]);
-    expect(removedSources).toEqual(['locations', 'preview-mvt']);
+    expect(removedSources).toEqual(['locations', 'mvt-reference-areas', 'preview-mvt']);
   });
 });

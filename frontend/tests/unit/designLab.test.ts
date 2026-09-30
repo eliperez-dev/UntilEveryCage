@@ -11,9 +11,14 @@ describe('F1A shared design lab', () => {
     expect(labRecords.filter(record => record.precision === 'unmapped').every(record => record.latitude === null && record.longitude === null)).toBe(true);
   });
 
-  it('round trips search, selection, filters, viewport, list, direction, scenario, and basemap state', () => {
+  it('round trips public map state while keeping typed search out of shareable URLs', () => {
     const state = decodeLabHash('#/map?f1a=field&scenario=dense&q=pig&selected=syn-042&cluster=aarhus&basemap=satellite&list=closed&lat=40&lon=-12&z=5&category=Pig&category=Dairy&precision=city');
-    expect(decodeLabHash(encodeLabHash(state))).toEqual(state);
+    expect(state.query).toBe('pig'); // Existing links remain readable.
+    expect(encodeLabHash({ ...state, query: '123 Example Street' })).not.toContain('q=');
+    expect(decodeLabHash(encodeLabHash(state))).toEqual({ ...state, query: '' });
+    const muted = decodeLabHash('#/map?basemap=muted');
+    expect(muted.basemap).toBe('muted');
+    expect(decodeLabHash(encodeLabHash(muted))).toEqual(muted);
   });
 
   it('preserves the Field review state while changing the selected record', () => {

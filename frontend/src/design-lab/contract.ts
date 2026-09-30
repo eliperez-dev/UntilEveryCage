@@ -3,7 +3,7 @@ export const SCENARIOS = ['default', 'dense', 'loading', 'empty', 'error', 'mobi
 export type Direction = (typeof DIRECTIONS)[number];
 export type Scenario = (typeof SCENARIOS)[number];
 export type Precision = 'exact' | 'approximate' | 'city' | 'coarse' | 'unmapped';
-export type Basemap = 'vector' | 'satellite';
+export type Basemap = 'vector' | 'muted' | 'satellite';
 export type LabFilters = Readonly<{ categories: readonly string[]; precisions: readonly Precision[] }>;
 
 export type LabRecord = Readonly<{
