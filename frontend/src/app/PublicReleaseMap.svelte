@@ -211,6 +211,7 @@
 </script>
 
 <section class="release-map" aria-label="Map of public facilities">
+  <h1 class="sr-only">Map</h1>
   <div class="map" class:gated={!activeManifest} bind:this={container}></div>
   {#if status}<p class="map-state" role="status">{status}</p>{/if}
   {#if error}<div class="map-state" role="alert"><p>{error}</p><button type="button" onclick={() => void revalidate()}>Retry</button></div>{/if}
@@ -243,6 +244,7 @@
 </section>
 
 <style>
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
   .release-map { position: relative; min-height: calc(100dvh - 5rem); background: #dce5e0; }
   .map { position: absolute; inset: 0; }
   .map.gated { visibility: hidden; }

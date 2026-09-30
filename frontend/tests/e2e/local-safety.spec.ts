@@ -2,7 +2,9 @@ import { test, expect } from '@playwright/test';
 
 function isApiEndpoint(url: string): boolean {
   const pathname = new URL(url).pathname.replace(/^\/v2-preview(?=\/)/, '');
-  return pathname.startsWith('/api/') || pathname.startsWith('/dev/real-preview/');
+  // The public map is expected to fetch its release manifest; shell routes must
+  // not request private-preview or facility data endpoints.
+  return (pathname.startsWith('/api/') && pathname !== '/api/v2/releases/manifest') || pathname.startsWith('/dev/real-preview/');
 }
 
 test('public routes stay local and never render fixture or API records', async ({ page }) => {
