@@ -34,6 +34,7 @@
     baseRasterPaint,
     createBaseStyle,
     removeLocationLayers,
+    setMvtClusterCutoff,
   } from "./mapSurfaceLayers";
   import {
     addRealPreviewMapLayers,
@@ -396,6 +397,15 @@
   function scheduleClusterSettings() {
     if (clusterUpdateTimer) clearTimeout(clusterUpdateTimer);
     clusterUpdateTimer = setTimeout(async () => {
+      if (usingMvt && map) {
+        try {
+          setMvtClusterCutoff(map, mapState.sourceId ?? undefined, clusterMaxZoom);
+          clusterSettingsError = "";
+        } catch {
+          clusterSettingsError = "The server-generated tile hierarchy could not be updated.";
+        }
+        return;
+      }
       const source = mode === "real-preview" ? map?.getSource("locations") as GeoJSONSource | undefined : undefined;
       if (!source) return;
       try {
@@ -626,7 +636,7 @@
         ring.push(destinationPoint(longitude, latitude, bearing, referenceRadiusKm));
       unique.set(key, {
         type: "Feature",
-        properties: {},
+        properties: { feature_key: key },
         geometry: { type: "Polygon", coordinates: [ring] },
       });
     }
@@ -764,6 +774,11 @@
         if (typeof key === "string" && /^[0-9a-f-]{36}$/i.test(key))
           onselect(key);
       });
+      map.on("click", "mvt-v1-source-pins", (event: any) => {
+        if (activeFlight) return;
+        const key = event.features?.[0]?.properties?.feature_key;
+        if (typeof key === "string" && /^[0-9a-f-]{36}$/i.test(key)) onselect(key);
+      });
       map.on("click", "mvt-reference-outer", (event: any) => {
         if (activeFlight) return;
         const feature = event.features?.[0],
@@ -777,6 +792,13 @@
           };
           onreference?.(key);
         }
+      });
+      map.on("click", "mvt-approx-reference-area", (event: any) => {
+        if (activeFlight) return;
+        const key = event.features?.[0]?.properties?.feature_key;
+        if (typeof key !== "string" || !/^[a-f0-9]{32}$/i.test(key)) return;
+        pendingReference = { key, count: 0, observedLoading: false };
+        onreference?.(key);
       });
       map.on("click", "mvt-reference-center", (event: any) => {
         if (activeFlight) return;
@@ -795,8 +817,10 @@
       for (const layer of [
         "mvt-clusters",
         "mvt-source-coordinates",
+        "mvt-v1-source-pins",
         "mvt-reference-outer",
         "mvt-reference-center",
+        "mvt-approx-reference-area",
       ]) {
         map.on("mouseenter", layer, () => {
           if (map) map.getCanvas().style.cursor = "pointer";
@@ -1246,6 +1270,14 @@
         </dl>
         {#if mode === "real-preview" && usingMvt}
           <fieldset class="cluster-settings">
+            <legend>Clustering</legend>
+            <label for="cluster-max-zoom">Cluster cutoff <output>at zoom {clusterMaxZoom.toFixed(1)}</output></label>
+            <input id="cluster-max-zoom" type="range" min="4" max="14" step="0.5" value={clusterMaxZoom}
+              oninput={(event) => { clusterMaxZoom = Number(event.currentTarget.value); scheduleClusterSettings(); }} />
+            <small>The cached MVT hierarchy changes at this camera zoom; fractional cutoffs use rounded tile selection.</small>
+            {#if clusterSettingsError}<small role="alert">{clusterSettingsError}</small>{/if}
+          </fieldset>
+          <fieldset class="cluster-settings">
             <legend>Map visualization</legend>
             <label for="reference-radius">Approx radius <output>{referenceRadiusKm.toFixed(2)} km</output></label>
             <input id="reference-radius" type="range" min="0.25" max="5" step="0.25" value={referenceRadiusKm}
@@ -1258,6 +1290,9 @@
               oninput={(event) => { coordinateRadius = Number(event.currentTarget.value); updateVisualSettings(); }} />
             <label class="cluster-checkbox" for="reference-labels"><input id="reference-labels" type="checkbox" checked={showReferenceLabels}
               onchange={(event) => { showReferenceLabels = event.currentTarget.checked; updateVisualSettings(); }} /> Show Approx labels</label>
+            <label class="cluster-checkbox" for="v1-pin-mode"><input id="v1-pin-mode" type="checkbox" checked={useV1Pins}
+              onchange={(event) => { useV1Pins = event.currentTarget.checked; void updatePinMode(); }} /> Use V1 facility pin PNG + shadow</label>
+            {#if pinModeError}<small role="alert">{pinModeError}</small>{/if}
             <small>The blue area is an approximate display aid, not a measured accuracy boundary.</small>
           </fieldset>
           <fieldset class="cluster-settings">
@@ -1312,7 +1347,7 @@
             <small>These affect cluster clicks and debug edits only; they do not speed up ordinary pan or zoom.</small>
           </fieldset>
         {/if}
-      </aside>{/if}{/if}{#if mode === "real-preview" && !usingMvt && hasMapFeatures}<button
+      </aside>{/if}{/if}{#if false && mode === "real-preview" && !usingMvt && hasMapFeatures}<button
       class="feature-list-toggle"
       type="button"
       aria-expanded={featureListOpen}
@@ -1345,7 +1380,7 @@
             in to narrow the list.</small
           >{/if}
       </nav>{/if}{/if}
-  {#if mode === "real-preview" && usingMvt && mvtAccessibleFeatures.length > 0}<button
+  {#if false && mode === "real-preview" && usingMvt && mvtAccessibleFeatures.length > 0}<button
       class="feature-list-toggle"
       type="button"
       aria-expanded={featureListOpen}

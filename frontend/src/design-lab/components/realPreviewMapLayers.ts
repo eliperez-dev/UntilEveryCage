@@ -150,6 +150,12 @@ export async function setRealPreviewPinMode(map: MapLibreMap, enabled: boolean, 
       if (!map.hasImage(id)) map.addImage(id, (await map.loadImage(`${baseUrl}${file}`)).data);
     }
   }
+  if (map.getLayer('mvt-v1-source-pins')) {
+    map.setLayoutProperty('mvt-source-coordinates', 'visibility', enabled ? 'none' : 'visible');
+    map.setLayoutProperty('mvt-v1-source-shadows', 'visibility', enabled ? 'visible' : 'none');
+    map.setLayoutProperty('mvt-v1-source-pins', 'visibility', enabled ? 'visible' : 'none');
+    return;
+  }
   if (!map.getLayer('v1-source-pins')) return;
   map.setLayoutProperty('source-coordinate-points', 'visibility', enabled ? 'none' : 'visible');
   map.setLayoutProperty('v1-source-shadows', 'visibility', enabled ? 'visible' : 'none');

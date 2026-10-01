@@ -4,6 +4,8 @@
  * served as authenticated, same-origin MVT through Vite's private proxy.
  */
 
+import type { Map as MapLibreMap } from 'maplibre-gl';
+
 export const JSON_LOCATION_LAYER_IDS = [
   'clusters',
   'aggregate-outer',
@@ -27,17 +29,24 @@ export const MVT_LOCATION_LAYER_IDS = [
   'mvt-reference-count',
   'mvt-reference-kind',
   'mvt-source-coordinates',
+  'mvt-v1-source-shadows',
+  'mvt-v1-source-pins',
 ] as const;
 
 export const MVT_SOURCE_ID = 'preview-mvt';
 export const MVT_SOURCE_LAYER = 'uec_preview';
 
-export function mvtTileUrl(sourceId?: string): string[] {
-  const sourceFilter = sourceId
-    ? `?source_id=${encodeURIComponent(sourceId)}`
-    : '';
+export function mvtTileUrl(sourceId?: string, clusterCutoff = 7.5): string[] {
+  const sourceFilter = sourceId ? `&source_id=${encodeURIComponent(sourceId)}` : '';
+  return [`/dev/real-preview/map/tiles/{z}/{x}/{y}?cluster_cutoff=${clusterCutoff}${sourceFilter}`];
+}
 
-  return [`/dev/real-preview/map/tiles/{z}/{x}/{y}${sourceFilter}`];
+/** Change the MVT hierarchy cutoff while retaining the cached vector-source contract. */
+export function setMvtClusterCutoff(map: MapLibreMap, sourceId: string | undefined, cutoff: number): void {
+  const source = map.getSource(MVT_SOURCE_ID) as ({ roundZoom?: boolean; setTiles?: (tiles: string[]) => unknown } | undefined);
+  if (!source?.setTiles || !Number.isFinite(cutoff) || cutoff < 4 || cutoff > 14 || Math.round(cutoff * 2) !== cutoff * 2) return;
+  try { source.roundZoom = !Number.isInteger(cutoff); } catch { /* The server-side cutoff remains authoritative. */ }
+  source.setTiles(mvtTileUrl(sourceId, cutoff));
 }
 
 export function isMvtReferenceKind(kind: unknown): boolean {
@@ -113,6 +122,7 @@ export function addMvtLocationLayers(map: MapLike, sourceId?: string): void {
     tiles: mvtTileUrl(sourceId),
     minzoom: 0,
     maxzoom: 14,
+    roundZoom: true,
   });
   map.addSource('mvt-reference-areas', {
     type: 'geojson',
@@ -176,6 +186,18 @@ export function addMvtLocationLayers(map: MapLike, sourceId?: string): void {
     id: 'mvt-source-coordinates', type: 'circle', source, 'source-layer': sourceLayer,
     filter: kind('source_coordinate'),
     paint: { 'circle-radius': 7, 'circle-color': ['match', ['get', 'precision'], 'source_provided_unverified', '#e0a45d', '#d8c99b'], 'circle-opacity': 0.94, 'circle-stroke-color': '#171a18', 'circle-stroke-width': 2.5 },
+  });
+  map.addLayer({
+    id: 'mvt-v1-source-shadows', type: 'symbol', source, 'source-layer': sourceLayer,
+    filter: kind('source_coordinate'),
+    layout: { visibility: 'none', 'icon-image': 'v1-pin-shadow', 'icon-anchor': 'bottom', 'icon-size': 1,
+      'icon-offset': [8.5, 0], 'icon-allow-overlap': true, 'icon-ignore-placement': true },
+  });
+  map.addLayer({
+    id: 'mvt-v1-source-pins', type: 'symbol', source, 'source-layer': sourceLayer,
+    filter: kind('source_coordinate'),
+    layout: { visibility: 'none', 'icon-image': 'v1-pin-red', 'icon-anchor': 'bottom', 'icon-size': 0.5,
+      'icon-allow-overlap': true, 'icon-ignore-placement': true },
   });
 }
 

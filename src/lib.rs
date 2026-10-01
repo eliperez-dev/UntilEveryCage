@@ -633,6 +633,7 @@ struct RealPreviewMvtTileCacheKey {
     contract_version: u8,
     snapshot_boundary: String,
     source_id: Option<String>,
+    cluster_cutoff_half_steps: u8,
     z: u8,
     x: u32,
     y: u32,
@@ -748,6 +749,7 @@ pub struct RealPreviewViewportParams {
 #[derive(Deserialize)]
 pub struct RealPreviewTileParams {
     pub source_id: Option<String>,
+    pub cluster_cutoff: Option<f64>,
 }
 
 /// Compact private map payload used by the browser's local cluster index.
@@ -989,6 +991,10 @@ fn valid_real_preview_tile_source(value: Option<&str>) -> bool {
     })
 }
 
+fn valid_real_preview_cluster_cutoff(value: f64) -> bool {
+    value.is_finite() && (4.0..=14.0).contains(&value) && (value * 2.0).fract() == 0.0
+}
+
 fn valid_real_preview_reference_key(value: &str) -> bool {
     value.len() == 32 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
@@ -1019,6 +1025,7 @@ pub async fn get_real_preview_map_tile_handler(
     // detail from the existing detail route.
     if z > 14 || x >= (1_u32 << z) || y >= (1_u32 << z)
         || !valid_real_preview_tile_source(params.source_id.as_deref())
+        || params.cluster_cutoff.is_some_and(|cutoff| !valid_real_preview_cluster_cutoff(cutoff))
     {
         return real_preview_error(
             StatusCode::BAD_REQUEST,
@@ -1051,6 +1058,7 @@ pub async fn get_real_preview_map_tile_handler(
         contract_version: REAL_PREVIEW_MVT_CONTRACT_VERSION,
         snapshot_boundary,
         source_id: params.source_id.clone(),
+        cluster_cutoff_half_steps: (params.cluster_cutoff.unwrap_or(7.5) * 2.0) as u8,
         z,
         x,
         y,
@@ -1059,14 +1067,14 @@ pub async fn get_real_preview_map_tile_handler(
         return real_preview_tile_response(StatusCode::OK, bytes.to_vec());
     }
 
-    // Eight cells per tile side is roughly a 64px cluster radius at a 512px
-    // tile: close to V1's 50px visual clustering without producing the large,
-    // sparse blobs from the earlier four-cell projection. The grid is in
-    // EPSG:3857, anchored at the world origin, so feature keys and boundaries
-    // remain stable across adjacent tiles.
+    // A tile-local, deterministic spatial partition bounds neighborhood work;
+    // actual clusters are density-connected sets inside each partition and
+    // their displayed locations are member centroids, not bucket centers.
+    // Isolated and sparse records remain at their source coordinates.
     let grid_size = 40_075_016.685_578_49_f64 / f64::from(1_u32 << z)
         / REAL_PREVIEW_CLUSTER_CELLS_PER_TILE_SIDE;
-    let cluster_zoom = z < 10;
+    let cluster_cutoff = params.cluster_cutoff.unwrap_or(7.5);
+    let cluster_zoom = f64::from(z) < cluster_cutoff;
     let sql = r#"
 WITH
 -- Calculate the buffered geographic envelope before touching candidate
@@ -1075,7 +1083,10 @@ WITH
 -- corpus before PostGIS transforms or grid aggregation occur.
 tile AS (
   SELECT bounds,
-         ST_Transform(ST_Expand(bounds, $5::double precision), 4326) AS geographic_bounds
+         ST_Transform(bounds, 4326) AS geographic_bounds,
+         ST_Transform(ST_Expand(bounds, $5::double precision), 4326) AS buffered_geographic_bounds,
+         (ST_XMin(ST_Transform(bounds, 4326)) - $5::double precision * 180.0 / (pi() * 6378137.0)) AS min_longitude,
+         (ST_XMax(ST_Transform(bounds, 4326)) + $5::double precision * 180.0 / (pi() * 6378137.0)) AS max_longitude
   FROM (SELECT ST_TileEnvelope($1::integer, $2::integer, $3::integer) AS bounds) world_tile
 ),
 sources AS (
@@ -1107,8 +1118,12 @@ coordinate_candidates AS (
     AND c.location_class = 'numeric_source_coordinate'
     AND c.latitude BETWEEN -90 AND 90 AND c.longitude BETWEEN -180 AND 180
     AND (c.latitude <> 0 OR c.longitude <> 0)
-    AND c.longitude BETWEEN ST_XMin(tile.geographic_bounds) AND ST_XMax(tile.geographic_bounds)
-    AND c.latitude BETWEEN ST_YMin(tile.geographic_bounds) AND ST_YMax(tile.geographic_bounds)
+    AND (
+      c.longitude BETWEEN GREATEST(tile.min_longitude, -180.0) AND LEAST(tile.max_longitude, 180.0)
+      OR (tile.min_longitude < -180.0 AND c.longitude BETWEEN tile.min_longitude + 360.0 AND 180.0)
+      OR (tile.max_longitude > 180.0 AND c.longitude BETWEEN -180.0 AND tile.max_longitude - 360.0)
+    )
+    AND c.latitude BETWEEN ST_YMin(tile.buffered_geographic_bounds) AND ST_YMax(tile.buffered_geographic_bounds)
     AND (c.source_id, c.snapshot_sha256) IN (SELECT source_id, snapshot_sha256 FROM latest)
     AND ($4::text IS NULL OR c.source_id = $4)
   UNION ALL
@@ -1119,8 +1134,12 @@ coordinate_candidates AS (
     AND c.display_geometry_source IS NOT NULL
     AND c.display_latitude BETWEEN -90 AND 90 AND c.display_longitude BETWEEN -180 AND 180
     AND (c.display_latitude <> 0 OR c.display_longitude <> 0)
-    AND c.display_longitude BETWEEN ST_XMin(tile.geographic_bounds) AND ST_XMax(tile.geographic_bounds)
-    AND c.display_latitude BETWEEN ST_YMin(tile.geographic_bounds) AND ST_YMax(tile.geographic_bounds)
+    AND (
+      c.display_longitude BETWEEN GREATEST(tile.min_longitude, -180.0) AND LEAST(tile.max_longitude, 180.0)
+      OR (tile.min_longitude < -180.0 AND c.display_longitude BETWEEN tile.min_longitude + 360.0 AND 180.0)
+      OR (tile.max_longitude > 180.0 AND c.display_longitude BETWEEN -180.0 AND tile.max_longitude - 360.0)
+    )
+    AND c.display_latitude BETWEEN ST_YMin(tile.buffered_geographic_bounds) AND ST_YMax(tile.buffered_geographic_bounds)
     AND (c.source_id, c.snapshot_sha256) IN (SELECT source_id, snapshot_sha256 FROM latest)
     AND ($4::text IS NULL OR c.source_id = $4)
 ),
@@ -1132,6 +1151,13 @@ placeable AS (
 ),
 numeric AS (
   SELECT * FROM placeable WHERE display_geometry_source IS NULL
+),
+clustered_numeric AS (
+  SELECT numeric.*,
+         ST_SnapToGrid(geom, $5::double precision) AS partition_cell,
+         ST_ClusterDBSCAN(geom, eps := $5::double precision * 0.45, minpoints := 3)
+           OVER (PARTITION BY ST_SnapToGrid(geom, $5::double precision) ORDER BY candidate_id) AS cluster_id
+  FROM numeric
 ),
 reference_features AS (
   SELECT md5('city-reference:' || ST_X(geom)::text || ':' || ST_Y(geom)::text) AS feature_key,
@@ -1148,23 +1174,30 @@ reference_features AS (
   GROUP BY ST_X(geom), ST_Y(geom)
 ),
 low_zoom_clusters AS (
-  SELECT md5('cluster:' || ST_X(group_geom)::text || ':' || ST_Y(group_geom)::text || ':' || $1::text) AS feature_key,
-         CASE WHEN $1::integer = 0 THEN NULL::text
-              ELSE md5('cluster:' || ST_X(ST_SnapToGrid(group_geom, $5::double precision * 2))::text || ':' || ST_Y(ST_SnapToGrid(group_geom, $5::double precision * 2))::text || ':' || ($1::integer - 1)::text)
-          END AS parent_key,
+  SELECT md5('cluster:' || ST_X(partition_cell)::text || ':' || ST_Y(partition_cell)::text || ':' || cluster_id::text || ':' || $1::text) AS feature_key,
+         NULL::text AS parent_key,
          'cluster'::text AS kind,
-         sum(weight)::integer AS count,
+         count(*)::integer AS count,
          'mixed_location_cluster'::text AS precision,
          LEAST($1::integer + 1, 14) AS next_zoom,
          ST_Centroid(ST_Collect(geom)) AS geom
-  FROM (
-    SELECT ST_SnapToGrid(geom, $5::double precision) AS group_geom, geom, 1::bigint AS weight FROM numeric
-    UNION ALL
-    SELECT ST_SnapToGrid(geom, $5::double precision) AS group_geom, geom, count(*)::bigint AS weight
-    FROM placeable WHERE display_geometry_source IS NOT NULL GROUP BY geom
-  ) cells
-  WHERE $6::boolean
-  GROUP BY group_geom
+  FROM clustered_numeric
+  WHERE cluster_id IS NOT NULL AND $6::boolean
+  GROUP BY partition_cell, cluster_id
+),
+low_zoom_sparse AS (
+  SELECT candidate_id::text AS feature_key,
+         NULL::text AS parent_key,
+         'source_coordinate'::text AS kind,
+         1::integer AS count,
+         CASE WHEN source_id = 'us.fsis' AND coordinate_precision = 'source-provided' THEN 'source_provided_unverified'
+              WHEN coordinate_precision IN ('numeric','exact','source_numeric','source_coordinates','facility_coordinate') THEN 'source_numeric_pending_review'
+              WHEN coordinate_precision = 'source-provided' THEN 'approximate_source_provided_pending_review'
+              ELSE 'approximate_source_precision_unknown_pending_review' END AS precision,
+         LEAST($1::integer + 1, 14) AS next_zoom,
+         geom
+  FROM clustered_numeric
+  WHERE cluster_id IS NULL AND $6::boolean
 ),
 numeric_features AS (
   SELECT candidate_id::text AS feature_key,
@@ -1182,9 +1215,11 @@ numeric_features AS (
 features AS (
   SELECT * FROM low_zoom_clusters
   UNION ALL
+  SELECT * FROM low_zoom_sparse
+  UNION ALL
   SELECT * FROM numeric_features
   UNION ALL
-  SELECT * FROM reference_features WHERE NOT $6::boolean
+  SELECT * FROM reference_features
 ),
 tile_features AS (
    SELECT feature_key, parent_key, kind, count, precision, next_zoom,
@@ -3239,9 +3274,26 @@ mod v2_api_tests {
         assert_eq!(response.headers().get("cache-control").unwrap(), "no-store");
 
         let response = router
+            .clone()
             .oneshot(
                 Request::builder()
                     .uri("/dev/real-preview/map/tiles/2/1/1?source_id=bad%2Fsource")
+                    .header("host", "127.0.0.1:8000")
+                    .header(
+                        "x-uec-dev-preview-token",
+                        "local-test-token-with-at-least-32-characters",
+                    )
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri("/dev/real-preview/map/tiles/2/1/1?cluster_cutoff=7.25")
                     .header("host", "127.0.0.1:8000")
                     .header(
                         "x-uec-dev-preview-token",
@@ -3326,6 +3378,7 @@ mod v2_api_tests {
             contract_version: REAL_PREVIEW_MVT_CONTRACT_VERSION,
             snapshot_boundary: "snapshot-a".into(),
             source_id: None,
+            cluster_cutoff_half_steps: 15,
             z: 4,
             x: 3,
             y: 5,
@@ -3341,10 +3394,26 @@ mod v2_api_tests {
             source_id: Some("us.fsis".into()),
             ..key.clone()
         };
+        let changed_cutoff = RealPreviewMvtTileCacheKey {
+            cluster_cutoff_half_steps: 16,
+            ..key.clone()
+        };
         let adjacent_tile = RealPreviewMvtTileCacheKey { x: 4, ..key };
         assert!(cache.get(&changed_snapshot).is_none());
         assert!(cache.get(&source_filtered).is_none());
+        assert!(cache.get(&changed_cutoff).is_none());
         assert!(cache.get(&adjacent_tile).is_none());
+    }
+
+    #[test]
+    fn real_preview_cluster_cutoff_accepts_only_half_zoom_steps() {
+        assert!(valid_real_preview_cluster_cutoff(4.0));
+        assert!(valid_real_preview_cluster_cutoff(7.5));
+        assert!(valid_real_preview_cluster_cutoff(14.0));
+        assert!(!valid_real_preview_cluster_cutoff(3.5));
+        assert!(!valid_real_preview_cluster_cutoff(14.5));
+        assert!(!valid_real_preview_cluster_cutoff(7.25));
+        assert!(!valid_real_preview_cluster_cutoff(f64::NAN));
     }
 
     #[test]

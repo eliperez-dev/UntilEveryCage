@@ -12,6 +12,7 @@ test('reviewed map keeps cluster expansion on the cached MVT hierarchy', async (
   );
   await page.goto('/#/map?f1a=field&lat=45&lon=5&z=2&list=closed');
   await firstTile;
+  await expect(page.getByRole('button', { name: /Map features/ })).toHaveCount(0);
   await page.waitForFunction(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return map?.isStyleLoaded() && map.getSource('preview-mvt') && map.getLayer('mvt-clusters') && map.isSourceLoaded('preview-mvt');
@@ -34,10 +35,14 @@ test('reviewed map keeps cluster expansion on the cached MVT hierarchy', async (
   expect(requests.some(path => path.includes('/map/feed'))).toBe(false);
 });
 
-test('approximate city markers and 3 km areas are derived from private MVT features', async ({ page }) => {
+test('Belgium approximate markers and 3 km areas are derived from private MVT features and remain clickable', async ({ page }) => {
   requirePreview();
   test.setTimeout(90_000);
-  await page.goto('/#/map?f1a=field&lat=50.7&lon=4.6&z=10&list=closed');
+  const referenceRequests: string[] = [];
+  page.on('request', request => {
+    if (new URL(request.url()).pathname.includes('/references/')) referenceRequests.push(request.url());
+  });
+  await page.goto('/#/map?f1a=field&source=be.locations&lat=50.7&lon=4.6&z=8&list=closed');
   await page.waitForFunction(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return map?.isStyleLoaded() && map.isSourceLoaded('preview-mvt') && map.getLayer('mvt-reference-center');
@@ -61,6 +66,83 @@ test('approximate city markers and 3 km areas are derived from private MVT featu
   expect(state.centers).toBeGreaterThan(0);
   expect(state.properties).not.toContain('address');
   expect(state.properties).not.toContain('name');
+  const marker = await page.evaluate(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    const feature = map.queryRenderedFeatures({ layers: ['mvt-reference-center'] })[0];
+    if (!feature) return null;
+    const point = map.project(feature.geometry.coordinates);
+    return { x: point.x, y: point.y };
+  });
+  expect(marker).not.toBeNull();
+  const canvas = await page.locator('.maplibregl-canvas').boundingBox();
+  expect(canvas).not.toBeNull();
+  await page.mouse.click(canvas!.x + marker!.x, canvas!.y + marker!.y);
+  await expect.poll(() => referenceRequests.length).toBeGreaterThan(0);
+  await expect(page.getByText(/Approximate city location/)).toBeVisible();
+});
+
+test('western FSIS MVT coverage has no blank tiles through fractional zooms 2–3', async ({ page }) => {
+  requirePreview();
+  test.setTimeout(120_000);
+  const tileCalls: string[] = [];
+  page.on('response', async response => {
+    if (response.url().includes('/map/tiles/')) tileCalls.push(`${response.status()} ${new URL(response.url()).pathname} bytes=${(await response.body().catch(() => new Uint8Array())).byteLength}`);
+  });
+  await page.goto('/#/map?f1a=field&source=us.fsis&lat=44.4363&lon=-88.8086&z=2&list=closed');
+  await page.waitForFunction(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return map?.isStyleLoaded() && map.getSource('preview-mvt') && map.getLayer('mvt-clusters');
+  }, undefined, { timeout: 60_000 });
+  const results = await page.evaluate(async () => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    const values = [];
+    for (const zoom of [2, 2.25, 2.5, 2.75, 3, 3.25]) {
+      map.setZoom(zoom);
+      await new Promise<void>(resolve => map.once('idle', () => resolve()));
+      const features = map.queryRenderedFeatures({ layers: ['mvt-clusters', 'mvt-source-coordinates'] });
+      values.push({ zoom, count: features.length,
+        west: features.filter((feature: any) => feature.geometry.coordinates[0] < -110).length });
+    }
+    return values;
+  });
+  expect(tileCalls.some(call => call.includes('/tiles/2/0/1') && call.includes('bytes=') && !call.endsWith('bytes=0')))
+    .toBe(true);
+  expect(results).toHaveLength(6);
+  for (const result of results) {
+    expect(result.count, `no map features at z=${result.zoom}`).toBeGreaterThan(0);
+    expect(result.west, `no western FSIS features at z=${result.zoom}`).toBeGreaterThan(0);
+  }
+});
+
+test('MVT cutoff controls preserve coverage and V1 pins render at pin zoom', async ({ page }) => {
+  requirePreview();
+  test.setTimeout(90_000);
+  await page.goto('/#/map?f1a=field&source=us.fsis&lat=39.5&lon=-77&z=6&list=closed');
+  await page.waitForFunction(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return map?.isStyleLoaded() && map.getLayer('mvt-source-coordinates');
+  }, undefined, { timeout: 60_000 });
+  await page.getByRole('button', { name: 'Debug menu' }).click();
+  const cutoff = page.locator('#cluster-max-zoom');
+  await expect(cutoff).toHaveValue('7.5');
+  await cutoff.evaluate((element: HTMLInputElement) => {
+    element.value = '4';
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await expect.poll(async () => page.evaluate(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return map.isSourceLoaded('preview-mvt') && map.queryRenderedFeatures({ layers: ['mvt-source-coordinates'] }).length;
+  })).toBeGreaterThan(0);
+  const pins = page.getByLabel('Use V1 facility pin PNG + shadow');
+  await pins.check();
+  await expect.poll(() => page.evaluate(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return map.getLayoutProperty('mvt-v1-source-pins', 'visibility');
+  })).toBe('visible');
+  await expect.poll(() => page.evaluate(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return map.queryRenderedFeatures({ layers: ['mvt-v1-source-pins'] }).length;
+  })).toBeGreaterThan(0);
 });
 
 test('debug menu discloses MVT projection and offers honest visual controls', async ({ page }) => {
@@ -75,4 +157,7 @@ test('debug menu discloses MVT projection and offers honest visual controls', as
   await expect(page.getByText(/Cluster membership and expansion levels come from the server-generated cached tile hierarchy/)).toBeVisible();
   await expect(page.getByLabel('Approx radius')).toHaveValue('3');
   await expect(page.getByLabel('Coordinate size')).toHaveValue('6.5');
+  await expect(page.locator('#cluster-max-zoom')).toHaveValue('7.5');
+  await expect(page.getByLabel('Use V1 facility pin PNG + shadow')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Map features/ })).toHaveCount(0);
 });
