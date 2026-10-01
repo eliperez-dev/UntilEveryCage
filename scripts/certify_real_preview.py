@@ -115,6 +115,13 @@ def validate_ledger(ledger: dict[str, Any], source_id: str) -> dict[str, Any]:
         counts["unmapped"] = 0
         if counts["city_postal"] != counts["candidates"] or counts["numeric_coordinates"] != 0:
             raise CertificationError("Australia NPI privacy-safe city/postal candidate counts do not reconcile")
+    if source_id == "au.sa.epa.licensed-activities":
+        # The source points are approximate and remain private review claims;
+        # they are still a location class for reconciliation, while the
+        # importer's unmapped-facility count describes identity, not location.
+        counts["unmapped"] = 0
+        if counts["numeric_coordinates"] != counts["candidates"] or counts["city_postal"] != 0:
+            raise CertificationError("SA EPA approximate-coordinate candidate counts do not reconcile")
     if source_id == "es.cat.feed-sandach":
         counts["unmapped"] = 0
         if counts["city_postal"] != counts["candidates"] or counts["numeric_coordinates"] != 0:
@@ -304,7 +311,8 @@ def _db_check(database_url: str, source_id: str, evidence: dict[str, Any]) -> di
             raise CertificationError("database run identity or normalized hash does not match the ledger")
         if raw_hash.strip().lower() not in evidence["acquisition_hashes"]:
             raise CertificationError("database source artifact hash is absent from acquisition provenance")
-        db_unmapped = 0 if source_id in {"ca.cfia.federal-meat", "au.npi.facilities", "es.cat.feed-sandach"} else unmapped
+        db_unmapped = 0 if source_id in {"ca.cfia.federal-meat", "au.npi.facilities",
+                                         "au.sa.epa.licensed-activities", "es.cat.feed-sandach"} else unmapped
         if (observations, candidates, numeric, coarse, db_unmapped, listable, visible) != (
             expected["observations"], expected["candidates"], expected["numeric_coordinates"],
             expected["coarse_placeable"], expected["unmapped"], expected["candidates"], expected["map_visible"]):
@@ -320,14 +328,36 @@ def _db_check(database_url: str, source_id: str, evidence: dict[str, Any]) -> di
                      AND (latitude<>0 OR longitude<>0))""", (snapshot, source_id)).fetchone()[0]
         if bad_coordinates:
             raise CertificationError("database numeric candidate set contains invalid coordinates")
+        taxonomy_evidence = None
+        if source_id in {"au.npi.facilities", "au.sa.epa.licensed-activities"}:
+            taxonomy_row = connection.execute("""SELECT count(DISTINCT s.candidate_id),
+                count(*) FILTER (WHERE a.mapping_method='candidate' AND a.mapping_status='ambiguous'
+                                 AND a.primary_key='unclassified' AND a.leaf_key IS NULL),
+                count(*) FILTER (WHERE NOT (a.mapping_method='candidate' AND a.mapping_status='ambiguous'
+                                            AND a.primary_key='unclassified' AND a.leaf_key IS NULL)),
+                count(DISTINCT s.taxonomy_version)
+                FROM real_preview.candidate_taxonomy_assignment_sets s
+                JOIN real_preview.candidate_taxonomy_assignments a USING (assignment_set_id)
+                WHERE s.snapshot_sha256=%s AND s.source_id=%s AND s.taxonomy_version='uec-taxonomy-v1'""",
+                (snapshot, source_id)).fetchone()
+            taxonomy_candidates, ambiguous_candidates, other_assignments, taxonomy_versions = taxonomy_row
+            if (taxonomy_candidates != expected["candidates"] or ambiguous_candidates != expected["candidates"]
+                    or other_assignments != 0 or taxonomy_versions != 1):
+                raise CertificationError("database taxonomy-v1 candidate assignments do not reconcile")
+            taxonomy_evidence = {"version": "uec-taxonomy-v1", "candidate_assignment_sets": taxonomy_candidates,
+                                 "ambiguous_source_native_candidates": ambiguous_candidates,
+                                 "unclassified": 0, "confirmed_activity_mappings": 0}
         for relation in ("uec.release_members", "uec.map_facilities_public_discovery",
                          "uec.map_facilities_public_discovery_read_model", "uec.graph_public_relationships",
                          "uec.graph_public_claims"):
             exists = connection.execute("SELECT to_regclass(%s)", (relation,)).fetchone()[0]
             if exists and connection.execute(f"SELECT count(*) FROM {relation}").fetchone()[0]:
                 raise CertificationError("database public projection is non-empty")
-    return {"exact_run": True, "public_rows": 0, "valid_numeric_coordinates": True,
-            "snapshot_sha256": snapshot, "source_artifact_sha256": raw_hash}
+    result = {"exact_run": True, "public_rows": 0, "valid_numeric_coordinates": True,
+              "snapshot_sha256": snapshot, "source_artifact_sha256": raw_hash}
+    if taxonomy_evidence is not None:
+        result["taxonomy"] = taxonomy_evidence
+    return result
 
 
 def certify(source_id: str, ledger_path: Path, database_url: str, api_url: str, token: str) -> dict[str, Any]:

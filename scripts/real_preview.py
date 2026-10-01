@@ -797,6 +797,7 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
     database_url = _local_database_url()
     env = os.environ.copy()
     env["UEC_DATABASE_URL"] = database_url
+    env["PYTHONPATH"] = os.pathsep.join(filter(None, (str(ROOT), env.get("PYTHONPATH", ""))))
     run_id = f"preview-{source_id.replace('.', '-')}-{uuid.uuid4()}"
     output_root = ROOT / "target" / "real-preview" / "runs"
     job_dir = ROOT / "target" / "real-preview" / "jobs"
@@ -1468,11 +1469,12 @@ def refresh_source(source_id: str = "be.locations", existing_runner_run_id: str 
 def strict_live_private_e2e(source_id: str, existing_runner_run_id: str | None = None) -> dict[str, object]:
     """Run one bounded live source acquisition through disposable private preview and certification."""
     global PROJECT, VOLUME, DB_PORT, API_PORT, WEB_PORT, PRIVATE_ROOT, ACTIVE_PREVIEW_TOKEN
-    if source_id not in {"ca.cfia.federal-meat", "au.npi.facilities", "fsa_approved_establishments", "es.cat.feed-sandach"}:
+    if source_id not in {"ca.cfia.federal-meat", "au.npi.facilities", "au.sa.epa.licensed-activities", "fsa_approved_establishments", "es.cat.feed-sandach"}:
         raise PreviewError("strict-live-private-e2e supports only assigned source lanes")
     import uuid
     suffix = uuid.uuid4().hex[:10]
     safe_source = {"ca.cfia.federal-meat": "cfia", "au.npi.facilities": "au-npi",
+                   "au.sa.epa.licensed-activities": "au-sa-epa",
                    "fsa_approved_establishments": "fsa", "es.cat.feed-sandach": "es-cat"}[source_id]
     project = f"uec-preview-{safe_source}-{suffix}"
     private_root = ROOT / "data" / "staging" / "strict-preview" / suffix
@@ -1521,6 +1523,7 @@ def strict_live_private_e2e(source_id: str, existing_runner_run_id: str | None =
             handoff_manifest = source_root / "candidate-handoff" / "manifest.json"
             replay_env = os.environ.copy()
             replay_env["UEC_DATABASE_URL"] = _local_database_url()
+            replay_env["PYTHONPATH"] = os.pathsep.join(filter(None, (str(ROOT), replay_env.get("PYTHONPATH", ""))))
             replay = subprocess.run([
                 sys.executable, str(IMPORTER), "--root", str(source_root),
                 "--manifest", str(handoff_manifest), "--source-id", source_id,
