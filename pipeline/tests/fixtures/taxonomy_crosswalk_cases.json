@@ -1,0 +1,12 @@
+[
+  {"name":"denmark-direct-slaughter","record":{"source_id":"dk.smiley","normalized":{"activity_codes":["EB.10.10.99"]}}},
+  {"name":"uk-derived-label","record":{"source_id":"fsa_approved_establishments","normalized":{"activities":["Approved slaughterhouse"]}}},
+  {"name":"australia-candidate","record":{"source_id":"au.npi.facilities","normalized":{"primary_anzsic_class_code":"0199","primary_anzsic_class_name":"Other livestock farming"}}},
+  {"name":"unknown-code","record":{"source_id":"dk.smiley","normalized":{"activity_codes":["NEW.CODE"]}}},
+  {"name":"partial-denmark","record":{"source_id":"dk.smiley","normalized":{"activity_codes":["EB.10.10.99","NEW.CODE"]}}},
+  {"name":"conflicting-france-signals","record":{"source_id":"fr.dgal.section-i","normalized":{"source_category":"SH","source_activity":"TRANSFORMATION"}}},
+  {"name":"multiple-activities","record":{"source_id":"dk.smiley","normalized":{"activity_codes":["EB.10.50.00","EB.10.10.99"]}}},
+  {"name":"event-only","record":{"source_id":"us.inspections","normalized":{"activity_descriptions":["Inspection report"]}}},
+  {"name":"italy-unclassified","record":{"source_id":"it.853-2004","source_values":{"category":"X","activity":"10"},"normalized":{"activity_categories":["slaughter"]}}},
+  {"name":"spain-unclassified","record":{"source_id":"es.cat.feed-sandach","source_values":{"activity":"candidate"},"normalized":{"activity_categories":["processing"]}}}
+]
