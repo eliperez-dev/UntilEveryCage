@@ -295,6 +295,13 @@ pub struct PublicMapTileParams {
 /// Serve an immutable MVT only while its release/profile and suppression
 /// generation remain currently eligible. The staged artifact directory is
 /// private until promotion makes the manifest lookup succeed.
+fn map_artifact_feature_schema_valid(map_artifact: &Value) -> bool {
+    let v1_properties = json!(["feature_key", "kind", "count", "exact_count", "coarse_count", "next_zoom", "record_id", "category_key"]);
+    let v2_properties = json!(["feature_key", "kind", "count", "exact_count", "coarse_count", "next_zoom", "record_id", "category_key", "category_keys_compact"]);
+    (map_artifact["feature_schema_version"] == "uec-map-feature-v1" && map_artifact["feature_properties"] == v1_properties)
+        || (map_artifact["feature_schema_version"] == "uec-map-feature-v2" && map_artifact["feature_properties"] == v2_properties)
+}
+
 pub async fn get_v2_map_tile_handler(
     State(state): State<ApiState>,
     Path(path): Path<PublicMapTilePath>,
@@ -350,13 +357,11 @@ pub async fn get_v2_map_tile_handler(
         return v2_error(StatusCode::SERVICE_UNAVAILABLE, "release_manifest_invalid", "release manifest integrity check failed");
     }
     let map_artifact = &manifest["map_artifact"];
-    let allowed_properties = json!(["feature_key", "kind", "count", "exact_count", "coarse_count", "next_zoom", "record_id", "category_key"]);
     let expected_template = format!("/api/v2/releases/{}/map/tiles/{{z}}/{{x}}/{{y}}.mvt?profile={}", path.release_id, profile);
     if map_artifact["release_id"] != path.release_id
         || map_artifact["profile"] != profile
         || map_artifact["source_layer"] != "uec_map"
-        || map_artifact["feature_schema_version"] != "uec-map-feature-v1"
-        || map_artifact["feature_properties"] != allowed_properties
+        || !map_artifact_feature_schema_valid(map_artifact)
         || map_artifact["min_zoom"].as_u64() != Some(0)
         || map_artifact["max_zoom"].as_u64() != Some(14)
         || map_artifact["tile_url_template"] != expected_template
@@ -1329,6 +1334,13 @@ fn real_preview_candidate(row: &tokio_postgres::Row) -> Value {
         "source_activity_codes": row.get::<_, Vec<String>>("source_activity_codes"),
         "source_activity_labels": row.get::<_, Vec<String>>("source_activity_labels"),
         "activity_mapping_status": row.get::<_, String>("activity_mapping_status"),
+        // Real-preview candidates currently have no persisted versioned
+        // taxonomy assignment set. Keep the additive contract explicit and
+        // conservative until upstream mapping evidence is available.
+        "taxonomy_display_category": "unclassified",
+        "taxonomy_primary_categories": ["unclassified"],
+        "taxonomy_leaf_activities": [],
+        "taxonomy_assignments": [],
         "classification_ruleset_version": row.get::<_, Option<String>>("classification_ruleset_version"),
         "activity_source": row.get::<_, Option<String>>("activity_source"),
         "source_name": row.get::<_, Option<String>>("source_name"),
@@ -2663,6 +2675,14 @@ const V2_CATEGORIES: &[&str] = &[
     "logistics_and_storage",
     "retail_and_prepared_food",
 ];
+const V2_TAXONOMY_PRIMARY_CATEGORIES: &[&str] = &[
+    "animal_keeping_and_production",
+    "slaughter",
+    "processing_and_preparation",
+    "research_and_animal_use",
+    "other_regulated_premises",
+    "unclassified",
+];
 const V2_COUNTRIES: &[&str] = &["DK"];
 const V2_SOURCE_TYPES: &[&str] = &["official", "secondary", "user_submitted"];
 const V2_PROFILES: &[&str] = &["official", "secondary", "community"];
@@ -2823,6 +2843,8 @@ pub struct V2LocationParams {
     pub country_code: Option<String>,
     pub region: Option<String>,
     pub category: Option<String>,
+    /// Comma-separated taxonomy primaries; multiple values use OR semantics.
+    pub category_keys: Option<String>,
     pub source_type: Option<String>,
     pub profile: Option<String>,
     /// Pin every page of a discovery query to the manifest release currently displayed.
@@ -2849,6 +2871,10 @@ pub struct V2Location {
     pub country_code: String,
     pub city: Option<String>,
     pub category: String,
+    pub taxonomy_display_category: String,
+    pub taxonomy_primary_categories: Vec<String>,
+    pub taxonomy_leaf_activities: Value,
+    pub taxonomy_assignments: Value,
     pub publication_profile: String,
     pub factual_review_status: String,
     pub privacy_screening_status: String,
@@ -2936,6 +2962,20 @@ pub async fn get_v2_locations_handler(
             "source_type is unsupported",
         );
     }
+    let category_keys = match params.category_keys.as_deref() {
+        None => None,
+        Some(value) => {
+            let mut keys = value.split(',').map(str::to_owned).collect::<Vec<_>>();
+            keys.sort();
+            keys.dedup();
+            if keys.len() > V2_TAXONOMY_PRIMARY_CATEGORIES.len()
+                || keys.iter().any(|key| !V2_TAXONOMY_PRIMARY_CATEGORIES.contains(&key.as_str()))
+            {
+                return v2_error(StatusCode::BAD_REQUEST, "invalid_category_keys", "category_keys contains an unsupported taxonomy category");
+            }
+            Some(keys)
+        }
+    };
     if params
         .region
         .as_deref()
@@ -3173,8 +3213,23 @@ pub async fn get_v2_locations_handler(
                history.first_observed_at, history.last_observed_at, history.observation_count, history.lifecycle_status,
                history.provenance_origin_type, history.release_id, history.release_ruleset_version,
                history.provenance_source_id, history.provenance_source_name, history.provenance_source_url, history.provenance_retrieved_at,
-               history.source_rights_status
+               history.source_rights_status,
+               COALESCE(taxonomy.display_category, 'unclassified'),
+               COALESCE(taxonomy.primary_categories, ARRAY['unclassified']::text[]),
+               COALESCE(taxonomy.leaf_activities, '[]'::jsonb)::text,
+               COALESCE(taxonomy.assignments, '[]'::jsonb)::text
         FROM uec.map_facilities_public_discovery_read_model AS history
+        LEFT JOIN LATERAL (
+          SELECT min(s.display_category) AS display_category,
+                 array_agg(DISTINCT a.primary_key ORDER BY a.primary_key) FILTER (WHERE a.primary_key IS NOT NULL) AS primary_categories,
+                 COALESCE(jsonb_agg(DISTINCT jsonb_build_object('key', a.leaf_key, 'label', a.leaf_label)) FILTER (WHERE a.leaf_key IS NOT NULL AND a.leaf_label IS NOT NULL AND a.mapping_method IN ('direct','derived') AND a.mapping_status IN ('mapped','partial')), '[]'::jsonb) AS leaf_activities,
+                 COALESCE(jsonb_agg(DISTINCT jsonb_build_object('primary_key',a.primary_key,'leaf_key',a.leaf_key,'leaf_label',a.leaf_label,'source_code_reference',a.source_code_reference,'source_label_reference',a.source_label_reference,'source_code',a.source_code,'source_label',a.source_label,'method',a.mapping_method,'status',a.mapping_status,'taxonomy_version',s.taxonomy_version,'crosswalk_version',s.crosswalk_version,'ruleset_version',s.ruleset_version)) FILTER (WHERE a.assignment_set_id IS NOT NULL), '[]'::jsonb) AS assignments
+          FROM uec.map_facilities_public_discovery_read_model eligible
+          JOIN uec.observation_taxonomy_assignment_sets s ON s.observation_id=eligible.observation_id AND s.taxonomy_version='uec-taxonomy-v1'
+            AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=s.observation_id AND newer.taxonomy_version=s.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(s.created_at,s.assignment_set_id))
+          LEFT JOIN uec.observation_taxonomy_assignments a ON a.assignment_set_id=s.assignment_set_id
+          WHERE eligible.release_id=history.release_id AND eligible.facility_id=history.facility_id AND eligible.observation_id=history.observation_id
+        ) taxonomy ON TRUE
         WHERE history.release_id = $1
           AND ($2::uuid IS NULL OR history.facility_id > $2)
           AND ($3::text IS NULL OR history.country_code = $3)
@@ -3183,11 +3238,12 @@ pub async fn get_v2_locations_handler(
           AND ($6::text IS NULL OR history.display_precision = $6)
           AND ($7::text IS NULL OR history.lifecycle_status = $7)
           AND ($8::text IS NULL OR history.provenance_origin_type = $8)
-          AND ($9::text IS NULL OR lower(coalesce(history.canonical_name, '') || ' ' || coalesce(history.city, '') || ' ' || history.country_code || ' ' || history.classification_category || ' ' || coalesce(history.provenance_source_name, '')) LIKE '%' || lower($9) || '%' ESCAPE '\')
+          AND ($9::text IS NULL OR lower(coalesce(history.canonical_name, '') || ' ' || coalesce(history.city, '') || ' ' || history.country_code || ' ' || history.classification_category || ' ' || coalesce(history.provenance_source_name, '') || ' ' || coalesce(taxonomy.leaf_activities::text, '') || ' ' || coalesce(taxonomy.assignments::text, '')) LIKE '%' || lower($9) || '%' ESCAPE '\')
           AND ($10::double precision IS NULL OR (history.display_location && ST_MakeEnvelope($10, $11, $12, $13, 4326)::geography AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($10, $11, $12, $13, 4326))))
           AND ($14::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($15, $16), 4326)::geography, $14 * 1000))
+          AND ($19::text[] IS NULL OR taxonomy.primary_categories && $19)
         ORDER BY history.facility_id, history.observation_id LIMIT $17 OFFSET $18
-    "#, &[&promoted_release_id, &cursor, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &query_limit, &effective_offset]).await {
+    "#, &[&promoted_release_id, &cursor, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &query_limit, &effective_offset, &category_keys]).await {
         Ok(rows) => rows,
         Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
     };
@@ -3201,6 +3257,10 @@ pub async fn get_v2_locations_handler(
             country_code: row.get(2),
             city: row.get(3),
             category: row.get(4),
+            taxonomy_display_category: row.get(24),
+            taxonomy_primary_categories: row.get(25),
+            taxonomy_leaf_activities: serde_json::from_str(row.get::<_, String>(26).as_str()).unwrap_or_else(|_| json!([])),
+            taxonomy_assignments: serde_json::from_str(row.get::<_, String>(27).as_str()).unwrap_or_else(|_| json!([])),
             factual_review_status: row.get(6),
             privacy_screening_status: row.get(7),
             project_approval: row.get(8),
@@ -3340,8 +3400,23 @@ pub async fn get_v2_location_detail_handler(
                history.first_observed_at, history.last_observed_at, history.observation_count, history.lifecycle_status,
                history.provenance_origin_type, history.release_id, history.release_ruleset_version,
                history.provenance_source_id, history.provenance_source_name, history.provenance_source_url, history.provenance_retrieved_at,
-               history.source_rights_status
+               history.source_rights_status,
+               COALESCE(taxonomy.display_category, 'unclassified'),
+               COALESCE(taxonomy.primary_categories, ARRAY['unclassified']::text[]),
+               COALESCE(taxonomy.leaf_activities, '[]'::jsonb)::text,
+               COALESCE(taxonomy.assignments, '[]'::jsonb)::text
         FROM uec.map_facilities_public_discovery_read_model AS history
+        LEFT JOIN LATERAL (
+          SELECT min(s.display_category) AS display_category,
+                 array_agg(DISTINCT a.primary_key ORDER BY a.primary_key) FILTER (WHERE a.primary_key IS NOT NULL) AS primary_categories,
+                 COALESCE(jsonb_agg(DISTINCT jsonb_build_object('key', a.leaf_key, 'label', a.leaf_label)) FILTER (WHERE a.leaf_key IS NOT NULL AND a.leaf_label IS NOT NULL AND a.mapping_method IN ('direct','derived') AND a.mapping_status IN ('mapped','partial')), '[]'::jsonb) AS leaf_activities,
+                 COALESCE(jsonb_agg(DISTINCT jsonb_build_object('primary_key',a.primary_key,'leaf_key',a.leaf_key,'leaf_label',a.leaf_label,'source_code_reference',a.source_code_reference,'source_label_reference',a.source_label_reference,'source_code',a.source_code,'source_label',a.source_label,'method',a.mapping_method,'status',a.mapping_status,'taxonomy_version',s.taxonomy_version,'crosswalk_version',s.crosswalk_version,'ruleset_version',s.ruleset_version)) FILTER (WHERE a.assignment_set_id IS NOT NULL), '[]'::jsonb) AS assignments
+          FROM uec.map_facilities_public_discovery_read_model eligible
+          JOIN uec.observation_taxonomy_assignment_sets s ON s.observation_id=eligible.observation_id AND s.taxonomy_version='uec-taxonomy-v1'
+            AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=s.observation_id AND newer.taxonomy_version=s.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(s.created_at,s.assignment_set_id))
+          LEFT JOIN uec.observation_taxonomy_assignments a ON a.assignment_set_id=s.assignment_set_id
+          WHERE eligible.release_id=history.release_id AND eligible.facility_id=history.facility_id AND eligible.observation_id=history.observation_id
+        ) taxonomy ON TRUE
          WHERE history.facility_id = $1 AND history.release_id = $2
          ORDER BY history.observation_id
          LIMIT 1
@@ -3363,6 +3438,10 @@ pub async fn get_v2_location_detail_handler(
         country_code: row.get(2),
         city: row.get(3),
         category: row.get(4),
+        taxonomy_display_category: row.get(24),
+        taxonomy_primary_categories: row.get(25),
+        taxonomy_leaf_activities: serde_json::from_str(row.get::<_, String>(26).as_str()).unwrap_or_else(|_| json!([])),
+        taxonomy_assignments: serde_json::from_str(row.get::<_, String>(27).as_str()).unwrap_or_else(|_| json!([])),
         factual_review_status: row.get(6),
         privacy_screening_status: row.get(7),
         project_approval: row.get(8),
@@ -4006,6 +4085,35 @@ mod v2_api_tests {
         assert_eq!(json["error"]["code"], "invalid_profile");
     }
 
+    #[test]
+    fn map_artifact_accepts_legacy_and_compact_taxonomy_feature_schemas() {
+        let v1 = json!({"feature_schema_version":"uec-map-feature-v1","feature_properties":["feature_key","kind","count","exact_count","coarse_count","next_zoom","record_id","category_key"]});
+        let v2 = json!({"feature_schema_version":"uec-map-feature-v2","feature_properties":["feature_key","kind","count","exact_count","coarse_count","next_zoom","record_id","category_key","category_keys_compact"]});
+        assert!(map_artifact_feature_schema_valid(&v1));
+        assert!(map_artifact_feature_schema_valid(&v2));
+        let invalid = json!({"feature_schema_version":"uec-map-feature-v2","feature_properties":["feature_key","category_keys_compact"]});
+        assert!(!map_artifact_feature_schema_valid(&invalid));
+    }
+
+    #[tokio::test]
+    async fn taxonomy_category_filters_validate_keys_before_database_access() {
+        let state = ApiState {
+            database: None,
+            dev_preview_token: None,
+            dev_test_release_id: None,
+            dev_test_release_token: None,
+        };
+        let app = || Router::new()
+            .route("/api/v2/locations", axum::routing::get(get_v2_locations_handler))
+            .with_state(state.clone());
+        let invalid = app().oneshot(Request::builder().uri("/api/v2/locations?category_keys=slaughter%20house").body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(invalid.status(), StatusCode::BAD_REQUEST);
+        let body = axum::body::to_bytes(invalid.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["error"]["code"], "invalid_category_keys");
+        assert_eq!(V2_TAXONOMY_PRIMARY_CATEGORIES.len(), 6);
+    }
+
     #[tokio::test]
     async fn v2_response_is_json_when_database_is_configured() {
         let url = std::env::var("UEC_DATABASE_URL").unwrap_or_else(|_| {
@@ -4184,6 +4292,10 @@ mod v2_api_tests {
             country_code: "DK".into(),
             city: Some("Testby".into()),
             category: "slaughter".into(),
+            taxonomy_display_category: "slaughter".into(),
+            taxonomy_primary_categories: vec!["slaughter".into()],
+            taxonomy_leaf_activities: json!([]),
+            taxonomy_assignments: json!([]),
             publication_profile: "official".into(),
             factual_review_status: "reviewed".into(),
             privacy_screening_status: "passed".into(),
@@ -4214,6 +4326,8 @@ mod v2_api_tests {
         assert_eq!(json["source_type"], "official");
         assert_eq!(json["source_rights_status"], "attribution_required");
         assert_eq!(json["category"], "slaughter");
+        assert_eq!(json["taxonomy_display_category"], "slaughter");
+        assert_eq!(json["taxonomy_primary_categories"][0], "slaughter");
         assert_eq!(json["publication_profile"], "official");
     }
 

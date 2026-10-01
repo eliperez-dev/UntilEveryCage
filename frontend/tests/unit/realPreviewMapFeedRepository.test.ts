@@ -28,6 +28,17 @@ describe('real-preview native map feed', () => {
       properties: { kind: 'reference', source_id: 'source-a', key: envelope.data[1].key, weight: 9 },
     });
     expect(JSON.stringify(result)).not.toMatch(/address|name|provenance/i);
+    expect(result.collection.features[0]?.properties).toMatchObject({ category_key: 'unclassified', category_keys: ['unclassified'] });
+  });
+
+  it('carries only compact canonical primary keys in the private map projection', () => {
+    const result = parseRealPreviewMapFeed({
+      ...envelope,
+      data: [{ ...envelope.data[0], category_key: 'slaughter', category_keys: ['processing_and_preparation', 'slaughter'] }],
+    });
+    expect(result.collection.features[0]?.properties).toMatchObject({ category_key: 'slaughter', category_keys: ['processing_and_preparation', 'slaughter'] });
+    expect(JSON.stringify(result.collection)).not.toMatch(/taxonomy_assignments|source_label|artifact_id|leaf_activities/i);
+    expect(() => parseRealPreviewMapFeed({ ...envelope, data: [{ ...envelope.data[0], category_keys: 'slaughter' }] })).toThrow(RealPreviewMapFeedError);
   });
 
   it('rejects feeds that do not confirm bounded private preview scope', () => {

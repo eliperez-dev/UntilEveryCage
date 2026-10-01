@@ -15,13 +15,14 @@ describe('LocalLocationRepository query contract', () => {
 
   it('passes server-side search, region, supported filters, and opaque cursor', async () => {
     const fetcher = vi.fn().mockResolvedValue(response(envelope([], { ...envelope().meta, next_cursor: 'cursor-2' })));
-    const result = await new LocalLocationRepository(fetcher).list('official', { q: 'North Coast', country_code: 'DK', region: 'North Coast', category: 'dairy', source_type: 'official', display_precision: 'city', lifecycle_status: 'active_observed', min_lon: 8, min_lat: 54, max_lon: 13, max_lat: 58, cursor: 'cursor-1' });
+    const result = await new LocalLocationRepository(fetcher).list('official', { q: 'North Coast', country_code: 'DK', region: 'North Coast', category: 'dairy', category_keys: ['slaughter', 'processing_and_preparation'], source_type: 'official', display_precision: 'city', lifecycle_status: 'active_observed', min_lon: 8, min_lat: 54, max_lon: 13, max_lat: 58, cursor: 'cursor-1' });
     const request = String(fetcher.mock.calls[0]?.[0]);
     expect(request).toContain('profile=official');
     expect(request).toContain('q=North+Coast');
     expect(request).toContain('country_code=DK');
     expect(request).toContain('region=North+Coast');
     expect(request).toContain('category=dairy');
+    expect(request).toContain('category_keys=slaughter%2Cprocessing_and_preparation');
     expect(request).toContain('source_type=official');
     expect(request).toContain('display_precision=city');
     expect(request).toContain('lifecycle_status=active_observed');
@@ -63,6 +64,29 @@ describe('current V2 wire edge cases', () => {
     await expect(new LocalLocationRepository(unavailable).list()).rejects.toMatchObject({ kind: 'unavailable', code: 'database_pool_unavailable', status: 503 });
     const restricted = vi.fn().mockResolvedValue(new Response(JSON.stringify({ api_version: 'v2', error: { code: 'location_not_found', message: 'location not found' } }), { status: 404 }));
     await expect(new LocalLocationRepository(restricted).detail(row.facility_id)).rejects.toMatchObject({ kind: 'restricted', code: 'location_not_found', status: 404 });
+  });
+  it('accepts additive taxonomy on lists, preserves the legacy category, and normalizes unknown keys safely', async () => {
+    const taxonomy = {
+      taxonomy_display_category: 'slaughter',
+      taxonomy_primary_categories: ['processing_and_preparation', 'slaughter'],
+      taxonomy_leaf_activities: [{ key: 'animal-slaughter', label: 'Animal slaughter' }],
+      taxonomy_assignments: [{
+        primary_key: 'slaughter', leaf_key: 'animal-slaughter', leaf_label: 'Animal slaughter',
+        source_code_reference: 'table-1', source_label_reference: 'column-2', source_code: 'SH', source_label: 'Slaughterhouse',
+        method: 'direct', status: 'mapped', taxonomy_version: 'uec-taxonomy-v1', crosswalk_version: 'dk-smiley-v1',
+        ruleset_version: 'release-rules-v1', observation_id: 'observation-1', source_record_id: 'record-1', artifact_id: 'artifact-1',
+      }],
+    };
+    const result = await new LocalLocationRepository(vi.fn().mockResolvedValue(response(envelope([{ ...row, ...taxonomy }])))).list();
+    expect(result.locations[0]).toMatchObject({
+      category: 'dairy', taxonomy: {
+        displayCategory: 'slaughter', primaryCategories: ['slaughter', 'processing_and_preparation'],
+        leafActivities: [{ key: 'animal-slaughter', label: 'Animal slaughter' }],
+        assignments: [{ method: 'direct', status: 'mapped', sourceCode: 'SH', sourceLabel: 'Slaughterhouse', taxonomyVersion: 'uec-taxonomy-v1' }],
+      },
+    });
+    const unknown = await new LocalLocationRepository(vi.fn().mockResolvedValue(response(envelope([{ ...row, taxonomy_display_category: 'future-key', taxonomy_primary_categories: ['future-key'] }])))).list();
+    expect(unknown.locations[0]?.taxonomy).toMatchObject({ displayCategory: 'unclassified', primaryCategories: ['unclassified'] });
   });
   it.each([404, 410])('fails closed with a safe restricted state for public list status %s', async status => {
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { code: 'suppressed', message: 'sensitive server detail' } }), { status }));

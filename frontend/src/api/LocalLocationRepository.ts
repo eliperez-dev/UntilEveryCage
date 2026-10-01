@@ -1,15 +1,40 @@
 import { detailEnvelopeSchema, envelopeSchema, type WireLocation } from './wireSchema';
 import type { ApiError } from './errors';
 import type { Location } from '../domain/location';
+import { isTaxonomyPrimaryKey, TAXONOMY_PRIMARY_KEYS, TAXONOMY_VERSION, type TaxonomyAssignment, type TaxonomyPrimaryKey } from '../domain/taxonomy';
 
 export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 export type LocalProfile = 'official' | 'secondary' | 'community';
-export type LocationFilters = Readonly<{ q?: string | undefined; country_code?: string | undefined; region?: string | undefined; category?: string | undefined; source_type?: string | undefined; display_precision?: string | undefined; lifecycle_status?: string | undefined; min_lon?: number | undefined; min_lat?: number | undefined; max_lon?: number | undefined; max_lat?: number | undefined; latitude?: number | undefined; longitude?: number | undefined; radius_km?: number | undefined; cursor?: string | undefined; offset?: number | undefined; limit?: number | undefined }>;
+export type LocationFilters = Readonly<{ q?: string | undefined; country_code?: string | undefined; region?: string | undefined; category?: string | undefined; category_keys?: readonly TaxonomyPrimaryKey[] | undefined; source_type?: string | undefined; display_precision?: string | undefined; lifecycle_status?: string | undefined; min_lon?: number | undefined; min_lat?: number | undefined; max_lon?: number | undefined; max_lat?: number | undefined; latitude?: number | undefined; longitude?: number | undefined; radius_km?: number | undefined; cursor?: string | undefined; offset?: number | undefined; limit?: number | undefined }>;
 export type LocalListResult = Readonly<{ locations: readonly Location[]; releaseId: string; profile: LocalProfile; coverageNote: string; coverageScope?: string; countSemantics?: string; nextCursor: string | null; ruleset?: string }>;
 export const localOrigin = (value: string | undefined): string | undefined => { if (!value) return undefined; const url = new URL(value); if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost', '::1'].includes(url.hostname)) throw new Error('Local API origin must be loopback HTTP.'); return url.origin; };
 const fail = (kind: ApiError['kind'], message: string, status?: number, code?: string): ApiError => Object.assign(new Error(message), { kind, ...(status === undefined ? {} : { status }), ...(code ? { code } : {}) });
-export const mapWireLocation = (r: WireLocation): Location => ({
+export const mapWireLocation = (r: WireLocation): Location => {
+  const rawCategories = r.taxonomy_primary_categories ?? (r.taxonomy_display_category ? [r.taxonomy_display_category] : []);
+  const primaryCategories = [...new Set((rawCategories.length ? rawCategories : ['unclassified']).map(key => isTaxonomyPrimaryKey(key) ? key : 'unclassified' as const))]
+    .sort((a, b) => TAXONOMY_PRIMARY_KEYS.indexOf(a) - TAXONOMY_PRIMARY_KEYS.indexOf(b));
+  const assignments: readonly TaxonomyAssignment[] = (r.taxonomy_assignments ?? []).map(item => ({
+    primaryKey: isTaxonomyPrimaryKey(item.primary_key) ? item.primary_key : 'unclassified', leafKey: item.leaf_key ?? null, leafLabel: item.leaf_label ?? null,
+    sourceCodeReference: item.source_code_reference ?? null, sourceLabelReference: item.source_label_reference ?? null,
+    sourceCode: item.source_code ?? null, sourceLabel: item.source_label ?? null,
+    method: item.method, status: item.status, taxonomyVersion: item.taxonomy_version,
+    crosswalkVersion: item.crosswalk_version ?? null, rulesetVersion: item.ruleset_version ?? null,
+    observationId: item.observation_id ?? null, sourceRecordId: item.source_record_id ?? null, artifactId: item.artifact_id ?? null,
+  }));
+  const category = r.taxonomy_display_category && isTaxonomyPrimaryKey(r.taxonomy_display_category)
+    ? r.taxonomy_display_category
+    : r.taxonomy_display_category !== undefined ? 'unclassified'
+      : primaryCategories.length === 1 ? primaryCategories[0]! : 'unclassified';
+  return {
   id: r.facility_id, name: r.canonical_name ?? 'Unnamed candidate record', region: r.city ?? r.country_code, category: r.category,
+  sourceId: r.provenance_source_id,
+  taxonomy: {
+    displayCategory: category as TaxonomyPrimaryKey,
+    primaryCategories,
+    leafActivities: [...new Map((r.taxonomy_leaf_activities ?? []).map(item => [item.key, item])).values()].sort((a, b) => a.key.localeCompare(b.key)),
+    assignments,
+    taxonomyVersion: assignments[0]?.taxonomyVersion ?? TAXONOMY_VERSION,
+  },
   lat: r.latitude, lon: r.longitude, observed: r.last_observed_at ?? r.first_observed_at ?? 'unknown', source: r.provenance_source_name,
   evidence: {
     sourceType: r.source_type, factualReviewStatus: r.factual_review_status, reviewerRole: r.reviewer_role,
@@ -18,8 +43,9 @@ export const mapWireLocation = (r: WireLocation): Location => ({
     sourceId: r.provenance_source_id, sourceUrl: r.provenance_source_url, provenanceSource: r.provenance_source, sourceRightsStatus: r.source_rights_status,
     retrievedAt: r.provenance_retrieved_at, displayPrecision: r.display_precision, lifecycleStatus: r.lifecycle_status, observationCount: r.observation_count,
   },
-});
-const query = (profile: LocalProfile, filters: LocationFilters, releaseId?: string) => { const params = new URLSearchParams({ profile }); for (const [key, value] of Object.entries(filters)) if (value !== undefined && value !== '') params.set(key, String(value)); if (releaseId !== undefined) params.set('release_id', releaseId); return `/api/v2/locations?${params}`; };
+};
+};
+const query = (profile: LocalProfile, filters: LocationFilters, releaseId?: string) => { const params = new URLSearchParams({ profile }); for (const [key, value] of Object.entries(filters)) if (key !== 'category_keys' && value !== undefined && value !== '') params.set(key, String(value)); const categoryKeys = [...new Set(filters.category_keys ?? [])]; if (categoryKeys.length) params.set('category_keys', categoryKeys.join(',')); if (releaseId !== undefined) params.set('release_id', releaseId); return `/api/v2/locations?${params}`; };
 // Eligibility is a conservative client-side check, not a publication decision;
 // the server's current public projection and suppression rules remain authoritative.
 const eligible = (row: WireLocation, profile: LocalProfile, releaseId: string, ruleset: string): boolean =>

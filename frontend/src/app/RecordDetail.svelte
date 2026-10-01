@@ -1,5 +1,7 @@
 <script lang="ts">
   import type { LabRecord } from '../design-lab/contract';
+  import { categoryPresentation } from '../features/locations/categoryPresentation';
+  import type { TaxonomyClassification } from '../domain/taxonomy';
 
   /** Safe fields returned by the local private-preview detail projection. */
   export type RecordDetailRecord = Partial<Omit<LabRecord, 'name' | 'category'>> & {
@@ -56,6 +58,7 @@
     map_scope_reason?: string | null;
     displayPrecision?: string | null;
     display_precision?: string | null;
+    taxonomy?: TaxonomyClassification | null;
   };
 
   let {
@@ -99,6 +102,8 @@
       record.category,
     ),
   );
+  const taxonomy = $derived('taxonomy' in record ? record.taxonomy ?? null : null);
+  const taxonomyPrimaryLabels = $derived((taxonomy?.primaryCategories ?? ['unclassified']).map(key => categoryPresentation(key).label));
   const sourceId = $derived(
     value(record.sourceId, 'source_id' in record ? record.source_id : null),
   );
@@ -286,6 +291,25 @@
       {activity}{#if activitySource}<span> · {activitySource}</span>{/if}
     </p>
   {/if}
+  {#if taxonomy}
+    <section class="taxonomy" aria-labelledby="taxonomy-heading">
+      <h2 id="taxonomy-heading">Activities and classification</h2>
+      <p class="taxonomy-primary"><strong>Primary categories</strong> · {taxonomyPrimaryLabels.join(' · ')}</p>
+      {#if taxonomy.leafActivities.length}
+        <ul aria-label="Detailed activities">{#each taxonomy.leafActivities as leaf (leaf.key)}<li>{leaf.label}</li>{/each}</ul>
+      {/if}
+      {#if taxonomy.assignments.length}
+        <h3>Classification provenance</h3>
+        <ul class="taxonomy-provenance">{#each taxonomy.assignments as assignment, index (`${assignment.primaryKey}:${assignment.leafKey ?? ''}:${index}`)}
+          <li>
+            <span>{assignment.leafLabel ?? assignment.leafKey ?? categoryPresentation(assignment.primaryKey).label}</span>
+            <small>{assignment.sourceLabel ?? assignment.sourceCode ?? sourceName ?? 'Source attribution unavailable'} · {humanizeValue(assignment.method)} · {humanizeValue(assignment.status)} · {assignment.taxonomyVersion}</small>
+          </li>
+        {/each}</ul>
+      {/if}
+      <p class="taxonomy-version">Taxonomy version · {taxonomy.taxonomyVersion}</p>
+    </section>
+  {/if}
   <p class="place">{locationText}</p>
 
   <section aria-labelledby="location-heading">
@@ -468,6 +492,14 @@
   .place {
     color: var(--muted);
   }
+
+  .taxonomy { margin-top: .8rem; }
+  .taxonomy-primary,.taxonomy-version { color: var(--muted); }
+  .taxonomy ul { margin: .45rem 0; padding-left: 1.25rem; }
+  .taxonomy-provenance { list-style: none; padding: 0 !important; }
+  .taxonomy-provenance li { display: grid; gap: .15rem; padding: .4rem 0; border-bottom: 1px solid #303632; }
+  .taxonomy-provenance small { color: var(--muted); }
+  .taxonomy h3 { margin: .7rem 0 .2rem; font-size: .8rem; }
 
   section {
     margin-top: .8rem;

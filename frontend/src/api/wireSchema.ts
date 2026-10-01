@@ -9,6 +9,24 @@ const sourceUrl = z.string().url().refine(value => {
     return false;
   }
 }, 'source URL must use HTTP or HTTPS');
+const nullableText = z.string().nullable().optional();
+const taxonomyAssignmentSchema = z.object({
+  primary_key: z.string().min(1),
+  leaf_key: nullableText,
+  leaf_label: nullableText,
+  source_code_reference: nullableText,
+  source_label_reference: nullableText,
+  source_code: nullableText,
+  source_label: nullableText,
+  method: z.enum(['direct', 'derived', 'candidate']),
+  status: z.enum(['mapped', 'partial', 'unmapped', 'unclassified', 'conflicting', 'ambiguous']),
+  taxonomy_version: z.string().min(1),
+  crosswalk_version: nullableText,
+  ruleset_version: nullableText,
+  observation_id: nullableText,
+  source_record_id: nullableText,
+  artifact_id: nullableText,
+}).strict();
 
 // This is the Rust-shaped public projection. Keep this list closed: fields
 // that are not present in the current API belong in the convergence gap ledger
@@ -19,6 +37,12 @@ const locationShape = {
   country_code: z.string().regex(/^[A-Z]{2}$/),
   city: textOrNull,
   category: z.string(),
+  // Additive taxonomy contract. Older v2 responses remain valid and are
+  // represented by the client as unclassified until an explicit key exists.
+  taxonomy_display_category: z.string().min(1).optional(),
+  taxonomy_primary_categories: z.array(z.string().min(1)).optional(),
+  taxonomy_leaf_activities: z.array(z.object({ key: z.string().min(1), label: z.string().min(1) }).strict()).optional(),
+  taxonomy_assignments: z.array(taxonomyAssignmentSchema).optional(),
   publication_profile: z.enum(['official', 'secondary', 'community']),
   factual_review_status: z.string(),
   privacy_screening_status: z.literal('passed'),

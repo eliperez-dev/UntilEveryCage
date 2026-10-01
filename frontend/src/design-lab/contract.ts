@@ -13,6 +13,7 @@ export type LabRecord = Readonly<{
   defaultMapScope?: boolean; mapScopeReason?: string | null;
   factualReviewStatus?: string; privacyScreeningStatus?: string; publicationStatus?: string;
   projectApproval?: boolean;
+  taxonomy?: import('../domain/taxonomy').TaxonomyClassification;
 }>;
 export type ViewportBounds = Readonly<{ west: number; south: number; east: number; north: number }>;
 export type Viewport = Readonly<{ centerLat: number; centerLon: number; zoom: number }>;

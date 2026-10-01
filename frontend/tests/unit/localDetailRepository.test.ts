@@ -3,6 +3,27 @@ const row={facility_id:'550e8400-e29b-41d4-a716-446655440000',canonical_name:'De
 const body=(data=row,meta={release_id:'rel-1',ruleset_version:'rules-1',release_created_at:'2026-01-01T00:00:00Z',profile:'official'})=>({data,api_version:'v2',meta});
 describe('LocalLocationRepository detail',()=>{it('maps a valid detail envelope',async()=>{const fetcher=vi.fn().mockResolvedValue(new Response(JSON.stringify(body()),{status:200}));const result=await new LocalLocationRepository(fetcher).detail(row.facility_id);expect(result).toMatchObject({releaseId:'rel-1',profile:'official',location:{id:row.facility_id,name:'Detail Local Fixture'}});expect(fetcher).toHaveBeenCalledWith(`/api/v2/locations/${row.facility_id}?profile=official`,expect.any(Object));});it('rejects wrong profile and aborts',async()=>{const wrong=vi.fn().mockResolvedValue(new Response(JSON.stringify(body(row,{...body().meta,profile:'community'}))));await expect(new LocalLocationRepository(wrong).detail(row.facility_id)).rejects.toMatchObject({kind:'invalid-contract'});const controller=new AbortController();const fetcher=vi.fn().mockRejectedValue(new DOMException('aborted','AbortError'));await expect(new LocalLocationRepository(fetcher).detail(row.facility_id,'official',controller.signal)).rejects.toMatchObject({kind:'aborted'});});it('pins detail to release and rejects a different release',async()=>{const fetcher=vi.fn().mockResolvedValue(new Response(JSON.stringify(body()),{status:200}));await expect(new LocalLocationRepository(fetcher).detail(row.facility_id,'official',undefined,'rel-1')).resolves.toMatchObject({releaseId:'rel-1'});expect(fetcher).toHaveBeenCalledWith(`/api/v2/locations/${row.facility_id}?profile=official&release_id=rel-1`,expect.any(Object));const other=vi.fn().mockResolvedValue(new Response(JSON.stringify(body(row,{...body().meta,release_id:'rel-2'}))));await expect(new LocalLocationRepository(other).detail(row.facility_id,'official',undefined,'rel-1')).rejects.toMatchObject({kind:'restricted'});});it.each([404,410])('fails closed with a safe restricted state for status %s',async status=>{const fetcher=vi.fn().mockResolvedValue(new Response(JSON.stringify({error:{code:'suppressed',message:'sensitive server detail'}}),{status}));await expect(new LocalLocationRepository(fetcher).detail(row.facility_id,'official',undefined,'rel-1')).rejects.toMatchObject({kind:'restricted',status,message:'This location snapshot is unavailable.'});expect(String(fetcher.mock.calls[0]?.[0])).toContain(`/api/v2/locations/${row.facility_id}?`);});});
 
+it('returns all additive taxonomy leaf assignments and provenance in authorized details', async () => {
+  const classified = {
+    ...row,
+    taxonomy_display_category: 'slaughter',
+    taxonomy_primary_categories: ['slaughter', 'processing_and_preparation'],
+    taxonomy_leaf_activities: [{ key: 'slaughter', label: 'Animal slaughter' }, { key: 'cutting', label: 'Meat cutting' }],
+    taxonomy_assignments: [{
+      primary_key: 'slaughter', leaf_key: 'slaughter', leaf_label: 'Animal slaughter', source_code_reference: 'table-1',
+      source_label_reference: 'activity heading', source_code: 'SH', source_label: 'Slaughterhouse', method: 'direct',
+      status: 'mapped', taxonomy_version: 'uec-taxonomy-v1', crosswalk_version: 'dk-v1', ruleset_version: 'rules-v1',
+      observation_id: 'observation-1', source_record_id: 'source-row-1', artifact_id: 'artifact-1',
+    }],
+  };
+  const result = await new LocalLocationRepository(vi.fn().mockResolvedValue(new Response(JSON.stringify(body(classified)), { status: 200 }))).detail(row.facility_id);
+  expect(result.location.taxonomy).toMatchObject({
+    displayCategory: 'slaughter', primaryCategories: ['slaughter', 'processing_and_preparation'],
+    leafActivities: [{ label: 'Meat cutting' }, { label: 'Animal slaughter' }],
+    assignments: [{ sourceCode: 'SH', sourceLabel: 'Slaughterhouse', method: 'direct', taxonomyVersion: 'uec-taxonomy-v1' }],
+  });
+});
+
 describe('community detail safety', () => {
   const community = { ...row, source_type: 'user_submitted', publication_profile: 'community', factual_review_status: 'unreviewed', project_approval: 'pending', publication_warning: 'Unreviewed community claim — not verified by Until Every Cage' };
   it('accepts an eligible unreviewed community direct link with evidence context', async () => {
