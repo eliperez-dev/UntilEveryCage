@@ -58,6 +58,33 @@ it does not imply that public rows exist or may be released. The 2026-09-15
 synthetic rehearsal and 2026-09-17 Germany/Belgium capture remain historical
 evidence, not the current baseline; see [archive index](archive/README.md).
 
+## Retained private preview taxonomy projection — 2026-10-01
+
+The authoritative retained private preview database (`uec` in
+`uec-offline-fsis-private-postgres-1`) received migrations 054 activity contract,
+055 versioned UEC assignments, and 056 real-preview assignments at
+2026-10-01 19:05:21 UTC. This is a distinct offline corpus checkpoint, not a
+replacement for the strict live E2E baseline above: latest-per-source totals
+remain 90,164 observations, 60,218 candidates, and 38,633 map-visible groups
+(36,840 numeric and 1,793 coarse). The additive projection contains 35,073
+candidate assignment sets and 35,674 assignment rows; 2,516 candidate sets are
+mapped. Per-source scope is recorded in [product readiness](PRODUCT-READINESS.md#retained-private-preview-taxonomy-application--2026-10-01).
+
+Only the exact normalized packets for FR DGAL sections I/II, IT 853, and FSIS
+were recovered with deterministic representative-observation joins. France
+was mapped; Italy 853 remains explicitly unclassified; FSIS has 7,082 unmapped
+and 159 unclassified candidates, with no positive primary assignments. No
+taxonomy rows were written for `au.npi.facilities`,
+`au.sa.epa.licensed-activities`, `be.locations`, `es.cat.feed-sandach`,
+`fsa_approved_establishments`, or `it.1069-2009` because their exact source
+artifacts were unavailable. These six sources require artifact recovery before
+reprojection. The verified backup is
+`D:\UntilEveryCage-backups\database\taxonomy-pre-reprojection-authoritative-20261001-113806\uec.logical.dump`
+(SHA-256 `2EF936FCB99CB973618AAF74AE1655EC874DA799EDE2C6F426DDBD6D22162A93`).
+Live preview API/browser verification was unavailable in the application
+context; this application does not change source runtime-health, publication,
+privacy, terms, or factual-review status.
+
 ## Ireland reconnaissance update
 
 The 2026-09-16 Ireland reconnaissance verified the current FSAI/DAFM/HSE/SFPA source topology and adjacent EPA, planning, CRO, CSO, funding, enforcement, and welfare context. It captured only bounded browser observations: HSE 72 distinct approval-number nodes, SFPA 184 approved-establishment entries, 50 freezer-vessel entries, and 1 factory-vessel entry. DAFM’s three workbook links were verified from the publication page, but workbook bytes, headers, and counts were not captured. See [Ireland reconnaissance](country-recon-ie.md), the [Ireland crosswalk](countries/ireland/v1-field-crosswalk.json), and the [Ireland artifact manifest](../data/manifests/ireland-source-artifacts.json). All 16 Ireland sources remain publication-blocked; no adapter or release artifact exists.

@@ -8,17 +8,30 @@ Every request requires `Host` and any `Origin` to use a loopback name or address
 
 | Route | Purpose | Bounds |
 | --- | --- | --- |
-| `GET /dev/real-preview/locations` | Keyset page of explicitly marked source-scoped candidates, including unmapped candidates | `limit` defaults to 100, max 200; `cursor` is the prior opaque `candidate_id`; `q` searches allowlisted name, activity label/source, source name/ID, city, and postal code fields, truncated to 100 characters; optional `default_map_scope` filters `true`/`false` |
+| `GET /dev/real-preview/locations` | Keyset page of explicitly marked source-scoped candidates, including unmapped candidates | `limit` defaults to 100, max 200; `cursor` is the prior opaque `candidate_id`; `q` searches allowlisted name, activity label/source, source name/ID, city, postal code, and latest taxonomy leaf/source classification fields, truncated to 100 characters; optional `default_map_scope` filters `true`/`false`; optional comma-separated `category_keys` uses OR semantics with `source_id` |
 | `GET /dev/real-preview/viewport` | Keyset page of default-map-scope candidates with usable source or explicitly approximate display coordinates in a viewport | Required `west`, `south`, `east`, `north`; `limit` defaults to 300, max 500; `cursor` is the prior opaque `candidate_id` |
 | `GET /dev/real-preview/map/tiles/{z}/{x}/{y}` | Server-generated, lightweight MapLibre vector tile | Zoom 0–14 and valid XYZ coordinates; optional source-scoped `source_id`; content type is `application/vnd.mapbox-vector-tile`; contains only opaque map keys, opaque cluster lineage, feature kind, count, coordinate treatment, expansion zoom, and geometry |
+| `GET /dev/real-preview/map/feed` | Bounded current-snapshot compact map projection for a client-side cluster index | Optional source-scoped `source_id`; at most 200,000 features; numeric points carry taxonomy category keys while coarse administrative references remain neutral |
 | `GET /dev/real-preview/map/references/{reference_key}` | Keyset page of candidates represented by an administrative MVT reference | `reference_key` is the opaque 32-character tile feature key; `limit` defaults to 100, max 200; optional cursor and source-scoped `source_id` |
 | `GET /dev/real-preview/locations/{candidate_id}` | Candidate detail | Opaque UUID identifier |
 | `GET /dev/real-preview/facets` | Candidate counts by source and location class | Aggregate only |
 | `GET /dev/real-preview/counts` | Candidate totals by location class, default-map scope, and map visibility | Aggregate only |
 
-Candidate objects contain an opaque preview ID, source ID, location class, country code, optional city and postal code, coordinate values only for numeric source-coordinate candidates, and the documented coordinate precision. Coordinate review is reported as pending human privacy review; factual review is not reviewed and privacy screening is pending. They never contain upstream source keys, raw source values, full addresses, geocoder queries, private notes, release IDs, or approval claims. Every object is labeled as private and not project-approved or published.
+Candidate objects contain an opaque preview ID, source ID, location class, country code, optional city and postal code, coordinate values only for numeric source-coordinate candidates, and the documented coordinate precision. Coordinate review is reported as pending human privacy review; factual review is not reviewed and privacy screening is pending. They never contain upstream source keys, raw source rows or payloads, full addresses, geocoder queries, private notes, release IDs, or approval claims. The additive taxonomy provenance is limited to bounded classification labels/codes and their field references. Every object is labeled as private and not project-approved or published.
 
 Candidate list, viewport, and detail objects also include the following display and provenance fields:
+
+The additive taxonomy fields are read from the latest versioned candidate
+assignment set when one exists. The list filter accepts the canonical primary
+keys (`animal_keeping_and_production`, `slaughter`,
+`processing_and_preparation`, `research_and_animal_use`,
+`other_regulated_premises`, `unclassified`); multiple keys match by OR, and a
+source filter is applied independently. Search includes taxonomy leaf labels
+and source classification evidence. Candidates with no assignment set retain a
+recognized legacy scalar category when present, otherwise they fall back to
+`unclassified`. The map-feed endpoint has no category filter parameter and
+returns the category keys on numeric points for local client-side filtering;
+cluster and coarse-reference geometry/count semantics remain category-neutral.
 
 | Field | Semantics |
 | --- | --- |

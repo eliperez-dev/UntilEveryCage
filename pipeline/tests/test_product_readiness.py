@@ -89,6 +89,16 @@ class ProductReadinessDocumentationTests(unittest.TestCase):
             self.assertEqual(by_id[source_id]["runtime_health"], "not_run")
             self.assertEqual(by_id[source_id]["publication_eligibility"], "blocked")
 
+    def test_real_preview_candidate_schema_covers_additive_taxonomy_projection(self):
+        schema = json.loads((ROOT / "docs" / "api" / "real-preview-candidate.schema.json").read_text(encoding="utf-8"))
+        properties = schema["properties"]
+        required = set(schema["required"])
+        self.assertTrue(schema["additionalProperties"] is False)
+        self.assertTrue(required.issubset(properties))
+        for field in ("taxonomy_display_category", "taxonomy_primary_categories", "taxonomy_leaf_activities", "taxonomy_assignments"):
+            self.assertIn(field, required)
+        self.assertTrue(properties["taxonomy_assignments"]["items"]["additionalProperties"] is False)
+
     def test_temporary_plans_and_duplicate_packets_are_removed_not_archived(self):
         forbidden = [
             "docs/aphis-lane1-refresh-2026-09-19.md",

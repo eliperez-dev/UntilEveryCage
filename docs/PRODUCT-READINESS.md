@@ -108,6 +108,44 @@ that the corresponding real captures are approved, and they create no public
 API rows, release promotion, deployment, or human approval. Database-backed
 E2E remains an environment-dependent follow-up gate.
 
+### Retained private preview taxonomy application — 2026-10-01
+
+The authoritative retained private preview database (`uec` in
+`uec-offline-fsis-private-postgres-1`) received the additive taxonomy migrations
+at 2026-10-01 19:05:21 UTC and an idempotent, source-scoped `uec-taxonomy-v1`
+projection. Its latest-source baseline remains 90,164 observations, 60,218
+candidates, 36,840 numeric plus
+1,793 coarse map-visible candidates (38,633 total); the taxonomy write added
+35,073 candidate assignment sets, 35,674 assignment rows, and four immutable
+source crosswalks without changing source rows or the public projection. Coverage
+is intentionally partial:
+
+All three migration ledger entries were applied at 19:05:21 UTC. The verified
+full logical backup is
+`D:\UntilEveryCage-backups\database\taxonomy-pre-reprojection-authoritative-20261001-113806\uec.logical.dump`
+(SHA-256 `2EF936FCB99CB973618AAF74AE1655EC874DA799EDE2C6F426DDBD6D22162A93`);
+the backup was restored and its full latest-source ledger compared before
+application. No backup was deleted.
+
+| Source | Latest candidates | Persisted taxonomy coverage |
+| --- | ---: | --- |
+| `fr.dgal.section-i` | 1,449 | Mapped from exact normalized artifact evidence |
+| `fr.dgal.section-ii` | 1,067 | Mapped from exact normalized artifact evidence |
+| `it.853-2004` | 25,316 | Explicitly unclassified; no direct category mapping asserted |
+| `us.fsis` | 7,241 | 7,082 unmapped and 159 unclassified; no positive primary assignment asserted |
+| `au.npi.facilities`, `au.sa.epa.licensed-activities`, `be.locations`, `es.cat.feed-sandach`, `fsa_approved_establishments`, `it.1069-2009` | 25,145 combined | No assignment rows written; source artifacts were not recovered with exact hash/identity evidence, so these remain outside this partial projection and require artifact recovery before reprojection. |
+
+Aggregate persisted rows comprise 2,124 `processing_and_preparation` and 993
+`slaughter` mapped assignments, 25,475 `unclassified` candidate sets, and 7,082
+`unmapped` candidate sets. This is not all-source taxonomy coverage or source
+classification approval. Original preview/category fields, observation and
+candidate counts, coordinate/map counts, and public rows were not changed. The
+database projection was replay-checked for idempotency. Live API/browser
+verification was not performed in this application context; preview-service
+authorization and UI behavior remain a separate validation gate. The verified
+database backup and per-source recovery matrix are retained outside the
+repository in the approved private backup location.
+
 ## Status vocabulary
 
 Use exactly one status for each roadmap item or gate:

@@ -24,7 +24,7 @@ class RealPreviewPostgisTests(unittest.TestCase):
             with connection.transaction():
                 for migration in MIGRATIONS:
                     connection.execute(migration.read_text(encoding="utf-8"))
-                connection.execute("INSERT INTO real_preview.imports(snapshot_sha256,observation_count) VALUES (%s,3)", ("a" * 64,))
+                connection.execute("INSERT INTO real_preview.imports(snapshot_sha256,observation_count) VALUES (%s,4)", ("a" * 64,))
                 row = ("a" * 64, "it.853-2004", "synthetic-source-key", "numeric_source_coordinate", True,
                        "IT", "Example", None, 44.1, 11.2, "numeric")
                 insert = """INSERT INTO real_preview.observations
@@ -88,6 +88,69 @@ class RealPreviewPostgisTests(unittest.TestCase):
                     None, None, None, None, None, None, None, True, None))
                 connection.execute(candidate_insert, ("a" * 64, "us.fsis", "source-group-3", unmapped_observation_id, "unmapped_private_observation", "US", None, None, None,
                     None, None, None, None, None, None, None, False, "general-food"))
+                missing_artifact_observation_id = connection.execute(insert + " RETURNING preview_id", ("a" * 64, "au.npi.facilities", "synthetic-au-key", "unmapped_private_observation", True,
+                    "AU", None, None, None, None, None)).fetchone()[0]
+                connection.execute(candidate_insert, ("a" * 64, "au.npi.facilities", "source-group-au", missing_artifact_observation_id,
+                    "unmapped_private_observation", "AU", None, None, None, None, None, None, None, None, None, None, False, "no-display-location"))
+                coarse_candidate_id = connection.execute(
+                    "SELECT candidate_id FROM real_preview.candidates WHERE source_group_key='source-group-2'"
+                ).fetchone()[0]
+                fsis_candidate_id = connection.execute(
+                    "SELECT candidate_id FROM real_preview.candidates WHERE source_group_key='source-group-3'"
+                ).fetchone()[0]
+                missing_artifact_candidate_id = connection.execute(
+                    "SELECT candidate_id FROM real_preview.candidates WHERE source_group_key='source-group-au'"
+                ).fetchone()[0]
+                france_projection = project_observation({
+                    "source_id": "fr.dgal.section-i",
+                    "normalized": {"source_category": "SH CP"},
+                })
+                self.assertEqual(france_projection["taxonomy_mapping_status"], "mapped")
+                self.assertEqual(set(france_projection["taxonomy_primaries"]), {"slaughter", "processing_and_preparation"})
+                persist_preview_candidate_assignment_set(
+                    connection, candidate_id=str(coarse_candidate_id),
+                    representative_observation_id=str(coarse_observation_id), snapshot_sha256="a" * 64,
+                    source_id="fr.dgal.section-i", document=crosswalk_document("fr.dgal.section-i"),
+                    assignment_rows=persistence_assignments(france_projection),
+                )
+                fsis_projection = project_observation({
+                    "source_id": "us.fsis",
+                    "normalized": {"source_category": "UNKNOWN-SOURCE-CODE"},
+                })
+                self.assertEqual(fsis_projection["taxonomy_mapping_status"], "unmapped")
+                persist_preview_candidate_assignment_set(
+                    connection, candidate_id=str(fsis_candidate_id),
+                    representative_observation_id=str(unmapped_observation_id), snapshot_sha256="a" * 64,
+                    source_id="us.fsis", document=crosswalk_document("us.fsis"),
+                    assignment_rows=persistence_assignments(fsis_projection),
+                )
+                france_lineage = connection.execute("""
+                    SELECT source_identifier,display_category,count(*)::int,
+                           count(DISTINCT primary_key)::int,bool_and(source_code_reference IS NOT NULL)
+                    FROM real_preview.candidate_taxonomy_assignments_lineage
+                    WHERE candidate_id=%s GROUP BY source_identifier,display_category
+                """, (coarse_candidate_id,)).fetchone()
+                self.assertEqual(france_lineage, ("synthetic-coarse-key", "slaughter", 2, 2, True))
+                self.assertEqual(connection.execute("""
+                    SELECT count(DISTINCT candidate_id) FROM real_preview.candidate_taxonomy_assignments_lineage
+                    WHERE source_id='fr.dgal.section-i' AND primary_key=ANY(%s)
+                """, (["slaughter", "processing_and_preparation"],)).fetchone()[0], 1)
+                self.assertEqual(connection.execute("""
+                    SELECT count(DISTINCT candidate_id) FROM real_preview.candidate_taxonomy_assignments_lineage
+                    WHERE source_id='fr.dgal.section-i' AND leaf_label ILIKE '%%cutting%%'
+                """).fetchone()[0], 1)
+                self.assertEqual(connection.execute("""
+                    SELECT display_category,primary_key,mapping_status,mapping_method
+                    FROM real_preview.candidate_taxonomy_assignments_lineage WHERE candidate_id=%s
+                    GROUP BY display_category,primary_key,mapping_status,mapping_method
+                """, (fsis_candidate_id,)).fetchall(), [("unclassified", "unclassified", "unmapped", "direct")])
+                fallback = connection.execute("""
+                    SELECT CASE WHEN category=ANY(ARRAY['animal_keeping_and_production','slaughter','processing_and_preparation',
+                      'research_and_animal_use','other_regulated_premises','unclassified']::text[]) THEN category ELSE 'unclassified' END
+                    FROM real_preview.candidates WHERE candidate_id=%s
+                      AND NOT EXISTS (SELECT 1 FROM real_preview.candidate_taxonomy_assignment_sets s WHERE s.candidate_id=%s)
+                """, (missing_artifact_candidate_id, missing_artifact_candidate_id)).fetchone()
+                self.assertEqual(fallback, ("unclassified",))
                 safe_fields = connection.execute("""
                     SELECT display_name,activity_label,activity_source,evidence_summary,source_record_url,source_name,observed_at
                     FROM real_preview.candidates WHERE source_group_key='source-group-1'
@@ -116,6 +179,15 @@ class RealPreviewPostgisTests(unittest.TestCase):
                 ).fetchone()
                 self.assertEqual(display[:2], (48.8, 2.3))
                 self.assertIn("approximate", display[2])
+                compact_map_categories = connection.execute("""
+                    SELECT CASE WHEN c.display_geometry_source IS NOT NULL THEN ARRAY['unclassified']::text[]
+                         ELSE COALESCE(array_agg(DISTINCT a.primary_key ORDER BY a.primary_key),ARRAY['unclassified']::text[]) END
+                    FROM real_preview.candidates c
+                    LEFT JOIN real_preview.candidate_taxonomy_assignment_sets s ON s.candidate_id=c.candidate_id
+                    LEFT JOIN real_preview.candidate_taxonomy_assignments a ON a.assignment_set_id=s.assignment_set_id
+                    WHERE c.candidate_id IN (%s,%s) GROUP BY c.candidate_id,c.display_geometry_source ORDER BY c.candidate_id
+                """, (taxonomy_candidate_id, coarse_candidate_id)).fetchall()
+                self.assertEqual(compact_map_categories, [(["unclassified"],), (["unclassified"],)])
                 self.assertEqual(connection.execute(
                     "SELECT display_precision FROM real_preview.local_reference_display_evidence WHERE candidate_id=%s",
                     (coarse_candidate_id,),
@@ -124,10 +196,10 @@ class RealPreviewPostgisTests(unittest.TestCase):
                     with connection.transaction():
                         connection.execute(candidate_insert, ("a" * 64, "it.853-2004", "source-group-zero", numeric_observation_id, "numeric_source_coordinate", "IT", "Example", 0.0, 0.0,
                             None, None, None, None, None, None, None, True, None))
-                self.assertEqual(connection.execute("SELECT count(*) FROM real_preview.observations").fetchone()[0], 3)
-                self.assertEqual(connection.execute("SELECT count(*) FROM real_preview.observations WHERE facility_candidate").fetchone()[0], 3)
-                self.assertEqual(connection.execute("SELECT count(*) FROM real_preview.observations WHERE location_class='unmapped_private_observation'").fetchone()[0], 1)
-                self.assertEqual(connection.execute("SELECT count(*) FROM real_preview.candidates").fetchone()[0], 4)
+                self.assertEqual(connection.execute("SELECT count(*) FROM real_preview.observations").fetchone()[0], 4)
+                self.assertEqual(connection.execute("SELECT count(*) FROM real_preview.observations WHERE facility_candidate").fetchone()[0], 4)
+                self.assertEqual(connection.execute("SELECT count(*) FROM real_preview.observations WHERE location_class='unmapped_private_observation'").fetchone()[0], 2)
+                self.assertEqual(connection.execute("SELECT count(*) FROM real_preview.candidates").fetchone()[0], 5)
                 scope_counts = connection.execute("""
                     SELECT count(*) FILTER (WHERE default_map_scope),
                            count(*) FILTER (WHERE NOT default_map_scope),
@@ -135,7 +207,7 @@ class RealPreviewPostgisTests(unittest.TestCase):
                            count(*) FILTER (WHERE default_map_scope AND location_class='numeric_source_coordinate')
                     FROM real_preview.candidates
                 """).fetchone()
-                self.assertEqual(scope_counts, (3, 1, 1, 2))
+                self.assertEqual(scope_counts, (3, 2, 2, 2))
                 self.assertEqual(connection.execute(
                     "SELECT map_scope_reason FROM real_preview.candidates WHERE source_group_key='source-group-3'"
                 ).fetchone()[0], "general-food")

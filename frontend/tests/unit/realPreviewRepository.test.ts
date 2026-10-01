@@ -140,11 +140,13 @@ describe('private real-preview repository', () => {
       return response({ api_version: 'real-preview-v1', data: [record()], meta: { private_preview: true, next_cursor: candidateId } });
     });
     const repository = createRealPreviewRepository(fetcher);
-    const searchPage = await repository.list({ query: 'Lyon', limit: 200 });
+    const searchPage = await repository.list({ query: 'Lyon', sourceId: 'fr.dgal.section-i', categoryKeys: ['slaughter', 'processing_and_preparation'], limit: 200 });
     const viewportPage = await repository.viewport({ west: 1, south: 44, east: 6, north: 47 }, { cursor: candidateId, limit: 500 });
     expect(searchPage.records[0]?.candidateId).toBe(candidateId);
     expect(searchPage.nextCursor).toBe(candidateId);
     expect(new URL(`http://localhost${calls[0]!.url}`).searchParams.get('q')).toBe('Lyon');
+    expect(new URL(`http://localhost${calls[0]!.url}`).searchParams.get('source_id')).toBe('fr.dgal.section-i');
+    expect(new URL(`http://localhost${calls[0]!.url}`).searchParams.get('category_keys')).toBe('slaughter,processing_and_preparation');
     expect(new URL(`http://localhost${calls[1]!.url}`).searchParams.get('cursor')).toBe(candidateId);
     expect(calls.every(call => !call.url.includes('token') && !JSON.stringify(call.init?.headers).toLowerCase().includes('token'))).toBe(true);
     expect(calls[0]?.init?.cache).toBe('no-store');

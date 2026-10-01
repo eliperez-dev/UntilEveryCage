@@ -1158,6 +1158,8 @@ pub struct RealPreviewPageParams {
     pub q: Option<String>,
     pub source_id: Option<String>,
     pub default_map_scope: Option<bool>,
+    /// Comma-separated taxonomy primary keys; multiple values use OR semantics.
+    pub category_keys: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -1191,6 +1193,53 @@ pub struct RealPreviewMapFeedParams {
 }
 
 const REAL_PREVIEW_MAP_FEED_MAX_FEATURES: i64 = 200_000;
+
+// Keep the per-candidate taxonomy projection in the same SQL query as the
+// list/detail response. This avoids an N+1 request/query path and preserves
+// latest-set semantics while remaining additive to the legacy scalar field.
+const REAL_PREVIEW_TAXONOMY_SELECT_SQL: &str = r#"
+, COALESCE((
+    SELECT s.display_category
+    FROM real_preview.candidate_taxonomy_assignment_sets s
+    WHERE s.candidate_id=candidate.candidate_id AND s.taxonomy_version='uec-taxonomy-v1'
+    ORDER BY s.created_at DESC,s.assignment_set_id DESC LIMIT 1
+  ), CASE WHEN candidate.category = ANY(ARRAY['animal_keeping_and_production','slaughter','processing_and_preparation','research_and_animal_use','other_regulated_premises','unclassified']::text[])
+       THEN candidate.category ELSE 'unclassified' END) AS taxonomy_display_category
+, COALESCE((
+    SELECT array_agg(DISTINCT a.primary_key ORDER BY a.primary_key)
+    FROM real_preview.candidate_taxonomy_assignment_sets s
+    JOIN real_preview.candidate_taxonomy_assignments a USING (assignment_set_id)
+    WHERE s.candidate_id=candidate.candidate_id AND s.taxonomy_version='uec-taxonomy-v1'
+      AND NOT EXISTS (SELECT 1 FROM real_preview.candidate_taxonomy_assignment_sets newer
+        WHERE newer.candidate_id=s.candidate_id AND newer.taxonomy_version=s.taxonomy_version
+          AND (newer.created_at,newer.assignment_set_id)>(s.created_at,s.assignment_set_id))
+  ), CASE WHEN candidate.category = ANY(ARRAY['animal_keeping_and_production','slaughter','processing_and_preparation','research_and_animal_use','other_regulated_premises','unclassified']::text[])
+       THEN ARRAY[candidate.category] ELSE ARRAY['unclassified']::text[] END) AS taxonomy_primary_categories
+, COALESCE((
+    SELECT jsonb_agg(DISTINCT jsonb_build_object('key',a.leaf_key,'label',COALESCE(a.leaf_label,a.leaf_key)))
+    FROM real_preview.candidate_taxonomy_assignment_sets s
+    JOIN real_preview.candidate_taxonomy_assignments a USING (assignment_set_id)
+    WHERE s.candidate_id=candidate.candidate_id AND s.taxonomy_version='uec-taxonomy-v1'
+      AND a.leaf_key IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM real_preview.candidate_taxonomy_assignment_sets newer
+        WHERE newer.candidate_id=s.candidate_id AND newer.taxonomy_version=s.taxonomy_version
+          AND (newer.created_at,newer.assignment_set_id)>(s.created_at,s.assignment_set_id))
+  ), '[]'::jsonb)::text AS taxonomy_leaf_activities_json
+, COALESCE((
+    SELECT jsonb_agg(jsonb_build_object('primary_key',a.primary_key,'leaf_key',a.leaf_key,'leaf_label',a.leaf_label,
+      'source_code_reference',a.source_code_reference,'source_label_reference',a.source_label_reference,
+      'source_code',a.source_code,'source_label',a.source_label,'method',a.mapping_method,
+      'status',a.mapping_status,'taxonomy_version',s.taxonomy_version,
+      'crosswalk_version',s.crosswalk_version,'ruleset_version',s.ruleset_version)
+      ORDER BY a.assignment_ordinal)
+    FROM real_preview.candidate_taxonomy_assignment_sets s
+    JOIN real_preview.candidate_taxonomy_assignments a USING (assignment_set_id)
+    WHERE s.candidate_id=candidate.candidate_id AND s.taxonomy_version='uec-taxonomy-v1'
+      AND NOT EXISTS (SELECT 1 FROM real_preview.candidate_taxonomy_assignment_sets newer
+        WHERE newer.candidate_id=s.candidate_id AND newer.taxonomy_version=s.taxonomy_version
+          AND (newer.created_at,newer.assignment_set_id)>(s.created_at,s.assignment_set_id))
+  ), '[]'::jsonb)::text AS taxonomy_assignments_json
+"#;
 
 /// Resolves a deliberately opaque administrative-reference key emitted by the
 /// MVT projection.  The key is only meaningful to this private preview
@@ -1334,13 +1383,10 @@ fn real_preview_candidate(row: &tokio_postgres::Row) -> Value {
         "source_activity_codes": row.get::<_, Vec<String>>("source_activity_codes"),
         "source_activity_labels": row.get::<_, Vec<String>>("source_activity_labels"),
         "activity_mapping_status": row.get::<_, String>("activity_mapping_status"),
-        // Real-preview candidates currently have no persisted versioned
-        // taxonomy assignment set. Keep the additive contract explicit and
-        // conservative until upstream mapping evidence is available.
-        "taxonomy_display_category": "unclassified",
-        "taxonomy_primary_categories": ["unclassified"],
-        "taxonomy_leaf_activities": [],
-        "taxonomy_assignments": [],
+        "taxonomy_display_category": row.get::<_, String>("taxonomy_display_category"),
+        "taxonomy_primary_categories": row.get::<_, Vec<String>>("taxonomy_primary_categories"),
+        "taxonomy_leaf_activities": serde_json::from_str(row.get::<_, String>("taxonomy_leaf_activities_json").as_str()).unwrap_or_else(|_| json!([])),
+        "taxonomy_assignments": serde_json::from_str(row.get::<_, String>("taxonomy_assignments_json").as_str()).unwrap_or_else(|_| json!([])),
         "classification_ruleset_version": row.get::<_, Option<String>>("classification_ruleset_version"),
         "activity_source": row.get::<_, Option<String>>("activity_source"),
         "source_name": row.get::<_, Option<String>>("source_name"),
@@ -1431,6 +1477,28 @@ fn valid_real_preview_tile_source(value: Option<&str>) -> bool {
                 .bytes()
                 .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'.' | b'-'))
     })
+}
+
+fn parse_real_preview_taxonomy_categories(value: Option<&str>) -> Result<Option<Vec<String>>, ()> {
+    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    if value.len() > 512 {
+        return Err(());
+    }
+    let mut categories = Vec::new();
+    for category in value.split(',').map(str::trim) {
+        if !V2_TAXONOMY_PRIMARY_CATEGORIES.contains(&category) {
+            return Err(());
+        }
+        if !categories.iter().any(|existing| existing == category) {
+            categories.push(category.to_string());
+        }
+    }
+    if categories.is_empty() || categories.len() > V2_TAXONOMY_PRIMARY_CATEGORIES.len() {
+        return Err(());
+    }
+    Ok(Some(categories))
 }
 
 fn valid_real_preview_cluster_cutoff(value: f64) -> bool {
@@ -1761,6 +1829,21 @@ WITH sources AS (
   SELECT candidate.candidate_id, candidate.source_id,
          candidate.location_class, candidate.coordinate_precision,
          candidate.display_geometry_source,
+         COALESCE((SELECT s.display_category
+           FROM real_preview.candidate_taxonomy_assignment_sets s
+           WHERE s.candidate_id=candidate.candidate_id AND s.taxonomy_version='uec-taxonomy-v1'
+           ORDER BY s.created_at DESC,s.assignment_set_id DESC LIMIT 1),
+           CASE WHEN candidate.category=ANY(ARRAY['animal_keeping_and_production','slaughter','processing_and_preparation','research_and_animal_use','other_regulated_premises','unclassified']::text[])
+             THEN candidate.category ELSE 'unclassified' END) AS category_key,
+         COALESCE((SELECT array_agg(DISTINCT a.primary_key ORDER BY a.primary_key)
+           FROM real_preview.candidate_taxonomy_assignment_sets s
+           JOIN real_preview.candidate_taxonomy_assignments a USING(assignment_set_id)
+           WHERE s.candidate_id=candidate.candidate_id AND s.taxonomy_version='uec-taxonomy-v1'
+             AND NOT EXISTS (SELECT 1 FROM real_preview.candidate_taxonomy_assignment_sets newer
+               WHERE newer.candidate_id=s.candidate_id AND newer.taxonomy_version=s.taxonomy_version
+                 AND (newer.created_at,newer.assignment_set_id)>(s.created_at,s.assignment_set_id))),
+           CASE WHEN candidate.category=ANY(ARRAY['animal_keeping_and_production','slaughter','processing_and_preparation','research_and_animal_use','other_regulated_premises','unclassified']::text[])
+             THEN ARRAY[candidate.category] ELSE ARRAY['unclassified']::text[] END) AS category_keys,
          CASE WHEN candidate.display_geometry_source IS NULL THEN candidate.longitude
               ELSE candidate.display_longitude END AS longitude,
          CASE WHEN candidate.display_geometry_source IS NULL THEN candidate.latitude
@@ -1789,7 +1872,8 @@ WITH sources AS (
               WHEN coordinate_precision IN ('numeric','exact','source_numeric','source_coordinates','facility_coordinate') THEN 'source_numeric_pending_review'
               WHEN coordinate_precision='source-provided' THEN 'approximate_source_provided_pending_review'
               ELSE 'approximate_source_precision_unknown_pending_review' END AS precision,
-         source_id, latitude, longitude, 1::bigint AS weight
+         source_id, latitude, longitude, 1::bigint AS weight,
+         category_key, category_keys
   FROM current_map WHERE display_geometry_source IS NULL
   UNION ALL
   SELECT md5('city-reference:' || ST_X(geom)::text || ':' || ST_Y(geom)::text) AS feature_key,
@@ -1798,7 +1882,9 @@ WITH sources AS (
          source_id,
          ST_Y(ST_Transform(geom,4326)) AS latitude,
          ST_X(ST_Transform(geom,4326)) AS longitude,
-         count(*)::bigint AS weight
+         count(*)::bigint AS weight,
+         'unclassified'::text AS category_key,
+         ARRAY['unclassified']::text[] AS category_keys
   FROM (
     SELECT source_id,
            ST_Transform(ST_SetSRID(ST_MakePoint(longitude,latitude),4326),3857) AS geom
@@ -1806,7 +1892,7 @@ WITH sources AS (
   ) reference_geometries
   GROUP BY source_id, geom
 )
-SELECT feature_key,kind,precision,source_id,latitude,longitude,weight
+SELECT feature_key,kind,precision,source_id,latitude,longitude,weight,category_key,category_keys
 FROM projected
 ORDER BY source_id,kind,feature_key
 LIMIT $2
@@ -1831,6 +1917,8 @@ LIMIT $2
         "latitude": row.get::<_, f64>(4),
         "longitude": row.get::<_, f64>(5),
         "weight": row.get::<_, i64>(6),
+        "category_key": row.get::<_, String>(7),
+        "category_keys": row.get::<_, Vec<String>>(8),
     })).collect();
     let total_weight: i64 = rows.iter().map(|row| row.get::<_, i64>(6)).sum();
     let mut source_weights = std::collections::BTreeMap::<String, i64>::new();
@@ -1894,7 +1982,7 @@ pub async fn get_real_preview_reference_handler(
     // query.  It only resolves administrative display geometries and retains
     // the current-snapshot/source boundaries used by every preview endpoint.
     let rows = match client.query(
-        "WITH sources AS (SELECT source_id FROM real_preview.source_preview_runs UNION SELECT source_id FROM real_preview.source_manifests), latest AS (SELECT sources.source_id,COALESCE((SELECT run.snapshot_sha256 FROM real_preview.source_preview_runs run WHERE run.source_id=sources.source_id ORDER BY run.created_at DESC,run.run_id DESC LIMIT 1),(SELECT source_manifest.snapshot_sha256 FROM real_preview.source_manifests source_manifest WHERE source_manifest.source_id=sources.source_id ORDER BY source_manifest.retrieved_at DESC,source_manifest.snapshot_sha256 DESC LIMIT 1)) AS snapshot_sha256 FROM sources) SELECT candidate.*,manifest.source_url,manifest.retrieved_at FROM real_preview.candidates candidate JOIN real_preview.source_manifests manifest ON manifest.snapshot_sha256=candidate.snapshot_sha256 AND manifest.source_id=candidate.source_id WHERE candidate.default_map_scope=true AND candidate.display_geometry_source IS NOT NULL AND candidate.display_latitude BETWEEN -90 AND 90 AND candidate.display_longitude BETWEEN -180 AND 180 AND (candidate.display_latitude<>0 OR candidate.display_longitude<>0) AND md5('city-reference:' || ST_X(ST_Transform(ST_SetSRID(ST_MakePoint(candidate.display_longitude,candidate.display_latitude),4326),3857))::text || ':' || ST_Y(ST_Transform(ST_SetSRID(ST_MakePoint(candidate.display_longitude,candidate.display_latitude),4326),3857))::text)=$1 AND (candidate.source_id,candidate.snapshot_sha256) IN (SELECT source_id,snapshot_sha256 FROM latest) AND ($2::uuid IS NULL OR candidate.candidate_id>$2) AND ($4::text IS NULL OR candidate.source_id=$4) ORDER BY candidate.candidate_id LIMIT $3",
+        &format!("WITH sources AS (SELECT source_id FROM real_preview.source_preview_runs UNION SELECT source_id FROM real_preview.source_manifests), latest AS (SELECT sources.source_id,COALESCE((SELECT run.snapshot_sha256 FROM real_preview.source_preview_runs run WHERE run.source_id=sources.source_id ORDER BY run.created_at DESC,run.run_id DESC LIMIT 1),(SELECT source_manifest.snapshot_sha256 FROM real_preview.source_manifests source_manifest WHERE source_manifest.source_id=sources.source_id ORDER BY source_manifest.retrieved_at DESC,source_manifest.snapshot_sha256 DESC LIMIT 1)) AS snapshot_sha256 FROM sources) SELECT candidate.*,manifest.source_url,manifest.retrieved_at {} FROM real_preview.candidates candidate JOIN real_preview.source_manifests manifest ON manifest.snapshot_sha256=candidate.snapshot_sha256 AND manifest.source_id=candidate.source_id WHERE candidate.default_map_scope=true AND candidate.display_geometry_source IS NOT NULL AND candidate.display_latitude BETWEEN -90 AND 90 AND candidate.display_longitude BETWEEN -180 AND 180 AND (candidate.display_latitude<>0 OR candidate.display_longitude<>0) AND md5('city-reference:' || ST_X(ST_Transform(ST_SetSRID(ST_MakePoint(candidate.display_longitude,candidate.display_latitude),4326),3857))::text || ':' || ST_Y(ST_Transform(ST_SetSRID(ST_MakePoint(candidate.display_longitude,candidate.display_latitude),4326),3857))::text)=$1 AND (candidate.source_id,candidate.snapshot_sha256) IN (SELECT source_id,snapshot_sha256 FROM latest) AND ($2::uuid IS NULL OR candidate.candidate_id>$2) AND ($4::text IS NULL OR candidate.source_id=$4) ORDER BY candidate.candidate_id LIMIT $3", REAL_PREVIEW_TAXONOMY_SELECT_SQL),
         &[&reference_key, &params.cursor, &query_limit, &params.source_id],
     ).await {
         Ok(rows) => rows,
@@ -1925,6 +2013,14 @@ pub async fn get_real_preview_list_handler(
             "limit must be between 1 and 200",
         );
     }
+    let category_keys = match parse_real_preview_taxonomy_categories(params.category_keys.as_deref()) {
+        Ok(keys) => keys,
+        Err(()) => return real_preview_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_category_keys",
+            "category_keys contains an unsupported taxonomy category",
+        ),
+    };
     let Some(pool) = state.database else {
         return real_preview_unavailable();
     };
@@ -1941,8 +2037,8 @@ pub async fn get_real_preview_list_handler(
         .collect::<String>();
     let query_limit = limit + 1;
     let rows = match client.query(
-        &format!("SELECT candidate.*,manifest.source_url,manifest.retrieved_at FROM real_preview.candidates candidate JOIN real_preview.source_manifests manifest ON manifest.snapshot_sha256=candidate.snapshot_sha256 AND manifest.source_id=candidate.source_id WHERE {} AND ($1::uuid IS NULL OR candidate.candidate_id > $1) AND ($2='' OR COALESCE(candidate.display_name,'') ILIKE '%' || $2 || '%' OR COALESCE(candidate.activity_label,'') ILIKE '%' || $2 || '%' OR COALESCE(candidate.activity_source,'') ILIKE '%' || $2 || '%' OR COALESCE(candidate.source_name,'') ILIKE '%' || $2 || '%' OR candidate.source_id ILIKE '%' || $2 || '%' OR COALESCE(candidate.city,'') ILIKE '%' || $2 || '%' OR COALESCE(candidate.postal_code,'') ILIKE '%' || $2 || '%') AND ($4::text IS NULL OR candidate.source_id=$4) AND ($5::bool IS NULL OR candidate.default_map_scope=$5) ORDER BY candidate.candidate_id LIMIT $3", REAL_PREVIEW_LATEST_SNAPSHOT),
-        &[&cursor, &query, &query_limit, &params.source_id, &params.default_map_scope],
+        &format!("SELECT candidate.*,manifest.source_url,manifest.retrieved_at {} FROM real_preview.candidates candidate JOIN real_preview.source_manifests manifest ON manifest.snapshot_sha256=candidate.snapshot_sha256 AND manifest.source_id=candidate.source_id WHERE {} AND ($1::uuid IS NULL OR candidate.candidate_id > $1) AND ($2='' OR COALESCE(candidate.display_name,'') ILIKE '%' || $2 || '%' OR COALESCE(candidate.activity_label,'') ILIKE '%' || $2 || '%' OR COALESCE(candidate.activity_source,'') ILIKE '%' || $2 || '%' OR COALESCE(candidate.source_name,'') ILIKE '%' || $2 || '%' OR candidate.source_id ILIKE '%' || $2 || '%' OR COALESCE(candidate.city,'') ILIKE '%' || $2 || '%' OR COALESCE(candidate.postal_code,'') ILIKE '%' || $2 || '%' OR EXISTS (SELECT 1 FROM real_preview.candidate_taxonomy_assignment_sets ts JOIN real_preview.candidate_taxonomy_assignments ta USING (assignment_set_id) WHERE ts.candidate_id=candidate.candidate_id AND ts.taxonomy_version='uec-taxonomy-v1' AND NOT EXISTS (SELECT 1 FROM real_preview.candidate_taxonomy_assignment_sets newer WHERE newer.candidate_id=ts.candidate_id AND newer.taxonomy_version=ts.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(ts.created_at,ts.assignment_set_id)) AND (COALESCE(ta.leaf_label,'') ILIKE '%' || $2 || '%' OR COALESCE(ta.source_label,'') ILIKE '%' || $2 || '%' OR COALESCE(ta.source_code,'') ILIKE '%' || $2 || '%')) ) AND ($4::text IS NULL OR candidate.source_id=$4) AND ($5::bool IS NULL OR candidate.default_map_scope=$5) AND ($6::text[] IS NULL OR EXISTS (SELECT 1 FROM real_preview.candidate_taxonomy_assignment_sets ts JOIN real_preview.candidate_taxonomy_assignments ta USING (assignment_set_id) WHERE ts.candidate_id=candidate.candidate_id AND ts.taxonomy_version='uec-taxonomy-v1' AND NOT EXISTS (SELECT 1 FROM real_preview.candidate_taxonomy_assignment_sets newer WHERE newer.candidate_id=ts.candidate_id AND newer.taxonomy_version=ts.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(ts.created_at,ts.assignment_set_id)) AND ta.primary_key=ANY($6)) OR (NOT EXISTS (SELECT 1 FROM real_preview.candidate_taxonomy_assignment_sets ts WHERE ts.candidate_id=candidate.candidate_id AND ts.taxonomy_version='uec-taxonomy-v1') AND (candidate.category=ANY($6) OR (candidate.category IS NULL AND 'unclassified'=ANY($6))))) ORDER BY candidate.candidate_id LIMIT $3", REAL_PREVIEW_TAXONOMY_SELECT_SQL, REAL_PREVIEW_LATEST_SNAPSHOT),
+        &[&cursor, &query, &query_limit, &params.source_id, &params.default_map_scope, &category_keys],
     ).await { Ok(rows) => rows, Err(_) => return real_preview_unavailable() };
     let has_next = rows.len() as i64 > limit;
     let data: Vec<Value> = rows.iter().take(limit as usize).map(real_preview_candidate).collect();
@@ -1987,7 +2083,7 @@ pub async fn get_real_preview_viewport_handler(
     };
     let query_limit = limit + 1;
     let rows = match client.query(
-        &format!("SELECT candidate.*,manifest.source_url,manifest.retrieved_at FROM real_preview.candidates candidate JOIN real_preview.source_manifests manifest ON manifest.snapshot_sha256=candidate.snapshot_sha256 AND manifest.source_id=candidate.source_id WHERE candidate.default_map_scope=true AND (((candidate.location_class='numeric_source_coordinate' AND candidate.latitude BETWEEN -90 AND 90 AND candidate.longitude BETWEEN -180 AND 180 AND (candidate.latitude<>0 OR candidate.longitude<>0)) OR (candidate.display_geometry_source IS NOT NULL AND candidate.display_latitude BETWEEN -90 AND 90 AND candidate.display_longitude BETWEEN -180 AND 180)) AND COALESCE(candidate.display_longitude,candidate.longitude) BETWEEN $1 AND $3 AND COALESCE(candidate.display_latitude,candidate.latitude) BETWEEN $2 AND $4) AND {} AND ($5::uuid IS NULL OR candidate.candidate_id > $5) AND ($7::text IS NULL OR candidate.source_id=$7) ORDER BY candidate.candidate_id LIMIT $6", REAL_PREVIEW_LATEST_SNAPSHOT),
+        &format!("SELECT candidate.*,manifest.source_url,manifest.retrieved_at {} FROM real_preview.candidates candidate JOIN real_preview.source_manifests manifest ON manifest.snapshot_sha256=candidate.snapshot_sha256 AND manifest.source_id=candidate.source_id WHERE candidate.default_map_scope=true AND (((candidate.location_class='numeric_source_coordinate' AND candidate.latitude BETWEEN -90 AND 90 AND candidate.longitude BETWEEN -180 AND 180 AND (candidate.latitude<>0 OR candidate.longitude<>0)) OR (candidate.display_geometry_source IS NOT NULL AND candidate.display_latitude BETWEEN -90 AND 90 AND candidate.display_longitude BETWEEN -180 AND 180)) AND COALESCE(candidate.display_longitude,candidate.longitude) BETWEEN $1 AND $3 AND COALESCE(candidate.display_latitude,candidate.latitude) BETWEEN $2 AND $4) AND {} AND ($5::uuid IS NULL OR candidate.candidate_id > $5) AND ($7::text IS NULL OR candidate.source_id=$7) ORDER BY candidate.candidate_id LIMIT $6", REAL_PREVIEW_TAXONOMY_SELECT_SQL, REAL_PREVIEW_LATEST_SNAPSHOT),
         &[&params.west,&params.south,&params.east,&params.north,&params.cursor,&query_limit,&params.source_id],
     ).await { Ok(rows) => rows, Err(_) => return real_preview_unavailable() };
     let has_next = rows.len() as i64 > limit;
@@ -2013,7 +2109,7 @@ pub async fn get_real_preview_detail_handler(
     let Ok(client) = pool.get().await else {
         return real_preview_unavailable();
     };
-    let row = match client.query_opt(&format!("SELECT candidate.*,manifest.source_url,manifest.retrieved_at FROM real_preview.candidates candidate JOIN real_preview.source_manifests manifest ON manifest.snapshot_sha256=candidate.snapshot_sha256 AND manifest.source_id=candidate.source_id WHERE candidate.candidate_id=$1 AND {}", REAL_PREVIEW_LATEST_SNAPSHOT), &[&id]).await { Ok(row) => row, Err(_) => return real_preview_unavailable() };
+    let row = match client.query_opt(&format!("SELECT candidate.*,manifest.source_url,manifest.retrieved_at {} FROM real_preview.candidates candidate JOIN real_preview.source_manifests manifest ON manifest.snapshot_sha256=candidate.snapshot_sha256 AND manifest.source_id=candidate.source_id WHERE candidate.candidate_id=$1 AND {}", REAL_PREVIEW_TAXONOMY_SELECT_SQL, REAL_PREVIEW_LATEST_SNAPSHOT), &[&id]).await { Ok(row) => row, Err(_) => return real_preview_unavailable() };
     match row {
         Some(row) => real_preview_response(
             StatusCode::OK,
@@ -3774,6 +3870,39 @@ mod v2_api_tests {
                 .body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         assert_eq!(response.headers().get("cache-control").unwrap(), "no-store");
+    }
+
+    #[test]
+    fn real_preview_taxonomy_category_filter_is_allowlisted_or_semantics() {
+        assert_eq!(
+            parse_real_preview_taxonomy_categories(Some("slaughter,processing_and_preparation,slaughter")).unwrap(),
+            Some(vec!["slaughter".to_string(), "processing_and_preparation".to_string()]),
+        );
+        assert_eq!(parse_real_preview_taxonomy_categories(None).unwrap(), None);
+        assert!(parse_real_preview_taxonomy_categories(Some("slaughter house")).is_err());
+        assert!(parse_real_preview_taxonomy_categories(Some(&"x".repeat(513))).is_err());
+        assert!(REAL_PREVIEW_TAXONOMY_SELECT_SQL.contains("candidate_taxonomy_assignment_sets"));
+        assert!(REAL_PREVIEW_TAXONOMY_SELECT_SQL.contains("candidate_taxonomy_assignments"));
+        assert!(REAL_PREVIEW_TAXONOMY_SELECT_SQL.contains("ORDER BY s.created_at DESC,s.assignment_set_id DESC"));
+    }
+
+    #[tokio::test]
+    async fn real_preview_rejects_invalid_taxonomy_filter_before_database_access() {
+        let state = ApiState {
+            database: None,
+            dev_preview_token: Some("local-test-token-with-at-least-32-characters".into()),
+            dev_test_release_id: None,
+            dev_test_release_token: None,
+        };
+        let response = Router::new()
+            .route("/dev/real-preview/locations", axum::routing::get(get_real_preview_list_handler))
+            .with_state(state)
+            .oneshot(Request::builder()
+                .uri("/dev/real-preview/locations?category_keys=slaughter%20house")
+                .header("host", "127.0.0.1:8000")
+                .header("x-uec-dev-preview-token", "local-test-token-with-at-least-32-characters")
+                .body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]

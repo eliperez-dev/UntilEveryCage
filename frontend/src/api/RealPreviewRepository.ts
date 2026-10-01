@@ -1,6 +1,6 @@
 import type { LabRecord } from '../design-lab/contract';
 import type { ViewportBounds } from '../design-lab/contract';
-import { parseTaxonomyClassification, type TaxonomyClassification } from '../domain/taxonomy';
+import { isTaxonomyPrimaryKey, parseTaxonomyClassification, type TaxonomyClassification, type TaxonomyPrimaryKey } from '../domain/taxonomy';
 
 export type RealPreviewPrecision =
   | 'source_numeric_pending_review'
@@ -205,7 +205,7 @@ export function mapRealPreviewCandidate(candidate: RealPreviewCandidate): LabRec
 }
 
 export function createRealPreviewRepository(fetcher: FetchLike = fetch): {
-  list(options?: { query?: string; sourceId?: string | null; defaultMapScope?: boolean | null; cursor?: string | null; limit?: number; signal?: AbortSignal }): Promise<RealPreviewPage>;
+  list(options?: { query?: string; sourceId?: string | null; defaultMapScope?: boolean | null; categoryKeys?: readonly TaxonomyPrimaryKey[]; cursor?: string | null; limit?: number; signal?: AbortSignal }): Promise<RealPreviewPage>;
   viewport(bounds: ViewportBounds, options?: { sourceId?: string | null; cursor?: string | null; limit?: number; signal?: AbortSignal }): Promise<RealPreviewPage>;
   reference(key: string, options?: { sourceId?: string | null; cursor?: string | null; limit?: number; signal?: AbortSignal }): Promise<RealPreviewPage>;
   detail(id: string, signal?: AbortSignal): Promise<RealPreviewCandidate>;
@@ -243,11 +243,13 @@ export function createRealPreviewRepository(fetcher: FetchLike = fetch): {
     return Object.freeze({ records: Object.freeze(envelope.data.map(parseRealPreviewCandidate)), nextCursor: meta.next_cursor as string | null });
   };
   return {
-    list({ query = '', sourceId = null, defaultMapScope = null, cursor = null, limit = 200, signal } = {}) {
+    list({ query = '', sourceId = null, defaultMapScope = null, categoryKeys = [], cursor = null, limit = 200, signal } = {}) {
       const params = new URLSearchParams({ limit: String(limit) });
       if (sourceId) params.set('source_id', sourceId);
       if (defaultMapScope !== null) params.set('default_map_scope', String(defaultMapScope));
       if (query.trim()) params.set('q', query.trim().slice(0, 100));
+      const selectedCategories = [...new Set(categoryKeys)].filter(isTaxonomyPrimaryKey);
+      if (selectedCategories.length) params.set('category_keys', selectedCategories.join(','));
       if (cursor) params.set('cursor', cursor);
       return request(`/locations?${params}`, signal, parsePage);
     },
