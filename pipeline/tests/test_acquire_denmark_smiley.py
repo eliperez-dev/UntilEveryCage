@@ -139,7 +139,7 @@ class DenmarkAcquisitionTests(unittest.TestCase):
                     (artifact.parent / "acquisition-metadata.json").write_text(json.dumps({"requested_url": "https://example.test/xml", "final_url": "https://example.test/final"}), encoding="utf-8")
                 if name == "geocode_queue":
                     output = Path(args[args.index("--output-dir") + 1])
-                    output.mkdir(parents=True)
+                    output.mkdir(parents=True, exist_ok=True)
                     (output / "geocode-queue-metadata.json").write_text(json.dumps({
                         "status": "success", "records_queued": 0,
                         "records_without_usable_address": 0,
@@ -168,7 +168,7 @@ class DenmarkAcquisitionTests(unittest.TestCase):
                 stages.append(name)
                 if name == "geocode_queue":
                     output = Path(_args[_args.index("--output-dir") + 1])
-                    output.mkdir(parents=True)
+                    output.mkdir(parents=True, exist_ok=True)
                     (output / "geocode-queue-metadata.json").write_text(json.dumps({
                         "status": "success", "records_queued": 0,
                         "records_without_usable_address": 0,
