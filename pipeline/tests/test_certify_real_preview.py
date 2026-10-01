@@ -106,6 +106,23 @@ class CertificationLedgerTests(unittest.TestCase):
         self.assertEqual(result["counts"]["unmapped"], 0)
         self.assertEqual(result["counts"]["candidates"], 6538)
 
+    def test_sa_epa_approximate_coordinates_are_not_double_counted_as_unmapped_identity(self):
+        value = ledger()
+        value["source_id"] = "au.sa.epa.licensed-activities"
+        value["source_run"]["results"][0]["source_id"] = "au.sa.epa.licensed-activities"
+        value["map_visible_count"] = 1
+        value["preview_import"].update({
+            "observation_count": 1, "facility_candidate_count": 1,
+            "numeric_coordinate_count": 1, "city_postal_count": 0,
+            "unmapped_facility_count": 1, "unmapped_map_candidate_count": 0,
+            "coarse_placeable_facility_count": 0,
+        })
+        value["quarantine"].update({"input_rows": 1, "accepted_rows": 1, "quarantined_rows": 0})
+        value["coordinate_precision_breakdown"] = {"exact": 0, "approximate_source_precision_unspecified": 1}
+        result = CERT.validate_ledger(value, "au.sa.epa.licensed-activities")
+        self.assertEqual(result["counts"]["unmapped"], 0)
+        self.assertEqual(result["counts"]["map_visible"], 1)
+
     def test_wrong_source_fails_closed(self):
         with self.assertRaises(CERT.CertificationError):
             CERT.validate_ledger(ledger(), "us.fsis")
@@ -223,7 +240,6 @@ class CertificationLedgerTests(unittest.TestCase):
             def __init__(self, value): self.value = value
             def fetchone(self): return self.value
             def fetchall(self): return self.value
-
         class Connection:
             def __enter__(self): return self
             def __exit__(self, *args): return False
@@ -243,6 +259,47 @@ class CertificationLedgerTests(unittest.TestCase):
         with patch.dict(sys.modules, {"psycopg": driver}):
             result = CERT._db_check("postgresql://user:secret@127.0.0.1:55433/uec", "it.1069-2009", evidence)
         self.assertTrue(result["exact_run"])
+
+    def test_sa_epa_database_identity_unmapped_count_is_not_a_location_class(self):
+        value = ledger()
+        value["source_id"] = "au.sa.epa.licensed-activities"
+        value["source_run"]["results"][0]["source_id"] = "au.sa.epa.licensed-activities"
+        value["map_visible_count"] = 1
+        value["preview_import"].update({
+            "observation_count": 1, "facility_candidate_count": 1,
+            "numeric_coordinate_count": 1, "city_postal_count": 0,
+            "unmapped_facility_count": 1, "unmapped_map_candidate_count": 0,
+            "coarse_placeable_facility_count": 0,
+        })
+        value["quarantine"].update({"input_rows": 1, "accepted_rows": 1, "quarantined_rows": 0})
+        value["coordinate_precision_breakdown"] = {"exact": 0, "approximate_source_precision_unspecified": 1}
+        evidence = CERT.validate_ledger(value, "au.sa.epa.licensed-activities")
+
+        class Result:
+            def __init__(self, value): self.value = value
+            def fetchone(self): return self.value
+
+        class Connection:
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def execute(self, sql, params=()):
+                if "FROM real_preview.source_preview_runs" in sql:
+                    return Result(("au.sa.epa.licensed-activities", "f" * 64, "a" * 64, "c" * 64,
+                        1, 1, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0))
+                if "FROM real_preview.candidates" in sql:
+                    return Result((0,))
+                if "FROM real_preview.candidate_taxonomy_assignment_sets" in sql:
+                    return Result((1, 1, 0, 1))
+                if "to_regclass" in sql:
+                    return Result((None,))
+                raise AssertionError("unexpected database query")
+        driver = SimpleNamespace(connect=lambda _: Connection())
+        with patch.dict(sys.modules, {"psycopg": driver}):
+            result = CERT._db_check("postgresql://user:secret@127.0.0.1:55433/uec",
+                                    "au.sa.epa.licensed-activities", evidence)
+        self.assertTrue(result["exact_run"])
+        self.assertEqual(result["public_rows"], 0)
+        self.assertEqual(result["taxonomy"]["ambiguous_source_native_candidates"], 1)
 
     def test_remote_api_endpoint_is_rejected(self):
         with self.assertRaisesRegex(CERT.CertificationError, "loopback"):

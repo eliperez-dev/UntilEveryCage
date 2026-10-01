@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "purpose": "Private bounded Australia source reconnaissance artifacts; not release inputs.",
-  "retrieved_at": "2026-09-27T14:02:15-07:00",
+  "retrieved_at": "2026-10-01T20:40:46Z",
   "artifacts": [
     {
       "source_id": "au.npi.facilities",
@@ -15,7 +15,33 @@
       "unique_key": "facility_id",
       "unique_key_count": 8140,
       "schema": ["facility_id", "jurisdiction_code", "jurisdiction_facility_id", "registered_business_name", "facility_name", "abn", "acn", "street_address", "suburb", "state", "postcode", "latitude", "longitude", "primary_anzsic_class_code", "primary_anzsic_class_name", "main_activities", "facility_website", "first_report_year", "latest_report_year", "latest_report_id", "latest_report_url", "reports"],
-      "retention": "ignored private raw artifact; 8,116 source-coordinate pairs are retained only in restricted source evidence and withheld from normalized preview until privacy review; do not commit or publish"
+      "latest_reacquisition": {
+        "runner_run_id": "refresh-16c0214992879a34",
+        "acquisition_run_id": "preview-au-npi-facilities-9c59d47c-244c-4e55-84fb-b2dcc106f30b",
+        "retrieved_at_utc": "2026-10-01T20:38:27.850228Z",
+        "catalog_sha256": "e3db00e8925a0559981f6a5168f68d76d6e89c588d304eb39747ef1cf33513d1",
+        "publication_date": "2026-03-31T07:24:23.541102",
+        "source_sha256": "a0be4c37d588b391ea81baf240f675b2c9f3d9ee0210f9c451c7371eac11d6c7",
+        "source_byte_size": 3248241,
+        "input_rows": 8140,
+        "accepted_rows": 8116,
+        "quarantined_rows": 24,
+        "quarantine_reasons": {"invalid_source_coordinate": 24},
+        "candidate_count": 8116,
+        "taxonomy_version": "uec-taxonomy-v1",
+        "taxonomy_status_counts": {"ambiguous_candidate": 8116, "unclassified": 0},
+        "database_taxonomy": {"candidate_assignment_sets": 8116, "ambiguous_source_native_candidates": 8116, "unclassified": 0, "confirmed_activity_mappings": 0},
+        "normalized_sha256": "9d794ed6ed8473fb6fb3866bd0a5b62f686053f6af0deb9a604e597680e91476",
+        "candidate_handoff_sha256": "9d794ed6ed8473fb6fb3866bd0a5b62f686053f6af0deb9a604e597680e91476",
+        "source_coordinate_pairs_retained_privately": 8116,
+        "city_postal_listable_candidates": 8116,
+        "map_visible_candidates": 0,
+        "public_rows": 0,
+        "disposable_preview_e2e": "certified; exact same-database replay and taxonomy-v1 assignment reconciliation passed",
+        "raw_path": "target/real-preview/runs/refresh-16c0214992879a34/sources/au.npi.facilities/acquisition/au.npi.facilities/preview-au-npi-facilities-9c59d47c-244c-4e55-84fb-b2dcc106f30b/source.csv",
+        "normalized_path": "target/real-preview/runs/refresh-16c0214992879a34/sources/au.npi.facilities/candidate-handoff/normalized/records.jsonl"
+      },
+      "retention": "ignored private raw artifact; source coordinates remain restricted to private source evidence and are withheld from normalized preview pending privacy review; do not commit or publish"
     },
     {
       "source_id": "au.sa.epa.licensed-activities",
@@ -30,7 +56,34 @@
       "unique_key": "EPALICENCE",
       "unique_key_count": 1695,
       "schema": ["OBJECTID", "EPALICENCE", "ACTIVITY", "LICENCE_NAME", "PR_LINK", "geometry.coordinates"],
-      "retention": "ignored private raw artifact; CC BY 3.0 source terms still require project privacy/release review"
+      "latest_reacquisition": {
+        "runner_run_id": "refresh-b628f2bb95d66a8b",
+        "acquisition_run_id": "preview-au-sa-epa-licensed-activities-7ab9d755-1a29-42a5-a321-fb405b2d07b4",
+        "retrieved_at_utc": "2026-10-01T20:40:46.597882Z",
+        "catalog_sha256": "62c4c96d3f2f94f2bba1eb9469d626195c38cb3598f4b02a56957185f0074311",
+        "publication_date": "2026-03-18T00:31:00.356579",
+        "source_sha256": "01ca6ec02d58b229b9cb45c8afb8993e27f7ed5a29c32804313c315ff88daf07",
+        "source_byte_size": 1610103,
+        "input_features": 4531,
+        "accepted_observations": 43,
+        "out_of_scope_rows": 4488,
+        "quarantined_rows": 4488,
+        "quarantine_reasons": {"out_of_scope_animal_activity_rule": 4488},
+        "licence_grouped_candidates": 41,
+        "taxonomy_version": "uec-taxonomy-v1",
+        "taxonomy_status_counts": {"ambiguous_candidate": 41, "unclassified": 0},
+        "observation_taxonomy_status_counts": {"ambiguous_candidate": 43, "unclassified": 0},
+        "database_taxonomy": {"candidate_assignment_sets": 41, "ambiguous_source_native_candidates": 41, "unclassified": 0, "confirmed_activity_mappings": 0},
+        "normalized_sha256": "b86d556fe3ee6690e16ae0f2f4a771c90c262287ea5cc3899d1e61f32a0afc06",
+        "candidate_handoff_sha256": "b86d556fe3ee6690e16ae0f2f4a771c90c262287ea5cc3899d1e61f32a0afc06",
+        "approximate_source_precision_unknown_candidates": 41,
+        "map_visible_candidates": 41,
+        "public_rows": 0,
+        "disposable_preview_e2e": "certified; taxonomy-v1 assignment reconciliation passed; importer replay not configured",
+        "raw_path": "target/real-preview/runs/refresh-b628f2bb95d66a8b/sources/au.sa.epa.licensed-activities/acquisition/au.sa.epa.licensed-activities/preview-au-sa-epa-licensed-activities-7ab9d755-1a29-42a5-a321-fb405b2d07b4/source.geojson",
+        "normalized_path": "target/real-preview/runs/refresh-b628f2bb95d66a8b/sources/au.sa.epa.licensed-activities/candidate-handoff/normalized/records.jsonl"
+      },
+      "retention": "ignored private raw artifact; source points are approximate with unspecified precision and may not represent a licensed area; CC BY 3.0 terms do not grant project privacy/release approval"
     }
   ],
   "not_acquired": [

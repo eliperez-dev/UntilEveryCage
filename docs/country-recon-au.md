@@ -1,6 +1,6 @@
 # Australia source reconnaissance
 
-Status: private reconnaissance plus a bounded live private E2E for one South Australia EPA activity source; no Australian row-level release or publication approval. Source-level status is current to 2026-09-24; the broader reconnaissance was checked 2026-09-16 UTC. This is not a complete or current national facility census.
+Status: private reconnaissance plus bounded live private E2Es for the National Pollutant Inventory and one South Australia EPA activity source; no Australian row-level release or publication approval. Source-level status is current to 2026-10-01; the broader reconnaissance was checked 2026-09-16 UTC. This is not a complete or current national facility census.
 
 ## Decision summary
 
@@ -15,16 +15,24 @@ Australia does not expose one authoritative public national slaughterhouse regis
 
 Publication remains blocked. Current evidence is sufficient to build a metadata-only registry and an NPI adapter contract; it is not sufficient to publish Australian facility rows, precise coordinates, animal-use claims, ownership claims, or enforcement conclusions.
 
-## Current bounded E2E evidence — 2026-09-24
+## Current bounded E2E evidence — 2026-10-01
 
-`au.sa.epa.licensed-activities` completed a strict live private E2E from the
-official GeoJSON network route: 43 source observations produced 41 private
-candidates. This is a selected source-scoped activity result, not a restatement
-of the earlier 4,541-feature/1,695-licence artifact totals in the matrix
-below. The public projection remains empty; no recurring operational monitor
-is configured. Terms, licence-level aggregation, multi-activity children,
-approximate-point semantics, and privacy remain review gates. See the current
-[source status](source-status.md) and [source crosswalk](countries/australia/source-crosswalk.json).
+Both sources completed a strict live private E2E from their current official
+catalogue routes. NPI yielded 8,140 input rows, 8,116 accepted/listable
+candidates, and 24 quarantined invalid-coordinate rows. Its exact importer
+replay passed; source coordinates remain withheld from map/API location fields.
+SA EPA yielded 4,531 input features, 43 accepted observations, 4,488 out of
+scope rows, and 41 licence-grouped candidates. All 41 source points have
+unspecified approximate precision and are visible only in the private preview.
+The disposable database persisted 8,116 NPI and 41 SA EPA `uec-taxonomy-v1`
+assignment sets, all ambiguous/source-native candidates with no confirmed
+current-operation mappings. Public rows remain zero; no recurring operational
+monitor is configured. Terms, ANZSIC/activity semantics, licence aggregation,
+multi-activity children, approximate-point semantics, privacy, and publication
+remain review gates. Safe counts and raw/normalized artifact hashes are in the
+[artifact metadata](countries/australia/artifact-metadata.json); see also the
+[source status](source-status.md) and
+[source crosswalk](countries/australia/source-crosswalk.json).
 
 ## Source matrix
 
