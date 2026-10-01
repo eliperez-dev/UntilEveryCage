@@ -407,7 +407,7 @@ class RealPreviewImporterTests(unittest.TestCase):
         self.assertEqual(params[23], "general-food")
         self.assertEqual(params[3], "opaque-preview-observation", "candidate retains lineage to its observation")
         self.assertEqual(params[25], "slaughter")
-        self.assertEqual(params[26], ["slaughter", "fish_processing"])
+        self.assertEqual(params[26], ["slaughter", "processing_and_preparation"])
         self.assertEqual(params[27], ["EB.03.21.00", "EB.10.10.99"])
         self.assertEqual(params[28], ["Fish plant", "Slaughterhouse"])
         self.assertEqual(params[29], "mapped")
