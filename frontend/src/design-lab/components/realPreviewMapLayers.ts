@@ -94,9 +94,12 @@ export function addRealPreviewMapLayers(
     paint: {
       'circle-color': ['case', cityReference, '#79b9da', '#15252c'],
       'circle-radius': referenceRadiusExpression(DEFAULT_REFERENCE_RADIUS_KM),
-      'circle-opacity': ['case', cityReference, 0.35, 0.96],
+      // The full 3 km geometry remains visible and clickable, but a very light
+      // wash prevents dense city references from obscuring the basemap.
+      'circle-opacity': ['case', cityReference, 0.05, 0.96],
       'circle-stroke-color': ['case', cityReference, '#79b9da', '#86aeca'],
-      'circle-stroke-width': ['case', cityReference, 0, 3],
+      'circle-stroke-width': ['case', cityReference, 1, 3],
+      'circle-stroke-opacity': ['case', cityReference, 0.42, 1],
     },
   } as any);
   setClusterTileRounding(map, settings.maxZoom);
@@ -167,6 +170,7 @@ export function applyRealPreviewVisualSettings(map: MapLibreMap, settings: RealP
   if (!map.getLayer('aggregate-outer')) return;
   map.setPaintProperty('aggregate-outer', 'circle-radius', referenceRadiusExpression(settings.referenceRadiusKm) as any);
   map.setPaintProperty('aggregate-outer', 'circle-opacity', ['case', cityReference, settings.referenceOpacity, 0.96] as any);
+  map.setPaintProperty('aggregate-outer', 'circle-stroke-opacity', ['case', cityReference, Math.min(0.7, settings.referenceOpacity * 5 + 0.17), 1] as any);
   map.setPaintProperty('source-coordinate-points', 'circle-radius', settings.coordinateRadius);
   map.setLayoutProperty('aggregate-kind', 'visibility', settings.showReferenceLabels ? 'visible' : 'none');
 }

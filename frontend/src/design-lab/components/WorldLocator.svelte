@@ -24,7 +24,7 @@
   let coordinateLabel = $derived(formatCameraCenter(latitude, longitude));
 </script>
 
-<aside class="world-locator" aria-label="Map lens">
+<aside class="world-locator" class:expanded aria-label="Map lens">
   <div class="locator-heading">
     <button type="button" class="lens-toggle" aria-expanded={expanded} aria-controls="map-lens-options" onclick={() => expanded = !expanded}>Map lens <span aria-hidden="true">{expanded ? "−" : "+"}</span></button>
     <div class="mode-switch" aria-label="Map dimension">
@@ -161,17 +161,20 @@
     font-weight: 500;
   }
 
-  @media (max-width: 375px) {
+  @media (max-width: 40rem) {
     .world-locator {
-      width: 9.75rem;
-      padding: 0.35rem 0.45rem;
+      width: auto;
+      min-width: 5.4rem;
+      padding: 0.4rem 0.5rem;
     }
-
-    .camera-coordinate {
-      display: block;
+    .world-locator:not(.expanded) .mode-switch,
+    .world-locator:not(.expanded) .world-map,
+    .world-locator:not(.expanded) .camera-coordinate {
+      display: none;
     }
-
-    .camera-coordinate strong {
+    .world-locator.expanded { width: 9.75rem; }
+    .world-locator.expanded .camera-coordinate { display: block; }
+    .world-locator.expanded .camera-coordinate strong {
       display: block;
       margin-top: 0.1rem;
     }

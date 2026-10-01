@@ -163,7 +163,8 @@
   let clusterMaxZoom = $state(DEFAULT_CLUSTER_MAX_ZOOM);
   let clusterEnabled = $state(true);
   let referenceRadiusKm = $state<number>(DEFAULT_REFERENCE_RADIUS_KM);
-  let referenceOpacity = $state(0.35);
+  let referenceOpacity = $state(0.05);
+  let visibleApproximateCount = $state(0);
   let coordinateRadius = $state(6.5);
   let showReferenceLabels = $state(false);
   let useV1Pins = $state(false);
@@ -449,6 +450,13 @@
       coordinateRadius,
       showReferenceLabels,
     });
+  }
+  function updateVisibleApproximateCount(instance: MapLibreMap): void {
+    if (mode !== "real-preview" || !instance.getLayer("approx-reference-points")) {
+      visibleApproximateCount = 0;
+      return;
+    }
+    visibleApproximateCount = instance.queryRenderedFeatures({ layers: ["approx-reference-points"] }).length;
   }
   function setDiagnosticsOpen(open: boolean, restoreFocus = true): void {
     diagnosticsOpen = open;
@@ -1018,6 +1026,7 @@
     });
     instance.on("idle", () => {
       if (mode === "real-preview") {
+        updateVisibleApproximateCount(instance);
         if (startupStage === "rendering" && instance.isSourceLoaded("locations")) startupStage = "ready";
         if (nativeCameraStartedAt !== null) {
           nativeCameraIdleMs = Math.round(performance.now() - nativeCameraStartedAt);
@@ -1160,7 +1169,9 @@
         ? "Local private rehearsal · FSIS source-provided coordinates, precision unverified · not approved or published"
         : "Private real V2 preview · not approved or published"
       : "Synthetic development data"}</small
-  >{#if basemapSwitching && pendingBasemap}<small
+  >{#if mode === "real-preview" && visibleApproximateCount > 0}<small class="approximation-cue"
+      ><i aria-hidden="true"></i>Approximate locations · 3 km display area</small
+  >{/if}{#if basemapSwitching && pendingBasemap}<small
       class="map-status"
       role="status"
       aria-live="polite"
@@ -1302,7 +1313,7 @@
             <input id="reference-radius" type="range" min="0.25" max="5" step="0.25" value={referenceRadiusKm}
               oninput={(event) => { referenceRadiusKm = Number(event.currentTarget.value); updateVisualSettings(); }} />
             <label for="reference-opacity">Approx opacity <output>{Math.round(referenceOpacity * 100)}%</output></label>
-            <input id="reference-opacity" type="range" min="0.1" max="0.8" step="0.05" value={referenceOpacity}
+            <input id="reference-opacity" type="range" min="0.02" max="0.35" step="0.01" value={referenceOpacity}
               oninput={(event) => { referenceOpacity = Number(event.currentTarget.value); updateVisualSettings(); }} />
             <label for="coordinate-radius">Coordinate size <output>{coordinateRadius} px</output></label>
             <input id="coordinate-radius" type="range" min="3" max="12" step="0.5" value={coordinateRadius}
@@ -1343,7 +1354,7 @@
             <input id="reference-radius" type="range" min="0.25" max="5" step="0.25" value={referenceRadiusKm}
               oninput={(event) => { referenceRadiusKm = Number(event.currentTarget.value); updateVisualSettings(); }} />
             <label for="reference-opacity">Approx opacity <output>{Math.round(referenceOpacity * 100)}%</output></label>
-            <input id="reference-opacity" type="range" min="0.1" max="0.8" step="0.05" value={referenceOpacity}
+            <input id="reference-opacity" type="range" min="0.02" max="0.35" step="0.01" value={referenceOpacity}
               oninput={(event) => { referenceOpacity = Number(event.currentTarget.value); updateVisualSettings(); }} />
             <label for="coordinate-radius">Coordinate size <output>{coordinateRadius} px</output></label>
             <input id="coordinate-radius" type="range" min="3" max="12" step="0.5" value={coordinateRadius}
@@ -1575,6 +1586,29 @@
     padding: 0.08rem 0.25rem;
     font: 0.52rem system-ui;
   }
+  .approximation-cue {
+    position: absolute;
+    z-index: 3;
+    top: 0.75rem;
+    right: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.38rem;
+    padding: 0.3rem 0.45rem;
+    border: 1px solid #53656c;
+    background: #171a18e8;
+    color: #c4dbe4;
+    font: 0.59rem system-ui;
+    letter-spacing: 0.02em;
+    pointer-events: none;
+  }
+  .approximation-cue i {
+    width: 0.55rem;
+    height: 0.55rem;
+    border: 1px solid #79b9da;
+    border-radius: 50%;
+    background: #79b9da14;
+  }
   .map-status {
     position: absolute;
     z-index: 3;
@@ -1607,6 +1641,7 @@
   .map-surface :global(.maplibregl-ctrl-attrib a) { color: #c1d4cf; }
   .map-surface :global(.maplibregl-ctrl-attrib-button) { filter: invert(1); }
   @media (max-width: 40rem) {
+    .approximation-cue { top: 4rem; right: 0.65rem; max-width: 9.8rem; }
     .map-surface :global(.precision-legend) { bottom: 9.4rem; width: auto; max-width: min(15rem, calc(100vw - 1.3rem)); }
     .map-surface :global(.precision-legend.expanded) { top: 3.5rem; bottom: auto; width: min(15rem, calc(100vw - 1.3rem)); }
     .map-surface :global(.maplibregl-ctrl-bottom-right) { right: 0.4rem; bottom: 2.9rem; left: 0.4rem; }

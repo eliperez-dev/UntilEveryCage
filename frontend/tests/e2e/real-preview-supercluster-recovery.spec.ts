@@ -87,6 +87,48 @@ test('Belgium approximate references cluster low and resolve high', async ({ pag
   expect(result.highReferences).toBeGreaterThan(0);
 });
 
+test('dense Belgium approximate areas stay legible on desktop and mobile', async ({ page }, testInfo) => {
+  test.skip(!process.env.UEC_REAL_PREVIEW_URL, 'Requires the populated local real preview');
+  test.setTimeout(120_000);
+  await page.goto('/#/map?f1a=field&lat=50.8466&lon=4.3528&z=12.4&list=closed');
+  await waitForProjection(page);
+  await expect(page.getByText('Approximate locations · 3 km display area')).toBeVisible();
+  const desktop = await page.evaluate(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return {
+      fill: map.getPaintProperty('aggregate-outer', 'circle-opacity'),
+      strokeWidth: map.getPaintProperty('aggregate-outer', 'circle-stroke-width'),
+      strokeOpacity: map.getPaintProperty('aggregate-outer', 'circle-stroke-opacity'),
+      references: map.queryRenderedFeatures({ layers: ['approx-reference-points'] }).length,
+    };
+  });
+  expect(desktop.references).toBeGreaterThan(0);
+  expect(JSON.stringify(desktop.fill)).toContain('0.05');
+  expect(JSON.stringify(desktop.strokeWidth)).toContain('1');
+  expect(JSON.stringify(desktop.strokeOpacity)).toContain('0.42');
+  await testInfo.attach('belgium-approx-desktop.png', {
+    body: await page.screenshot(), contentType: 'image/png',
+  });
+
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.reload();
+  await waitForProjection(page);
+  await expect(page.getByText('Approximate locations · 3 km display area')).toBeVisible();
+  const lens = page.locator('.world-position .world-locator');
+  await expect(lens).toBeVisible();
+  const compactBox = await lens.boundingBox();
+  expect(compactBox).not.toBeNull();
+  expect(compactBox!.height).toBeLessThan(70);
+  await expect(page.locator('.world-position .world-map')).toBeHidden();
+  await page.getByRole('button', { name: 'Map lens' }).click();
+  await expect(page.locator('.world-position .world-map')).toBeVisible();
+  const expandedBox = await lens.boundingBox();
+  expect(expandedBox!.height).toBeGreaterThan(compactBox!.height);
+  await testInfo.attach('belgium-approx-mobile.png', {
+    body: await page.screenshot(), contentType: 'image/png',
+  });
+});
+
 test('camera movement remains client-local on desktop and mobile', async ({ page }) => {
   test.skip(!process.env.UEC_REAL_PREVIEW_URL, 'Requires the populated local real preview');
   test.setTimeout(120_000);
