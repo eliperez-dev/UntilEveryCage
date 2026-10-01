@@ -20,6 +20,8 @@ from pipeline.contracts.adapter_contract import SourceArtifact
 from pipeline.contracts.graph_candidate_handoff import write_graph_candidate
 from pipeline.contracts.source_lifecycle import atomic_json, atomic_jsonl, private_manifest
 
+from .geocode_queue import build_geocode_queue
+
 
 ALIASES = {
     "plant_number": ("plant number", "registration number", "establishment number", "establishment id", "plant id", "registration no", "plant number no. de l'usine", "est_num"),
@@ -344,8 +346,9 @@ class CanadaMeatAdapter:
         result = self.parse_bytes(raw); root = Path(run_dir); accepted, quarantined = result["accepted"], result["quarantined"]; parsed = accepted + [item["record"] for item in quarantined]
         _, parsed_sha256, _ = atomic_jsonl(root / "parsed" / "records.jsonl", parsed); _, normalized_sha256, _ = atomic_jsonl(root / "normalized" / "records.jsonl", accepted); atomic_jsonl(root / "quarantined" / "records.jsonl", quarantined)
         anomaly_counts = Counter(reason for item in quarantined for reason in item["reasons"])
+        geocode_queue = build_geocode_queue(accepted, artifact, root / "geocode-queue")
         manifest = private_manifest(source_id=self.source_id, adapter_version=self.adapter_version, schema_version=self.schema_version, artifact=artifact, input_rows=result["input_rows"], normalized_rows=len(accepted), quarantined_rows=len(quarantined), normalized_sha256=normalized_sha256, parsed_sha256=parsed_sha256, anomaly_counts=dict(sorted(anomaly_counts.items())))
-        manifest.update({"country_code": "CA", "jurisdiction_level": self.jurisdiction_level, "jurisdiction": self.jurisdiction, "delimiter": result["delimiter"], "schema_fingerprint": result["schema_fingerprint"], "coverage": self.coverage, "geocoding": "disabled"})
+        manifest.update({"country_code": "CA", "jurisdiction_level": self.jurisdiction_level, "jurisdiction": self.jurisdiction, "delimiter": result["delimiter"], "schema_fingerprint": result["schema_fingerprint"], "coverage": self.coverage, "geocoding": "queued for separate provider-reviewed asynchronous enrichment; no external request made", "geocode_queue": geocode_queue})
         graph_records = accepted + [item["record"] for item in quarantined if set(item["reasons"]).issubset({"unknown_function_code"})]
         manifest["graph_candidates"] = self._write_graph_candidates(root, graph_records, artifact)
         manifest["graph_candidates"]["quarantined_identity_safe_rows"] = len(graph_records) - len(accepted)

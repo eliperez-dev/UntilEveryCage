@@ -358,6 +358,16 @@ class FirstWaveRefreshAdapter:
             "release_promoted": bool(status.get("release_promoted", False)),
             "public_surfaces": {"api": False, "map": False, "csv": False},
         }
+        if self.source_id in {"ca.ontario.meat-plants", "ca.cfia.federal-meat"}:
+            summary["geocode_queue"] = manifest.get("geocode_queue", {})
+            summary["source_artifact"] = {
+                "source_url": source_artifact.source_url,
+                "retrieved_at_utc": source_artifact.retrieved_at_utc,
+                "sha256": source_artifact.sha256,
+                "byte_size": source_artifact.byte_size,
+                "publication_date": source_artifact.publication_date,
+                "effective_date": source_artifact.effective_date,
+            }
         if candidate_handoff:
             handoff_root = lifecycle_root / "candidate-handoff" if isinstance(source_adapter, DenmarkSmileyAdapter) else run_dir / "candidate-handoff"
             handoff_manifest = json.loads((handoff_root / "manifest.json").read_text(encoding="utf-8"))

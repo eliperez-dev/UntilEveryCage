@@ -32,20 +32,36 @@ production/storage activity remain private quarantined evidence and do not
 enter the candidate set. Missing identifiers/names, duplicate source rows,
 inconsistent columns, and schema drift fail closed or quarantine without
 silent merging. The linked CFIA list states its consolidation is a convenience
-reference with no official sanction and was last updated 2023-12-04; this does
-not establish current completeness. The private preview does not geocode or
-derive points from addresses, and these source rows have no coordinates.
-The official result page currently reports 891 establishments, while the live
-download artifact parsed as 874 nonblank workbook rows. This discrepancy is
-unresolved; the download count is an artifact count, not a completeness claim.
+reference with no official sanction. Its search page showed a page-modified
+date of 2023-09-18; the workbook itself provides no effective/publication date.
+This does not establish current completeness. A bounded acquisition on
+2026-10-01T03:54:16Z returned 572,928 bytes
+(`d2f042a43e0dc72460c892c67b60e8d0cacf9a91bd85032862664a6deae0cfef`); the
+response had no `Last-Modified` or `ETag`, and the workbook effective date was
+unknown. It parsed as 874 rows: 858 accepted/listable and 16 quarantined (10
+unknown function codes, 6 unsupported/missing activity). The 858 accepted
+rows supplied no source coordinates and each had a street-address value.
+
+An earlier result-page check recorded 891 establishments, but the currently
+retrieved page view exposes only a blank search form and does not repeat that
+total without a submitted search. Treat 891 as prior evidence, not a current
+official count; the difference from 874 remains unresolved and the workbook
+row count is not a completeness claim. The 2026 live run imported 858 private
+graph candidates into a dedicated disposable database (0 rejected, 0 public
+rows, no release created or promoted). It also staged a restricted queue for
+858 unmapped accepted records; that temporary payload was removed after the
+E2E. Provider/terms/privacy review remains pending; no geocoder request was
+made and no coordinates were produced.
 
 Lifecycle:
 
 `bounded fetch or assisted capture -> immutable provenance -> parse/normalize ->
-validate/quarantine -> private QA/health -> operator review packet -> candidate
-handoff`. Reruns are deterministic. Missing observations are not closure. No
-geocoding is performed. Current licence, attribution, redistribution, privacy,
-function-code semantics, freshness, and project approval remain human gates.
+validate/quarantine -> private QA/health -> candidate handoff and restricted
+provider-neutral geocode queue -> optional private import`. Reruns are
+deterministic. Missing observations are not closure. Queue generation does not
+call a geocoder. Current licence, attribution, redistribution, privacy,
+function-code semantics, freshness, provider selection, and project approval
+remain human gates.
 
 For the one-time CFIA private E2E, the operator-scoped terms record is
 [`../../../data/terms-reviews/ca.cfia.federal-meat.json`](../../../data/terms-reviews/ca.cfia.federal-meat.json).

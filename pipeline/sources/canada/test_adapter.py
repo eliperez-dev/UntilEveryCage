@@ -79,6 +79,9 @@ class CanadaAdapterTests(unittest.TestCase):
                 raw = (FIXTURES / fixture).read_bytes(); artifact = SourceArtifact(adapter.source_url, "2026-09-15T00:00:00Z", hashlib.sha256(raw).hexdigest(), len(raw), code_version=adapter.adapter_version, config_version=adapter.schema_version)
                 status = run_private_lifecycle(FIXTURES / fixture, Path(d) / adapter.source_id, artifact, adapter)
                 self.assertEqual(status["status"], "candidate-ready"); self.assertEqual(status["manifest"]["jurisdiction_level"], adapter.jurisdiction_level); self.assertTrue((Path(status["run_dir"]) / "release-candidate" / "records.jsonl").exists())
+                queue = status["manifest"]["geocode_queue"]
+                self.assertEqual(queue["provider_review_state"], "required")
+                self.assertEqual(queue["records_queued"], 2 if adapter.jurisdiction_level == "federal" else 0)
 
     def test_graph_candidates_are_source_scoped_and_only_explicit_federal_edges_are_emitted(self):
         with tempfile.TemporaryDirectory() as d:

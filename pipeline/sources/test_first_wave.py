@@ -3,8 +3,9 @@ from __future__ import annotations
 import shutil
 import unittest
 from pathlib import Path
+import hashlib
 
-from .first_wave import FIRST_WAVE, descriptor_for, readiness_report, run_fixture
+from .first_wave import FIRST_WAVE, FirstWaveRefreshAdapter, descriptor_for, readiness_report, run_fixture
 
 
 class FirstWaveDescriptorTests(unittest.TestCase):
@@ -48,6 +49,21 @@ class FirstWaveDescriptorTests(unittest.TestCase):
     def test_descriptor_lookup_fails_closed(self):
         with self.assertRaises(KeyError):
             descriptor_for("uk.fsa.approved-establishments")
+
+    def test_canada_refresh_summary_reports_provenance_and_queue_counts(self):
+        directory = Path(__file__).resolve().parents[2] / ".d2-canada-refresh-adapter-test"
+        shutil.rmtree(directory, ignore_errors=True)
+        directory.mkdir(exist_ok=True)
+        try:
+            descriptor = descriptor_for("ca.cfia.federal-meat")
+            fixture = descriptor.fixture_paths[0]
+            result = FirstWaveRefreshAdapter(descriptor).refresh(
+                mode="local-artifact", run_dir=directory / "run", artifact=fixture, options={})
+            self.assertEqual(result["source_artifact"]["sha256"], hashlib.sha256(fixture.read_bytes()).hexdigest())
+            self.assertEqual(result["source_artifact"]["byte_size"], fixture.stat().st_size)
+            self.assertEqual(result["geocode_queue"]["records_queued"], 2)
+        finally:
+            shutil.rmtree(directory, ignore_errors=True)
 
     def test_readiness_report_keeps_live_state_separate(self):
         report = readiness_report()
