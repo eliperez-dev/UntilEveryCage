@@ -16,9 +16,13 @@ from datetime import datetime
 from urllib.parse import urlsplit
 
 import psycopg
+from pipeline.taxonomy_crosswalk import (
+    PRIMARY_PRECEDENCE, TAXONOMY_VERSION, crosswalk_document,
+    persistence_assignments, project_observation,
+)
 
 POLICY = Path(__file__).parents[2] / "preview-enabled-sources.json"
-SNAPSHOT_PROJECTION_VERSION = "real-preview-candidate-projection-v5"
+SNAPSHOT_PROJECTION_VERSION = "real-preview-candidate-projection-v6"
 LEGACY_ALLOWED = {"fr.dgal.section-i", "fr.dgal.section-ii", "us.fsis"}
 PREVIEW_ENABLED = set(json.loads(POLICY.read_text(encoding="utf-8"))["sources"])
 ALLOWED = LEGACY_ALLOWED | PREVIEW_ENABLED
@@ -198,8 +202,8 @@ def _normalized_values(normalized: dict[str, Any], names: tuple[str, ...], limit
     return values
 
 
-def activity_contract(normalized: dict[str, Any]) -> dict[str, Any]:
-    """Build the additive, source-linked activity projection for one observation."""
+def activity_contract(normalized: dict[str, Any], source: str = "", source_values: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Build the versioned source-linked taxonomy projection for one observation."""
     codes = _normalized_values(normalized, (
         "source_classification_codes", "activity_codes", "source_function_codes",
         "source_classification_code", "activity_code", "primary_anzsic_class_code"), 120)
@@ -208,52 +212,68 @@ def activity_contract(normalized: dict[str, Any]) -> dict[str, Any]:
         "activity_description", "source_activity", "source_classification_label",
         "industry_label", "primary_anzsic_class_name", "source_plant_type", "animal_class",
         "activities", "processing_activities"), 200)
-    categories = _text_values(normalized.get("activity_categories"), 80)
-    explicit_category = safe_preview_text(normalized.get("classification_category"), 80)
-    mapping = str(pick(normalized, "classification_mapping_status", "classification_state") or "").strip().lower()
-    explicit_unmapped = mapping in {"unknown", "unmapped", "unclassified", "unsupported"}
-    if explicit_unmapped:
-        categories = []
-    if not explicit_unmapped and explicit_category and explicit_category.lower() not in {"unknown", "unmapped", "unclassified", "none"}:
-        if categories and explicit_category not in categories:
-            mapping = "conflicting"
-        elif not categories:
-            categories = [explicit_category]
-    categories = sorted(set(categories), key=lambda item: (
-        ACTIVITY_DISPLAY_PRECEDENCE.index(item) if item in ACTIVITY_DISPLAY_PRECEDENCE else len(ACTIVITY_DISPLAY_PRECEDENCE),
-        item.casefold(), item))
-    if mapping not in {"conflicting", "ambiguous"}:
-        if not categories:
-            mapping = "unmapped" if codes or labels else "unclassified"
-        elif mapping in {"partial", "partially_mapped", "unresolved"}:
-            mapping = "partial"
-        else:
-            mapping = "mapped"
-    display_category = None if mapping in {"conflicting", "ambiguous", "unmapped", "unclassified"} else (
-        categories[0] if categories else None)
+    # Keep this helper's legacy unit-test and utility contract for callers that
+    # have no source identity. Real imports always supply the source ID below.
+    if not source:
+        categories = _text_values(normalized.get("activity_categories"), 80)
+        explicit_category = safe_preview_text(normalized.get("classification_category"), 80)
+        mapping = str(pick(normalized, "classification_mapping_status", "classification_state") or "").strip().lower()
+        if mapping in {"unknown", "unmapped", "unclassified", "unsupported"}:
+            categories = []
+        if explicit_category and explicit_category.lower() not in {"unknown", "unmapped", "unclassified", "none"}:
+            if categories and explicit_category not in categories:
+                mapping = "conflicting"
+            elif not categories:
+                categories = [explicit_category]
+        if mapping not in {"conflicting", "ambiguous"}:
+            mapping = ("unmapped" if codes or labels else "unclassified") if not categories else (
+                "partial" if mapping in {"partial", "partially_mapped", "unresolved"} else "mapped")
+        ordered = sorted(set(categories), key=lambda item: (
+            ACTIVITY_DISPLAY_PRECEDENCE.index(item) if item in ACTIVITY_DISPLAY_PRECEDENCE else len(ACTIVITY_DISPLAY_PRECEDENCE), item))
+        return {"category": ordered[0] if ordered and mapping not in {"conflicting", "ambiguous", "unmapped", "unclassified"} else None,
+                "activity_categories": ordered, "taxonomy_assignments": [], "taxonomy_mapping_method": "derived",
+                "taxonomy_assignment_rows": [], "crosswalk_document": None,
+                "source_activity_codes": codes, "source_activity_labels": labels, "activity_mapping_status": mapping,
+                "classification_ruleset_version": safe_preview_text(pick(normalized, "classification_ruleset_version", "ruleset_version", "ruleset_id"), 120)}
+    projected = project_observation({"source_id": source, "normalized": normalized,
+                                     "source_values": source_values or {}})
+    categories = projected["taxonomy_primaries"]
+    mapping = projected["taxonomy_mapping_status"]
+    display_category = projected["taxonomy_display_category"]
     return {
         "category": display_category,
         "activity_categories": categories,
+        "taxonomy_assignments": projected["taxonomy_assignments"],
+        "taxonomy_mapping_method": projected["taxonomy_mapping_method"],
+        "taxonomy_assignment_rows": persistence_assignments(projected),
+        "crosswalk_document": crosswalk_document(source),
         "source_activity_codes": codes,
         "source_activity_labels": labels,
         "activity_mapping_status": mapping,
-        "classification_ruleset_version": safe_preview_text(
-            pick(normalized, "classification_ruleset_version", "ruleset_version", "ruleset_id"), 120),
+        "classification_ruleset_version": TAXONOMY_VERSION,
     }
 
 
 def merge_activity_contracts(contracts: list[dict[str, Any]]) -> dict[str, Any]:
     """Preserve the union of activity evidence for a source-scoped candidate."""
     categories = sorted({value for contract in contracts for value in contract["activity_categories"]}, key=lambda item: (
-        ACTIVITY_DISPLAY_PRECEDENCE.index(item) if item in ACTIVITY_DISPLAY_PRECEDENCE else len(ACTIVITY_DISPLAY_PRECEDENCE),
-        item.casefold(), item))
+        PRIMARY_PRECEDENCE.index(item) if item in PRIMARY_PRECEDENCE else len(PRIMARY_PRECEDENCE), item))
+    assignment_map: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for contract in contracts:
+        for assignment in contract["taxonomy_assignments"]:
+            key = (assignment["leaf_activity"], assignment["primary"], assignment["method"])
+            prior = assignment_map.get(key)
+            if prior is None or json.dumps(assignment, sort_keys=True) < json.dumps(prior, sort_keys=True):
+                assignment_map[key] = assignment
+    ordered_assignments = [assignment_map[key] for key in sorted(assignment_map)]
     codes = list(dict.fromkeys(value for contract in contracts for value in contract["source_activity_codes"]))
     labels = list(dict.fromkeys(value for contract in contracts for value in contract["source_activity_labels"]))
     statuses = {contract["activity_mapping_status"] for contract in contracts}
-    rulesets = {contract["classification_ruleset_version"] for contract in contracts
-                if contract["classification_ruleset_version"]}
-    if statuses & {"conflicting", "ambiguous"} or len(rulesets) > 1:
+    methods = {contract["taxonomy_mapping_method"] for contract in contracts}
+    if "conflicting" in statuses:
         status = "conflicting"
+    elif "ambiguous" in statuses:
+        status = "ambiguous"
     elif not categories:
         status = "unmapped" if "unmapped" in statuses else "unclassified"
     elif statuses & {"partial", "unmapped"}:
@@ -261,12 +281,19 @@ def merge_activity_contracts(contracts: list[dict[str, Any]]) -> dict[str, Any]:
     else:
         status = "mapped"
     return {
-        "category": categories[0] if categories and status not in {"conflicting", "ambiguous"} else None,
+        "category": next((item for item in PRIMARY_PRECEDENCE if item in categories), "unclassified"),
         "activity_categories": categories,
+        "taxonomy_assignments": ordered_assignments,
+        "taxonomy_assignment_rows": persistence_assignments({
+            "taxonomy_assignments": ordered_assignments,
+            "taxonomy_mapping_status": status,
+        }),
+        "crosswalk_document": next((contract["crosswalk_document"] for contract in contracts if contract["crosswalk_document"]), None),
+        "taxonomy_mapping_method": next(iter(methods)) if len(methods) == 1 else ("candidate" if "candidate" in methods else "derived" if methods else "candidate"),
         "source_activity_codes": codes,
         "source_activity_labels": labels,
         "activity_mapping_status": status,
-        "classification_ruleset_version": next(iter(rulesets)) if len(rulesets) == 1 else None,
+        "classification_ruleset_version": TAXONOMY_VERSION,
     }
 
 
@@ -391,7 +418,7 @@ def parse_row(source: str, row: Any) -> tuple[Any, ...]:
     name = None
     if privacy_allows_name:
         name = safe_preview_text(pick(normalized, "canonical_name", "trading_name", "name"), 200)
-    contract = activity_contract(normalized)
+    contract = activity_contract(normalized, source, row.get("source_values") if isinstance(row, dict) else None)
     activity = safe_preview_text(pick(normalized, "source_activity", "activity_description", "activity_label"), 240)
     if activity is None:
         activity = safe_preview_text("; ".join(contract["source_activity_labels"]), 240)
@@ -582,7 +609,8 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
                 raise ImportFailure("row_schema_invalid") from None
             parsed = parse_row(source, record)
             parsed_rows.append(parsed)
-            activity_contracts_by_group.setdefault(parsed[-1], []).append(activity_contract(record["normalized"]))
+            activity_contracts_by_group.setdefault(parsed[-1], []).append(
+                activity_contract(record["normalized"], source, record.get("source_values")))
             code = administrative_code_for_row(source, record["normalized"])
             if code is not None:
                 administrative_codes[parsed[0]] = code
