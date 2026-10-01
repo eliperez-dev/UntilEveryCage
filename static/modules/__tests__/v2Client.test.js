@@ -13,6 +13,15 @@ const record = (overrides = {}) => ({
     country_code: 'DK',
     city: 'Copenhagen',
     category: 'slaughter',
+    taxonomy_display_category: 'slaughter',
+    taxonomy_primary_categories: ['slaughter'],
+    taxonomy_leaf_activities: [{ key: 'slaughter', label: 'Slaughterhouse' }],
+    taxonomy_assignments: [{
+        primary_key: 'slaughter', leaf_key: 'slaughter', leaf_label: 'Slaughterhouse',
+        source_code_reference: 'activity_codes', source_label_reference: 'activity_descriptions',
+        source_code: 'S-1', source_label: 'Slaughterhouse', method: 'direct', status: 'mapped',
+        taxonomy_version: 'uec-taxonomy-v1', crosswalk_version: 'crosswalk-v1', ruleset_version: 'rules-v1'
+    }],
     display_precision: 'city',
     latitude: 55.67,
     longitude: 12.56,

@@ -2,6 +2,15 @@ export const exactOfficialLocation = {
     facility_id: '00000000-0000-0000-0000-000000000001',
     canonical_name: 'Synthetic facility — not a real location',
     country_code: 'DK', city: 'Testby', category: 'slaughter',
+    taxonomy_display_category: 'slaughter',
+    taxonomy_primary_categories: ['slaughter'],
+    taxonomy_leaf_activities: [{ key: 'slaughter', label: 'Slaughterhouse' }],
+    taxonomy_assignments: [{
+        primary_key: 'slaughter', leaf_key: 'slaughter', leaf_label: 'Slaughterhouse',
+        source_code_reference: 'activity_codes', source_label_reference: 'activity_descriptions',
+        source_code: 'S-1', source_label: 'Slaughterhouse', method: 'direct', status: 'mapped',
+        taxonomy_version: 'uec-taxonomy-v1', crosswalk_version: 'crosswalk-v1', ruleset_version: 'rules-v1'
+    }],
     publication_profile: 'official', factual_review_status: 'reviewed',
     privacy_screening_status: 'passed', project_approval: 'approved', reviewer_role: 'maintainer', publication_warning: null,
     display_precision: 'exact', latitude: 55, longitude: 10,
