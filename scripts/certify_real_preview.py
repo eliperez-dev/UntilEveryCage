@@ -92,15 +92,20 @@ def validate_ledger(ledger: dict[str, Any], source_id: str) -> dict[str, Any]:
     if _integer(imported.get("public_projection_count"), "public projection count") != 0:
         raise CertificationError("runtime import reports public projection rows")
 
+    # ``unmapped_facility_count`` for Italy 1069 means no approved
+    # administrative placement, which includes candidates already counted as
+    # source-coordinate or city/postal records. Only the map-candidate remainder
+    # is a disjoint location class for reconciliation.
+    unmapped_count = (imported.get("unmapped_map_candidate_count")
+                      if source_id == "it.1069-2009" else
+                      imported.get("unmapped_facility_count", imported.get("unmapped_map_candidate_count")))
     counts = {
         "observations": _integer(imported.get("observation_count"), "observation count"),
         "candidates": _integer(imported.get("facility_candidate_count"), "candidate count"),
         "numeric_coordinates": _integer(imported.get("numeric_coordinate_count"), "numeric coordinate count"),
         "city_postal": _integer(imported.get("city_postal_count"), "city/postal count"),
         "coarse_placeable": _integer(imported.get("coarse_placeable_facility_count", 0), "coarse placeable count"),
-        "unmapped": _integer(
-            imported.get("unmapped_facility_count", imported.get("unmapped_map_candidate_count")),
-            "unmapped facility count"),
+        "unmapped": _integer(unmapped_count, "unmapped facility count"),
         "unmapped_map_candidates": _integer(
             imported.get("unmapped_map_candidate_count"), "unmapped map candidate count"),
         "map_visible": _integer(ledger.get("map_visible_count"), "map-visible count"),
@@ -304,11 +309,22 @@ def _db_check(database_url: str, source_id: str, evidence: dict[str, Any]) -> di
             raise CertificationError("database run identity or normalized hash does not match the ledger")
         if raw_hash.strip().lower() not in evidence["acquisition_hashes"]:
             raise CertificationError("database source artifact hash is absent from acquisition provenance")
-        db_unmapped = 0 if source_id in {"ca.cfia.federal-meat", "au.npi.facilities", "es.cat.feed-sandach"} else unmapped
+        db_unmapped = 0 if source_id in {
+            "ca.cfia.federal-meat", "au.npi.facilities", "es.cat.feed-sandach", "it.1069-2009"
+        } else unmapped
         if (observations, candidates, numeric, coarse, db_unmapped, listable, visible) != (
             expected["observations"], expected["candidates"], expected["numeric_coordinates"],
             expected["coarse_placeable"], expected["unmapped"], expected["candidates"], expected["map_visible"]):
             raise CertificationError("database run counts differ from the runtime ledger")
+        if source_id == "it.1069-2009":
+            location_classes = dict(connection.execute("""
+                SELECT location_class, count(*) FROM real_preview.candidates
+                WHERE snapshot_sha256=%s AND source_id=%s GROUP BY location_class
+            """, (snapshot, source_id)).fetchall())
+            if (location_classes.get("numeric_source_coordinate", 0) != expected["numeric_coordinates"]
+                    or location_classes.get("city_postal", 0) != expected["city_postal"]
+                    or location_classes.get("unmapped_private_observation", 0) != expected["unmapped"]):
+                raise CertificationError("Italy 1069 candidate location classes differ from the runtime ledger")
         if (input_count != evidence["input_rows"] or accepted != evidence["accepted_rows"]
                 or quarantined != evidence["quarantined_rows"] or out_of_scope != evidence["out_of_scope_rows"]):
             raise CertificationError("database quarantine counts differ from the runtime ledger")
