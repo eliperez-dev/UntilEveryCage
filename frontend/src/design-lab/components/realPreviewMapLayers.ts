@@ -1,7 +1,7 @@
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import type { JsonMapCollection } from './jsonMapFallback';
 
-export const DEFAULT_CLUSTER_RADIUS = 25;
+export const DEFAULT_CLUSTER_RADIUS = 30;
 /** Requested camera zoom. Native GeoJSON tile zooms are whole numbers. */
 export const DEFAULT_CLUSTER_MAX_ZOOM = 7.5;
 export const DEFAULT_REFERENCE_RADIUS_KM = 3;

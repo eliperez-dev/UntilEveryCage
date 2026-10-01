@@ -16,7 +16,7 @@ describe('real-preview native clustering layers', () => {
     ] };
     addRealPreviewMapLayers(map as any, data);
     expect(Object.keys(sources)).toEqual(['locations']);
-    expect(sources.locations).toMatchObject({ cluster: true, clusterRadius: 25, clusterMaxZoom: 7, roundZoom: true, clusterProperties: { representedCount: ['+', ['get', 'weight']] } });
+    expect(sources.locations).toMatchObject({ cluster: true, clusterRadius: 30, clusterMaxZoom: 7, roundZoom: true, clusterProperties: { representedCount: ['+', ['get', 'weight']] } });
     expect(layers.find(layer => layer.id === 'clusters')?.filter).toEqual(['has', 'cluster']);
     expect(layers.find(layer => layer.id === 'clusters')?.layout['icon-image'])
       .toEqual(['step', ['get', 'representedCount'], 'cluster-low', 10, 'cluster-mid', 100, 'cluster-high', 1001, 'cluster-very-high']);
