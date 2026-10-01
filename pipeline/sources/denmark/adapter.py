@@ -46,6 +46,10 @@ class DenmarkSmileyAdapter:
                 raise ValueError("Denmark candidate contains missing or duplicate source identity")
             seen.add(key)
             classification = row.get("classification", {})
+            source_classification = row.get("source_classification", {})
+            code = fields.get("FVST_branchenummer") or fields.get("brancheKode")
+            label = fields.get("FVST_branche") or fields.get("branche")
+            category_label = fields.get("Smileybranche") or fields.get("Pixibranche")
             handoff_rows.append({"source_id": SOURCE_ID, "source_row": row.get("source_row", 0),
                                  "source_record_key": key,
                                  "source_values": fields, "normalized": {
@@ -53,8 +57,14 @@ class DenmarkSmileyAdapter:
                                      "city": fields.get("By"), "postal_code": fields.get("Postnummer"),
                                      "country_code": "DK", "coordinate_precision": "city_postal",
                                      "coordinates": None,
-                                     "activities": [fields.get("FVST_branchenummer")] if fields.get("FVST_branchenummer") else [],
-                                     "activity_code": fields.get("FVST_branchenummer"),
+                                     "activities": list(classification.get("activity_categories") or ()),
+                                     "activity_categories": list(classification.get("activity_categories") or ()),
+                                     "activity_codes": list(source_classification.get("codes") or ([code] if code else [])),
+                                     "activity_descriptions": [item for item in (label, category_label) if item],
+                                     "source_classification_code": code,
+                                     "source_classification_label": label,
+                                     "classification_ruleset_version": classification.get("ruleset_id"),
+                                     "classification_mapping_status": classification.get("mapping_status", "unmapped"),
                                      "classification_category": classification.get("category"),
                                      "classification_review_status": classification.get("review_status"),
                                      "in_default_map_scope": classification.get("default_visible", False),

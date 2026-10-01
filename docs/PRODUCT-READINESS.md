@@ -75,6 +75,16 @@ Across the combined candidate set, 41,110 were map-visible and 1,765 were
 listable but unmapped. These are private readiness counts only. No public rows
 were created, and no source is authorized for public release by this result.
 
+The latest verified run for each source can differ from the combined 2026-09-27
+database checkpoint above. Denmark and CFIA were verified on 2026-10-01; each
+source is configured as eligible for the private preview but is absent from the
+active preview database. Their strict runs used isolated disposable databases.
+
+| Source | Latest verified run (UTC) | Parsed | Accepted private candidates | Quarantined | Mapped / unmapped | Active preview DB | Open blockers |
+| --- | --- | ---: | ---: | ---: | --- | --- | --- |
+| Denmark Find Smiley | 2026-10-01 04:01:38 | 58,815 | 58,765 | 50 | 0 / 58,765 | No | All accepted candidates held for privacy review; category, currentness, and publication review remain open. |
+| CFIA federal meat | 2026-10-01 03:54:16 | 874 | 858 | 16 | 0 / 858 | No | Source effective date and Last-Modified are absent; privacy, completeness, and publication review remain open. |
+
 ### D1 real-data-shaped readiness boundary
 
 D1 established a row-free, private readiness boundary for FSIS, Italy, France,
@@ -87,7 +97,7 @@ and Denmark. These are not approved or public facilities:
 | City/postal coarse groups | 3,336 | Italy 1,053; France union 2,283; includes city fallback for 486 rejected zero/zero coordinate groups. |
 | Rejected zero/zero coordinate groups | 486 | Italy groups with no usable nonzero pair; all have actual source city values and are coarse only. |
 | Public API rows | 0 | Publication is blocked pending terms, privacy, review, approval, and release authority. |
-| Denmark observations | 58,766 | Source observations only; facility identity is unresolved and must not be counted as facilities. |
+| Denmark latest source run | 58,815 parsed / 58,765 accepted / 50 quarantined | 2026-10-01 private E2E; accepted candidates are not facility-identity or publication claims. |
 
 The complete row-free corpus and its limitations are recorded in
 [d1-data-readiness-report.json](../data/manifests/d1-data-readiness-report.json)
