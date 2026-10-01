@@ -21,20 +21,40 @@ def load_rules(path: Path) -> dict:
 
 
 def classify_record(record: dict, ruleset: dict, location_references: list[dict] | None = None) -> dict:
-    code = record.get("activity", {}).get("code")
-    decision = ruleset["fallback"]
-    for rule in ruleset["rules"]:
-        if code in rule["codes"]:
-            decision = rule
-            break
+    source_activity = record.get("activity", {})
+    code = source_activity.get("code")
+    codes = code if isinstance(code, (list, tuple)) else [code]
+    codes = [str(value).strip() for value in codes if value is not None and str(value).strip()]
+    decisions = []
+    for source_code in codes:
+        decision = next((rule for rule in ruleset["rules"] if source_code in rule["codes"]), ruleset["fallback"])
+        if decision is not ruleset["fallback"]:
+            decisions.append(decision)
+    # Keep all recognized activities in source-code order. The singular display
+    # category is selected by the documented ruleset order, independent of XML
+    # field order; unsupported values remain visible in source_classification_*.
+    unique_decisions = {decision["classification"]: decision for decision in decisions}
+    primary = next((rule for rule in ruleset["rules"] if rule["classification"] in unique_decisions), None)
+    decision = primary or ruleset["fallback"]
+    categories = [rule["classification"] for rule in ruleset["rules"]
+                  if rule["classification"] in unique_decisions]
+    mapping_status = "unmapped" if not categories else (
+        "partial" if len(decisions) != len(codes) else "mapped")
     result = dict(record)
     result["classification"] = {
         "ruleset_id": ruleset["ruleset_id"],
         "rule_id": decision["rule_id"],
-        "category": decision["classification"],
+        "category": decision["classification"] if categories else None,
+        "activity_categories": categories,
+        "mapping_status": mapping_status,
         "review_status": decision["review_status"],
         "default_visible": decision["default_visible"],
         "optional_filter": decision.get("optional_filter"),
+    }
+    result["source_classification"] = {
+        "codes": codes,
+        "labels": [source_activity.get("label")] if source_activity.get("label") else [],
+        "category_label": source_activity.get("category"),
     }
     result["location"] = classify_location(result, location_references)
     return result

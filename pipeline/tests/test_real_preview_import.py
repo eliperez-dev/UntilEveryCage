@@ -16,6 +16,15 @@ SPEC.loader.exec_module(IMPORTER)
 
 
 class RealPreviewImporterTests(unittest.TestCase):
+    def test_activity_schema_migration_is_additive_and_keeps_legacy_display_fields(self):
+        migration = (Path(__file__).parents[1] / "migrations" / "054_real_preview_activity_contract.sql").read_text(encoding="utf-8")
+        for column in ("category", "activity_categories", "source_activity_codes", "source_activity_labels",
+                       "activity_mapping_status", "classification_ruleset_version"):
+            self.assertIn(f"ADD COLUMN {column}", migration)
+        self.assertNotIn("DROP COLUMN", migration)
+        self.assertIn("category = ANY(activity_categories)", migration)
+        self.assertIn("activity_label", migration)
+
     def _offline_fixture(self, root: Path, *, source_id: str = "us.fsis") -> None:
         handoff = root / "d6-graph-mvp" / "handoffs" / "us.fsis"
         normalized_dir = handoff / "normalized"
@@ -265,6 +274,46 @@ class RealPreviewImporterTests(unittest.TestCase):
         })
         self.assertFalse(unclassified[16], "missing Denmark scope classification must fail closed")
 
+    def test_activity_contract_preserves_multi_activity_and_uses_stable_precedence(self):
+        first = IMPORTER.activity_contract({
+            "activity_categories": ["fish_processing", "slaughter"],
+            "activity_codes": ["F-2", "S-1"],
+            "activity_descriptions": ["Fish work", "Slaughter line"],
+            "classification_ruleset_version": "rules-v7",
+        })
+        second = IMPORTER.activity_contract({
+            "activity_categories": ["slaughter", "fish_processing"],
+            "activity_codes": ["F-2", "S-1"],
+            "activity_descriptions": ["Fish work", "Slaughter line"],
+            "classification_ruleset_version": "rules-v7",
+        })
+        self.assertEqual(first, second)
+        self.assertEqual(first["category"], "slaughter")
+        self.assertEqual(first["activity_categories"], ["slaughter", "fish_processing"])
+        self.assertEqual(first["source_activity_codes"], ["F-2", "S-1"])
+        self.assertEqual(first["source_activity_labels"], ["Fish work", "Slaughter line"])
+        self.assertEqual(first["classification_ruleset_version"], "rules-v7")
+
+    def test_activity_contract_keeps_unknown_and_conflicting_values_unclassified(self):
+        unknown = IMPORTER.activity_contract({
+            "activity_codes": ["new-source-code"],
+            "activity_descriptions": ["Not in crosswalk"],
+            "classification_mapping_status": "unmapped",
+            "classification_category": "unknown",
+        })
+        self.assertEqual(unknown["activity_categories"], [])
+        self.assertIsNone(unknown["category"])
+        self.assertEqual(unknown["activity_mapping_status"], "unmapped")
+        self.assertEqual(unknown["source_activity_codes"], ["new-source-code"])
+        conflict = IMPORTER.activity_contract({
+            "classification_category": "slaughter",
+            "activity_categories": ["fish_processing"],
+            "activity_codes": ["S-1", "F-2"],
+        })
+        self.assertEqual(conflict["activity_mapping_status"], "conflicting")
+        self.assertIsNone(conflict["category"])
+        self.assertEqual(conflict["activity_categories"], ["fish_processing"])
+
     def test_australia_npi_coordinates_are_withheld_and_city_search_remains_listable(self):
         row = IMPORTER.parse_row("au.npi.facilities", {
             "source_id": "au.npi.facilities", "source_record_key": "NPI-1",
@@ -312,20 +361,35 @@ class RealPreviewImporterTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "rows.jsonl"
-            path.write_text(json.dumps({
-                "source_id": "dk.smiley", "source_record_key": "synthetic-row",
-                "normalized": {"establishment_id": "synthetic-group", "in_default_map_scope": False,
-                    "classification_optional_filter": "general-food"},
-            }) + "\n", encoding="utf-8")
+            records = [
+                {"source_id": "dk.smiley", "source_record_key": "synthetic-row-1",
+                 "normalized": {"establishment_id": "synthetic-group", "in_default_map_scope": False,
+                     "classification_optional_filter": "general-food", "activity_categories": ["fish_processing"],
+                     "activity_codes": ["EB.03.21.00"], "activity_descriptions": ["Fish plant"],
+                     "classification_ruleset_version": "denmark-classification-v1"}},
+                {"source_id": "dk.smiley", "source_record_key": "synthetic-row-2",
+                 "normalized": {"establishment_id": "synthetic-group", "in_default_map_scope": False,
+                     "classification_optional_filter": "general-food", "activity_categories": ["slaughter"],
+                     "activity_codes": ["EB.10.10.99"], "activity_descriptions": ["Slaughterhouse"],
+                     "classification_ruleset_version": "denmark-classification-v1"}},
+            ]
+            path.write_text("".join(json.dumps(record) + "\n" for record in records), encoding="utf-8")
             database = Database()
-            imported = IMPORTER.import_rows(database, "dk.smiley", path, 1, "a" * 64)
-        self.assertEqual(imported[3], 1)
+            imported = IMPORTER.import_rows(database, "dk.smiley", path, 2, "a" * 64)
+        self.assertEqual(imported[3], 1, "the two source observations remain one source-scoped candidate")
         self.assertEqual(len(database.candidates), 1)
         sql, params = database.candidates[0]
         self.assertIn("default_map_scope,map_scope_reason", sql)
         self.assertEqual(params[4], "unmapped_private_observation")
         self.assertFalse(params[22])
         self.assertEqual(params[23], "general-food")
+        self.assertEqual(params[3], "opaque-preview-observation", "candidate retains lineage to its observation")
+        self.assertEqual(params[25], "slaughter")
+        self.assertEqual(params[26], ["slaughter", "fish_processing"])
+        self.assertEqual(params[27], ["EB.03.21.00", "EB.10.10.99"])
+        self.assertEqual(params[28], ["Fish plant", "Slaughterhouse"])
+        self.assertEqual(params[29], "mapped")
+        self.assertEqual(params[30], "denmark-classification-v1")
 
     def test_french_commune_resolution_requires_department_to_disambiguate(self):
         reference = {

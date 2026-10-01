@@ -42,6 +42,24 @@ class RealPreviewPostgisTests(unittest.TestCase):
                     "Synthetic Facility", "Meat processing", "source", "Synthetic evidence summary", "https://example.test/record", "Synthetic source", "2026-09-20T12:00:00Z", True, None)
                 connection.execute(candidate_insert, numeric_candidate)
                 connection.execute(candidate_insert, numeric_candidate)
+                activity_insert = """INSERT INTO real_preview.candidates
+                    (snapshot_sha256,source_id,source_group_key,representative_observation_id,location_class,country_code,city,latitude,longitude,observation_count,
+                     display_name,activity_label,activity_source,evidence_summary,source_record_url,source_name,observed_at,default_map_scope,map_scope_reason,
+                     category,activity_categories,source_activity_codes,source_activity_labels,activity_mapping_status,classification_ruleset_version)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,1,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"""
+                activity_candidate = (numeric_candidate[0], numeric_candidate[1], "source-group-activity",
+                    numeric_observation_id, *numeric_candidate[4:],
+                    "slaughter", ["slaughter", "fish_processing"], ["EB.10.10.99", "EB.03.21.00"],
+                    ["Slaughterhouse", "Fish plant"], "mapped", "denmark-classification-v1")
+                connection.execute(activity_insert, activity_candidate)
+                activity_row = connection.execute("""
+                    SELECT category,activity_categories,source_activity_codes,source_activity_labels,
+                           activity_mapping_status,classification_ruleset_version
+                    FROM real_preview.candidates WHERE source_group_key='source-group-activity'
+                """).fetchone()
+                self.assertEqual(activity_row, (
+                    "slaughter", ["slaughter", "fish_processing"], ["EB.10.10.99", "EB.03.21.00"],
+                    ["Slaughterhouse", "Fish plant"], "mapped", "denmark-classification-v1"))
                 connection.execute(candidate_insert, ("a" * 64, "fr.dgal.section-i", "source-group-2", coarse_observation_id, "city_postal", "FR", "Example", None, None,
                     None, None, None, None, None, None, None, True, None))
                 connection.execute(candidate_insert, ("a" * 64, "us.fsis", "source-group-3", unmapped_observation_id, "unmapped_private_observation", "US", None, None, None,
@@ -85,7 +103,7 @@ class RealPreviewPostgisTests(unittest.TestCase):
                 self.assertEqual(connection.execute("SELECT count(*) FROM real_preview.observations").fetchone()[0], 3)
                 self.assertEqual(connection.execute("SELECT count(*) FROM real_preview.observations WHERE facility_candidate").fetchone()[0], 3)
                 self.assertEqual(connection.execute("SELECT count(*) FROM real_preview.observations WHERE location_class='unmapped_private_observation'").fetchone()[0], 1)
-                self.assertEqual(connection.execute("SELECT count(*) FROM real_preview.candidates").fetchone()[0], 3)
+                self.assertEqual(connection.execute("SELECT count(*) FROM real_preview.candidates").fetchone()[0], 4)
                 scope_counts = connection.execute("""
                     SELECT count(*) FILTER (WHERE default_map_scope),
                            count(*) FILTER (WHERE NOT default_map_scope),
@@ -93,7 +111,7 @@ class RealPreviewPostgisTests(unittest.TestCase):
                            count(*) FILTER (WHERE default_map_scope AND location_class='numeric_source_coordinate')
                     FROM real_preview.candidates
                 """).fetchone()
-                self.assertEqual(scope_counts, (2, 1, 1, 1))
+                self.assertEqual(scope_counts, (3, 1, 1, 2))
                 self.assertEqual(connection.execute(
                     "SELECT map_scope_reason FROM real_preview.candidates WHERE source_group_key='source-group-3'"
                 ).fetchone()[0], "general-food")

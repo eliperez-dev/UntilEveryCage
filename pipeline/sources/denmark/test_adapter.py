@@ -7,11 +7,34 @@ from pipeline.common.orchestrator import run_private_lifecycle
 from pipeline.common.review_metrics import build_private_review_metrics
 from .pipeline import _materialize_validated_rows, _write_geocode_eligible_candidates
 
+_CLASSIFIER_PATH = Path(__file__).parent / "stages" / "classify-denmark.py"
+_CLASSIFIER_SPEC = importlib.util.spec_from_file_location("denmark_classifier", _CLASSIFIER_PATH)
+CLASSIFIER = importlib.util.module_from_spec(_CLASSIFIER_SPEC)
+assert _CLASSIFIER_SPEC and _CLASSIFIER_SPEC.loader
+_CLASSIFIER_SPEC.loader.exec_module(CLASSIFIER)
+
 XML = b'<Root><Row><ID_nummer>1</ID_nummer><Virksomhed>Test</Virksomhed></Row><Row><Virksomhed>Unkeyed</Virksomhed></Row></Root>'
 
 class DenmarkAdapterTests(unittest.TestCase):
     def artifact(self, data=XML):
         return SourceArtifact("https://example.test/smiley.xml", "2026-01-01T00:00:00Z", hashlib.sha256(data).hexdigest(), len(data), code_version="test", config_version="test")
+
+    def test_denmark_classifier_keeps_raw_values_all_recognized_activities_and_unknowns_unclassified(self):
+        rules = json.loads((Path(__file__).parents[2] / "config" / "denmark-classification-v1.json").read_text(encoding="utf-8"))
+        row = {"activity": {"code": ["EB.10.10.99", "EB.10.10.13"],
+                            "label": "source label", "category": "source category"}}
+        classified = CLASSIFIER.classify_record(row, rules)
+        self.assertEqual(classified["source_classification"]["codes"], ["EB.10.10.99", "EB.10.10.13"])
+        self.assertEqual(classified["source_classification"]["labels"], ["source label"])
+        self.assertEqual(classified["classification"]["activity_categories"], ["slaughter", "meat_processing"])
+        self.assertEqual(classified["classification"]["category"], "slaughter")
+        self.assertEqual(classified["classification"]["mapping_status"], "mapped")
+
+        unknown = CLASSIFIER.classify_record({"activity": {"code": "NEW.CODE", "label": "Unknown source label"}}, rules)
+        self.assertIsNone(unknown["classification"]["category"])
+        self.assertEqual(unknown["classification"]["activity_categories"], [])
+        self.assertEqual(unknown["classification"]["mapping_status"], "unmapped")
+        self.assertEqual(unknown["source_classification"]["codes"], ["NEW.CODE"])
 
     def test_rerun_is_deterministic_and_private(self):
         with tempfile.TemporaryDirectory() as d:
@@ -53,6 +76,28 @@ class DenmarkAdapterTests(unittest.TestCase):
             self.assertEqual(handoff["normalized"]["classification_category"], "general_food_business")
             self.assertFalse(handoff["normalized"]["in_default_map_scope"])
             self.assertNotIn("address_lines", handoff["normalized"])
+
+    def test_candidate_mapping_preserves_denmark_classification_fields_and_all_activities(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); raw = root / "raw.xml"; raw.write_bytes(XML)
+            fields = {"ID_nummer": "1", "FVST_branchenummer": "EB.10.10.99",
+                      "FVST_branche": "Slaughterhouse", "Smileybranche": "Animal food business"}
+            parsed = {"source_id": "dk.smiley", "source_row": 2, "source_record_key": "1",
+                      "source_fields": fields,
+                      "source_classification": {"codes": ["EB.10.10.99", "EB.10.10.13"],
+                                                 "labels": ["Slaughterhouse", "Meat processing"]},
+                      "classification": {"category": "slaughter", "activity_categories": ["slaughter", "meat_processing"],
+                                         "mapping_status": "mapped", "ruleset_id": "denmark-classification-v1",
+                                         "review_status": "approved", "default_visible": True}}
+            DenmarkSmileyAdapter().write_candidate_handoff(root / "handoff", self.artifact(), [parsed])
+            handoff = json.loads((root / "handoff" / "normalized/records.jsonl").read_text())
+            normalized = handoff["normalized"]
+            self.assertEqual(handoff["source_values"], fields)
+            self.assertEqual(normalized["source_classification_code"], "EB.10.10.99")
+            self.assertEqual(normalized["source_classification_label"], "Slaughterhouse")
+            self.assertEqual(normalized["activity_codes"], ["EB.10.10.99", "EB.10.10.13"])
+            self.assertEqual(normalized["activity_categories"], ["slaughter", "meat_processing"])
+            self.assertEqual(normalized["classification_ruleset_version"], "denmark-classification-v1")
 
     def test_refresh_guards_reject_schema_count_and_duplicate_drift(self):
         with self.assertRaisesRegex(ValueError, "schema"):

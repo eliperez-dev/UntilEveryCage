@@ -18,7 +18,7 @@ from urllib.parse import urlsplit
 import psycopg
 
 POLICY = Path(__file__).parents[2] / "preview-enabled-sources.json"
-SNAPSHOT_PROJECTION_VERSION = "real-preview-candidate-projection-v4"
+SNAPSHOT_PROJECTION_VERSION = "real-preview-candidate-projection-v5"
 LEGACY_ALLOWED = {"fr.dgal.section-i", "fr.dgal.section-ii", "us.fsis"}
 PREVIEW_ENABLED = set(json.loads(POLICY.read_text(encoding="utf-8"))["sources"])
 ALLOWED = LEGACY_ALLOWED | PREVIEW_ENABLED
@@ -33,6 +33,11 @@ NUMERIC_PRECISIONS = {
     "numeric", "exact", "source_numeric", "source_coordinates", "facility_coordinate",
     "source-provided", "source-provided-unspecified", "source-precision-unknown",
 }
+ACTIVITY_DISPLAY_PRECEDENCE = (
+    "slaughter", "meat_processing", "poultry_processing", "fish_processing",
+    "dairy_processing", "egg_processing", "processing", "cutting",
+    "animal_products_adjacent", "logistics_and_storage",
+)
 
 
 class ImportFailure(Exception):
@@ -174,6 +179,97 @@ def safe_preview_text(value: Any, limit: int) -> str | None:
     return value
 
 
+def _text_values(value: Any, limit: int = 240) -> list[str]:
+    values = value if isinstance(value, (list, tuple)) else [value]
+    result: list[str] = []
+    for item in values:
+        text = safe_preview_text(item, limit)
+        if text and text not in result:
+            result.append(text)
+    return result
+
+
+def _normalized_values(normalized: dict[str, Any], names: tuple[str, ...], limit: int) -> list[str]:
+    values: list[str] = []
+    for name in names:
+        for item in _text_values(normalized.get(name), limit):
+            if item not in values:
+                values.append(item)
+    return values
+
+
+def activity_contract(normalized: dict[str, Any]) -> dict[str, Any]:
+    """Build the additive, source-linked activity projection for one observation."""
+    codes = _normalized_values(normalized, (
+        "source_classification_codes", "activity_codes", "source_function_codes",
+        "source_classification_code", "activity_code", "primary_anzsic_class_code"), 120)
+    labels = _normalized_values(normalized, (
+        "source_classification_labels", "activity_descriptions", "activity_label",
+        "activity_description", "source_activity", "source_classification_label",
+        "industry_label", "primary_anzsic_class_name", "source_plant_type", "animal_class",
+        "activities", "processing_activities"), 200)
+    categories = _text_values(normalized.get("activity_categories"), 80)
+    explicit_category = safe_preview_text(normalized.get("classification_category"), 80)
+    mapping = str(pick(normalized, "classification_mapping_status", "classification_state") or "").strip().lower()
+    explicit_unmapped = mapping in {"unknown", "unmapped", "unclassified", "unsupported"}
+    if explicit_unmapped:
+        categories = []
+    if not explicit_unmapped and explicit_category and explicit_category.lower() not in {"unknown", "unmapped", "unclassified", "none"}:
+        if categories and explicit_category not in categories:
+            mapping = "conflicting"
+        elif not categories:
+            categories = [explicit_category]
+    categories = sorted(set(categories), key=lambda item: (
+        ACTIVITY_DISPLAY_PRECEDENCE.index(item) if item in ACTIVITY_DISPLAY_PRECEDENCE else len(ACTIVITY_DISPLAY_PRECEDENCE),
+        item.casefold(), item))
+    if mapping not in {"conflicting", "ambiguous"}:
+        if not categories:
+            mapping = "unmapped" if codes or labels else "unclassified"
+        elif mapping in {"partial", "partially_mapped", "unresolved"}:
+            mapping = "partial"
+        else:
+            mapping = "mapped"
+    display_category = None if mapping in {"conflicting", "ambiguous", "unmapped", "unclassified"} else (
+        categories[0] if categories else None)
+    return {
+        "category": display_category,
+        "activity_categories": categories,
+        "source_activity_codes": codes,
+        "source_activity_labels": labels,
+        "activity_mapping_status": mapping,
+        "classification_ruleset_version": safe_preview_text(
+            pick(normalized, "classification_ruleset_version", "ruleset_version", "ruleset_id"), 120),
+    }
+
+
+def merge_activity_contracts(contracts: list[dict[str, Any]]) -> dict[str, Any]:
+    """Preserve the union of activity evidence for a source-scoped candidate."""
+    categories = sorted({value for contract in contracts for value in contract["activity_categories"]}, key=lambda item: (
+        ACTIVITY_DISPLAY_PRECEDENCE.index(item) if item in ACTIVITY_DISPLAY_PRECEDENCE else len(ACTIVITY_DISPLAY_PRECEDENCE),
+        item.casefold(), item))
+    codes = list(dict.fromkeys(value for contract in contracts for value in contract["source_activity_codes"]))
+    labels = list(dict.fromkeys(value for contract in contracts for value in contract["source_activity_labels"]))
+    statuses = {contract["activity_mapping_status"] for contract in contracts}
+    rulesets = {contract["classification_ruleset_version"] for contract in contracts
+                if contract["classification_ruleset_version"]}
+    if statuses & {"conflicting", "ambiguous"} or len(rulesets) > 1:
+        status = "conflicting"
+    elif not categories:
+        status = "unmapped" if "unmapped" in statuses else "unclassified"
+    elif statuses & {"partial", "unmapped"}:
+        status = "partial"
+    else:
+        status = "mapped"
+    return {
+        "category": categories[0] if categories and status not in {"conflicting", "ambiguous"} else None,
+        "activity_categories": categories,
+        "source_activity_codes": codes,
+        "source_activity_labels": labels,
+        "activity_mapping_status": status,
+        "classification_ruleset_version": next(iter(rulesets)) if len(rulesets) == 1 else None,
+    }
+
+
 def safe_https_url(value: Any) -> str | None:
     value = safe_preview_text(value, 2048)
     if value is None:
@@ -295,12 +391,12 @@ def parse_row(source: str, row: Any) -> tuple[Any, ...]:
     name = None
     if privacy_allows_name:
         name = safe_preview_text(pick(normalized, "canonical_name", "trading_name", "name"), 200)
+    contract = activity_contract(normalized)
     activity = safe_preview_text(pick(normalized, "source_activity", "activity_description", "activity_label"), 240)
     if activity is None:
-        raw_activity = pick(normalized, "activity_categories", "activities", "processing_activities")
-        if isinstance(raw_activity, list):
-            parts = [safe_preview_text(item, 100) for item in raw_activity]
-            activity = safe_preview_text("; ".join(part for part in parts if part), 240)
+        activity = safe_preview_text("; ".join(contract["source_activity_labels"]), 240)
+    if activity is None and contract["category"]:
+        activity = contract["category"]
     activity_source = "source" if activity else None
     evidence_summary = safe_preview_text(pick(normalized, "evidence_summary"), 500)
     record_url = safe_https_url(pick(normalized, "source_record_url"))
@@ -475,6 +571,7 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
     count = unmapped_count = mapped_non_candidate_count = candidate_count = 0
     parsed_rows: list[tuple[Any, ...]] = []
     administrative_codes: dict[str, str | None] = {}
+    activity_contracts_by_group: dict[str, list[dict[str, Any]]] = {}
     with path.open("r", encoding="utf-8") as stream:
         for line in stream:
             if not line.strip():
@@ -485,6 +582,7 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
                 raise ImportFailure("row_schema_invalid") from None
             parsed = parse_row(source, record)
             parsed_rows.append(parsed)
+            activity_contracts_by_group.setdefault(parsed[-1], []).append(activity_contract(record["normalized"]))
             code = administrative_code_for_row(source, record["normalized"])
             if code is not None:
                 administrative_codes[parsed[0]] = code
@@ -535,6 +633,11 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
         identifier, klass, country, city, postal, lat, lon, precision, observed, _, department = chosen[:11]
         display_name, activity_label, activity_source, source_record_url, evidence_summary = chosen[11:16]
         default_map_scope, map_scope_reason = chosen[16:18]
+        activity = merge_activity_contracts(activity_contracts_by_group.get(str(group_key), []))
+        activity_label = safe_preview_text("; ".join(activity["source_activity_labels"]), 240)
+        if activity_label is None:
+            activity_label = activity["category"]
+        activity_source = "source" if activity_label else None
         municipality_code = administrative_codes.get(str(identifier))
         place, place_match = _resolve_municipality(municipality_index or {}, city, municipality_policy or {}, department)
         display_lat = place.get("latitude") if isinstance(place, dict) else None
@@ -547,12 +650,14 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
         ).fetchone()[0]
         db.execute(
             """INSERT INTO real_preview.candidates
-            (snapshot_sha256,source_id,source_group_key,representative_observation_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision,observation_count,display_latitude,display_longitude,display_geometry_source,display_name,activity_label,activity_source,source_record_url,evidence_summary,source_name,observed_at,default_map_scope,map_scope_reason,municipality_code)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (snapshot_sha256,source_id,source_group_key) DO NOTHING""",
+            (snapshot_sha256,source_id,source_group_key,representative_observation_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision,observation_count,display_latitude,display_longitude,display_geometry_source,display_name,activity_label,activity_source,source_record_url,evidence_summary,source_name,observed_at,default_map_scope,map_scope_reason,municipality_code,category,activity_categories,source_activity_codes,source_activity_labels,activity_mapping_status,classification_ruleset_version)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (snapshot_sha256,source_id,source_group_key) DO NOTHING""",
             (snapshot, source, group_key, preview_id, klass, country, city, postal, lat, lon, precision, observations_per_group[group_key], display_lat, display_lon,
              f"{(municipality_policy or {}).get('source', 'Administrative commune reference')}; approximate city location, not facility coordinates; name_match={place_match}" if display_lat is not None else None,
              display_name, activity_label, activity_source, source_record_url, evidence_summary, SOURCE_NAMES.get(source), observed,
-             default_map_scope, map_scope_reason, municipality_code),
+             default_map_scope, map_scope_reason, municipality_code, activity["category"], activity["activity_categories"],
+             activity["source_activity_codes"], activity["source_activity_labels"], activity["activity_mapping_status"],
+             activity["classification_ruleset_version"]),
         )
         enrichment_state, enrichment_reason = (
             ("source_coordinate", "source_coordinate_present") if klass == "numeric_source_coordinate" else
