@@ -1,4 +1,5 @@
 import type { JsonMapCollection, JsonMapFeature } from '../design-lab/components/jsonMapFallback';
+import { isTaxonomyPrimaryKey } from '../domain/taxonomy';
 
 export type RealPreviewMapFeed = Readonly<{
   collection: JsonMapCollection;
@@ -42,6 +43,11 @@ export function parseRealPreviewMapFeed(payload: unknown): RealPreviewMapFeed {
       || typeof weight !== 'number' || !Number.isSafeInteger(weight) || weight < 1) {
       throw new RealPreviewMapFeedError('The private map feed returned an invalid feature.');
     }
+    if (row.category_key !== undefined && typeof row.category_key !== 'string') throw new RealPreviewMapFeedError('The private map feed returned an invalid category key.');
+    if (row.category_keys !== undefined && (!Array.isArray(row.category_keys) || row.category_keys.length > 16 || !row.category_keys.every(item => typeof item === 'string'))) throw new RealPreviewMapFeedError('The private map feed returned invalid category keys.');
+    const categoryKeys = [...new Set(((row.category_keys as string[] | undefined) ?? []).map(item => isTaxonomyPrimaryKey(item) ? item : 'unclassified'))];
+    if (categoryKeys.length === 0) categoryKeys.push(isTaxonomyPrimaryKey(row.category_key) ? row.category_key : 'unclassified');
+    const categoryKey = typeof row.category_key === 'string' ? row.category_key : categoryKeys[0]!;
     const precision = row.precision;
     return {
       type: 'Feature',
@@ -53,6 +59,8 @@ export function parseRealPreviewMapFeed(payload: unknown): RealPreviewMapFeed {
         kind: kind === 'city_reference' ? 'reference' : 'source-coordinate',
         precision,
         weight,
+        category_key: categoryKey,
+        category_keys: categoryKeys,
         // Only references need a latitude correction for the map-scale disc.
         ...(kind === 'city_reference' ? { cosLatitude: Math.max(0.087, Math.cos(row.latitude * Math.PI / 180)) } : {}),
       },

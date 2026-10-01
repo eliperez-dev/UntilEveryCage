@@ -18,4 +18,5 @@ export type LocationEvidence = Readonly<{
   lifecycleStatus: 'active_observed' | 'explicitly_closed' | 'not_seen_recently' | 'status_unknown';
   observationCount: number | null;
 }>;
-export type Location = Readonly<{id:LocationId,name:string,region:string,category:string,lat:number|null,lon:number|null,observed:string,source:string,evidence?:LocationEvidence}>;
+import type { TaxonomyClassification } from './taxonomy';
+export type Location = Readonly<{id:LocationId,name:string,region:string,category:string,lat:number|null,lon:number|null,observed:string,source:string,sourceId?:string,taxonomy?:TaxonomyClassification,evidence?:LocationEvidence}>;

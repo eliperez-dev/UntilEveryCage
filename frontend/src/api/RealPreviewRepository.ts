@@ -1,5 +1,6 @@
 import type { LabRecord } from '../design-lab/contract';
 import type { ViewportBounds } from '../design-lab/contract';
+import { parseTaxonomyClassification, type TaxonomyClassification } from '../domain/taxonomy';
 
 export type RealPreviewPrecision =
   | 'source_numeric_pending_review'
@@ -40,6 +41,7 @@ export type RealPreviewCandidate = Readonly<{
   projectApproval: false;
   publicationStatus: string;
   previewLabel: string;
+  taxonomy?: TaxonomyClassification;
 }>;
 
 export type RealPreviewPage = Readonly<{ records: readonly RealPreviewCandidate[]; nextCursor: string | null }>;
@@ -131,6 +133,9 @@ export function parseRealPreviewCandidate(value: unknown): RealPreviewCandidate 
     || typeof row.preview_label !== 'string') {
     throw new RealPreviewError('invalid-response', 'The private preview omitted its review status.');
   }
+  let taxonomy: TaxonomyClassification | undefined;
+  try { taxonomy = parseTaxonomyClassification(row); }
+  catch { throw new RealPreviewError('invalid-response', 'The private preview returned invalid taxonomy details.'); }
   return Object.freeze({
     candidateId, sourceId,
     displayName: optionalNullableString(row, 'display_name'),
@@ -152,6 +157,7 @@ export function parseRealPreviewCandidate(value: unknown): RealPreviewCandidate 
     coordinateReviewStatus: row.coordinate_review_status, factualReviewStatus: row.factual_review_status,
     privacyScreeningStatus: row.privacy_screening_status, projectApproval: false,
     publicationStatus: row.publication_status, previewLabel: row.preview_label,
+    ...(taxonomy ? { taxonomy } : {}),
   });
 }
 
@@ -194,6 +200,7 @@ export function mapRealPreviewCandidate(candidate: RealPreviewCandidate): LabRec
       : candidate.previewLabel,
     coordinatePrecision: candidate.coordinatePrecision,
     coordinateProvenance: candidate.coordinateProvenance,
+    ...(candidate.taxonomy ? { taxonomy: candidate.taxonomy } : {}),
   });
 }
 

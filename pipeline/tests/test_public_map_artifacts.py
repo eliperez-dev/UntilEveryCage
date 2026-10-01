@@ -38,6 +38,11 @@ class PublicMapArtifactTests(unittest.TestCase):
         self.assertNotEqual(exact_cluster["feature_key"], coarse_cluster["feature_key"])
         self.assertIsNone(exact_cluster["record_id"])
         self.assertIsNone(coarse_cluster["record_id"])
+        self.assertIsNone(exact_cluster["category_key"])
+        self.assertIsNone(exact_cluster["category_keys_compact"])
+        self.assertIsNone(coarse_cluster["category_key"])
+        self.assertIsNone(coarse_cluster["category_keys_compact"])
+        self.assertEqual(exact_cluster["count"], 2)  # category toggles never imply a filtered aggregate count
 
     def test_exact_leaf_resolves_record_and_coarse_leaf_never_does(self):
         facilities = [
@@ -51,6 +56,8 @@ class PublicMapArtifactTests(unittest.TestCase):
         self.assertEqual(exact["record_id"], "exact-id")
         self.assertIsNone(coarse["record_id"])
         self.assertEqual(coarse["coarse_count"], 1)
+        self.assertIsNone(coarse["category_key"])
+        self.assertIsNone(coarse["category_keys_compact"])
 
     def test_zero_zero_is_not_a_usable_public_map_coordinate(self):
         with self.assertRaisesRegex(ValueError, "unusable zero coordinate"):
@@ -77,11 +84,18 @@ class PublicMapArtifactTests(unittest.TestCase):
         self.assertIn('point is None or row[8] == "unmapped"', source)
         compact_source = "".join(source.split())
         self.assertIn("SELECTfeature_key,kind,count,exact_count,coarse_count,next_zoom,", compact_source)
-        self.assertIn("record_id,category_key,geom", compact_source)
+        self.assertIn("record_id,category_key,category_keys_compact,geom", compact_source)
         for forbidden in ("canonical_name", "street_address", "source_url", "evidence", "token"):
             self.assertNotIn(f'"{forbidden}"', source)
         self.assertNotIn("real_preview", source)
         self.assertIn('release[0] != "validated" or release[1]', source)
+
+    def test_compact_category_keys_are_sorted_bounded_and_reject_unknowns(self):
+        compact = MODULE.compact_category_keys(["slaughter", "processing_and_preparation", "slaughter", "not_a_key"])
+        self.assertEqual(compact, "|processing_and_preparation|slaughter|")
+        self.assertTrue(MODULE.compact_category_keys_match(compact, "slaughter"))
+        self.assertFalse(MODULE.compact_category_keys_match(compact, "aughter"))
+        self.assertEqual(MODULE.compact_category_keys(None), "|unclassified|")
 
     def test_promotion_rejects_stale_or_corrupt_private_tile_inventory(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -113,6 +127,10 @@ class PublicMapArtifactTests(unittest.TestCase):
             manifest_path = root / "map-artifact.json"
             manifest_path.write_text(json.dumps(artifact), encoding="utf-8")
             self.assertEqual(PROMOTE.validate_map_artifact(manifest_path, "release-a", "official", 7)["source_layer"], "uec_map")
+            artifact["feature_schema_version"] = "uec-map-feature-v2"
+            artifact["feature_properties"].append("category_keys_compact")
+            manifest_path.write_text(json.dumps(artifact), encoding="utf-8")
+            self.assertEqual(PROMOTE.validate_map_artifact(manifest_path, "release-a", "official", 7)["feature_schema_version"], "uec-map-feature-v2")
             with self.assertRaisesRegex(ValueError, "identity or schema"):
                 PROMOTE.validate_map_artifact(manifest_path, "release-a", "secondary", 7)
             with self.assertRaisesRegex(ValueError, "stale suppression"):

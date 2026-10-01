@@ -6,12 +6,15 @@
   import { ReleaseMapManifestRepository, type ReleaseMapManifest } from '../api/ReleaseMapManifestRepository';
   import { LocalLocationRepository } from '../api/LocalLocationRepository';
   import type { Location } from '../domain/location';
+  import { TAXONOMY_PRIMARY_KEYS, type TaxonomyPrimaryKey } from '../domain/taxonomy';
+  import { CATEGORY_PRESENTATIONS } from '../features/locations/categoryPresentation';
   import { createBaseStyle } from '../design-lab/components/mapSurfaceLayers';
-  import { addReleaseMapLayers, removeReleaseMapLayers } from '../design-lab/components/releaseMapLayers';
+  import { addReleaseMapLayers, removeReleaseMapLayers, setReleaseMapCategoryFilter } from '../design-lab/components/releaseMapLayers';
 
   let container: HTMLDivElement;
   let map: maplibregl.Map | null = null;
   let activeNamespace: string | null = null;
+  let selectedCategories = $state<readonly TaxonomyPrimaryKey[]>([]);
   let activeManifest = $state<ReleaseMapManifest | null>(null);
   let status = $state('Checking the current map release…');
   let error = $state('');
@@ -30,6 +33,20 @@
   const manifestRepository = new ReleaseMapManifestRepository();
   const locationRepository = new LocalLocationRepository();
   let activeInteractionCleanup: (() => void) | null = null;
+  const categoryGlyph = (key: TaxonomyPrimaryKey): string => ({
+    animal_keeping_and_production: '●', slaughter: '◆', processing_and_preparation: '■',
+    research_and_animal_use: '⬢', other_regulated_premises: '▲', unclassified: '○',
+  })[key];
+  const visibleSearchResults = $derived(searchResults.filter(location =>
+    selectedCategories.length === 0 || selectedCategories.some(key => location.taxonomy?.primaryCategories.includes(key) ?? key === 'unclassified'),
+  ));
+
+  function toggleCategory(key: TaxonomyPrimaryKey, checked: boolean): void {
+    selectedCategories = checked
+      ? [...new Set([...selectedCategories, key])]
+      : selectedCategories.filter(value => value !== key);
+    if (map && activeNamespace) setReleaseMapCategoryFilter(map, activeNamespace, selectedCategories);
+  }
 
   function clearSelection(): void {
     listController?.abort();
@@ -112,6 +129,7 @@
       maxZoom: manifest.maxZoom,
     });
     activeNamespace = namespace;
+    setReleaseMapCategoryFilter(map, namespace, selectedCategories);
     activeManifest = manifest;
     const clusterLayer = `release-${namespace}-cluster-circle`;
     const exactLayer = `release-${namespace}-exact-pin`;
@@ -221,19 +239,35 @@
         <label for="release-map-search">Search public locations</label>
         <div class="search-row"><input id="release-map-search" bind:value={searchQuery} autocomplete="off" /><button type="submit">Search</button></div>
       </form>
+      <fieldset class="category-filters">
+        <legend>Activity category</legend>
+        {#each TAXONOMY_PRIMARY_KEYS as key (key)}
+          <label><input type="checkbox" checked={selectedCategories.includes(key)} onchange={(event) => toggleCategory(key, event.currentTarget.checked)} /><span class="category-glyph" style={`color:${CATEGORY_PRESENTATIONS[key].color}`}>{categoryGlyph(key)}</span>{CATEGORY_PRESENTATIONS[key].label}</label>
+        {/each}
+        <small>Categories apply to individual record symbols. Approximate areas and clusters remain neutral location context and retain all-activity counts.</small>
+      </fieldset>
       {#if searchStatus === 'loading'}<p role="status">Searching this release…</p>
       {:else if searchStatus === 'error'}<p role="alert">Search is unavailable for this release.</p>
       {:else if searchStatus === 'ready'}
         <p class="result-context">Official profile · release {activeManifest.releaseId}</p>
-        {#if searchResults.length === 0}<p>No matching public locations were found.</p>
-        {:else}<ul>{#each searchResults as location (location.id)}<li><button class="result" type="button" onclick={() => void openLocation(location.id)}><span>{location.name}</span><small>{location.category} · {location.region}</small></button></li>{/each}</ul>{/if}
+        {#if visibleSearchResults.length === 0}<p>No matching public locations were found.</p>
+        {:else}<ul>{#each visibleSearchResults as location (location.id)}<li><button class="result" type="button" onclick={() => void openLocation(location.id)}><span>{location.name}</span><small>{location.taxonomy?.leafActivities.map(item => item.label).join(' · ') || CATEGORY_PRESENTATIONS[location.taxonomy?.displayCategory ?? 'unclassified'].label} · {location.region}</small></button></li>{/each}</ul>{/if}
       {/if}
       {#if detailStatus === 'loading'}<p role="status">Loading release record…</p>
       {:else if detailStatus === 'error'}<p role="alert">{detailMessage}</p>
       {:else if selectedLocation}
         <article class="location-detail" aria-label="Public location detail">
           <h2>{selectedLocation.name}</h2>
-          <p>{selectedLocation.category} · {selectedLocation.region}</p>
+          <p>{CATEGORY_PRESENTATIONS[selectedLocation.taxonomy?.displayCategory ?? 'unclassified'].label} · {selectedLocation.region}</p>
+          {#if selectedLocation.taxonomy?.leafActivities.length}
+            <section class="taxonomy-detail" aria-label="Activities and classification provenance">
+              <h3>Activities</h3>
+              <ul>{#each selectedLocation.taxonomy.leafActivities as activity (activity.key)}<li>{activity.label}</li>{/each}</ul>
+              {#each selectedLocation.taxonomy.assignments as assignment, index (`${assignment.primaryKey}:${assignment.leafKey ?? ''}:${index}`)}
+                <p class="taxonomy-provenance">{assignment.sourceLabel ?? assignment.sourceCode ?? selectedLocation.source} · {assignment.method} · {assignment.status} · {assignment.taxonomyVersion}</p>
+              {/each}
+            </section>
+          {/if}
           <p>{selectedLocation.evidence?.displayPrecision === 'city' ? 'Approximate city-level location; this is not a facility point.' : selectedLocation.evidence?.displayPrecision === 'exact' ? 'Exact location shown from an approved source coordinate.' : 'No eligible map position.'}</p>
           {#if selectedLocation.evidence?.sourceUrl}<a href={selectedLocation.evidence.sourceUrl} target="_blank" rel="noreferrer">View source</a>{/if}
           <small>Official profile · release {activeManifest.releaseId}</small>
@@ -256,10 +290,20 @@
   .search-row { display: flex; gap: .4rem; }
   .search-row input { min-width: 0; flex: 1; padding: .45rem; }
   .search-row button { padding: .45rem .7rem; }
+  .category-filters { display: grid; gap: .35rem; margin: .8rem 0; padding: .65rem; border: 1px solid #414843; }
+  .category-filters legend { padding: 0 .25rem; color: #bec5bb; }
+  .category-filters label { display: flex; align-items: center; gap: .5rem; min-height: 1.6rem; cursor: pointer; }
+  .category-filters input { accent-color: #d8c99b; }
+  .category-glyph { display: inline-grid; place-items: center; width: 1.1rem; font-size: 1.1rem; line-height: 1; }
+  .category-filters small { margin-top: .25rem; color: #bec5bb; }
   .map-panel ul { list-style: none; padding: 0; margin: .5rem 0; }
   .map-panel li + li { border-top: 1px solid #414843; }
   .result { display: grid; gap: .25rem; width: 100%; padding: .55rem 0; border: 0; text-align: left; background: transparent; color: inherit; cursor: pointer; }
   .result small,.result-context,.location-detail small { color: #bec5bb; font-size: .75rem; }
   .location-detail { margin-top: .8rem; padding-top: .8rem; border-top: 1px solid #414843; }
   .location-detail a { color: #d8c99b; }
+  .taxonomy-detail { margin-top: .8rem; border-top: 1px solid #414843; padding-top: .5rem; }
+  .taxonomy-detail h3 { margin: 0 0 .35rem; font-size: .85rem; }
+  .taxonomy-detail ul { margin: .25rem 0; padding-left: 1.2rem; }
+  .taxonomy-provenance { color: #bec5bb; font-size: .74rem; margin: .3rem 0; }
 </style>

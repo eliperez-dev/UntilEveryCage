@@ -62,9 +62,11 @@ def validate_map_artifact(path: Path, release_id: str, profile: str, suppression
             or artifact.get("release_id") != release_id
             or artifact.get("profile") != profile
             or artifact.get("source_layer") != "uec_map"
-            or artifact.get("feature_schema_version") != "uec-map-feature-v1"):
+            or artifact.get("feature_schema_version") not in ("uec-map-feature-v1", "uec-map-feature-v2")):
         raise ValueError("map artifact identity or schema does not match the release")
     allowed_properties = ["feature_key", "kind", "count", "exact_count", "coarse_count", "next_zoom", "record_id", "category_key"]
+    if artifact.get("feature_schema_version") == "uec-map-feature-v2":
+        allowed_properties.append("category_keys_compact")
     if artifact.get("feature_properties") != allowed_properties:
         raise ValueError("map artifact feature property allowlist is invalid")
     if not artifact.get("count_semantics") or not artifact.get("feature_key_semantics") or not artifact.get("next_zoom_semantics"):

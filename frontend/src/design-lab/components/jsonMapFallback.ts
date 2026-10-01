@@ -60,6 +60,8 @@ export function createJsonMapCollection(
           kind: mode === 'real-preview' ? 'source-coordinate' : 'exact',
           weight: 1,
           icon: `pin-${PIN_COLORS[record.category] ?? 'red'}`,
+          category_key: record.taxonomy?.displayCategory ?? 'unclassified',
+          category_keys: record.taxonomy?.primaryCategories ?? ['unclassified'],
           name: record.name,
         },
       });
@@ -70,7 +72,7 @@ export function createJsonMapCollection(
       features.push({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [record.longitude, record.latitude] },
-        properties: { id: record.id, kind: 'approximate', weight: 1, name: record.name },
+        properties: { id: record.id, kind: 'approximate', weight: 1, name: record.name, category_key: record.taxonomy?.displayCategory ?? 'unclassified', category_keys: record.taxonomy?.primaryCategories ?? ['unclassified'] },
       });
       continue;
     }

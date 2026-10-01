@@ -6,7 +6,11 @@ export const RELEASE_MAP_SOURCE_LAYER = 'uec_map';
 /** The only properties the public map projection may expose. */
 export const RELEASE_MAP_PROPERTIES = [
   'feature_key', 'kind', 'count', 'exact_count', 'coarse_count',
-  'next_zoom', 'record_id', 'category_key',
+  'next_zoom', 'record_id', 'category_key', 'category_keys_compact',
+] as const;
+export const RELEASE_MAP_CATEGORY_KEYS = [
+  'animal_keeping_and_production', 'slaughter', 'processing_and_preparation',
+  'research_and_animal_use', 'other_regulated_premises', 'unclassified',
 ] as const;
 
 export type ReleaseMapOptions = Readonly<{
@@ -23,7 +27,44 @@ type MapLike = {
   getSource(id: string): unknown;
   removeLayer(id: string): void;
   removeSource(id: string): void;
+  setFilter?(id: string, filter: unknown): void;
 };
+
+const exactKindFilter = ['==', ['get', 'kind'], 'exact'];
+const LEGACY_KEY_ALIASES: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  animal_keeping_and_production: ['animal_production', 'farm'],
+  processing_and_preparation: ['processing'],
+  research_and_animal_use: ['research', 'laboratory'],
+  other_regulated_premises: ['other_regulated', 'dealer', 'exhibitor'],
+});
+
+/** Stable delimiter-bounded encoding used by MVT, which cannot carry arrays. */
+export function compactCategoryKeys(keys: readonly string[]): string {
+  const canonical = [...new Set(keys.filter((key): key is (typeof RELEASE_MAP_CATEGORY_KEYS)[number] =>
+    (RELEASE_MAP_CATEGORY_KEYS as readonly string[]).includes(key)))].sort(
+      (a, b) => RELEASE_MAP_CATEGORY_KEYS.indexOf(a) - RELEASE_MAP_CATEGORY_KEYS.indexOf(b),
+    );
+  return canonical.length ? `|${canonical.join('|')}|` : '|unclassified|';
+}
+
+export function compactCategoryKeysMatch(compact: string | null | undefined, selected: readonly string[], scalar?: string | null): boolean {
+  if (compact !== undefined && compact !== null) return selected.some(key => compact.includes(`|${key}|`));
+  return selected.some(key => [key, ...(LEGACY_KEY_ALIASES[key] ?? [])].includes(scalar ?? ''));
+}
+
+/** Changes only the already-loaded exact feature layer; server clusters stay neutral. */
+export function setReleaseMapCategoryFilter(map: MapLike, namespace: string, selected: readonly string[]): boolean {
+  const layerId = `${ids(namespace).layers[5]}`;
+  if (!map.getLayer(layerId) || !map.setFilter) return false;
+  const tokens = [...new Set(selected.map(key => `|${key}|`))];
+  const scalarKeys = [...new Set(selected.flatMap(key => [key, ...(LEGACY_KEY_ALIASES[key] ?? [])]))];
+  map.setFilter(layerId, tokens.length
+    ? ['all', exactKindFilter, ['case', ['has', 'category_keys_compact'],
+      ['any', ...tokens.map(token => ['in', token, ['get', 'category_keys_compact']])],
+      ['in', ['get', 'category_key'], ['literal', scalarKeys]]]]
+    : exactKindFilter);
+  return true;
+}
 
 function ids(namespace: string) {
   if (!/^[A-Za-z0-9_-]+$/.test(namespace)) {
@@ -119,15 +160,27 @@ export function addReleaseMapLayers(
     paint: { 'text-color': '#c9a36e', 'text-halo-color': '#171a18', 'text-halo-width': 1.5, 'text-opacity': opacity },
   });
   map.addLayer({
-    id: layers[5], type: 'circle', source, 'source-layer': sourceLayer,
+    id: layers[5], type: 'symbol', source, 'source-layer': sourceLayer,
     filter: kind('exact'),
+    layout: {
+      'text-field': ['match', ['get', 'category_key'],
+        'animal_keeping_and_production', '●', 'animal_production', '●', 'farm', '●',
+        'slaughter', '◆',
+        'processing_and_preparation', '■', 'processing', '■',
+        'research_and_animal_use', '⬢', 'research', '⬢', 'laboratory', '⬢',
+        'other_regulated_premises', '▲', 'other_regulated', '▲', 'dealer', '▲', 'exhibitor', '▲', '○'],
+      'text-font': ['Open Sans Bold'], 'text-size': 17,
+      'text-allow-overlap': true, 'text-ignore-placement': true,
+    },
     paint: {
-      'circle-radius': 6.5, 'circle-color': ['match', ['get', 'category_key'],
-        'slaughter', '#a95d55', 'processing', '#89939a', 'laboratory', '#9882b5',
-        'farm', '#b4955c', 'dealer', '#b8754d', 'exhibitor', '#6e997d', '#d8c99b'],
-      'circle-opacity': 0.94 * opacity,
-      'circle-stroke-color': '#171a18', 'circle-stroke-width': 2.5,
-      'circle-stroke-opacity': opacity,
+      'text-color': ['match', ['get', 'category_key'],
+        'animal_keeping_and_production', '#009E73', 'animal_production', '#009E73', 'farm', '#009E73',
+        'slaughter', '#D55E00',
+        'processing_and_preparation', '#0072B2', 'processing', '#0072B2',
+        'research_and_animal_use', '#CC79A7', 'research', '#CC79A7', 'laboratory', '#CC79A7',
+        'other_regulated_premises', '#E69F00', 'other_regulated', '#E69F00', 'dealer', '#E69F00', 'exhibitor', '#E69F00', '#B8B8B8'],
+      'text-halo-color': '#171a18', 'text-halo-width': 1.5,
+      'text-opacity': 0.98 * opacity,
     },
   });
 

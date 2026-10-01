@@ -108,6 +108,26 @@ describe('private real-preview repository', () => {
     expect(mapRealPreviewCandidate(parsed).name).toBe('Example facility');
   });
 
+  it('parses additive taxonomy with safe leaf attribution and falls back on unknown primary keys', () => {
+    const candidate = parseRealPreviewCandidate(record({
+      taxonomy_display_category: 'research_and_animal_use',
+      taxonomy_primary_categories: ['research_and_animal_use'],
+      taxonomy_leaf_activities: [{ key: 'animal-use', label: 'Animal use in research' }],
+      taxonomy_assignments: [{
+        primary_key: 'research_and_animal_use', leaf_key: 'animal-use', leaf_label: 'Animal use in research',
+        source_code_reference: 'column activity', source_label_reference: 'activity text', source_code: null,
+        source_label: 'Research establishment', method: 'derived', status: 'mapped', taxonomy_version: 'uec-taxonomy-v1',
+        crosswalk_version: 'fr-section-i-v1', ruleset_version: 'rules-v1', observation_id: 'obs-1', source_record_id: 'row-1', artifact_id: 'artifact-1',
+      }],
+    }));
+    expect(mapRealPreviewCandidate(candidate)).toMatchObject({ taxonomy: {
+      displayCategory: 'research_and_animal_use', leafActivities: [{ label: 'Animal use in research' }],
+      assignments: [{ sourceLabel: 'Research establishment', method: 'derived', status: 'mapped' }],
+    } });
+    const unknown = parseRealPreviewCandidate(record({ taxonomy_display_category: 'future-key', taxonomy_primary_categories: ['future-key'] }));
+    expect(mapRealPreviewCandidate(unknown).taxonomy).toMatchObject({ displayCategory: 'unclassified', primaryCategories: ['unclassified'] });
+  });
+
   it('rejects unsafe URLs in future source-link fields', () => {
     expect(() => parseRealPreviewCandidate(record({ source_url: 'javascript:alert(1)' }))).toThrow(RealPreviewError);
     expect(() => parseRealPreviewCandidate(record({ source_record_url: 'http://example.test/record' }))).toThrow(RealPreviewError);

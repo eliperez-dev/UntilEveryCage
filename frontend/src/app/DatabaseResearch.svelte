@@ -8,12 +8,15 @@
     type RealPreviewFacet,
   } from "../api/RealPreviewRepository";
   import type { LabRecord } from "../design-lab/contract";
+  import { TAXONOMY_PRIMARY_KEYS, taxonomyMatchesFilters, type TaxonomyPrimaryKey } from "../domain/taxonomy";
+  import { CATEGORY_PRESENTATIONS } from "../features/locations/categoryPresentation";
   import PreviewMasthead from "./PreviewMasthead.svelte";
   const repository = createRealPreviewRepository();
   type Status = "loading" | "ready" | "empty" | "error" | "unauthorized";
   // Continue using the API cursor until it is exhausted; the UI stays paginated.
   let query = $state("");
   let sourceId = $state<string | null>(null);
+  let selectedCategories = $state<readonly TaxonomyPrimaryKey[]>([]);
   let selectedId = $state<string | null>(null);
   type DatabaseRecord = LabRecord & Pick<RealPreviewCandidate, 'displayName' | 'activityLabel' | 'activitySource' | 'sourceName' | 'sourceRecordId' | 'sourceUrl' | 'sourceRecordUrl' | 'retrievedAt' | 'observedAt' | 'evidenceSummary'>;
   let records = $state<readonly DatabaseRecord[]>([]);
@@ -169,6 +172,12 @@
   const sources = $derived(
     [...new Set(facets.map((facet) => facet.sourceId))].sort(),
   );
+  const filteredRecords = $derived(records.filter(record => taxonomyMatchesFilters(record, selectedCategories, null)));
+  function toggleCategory(key: TaxonomyPrimaryKey, checked: boolean) {
+    selectedCategories = checked
+      ? [...new Set([...selectedCategories, key])]
+      : selectedCategories.filter(value => value !== key);
+  }
   const noMap = $derived(
     records.filter(
       (record) => record.defaultMapScope === false || record.latitude === null || record.longitude === null,
@@ -269,6 +278,13 @@
                 {source}</label
               >{/each}{/if}
         </fieldset>
+        <fieldset>
+          <legend>Activity category</legend>
+          {#each TAXONOMY_PRIMARY_KEYS as key (key)}
+            <label><input type="checkbox" checked={selectedCategories.includes(key)} onchange={(event) => toggleCategory(key, event.currentTarget.checked)} />{CATEGORY_PRESENTATIONS[key].label}</label>
+          {/each}
+          <small>Applied to loaded results only; categories combine with the source feed.</small>
+        </fieldset>
         <section
           class="precision-note"
           aria-labelledby="location-treatment-title"
@@ -287,7 +303,7 @@
                 ? "Loading index"
                 : status === "empty"
                   ? "No matching records"
-                  : `${records.length} loaded records`}</strong
+                  : `${filteredRecords.length} matching loaded records`}</strong
             ><span>{query ? `Query: “${query}”` : "All accessible candidates"}</span>
           </p>
           <p class="quiet">
@@ -319,14 +335,14 @@
                 write({ query: "", sourceId: null, selectedId: null })}
               >Clear search and source</button
             >
-          </div>{:else}<ol>
-            {#each records as record (record.id)}<li
+          </div>{:else if filteredRecords.length === 0}<div class="state-card"><strong>No loaded records match these categories.</strong><p>Change the activity category or load a different source and query.</p></div>{:else}<ol>
+            {#each filteredRecords as record (record.id)}<li
                 class:selected={record.id === selectedId}
               >
                 <button
                   type="button"
                   onclick={() => write({ selectedId: record.id })}
-                  ><span class="record-name">{record.name}</span><span
+                  ><span class="record-name">{record.name}</span><span class="record-activity">{record.taxonomy?.leafActivities.map(activity => activity.label).join(' · ') || record.activityLabel || record.category}</span><span
                     class="record-place"
                     >{record.locality}, {record.country}</span
                   ><span
@@ -365,8 +381,12 @@
             </div>
             <div>
               <dt>Activity/category</dt>
-              <dd>{selected.activityLabel ?? "Unavailable in current preview API"}{#if selected.activitySource}<span class="quiet"> · {selected.activitySource}</span>{/if}</dd>
+              <dd>{selected.taxonomy?.leafActivities.map(activity => activity.label).join(' · ') || selected.activityLabel || "Unavailable in current preview API"}{#if selected.activitySource}<span class="quiet"> · {selected.activitySource}</span>{/if}</dd>
             </div>
+            {#if selected.taxonomy}
+              <div><dt>Primary categories</dt><dd>{selected.taxonomy.primaryCategories.map(key => CATEGORY_PRESENTATIONS[key].label).join(' · ')}</dd></div>
+              <div><dt>Classification provenance</dt><dd>{#each selected.taxonomy.assignments as assignment, index (`${assignment.primaryKey}:${assignment.leafKey ?? ''}:${index}`)}<span class="taxonomy-assignment">{assignment.sourceLabel ?? assignment.sourceCode ?? selected.sourceName ?? selected.sourceId} · {assignment.method} · {assignment.status} · {assignment.taxonomyVersion}</span>{/each}<span class="quiet">Taxonomy {selected.taxonomy.taxonomyVersion}</span></dd></div>
+            {/if}
             <div>
               <dt>Source record URL</dt>
               <dd>{#if selected.sourceRecordUrl}<a href={selected.sourceRecordUrl} target="_blank" rel="noopener noreferrer">Open source record</a>{:else if selected.sourceUrl}<a href={selected.sourceUrl} target="_blank" rel="noopener noreferrer">Open source</a>{:else}Unavailable in current preview API{/if}{#if selected.sourceRecordId}<br /><span class="quiet">Source record: {selected.sourceRecordId}</span>{/if}</dd>
@@ -512,6 +532,9 @@
     font-size: 0.72rem;
     line-height: 1.3;
   }
+  .facets input[type="checkbox"] {
+    accent-color: #c9d5c4;
+  }
   .facets input[type="radio"] {
     accent-color: #c9d5c4;
   }
@@ -572,7 +595,7 @@
   }
   .records li button {
     display: grid;
-    grid-template-columns: 1.25fr 0.8fr 1.6fr 0.8fr 0.75fr;
+    grid-template-columns: 1.25fr 1.4fr 0.8fr 1.6fr 0.8fr 0.75fr;
     gap: 0.65rem;
     width: 100%;
     padding: 0.74rem 1rem;
@@ -590,6 +613,8 @@
       600 0.76rem Georgia,
       serif;
   }
+  .record-activity { color: #c7ccc5; font-size: .8rem; }
+  .taxonomy-assignment { display: block; padding: .2rem 0; }
   .record-place,
   .record-treatment,
   .record-source,

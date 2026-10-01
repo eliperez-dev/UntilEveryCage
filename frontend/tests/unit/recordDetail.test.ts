@@ -15,6 +15,9 @@ describe('private preview record detail surface', () => {
     expect(component).toContain('{#if retrieved}');
     expect(component).toContain('{#if observed}');
     expect(component).toContain('PRIVATE DEVELOPMENT PREVIEW · NOT PUBLICATION-APPROVED');
+    expect(component).toContain('Activities and classification');
+    expect(component).toContain('Classification provenance');
+    expect(component).toContain('assignment.taxonomyVersion');
   });
 
   it('labels exact, approximate, and unmapped placement distinctly and includes review context', () => {

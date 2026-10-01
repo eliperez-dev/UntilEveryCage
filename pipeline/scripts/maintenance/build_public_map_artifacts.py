@@ -29,8 +29,22 @@ from pipeline.common.source_rights import require_cleared
 MIN_ZOOM = 0
 MAX_ZOOM = 14
 SOURCE_LAYER = "uec_map"
-FEATURE_SCHEMA_VERSION = "uec-map-feature-v1"
-FEATURE_PROPERTIES = ["feature_key", "kind", "count", "exact_count", "coarse_count", "next_zoom", "record_id", "category_key"]
+FEATURE_SCHEMA_VERSION = "uec-map-feature-v2"
+FEATURE_PROPERTIES = ["feature_key", "kind", "count", "exact_count", "coarse_count", "next_zoom", "record_id", "category_key", "category_keys_compact"]
+TAXONOMY_KEYS = ("animal_keeping_and_production", "slaughter", "processing_and_preparation", "research_and_animal_use", "other_regulated_premises", "unclassified")
+
+
+def compact_category_keys(keys: list[str] | tuple[str, ...] | None) -> str:
+    """Encode validated whole taxonomy keys for MVT string-only properties."""
+    selected = sorted({key for key in (keys or ()) if key in TAXONOMY_KEYS})
+    if not selected:
+        selected = ["unclassified"]
+    return "|" + "|".join(selected) + "|"
+
+
+def compact_category_keys_match(encoded: str | None, key: str) -> bool:
+    """Match complete delimiter-bounded keys; never use substring matching."""
+    return key in TAXONOMY_KEYS and f"|{key}|" in (encoded or "")
 TILE_BUCKET = 512
 POINT_RE = re.compile(r"^POINT\s*\(\s*(-?[0-9.]+)\s+(-?[0-9.]+)\s*\)$", re.I)
 
@@ -108,7 +122,10 @@ def hierarchy_features(release_id: str, profile: str, facilities: list[dict[str,
                 "coarse_count": len(members) if kind == "coarse" else 0,
                 "next_zoom": zoom + 1 if clustered else None,
                 "record_id": members[0]["record_id"] if kind == "exact" and not clustered else None,
-                "category_key": members[0]["category_key"] if not clustered else None,
+                # Coarse locations, density clusters, and grouped exact records
+                # are geographic context, not category-filtered counts.
+                "category_key": members[0]["category_key"] if kind == "exact" and not clustered else None,
+                "category_keys_compact": members[0].get("category_keys_compact", compact_category_keys([members[0].get("category_key")])) if kind == "exact" and not clustered else None,
             }
             tiles.setdefault((zoom, x, y), []).append(feature)
     return tiles
@@ -144,6 +161,30 @@ def build(database_url: str, release_id: str, output_root: Path) -> dict[str, An
         )
         rows = connection.execute(query, (release_id,)).fetchall()
 
+        eligible_observation_ids = sorted({row[1] for row in rows})
+        taxonomy_by_observation: dict[str, tuple[str, str]] = {}
+        if eligible_observation_ids:
+            taxonomy_rows = connection.execute(
+                """WITH current_sets AS (
+                     SELECT DISTINCT ON (s.observation_id) s.observation_id,s.assignment_set_id,s.display_category
+                     FROM uec.observation_taxonomy_assignment_sets s
+                     WHERE s.observation_id = ANY(%s) AND s.taxonomy_version='uec-taxonomy-v1'
+                     ORDER BY s.observation_id,s.created_at DESC,s.assignment_set_id DESC
+                   )
+                   SELECT s.observation_id, s.display_category,
+                          array_agg(DISTINCT primary_key ORDER BY primary_key)
+                            FILTER (WHERE mapping_method IN ('direct','derived') AND mapping_status IN ('mapped','partial') AND primary_key <> 'unclassified') AS confirmed_keys,
+                          bool_or(primary_key='unclassified' OR mapping_method='candidate' OR mapping_status IN ('unmapped','unclassified','conflicting','ambiguous')) AS has_unresolved
+                   FROM current_sets s JOIN uec.observation_taxonomy_assignments a USING (assignment_set_id)
+                   GROUP BY s.observation_id,s.display_category""",
+                (eligible_observation_ids,),
+            ).fetchall()
+            for observation_id, display_category, confirmed_keys, has_unresolved in taxonomy_rows:
+                keys = list(confirmed_keys or [])
+                if has_unresolved or not keys:
+                    keys.append("unclassified")
+                taxonomy_by_observation[str(observation_id)] = (display_category, compact_category_keys(keys))
+
         # One map feature represents one facility. Choose the first eligible
         # observation in deterministic order, while preserving its category.
         facilities: dict[str, dict[str, Any]] = {}
@@ -159,7 +200,8 @@ def build(database_url: str, release_id: str, output_root: Path) -> dict[str, An
                 "longitude": point[0],
                 "latitude": point[1],
                 "kind": "exact" if row[8] == "exact" else "coarse",
-                "category_key": row[13],
+                "category_key": taxonomy_by_observation.get(str(row[1]), ("unclassified", compact_category_keys(None)))[0],
+                "category_keys_compact": taxonomy_by_observation.get(str(row[1]), ("unclassified", compact_category_keys(None)))[1],
             })
 
         source_ids = sorted({row[17] for row in rows if row[17]})
@@ -200,10 +242,10 @@ def build(database_url: str, release_id: str, output_root: Path) -> dict[str, An
                   FROM jsonb_to_recordset(%s::jsonb) AS f(
                     x integer, y integer, longitude double precision, latitude double precision,
                     feature_key text, kind text, count integer, exact_count integer,
-                    coarse_count integer, next_zoom integer, record_id text, category_key text)
+                    coarse_count integer, next_zoom integer, record_id text, category_key text, category_keys_compact text)
                 ), features AS (
                   SELECT x,y,feature_key,kind,count,exact_count,coarse_count,next_zoom,
-                         record_id,category_key,
+                         record_id,category_key,category_keys_compact,
                          ST_AsMVTGeom(ST_Transform(location,3857),
                            ST_TileEnvelope(%s::integer,x,y),4096,128,true) AS geom
                   FROM input
@@ -211,7 +253,7 @@ def build(database_url: str, release_id: str, output_root: Path) -> dict[str, An
                 SELECT tile_coords.x,tile_coords.y,
                        (SELECT ST_AsMVT(tile_data,%s,4096,'geom')
                         FROM (SELECT feature_key,kind,count,exact_count,coarse_count,
-                                     next_zoom,record_id,category_key,geom
+                                     next_zoom,record_id,category_key,category_keys_compact,geom
                               FROM features WHERE x=tile_coords.x AND y=tile_coords.y) tile_data)
                 FROM tile_coords ORDER BY tile_coords.x,tile_coords.y
             """
@@ -241,7 +283,7 @@ def build(database_url: str, release_id: str, output_root: Path) -> dict[str, An
             "source_layer": SOURCE_LAYER,
             "feature_schema_version": FEATURE_SCHEMA_VERSION,
             "feature_properties": FEATURE_PROPERTIES,
-            "count_semantics": "count is public facility leaves; exact_count and coarse_count partition it; clusters keep precision classes separate",
+            "count_semantics": "count is all-activity public facility leaves; exact_count and coarse_count partition it; clusters keep precision classes separate and category-neutral",
             "feature_key_semantics": "stable SHA-256 prefix of release, profile, zoom, global grid cell, and precision; exact leaves include record_id",
             "next_zoom_semantics": "cluster expansion targets the immediate child zoom; exact and coarse leaves have no expansion zoom",
             "tiles": tile_inventory,
