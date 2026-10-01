@@ -1,0 +1,80 @@
+{
+  "schema_version": "source-private-e2e-run-v1",
+  "source_id": "es.cat.feed-sandach",
+  "run_id": "preview-es-cat-feed-sandach-bc0d3f56-68e8-419e-889e-bd1d837c3c67",
+  "runner_run_id": "refresh-92641ee056ef6be6",
+  "status": "strict_private_preview_e2e_passed",
+  "acquired_at_utc": "2026-10-01T20:55:17Z",
+  "certified_at_utc": "2026-10-01T20:56:45.119309Z",
+  "scope": "Catalonia autonomous community feed-sector and specified SANDACH register only; not Spain-wide",
+  "catalog": {
+    "url": "https://analisi.transparenciacatalunya.cat/d/m48e-zdz9",
+    "metadata_url": "https://analisi.transparenciacatalunya.cat/api/views/m48e-zdz9.json",
+    "metadata_sha256": "7dbf4067bcad0b46fd5a922db893ad20213121eacc1643421b98f5f62ff2c59d"
+  },
+  "artifact": {
+    "requested_url": "https://analisi.transparenciacatalunya.cat/api/v3/views/m48e-zdz9/export.csv?accessType=DOWNLOAD",
+    "final_url": "https://analisi.transparenciacatalunya.cat/api/v3/views/m48e-zdz9/export.csv?accessType=DOWNLOAD",
+    "effective_date": "unknown",
+    "byte_size": 3062940,
+    "sha256": "f137a0f2826490015a3c43feedd808e7984e3c2441e69e0a261e55095f90eb75"
+  },
+  "versions": {
+    "acquisition": "es-cat-acquisition-v1",
+    "adapter": "es-cat-feed-sandach-v1",
+    "schema": "es-cat-socrata-m48e-zdz9-v1",
+    "schema_fingerprint": "cc50409ab305cc1270e331c7687b8e18c333c41b3c3fe0deaa7609486f1ac2e1",
+    "normalized_sha256": "6f0ce80b4741421a8f59bd529e8ff536300e4295b598997cc96c69327e4f9ffc",
+    "candidate_handoff_sha256": "6f0ce80b4741421a8f59bd529e8ff536300e4295b598997cc96c69327e4f9ffc"
+  },
+  "private_artifacts": {
+    "root": "ignored target/real-preview/runs/refresh-92641ee056ef6be6/sources/es.cat.feed-sandach/",
+    "raw_artifact": "acquisition/es.cat.feed-sandach/preview-es-cat-feed-sandach-bc0d3f56-68e8-419e-889e-bd1d837c3c67/source.csv",
+    "normalized_accepted_handoff": "candidate-handoff/normalized/records.jsonl",
+    "handoff_manifest": "candidate-handoff/manifest.json",
+    "retention": "Private row-level files remain outside Git. This tracked manifest contains aggregate counts and hashes only."
+  },
+  "reconciliation": {
+    "raw_rows": 12341,
+    "accepted_observations": 12117,
+    "whole_row_quarantined": 224,
+    "quarantine_reasons": {"missing_required_identity_or_scope_field": 224},
+    "out_of_scope": 0,
+    "api_listable_facility_candidates": 4367,
+    "source_coordinates": "not_supplied",
+    "numeric_map_visible_candidates": 0,
+    "city_postal_only_candidates": 4367,
+    "coarse_placeable_candidates": 0,
+    "unmapped_map_candidates": 0,
+    "public_rows": 0,
+    "delta_from_retained_preview_baseline": {
+      "observations": {"baseline": 12117, "current": 12117, "delta": 0},
+      "candidates": {"baseline": 4367, "current": 4367, "delta": 0}
+    }
+  },
+  "taxonomy": {
+    "version": "uec-taxonomy-v1",
+    "crosswalk_version": "uec-source-crosswalk-v1",
+    "mapping_method": "direct",
+    "mapping_status": "unclassified",
+    "observations_unclassified": 12117,
+    "candidate_assignment_sets_unclassified": 4367,
+    "candidate_assignment_rows_unclassified": 4367,
+    "codebook_review": "pending; sector and activity strings remain source-native"
+  },
+  "evidence_retention": {
+    "normalized_fields": ["establishment_id (source registration)", "municipality_code", "comarca_code", "province", "activity", "sector", "registered_at", "source_row"],
+    "raw_name_and_street_address": "retained only in the private original CSV; excluded from normalized accepted handoff",
+    "identity": "source registration and municipality/activity fields only; no name/address matching or cross-source linkage"
+  },
+  "verification": {
+    "disposable_database_migrations": ["054_real_preview_activity_contract", "055_versioned_taxonomy_assignments", "056_real_preview_taxonomy_assignments"],
+    "private_api": ["counts", "list", "search", "detail", "viewport"],
+    "taxonomy_sql": "4,367 assignment sets and rows persisted; every mapping status and display category is unclassified",
+    "taxonomy_dry_run": "12,117 source observations projected as unclassified; applied=false",
+    "exact_run_replay": "not_run",
+    "public_rows": 0,
+    "publication": "not_authorized",
+    "claims": {"source_completeness": false, "factual_accuracy": false, "privacy_clearance": false, "recurring_health": false}
+  }
+}

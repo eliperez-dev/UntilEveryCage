@@ -83,6 +83,29 @@ class CertificationLedgerTests(unittest.TestCase):
         self.assertEqual(result["counts"]["unmapped"], 0)
         self.assertEqual(result["counts"]["map_visible"], 0)
 
+    def test_italy_1069_uses_unmapped_map_remainder_not_unplaced_facility_count(self):
+        value = ledger()
+        value["source_id"] = "it.1069-2009"
+        value["run_id"] = "acquisition-run-1"
+        value["source_run"]["results"][0]["source_id"] = "it.1069-2009"
+        value["preview_import"].update({
+            "observation_count": 9960,
+            "facility_candidate_count": 6538,
+            "numeric_coordinate_count": 5296,
+            "city_postal_count": 1242,
+            "unmapped_facility_count": 6538,
+            "unmapped_map_candidate_count": 0,
+        })
+        value["quarantine"].update({"input_rows": 9960, "accepted_rows": 9960, "quarantined_rows": 0})
+        value["map_visible_count"] = 5296
+        value["coordinate_precision_breakdown"] = {
+            "exact": 0, "source_precision_unknown": 5296,
+            "city_or_postal_only": 1242, "unmapped": 0,
+        }
+        result = CERT.validate_ledger(value, "it.1069-2009")
+        self.assertEqual(result["counts"]["unmapped"], 0)
+        self.assertEqual(result["counts"]["candidates"], 6538)
+
     def test_wrong_source_fails_closed(self):
         with self.assertRaises(CERT.CertificationError):
             CERT.validate_ledger(ledger(), "us.fsis")
@@ -164,6 +187,11 @@ class CertificationLedgerTests(unittest.TestCase):
                     return Result(("it.853-2004", "f" * 64, "a" * 64, "c" * 64,
                         3, 2, 1, 0, 2, 2, 1, 0, 0, 2, 1, 0))
                 if "FROM real_preview.candidates" in sql:
+                    if "GROUP BY location_class" in sql:
+                        return Result((
+                            ("numeric_source_coordinate", 5296),
+                            ("city_postal", 1242),
+                        ))
                     return Result((0,))
                 if "to_regclass" in sql:
                     return Result((None,))
@@ -173,6 +201,48 @@ class CertificationLedgerTests(unittest.TestCase):
             result = CERT._db_check("postgresql://user:secret@127.0.0.1:55433/uec", "it.853-2004", evidence)
         self.assertTrue(result["exact_run"])
         self.assertEqual(result["public_rows"], 0)
+
+    def test_italy_1069_database_location_classes_use_disjoint_map_remainder(self):
+        value = ledger()
+        value["source_id"] = "it.1069-2009"
+        value["source_run"]["results"][0]["source_id"] = "it.1069-2009"
+        value["preview_import"].update({
+            "observation_count": 9960, "facility_candidate_count": 6538,
+            "numeric_coordinate_count": 5296, "city_postal_count": 1242,
+            "unmapped_facility_count": 6538, "unmapped_map_candidate_count": 0,
+        })
+        value["quarantine"].update({"input_rows": 9960, "accepted_rows": 9960, "quarantined_rows": 0})
+        value["map_visible_count"] = 5296
+        value["coordinate_precision_breakdown"] = {
+            "exact": 0, "source_precision_unknown": 5296,
+            "city_or_postal_only": 1242, "unmapped": 0,
+        }
+        evidence = CERT.validate_ledger(value, "it.1069-2009")
+
+        class Result:
+            def __init__(self, value): self.value = value
+            def fetchone(self): return self.value
+            def fetchall(self): return self.value
+
+        class Connection:
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def execute(self, sql, params=()):
+                if "FROM real_preview.source_preview_runs" in sql:
+                    return Result(("it.1069-2009", "f" * 64, "a" * 64, "c" * 64,
+                        9960, 9960, 0, 0, 9960, 6538, 5296, 0, 6538, 6538, 5296, 0))
+                if "GROUP BY location_class" in sql:
+                    return Result([("numeric_source_coordinate", 5296), ("city_postal", 1242)])
+                if "FROM real_preview.candidates" in sql:
+                    return Result((0,))
+                if "to_regclass" in sql:
+                    return Result((None,))
+                raise AssertionError("unexpected database query")
+
+        driver = SimpleNamespace(connect=lambda _: Connection())
+        with patch.dict(sys.modules, {"psycopg": driver}):
+            result = CERT._db_check("postgresql://user:secret@127.0.0.1:55433/uec", "it.1069-2009", evidence)
+        self.assertTrue(result["exact_run"])
 
     def test_remote_api_endpoint_is_rejected(self):
         with self.assertRaisesRegex(CERT.CertificationError, "loopback"):

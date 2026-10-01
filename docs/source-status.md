@@ -58,6 +58,22 @@ it does not imply that public rows exist or may be released. The 2026-09-15
 synthetic rehearsal and 2026-09-17 Germany/Belgium capture remain historical
 evidence, not the current baseline; see [archive index](archive/README.md).
 
+## Italy 1069 and Catalonia evidence recovery — 2026-10-01
+
+Fresh source-scoped acquisitions for `it.1069-2009` and `es.cat.feed-sandach`
+passed isolated private API and disposable-database certification. Italy
+contained 9,960 observations / 6,538 candidates, two more than the retained
+preview baseline; 5,296 candidates had source coordinates and 1,242 were
+city/postal-only. Catalonia remained at 12,117 accepted observations / 4,367
+candidates, with 224 quarantined rows and no coordinates or map-visible
+candidates. The current `uec-taxonomy-v1` import wrote Unclassified assignment
+sets for both sources. Row-level artifacts remain under ignored local
+`target/real-preview/runs/` storage; tracked source manifests contain only
+aggregate counts and hashes. These runs did not modify the retained
+authoritative preview database or authorize publication. See the [Italy
+1069 manifest](../data/manifests/italy-1069-preview-e2e-20261001.json) and
+[Catalonia manifest](../data/manifests/catalonia-preview-e2e-20261001.json).
+
 ## Retained private preview taxonomy projection — 2026-10-01
 
 The authoritative retained private preview database (`uec` in
@@ -102,13 +118,13 @@ The 2026-09-16 Ireland reconnaissance verified the current FSAI/DAFM/HSE/SFPA so
 | `fr.dgal.section-i` | verified | verified | not_run | blocked | Strict live private E2E verified: 1,449 observations and 1,449 candidates from the official live text source; one-time run only, with no recurring monitor configured. Keep Section I separate; terms, category/identity, address privacy, geospatial review, project review, and public release approval remain open; see `docs/country-recon-fr.md` and `docs/countries/france/dgal-853-pipeline.md` |
 | `fr.dgal.section-ii` | verified | verified | not_run | blocked | Strict live private E2E verified: 1,069 observations and 1,068 candidates from the separate official live text source; one-time run only, with no recurring monitor configured. Keep Section II distinct; terms, category/species semantics, address privacy, geospatial review, project review, and public release approval remain open; see `docs/country-recon-fr.md` and `docs/countries/france/dgal-853-pipeline.md` |
 | `it.853-2004` | verified | verified | not_run | blocked | Strict live private E2E verified: 40,912 observations and 24,751 candidates from the official catalog-discovered live CSV; one-time run only, with no recurring monitor configured. Public release is not authorized; repeated activity identity, category/terms, coordinate/address privacy, coverage, and project approval remain open; see `docs/country-recon-it.md` |
-| `it.1069-2009` | verified | verified | not_run | blocked | Strict live private E2E verified: 9,955 observations and 6,533 candidates from the official catalog-discovered live CSV; one-time run only, with no recurring monitor configured. Keep 1069 distinct from 853, resolve the PDF dictionary/CSV schema mismatch, and review category/status, coordinate privacy/provenance, terms, and release gates; see `data/manifests/italy-1069-preview-e2e-20260924.json` and `docs/country-recon-it.md` |
+| `it.1069-2009` | verified | verified | not_run | blocked | Latest strict live private E2E (2026-10-01): 9,960 observations / 6,538 candidates (+2/+2 against retained preview); 5,296 source-coordinate map-visible and 1,242 city/postal-only; zero row quarantine/public rows. `uec-taxonomy-v1` persisted 6,538 Unclassified assignment sets. One-time evidence, not recurring health or publication approval; keep separate from 853 and review the CSV/PDF schema difference, status/category, coordinates, terms, and privacy; see [manifest](../data/manifests/italy-1069-preview-e2e-20261001.json) |
 | `mx.locations` | verified | blocked | not_run | blocked | DENUE/SENASICA/DGSIAP reconnaissance; resolve token, directory, terms, and schema |
 | `nz.locations` | verified | blocked | not_run | blocked | MPI/Stats NZ reconnaissance; resolve 403/access and aggregate-vs-facility boundaries |
 | `uk.locations` | partial | artifact_private_only | unknown | blocked | Legacy umbrella only. The England/Wales FSA and Scotland/Northern Ireland FSS identities remain separate; see `docs/country-recon-uk.md` |
 | `fsa_approved_establishments` | verified | verified | not_run | blocked | Strict live private E2E passed 2026-09-27: 5,342 source rows, 4,291 accepted/listable and 1,051 quarantined; exact same-database importer replay verified idempotency. Zero coordinates/map pins and zero public rows. One-time evidence only; review row privacy, completeness, currentness, and publication separately. England and Wales only; keep both FSS identities separate; see `pipeline/sources/uk/fsa_approved/README.md` |
 | `au.npi.facilities` | verified | verified | not_run | blocked | Strict live private E2E passed 2026-09-27: 8,140 source rows, 8,116 accepted/listable and 24 quarantined; exact same-database importer replay verified idempotency. Zero map-visible and public rows. One-time evidence only; not complete facility coverage or publication approval; see `docs/country-recon-au.md` |
-| `es.cat.feed-sandach` | verified | verified | not_run | blocked | Strict live private E2E passed 2026-09-27: 12,341 input rows, 12,117 observations, 224 quarantined, 4,367 municipality-grouped/listable candidates; exact same-database importer replay verified idempotency. Zero map-visible and public rows. Catalonia only; no Spain-wide or publication claim; see `docs/country-recon-es.md` |
+| `es.cat.feed-sandach` | verified | verified | not_run | blocked | Latest strict live private E2E (2026-10-01): 12,341 input rows, 12,117 accepted, 224 quarantined, 4,367 candidates; zero source coordinates/map-visible/public rows. `uec-taxonomy-v1` persisted 4,367 Unclassified assignment sets. Catalonia only, not Spain-wide; no privacy or publication approval; see [manifest](../data/manifests/catalonia-preview-e2e-20261001.json) and `docs/country-recon-es.md` |
 | `dk.smiley` | verified | verified | not_run | blocked | Latest strict private-preview E2E verified 2026-10-01 04:01:38Z: 58,815 parsed, 58,765 accepted private candidates, 50 quarantined, 0 mapped and 58,765 unmapped. Configured as private-preview eligible, but not included in the active preview DB. All accepted candidates remain held for privacy review; address privacy, category review, source currentness, and publication gates remain open. One-time E2E only, not recurring health or completeness; see `pipeline/sources/denmark/README.md` |
 | `de.locations` | partial | artifact_private_only | not_run | blocked | Current public general-list export parsed privately: 15,788 input, 2,691 normalized, 13,097 quarantined; session-bound export route, unknown effective date, terms/privacy/coverage and project approval remain unresolved; see `docs/germany-source-assessment.md` and `data/manifests/de-be-private-candidates-2026-09-17.json` |
 | `ca.ontario.meat-plants` | verified | not_run | not_run | blocked | Ontario private adapter/refresh is implemented; keep plant/contact/coordinate fields restricted pending privacy and licence review, and do not generalize Ontario coverage nationally |

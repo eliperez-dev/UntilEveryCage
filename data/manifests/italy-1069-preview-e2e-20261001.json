@@ -1,0 +1,77 @@
+{
+  "schema_version": "source-private-e2e-run-v1",
+  "source_id": "it.1069-2009",
+  "run_id": "preview-it-1069-2009-f70e6ebb-eaf4-4d19-91ba-e288e194e963",
+  "runner_run_id": "refresh-3fc0d412c2840a36",
+  "status": "strict_private_preview_e2e_passed",
+  "acquired_at_utc": "2026-10-01T20:52:30Z",
+  "certified_at_utc": "2026-10-01T20:54:38.252539Z",
+  "scope": "Italian Ministry of Health animal-by-product establishments under Regulation (EC) 1069/2009; separate from Regulation (EC) 853/2004",
+  "catalog": {
+    "url": "https://www.dati.salute.gov.it/it/dataset/stabilimenti-italiani-i-sottoprodotti-di-origine-animale/",
+    "sha256": "a507114620975534d93559f6e36630c440e8a5619bdeeee746d31f880ebfb075"
+  },
+  "artifact": {
+    "requested_url": "https://www.dati.salute.gov.it/sites/default/files/opendata/STAB_SPOA_9_20261001.csv",
+    "final_url": "https://www.dati.salute.gov.it/sites/default/files/opendata/STAB_SPOA_9_20261001.csv",
+    "filename_publication_date": "2026-10-01",
+    "byte_size": 7727056,
+    "sha256": "0db1040e44639712078c18d9a4848319892b7940edfb04063d0091672f7a1927"
+  },
+  "versions": {
+    "acquisition": "it-1069-acquisition-v1",
+    "adapter": "it-1069-candidate-v2",
+    "schema": "it-1069-csv-current-2026-09",
+    "schema_fingerprint": "aa12398ed211bda0d1195be497dcc857f364e7713ecebc2dbbeb68c76053be63",
+    "normalized_sha256": "fbd4e29cc779dcb1a85643fe80bd1d8931640e0cb21e8d5970e54db51329f9af",
+    "candidate_handoff_sha256": "fbd4e29cc779dcb1a85643fe80bd1d8931640e0cb21e8d5970e54db51329f9af"
+  },
+  "private_artifacts": {
+    "root": "ignored target/real-preview/runs/refresh-3fc0d412c2840a36/sources/it.1069-2009/",
+    "raw_artifact": "acquisition/it.1069-2009/preview-it-1069-2009-f70e6ebb-eaf4-4d19-91ba-e288e194e963/source.csv",
+    "normalized_accepted_handoff": "candidate-handoff/normalized/records.jsonl",
+    "handoff_manifest": "candidate-handoff/manifest.json",
+    "retention": "Private row-level files remain outside Git. This tracked manifest contains aggregate counts and hashes only."
+  },
+  "reconciliation": {
+    "raw_rows": 9960,
+    "accepted_observations": 9960,
+    "whole_row_quarantined": 0,
+    "out_of_scope": 0,
+    "coordinate_claim_rejections": {
+      "invalid_source_coordinates": 12,
+      "source_coordinates_out_of_range": 1438,
+      "zero_zero_source_coordinates": 433
+    },
+    "api_listable_facility_candidates": 6538,
+    "numeric_map_visible_candidates": 5296,
+    "city_postal_only_candidates": 1242,
+    "coarse_placeable_candidates": 0,
+    "unmapped_map_candidates": 0,
+    "public_rows": 0,
+    "delta_from_retained_preview_baseline": {
+      "observations": {"baseline": 9958, "current": 9960, "delta": 2},
+      "candidates": {"baseline": 6536, "current": 6538, "delta": 2}
+    }
+  },
+  "taxonomy": {
+    "version": "uec-taxonomy-v1",
+    "crosswalk_version": "uec-source-crosswalk-v1",
+    "mapping_method": "direct",
+    "mapping_status": "unclassified",
+    "observations_unclassified": 9960,
+    "candidate_assignment_sets_unclassified": 6538,
+    "candidate_assignment_rows_unclassified": 6538,
+    "codebook_review": "pending; no leaf mapping inferred from descriptions"
+  },
+  "verification": {
+    "disposable_database_migrations": ["054_real_preview_activity_contract", "055_versioned_taxonomy_assignments", "056_real_preview_taxonomy_assignments"],
+    "private_api": ["counts", "list", "search", "detail", "viewport"],
+    "taxonomy_sql": "6,538 assignment sets and rows persisted; every mapping status and display category is unclassified",
+    "taxonomy_dry_run": "9,960 source observations projected as unclassified; applied=false",
+    "exact_run_replay": "not_run",
+    "public_rows": 0,
+    "publication": "not_authorized",
+    "claims": {"source_completeness": false, "factual_accuracy": false, "privacy_clearance": false, "recurring_health": false}
+  }
+}
