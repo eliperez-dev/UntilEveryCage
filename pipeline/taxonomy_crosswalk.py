@@ -293,8 +293,37 @@ def crosswalk_document(source_id: str) -> dict[str, Any]:
         rules = [{"source_field": "source-native activity", "primary_key": "unclassified", "mapping_method": "candidate"}]
     else:
         rules = [{"source_field": "unsupported", "primary_key": "unclassified", "mapping_method": "candidate"}]
+    normalized_rules: list[dict[str, Any]] = []
+    for rule in rules:
+        method = rule.get("mapping_method", "candidate")
+        codes = [rule["source_code"]] if rule.get("source_code") else []
+        labels = [rule["source_label"]] if rule.get("source_label") else []
+        fields = [rule["source_field"]] if rule.get("source_field") else []
+        if not (codes or labels or fields):
+            fields = ["source values"]
+        primary = rule.get("primary_key")
+        leaf = rule.get("leaf_key")
+        if primary is None and leaf in _LEAF_TO_PRIMARY:
+            primary = _LEAF_TO_PRIMARY[leaf]
+        if method == "candidate":
+            primary, status, leaf = "unclassified", "ambiguous", None
+        elif primary in (None, "unclassified"):
+            primary, status, leaf = "unclassified", "unclassified", None
+        else:
+            status = rule.get("mapping_status", "mapped")
+        normalized_rules.append({
+            "source_codes": codes,
+            "source_labels": labels,
+            "source_fields": fields,
+            "primary_keys": [primary],
+            "leaf_key": leaf,
+            "method": method,
+            "status": status,
+            "source_code_reference": rule.get("signature"),
+            "source_label_reference": rule.get("source_field"),
+        })
     return {"source_id": source_id, "taxonomy_version": TAXONOMY_VERSION,
-            "crosswalk_version": CROSSWALK_VERSION, "ruleset_version": CROSSWALK_VERSION, "rules": rules}
+            "crosswalk_version": CROSSWALK_VERSION, "ruleset_version": CROSSWALK_VERSION, "rules": normalized_rules}
 
 
 def persistence_assignments(projected: dict[str, Any]) -> list[dict[str, Any]]:
@@ -305,18 +334,33 @@ def persistence_assignments(projected: dict[str, Any]) -> list[dict[str, Any]]:
     ``pipeline.taxonomy`` canonicalization and assignment-set writer.
     """
     rows = []
-    for ordinal, item in enumerate(projected.get("taxonomy_assignments", ()), 1):
+    source_assignments = list(projected.get("taxonomy_assignments", ()))
+    if not source_assignments:
+        status = projected.get("taxonomy_mapping_status", "unclassified")
+        method = projected.get("taxonomy_mapping_method", "derived")
+        if method == "candidate" and status != "ambiguous":
+            method = "derived"
+        source_assignments = [{"primary": "unclassified", "leaf_activity": None, "method": method}]
+    status = projected.get("taxonomy_mapping_status", "unclassified")
+    for ordinal, item in enumerate(source_assignments, 1):
+        primary = item["primary"]
+        leaf = item.get("leaf_activity")
+        method = item.get("method", projected.get("taxonomy_mapping_method", "derived"))
+        if status in {"unmapped", "unclassified", "conflicting", "ambiguous"}:
+            primary, leaf = "unclassified", None
+        if method == "candidate" and (primary != "unclassified" or status != "ambiguous"):
+            method = "derived"
         rows.append({
             "assignment_ordinal": ordinal,
-            "primary_key": item["primary"],
-            "leaf_key": item["leaf_activity"],
-            "leaf_label": item["leaf_activity"],
+            "primary_key": primary,
+            "leaf_key": leaf,
+            "leaf_label": leaf,
             "source_code_reference": item.get("source_code_reference"),
             "source_label_reference": item.get("source_label_reference"),
             "source_code": item.get("source_code"),
             "source_label": item.get("source_label"),
-            "mapping_method": item["method"],
-            "mapping_status": projected["taxonomy_mapping_status"],
+            "mapping_method": method,
+            "mapping_status": status,
         })
     return rows
 

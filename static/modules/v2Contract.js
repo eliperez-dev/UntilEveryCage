@@ -13,8 +13,13 @@ export const V2_LIFECYCLE_STATUSES = Object.freeze([
     'not_seen_recently',
     'status_unknown'
 ]);
+export const V2_TAXONOMY_PRIMARY_KEYS = Object.freeze([
+    'animal_keeping_and_production', 'slaughter', 'processing_and_preparation',
+    'research_and_animal_use', 'other_regulated_premises', 'unclassified'
+]);
 export const V2_LOCATION_FIELDS = Object.freeze([
     'facility_id', 'canonical_name', 'country_code', 'city', 'category',
+    'taxonomy_display_category', 'taxonomy_primary_categories', 'taxonomy_leaf_activities', 'taxonomy_assignments',
     'publication_profile', 'factual_review_status', 'privacy_screening_status',
     'project_approval', 'reviewer_role', 'publication_warning', 'display_precision',
     'latitude', 'longitude', 'first_observed_at', 'last_observed_at',
@@ -75,6 +80,12 @@ export function validateV2Location(record) {
     if (!V2_SOURCE_TYPES.includes(record.source_type)) throw new TypeError('V2 location has invalid source_type');
     if (!V2_DISPLAY_PRECISIONS.includes(record.display_precision)) throw new TypeError('V2 location has invalid display_precision');
     if (!V2_LIFECYCLE_STATUSES.includes(record.lifecycle_status)) throw new TypeError('V2 location has invalid lifecycle_status');
+    if (!V2_TAXONOMY_PRIMARY_KEYS.includes(record.taxonomy_display_category) ||
+        !Array.isArray(record.taxonomy_primary_categories) ||
+        !record.taxonomy_primary_categories.every(key => V2_TAXONOMY_PRIMARY_KEYS.includes(key)) ||
+        !Array.isArray(record.taxonomy_leaf_activities) || !Array.isArray(record.taxonomy_assignments)) {
+        throw new TypeError('V2 location has invalid taxonomy classification');
+    }
     if (record.privacy_screening_status !== 'passed') throw new TypeError('V2 location is not privacy eligible');
     if (record.project_approval !== 'approved' && record.publication_profile !== 'community') {
         throw new TypeError('V2 curated location is not project approved');

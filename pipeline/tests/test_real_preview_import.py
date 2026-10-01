@@ -347,17 +347,37 @@ class RealPreviewImporterTests(unittest.TestCase):
 
     def test_import_creates_unmapped_source_group_candidate_with_scope_metadata(self):
         class Result:
+            def __init__(self, row=("opaque-preview-observation",), rows=None):
+                self.row = row
+                self.rows = [] if rows is None else rows
+
             def fetchone(self):
-                return ("opaque-preview-observation",)
+                return self.row
+
+            def fetchall(self):
+                return self.rows
 
         class Database:
             def __init__(self):
                 self.candidates = []
+                self.crosswalk_digest = None
+                self.assignments = []
 
             def execute(self, sql, params=()):
                 if "INSERT INTO real_preview.candidates" in sql:
                     self.candidates.append((sql, params))
+                if "INSERT INTO real_preview.taxonomy_crosswalks" in sql:
+                    self.crosswalk_digest = params[5]
+                if "INSERT INTO real_preview.candidate_taxonomy_assignments" in sql:
+                    self.assignments.append((sql, params))
+                if "SELECT definition_sha256" in sql:
+                    return Result((self.crosswalk_digest,))
+                if "SELECT assignment_ordinal" in sql:
+                    return Result(rows=[])
+                if "SELECT candidate_id FROM real_preview.candidates" in sql:
+                    return Result(("synthetic-candidate",))
                 return Result()
+
 
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "rows.jsonl"
@@ -378,6 +398,8 @@ class RealPreviewImporterTests(unittest.TestCase):
             imported = IMPORTER.import_rows(database, "dk.smiley", path, 2, "a" * 64)
         self.assertEqual(imported[3], 1, "the two source observations remain one source-scoped candidate")
         self.assertEqual(len(database.candidates), 1)
+        self.assertGreaterEqual(len(database.assignments), 1)
+        self.assertIn("real_preview.candidate_taxonomy_assignments", database.assignments[0][0])
         sql, params = database.candidates[0]
         self.assertIn("default_map_scope,map_scope_reason", sql)
         self.assertEqual(params[4], "unmapped_private_observation")

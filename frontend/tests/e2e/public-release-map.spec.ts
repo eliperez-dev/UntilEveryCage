@@ -20,6 +20,18 @@ const wireRecord = {
   country_code: 'BE',
   city: 'Fixture City',
   category: 'farm',
+  taxonomy_display_category: 'slaughter',
+  taxonomy_primary_categories: ['slaughter', 'processing_and_preparation'],
+  taxonomy_leaf_activities: [
+    { key: 'slaughter', label: 'Slaughterhouse' },
+    { key: 'processing', label: 'Meat processing' },
+  ],
+  taxonomy_assignments: [{
+    primary_key: 'slaughter', leaf_key: 'slaughter', leaf_label: 'Slaughterhouse',
+    source_code_reference: 'activity_codes', source_label_reference: 'activity_descriptions',
+    source_code: 'S-1', source_label: 'Slaughterhouse', method: 'direct', status: 'mapped',
+    taxonomy_version: 'uec-taxonomy-v1', crosswalk_version: 'crosswalk-v1', ruleset_version: 'ruleset-v1',
+  }],
   publication_profile: 'official',
   factual_review_status: 'project-reviewed',
   privacy_screening_status: 'passed',
@@ -179,6 +191,81 @@ test('published layers expand server clusters and resolve exact leaves through r
   await expect.poll(() => detailRequests.length).toBe(2);
   await expect(page.getByText(/Approximate city-level location/)).toHaveCount(0);
   expect(detailRequests.every(url => new URL(url).searchParams.get('release_id') === releaseId)).toBe(true);
+});
+
+test('taxonomy search uses OR filters and provenance while category changes stay in the loaded map style', async ({ page }) => {
+  const releaseId = 'release-a';
+  const processingRecord = {
+    ...wireRecord,
+    facility_id: '223e4567-e89b-42d3-a456-426614174000',
+    canonical_name: 'Processing Fixture Facility',
+    taxonomy_display_category: 'processing_and_preparation',
+    taxonomy_primary_categories: ['processing_and_preparation'],
+    taxonomy_leaf_activities: [{ key: 'processing', label: 'Meat processing' }],
+    taxonomy_assignments: [{ ...wireRecord.taxonomy_assignments[0],
+      primary_key: 'processing_and_preparation', leaf_key: 'processing', leaf_label: 'Meat processing',
+      source_code: 'P-1', source_label: 'Meat processing' }],
+  };
+  const observed: string[] = [];
+  const browserErrors: string[] = [];
+  await mockBaseTiles(page);
+  page.on('request', request => observed.push(new URL(request.url()).pathname));
+  page.on('pageerror', error => browserErrors.push(error.message));
+  await page.route(url => new URL(url.href).pathname === '/api/v2/releases/manifest', route => {
+    const body = manifest(releaseId);
+    body.data.manifest.map_artifact.feature_schema_version = 'uec-map-feature-v2';
+    body.data.manifest.map_artifact.feature_properties = [
+      'feature_key', 'kind', 'count', 'exact_count', 'coarse_count', 'next_zoom', 'record_id',
+      'category_key', 'category_keys_compact',
+    ];
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+  });
+  await page.route(url => new URL(url.href).pathname === '/api/v2/locations' && new URL(url.href).searchParams.has('q'), route =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(envelope([wireRecord, processingRecord], releaseId)) }));
+  await page.route(url => new URL(url.href).pathname === `/api/v2/locations/${recordId}`, route =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(detailEnvelope(wireRecord, releaseId)) }));
+
+  await page.goto('./#/map');
+  await expect(page.getByLabel('Search this release')).toBeVisible();
+  await waitForSource(page, releaseId);
+  await page.getByLabel('Search public locations').fill('fixture');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  const slaughterResult = page.getByRole('button', { name: /Approved Fixture Facility/ });
+  const processingResult = page.getByRole('button', { name: /Processing Fixture Facility/ });
+  await expect(slaughterResult).toBeVisible();
+  await expect(processingResult).toBeVisible();
+
+  const networkBeforeFilters = observed.filter(path => path === '/api/v2/locations').length;
+  await page.getByRole('checkbox', { name: /Slaughter/ }).check();
+  await expect(slaughterResult).toBeVisible();
+  await expect(processingResult).toHaveCount(0);
+  await page.getByRole('checkbox', { name: /Processing and preparation/ }).check();
+  await expect(slaughterResult).toBeVisible();
+  await expect(processingResult).toBeVisible();
+  expect(observed.filter(path => path === '/api/v2/locations')).toHaveLength(networkBeforeFilters);
+
+  const layers = await page.evaluate(() => {
+    const map = (window as any).__UEC_PUBLIC_RELEASE_MAP__;
+    return {
+      exact: map.getFilter('release-release-a-1-exact-pin'),
+      clusters: map.getFilter('release-release-a-1-cluster-circle'),
+      coarse: map.getFilter('release-release-a-1-coarse-area'),
+      sourceType: map.getSource('release-release-a-1-source')?.type,
+    };
+  });
+  expect(JSON.stringify(layers.exact)).toContain('|slaughter|');
+  expect(JSON.stringify(layers.exact)).toContain('|processing_and_preparation|');
+  expect(layers.clusters).toEqual(['==', ['get', 'kind'], 'cluster']);
+  expect(layers.coarse).toEqual(['==', ['get', 'kind'], 'coarse']);
+  expect(layers.sourceType).toBe('vector');
+
+  await slaughterResult.click();
+  const detail = page.getByRole('article', { name: 'Public location detail' });
+  await expect(detail).toContainText('Activities');
+  await expect(detail).toContainText('Slaughterhouse');
+  await expect(detail).toContainText('Meat processing');
+  await expect(detail).toContainText('Slaughterhouse · direct · mapped · uec-taxonomy-v1');
+  expect(browserErrors).toEqual([]);
 });
 
 test('release switching removes old layers before validating the replacement and clears data on failure', async ({ page }) => {

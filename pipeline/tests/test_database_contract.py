@@ -3,6 +3,8 @@ import unittest
 import uuid
 
 import psycopg
+from pipeline.taxonomy.persistence import persist_uec_assignment_set
+from pipeline.taxonomy_crosswalk import crosswalk_document, persistence_assignments, project_observation
 
 
 DATABASE_URL = os.environ.get(
@@ -51,6 +53,59 @@ class DatabaseContractTests(unittest.TestCase):
                 (record_id,),
             ).fetchone()[0]
             self.assertEqual(count, 2)
+
+    def test_taxonomy_assignment_writer_persists_replayable_uec_lineage(self):
+        class RollbackFixture(Exception):
+            pass
+
+        source_id = f"test.taxonomy.{uuid.uuid4().hex}"
+        artifact_id, source_record_id, facility_id, observation_id = (uuid.uuid4() for _ in range(4))
+        document = crosswalk_document("dk.smiley")
+        projection = project_observation({"source_id": "dk.smiley", "normalized": {
+            "activity_codes": ["EB.10.10.99"], "activity_descriptions": ["Slaughterhouse"],
+        }, "source_values": {"FVST_branchenummer": "EB.10.10.99"}})
+        try:
+            with self.connection.transaction():
+                self.connection.execute(
+                    "INSERT INTO uec.sources (source_id,country_code,name,official_url,access_method) VALUES (%s,'DK','Taxonomy test','https://example.invalid','test')",
+                    (source_id,),
+                )
+                self.connection.execute(
+                    "INSERT INTO uec.raw_artifacts (artifact_id,storage_key,sha256,byte_size,retrieved_at) VALUES (%s,%s,%s,1,now())",
+                    (artifact_id, f"taxonomy/{artifact_id}", uuid.uuid4().hex + uuid.uuid4().hex),
+                )
+                self.connection.execute(
+                    "INSERT INTO uec.source_records (source_record_id,source_id,source_record_key,artifact_id,raw_fields,parsed_at) VALUES (%s,%s,'taxonomy-fixture',%s,'{}'::jsonb,now())",
+                    (source_record_id, source_id, artifact_id),
+                )
+                self.connection.execute(
+                    "INSERT INTO uec.facilities (facility_id,country_code,canonical_name) VALUES (%s,'DK','Taxonomy fixture')",
+                    (facility_id,),
+                )
+                self.connection.execute(
+                    "INSERT INTO uec.observations (observation_id,facility_id,source_record_id,observed_at,observation,classification,ruleset_id,rule_id,classification_category,classification_review_status,default_visible,first_observed_at) VALUES (%s,%s,%s,now(),'{}','{}','taxonomy-test','taxonomy-test','slaughter','review_required',false,now())",
+                    (observation_id, facility_id, source_record_id),
+                )
+                assignment_rows = persistence_assignments(projection)
+                assignment_set_id = persist_uec_assignment_set(
+                    self.connection, observation_id=str(observation_id), source_record_id=str(source_record_id),
+                    artifact_id=str(artifact_id), document={**document, "source_id": source_id},
+                    assignment_rows=assignment_rows,
+                )
+                replay_set_id = persist_uec_assignment_set(
+                    self.connection, observation_id=str(observation_id), source_record_id=str(source_record_id),
+                    artifact_id=str(artifact_id), document={**document, "source_id": source_id},
+                    assignment_rows=assignment_rows,
+                )
+                self.assertEqual(assignment_set_id, replay_set_id)
+                row = self.connection.execute(
+                    "SELECT source_id,artifact_id,display_category,primary_key,source_code FROM uec.observation_taxonomy_assignments_lineage WHERE observation_id=%s",
+                    (observation_id,),
+                ).fetchone()
+                self.assertEqual(row, (source_id, artifact_id, "slaughter", "slaughter", "EB.10.10.99"))
+                raise RollbackFixture()
+        except RollbackFixture:
+            pass
 
     def test_evidence_update_and_delete_are_rejected(self):
         with self.connection.transaction():

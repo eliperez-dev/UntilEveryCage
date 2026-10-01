@@ -15,10 +15,11 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["source_codes", "source_labels", "primary_keys", "method", "status"],
+        "required": ["source_codes", "source_labels", "source_fields", "primary_keys", "method", "status"],
         "properties": {
           "source_codes": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
           "source_labels": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+          "source_fields": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
           "primary_keys": {
             "type": "array",
             "minItems": 1,
@@ -33,7 +34,7 @@
           "source_label_reference": {"type": ["string", "null"]}
         },
         "allOf": [
-          {"anyOf": [{"properties": {"source_codes": {"minItems": 1}}}, {"properties": {"source_labels": {"minItems": 1}}}]},
+          {"anyOf": [{"properties": {"source_codes": {"minItems": 1}}}, {"properties": {"source_labels": {"minItems": 1}}}, {"properties": {"source_fields": {"minItems": 1}}}]},
           {"if": {"properties": {"status": {"enum": ["unmapped", "unclassified", "conflicting", "ambiguous"]}}}, "then": {"properties": {"primary_keys": {"maxItems": 1, "items": {"const": "unclassified"}}}}},
           {"if": {"properties": {"method": {"const": "candidate"}}}, "then": {"properties": {"status": {"const": "ambiguous"}, "primary_keys": {"maxItems": 1, "items": {"const": "unclassified"}}}}}
         ]

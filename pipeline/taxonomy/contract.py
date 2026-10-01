@@ -177,9 +177,10 @@ def validate_crosswalk(document: object) -> dict:
             raise TaxonomyContractError(f"crosswalk rule {index} has an invalid status")
         source_codes = rule.get("source_codes", [])
         source_labels = rule.get("source_labels", [])
-        if not isinstance(source_codes, list) or not isinstance(source_labels, list):
+        source_fields = rule.get("source_fields", [])
+        if not isinstance(source_codes, list) or not isinstance(source_labels, list) or not isinstance(source_fields, list):
             raise TaxonomyContractError(f"crosswalk rule {index} selectors must be arrays")
-        if any(not isinstance(value, str) or not value for value in (*source_codes, *source_labels)):
+        if any(not isinstance(value, str) or not value for value in (*source_codes, *source_labels, *source_fields)):
             raise TaxonomyContractError(f"crosswalk rule {index} selectors must be non-empty source strings")
         primaries = rule.get("primary_keys", [])
         if not isinstance(primaries, list) or not primaries or any(key not in PRIMARY_KEYS for key in primaries):
@@ -188,8 +189,8 @@ def validate_crosswalk(document: object) -> dict:
             raise TaxonomyContractError(f"crosswalk rule {index} guesses an unresolved classification")
         if "unclassified" in primaries and rule["status"] in _CONFIRMED_STATUSES:
             raise TaxonomyContractError(f"crosswalk rule {index} reports unclassified as a confirmed activity")
-        if not source_codes and not source_labels:
-            raise TaxonomyContractError(f"crosswalk rule {index} requires an exact source code or label selector")
+        if not source_codes and not source_labels and not source_fields:
+            raise TaxonomyContractError(f"crosswalk rule {index} requires a source code, label, or field reference")
         if rule.get("leaf_key") is not None and (len(primaries) != 1 or primaries[0] == "unclassified"):
             raise TaxonomyContractError(f"crosswalk rule {index} leaf activity requires one classified primary")
     return document

@@ -20,6 +20,7 @@ from pipeline.taxonomy_crosswalk import (
     PRIMARY_PRECEDENCE, TAXONOMY_VERSION, crosswalk_document,
     persistence_assignments, project_observation,
 )
+from pipeline.taxonomy.persistence import persist_preview_candidate_assignment_set
 
 POLICY = Path(__file__).parents[2] / "preview-enabled-sources.json"
 SNAPSHOT_PROJECTION_VERSION = "real-preview-candidate-projection-v6"
@@ -237,7 +238,8 @@ def activity_contract(normalized: dict[str, Any], source: str = "", source_value
                 "classification_ruleset_version": safe_preview_text(pick(normalized, "classification_ruleset_version", "ruleset_version", "ruleset_id"), 120)}
     projected = project_observation({"source_id": source, "normalized": normalized,
                                      "source_values": source_values or {}})
-    categories = projected["taxonomy_primaries"]
+    source_categories = _text_values(normalized.get("activity_categories"), 80)
+    categories = source_categories or projected["taxonomy_primaries"]
     mapping = projected["taxonomy_mapping_status"]
     display_category = projected["taxonomy_display_category"]
     return {
@@ -250,12 +252,27 @@ def activity_contract(normalized: dict[str, Any], source: str = "", source_value
         "source_activity_codes": codes,
         "source_activity_labels": labels,
         "activity_mapping_status": mapping,
-        "classification_ruleset_version": TAXONOMY_VERSION,
+        "classification_ruleset_version": safe_preview_text(
+            pick(normalized, "classification_ruleset_version", "ruleset_version", "ruleset_id"), 120
+        ) or TAXONOMY_VERSION,
     }
 
 
-def merge_activity_contracts(contracts: list[dict[str, Any]]) -> dict[str, Any]:
+def merge_activity_contracts(contracts: list[dict[str, Any]], source_id: str | None = None) -> dict[str, Any]:
     """Preserve the union of activity evidence for a source-scoped candidate."""
+    if not contracts and source_id:
+        projected = project_observation({"source_id": source_id})
+        contracts = [{
+            "category": projected["taxonomy_display_category"],
+            "activity_categories": projected["taxonomy_primaries"],
+            "taxonomy_assignments": projected["taxonomy_assignments"],
+            "taxonomy_mapping_method": projected["taxonomy_mapping_method"],
+            "taxonomy_assignment_rows": persistence_assignments(projected),
+            "crosswalk_document": crosswalk_document(source_id),
+            "source_activity_codes": [],
+            "source_activity_labels": [],
+            "activity_mapping_status": projected["taxonomy_mapping_status"],
+        }]
     categories = sorted({value for contract in contracts for value in contract["activity_categories"]}, key=lambda item: (
         PRIMARY_PRECEDENCE.index(item) if item in PRIMARY_PRECEDENCE else len(PRIMARY_PRECEDENCE), item))
     assignment_map: dict[tuple[str, str, str], dict[str, Any]] = {}
@@ -268,6 +285,11 @@ def merge_activity_contracts(contracts: list[dict[str, Any]]) -> dict[str, Any]:
     ordered_assignments = [assignment_map[key] for key in sorted(assignment_map)]
     codes = list(dict.fromkeys(value for contract in contracts for value in contract["source_activity_codes"]))
     labels = list(dict.fromkeys(value for contract in contracts for value in contract["source_activity_labels"]))
+    source_rulesets = sorted({contract.get("classification_ruleset_version") for contract in contracts
+                              if contract.get("classification_ruleset_version")})
+    source_ruleset = ";".join(source_rulesets) if source_rulesets else TAXONOMY_VERSION
+    if len(source_ruleset) > 120:
+        source_ruleset = TAXONOMY_VERSION
     statuses = {contract["activity_mapping_status"] for contract in contracts}
     methods = {contract["taxonomy_mapping_method"] for contract in contracts}
     if "conflicting" in statuses:
@@ -293,7 +315,7 @@ def merge_activity_contracts(contracts: list[dict[str, Any]]) -> dict[str, Any]:
         "source_activity_codes": codes,
         "source_activity_labels": labels,
         "activity_mapping_status": status,
-        "classification_ruleset_version": TAXONOMY_VERSION,
+        "classification_ruleset_version": source_ruleset,
     }
 
 
@@ -661,7 +683,7 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
         identifier, klass, country, city, postal, lat, lon, precision, observed, _, department = chosen[:11]
         display_name, activity_label, activity_source, source_record_url, evidence_summary = chosen[11:16]
         default_map_scope, map_scope_reason = chosen[16:18]
-        activity = merge_activity_contracts(activity_contracts_by_group.get(str(group_key), []))
+        activity = merge_activity_contracts(activity_contracts_by_group.get(str(group_key), []), source)
         activity_label = safe_preview_text("; ".join(activity["source_activity_labels"]), 240)
         if activity_label is None:
             activity_label = activity["category"]
@@ -687,6 +709,20 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
              activity["source_activity_codes"], activity["source_activity_labels"], activity["activity_mapping_status"],
              activity["classification_ruleset_version"]),
         )
+        candidate_id = db.execute(
+            "SELECT candidate_id FROM real_preview.candidates WHERE snapshot_sha256=%s AND source_id=%s AND source_group_key=%s",
+            (snapshot, source, group_key),
+        ).fetchone()[0]
+        if activity["crosswalk_document"]:
+            persist_preview_candidate_assignment_set(
+                db,
+                candidate_id=str(candidate_id),
+                representative_observation_id=str(preview_id),
+                snapshot_sha256=snapshot,
+                source_id=source,
+                document=activity["crosswalk_document"],
+                assignment_rows=activity["taxonomy_assignment_rows"],
+            )
         enrichment_state, enrichment_reason = (
             ("source_coordinate", "source_coordinate_present") if klass == "numeric_source_coordinate" else
             ("resolved", "local_coarse_reference_available") if display_lat is not None and display_lon is not None else

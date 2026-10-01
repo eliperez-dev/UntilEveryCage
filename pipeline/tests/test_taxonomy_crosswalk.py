@@ -55,6 +55,11 @@ class TaxonomyCrosswalkTests(unittest.TestCase):
         self.assertEqual(project_observation(self.by_name["unknown-code"])["taxonomy_mapping_status"], "unmapped")
         self.assertEqual(project_observation(self.by_name["partial-denmark"])["taxonomy_mapping_status"], "partial")
         self.assertEqual(project_observation(self.by_name["conflicting-france-signals"])["taxonomy_mapping_status"], "conflicting")
+        for name in ("unknown-code", "conflicting-france-signals"):
+            persisted = persistence_assignments(project_observation(self.by_name[name]))
+            self.assertTrue(persisted)
+            self.assertTrue(all(row["primary_key"] == "unclassified" for row in persisted))
+            self.assertTrue(all(row["leaf_key"] is None for row in persisted))
         event = project_observation(self.by_name["event-only"])
         self.assertEqual(event["taxonomy_mapping_status"], "unclassified")
         self.assertEqual(event["taxonomy_primaries"], [])
@@ -103,7 +108,7 @@ class TaxonomyCrosswalkTests(unittest.TestCase):
             self.assertTrue(document["crosswalk_version"])
             self.assertTrue(document["ruleset_version"])
             self.assertTrue(document["rules"])
-            self.assertTrue(all(rule.get("mapping_method") in {"direct", "derived", "candidate"}
+            self.assertTrue(all(rule.get("method") in {"direct", "derived", "candidate"}
                                 for rule in document["rules"]))
 
     def test_assignment_rows_match_core_adapter_shape(self):

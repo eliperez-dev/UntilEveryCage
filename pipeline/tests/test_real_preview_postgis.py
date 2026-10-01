@@ -5,6 +5,8 @@ import unittest
 from pathlib import Path
 
 import psycopg
+from pipeline.taxonomy.persistence import persist_preview_candidate_assignment_set
+from pipeline.taxonomy_crosswalk import crosswalk_document, persistence_assignments, project_observation
 
 MIGRATIONS = sorted((Path(__file__).parents[1] / "migrations").glob("*.sql"))
 DATABASE_URL = os.environ.get("UEC_REAL_PREVIEW_TEST_DATABASE_URL")
@@ -60,6 +62,28 @@ class RealPreviewPostgisTests(unittest.TestCase):
                 self.assertEqual(activity_row, (
                     "slaughter", ["slaughter", "fish_processing"], ["EB.10.10.99", "EB.03.21.00"],
                     ["Slaughterhouse", "Fish plant"], "mapped", "denmark-classification-v1"))
+                taxonomy_candidate_id = connection.execute(
+                    "SELECT candidate_id FROM real_preview.candidates WHERE source_group_key='source-group-1'"
+                ).fetchone()[0]
+                projection = project_observation({"source_id": "it.853-2004"})
+                taxonomy_document = crosswalk_document("it.853-2004")
+                taxonomy_rows = persistence_assignments(projection)
+                taxonomy_set_id = persist_preview_candidate_assignment_set(
+                    connection, candidate_id=str(taxonomy_candidate_id),
+                    representative_observation_id=str(numeric_observation_id), snapshot_sha256="a" * 64,
+                    source_id="it.853-2004", document=taxonomy_document, assignment_rows=taxonomy_rows,
+                )
+                replayed_set_id = persist_preview_candidate_assignment_set(
+                    connection, candidate_id=str(taxonomy_candidate_id),
+                    representative_observation_id=str(numeric_observation_id), snapshot_sha256="a" * 64,
+                    source_id="it.853-2004", document=taxonomy_document, assignment_rows=taxonomy_rows,
+                )
+                self.assertEqual(taxonomy_set_id, replayed_set_id)
+                lineage = connection.execute(
+                    "SELECT source_identifier,display_category,primary_key,mapping_status FROM real_preview.candidate_taxonomy_assignments_lineage WHERE candidate_id=%s",
+                    (taxonomy_candidate_id,),
+                ).fetchone()
+                self.assertEqual(lineage, ("synthetic-source-key", "unclassified", "unclassified", "unclassified"))
                 connection.execute(candidate_insert, ("a" * 64, "fr.dgal.section-i", "source-group-2", coarse_observation_id, "city_postal", "FR", "Example", None, None,
                     None, None, None, None, None, None, None, True, None))
                 connection.execute(candidate_insert, ("a" * 64, "us.fsis", "source-group-3", unmapped_observation_id, "unmapped_private_observation", "US", None, None, None,

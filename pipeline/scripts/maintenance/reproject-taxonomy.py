@@ -18,6 +18,8 @@ ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from pipeline.taxonomy_crosswalk import reproject
+from pipeline.taxonomy_crosswalk import crosswalk_document, persistence_assignments
+from pipeline.taxonomy.persistence import persist_preview_candidate_assignment_set, persist_uec_assignment_set
 
 
 def read_jsonl(path: Path) -> list[dict]:
@@ -57,6 +59,7 @@ def main() -> int:
     parser.add_argument("--apply", action="store_true", help="write projected rows to --output")
     parser.add_argument("--output", type=Path, help="required with --apply; must not be the input path")
     parser.add_argument("--report", type=Path, help="write the aggregate report; defaults to stdout")
+    parser.add_argument("--database-url", help="optional database target; requires --apply and lineage IDs on every row")
     args = parser.parse_args()
     if args.apply and (args.output is None or args.output.resolve() == args.input.resolve()):
         parser.error("--apply requires --output distinct from input")
@@ -66,9 +69,40 @@ def main() -> int:
         parser.error("--report must not overwrite input")
     if args.apply and args.report and args.output.resolve() == args.report.resolve():
         parser.error("--report and --output must be distinct paths")
+    if args.database_url and not args.apply:
+        parser.error("--database-url requires --apply; dry runs are non-mutating")
     rows = read_jsonl(args.input)
     projected, report = reproject(rows)
     if args.apply:
+        if args.database_url:
+            import psycopg
+            with psycopg.connect(args.database_url) as connection:
+                for row in projected:
+                    source_id = str(row.get("source_id") or "")
+                    document = crosswalk_document(source_id)
+                    assignment_rows = persistence_assignments(row["taxonomy"])
+                    preview = row.get("preview_lineage") if isinstance(row.get("preview_lineage"), dict) else row
+                    if all(preview.get(key) for key in ("candidate_id", "representative_observation_id", "snapshot_sha256")):
+                        persist_preview_candidate_assignment_set(
+                            connection,
+                            candidate_id=str(preview["candidate_id"]),
+                            representative_observation_id=str(preview["representative_observation_id"]),
+                            snapshot_sha256=str(preview["snapshot_sha256"]),
+                            source_id=source_id,
+                            document=document,
+                            assignment_rows=assignment_rows,
+                        )
+                    elif all(row.get(key) for key in ("observation_id", "source_record_id", "artifact_id")):
+                        persist_uec_assignment_set(
+                            connection,
+                            observation_id=str(row["observation_id"]),
+                            source_record_id=str(row["source_record_id"]),
+                            artifact_id=str(row["artifact_id"]),
+                            document=document,
+                            assignment_rows=assignment_rows,
+                        )
+                    else:
+                        raise ValueError("database reprojection row lacks genuine UEC or real_preview lineage")
         atomic_jsonl(args.output, projected)
         report["applied"] = True
         report["output"] = str(args.output)
