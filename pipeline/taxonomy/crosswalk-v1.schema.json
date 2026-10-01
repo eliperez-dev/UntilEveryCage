@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://untileverycage.org/schemas/taxonomy-crosswalk-v1.schema.json",
+  "title": "Until Every Cage versioned taxonomy crosswalk",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["source_id", "taxonomy_version", "crosswalk_version", "ruleset_version", "rules"],
+  "properties": {
+    "source_id": {"type": "string", "minLength": 1},
+    "taxonomy_version": {"const": "uec-taxonomy-v1"},
+    "crosswalk_version": {"type": "string", "minLength": 1},
+    "ruleset_version": {"type": "string", "minLength": 1},
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source_codes", "source_labels", "primary_keys", "method", "status"],
+        "properties": {
+          "source_codes": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+          "source_labels": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+          "primary_keys": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"enum": ["animal_keeping_and_production", "slaughter", "processing_and_preparation", "research_and_animal_use", "other_regulated_premises", "unclassified"]},
+            "uniqueItems": true
+          },
+          "leaf_key": {"type": ["string", "null"]},
+          "leaf_label": {"type": ["string", "null"]},
+          "method": {"enum": ["direct", "derived", "candidate"]},
+          "status": {"enum": ["mapped", "partial", "unmapped", "unclassified", "conflicting", "ambiguous"]},
+          "source_code_reference": {"type": ["string", "null"]},
+          "source_label_reference": {"type": ["string", "null"]}
+        },
+        "allOf": [
+          {"anyOf": [{"properties": {"source_codes": {"minItems": 1}}}, {"properties": {"source_labels": {"minItems": 1}}}]},
+          {"if": {"properties": {"status": {"enum": ["unmapped", "unclassified", "conflicting", "ambiguous"]}}}, "then": {"properties": {"primary_keys": {"maxItems": 1, "items": {"const": "unclassified"}}}}},
+          {"if": {"properties": {"method": {"const": "candidate"}}}, "then": {"properties": {"status": {"const": "ambiguous"}, "primary_keys": {"maxItems": 1, "items": {"const": "unclassified"}}}}}
+        ]
+      }
+    }
+  }
+}
