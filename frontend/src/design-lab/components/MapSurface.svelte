@@ -232,7 +232,11 @@
     import.meta.env.DEV && mode === "real-preview",
   );
   const isRealPreview = () => mode === "real-preview";
-  const usingMvt = $derived(mode === "real-preview");
+  // The private development preview intentionally uses the reviewed, in-memory
+  // GeoJSON/Supercluster path. The server-generated MVT implementation remains
+  // available for public releases and future experiments, but must not sit in
+  // the camera interaction path for this preview.
+  const usingMvt = false;
   const hitRate = $derived.by(() => {
     const total =
       (mapDiagnostics?.cacheHits ?? 0) + (mapDiagnostics?.cacheMisses ?? 0);
@@ -951,10 +955,9 @@
       center: [mapState.viewport.centerLon, mapState.viewport.centerLat],
       zoom: mapState.viewport.zoom,
       attributionControl: {},
-      // Keep the previous visible MVT tile symbols under incoming tiles during
-      // pan/zoom replacement. Stable promoted feature ids let MapLibre crossfade
-      // the same globally clustered feature instead of flashing it away.
-      fadeDuration: 300,
+      // The private preview owns one in-memory source, so pan and zoom never
+      // replace location data. Disabling source fades keeps interaction crisp.
+      fadeDuration: 0,
       // Let MapLibre size each source cache from the viewport. The previous
       // fixed 512-tile cap retained far more raster/MVT tiles than needed;
       // minTileCacheSize and prefetchZoomDelta are not MapLibre map options.

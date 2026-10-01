@@ -7,7 +7,7 @@ const envelope = {
     { key: '550e8400-e29b-41d4-a716-446655440000', kind: 'source_coordinate', precision: 'approximate_source_precision_unknown_pending_review', source_id: 'source-a', latitude: 51.2, longitude: 4.1, weight: 1 },
     { key: '0123456789abcdef0123456789abcdef', kind: 'city_reference', precision: 'city_reference_approximate', source_id: 'source-a', latitude: 50.8, longitude: 4.3, weight: 9 },
   ],
-  meta: { bounded: true, private_preview: true, scope: 'default_map_scope', zoom_max: 14, feature_limit: 200000, total_weight: 10 },
+  meta: { bounded: true, private_preview: true, scope: 'default_map_scope', zoom_max: 14, feature_limit: 200000, total_weight: 10, snapshot_id: 'a'.repeat(64) },
 };
 
 describe('real-preview native map feed', () => {

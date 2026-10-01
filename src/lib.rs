@@ -1710,6 +1710,14 @@ pub async fn get_real_preview_map_feed_handler(
     let Ok(client) = pool.get().await else {
         return real_preview_unavailable();
     };
+    let snapshot_boundary: String = match client.query_one(
+        "WITH sources AS (SELECT source_id FROM real_preview.source_preview_runs UNION SELECT source_id FROM real_preview.source_manifests), latest AS (SELECT sources.source_id,COALESCE((SELECT run.snapshot_sha256 FROM real_preview.source_preview_runs run WHERE run.source_id=sources.source_id ORDER BY run.created_at DESC,run.run_id DESC LIMIT 1),(SELECT manifest.snapshot_sha256 FROM real_preview.source_manifests manifest WHERE manifest.source_id=sources.source_id ORDER BY manifest.retrieved_at DESC,manifest.snapshot_sha256 DESC LIMIT 1)) AS snapshot_sha256 FROM sources) SELECT COALESCE(string_agg(source_id || ':' || snapshot_sha256, ',' ORDER BY source_id), 'no-snapshots') FROM latest",
+        &[],
+    ).await {
+        Ok(row) => row.get(0),
+        Err(_) => return real_preview_unavailable(),
+    };
+    let snapshot_id = format!("{:x}", Sha256::digest(snapshot_boundary.as_bytes()));
 
     // Keep one row per numeric coordinate and group coarse references by both
     // the stable geometry key and source_id. Fetch one beyond the bound so the
@@ -1820,6 +1828,7 @@ LIMIT $2
             "scope":"default_map_scope",
             "zoom_max":14,
             "feature_limit":REAL_PREVIEW_MAP_FEED_MAX_FEATURES,
+            "snapshot_id":snapshot_id,
             "total_weight":total_weight,
             "source_weights":source_weights
         }
@@ -2034,12 +2043,20 @@ pub async fn get_real_preview_counts_handler(
     let Ok(client) = pool.get().await else {
         return real_preview_unavailable();
     };
+    let snapshot_boundary: String = match client.query_one(
+        "WITH sources AS (SELECT source_id FROM real_preview.source_preview_runs UNION SELECT source_id FROM real_preview.source_manifests), latest AS (SELECT sources.source_id,COALESCE((SELECT run.snapshot_sha256 FROM real_preview.source_preview_runs run WHERE run.source_id=sources.source_id ORDER BY run.created_at DESC,run.run_id DESC LIMIT 1),(SELECT manifest.snapshot_sha256 FROM real_preview.source_manifests manifest WHERE manifest.source_id=sources.source_id ORDER BY manifest.retrieved_at DESC,manifest.snapshot_sha256 DESC LIMIT 1)) AS snapshot_sha256 FROM sources) SELECT COALESCE(string_agg(source_id || ':' || snapshot_sha256, ',' ORDER BY source_id), 'no-snapshots') FROM latest",
+        &[],
+    ).await {
+        Ok(row) => row.get(0),
+        Err(_) => return real_preview_unavailable(),
+    };
+    let snapshot_id = format!("{:x}", Sha256::digest(snapshot_boundary.as_bytes()));
     let runtime_rows = match client.query("SELECT DISTINCT ON (source_id) source_id,run_id FROM real_preview.source_preview_runs ORDER BY source_id,created_at DESC,run_id DESC", &[]).await { Ok(rows) => rows, Err(_) => return real_preview_unavailable() };
     let runtime_ledger = json!(runtime_rows.iter().map(|row| json!({"source_id":row.get::<_,String>(0),"run_id":row.get::<_,String>(1)})).collect::<Vec<_>>());
     let counts = match client.query_one(&format!("SELECT count(*)::bigint,count(*) FILTER (WHERE candidate.location_class='numeric_source_coordinate' AND candidate.latitude BETWEEN -90 AND 90 AND candidate.longitude BETWEEN -180 AND 180 AND (candidate.latitude<>0 OR candidate.longitude<>0))::bigint,count(*) FILTER (WHERE candidate.location_class='city_postal' OR (candidate.location_class='numeric_source_coordinate' AND NOT (candidate.latitude BETWEEN -90 AND 90 AND candidate.longitude BETWEEN -180 AND 180 AND (candidate.latitude<>0 OR candidate.longitude<>0)) AND (NULLIF(BTRIM(candidate.city),'') IS NOT NULL OR NULLIF(BTRIM(candidate.postal_code),'') IS NOT NULL)))::bigint,count(*) FILTER (WHERE candidate.location_class='unmapped_private_observation' OR (candidate.location_class='numeric_source_coordinate' AND NOT (candidate.latitude BETWEEN -90 AND 90 AND candidate.longitude BETWEEN -180 AND 180 AND (candidate.latitude<>0 OR candidate.longitude<>0)) AND NULLIF(BTRIM(candidate.city),'') IS NULL AND NULLIF(BTRIM(candidate.postal_code),'') IS NULL))::bigint,count(*) FILTER (WHERE candidate.default_map_scope)::bigint,count(*) FILTER (WHERE NOT candidate.default_map_scope)::bigint,count(*) FILTER (WHERE candidate.default_map_scope AND ((candidate.location_class='numeric_source_coordinate' AND candidate.latitude BETWEEN -90 AND 90 AND candidate.longitude BETWEEN -180 AND 180 AND (candidate.latitude<>0 OR candidate.longitude<>0)) OR candidate.display_latitude IS NOT NULL))::bigint,count(*) FILTER (WHERE candidate.default_map_scope AND candidate.location_class='city_postal' AND candidate.display_latitude IS NOT NULL)::bigint FROM real_preview.candidates candidate JOIN real_preview.source_manifests manifest ON manifest.snapshot_sha256=candidate.snapshot_sha256 AND manifest.source_id=candidate.source_id WHERE {}", REAL_PREVIEW_LATEST_SNAPSHOT), &[]).await { Ok(row) => row, Err(_) => return real_preview_unavailable() };
     real_preview_response(
         StatusCode::OK,
-        json!({"api_version":"real-preview-v1","data":{"facility_candidate_count":counts.get::<_,i64>(0),"api_listable_count":counts.get::<_,i64>(0),"numeric_coordinate_count":counts.get::<_,i64>(1),"city_postal_count":counts.get::<_,i64>(2),"unmapped_candidate_count":counts.get::<_,i64>(3),"default_map_scope_candidate_count":counts.get::<_,i64>(4),"out_of_default_map_scope_candidate_count":counts.get::<_,i64>(5),"map_visible_count":counts.get::<_,i64>(6),"coarse_placeable_count":counts.get::<_,i64>(7)},"meta":{"private_preview":true,"runtime_ledger":runtime_ledger}}),
+        json!({"api_version":"real-preview-v1","data":{"facility_candidate_count":counts.get::<_,i64>(0),"api_listable_count":counts.get::<_,i64>(0),"numeric_coordinate_count":counts.get::<_,i64>(1),"city_postal_count":counts.get::<_,i64>(2),"unmapped_candidate_count":counts.get::<_,i64>(3),"default_map_scope_candidate_count":counts.get::<_,i64>(4),"out_of_default_map_scope_candidate_count":counts.get::<_,i64>(5),"map_visible_count":counts.get::<_,i64>(6),"coarse_placeable_count":counts.get::<_,i64>(7)},"meta":{"private_preview":true,"snapshot_id":snapshot_id,"runtime_ledger":runtime_ledger}}),
     )
 }
 
