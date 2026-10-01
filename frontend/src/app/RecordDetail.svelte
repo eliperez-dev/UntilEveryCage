@@ -426,10 +426,10 @@
     min-width: 0;
     /* The host rail owns scrolling so the detail panel does not create a nested scroll region. */
     overflow: visible;
-    padding: 1.1rem;
+    padding: 0.8rem;
     color: var(--ink);
     background: #171a18;
-    font: 0.82rem/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    font: 0.76rem/1.42 system-ui, -apple-system, "Segoe UI", sans-serif;
   }
 
   .detail * {
@@ -444,14 +444,14 @@
   }
 
   .kind {
-    margin: 1.2rem 0 0.2rem;
+    margin: .8rem 0 0.15rem;
     color: var(--muted);
     font-size: 0.72rem;
   }
 
   .detail h1 {
     margin: 0.25rem 2rem 0.3rem 0;
-    font: 500 1.55rem/1.2 Georgia, serif;
+    font: 500 1.3rem/1.2 Georgia, serif;
   }
 
   .activity,
@@ -470,12 +470,12 @@
   }
 
   section {
-    margin-top: 1.2rem;
+    margin-top: .8rem;
   }
 
   h2 {
     margin: 0;
-    padding: 0.55rem 0;
+    padding: 0.4rem 0;
     border-bottom: 1px solid var(--line);
     font: 600 0.9rem/1.3 system-ui, sans-serif;
   }
@@ -488,7 +488,7 @@
     display: grid;
     grid-template-columns: minmax(7rem, 34%) 1fr;
     gap: 0.7rem;
-    padding: 0.55rem 0;
+    padding: 0.38rem 0;
     border-bottom: 1px solid #303632;
   }
 
@@ -531,7 +531,7 @@
   }
 
   button {
-    min-height: 2.5rem;
+    min-height: 2.1rem;
     padding: 0.45rem 0.7rem;
     border: 1px solid #69716a;
     color: var(--ink);

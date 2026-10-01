@@ -41,6 +41,7 @@ export type RealPreviewVisualSettings = Readonly<{
   referenceOpacity: number;
   coordinateRadius: number;
   showReferenceLabels: boolean;
+  selectedKey?: string | null;
 }>;
 
 const cityReference = ['any', ['==', ['get', 'precision'], 'city'], ['==', ['get', 'precision'], 'city_reference_approximate']];
@@ -96,7 +97,7 @@ export function addRealPreviewMapLayers(
       'circle-radius': referenceRadiusExpression(DEFAULT_REFERENCE_RADIUS_KM),
       // The full 3 km geometry remains visible and clickable, but a very light
       // wash prevents dense city references from obscuring the basemap.
-      'circle-opacity': ['case', cityReference, 0.05, 0.96],
+      'circle-opacity': ['case', cityReference, 0.08, 0.96],
       'circle-stroke-color': ['case', cityReference, '#79b9da', '#86aeca'],
       'circle-stroke-width': ['case', cityReference, 1, 3],
       'circle-stroke-opacity': ['case', cityReference, 0.42, 1],
@@ -169,7 +170,10 @@ export async function setRealPreviewPinMode(map: MapLibreMap, enabled: boolean, 
 export function applyRealPreviewVisualSettings(map: MapLibreMap, settings: RealPreviewVisualSettings): void {
   if (!map.getLayer('aggregate-outer')) return;
   map.setPaintProperty('aggregate-outer', 'circle-radius', referenceRadiusExpression(settings.referenceRadiusKm) as any);
-  map.setPaintProperty('aggregate-outer', 'circle-opacity', ['case', cityReference, settings.referenceOpacity, 0.96] as any);
+  const selected = settings.selectedKey
+    ? ['==', ['get', 'key'], settings.selectedKey]
+    : false;
+  map.setPaintProperty('aggregate-outer', 'circle-opacity', ['case', cityReference, ['case', selected, 0.3, settings.referenceOpacity], 0.96] as any);
   map.setPaintProperty('aggregate-outer', 'circle-stroke-opacity', ['case', cityReference, Math.min(0.7, settings.referenceOpacity * 5 + 0.17), 1] as any);
   map.setPaintProperty('source-coordinate-points', 'circle-radius', settings.coordinateRadius);
   map.setLayoutProperty('aggregate-kind', 'visibility', settings.showReferenceLabels ? 'visible' : 'none');

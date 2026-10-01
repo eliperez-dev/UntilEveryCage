@@ -185,16 +185,18 @@
     {#if mode === 'real-preview' && counts}
       <aside class:expanded={coverageOpen} class="private-counts" aria-label="Map information">
         <button type="button" aria-expanded={coverageOpen} aria-controls="coverage-details" disabled={state.listOpen} title={state.listOpen ? 'Close Search to inspect map information' : undefined} onclick={() => coverageOpen = !coverageOpen}>
-          <span>Preview</span><strong>{counts.mapVisibleCount.toLocaleString()} mapped</strong><span aria-hidden="true">{coverageOpen ? '−' : '+'}</span>
+          <span>Preview</span><strong>{counts.facilityCandidateCount.toLocaleString()} candidates</strong><span aria-hidden="true">{coverageOpen ? '−' : '+'}</span>
         </button>
         {#if coverageOpen}<div id="coverage-details" class="coverage-details">
           <p>Private development preview · not publication-approved. Counts describe the current private projection, not complete worldwide coverage.</p>
           <dl>
-            <div><dt>Map-visible locations</dt><dd>{counts.mapVisibleCount.toLocaleString()}</dd></div>
-            <div><dt>Approx. city / postal</dt><dd>{counts.cityPostalCount.toLocaleString()}</dd></div>
-            <div><dt>Candidate records</dt><dd>{counts.facilityCandidateCount.toLocaleString()}</dd></div>
+            <div><dt>Source-coordinate locations</dt><dd>{counts.numericCoordinateCount.toLocaleString()}</dd></div>
+            <div><dt>Approx. display references</dt><dd>{Math.max(0, counts.mapVisibleCount - counts.numericCoordinateCount).toLocaleString()}</dd></div>
+            <div><dt>Private candidates</dt><dd>{counts.facilityCandidateCount.toLocaleString()}</dd></div>
+            <div><dt>Source observations</dt><dd>90,164</dd></div>
+            <div><dt>Unmapped candidates</dt><dd>{counts.unmappedCandidateCount?.toLocaleString() ?? 'Unavailable'}</dd></div>
           </dl>
-          <small>Source: {state.sourceId ?? 'All available sources'} · Map position and candidate counts are not one-to-one.</small>
+          <small>Source: {state.sourceId ?? 'All available sources'} · Coordinates are precision-unverified; none are labeled exact or approved.</small>
         </div>{/if}
       </aside>
     {/if}
