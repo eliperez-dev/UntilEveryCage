@@ -1,6 +1,7 @@
 export type RouteState =
   | Readonly<{ kind: 'map' }>
   | Readonly<{ kind: 'database' }>
+  | Readonly<{ kind: 'methodology' }>
   | Readonly<{ kind: 'record'; facilityId: string }>
   | Readonly<{ kind: 'not-found'; fragment: string }>;
 
@@ -13,6 +14,7 @@ export function parseRoute(hash: string): RouteState {
 
   if (path === '/' || path === '/map') return { kind: 'map' };
   if (path === '/database') return { kind: 'database' };
+  if (path === '/methodology') return { kind: 'methodology' };
 
   // Keep old shared links working while the public route changes to /records/:id.
   const recordMatch = /^\/(?:records|locations)\/([a-z0-9-]+)$/.exec(path);
@@ -24,5 +26,6 @@ export function parseRoute(hash: string): RouteState {
 export function serializeRoute(route: RoutableState): string {
   if (route.kind === 'map') return '#/map';
   if (route.kind === 'database') return '#/database';
+  if (route.kind === 'methodology') return '#/methodology';
   return `#/records/${encodeURIComponent(route.facilityId)}`;
 }

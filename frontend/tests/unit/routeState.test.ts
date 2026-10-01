@@ -12,6 +12,11 @@ describe('routeState', () => {
     expect(parseRoute('#/database')).toEqual({ kind: 'database' });
   });
 
+  it('parses the methodology route without treating return context as a route', () => {
+    expect(parseRoute('#/methodology?map=%23%2Fmap%3Ff1a%3Dfield')).toEqual({ kind: 'methodology' });
+    expect(serializeRoute({ kind: 'methodology' })).toBe('#/methodology');
+  });
+
   it('parses record routes and ignores unrelated query parameters', () => {
     expect(parseRoute('#/records/syn-north-star?source=shared')).toEqual({
       kind: 'record',

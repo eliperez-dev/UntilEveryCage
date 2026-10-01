@@ -4,6 +4,7 @@ export type RealPreviewMapFeed = Readonly<{
   collection: JsonMapCollection;
   snapshotId: string;
   cacheStatus: 'hit' | 'miss' | 'unavailable';
+  decodedBytes?: number;
 }>;
 
 export class RealPreviewMapFeedError extends Error {
@@ -99,7 +100,7 @@ export function createRealPreviewMapFeedRepository(fetcher: typeof fetch = fetch
         const cached = await projectionCache.match(cacheKey(snapshotId, sourceId));
         if (cached) {
           const parsed = parseRealPreviewMapFeed(await cached.json());
-          if (parsed.snapshotId === snapshotId) return { ...parsed, cacheStatus: 'hit' };
+          if (parsed.snapshotId === snapshotId) return { ...parsed, cacheStatus: 'hit', decodedBytes: new TextEncoder().encode(JSON.stringify(parsed.collection)).byteLength };
         }
       }
       const response = await fetcher(`/dev/real-preview/map/feed${params.size ? `?${params}` : ''}`, {
@@ -125,7 +126,20 @@ export function createRealPreviewMapFeedRepository(fetcher: typeof fetch = fetch
           if (!request.url.includes(`/__uec_private_map_cache__/${snapshotId}/`)) await projectionCache.delete(request);
         }
       }
-      return { ...parsed, cacheStatus: projectionCache ? 'miss' : 'unavailable' };
+      return { ...parsed, cacheStatus: projectionCache ? 'miss' : 'unavailable', decodedBytes: new TextEncoder().encode(JSON.stringify(parsed.collection)).byteLength };
     },
   };
+}
+
+export async function clearRealPreviewMapCache(): Promise<number> {
+  if (typeof caches === 'undefined') return 0;
+  const cache = await caches.open(CACHE_NAME);
+  const entries = await cache.keys();
+  await Promise.all(entries.map((request) => cache.delete(request)));
+  return entries.length;
+}
+
+export async function realPreviewMapCacheEntryCount(): Promise<number | null> {
+  if (typeof caches === 'undefined') return null;
+  return (await (await caches.open(CACHE_NAME)).keys()).length;
 }

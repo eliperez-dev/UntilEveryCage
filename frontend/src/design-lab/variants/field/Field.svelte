@@ -152,6 +152,7 @@
   // subscription rather than Svelte's rune. Use a store for this DOM binding.
   const searchToggle = writable<HTMLButtonElement | undefined>(undefined);
   const debugOpen = writable(false);
+  const debugEnabled = writable(false);
   const initialSelectedId = (() => {
     if (typeof location === "undefined") return null;
     const route = new URLSearchParams(location.hash.split("?")[1] ?? "");
@@ -244,7 +245,7 @@
     initialSelectionFlightHandled = true;
     if (detailRecord.latitude != null && detailRecord.longitude != null) {
       flyTo(detailRecord.longitude, detailRecord.latitude,
-        detailRecord.precision === "city" ? 8 : detailRecord.precision === "exact" ? 12 : 10);
+        detailRecord.precision === "city" ? 10 : 14);
     }
   });
   function selectSearchRecord(id: string) {
@@ -253,7 +254,7 @@
         record?.latitude !== undefined && record?.longitude !== undefined) {
       // A city reference remains an approximation; do not zoom into a parcel.
       flyTo(record.longitude, record.latitude,
-        record.precision === "city" ? 8 : record.precision === "exact" ? 12 : 10);
+        record.precision === "city" ? 10 : 14);
     }
     selectRecord(id);
   }
@@ -350,7 +351,7 @@
 
 <svelte:window onkeydown={onKeydown} />
 <section class="field-view">
-  <PreviewMasthead current="map" {mapHref} {databaseHref} />
+  <PreviewMasthead current="map" {mapHref} {databaseHref} debugEnabled={$debugEnabled} ondebugchange={(enabled) => { debugEnabled.set(enabled); if (!enabled) debugOpen.set(false); }} />
   <section class="map-stage" aria-label="Investigative map field">
     {#if mode === "synthetic" && state.scenario === "loading"}<div class="status" role="status">
         Loading records…
@@ -368,6 +369,7 @@
         {mapTruncated}
         {mapDiagnostics}
         flightTarget={$flightTarget}
+        debugEnabled={$debugEnabled}
         suppressDiagnostics={state.listOpen && !selected}
         referenceLoading={aggregateLoading}
         onmaptiming={(timing) => onMapTiming?.(timing)}
@@ -402,15 +404,15 @@
       >
         {dataError}
       </div>{/if}
-    {#if !state.listOpen || selected}<button
+    {#if !state.listOpen}<button
       class="search-toggle"
       bind:this={$searchToggle}
       type="button"
-      aria-expanded={state.listOpen && !selected}
+      aria-expanded={state.listOpen}
       aria-controls="field-record-list"
       onclick={() => dispatch({ type: "list", value: !state.listOpen })}
       ><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg><span class="search-toggle-copy"><strong>Search map</strong><small>{state.query || state.sourceId ? "Search or filters active" : "Places, facilities, sources"}</small></span></button>{/if}
-    {#if state.listOpen && !selected}<aside
+    {#if state.listOpen}<aside
         class="results"
         id="field-record-list"
         aria-label={aggregateOpen
@@ -754,6 +756,8 @@
     border: 1px solid var(--line);
     background: #171a18;
   }
+  .map-stage:has(.results):has(.reading-sheet) .results { width:min(31rem, calc(50% - 1.5rem)); }
+  .map-stage:has(.results):has(.reading-sheet) .reading-sheet { width:min(25rem, calc(50% - 1.5rem)); }
   .results header {
     display: flex;
     justify-content: space-between;
@@ -930,6 +934,8 @@
       height: auto;
       max-height: 67dvh;
     }
+    .map-stage:has(.results):has(.reading-sheet) .results { display:none; }
+    .map-stage:has(.results):has(.reading-sheet) .reading-sheet { width:auto; }
     .map-stage:has(.reading-sheet) .search-toggle { display: none; }
     .world-position { bottom: 7.5rem; right: 0.4rem; }
     .map-stage:has(.results) .world-position { display: none; }

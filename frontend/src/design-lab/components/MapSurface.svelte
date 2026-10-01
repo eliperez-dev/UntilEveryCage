@@ -29,6 +29,7 @@
     loadJsonFallbackImages,
     setJsonFallbackData,
   } from "./jsonMapFallback";
+  import type { JsonMapCollection } from "./jsonMapFallback";
   import {
     addMvtLocationLayers,
     baseRasterPaint,
@@ -49,7 +50,7 @@
     setRealPreviewMapData,
     setRealPreviewPinMode,
   } from "./realPreviewMapLayers";
-  import { createRealPreviewMapFeedRepository } from "../../api/RealPreviewMapFeedRepository";
+  import { clearRealPreviewMapCache, createRealPreviewMapFeedRepository, realPreviewMapCacheEntryCount } from "../../api/RealPreviewMapFeedRepository";
 
   let {
     records,
@@ -62,6 +63,7 @@
     referenceLoading = false,
     flightTarget = null,
     suppressDiagnostics = false,
+    debugEnabled = false,
     onmaptiming,
     onselect,
     onaggregate,
@@ -87,6 +89,7 @@
     referenceLoading?: boolean;
     flightTarget?: Readonly<{ id: number; longitude: number; latitude: number; zoom: number }> | null;
     suppressDiagnostics?: boolean;
+    debugEnabled?: boolean;
     onmaptiming?(timing: MapTiming): void;
     onselect(id: string): void;
     onaggregate(memberIds: readonly string[]): void;
@@ -112,6 +115,10 @@
   let feedAbort: AbortController | undefined;
   let feedGeneration = 0;
   let requestedFeedSourceId: string | null | undefined;
+  let nativeFullCollection: JsonMapCollection | undefined;
+  // Viewport updates replace `state`; only a changed source filter may rebuild
+  // the native Supercluster index from the already-loaded map projection.
+  let appliedNativeSourceId: string | null | undefined;
   let appliedMvtTileSignature: string | undefined;
   let feedStatus = $state<"loading" | "ready" | "error">("loading");
   // These are milestones, not a guessed byte or worker percentage.
@@ -124,6 +131,12 @@
   let zoomStartedAt: number | null = null;
   let zoomSettleMs = $state<number | null>(null);
   let nativeFeedRequests = $state(0);
+  let nativeSnapshotId = $state("—");
+  let nativeCacheStatus = $state("unavailable");
+  let nativeCacheEntries = $state<number | null>(null);
+  let nativeDecodedBytes = $state<number | null>(null);
+  let cacheClearStatus = $state("");
+  let selectedReferenceKey = $state<string | null>(null);
   let nativeFeedMs = $state<number | null>(null);
   let nativeIndexMs = $state<number | null>(null);
   let nativeRebuildMs = $state<number | null>(null);
@@ -163,7 +176,7 @@
   let clusterMaxZoom = $state(DEFAULT_CLUSTER_MAX_ZOOM);
   let clusterEnabled = $state(true);
   let referenceRadiusKm = $state<number>(DEFAULT_REFERENCE_RADIUS_KM);
-  let referenceOpacity = $state(0.05);
+  let referenceOpacity = $state(0.08);
   let visibleApproximateCount = $state(0);
   let coordinateRadius = $state(6.5);
   let showReferenceLabels = $state(false);
@@ -230,7 +243,7 @@
       : [],
   );
   const diagnosticsEnabled = $derived(
-    import.meta.env.DEV && mode === "real-preview",
+    import.meta.env.DEV && mode === "real-preview" && debugEnabled,
   );
   const isRealPreview = () => mode === "real-preview";
   // The private development preview intentionally uses the reviewed, in-memory
@@ -449,6 +462,7 @@
       referenceOpacity,
       coordinateRadius,
       showReferenceLabels,
+      selectedKey: selectedReferenceKey ?? mapState.selectedId,
     });
   }
   function updateVisibleApproximateCount(instance: MapLibreMap): void {
@@ -463,6 +477,10 @@
     ondebugopenchange?.(open);
     if (!open && restoreFocus) diagnosticsToggle?.focus();
   }
+  $effect(() => {
+    mapState.selectedId;
+    if (map?.isStyleLoaded()) updateVisualSettings();
+  });
   $effect(() => {
     if (suppressDiagnostics && diagnosticsOpen) setDiagnosticsOpen(false, false);
   });
@@ -493,7 +511,7 @@
   async function loadRealPreviewFeed() {
     const instance = map;
     if (!instance) return;
-    const sourceId = mapState.sourceId;
+    const sourceId = null;
     if (requestedFeedSourceId === sourceId &&
         (feedStatus === "loading" || (feedStatus === "ready" && instance.getSource("locations")))) return;
     requestedFeedSourceId = sourceId;
@@ -512,13 +530,20 @@
       const requestedAt = performance.now();
       const result = await mapFeedRepository.load(sourceId, controller.signal);
       if (controller.signal.aborted || map !== instance || generation !== feedGeneration) return;
+      nativeSnapshotId = result.snapshotId;
+      nativeCacheStatus = result.cacheStatus;
+      nativeDecodedBytes = result.decodedBytes ?? null;
+      nativeCacheEntries = await realPreviewMapCacheEntryCount();
       nativeFeedMs = Math.round(performance.now() - requestedAt);
       nativeUnitCount = result.collection.features.length;
       nativeRepresentedCount = result.collection.features.reduce((total, feature) => total + Number(feature.properties.weight), 0);
+      nativeFullCollection = result.collection;
       nativeIndexStartedAt = performance.now();
       startupStage = "indexing";
-      if (instance.getSource("locations")) setRealPreviewMapData(instance, result.collection);
-      else addRealPreviewMapLayers(instance, result.collection, { enabled: clusterEnabled, radius: clusterRadius, maxZoom: clusterMaxZoom });
+      const visible = filteredNativeCollection(result.collection, mapState.sourceId);
+      if (instance.getSource("locations")) setRealPreviewMapData(instance, visible);
+      else addRealPreviewMapLayers(instance, visible, { enabled: clusterEnabled, radius: clusterRadius, maxZoom: clusterMaxZoom });
+      appliedNativeSourceId = mapState.sourceId;
       roundedClusterTilesAvailable = setClusterTileRounding(instance, clusterMaxZoom);
       if (useRoundedClusterTiles(clusterMaxZoom) && !roundedClusterTilesAvailable)
         clusterSettingsError = `This MapLibre build cannot apply half-zoom tile selection; effective cutoff is zoom ${nativeClusterMaxZoom(clusterMaxZoom) + 1}.`;
@@ -530,6 +555,24 @@
       feedStatus = "error";
       mvtError = error instanceof Error ? error.message : "The private map feed could not be loaded.";
     }
+  }
+  function filteredNativeCollection(collection: JsonMapCollection, sourceId: string | null): JsonMapCollection {
+    return sourceId
+      ? { ...collection, features: collection.features.filter((feature) => feature.properties.source_id === sourceId) }
+      : collection;
+  }
+  function applyLocalSourceFilter(sourceId: string | null) {
+    if (!map || !nativeFullCollection || !map.getSource("locations")) return;
+    if (appliedNativeSourceId === sourceId) return;
+    nativeIndexStartedAt = performance.now();
+    startupStage = "indexing";
+    setRealPreviewMapData(map, filteredNativeCollection(nativeFullCollection, sourceId));
+    appliedNativeSourceId = sourceId;
+  }
+  async function clearProjectionCache() {
+    const removed = await clearRealPreviewMapCache();
+    nativeCacheEntries = 0;
+    cacheClearStatus = removed ? `Cleared ${removed} cached projection ${removed === 1 ? "entry" : "entries"}.` : "Projection cache was already empty.";
   }
   function addMvtLayers() {
     if (!map) return;
@@ -900,6 +943,8 @@
         }
         const key = properties?.key;
         if (typeof key === "string") {
+          selectedReferenceKey = key;
+          updateVisualSettings();
           const count = Number(properties?.weight);
           pendingReference = { key, count: Number.isFinite(count) ? count : 0, observedLoading: false };
           onreference?.(key, typeof properties?.source_id === "string" ? properties.source_id : undefined);
@@ -1096,7 +1141,8 @@
       replaceMapProjection();
     } else if (mode === "real-preview" && map?.isStyleLoaded()) {
       source;
-      void loadRealPreviewFeed();
+      if (nativeFullCollection) applyLocalSourceFilter(source);
+      else void loadRealPreviewFeed();
     }
   });
   $effect(() => {
@@ -1128,7 +1174,7 @@
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       map.jumpTo(camera);
     } else {
-      map.flyTo({ ...camera, essential: false, speed: 1.2 });
+      map.flyTo({ ...camera, essential: false, speed: 2.8, curve: 1.2 });
     }
   });
   $effect(() => {
@@ -1163,11 +1209,11 @@
   aria-label="Map showing records"
 >
   <div class="map-host" bind:this={host}></div>
-  <small class="review-disclosure"
+  <small class="review-disclosure" aria-label="Private preview status"
     >{mode === "real-preview"
       ? mapState.sourceId === "us.fsis"
         ? "Local private rehearsal · FSIS source-provided coordinates, precision unverified · not approved or published"
-        : "Private real V2 preview · not approved or published"
+        : "Private preview · not published"
       : "Synthetic development data"}</small
   >{#if mode === "real-preview" && visibleApproximateCount > 0}<small class="approximation-cue"
       ><i aria-hidden="true"></i>Approximate locations · 3 km display area</small
@@ -1260,14 +1306,17 @@
               <dd>{mapDiagnostics.sourceId ?? "All sources"}</dd>
             </div>
           {:else}
+            <div><dt>Snapshot</dt><dd title={nativeSnapshotId}>{nativeSnapshotId === "—" ? "—" : nativeSnapshotId.slice(0, 12)}</dd></div>
             <div>
               <dt>Projection / zoom</dt>
               <dd>Native MapLibre · {mapState.viewport.zoom.toFixed(1)}</dd>
             </div>
             <div>
               <dt>Map feed</dt>
-              <dd>{feedStatus} · {nativeFeedRequests} request{nativeFeedRequests === 1 ? "" : "s"} · {nativeFeedMs === null ? "—" : `${nativeFeedMs} ms`}</dd>
+              <dd>{feedStatus} · cache {nativeCacheStatus} · {nativeFeedRequests} request{nativeFeedRequests === 1 ? "" : "s"} · {nativeFeedMs === null ? "—" : `${nativeFeedMs} ms`}</dd>
             </div>
+            <div><dt>Projection size</dt><dd>{nativeDecodedBytes === null ? "Unavailable" : `${(nativeDecodedBytes / 1_048_576).toFixed(2)} MB decoded`} · compressed transfer unavailable</dd></div>
+            <div><dt>Projection cache</dt><dd>{nativeCacheEntries === null ? "Unavailable" : `${nativeCacheEntries} ${nativeCacheEntries === 1 ? "entry" : "entries"}`}</dd></div>
             <div>
               <dt>Loaded map units</dt>
               <dd>{nativeUnitCount.toLocaleString()} · {nativeRepresentedCount.toLocaleString()} represented</dd>
@@ -1277,18 +1326,6 @@
               <dd>{nativeIndexMs === null ? "waiting" : `${nativeIndexMs} ms`}</dd>
             </div>
             <div>
-              <dt>Last index rebuild</dt>
-              <dd>{nativeRebuildMs === null ? "—" : `${nativeRebuildMs} ms`}</dd>
-            </div>
-            <div>
-              <dt>Camera motion</dt>
-              <dd>{nativeCameraMoveendMs === null ? "—" : `${nativeCameraMoveendMs} ms`}</dd>
-            </div>
-            <div>
-              <dt>Camera → map idle</dt>
-              <dd>{nativeCameraIdleMs === null ? "—" : `${nativeCameraIdleMs} ms`}{nativeBasemapPendingAtMoveend ? " · basemap pending" : ""}{nativeOverlayPendingAtMoveend ? " · overlay pending" : ""}</dd>
-            </div>
-            <div>
               <dt>Rendered marks</dt>
               <dd>{nativeRenderedCount === null ? "open menu and move map" : nativeRenderedCount.toLocaleString()}</dd>
             </div>
@@ -1296,6 +1333,7 @@
               <dt>Source filter</dt>
               <dd>{mapState.sourceId ?? "All sources"}</dd>
             </div>
+            <div class="debug-action"><dt>Local cache</dt><dd><button type="button" onclick={clearProjectionCache}>Clear map projection cache</button>{#if cacheClearStatus}<small role="status">{cacheClearStatus}</small>{/if}</dd></div>
           {/if}
         </dl>
         {#if mode === "real-preview" && usingMvt}
