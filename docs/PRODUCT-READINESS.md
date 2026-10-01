@@ -146,6 +146,22 @@ authorization and UI behavior remain a separate validation gate. The verified
 database backup and per-source recovery matrix are retained outside the
 repository in the approved private backup location.
 
+### Source evidence recovery follow-up — 2026-10-01
+
+The six recovered runs are now the latest source evidence in the authoritative
+private database. Latest-per-source totals are 90,166 observations, 60,220
+candidates, and 38,634 map-visible groups (36,841 numeric, 1,793 coarse); all
+60,220 candidate assignment sets and 61,775 assignment rows are retained, with
+zero public rows. The only baseline delta is IT 1069 (+2 observations, +2
+candidates, +1 map-visible). France, IT 853, and FSIS assignments remain
+preserved. Belgium has 1,794 directly mapped grouped candidates; UK FSA has
+3,204 partial and 1,087 unmapped derived groups. IT 1069 and Spain remain
+unclassified, while the two Australian sources remain candidate/ambiguous;
+none of those four sources gained a confirmed positive primary assignment.
+Exact run IDs, source counts, retained artifact hashes, and the pre-import
+backup checksum are recorded in the
+[source evidence integration manifest](../data/manifests/source-evidence-integration-20261001.json).
+
 ## Status vocabulary
 
 Use exactly one status for each roadmap item or gate:

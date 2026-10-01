@@ -47,10 +47,29 @@
         }
       },
       "taxonomy_projection": {
-        "mapping_methods": {"direct": 4032, "derived": 0, "candidate": 0},
-        "mapping_statuses": {"mapped": 4032, "partial": 0, "ambiguous": 0, "unmapped": 0, "unclassified": 0, "conflicting": 0},
-        "multi_assignment_candidates": 0,
-        "assignment_leaf_counts": {
+        "handoff_record_projection": {
+          "records": 4032,
+          "mapping_methods": {"direct": 4032, "derived": 0, "candidate": 0},
+          "mapping_statuses": {"mapped": 4032, "partial": 0, "ambiguous": 0, "unmapped": 0, "unclassified": 0, "conflicting": 0}
+        },
+        "grouped_candidate_projection": {
+          "candidate_assignment_sets": 1794,
+          "mapping_methods": {"direct": 1794},
+          "mapping_statuses": {"mapped": 1794},
+          "assignment_rows": 2290,
+          "multi_activity_candidate_sets": 363,
+          "candidate_sets_by_primary": {
+            "other_regulated_premises": 482,
+            "processing_and_preparation": 1513,
+            "slaughter": 76
+          },
+          "assignment_rows_by_primary": {
+            "other_regulated_premises": 497,
+            "processing_and_preparation": 1717,
+            "slaughter": 76
+          }
+        },
+        "handoff_record_assignment_leaf_counts": {
           "animal_by_products": 118,
           "cutting": 993,
           "logistics_and_storage": 941,
@@ -106,7 +125,25 @@
       "taxonomy_projection": {
         "mapping_methods": {"direct": 0, "derived": 4291, "candidate": 0},
         "mapping_statuses": {"mapped": 0, "partial": 3204, "ambiguous": 0, "unmapped": 1087, "unclassified": 0, "conflicting": 0},
-        "multi_assignment_candidates": 402,
+        "grouped_candidate_projection": {
+          "candidate_assignment_sets": 4291,
+          "mapping_methods": {"derived": 4291},
+          "mapping_statuses": {"partial": 3204, "unmapped": 1087},
+          "assignment_rows": 4749,
+          "multi_activity_candidate_sets": 402,
+          "candidate_sets_by_primary": {
+            "other_regulated_premises": 26,
+            "processing_and_preparation": 3141,
+            "slaughter": 163,
+            "unclassified": 1087
+          },
+          "assignment_rows_by_primary": {
+            "other_regulated_premises": 26,
+            "processing_and_preparation": 3473,
+            "slaughter": 163,
+            "unclassified": 1087
+          }
+        },
         "assignment_leaf_counts": {
           "cutting": 617,
           "logistics_and_storage": 26,

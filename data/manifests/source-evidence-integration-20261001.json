@@ -1,0 +1,214 @@
+{
+  "schema_version": "source-evidence-integration-validation-v1",
+  "as_of_utc": "2026-10-01",
+  "branch": "eli/source-evidence-integration",
+  "canonical_base": "ecd7badc33cdfec385f0000ab05e330eb180fcb4",
+  "feature_commits": {
+    "be_uk": "e2f19863600bdd012860acb5e920f9659b4718f5",
+    "italy_catalonia": "155a8f33bc12681bc2af4e8161af1a91457d7d3b",
+    "australia": "c00d0e077aba174b192181a8846aa81e366546fd"
+  },
+  "disposable_validation": {
+    "database": "cloned private PostgreSQL 16/PostGIS database; authoritative database unchanged",
+    "seed_dump_bytes": 22303155,
+    "seed_dump_sha256": "13e694e69062c3d6b9ec56cd33ce844b9d196daa83e6f0aac8f67f238050cf49",
+    "migrations_verified": [
+      "054_real_preview_activity_contract",
+      "055_versioned_taxonomy_assignments",
+      "056_real_preview_taxonomy_assignments"
+    ],
+    "latest_per_source_totals": {
+      "observations": 90166,
+      "candidates": 60220,
+      "map_visible": 38634,
+      "public_rows": 0,
+      "expected_delta_from_seed": {
+        "observations": 2,
+        "candidates": 2,
+        "map_visible": 1
+      }
+    },
+    "existing_unaffected_source_totals": {
+      "fr.dgal.section-i": {"observations": 1449, "candidates": 1449, "map_visible": 0},
+      "fr.dgal.section-ii": {"observations": 1068, "candidates": 1067, "map_visible": 0},
+      "it.853-2004": {"observations": 41849, "candidates": 25316, "map_visible": 24263},
+      "us.fsis": {"observations": 7241, "candidates": 7241, "map_visible": 7241}
+    },
+    "source_runs": [
+      {
+        "source_id": "be.locations",
+        "runner_run_id": "refresh-6f0d475bdc0818bd",
+        "run_id": "preview-be-locations-e1ef0007-00b1-40a4-bfc4-7db65206b4dd",
+        "input_rows": 310806,
+        "accepted_rows": 310786,
+        "quarantined_rows": 20,
+        "out_of_scope_rows": 306754,
+        "observations": 4032,
+        "candidates": 1794,
+        "map_visible": 1793,
+        "taxonomy": {
+          "mapping_method": "direct",
+          "mapping_status": "mapped",
+          "candidate_assignment_sets": 1794,
+          "assignment_rows": 2290,
+          "multi_activity_candidate_sets": 363,
+          "candidate_sets_by_primary": {
+            "other_regulated_premises": 482,
+            "processing_and_preparation": 1513,
+            "slaughter": 76
+          }
+        },
+        "activity_evidence_retained": {"candidate_sets_with_source_codes": 1794, "candidate_sets_with_source_labels": 1794}
+      },
+      {
+        "source_id": "fsa_approved_establishments",
+        "runner_run_id": "refresh-fb93336e0b57aa27",
+        "run_id": "preview-fsa_approved_establishments-e9f6ccc5-fe78-4472-b9a7-c810508693f4",
+        "input_rows": 5342,
+        "accepted_rows": 4291,
+        "quarantined_rows": 1051,
+        "out_of_scope_rows": 0,
+        "observations": 4291,
+        "candidates": 4291,
+        "map_visible": 0,
+        "taxonomy": {
+          "mapping_method": "derived",
+          "mapping_status_counts": {"partial": 3204, "unmapped": 1087},
+          "candidate_assignment_sets": 4291,
+          "assignment_rows": 4749,
+          "multi_activity_candidate_sets": 402,
+          "candidate_sets_by_primary": {
+            "other_regulated_premises": 26,
+            "processing_and_preparation": 3141,
+            "slaughter": 163,
+            "unclassified": 1087
+          }
+        },
+        "activity_evidence_retained": {"candidate_sets_with_source_labels": 4291}
+      },
+      {
+        "source_id": "it.1069-2009",
+        "runner_run_id": "refresh-3fc0d412c2840a36",
+        "run_id": "preview-it-1069-2009-f70e6ebb-eaf4-4d19-91ba-e288e194e963",
+        "input_rows": 9960,
+        "accepted_rows": 9960,
+        "quarantined_rows": 0,
+        "out_of_scope_rows": 0,
+        "observations": 9960,
+        "candidates": 6538,
+        "map_visible": 5296,
+        "baseline_delta": {"observations": 2, "candidates": 2, "map_visible": 1},
+        "taxonomy": {"mapping_method": "derived", "mapping_status": "unclassified", "candidate_assignment_sets": 6538, "assignment_rows": 6538}
+      },
+      {
+        "source_id": "es.cat.feed-sandach",
+        "runner_run_id": "refresh-92641ee056ef6be6",
+        "run_id": "preview-es-cat-feed-sandach-bc0d3f56-68e8-419e-889e-bd1d837c3c67",
+        "input_rows": 12341,
+        "accepted_rows": 12117,
+        "quarantined_rows": 224,
+        "out_of_scope_rows": 0,
+        "observations": 12117,
+        "candidates": 4367,
+        "map_visible": 0,
+        "taxonomy": {"mapping_method": "derived", "mapping_status": "unclassified", "candidate_assignment_sets": 4367, "assignment_rows": 4367}
+      },
+      {
+        "source_id": "au.npi.facilities",
+        "runner_run_id": "refresh-16c0214992879a34",
+        "run_id": "preview-au-npi-facilities-9c59d47c-244c-4e55-84fb-b2dcc106f30b",
+        "input_rows": 8140,
+        "accepted_rows": 8116,
+        "quarantined_rows": 24,
+        "out_of_scope_rows": 0,
+        "observations": 8116,
+        "candidates": 8116,
+        "map_visible": 0,
+        "taxonomy": {"mapping_method": "candidate", "mapping_status": "ambiguous", "candidate_assignment_sets": 8116, "assignment_rows": 8116}
+      },
+      {
+        "source_id": "au.sa.epa.licensed-activities",
+        "runner_run_id": "refresh-b628f2bb95d66a8b",
+        "run_id": "preview-au-sa-epa-licensed-activities-7ab9d755-1a29-42a5-a321-fb405b2d07b4",
+        "input_rows": 4531,
+        "accepted_rows": 43,
+        "quarantined_rows": 4488,
+        "out_of_scope_rows": 4488,
+        "observations": 43,
+        "candidates": 41,
+        "map_visible": 41,
+        "taxonomy": {"mapping_method": "candidate", "mapping_status": "ambiguous", "candidate_assignment_sets": 41, "assignment_rows": 41}
+      }
+    ],
+    "idempotent_replay": {
+      "all_six_same_db_replays_passed": true,
+      "public_rows": 0
+    },
+    "taxonomy_guardrails": {
+      "confirmed_primary_assignments_for_it1069_es_or_au": 0,
+      "fr_it853_fsis_assignment_sets_preserved": true,
+      "current_latest_candidate_assignment_sets": 60220,
+      "current_latest_assignment_rows": 61775
+    },
+    "api_checks": {
+      "private_preview_counts": {"candidates": 60220, "map_visible": 38634, "public_rows": 0},
+      "source_filter_list": true,
+      "source_search": true,
+      "category_and_source_filter": {"category": "slaughter", "source_id": "be.locations", "matching_candidates_checked": 76},
+      "candidate_detail_disclaims_approval_and_publication": true,
+      "map_feed": {
+        "features": 37285,
+        "candidate_weight": 38634,
+        "source_weights": {
+          "au.sa.epa.licensed-activities": 41,
+          "be.locations": 1793,
+          "it.1069-2009": 5296,
+          "it.853-2004": 24263,
+          "us.fsis": 7241
+        }
+      }
+    }
+  },
+  "private_archive": {
+    "file_count": 148,
+    "total_bytes": 1674191047,
+    "archive_manifest_sha256": "ec39faba3348dc02d44dd7cc3816fc8673cf48918969fecf668bfd3406b24e07",
+    "all_file_sizes_and_sha256_verified": true
+  },
+  "authoritative_import": {
+    "status": "appended; latest-source projection verified",
+    "pre_import_backup": {
+      "format": "PostgreSQL custom dump",
+      "bytes": 22303155,
+      "sha256": "5df7f81a8e5696dc2a602f7b8795fe06b7f4c3b9d390635b50ae773e20b21b10",
+      "restored_and_verified_in_disposable_postgresql_16": true
+    },
+    "latest_per_source_totals": {
+      "observations": 90166,
+      "candidates": 60220,
+      "map_visible": 38634,
+      "numeric_map_visible": 36841,
+      "coarse_map_visible": 1793,
+      "public_rows": 0,
+      "candidate_assignment_sets": 60220,
+      "assignment_rows": 61775
+    },
+    "source_runs_appended": 6,
+    "pre_existing_run_history_preserved": true,
+    "no_public_release_mutation": true
+  },
+  "verification": {
+    "focused_merged_suite": {"tests": 100, "status": "passed"},
+    "full_pipeline_suite": {"tests": 408, "failures": 3, "errors": 2, "status": "failed_preexisting_or_time_sensitive"},
+    "full_suite_failures": [
+      "FSIS configured max_attempts is 2 while the existing test expects 3.",
+      "Geocoding source-count snapshot expects 256 while the current report contains 257.",
+      "Geocoding rank-order snapshot expects dk.smiley while the current rank is be.locations."
+    ],
+    "full_suite_errors": [
+      "Two FSIS refresh fixture tests rejected their fixed source effective-date as not current on 2026-10-01."
+    ]
+  },
+  "publication": "not_authorized",
+  "privacy": "Aggregate counts and hashes only; no source rows or coordinates are in this manifest."
+}
