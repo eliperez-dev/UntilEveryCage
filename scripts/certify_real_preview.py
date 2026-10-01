@@ -40,6 +40,28 @@ def _hash(value: Any, name: str) -> str:
     return value.lower()
 
 
+def _denmark_geocoding_evidence(source_summary: dict[str, Any], accepted_rows: int) -> dict[str, Any]:
+    """Validate row-free queue evidence without implying geocoding approval."""
+    value = source_summary.get("geocoding")
+    if not isinstance(value, dict) or value.get("geocoder_called") is not False:
+        raise CertificationError("Denmark async geocoding queue evidence is missing or was unexpectedly executed")
+    fields = ("records_seen", "unresolved_records", "source_coordinate_records", "eligible_records",
+              "queued_records", "eligible_without_usable_address")
+    counts = {field: _integer(value.get(field), f"Denmark geocoding {field}") for field in fields}
+    states = value.get("eligibility_state_counts")
+    if not isinstance(states, dict) or any(not isinstance(key, str) for key in states):
+        raise CertificationError("Denmark geocoding eligibility states are missing")
+    state_counts = {key: _integer(count, f"Denmark geocoding state {key}") for key, count in states.items()}
+    if (counts["records_seen"] != accepted_rows
+            or counts["unresolved_records"] + counts["source_coordinate_records"] != counts["records_seen"]
+            or sum(state_counts.values()) != counts["records_seen"]
+            or counts["eligible_records"] != state_counts.get("eligible_pending_queue", 0)
+            or counts["queued_records"] > counts["eligible_records"]):
+        raise CertificationError("Denmark geocoding eligibility and queue counts do not reconcile")
+    return {**counts, "eligibility_state_counts": dict(sorted(state_counts.items())),
+            "geocoder_called": False, "publication_approval": False}
+
+
 def validate_ledger(ledger: dict[str, Any], source_id: str) -> dict[str, Any]:
     """Validate exact run identity and safe row-free lifecycle aggregates."""
     if ledger.get("status") != "imported" or ledger.get("source_id") != source_id:
@@ -121,6 +143,8 @@ def validate_ledger(ledger: dict[str, Any], source_id: str) -> dict[str, Any]:
         raise CertificationError("input rows do not reconcile to accepted plus quarantined")
     if accepted_count < counts["observations"]:
         raise CertificationError("imported observations exceed accepted source rows")
+    geocoding = (_denmark_geocoding_evidence(source_summary, accepted_count)
+                 if source_id == "dk.smiley" else None)
 
     acquisition_hashes: set[str] = set()
     def collect_hashes(value: Any) -> None:
@@ -164,7 +188,7 @@ def validate_ledger(ledger: dict[str, Any], source_id: str) -> dict[str, Any]:
     return {"run_id": run_id, "runner_run_id": source_run["run_id"], "counts": counts,
             "hashes": hashes, "input_rows": input_count, "accepted_rows": accepted_count,
             "quarantined_rows": quarantined, "out_of_scope_rows": out_of_scope,
-            "acquisition_hashes": sorted(acquisition_hashes)}
+            "acquisition_hashes": sorted(acquisition_hashes), "geocoding": geocoding}
 
 
 def _loopback_url(value: str) -> str:
@@ -350,7 +374,9 @@ def certify(source_id: str, ledger_path: Path, database_url: str, api_url: str, 
         "counts": {**evidence["counts"], "input_rows": evidence["input_rows"],
                    "accepted_rows": evidence["accepted_rows"], "quarantined_rows": evidence["quarantined_rows"],
                    "out_of_scope_rows": evidence["out_of_scope_rows"]},
-        "checks": {"lifecycle_and_provenance": True, "database": database, "served_private_preview_api": api},
+        "checks": {"lifecycle_and_provenance": True, "database": database, "served_private_preview_api": api,
+                   "geocoding_queue": evidence["geocoding"] is not None},
+        "geocoding": evidence["geocoding"],
         "claims": {"private_preview_only": True, "publication_approval": False,
                    "recurring_health": False, "source_completeness": False,
                    "factual_accuracy": False, "privacy_clearance": False},

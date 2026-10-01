@@ -112,20 +112,40 @@ def _materialize_validated_rows(run_dir: Path) -> tuple[list[dict], list[dict], 
     return accepted_rows, quarantined_rows, findings
 
 
-def _write_geocode_eligible_candidates(input_path: Path, output_path: Path) -> int:
-    """Feed the shared queue builder only explicitly approved exact candidates."""
+def _write_geocode_eligible_candidates(input_path: Path, output_path: Path) -> dict[str, object]:
+    """Feed exact approved candidates to the queue and keep row-free readiness counts."""
     rows = [
         json.loads(line)
         for line in input_path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
+    states: dict[str, int] = {}
+    unresolved = 0
+    source_coordinate_records = 0
     eligible = [
         row for row in rows
         if (row.get("location") or {}).get("exact_geocode_eligible") is True
         and ((row.get("location") or {}).get("exact_geocode_candidate") or {}).get("eligible") is True
     ]
+    for row in rows:
+        location = row.get("location") or {}
+        coordinates = row.get("coordinates") or {}
+        has_source_point = coordinates.get("latitude") not in (None, "") and coordinates.get("longitude") not in (None, "")
+        if not has_source_point:
+            unresolved += 1
+        else:
+            source_coordinate_records += 1
+        state = str(location.get("exact_geocode_candidate_state") or "unknown")
+        states[state] = states.get(state, 0) + 1
     atomic_jsonl(output_path, eligible)
-    return len(eligible)
+    return {
+        "records_seen": len(rows),
+        "unresolved_records": unresolved,
+        "source_coordinate_records": source_coordinate_records,
+        "eligible_records": len(eligible),
+        "eligibility_state_counts": dict(sorted(states.items())),
+        "geocoder_called": False,
+    }
 
 
 def _canonical_evidence(run_dir: Path, input_path: Path, metadata: dict,
@@ -314,15 +334,36 @@ def main(*, run_stage_fn: Callable[[str, Path, list[str]], None] | None = None,
         normalized_path = run_dir / "normalized" / "records.jsonl"
         if classified_path.is_file():
             _materialize_validated_rows(run_dir)
-        geocode_input = run_dir / "05-geocode-queue" / "eligible-candidates.jsonl"
         geocode_source = normalized_path if normalized_path.is_file() else classified_path
+        geocode_input = run_dir / "05-geocode-queue" / "eligible-candidates.jsonl"
         if geocode_source.is_file():
-            _write_geocode_eligible_candidates(geocode_source, geocode_input)
+            eligibility = _write_geocode_eligible_candidates(geocode_source, geocode_input)
         else:
             # Dry orchestration/test harnesses may not materialize stage
             # outputs; keep the queue input explicitly empty in that case.
             atomic_jsonl(geocode_input, [])
+            eligibility = {
+                "records_seen": 0,
+                "unresolved_records": 0,
+                "source_coordinate_records": 0,
+                "eligible_records": 0,
+                "eligibility_state_counts": {},
+                "geocoder_called": False,
+            }
         stage("geocode_queue", SHARED_STAGES / "create-geocode-queue.py", [str(geocode_input), "--output-dir", str(geocode_dir)])
+        queue_metadata = json.loads((geocode_dir / "geocode-queue-metadata.json").read_text(encoding="utf-8"))
+        atomic_json(geocode_dir / "eligibility-metadata.json", {
+            "status": queue_metadata.get("status"),
+            "records_seen": eligibility["records_seen"],
+            "unresolved_records": eligibility["unresolved_records"],
+            "source_coordinate_records": eligibility["source_coordinate_records"],
+            "eligible_records": eligibility["eligible_records"],
+            "queued_records": queue_metadata.get("records_queued"),
+            "eligible_without_usable_address": queue_metadata.get("records_without_usable_address"),
+            "eligibility_state_counts": eligibility["eligibility_state_counts"],
+            "geocoder_called": args.geocode_limit is not None,
+            "policy": "exact address geocoding requires privacy, provider-terms, and profile approval; queueing makes no provider request",
+        })
         if args.geocode_limit is not None:
             geo = [str(geocode_dir / "geocode-queue.jsonl"), "--output", str(run_dir / "06-geocode-results.jsonl"), "--limit", str(args.geocode_limit), "--delay", str(args.geocode_delay), "--provider-config", str(args.geocode_provider_config.resolve()), "--terms-review", str(args.geocode_terms_review.resolve()), "--network"]
             if args.geocode_suppression_keys:

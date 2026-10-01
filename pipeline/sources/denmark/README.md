@@ -82,6 +82,23 @@ exclusion and preview gates. No release or publication approval follows.
 
 ## Strict live private-preview E2E
 
+Latest certified run: retrieval at `2026-10-01T04:01:38Z`, artifact size
+59,862,355 bytes, SHA-256
+`c62f00e58eecbd093de2d76ed5b2471f5de24427424c16842ab3f2ada46800b0`, ETag
+`0x8DF1F70993F128F`, and publisher `Last-Modified` `2026-10-01T04:00:57Z`.
+The export contains 58,815 parsed rows, 58,765 accepted private candidates,
+and 50 quarantined rows. All 58,765 accepted candidates remain unresolved for
+coordinates and held for privacy review; the exact-address DAWA queue therefore
+contains 0 records, and the acquisition command made no geocoder requests.
+Private-preview import and authenticated API checks passed with 58,765
+candidates and 0 map-visible or public rows. Relative to the 2026-09-25 run
+below, the artifact grew by 41,761 bytes, parsed rows increased by 89,
+accepted candidates increased by 88, and quarantines increased by 1. The
+source changed again during this task: a second fetch about 19 minutes earlier
+had the same row counts and byte size but a different hash and earlier
+`Last-Modified`. The publisher supplies no dataset effective date, so these
+HTTP headers describe retrieval evidence only.
+
 On 2026-09-25, this scheduler-safe command acquired the linked XML and ran
 provenance, parsing, normalization, classification, validation/quarantine,
 source-key mapping, transactional private-preview import, idempotent replay,
@@ -119,3 +136,10 @@ Coverage is Find Smiley only, not a Denmark census. Source terms evidence is
 limited to private staging; attribution/current-smiley conditions, address
 privacy, category review, recurring health, and public release remain separate
 gates.
+
+Each strict run also records a row-free location-eligibility summary beside the
+private geocode queue. The source pipeline queues only address candidates that
+have passed privacy, DAWA terms, and provider-profile approval; it does not call
+the geocoder unless a separate, explicitly reviewed geocoding run is requested.
+Unresolved records held at those gates remain visible as aggregate counts in
+the certificate and are not silently discarded or sent to a provider.

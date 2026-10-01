@@ -5,7 +5,7 @@ from .adapter import DenmarkSmileyAdapter, check_refresh
 from pipeline.contracts.adapter_contract import SourceArtifact
 from pipeline.common.orchestrator import run_private_lifecycle
 from pipeline.common.review_metrics import build_private_review_metrics
-from .pipeline import _materialize_validated_rows
+from .pipeline import _materialize_validated_rows, _write_geocode_eligible_candidates
 
 XML = b'<Root><Row><ID_nummer>1</ID_nummer><Virksomhed>Test</Virksomhed></Row><Row><Virksomhed>Unkeyed</Virksomhed></Row></Root>'
 
@@ -120,6 +120,36 @@ class DenmarkAdapterTests(unittest.TestCase):
             }},
         ])
         self.assertEqual(metrics["geospatial"]["coordinate_state_counts"], {"source_point": 1, "unresolved": 1})
+
+    def test_geocode_queue_contains_only_candidates_that_pass_all_gates(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "records.jsonl"
+            target = root / "eligible.jsonl"
+            records = [
+                {"source_record_key": "held", "coordinates": {"latitude": None, "longitude": None},
+                 "location": {"exact_geocode_eligible": False,
+                              "exact_geocode_candidate_state": "held_for_privacy_review"}},
+                {"source_record_key": "eligible", "coordinates": {"latitude": None, "longitude": None},
+                 "location": {"exact_geocode_eligible": True,
+                              "exact_geocode_candidate_state": "eligible_pending_queue",
+                              "exact_geocode_candidate": {"eligible": True}}},
+                {"source_record_key": "source-point", "coordinates": {"latitude": 55.5, "longitude": 12.3},
+                 "location": {"exact_geocode_eligible": False,
+                              "exact_geocode_candidate_state": "insufficient_location_fields"}},
+            ]
+            source.write_text("\n".join(json.dumps(item) for item in records) + "\n", encoding="utf-8")
+
+            summary = _write_geocode_eligible_candidates(source, target)
+
+            self.assertEqual(summary["records_seen"], 3)
+            self.assertEqual(summary["unresolved_records"], 2)
+            self.assertEqual(summary["source_coordinate_records"], 1)
+            self.assertEqual(summary["eligible_records"], 1)
+            self.assertEqual(summary["eligibility_state_counts"]["held_for_privacy_review"], 1)
+            self.assertFalse(summary["geocoder_called"])
+            queued = [json.loads(line) for line in target.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual([item["source_record_key"] for item in queued], ["eligible"])
 
     def test_local_acquisition_keeps_fixed_provenance_for_reruns(self):
         path = Path(__file__).parents[2] / "sources" / "denmark" / "stages" / "acquire-denmark-smiley.py"

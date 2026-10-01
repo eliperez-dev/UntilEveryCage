@@ -864,9 +864,29 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                 try:
                     handoff_manifest = json.loads(handoff_manifest_path.read_text(encoding="utf-8"))
                     acquisition = json.loads((source_root / "acquisition" / source_id / run_id / "acquisition-metadata.json").read_text(encoding="utf-8"))
+                    geocoding = json.loads((source_root / "05-geocode-queue" / "eligibility-metadata.json").read_text(encoding="utf-8"))
                 except (OSError, json.JSONDecodeError):
                     write_job("failed", "lifecycle", "source_candidate_handoff_missing")
                     raise PreviewError("Denmark lifecycle did not produce complete acquisition and handoff evidence") from None
+                if (not isinstance(geocoding, dict) or geocoding.get("status") != "success"
+                        or geocoding.get("geocoder_called") is not False
+                        or not isinstance(geocoding.get("eligibility_state_counts"), dict)):
+                    write_job("failed", "lifecycle", "geocode_queue_evidence_invalid")
+                    raise PreviewError("Denmark lifecycle did not produce safe geocode-queue evidence")
+                queue_counts = {
+                    key: geocoding.get(key)
+                    for key in ("records_seen", "unresolved_records", "source_coordinate_records",
+                                "eligible_records", "queued_records", "eligible_without_usable_address")
+                }
+                if any(not isinstance(value, int) or isinstance(value, bool) or value < 0
+                       for value in queue_counts.values()):
+                    write_job("failed", "lifecycle", "geocode_queue_evidence_invalid")
+                    raise PreviewError("Denmark lifecycle did not produce safe geocode-queue counts")
+                if (queue_counts["unresolved_records"] > queue_counts["records_seen"]
+                        or queue_counts["eligible_records"] > queue_counts["records_seen"]
+                        or queue_counts["queued_records"] > queue_counts["eligible_records"]):
+                    write_job("failed", "lifecycle", "geocode_queue_counts_invalid")
+                    raise PreviewError("Denmark geocode-queue counts do not reconcile")
                 preview_fields = source_policy.get("allowed_preview_fields")
                 schema_fingerprint = __import__("hashlib").sha256(
                     json.dumps(preview_fields, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -879,6 +899,9 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                     "candidate_observation_rows": handoff_manifest.get("normalized_rows"),
                     "quarantined_rows": json.loads((source_root / "manifest.json").read_text(encoding="utf-8")).get("quarantined_rows"),
                     "out_of_scope_rows": 0,
+                    "geocoding": {**queue_counts,
+                                  "eligibility_state_counts": geocoding["eligibility_state_counts"],
+                                  "geocoder_called": False},
                 }
                 refresh_result = {
                     "run_id": runner_run_id, "completed_at_utc": acquisition.get("retrieved_at_utc"),
@@ -1004,6 +1027,7 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
             "coordinate_precision_breakdown": {
                 "exact": 0, "city_or_postal_only": import_result.get("city_postal_count"),
                 "unmapped": import_result.get("unmapped_map_candidate_count")},
+            "geocoding": summary.get("geocoding"),
         })
     elif source_id == "it.853-2004":
         acquisition_evidence = _italy_acquisition_evidence(source_dir, source_id, run_id)
@@ -1572,10 +1596,15 @@ def strict_refresh(source_id: str) -> dict[str, object]:
     if current.get("api") or current.get("database") == "running":
         down()
     SESSION_TOKEN = None
-    startup = up()
-    if SESSION_TOKEN is None:
-        raise PreviewError("preview session token was not retained in process memory")
+    previous_empty_bootstrap = os.environ.get("UEC_REAL_PREVIEW_EMPTY_BOOTSTRAP")
     try:
+        if PRIVATE_ROOT.is_dir() and not any(PRIVATE_ROOT.iterdir()):
+            # A source-first run is allowed to start from an empty private root;
+            # this skips only the legacy fixture import, never the source import.
+            os.environ["UEC_REAL_PREVIEW_EMPTY_BOOTSTRAP"] = "1"
+        startup = up()
+        if SESSION_TOKEN is None:
+            raise PreviewError("preview session token was not retained in process memory")
         refreshed = refresh_source(source_id)
         from scripts.certify_real_preview import certify
         ledger_path = Path(str(refreshed.get("ledger")))
@@ -1591,8 +1620,16 @@ def strict_refresh(source_id: str) -> dict[str, object]:
                 "certificate": str(certificate_path),
                 "preview_status": startup.get("status")}
     finally:
-        down()
-        SESSION_TOKEN = None
+        try:
+            # The configured project was checked above and is the only project
+            # this command may stop, including when startup partially fails.
+            down()
+        finally:
+            SESSION_TOKEN = None
+            if previous_empty_bootstrap is None:
+                os.environ.pop("UEC_REAL_PREVIEW_EMPTY_BOOTSTRAP", None)
+            else:
+                os.environ["UEC_REAL_PREVIEW_EMPTY_BOOTSTRAP"] = previous_empty_bootstrap
 
 
 def _operator_database_url(database_url: str | None) -> str:

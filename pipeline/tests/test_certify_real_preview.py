@@ -55,6 +55,13 @@ class CertificationLedgerTests(unittest.TestCase):
         value["quarantine"].update({"input_rows": 1, "accepted_rows": 1, "quarantined_rows": 0})
         value["map_visible_count"] = 0
         value["coordinate_precision_breakdown"] = {"exact": 0, "unmapped": 1}
+        value["source_run"]["results"][0]["summary"]["geocoding"] = {
+            "records_seen": 1, "unresolved_records": 1, "source_coordinate_records": 0,
+            "eligible_records": 0, "queued_records": 0,
+            "eligible_without_usable_address": 0,
+            "eligibility_state_counts": {"held_for_privacy_review": 1},
+            "geocoder_called": False,
+        }
         result = CERT.validate_ledger(value, "dk.smiley")
         self.assertEqual(result["counts"]["unmapped"], 1)
         self.assertEqual(result["counts"]["unmapped_map_candidates"], 0)

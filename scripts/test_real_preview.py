@@ -1,10 +1,12 @@
 """Offline safety tests for the real-preview lifecycle."""
 import importlib.util
 import json
+import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("real_preview", ROOT / "scripts" / "real_preview.py")
@@ -145,6 +147,46 @@ class LifecycleTests(unittest.TestCase):
         token = "secret-value"
         request = rp.urllib.request.Request(f"http://127.0.0.1:{rp.API_PORT}/health/ready", headers={"X-Uec-Dev-Preview-Token": token})
         self.assertNotIn(token, request.full_url)
+
+    def test_strict_refresh_uses_empty_private_bootstrap_and_restores_environment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            ledger = root / "source-preview-ledger.json"
+            observed = {}
+            down = Mock()
+
+            def start():
+                observed["bootstrap"] = rp.os.environ.get("UEC_REAL_PREVIEW_EMPTY_BOOTSTRAP")
+                rp.SESSION_TOKEN = "in-memory-test-token"
+                return {"status": "ready"}
+
+            cert = types.ModuleType("scripts.certify_real_preview")
+            cert.certify = lambda *args: {"status": "certified", "run_id": "run-1",
+                                           "counts": {}, "checks": {}, "claims": {}}
+            environment = {"UEC_REAL_PREVIEW_EMPTY_BOOTSTRAP": "0"}
+            with patch.object(rp, "PRIVATE_ROOT", root), patch.object(rp, "status", return_value={"database": "stopped", "api": False}), \
+                    patch.object(rp, "up", side_effect=start), patch.object(rp, "down", down), \
+                    patch.object(rp, "refresh_source", return_value={"ledger": str(ledger)}), \
+                    patch.object(rp, "_local_database_url", return_value="postgresql://localhost/test"), \
+                    patch.dict(rp.os.environ, environment, clear=False), patch.dict(sys.modules, {"scripts.certify_real_preview": cert}):
+                result = rp.strict_refresh("dk.smiley")
+                self.assertEqual(rp.os.environ.get("UEC_REAL_PREVIEW_EMPTY_BOOTSTRAP"), "0")
+
+            self.assertEqual(result["status"], "certified")
+            self.assertEqual(observed["bootstrap"], "1")
+            down.assert_called_once()
+
+    def test_strict_refresh_stops_its_project_if_startup_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            down = Mock()
+            with patch.object(rp, "PRIVATE_ROOT", root), patch.object(rp, "status", return_value={"database": "stopped", "api": False}), \
+                    patch.object(rp, "up", side_effect=rp.PreviewError("startup failed")), patch.object(rp, "down", down), \
+                    patch.dict(rp.os.environ, {"UEC_REAL_PREVIEW_EMPTY_BOOTSTRAP": "0"}, clear=False):
+                with self.assertRaisesRegex(rp.PreviewError, "startup failed"):
+                    rp.strict_refresh("dk.smiley")
+                self.assertEqual(rp.os.environ.get("UEC_REAL_PREVIEW_EMPTY_BOOTSTRAP"), "0")
+            down.assert_called_once()
 
 
 if __name__ == "__main__":

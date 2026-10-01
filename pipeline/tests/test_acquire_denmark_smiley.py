@@ -137,8 +137,20 @@ class DenmarkAcquisitionTests(unittest.TestCase):
                     artifact.parent.mkdir(parents=True)
                     artifact.write_bytes(FixtureHandler.payload)
                     (artifact.parent / "acquisition-metadata.json").write_text(json.dumps({"requested_url": "https://example.test/xml", "final_url": "https://example.test/final"}), encoding="utf-8")
+                if name == "geocode_queue":
+                    output = Path(args[args.index("--output-dir") + 1])
+                    output.mkdir(parents=True)
+                    (output / "geocode-queue-metadata.json").write_text(json.dumps({
+                        "status": "success", "records_queued": 0,
+                        "records_without_usable_address": 0,
+                        "records_with_source_coordinates": 0,
+                    }), encoding="utf-8")
 
             with patch.object(RUNNER, "run_stage", side_effect=fake_stage), \
+                 patch.object(RUNNER._canonical, "_write_geocode_eligible_candidates", return_value={
+                     "records_seen": 0, "unresolved_records": 0, "source_coordinate_records": 0,
+                     "eligible_records": 0, "eligibility_state_counts": {}, "geocoder_called": False,
+                 }), \
                  patch.object(RUNNER, "artifact_manifest", return_value=output_dir / "pipeline-manifest.json"), \
                  patch.object(sys, "argv", ["run-denmark-pipeline.py", "--fetch", "--terms-review", str(terms), "--raw-output-root", str(raw_root), "--run-id", "controlled-run", "--output-dir", str(output_dir)]):
                 self.assertEqual(RUNNER.main(), 0)
@@ -154,8 +166,20 @@ class DenmarkAcquisitionTests(unittest.TestCase):
 
             def fake_stage(name, _script, _args):
                 stages.append(name)
+                if name == "geocode_queue":
+                    output = Path(_args[_args.index("--output-dir") + 1])
+                    output.mkdir(parents=True)
+                    (output / "geocode-queue-metadata.json").write_text(json.dumps({
+                        "status": "success", "records_queued": 0,
+                        "records_without_usable_address": 0,
+                        "records_with_source_coordinates": 0,
+                    }), encoding="utf-8")
 
             with patch.object(RUNNER, "run_stage", side_effect=fake_stage), \
+                 patch.object(RUNNER._canonical, "_write_geocode_eligible_candidates", return_value={
+                     "records_seen": 0, "unresolved_records": 0, "source_coordinate_records": 0,
+                     "eligible_records": 0, "eligibility_state_counts": {}, "geocoder_called": False,
+                 }), \
                  patch.object(RUNNER, "artifact_manifest", return_value=root / "pipeline-manifest.json"), \
                  patch.object(sys, "argv", ["run-denmark-pipeline.py", str(source), "--output-dir", str(root / "staging")]):
                 self.assertEqual(RUNNER.main(), 0)
