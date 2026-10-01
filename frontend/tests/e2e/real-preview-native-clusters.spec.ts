@@ -81,6 +81,107 @@ test('Belgium approximate markers and 3 km areas are derived from private MVT fe
   await expect(page.getByText(/Approximate city location/)).toBeVisible();
 });
 
+test('Belgium approximate references join low-zoom clusters and resolve to blue references above cutoff', async ({ page }) => {
+  requirePreview();
+  test.setTimeout(120_000);
+  await page.goto('/#/map?f1a=field&source=be.locations&lat=50.7&lon=4.6&z=2&list=closed');
+  await page.waitForFunction(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return map?.isStyleLoaded() && map.isSourceLoaded('preview-mvt') && map.getLayer('mvt-clusters');
+  }, undefined, { timeout: 90_000 });
+  const lowZoom = await page.evaluate(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    const clusters = map.queryRenderedFeatures({ layers: ['mvt-clusters'] });
+    const unique = new Map(clusters.map((feature: any) => [feature.properties.feature_key, Number(feature.properties.count)]));
+    return { clusterCount: unique.size, represented: [...unique.values()].reduce((sum, count) => sum + count, 0),
+      cityReferences: map.queryRenderedFeatures({ layers: ['mvt-reference-center'] }).length };
+  });
+  expect(lowZoom.clusterCount, 'Belgium reference candidates should enter the low-zoom cluster hierarchy').toBeGreaterThan(0);
+  expect(lowZoom.represented).toBeGreaterThan(0);
+  await page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.setZoom(8));
+  await page.waitForFunction(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return map.isSourceLoaded('preview-mvt') && map.queryRenderedFeatures({ layers: ['mvt-reference-center'] }).length > 0;
+  }, undefined, { timeout: 60_000 });
+  const highZoom = await page.evaluate(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return { cityReferences: map.queryRenderedFeatures({ layers: ['mvt-reference-center'] }).length,
+      areas: map.queryRenderedFeatures({ layers: ['mvt-approx-reference-area'] }).length,
+      clusters: map.queryRenderedFeatures({ layers: ['mvt-clusters'] }).length };
+  });
+  expect(highZoom.cityReferences).toBeGreaterThan(0);
+  expect(highZoom.areas).toBeGreaterThan(0);
+});
+
+test('dense FSIS clusters are organic, not aligned to the former 1/8-tile grid', async ({ page }) => {
+  requirePreview();
+  test.setTimeout(90_000);
+  await page.goto('/#/map?f1a=field&source=us.fsis&lat=39.5&lon=-77&z=4&list=closed');
+  await page.waitForFunction(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return map?.isStyleLoaded() && map.isSourceLoaded('preview-mvt') && map.getLayer('mvt-clusters');
+  }, undefined, { timeout: 90_000 });
+  const distribution = await page.evaluate(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    const scale = 512 * 2 ** map.getZoom();
+    const features = map.queryRenderedFeatures({ layers: ['mvt-clusters'] });
+    const offsets = features.map((feature: any) => {
+      const [longitude, latitude] = feature.geometry.coordinates;
+      const x = (longitude + 180) / 360 * scale;
+      const radians = latitude * Math.PI / 180;
+      const y = (1 - Math.asinh(Math.tan(radians)) / Math.PI) / 2 * scale;
+      const distance = (value: number) => Math.min(value % 64, 64 - (value % 64));
+      return Math.min(distance(x), distance(y));
+    });
+    return { count: features.length, nonGrid: offsets.filter((distance: number) => distance > 2).length,
+      medianOffset: offsets.sort((a: number, b: number) => a - b)[Math.floor(offsets.length / 2)] ?? 0 };
+  });
+  expect(distribution.count).toBeGreaterThanOrEqual(8);
+  expect(distribution.nonGrid).toBeGreaterThan(distribution.count * 0.75);
+  expect(distribution.medianOffset).toBeGreaterThan(2);
+});
+
+test('pan and fractional zoom preserve MVT source/layers and never settle on an empty frame', async ({ page }) => {
+  requirePreview();
+  test.setTimeout(120_000);
+  await page.goto('/#/map?f1a=field&source=us.fsis&lat=39.5&lon=-77&z=4&list=closed');
+  await page.waitForFunction(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return map?.isStyleLoaded() && map.isSourceLoaded('preview-mvt') && map.getLayer('mvt-clusters');
+  }, undefined, { timeout: 90_000 });
+  const result = await page.evaluate(async () => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    const removals: string[] = [];
+    const removeSource = map.removeSource.bind(map);
+    const removeLayer = map.removeLayer.bind(map);
+    const noteRemoval = (kind: string, id: string) => removals.push(`${kind}:${id}:${new Error().stack?.split('\n').slice(1, 4).join('|')}`);
+    map.removeSource = (id: string) => { if (id === 'preview-mvt') noteRemoval('source', id); return removeSource(id); };
+    map.removeLayer = (id: string) => { if (id.startsWith('mvt-')) noteRemoval('layer', id); return removeLayer(id); };
+    const frames: { count: number; sourcePresent: boolean; layerPresent: boolean }[] = [];
+    const sample = () => frames.push({
+      count: map.queryRenderedFeatures({ layers: ['mvt-clusters', 'mvt-reference-center', 'mvt-source-coordinates'] }).length,
+      sourcePresent: Boolean(map.getSource('preview-mvt')),
+      layerPresent: Boolean(map.getLayer('mvt-clusters')),
+    });
+    map.on('render', sample);
+    for (const camera of [
+      { center: [-112, 39], zoom: 4.25 }, { center: [-105, 40], zoom: 4.75 },
+      { center: [-98, 39], zoom: 5.25 }, { center: [-91, 38], zoom: 5.75 },
+    ]) {
+      map.jumpTo(camera);
+      await new Promise<void>(resolve => map.once('idle', () => resolve()));
+      sample();
+    }
+    map.off('render', sample);
+    return { removals, frames,
+      finalCount: map.queryRenderedFeatures({ layers: ['mvt-clusters', 'mvt-reference-center', 'mvt-source-coordinates'] }).length };
+  });
+  expect(result.removals).toEqual([]);
+  expect(result.finalCount).toBeGreaterThan(0);
+  expect(result.frames.length).toBeGreaterThan(0);
+  expect(result.frames.every((frame: any) => frame.count > 0 && frame.sourcePresent && frame.layerPresent)).toBe(true);
+});
+
 test('western FSIS MVT coverage has no blank tiles through fractional zooms 2–3', async ({ page }) => {
   requirePreview();
   test.setTimeout(120_000);
@@ -147,6 +248,7 @@ test('MVT cutoff controls preserve coverage and V1 pins render at pin zoom', asy
 
 test('debug menu discloses MVT projection and offers honest visual controls', async ({ page }) => {
   requirePreview();
+  test.setTimeout(90_000);
   await page.goto('/#/map?f1a=field&list=closed');
   await page.waitForFunction(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;

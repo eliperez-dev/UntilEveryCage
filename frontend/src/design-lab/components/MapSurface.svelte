@@ -112,6 +112,7 @@
   let feedAbort: AbortController | undefined;
   let feedGeneration = 0;
   let requestedFeedSourceId: string | null | undefined;
+  let appliedMvtTileSignature: string | undefined;
   let feedStatus = $state<"loading" | "ready" | "error">("loading");
   // These are milestones, not a guessed byte or worker percentage.
   let startupStage = $state<"initializing" | "fetching" | "indexing" | "rendering" | "ready">("initializing");
@@ -400,6 +401,7 @@
       if (usingMvt && map) {
         try {
           setMvtClusterCutoff(map, mapState.sourceId ?? undefined, clusterMaxZoom);
+          appliedMvtTileSignature = `${mapState.sourceId ?? ""}:${clusterMaxZoom}`;
           clusterSettingsError = "";
         } catch {
           clusterSettingsError = "The server-generated tile hierarchy could not be updated.";
@@ -520,12 +522,25 @@
   function addMvtLayers() {
     if (!map) return;
     addMvtLocationLayers(map, mapState.sourceId ?? undefined);
+    appliedMvtTileSignature = `${mapState.sourceId ?? ""}:${clusterMaxZoom}`;
     updateVisualSettings();
   }
 
   function replaceMapProjection() {
     if (!map || !map.isStyleLoaded()) return;
     if (usingMvt) {
+      const nextSignature = `${mapState.sourceId ?? ""}:${clusterMaxZoom}`;
+      if (map.getSource("preview-mvt") && map.getLayer("mvt-clusters")) {
+        // Viewport actions replace the immutable state object too. Preserve the
+        // live MVT source/layers for those unrelated updates; a real source or
+        // cutoff change updates the tile template in place instead.
+        if (appliedMvtTileSignature !== nextSignature) {
+          setMvtClusterCutoff(map, mapState.sourceId ?? undefined, clusterMaxZoom);
+          appliedMvtTileSignature = nextSignature;
+        }
+        updateVisualSettings();
+        return;
+      }
       const now = performance.now();
       mvtError = "";
       mvtSourceReady = false;
@@ -936,9 +951,10 @@
       center: [mapState.viewport.centerLon, mapState.viewport.centerLat],
       zoom: mapState.viewport.zoom,
       attributionControl: {},
-      // Cluster continuity owns replacement visibility. Native tile fading
-      // would make an otherwise atomic replacement look like a pop-in.
-      fadeDuration: 0,
+      // Keep the previous visible MVT tile symbols under incoming tiles during
+      // pan/zoom replacement. Stable promoted feature ids let MapLibre crossfade
+      // the same globally clustered feature instead of flashing it away.
+      fadeDuration: 300,
       // Let MapLibre size each source cache from the viewport. The previous
       // fixed 512-tile cap retained far more raster/MVT tiles than needed;
       // minTileCacheSize and prefetchZoomDelta are not MapLibre map options.

@@ -627,6 +627,7 @@ pub struct ApiState {
 const REAL_PREVIEW_MVT_CONTRACT_VERSION: u8 = 1;
 const REAL_PREVIEW_MVT_CACHE_TTL: Duration = Duration::from_secs(45);
 const REAL_PREVIEW_MVT_CACHE_MAX_ENTRIES: usize = 768;
+const REAL_PREVIEW_HIERARCHY_CACHE_MAX_ENTRIES: usize = 24;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 struct RealPreviewMvtTileCacheKey {
@@ -663,6 +664,429 @@ pub struct RealPreviewMvtTileCache {
 /// simple for public routes that never touch the private tile projection.
 static REAL_PREVIEW_MVT_TILE_CACHE: Lazy<RealPreviewMvtTileCache> =
     Lazy::new(RealPreviewMvtTileCache::default);
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct RealPreviewHierarchyCacheKey {
+    contract_version: u8,
+    snapshot_boundary: String,
+    source_id: Option<String>,
+    cluster_cutoff_half_steps: u8,
+    z: u8,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct RealPreviewHierarchyFeature {
+    feature_key: String,
+    parent_key: Option<String>,
+    kind: String,
+    count: i32,
+    precision: String,
+    next_zoom: i32,
+    x: f64,
+    y: f64,
+}
+
+fn real_preview_hierarchy_tile_features(
+    features: &[RealPreviewHierarchyFeature],
+    zoom: u8,
+    tile_x: u32,
+    tile_y: u32,
+) -> Vec<RealPreviewHierarchyFeature> {
+    const WEB_MERCATOR_HALF_WORLD: f64 = std::f64::consts::PI * 6_378_137.0;
+    let count = 2_f64.powi(i32::from(zoom));
+    let tile_size = 2.0 * WEB_MERCATOR_HALF_WORLD / count;
+    let buffer = tile_size * (512.0 / 4096.0);
+    let min_x = -WEB_MERCATOR_HALF_WORLD + f64::from(tile_x) * tile_size - buffer;
+    let max_x = min_x + tile_size + 2.0 * buffer;
+    let max_y = WEB_MERCATOR_HALF_WORLD - f64::from(tile_y) * tile_size + buffer;
+    let min_y = max_y - tile_size - 2.0 * buffer;
+    let world_width = 2.0 * WEB_MERCATOR_HALF_WORLD;
+    let mut selected = Vec::new();
+    for feature in features {
+        if feature.y < min_y || feature.y > max_y {
+            continue;
+        }
+        if feature.x >= min_x && feature.x <= max_x {
+            selected.push(feature.clone());
+        } else if feature.x - world_width >= min_x && feature.x - world_width <= max_x {
+            let mut wrapped = feature.clone();
+            wrapped.x -= world_width;
+            selected.push(wrapped);
+        } else if feature.x + world_width >= min_x && feature.x + world_width <= max_x {
+            let mut wrapped = feature.clone();
+            wrapped.x += world_width;
+            selected.push(wrapped);
+        }
+    }
+    selected
+}
+
+#[derive(Clone)]
+struct RealPreviewHierarchyCacheEntry {
+    features: Arc<[RealPreviewHierarchyFeature]>,
+    inserted_at: Instant,
+}
+
+#[derive(Default)]
+struct RealPreviewHierarchyCache {
+    inner: StdMutex<HashMap<RealPreviewHierarchyCacheKey, RealPreviewHierarchyCacheEntry>>,
+}
+
+static REAL_PREVIEW_CLUSTER_HIERARCHY_CACHE: Lazy<RealPreviewHierarchyCache> =
+    Lazy::new(RealPreviewHierarchyCache::default);
+static REAL_PREVIEW_CLUSTER_HIERARCHY_BUILD_LOCK: Lazy<Mutex<()>> =
+    Lazy::new(|| Mutex::new(()));
+
+impl RealPreviewHierarchyCache {
+    fn get(&self, key: &RealPreviewHierarchyCacheKey) -> Option<Arc<[RealPreviewHierarchyFeature]>> {
+        let mut inner = self.inner.lock().expect("MVT hierarchy cache lock is not poisoned");
+        let now = Instant::now();
+        inner.retain(|_, entry| now.duration_since(entry.inserted_at) <= REAL_PREVIEW_MVT_CACHE_TTL);
+        inner.get(key).map(|entry| Arc::clone(&entry.features))
+    }
+
+    fn insert(
+        &self,
+        key: RealPreviewHierarchyCacheKey,
+        features: Vec<RealPreviewHierarchyFeature>,
+    ) -> Arc<[RealPreviewHierarchyFeature]> {
+        let mut inner = self.inner.lock().expect("MVT hierarchy cache lock is not poisoned");
+        if inner.len() >= REAL_PREVIEW_HIERARCHY_CACHE_MAX_ENTRIES {
+            if let Some(oldest) = inner.iter().min_by_key(|(_, entry)| entry.inserted_at).map(|(key, _)| key.clone()) {
+                inner.remove(&oldest);
+            }
+        }
+        let features: Arc<[RealPreviewHierarchyFeature]> = Arc::from(features);
+        inner.insert(key, RealPreviewHierarchyCacheEntry { features: Arc::clone(&features), inserted_at: Instant::now() });
+        features
+    }
+}
+
+#[derive(Clone)]
+struct RealPreviewClusterMember {
+    feature_key: String,
+    kind: String,
+    source_id: Option<String>,
+    precision: String,
+    weight: i32,
+    x: f64,
+    y: f64,
+}
+
+fn real_preview_cells_are_neighbors(cell_x: i64, cell_y: i64, other_x: i64, other_y: i64, cell_size: f64, radius: f64) -> bool {
+    let gap_x = (cell_x.abs_diff(other_x).saturating_sub(1) as f64) * cell_size;
+    let gap_y = (cell_y.abs_diff(other_y).saturating_sub(1) as f64) * cell_size;
+    gap_x * gap_x + gap_y * gap_y <= radius * radius
+}
+
+fn real_preview_find_cluster_root(parents: &mut [usize], mut index: usize) -> usize {
+    while parents[index] != index {
+        parents[index] = parents[parents[index]];
+        index = parents[index];
+    }
+    index
+}
+
+fn real_preview_union_clusters(parents: &mut [usize], first: usize, second: usize) {
+    let left = real_preview_find_cluster_root(parents, first);
+    let right = real_preview_find_cluster_root(parents, second);
+    if left != right {
+        let (root, child) = if left < right { (left, right) } else { (right, left) };
+        parents[child] = root;
+    }
+}
+
+fn real_preview_opaque_key(namespace: &str, value: &str) -> String {
+    let digest = Sha256::digest(format!("{namespace}:{value}").as_bytes());
+    digest[..16].iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn real_preview_build_cluster_features(
+    mut members: Vec<RealPreviewClusterMember>,
+    radius: f64,
+    zoom: u8,
+) -> Vec<RealPreviewHierarchyFeature> {
+    members.sort_by(|left, right| left.feature_key.cmp(&right.feature_key));
+    if members.is_empty() || !radius.is_finite() || radius <= 0.0 {
+        return Vec::new();
+    }
+    // Cells are only an acceleration structure, not cluster boundaries. A
+    // cell diagonal is <= radius, so every member of a dense cell is connected;
+    // neighboring cells are joined only after an exact distance test.
+    let cell_size = radius / std::f64::consts::SQRT_2;
+    let cells: Vec<_> = members.iter().map(|member| ((member.x / cell_size).floor() as i64, (member.y / cell_size).floor() as i64)).collect();
+    let mut buckets: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
+    for (index, cell) in cells.iter().copied().enumerate() {
+        buckets.entry(cell).or_default().push(index);
+    }
+    let mut core = vec![false; members.len()];
+    for (cell, bucket) in &buckets {
+        if bucket.len() >= 3 {
+            for index in bucket { core[*index] = true; }
+            continue;
+        }
+        for index in bucket {
+            let point = &members[*index];
+            let mut neighbor_count = 0;
+            for dx in -2..=2 {
+                for dy in -2..=2 {
+                    if !real_preview_cells_are_neighbors(cell.0, cell.1, cell.0 + dx, cell.1 + dy, cell_size, radius) { continue; }
+                    if let Some(neighbors) = buckets.get(&(cell.0 + dx, cell.1 + dy)) {
+                        for other in neighbors {
+                            let candidate = &members[*other];
+                            let x = candidate.x - point.x;
+                            let y = candidate.y - point.y;
+                            if x * x + y * y <= radius * radius {
+                                neighbor_count += 1;
+                                if neighbor_count >= 3 { core[*index] = true; break; }
+                            }
+                        }
+                    }
+                    if core[*index] { break; }
+                }
+                if core[*index] { break; }
+            }
+        }
+    }
+    let mut parents: Vec<_> = (0..members.len()).collect();
+    let mut ordered_cells: Vec<_> = buckets.keys().copied().collect();
+    ordered_cells.sort_unstable();
+    let mut cell_representatives = HashMap::new();
+    for cell in &ordered_cells {
+        let Some(bucket) = buckets.get(cell) else { continue; };
+        let mut representative = None;
+        for index in bucket {
+            if core[*index] {
+                if let Some(first) = representative {
+                    real_preview_union_clusters(&mut parents, first, *index);
+                } else {
+                    representative = Some(*index);
+                }
+            }
+        }
+        if let Some(representative) = representative { cell_representatives.insert(*cell, representative); }
+    }
+    for cell in &ordered_cells {
+        let Some(&representative) = cell_representatives.get(cell) else { continue; };
+        for dx in -2..=2 {
+            for dy in -2..=2 {
+                let neighbor_cell = (cell.0 + dx, cell.1 + dy);
+                if neighbor_cell <= *cell || !real_preview_cells_are_neighbors(cell.0, cell.1, neighbor_cell.0, neighbor_cell.1, cell_size, radius) { continue; }
+                let Some(&neighbor_representative) = cell_representatives.get(&neighbor_cell) else { continue; };
+                let first_bucket = &buckets[cell];
+                let second_bucket = &buckets[&neighbor_cell];
+                let mut connected = false;
+                'pairs: for first in first_bucket.iter().filter(|index| core[**index]) {
+                    for second in second_bucket.iter().filter(|index| core[**index]) {
+                        let dx = members[*first].x - members[*second].x;
+                        let dy = members[*first].y - members[*second].y;
+                        if dx * dx + dy * dy <= radius * radius {
+                            connected = true;
+                            break 'pairs;
+                        }
+                    }
+                }
+                if connected { real_preview_union_clusters(&mut parents, representative, neighbor_representative); }
+            }
+        }
+    }
+    let mut assignments = vec![None; members.len()];
+    for index in 0..members.len() {
+        if core[index] {
+            assignments[index] = Some(real_preview_find_cluster_root(&mut parents, index));
+            continue;
+        }
+        let cell = cells[index];
+        let point = &members[index];
+        'neighbor_cells: for dx in -2..=2 {
+            for dy in -2..=2 {
+                let neighbor_cell = (cell.0 + dx, cell.1 + dy);
+                if !real_preview_cells_are_neighbors(cell.0, cell.1, neighbor_cell.0, neighbor_cell.1, cell_size, radius) { continue; }
+                let Some(bucket) = buckets.get(&neighbor_cell) else { continue; };
+                for neighbor in bucket {
+                    if !core[*neighbor] { continue; }
+                    let adjacent = &members[*neighbor];
+                    let distance_x = point.x - adjacent.x;
+                    let distance_y = point.y - adjacent.y;
+                    if distance_x * distance_x + distance_y * distance_y <= radius * radius {
+                        assignments[index] = Some(real_preview_find_cluster_root(&mut parents, *neighbor));
+                        break 'neighbor_cells;
+                    }
+                }
+            }
+        }
+    }
+    let mut grouped: HashMap<usize, Vec<usize>> = HashMap::new();
+    for (index, root) in assignments.iter().enumerate() {
+        if let Some(root) = root { grouped.entry(*root).or_default().push(index); }
+    }
+    let mut output = Vec::with_capacity(grouped.len() + members.len());
+    for indexes in grouped.values() {
+        let mut sorted_keys: Vec<_> = indexes.iter().map(|index| members[*index].feature_key.as_str()).collect();
+        sorted_keys.sort_unstable();
+        let min_key = sorted_keys.first().copied().unwrap_or_default();
+        let max_key = sorted_keys.last().copied().unwrap_or_default();
+        let mut sum_x = 0.0;
+        let mut sum_y = 0.0;
+        let mut represented = 0_i32;
+        for index in indexes {
+            sum_x += members[*index].x;
+            sum_y += members[*index].y;
+            represented += members[*index].weight;
+        }
+        let feature_key = real_preview_opaque_key("cluster", &format!("{min_key}:{max_key}:{}:{zoom}", indexes.len()));
+        output.push(RealPreviewHierarchyFeature {
+            feature_key,
+            parent_key: None,
+            kind: "cluster".into(),
+            count: represented,
+            precision: "mixed_location_cluster".into(),
+            next_zoom: i32::from(zoom.saturating_add(1).min(14)),
+            x: sum_x / indexes.len() as f64,
+            y: sum_y / indexes.len() as f64,
+        });
+    }
+    for (index, root) in assignments.iter().enumerate() {
+        if root.is_some() { continue; }
+        let member = &members[index];
+        let precision = if member.source_id.as_deref() == Some("us.fsis") && member.precision == "source-provided" {
+            "source_provided_unverified"
+        } else if member.kind == "city_reference" {
+            &member.precision
+        } else if ["numeric", "exact", "source_numeric", "source_coordinates", "facility_coordinate"].contains(&member.precision.as_str()) {
+            "source_numeric_pending_review"
+        } else if member.precision == "source-provided" {
+            "approximate_source_provided_pending_review"
+        } else {
+            "approximate_source_precision_unknown_pending_review"
+        };
+        output.push(RealPreviewHierarchyFeature {
+            feature_key: member.feature_key.clone(),
+            parent_key: None,
+            kind: member.kind.clone(),
+            count: member.weight,
+            precision: precision.to_owned(),
+            next_zoom: i32::from(zoom.saturating_add(1).min(14)),
+            x: member.x,
+            y: member.y,
+        });
+    }
+    output.sort_by(|left, right| left.feature_key.cmp(&right.feature_key));
+    output
+}
+
+async fn get_or_build_real_preview_cluster_hierarchy(
+    client: &tokio_postgres::Client,
+    key: RealPreviewHierarchyCacheKey,
+    cluster_radius: f64,
+) -> Option<Arc<[RealPreviewHierarchyFeature]>> {
+    if let Some(features) = REAL_PREVIEW_CLUSTER_HIERARCHY_CACHE.get(&key) {
+        return Some(features);
+    }
+    let _build_guard = REAL_PREVIEW_CLUSTER_HIERARCHY_BUILD_LOCK.lock().await;
+    if let Some(features) = REAL_PREVIEW_CLUSTER_HIERARCHY_CACHE.get(&key) {
+        return Some(features);
+    }
+    let sql = r#"
+WITH sources AS (
+  SELECT source_id FROM real_preview.source_preview_runs
+  UNION
+  SELECT source_id FROM real_preview.source_manifests
+),
+latest AS (
+  SELECT sources.source_id,
+         COALESCE(
+           (SELECT run.snapshot_sha256 FROM real_preview.source_preview_runs run
+            WHERE run.source_id = sources.source_id
+            ORDER BY run.created_at DESC, run.run_id DESC LIMIT 1),
+           (SELECT manifest.snapshot_sha256 FROM real_preview.source_manifests manifest
+            WHERE manifest.source_id = sources.source_id
+            ORDER BY manifest.retrieved_at DESC, manifest.snapshot_sha256 DESC LIMIT 1)
+         ) AS snapshot_sha256
+  FROM sources
+),
+placeable AS (
+  SELECT c.candidate_id::text AS candidate_id, c.source_id,
+         COALESCE(c.coordinate_precision,'') AS coordinate_precision,
+         c.display_geometry_source,
+         CASE WHEN c.display_geometry_source IS NULL THEN c.longitude ELSE c.display_longitude END AS longitude,
+         CASE WHEN c.display_geometry_source IS NULL THEN c.latitude ELSE c.display_latitude END AS latitude
+  FROM real_preview.candidates c
+  WHERE c.default_map_scope = true
+    AND c.location_class IN ('numeric_source_coordinate','city_postal')
+    AND (
+      (c.display_geometry_source IS NULL AND c.longitude BETWEEN -180 AND 180
+       AND c.latitude BETWEEN -90 AND 90 AND (c.longitude <> 0 OR c.latitude <> 0))
+      OR (c.display_geometry_source IS NOT NULL AND c.display_longitude BETWEEN -180 AND 180
+          AND c.display_latitude BETWEEN -90 AND 90
+          AND (c.display_longitude <> 0 OR c.display_latitude <> 0))
+    )
+    AND (c.source_id, c.snapshot_sha256) IN (SELECT source_id, snapshot_sha256 FROM latest)
+    AND ($1::text IS NULL OR c.source_id = $1)
+),
+numeric AS (
+  SELECT candidate_id, source_id, coordinate_precision, longitude, latitude
+  FROM placeable WHERE display_geometry_source IS NULL
+),
+reference_points AS (
+  SELECT longitude, latitude, count(*)::integer AS count,
+         CASE WHEN bool_and(display_geometry_source LIKE '%approximate locality reference; not facility coordinates%')
+              THEN 'locality_reference_coarse'::text
+              ELSE 'city_reference_approximate'::text END AS precision
+  FROM placeable
+  WHERE display_geometry_source IS NOT NULL
+  GROUP BY longitude, latitude
+)
+SELECT candidate_id,source_id,coordinate_precision,display_geometry_source,longitude,latitude
+FROM placeable
+ORDER BY candidate_id
+"#;
+    let rows = client.query(sql, &[&key.source_id]).await.ok()?;
+    let mut members = Vec::with_capacity(rows.len());
+    let mut references: HashMap<(u64, u64), (f64, f64, i32, bool)> = HashMap::new();
+    for row in rows {
+        let candidate_id: String = row.get(0);
+        let source_id: String = row.get(1);
+        let coordinate_precision: String = row.get(2);
+        let display_geometry_source: Option<String> = row.get(3);
+        let longitude: f64 = row.get(4);
+        let latitude: f64 = row.get(5);
+        let latitude = latitude.clamp(-85.05112878, 85.05112878).to_radians();
+        let x = longitude.to_radians() * 6_378_137.0;
+        let y = (std::f64::consts::FRAC_PI_4 + latitude / 2.0).tan().ln() * 6_378_137.0;
+        if let Some(display_source) = display_geometry_source {
+            let entry = references.entry((longitude.to_bits(), row.get::<_, f64>(5).to_bits()))
+                .or_insert((x, y, 0, true));
+            entry.2 += 1;
+            entry.3 &= display_source.contains("approximate locality reference; not facility coordinates");
+        } else {
+            members.push(RealPreviewClusterMember {
+                feature_key: candidate_id,
+                kind: "source_coordinate".into(),
+                source_id: Some(source_id),
+                precision: coordinate_precision,
+                weight: 1,
+                x,
+                y,
+            });
+        }
+    }
+    for ((longitude_bits, latitude_bits), (x, y, count, all_locality)) in references {
+        let longitude = f64::from_bits(longitude_bits);
+        let latitude = f64::from_bits(latitude_bits);
+        members.push(RealPreviewClusterMember {
+            feature_key: real_preview_opaque_key("city-reference", &format!("{longitude:.12}:{latitude:.12}")),
+            kind: "city_reference".into(),
+            source_id: None,
+            precision: if all_locality { "locality_reference_coarse" } else { "city_reference_approximate" }.into(),
+            weight: count,
+            x,
+            y,
+        });
+    }
+    let features = real_preview_build_cluster_features(members, cluster_radius, key.z);
+    Some(REAL_PREVIEW_CLUSTER_HIERARCHY_CACHE.insert(key, features))
+}
 
 impl Default for RealPreviewMvtTileCache {
     fn default() -> Self {
@@ -999,11 +1423,9 @@ fn valid_real_preview_reference_key(value: &str) -> bool {
     value.len() == 32 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
-/// Number of deterministic WebMercator cells along one 512px MVT tile edge.
-/// Raise this to create more, smaller clusters; lower it to create fewer,
-/// larger clusters. The same value is used at every zoom, keeping parent/child
-/// lineage stable across adjacent tiles.
-const REAL_PREVIEW_CLUSTER_CELLS_PER_TILE_SIDE: f64 = 8.0;
+/// Screen-scale divisor for the organic low-zoom density radius. It controls
+/// cluster size without partitioning points into visible grid cells.
+const REAL_PREVIEW_CLUSTER_RADIUS_DIVISOR: f64 = 8.0;
 
 /// A development-only, lightweight MVT projection for the local private
 /// preview.  It deliberately contains neither candidate display fields nor
@@ -1067,12 +1489,11 @@ pub async fn get_real_preview_map_tile_handler(
         return real_preview_tile_response(StatusCode::OK, bytes.to_vec());
     }
 
-    // A tile-local, deterministic spatial partition bounds neighborhood work;
-    // actual clusters are density-connected sets inside each partition and
-    // their displayed locations are member centroids, not bucket centers.
-    // Isolated and sparse records remain at their source coordinates.
+    // The radius scales with the current MVT zoom, but low-zoom membership is
+    // computed from the complete deterministically ordered source set below.
+    // There are no tile-local partitions, so a cluster cannot split at a seam.
     let grid_size = 40_075_016.685_578_49_f64 / f64::from(1_u32 << z)
-        / REAL_PREVIEW_CLUSTER_CELLS_PER_TILE_SIDE;
+        / REAL_PREVIEW_CLUSTER_RADIUS_DIVISOR;
     let cluster_cutoff = params.cluster_cutoff.unwrap_or(7.5);
     let cluster_zoom = f64::from(z) < cluster_cutoff;
     let sql = r#"
@@ -1118,12 +1539,12 @@ coordinate_candidates AS (
     AND c.location_class = 'numeric_source_coordinate'
     AND c.latitude BETWEEN -90 AND 90 AND c.longitude BETWEEN -180 AND 180
     AND (c.latitude <> 0 OR c.longitude <> 0)
-    AND (
+    AND ($6::boolean OR (
       c.longitude BETWEEN GREATEST(tile.min_longitude, -180.0) AND LEAST(tile.max_longitude, 180.0)
       OR (tile.min_longitude < -180.0 AND c.longitude BETWEEN tile.min_longitude + 360.0 AND 180.0)
       OR (tile.max_longitude > 180.0 AND c.longitude BETWEEN -180.0 AND tile.max_longitude - 360.0)
-    )
-    AND c.latitude BETWEEN ST_YMin(tile.buffered_geographic_bounds) AND ST_YMax(tile.buffered_geographic_bounds)
+    ))
+    AND ($6::boolean OR c.latitude BETWEEN ST_YMin(tile.buffered_geographic_bounds) AND ST_YMax(tile.buffered_geographic_bounds))
     AND (c.source_id, c.snapshot_sha256) IN (SELECT source_id, snapshot_sha256 FROM latest)
     AND ($4::text IS NULL OR c.source_id = $4)
   UNION ALL
@@ -1134,12 +1555,12 @@ coordinate_candidates AS (
     AND c.display_geometry_source IS NOT NULL
     AND c.display_latitude BETWEEN -90 AND 90 AND c.display_longitude BETWEEN -180 AND 180
     AND (c.display_latitude <> 0 OR c.display_longitude <> 0)
-    AND (
+    AND ($6::boolean OR (
       c.display_longitude BETWEEN GREATEST(tile.min_longitude, -180.0) AND LEAST(tile.max_longitude, 180.0)
       OR (tile.min_longitude < -180.0 AND c.display_longitude BETWEEN tile.min_longitude + 360.0 AND 180.0)
       OR (tile.max_longitude > 180.0 AND c.display_longitude BETWEEN -180.0 AND tile.max_longitude - 360.0)
-    )
-    AND c.display_latitude BETWEEN ST_YMin(tile.buffered_geographic_bounds) AND ST_YMax(tile.buffered_geographic_bounds)
+    ))
+    AND ($6::boolean OR c.display_latitude BETWEEN ST_YMin(tile.buffered_geographic_bounds) AND ST_YMax(tile.buffered_geographic_bounds))
     AND (c.source_id, c.snapshot_sha256) IN (SELECT source_id, snapshot_sha256 FROM latest)
     AND ($4::text IS NULL OR c.source_id = $4)
 ),
@@ -1152,52 +1573,21 @@ placeable AS (
 numeric AS (
   SELECT * FROM placeable WHERE display_geometry_source IS NULL
 ),
-clustered_numeric AS (
-  SELECT numeric.*,
-         ST_SnapToGrid(geom, $5::double precision) AS partition_cell,
-         ST_ClusterDBSCAN(geom, eps := $5::double precision * 0.45, minpoints := 3)
-           OVER (PARTITION BY ST_SnapToGrid(geom, $5::double precision) ORDER BY candidate_id) AS cluster_id
-  FROM numeric
-),
-reference_features AS (
+reference_points AS (
   SELECT md5('city-reference:' || ST_X(geom)::text || ':' || ST_Y(geom)::text) AS feature_key,
-         NULL::text AS parent_key,
-         'city_reference'::text AS kind,
          count(*)::integer AS count,
          CASE WHEN bool_and(display_geometry_source LIKE '%approximate locality reference; not facility coordinates%')
               THEN 'locality_reference_coarse'::text
               ELSE 'city_reference_approximate'::text END AS precision,
-         14::integer AS next_zoom,
          ST_Centroid(ST_Collect(geom)) AS geom
   FROM placeable
   WHERE display_geometry_source IS NOT NULL
   GROUP BY ST_X(geom), ST_Y(geom)
 ),
-low_zoom_clusters AS (
-  SELECT md5('cluster:' || ST_X(partition_cell)::text || ':' || ST_Y(partition_cell)::text || ':' || cluster_id::text || ':' || $1::text) AS feature_key,
-         NULL::text AS parent_key,
-         'cluster'::text AS kind,
-         count(*)::integer AS count,
-         'mixed_location_cluster'::text AS precision,
-         LEAST($1::integer + 1, 14) AS next_zoom,
-         ST_Centroid(ST_Collect(geom)) AS geom
-  FROM clustered_numeric
-  WHERE cluster_id IS NOT NULL AND $6::boolean
-  GROUP BY partition_cell, cluster_id
-),
-low_zoom_sparse AS (
-  SELECT candidate_id::text AS feature_key,
-         NULL::text AS parent_key,
-         'source_coordinate'::text AS kind,
-         1::integer AS count,
-         CASE WHEN source_id = 'us.fsis' AND coordinate_precision = 'source-provided' THEN 'source_provided_unverified'
-              WHEN coordinate_precision IN ('numeric','exact','source_numeric','source_coordinates','facility_coordinate') THEN 'source_numeric_pending_review'
-              WHEN coordinate_precision = 'source-provided' THEN 'approximate_source_provided_pending_review'
-              ELSE 'approximate_source_precision_unknown_pending_review' END AS precision,
-         LEAST($1::integer + 1, 14) AS next_zoom,
-         geom
-  FROM clustered_numeric
-  WHERE cluster_id IS NULL AND $6::boolean
+reference_features AS (
+  SELECT feature_key, NULL::text AS parent_key, 'city_reference'::text AS kind,
+         count, precision, 14::integer AS next_zoom, geom
+  FROM reference_points
 ),
 numeric_features AS (
   SELECT candidate_id::text AS feature_key,
@@ -1213,10 +1603,6 @@ numeric_features AS (
   FROM numeric WHERE NOT $6::boolean
 ),
 features AS (
-  SELECT * FROM low_zoom_clusters
-  UNION ALL
-  SELECT * FROM low_zoom_sparse
-  UNION ALL
   SELECT * FROM numeric_features
   UNION ALL
   SELECT * FROM reference_features
@@ -1231,20 +1617,67 @@ tile_features AS (
 )
 SELECT COALESCE(ST_AsMVT(tile_features, 'uec_preview', 4096, 'geom'), ''::bytea) FROM tile_features
 "#;
-    let row = match client
-        .query_one(
-            sql,
-            &[
-                &(i32::from(z)),
-                &(x as i32),
-                &(y as i32),
-                &params.source_id,
-                &grid_size,
-                &cluster_zoom,
-            ],
+    let row = if cluster_zoom {
+        let hierarchy_key = RealPreviewHierarchyCacheKey {
+            contract_version: REAL_PREVIEW_MVT_CONTRACT_VERSION,
+            snapshot_boundary: cache_key.snapshot_boundary.clone(),
+            source_id: params.source_id.clone(),
+            cluster_cutoff_half_steps: cache_key.cluster_cutoff_half_steps,
+            z,
+        };
+        let Some(features) = get_or_build_real_preview_cluster_hierarchy(
+            &client,
+            hierarchy_key,
+            grid_size * 0.12,
         )
         .await
-    {
+        else {
+            return real_preview_unavailable();
+        };
+        let tile_features = real_preview_hierarchy_tile_features(features.as_ref(), z, x, y);
+        let Ok(feature_payload) = serde_json::to_string(&tile_features) else {
+            return real_preview_unavailable();
+        };
+        client
+            .query_one(
+                r#"
+WITH tile AS (
+  SELECT ST_TileEnvelope($1::integer,$2::integer,$3::integer) AS bounds
+), features AS (
+  SELECT feature_key,parent_key,kind,count,precision,next_zoom,
+         ST_SetSRID(ST_MakePoint(x,y),3857) AS geom
+  FROM jsonb_to_recordset($4::text::jsonb) AS f(
+    feature_key text,parent_key text,kind text,count integer,precision text,
+    next_zoom integer,x double precision,y double precision
+  )
+), tile_features AS (
+  SELECT feature_key,parent_key,kind,count,precision,next_zoom,
+         ST_AsMVTGeom(geom,tile.bounds,4096,512,true) AS geom
+  FROM features CROSS JOIN tile
+  WHERE geom && ST_Expand(tile.bounds,$5::double precision)
+)
+SELECT COALESCE(ST_AsMVT(tile_features,'uec_preview',4096,'geom'),''::bytea)
+FROM tile_features
+"#,
+                &[&(i32::from(z)), &(x as i32), &(y as i32), &feature_payload, &grid_size],
+            )
+            .await
+    } else {
+        client
+            .query_one(
+                sql,
+                &[
+                    &(i32::from(z)),
+                    &(x as i32),
+                    &(y as i32),
+                    &params.source_id,
+                    &grid_size,
+                    &cluster_zoom,
+                ],
+            )
+            .await
+    };
+    let row = match row {
         Ok(row) => row,
         Err(_) => return real_preview_unavailable(),
     };
@@ -3417,27 +3850,40 @@ mod v2_api_tests {
     }
 
     #[test]
-    fn real_preview_cluster_lineage_partitions_children_without_crossing_sources() {
-        // This mirrors the world-anchored `ST_SnapToGrid` hierarchy in the tile
-        // query: one child zoom halves the grid size, so snapping the child cell
-        // to the parent grid is `round(child_cell / 2)`. The source id remains a
-        // query boundary; lineage must never merge counts across that boundary.
-        fn parent_cell(child_cell: i32) -> i32 { (f64::from(child_cell) / 2.0).round() as i32 }
-        let children = [
-            ("us.fsis", 4, 6, 3_i32),
-            ("us.fsis", 4, 6, 7_i32),
-            ("it.853-2004", 4, 6, 11_i32),
-            ("it.853-2004", 5, 7, 13_i32),
+    fn real_preview_density_clusters_cross_old_cell_boundaries_and_are_stable() {
+        let members = vec![
+            RealPreviewClusterMember { feature_key: "a".into(), kind: "source_coordinate".into(), source_id: Some("us.fsis".into()), precision: "source-provided".into(), weight: 1, x: 999.0, y: 1000.0 },
+            RealPreviewClusterMember { feature_key: "b".into(), kind: "source_coordinate".into(), source_id: Some("us.fsis".into()), precision: "source-provided".into(), weight: 1, x: 1001.0, y: 1000.0 },
+            RealPreviewClusterMember { feature_key: "c".into(), kind: "source_coordinate".into(), source_id: Some("us.fsis".into()), precision: "source-provided".into(), weight: 1, x: 1004.0, y: 1001.0 },
+            RealPreviewClusterMember { feature_key: "city".into(), kind: "city_reference".into(), source_id: None, precision: "locality_reference_coarse".into(), weight: 4, x: 1003.0, y: 1002.0 },
+            RealPreviewClusterMember { feature_key: "sparse".into(), kind: "source_coordinate".into(), source_id: Some("us.fsis".into()), precision: "source-provided".into(), weight: 1, x: 2000.0, y: 2000.0 },
         ];
-        let mut parents = std::collections::BTreeMap::<(&str, i32, i32), i32>::new();
-        for (source, x, y, count) in children {
-            *parents.entry((source, parent_cell(x), parent_cell(y))).or_default() += count;
-        }
-        assert_eq!(parents.get(&("us.fsis", 2, 3)), Some(&10));
-        assert_eq!(parents.get(&("it.853-2004", 2, 3)), Some(&11));
-        assert_eq!(parents.get(&("it.853-2004", 3, 4)), Some(&13));
-        assert_eq!(parents.values().sum::<i32>(), 34);
-        assert_ne!(parents.get(&("us.fsis", 2, 3)), parents.get(&("it.853-2004", 2, 3)));
+        let first = real_preview_build_cluster_features(members.clone(), 10.0, 2);
+        let second = real_preview_build_cluster_features(members.into_iter().rev().collect(), 10.0, 2);
+        let first_cluster = first.iter().find(|feature| feature.kind == "cluster").unwrap();
+        let second_cluster = second.iter().find(|feature| feature.kind == "cluster").unwrap();
+        assert_eq!(first_cluster.feature_key, second_cluster.feature_key);
+        assert_eq!(first_cluster.count, 7, "city references contribute their represented weight");
+        assert!((first_cluster.x - 1001.75).abs() < 0.001);
+        assert!(first.iter().any(|feature| feature.feature_key == "sparse" && feature.kind == "source_coordinate"));
+        assert_eq!(first.len(), 2);
+    }
+
+    #[test]
+    fn real_preview_hierarchy_tile_selection_is_bounded_and_wraps_the_antimeridian() {
+        let half_world = std::f64::consts::PI * 6_378_137.0;
+        let features = vec![
+            RealPreviewHierarchyFeature { feature_key: "near-west-edge".into(), parent_key: None,
+                kind: "cluster".into(), count: 3, precision: "mixed_location_cluster".into(),
+                next_zoom: 3, x: half_world - 1000.0, y: 0.0 },
+            RealPreviewHierarchyFeature { feature_key: "far-away".into(), parent_key: None,
+                kind: "cluster".into(), count: 3, precision: "mixed_location_cluster".into(),
+                next_zoom: 3, x: 0.0, y: 0.0 },
+        ];
+        let selected = real_preview_hierarchy_tile_features(&features, 2, 0, 2);
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].feature_key, "near-west-edge");
+        assert!(selected[0].x < -half_world, "wrapped copy must clip into the westmost tile");
     }
 
     #[tokio::test]

@@ -8,6 +8,7 @@ import {
   removeLocationLayers,
   setMvtClusterCutoff,
   MVT_SOURCE_ID,
+  MVT_SOURCE_LAYER,
 } from '../../src/design-lab/components/mapSurfaceLayers';
 
 describe('MapSurface layer contract', () => {
@@ -44,7 +45,10 @@ describe('MapSurface layer contract', () => {
       getLayer: () => undefined, getSource: () => undefined,
       removeLayer() {}, removeSource() {},
     });
-    expect(sources[MVT_SOURCE_ID]).toMatchObject({ roundZoom: true });
+    expect(sources[MVT_SOURCE_ID]).toMatchObject({
+      roundZoom: true,
+      promoteId: { [MVT_SOURCE_LAYER]: 'feature_key' },
+    });
     expect(layers.filter((layer) => layer.id.startsWith('mvt-'))).toHaveLength(MVT_LOCATION_LAYER_IDS.length);
     expect(layers.every((layer) => layer.minzoom === undefined && layer.maxzoom === undefined)).toBe(true);
     expect(layers.find((layer) => layer.id === 'mvt-v1-source-pins')?.layout).toMatchObject({

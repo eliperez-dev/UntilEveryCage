@@ -120,6 +120,7 @@ export function addMvtLocationLayers(map: MapLike, sourceId?: string): void {
   map.addSource(MVT_SOURCE_ID, {
     type: 'vector',
     tiles: mvtTileUrl(sourceId),
+    promoteId: { [MVT_SOURCE_LAYER]: 'feature_key' },
     minzoom: 0,
     maxzoom: 14,
     roundZoom: true,
