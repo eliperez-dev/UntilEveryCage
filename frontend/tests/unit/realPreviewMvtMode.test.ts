@@ -8,7 +8,8 @@ describe('real private preview map projection', () => {
   it('keeps the reviewed client-side Supercluster path active for private preview', () => {
     expect(component).toContain('const usingMvt = false;');
     expect(component).toContain('addRealPreviewMapLayers(instance, visible');
-    expect(component).toContain('filteredNativeCollection(nativeFullCollection, mapState.sourceId)');
+    expect(component).toContain('filteredNativeCollection(nativeFullCollection, sourceId)');
+    expect(component).toContain('if (appliedNativeSourceId === sourceId) return;');
     expect(component).toContain('const sourceId = null;');
     expect(component).toContain('camera movement must never reload it');
   });

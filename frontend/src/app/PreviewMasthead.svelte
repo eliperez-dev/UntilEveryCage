@@ -7,7 +7,7 @@
     debugEnabled = false,
     ondebugchange,
   }: {
-    current: "map" | "database";
+    current: "map" | "database" | "methodology";
     mapHref: string;
     databaseHref: string;
     debugEnabled?: boolean;
@@ -15,6 +15,7 @@
   } = $props();
 
   const logo = `${import.meta.env.BASE_URL}assets/icon.png`;
+  const methodologyHref = $derived(`#/methodology?map=${encodeURIComponent(mapHref)}`);
   let toolsOpen = $state(false);
   let releaseOpen = $state(false);
   let accountOpen = $state(false);
@@ -42,6 +43,7 @@
   <nav aria-label="Primary">
     <a href={mapHref} aria-current={current === "map" ? "page" : undefined}>Map</a>
     <a href={databaseHref} aria-current={current === "database" ? "page" : undefined}>Database</a>
+    <a class="secondary-link" href={methodologyHref} aria-current={current === "methodology" ? "page" : undefined}>Methodology</a>
   </nav>
   <div class="masthead-actions" bind:this={actionArea}>
     <button bind:this={releaseButton} type="button" class="header-action preview-action" aria-expanded={releaseOpen} aria-controls="shared-release-menu" onclick={toggleRelease}>Preview</button>
@@ -94,6 +96,7 @@
   nav { display: flex; gap: 1.2rem; font: 0.77rem ui-sans-serif, system-ui, sans-serif; }
   nav a { color: #aeb9af; text-decoration: none; }
   nav a[aria-current] { color: #f1efe8; text-decoration: underline; text-underline-offset: 0.35rem; }
+  nav .secondary-link { margin-left:.2rem; padding-left:1rem; border-left:1px solid #48524a; }
   .masthead-actions { position:relative; justify-self:end; display:flex; align-items:center; gap:.4rem; font-family:system-ui,sans-serif; }
   .header-action { display:flex; align-items:center; justify-content:center; gap:.4rem; min-height:2.1rem; padding:.3rem .45rem; border:1px solid #536158; background:#1a201c; color:#f1efe8; cursor:pointer; font:650 .68rem system-ui; }
   .preview-action { color:#c7d0c7; font-weight:600; }
@@ -121,5 +124,6 @@
     .preview-action, .tools-action span { display:none; }
     .masthead-actions { gap:.25rem; }
     nav { gap:.65rem; }
+    nav .secondary-link { margin-left:0; padding-left:.5rem; }
   }
 </style>

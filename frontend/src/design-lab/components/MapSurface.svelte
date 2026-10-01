@@ -116,6 +116,9 @@
   let feedGeneration = 0;
   let requestedFeedSourceId: string | null | undefined;
   let nativeFullCollection: JsonMapCollection | undefined;
+  // Viewport updates replace `state`; only a changed source filter may rebuild
+  // the native Supercluster index from the already-loaded map projection.
+  let appliedNativeSourceId: string | null | undefined;
   let appliedMvtTileSignature: string | undefined;
   let feedStatus = $state<"loading" | "ready" | "error">("loading");
   // These are milestones, not a guessed byte or worker percentage.
@@ -540,6 +543,7 @@
       const visible = filteredNativeCollection(result.collection, mapState.sourceId);
       if (instance.getSource("locations")) setRealPreviewMapData(instance, visible);
       else addRealPreviewMapLayers(instance, visible, { enabled: clusterEnabled, radius: clusterRadius, maxZoom: clusterMaxZoom });
+      appliedNativeSourceId = mapState.sourceId;
       roundedClusterTilesAvailable = setClusterTileRounding(instance, clusterMaxZoom);
       if (useRoundedClusterTiles(clusterMaxZoom) && !roundedClusterTilesAvailable)
         clusterSettingsError = `This MapLibre build cannot apply half-zoom tile selection; effective cutoff is zoom ${nativeClusterMaxZoom(clusterMaxZoom) + 1}.`;
@@ -557,11 +561,13 @@
       ? { ...collection, features: collection.features.filter((feature) => feature.properties.source_id === sourceId) }
       : collection;
   }
-  function applyLocalSourceFilter() {
+  function applyLocalSourceFilter(sourceId: string | null) {
     if (!map || !nativeFullCollection || !map.getSource("locations")) return;
+    if (appliedNativeSourceId === sourceId) return;
     nativeIndexStartedAt = performance.now();
     startupStage = "indexing";
-    setRealPreviewMapData(map, filteredNativeCollection(nativeFullCollection, mapState.sourceId));
+    setRealPreviewMapData(map, filteredNativeCollection(nativeFullCollection, sourceId));
+    appliedNativeSourceId = sourceId;
   }
   async function clearProjectionCache() {
     const removed = await clearRealPreviewMapCache();
@@ -1135,7 +1141,7 @@
       replaceMapProjection();
     } else if (mode === "real-preview" && map?.isStyleLoaded()) {
       source;
-      if (nativeFullCollection) applyLocalSourceFilter();
+      if (nativeFullCollection) applyLocalSourceFilter(source);
       else void loadRealPreviewFeed();
     }
   });

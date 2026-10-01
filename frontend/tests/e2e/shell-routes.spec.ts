@@ -35,6 +35,17 @@ test('the shell keeps route context in the URL through back and forward navigati
   await routeTail(page, 'database');
 });
 
+test('methodology explains map precision and returns via browser history', async ({ page }) => {
+  await page.goto('./#/database');
+  await page.getByRole('navigation').getByRole('link', { name: 'Methodology' }).click();
+  await expect.poll(() => new URL(page.url()).hash).toBe('#/methodology');
+  await expect(page.getByRole('heading', { level: 1, name: 'Sources & Methodology' })).toBeVisible();
+  await expect(page.getByText('A centroid is', { exact: false })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'untileverycageproject@protonmail.com' })).toHaveAttribute('href', 'mailto:untileverycageproject@protonmail.com');
+  await page.goBack();
+  await routeTail(page, 'database');
+});
+
 test('a hash route remains a supported entry point for the same shell destinations', async ({ page }) => {
   await page.goto('./#/map');
   await expect(page.getByRole('heading', { level: 1, name: /map/i })).toBeVisible();

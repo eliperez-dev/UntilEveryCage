@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { parseRoute, type RouteState } from './routeState';
+  import MethodologyPage from './MethodologyPage.svelte';
   let DesignLab: typeof import('../design-lab/DesignLab.svelte').default | null = null;
   let DatabaseResearch: typeof import('./DatabaseResearch.svelte').default | null = null;
   let RecordPage: typeof import('./RecordPage.svelte').default | null = null;
@@ -43,7 +44,9 @@
   <meta name="description" content="A structural preview of the Until Every Cage application." />
 </svelte:head>
 
-{#if reviewMode && route.kind === 'map' && DesignLab}
+{#if route.kind === 'methodology'}
+  <MethodologyPage />
+{:else if reviewMode && route.kind === 'map' && DesignLab}
   <svelte:component this={DesignLab} />
 {:else if reviewMode && route.kind === 'database' && DatabaseResearch}
   <svelte:component this={DatabaseResearch} />
@@ -58,6 +61,7 @@
     <nav aria-label="Main navigation">
       <a href="#/map" aria-current={route.kind === 'map' ? 'page' : undefined}>Map</a>
       <a href="#/database" aria-current={route.kind === 'database' ? 'page' : undefined}>Database</a>
+      <a href="#/methodology">Methodology</a>
     </nav>
   </header>
 
@@ -87,7 +91,7 @@
         <h1 id="page-heading">Database</h1>
         <p>This page is a structural shell. Database content is not connected yet.</p>
       </section>
-    {:else}
+    {:else if route.kind === 'record'}
       <section aria-labelledby="page-heading">
         <p><a href="#/database">Database</a></p>
         <h1 id="page-heading">Record</h1>
