@@ -1,0 +1,139 @@
+{
+  "schema_version": "source-evidence-lane-v1",
+  "as_of_utc": "2026-10-01",
+  "taxonomy_version": "uec-taxonomy-v1",
+  "sources": [
+    {
+      "source_id": "be.locations",
+      "runner_run_id": "refresh-6f0d475bdc0818bd",
+      "private_run_path": "target/real-preview/runs/refresh-6f0d475bdc0818bd",
+      "official_sources": [
+        {
+          "label": "FASFC operators CSV",
+          "retrieved_at_utc": "2026-10-01T20:44:05Z",
+          "last_modified": "Mon, 28 Sep 2026 05:40:14 GMT",
+          "bytes": 87947437,
+          "sha256": "0814582efcc0abd4ccd4d07e8920d62c16258e13c21e93cf21a16c021ac670fa"
+        },
+        {
+          "label": "FASFC LAP/PAP codebook",
+          "retrieved_at_utc": "2026-10-01T20:44:06Z",
+          "last_modified": "Mon, 28 Sep 2026 05:40:10 GMT",
+          "bytes": 101987,
+          "sha256": "255fe33ac2ac9d61be76683364e7584291e021fb9d91e379df4c9c12cc1a3e21"
+        }
+      ],
+      "candidate_handoff_sha256": "17ce8e8ef30867bd0b373f44d2c56b67a2927fd748206523478864c755fa6887",
+      "schema_fingerprint": "7094493f5663bc927ac26ab6e36f7ad49b8f4a099336bb0ab9e61fa6b0085c48",
+      "component_schema_fingerprints": {
+        "operators": "e225b6f7e11d3cf0d441dd96d1da61e57cd817d3d1e8fd2dad066073d3582a1e",
+        "activity_codes": "4b48513b1169bb0c64d51f7c1cfad5074b1326c1db971b4f4b1273ad7c729087"
+      },
+      "disposable_database_snapshot_sha256": "dcccd0b824bc7fb099a505f148e621c759701aef0f32219f912ba3a941549b87",
+      "counts": {
+        "input_rows": 310806,
+        "accepted_source_activity_rows": 310786,
+        "quarantined_rows": 20,
+        "out_of_scope_rows": 306754,
+        "observations": 4032,
+        "candidates": 1794,
+        "baseline_observations": 4032,
+        "baseline_candidates": 1794,
+        "observation_delta": 0,
+        "candidate_delta": 0,
+        "quarantine_reasons": {
+          "duplicate_source_row": 5,
+          "unresolved_activity_code": 15
+        }
+      },
+      "taxonomy_projection": {
+        "mapping_methods": {"direct": 4032, "derived": 0, "candidate": 0},
+        "mapping_statuses": {"mapped": 4032, "partial": 0, "ambiguous": 0, "unmapped": 0, "unclassified": 0, "conflicting": 0},
+        "multi_assignment_candidates": 0,
+        "assignment_leaf_counts": {
+          "animal_by_products": 118,
+          "cutting": 993,
+          "logistics_and_storage": 941,
+          "processing": 1855,
+          "slaughter": 125
+        }
+      },
+      "geography": {
+        "municipality_or_postal_evidence_candidates": 4032,
+        "numeric_coordinate_candidates": 0,
+        "coarse_placeable_candidates": 1793,
+        "unresolved_municipality_candidates": 1,
+        "map_visible_candidates": 1793,
+        "map_visible_delta_from_baseline": 0,
+        "statbel_municipality_index_sha256": "26f8b77f16af0a49aff2ac5d6bf343c4cb9324882cc7982bb650c7b5a6492ca0"
+      },
+      "e2e": {
+        "status": "certified",
+        "idempotent_replay": true,
+        "public_rows": 0,
+        "publication": "not_authorized"
+      }
+    },
+    {
+      "source_id": "fsa_approved_establishments",
+      "runner_run_id": "refresh-fb93336e0b57aa27",
+      "private_run_path": "target/real-preview/runs/refresh-fb93336e0b57aa27",
+      "official_sources": [
+        {
+          "label": "FSA Approved Establishments England/Wales CSV",
+          "retrieved_at_utc": "2026-10-01T21:17:12Z",
+          "last_modified": "Tue, 01 Sep 2026 10:47:02 GMT",
+          "effective_date": "Tue, 01 Sep 2026 10:47:02 GMT",
+          "bytes": 1774417,
+          "sha256": "d5cfec048b0f4dc4a8594b0597982f3788f10eb1b4270f9593ead8abce33b61f"
+        }
+      ],
+      "candidate_handoff_sha256": "20ee8a92f21412884d730cf345b05955a2a4ec1f11fef6e090ed08f8f1567592",
+      "schema_fingerprint": "8a78f58c004a84811e51af53fab6eaf9316a93462575a17f52b6f7a7543e1fa8",
+      "disposable_database_snapshot_sha256": "57a26cefe39c4bf8238188bde3890261c156fb21c35d6ff6ef0b6b74be8b29f0",
+      "counts": {
+        "input_rows": 5342,
+        "accepted_rows": 4291,
+        "quarantined_rows": 1051,
+        "candidates": 4291,
+        "baseline_input_rows": 5342,
+        "baseline_accepted_rows": 4291,
+        "baseline_candidates": 4291,
+        "input_delta": 0,
+        "accepted_delta": 0,
+        "candidate_delta": 0
+      },
+      "taxonomy_projection": {
+        "mapping_methods": {"direct": 0, "derived": 4291, "candidate": 0},
+        "mapping_statuses": {"mapped": 0, "partial": 3204, "ambiguous": 0, "unmapped": 1087, "unclassified": 0, "conflicting": 0},
+        "multi_assignment_candidates": 402,
+        "assignment_leaf_counts": {
+          "cutting": 617,
+          "logistics_and_storage": 26,
+          "processing": 2856,
+          "slaughter": 163
+        }
+      },
+      "geography": {
+        "municipality_or_postal_evidence_candidates": 0,
+        "numeric_coordinate_candidates": 0,
+        "coarse_placeable_candidates": 0,
+        "map_visible_candidates": 0,
+        "map_visible_delta_from_baseline": 0
+      },
+      "e2e": {
+        "status": "certified",
+        "idempotent_replay": true,
+        "public_rows": 0,
+        "publication": "not_authorized"
+      }
+    },
+    {
+      "source_id": "fss_approved_establishments",
+      "status": "registered_not_live_acquired",
+      "reason": "No approved terms-review record and not enabled for strict private-preview acquisition; live fetch withheld pending terms/schema confirmation."
+    }
+  ],
+  "privacy": "Row-free aggregate evidence only. Raw, normalized, accepted, and quarantined records remain in ignored restricted run directories.",
+  "integration_handoff": "Use the two certified run paths and this aggregate ledger to rerun uec-taxonomy-v1 projection in the integration branch. Keep the disposable DB evidence separate; no authoritative DB or release was changed. Preserve UK activity labels/codes, keep UK mappings derived, and do not attempt guessed-name/address joins. FSS requires a separate approved acquisition decision."
+}

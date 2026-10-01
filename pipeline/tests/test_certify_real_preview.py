@@ -108,6 +108,22 @@ class CertificationLedgerTests(unittest.TestCase):
         self.assertEqual(result["out_of_scope_rows"], 1)
         self.assertEqual(result["counts"]["coarse_placeable"], 1)
 
+    def test_belgium_unresolved_municipality_is_disjoint_from_coarse_map_coverage(self):
+        evidence = ledger()
+        evidence.update({"source_id": "be.locations", "run_id": "be-run-1", "map_visible_count": 1,
+            "source_run": {"run_id": "runner-be-1", "results": [{"source_id": "be.locations",
+                "summary": {"candidate_handoff_sha256": "d" * 64, "schema_fingerprint": "e" * 64}}]},
+            "acquisition": {"operator": {"run_id": "be-run-1", "sha256": "a" * 64},
+                            "activity_codes": {"run_id": "be-run-1", "sha256": "b" * 64}},
+            "quarantine": {"input_rows": 3, "accepted_rows": 3, "quarantined_rows": 0, "out_of_scope_rows": 1}})
+        evidence["preview_import"].update({"observation_count": 2, "facility_candidate_count": 2,
+            "numeric_coordinate_count": 0, "city_postal_count": 2, "unmapped_map_candidate_count": 0,
+            "unmapped_facility_count": 1, "coarse_placeable_facility_count": 1})
+        result = CERT.validate_ledger(evidence, "be.locations")
+        self.assertEqual(result["counts"]["candidates"], 2)
+        self.assertEqual(result["counts"]["coarse_placeable"], 1)
+        self.assertEqual(result["counts"]["unmapped"], 1)
+
     def test_public_rows_or_exact_precision_fail_closed(self):
         broken = ledger()
         broken["preview_import"]["public_projection_count"] = 1

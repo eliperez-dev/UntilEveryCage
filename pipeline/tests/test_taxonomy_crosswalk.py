@@ -41,6 +41,16 @@ class TaxonomyCrosswalkTests(unittest.TestCase):
             "activity_codes": ["593"], "source_activity_categories": ["slaughter"]}})
         self.assertEqual(belgium["taxonomy_mapping_method"], "direct")
         self.assertEqual(belgium["taxonomy_display_category"], "slaughter")
+        handoff_belgium = project_observation({"source_id": "be.locations", "normalized": {
+            "activity_codes": ["593", "594"], "activity_categories": ["slaughter", "processing"]}})
+        self.assertEqual(handoff_belgium["taxonomy_mapping_method"], "direct")
+        self.assertEqual(handoff_belgium["taxonomy_mapping_status"], "mapped")
+        self.assertEqual(handoff_belgium["taxonomy_primaries"], ["slaughter", "processing_and_preparation"])
+        partial_belgium = project_observation({"source_id": "be.locations", "normalized": {
+            "activity_codes": ["exact-code-1", "exact-code-2"],
+            "source_activity_categories": ["slaughter", "export"]}})
+        self.assertEqual(partial_belgium["taxonomy_mapping_status"], "partial")
+        self.assertEqual(partial_belgium["taxonomy_mapping_method"], "direct")
         fsis = project_observation({"source_id": "us.fsis", "normalized": {
             "species_slaughtered": {"meat_slaughter": "yes"},
             "processing_activities": {"meat_processing": "yes"}}})
@@ -50,6 +60,32 @@ class TaxonomyCrosswalkTests(unittest.TestCase):
             "source_function_codes": "codes_1=a", "activity_categories": ["slaughter"]}})
         self.assertEqual(cfia["taxonomy_mapping_method"], "direct")
         self.assertEqual(cfia["taxonomy_display_category"], "slaughter")
+
+    def test_uk_labels_are_conservative_derived_and_keep_unmatched_activity_partial(self):
+        mapped = project_observation({"source_id": "fsa_approved_establishments", "normalized": {
+            "activities": ["Slaughterhouse", "Fresh Fishery Products Plant"],
+            "activity_categories": ["slaughter", "processing"]}})
+        self.assertEqual(mapped["taxonomy_mapping_method"], "derived")
+        self.assertEqual(mapped["taxonomy_mapping_status"], "mapped")
+        self.assertEqual(mapped["taxonomy_primaries"], ["slaughter", "processing_and_preparation"])
+        self.assertEqual(mapped["taxonomy_assignments"][0]["source_label"], "Fresh Fishery Products Plant; Slaughterhouse")
+
+        partial = project_observation({"source_id": "fss_approved_establishments", "normalized": {
+            "activities": ["Slaughterhouse", "Fresh fishery products plant"],
+            "activity_codes": ["SH", "CP"]}})
+        self.assertEqual(partial["taxonomy_mapping_status"], "partial")
+        self.assertEqual(partial["taxonomy_mapping_method"], "derived")
+
+        substring = project_observation({"source_id": "fsa_approved_establishments", "normalized": {
+            "activities": ["Freshery wholesale"], "activity_categories": ["processing"]}})
+        self.assertEqual(substring["taxonomy_mapping_status"], "unmapped")
+        self.assertEqual(substring["taxonomy_primaries"], [])
+
+        coded = project_observation({"source_id": "fss_approved_establishments", "normalized": {
+            "activities": ["SH", "CP"]}})
+        self.assertEqual(coded["taxonomy_mapping_method"], "derived")
+        self.assertEqual(coded["taxonomy_primaries"], ["slaughter", "processing_and_preparation"])
+        self.assertEqual(coded["taxonomy_assignments"][0]["source_code"], "CP; SH")
 
     def test_unknown_partial_conflicting_and_events_fail_closed(self):
         self.assertEqual(project_observation(self.by_name["unknown-code"])["taxonomy_mapping_status"], "unmapped")
@@ -129,6 +165,13 @@ class TaxonomyCrosswalkTests(unittest.TestCase):
         self.assertEqual(contract["crosswalk_document"]["source_id"], "dk.smiley")
         merged = IMPORTER.merge_activity_contracts([contract, contract])
         self.assertEqual(len(merged["taxonomy_assignment_rows"]), 1)
+
+        belgium = IMPORTER.activity_contract(
+            {"activity_codes": ["593"], "activity_categories": ["slaughter"]},
+            "be.locations", {"activity_code": "593"})
+        self.assertEqual(belgium["activity_categories"], ["slaughter"])
+        self.assertEqual(belgium["activity_mapping_status"], "mapped")
+        self.assertEqual(belgium["taxonomy_assignment_rows"][0]["mapping_status"], "mapped")
 
 
 if __name__ == "__main__":
