@@ -57,6 +57,33 @@ privacy review; geocoding is disabled. Records are private candidates only and
 the catalogue's licence statement is not redistribution or publication
 approval. Scotland and Northern Ireland remain distinct source scopes.
 
+## Strict live private E2E reacquisition — 2026-10-01
+
+The existing one-command runner fetched the currently linked official FSA
+England/Wales CSV (Last-Modified 2026-09-01 10:47:02 GMT) on 2026-10-01 at
+21:17:12Z. It is the same 1,774,417-byte snapshot as the previous retained
+baseline (SHA-256
+`d5cfec048b0f4dc4a8594b0597982f3788f10eb1b4270f9593ead8abce33b61f`), so source
+hash, 4,291 accepted candidates, 1,051 quarantines, and 5,342 inputs have zero
+delta. Its private raw/normalized/accepted handoffs and source metadata are
+retained under ignored `target/real-preview/runs/refresh-fb93336e0b57aa27/`.
+The disposable DB/API certificate and same-DB idempotent replay passed with
+zero public rows. This verifies private processing only.
+
+The taxonomy projection preserves source activity labels/codes and treats all
+FSA mappings as derived. Of 4,291 candidate projections, 3,204 are partial and
+1,087 unmapped; none is classified as direct, unclassified, conflicting, or
+ambiguous. There are 402 candidates with multiple activity assignments. All
+4,291 remain unmapped for geography: the feed has no usable city/postal
+coordinates in this approved candidate scope, normalized numeric coordinates
+remain suppressed, and the map-visible count is 0 (delta 0 from baseline).
+The row-free counts and hashes are in the [BE/UK sprint ledger](../../../../data/manifests/source-evidence-be-uk-20261001.json).
+
+Scotland is a distinct source, `fss_approved_establishments`, not part of this
+FSA feed. The current FSS registration has no approved terms-review record and
+is not enabled for private preview acquisition; do not fetch it until those
+gates and its current official artifact/schema are confirmed.
+
 The shared strict private-preview route was verified on 2026-09-27 with two
 live refreshes into a unique disposable database. The final source snapshot was
 retrieved at `2026-09-27T21:50:57Z` (source SHA-256

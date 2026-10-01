@@ -51,6 +51,34 @@ Coverage is Belgium-wide according to data.gov.be, but completeness is bounded b
 
 ## Acquisition provenance (private, no raw artifact retained in Git)
 
+### Strict live private E2E reacquisition — 2026-10-01
+
+The existing one-command runner reacquired the official operator CSV and
+LAP/PAP codebook on 2026-10-01, then certified import and idempotent replay in a
+disposable database. The private artifacts, normalized/candidate handoffs,
+quarantine, and row-free acquisition sidecars remain under ignored
+`target/real-preview/runs/refresh-6f0d475bdc0818bd/`; no source rows are
+checked in. Operator and codebook bytes/hashes were 87,947,437 /
+`0814582efcc0abd4ccd4d07e8920d62c16258e13c21e93cf21a16c021ac670fa` and
+101,987 / `255fe33ac2ac9d61be76683364e7584291e021fb9d91e379df4c9c12cc1a3e21`.
+Both official artifacts report Last-Modified 2026-09-28; the operator snapshot
+and codebook effective timestamps are 05:40:14Z and 05:40:10Z respectively.
+The raw artifacts were fetched at 2026-10-01 20:44Z.
+
+The strict run accepted 310,786 of 310,806 source activity rows; 20 were
+quarantined (5 exact duplicate rows and 15 unresolved activity codes), and
+306,754 were out of animal-related scope. The handoff contains 4,032 in-scope
+activity observations and 1,794 source-scoped candidates, equal to the prior
+retained-ledger baseline (delta 0 / 0). The exact PAP signatures/codebook
+mapping yields 4,032 direct mapped candidate projections, no derived,
+unclassified, partial, ambiguous, or multi-assignment candidates. All 4,032
+candidate rows retain municipality/postal evidence; none has numeric
+coordinates. Statbel municipality centroids provide 1,793 coarse map-visible
+candidates; one candidate remains unresolved. The disposable DB/API
+certificate reports 0 public rows and successful same-DB replay. These are
+private processing results, not review or publication authorization. See the
+row-free [BE/UK sprint ledger](../data/manifests/source-evidence-be-uk-20261001.json).
+
 The current pair was fetched over normal HTTPS from the official static host into ignored private storage. The row-free sidecars preserve response headers, catalog update date, byte size, SHA-256, and schema fingerprints; no raw rows are checked in.
 
 | Artifact | Retrieval UTC | HTTP | Content type | Bytes | SHA-256 | Supplied update/effective date |

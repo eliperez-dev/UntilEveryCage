@@ -123,7 +123,14 @@ def validate_ledger(ledger: dict[str, Any], source_id: str) -> dict[str, Any]:
         raise CertificationError("map-visible count does not reconcile with coordinate/coarse counts")
     location_unmapped = (counts["unmapped_map_candidates"] if source_id == "dk.smiley"
                          else counts["unmapped"])
-    if counts["numeric_coordinates"] + counts["city_postal"] + location_unmapped != counts["candidates"]:
+    if source_id == "be.locations":
+        # Belgium's raw city/postal count includes candidates whose official
+        # municipality name did not resolve to the checked reference index.
+        # Use the resolved coarse-place count as the disjoint map class and
+        # count unresolved municipality candidates separately.
+        if counts["coarse_placeable"] + location_unmapped != counts["candidates"]:
+            raise CertificationError("candidate location classes do not reconcile")
+    elif counts["numeric_coordinates"] + counts["city_postal"] + location_unmapped != counts["candidates"]:
         raise CertificationError("candidate location classes do not reconcile")
     precision = ledger.get("coordinate_precision_breakdown")
     if not isinstance(precision, dict) or _integer(precision.get("exact"), "exact coordinate count") != 0:
@@ -273,7 +280,7 @@ def _check_api(base_url: str, token: str, source_id: str, evidence: dict[str, An
     viewport_ready = any(isinstance(candidate, dict) and candidate.get("source_id") == source_id for candidate in viewport_data)
     if evidence["counts"]["numeric_coordinates"] > 0 and not viewport_ready:
         raise CertificationError("map-visible source candidates were absent from the served viewport")
-    if evidence["counts"]["numeric_coordinates"] == 0 and viewport_ready:
+    if source_id != "be.locations" and evidence["counts"]["numeric_coordinates"] == 0 and viewport_ready:
         raise CertificationError("unmapped source candidates unexpectedly appeared on the map")
     return {"counts": True, "source_list": True, "source_search": True, "candidate_detail": True,
             "map_endpoint_checked": True, "map_visible_count_positive": map_ready,

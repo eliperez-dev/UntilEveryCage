@@ -9,11 +9,18 @@ import json
 import math
 import os
 import sys
+import traceback
 from datetime import timezone, timedelta
 from pathlib import Path
 from typing import Any
 from datetime import datetime
 from urllib.parse import urlsplit
+
+# Direct script execution puts this file's directory, not the repository root,
+# at sys.path[0]. Keep the importer usable from strict source-runner subprocesses.
+REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
 
 import psycopg
 from pipeline.taxonomy_crosswalk import (
@@ -238,8 +245,9 @@ def activity_contract(normalized: dict[str, Any], source: str = "", source_value
                 "classification_ruleset_version": safe_preview_text(pick(normalized, "classification_ruleset_version", "ruleset_version", "ruleset_id"), 120)}
     projected = project_observation({"source_id": source, "normalized": normalized,
                                      "source_values": source_values or {}})
-    source_categories = _text_values(normalized.get("activity_categories"), 80)
-    categories = source_categories or projected["taxonomy_primaries"]
+    # Adapter activity_categories remain source-facing evidence. Only the
+    # versioned crosswalk projection can supply taxonomy primary categories.
+    categories = projected["taxonomy_primaries"]
     mapping = projected["taxonomy_mapping_status"]
     display_category = projected["taxonomy_display_category"]
     return {
@@ -1470,9 +1478,14 @@ def main() -> int:
         print(json.dumps(result, separators=(",", ":")))
         return 2
     except Exception:
+        frames = traceback.extract_tb(sys.exc_info()[2])
+        last_frame = frames[-1] if frames else None
         result = {"status": "failed", "error_code": "import_failed", "observation_count": 0,
                   "facility_candidate_count": 0, "numeric_coordinate_count": 0, "city_postal_count": 0,
                   "unmapped_observation_count": 0, "mapped_non_candidate_observation_count": 0,
+                  "error_type": type(sys.exc_info()[1]).__name__,
+                  "error_location": ({"file": Path(last_frame.filename).name, "line": last_frame.lineno}
+                                     if last_frame else None),
                   "public_release_count": 0, "public_projection_count": 0}
         print(json.dumps(result, separators=(",", ":")))
         return 2

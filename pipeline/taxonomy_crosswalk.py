@@ -98,6 +98,12 @@ def _decision(source: str, normalized: dict[str, Any], original: dict[str, Any])
         codes = _values(source_values, ("activity_code", "activity_codes", "lap_code", "pap_code", "source_function_code", "source_classification_code"))
     if not labels:
         labels = _values(source_values, ("activity_description", "activity", "activities", "category", "associated activities"))
+    if source in {"fsa_approved_establishments", "fss_approved_establishments"} and not codes:
+        codes = [value for value in _values(normalized, ("activities",))
+                 if value.casefold() in {"sh", "cp", "mp", "cs"}]
+        if not codes:
+            codes = [value for value in _values(source_values, ("activities",))
+                     if value.casefold() in {"sh", "cp", "mp", "cs"}]
     assignments: list[dict[str, str]] = []
 
     if source == "dk.smiley":
@@ -108,12 +114,20 @@ def _decision(source: str, normalized: dict[str, Any], original: dict[str, Any])
     elif source == "be.locations":
         # Adapter output is produced only after the reviewed PAP signature
         # matched the exact place/activity/product tuple in the pinned codebook.
-        categories = _values(normalized, ("source_activity_categories",))
+        # The normalized candidate handoff retains the exact-allowlisted
+        # categories as activity_categories; source_activity_categories is
+        # present only in the richer source artifact. Both carry the same
+        # exact codebook-derived evidence for this adapter.
+        categories = _values(normalized, ("source_activity_categories", "activity_categories"))
+        recognized = 0
         for category in categories:
             leaf = {"slaughter": "slaughter", "cutting": "cutting", "processing": "processing",
                     "animal_by_products": "animal_by_products", "logistics_and_storage": "logistics_and_storage"}.get(category)
             if leaf:
                 assignments.append({"leaf_activity": leaf, "primary": _primary_for_leaf(leaf) or "unclassified", "method": "direct"})
+                recognized += 1
+        if assignments and recognized < len(categories):
+            return assignments, "partial"
     elif source == "us.fsis":
         # Structured FSIS activity columns are source fields, not inspection
         # system attributes. The adapter emits these groups from exact columns.
@@ -150,13 +164,48 @@ def _decision(source: str, normalized: dict[str, Any], original: dict[str, Any])
         # Existing controlled UK activity labels are heuristics. Require whole
         # words to avoid accidental substring matches such as "fresh" -> fish.
         import re
-        text = " ".join(labels).casefold()
-        for pattern, leaf, primary in ((r"\bslaughter(?:house)?\b", "slaughter", "slaughter"),
-                                       (r"\b(?:cutting|cut|boning)\b", "cutting", "processing_and_preparation"),
-                                       (r"\b(?:processing|preparation|packing)\b", "processing", "processing_and_preparation"),
-                                       (r"\b(?:farm|holding|livestock|animal keeping)\b", "animal_keeping", "animal_keeping_and_production")):
-            if re.search(pattern, text):
+        rules = ((r"\bslaughter(?:house)?\b", "slaughter", "slaughter"),
+                 (r"\b(?:cutting|boning)\b", "cutting", "processing_and_preparation"),
+                 (r"\b(?:processing|preparation|packing)\b", "processing", "processing_and_preparation"))
+        fsa_monthly_labels = {
+            "packing centre (egg)": ("processing", "processing_and_preparation"),
+            "liquid egg plant": ("processing", "processing_and_preparation"),
+            "re-wrappingand repackaging establishment": ("processing", "processing_and_preparation"),
+            "factory vessel (fish)": ("processing", "processing_and_preparation"),
+            "fresh fishery products plant": ("processing", "processing_and_preparation"),
+            "mince meat establishment": ("processing", "processing_and_preparation"),
+            "game handling establishment": ("processing", "processing_and_preparation"),
+            "mechanically separated meat establishment": ("processing", "processing_and_preparation"),
+            "dispatch centre (lbm)": ("logistics_and_storage", "other_regulated_premises"),
+            "purification centre (lbm)": ("logistics_and_storage", "other_regulated_premises"),
+            "auction hall (fish)": ("logistics_and_storage", "other_regulated_premises"),
+            "wholesale market (fish)": ("logistics_and_storage", "other_regulated_premises"),
+            "collection centre (dairy)": ("logistics_and_storage", "other_regulated_premises"),
+        }
+        uk_exact_labels = {
+            "sh": ("slaughter", "slaughter"),
+            "cp": ("cutting", "processing_and_preparation"),
+            "mp": ("processing", "processing_and_preparation"),
+            "cs": ("logistics_and_storage", "other_regulated_premises"),
+        }
+        unresolved_labels = 0
+        for label in labels:
+            matched = False
+            normalized_label = re.sub(r"\s+", " ", label).strip().casefold()
+            monthly = fsa_monthly_labels.get(normalized_label) if source == "fsa_approved_establishments" else None
+            exact_code = uk_exact_labels.get(normalized_label)
+            if monthly or exact_code:
+                leaf, primary = monthly or exact_code
                 assignments.append({"leaf_activity": leaf, "primary": primary, "method": "derived"})
+                matched = True
+            for pattern, leaf, primary in rules:
+                if not monthly and re.search(pattern, label, re.I):
+                    assignments.append({"leaf_activity": leaf, "primary": primary, "method": "derived"})
+                    matched = True
+            if not matched:
+                unresolved_labels += 1
+        if assignments and unresolved_labels:
+            return assignments, "partial"
     elif source in {"ca.cfia.federal-meat", "ca.ontario.meat-plants", "ca.cfia"}:
         # CFIA adapter has a pinned numbered function-key mapping. Honor only
         # explicit slot/value signatures emitted in source_function_codes;
@@ -227,6 +276,7 @@ def project_observation(record: dict[str, Any]) -> dict[str, Any]:
     """Return stable derived fields without changing source evidence."""
     source = str(record.get("source_id") or "")
     normalized = record.get("normalized") if isinstance(record.get("normalized"), dict) else {}
+    source_values = record.get("source_values") if isinstance(record.get("source_values"), dict) else {}
     assignments, status = _decision(source, normalized, record)
     primaries = sorted({a["primary"] for a in assignments if a["primary"] != "unclassified"},
                        key=lambda value: (PRIMARY_PRECEDENCE.index(value), value))
@@ -238,6 +288,15 @@ def project_observation(record: dict[str, Any]) -> dict[str, Any]:
     display = next((value for value in PRIMARY_PRECEDENCE if value in primaries), "unclassified")
     code_reference, source_code = _first_evidence(normalized, record,
         ("activity_codes", "source_function_codes", "source_classification_codes", "source_classification_code", "activity_code", "source_category", "primary_anzsic_class_code"))
+    if source in {"fsa_approved_establishments", "fss_approved_establishments"} and source_code is None:
+        uk_codes = [value for value in _values(normalized, ("activities",))
+                    if value.casefold() in {"sh", "cp", "mp", "cs"}]
+        if not uk_codes:
+            uk_codes = [value for value in _values(source_values, ("activities",))
+                        if value.casefold() in {"sh", "cp", "mp", "cs"}]
+        if uk_codes:
+            code_reference = "normalized.activities" if _values(normalized, ("activities",)) else "source_values.activities"
+            source_code = "; ".join(sorted(uk_codes))
     label_reference, source_label = _first_evidence(normalized, record,
         ("activity_descriptions", "activity_description", "activity_label", "source_activity", "source_classification_label", "activities", "primary_anzsic_class_name"))
     # Keep explicit rule evidence references with every assignment. Adapter
@@ -282,7 +341,15 @@ def crosswalk_document(source_id: str) -> dict[str, Any]:
                  {"source_code": "CP", "leaf_key": "cutting", "primary_key": "processing_and_preparation", "mapping_method": "direct"},
                  {"source_field": "source_activity", "leaf_key": "label-derived activity", "mapping_method": "derived"}]
     elif source_id in {"fsa_approved_establishments", "fss_approved_establishments"}:
-        rules = [{"source_field": "activities", "leaf_key": "controlled UK activity label", "mapping_method": "derived"}]
+        rules = [
+            {"source_field": "activities", "source_label": "SH", "leaf_key": "slaughter", "primary_key": "slaughter", "mapping_method": "derived"},
+            {"source_field": "activities", "source_label": "CP", "leaf_key": "cutting", "primary_key": "processing_and_preparation", "mapping_method": "derived"},
+            {"source_field": "activities", "source_label": "MP", "leaf_key": "processing", "primary_key": "processing_and_preparation", "mapping_method": "derived"},
+            {"source_field": "activities", "source_label": "CS", "leaf_key": "logistics_and_storage", "primary_key": "other_regulated_premises", "mapping_method": "derived"},
+            {"source_field": "activities", "source_label": "whole-word slaughter or slaughterhouse", "leaf_key": "slaughter", "primary_key": "slaughter", "mapping_method": "derived"},
+            {"source_field": "activities", "source_label": "whole-word cutting or boning", "leaf_key": "cutting", "primary_key": "processing_and_preparation", "mapping_method": "derived"},
+            {"source_field": "activities", "source_label": "whole-word processing, preparation, or packing", "leaf_key": "processing", "primary_key": "processing_and_preparation", "mapping_method": "derived"},
+        ]
     elif source_id.startswith("ca."):
         rules = [{"source_field": "source_function_codes", "leaf_key": "CFIA numbered function signature when present", "mapping_method": "direct"},
                  {"source_field": "activity_categories", "leaf_key": "source activity category", "mapping_method": "derived"}]

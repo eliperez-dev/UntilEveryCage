@@ -371,10 +371,22 @@ class FirstWaveRefreshAdapter:
         if candidate_handoff:
             handoff_root = lifecycle_root / "candidate-handoff" if isinstance(source_adapter, DenmarkSmileyAdapter) else run_dir / "candidate-handoff"
             handoff_manifest = json.loads((handoff_root / "manifest.json").read_text(encoding="utf-8"))
+            schema_fingerprint = manifest.get("schema_fingerprint")
+            if self.source_id == "be.locations":
+                codebook_manifest = manifest.get("activity_codebook") if isinstance(manifest.get("activity_codebook"), dict) else {}
+                component_fingerprints = {
+                    "operators": manifest.get("operator_schema_fingerprint"),
+                    "activity_codes": codebook_manifest.get("schema_fingerprint"),
+                }
+                if all(isinstance(value, str) and len(value) == 64 for value in component_fingerprints.values()):
+                    schema_fingerprint = hashlib.sha256(json.dumps(
+                        component_fingerprints, sort_keys=True, separators=(",", ":")
+                    ).encode("utf-8")).hexdigest()
+                    summary["schema_fingerprints"] = component_fingerprints
             summary.update({
                 "candidate_observation_rows": handoff_manifest.get("normalized_rows"),
                 "candidate_handoff_sha256": handoff_manifest.get("normalized_sha256"),
-                "schema_fingerprint": manifest.get("schema_fingerprint"),
+                "schema_fingerprint": schema_fingerprint,
                 "quarantine_reasons": manifest.get("anomaly_counts", {}),
             })
             if self.source_id == "it.1069-2009":

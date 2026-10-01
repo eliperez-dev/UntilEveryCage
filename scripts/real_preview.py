@@ -777,7 +777,8 @@ def probe() -> dict[str, object]:
     return {"ok": ready and (not frontend_available or frontend_ready), "api_ready": ready, "frontend_loopback": frontend_ready, "frontend_available": frontend_available}
 
 
-def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_id: str | None = None) -> dict[str, object]:
+def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_id: str | None = None,
+                           *, acquire_geography: bool = True) -> dict[str, object]:
     """Freshly acquire one policy-enabled source and import its exact handoff."""
     import uuid
     from pipeline.source_runtime_classification import (
@@ -943,18 +944,58 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
             if not isinstance(runner_run_id, str) or not runner_run_id:
                 write_job("failed", "lifecycle", "source_run_id_missing")
                 raise PreviewError("source runner returned no unique run identifier")
+        if source_id == "be.locations":
+            results = refresh_result.get("results") if isinstance(refresh_result, dict) else None
+            result = next((item for item in results or []
+                           if isinstance(item, dict) and item.get("source_id") == source_id), None)
+            summary = result.get("summary") if isinstance(result, dict) else None
+            if isinstance(summary, dict) and not summary.get("schema_fingerprint"):
+                source_root = output_root / runner_run_id / "sources" / source_id
+                lifecycle_dirs = [path for path in source_root.iterdir()
+                                  if path.is_dir() and (path / "run-status.json").is_file()]
+                if len(lifecycle_dirs) == 1:
+                    source_manifest = json.loads((lifecycle_dirs[0] / "manifest.json").read_text(encoding="utf-8"))
+                    codebook_manifest = source_manifest.get("activity_codebook") if isinstance(source_manifest.get("activity_codebook"), dict) else {}
+                    components = {"operators": source_manifest.get("operator_schema_fingerprint"),
+                                  "activity_codes": codebook_manifest.get("schema_fingerprint")}
+                    if all(isinstance(value, str) and len(value) == 64 for value in components.values()):
+                        summary["schema_fingerprints"] = components
+                        summary["schema_fingerprint"] = hashlib.sha256(
+                            json.dumps(components, sort_keys=True, separators=(",", ":")).encode("utf-8")
+                        ).hexdigest()
         source_dir = output_root / runner_run_id / "sources" / source_id
         handoff_manifest = source_dir / "candidate-handoff" / "manifest.json"
         geography = None
         municipality_index = None
-        if source_id == "be.locations":
+        if source_id == "be.locations" and acquire_geography:
             write_job("running", "administrative_geography")
-            from pipeline.sources.belgium.municipality_reference import acquire_centroids
-            try:
-                geography = acquire_centroids(output_root=source_dir / "geography", run_id=run_id)
-            except Exception:
-                write_job("failed", "administrative_geography", "approved_geometry_acquisition_failed")
-                raise PreviewError("approved administrative geography acquisition failed") from None
+            from pipeline.sources.belgium.municipality_reference import VERSION, URL, acquire_centroids
+            cached_index = source_dir / "geography" / "municipality-centroids.json"
+            cached_archive = source_dir / "geography" / "statbel-municipalities-2025.geojson.zip"
+            if existing_runner_run_id and cached_index.is_file() and cached_archive.is_file():
+                try:
+                    cached_payload = json.loads(cached_index.read_text(encoding="utf-8"))
+                    archive_bytes = cached_archive.read_bytes()
+                    if (cached_payload.get("version") == VERSION
+                            and cached_payload.get("source_url", "").startswith(URL.split("/sites/")[0])
+                            and isinstance(cached_payload.get("municipalities"), dict)
+                            and cached_payload.get("source_sha256") == hashlib.sha256(archive_bytes).hexdigest()
+                            and cached_payload.get("source_byte_size") == len(archive_bytes)):
+                        index_bytes = cached_index.read_bytes()
+                        geography = {"path": str(cached_index), "sha256": hashlib.sha256(index_bytes).hexdigest(),
+                                     "byte_size": len(index_bytes), "source_sha256": cached_payload["source_sha256"],
+                                     "source_byte_size": len(archive_bytes), "source_url": cached_payload["source_url"],
+                                     "retrieved_at_utc": cached_payload.get("retrieved_at_utc"),
+                                     "source_last_modified": cached_payload.get("source_last_modified"),
+                                     "reference_date": cached_payload.get("reference_date"), "version": VERSION}
+                except (OSError, ValueError, TypeError):
+                    geography = None
+            if geography is None:
+                try:
+                    geography = acquire_centroids(output_root=source_dir / "geography", run_id=run_id)
+                except Exception:
+                    write_job("failed", "administrative_geography", "approved_geometry_acquisition_failed")
+                    raise PreviewError("approved administrative geography acquisition failed") from None
             municipality_index = source_dir / "geography" / "municipality-centroids.json"
             job["geometry_sha256"] = geography.get("sha256")
             write_job("running", "transactional_preview_import")
@@ -980,13 +1021,36 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
         try:
             import_result = json.loads(imported.stdout)
         except json.JSONDecodeError:
-            write_job("failed", "transactional_preview_import", "import_result_invalid")
-            raise PreviewError("preview import failed; no readiness ledger was written") from None
+            output_state = "empty" if not imported.stdout.strip() else "non_json"
+            error_match = re.search(r"(?m)^([A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception))(?::|$)", imported.stderr or "")
+            frames = re.findall(r'File "([^"\r\n]+)", line (\d+)', imported.stderr or "")
+            diagnostic = {"exit_code": imported.returncode, "stdout_state": output_state,
+                          "exception_type": error_match.group(1) if error_match else None,
+                          "last_frame": ({"file": Path(frames[-1][0]).name, "line": int(frames[-1][1])}
+                                         if frames else None)}
+            job["import_process"] = diagnostic
+            write_job("failed", "transactional_preview_import", f"import_output_{output_state}_{imported.returncode}")
+            location = diagnostic["last_frame"]
+            location_text = f" at {location['file']}:{location['line']}" if location else ""
+            exception_text = diagnostic["exception_type"] or "unknown process error"
+            raise PreviewError(f"preview import failed with {exception_text}{location_text} (exit {imported.returncode}); no readiness ledger was written") from None
         if imported.returncode or import_result.get("status") != "imported":
             code = import_result.get("error_code")
             safe_code = code if isinstance(code, str) and code.replace("_", "").isalnum() else "transactional_import_failed"
+            error_match = re.search(r"(?m)^([A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception))(?::|$)", imported.stderr or "")
+            frames = re.findall(r'File "([^"\r\n]+)", line (\d+)', imported.stderr or "")
+            imported_location = import_result.get("error_location") if isinstance(import_result.get("error_location"), dict) else None
+            diagnostic = {"exit_code": imported.returncode,
+                          "exception_type": import_result.get("error_type") or (error_match.group(1) if error_match else None),
+                          "last_frame": (imported_location if imported_location and isinstance(imported_location.get("file"), str)
+                                         and isinstance(imported_location.get("line"), int) else
+                                         ({"file": Path(frames[-1][0]).name, "line": int(frames[-1][1])} if frames else None))}
+            job["import_process"] = diagnostic
             write_job("failed", "transactional_preview_import", safe_code)
-            raise PreviewError(f"transactional preview import failed (code={safe_code}); see private job ledger")
+            location = diagnostic["last_frame"]
+            location_text = f" at {location['file']}:{location['line']}" if location else ""
+            exception_text = diagnostic["exception_type"] or "unknown process error"
+            raise PreviewError(f"transactional preview import failed (code={safe_code}, {exception_text}{location_text})")
     except subprocess.TimeoutExpired:
         write_job("failed", str(job.get("phase", "acquisition")), "bounded_job_timeout")
         raise PreviewError("source refresh exceeded its bounded runtime") from None
@@ -1460,19 +1524,20 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
             "ledger": str(ledger_path)}
 
 
-def refresh_source(source_id: str = "be.locations", existing_runner_run_id: str | None = None) -> dict[str, object]:
+def refresh_source(source_id: str = "be.locations", existing_runner_run_id: str | None = None,
+                   *, acquire_geography: bool = True) -> dict[str, object]:
     with source_lock(source_id):
-        return _refresh_source_locked(source_id, existing_runner_run_id)
+        return _refresh_source_locked(source_id, existing_runner_run_id, acquire_geography=acquire_geography)
 
 
 def strict_live_private_e2e(source_id: str, existing_runner_run_id: str | None = None) -> dict[str, object]:
     """Run one bounded live source acquisition through disposable private preview and certification."""
     global PROJECT, VOLUME, DB_PORT, API_PORT, WEB_PORT, PRIVATE_ROOT, ACTIVE_PREVIEW_TOKEN
-    if source_id not in {"ca.cfia.federal-meat", "au.npi.facilities", "fsa_approved_establishments", "es.cat.feed-sandach"}:
+    if source_id not in {"be.locations", "ca.cfia.federal-meat", "au.npi.facilities", "fsa_approved_establishments", "es.cat.feed-sandach"}:
         raise PreviewError("strict-live-private-e2e supports only assigned source lanes")
     import uuid
     suffix = uuid.uuid4().hex[:10]
-    safe_source = {"ca.cfia.federal-meat": "cfia", "au.npi.facilities": "au-npi",
+    safe_source = {"be.locations": "be", "ca.cfia.federal-meat": "cfia", "au.npi.facilities": "au-npi",
                    "fsa_approved_establishments": "fsa", "es.cat.feed-sandach": "es-cat"}[source_id]
     project = f"uec-preview-{safe_source}-{suffix}"
     private_root = ROOT / "data" / "staging" / "strict-preview" / suffix
@@ -1510,7 +1575,7 @@ def strict_live_private_e2e(source_id: str, existing_runner_run_id: str | None =
             raise PreviewError("first source refresh did not complete the private preview import")
         preview = first_preview
         ledger_path = Path(str(preview.get("ledger", "")))
-        if source_id in {"au.npi.facilities", "fsa_approved_establishments", "es.cat.feed-sandach"}:
+        if source_id in {"be.locations", "au.npi.facilities", "fsa_approved_establishments", "es.cat.feed-sandach"}:
             # Replay the identical immutable handoff in the same disposable
             # database. This explicitly proves conflict-safe importer
             # idempotency, rather than inferring it from two fresh databases.
@@ -1525,6 +1590,8 @@ def strict_live_private_e2e(source_id: str, existing_runner_run_id: str | None =
                 sys.executable, str(IMPORTER), "--root", str(source_root),
                 "--manifest", str(handoff_manifest), "--source-id", source_id,
                 "--database-url-env", "UEC_DATABASE_URL", "--json", "--run-id", str(ledger.get("run_id")),
+                *( ["--municipality-index", str(source_root / "geography" / "municipality-centroids.json")]
+                   if source_id == "be.locations" else []),
                 "--run-manifest", str(runner_manifest),
             ], cwd=ROOT, env=replay_env, capture_output=True, text=True, timeout=600)
             try:
@@ -1532,14 +1599,26 @@ def strict_live_private_e2e(source_id: str, existing_runner_run_id: str | None =
             except json.JSONDecodeError:
                 raise PreviewError(f"{source_id} idempotent replay returned invalid aggregate evidence") from None
             original = ledger.get("preview_import")
-            if (replay.returncode or replay_result.get("status") != "imported"
-                    or replay_result.get("idempotent_replay") is not True
-                    or not isinstance(original, dict)
-                    or any(replay_result.get(key) != original.get(key) for key in (
-                        "observation_count", "facility_candidate_count", "numeric_coordinate_count",
+            compared = ("observation_count", "facility_candidate_count", "numeric_coordinate_count",
                         "city_postal_count", "map_visible_count", "normalized_sha256",
-                        "public_release_count", "public_projection_count"))):
-                raise PreviewError(f"{source_id} idempotent replay did not preserve counts and privacy gates")
+                        "public_release_count", "public_projection_count")
+            replay_failures = []
+            if replay.returncode:
+                replay_failures.append("nonzero_exit")
+            if replay_result.get("status") != "imported":
+                replay_error = replay_result.get("error_code")
+                safe_replay_error = (replay_error if isinstance(replay_error, str)
+                                     and replay_error.replace("_", "").isalnum() else "unknown")
+                replay_failures.append(f"import_status_{safe_replay_error}")
+            if replay_result.get("idempotent_replay") is not True:
+                replay_failures.append("replay_not_idempotent")
+            if not isinstance(original, dict):
+                replay_failures.append("initial_import_missing")
+            else:
+                replay_failures.extend(f"changed_{key}" for key in compared
+                                       if replay_result.get(key) != original.get(key))
+            if replay_failures:
+                raise PreviewError(f"{source_id} idempotent replay failed: {', '.join(replay_failures)}")
             ledger["preview_import"] = replay_result
             temporary_ledger = ledger_path.with_suffix(".json.tmp")
             temporary_ledger.write_text(json.dumps(ledger, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
@@ -1562,6 +1641,7 @@ def strict_live_private_e2e(source_id: str, existing_runner_run_id: str | None =
                 "certificate": str(certificate_path), "counts": certificate["counts"],
                 "checks": certificate["checks"],
                 "refreshes": 1, "idempotent_replay": source_id in {
+                    "be.locations",
                     "au.npi.facilities", "fsa_approved_establishments", "es.cat.feed-sandach"},
                 "publication": "not_authorized", "public_rows": 0}
     except BaseException as error:
