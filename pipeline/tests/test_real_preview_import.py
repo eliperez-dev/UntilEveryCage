@@ -85,6 +85,53 @@ class RealPreviewImporterTests(unittest.TestCase):
             self.assertEqual(verified["normalized_actual"], verified["normalized_hash"])
             self.assertEqual(verified["graph_actual"], verified["graph_manifest"]["records_sha256"])
 
+    def test_archived_artifact_replay_keeps_original_provenance_and_checks_hash(self):
+        content = b"synthetic retained official artifact"
+        source_hash = hashlib.sha256(content).hexdigest()
+        retrieved = IMPORTER.datetime.fromisoformat("2026-10-01T12:00:00+00:00")
+        with tempfile.TemporaryDirectory() as directory:
+            artifact = Path(directory) / "source.csv"
+            artifact.write_bytes(content)
+            evidence = {"source_id": "au.npi.facilities", "run_id": "original-acquisition-1",
+                        "sha256": source_hash, "byte_size": len(content),
+                        "retrieved_at_utc": "2026-10-01T12:00:00Z",
+                        "terms_review": {"decision": "approved"}}
+            runtime = {"processing_mode": "archived_replay",
+                       "replay_of": {"source_id": "au.npi.facilities",
+                                      "original_acquisition_run_id": "original-acquisition-1",
+                                      "source_artifact_sha256": source_hash,
+                                      "retrieved_at_utc": "2026-10-01T12:00:00Z"}}
+            result = {"acquisition_classification": "archived-replay"}
+            replay = IMPORTER.validate_archived_replay(runtime, result, "au.npi.facilities",
+                                                       source_hash, retrieved, evidence, artifact)
+            self.assertEqual(replay["original_acquisition_run_id"], "original-acquisition-1")
+            self.assertEqual(replay["source_artifact_sha256"], source_hash)
+            artifact.write_bytes(content + b"tampered")
+            with self.assertRaisesRegex(IMPORTER.ImportFailure, "archived_replay_artifact_mismatch"):
+                IMPORTER.validate_archived_replay(runtime, result, "au.npi.facilities",
+                                                  source_hash, retrieved, evidence, artifact)
+
+    def test_archived_artifact_replay_rejects_live_or_unlinked_classification(self):
+        with tempfile.TemporaryDirectory() as directory:
+            artifact = Path(directory) / "source.csv"
+            content = b"synthetic retained official artifact"
+            artifact.write_bytes(content)
+            source_hash = hashlib.sha256(content).hexdigest()
+            retrieved = IMPORTER.datetime.fromisoformat("2026-10-01T12:00:00+00:00")
+            evidence = {"source_id": "ca.ontario.meat-plants", "run_id": "original-1",
+                        "sha256": source_hash, "byte_size": len(content),
+                        "retrieved_at_utc": "2026-10-01T12:00:00Z",
+                        "terms_review": {"decision": "approved"}}
+            runtime = {"processing_mode": "archived_replay",
+                       "replay_of": {"source_id": "ca.ontario.meat-plants",
+                                      "original_acquisition_run_id": "original-1",
+                                      "source_artifact_sha256": source_hash,
+                                      "retrieved_at_utc": "2026-10-01T12:00:00Z"}}
+            with self.assertRaisesRegex(IMPORTER.ImportFailure, "archived_replay_provenance_mismatch"):
+                IMPORTER.validate_archived_replay(runtime, {"acquisition_classification": "live"},
+                                                   "ca.ontario.meat-plants", source_hash,
+                                                   retrieved, evidence, artifact)
+
     def test_catalonia_locality_candidates_use_map_scope_after_reference_enrichment(self):
         parsed = IMPORTER.parse_row("es.cat.feed-sandach", {
             "source_id": "es.cat.feed-sandach",

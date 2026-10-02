@@ -1026,9 +1026,39 @@ def import_offline_handoffs(root: Path, database_url: str) -> dict[str, Any]:
             "by_source": counts_by_source}
 
 
+ARCHIVED_REPLAY_SOURCES = {"au.npi.facilities", "ca.ontario.meat-plants", "es.cat.feed-sandach"}
+
+
+def validate_archived_replay(runtime_manifest: dict[str, Any], source_result: dict[str, Any],
+                             source_id: str, source_hash: str, retrieved_at: datetime,
+                             acquisition_evidence: dict[str, Any], artifact_path: Path) -> dict[str, Any]:
+    """Verify a retained artifact replay while preserving original acquisition provenance."""
+    replay = runtime_manifest.get("replay_of")
+    original_run_id = replay.get("original_acquisition_run_id") if isinstance(replay, dict) else None
+    retrieved_text = retrieved_at.isoformat().replace("+00:00", "Z")
+    if (runtime_manifest.get("processing_mode") != "archived_replay"
+            or source_result.get("acquisition_classification") != "archived-replay"
+            or not isinstance(replay, dict) or replay.get("source_id") != source_id
+            or not isinstance(original_run_id, str) or not original_run_id
+            or replay.get("source_artifact_sha256") != source_hash
+            or replay.get("retrieved_at_utc") != retrieved_text
+            or acquisition_evidence.get("source_id") != source_id
+            or acquisition_evidence.get("run_id") != original_run_id
+            or acquisition_evidence.get("sha256") != source_hash
+            or acquisition_evidence.get("retrieved_at_utc") != retrieved_text
+            or not artifact_path.is_file() or artifact_path.is_symlink()):
+        raise ImportFailure("archived_replay_provenance_mismatch")
+    actual_hash, actual_size = digest_file(artifact_path)
+    if actual_hash != source_hash or actual_size != acquisition_evidence.get("byte_size"):
+        raise ImportFailure("archived_replay_artifact_mismatch")
+    return {"original_acquisition_run_id": original_run_id,
+            "source_artifact_sha256": source_hash, "retrieved_at_utc": retrieved_text}
+
+
 def run(root: Path, database_url: str, *, source_id: str | None = None,
         manifest_path: Path | None = None, municipality_index_path: Path | None = None,
-        run_id: str | None = None, run_manifest_path: Path | None = None) -> dict[str, Any]:
+        run_id: str | None = None, run_manifest_path: Path | None = None,
+        archived_replay: bool = False) -> dict[str, Any]:
     if not root.is_dir() or root.is_symlink():
         raise ImportFailure("handoff_root_unavailable")
     if source_id is not None:
@@ -1059,11 +1089,26 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
         source_runs = runtime_manifest.get("results")
         source_result = next((item for item in source_runs if isinstance(item, dict) and item.get("source_id") == source_id), None) if isinstance(source_runs, list) else None
         source_summary = source_result.get("summary") if isinstance(source_result, dict) else None
-        if not isinstance(source_summary, dict) or source_result.get("status") != "succeeded" or source_result.get("acquisition_classification") != "live":
+        if not isinstance(source_summary, dict) or source_result.get("status") != "succeeded":
+            raise ImportFailure("runtime_source_run_not_succeeded")
+        if archived_replay:
+            if source_id not in ARCHIVED_REPLAY_SOURCES:
+                raise ImportFailure("archived_replay_source_not_supported")
+        elif source_result.get("acquisition_classification") != "live":
             raise ImportFailure("runtime_source_run_not_live")
         if run_manifest_path.parent.name != runtime_manifest.get("run_id"):
             raise ImportFailure("runtime_handoff_run_mismatch")
         acquisition_evidence = None
+        archived_replay_evidence = None
+        if archived_replay:
+            acquisition_path = root / "acquisition" / source_id / run_id / "acquisition-metadata.json"
+            expected_artifact = root / "acquisition" / source_id / run_id / "source.csv"
+            if not acquisition_path.is_file() or acquisition_path.is_symlink():
+                raise ImportFailure("acquisition_provenance_missing")
+            acquisition_evidence = json_object(acquisition_path)
+            archived_replay_evidence = validate_archived_replay(
+                runtime_manifest, source_result, source_id, source_hash, retrieved_at,
+                acquisition_evidence, expected_artifact)
         if source_id == "be.locations":
             pair_path = root / "acquisition" / source_id / run_id / "pair-metadata.json"
             if not pair_path.is_file() or pair_path.is_symlink():
@@ -1150,16 +1195,16 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
             acquisition_path = root / "acquisition" / source_id / run_id / "acquisition-metadata.json"
             if not acquisition_path.is_file() or acquisition_path.is_symlink():
                 raise ImportFailure("acquisition_provenance_missing")
-            acquisition_evidence = json_object(acquisition_path)
+            acquisition_evidence = acquisition_evidence or json_object(acquisition_path)
             artifact_value = acquisition_evidence.get("artifact_path")
             if not isinstance(artifact_value, str):
                 raise ImportFailure("acquisition_artifact_path_missing")
-            acquired_file = Path(artifact_value)
-            if not acquired_file.is_file() or acquired_file.is_symlink() or acquired_file.resolve() != (root / "acquisition" / source_id / run_id / "source.csv").resolve():
+            acquired_file = root / "acquisition" / source_id / run_id / "source.csv" if archived_replay else Path(artifact_value)
+            if not acquired_file.is_file() or acquired_file.is_symlink() or (not archived_replay and acquired_file.resolve() != (root / "acquisition" / source_id / run_id / "source.csv").resolve()):
                 raise ImportFailure("acquisition_artifact_path_invalid")
             artifact_hash, artifact_size = digest_file(acquired_file)
             if (acquisition_evidence.get("source_id") != source_id
-                    or acquisition_evidence.get("run_id") != run_id
+                    or acquisition_evidence.get("run_id") != (archived_replay_evidence["original_acquisition_run_id"] if archived_replay else run_id)
                     or acquisition_evidence.get("sha256") != source_hash
                     or artifact_hash != source_hash or artifact_size != acquisition_evidence.get("byte_size")
                     or acquisition_evidence.get("provenance_url") != manifest.get("source_url")
@@ -1220,9 +1265,9 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
             expected_artifact = root / "acquisition" / source_id / run_id / "source.csv"
             if not acquisition_path.is_file() or acquisition_path.is_symlink():
                 raise ImportFailure("acquisition_provenance_missing")
-            acquisition_evidence = json_object(acquisition_path)
+            acquisition_evidence = acquisition_evidence or json_object(acquisition_path)
             artifact_value = acquisition_evidence.get("artifact_path")
-            if (not isinstance(artifact_value, str) or Path(artifact_value).resolve() != expected_artifact.resolve()
+            if (not isinstance(artifact_value, str) or (not archived_replay and Path(artifact_value).resolve() != expected_artifact.resolve())
                     or not expected_artifact.is_file() or expected_artifact.is_symlink()):
                 raise ImportFailure("acquisition_artifact_mismatch")
             artifact_hash, artifact_size = digest_file(expected_artifact)
@@ -1233,7 +1278,7 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
             terms_evidence = acquisition_evidence.get("terms_review")
             if (acquisition_evidence.get("source_id") != source_id
                     or acquisition_evidence.get("source_title") != "National Pollutant Inventory"
-                    or acquisition_evidence.get("run_id") != run_id
+                    or acquisition_evidence.get("run_id") != (archived_replay_evidence["original_acquisition_run_id"] if archived_replay else run_id)
                     or acquisition_evidence.get("catalog_url") != "https://data.gov.au/data/api/3/action/package_show?id=043f58e0-a188-4458-b61c-04e5b540aea4"
                     or acquisition_evidence.get("catalog_resource_updated_at") != acquisition_evidence.get("effective_date")
                     or acquisition_evidence.get("requested_url") != "https://data.gov.au/data/dataset/043f58e0-a188-4458-b61c-04e5b540aea4/resource/f83cdee9-ebcb-4f24-941b-34bb2f0996cf/download/facilities.csv"
@@ -1251,6 +1296,13 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
                     or acquired_at.utcoffset() is None
                     or acquired_at > datetime.now(timezone.utc) + timedelta(minutes=5)
                     or datetime.now(timezone.utc) - acquired_at > timedelta(days=max_age)):
+                raise ImportFailure("acquisition_provenance_mismatch")
+        elif source_id == "ca.ontario.meat-plants" and archived_replay:
+            terms_evidence = acquisition_evidence.get("terms_review")
+            if (acquisition_evidence.get("source_id") != source_id
+                    or acquisition_evidence.get("final_url", acquisition_evidence.get("source_url", acquisition_evidence.get("requested_url"))) != manifest.get("source_url")
+                    or (terms_evidence is not None and (not isinstance(terms_evidence, dict) or terms_evidence.get("decision") != "approved"))
+                    or acquisition_evidence.get("run_id") != archived_replay_evidence["original_acquisition_run_id"]):
                 raise ImportFailure("acquisition_provenance_mismatch")
         elif source_id == "us.fsis":
             source_artifacts = manifest.get("source_artifacts")
@@ -1444,7 +1496,11 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
                                    "activity_counts", "observed_activity_categories", "source_license",
                                    "source_canonical_url", "source_as_of", "graph_relationships_emitted")},
                                "geometry_reference": ({**{key: index_payload.get(key) for key in ("source", "source_url", "license", "reference_date", "retrieved_at_utc", "source_last_modified", "source_sha256", "source_byte_size", "method", "version")}, "derived_index_sha256": digest_file(municipality_index_path)[0]} if municipality_index is not None else None),
-                               "fresh_live_run": True, "preview_policy_version": json_object(POLICY).get("contract_version"),
+                               "fresh_live_run": not archived_replay,
+                               "processing_mode": "archived_replay" if archived_replay else "live_acquisition",
+                               "acquisition_classification": "archived-replay" if archived_replay else "live",
+                               "replay_of": archived_replay_evidence,
+                               "preview_policy_version": json_object(POLICY).get("contract_version"),
                                "preview_candidate_projection_version": SNAPSHOT_PROJECTION_VERSION}
             if source_id == "au.npi.facilities":
                 runtime_details["source_specific_counts"].update({
@@ -1527,6 +1583,7 @@ def main() -> int:
     parser.add_argument("--municipality-index", type=Path, help="provenanced Statbel municipality centroid index")
     parser.add_argument("--run-id", help="unique live acquisition/run identifier")
     parser.add_argument("--run-manifest", type=Path, help="exact shared refresh-run manifest")
+    parser.add_argument("--archived-replay", action="store_true", help="import one hash-verified retained official artifact; records archived replay, not live acquisition")
     parser.add_argument("--offline-handoff", action="store_true", help="import only the hash-verified retained FSIS private handoff; never reacquire")
     args = parser.parse_args()
     result: dict[str, Any]
@@ -1539,9 +1596,11 @@ def main() -> int:
                 raise ImportFailure("offline_source_not_supported")
             result = import_offline_handoffs(args.root, database_url)
         else:
+            if args.archived_replay and not args.source_id:
+                raise ImportFailure("archived_replay_requires_source")
             result = run(args.root, database_url, source_id=args.source_id, manifest_path=args.manifest,
                          municipality_index_path=args.municipality_index, run_id=args.run_id,
-                         run_manifest_path=args.run_manifest)
+                         run_manifest_path=args.run_manifest, archived_replay=args.archived_replay)
     except ImportFailure as error:
         result = {"status": "failed", "error_code": error.code, "observation_count": 0,
                   "facility_candidate_count": 0, "numeric_coordinate_count": 0, "city_postal_count": 0,

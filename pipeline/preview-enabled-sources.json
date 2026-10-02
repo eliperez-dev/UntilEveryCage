@@ -83,7 +83,7 @@
       "allowed_preview_fields": ["establishment_id", "recognition_number", "facility_grouping", "identity_review", "name", "operator_name", "trading_name", "address", "city", "postal_code", "province", "country_code", "nation", "jurisdiction_level", "jurisdiction", "source_plant_type", "source_function_codes", "animal_class", "activity_categories", "address_state", "coordinates", "coordinate_state", "coordinate_gate", "privacy_gate", "publication_gate", "classification_state", "observation_state", "disappearance_semantics"],
       "display_policy": {"kind": "list_only_unmapped", "precision": "coordinates_withheld_pending_review", "disclosure": "Ontario provincially licensed meat plants only. Source coordinates and address/contact values are withheld pending privacy and location review; candidates remain listable and unmapped. Updates are as required; no current-completeness claim. Private preview only; not project-approved or publicly released."},
       "adapter_version": "ca-meat-v4-private-location-evidence",
-      "schema_version": "ca-meat-tabular-workbook-v1"
+      "schema_version": "ca-meat-tabular-workbook-v2"
     },
     "ca.cfia.federal-meat": {
       "enabled": true,
@@ -110,7 +110,7 @@
       "expected_artifacts": ["source.csv"],
       "allowed_preview_fields": ["establishment_id", "name", "trading_name", "registered_business_name", "facility_name", "address", "address_state", "location_role", "location_semantics", "residential_or_mixed_use_screen", "address_review_signals", "city", "postal_code", "country_code", "state", "coordinates", "coordinate_state", "coordinate_precision", "coordinate_method", "coordinate_provider", "coordinate_confidence", "evidence_summary", "privacy_gate", "coordinate_gate", "publication_gate", "activity_categories", "main_activities", "animal_relevance", "primary_anzsic_class_code", "primary_anzsic_class_name", "first_report_year", "latest_report_year", "latest_report_id", "observation_state", "operation_state", "classification_state", "in_default_map_scope", "map_scope_reason"],
       "display_policy": {"kind": "source_coordinates_with_coarse_fallback", "precision": "source_coordinate_then_locality_or_unmapped", "disclosure": "Valid latitude/longitude from the official NPI Facilities CSV are used as source-reported facility/reporting-site coordinates in this private preview. Source values remain attributed to DCCEEW/NPI; they do not establish current operation, completeness, or publication approval. Invalid or missing points remain eligible for separate shared enrichment. Private preview only; CC BY 4.0 attribution applies."},
-      "adapter_version": "au-npi-facilities-v2",
+      "adapter_version": "au-npi-facilities-v3",
       "schema_version": "au-npi-csv-v2"
     },
     "fsa_approved_establishments": {
