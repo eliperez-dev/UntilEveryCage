@@ -800,7 +800,8 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
     env["UEC_DATABASE_URL"] = database_url
     env["PYTHONPATH"] = os.pathsep.join(filter(None, (str(ROOT), env.get("PYTHONPATH", ""))))
     run_id = f"preview-{source_id.replace('.', '-')}-{uuid.uuid4()}"
-    output_root = ROOT / "target" / "real-preview" / "runs"
+    output_root = Path(os.environ.get(
+        "UEC_REAL_PREVIEW_RUNS_ROOT", str(ROOT / "target" / "real-preview" / "runs")))
     job_dir = ROOT / "target" / "real-preview" / "jobs"
     job_path = job_dir / f"{run_id}.json"
     job: dict[str, object] = {"ledger_version": "source-preview-job-v1", "source_id": source_id,
@@ -1173,7 +1174,7 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                                                 "unmapped": import_result.get("unmapped_facility_count")},
             "location_policy": "CFIA workbook provides no coordinates; city/postal candidates are listable, remain unmapped, and are not geocoded.",
         })
-    elif source_id in {"au.npi.facilities", "fsa_approved_establishments"}:
+    elif source_id in {"au.npi.facilities", "fsa_approved_establishments", "fss_approved_establishments"}:
         acquisition_path = source_dir / "acquisition" / source_id / run_id / "acquisition-metadata.json"
         if not acquisition_path.is_file() or acquisition_path.is_symlink():
             raise PreviewError(f"{source_id} acquisition provenance is unavailable")
@@ -1230,6 +1231,11 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                     import_result.get("normalized_sha256"), source_summary.get("candidate_handoff_sha256"),
                     source_summary.get("schema_fingerprint"))) or not isinstance(source_summary.get("quarantine_reasons"), dict):
                 raise PreviewError("FSA lifecycle hashes or quarantine summary are incomplete")
+            location_policy = (
+                "FSS Scotland source addresses and remarks remain restricted pending privacy review; no coordinates are supplied, no geocoding is performed, and Northern Ireland/FSA are separate sources."
+                if source_id == "fss_approved_establishments" else
+                "FSA monthly source addresses and coordinates are suppressed pending privacy review; all listable records remain unmapped and are not geocoded."
+            )
             ledger.update({
                 "acquisition": {key: acquisition_evidence.get(key) for key in (
                     "source_id", "run_id", "requested_url", "final_url", "requested_at_utc", "retrieved_at_utc",
@@ -1249,7 +1255,7 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                 "coordinate_precision_breakdown": {"exact": 0, "source_numeric": 0,
                                                     "city_or_postal_only": 0,
                                                     "unmapped": import_result.get("unmapped_facility_count")},
-                "location_policy": "FSA monthly source addresses and coordinates are suppressed pending privacy review; all listable records remain unmapped and are not geocoded.",
+                "location_policy": location_policy,
             })
     elif source_id == "be.locations":
         acquisition_path = source_dir / "acquisition" / source_id / run_id / "pair-metadata.json"
@@ -1536,13 +1542,15 @@ def strict_live_private_e2e(source_id: str, existing_runner_run_id: str | None =
     global PROJECT, VOLUME, DB_PORT, API_PORT, WEB_PORT, PRIVATE_ROOT, ACTIVE_PREVIEW_TOKEN
     if source_id not in {"be.locations", "ca.cfia.federal-meat", "au.npi.facilities",
                           "au.sa.epa.licensed-activities", "fsa_approved_establishments",
+                          "fss_approved_establishments",
                           "es.cat.feed-sandach"}:
         raise PreviewError("strict-live-private-e2e supports only assigned source lanes")
     import uuid
     suffix = uuid.uuid4().hex[:10]
     safe_source = {"be.locations": "be", "ca.cfia.federal-meat": "cfia", "au.npi.facilities": "au-npi",
                    "au.sa.epa.licensed-activities": "au-sa-epa",
-                   "fsa_approved_establishments": "fsa", "es.cat.feed-sandach": "es-cat"}[source_id]
+                   "fsa_approved_establishments": "fsa", "fss_approved_establishments": "fss",
+                   "es.cat.feed-sandach": "es-cat"}[source_id]
     project = f"uec-preview-{safe_source}-{suffix}"
     private_root = ROOT / "data" / "staging" / "strict-preview" / suffix
     ports = ((55440, 55489), (38020, 38069), (34180, 34229))
@@ -1579,14 +1587,17 @@ def strict_live_private_e2e(source_id: str, existing_runner_run_id: str | None =
             raise PreviewError("first source refresh did not complete the private preview import")
         preview = first_preview
         ledger_path = Path(str(preview.get("ledger", "")))
-        if source_id in {"be.locations", "au.npi.facilities", "fsa_approved_establishments", "es.cat.feed-sandach"}:
+        if source_id in {"be.locations", "au.npi.facilities", "fsa_approved_establishments",
+                         "fss_approved_establishments", "es.cat.feed-sandach"}:
             # Replay the identical immutable handoff in the same disposable
             # database. This explicitly proves conflict-safe importer
             # idempotency, rather than inferring it from two fresh databases.
             ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
             runner_run_id = (ledger.get("source_run") or {}).get("run_id")
-            source_root = ROOT / "target" / "real-preview" / "runs" / str(runner_run_id) / "sources" / source_id
-            runner_manifest = ROOT / "target" / "real-preview" / "runs" / str(runner_run_id) / "manifest.json"
+            runs_root = Path(os.environ.get(
+                "UEC_REAL_PREVIEW_RUNS_ROOT", str(ROOT / "target" / "real-preview" / "runs")))
+            source_root = runs_root / str(runner_run_id) / "sources" / source_id
+            runner_manifest = runs_root / str(runner_run_id) / "manifest.json"
             handoff_manifest = source_root / "candidate-handoff" / "manifest.json"
             replay_env = os.environ.copy()
             replay_env["UEC_DATABASE_URL"] = _local_database_url()
@@ -1647,7 +1658,8 @@ def strict_live_private_e2e(source_id: str, existing_runner_run_id: str | None =
                 "checks": certificate["checks"],
                 "refreshes": 1, "idempotent_replay": source_id in {
                     "be.locations",
-                    "au.npi.facilities", "fsa_approved_establishments", "es.cat.feed-sandach"},
+                    "au.npi.facilities", "fsa_approved_establishments",
+                    "fss_approved_establishments", "es.cat.feed-sandach"},
                 "publication": "not_authorized", "public_rows": 0}
     except BaseException as error:
         primary_error = error

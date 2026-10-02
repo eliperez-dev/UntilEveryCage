@@ -14,7 +14,7 @@ from pipeline.common.orchestrator import ORCHESTRATOR_VERSION
 ROOT = Path(__file__).parents[3]
 REGISTRY_PATH = ROOT / "adapter-capabilities.json"
 EXPECTED_SCHEMA = {
-    "fss_approved_establishments": "fss-scotland-approved-v1",
+    "fss_approved_establishments": "fss-scotland-approved-v2",
     "fsa_approved_establishments": "fsa-uk-approved-v1",
 }
 

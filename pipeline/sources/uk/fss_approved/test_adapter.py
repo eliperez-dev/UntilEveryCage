@@ -19,6 +19,9 @@ class FssAdapterTests(unittest.TestCase):
         self.assertEqual(result.accepted[1]["normalized"]["species"], "unknown")
         self.assertEqual(result.accepted[0]["source_values"]["trading_name"], "North Star Foods")
         self.assertIsNone(result.accepted[0]["normalized"]["coordinates"])
+        self.assertEqual(result.accepted[0]["normalized"]["coordinate_state"], "not-supplied")
+        self.assertEqual(result.accepted[0]["normalized"]["privacy_gate"], "privacy-review-required")
+        self.assertEqual(result.accepted[0]["normalized"]["publication_gate"], "blocked")
         self.assertFalse(result.release_allowed)
 
     def test_quarantines_duplicate_activity_status_remarks_and_privacy(self):

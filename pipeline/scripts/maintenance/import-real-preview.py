@@ -347,6 +347,7 @@ SOURCE_NAMES = {
     "be.locations": "Belgian Federal Agency for the Safety of the Food Chain — Operator Register",
     "ca.cfia.federal-meat": "Canadian Food Inspection Agency — Federal Meat Establishments",
     "fsa_approved_establishments": "Food Standards Agency — Approved Food Establishments (England and Wales)",
+    "fss_approved_establishments": "Food Standards Scotland — Approved Establishments (Scotland)",
     "es.cat.feed-sandach": "Catalonia — SANDACH Feed Establishments Register",
     "dk.smiley": "Danish Veterinary and Food Administration — Find Smiley",
     "fr.dgal.section-i": "French Ministry of Agriculture — DGAL Section I",

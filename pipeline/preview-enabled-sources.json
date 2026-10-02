@@ -99,6 +99,20 @@
       "adapter_version": "fsa-uk-v2-2",
       "schema_version": "fsa-uk-approved-v1"
     },
+    "fss_approved_establishments": {
+      "enabled": true,
+      "runtime_classification": "production-e2e",
+      "public_release": false,
+      "runner": "pipeline.refresh_private:fss_approved_establishments",
+      "terms_review": "data/terms-reviews/fss_approved_establishments.json",
+      "terms_decision": "approved",
+      "freshness_max_days": 35,
+      "expected_artifacts": ["source.csv"],
+      "allowed_preview_fields": ["approval_number", "establishment_id", "trading_name", "address_lines", "postcode", "activities", "activity_categories", "species", "competent_authority", "nation", "status", "remarks", "published_date", "coordinates", "coordinate_state", "coordinate_precision", "coordinate_gate", "privacy_gate", "publication_gate"],
+      "display_policy": {"kind": "unmapped_source_records_only", "precision": "no-coordinate-disclosure", "disclosure": "Food Standards Scotland approved establishments, Scotland only. Source addresses and remarks remain restricted; coordinates are not supplied to map preview and no geocoding is performed. Private preview only; no public release. England/Wales FSA and Northern Ireland data remain separate."},
+      "adapter_version": "fss-scotland-v2-2",
+      "schema_version": "fss-scotland-approved-v2"
+    },
     "it.853-2004": {
       "enabled": true,
       "runtime_classification": "production-e2e",
