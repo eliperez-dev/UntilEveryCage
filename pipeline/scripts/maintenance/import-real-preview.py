@@ -580,6 +580,12 @@ def map_unmapped_candidate_count(candidate_count: int, map_visible_count: int) -
     return candidate_count - map_visible_count
 
 
+def candidate_map_unmapped_count(candidate_count: int, numeric_count: int,
+                                 coarse_placeable_count: int) -> int:
+    """Count candidate groups with neither source coordinates nor placeable coarse geometry."""
+    return map_unmapped_candidate_count(candidate_count, numeric_count + coarse_placeable_count)
+
+
 def public_zero_counts(db: psycopg.Connection) -> tuple[int, int]:
     release_count = 0
     projection_count = 0
@@ -822,7 +828,8 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
         )
     group_keys = set(representatives)
     rejected_zero_coordinates = len(zero_coordinate_groups - usable_coordinate_groups)
-    return count, numeric_count, coarse_count, candidate_count, unmapped_count, mapped_non_candidate_count, len(group_keys), len(parsed_rows), rejected_zero_coordinates, precision_unknown_coordinate_count, source_provided_coordinate_count, group_keys, coarse_placeable, len(group_keys) - coarse_placeable
+    unmapped_candidate_count = candidate_map_unmapped_count(len(group_keys), numeric_count, coarse_placeable)
+    return count, numeric_count, coarse_count, candidate_count, unmapped_count, mapped_non_candidate_count, len(group_keys), len(parsed_rows), rejected_zero_coordinates, precision_unknown_coordinate_count, source_provided_coordinate_count, group_keys, coarse_placeable, unmapped_candidate_count
 
 
 OFFLINE_HANDOFF_SOURCES = ("fr.dgal.section-i", "fr.dgal.section-ii", "it.853-2004", "us.fsis")

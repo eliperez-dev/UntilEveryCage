@@ -330,6 +330,79 @@ class RealPreviewImporterTests(unittest.TestCase):
         self.assertEqual(row[18:23], ("1 Synthetic Road", "source_coordinate", "Government of Ontario", None, "high"))
         self.assertEqual(row[-1], "ON-synthetic")
 
+    def test_ontario_adapter_handoff_location_provenance_is_private_allowlisted(self):
+        from pipeline.contracts.adapter_contract import SourceArtifact
+        from pipeline.contracts.candidate_handoff import write_handoff
+        from pipeline.sources.canada.adapter import OntarioMeatPlantsAdapter
+
+        adapter = OntarioMeatPlantsAdapter()
+        raw = (b"Plant Number,Plant Name,Address,City,Province,Postal Code,Phone,Latitude,Longitude,Plant Type\n"
+               b"ON-SYNTHETIC,Synthetic Plant,1 Synthetic Road,Example City,ON,A1A 1A1,555-0100,43.1,-79.1,Abattoir\n")
+        parsed = adapter.parse_bytes(raw)
+        artifact = SourceArtifact(adapter.source_url, "2026-10-01T00:00:00Z",
+                                  hashlib.sha256(raw).hexdigest(), len(raw),
+                                  code_version=adapter.adapter_version,
+                                  config_version=adapter.schema_version)
+        policy = json.loads((Path(__file__).parents[1] / "preview-enabled-sources.json").read_text(encoding="utf-8"))
+        source_policy = policy["sources"]["ca.ontario.meat-plants"]
+        self.assertFalse(source_policy["public_release"])
+        with tempfile.TemporaryDirectory() as directory:
+            handoff = Path(directory) / "candidate-handoff"
+            write_handoff(handoff, parsed["accepted"], artifact,
+                          source_id="ca.ontario.meat-plants")
+            IMPORTER.validate_preview_fields(handoff / "normalized" / "records.jsonl",
+                                             set(source_policy["allowed_preview_fields"]))
+            record = json.loads((handoff / "normalized" / "records.jsonl").read_text(encoding="utf-8"))
+        normalized = record["normalized"]
+        for field in ("facility_address", "coordinate_method", "coordinate_provider",
+                      "coordinate_confidence_band"):
+            self.assertIn(field, normalized)
+        self.assertNotIn("Phone", normalized)
+
+    def test_map_unmapped_candidate_count_subtracts_numeric_and_coarse_placeable_groups(self):
+        self.assertEqual(IMPORTER.candidate_map_unmapped_count(4, numeric_count=1,
+                                                               coarse_placeable_count=1), 2)
+        self.assertEqual(IMPORTER.candidate_map_unmapped_count(8_140, numeric_count=8_116,
+                                                               coarse_placeable_count=0), 24)
+
+    def test_import_rows_returns_unmapped_candidates_after_numeric_and_coarse_placeable_groups(self):
+        class FakeDatabase:
+            def __init__(self):
+                self.next_id = 0
+
+            def execute(self, statement, parameters=None):
+                return self
+
+            def fetchone(self):
+                self.next_id += 1
+                return (f"synthetic-{self.next_id}",)
+
+        rows = [
+            {"source_id": "us.fsis", "source_record_key": "numeric",
+             "normalized": {"establishment_number": "numeric", "country_code": "US",
+                            "coordinates": {"latitude": 40.0, "longitude": -75.0,
+                                            "precision": "source-provided"}}},
+            {"source_id": "us.fsis", "source_record_key": "coarse",
+             "normalized": {"establishment_number": "coarse", "country_code": "US",
+                            "city": "Example City", "postal_code": "12345"}},
+            {"source_id": "us.fsis", "source_record_key": "unmapped",
+             "normalized": {"establishment_number": "unmapped", "country_code": "US"}},
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "records.jsonl"
+            path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+            with patch.object(IMPORTER, "persist_preview_candidate_assignment_set"):
+                result = IMPORTER.import_rows(
+                    FakeDatabase(), "us.fsis", path, 3, "a" * 64,
+                    municipality_index={"example city": {"latitude": 41.0, "longitude": -74.0}},
+                    municipality_policy={},
+                )
+        self.assertEqual(result[1], 1, "numeric source point is map-placeable")
+        self.assertEqual(result[2], 1, "city/postal candidate is coarse-placeable")
+        self.assertEqual(result[3], 3)
+        self.assertEqual(result[12], 1)
+        self.assertEqual(result[13], 1, "only the candidate with no usable point remains unmapped")
+
     def test_italy_853_official_source_values_recover_only_unverified_coordinates(self):
         row = IMPORTER.parse_row("it.853-2004", {
             "source_id": "it.853-2004", "source_record_key": "sanitized-italy-row",
