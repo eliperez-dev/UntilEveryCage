@@ -72,6 +72,21 @@ class LocalEnrichmentTests(unittest.TestCase):
             self.assertEqual(PREVIEW.main(["enrich-locations", "--source", "dk.smiley", "--limit", "1"]), 0)
             enrich.assert_called_once_with("dk.smiley", 1, None)
 
+    def test_reference_import_is_available_through_shared_cli(self):
+        with patch.object(PREVIEW, "import_location_references") as importer:
+            importer.return_value = {"status": "ok", "imported_or_existing": 123}
+            self.assertEqual(PREVIEW.main([
+                "import-location-references", "--reference-file", "reference.csv",
+                "--reference-source-id", "es.cat.icgc.municipality-capital-localities",
+                "--reference-url", "https://analisi.transparenciacatalunya.cat/api/v3/views/wpyq-we8x/export.csv?accessType=DOWNLOAD",
+                "--reference-date", "2024-11-27", "--database-url", "postgresql://localhost/test",
+            ]), 0)
+            importer.assert_called_once_with(
+                "reference.csv", "es.cat.icgc.municipality-capital-localities",
+                "https://analisi.transparenciacatalunya.cat/api/v3/views/wpyq-we8x/export.csv?accessType=DOWNLOAD",
+                "2024-11-27", "postgresql://localhost/test",
+            )
+
     def test_reviewed_icgc_reference_accepts_exact_ine_and_idescat_codes(self):
         reference_url = "https://analisi.transparenciacatalunya.cat/api/v3/views/wpyq-we8x/export.csv?accessType=DOWNLOAD"
         icgc_csv = (

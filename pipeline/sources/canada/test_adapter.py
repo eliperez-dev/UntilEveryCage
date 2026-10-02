@@ -48,12 +48,15 @@ class CanadaAdapterTests(unittest.TestCase):
         result = OntarioMeatPlantsAdapter().parse_bytes(content)
         self.assertEqual(len(result["accepted"]), 1)
         self.assertEqual(result["accepted"][0]["normalized"]["activity_categories"], ("slaughter",))
+        self.assertEqual(result["accepted"][0]["normalized"]["address"], "Industrial Road 1")
+        self.assertEqual(result["accepted"][0]["normalized"]["postal_code"], "M1M 1M1")
+        self.assertIsNotNone(result["accepted"][0]["normalized"]["coordinates"])
 
     def test_ontario_is_provincial_and_privacy_safe(self):
         adapter = OntarioMeatPlantsAdapter(); result = adapter.parse_file(FIXTURES / "ontario.csv")
         self.assertEqual(len(result["accepted"]), 2); self.assertEqual(len(result["quarantined"]), 1)
         row = result["accepted"][0]
-        self.assertEqual(row["normalized"]["jurisdiction_level"], "provincial"); self.assertEqual(row["normalized"]["jurisdiction"], "Ontario"); self.assertEqual(row["normalized"]["activity_categories"], ("slaughter",)); self.assertIsNone(row["normalized"]["coordinates"])
+        self.assertEqual(row["normalized"]["jurisdiction_level"], "provincial"); self.assertEqual(row["normalized"]["jurisdiction"], "Ontario"); self.assertEqual(row["normalized"]["activity_categories"], ("slaughter",)); self.assertIsNotNone(row["normalized"]["address"])
         self.assertEqual(row["source_values"]["Phone"], "555-0100")
 
     def test_cfia_function_codes_and_unknown_code_quarantine(self):

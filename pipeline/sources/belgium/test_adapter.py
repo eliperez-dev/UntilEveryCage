@@ -18,7 +18,7 @@ class BelgiumAdapterTests(unittest.TestCase):
     def _adapter(self):
         return BelgiumOperatorsAdapter(ROOT / "fixtures" / "synthetic_activity_codes.csv", SourceArtifact("https://example.invalid/activity.csv", "2026-09-14T00:00:00Z", hashlib.sha256((ROOT / "fixtures" / "synthetic_activity_codes.csv").read_bytes()).hexdigest(), (ROOT / "fixtures" / "synthetic_activity_codes.csv").stat().st_size))
 
-    def test_join_classifies_scope_without_exposing_private_fields(self):
+    def test_join_preserves_location_evidence_without_exposing_identity_fields(self):
         adapter = self._adapter()
         result = adapter.parse_bytes((ROOT / "fixtures" / "synthetic_operators.csv").read_bytes())
         self.assertEqual(len(result["accepted"]), 3)
@@ -26,7 +26,7 @@ class BelgiumAdapterTests(unittest.TestCase):
         mixed = next(row for row in result["accepted"] if row["source_id"] == "be.locations" and row["normalized"]["establishment_id"] == "BE-SYN-003")
         self.assertEqual(mixed["normalized"]["activity_categories"], ("slaughter", "cutting"))
         self.assertTrue(mixed["normalized"]["scope_flags"]["slaughterhouse"])
-        self.assertIsNone(mixed["normalized"]["address"])
+        self.assertTrue(mixed["normalized"]["address"])
         self.assertIsNone(mixed["normalized"]["name"])
         self.assertNotIn("address", mixed["source_values"])
         self.assertNotIn("operator_id", mixed["source_values"])

@@ -40,7 +40,9 @@ class NpiAdapterTests(unittest.TestCase):
         self.assertEqual(len(result["accepted"]), 3)
         self.assertEqual(len(result["quarantined"]), 2)
         self.assertEqual(result["accepted"][0]["normalized"]["coordinate_state"], "source-value-present-pending-privacy-review")
-        self.assertIsNone(result["accepted"][0]["normalized"]["coordinates"])
+        self.assertIsNotNone(result["accepted"][0]["normalized"]["coordinates"])
+        self.assertEqual(result["accepted"][0]["normalized"]["coordinates"]["precision"], "source-precision-unknown")
+        self.assertIsNotNone(result["accepted"][0]["normalized"]["address"])
         self.assertEqual(result["accepted"][0]["source_values"]["latitude"], "-32.9283")
         self.assertEqual(result["accepted"][2]["normalized"]["coordinate_state"], "not-supplied-by-source")
         reasons = {reason for item in result["quarantined"] for reason in item["reasons"]}
@@ -63,7 +65,8 @@ class NpiAdapterTests(unittest.TestCase):
         self.assertEqual(meat["privacy_gate"], "pending-review")
         self.assertEqual(meat["coordinate_gate"], "review_required")
         self.assertFalse(meat["in_default_map_scope"])
-        self.assertIsNone(meat["coordinates"])
+        self.assertIsNotNone(meat["coordinates"])
+        self.assertIsNotNone(meat["address"])
 
     def test_live_fetch_checks_official_catalogue_and_records_immutable_provenance(self):
         raw = FIXTURE.read_bytes()

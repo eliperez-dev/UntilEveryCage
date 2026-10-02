@@ -59,7 +59,7 @@ class FranceDgalAdapter:
         if section not in {"I", "II"}:
             raise ValueError("DGAL section must be I or II")
         self.source_id, self.section, self.source_url = source_id, section, source_url
-        self.adapter_version = "fr-dgal-853-v2"
+        self.adapter_version = "fr-dgal-853-v3-private-location-evidence"
         self.schema_version = "fr-dgal-853-txt-v2"
 
     def parse_bytes(self, content: bytes) -> dict[str, Any]:
@@ -110,7 +110,7 @@ class FranceDgalAdapter:
                     "name": _clean(value(row, mapping, "legal_name")), "trading_name": _clean(value(row, mapping, "legal_name")),
                     "siret": siret,
                     "identity_conflict_state": "shared-siret-across-approval-or-category; unresolved-before-merge" if identity_conflict else "none-observed",
-                    "address": None, "address_state": "source-value-present-pending-review" if _clean(value(row, mapping, "address")) else "unknown",
+                    "address": _clean(value(row, mapping, "address")), "address_state": "source-value-present-pending-review" if _clean(value(row, mapping, "address")) else "unknown",
                     "postal_code": _clean(value(row, mapping, "postal_code")), "municipality": _clean(value(row, mapping, "commune")),
                     "city": _clean(value(row, mapping, "commune")), "department_number": _clean(value(row, mapping, "department_number")),
                     "country_code": "FR", "nation": "France", "jurisdiction_level": "national", "source_section": self.section,

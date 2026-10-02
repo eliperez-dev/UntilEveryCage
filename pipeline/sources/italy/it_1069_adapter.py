@@ -14,7 +14,7 @@ from pipeline.contracts.source_lifecycle import atomic_json, atomic_jsonl, priva
 
 SOURCE_ID = "it.1069-2009"
 SCHEMA_VERSION = "it-1069-csv-current-2026-09"
-ADAPTER_VERSION = "it-1069-candidate-v2"
+ADAPTER_VERSION = "it-1069-candidate-v3-private-location-evidence"
 HEADERS = (
     "precedente_bollo_cee", "num_identificativo_produzione_commercializzazione", "ragione_sociale",
     "indirizzo", "comune", "provincia", "codice_regione", "regione",
@@ -99,7 +99,7 @@ class Italy1069Adapter:
                 "facility_grouping": "provisional-1069-recognition-number",
                 "facility_identity_state": "source-scoped-provisional; no cross-regulation merge",
                 "observation_identity_state": "source-row-hash-with-occurrence",
-                "name": name, "trading_name": name, "address": None,
+                "name": name, "trading_name": name, "address": _clean(row.get("indirizzo")),
                 "location_role": "recognized-1069-establishment-location",
                 "location_semantics": "source-recognized-ABP-establishment-address; not-operating-proof",
                 "source_location_state": "source-address-private-pending-review" if _clean(row.get("indirizzo")) else "unknown",

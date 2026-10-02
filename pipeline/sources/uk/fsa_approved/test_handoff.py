@@ -47,10 +47,22 @@ class FsaHandoffTests(unittest.TestCase):
             self.assertEqual(row["normalized"]["establishment_id"], "A-1")
             self.assertEqual(row["source_values"]["X"], "-0.12")
             self.assertIsNone(row["normalized"]["coordinates"])
+            evidence = row["normalized"]["private_location_evidence"]
+            self.assertEqual(evidence["address"], ["House Farm", "London"])
+            self.assertEqual(evidence["postal_code"], "SW1")
+            self.assertEqual(evidence["city"], "London")
+            self.assertEqual(evidence["coordinates"], {
+                "latitude": 51.50, "longitude": -0.12, "precision": "source-precision-unspecified",
+            })
             self.assertEqual(row["normalized"]["privacy_gate"], "privacy-review-required")
             self.assertEqual(row["normalized"]["coordinate_gate"], "privacy-review-required")
             self.assertEqual(manifest["qa"]["quarantined_rows"], 1)
             self.assertEqual(manifest["qa"]["anomaly_counts"]["unknown_nation"], 1)
+            withheld = json.loads((root / "run/normalized/records.jsonl").read_text().splitlines()[1])
+            withheld_evidence = withheld["normalized"]["private_location_evidence"]
+            self.assertNotIn("address", withheld_evidence)
+            self.assertNotIn("coordinates", withheld_evidence)
+            self.assertEqual(withheld_evidence["city"], "Cardiff")
 
     def test_source_mismatch_fails_before_handoff(self):
         with tempfile.TemporaryDirectory() as directory:

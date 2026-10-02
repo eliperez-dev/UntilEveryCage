@@ -10,9 +10,9 @@
       "terms_decision": "approved",
       "freshness_max_days": 45,
       "expected_artifacts": ["registered-establishments.csv"],
-      "allowed_preview_fields": ["establishment_id", "recognition_number", "facility_grouping", "facility_identity_state", "observation_identity_state", "country_code", "nation", "municipality", "city", "state", "source_classification_code", "source_classification_label", "source_activity", "source_status", "status_state", "source_registration_date", "source_reservation_date", "source_occurrence_date", "occurrence_state", "coordinates", "coordinate_state", "coordinate_precision", "privacy_gate", "coordinate_gate", "rights_gate", "publication_gate"],
+      "allowed_preview_fields": ["establishment_id", "recognition_number", "facility_grouping", "facility_identity_state", "observation_identity_state", "country_code", "nation", "address", "municipality", "city", "state", "postal_code", "source_classification_code", "source_classification_label", "source_activity", "source_status", "status_state", "source_registration_date", "source_reservation_date", "source_occurrence_date", "occurrence_state", "coordinates", "coordinate_state", "coordinate_precision", "privacy_gate", "coordinate_gate", "rights_gate", "publication_gate"],
       "display_policy": {"kind": "list_only_unmapped", "precision": "city_label_only_no_coordinate", "disclosure": "MAPA SIF registered rows are preserved as source observations and grouped provisionally by SIF number. The source supplies municipality text but no coordinates; candidates are listable/searchable and not mapped or geocoded. Names, CNPJ, addresses, contacts, and occurrence text remain restricted pending privacy review. This is a private preview, not release approval."},
-      "adapter_version": "br-mapa-sif-registered-v1",
+      "adapter_version": "br-mapa-sif-registered-v2-private-location-evidence",
       "schema_version": "br-mapa-sif-registered-csv-v1"
     },
     "dk.smiley": {
@@ -52,9 +52,9 @@
       "terms_decision": "approved",
       "freshness_max_days": 120,
       "expected_artifacts": ["source.csv"],
-      "allowed_preview_fields": ["establishment_id", "source_record_key", "country_code", "nation", "autonomous_community", "jurisdiction_level", "source_scope", "municipality", "city", "municipality_code", "postal_code", "comarca", "comarca_code", "province", "activity", "sector", "registered_at", "coordinates", "coordinate_state", "coordinate_precision", "privacy_gate", "coordinate_gate", "rights_gate", "publication_gate"],
-      "display_policy": {"kind": "list_only_unmapped", "precision": "not_supplied", "disclosure": "Catalonia-only register; source provides no coordinates; no facility point is displayed."},
-      "adapter_version": "es-cat-feed-sandach-v1",
+      "allowed_preview_fields": ["establishment_id", "source_record_key", "country_code", "nation", "autonomous_community", "jurisdiction_level", "source_scope", "address", "municipality", "city", "municipality_code", "postal_code", "comarca", "comarca_code", "province", "activity", "sector", "registered_at", "coordinates", "coordinate_state", "coordinate_precision", "privacy_gate", "coordinate_gate", "rights_gate", "publication_gate"],
+      "display_policy": {"kind": "official_municipality_reference", "precision": "locality_reference_coarse", "source": "ICGC Base municipal de Catalunya 1:5.000 v2.1", "source_url": "https://analisi.transparenciacatalunya.cat/api/v3/views/wpyq-we8x/export.csv?accessType=DOWNLOAD", "version": "icgc-municipality-capital-localities-2024-11-27", "reference_date": "2024-11-27", "matching": "exact five-digit INE or six-digit Idescat municipality code", "disclosure": "Approximate municipality capital locality point; not facility coordinates. Private preview only."},
+      "adapter_version": "es-cat-feed-sandach-v2",
       "schema_version": "es-cat-socrata-m48e-zdz9-v1"
     },
     "be.locations": {
@@ -66,9 +66,9 @@
       "terms_decision": "approved",
       "freshness_max_days": 14,
       "expected_artifacts": ["operators.csv", "activity-codes.csv", "statbel-municipalities-2025.geojson.zip"],
-      "allowed_preview_fields": ["source_id", "source_row", "source_record_key", "source_values", "normalized", "establishment_id", "country_code", "nation", "municipality", "city", "activity_categories", "activity_codes", "activity_descriptions", "coordinate_state", "address_state", "privacy_gate", "publication_gate"],
+      "allowed_preview_fields": ["source_id", "source_row", "source_record_key", "source_values", "normalized", "establishment_id", "country_code", "nation", "municipality", "city", "postcode", "address", "coordinates", "activity_categories", "activity_codes", "activity_descriptions", "coordinate_state", "address_state", "privacy_gate", "publication_gate"],
       "display_policy": {"kind": "administrative_municipality_centroid", "precision": "approximate_city", "source": "Statbel 2025 municipality boundaries", "source_url": "https://statbel.fgov.be/en/open-data/statistical-sectors-2026", "source_file_url": "https://statbel.fgov.be/sites/default/files/files/opendata/Statistische%20sectoren/sh_statbel_statistical_sectors_3812_20250101.geojson.zip", "version": "statbel-municipality-centroids-2025-v2", "license": "CC BY 4.0", "attribution": "Statbel", "reference_date": "2025-01-01", "name_matching": "Exact multilingual municipality names; paired names split on slash; parenthetical province qualifiers removed; explicit submunicipality crosswalks only", "official_subdivision_aliases": {"Glabbeek-Zuurbemde": {"municipality": "Glabbeek", "reference_url": "https://www.glabbeek.be/", "reason": "official municipal site identifies Glabbeek-Zuurbemde as a deelgemeente of Glabbeek"}}},
-      "adapter_version": "be-fasfc-private-v3",
+      "adapter_version": "be-fasfc-private-v4-location-evidence",
       "schema_version": "be-fasfc-csv-v3"
     },
     "ca.ontario.meat-plants": {
@@ -82,7 +82,7 @@
       "expected_artifacts": ["source.csv"],
       "allowed_preview_fields": ["establishment_id", "recognition_number", "facility_grouping", "identity_review", "name", "operator_name", "trading_name", "address", "city", "postal_code", "province", "country_code", "nation", "jurisdiction_level", "jurisdiction", "source_plant_type", "source_function_codes", "animal_class", "activity_categories", "address_state", "coordinates", "coordinate_state", "coordinate_gate", "privacy_gate", "publication_gate", "classification_state", "observation_state", "disappearance_semantics"],
       "display_policy": {"kind": "list_only_unmapped", "precision": "coordinates_withheld_pending_review", "disclosure": "Ontario provincially licensed meat plants only. Source coordinates and address/contact values are withheld pending privacy and location review; candidates remain listable and unmapped. Updates are as required; no current-completeness claim. Private preview only; not project-approved or publicly released."},
-      "adapter_version": "ca-meat-v2-workbook",
+      "adapter_version": "ca-meat-v4-private-location-evidence",
       "schema_version": "ca-meat-tabular-workbook-v1"
     },
     "ca.cfia.federal-meat": {
@@ -96,7 +96,7 @@
       "expected_artifacts": ["source.xls"],
       "allowed_preview_fields": ["establishment_id", "recognition_number", "facility_grouping", "identity_review", "name", "operator_name", "trading_name", "address", "city", "postal_code", "province", "country_code", "nation", "jurisdiction_level", "jurisdiction", "source_plant_type", "source_function_codes", "animal_class", "activity_categories", "address_state", "coordinates", "coordinate_state", "coordinate_gate", "privacy_gate", "publication_gate", "classification_state", "observation_state", "disappearance_semantics"],
       "display_policy": {"kind": "source_city_postal_list_only", "precision": "no-source-coordinates", "disclosure": "The source provides city/postal location fields but no facility coordinates. Records remain unmapped in this preview; no address-derived pin or geocoding is performed. Private preview only; CFIA states its consolidation is a convenience reference with no official sanction and its listing was last updated 2023-12-04."},
-      "adapter_version": "ca-meat-v3-cfia-column-crosswalk",
+      "adapter_version": "ca-meat-v4-private-location-evidence",
       "schema_version": "ca-meat-tabular-workbook-v2"
     },
     "au.npi.facilities": {
@@ -110,7 +110,7 @@
       "expected_artifacts": ["source.csv"],
       "allowed_preview_fields": ["establishment_id", "name", "trading_name", "registered_business_name", "facility_name", "address", "address_state", "location_role", "location_semantics", "residential_or_mixed_use_screen", "address_review_signals", "city", "postal_code", "country_code", "state", "coordinates", "coordinate_state", "coordinate_precision", "privacy_gate", "coordinate_gate", "publication_gate", "activity_categories", "main_activities", "animal_relevance", "primary_anzsic_class_code", "primary_anzsic_class_name", "first_report_year", "latest_report_year", "latest_report_id", "observation_state", "operation_state", "classification_state", "in_default_map_scope", "map_scope_reason"],
       "display_policy": {"kind": "unmapped_city_postal", "precision": "city_postal_or_unmapped", "disclosure": "NPI reporting facilities are environmental reporting records, not proof of current operation or a complete animal-facility register. Source addresses and coordinates remain private pending site-identity, residential/mixed-use, and precision review; this preview intentionally has zero map pins. Private preview only; CC BY 4.0 attribution applies."},
-      "adapter_version": "au-npi-facilities-v2",
+      "adapter_version": "au-npi-facilities-v3",
       "schema_version": "au-npi-csv-v2"
     },
     "fsa_approved_establishments": {
@@ -122,7 +122,7 @@
       "terms_decision": "approved",
       "freshness_max_days": 60,
       "expected_artifacts": ["source.csv"],
-      "allowed_preview_fields": ["establishment_id", "trading_name", "activities", "activity_categories", "species", "competent_authority", "nation", "authority_nation_key", "status", "published_date", "coordinates", "coordinate_state", "coordinate_precision", "coordinate_gate", "privacy_gate", "publication_gate"],
+      "allowed_preview_fields": ["establishment_id", "trading_name", "address_lines", "postcode", "activities", "activity_categories", "species", "competent_authority", "nation", "authority_nation_key", "status", "published_date", "coordinates", "coordinate_state", "coordinate_precision", "coordinate_gate", "privacy_gate", "publication_gate"],
       "display_policy": {"kind": "unmapped_source_records_only", "precision": "no-coordinate-disclosure", "disclosure": "The FSA monthly feed's address and coordinate fields are withheld from this private preview pending privacy review. Records are listable but unmapped; no geocoding or map pins are created. England and Wales only; Northern Ireland (FSS) and Scotland (FSS) remain separate sources. Private preview only; no public release."},
       "adapter_version": "fsa-uk-v2-2",
       "schema_version": "fsa-uk-approved-v1"
@@ -152,7 +152,7 @@
       "expected_artifacts": ["source.csv"],
       "allowed_preview_fields": ["establishment_id", "recognition_number", "source_activity_code", "facility_grouping", "facility_identity_state", "observation_identity_state", "name", "trading_name", "address", "location_role", "location_semantics", "registered_location", "registered_location_state", "operating_location", "operating_location_state", "source_location_state", "municipality", "city", "province", "region", "country_code", "nation", "geography_precision", "geography_state", "classification", "classification_state", "classification_decision", "activity_state", "activity_code", "activity_description", "products", "status", "status_state", "dates", "date_state", "coordinates", "coordinate_state", "coordinate_precision", "privacy_gate", "coordinate_gate", "rights_gate", "publication_gate"],
       "display_policy": {"kind": "source_numeric_coordinate", "precision": "source-precision-unknown", "disclosure": "Approximate source location; coordinate precision and provenance are unknown; private preview only. Not an exact facility point."},
-      "adapter_version": "it-853-candidate-v2",
+      "adapter_version": "it-853-candidate-v3-private-location-evidence",
       "schema_version": "it-853-csv-v2.0"
     },
     "it.1069-2009": {
@@ -166,7 +166,7 @@
       "expected_artifacts": ["source.csv"],
       "allowed_preview_fields": ["establishment_id", "recognition_number", "facility_grouping", "facility_identity_state", "observation_identity_state", "name", "trading_name", "address", "location_role", "location_semantics", "source_location_state", "municipality", "city", "municipality_code", "province", "region", "region_code", "country_code", "nation", "regulation", "classification", "activity_code", "activity_description", "products", "product_specification", "authorized_export_countries", "previous_approval_number", "linked_853_recognition_number", "linked_853_recognition_number_state", "status", "status_state", "source_updated_at", "source_updated_at_state", "coordinates", "coordinate_state", "coordinate_precision", "coordinate_provenance_state", "privacy_gate", "coordinate_gate", "rights_gate", "publication_gate"],
       "display_policy": {"kind": "source_numeric_coordinate", "precision": "source-precision-unknown", "disclosure": "Approximate Ministry source coordinate; the Ministry says some coordinates came from OpenStreetMap contributors, but row-level origin and precision are unspecified. Private preview only; not an exact verified facility point."},
-      "adapter_version": "it-1069-candidate-v2",
+      "adapter_version": "it-1069-candidate-v3-private-location-evidence",
       "schema_version": "it-1069-csv-current-2026-09"
     },
     "fr.dgal.section-i": {
@@ -180,7 +180,7 @@
       "expected_artifacts": ["source.txt"],
       "allowed_preview_fields": ["establishment_id", "recognition_number", "facility_grouping", "identity_review", "name", "trading_name", "siret", "identity_conflict_state", "address", "address_state", "postal_code", "municipality", "city", "department_number", "country_code", "nation", "jurisdiction_level", "source_section", "source_category", "source_activity", "species", "activity_categories", "classification_state", "observation_state", "disappearance_semantics", "coordinates", "coordinate_state", "privacy_gate", "coordinate_gate", "publication_gate"],
       "display_policy": {"kind": "administrative_commune_centre", "precision": "city_reference_approximate", "source": "Etalab / geo.api.gouv.fr API Découpage administratif", "source_url": "https://geo.api.gouv.fr/communes?fields=nom,code,codeDepartement,centre&format=json", "source_reference_url": "https://www.data.gouv.fr/datasets/admin-express-admin-express-cog-admin-express-cog-carto-admin-express-cog-carto-plus-pe", "version": "geo-api-communes-centre-v1", "license": "Licence Ouverte / Open Licence 2.0 (Etalab)", "attribution": "Etalab / IGN; French administrative commune reference", "reference_date": "current endpoint response; upstream release date not supplied", "name_matching": "Exact normalized commune name plus source department number; collisions or unresolved names remain unmapped", "department_field": "department_number"},
-      "adapter_version": "fr-dgal-853-v2",
+      "adapter_version": "fr-dgal-853-v3-private-location-evidence",
       "schema_version": "fr-dgal-853-txt-v2"
     },
     "fr.dgal.section-ii": {
@@ -194,7 +194,7 @@
       "expected_artifacts": ["source.txt"],
       "allowed_preview_fields": ["establishment_id", "recognition_number", "facility_grouping", "identity_review", "name", "trading_name", "siret", "identity_conflict_state", "address", "address_state", "postal_code", "municipality", "city", "department_number", "country_code", "nation", "jurisdiction_level", "source_section", "source_category", "source_activity", "species", "activity_categories", "classification_state", "observation_state", "disappearance_semantics", "coordinates", "coordinate_state", "privacy_gate", "coordinate_gate", "publication_gate"],
       "display_policy": {"kind": "administrative_commune_centre", "precision": "city_reference_approximate", "source": "Etalab / geo.api.gouv.fr API Découpage administratif", "source_url": "https://geo.api.gouv.fr/communes?fields=nom,code,codeDepartement,centre&format=json", "source_reference_url": "https://www.data.gouv.fr/datasets/admin-express-admin-express-cog-admin-express-cog-carto-admin-express-cog-carto-plus-pe", "version": "geo-api-communes-centre-v1", "license": "Licence Ouverte / Open Licence 2.0 (Etalab)", "attribution": "Etalab / IGN; French administrative commune reference", "reference_date": "current endpoint response; upstream release date not supplied", "name_matching": "Exact normalized commune name plus source department number; collisions or unresolved names remain unmapped", "department_field": "department_number"},
-      "adapter_version": "fr-dgal-853-v2",
+      "adapter_version": "fr-dgal-853-v3-private-location-evidence",
       "schema_version": "fr-dgal-853-txt-v2"
     },
     "us.fsis": {

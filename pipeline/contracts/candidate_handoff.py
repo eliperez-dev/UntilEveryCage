@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 from .adapter_contract import SourceArtifact
 from pipeline.common.graph_candidate import write_graph_candidates
+from .private_location_evidence import attach_private_location_evidence
 
 CONTRACT_VERSION = "candidate-handoff-v1"
 
@@ -17,6 +18,7 @@ def write_handoff(run_dir: str | Path, rows: list[dict[str, Any]], artifact: Sou
                   *, source_id: str, profile: str = "default",
                   emit_graph_candidates: bool = True) -> dict[str, Any]:
     """Write importer-compatible JSONL/manifest, rejecting guessed identities."""
+    rows = attach_private_location_evidence(rows)
     for row in rows:
         normalized = row.get("normalized")
         if not isinstance(row.get("source_id"), str) or row.get("source_id") != source_id:

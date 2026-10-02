@@ -28,7 +28,7 @@ from pipeline.contracts.adapter_contract import SourceArtifact
 
 
 SOURCE_ID = "au.npi.facilities"
-ADAPTER_VERSION = "au-npi-facilities-v2"
+ADAPTER_VERSION = "au-npi-facilities-v3"
 SCHEMA_VERSION = "au-npi-csv-v2"
 SOURCE_URL = (
     "https://data.gov.au/data/dataset/043f58e0-a188-4458-b61c-04e5b540aea4"
@@ -240,7 +240,7 @@ class NpiFacilitiesAdapter:
                     "trading_name": _clean(row.get("facility_name")) or _clean(row.get("registered_business_name")),
                     "registered_business_name": _clean(row.get("registered_business_name")),
                     "facility_name": _clean(row.get("facility_name")),
-                    "address": None,
+                    "address": _clean(row.get("street_address")),
                     "address_state": "source-value-present-pending-review" if _clean(row.get("street_address")) else "unknown",
                     "location_role": "source-reported-facility-location",
                     "location_semantics": "NPI reporting location; current facility operation and precise site identity are not independently established",
@@ -250,10 +250,10 @@ class NpiFacilitiesAdapter:
                     "postal_code": _clean(row.get("postcode")),
                     "state": _clean(row.get("state")),
                     "country_code": "AU",
-                    # Exact source values are preserved in private source_values
-                    # and the immutable raw artifact. Normalized preview rows
-                    # deliberately carry no point until privacy review clears it.
-                    "coordinates": None,
+                    # Source coordinates are preserved privately as location
+                    # evidence. Scope and public release remain separate gates.
+                    "coordinates": ({"latitude": lat, "longitude": lon, "precision": "source-precision-unknown"}
+                                    if coordinate_state == "source" else None),
                     "coordinate_state": "source-value-present-pending-privacy-review" if coordinate_state == "source" else coordinate_state,
                     "coordinate_precision": "source-provided; precision semantics not documented" if coordinate_state == "source" else "unresolved",
                     "in_default_map_scope": False,

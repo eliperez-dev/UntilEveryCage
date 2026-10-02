@@ -230,7 +230,7 @@ class CanadaMeatAdapter:
     def __init__(self, source_id: str, jurisdiction_level: str, jurisdiction: str, source_url: str, coverage: str, require_categories: bool = False) -> None:
         self.source_id, self.jurisdiction_level, self.jurisdiction, self.source_url, self.coverage = source_id, jurisdiction_level, jurisdiction, source_url, coverage
         self.require_categories = require_categories
-        self.adapter_version, self.schema_version = "ca-meat-v3-cfia-column-crosswalk", "ca-meat-tabular-workbook-v2"
+        self.adapter_version, self.schema_version = "ca-meat-v4-private-location-evidence", "ca-meat-tabular-workbook-v2"
 
     def parse_bytes(self, content: bytes) -> dict[str, Any]:
         required = ("plant_number", "name")
@@ -259,12 +259,12 @@ class CanadaMeatAdapter:
             if occurrences[key] > 1: reasons.append("duplicate_source_row")
             normalized = {
                 "establishment_id": plant_number, "recognition_number": plant_number, "facility_grouping": f"provisional-{self.jurisdiction_level}-plant-number", "identity_review": "required-before-merge",
-                "name": name, "operator_name": _clean(value(row, mapping, "operator_name")), "trading_name": _clean(value(row, mapping, "doing_business_as")) or name, "address": None,
+                "name": name, "operator_name": _clean(value(row, mapping, "operator_name")), "trading_name": _clean(value(row, mapping, "doing_business_as")) or name, "address": _clean(value(row, mapping, "address")),
                 "address_state": "source-value-present-pending-review" if _clean(value(row, mapping, "address")) else "unknown", "city": _clean(value(row, mapping, "city")), "postal_code": _clean(value(row, mapping, "postal_code")), "province": _clean(value(row, mapping, "province")),
                 "country_code": "CA", "nation": "Canada", "jurisdiction_level": self.jurisdiction_level, "jurisdiction": self.jurisdiction,
                 "source_plant_type": plant_type, "source_function_codes": functions, "animal_class": animal_class, "activity_categories": categories,
                 "classification_state": "derived-from-source-label" if categories else "unclassified", "observation_state": "listed-at-retrieval", "disappearance_semantics": "not-observed; never inferred as closure",
-                "coordinates": None, "coordinate_state": "source-value-present-pending-review" if _clean(value(row, mapping, "latitude")) or _clean(value(row, mapping, "longitude")) else "not-supplied-by-source", "privacy_gate": "pending-review", "coordinate_gate": "review_required", "publication_gate": "blocked",
+                "coordinates": ({"latitude": _clean(value(row, mapping, "latitude")), "longitude": _clean(value(row, mapping, "longitude")), "precision": "source-precision-unknown"} if _clean(value(row, mapping, "latitude")) and _clean(value(row, mapping, "longitude")) else None), "coordinate_state": "source-value-present-pending-review" if _clean(value(row, mapping, "latitude")) or _clean(value(row, mapping, "longitude")) else "not-supplied-by-source", "privacy_gate": "pending-review", "coordinate_gate": "review_required", "publication_gate": "blocked",
             }
             record = {"source_id": self.source_id, "source_row": line, "source_row_id": row_identity(row, occurrences[key]), "source_record_key": f"{plant_number or 'unknown'}|{occurrences[key]}", "source_values": row, "normalized": normalized}
             if reasons: quarantined.append({"reasons": tuple(dict.fromkeys(reasons)), "record": record})

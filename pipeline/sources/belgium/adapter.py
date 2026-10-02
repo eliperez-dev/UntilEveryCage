@@ -76,6 +76,20 @@ def _clean(value: Any) -> str | None:
     return value or None
 
 
+def _source_coordinates(row: dict[str, str], fields: dict[str, str]) -> dict[str, Any] | None:
+    latitude = _clean(row.get(fields.get("latitude", ""))) if "latitude" in fields else None
+    longitude = _clean(row.get(fields.get("longitude", ""))) if "longitude" in fields else None
+    if not latitude or not longitude:
+        return None
+    try:
+        lat, lon = float(latitude), float(longitude)
+    except ValueError:
+        return None
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180) or (lat == 0 and lon == 0):
+        return None
+    return {"latitude": lat, "longitude": lon, "precision": "source-precision-unknown"}
+
+
 def _csv(content: bytes) -> tuple[list[str], list[list[str]], str, str]:
     for encoding in ("utf-8-sig", "cp1252"):
         try:
@@ -254,10 +268,10 @@ class BelgiumOperatorsAdapter:
                     "nation": "Belgium",
                     "municipality": _clean(raw.get(fields.get("municipality", ""))) if "municipality" in fields else None,
                     "city": _clean(raw.get(fields.get("municipality", ""))) if "municipality" in fields else None,
-                    "postcode": None,
-                    "address": None,
+                    "postcode": _clean(raw.get(fields.get("postcode", ""))) if "postcode" in fields else None,
+                    "address": address,
                     "address_state": "source-present-pending-privacy-review" if address else "unknown",
-                    "coordinates": None,
+                    "coordinates": _source_coordinates(raw, fields),
                     "coordinate_state": "source-value-present-pending-review" if any(_clean(raw.get(fields.get(key, ""))) for key in ("latitude", "longitude") if key in fields) else "unknown",
                     "activity_codes": codes,
                     "activity_descriptions": tuple(dict.fromkeys(item.get("activity_description") for item in joined if item.get("activity_description"))),

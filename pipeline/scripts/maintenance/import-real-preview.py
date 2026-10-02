@@ -380,6 +380,8 @@ def parse_row(source: str, row: Any) -> tuple[Any, ...]:
     identifier = pick(row, "source_record_key", "source_row_id")
     if not isinstance(identifier, (str, int)) or not str(identifier):
         raise ImportFailure("row_schema_invalid")
+    location_evidence = normalized.get("private_location_evidence")
+    location_evidence = location_evidence if isinstance(location_evidence, dict) else {}
     coordinates = normalized.get("coordinates")
     if not isinstance(coordinates, dict):
         coordinates = {}
@@ -421,8 +423,8 @@ def parse_row(source: str, row: Any) -> tuple[Any, ...]:
             numeric = True
         else:
             lat = lon = None
-    city = pick(normalized, "city", "municipality")
-    postal = pick(normalized, "postal_code")
+    city = pick(normalized, "city", "municipality") or location_evidence.get("city")
+    postal = pick(normalized, "postal_code", "postcode") or location_evidence.get("postal_code")
     city = city.strip() if isinstance(city, str) and city.strip() else None
     postal = postal.strip() if isinstance(postal, str) and postal.strip() else None
     country = pick(normalized, "country_code")
@@ -461,14 +463,10 @@ def parse_row(source: str, row: Any) -> tuple[Any, ...]:
     evidence_summary = safe_preview_text(pick(normalized, "evidence_summary"), 500)
     record_url = safe_https_url(pick(normalized, "source_record_url"))
     default_map_scope = source != "dk.smiley"
-    map_scope = (
-        False if source == "es.cat.feed-sandach"
-        else normalized.get("in_default_map_scope", default_map_scope)
-    )
+    map_scope = normalized.get("in_default_map_scope", default_map_scope)
     if not isinstance(map_scope, bool):
         map_scope = default_map_scope
-    map_scope_reason = ("list_only_locality_reference" if source == "es.cat.feed-sandach" else
-                        safe_preview_text(pick(normalized, "map_scope_reason", "classification_optional_filter"), 160))
+    map_scope_reason = safe_preview_text(pick(normalized, "map_scope_reason", "classification_optional_filter"), 160)
     # Validate and preserve the source-owned administrative key separately
     # from the display projection; it is used only for offline coarse lookup.
     administrative_code_for_row(source, normalized)
@@ -619,8 +617,17 @@ def validate_preview_fields(path: Path, allowed_fields: set[str]) -> None:
             raise ImportFailure("preview_field_not_allowed")
         normalized = row.get("normalized")
         source_values = row.get("source_values")
-        if not isinstance(normalized, dict) or set(normalized) - allowed_fields:
+        if not isinstance(normalized, dict) or set(normalized) - allowed_fields - {"private_location_evidence"}:
             raise ImportFailure("preview_field_not_allowed")
+        location = normalized.get("private_location_evidence", {})
+        if (not isinstance(location, dict)
+                or set(location) - {"address", "city", "postal_code", "region", "country_code", "coordinates",
+                                    "municipality_code", "comarca_code", "department_number", "region_code"}):
+            raise ImportFailure("private_location_evidence_invalid")
+        coordinates = location.get("coordinates")
+        if coordinates is not None and (not isinstance(coordinates, dict)
+                or set(coordinates) - {"latitude", "longitude", "precision"}):
+            raise ImportFailure("private_location_evidence_invalid")
         if not isinstance(source_values, dict):
             raise ImportFailure("row_schema_invalid")
 
@@ -724,6 +731,15 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
             "SELECT candidate_id FROM real_preview.candidates WHERE snapshot_sha256=%s AND source_id=%s AND source_group_key=%s",
             (snapshot, source, group_key),
         ).fetchone()[0]
+        location_evidence = record.get("normalized", {}).get("private_location_evidence")
+        if isinstance(location_evidence, dict) and location_evidence:
+            db.execute(
+                """INSERT INTO real_preview.candidate_private_location_evidence
+                   (candidate_id,snapshot_sha256,source_id,location_evidence)
+                   VALUES (%s,%s,%s,%s::jsonb) ON CONFLICT (candidate_id) DO NOTHING""",
+                (candidate_id, snapshot, source,
+                 json.dumps(location_evidence, ensure_ascii=False, sort_keys=True)),
+            )
         if activity["crosswalk_document"]:
             persist_preview_candidate_assignment_set(
                 db,

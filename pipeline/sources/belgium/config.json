@@ -4,7 +4,7 @@
   "activity_code_url": "https://www.static.favv.be/bo-documents/inter_PAP_omschrijving_EN.csv",
   "catalog_url": "https://data.gov.be/en/datasets/favv-afsca-operators",
   "activity_catalog_url": "https://data.gov.be/en/datasets/fasfc-activity-codes",
-  "adapter_version": "be-fasfc-private-v3",
+  "adapter_version": "be-fasfc-private-v4-location-evidence",
   "schema_version": "be-fasfc-csv-v3",
   "expected_operator_schema_fingerprint": "e225b6f7e11d3cf0d441dd96d1da61e57cd817d3d1e8fd2dad066073d3582a1e",
   "expected_activity_code_schema_fingerprint": "4b48513b1169bb0c64d51f7c1cfad5074b1326c1db971b4f4b1273ad7c729087",
