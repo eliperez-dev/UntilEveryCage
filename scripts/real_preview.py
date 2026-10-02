@@ -1214,6 +1214,43 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                                                 "unmapped": import_result.get("unmapped_facility_count")},
             "location_policy": "CFIA workbook provides no coordinates; city/postal candidates are listable, remain unmapped, and are not geocoded.",
         })
+    elif source_id == "ca.ontario.meat-plants":
+        acquisition_path = source_dir / "acquisition" / source_id / run_id / "acquisition-metadata.json"
+        if not acquisition_path.is_file() or acquisition_path.is_symlink():
+            raise PreviewError("Ontario acquisition provenance is unavailable")
+        acquisition_evidence = json.loads(acquisition_path.read_text(encoding="utf-8"))
+        source_results = refresh_result.get("results") if isinstance(refresh_result, dict) else None
+        source_result = next((item for item in source_results or []
+                             if isinstance(item, dict) and item.get("source_id") == source_id), None)
+        source_summary = source_result.get("summary") if isinstance(source_result, dict) else None
+        if (not isinstance(source_summary, dict) or acquisition_evidence.get("source_id") != source_id
+                or source_result.get("status") != "succeeded"):
+            raise PreviewError("Ontario lifecycle or acquisition identity is unavailable")
+        if any(not isinstance(value, str) or len(value) != 64 for value in (
+                import_result.get("normalized_sha256"), source_summary.get("candidate_handoff_sha256"),
+                source_summary.get("schema_fingerprint"))) or not isinstance(source_summary.get("quarantine_reasons"), dict):
+            raise PreviewError("Ontario lifecycle hashes or quarantine summary are incomplete")
+        ledger.update({
+            "acquisition": {key: acquisition_evidence.get(key) for key in (
+                "source_id", "run_id", "requested_url", "final_url", "requested_at_utc", "retrieved_at_utc",
+                "effective_date", "publication_date", "sha256", "byte_size", "response_headers",
+                "terms_review", "rights_caveat", "privacy_caveat", "coverage", "adapter_version", "config_version")},
+            "normalized_sha256": import_result.get("normalized_sha256"),
+            "candidate_handoff_sha256": source_summary.get("candidate_handoff_sha256"),
+            "schema_fingerprint": source_summary.get("schema_fingerprint"),
+            "quarantine": {"input_rows": source_summary.get("input_rows"),
+                           "accepted_rows": source_summary.get("candidate_observation_rows"),
+                           "quarantined_rows": source_summary.get("quarantined_rows"),
+                           "reasons": source_summary.get("quarantine_reasons", {})},
+            "source_counts": {key: import_result.get(key) for key in (
+                "observation_count", "facility_candidate_count", "numeric_coordinate_count", "city_postal_count",
+                "unmapped_observation_count", "unmapped_facility_count", "unmapped_map_candidate_count",
+                "public_release_count", "public_projection_count")},
+            "coordinate_precision_breakdown": {
+                "exact": 0, "city_or_postal_only": import_result.get("city_postal_count"),
+                "unmapped": import_result.get("unmapped_map_candidate_count")},
+            "location_policy": "Ontario source address and coordinate fields are withheld pending privacy/location review; candidates remain listable and unmapped; no geocoding is performed.",
+        })
     elif source_id in {"au.npi.facilities", "fsa_approved_establishments"}:
         acquisition_path = source_dir / "acquisition" / source_id / run_id / "acquisition-metadata.json"
         if not acquisition_path.is_file() or acquisition_path.is_symlink():
@@ -1575,13 +1612,14 @@ def refresh_source(source_id: str = "be.locations", existing_runner_run_id: str 
 def strict_live_private_e2e(source_id: str, existing_runner_run_id: str | None = None) -> dict[str, object]:
     """Run one bounded live source acquisition through disposable private preview and certification."""
     global PROJECT, VOLUME, DB_PORT, API_PORT, WEB_PORT, PRIVATE_ROOT, ACTIVE_PREVIEW_TOKEN
-    if source_id not in {"be.locations", "ca.cfia.federal-meat", "au.npi.facilities",
+    if source_id not in {"be.locations", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "au.npi.facilities",
                           "au.sa.epa.licensed-activities", "fsa_approved_establishments",
                           "es.cat.feed-sandach", "br.sif.registered"}:
         raise PreviewError("strict-live-private-e2e supports only assigned source lanes")
     import uuid
     suffix = uuid.uuid4().hex[:10]
-    safe_source = {"be.locations": "be", "ca.cfia.federal-meat": "cfia", "au.npi.facilities": "au-npi",
+    safe_source = {"be.locations": "be", "ca.ontario.meat-plants": "ca-on",
+                   "ca.cfia.federal-meat": "cfia", "au.npi.facilities": "au-npi",
                    "au.sa.epa.licensed-activities": "au-sa-epa",
                    "fsa_approved_establishments": "fsa", "es.cat.feed-sandach": "es-cat",
                    "br.sif.registered": "br-sif"}[source_id]
@@ -1623,7 +1661,7 @@ def strict_live_private_e2e(source_id: str, existing_runner_run_id: str | None =
             raise PreviewError("first source refresh did not complete the private preview import")
         preview = first_preview
         ledger_path = Path(str(preview.get("ledger", "")))
-        if source_id in {"be.locations", "au.npi.facilities", "fsa_approved_establishments",
+        if source_id in {"be.locations", "ca.ontario.meat-plants", "au.npi.facilities", "fsa_approved_establishments",
                          "es.cat.feed-sandach", "br.sif.registered"}:
             # Replay the identical immutable handoff in the same disposable
             # database. This explicitly proves conflict-safe importer
@@ -1691,7 +1729,7 @@ def strict_live_private_e2e(source_id: str, existing_runner_run_id: str | None =
                 "certificate": str(certificate_path), "counts": certificate["counts"],
                 "checks": certificate["checks"],
                 "refreshes": 1, "idempotent_replay": source_id in {
-                    "be.locations",
+                    "be.locations", "ca.ontario.meat-plants",
                     "au.npi.facilities", "fsa_approved_establishments", "es.cat.feed-sandach",
                     "br.sif.registered"},
                 "publication": "not_authorized", "public_rows": 0}

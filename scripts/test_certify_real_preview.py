@@ -46,5 +46,27 @@ class DenmarkGeocodingCertificateTests(unittest.TestCase):
             certificate._denmark_geocoding_evidence(value, 3)
 
 
+class OntarioLocationCertificateTests(unittest.TestCase):
+    def test_listable_city_postal_candidates_are_not_double_counted_as_unmapped(self):
+        counts = {
+            "candidates": 460,
+            "city_postal": 460,
+            "numeric_coordinates": 0,
+            "unmapped_map_candidates": 0,
+        }
+
+        certificate._validate_ontario_location_classes(counts)
+
+    def test_rejects_unexpected_mapped_or_unclassified_ontario_candidates(self):
+        counts = {
+            "candidates": 460,
+            "city_postal": 459,
+            "numeric_coordinates": 1,
+            "unmapped_map_candidates": 0,
+        }
+
+        with self.assertRaisesRegex(certificate.CertificationError, "Ontario.*do not reconcile"):
+            certificate._validate_ontario_location_classes(counts)
+
 if __name__ == "__main__":
     unittest.main()

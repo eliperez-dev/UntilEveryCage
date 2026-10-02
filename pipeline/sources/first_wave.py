@@ -70,7 +70,7 @@ class SourceDescriptor:
     def readiness(self) -> dict[str, Any]:
         """Return capability facts without conflating acquisition and approval."""
         live_callable = self.source_id in {"be.locations", "br.sif.registered", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "fsa_approved_establishments", "fr.dgal.section-i", "fr.dgal.section-ii", "it.853-2004", "it.1069-2009", "es.cat.feed-sandach", "au.sa.epa.licensed-activities", "au.npi.facilities"}
-        operational = "live" if self.source_id in {"be.locations", "br.sif.registered", "ca.cfia.federal-meat", "fsa_approved_establishments", "it.853-2004", "it.1069-2009", "fr.dgal.section-i", "fr.dgal.section-ii", "es.cat.feed-sandach", "au.sa.epa.licensed-activities", "au.npi.facilities"} else ("terms-blocked" if live_callable else "assisted")
+        operational = "live" if self.source_id in {"be.locations", "br.sif.registered", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "fsa_approved_establishments", "it.853-2004", "it.1069-2009", "fr.dgal.section-i", "fr.dgal.section-ii", "es.cat.feed-sandach", "au.sa.epa.licensed-activities", "au.npi.facilities"} else ("terms-blocked" if live_callable else "assisted")
         return {
             "source_id": self.source_id,
             "fixture_ready": bool(self.fixture_paths),
@@ -78,7 +78,7 @@ class SourceDescriptor:
             "live_acquisition": self.live_acquisition,
             "operational_classification": operational,
             "live_callable": live_callable,
-            "private_pipeline": "one_action_preview_import_ready" if self.source_id in {"br.sif.registered", "it.853-2004", "it.1069-2009", "es.cat.feed-sandach", "au.sa.epa.licensed-activities", "au.npi.facilities", "fsa_approved_establishments"} else "fixture_contract_ready",
+            "private_pipeline": "one_action_preview_import_ready" if self.source_id in {"br.sif.registered", "ca.ontario.meat-plants", "it.853-2004", "it.1069-2009", "es.cat.feed-sandach", "au.sa.epa.licensed-activities", "au.npi.facilities", "fsa_approved_establishments"} else "fixture_contract_ready",
             "publication": self.publication,
             "geocoding": "disabled",
             "review_required": True,

@@ -28,6 +28,14 @@ class CertificationError(RuntimeError):
     pass
 
 
+def _validate_ontario_location_classes(counts: dict[str, int]) -> None:
+    """Ensure private Ontario candidates remain listable but unlocated."""
+    if (counts["city_postal"] != counts["candidates"]
+            or counts["numeric_coordinates"] != 0
+            or counts["unmapped_map_candidates"] != 0):
+        raise CertificationError("Ontario privacy-safe city/postal candidate counts do not reconcile")
+
+
 def _integer(value: Any, name: str) -> int:
     if not isinstance(value, int) or isinstance(value, bool) or value < 0:
         raise CertificationError(f"invalid or missing {name}")
@@ -111,6 +119,14 @@ def validate_ledger(ledger: dict[str, Any], source_id: str) -> dict[str, Any]:
         "map_visible": _integer(ledger.get("map_visible_count"), "map-visible count"),
     }
     location_policy = ledger.get("location_policy")
+    if source_id == "ca.ontario.meat-plants":
+        # Ontario's importer also calls these facilities "unmapped": their
+        # source coordinates are deliberately withheld, but they are already
+        # counted in the disjoint city/postal listable class. Do not count the
+        # identity/map eligibility total a second time as an extra location
+        # class.
+        counts["unmapped"] = counts["unmapped_map_candidates"]
+        _validate_ontario_location_classes(counts)
     if source_id == "ca.cfia.federal-meat" and location_policy == (
             "CFIA workbook provides no coordinates; city/postal candidates are listable, remain unmapped, and are not geocoded."):
         counts["unmapped"] = 0
@@ -328,7 +344,7 @@ def _db_check(database_url: str, source_id: str, evidence: dict[str, Any]) -> di
         if raw_hash.strip().lower() not in evidence["acquisition_hashes"]:
             raise CertificationError("database source artifact hash is absent from acquisition provenance")
         db_unmapped = 0 if source_id in {
-            "ca.cfia.federal-meat", "au.npi.facilities", "au.sa.epa.licensed-activities",
+            "ca.ontario.meat-plants", "ca.cfia.federal-meat", "au.npi.facilities", "au.sa.epa.licensed-activities",
             "es.cat.feed-sandach", "it.1069-2009", "br.sif.registered"
         } else unmapped
         if (observations, candidates, numeric, coarse, db_unmapped, listable, visible) != (
@@ -389,6 +405,34 @@ def _db_check(database_url: str, source_id: str, evidence: dict[str, Any]) -> di
             taxonomy_evidence = {"version": "uec-taxonomy-v1", "candidate_assignment_sets": taxonomy_candidates,
                                  "assignment_rows": taxonomy_rows, "unclassified_source_codes": unclassified_rows,
                                  "confirmed_activity_mappings": 0}
+        elif source_id == "ca.ontario.meat-plants":
+            taxonomy_candidates, taxonomy_rows, taxonomy_versions = connection.execute("""
+                SELECT count(DISTINCT s.candidate_id), count(*), count(DISTINCT s.taxonomy_version)
+                FROM real_preview.candidate_taxonomy_assignment_sets s
+                JOIN real_preview.candidate_taxonomy_assignments a USING (assignment_set_id)
+                WHERE s.snapshot_sha256=%s AND s.source_id=%s AND s.taxonomy_version='uec-taxonomy-v1'
+            """, (snapshot, source_id)).fetchone()
+            status_rows = connection.execute("""
+                SELECT a.mapping_method, a.mapping_status, count(DISTINCT s.candidate_id), count(*)
+                FROM real_preview.candidate_taxonomy_assignment_sets s
+                JOIN real_preview.candidate_taxonomy_assignments a USING (assignment_set_id)
+                WHERE s.snapshot_sha256=%s AND s.source_id=%s AND s.taxonomy_version='uec-taxonomy-v1'
+                GROUP BY a.mapping_method, a.mapping_status
+                ORDER BY a.mapping_method, a.mapping_status
+            """, (snapshot, source_id)).fetchall()
+            if (taxonomy_candidates != expected["candidates"] or taxonomy_rows < taxonomy_candidates
+                    or taxonomy_versions != 1):
+                raise CertificationError("Ontario taxonomy-v1 assignments do not cover every imported candidate")
+            taxonomy_evidence = {
+                "version": "uec-taxonomy-v1",
+                "candidate_assignment_sets": taxonomy_candidates,
+                "assignment_rows": taxonomy_rows,
+                "mapping_counts": [
+                    {"method": method, "status": status, "candidate_sets": candidate_sets,
+                     "assignment_rows": assignment_count}
+                    for method, status, candidate_sets, assignment_count in status_rows
+                ],
+            }
         for relation in ("uec.release_members", "uec.map_facilities_public_discovery",
                          "uec.map_facilities_public_discovery_read_model", "uec.graph_public_relationships",
                          "uec.graph_public_claims"):
