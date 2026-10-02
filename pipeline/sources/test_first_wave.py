@@ -70,7 +70,7 @@ class FirstWaveDescriptorTests(unittest.TestCase):
         self.assertEqual(len(report), 12)
         italy = next(item for item in report if item["source_id"] == "it.853-2004")
         self.assertEqual(italy["private_pipeline"], "one_action_preview_import_ready")
-        ready = {"it.853-2004", "it.1069-2009", "es.cat.feed-sandach", "au.sa.epa.licensed-activities", "au.npi.facilities", "fsa_approved_establishments"}
+        ready = {"ca.ontario.meat-plants", "it.853-2004", "it.1069-2009", "es.cat.feed-sandach", "au.sa.epa.licensed-activities", "au.npi.facilities", "fsa_approved_establishments"}
         self.assertTrue(all(item["private_pipeline"] == "one_action_preview_import_ready" for item in report if item["source_id"] in ready))
         self.assertTrue(all(item["private_pipeline"] == "fixture_contract_ready" for item in report if item["source_id"] not in ready))
         self.assertTrue(all(item["publication"] == "human_gate_required" for item in report))

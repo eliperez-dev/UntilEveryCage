@@ -1,0 +1,67 @@
+{
+  "schema_version": "strict-private-preview-certificate-v1",
+  "source_id": "ca.ontario.meat-plants",
+  "run_id": "preview-ca-ontario-meat-plants-6a257854-2d30-430a-92a9-dd90d63da337",
+  "runner_run_id": "refresh-8e2d55a9d3e8d752",
+  "certified_at_utc": "2026-10-02T01:55:47.890787Z",
+  "source": {
+    "url": "https://data.ontario.ca/dataset/a763088c-018d-48b7-bf47-3027a8c725b8/resource/ee6d559a-78de-40e6-b2ba-ad3c4a674b96/download/1._all_meat_plants.csv",
+    "licence": "Open Government Licence – Ontario (OGL-ON-1.0); attribution required; personal information and third-party rights not held by Ontario excluded",
+    "effective_date": "2026-08-06T19:04:50Z",
+    "retrieved_at_utc": "2026-10-02T01:55:34Z",
+    "raw_artifact_bytes": 130252
+  },
+  "counts": {
+    "input_rows": 460,
+    "accepted_rows": 460,
+    "observations": 460,
+    "facility_candidates": 460,
+    "api_listable": 460,
+    "quarantined": 0,
+    "out_of_scope": 0,
+    "source_coordinate_fields_withheld": 460,
+    "numeric_coordinates_persisted": 0,
+    "city_postal_listable_unmapped": 460,
+    "map_visible": 0,
+    "taxonomy_assignment_sets": 460,
+    "taxonomy_assignment_rows": 1021,
+    "taxonomy_version": "uec-taxonomy-v1",
+    "taxonomy_mapping_counts": [
+      {"method": "derived", "status": "mapped", "candidate_sets": 453, "assignment_rows": 1014},
+      {"method": "derived", "status": "unclassified", "candidate_sets": 7, "assignment_rows": 7}
+    ],
+    "public_rows": 0,
+    "same_database_import_replay_idempotent": true,
+    "strict_certificate_status": "certified"
+  },
+  "checks": {
+    "live_official_acquisition": true,
+    "parse_normalize_quarantine": true,
+    "private_postgis_import": true,
+    "api_counts_list_search_detail": true,
+    "map_and_viewport_checked_no_unmapped_candidates": true,
+    "idempotent_replay": true,
+    "taxonomy_assignments_persisted": true,
+    "provenance_hashes_and_counts_reconciled": true,
+    "public_rows_zero": true,
+    "geocoder_called": false,
+    "retained_authoritative_preview_database_changed": false
+  },
+  "hashes": {
+    "raw_source_sha256": "c4edfdd415812f6a914f5fb29a9f67cf2907ea6fbfe4e09ab96eae1468002adf",
+    "candidate_handoff_sha256": "ffef83bf8f8751dcf0a7344c5feb9637ba5690dd9eb3856a39d1c211e92a536f",
+    "normalized_sha256": "ffef83bf8f8751dcf0a7344c5feb9637ba5690dd9eb3856a39d1c211e92a536f",
+    "schema_fingerprint": "7e103c6ebeff948204ec729d8b9ce2faebdfab74f0863017a464ce99f159b6ac",
+    "disposable_snapshot_sha256": "b36691a2a98776fab0c275fd72a840abfad5c11409638902066d27497ab3e8b6"
+  },
+  "claims": {
+    "private_preview_only": true,
+    "publication_authorized": false,
+    "privacy_clearance": false,
+    "source_completeness": false,
+    "factual_accuracy": false,
+    "recurring_health": false,
+    "national_canada_coverage": false
+  },
+  "row_bearing_artifacts": "Archived outside Git at D:\\UntilEveryCage-backups\\source-evidence\\ontario-e2e-20261002-refresh-8e2d55a9d3e8d752; see archive-sha256.txt"
+}

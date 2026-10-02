@@ -1,0 +1,7 @@
+{
+  "decision": "approved",
+  "notes": "Human operator authorized a bounded current-source acquisition and private-preview E2E in the task. The Ontario Data Catalogue identifies this dataset as provincially licensed meat plants in Ontario and lists Open Government Licence – Ontario (OGL-ON-1.0). The licence requires source attribution and excludes personal information and third-party rights not held by Ontario. Keep the raw artifact and restricted evidence local; do not expose contact fields or claim privacy clearance, source completeness, factual verification, or public-release approval. Source records may be stale because the catalogue says updates occur as required.",
+  "reference": "https://data.ontario.ca/en/dataset/provincially-licensed-meat-plants ; https://www.ontario.ca/page/open-government-licence-ontario",
+  "reviewed_at": "2026-10-01T22:00:00Z",
+  "reviewer": "human operator (explicit source E2E authorization in Codex task)"
+}

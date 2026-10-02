@@ -61,6 +61,19 @@ class TaxonomyCrosswalkTests(unittest.TestCase):
         self.assertEqual(cfia["taxonomy_mapping_method"], "direct")
         self.assertEqual(cfia["taxonomy_display_category"], "slaughter")
 
+    def test_ontario_activity_labels_are_derived_and_source_evidence_is_preserved(self):
+        source_values = {"Plant Type": "Abattoir", "Animal Class": "Cattle"}
+        record = {"source_id": "ca.ontario.meat-plants", "source_values": source_values,
+                  "normalized": {"activity_categories": ["slaughter", "processing"]}}
+        projected = project_observation(record)
+        self.assertEqual(projected["taxonomy_mapping_method"], "derived")
+        self.assertEqual(projected["taxonomy_mapping_status"], "mapped")
+        self.assertEqual(projected["taxonomy_primaries"], ["slaughter", "processing_and_preparation"])
+        self.assertTrue(all(row["mapping_method"] == "derived"
+                            for row in persistence_assignments(projected)))
+        projected_rows, _ = reproject([record])
+        self.assertEqual(projected_rows[0]["source_values"], source_values)
+
     def test_uk_labels_are_conservative_derived_and_keep_unmatched_activity_partial(self):
         mapped = project_observation({"source_id": "fsa_approved_establishments", "normalized": {
             "activities": ["Slaughterhouse", "Fresh Fishery Products Plant"],
@@ -136,7 +149,7 @@ class TaxonomyCrosswalkTests(unittest.TestCase):
 
     def test_crosswalk_documents_match_frozen_persistence_envelope(self):
         for source in ("dk.smiley", "be.locations", "us.fsis", "fr.dgal.section-i",
-                       "fsa_approved_establishments", "ca.cfia.federal-meat", "it.853-2004",
+                       "fsa_approved_establishments", "ca.cfia.federal-meat", "ca.ontario.meat-plants", "it.853-2004",
                        "es.cat.feed-sandach", "au.npi.facilities"):
             document = crosswalk_document(source)
             self.assertEqual(document["source_id"], source)

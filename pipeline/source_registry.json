@@ -69,8 +69,8 @@
       "legacy_paths": ["static_data/ca/locations.csv"],
       "url": "https://data.ontario.ca/dataset/a763088c-018d-48b7-bf47-3027a8c725b8/resource/ee6d559a-78de-40e6-b2ba-ad3c4a674b96/download/1._all_meat_plants.csv",
       "access_method": "bounded CSV fetch or assisted local capture",
-      "cadence": "unknown; dataset metadata checked 2026-09-14",
-      "attribution_licensing_notes": "Government of Ontario dataset; current licence, attribution, privacy, and redistribution review remain explicit gates",
+      "cadence": "as required; Ontario Data Catalogue checked 2026-10-02",
+      "attribution_licensing_notes": "Ontario Data Catalogue lists Open Government Licence – Ontario (OGL-ON-1.0): attribution required; personal information and third-party rights not held by Ontario excluded. Private processing only; privacy clearance and project publication approval remain open",
       "adapter_status": "implemented_partial",
       "expected_artifact_schema": "Delimited CSV; plant number/name, contact, coordinates, and animal class; schema fingerprint is captured per run",
       "blockers": ["Ontario coverage is not national; privacy/coordinate review and project publication approval remain pending."]
