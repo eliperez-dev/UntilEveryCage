@@ -30,7 +30,7 @@ from pipeline.taxonomy_crosswalk import (
 from pipeline.taxonomy.persistence import persist_preview_candidate_assignment_set
 
 POLICY = Path(__file__).parents[2] / "preview-enabled-sources.json"
-SNAPSHOT_PROJECTION_VERSION = "real-preview-candidate-projection-v6"
+SNAPSHOT_PROJECTION_VERSION = "real-preview-candidate-projection-v7"
 LEGACY_ALLOWED = {"fr.dgal.section-i", "fr.dgal.section-ii", "us.fsis"}
 PREVIEW_ENABLED = set(json.loads(POLICY.read_text(encoding="utf-8"))["sources"])
 ALLOWED = LEGACY_ALLOWED | PREVIEW_ENABLED
@@ -45,6 +45,8 @@ NUMERIC_PRECISIONS = {
     "numeric", "exact", "source_numeric", "source_coordinates", "facility_coordinate",
     "source-provided", "source-provided-unspecified", "source-precision-unknown",
 }
+SOURCE_LOCATION_SOURCES = {"ca.ontario.meat-plants", "ca.cfia.federal-meat"}
+SOURCE_GROUP_KEY_INDEX = 23
 ACTIVITY_DISPLAY_PRECEDENCE = (
     "slaughter", "meat_processing", "poultry_processing", "fish_processing",
     "dairy_processing", "egg_processing", "processing", "cutting",
@@ -401,6 +403,20 @@ def parse_row(source: str, row: Any) -> tuple[Any, ...]:
     lon_raw = pick(coordinates, "longitude")
     precision_raw = pick(coordinates, "precision") or pick(normalized, "coordinate_precision", "geography_precision")
     precision = precision_raw.strip().lower() if isinstance(precision_raw, str) else None
+    coordinate_method = safe_preview_text(pick(coordinates, "method") or pick(normalized, "coordinate_method"), 80)
+    coordinate_provider = safe_preview_text(pick(coordinates, "provider") or pick(normalized, "coordinate_provider"), 160)
+    confidence_band = safe_preview_text(pick(coordinates, "confidence_band") or pick(normalized, "coordinate_confidence_band"), 24)
+    confidence_score_raw = pick(coordinates, "confidence_score")
+    confidence_score = None
+    if confidence_score_raw is not None:
+        try:
+            confidence_score = float(confidence_score_raw)
+        except (TypeError, ValueError):
+            raise ImportFailure("coordinate_confidence_invalid") from None
+        if not math.isfinite(confidence_score) or not 0 <= confidence_score <= 1:
+            raise ImportFailure("coordinate_confidence_invalid")
+    if confidence_band not in {None, "high", "medium", "low"}:
+        raise ImportFailure("coordinate_confidence_invalid")
     lat = lon = None
     numeric = False
     zero_pair = False
@@ -469,12 +485,15 @@ def parse_row(source: str, row: Any) -> tuple[Any, ...]:
         map_scope = default_map_scope
     map_scope_reason = ("list_only_locality_reference" if source == "es.cat.feed-sandach" else
                         safe_preview_text(pick(normalized, "map_scope_reason", "classification_optional_filter"), 160))
+    facility_address = (safe_preview_text(pick(normalized, "facility_address", "address"), 500)
+                        if source in SOURCE_LOCATION_SOURCES else None)
     # Validate and preserve the source-owned administrative key separately
     # from the display projection; it is used only for offline coarse lookup.
     administrative_code_for_row(source, normalized)
     return (str(identifier), location_class, country, city, postal, lat, lon, precision, observed,
             zero_pair, department, name, activity, activity_source, record_url, evidence_summary,
-            map_scope, map_scope_reason, str(group_key).strip())
+            map_scope, map_scope_reason, facility_address, coordinate_method, coordinate_provider,
+            confidence_score, confidence_band, str(group_key).strip())
 
 
 def administrative_code_for_row(source: str, normalized: dict[str, Any]) -> str | None:
@@ -642,7 +661,7 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
                 raise ImportFailure("row_schema_invalid") from None
             parsed = parse_row(source, record)
             parsed_rows.append(parsed)
-            activity_contracts_by_group.setdefault(parsed[-1], []).append(
+            activity_contracts_by_group.setdefault(parsed[SOURCE_GROUP_KEY_INDEX], []).append(
                 activity_contract(record["normalized"], source, record.get("source_values")))
             code = administrative_code_for_row(source, record["normalized"])
             if code is not None:
@@ -652,7 +671,7 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
     usable_coordinate_groups: set[str] = set()
     for parsed in parsed_rows:
         identifier, klass, country, city, postal, lat, lon, precision, observed, zero_pair, department = parsed[:11]
-        group_key = parsed[-1]
+        group_key = parsed[SOURCE_GROUP_KEY_INDEX]
         if zero_pair:
             zero_coordinate_groups.add(group_key)
         if klass == "numeric_source_coordinate":
@@ -672,7 +691,7 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
             source_provided_coordinate_count += chosen[7] in {"source-provided", "source-provided-unspecified"}
     for parsed in parsed_rows:
         identifier, klass, country, city, postal, lat, lon, precision, observed, _, department = parsed[:11]
-        group_key = parsed[-1]
+        group_key = parsed[SOURCE_GROUP_KEY_INDEX]
         candidate = group_key in representatives and representatives[group_key][0] == identifier
         db.execute(
                 """INSERT INTO real_preview.observations
@@ -688,12 +707,14 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
         raise ImportFailure("manifest_row_count_mismatch")
     observations_per_group: dict[str, int] = {}
     for parsed in parsed_rows:
-        observations_per_group[parsed[-1]] = observations_per_group.get(parsed[-1], 0) + 1
+        group_key = parsed[SOURCE_GROUP_KEY_INDEX]
+        observations_per_group[group_key] = observations_per_group.get(group_key, 0) + 1
     coarse_placeable = 0
     for group_key, chosen in representatives.items():
         identifier, klass, country, city, postal, lat, lon, precision, observed, _, department = chosen[:11]
         display_name, activity_label, activity_source, source_record_url, evidence_summary = chosen[11:16]
         default_map_scope, map_scope_reason = chosen[16:18]
+        facility_address, coordinate_method, coordinate_provider, coordinate_confidence, coordinate_confidence_band = chosen[18:23]
         activity = merge_activity_contracts(activity_contracts_by_group.get(str(group_key), []), source)
         activity_label = safe_preview_text("; ".join(activity["source_activity_labels"]), 240)
         if activity_label is None:
@@ -711,12 +732,13 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
         ).fetchone()[0]
         db.execute(
             """INSERT INTO real_preview.candidates
-            (snapshot_sha256,source_id,source_group_key,representative_observation_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision,observation_count,display_latitude,display_longitude,display_geometry_source,display_name,activity_label,activity_source,source_record_url,evidence_summary,source_name,observed_at,default_map_scope,map_scope_reason,municipality_code,category,activity_categories,source_activity_codes,source_activity_labels,activity_mapping_status,classification_ruleset_version)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (snapshot_sha256,source_id,source_group_key) DO NOTHING""",
+            (snapshot_sha256,source_id,source_group_key,representative_observation_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision,observation_count,display_latitude,display_longitude,display_geometry_source,display_name,activity_label,activity_source,source_record_url,evidence_summary,source_name,observed_at,default_map_scope,map_scope_reason,facility_address,coordinate_method,coordinate_provider,coordinate_confidence,coordinate_confidence_band,municipality_code,category,activity_categories,source_activity_codes,source_activity_labels,activity_mapping_status,classification_ruleset_version)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (snapshot_sha256,source_id,source_group_key) DO NOTHING""",
             (snapshot, source, group_key, preview_id, klass, country, city, postal, lat, lon, precision, observations_per_group[group_key], display_lat, display_lon,
              f"{(municipality_policy or {}).get('source', 'Administrative commune reference')}; approximate city location, not facility coordinates; name_match={place_match}" if display_lat is not None else None,
              display_name, activity_label, activity_source, source_record_url, evidence_summary, SOURCE_NAMES.get(source), observed,
-             default_map_scope, map_scope_reason, municipality_code, activity["category"], activity["activity_categories"],
+             default_map_scope, map_scope_reason, facility_address, coordinate_method, coordinate_provider,
+             coordinate_confidence, coordinate_confidence_band, municipality_code, activity["category"], activity["activity_categories"],
              activity["source_activity_codes"], activity["source_activity_labels"], activity["activity_mapping_status"],
              activity["classification_ruleset_version"]),
         )

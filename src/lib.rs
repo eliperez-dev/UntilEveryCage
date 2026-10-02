@@ -1349,7 +1349,7 @@ fn real_preview_https_url(value: Option<String>) -> Option<String> {
     Some(value)
 }
 
-fn real_preview_candidate(row: &tokio_postgres::Row) -> Value {
+fn real_preview_candidate(row: &tokio_postgres::Row, include_facility_address: bool) -> Value {
     let stored_kind: String = row.get("location_class");
     let stored_latitude: Option<f64> = row.get("latitude");
     let stored_longitude: Option<f64> = row.get("longitude");
@@ -1358,6 +1358,10 @@ fn real_preview_candidate(row: &tokio_postgres::Row) -> Value {
     let display_latitude: Option<f64> = row.get("display_latitude");
     let display_longitude: Option<f64> = row.get("display_longitude");
     let display_geometry_source: Option<String> = row.get("display_geometry_source");
+    let coordinate_method: Option<String> = row.get("coordinate_method");
+    let coordinate_provider: Option<String> = row.get("coordinate_provider");
+    let coordinate_confidence: Option<f64> = row.get("coordinate_confidence");
+    let coordinate_confidence_band: Option<String> = row.get("coordinate_confidence_band");
     let (kind, latitude, longitude) = safe_real_preview_location(
         &stored_kind,
         city.as_deref()
@@ -1373,8 +1377,26 @@ fn real_preview_candidate(row: &tokio_postgres::Row) -> Value {
         && safe_real_preview_location("numeric_source_coordinate", false, false, display_latitude, display_longitude).1.is_some();
     let reference_disclosure = is_city_reference
         .then(|| real_preview_reference_disclosure(display_geometry_source.as_deref()));
+    let coordinate_provenance = if is_city_reference {
+        display_geometry_source.clone()
+    } else {
+        coordinate_provider.as_ref().map(|provider| format!(
+            "{provider}; source-supplied coordinate; precision unverified"
+        ))
+    };
+    let preview_label = if is_city_reference {
+        "Approximate city location — not a facility point; private preview only"
+    } else if coordinate_method.as_deref() == Some("source_coordinate") {
+        "Official source coordinate — positional precision unspecified; private preview only"
+    } else if row.get::<_, String>("source_id") == "us.fsis"
+        && row.get::<_, Option<String>>("coordinate_precision").as_deref() == Some("source-provided")
+    {
+        "FSIS source-provided coordinate — precision unverified; private rehearsal only; not approved or published"
+    } else {
+        "Private real V2 candidate — not project-approved or published"
+    };
     let candidate_id: uuid::Uuid = row.get("candidate_id");
-    json!({
+    let mut result = json!({
         "candidate_id": candidate_id,
         "display_name": row.get::<_, Option<String>>("display_name"),
         "activity_label": row.get::<_, Option<String>>("activity_label"),
@@ -1412,16 +1434,24 @@ fn real_preview_candidate(row: &tokio_postgres::Row) -> Value {
         "latitude": if is_city_reference { display_latitude } else { latitude },
         "longitude": if is_city_reference { display_longitude } else { longitude },
         "coordinate_precision": if let Some((_, coordinate_precision, _)) = reference_disclosure { Some(coordinate_precision.to_string()) } else if stored_kind == "numeric_source_coordinate" && kind != stored_kind { None::<String> } else { row.get::<_, Option<String>>("coordinate_precision") },
-        "coordinate_provenance": if is_city_reference { display_geometry_source.clone() } else { None::<String> },
-        "coordinate_review_status": if let Some((_, _, review_status)) = reference_disclosure { review_status } else if kind == "numeric_source_coordinate" { "pending_human_privacy_review" } else { "coarse_non_point" },
+        "coordinate_provenance": coordinate_provenance,
+        "coordinate_review_status": if let Some((_, _, review_status)) = reference_disclosure { review_status } else if coordinate_method.as_deref() == Some("source_coordinate") { "source_coordinate_precision_disclosed" } else if kind == "numeric_source_coordinate" { "pending_human_privacy_review" } else { "coarse_non_point" },
         "factual_review_status": "not_reviewed",
         "privacy_screening_status": "pending",
         "project_approval": false,
         "publication_status": "not_published",
-        "preview_label": if is_city_reference { "Approximate city location — not a facility point; private preview only" }
-            else if row.get::<_, String>("source_id") == "us.fsis" && row.get::<_, Option<String>>("coordinate_precision").as_deref() == Some("source-provided") { "FSIS source-provided coordinate — precision unverified; private rehearsal only; not approved or published" }
-            else { "Private real V2 candidate — not project-approved or published" }
-    })
+        "preview_label": preview_label
+    });
+    if let Some(fields) = result.as_object_mut() {
+        if include_facility_address {
+            fields.insert("facility_address".into(), json!(row.get::<_, Option<String>>("facility_address")));
+        }
+        fields.insert("coordinate_method".into(), json!(coordinate_method));
+        fields.insert("coordinate_provider".into(), json!(coordinate_provider));
+        fields.insert("coordinate_confidence".into(), json!(coordinate_confidence));
+        fields.insert("coordinate_confidence_band".into(), json!(coordinate_confidence_band));
+    }
+    result
 }
 
 fn real_preview_coordinate_precision(source_id: &str, precision: Option<&str>) -> &'static str {
@@ -1989,7 +2019,7 @@ pub async fn get_real_preview_reference_handler(
         Err(_) => return real_preview_unavailable(),
     };
     let has_next = rows.len() as i64 > limit;
-    let data: Vec<Value> = rows.iter().take(limit as usize).map(real_preview_candidate).collect();
+    let data: Vec<Value> = rows.iter().take(limit as usize).map(|row| real_preview_candidate(row, false)).collect();
     let next = has_next.then(|| rows[(limit - 1) as usize].get::<_, uuid::Uuid>("candidate_id"));
     real_preview_response(
         StatusCode::OK,
@@ -2041,7 +2071,7 @@ pub async fn get_real_preview_list_handler(
         &[&cursor, &query, &query_limit, &params.source_id, &params.default_map_scope, &category_keys],
     ).await { Ok(rows) => rows, Err(_) => return real_preview_unavailable() };
     let has_next = rows.len() as i64 > limit;
-    let data: Vec<Value> = rows.iter().take(limit as usize).map(real_preview_candidate).collect();
+    let data: Vec<Value> = rows.iter().take(limit as usize).map(|row| real_preview_candidate(row, false)).collect();
     let next = has_next.then(|| rows[(limit - 1) as usize].get::<_, uuid::Uuid>("candidate_id"));
     real_preview_response(
         StatusCode::OK,
@@ -2087,7 +2117,7 @@ pub async fn get_real_preview_viewport_handler(
         &[&params.west,&params.south,&params.east,&params.north,&params.cursor,&query_limit,&params.source_id],
     ).await { Ok(rows) => rows, Err(_) => return real_preview_unavailable() };
     let has_next = rows.len() as i64 > limit;
-    let data: Vec<Value> = rows.iter().take(limit as usize).map(real_preview_candidate).collect();
+    let data: Vec<Value> = rows.iter().take(limit as usize).map(|row| real_preview_candidate(row, false)).collect();
     let next = has_next.then(|| rows[(limit - 1) as usize].get::<_, uuid::Uuid>("candidate_id"));
     real_preview_response(
         StatusCode::OK,
@@ -2113,7 +2143,7 @@ pub async fn get_real_preview_detail_handler(
     match row {
         Some(row) => real_preview_response(
             StatusCode::OK,
-            json!({"api_version":"real-preview-v1","data":real_preview_candidate(&row)}),
+            json!({"api_version":"real-preview-v1","data":real_preview_candidate(&row, true)}),
         ),
         None => real_preview_error(
             StatusCode::NOT_FOUND,

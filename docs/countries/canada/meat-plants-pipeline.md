@@ -11,10 +11,16 @@ substituted for the federal registry.
 
 Both sources use the same compact adapter contract while retaining jurisdiction
 level, jurisdiction name, plant/registration number, source activity/function
-codes, animal class, names, contact fields, addresses, and coordinates in
-restricted source values. Normalized candidate fields suppress street address,
-phone, and coordinates behind privacy/review gates. Ontario plant-type labels
-derive conservative categories. CFIA's workbook uses numbered function columns
+codes, animal class, names, and facility-location evidence. The normalized
+private handoff preserves the facility address for later shared address
+enrichment and preserves validated Ontario source coordinates; telephone and
+other contact fields are not part of the geocoding query. Ontario publishes
+latitude/longitude but does not specify positional accuracy, so those points
+remain `source-provided` and are disclosed as approximate/unverified in the
+private preview. Coordinate pairs must be complete, finite, nonzero, in global
+bounds, and within the Ontario extent. Invalid pairs fall through to the
+normalized address/locality enrichment path. No adapter calls an external
+geocoder. Ontario plant-type labels derive conservative categories. CFIA's workbook uses numbered function columns
 whose suffix values are defined by the key on its results page, rather than
 combined numeric codes:
 
@@ -56,8 +62,9 @@ made and no coordinates were produced.
 Lifecycle:
 
 `bounded fetch or assisted capture -> immutable provenance -> parse/normalize ->
-validate/quarantine -> private QA/health -> candidate handoff and restricted
-provider-neutral geocode queue -> optional private import`. Reruns are
+validate/quarantine -> private QA/health -> candidate handoff and shared
+provider-neutral geocode queue for candidates without a usable source point ->
+optional private import`. Reruns are
 deterministic. Missing observations are not closure. Queue generation does not
 call a geocoder. Current licence, attribution, redistribution, privacy,
 function-code semantics, freshness, provider selection, and project approval

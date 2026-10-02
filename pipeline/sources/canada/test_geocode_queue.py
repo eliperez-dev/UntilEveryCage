@@ -36,9 +36,9 @@ class CanadaGeocodeQueueTests(unittest.TestCase):
         queue = [json.loads(line) for line in (self.root / "geocode-queue.jsonl").read_text(encoding="utf-8").splitlines()]
         self.assertEqual(result["records_seen"], 2)
         self.assertEqual(result["records_queued"], 2)
-        self.assertEqual(result["provider_review_state"], "required")
-        self.assertEqual(result["geocoder_status_policy"], "pending; no external geocoder has been called")
-        self.assertEqual(queue[0]["status"], "pending-provider-review")
+        self.assertEqual(result["provider_review_state"], "not_configured")
+        self.assertEqual(result["geocoder_status_policy"], "pending provider configuration; no external geocoder has been called")
+        self.assertEqual(queue[0]["status"], "pending-provider-configuration")
         self.assertIn("3 Federal Way", queue[0]["geocoder_query"])
         self.assertNotIn("Synthetic Federal Meats", queue[0]["geocoder_query"])
         self.assertNotIn("555-0100", json.dumps(queue))

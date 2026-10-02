@@ -47,6 +47,43 @@ def _clean(raw: str | None) -> str | None:
     return raw.strip() if isinstance(raw, str) and raw.strip() else None
 
 
+def _source_coordinate(latitude: str | None, longitude: str | None) -> dict[str, Any] | None:
+    """Keep a valid coordinate pair supplied for a facility by the source.
+
+    Ontario's official catalog describes these as latitude/longitude fields but
+    does not state positional accuracy. Keep the point with source-provided
+    precision so the preview discloses it as approximate/unverified.
+    """
+    lat_text, lon_text = _clean(latitude), _clean(longitude)
+    if not lat_text and not lon_text:
+        return None
+    if not lat_text or not lon_text:
+        return None
+    try:
+        lat, lon = float(lat_text), float(lon_text)
+    except ValueError:
+        return None
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180) or (lat == 0 and lon == 0):
+        return None
+    # The Ontario provincial source is expected to describe Ontario facilities.
+    # Reject valid-but-obviously-foreign values rather than plotting them.
+    if not (41 <= lat <= 57 and -96 <= lon <= -74):
+        return None
+    return {
+        "latitude": lat,
+        "longitude": lon,
+        "precision": "source-provided",
+        "method": "source_coordinate",
+        "provider": "Government of Ontario",
+        "confidence_band": "high",
+    }
+
+
+def _facility_address(row: dict[str, str], mapping: dict[str, str]) -> str | None:
+    """Preserve only the source's facility address, never contact details."""
+    return _clean(value(row, mapping, "address"))
+
+
 def _categories(*values_: str | None) -> tuple[str, ...]:
     text = " ".join(item for item in values_ if item).lower()
     categories: list[str] = []
@@ -257,14 +294,24 @@ class CanadaMeatAdapter:
             if self.require_categories and not categories and not cfia_unknown:
                 reasons.append("unsupported_or_missing_facility_activity" if cfia_activity_seen or _joined_source_codes(row) else "unknown_function_code")
             if occurrences[key] > 1: reasons.append("duplicate_source_row")
+            source_coordinates = (_source_coordinate(
+                value(row, mapping, "latitude"), value(row, mapping, "longitude"))
+                if self.jurisdiction_level == "provincial" else None)
+            facility_address = _facility_address(row, mapping)
             normalized = {
                 "establishment_id": plant_number, "recognition_number": plant_number, "facility_grouping": f"provisional-{self.jurisdiction_level}-plant-number", "identity_review": "required-before-merge",
-                "name": name, "operator_name": _clean(value(row, mapping, "operator_name")), "trading_name": _clean(value(row, mapping, "doing_business_as")) or name, "address": None,
-                "address_state": "source-value-present-pending-review" if _clean(value(row, mapping, "address")) else "unknown", "city": _clean(value(row, mapping, "city")), "postal_code": _clean(value(row, mapping, "postal_code")), "province": _clean(value(row, mapping, "province")),
+                "name": name, "operator_name": _clean(value(row, mapping, "operator_name")), "trading_name": _clean(value(row, mapping, "doing_business_as")) or name, "address": facility_address,
+                "facility_address": facility_address,
+                "address_state": "source-facility-address" if facility_address else "unknown", "city": _clean(value(row, mapping, "city")), "postal_code": _clean(value(row, mapping, "postal_code")), "province": _clean(value(row, mapping, "province")),
                 "country_code": "CA", "nation": "Canada", "jurisdiction_level": self.jurisdiction_level, "jurisdiction": self.jurisdiction,
                 "source_plant_type": plant_type, "source_function_codes": functions, "animal_class": animal_class, "activity_categories": categories,
                 "classification_state": "derived-from-source-label" if categories else "unclassified", "observation_state": "listed-at-retrieval", "disappearance_semantics": "not-observed; never inferred as closure",
-                "coordinates": None, "coordinate_state": "source-value-present-pending-review" if _clean(value(row, mapping, "latitude")) or _clean(value(row, mapping, "longitude")) else "not-supplied-by-source", "privacy_gate": "pending-review", "coordinate_gate": "review_required", "publication_gate": "blocked",
+                "coordinates": source_coordinates,
+                "coordinate_state": "source-provided" if source_coordinates else ("invalid-source-coordinate" if _clean(value(row, mapping, "latitude")) or _clean(value(row, mapping, "longitude")) else "not-supplied-by-source"),
+                "coordinate_method": "source_coordinate" if source_coordinates else None,
+                "coordinate_provider": "Government of Ontario" if source_coordinates else None,
+                "coordinate_confidence_band": "high" if source_coordinates else None,
+                "privacy_gate": "pending-review", "coordinate_gate": "source-coordinate-validated" if source_coordinates else "review_required", "publication_gate": "blocked",
             }
             record = {"source_id": self.source_id, "source_row": line, "source_row_id": row_identity(row, occurrences[key]), "source_record_key": f"{plant_number or 'unknown'}|{occurrences[key]}", "source_values": row, "normalized": normalized}
             if reasons: quarantined.append({"reasons": tuple(dict.fromkeys(reasons)), "record": record})
@@ -348,7 +395,9 @@ class CanadaMeatAdapter:
         anomaly_counts = Counter(reason for item in quarantined for reason in item["reasons"])
         geocode_queue = build_geocode_queue(accepted, artifact, root / "geocode-queue")
         manifest = private_manifest(source_id=self.source_id, adapter_version=self.adapter_version, schema_version=self.schema_version, artifact=artifact, input_rows=result["input_rows"], normalized_rows=len(accepted), quarantined_rows=len(quarantined), normalized_sha256=normalized_sha256, parsed_sha256=parsed_sha256, anomaly_counts=dict(sorted(anomaly_counts.items())))
-        manifest.update({"country_code": "CA", "jurisdiction_level": self.jurisdiction_level, "jurisdiction": self.jurisdiction, "delimiter": result["delimiter"], "schema_fingerprint": result["schema_fingerprint"], "coverage": self.coverage, "geocoding": "queued for separate provider-reviewed asynchronous enrichment; no external request made", "geocode_queue": geocode_queue})
+        source_coordinate_count = sum(bool(row["normalized"].get("coordinates")) for row in accepted)
+        facility_address_count = sum(bool(row["normalized"].get("facility_address")) for row in accepted)
+        manifest.update({"country_code": "CA", "jurisdiction_level": self.jurisdiction_level, "jurisdiction": self.jurisdiction, "delimiter": result["delimiter"], "schema_fingerprint": result["schema_fingerprint"], "coverage": self.coverage, "geocoding": "source coordinates first; shared provider-neutral address queue for records without a usable source point; no external request made", "geospatial_enrichment": {"records_with_source_coordinates": source_coordinate_count, "records_with_facility_address": facility_address_count, "source_coordinate_precision": "source-provided; positional accuracy unspecified", "invalid_or_absent_coordinates_use_address_queue": True}, "geocode_queue": geocode_queue})
         graph_records = accepted + [item["record"] for item in quarantined if set(item["reasons"]).issubset({"unknown_function_code"})]
         manifest["graph_candidates"] = self._write_graph_candidates(root, graph_records, artifact)
         manifest["graph_candidates"]["quarantined_identity_safe_rows"] = len(graph_records) - len(accepted)
