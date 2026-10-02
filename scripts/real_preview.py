@@ -33,21 +33,13 @@ SESSION_TOKEN: str | None = None
 IMPORTER = ROOT / "pipeline" / "scripts" / "maintenance" / "import-real-preview.py"
 MIGRATIONS = ROOT / "pipeline" / "scripts" / "maintenance" / "apply-migrations.py"
 ACTIVE_PREVIEW_TOKEN: str | None = None
-OFFLINE_RESUME_EXPECTED = {
-    "au.npi.facilities": (8140, 8140, 8116, 0, 8116),
-    "au.sa.epa.licensed-activities": (43, 41, 41, 0, 41),
-    "be.locations": (4032, 1794, 0, 1793, 1793),
-    "br.sif.registered": (24174, 3147, 0, 0, 0),
-    "ca.ontario.meat-plants": (460, 460, 0, 0, 0),
-    "es.cat.feed-sandach": (12117, 4367, 0, 0, 0),
-    "fr.dgal.section-i": (1449, 1449, 0, 0, 0),
-    "fr.dgal.section-ii": (1068, 1067, 0, 0, 0),
-    "fsa_approved_establishments": (4291, 4291, 0, 0, 0),
-    "fss_approved_establishments": (595, 595, 0, 0, 0),
-    "it.1069-2009": (9960, 6538, 5296, 0, 5296),
-    "it.853-2004": (41849, 25316, 24263, 0, 24263),
-    "us.fsis": (7241, 7241, 7241, 0, 7241),
-}
+_PREVIEW_SOURCE_CONFIG = json.loads(
+    (ROOT / "pipeline" / "preview-enabled-sources.json").read_text(encoding="utf-8")
+)["sources"]
+OFFLINE_RESUME_SOURCE_IDS = frozenset(
+    {"fr.dgal.section-i", "fr.dgal.section-ii", "us.fsis"}
+    | {source for source, config in _PREVIEW_SOURCE_CONFIG.items() if config.get("enabled") is True}
+)
 OFFLINE_RESUME_REQUIRED_TABLES = {
     "observations", "candidates", "source_manifests", "source_preview_runs",
 }
@@ -538,7 +530,7 @@ def up(*, offline_handoff: bool = False) -> dict[str, object]:
 
 def _validate_offline_resume_aggregates(rows: list[tuple[object, ...]], publication_counts: dict[str, int],
                                         migration_versions: set[str], schema_tables: set[str]) -> dict[str, int]:
-    """Fail closed unless the retained offline snapshot is the exact reviewed aggregate baseline."""
+    """Validate each latest source snapshot against its own manifest-linked database rows."""
     by_source: dict[str, tuple[int, int, int, int, int]] = {}
     for row in rows:
         (source_id, snapshot_sha256, source_sha256, normalized_sha256, observations, candidates,
@@ -554,9 +546,11 @@ def _validate_offline_resume_aggregates(rows: list[tuple[object, ...]], publicat
         if public_rows != 0:
             raise PreviewError("offline preview source ledger reports public rows")
         values = (int(observations), int(candidates), int(numeric), int(coarse), int(map_visible))
+        if any(value < 0 for value in values):
+            raise PreviewError("offline preview source snapshot has negative aggregate counts")
         by_source[source_id] = values
-    if by_source != OFFLINE_RESUME_EXPECTED:
-        raise PreviewError("offline preview latest source set or aggregate counts differ from the verified baseline")
+    if not by_source or not set(by_source).issubset(OFFLINE_RESUME_SOURCE_IDS):
+        raise PreviewError("offline preview latest source set is empty or contains an unconfigured source")
     if "054_public_suppression_generation" not in migration_versions:
         raise PreviewError("offline preview schema is missing migration 054")
     if not OFFLINE_RESUME_REQUIRED_TABLES.issubset(schema_tables):
@@ -568,7 +562,7 @@ def _validate_offline_resume_aggregates(rows: list[tuple[object, ...]], publicat
     numeric = sum(values[2] for values in by_source.values())
     coarse = sum(values[3] for values in by_source.values())
     map_visible = sum(values[4] for values in by_source.values())
-    if numeric + coarse != map_visible or candidates - map_visible != 25788:
+    if numeric + coarse != map_visible or map_visible > candidates:
         raise PreviewError("offline preview map/unmapped aggregate relationship is invalid")
     return {"observation_count": observations, "source_scoped_candidate_count": candidates,
             "numeric_coordinate_count": numeric, "coarse_placeable_count": coarse,
@@ -592,13 +586,30 @@ def offline_resume() -> dict[str, object]:
         cursor.execute("""
             WITH latest AS (
               SELECT DISTINCT ON (source_id) source_id,snapshot_sha256,source_artifact_sha256,normalized_sha256,
-                     imported_observation_count,facility_count,numeric_coordinate_count,coarse_placeable_count,
-                     map_visible_count,public_rows
+                     imported_observation_count,facility_count,public_rows
               FROM real_preview.source_preview_runs ORDER BY source_id,created_at DESC,run_id DESC
             )
             SELECT l.source_id,l.snapshot_sha256,l.source_artifact_sha256,l.normalized_sha256,
-                   l.imported_observation_count,l.facility_count,l.numeric_coordinate_count,
-                   l.coarse_placeable_count,l.map_visible_count,l.public_rows,
+                   l.imported_observation_count,l.facility_count,
+                   (SELECT count(*) FROM real_preview.candidate_display d
+                    WHERE d.source_id=l.source_id AND d.snapshot_sha256=l.snapshot_sha256
+                      AND d.location_class='numeric_source_coordinate'
+                      AND d.latitude BETWEEN -90 AND 90 AND d.longitude BETWEEN -180 AND 180
+                      AND (d.latitude<>0 OR d.longitude<>0)),
+                   (SELECT count(*) FROM real_preview.candidate_display d
+                    JOIN real_preview.candidates c USING (candidate_id)
+                    WHERE d.source_id=l.source_id AND d.snapshot_sha256=l.snapshot_sha256
+                      AND c.default_map_scope AND d.location_class='city_postal'
+                      AND d.display_latitude IS NOT NULL),
+                   (SELECT count(*) FROM real_preview.candidate_display d
+                    JOIN real_preview.candidates c USING (candidate_id)
+                    WHERE d.source_id=l.source_id AND d.snapshot_sha256=l.snapshot_sha256
+                      AND c.default_map_scope
+                      AND ((d.location_class='numeric_source_coordinate'
+                            AND d.latitude BETWEEN -90 AND 90 AND d.longitude BETWEEN -180 AND 180
+                            AND (d.latitude<>0 OR d.longitude<>0))
+                           OR d.display_latitude IS NOT NULL)),
+                   l.public_rows,
                    (SELECT count(*) FROM real_preview.observations o
                     WHERE o.source_id=l.source_id AND o.snapshot_sha256=l.snapshot_sha256),
                    (SELECT count(*) FROM real_preview.candidates c

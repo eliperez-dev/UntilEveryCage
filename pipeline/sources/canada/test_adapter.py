@@ -48,13 +48,34 @@ class CanadaAdapterTests(unittest.TestCase):
         result = OntarioMeatPlantsAdapter().parse_bytes(content)
         self.assertEqual(len(result["accepted"]), 1)
         self.assertEqual(result["accepted"][0]["normalized"]["activity_categories"], ("slaughter",))
+        normalized = result["accepted"][0]["normalized"]
+        self.assertEqual(normalized["facility_address"], "Industrial Road 1")
+        self.assertEqual(normalized["coordinates"], {
+            "latitude": 43.1, "longitude": -79.1, "precision": "source-provided",
+            "method": "source_coordinate", "provider": "Government of Ontario",
+            "confidence_band": "high",
+        })
+        self.assertNotIn("555-0100", json.dumps(normalized))
 
     def test_ontario_is_provincial_and_privacy_safe(self):
         adapter = OntarioMeatPlantsAdapter(); result = adapter.parse_file(FIXTURES / "ontario.csv")
         self.assertEqual(len(result["accepted"]), 2); self.assertEqual(len(result["quarantined"]), 1)
         row = result["accepted"][0]
-        self.assertEqual(row["normalized"]["jurisdiction_level"], "provincial"); self.assertEqual(row["normalized"]["jurisdiction"], "Ontario"); self.assertEqual(row["normalized"]["activity_categories"], ("slaughter",)); self.assertIsNone(row["normalized"]["coordinates"])
+        self.assertEqual(row["normalized"]["jurisdiction_level"], "provincial"); self.assertEqual(row["normalized"]["jurisdiction"], "Ontario"); self.assertEqual(row["normalized"]["activity_categories"], ("slaughter",))
+        self.assertEqual(row["normalized"]["facility_address"], "1 Private Road")
+        self.assertEqual(row["normalized"]["coordinates"]["precision"], "source-provided")
         self.assertEqual(row["source_values"]["Phone"], "555-0100")
+
+    def test_ontario_invalid_or_zero_coordinates_fall_back_to_address_input(self):
+        adapter = OntarioMeatPlantsAdapter()
+        for latitude, longitude in (("0", "0"), ("91", "-75"), ("43", "0"), ("43", "-100"), ("43", "")):
+            raw = ("Plant Number,Plant Name,Address,City,Province,Postal Code,Phone,Latitude,Longitude,Plant Type\n"
+                   f"ON-1,Synthetic Facility,Industrial Road,Testville,ON,A1A 1A1,555-0100,{latitude},{longitude},Abattoir\n").encode()
+            parsed = adapter.parse_bytes(raw)
+            normalized = parsed["accepted"][0]["normalized"]
+            self.assertIsNone(normalized["coordinates"])
+            self.assertEqual(normalized["facility_address"], "Industrial Road")
+            self.assertEqual(normalized["coordinate_state"], "invalid-source-coordinate")
 
     def test_cfia_function_codes_and_unknown_code_quarantine(self):
         adapter = CfiaFederalMeatAdapter(); result = adapter.parse_file(FIXTURES / "cfia.csv")
@@ -80,7 +101,7 @@ class CanadaAdapterTests(unittest.TestCase):
                 status = run_private_lifecycle(FIXTURES / fixture, Path(d) / adapter.source_id, artifact, adapter)
                 self.assertEqual(status["status"], "candidate-ready"); self.assertEqual(status["manifest"]["jurisdiction_level"], adapter.jurisdiction_level); self.assertTrue((Path(status["run_dir"]) / "release-candidate" / "records.jsonl").exists())
                 queue = status["manifest"]["geocode_queue"]
-                self.assertEqual(queue["provider_review_state"], "required")
+                self.assertEqual(queue["provider_review_state"], "not_configured")
                 self.assertEqual(queue["records_queued"], 2 if adapter.jurisdiction_level == "federal" else 0)
 
     def test_graph_candidates_are_source_scoped_and_only_explicit_federal_edges_are_emitted(self):

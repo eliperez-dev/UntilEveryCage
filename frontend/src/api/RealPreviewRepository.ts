@@ -31,10 +31,15 @@ export type RealPreviewCandidate = Readonly<{
   countryCode: string | null;
   city: string | null;
   postalCode: string | null;
+  facilityAddress: string | null;
   latitude: number | null;
   longitude: number | null;
   coordinatePrecision: string | null;
   coordinateProvenance: string | null;
+  coordinateMethod: string | null;
+  coordinateProvider: string | null;
+  coordinateConfidence: number | null;
+  coordinateConfidenceBand: 'high' | 'medium' | 'low' | null;
   coordinateReviewStatus: string;
   factualReviewStatus: string;
   privacyScreeningStatus: string;
@@ -109,6 +114,14 @@ export function parseRealPreviewCandidate(value: unknown): RealPreviewCandidate 
   const displayPrecision = row.display_precision;
   const latitude = nullableCoordinate(row.latitude);
   const longitude = nullableCoordinate(row.longitude);
+  const coordinateConfidence = nullableCoordinate(row.coordinate_confidence);
+  const confidenceBand = nullableString(row.coordinate_confidence_band);
+  if ((coordinateConfidence !== null && (coordinateConfidence < 0 || coordinateConfidence > 1))
+    || (confidenceBand !== null && !['high', 'medium', 'low'].includes(confidenceBand))) {
+    throw new RealPreviewError('invalid-response', 'The private preview returned invalid location confidence.');
+  }
+  const facilityAddress = nullableString(row.facility_address);
+  if (facilityAddress !== null && facilityAddress.length > 500) throw new RealPreviewError('invalid-response', 'The private preview returned an invalid facility address.');
   if (typeof candidateId !== 'string' || !UUID.test(candidateId)
     || typeof sourceId !== 'string' || !sourceId
     || !['numeric_source_coordinate', 'city_postal', 'unmapped_private_observation'].includes(String(locationClass))
@@ -151,9 +164,12 @@ export function parseRealPreviewCandidate(value: unknown): RealPreviewCandidate 
     locationClass: kind, displayPrecision: displayPrecision as RealPreviewPrecision,
     defaultMapScope: row.default_map_scope === undefined ? true : row.default_map_scope as boolean,
     mapScopeReason: optionalNullableString(row, 'map_scope_reason'),
-    countryCode: nullableString(row.country_code), city: nullableString(row.city), postalCode: nullableString(row.postal_code),
+    countryCode: nullableString(row.country_code), city: nullableString(row.city), postalCode: nullableString(row.postal_code), facilityAddress,
     latitude, longitude, coordinatePrecision: nullableString(row.coordinate_precision),
     coordinateProvenance: optionalNullableString(row, 'coordinate_provenance'),
+    coordinateMethod: optionalNullableString(row, 'coordinate_method'),
+    coordinateProvider: optionalNullableString(row, 'coordinate_provider'),
+    coordinateConfidence, coordinateConfidenceBand: confidenceBand as RealPreviewCandidate['coordinateConfidenceBand'],
     coordinateReviewStatus: row.coordinate_review_status, factualReviewStatus: row.factual_review_status,
     privacyScreeningStatus: row.privacy_screening_status, projectApproval: false,
     publicationStatus: row.publication_status, previewLabel: row.preview_label,
@@ -200,6 +216,11 @@ export function mapRealPreviewCandidate(candidate: RealPreviewCandidate): LabRec
       : candidate.previewLabel,
     coordinatePrecision: candidate.coordinatePrecision,
     coordinateProvenance: candidate.coordinateProvenance,
+    facilityAddress: candidate.facilityAddress,
+    coordinateMethod: candidate.coordinateMethod,
+    coordinateProvider: candidate.coordinateProvider,
+    coordinateConfidence: candidate.coordinateConfidence,
+    coordinateConfidenceBand: candidate.coordinateConfidenceBand,
     ...(candidate.taxonomy ? { taxonomy: candidate.taxonomy } : {}),
   });
 }

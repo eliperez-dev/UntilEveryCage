@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from pipeline.common.review import write_operator_review_packet
-from pipeline.common.geocode_queue import build_geocode_queue
+from pipeline.geocoding.source_queue import build_geocode_queue
 from pipeline.contracts.candidate_handoff import write_handoff
 from pipeline.contracts.source_lifecycle import atomic_bytes, atomic_json, atomic_jsonl, private_manifest
 from pipeline.contracts.adapter_contract import SourceArtifact

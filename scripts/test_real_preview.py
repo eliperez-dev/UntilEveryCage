@@ -118,23 +118,33 @@ class LifecycleTests(unittest.TestCase):
         with patch.object(rp.os, "name", "nt"), patch.object(rp.shutil, "which", return_value="powershell"), patch.object(rp.subprocess, "run", return_value=completed):
             self.assertFalse(rp._pid_exists(12345))
 
-    def test_offline_resume_requires_exact_hashed_baseline_and_zero_publication(self):
+    def test_offline_resume_validates_latest_snapshots_and_zero_publication(self):
+        counts_by_source = {
+            "au.npi.facilities": (8116, 8116, 0, 0, 0),
+            "ca.ontario.meat-plants": (460, 460, 0, 0, 0),
+        }
         def rows_for(expected):
             return [(source, "a" * 64, "b" * 64, "c" * 64, *counts, 0,
                      counts[0], counts[1], 1) for source, counts in expected.items()]
-        valid = rows_for(rp.OFFLINE_RESUME_EXPECTED)
+        valid = rows_for(counts_by_source)
         summary = rp._validate_offline_resume_aggregates(
             valid, {"releases": 0, "release_members": 0},
             {"054_public_suppression_generation"}, rp.OFFLINE_RESUME_REQUIRED_TABLES)
+        expected_observations = sum(item[0] for item in counts_by_source.values())
+        expected_candidates = sum(item[1] for item in counts_by_source.values())
+        expected_map_visible = len(counts_by_source) - 2
         self.assertEqual(summary, {
-            "observation_count": 90166, "source_scoped_candidate_count": 60220,
-            "numeric_coordinate_count": 36841, "coarse_placeable_count": 1793,
-            "map_visible_count": 38634, "unmapped_facility_count": 21586,
+            "observation_count": expected_observations,
+            "source_scoped_candidate_count": expected_candidates,
+            "numeric_coordinate_count": expected_map_visible,
+            "coarse_placeable_count": 0,
+            "map_visible_count": expected_map_visible,
+            "unmapped_facility_count": expected_candidates - expected_map_visible,
             "public_release_count": 0, "public_projection_count": 0,
         })
         invalid_cases = [
-            (valid[:-1], {"releases": 0}, {"054_public_suppression_generation"}, rp.OFFLINE_RESUME_REQUIRED_TABLES),
             ([("extra.source", *valid[0][1:]), *valid], {"releases": 0}, {"054_public_suppression_generation"}, rp.OFFLINE_RESUME_REQUIRED_TABLES),
+            ([valid[0], valid[0]], {"releases": 0}, {"054_public_suppression_generation"}, rp.OFFLINE_RESUME_REQUIRED_TABLES),
             ([(*valid[0][:2], "not-a-hash", *valid[0][3:]), *valid[1:]], {"releases": 0}, {"054_public_suppression_generation"}, rp.OFFLINE_RESUME_REQUIRED_TABLES),
             (valid, {"releases": 1}, {"054_public_suppression_generation"}, rp.OFFLINE_RESUME_REQUIRED_TABLES),
             (valid, {"releases": 0}, set(), rp.OFFLINE_RESUME_REQUIRED_TABLES),

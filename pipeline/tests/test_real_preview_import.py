@@ -25,6 +25,13 @@ class RealPreviewImporterTests(unittest.TestCase):
         self.assertIn("category = ANY(activity_categories)", migration)
         self.assertIn("activity_label", migration)
 
+    def test_source_location_provenance_migration_is_additive_and_private(self):
+        migration = (Path(__file__).parents[1] / "migrations" / "057_real_preview_source_location_provenance.sql").read_text(encoding="utf-8")
+        for column in ("facility_address", "coordinate_method", "coordinate_provider", "coordinate_confidence", "coordinate_confidence_band"):
+            self.assertIn(f"ADD COLUMN {column}", migration)
+        self.assertIn("private later enrichment", migration)
+        self.assertNotIn("INSERT INTO uec.release_members", migration)
+
     def _offline_fixture(self, root: Path, *, source_id: str = "us.fsis") -> None:
         handoff = root / "d6-graph-mvp" / "handoffs" / "us.fsis"
         normalized_dir = handoff / "normalized"
@@ -200,6 +207,21 @@ class RealPreviewImporterTests(unittest.TestCase):
         self.assertNotIn(row[7], {"exact", "numeric", "facility_coordinate"})
         self.assertEqual(row[-1], "retained-group")
 
+    def test_ontario_coordinates_and_facility_address_pass_private_projection(self):
+        row = IMPORTER.parse_row("ca.ontario.meat-plants", {
+            "source_id": "ca.ontario.meat-plants", "source_record_key": "ON-synthetic",
+            "normalized": {
+                "establishment_id": "ON-synthetic", "city": "Example City", "postal_code": "A1A 1A1",
+                "facility_address": "1 Synthetic Road",
+                "coordinates": {"latitude": 43.1, "longitude": -79.1, "precision": "source-provided",
+                    "method": "source_coordinate", "provider": "Government of Ontario", "confidence_band": "high"},
+            },
+        })
+        self.assertEqual(row[1], "numeric_source_coordinate")
+        self.assertEqual(row[5:8], (43.1, -79.1, "source-provided"))
+        self.assertEqual(row[18:23], ("1 Synthetic Road", "source_coordinate", "Government of Ontario", None, "high"))
+        self.assertEqual(row[-1], "ON-synthetic")
+
     def test_italy_853_official_source_values_recover_only_unverified_coordinates(self):
         row = IMPORTER.parse_row("it.853-2004", {
             "source_id": "it.853-2004", "source_record_key": "sanitized-italy-row",
@@ -266,7 +288,7 @@ class RealPreviewImporterTests(unittest.TestCase):
         self.assertEqual(row[1], "city_postal")
         self.assertFalse(row[16])
         self.assertEqual(row[17], "general-food")
-        self.assertEqual(row[18], "synthetic-group")
+        self.assertEqual(row[23], "synthetic-group")
 
         unclassified = IMPORTER.parse_row("dk.smiley", {
             "source_id": "dk.smiley", "source_record_key": "synthetic-row",
@@ -362,7 +384,7 @@ class RealPreviewImporterTests(unittest.TestCase):
         self.assertIsNone(row[5])
         self.assertIsNone(row[6])
         self.assertTrue(row[16])
-        self.assertEqual(row[18], "synthetic-group")
+        self.assertEqual(row[23], "synthetic-group")
 
     def test_import_creates_unmapped_source_group_candidate_with_scope_metadata(self):
         class Result:
@@ -425,12 +447,12 @@ class RealPreviewImporterTests(unittest.TestCase):
         self.assertFalse(params[22])
         self.assertEqual(params[23], "general-food")
         self.assertEqual(params[3], "opaque-preview-observation", "candidate retains lineage to its observation")
-        self.assertEqual(params[25], "slaughter")
-        self.assertEqual(params[26], ["slaughter", "processing_and_preparation"])
-        self.assertEqual(params[27], ["EB.03.21.00", "EB.10.10.99"])
-        self.assertEqual(params[28], ["Fish plant", "Slaughterhouse"])
-        self.assertEqual(params[29], "mapped")
-        self.assertEqual(params[30], "denmark-classification-v1")
+        self.assertEqual(params[30], "slaughter")
+        self.assertEqual(params[31], ["slaughter", "processing_and_preparation"])
+        self.assertEqual(params[32], ["EB.03.21.00", "EB.10.10.99"])
+        self.assertEqual(params[33], ["Fish plant", "Slaughterhouse"])
+        self.assertEqual(params[34], "mapped")
+        self.assertEqual(params[35], "denmark-classification-v1")
 
     def test_french_commune_resolution_requires_department_to_disambiguate(self):
         reference = {

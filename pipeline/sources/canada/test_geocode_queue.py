@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-import shutil
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -13,12 +13,11 @@ from .geocode_queue import build_geocode_queue
 
 class CanadaGeocodeQueueTests(unittest.TestCase):
     def setUp(self):
-        self.root = Path(__file__).resolve().parents[3] / ".d2-canada-geocode-queue-test"
-        shutil.rmtree(self.root, ignore_errors=True)
-        self.root.mkdir()
+        self._temporary_directory = tempfile.TemporaryDirectory()
+        self.root = Path(self._temporary_directory.name)
 
     def tearDown(self):
-        shutil.rmtree(self.root, ignore_errors=True)
+        self._temporary_directory.cleanup()
 
     @staticmethod
     def artifact(adapter, raw: bytes) -> SourceArtifact:
@@ -36,7 +35,7 @@ class CanadaGeocodeQueueTests(unittest.TestCase):
         queue = [json.loads(line) for line in (self.root / "geocode-queue.jsonl").read_text(encoding="utf-8").splitlines()]
         self.assertEqual(result["records_seen"], 2)
         self.assertEqual(result["records_queued"], 2)
-        self.assertEqual(result["provider_review_state"], "required")
+        self.assertEqual(result["provider_review_state"], "not_configured")
         self.assertEqual(result["geocoder_status_policy"], "pending; no external geocoder has been called")
         self.assertEqual(queue[0]["status"], "pending-provider-configuration")
         self.assertIn("3 Federal Way", queue[0]["geocoder_query"])
