@@ -131,6 +131,10 @@ def validate_ledger(ledger: dict[str, Any], source_id: str) -> dict[str, Any]:
         counts["unmapped"] = 0
         if counts["city_postal"] != counts["candidates"] or counts["numeric_coordinates"] != 0:
             raise CertificationError("Catalonia municipality-listable candidate counts do not reconcile")
+    if source_id == "br.sif.registered":
+        counts["unmapped"] = 0
+        if counts["city_postal"] != counts["candidates"] or counts["numeric_coordinates"] != 0:
+            raise CertificationError("Brazil SIF municipality-listable candidate counts do not reconcile")
     if counts["numeric_coordinates"] + counts["coarse_placeable"] != counts["map_visible"]:
         raise CertificationError("map-visible count does not reconcile with coordinate/coarse counts")
     location_unmapped = (counts["unmapped_map_candidates"] if source_id == "dk.smiley"
@@ -325,7 +329,7 @@ def _db_check(database_url: str, source_id: str, evidence: dict[str, Any]) -> di
             raise CertificationError("database source artifact hash is absent from acquisition provenance")
         db_unmapped = 0 if source_id in {
             "ca.cfia.federal-meat", "au.npi.facilities", "au.sa.epa.licensed-activities",
-            "es.cat.feed-sandach", "it.1069-2009"
+            "es.cat.feed-sandach", "it.1069-2009", "br.sif.registered"
         } else unmapped
         if (observations, candidates, numeric, coarse, db_unmapped, listable, visible) != (
             expected["observations"], expected["candidates"], expected["numeric_coordinates"],
@@ -370,6 +374,21 @@ def _db_check(database_url: str, source_id: str, evidence: dict[str, Any]) -> di
             taxonomy_evidence = {"version": "uec-taxonomy-v1", "candidate_assignment_sets": taxonomy_candidates,
                                  "ambiguous_source_native_candidates": ambiguous_candidates,
                                  "unclassified": 0, "confirmed_activity_mappings": 0}
+        elif source_id == "br.sif.registered":
+            taxonomy_row = connection.execute("""SELECT count(DISTINCT s.candidate_id),
+                count(*), count(DISTINCT s.taxonomy_version),
+                count(*) FILTER (WHERE a.primary_key='unclassified')
+                FROM real_preview.candidate_taxonomy_assignment_sets s
+                JOIN real_preview.candidate_taxonomy_assignments a USING (assignment_set_id)
+                WHERE s.snapshot_sha256=%s AND s.source_id=%s AND s.taxonomy_version='uec-taxonomy-v1'""",
+                (snapshot, source_id)).fetchone()
+            taxonomy_candidates, taxonomy_rows, taxonomy_versions, unclassified_rows = taxonomy_row
+            if (taxonomy_candidates != expected["candidates"] or taxonomy_rows < taxonomy_candidates
+                    or taxonomy_versions != 1 or unclassified_rows != taxonomy_rows):
+                raise CertificationError("Brazil SIF source-code taxonomy assignments do not reconcile")
+            taxonomy_evidence = {"version": "uec-taxonomy-v1", "candidate_assignment_sets": taxonomy_candidates,
+                                 "assignment_rows": taxonomy_rows, "unclassified_source_codes": unclassified_rows,
+                                 "confirmed_activity_mappings": 0}
         for relation in ("uec.release_members", "uec.map_facilities_public_discovery",
                          "uec.map_facilities_public_discovery_read_model", "uec.graph_public_relationships",
                          "uec.graph_public_claims"):

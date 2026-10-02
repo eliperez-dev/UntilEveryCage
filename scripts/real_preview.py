@@ -1094,6 +1094,47 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                 "unmapped": import_result.get("unmapped_map_candidate_count")},
             "geocoding": summary.get("geocoding"),
         })
+    elif source_id == "br.sif.registered":
+        acquisition_path = source_dir / "acquisition" / source_id / run_id / "acquisition-metadata.json"
+        if not acquisition_path.is_file() or acquisition_path.is_symlink():
+            raise PreviewError("Brazil SIF acquisition provenance is unavailable")
+        acquisition_evidence = json.loads(acquisition_path.read_text(encoding="utf-8"))
+        handoff_manifest = json.loads((source_dir / "candidate-handoff" / "manifest.json").read_text(encoding="utf-8"))
+        source_results = refresh_result.get("results") if isinstance(refresh_result, dict) else None
+        source_result = next((item for item in source_results or []
+                              if isinstance(item, dict) and item.get("source_id") == source_id), None)
+        source_summary = source_result.get("summary") if isinstance(source_result, dict) else None
+        if (not isinstance(source_summary, dict)
+                or acquisition_evidence.get("source_id") != source_id
+                or acquisition_evidence.get("run_id") != run_id
+                or acquisition_evidence.get("sha256") != handoff_manifest.get("checksum_sha256")):
+            raise PreviewError("Brazil SIF acquisition and handoff provenance do not match")
+        if any(not isinstance(value, str) or len(value) != 64 for value in (
+                import_result.get("normalized_sha256"), source_summary.get("candidate_handoff_sha256"),
+                source_summary.get("schema_fingerprint"), acquisition_evidence.get("sha256"))):
+            raise PreviewError("Brazil SIF lifecycle hashes are incomplete")
+        ledger.update({
+            "acquisition": {key: acquisition_evidence.get(key) for key in (
+                "source_id", "run_id", "requested_url", "final_url", "requested_at_utc",
+                "retrieved_at_utc", "effective_date", "publication_date", "sha256", "byte_size",
+                "response_headers", "terms_review", "rights_caveat", "privacy_caveat", "coverage",
+                "adapter_version", "config_version")},
+            "normalized_sha256": import_result.get("normalized_sha256"),
+            "candidate_handoff_sha256": source_summary.get("candidate_handoff_sha256"),
+            "schema_fingerprint": source_summary.get("schema_fingerprint"),
+            "quarantine": {"input_rows": source_summary.get("input_rows"),
+                           "accepted_rows": source_summary.get("candidate_observation_rows"),
+                           "quarantined_rows": source_summary.get("quarantined_rows"),
+                           "reasons": source_summary.get("quarantine_reasons", {})},
+            "source_counts": {key: import_result.get(key) for key in (
+                "observation_count", "facility_candidate_count", "numeric_coordinate_count",
+                "city_postal_count", "unmapped_map_candidate_count", "public_release_count",
+                "public_projection_count")},
+            "coordinate_precision_breakdown": {
+                "exact": 0, "city_or_postal_only": import_result.get("city_postal_count"),
+                "unmapped": import_result.get("unmapped_map_candidate_count")},
+            "location_policy": "MAPA SIF supplies municipality text but no coordinates; records are searchable/listable only, with no geocoding or map point. Contact, CNPJ, name, address, and occurrence text are excluded pending review.",
+        })
     elif source_id == "it.853-2004":
         acquisition_evidence = _italy_acquisition_evidence(source_dir, source_id, run_id)
         source_results = refresh_result.get("results") if isinstance(refresh_result, dict) else None
@@ -1536,15 +1577,18 @@ def strict_live_private_e2e(source_id: str, existing_runner_run_id: str | None =
     global PROJECT, VOLUME, DB_PORT, API_PORT, WEB_PORT, PRIVATE_ROOT, ACTIVE_PREVIEW_TOKEN
     if source_id not in {"be.locations", "ca.cfia.federal-meat", "au.npi.facilities",
                           "au.sa.epa.licensed-activities", "fsa_approved_establishments",
-                          "es.cat.feed-sandach"}:
+                          "es.cat.feed-sandach", "br.sif.registered"}:
         raise PreviewError("strict-live-private-e2e supports only assigned source lanes")
     import uuid
     suffix = uuid.uuid4().hex[:10]
     safe_source = {"be.locations": "be", "ca.cfia.federal-meat": "cfia", "au.npi.facilities": "au-npi",
                    "au.sa.epa.licensed-activities": "au-sa-epa",
-                   "fsa_approved_establishments": "fsa", "es.cat.feed-sandach": "es-cat"}[source_id]
+                   "fsa_approved_establishments": "fsa", "es.cat.feed-sandach": "es-cat",
+                   "br.sif.registered": "br-sif"}[source_id]
     project = f"uec-preview-{safe_source}-{suffix}"
-    private_root = ROOT / "data" / "staging" / "strict-preview" / suffix
+    private_root = (Path(os.environ["UEC_REAL_PREVIEW_ROOT"]) if source_id == "br.sif.registered"
+                    and os.environ.get("UEC_REAL_PREVIEW_ROOT") else
+                    ROOT / "data" / "staging" / "strict-preview" / suffix)
     ports = ((55440, 55489), (38020, 38069), (34180, 34229))
     selected_ports: list[int] = []
     for low, high in ports:
@@ -1579,7 +1623,8 @@ def strict_live_private_e2e(source_id: str, existing_runner_run_id: str | None =
             raise PreviewError("first source refresh did not complete the private preview import")
         preview = first_preview
         ledger_path = Path(str(preview.get("ledger", "")))
-        if source_id in {"be.locations", "au.npi.facilities", "fsa_approved_establishments", "es.cat.feed-sandach"}:
+        if source_id in {"be.locations", "au.npi.facilities", "fsa_approved_establishments",
+                         "es.cat.feed-sandach", "br.sif.registered"}:
             # Replay the identical immutable handoff in the same disposable
             # database. This explicitly proves conflict-safe importer
             # idempotency, rather than inferring it from two fresh databases.
@@ -1647,7 +1692,8 @@ def strict_live_private_e2e(source_id: str, existing_runner_run_id: str | None =
                 "checks": certificate["checks"],
                 "refreshes": 1, "idempotent_replay": source_id in {
                     "be.locations",
-                    "au.npi.facilities", "fsa_approved_establishments", "es.cat.feed-sandach"},
+                    "au.npi.facilities", "fsa_approved_establishments", "es.cat.feed-sandach",
+                    "br.sif.registered"},
                 "publication": "not_authorized", "public_rows": 0}
     except BaseException as error:
         primary_error = error

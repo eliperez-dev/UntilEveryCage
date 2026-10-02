@@ -345,6 +345,7 @@ SOURCE_NAMES = {
     "au.npi.facilities": "Australian Department of Climate Change, Energy, the Environment and Water — National Pollutant Inventory",
     "au.sa.epa.licensed-activities": "South Australian Environment Protection Authority — Licensed Activities",
     "be.locations": "Belgian Federal Agency for the Safety of the Food Chain — Operator Register",
+    "br.sif.registered": "Brazilian Ministry of Agriculture and Livestock — MAPA/DIPOA SIF Registered Establishments",
     "ca.cfia.federal-meat": "Canadian Food Inspection Agency — Federal Meat Establishments",
     "fsa_approved_establishments": "Food Standards Agency — Approved Food Establishments (England and Wales)",
     "es.cat.feed-sandach": "Catalonia — SANDACH Feed Establishments Register",

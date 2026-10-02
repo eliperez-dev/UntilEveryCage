@@ -1,0 +1,76 @@
+{
+  "schema_version": "source-private-e2e-run-v1",
+  "source_id": "br.sif.registered",
+  "run_id": "preview-br-sif-registered-5cf85234-25af-4237-ad23-b2fa454b59e5",
+  "runner_run_id": "refresh-26275765db8c23c5",
+  "status": "strict_private_preview_e2e_passed",
+  "requested_at_utc": "2026-10-02T02:23:16Z",
+  "retrieved_at_utc": "2026-10-02T02:23:26Z",
+  "effective_date": "2026-09-02",
+  "scope": "MAPA/DIPOA registered SIF establishments; every activity/occurrence row is retained as an observation; repeated SIF values are grouped only into provisional facility candidates.",
+  "catalog": {
+    "url": "https://dados.agricultura.gov.br/dataset/062166e3-b515-4274-8e7d-68aadd64b820/resource/97277e92-264a-4dc0-9aea-f87b8ea93798/download/sigsifestabelecimentosregistradosnosif.csv",
+    "rights": "MAPA catalog displays CC BY; this run was authorized for restricted local private testing only. Dataset-specific third-party rights and redistribution/publication permissions remain unresolved."
+  },
+  "artifact": {
+    "final_url": "https://dados.agricultura.gov.br/dataset/062166e3-b515-4274-8e7d-68aadd64b820/resource/97277e92-264a-4dc0-9aea-f87b8ea93798/download/sigsifestabelecimentosregistradosnosif.csv",
+    "last_modified": "2026-09-02T06:02:11Z",
+    "byte_size": 11374764,
+    "sha256": "6a9b944ac34f9872b00b32338d5b5f4969c724167d6e2006ec2f71b372538c5a"
+  },
+  "versions": {
+    "adapter": "br-mapa-sif-registered-v1",
+    "schema": "br-mapa-sif-registered-csv-v1",
+    "schema_fingerprint": "00f3c9e70fef435b7a1d37a446512907e1593a12df5168a3186f13523bb01404",
+    "normalized_sha256": "d713516038ffc5ab4fbf51f99e0bad24bd66c26662dbe6d75efd2952c13fc2d8",
+    "candidate_handoff_sha256": "d713516038ffc5ab4fbf51f99e0bad24bd66c26662dbe6d75efd2952c13fc2d8"
+  },
+  "private_artifacts": {
+    "root": "ignored target/real-preview/runs/refresh-f38d74e0290ed2f1/sources/br.sif.registered/",
+    "raw_artifact": "acquisition/br.sif.registered/preview-br-sif-registered-5cf85234-25af-4237-ad23-b2fa454b59e5/registered-establishments.csv",
+    "normalized_handoff": "candidate-handoff/normalized/records.jsonl",
+    "retention": "Row-bearing files remain outside Git in the ignored private run directory; this tracked manifest contains aggregate counts and hashes only."
+  },
+  "counts": {
+    "input_rows": 24174,
+    "accepted_observations": 24174,
+    "quarantined_rows": 0,
+    "out_of_scope_rows": 0,
+    "observations": 24174,
+    "provisional_facility_candidates": 3147,
+    "exact_coordinate_candidates": 0,
+    "municipality_listable_candidates": 3147,
+    "map_visible_candidates": 0,
+    "public_rows": 0,
+    "public_release_rows": 0,
+    "public_projection_rows": 0
+  },
+  "verification": {
+    "acquisition_provenance_matches_artifact": true,
+    "private_preview_api_source_list": true,
+    "private_preview_api_search": true,
+    "private_preview_api_detail": true,
+    "map_endpoint_checked_with_zero_coordinates": true,
+    "same_database_idempotent_replay": true,
+    "taxonomy_assignments_persisted_by_shared_importer": true,
+    "taxonomy_database_reconciliation": {
+      "taxonomy_version": "uec-taxonomy-v1",
+      "candidate_assignment_sets": 3147,
+      "assignment_rows": 3147,
+      "unclassified_source_codes": 3147,
+      "confirmed_activity_mappings": 0
+    },
+    "database_exact_run_and_hashes": true,
+    "publication_approval": false,
+    "source_completeness_claim": false,
+    "recurring_health_claim": false,
+    "factual_accuracy_claim": false
+  },
+  "privacy_and_location": "Contact fields, CNPJ, names, full addresses, and occurrence text are excluded from the candidate handoff. The source has municipality labels but no coordinates; candidates are listable only, with no geocoding performed.",
+  "next_gates": [
+    "Confirm dataset-specific reuse and third-party rights before redistribution or publication.",
+    "Review source status/activity code and lifecycle meanings before user-facing classification.",
+    "Assess municipality-level display and personal-data/privacy implications before release.",
+    "This is a one-time strict E2E certificate, not a recurring health monitor or project/publication approval."
+  ]
+}

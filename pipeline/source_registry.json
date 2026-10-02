@@ -11,9 +11,9 @@
       "access_method": "published semicolon-delimited CSV via MAPA CKAN; bounded GET or assisted capture",
       "cadence": "monthly; catalog last-update metadata checked 2026-09-16",
       "attribution_licensing_notes": "MAPA catalog displays Creative Commons Attribution; confirm dataset-specific reuse, attribution, and personal-data handling before publication",
-      "adapter_status": "reference_only",
+      "adapter_status": "implemented",
       "expected_artifact_schema": "UTF-8 semicolon CSV with CNPJ, legal/trade names, SIF, dates, situation, address, contacts, area/category/class, and occurrence fields; repeated rows by source activity/occurrence",
-      "blockers": ["Restricted raw/contact/address handling, current code semantics, dataset-specific terms, identity lifecycle, and project publication approval remain pending."]
+      "blockers": ["Dataset-specific terms, source status code semantics, source identity lifecycle, privacy review, and project publication approval remain pending."]
     },
     {
       "source_id": "br.sif.export",

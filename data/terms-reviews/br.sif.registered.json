@@ -1,0 +1,7 @@
+{
+  "decision": "approved",
+  "notes": "The project operator authorized acquisition and processing of the public MAPA SIF registered-establishments CSV for restricted local private-preview E2E validation only. MAPA catalog metadata displays CC BY attribution; this record is limited to local testing with attribution and does not resolve dataset-specific third-party rights, authorize redistribution, approve personal-data publication, or authorize a public release. Contact fields, CNPJ, names, full addresses, and occurrence text remain restricted and excluded from the preview handoff.",
+  "reference": "Explicit project-operator authorization in the current Codex task; https://dados.agricultura.gov.br/dataset/062166e3-b515-4274-8e7d-68aadd64b820/resource/97277e92-264a-4dc0-9aea-f87b8ea93798/download/sigsifestabelecimentosregistradosnosif.csv; docs/country-recon-br.md",
+  "reviewed_at": "2026-10-01T00:00:00Z",
+  "reviewer": "Codex source terms review under explicit project operator authorization"
+}
