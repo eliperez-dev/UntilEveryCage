@@ -99,7 +99,18 @@ def _monthly_record(row,line):
     acts=tuple(x for x in (_clean(row.get("All_Activities")),_clean(row.get("Part_A__All_sections_")),_clean(row.get("Part B All sections "))) if x)
     privacy_gate="restricted-withheld-address" if withheld else "privacy-review-required"
     coordinate_gate="restricted-withheld-address" if withheld else "privacy-review-required"
-    ident=_clean(row.get("AppNo"));nation=_clean(row.get("Country"));return {"source_id":CONFIG["source_id"],"source_row":line,"source_record_key":f"{nation or 'unknown'}|{ident or 'unknown'}","source_values":dict(row),"normalized":{"establishment_id":ident,"trading_name":_clean(row.get("TradingName")),"activities":acts,"activity_categories":_monthly_activity_categories(acts),"species":_clean(row.get("Species")),"competent_authority":_clean(row.get("CompetentAuthority")),"nation":nation,"authority_nation_key":nation,"status":None,"published_date":None,"coordinates":None,"coordinate_state":status,"coordinate_precision":"withheld" if withheld else "source-precision-unspecified","coordinate_gate":coordinate_gate,"privacy_gate":privacy_gate,"publication_gate":"blocked"}}
+    ident=_clean(row.get("AppNo"));nation=_clean(row.get("Country"))
+    private_location={}
+    if _clean(row.get("Postcode")): private_location["postal_code"]=_clean(row.get("Postcode"))
+    if _clean(row.get("Town")): private_location["city"]=_clean(row.get("Town"))
+    if not withheld:
+        address_lines=tuple(_clean(row.get(key)) for key in ("Address1","Address2","Address3","Town") if _clean(row.get(key)))
+        if address_lines: private_location["address"]=address_lines
+        if x is not None and y is not None:
+            private_location["coordinates"]={"latitude":y,"longitude":x,"precision":"source-precision-unspecified"}
+    normalized={"establishment_id":ident,"trading_name":_clean(row.get("TradingName")),"activities":acts,"activity_categories":_monthly_activity_categories(acts),"species":_clean(row.get("Species")),"competent_authority":_clean(row.get("CompetentAuthority")),"nation":nation,"authority_nation_key":nation,"status":None,"published_date":None,"coordinates":None,"coordinate_state":status,"coordinate_precision":"withheld" if withheld else "source-precision-unspecified","coordinate_gate":coordinate_gate,"privacy_gate":privacy_gate,"publication_gate":"blocked"}
+    if private_location: normalized["private_location_evidence"]=private_location
+    return {"source_id":CONFIG["source_id"],"source_row":line,"source_record_key":f"{nation or 'unknown'}|{ident or 'unknown'}","source_values":dict(row),"normalized":normalized}
 
 class FsaApprovedEstablishmentsAdapter:
     source_id=CONFIG["source_id"];schema_version=CONFIG["contract_version"];adapter_version=CONFIG["adapter_version"]

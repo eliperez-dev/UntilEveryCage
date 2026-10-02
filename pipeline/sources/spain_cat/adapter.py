@@ -13,7 +13,7 @@ from pipeline.contracts.candidate_handoff import write_handoff
 from pipeline.contracts.source_lifecycle import atomic_json, atomic_jsonl, private_manifest
 
 SOURCE_ID = "es.cat.feed-sandach"
-ADAPTER_VERSION = "es-cat-feed-sandach-v1"
+ADAPTER_VERSION = "es-cat-feed-sandach-v2"
 SCHEMA_VERSION = "es-cat-socrata-m48e-zdz9-v1"
 HEADERS = ("nom_establiment", "adre_a", "municipi", "codi_postal", "codi_municipi_idescat", "comarca", "codi_comarca", "prov_ncia", "n_m_registre", "nom_activitat", "alimentaci_animal_aa_sandach", "data_alta_de_l_activitat", "empresa")
 EXPORT_HEADERS = ("Nom establiment", "Adreça", "Municipi", "Codi postal", "Codi municipi (idescat)", "Comarca", "Codi Comarca", "Província", "Núm Registre", "Nom Activitat", "Alimentació Animal (AA) - SANDACH (S)", "Data alta de l'Activitat", "Empresa")
@@ -63,6 +63,7 @@ class CataloniaFeedSandachAdapter:
                 "source_record_key": key,
                 "country_code": "ES", "nation": "Spain", "autonomous_community": "Catalonia",
                 "jurisdiction_level": "autonomous-community", "source_scope": "Catalonia feed and SANDACH register only",
+                "address": _clean(row.get("adre_a")),
                 "municipality": municipality, "city": municipality,
                 "municipality_code": municipality_code, "postal_code": _clean(row.get("codi_postal")),
                 "comarca": _clean(row.get("comarca")), "comarca_code": _clean(row.get("codi_comarca")),
@@ -73,8 +74,9 @@ class CataloniaFeedSandachAdapter:
                 "privacy_gate": "minimized-private-preview", "coordinate_gate": "unmapped",
                 "rights_gate": "review_required", "publication_gate": "blocked",
             }
-            # Name, company, and street address are deliberately never copied
-            # into parsed normalized rows or candidate handoff.
+            # Names, company names, and contacts remain restricted source
+            # evidence. The official establishment address is normalized into
+            # the private location-evidence projection for enrichment.
             accepted.append({"source_id": SOURCE_ID, "source_row": line, "source_row_id": key,
                              "source_record_key": key, "source_values": {}, "normalized": normalized})
         fingerprint = hashlib.sha256(json.dumps(headers, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()

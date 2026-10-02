@@ -8,17 +8,21 @@ class CataloniaFeedSandachTests(unittest.TestCase):
         return (",".join('"' + value.replace('"', '""') + '"' for value in EXPORT_HEADERS) +
                 '\n"PRIVATE NAME","PRIVATE STREET","Barcelona","08001","08019","Barcelonès","13","Barcelona","REG-1","Feed activity","AA","2026-01-01","PRIVATE COMPANY"\n').encode()
 
-    def test_minimizes_private_identity_fields_and_marks_unmapped(self):
+    def test_retains_official_location_fields_for_private_enrichment(self):
         result = CataloniaFeedSandachAdapter().parse_bytes(self.sample())
         self.assertEqual(result["input_rows"], 1)
         self.assertEqual(len(result["accepted"]), 1)
         row = result["accepted"][0]
         self.assertEqual(row["source_id"], SOURCE_ID)
         self.assertEqual(row["source_values"], {})
+        self.assertEqual(row["normalized"]["address"], "PRIVATE STREET")
+        self.assertEqual(row["normalized"]["postal_code"], "08001")
+        self.assertEqual(row["normalized"]["municipality_code"], "08019")
         self.assertNotIn("coordinates", row["normalized"])
         self.assertEqual(row["normalized"]["coordinate_state"], "not-supplied")
         serialized = str(row)
-        for private_value in ("PRIVATE NAME", "PRIVATE STREET", "PRIVATE COMPANY"):
+        self.assertIn("PRIVATE STREET", serialized)
+        for private_value in ("PRIVATE NAME", "PRIVATE COMPANY"):
             self.assertNotIn(private_value, serialized)
 
     def test_fails_closed_on_schema_drift(self):

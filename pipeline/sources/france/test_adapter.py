@@ -40,7 +40,7 @@ class FranceAdapterTests(unittest.TestCase):
         self.assertEqual(len(result["accepted"]), 2); self.assertEqual(len(result["quarantined"]), 1)
         row = result["accepted"][0]
         self.assertEqual(row["normalized"]["source_section"], "I"); self.assertEqual(row["normalized"]["activity_categories"], ("slaughter",))
-        self.assertEqual(row["source_values"]["SIRET"], "12345678901234"); self.assertIsNone(row["normalized"]["address"]); self.assertIsNone(row["normalized"]["coordinates"])
+        self.assertEqual(row["source_values"]["SIRET"], "12345678901234"); self.assertIsNotNone(row["normalized"]["address"]); self.assertIsNone(row["normalized"]["coordinates"])
         self.assertEqual(result["quarantined"][0]["reasons"], ("duplicate_source_row",))
 
     def test_section_ii_missing_identity_is_quarantined(self):

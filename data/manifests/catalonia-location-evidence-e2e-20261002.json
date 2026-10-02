@@ -1,0 +1,58 @@
+{
+  "schema_version": "source-private-location-e2e-v1",
+  "source_id": "es.cat.feed-sandach",
+  "tested_at_utc": "2026-10-02",
+  "status": "disposable_private_db_api_map_enrichment_passed",
+  "scope": "Catalonia autonomous community feed-sector and specified SANDACH register only; not Spain-wide",
+  "source_snapshot": {
+    "acquired_at_utc": "2026-10-01",
+    "acquisition_kind": "previously acquired official live snapshot; reprocessed with the corrected adapter; no claim of a new source refresh",
+    "source_artifact_sha256": "f137a0f2826490015a3c43feedd808e7984e3c2441e69e0a261e55095f90eb75",
+    "adapter_version": "es-cat-feed-sandach-v2",
+    "schema_version": "es-cat-socrata-m48e-zdz9-v1",
+    "input_rows": 12341,
+    "accepted_observations": 12117,
+    "quarantined_rows": 224,
+    "facility_candidates": 4367,
+    "normalized_handoff_sha256": "aba5d2ce8dfba18047be6ae60e2a15c52d0f260284f991fb7ce84ba3cd2b752c"
+  },
+  "private_location_evidence": {
+    "candidate_rows_with_allowlisted_private_location_evidence": 4367,
+    "fields": ["official facility address when present", "municipality/locality", "postal code", "municipality codes", "source coordinates when present"],
+    "contact_fields": "not included in the location evidence projection",
+    "public_api_or_release_exposure": false
+  },
+  "reference": {
+    "source": "ICGC Base municipal de Catalunya 1:5.000 v2.1",
+    "source_id": "es.cat.icgc.municipality-capital-localities",
+    "source_url": "https://analisi.transparenciacatalunya.cat/api/v3/views/wpyq-we8x/export.csv?accessType=DOWNLOAD",
+    "dataset_date": "2024-11-27",
+    "reference_records_imported_or_existing": 1894,
+    "match": "exact source municipality code (five-digit INE or six-digit Idescat); no name matching",
+    "precision": "municipality_capital_locality; coarse locality point, never a facility point"
+  },
+  "enrichment": {
+    "shared_command": "scripts/real_preview.py enrich-locations --source es.cat.feed-sandach --limit 10000",
+    "examined": 4367,
+    "resolved_to_coarse_locality": 2370,
+    "unresolved_exact_code_without_reference": 1997,
+    "external_geocoder_calls": 0,
+    "per_record_approval": false,
+    "idempotent_second_run": {"examined": 0, "resolved": 0}
+  },
+  "verification": {
+    "database": "unique disposable PostGIS E2E database; cleaned after test",
+    "private_api_viewport_features": 2370,
+    "api_display_precision": "locality_reference_coarse",
+    "numeric_facility_coordinates": 0,
+    "public_release_rows": 0,
+    "public_projection_rows": 0,
+    "publication": "not_authorized",
+    "authoritative_retained_preview_database_changed": false
+  },
+  "limitations": [
+    "This is a one-time test against the archived 2026-10-01 source snapshot, not a new or recurring acquisition health check.",
+    "The 1,997 unmatched exact municipality codes remain unmapped; no city-name fallback or coordinate guessing was used.",
+    "No row payloads, addresses, or coordinates are included in this tracked manifest."
+  ]
+}

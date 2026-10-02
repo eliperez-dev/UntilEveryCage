@@ -382,6 +382,8 @@ def parse_row(source: str, row: Any) -> tuple[Any, ...]:
     identifier = pick(row, "source_record_key", "source_row_id")
     if not isinstance(identifier, (str, int)) or not str(identifier):
         raise ImportFailure("row_schema_invalid")
+    location_evidence = normalized.get("private_location_evidence")
+    location_evidence = location_evidence if isinstance(location_evidence, dict) else {}
     coordinates = normalized.get("coordinates")
     if not isinstance(coordinates, dict):
         coordinates = {}
@@ -450,8 +452,8 @@ def parse_row(source: str, row: Any) -> tuple[Any, ...]:
             or coordinate_confidence != "high_source_reported_location"
             or precision != "source-provided"):
         raise ImportFailure("source_coordinate_provenance_invalid")
-    city = pick(normalized, "city", "municipality")
-    postal = pick(normalized, "postal_code")
+    city = pick(normalized, "city", "municipality") or location_evidence.get("city")
+    postal = pick(normalized, "postal_code", "postcode") or location_evidence.get("postal_code")
     city = city.strip() if isinstance(city, str) and city.strip() else None
     postal = postal.strip() if isinstance(postal, str) and postal.strip() else None
     country = pick(normalized, "country_code")
@@ -496,14 +498,10 @@ def parse_row(source: str, row: Any) -> tuple[Any, ...]:
             + "; precision=" + str(precision or "source-provided"), 500)
     record_url = safe_https_url(pick(normalized, "source_record_url"))
     default_map_scope = source != "dk.smiley"
-    map_scope = (
-        False if source == "es.cat.feed-sandach"
-        else normalized.get("in_default_map_scope", default_map_scope)
-    )
+    map_scope = normalized.get("in_default_map_scope", default_map_scope)
     if not isinstance(map_scope, bool):
         map_scope = default_map_scope
-    map_scope_reason = ("list_only_locality_reference" if source == "es.cat.feed-sandach" else
-                        safe_preview_text(pick(normalized, "map_scope_reason", "classification_optional_filter"), 160))
+    map_scope_reason = safe_preview_text(pick(normalized, "map_scope_reason", "classification_optional_filter"), 160)
     facility_address = (safe_preview_text(pick(normalized, "facility_address", "address"), 500)
                         if source in SOURCE_LOCATION_SOURCES else None)
     # Validate and preserve the source-owned administrative key separately
@@ -657,8 +655,17 @@ def validate_preview_fields(path: Path, allowed_fields: set[str]) -> None:
             raise ImportFailure("preview_field_not_allowed")
         normalized = row.get("normalized")
         source_values = row.get("source_values")
-        if not isinstance(normalized, dict) or set(normalized) - allowed_fields:
+        if not isinstance(normalized, dict) or set(normalized) - allowed_fields - {"private_location_evidence"}:
             raise ImportFailure("preview_field_not_allowed")
+        location = normalized.get("private_location_evidence", {})
+        if (not isinstance(location, dict)
+                or set(location) - {"address", "city", "postal_code", "region", "country_code", "coordinates",
+                                    "municipality_code", "comarca_code", "department_number", "region_code"}):
+            raise ImportFailure("private_location_evidence_invalid")
+        coordinates = location.get("coordinates")
+        if coordinates is not None and (not isinstance(coordinates, dict)
+                or set(coordinates) - {"latitude", "longitude", "precision"}):
+            raise ImportFailure("private_location_evidence_invalid")
         if not isinstance(source_values, dict):
             raise ImportFailure("row_schema_invalid")
 
@@ -669,6 +676,7 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
     count = unmapped_count = mapped_non_candidate_count = candidate_count = 0
     parsed_rows: list[tuple[Any, ...]] = []
     administrative_codes: dict[str, str | None] = {}
+    private_location_by_identifier: dict[str, dict[str, Any]] = {}
     activity_contracts_by_group: dict[str, list[dict[str, Any]]] = {}
     with path.open("r", encoding="utf-8") as stream:
         for line in stream:
@@ -680,6 +688,9 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
                 raise ImportFailure("row_schema_invalid") from None
             parsed = parse_row(source, record)
             parsed_rows.append(parsed)
+            location = record["normalized"].get("private_location_evidence")
+            if isinstance(location, dict) and location:
+                private_location_by_identifier[str(parsed[0])] = location
             activity_contracts_by_group.setdefault(parsed[SOURCE_GROUP_KEY_INDEX], []).append(
                 activity_contract(record["normalized"], source, record.get("source_values")))
             code = administrative_code_for_row(source, record["normalized"])
@@ -773,6 +784,15 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
             "SELECT candidate_id FROM real_preview.candidates WHERE snapshot_sha256=%s AND source_id=%s AND source_group_key=%s",
             (snapshot, source, group_key),
         ).fetchone()[0]
+        location_evidence = private_location_by_identifier.get(str(identifier))
+        if isinstance(location_evidence, dict) and location_evidence:
+            db.execute(
+                """INSERT INTO real_preview.candidate_private_location_evidence
+                   (candidate_id,snapshot_sha256,source_id,location_evidence)
+                   VALUES (%s,%s,%s,%s::jsonb) ON CONFLICT (candidate_id) DO NOTHING""",
+                (candidate_id, snapshot, source,
+                 json.dumps(location_evidence, ensure_ascii=False, sort_keys=True)),
+            )
         if activity["crosswalk_document"]:
             persist_preview_candidate_assignment_set(
                 db,

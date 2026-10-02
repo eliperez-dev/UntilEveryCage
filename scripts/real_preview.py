@@ -2095,12 +2095,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     global PROJECT, VOLUME
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("up", "status", "probe", "down", "reset", "offline-up", "offline-status", "offline-probe", "offline-down", "offline-reset", "offline-resume", "refresh", "strict-live-private-e2e", "strict-refresh", "enrich-locations", "geospatial-status"))
+    parser.add_argument("action", choices=("up", "status", "probe", "down", "reset", "offline-up", "offline-status", "offline-probe", "offline-down", "offline-reset", "offline-resume", "refresh", "strict-live-private-e2e", "strict-refresh", "enrich-locations", "import-location-references", "geospatial-status"))
     parser.add_argument("--source")
     parser.add_argument("--existing-run", help="complete a prior exact live lifecycle run without reacquisition")
     parser.add_argument("--all", action="store_true", help="enrich all source snapshots")
     parser.add_argument("--limit", type=int, default=100, help="maximum local candidates to inspect")
     parser.add_argument("--database-url", help="loopback database URL; defaults to the owned preview database")
+    parser.add_argument("--reference-file", help="local, hash-verified administrative reference artifact")
+    parser.add_argument("--reference-source-id", help="allow-listed source ID for the administrative reference")
+    parser.add_argument("--reference-url", help="canonical HTTPS URL for the reference artifact")
+    parser.add_argument("--reference-date", help="reference dataset date (YYYY-MM-DD)")
     args = parser.parse_args(argv)
     try:
         if args.action.startswith("offline-"):
@@ -2117,6 +2121,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         if args.action == "geospatial-status":
             result = geospatial_status(args.source, args.database_url)
+            print(json.dumps(result, sort_keys=True))
+            return 0
+        if args.action == "import-location-references":
+            if not all((args.reference_file, args.reference_source_id, args.reference_url, args.reference_date)):
+                raise PreviewError("import-location-references requires --reference-file, --reference-source-id, --reference-url, and --reference-date")
+            result = import_location_references(args.reference_file, args.reference_source_id,
+                                                args.reference_url, args.reference_date,
+                                                args.database_url)
             print(json.dumps(result, sort_keys=True))
             return 0
         if args.action in {"refresh", "strict-live-private-e2e", "strict-refresh"} and not args.source:

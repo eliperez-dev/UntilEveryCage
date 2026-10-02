@@ -15,7 +15,7 @@ from pipeline.contracts.source_lifecycle import atomic_json, atomic_jsonl, priva
 
 SOURCE_ID = "br.sif.registered"
 SOURCE_URL = "https://dados.agricultura.gov.br/dataset/062166e3-b515-4274-8e7d-68aadd64b820/resource/97277e92-264a-4dc0-9aea-f87b8ea93798/download/sigsifestabelecimentosregistradosnosif.csv"
-ADAPTER_VERSION = "br-mapa-sif-registered-v1"
+ADAPTER_VERSION = "br-mapa-sif-registered-v2-private-location-evidence"
 SCHEMA_VERSION = "br-mapa-sif-registered-csv-v1"
 HEADERS = (
     "CPF_CNPJ", "RAZAO_SOCIAL", "NOME_FANTASIA", "NR_SIF", "DATA_RESERVA",
@@ -109,6 +109,8 @@ class SifRegisteredAdapter:
                     "municipality": municipality,
                     "city": municipality,
                     "state": state,
+                    "address": _text(row.get("LOGRADOURO")),
+                    "postal_code": _text(row.get("CEP")),
                     "source_classification_code": area,
                     "source_classification_label": category_class,
                     "source_activity": "; ".join(x for x in (area, category_class) if x) or None,
@@ -120,8 +122,9 @@ class SifRegisteredAdapter:
                     "source_reservation_date": _text(row.get("DATA_RESERVA")),
                     "source_occurrence_date": _text(row.get("DATA_OCORRENCIA")),
                     "occurrence_state": "present-in-restricted-evidence" if _text(row.get("DESCRICAO_OCORRENCIA")) else "not-supplied",
-                    # No addresses, names, CNPJ, contacts, precise coordinates, or
-                    # occurrence text enter preview/API data before privacy review.
+                    # Address and postal evidence are retained in private
+                    # location staging; names, CNPJ, contacts, and occurrence
+                    # text remain out of the candidate location projection.
                     "coordinates": None,
                     "coordinate_state": "not-supplied-by-source",
                     "coordinate_precision": "unresolved",

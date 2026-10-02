@@ -267,7 +267,7 @@ class CanadaMeatAdapter:
     def __init__(self, source_id: str, jurisdiction_level: str, jurisdiction: str, source_url: str, coverage: str, require_categories: bool = False) -> None:
         self.source_id, self.jurisdiction_level, self.jurisdiction, self.source_url, self.coverage = source_id, jurisdiction_level, jurisdiction, source_url, coverage
         self.require_categories = require_categories
-        self.adapter_version, self.schema_version = "ca-meat-v3-cfia-column-crosswalk", "ca-meat-tabular-workbook-v2"
+        self.adapter_version, self.schema_version = "ca-meat-v4-private-location-evidence", "ca-meat-tabular-workbook-v2"
 
     def parse_bytes(self, content: bytes) -> dict[str, Any]:
         required = ("plant_number", "name")

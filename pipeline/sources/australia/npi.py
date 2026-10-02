@@ -29,7 +29,7 @@ from pipeline.contracts.adapter_contract import SourceArtifact
 
 
 SOURCE_ID = "au.npi.facilities"
-ADAPTER_VERSION = "au-npi-facilities-v2"
+ADAPTER_VERSION = "au-npi-facilities-v3"
 SCHEMA_VERSION = "au-npi-csv-v2"
 SOURCE_URL = (
     "https://data.gov.au/data/dataset/043f58e0-a188-4458-b61c-04e5b540aea4"

@@ -85,7 +85,7 @@ class RealPreviewImporterTests(unittest.TestCase):
             self.assertEqual(verified["normalized_actual"], verified["normalized_hash"])
             self.assertEqual(verified["graph_actual"], verified["graph_manifest"]["records_sha256"])
 
-    def test_catalonia_locality_candidates_are_searchable_but_outside_default_map_scope(self):
+    def test_catalonia_locality_candidates_use_map_scope_after_reference_enrichment(self):
         parsed = IMPORTER.parse_row("es.cat.feed-sandach", {
             "source_id": "es.cat.feed-sandach",
             "source_record_key": "synthetic-catalonia-group",
@@ -98,8 +98,54 @@ class RealPreviewImporterTests(unittest.TestCase):
                 "postal_code": "08000",
             },
         })
-        self.assertFalse(parsed[16])
-        self.assertEqual(parsed[17], "list_only_locality_reference")
+        self.assertTrue(parsed[16])
+        self.assertIsNone(parsed[17])
+
+    def test_private_location_evidence_schema_excludes_contact_fields(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "records.jsonl"
+            row = {"source_id": "es.cat.feed-sandach", "source_record_key": "opaque",
+                   "source_values": {}, "normalized": {"establishment_id": "opaque",
+                       "private_location_evidence": {"address": "Synthetic Road", "postal_code": "08000",
+                           "coordinates": {"latitude": "41.0", "longitude": "2.0", "precision": "source-precision-unknown"}}}}
+            path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+            IMPORTER.validate_preview_fields(path, {"establishment_id"})
+            row["normalized"]["private_location_evidence"]["email"] = "person@example.test"
+            path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+            with self.assertRaisesRegex(IMPORTER.ImportFailure, "private_location_evidence_invalid"):
+                IMPORTER.validate_preview_fields(path, {"establishment_id"})
+
+    def test_private_location_evidence_follows_its_source_candidate(self):
+        class FakeDatabase:
+            def __init__(self):
+                self.statements = []
+                self.fetch_count = 0
+
+            def execute(self, statement, parameters=None):
+                self.statements.append((str(statement), parameters))
+                return self
+
+            def fetchone(self):
+                self.fetch_count += 1
+                return (f"synthetic-id-{self.fetch_count}",)
+
+        rows = []
+        for index, address in enumerate(("Synthetic One Road", "Synthetic Two Road"), start=1):
+            rows.append({"source_id": "us.fsis", "source_record_key": f"key-{index}",
+                         "source_values": {}, "normalized": {
+                             "establishment_number": f"group-{index}", "country_code": "US",
+                             "private_location_evidence": {"address": address, "city": f"Town {index}"},
+                         }})
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "records.jsonl"
+            path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+            db = FakeDatabase()
+            with patch.object(IMPORTER, "persist_preview_candidate_assignment_set"):
+                IMPORTER.import_rows(db, "us.fsis", path, 2, "a" * 64)
+        evidence_rows = [parameters for statement, parameters in db.statements
+                         if "INSERT INTO real_preview.candidate_private_location_evidence" in statement]
+        self.assertEqual([json.loads(parameters[3])["address"] for parameters in evidence_rows],
+                         ["Synthetic One Road", "Synthetic Two Road"])
 
     def test_catalonia_preserves_five_and_six_digit_codes_without_normalizing(self):
         for code in ("08019", "080193"):
@@ -132,6 +178,21 @@ class RealPreviewImporterTests(unittest.TestCase):
         self.assertIsNone(parsed[6])
         self.assertIsNone(parsed[11], "trading names stay hidden while row-level privacy review is pending")
         self.assertEqual(parsed[-1], "England|A-1", "the same application number in Wales remains a distinct source identity")
+
+    def test_private_evidence_coordinates_do_not_override_source_display_policy(self):
+        parsed = IMPORTER.parse_row("fsa_approved_establishments", {
+            "source_id": "fsa_approved_establishments", "source_record_key": "England|A-2",
+            "source_values": {}, "normalized": {
+                "establishment_id": "A-2", "nation": "England", "coordinates": None,
+                "coordinate_precision": "source-precision-unspecified",
+                "private_location_evidence": {"address": ["Synthetic Road"], "city": "Exampletown",
+                    "coordinates": {"latitude": 51.5, "longitude": -0.12,
+                                    "precision": "source-precision-unspecified"}},
+            },
+        })
+        self.assertEqual(parsed[1], "city_postal")
+        self.assertIsNone(parsed[5])
+        self.assertIsNone(parsed[6])
 
     def test_every_enabled_preview_source_has_a_maintained_safe_label(self):
         enabled_path = Path(__file__).parents[1] / "preview-enabled-sources.json"

@@ -72,7 +72,7 @@ def _date_state(value: str | None) -> str:
 
 class Italy853Adapter:
     source_id = "it.853-2004"
-    adapter_version = "it-853-candidate-v2"
+    adapter_version = "it-853-candidate-v3-private-location-evidence"
     schema_version = "it-853-csv-v2.0"
 
     def write_candidate_handoff(self, run_dir: str | Path, artifact: SourceArtifact,
@@ -155,7 +155,7 @@ class Italy853Adapter:
                 "observation_identity_state": "source-row-with-occurrence",
                 "name": clean(row.get("ragione_sociale")),
                 "trading_name": clean(row.get("ragione_sociale")),
-                "address": None,
+                "address": clean(row.get("indirizzo")),
                 # The Ministry feed supplies the address of the recognized
                 # establishment, not a legal entity's registered office. Keep
                 # both concepts explicit and do not turn the source address

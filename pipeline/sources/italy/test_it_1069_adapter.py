@@ -45,7 +45,7 @@ class Italy1069AdapterTests(unittest.TestCase):
         self.assertEqual(normalized["regulation"], "EC 1069/2009")
         self.assertEqual(normalized["coordinates"]["precision"], "source-precision-unknown")
         self.assertEqual(normalized["coordinate_provenance_state"], "catalog-notes-some-OSM-contributor-coordinates; row-level-origin-unspecified")
-        self.assertIsNone(normalized["address"])
+        self.assertEqual(normalized["address"], "Via Synthetic 1")
         self.assertNotIn("p_iva", normalized)
         self.assertEqual(normalized["linked_853_recognition_number_state"], "not-supplied-by-current-1069-artifact")
         self.assertEqual(normalized["publication_gate"], "blocked")
