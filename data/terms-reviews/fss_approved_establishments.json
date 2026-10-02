@@ -1,0 +1,7 @@
+{
+  "decision": "approved",
+  "notes": "The project operator explicitly authorized the FSS source lane in the current sprint for one bounded acquisition and restricted private processing. This is operational authorization for the one-time private E2E run only. FSS's current Open Data Portal identifies the register as Scotland-only, monthly, and OGL v3; preserve source/date attribution in private provenance. This record does not approve recurring unattended retrieval, public redistribution, exposure of personal or precise location data, or release. Keep addresses and remarks restricted, quarantine privacy-risk rows, do not geocode, do not create public rows, and do not merge with FSA England/Wales or any Northern Ireland feed.",
+  "reference": "Current task operator authorization; https://www.foodstandards.gov.scot/open-data-portal/approved-establishments-in-scotland; https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+  "reviewed_at": "2026-10-02T01:38:27Z",
+  "reviewer": "project operator (source-lane authorization recorded in Codex task)"
+}

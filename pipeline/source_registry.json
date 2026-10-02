@@ -233,15 +233,15 @@
     },
     {
       "source_id": "fss_approved_establishments",
-      "jurisdiction_scope": "United Kingdom; Food Standards Scotland approved establishments",
+      "jurisdiction_scope": "Scotland only; Food Standards Scotland approved establishments",
       "legacy_paths": [],
-      "url": "https://www.foodstandards.gov.scot/",
+      "url": "https://www.foodstandards.gov.scot/open-data-portal/approved-establishments-in-scotland",
       "access_method": "bounded CSV download or assisted local capture",
-      "cadence": "source-specific; verify each edition",
-      "attribution_licensing_notes": "Food Standards Scotland source; OGL indication, exact terms, privacy, coordinate, and project publication review remain human gates",
-      "adapter_status": "implemented_partial",
+      "cadence": "monthly; one-time acquisition only, no recurring monitor",
+      "attribution_licensing_notes": "FSS catalogue identifies OGL v3; preserve source and edition attribution. Project authorization covers one restricted private E2E run only; no public release, unattended recurring retrieval, or privacy/coordinate clearance.",
+      "adapter_status": "implemented",
       "expected_artifact_schema": "FSS approved-establishment CSV with approval number, trading name, authority, activities, source address and status",
-      "blockers": ["Fixture and preserved-local-artifact private lifecycle are proven. Scotland remains a distinct national source and must not be unioned with FSA identities without explicit crosswalk evidence."]
+      "blockers": ["Keep Scotland separate from FSA England/Wales and all Northern Ireland data. One live snapshot private E2E does not establish completeness, recurring health, privacy clearance, or release approval."]
     },
     {
       "source_id": "us.fsis",

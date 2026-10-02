@@ -286,7 +286,8 @@ def _check_api(base_url: str, token: str, source_id: str, evidence: dict[str, An
     candidate_id = item.get("candidate_id")
     if not isinstance(candidate_id, str):
         raise CertificationError("served candidate id is missing")
-    search_term = item.get("city") or item.get("postal_code")
+    search_term = (item.get("city") or item.get("postal_code") or
+                   item.get("activity_label") or item.get("source_name"))
     if isinstance(search_term, str) and search_term:
         search_url = f"{base_url}/dev/real-preview/locations?{urllib.parse.urlencode({'source_id': source_id, 'q': search_term, 'limit': 1})}"
         search = _api_json(search_url, token)
@@ -433,6 +434,30 @@ def _db_check(database_url: str, source_id: str, evidence: dict[str, Any]) -> di
                     for method, status, candidate_sets, assignment_count in status_rows
                 ],
             }
+        elif source_id == "fss_approved_establishments":
+            taxonomy_candidates, assignment_rows, taxonomy_versions = connection.execute("""
+                SELECT count(DISTINCT s.candidate_id), count(*), count(DISTINCT s.taxonomy_version)
+                FROM real_preview.candidate_taxonomy_assignment_sets s
+                JOIN real_preview.candidate_taxonomy_assignments a USING (assignment_set_id)
+                WHERE s.snapshot_sha256=%s AND s.source_id=%s AND s.taxonomy_version='uec-taxonomy-v1'
+            """, (snapshot, source_id)).fetchone()
+            if (taxonomy_candidates != expected["candidates"] or assignment_rows < taxonomy_candidates
+                    or taxonomy_versions != 1):
+                raise CertificationError("FSS taxonomy-v1 candidate assignments do not reconcile")
+            status_rows = connection.execute("""SELECT a.mapping_status, count(*)
+                FROM real_preview.candidate_taxonomy_assignment_sets s
+                JOIN real_preview.candidate_taxonomy_assignments a USING (assignment_set_id)
+                WHERE s.snapshot_sha256=%s AND s.source_id=%s AND s.taxonomy_version='uec-taxonomy-v1'
+                GROUP BY a.mapping_status""", (snapshot, source_id)).fetchall()
+            method_rows = connection.execute("""SELECT a.mapping_method, count(*)
+                FROM real_preview.candidate_taxonomy_assignment_sets s
+                JOIN real_preview.candidate_taxonomy_assignments a USING (assignment_set_id)
+                WHERE s.snapshot_sha256=%s AND s.source_id=%s AND s.taxonomy_version='uec-taxonomy-v1'
+                GROUP BY a.mapping_method""", (snapshot, source_id)).fetchall()
+            taxonomy_evidence = {"version": "uec-taxonomy-v1", "candidate_assignment_sets": taxonomy_candidates,
+                                 "assignment_rows": assignment_rows,
+                                 "mapping_status_counts": {str(key): int(value) for key, value in status_rows},
+                                 "mapping_method_counts": {str(key): int(value) for key, value in method_rows}}
         for relation in ("uec.release_members", "uec.map_facilities_public_discovery",
                          "uec.map_facilities_public_discovery_read_model", "uec.graph_public_relationships",
                          "uec.graph_public_claims"):

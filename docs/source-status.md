@@ -58,6 +58,21 @@ it does not imply that public rows exist or may be released. The 2026-09-15
 synthetic rehearsal and 2026-09-17 Germany/Belgium capture remain historical
 evidence, not the current baseline; see [archive index](archive/README.md).
 
+## Standalone FSS Scotland E2E — 2026-10-02
+
+The current official FSS Scotland CSV passed one strict live private E2E run:
+728 source rows, 595 accepted observations/candidates, and 133 quarantined;
+same-database replay was idempotent. All 595 candidates are listable but
+unmapped because no coordinates were supplied, so the map has zero visible
+records. Taxonomy persisted 595 assignment sets / 696 activity assignment
+rows. The disposable PostGIS database and public projections were empty/removed
+after certification. This isolated run did not modify the authoritative
+retained preview database and does not establish ongoing health, completeness,
+privacy clearance, recurring retrieval, or release approval. It covers
+Scotland only; FSA England/Wales and any Northern Ireland feed remain separate.
+See the [row-free E2E manifest](../data/manifests/fss-approved-establishments-e2e-20261002.json)
+and [FSS source assessment](countries/uk/fss-approved-establishments-source-assessment.md).
+
 ## Italy 1069 and Catalonia evidence recovery — 2026-10-01
 
 Fresh source-scoped acquisitions for `it.1069-2009` and `es.cat.feed-sandach`
@@ -138,6 +153,7 @@ The 2026-09-16 Ireland reconnaissance verified the current FSAI/DAFM/HSE/SFPA so
 | `nz.locations` | verified | blocked | not_run | blocked | MPI/Stats NZ reconnaissance; resolve 403/access and aggregate-vs-facility boundaries |
 | `uk.locations` | partial | artifact_private_only | unknown | blocked | Legacy umbrella only. The England/Wales FSA and Scotland/Northern Ireland FSS identities remain separate; see `docs/country-recon-uk.md` |
 | `fsa_approved_establishments` | verified | verified | not_run | blocked | Strict live private E2E reacquired 2026-10-01: same official 2026-09-01 snapshot (5,342 inputs, 4,291 accepted/candidates, 1,051 quarantined; zero source-count delta), idempotent replay passed. Grouped `uec-taxonomy-v1`: 4,291 derived assignment sets, 3,204 partial and 1,087 unmapped; 402 multi-activity candidates. Zero coordinates/map pins and public rows. One-time private evidence only; England and Wales; FSS remains separate; see `pipeline/sources/uk/fsa_approved/README.md` and `data/manifests/source-evidence-be-uk-20261001.json` |
+| `fss_approved_establishments` | verified | verified | not_run | blocked | One current Scotland-only strict private E2E (2026-10-02): 728 inputs, 595 accepted/listable candidates, 133 quarantined, zero coordinates/map-visible/public rows; 595 taxonomy assignment sets / 696 assignment rows; replay passed. One-time only; FSA England/Wales and Northern Ireland remain separate. Privacy, completeness, recurring retrieval and release remain unapproved; see [manifest](../data/manifests/fss-approved-establishments-e2e-20261002.json) |
 | `au.npi.facilities` | verified | verified | not_run | blocked | Strict live private E2E certified 2026-10-01: 8,140 source rows, 8,116 accepted/listable and 24 quarantined; exact same-database importer replay passed. Zero map-visible and public rows. The disposable DB persisted 8,116 ambiguous source-native `uec-taxonomy-v1` assignment sets with zero confirmed activity mappings. Latest raw/normalized hashes and taxonomy counts are recorded in `docs/countries/australia/artifact-metadata.json`. One-time evidence only; not complete facility coverage or publication approval; see `docs/country-recon-au.md` |
 | `es.cat.feed-sandach` | verified | verified | not_run | blocked | Latest strict live private E2E (2026-10-01): 12,341 input rows, 12,117 accepted, 224 quarantined, 4,367 candidates; zero source coordinates/map-visible/public rows. `uec-taxonomy-v1` persisted 4,367 Unclassified assignment sets. Catalonia only, not Spain-wide; no privacy or publication approval; see [manifest](../data/manifests/catalonia-preview-e2e-20261001.json) and `docs/country-recon-es.md` |
 | `dk.smiley` | verified | verified | not_run | blocked | Latest strict private-preview E2E verified 2026-10-01 04:01:38Z: 58,815 parsed, 58,765 accepted private candidates, 50 quarantined, 0 mapped and 58,765 unmapped. Configured as private-preview eligible, but not included in the active preview DB. All accepted candidates remain held for privacy review; address privacy, category review, source currentness, and publication gates remain open. One-time E2E only, not recurring health or completeness; see `pipeline/sources/denmark/README.md` |

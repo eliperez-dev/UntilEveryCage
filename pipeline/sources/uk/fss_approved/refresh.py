@@ -86,6 +86,7 @@ def refresh_scotland(
     retrieved_at_utc: str | None = None,
     effective_date: str | None = None,
     publication_date: str | None = None,
+    acquisition_run_id: str | None = None,
     mode: str = "dry-run",
     previous_normalized: str | Path | None = None,
     max_bytes: int = 64 * 1024 * 1024,
@@ -101,6 +102,7 @@ def refresh_scotland(
         acquisition = fetch_source(
             source_id=CONFIG["source_id"], url=source_url, output_root=root / "acquisition",
             artifact_name="source.csv", terms_review_path=terms_review_path, max_bytes=max_bytes,
+            run_id=acquisition_run_id,
             code_version=CONFIG["adapter_version"], config_version=CONFIG["contract_version"],
             coverage="Scotland only; England/Wales/Northern Ireland remain separate source scopes",
             rights_caveat="OGL v3 indicated; project attribution/terms review is retained with this run",
@@ -179,6 +181,7 @@ def main() -> int:
     parser.add_argument("--retrieved-at-utc")
     parser.add_argument("--effective-date")
     parser.add_argument("--publication-date")
+    parser.add_argument("--run-id")
     parser.add_argument("--mode", choices=("dry-run", "handoff"), default="dry-run")
     parser.add_argument("--previous-normalized", type=Path)
     parser.add_argument("--max-bytes", type=int, default=64 * 1024 * 1024)
@@ -186,7 +189,8 @@ def main() -> int:
     result = refresh_scotland(
         run_dir=args.run_dir, raw_path=args.raw, fetch=args.fetch, source_url=args.source_url,
         terms_review_path=args.terms_review, retrieved_at_utc=args.retrieved_at_utc,
-        effective_date=args.effective_date, publication_date=args.publication_date, mode=args.mode,
+        effective_date=args.effective_date, publication_date=args.publication_date,
+        acquisition_run_id=args.run_id, mode=args.mode,
         previous_normalized=args.previous_normalized, max_bytes=args.max_bytes,
     )
     print(json.dumps(result["report"], ensure_ascii=False, sort_keys=True))

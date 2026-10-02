@@ -119,7 +119,7 @@ class D3FacilityRefreshAdapter:
         review = review or options.get("terms_review_path")
         if not review:
             raise RuntimeError("terms review is required for live acquisition")
-        root = run_dir / "acquisition"
+        root = run_dir if self.source_id == "fss_approved_establishments" else run_dir / "acquisition"
         run_id = run_dir.name
         if self.source_id == "fsa_approved_establishments":
             from pipeline.sources.uk.fsa_approved.refresh import refresh_monthly
@@ -132,7 +132,9 @@ class D3FacilityRefreshAdapter:
             return {"artifact_path": str(facts["artifact_path"]), "acquisition": report}
         if self.source_id == "fss_approved_establishments":
             from pipeline.sources.uk.fss_approved.refresh import refresh_scotland
-            result = refresh_scotland(run_dir=root, fetch=True, mode="dry-run", terms_review_path=Path(str(review)), max_bytes=int(options.get("max_bytes", 64 * 1024 * 1024)))
+            result = refresh_scotland(run_dir=root, fetch=True, mode="dry-run", terms_review_path=Path(str(review)),
+                                      acquisition_run_id=str(options.get("acquisition_run_id") or run_dir.name),
+                                      max_bytes=int(options.get("max_bytes", 64 * 1024 * 1024)))
             report = result.get("report", {})
             metadata = report.get("acquisition_metadata")
             if not metadata:
@@ -183,16 +185,35 @@ class D3FacilityRefreshAdapter:
         lifecycle_root = Path(status["run_dir"])
         manifest = status.get("manifest") or {}
         candidate_handoff = False
+        handoff_evidence: dict[str, Any] = {}
+        schema_fingerprint = None
         if status.get("status") == "candidate-ready":
             rows = [json.loads(line) for line in (lifecycle_root / "normalized" / "records.jsonl").read_text(encoding="utf-8").splitlines() if line]
             write_handoff(lifecycle_root / "candidate-handoff", rows, source_artifact, source_id=self.source_id, profile="d3-facility-master")
+            if self.source_id == "fss_approved_establishments":
+                # Preserve the detailed lifecycle history in its nested run
+                # directory while placing the validated handoff at the shared
+                # runner path consumed by the private preview importer.
+                write_handoff(run_dir / "candidate-handoff", rows, source_artifact,
+                              source_id=self.source_id, profile="d3-facility-master")
+                handoff_evidence = json.loads((run_dir / "candidate-handoff" / "manifest.json").read_text(encoding="utf-8"))
+                fields = sorted({key for row in rows for key in row.get("normalized", {})})
+                schema_fingerprint = hashlib.sha256(json.dumps(
+                    fields, ensure_ascii=False, separators=(",", ":")
+                ).encode("utf-8")).hexdigest()
             candidate_handoff = True
-        return {"lifecycle_status": status.get("status"), "publication_state": status.get("publication_state", "unchanged"),
-                "input_rows": manifest.get("input_rows", 0), "normalized_rows": manifest.get("normalized_rows", 0),
-                "quarantined_rows": manifest.get("quarantined_rows", 0), "candidate_handoff": candidate_handoff,
-                "review_required": True, "release_promoted": bool(status.get("release_promoted", False)),
-                "public_surfaces": {"api": False, "map": False, "csv": False},
-                "live_acquisition": self.acquisition}
+        summary = {"lifecycle_status": status.get("status"), "publication_state": status.get("publication_state", "unchanged"),
+                   "input_rows": manifest.get("input_rows", 0), "normalized_rows": manifest.get("normalized_rows", 0),
+                   "quarantined_rows": manifest.get("quarantined_rows", 0), "candidate_handoff": candidate_handoff,
+                   "review_required": True, "release_promoted": bool(status.get("release_promoted", False)),
+                   "public_surfaces": {"api": False, "map": False, "csv": False},
+                   "live_acquisition": self.acquisition}
+        if self.source_id == "fss_approved_establishments" and candidate_handoff:
+            summary.update({"candidate_observation_rows": handoff_evidence.get("normalized_rows"),
+                            "candidate_handoff_sha256": handoff_evidence.get("normalized_sha256"),
+                            "schema_fingerprint": schema_fingerprint,
+                            "quarantine_reasons": manifest.get("anomaly_counts", {})})
+        return summary
 
 
 def D3_DESCRIPTORS() -> tuple[dict[str, Any], ...]:
@@ -200,7 +221,7 @@ def D3_DESCRIPTORS() -> tuple[dict[str, Any], ...]:
         {"source_id": "us.fsis", "country_code": "us", "url": "https://www.fsis.usda.gov/inspection/establishments/meat-poultry-and-egg-product-inspection-directory", "factory": FsisMpiAdapter, "fixture": ROOT / "us" / "fsis" / "fixtures", "adapter_version": "us-fsis-candidate-v2", "schema_version": "us-fsis-mpi-v1", "acquisition": "operator_assisted_only"},
         {"source_id": "de.locations", "country_code": "de", "url": "https://www.bvl.bund.de/bltu", "factory": GermanyBltuAdapter, "fixture": ROOT.parent / "germany" / "fixtures" / "synthetic_bltu.csv", "adapter_version": bltu_adapter.ADAPTER_VERSION, "schema_version": bltu_adapter.SCHEMA_VERSION, "acquisition": "assisted_only"},
         {"source_id": "fsa_approved_establishments", "country_code": "gb", "url": "https://data.food.gov.uk/catalog/datasets/", "factory": FsaApprovedEstablishmentsAdapter, "fixture": ROOT / "uk" / "fsa_approved" / "fixtures" / "valid.csv", "adapter_version": "fsa-uk-v2-1", "schema_version": "fsa-uk-approved-v1", "acquisition": "bounded_private_fetch"},
-        {"source_id": "fss_approved_establishments", "country_code": "gb", "url": "https://www.foodstandards.gov.scot/", "factory": FssApprovedEstablishmentsAdapter, "fixture": ROOT / "uk" / "fss_approved" / "fixtures" / "valid.csv", "adapter_version": "fss-scotland-v2-1", "schema_version": "fss-scotland-approved-v1", "acquisition": "bounded_private_fetch"},
+        {"source_id": "fss_approved_establishments", "country_code": "gb", "url": "https://www.foodstandards.gov.scot/open-data-portal/approved-establishments-in-scotland", "factory": FssApprovedEstablishmentsAdapter, "fixture": ROOT / "uk" / "fss_approved" / "fixtures" / "valid.csv", "adapter_version": "fss-scotland-v2-2", "schema_version": "fss-scotland-approved-v2", "acquisition": "bounded_private_fetch"},
     )
 
 
@@ -215,6 +236,6 @@ def register_d3(catalog: Any) -> None:
         if item["source_id"] == "fsa_approved_establishments" and item["source_id"] in catalog.adapters:
             continue
         live_callable = item["source_id"] in {"fsa_approved_establishments", "fss_approved_establishments"}
-        classification = "terms-blocked" if live_callable else "assisted"
+        classification = "live" if item["source_id"] == "fss_approved_establishments" else "terms-blocked" if live_callable else "assisted"
         catalog.register(D3FacilityRefreshAdapter(item["source_id"], item["factory"], item["fixture"], item["url"], item["adapter_version"], item["schema_version"], item["acquisition"]), AdapterCapabilities(source_id=item["source_id"], adapter_version=item["adapter_version"], schema_version=item["schema_version"], acquisition=item["acquisition"], geocoding="disabled", publication="human_gate_required", adapter_path=str(item["fixture"].parent), country_code=item["country_code"], operational_classification=classification, live_callable=live_callable))
 

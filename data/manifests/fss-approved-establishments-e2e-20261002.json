@@ -1,0 +1,76 @@
+{
+  "schema_version": "source-private-e2e-evidence-v1",
+  "source_id": "fss_approved_establishments",
+  "status": "certified",
+  "verified_at_utc": "2026-10-02T02:00:09Z",
+  "source_scope": "Scotland only",
+  "excluded_scopes": ["England", "Wales", "Northern Ireland", "other UK territories"],
+  "source": {
+    "publisher": "Food Standards Scotland",
+    "catalog_url": "https://www.foodstandards.gov.scot/open-data-portal/approved-establishments-in-scotland",
+    "artifact_url": "https://www.foodstandards.gov.scot/sites/default/files/2026-09/Approved%20Establishments%20in%20Scotland_1.csv",
+    "licence": "Open Government Licence v3",
+    "published_date": "2026-09-29",
+    "effective_date_header": "Tue, 29 Sep 2026 12:51:55 GMT",
+    "retrieved_at_utc": "2026-10-02T01:59:52Z",
+    "raw_byte_size": 247291,
+    "raw_sha256": "621a94b0d7ccba7741fab0bc9c5644b9d74b588a518b8f9b46d7b6f7e44587e3",
+    "adapter_version": "fss-scotland-v2-2",
+    "schema_version": "fss-scotland-approved-v2"
+  },
+  "private_artifacts": {
+    "archive_root": "D:\\UntilEveryCage-backups\\source-evidence\\strict-e2e-fss-20261002",
+    "raw_csv": "D:\\UntilEveryCage-backups\\source-evidence\\strict-e2e-fss-20261002\\strict-runner-runs\\refresh-bb84ec21d5df576c\\sources\\fss_approved_establishments\\acquisition\\fss_approved_establishments\\preview-fss_approved_establishments-074fc1f4-816c-4d63-abae-17a16fb46304\\source.csv",
+    "certificate": "D:\\UntilEveryCage-backups\\source-evidence\\strict-e2e-fss-20261002\\strict-runner-runs\\refresh-bb84ec21d5df576c\\source-preview-certificate.json",
+    "database_snapshot_sha256": "3ea95e910e70565320f98d46f376617ab80f15ad7ca5fe07341ed6f8cd68f0e2"
+  },
+  "counts": {
+    "input_rows": 728,
+    "accepted_observations": 595,
+    "facility_candidates": 595,
+    "quarantined_rows": 133,
+    "formal_out_of_scope_rows": 0,
+    "quarantine_reason_counts_may_overlap": {
+      "no_relevant_activity": 125,
+      "malformed_row": 2,
+      "missing_activity": 2,
+      "missing_approval_number": 2,
+      "address_privacy_risk": 9
+    },
+    "exact_coordinates": 0,
+    "source_numeric_coordinates": 0,
+    "city_postal_coordinates": 0,
+    "coarse_placeable": 0,
+    "unmapped_candidates": 595,
+    "map_visible": 0,
+    "public_rows": 0
+  },
+  "taxonomy": {
+    "version": "uec-taxonomy-v1",
+    "candidate_assignment_sets": 595,
+    "assignment_rows": 696,
+    "mapping_methods": {"derived": 696},
+    "mapping_status_rows": {"mapped": 192, "partial": 424, "unmapped": 80},
+    "mapping_status_counts_are_assignment_rows": true
+  },
+  "e2e_checks": {
+    "live_official_acquisition": true,
+    "schema_and_quarantine_validation": true,
+    "private_postgis_import": true,
+    "idempotent_replay": true,
+    "api_counts_list_search_detail": true,
+    "map_endpoint_checked_with_zero_visible_locations": true,
+    "public_projections_empty": true,
+    "disposable_database_removed": true
+  },
+  "limitations": [
+    "This certifies one current-edition acquisition and private test run, not recurring health or nationwide completeness.",
+    "No coordinates were present; all 595 candidates are listable but unmapped and absent from the map viewport.",
+    "Activity taxonomy mappings are derived from source activity labels; assignment rows are not unique candidate counts.",
+    "The private terms decision authorizes this one restricted E2E run only. It is not legal advice, privacy clearance, unattended acquisition approval, or public-release authorization."
+  ],
+  "run_ids": {
+    "acquisition": "preview-fss_approved_establishments-074fc1f4-816c-4d63-abae-17a16fb46304",
+    "runner": "refresh-bb84ec21d5df576c"
+  }
+}

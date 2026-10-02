@@ -16,8 +16,17 @@ checksum, byte size, source metadata, adapter/schema versions, activity
 categories, counts, and the explicit private-candidate/non-release state.
 
 The source-owned refresh command runs the shared lifecycle and emits row-free
-QA and `source-health.json`. `--mode handoff` additionally emits the shared
-candidate-handoff contract; it does not approve or publish a release.
+QA and `source-health.json`. The source-selectable strict private E2E command
+also imports the current edition into a disposable PostGIS preview, checks
+private list/search/detail/map API behavior, replays the same handoff to verify
+idempotency, and removes the disposable database:
+
+```text
+python scripts/real_preview.py strict-live-private-e2e --source fss_approved_establishments
+```
+
+This one-time run is limited to Scotland. It does not include Northern Ireland,
+FSA England/Wales, geocoding, unattended recurring retrieval, or public release.
 
 Before acquisition, a maintainer must verify the current FSS artifact URL,
 schema, publication/effective date, licence and attribution terms in an

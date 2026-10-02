@@ -3,6 +3,30 @@
 Assessment date: 2026-09-13
 Scope: read-only readiness review; no artifact was downloaded.
 
+## One-time E2E supplement — 2026-10-02
+
+The bounded acquisition and restricted private E2E authorized for this
+project were completed against the current FSS open-data CSV edition published
+2026-09-29. The live catalog identifies Scotland coverage, monthly publication,
+and Open Government Licence v3. The capture was 247,291 bytes
+(SHA-256 `621a94b0d7ccba7741fab0bc9c5644b9d74b588a518b8f9b46d7b6f7e44587e3`).
+The source adapter accepted 595 of 728 rows and quarantined 133; all accepted
+records were imported into a disposable private PostGIS database, queried
+through the private list/search/detail/map API, and replayed idempotently.
+The disposable database was removed after certification. No coordinates were
+provided: all 595 candidates are listable, zero are map-visible, and zero
+public rows/projections were created. Full row-free counts and artifact hashes
+are in the [E2E manifest](../../../data/manifests/fss-approved-establishments-e2e-20261002.json);
+row-bearing capture, normalized, and database evidence remains outside git in
+the manifest's `D:\UntilEveryCage-backups\source-evidence` archive.
+
+The original 2026-09-13 review below remains accurate for its date. This later
+single run verifies one published edition and a conservative private workflow;
+it does **not** authorize a schedule, establish source completeness, constitute
+privacy/legal clearance, or permit release. Scotland remains distinct from the
+FSA England/Wales feed and any Northern Ireland source. The archive's row-level
+privacy-risk flags and blocked publication gate must be respected.
+
 ## Direct official evidence
 
 - FSS publishes an approved-establishments register for Scotland. The register page is dated 9 September 2026 and links an XLSX resource. It says an approval number without a two-letter prefix is approved by FSS rather than a local authority: [FSS register](https://www.foodstandards.gov.scot/business-guidance/running-a-food-business/publications/approved-establishments-register).

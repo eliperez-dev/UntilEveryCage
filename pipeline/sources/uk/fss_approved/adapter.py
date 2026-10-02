@@ -70,7 +70,9 @@ def _record(row: dict[str, str], line: int) -> dict[str, Any]:
                 "competent_authority": _clean(row.get("competent_authority")),
                 "nation": nation, "status": _clean(row.get("status")),
                 "remarks": _clean(row.get("remarks")), "published_date": _clean(row.get("published_date")),
-                "coordinates": None}}
+                "coordinates": None, "coordinate_state": "not-supplied",
+                "coordinate_precision": "not-supplied", "coordinate_gate": "not-supplied",
+                "privacy_gate": "privacy-review-required", "publication_gate": "blocked"}}
 
 
 class FssApprovedEstablishmentsAdapter:
