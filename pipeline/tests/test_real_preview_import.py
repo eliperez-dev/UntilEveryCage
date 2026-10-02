@@ -401,18 +401,18 @@ class RealPreviewImporterTests(unittest.TestCase):
                 self.next_id += 1
                 return (f"synthetic-id-{self.next_id}",)
 
-        row = {"source_id": "us.fsis", "source_record_key": "synthetic-key",
+        row = {"source_id": "au.npi.facilities", "source_record_key": "synthetic-key",
                "source_values": {"Phone": "must-not-enter-query"},
-               "normalized": {"establishment_number": "synthetic-group", "country_code": "US",
+               "normalized": {"establishment_id": "synthetic-group", "country_code": "AU",
                    "private_location_evidence": {"address": "1 Synthetic Road", "city": "Exampletown",
-                                                   "postal_code": "12345", "country_code": "US"}}}
+                                                   "postal_code": "12345", "country_code": "AU"}}}
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "records.jsonl"
             path.write_text(json.dumps(row) + "\n", encoding="utf-8")
             db = FakeDatabase()
             with patch.object(IMPORTER, "persist_preview_candidate_assignment_set"):
                 IMPORTER.import_rows(
-                    db, "us.fsis", path, 1, "a" * 64,
+                    db, "au.npi.facilities", path, 1, "a" * 64,
                     source_artifact_sha256="b" * 64,
                     source_url="https://example.test/official.csv",
                     source_retrieved_at=IMPORTER.datetime.fromisoformat("2026-10-01T00:00:00+00:00"),
@@ -429,6 +429,46 @@ class RealPreviewImporterTests(unittest.TestCase):
         event = next(parameters for statement, parameters in db.statements
                      if "INSERT INTO uec.geocode_job_events" in statement)
         self.assertIn('"execution_status": "awaiting_provider_configuration"', event[1])
+
+    def test_catalonia_local_reference_resolution_is_not_shadowed_by_address_queue(self):
+        class FakeDatabase:
+            def __init__(self):
+                self.statements = []
+                self.next_id = 0
+
+            def execute(self, statement, parameters=None):
+                self.statements.append((str(statement), parameters))
+                return self
+
+            def fetchone(self):
+                self.next_id += 1
+                return (f"synthetic-id-{self.next_id}",)
+
+        row = {"source_id": "es.cat.feed-sandach", "source_record_key": "synthetic-source-row",
+               "source_values": {}, "normalized": {"establishment_id": "synthetic-catalan-group",
+                   "country_code": "ES", "city": "Synthetic locality", "municipality_code": "080193",
+                   "private_location_evidence": {"address": "1 Synthetic Road", "city": "Synthetic locality",
+                                                   "country_code": "ES"}}}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "records.jsonl"
+            path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+            db = FakeDatabase()
+            with patch.object(IMPORTER, "persist_preview_candidate_assignment_set"):
+                result = IMPORTER.import_rows(
+                    db, "es.cat.feed-sandach", path, 1, "d" * 64,
+                    municipality_index={"synthetic locality": {"latitude": 41.0, "longitude": 1.0}},
+                    municipality_policy={"kind": "official_municipality_reference"},
+                    source_artifact_sha256="e" * 64,
+                    source_url="https://example.test/catalonia.csv",
+                    source_retrieved_at=IMPORTER.datetime.fromisoformat("2026-10-01T00:00:00+00:00"),
+                    source_artifact_byte_size=123,
+                )
+        statements = [statement for statement, _ in db.statements]
+        self.assertFalse(any("INSERT INTO uec.geocode_jobs" in statement for statement in statements))
+        self.assertEqual(result[13], 0)
+        state = next(parameters for statement, parameters in db.statements
+                     if "INSERT INTO real_preview.enrichment_state_events" in statement)
+        self.assertEqual(state[2:4], ("synthetic-catalan-group", "resolved"))
 
     def test_import_rows_returns_unmapped_candidates_after_numeric_and_coarse_placeable_groups(self):
         class FakeDatabase:

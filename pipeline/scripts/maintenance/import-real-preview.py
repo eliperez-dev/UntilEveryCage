@@ -31,7 +31,7 @@ from pipeline.taxonomy.persistence import persist_preview_candidate_assignment_s
 from pipeline.geocoding.source_queue import source_geocode_query
 
 POLICY = Path(__file__).parents[2] / "preview-enabled-sources.json"
-SNAPSHOT_PROJECTION_VERSION = "real-preview-candidate-projection-v8"
+SNAPSHOT_PROJECTION_VERSION = "real-preview-candidate-projection-v9"
 LEGACY_ALLOWED = {"fr.dgal.section-i", "fr.dgal.section-ii", "us.fsis"}
 PREVIEW_ENABLED = set(json.loads(POLICY.read_text(encoding="utf-8"))["sources"])
 ALLOWED = LEGACY_ALLOWED | PREVIEW_ENABLED
@@ -813,7 +813,11 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
                 (candidate_id, snapshot, source,
                  json.dumps(location_evidence, ensure_ascii=False, sort_keys=True)),
             )
-        if (isinstance(location_evidence, dict) and location_evidence.get("address")
+        # NPI's 24 accepted address-only rows use the durable provider queue.
+        # Catalonia is intentionally resolved only through its approved local
+        # municipality reference; address presence must not shadow that path.
+        if (source == "au.npi.facilities"
+                and isinstance(location_evidence, dict) and location_evidence.get("address")
                 and klass != "numeric_source_coordinate" and source_artifact_sha256
                 and source_url and source_retrieved_at is not None
                 and isinstance(source_artifact_byte_size, int) and source_artifact_byte_size >= 0):
