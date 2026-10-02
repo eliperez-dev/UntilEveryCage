@@ -958,12 +958,11 @@ fn real_preview_build_cluster_features(
             "source_provided_unverified"
         } else if member.kind == "city_reference" {
             &member.precision
-        } else if ["numeric", "exact", "source_numeric", "source_coordinates", "facility_coordinate"].contains(&member.precision.as_str()) {
-            "source_numeric_pending_review"
-        } else if member.precision == "source-provided" {
-            "approximate_source_provided_pending_review"
         } else {
-            "approximate_source_precision_unknown_pending_review"
+            real_preview_coordinate_precision(
+                member.source_id.as_deref().unwrap_or_default(),
+                Some(member.precision.as_str()),
+            )
         };
         output.push(RealPreviewHierarchyFeature {
             feature_key: member.feature_key.clone(),
@@ -1011,7 +1010,7 @@ latest AS (
   FROM sources
 ),
 placeable AS (
-  SELECT c.candidate_id::text AS candidate_id, c.source_id,
+  SELECT c.candidate_id::text AS candidate_id, c.source_id, c.location_class,
          COALESCE(c.coordinate_precision,'') AS coordinate_precision,
          c.display_geometry_source,
          CASE WHEN c.display_geometry_source IS NULL THEN c.longitude ELSE c.display_longitude END AS longitude,
@@ -1031,7 +1030,7 @@ placeable AS (
 ),
 numeric AS (
   SELECT candidate_id, source_id, coordinate_precision, longitude, latitude
-  FROM placeable WHERE display_geometry_source IS NULL
+  FROM placeable WHERE display_geometry_source IS NULL OR location_class='numeric_source_coordinate'
 ),
 reference_points AS (
   SELECT longitude, latitude, count(*)::integer AS count,
@@ -1039,10 +1038,10 @@ reference_points AS (
               THEN 'locality_reference_coarse'::text
               ELSE 'city_reference_approximate'::text END AS precision
   FROM placeable
-  WHERE display_geometry_source IS NOT NULL
+  WHERE display_geometry_source IS NOT NULL AND location_class<>'numeric_source_coordinate'
   GROUP BY longitude, latitude
 )
-SELECT candidate_id,source_id,coordinate_precision,display_geometry_source,longitude,latitude
+SELECT candidate_id,source_id,location_class,coordinate_precision,display_geometry_source,longitude,latitude
 FROM placeable
 ORDER BY candidate_id
 "#;
@@ -1052,19 +1051,15 @@ ORDER BY candidate_id
     for row in rows {
         let candidate_id: String = row.get(0);
         let source_id: String = row.get(1);
-        let coordinate_precision: String = row.get(2);
-        let display_geometry_source: Option<String> = row.get(3);
-        let longitude: f64 = row.get(4);
-        let latitude: f64 = row.get(5);
+        let location_class: String = row.get(2);
+        let coordinate_precision: String = row.get(3);
+        let display_geometry_source: Option<String> = row.get(4);
+        let longitude: f64 = row.get(5);
+        let latitude: f64 = row.get(6);
         let latitude = latitude.clamp(-85.05112878, 85.05112878).to_radians();
         let x = longitude.to_radians() * 6_378_137.0;
         let y = (std::f64::consts::FRAC_PI_4 + latitude / 2.0).tan().ln() * 6_378_137.0;
-        if let Some(display_source) = display_geometry_source {
-            let entry = references.entry((longitude.to_bits(), row.get::<_, f64>(5).to_bits()))
-                .or_insert((x, y, 0, true));
-            entry.2 += 1;
-            entry.3 &= display_source.contains("approximate locality reference; not facility coordinates");
-        } else {
+        if real_preview_map_geometry_kind(&location_class) == "source_coordinate" {
             members.push(RealPreviewClusterMember {
                 feature_key: candidate_id,
                 kind: "source_coordinate".into(),
@@ -1074,6 +1069,11 @@ ORDER BY candidate_id
                 x,
                 y,
             });
+        } else if let Some(display_source) = display_geometry_source {
+            let entry = references.entry((longitude.to_bits(), row.get::<_, f64>(6).to_bits()))
+                .or_insert((x, y, 0, true));
+            entry.2 += 1;
+            entry.3 &= display_source.contains("approximate locality reference; not facility coordinates");
         }
     }
     for ((longitude_bits, latitude_bits), (x, y, count, all_locality)) in references {
@@ -1458,8 +1458,15 @@ fn real_preview_coordinate_precision(source_id: &str, precision: Option<&str>) -
     match (source_id, precision) {
         ("us.fsis", Some("source-provided")) => "source_provided_unverified",
         (_, Some("numeric" | "exact" | "source_numeric" | "source_coordinates" | "facility_coordinate")) => "source_numeric_pending_review",
-        (_, Some("source-provided")) => "approximate_source_provided_pending_review",
         _ => "approximate_source_precision_unknown_pending_review",
+    }
+}
+
+fn real_preview_map_geometry_kind(location_class: &str) -> &'static str {
+    if location_class == "numeric_source_coordinate" {
+        "source_coordinate"
+    } else {
+        "city_reference"
     }
 }
 
@@ -1712,7 +1719,6 @@ numeric_features AS (
          1::integer AS count,
          CASE WHEN source_id = 'us.fsis' AND coordinate_precision = 'source-provided' THEN 'source_provided_unverified'
               WHEN coordinate_precision IN ('numeric','exact','source_numeric','source_coordinates','facility_coordinate') THEN 'source_numeric_pending_review'
-              WHEN coordinate_precision = 'source-provided' THEN 'approximate_source_provided_pending_review'
               ELSE 'approximate_source_precision_unknown_pending_review' END AS precision,
          14::integer AS next_zoom,
          geom
@@ -1900,11 +1906,10 @@ WITH sources AS (
          'source_coordinate'::text AS kind,
          CASE WHEN source_id = 'us.fsis' AND coordinate_precision = 'source-provided' THEN 'source_provided_unverified'
               WHEN coordinate_precision IN ('numeric','exact','source_numeric','source_coordinates','facility_coordinate') THEN 'source_numeric_pending_review'
-              WHEN coordinate_precision='source-provided' THEN 'approximate_source_provided_pending_review'
               ELSE 'approximate_source_precision_unknown_pending_review' END AS precision,
          source_id, latitude, longitude, 1::bigint AS weight,
          category_key, category_keys
-  FROM current_map WHERE display_geometry_source IS NULL
+  FROM current_map WHERE display_geometry_source IS NULL OR location_class='numeric_source_coordinate'
   UNION ALL
   SELECT md5('city-reference:' || ST_X(geom)::text || ':' || ST_Y(geom)::text) AS feature_key,
          'city_reference'::text AS kind,
@@ -1918,7 +1923,7 @@ WITH sources AS (
   FROM (
     SELECT source_id,
            ST_Transform(ST_SetSRID(ST_MakePoint(longitude,latitude),4326),3857) AS geom
-    FROM current_map WHERE display_geometry_source IS NOT NULL
+    FROM current_map WHERE display_geometry_source IS NOT NULL AND location_class<>'numeric_source_coordinate'
   ) reference_geometries
   GROUP BY source_id, geom
 )
@@ -3682,10 +3687,23 @@ mod v2_api_tests {
         );
         assert_eq!(
             real_preview_coordinate_precision("other.source", Some("source-provided")),
-            "approximate_source_provided_pending_review"
+            "approximate_source_precision_unknown_pending_review"
         );
         let source = include_str!("lib.rs");
         assert!(source.matches("CASE WHEN source_id = 'us.fsis' AND coordinate_precision = 'source-provided' THEN 'source_provided_unverified'").count() >= 2);
+    }
+
+    #[test]
+    fn source_coordinates_with_display_provenance_remain_source_points_not_locality_references() {
+        assert_eq!(real_preview_map_geometry_kind("numeric_source_coordinate"), "source_coordinate");
+        assert_eq!(real_preview_map_geometry_kind("city_postal"), "city_reference");
+        assert_eq!(
+            real_preview_coordinate_precision("ca.ontario.meat-plants", Some("source-provided-unspecified")),
+            "approximate_source_precision_unknown_pending_review"
+        );
+        let source = include_str!("lib.rs");
+        assert!(source.contains("FROM current_map WHERE display_geometry_source IS NULL OR location_class='numeric_source_coordinate'"));
+        assert!(source.contains("FROM current_map WHERE display_geometry_source IS NOT NULL AND location_class<>'numeric_source_coordinate'"));
     }
 
     #[test]

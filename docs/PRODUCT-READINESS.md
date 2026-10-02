@@ -22,6 +22,19 @@ publishable facilities unless explicitly labelled that way.
 
 ## Verified checkpoint
 
+**Current retained private preview (2026-10-02):** the latest-source snapshot
+contains 115,419 observations and 64,446 candidates, of which 49,580 are
+map-visible (45,417 numeric source points and 4,163 coarse references); 14,866
+candidate groups have no rendered point. The API's 4,886
+`unmapped_candidate_count` is the unmapped location-class subset, not all
+no-point candidates. NPI/Ontario/Catalonia updates were hash-verified archived
+replays, not fresh acquisitions. The replay manifest records source hashes,
+aggregate results, and limits. Twenty-four NPI address jobs await provider
+configuration; no provider call occurred. Catalonia has 2,370 local coarse
+references and 1,997 unresolved candidates. All public/release rows remain
+zero; no source release is authorized. See the [current source status](source-status.md)
+and [geospatial replay manifest](../data/manifests/geospatial-replay-integration-20261002.json).
+
 - **Baseline:** D6.2 remains the reusable-backend architecture checkpoint (2026-09-21 UTC). On 2026-09-24, seven named official sources completed strict live private E2E through acquisition, candidate processing, disposable-database import, and run verification. Their combined private result is 64,701 observations, 42,875 candidates, 41,110 map-visible candidates, and 1,765 listable but unmapped candidates. SQL verification confirmed zero public rows. These are source-scoped private observations, not publication approval or recurring service health.
 - **Current public product:** V1 remains production and the public default.
 - **V2 frontend:** Svelte/TypeScript fixture and local synthetic preview; it is
@@ -146,7 +159,11 @@ authorization and UI behavior remain a separate validation gate. The verified
 database backup and per-source recovery matrix are retained outside the
 repository in the approved private backup location.
 
-### Source evidence recovery follow-up — 2026-10-01
+### Historical source evidence recovery checkpoint — 2026-10-01
+
+The following dated figures describe the pre-geospatial-replay snapshot and
+are retained as history. The current 2026-10-02 retained-preview totals and
+source-specific replay state are stated in the Verified checkpoint above.
 
 The six recovered runs are now the latest source evidence in the authoritative
 private database. Latest-per-source totals are 90,166 observations, 60,220

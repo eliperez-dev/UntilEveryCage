@@ -57,7 +57,7 @@
     "manifest": "data/manifests/fss-approved-establishments-e2e-20261002.json",
     "authoritative_retained_preview_database_changed": false
   },
-  "latest_backend_truth_gate": {
+  "historical_backend_truth_gate_pre_geospatial_replay": {
     "as_of": "2026-10-02",
     "database": "uec-offline-fsis-private-postgres-1/uec",
     "verification": "Aggregate-only SQL matched each latest source run to physical observation/candidate counts, manifests, and taxonomy assignments. The three new handoffs matched their certified hashes and source identities before import. Authenticated local API counts, source-scoped list/search/detail, and map-feed checks passed; the three new unmapped sources remain absent from map features. Public, release, and projection rows remain empty.",
@@ -105,7 +105,7 @@
     },
     "limitations": ["One-time live success does not establish recurring health, source completeness, factual correctness, privacy clearance, or release approval.", "Numeric coordinates are not necessarily exact facility locations; coarse city references are counted separately.", "Current map-visible totals describe the retained private preview snapshot, not all historical acquisitions or all locally stored private artifacts."]
   },
-  "retained_private_preview_taxonomy_projection": {
+  "historical_retained_private_preview_taxonomy_projection_pre_geospatial_replay": {
     "applied_at_utc": "2026-10-02T02:48:29Z",
     "database": "uec-offline-fsis-private-postgres-1/uec",
     "scope": "authoritative retained private preview; additive only; not public or approval state",
@@ -144,6 +144,26 @@
       "restore_verified": true
     },
     "live_api_browser_verification": "Authenticated local API counts, source-scoped list/search/detail, and map-feed validation passed against the imported 13-source retained preview; no public browser or release state is involved"
+  },
+  "latest_geospatial_replay": {
+    "as_of": "2026-10-02",
+    "manifest": "data/manifests/geospatial-replay-integration-20261002.json",
+    "scope": "Hash-verified archived replay of retained artifacts; not fresh acquisition.",
+    "source_count": 13,
+    "observations": 115419,
+    "candidates": 64446,
+    "numeric_map_visible": 45417,
+    "coarse_map_visible": 4163,
+    "map_visible": 49580,
+    "candidates_without_rendered_point": 14866,
+    "api_unmapped_location_class_count": 4886,
+    "public_release_projection_rows": 0,
+    "npi_address_jobs_awaiting_provider_configuration": 24,
+    "ontario_source_coordinate_features": 460,
+    "catalonia_local_reference_resolved": 2370,
+    "catalonia_unresolved": 1997,
+    "external_geocoder_calls": 0,
+    "publication": "not_authorized"
   },
   "latest_country_capture": "data/manifests/italy-1069-preview-e2e-20261001.json",
   "legacy_archive": {

@@ -1,0 +1,84 @@
+{
+  "schema_version": "1.0",
+  "as_of_utc": "2026-10-02",
+  "scope": "Aggregate-only verification of hash-checked archived replay and private geospatial projection in the authoritative retained preview. This is not fresh acquisition, recurring health, publication approval, or a public release.",
+  "database": "uec-offline-fsis-private-postgres-1/uec",
+  "migrations": ["057_real_preview_source_location_provenance", "058_private_location_evidence_handoff"],
+  "snapshot": {
+    "latest_source_count": 13,
+    "observations": 115419,
+    "candidates": 64446,
+    "numeric_map_visible": 45417,
+    "coarse_map_visible": 4163,
+    "map_visible": 49580,
+    "candidate_groups_without_rendered_point": 14866,
+    "api_unmapped_location_class_count": 4886,
+    "public_release_projection_rows": 0
+  },
+  "replayed_sources": {
+    "au.npi.facilities": {
+      "processing_run_id": "archived-replay-au-npi-facilities-a0be4c37d588-projection-v9",
+      "original_artifact_sha256": "a0be4c37d588b391ea81baf240f675b2c9f3d9ee0210f9c451c7371eac11d6c7",
+      "normalized_sha256": "5180d15a73f6d2d33f465e6e10f040b2e951e6cb038ab543cd635f97cf91b24c",
+      "observations": 8140,
+      "candidates": 8140,
+      "map_visible_source_coordinates": 8116,
+      "address_jobs_awaiting_provider_configuration": 24,
+      "external_provider_calls": 0
+    },
+    "ca.ontario.meat-plants": {
+      "processing_run_id": "archived-replay-ca-ontario-meat-plants-c4edfdd41581-projection-v9",
+      "original_artifact_sha256": "c4edfdd415812f6a914f5fb29a9f67cf2907ea6fbfe4e09ab96eae1468002adf",
+      "normalized_sha256": "9068e4da2cac8cebcde78511532f6af5cf003152e25c1351510e4260231d57e2",
+      "observations": 460,
+      "candidates": 460,
+      "map_visible_source_coordinates": 460,
+      "api_features_verified": 460,
+      "precision_disclosure": "approximate_source_precision_unknown_pending_review",
+      "project_approval": false,
+      "publication_status": "not_published"
+    },
+    "es.cat.feed-sandach": {
+      "processing_run_id": "archived-replay-es-cat-feed-sandach-f137a0f28264-projection-v9",
+      "original_artifact_sha256": "f137a0f2826490015a3c43feedd808e7984e3c2441e69e0a261e55095f90eb75",
+      "normalized_sha256": "4c83c6e4a5304045997efe5642aea2c68ab9af7d316cd81ae8212895c6471188",
+      "observations": 12117,
+      "candidates": 4367,
+      "local_reference_resolved_coarse": 2370,
+      "unresolved": 1997,
+      "reference_artifact_sha256": "2897A696C83FE4D72478702910C67C1D68120AD561137C10E80B7C231FF77E2A",
+      "reference_normalized_sha256": "3769aac1e7eeda3363cd5748384d8ae94a65a9a5770e679fb3a55734605889f9",
+      "external_geocoder_calls": 0
+    }
+  },
+  "replay_integrity": {
+    "same_database_replay_idempotent": true,
+    "public_tables_empty": true,
+    "raw_source_rows_or_addresses_in_manifest": false,
+    "backup": {
+      "path": "D:\\UntilEveryCage-backups\\source-evidence\\geospatial-replay-archived-replay-v9-20261002",
+      "files": 1491,
+      "bytes": 442353833,
+      "sha256_verified_against_retained_archive": true
+    }
+  },
+  "api_verification": {
+    "global_map_visible_count": 49580,
+    "ontario_feed_features": 460,
+    "ontario_kind": "source_coordinate",
+    "ontario_coordinate_method_present": 460,
+    "ontario_coordinate_provider_present": 460,
+    "ontario_coordinate_confidence_band_present": 460,
+    "ontario_coordinate_provenance_present": 460,
+    "precision_discloses_unknown_positional_accuracy": true,
+    "personal_contact_fields_exposed": false,
+    "public_release_or_projection_rows": 0
+  },
+  "limitations": [
+    "Archived replay reprocesses retained official source artifacts; it is not a new acquisition or claim of source currentness.",
+    "Source coordinates are not asserted to be address-level exact; Ontario positional precision is unspecified and disclosed as approximate.",
+    "The pending_review precision-label suffix is cautionary metadata, not a per-record private-display approval gate.",
+    "NPI address jobs await provider configuration; no external geocoding was performed.",
+    "Private preview results do not establish completeness, recurring health, privacy clearance, factual review, project approval, or publication authorization."
+  ]
+}
