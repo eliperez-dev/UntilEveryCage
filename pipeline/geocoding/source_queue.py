@@ -53,6 +53,29 @@ def _source_address(source_values: dict[str, Any]) -> list[str]:
     return [value for _, value in sorted(fields)]
 
 
+def source_geocode_query(record: dict[str, Any], *, country_name: str | None = None) -> str | None:
+    """Build an address-only query from allowlisted location evidence."""
+    normalized = record.get("normalized") or {}
+    private_location = normalized.get("private_location_evidence")
+    if not isinstance(private_location, dict):
+        private_location = {}
+    parts: list[str] = []
+    address = private_location.get("address") or normalized.get("facility_address") or normalized.get("address")
+    if isinstance(address, str) and address.strip():
+        parts.append(" ".join(address.split()))
+    else:
+        parts.extend(_source_address(record.get("source_values") or {}))
+    for field in ("city", "municipality", "state", "province", "region", "postal_code", "postcode"):
+        value = private_location.get(field) or normalized.get(field)
+        if value and str(value).strip():
+            parts.append(str(value).strip())
+    country = private_location.get("country_code") or normalized.get("nation") or normalized.get("country_code") or country_name
+    if country:
+        parts.append(str(country).strip())
+    query = ", ".join(dict.fromkeys(" ".join(part.split()) for part in parts if part))
+    return query or None
+
+
 def build_geocode_queue(
     records: Iterable[dict[str, Any]],
     artifact: SourceArtifact,
@@ -74,20 +97,8 @@ def build_geocode_queue(
         if _has_valid_source_coordinates(normalized):
             source_coordinates += 1
             continue
-        parts = []
-        address = normalized.get("facility_address") or normalized.get("address")
-        if isinstance(address, str) and address.strip():
-            parts.append(" ".join(address.split()))
-        else:
-            parts.extend(_source_address(record.get("source_values") or {}))
-        parts.extend(str(normalized.get(field)).strip() for field in
-                     ("city", "municipality", "state", "province", "region", "postal_code", "postcode")
-                     if normalized.get(field) and str(normalized.get(field)).strip())
-        country = normalized.get("nation") or normalized.get("country_code") or country_name
-        if country:
-            parts.append(str(country).strip())
-        query = ", ".join(dict.fromkeys(" ".join(part.split()) for part in parts if part))
-        if not query:
+        query = source_geocode_query(record, country_name=country_name)
+        if query is None:
             no_address += 1
             continue
         source_key = record.get("source_record_key")

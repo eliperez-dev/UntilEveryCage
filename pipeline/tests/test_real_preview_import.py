@@ -331,39 +331,104 @@ class RealPreviewImporterTests(unittest.TestCase):
         self.assertEqual(row[-1], "ON-synthetic")
 
     def test_ontario_adapter_handoff_location_provenance_is_private_allowlisted(self):
-        from pipeline.contracts.adapter_contract import SourceArtifact
-        from pipeline.contracts.candidate_handoff import write_handoff
-        from pipeline.sources.canada.adapter import OntarioMeatPlantsAdapter
+        from pipeline.sources.first_wave import FirstWaveRefreshAdapter, descriptor_for
 
-        adapter = OntarioMeatPlantsAdapter()
         raw = (b"Plant Number,Plant Name,Address,City,Province,Postal Code,Phone,Latitude,Longitude,Plant Type\n"
                b"ON-SYNTHETIC,Synthetic Plant,1 Synthetic Road,Example City,ON,A1A 1A1,555-0100,43.1,-79.1,Abattoir\n")
-        parsed = adapter.parse_bytes(raw)
-        artifact = SourceArtifact(adapter.source_url, "2026-10-01T00:00:00Z",
-                                  hashlib.sha256(raw).hexdigest(), len(raw),
-                                  code_version=adapter.adapter_version,
-                                  config_version=adapter.schema_version)
         policy = json.loads((Path(__file__).parents[1] / "preview-enabled-sources.json").read_text(encoding="utf-8"))
         source_policy = policy["sources"]["ca.ontario.meat-plants"]
         self.assertFalse(source_policy["public_release"])
         with tempfile.TemporaryDirectory() as directory:
-            handoff = Path(directory) / "candidate-handoff"
-            write_handoff(handoff, parsed["accepted"], artifact,
-                          source_id="ca.ontario.meat-plants")
+            root = Path(directory)
+            raw_path = root / "ontario.csv"
+            raw_path.write_bytes(raw)
+            result = FirstWaveRefreshAdapter(descriptor_for("ca.ontario.meat-plants")).refresh(
+                mode="local-artifact", run_dir=root / "run", artifact=raw_path, options={})
+            self.assertTrue(result["candidate_handoff"])
+            handoff = root / "run" / "candidate-handoff"
             IMPORTER.validate_preview_fields(handoff / "normalized" / "records.jsonl",
                                              set(source_policy["allowed_preview_fields"]))
             record = json.loads((handoff / "normalized" / "records.jsonl").read_text(encoding="utf-8"))
+            class FakeDatabase:
+                def __init__(self):
+                    self.statements = []
+                    self.next_id = 0
+
+                def execute(self, statement, parameters=None):
+                    self.statements.append((str(statement), parameters))
+                    return self
+
+                def fetchone(self):
+                    self.next_id += 1
+                    return (f"synthetic-id-{self.next_id}",)
+
+            db = FakeDatabase()
+            with patch.object(IMPORTER, "persist_preview_candidate_assignment_set"):
+                IMPORTER.import_rows(db, "ca.ontario.meat-plants",
+                    handoff / "normalized" / "records.jsonl", 1, "c" * 64,
+                    municipality_policy=source_policy["display_policy"])
         normalized = record["normalized"]
         for field in ("facility_address", "coordinate_method", "coordinate_provider",
                       "coordinate_confidence_band"):
             self.assertIn(field, normalized)
         self.assertNotIn("Phone", normalized)
+        evidence = normalized["private_location_evidence"]
+        self.assertEqual(evidence["address"], "1 Synthetic Road")
+        self.assertEqual(evidence["coordinates"]["latitude"], 43.1)
+        self.assertEqual(evidence["coordinates"]["longitude"], -79.1)
+        candidate = next(parameters for statement, parameters in db.statements
+                         if "INSERT INTO real_preview.candidates" in statement)
+        self.assertEqual(candidate[12:14], (43.1, -79.1))
+        private_projection = next(parameters for statement, parameters in db.statements
+                                  if "INSERT INTO real_preview.candidate_private_location_evidence" in statement)
+        self.assertEqual(json.loads(private_projection[3])["address"], "1 Synthetic Road")
 
-    def test_map_unmapped_candidate_count_subtracts_numeric_and_coarse_placeable_groups(self):
-        self.assertEqual(IMPORTER.candidate_map_unmapped_count(4, numeric_count=1,
-                                                               coarse_placeable_count=1), 2)
-        self.assertEqual(IMPORTER.candidate_map_unmapped_count(8_140, numeric_count=8_116,
-                                                               coarse_placeable_count=0), 24)
+    def test_unmapped_count_is_candidate_groups_without_a_rendered_point(self):
+        self.assertEqual(IMPORTER.map_unmapped_candidate_count(4, map_visible_count=2), 2)
+        self.assertEqual(IMPORTER.map_unmapped_candidate_count(8_140, map_visible_count=8_116), 24)
+
+    def test_address_candidate_is_linked_to_persisted_pending_provider_job(self):
+        class FakeDatabase:
+            def __init__(self):
+                self.statements = []
+                self.next_id = 0
+
+            def execute(self, statement, parameters=None):
+                self.statements.append((str(statement), parameters))
+                return self
+
+            def fetchone(self):
+                self.next_id += 1
+                return (f"synthetic-id-{self.next_id}",)
+
+        row = {"source_id": "us.fsis", "source_record_key": "synthetic-key",
+               "source_values": {"Phone": "must-not-enter-query"},
+               "normalized": {"establishment_number": "synthetic-group", "country_code": "US",
+                   "private_location_evidence": {"address": "1 Synthetic Road", "city": "Exampletown",
+                                                   "postal_code": "12345", "country_code": "US"}}}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "records.jsonl"
+            path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+            db = FakeDatabase()
+            with patch.object(IMPORTER, "persist_preview_candidate_assignment_set"):
+                IMPORTER.import_rows(
+                    db, "us.fsis", path, 1, "a" * 64,
+                    source_artifact_sha256="b" * 64,
+                    source_url="https://example.test/official.csv",
+                    source_retrieved_at=IMPORTER.datetime.fromisoformat("2026-10-01T00:00:00+00:00"),
+                    source_artifact_byte_size=123,
+                )
+        statements = [statement for statement, _ in db.statements]
+        self.assertTrue(any("INSERT INTO uec.geocode_jobs" in statement for statement in statements))
+        self.assertTrue(any("INSERT INTO real_preview.geocode_targets" in statement for statement in statements))
+        job = next(parameters for statement, parameters in db.statements
+                    if "INSERT INTO uec.geocode_jobs" in statement)
+        self.assertEqual(job[1], "pending-provider-review")
+        self.assertIn("1 Synthetic Road", job[2])
+        self.assertNotIn("must-not-enter-query", job[2])
+        event = next(parameters for statement, parameters in db.statements
+                     if "INSERT INTO uec.geocode_job_events" in statement)
+        self.assertIn('"execution_status": "awaiting_provider_configuration"', event[1])
 
     def test_import_rows_returns_unmapped_candidates_after_numeric_and_coarse_placeable_groups(self):
         class FakeDatabase:

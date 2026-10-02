@@ -28,9 +28,10 @@ from pipeline.taxonomy_crosswalk import (
     persistence_assignments, project_observation,
 )
 from pipeline.taxonomy.persistence import persist_preview_candidate_assignment_set
+from pipeline.geocoding.source_queue import source_geocode_query
 
 POLICY = Path(__file__).parents[2] / "preview-enabled-sources.json"
-SNAPSHOT_PROJECTION_VERSION = "real-preview-candidate-projection-v7"
+SNAPSHOT_PROJECTION_VERSION = "real-preview-candidate-projection-v8"
 LEGACY_ALLOWED = {"fr.dgal.section-i", "fr.dgal.section-ii", "us.fsis"}
 PREVIEW_ENABLED = set(json.loads(POLICY.read_text(encoding="utf-8"))["sources"])
 ALLOWED = LEGACY_ALLOWED | PREVIEW_ENABLED
@@ -580,12 +581,6 @@ def map_unmapped_candidate_count(candidate_count: int, map_visible_count: int) -
     return candidate_count - map_visible_count
 
 
-def candidate_map_unmapped_count(candidate_count: int, numeric_count: int,
-                                 coarse_placeable_count: int) -> int:
-    """Count candidate groups with neither source coordinates nor placeable coarse geometry."""
-    return map_unmapped_candidate_count(candidate_count, numeric_count + coarse_placeable_count)
-
-
 def public_zero_counts(db: psycopg.Connection) -> tuple[int, int]:
     release_count = 0
     projection_count = 0
@@ -678,7 +673,11 @@ def validate_preview_fields(path: Path, allowed_fields: set[str]) -> None:
 
 def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: int, snapshot: str,
                 municipality_index: dict[str, Any] | None = None,
-                municipality_policy: dict[str, Any] | None = None) -> tuple[int, int, int, int, int, int, int, int, int, int, int, set[str], int, int]:
+                municipality_policy: dict[str, Any] | None = None,
+                source_artifact_sha256: str | None = None,
+                source_url: str | None = None,
+                source_retrieved_at: datetime | None = None,
+                source_artifact_byte_size: int | None = None) -> tuple[int, int, int, int, int, int, int, int, int, int, int, set[str], int, int]:
     count = unmapped_count = mapped_non_candidate_count = candidate_count = 0
     parsed_rows: list[tuple[Any, ...]] = []
     administrative_codes: dict[str, str | None] = {}
@@ -746,6 +745,7 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
         group_key = parsed[SOURCE_GROUP_KEY_INDEX]
         observations_per_group[group_key] = observations_per_group.get(group_key, 0) + 1
     coarse_placeable = 0
+    map_visible_groups = 0
     for group_key, chosen in representatives.items():
         identifier, klass, country, city, postal, lat, lon, precision, observed, _, department = chosen[:11]
         display_name, activity_label, activity_source, source_record_url, evidence_summary = chosen[11:16]
@@ -761,6 +761,15 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
         display_lat = place.get("latitude") if isinstance(place, dict) else None
         display_lon = place.get("longitude") if isinstance(place, dict) else None
         source_coordinate_provenance = None
+        coordinate_display_kind = (municipality_policy or {}).get("kind")
+        if (klass == "numeric_source_coordinate"
+                and coordinate_display_kind in {"source_numeric_coordinate", "source_coordinates_with_coarse_fallback"}):
+            display_lat, display_lon = lat, lon
+            source_coordinate_provenance = (
+                f"Source-provided coordinates; method={coordinate_method or 'unspecified'}; "
+                f"provider={coordinate_provider or SOURCE_NAMES.get(source)}; "
+                f"positional accuracy unspecified; precision={precision or 'source-provided'}"
+            )
         if klass == "numeric_source_coordinate" and source == "au.npi.facilities":
             display_lat, display_lon = lat, lon
             source_coordinate_provenance = (
@@ -768,7 +777,12 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
                 "provider=Australian National Pollutant Inventory; "
                 f"confidence=high_source_reported_location; precision={precision or 'source-provided'}"
             )
-        if display_lat is not None and display_lon is not None:
+        # The private preview serves source coordinates for in-scope numeric
+        # candidates even where an older projection has no display_* copy.
+        serving_source_point = (bool(default_map_scope) and klass == "numeric_source_coordinate"
+                                and lat is not None and lon is not None)
+        if ((display_lat is not None and display_lon is not None) or serving_source_point):
+            map_visible_groups += 1
             coarse_placeable += klass == "city_postal"
         preview_id = db.execute(
             "SELECT preview_id FROM real_preview.observations WHERE snapshot_sha256=%s AND source_id=%s AND source_identifier=%s",
@@ -799,6 +813,79 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
                 (candidate_id, snapshot, source,
                  json.dumps(location_evidence, ensure_ascii=False, sort_keys=True)),
             )
+        if (isinstance(location_evidence, dict) and location_evidence.get("address")
+                and klass != "numeric_source_coordinate" and source_artifact_sha256
+                and source_url and source_retrieved_at is not None
+                and isinstance(source_artifact_byte_size, int) and source_artifact_byte_size >= 0):
+            query = source_geocode_query({
+                "source_id": source,
+                "source_record_key": str(group_key),
+                "normalized": {"private_location_evidence": location_evidence,
+                               "city": city, "postal_code": postal, "country_code": country},
+            })
+            if query:
+                country_code = country.upper() if isinstance(country, str) else ""
+                if len(country_code) != 2:
+                    raise ImportFailure("geocode_target_country_invalid")
+                db.execute(
+                    """INSERT INTO uec.sources(source_id,country_code,name,official_url,access_method)
+                       VALUES (%s,%s,%s,%s,'private_preview_address_enrichment') ON CONFLICT (source_id) DO NOTHING""",
+                    (source, country_code, SOURCE_NAMES.get(source, source), source_url),
+                )
+                db.execute(
+                    """INSERT INTO uec.raw_artifacts(storage_key,sha256,byte_size,media_type,retrieved_at)
+                       VALUES (%s,%s,%s,'text/csv',%s) ON CONFLICT (sha256) DO NOTHING""",
+                    (f"private-preview-source-artifact:{source}:{source_artifact_sha256}", source_artifact_sha256, source_artifact_byte_size, source_retrieved_at),
+                )
+                artifact_id = db.execute(
+                    "SELECT artifact_id FROM uec.raw_artifacts WHERE sha256=%s", (source_artifact_sha256,)
+                ).fetchone()[0]
+                linkage_key = f"real-preview:{snapshot}:{group_key}"
+                db.execute(
+                    """INSERT INTO uec.source_records(source_id,source_record_key,artifact_id,raw_fields,parsed_at)
+                       VALUES (%s,%s,%s,%s::jsonb,%s) ON CONFLICT (source_id,source_record_key,artifact_id) DO NOTHING""",
+                    (source, linkage_key, artifact_id,
+                     json.dumps({"projection": "real_preview_private_geocode_target", "snapshot_sha256": snapshot}),
+                     source_retrieved_at),
+                )
+                source_record_id = db.execute(
+                    """SELECT source_record_id FROM uec.source_records
+                       WHERE source_id=%s AND source_record_key=%s AND artifact_id=%s""",
+                    (source, linkage_key, artifact_id),
+                ).fetchone()[0]
+                provider_id = "pending-provider-review"
+                db.execute(
+                    """INSERT INTO uec.geocode_jobs(source_record_id,provider_id,query)
+                       VALUES (%s,%s,%s) ON CONFLICT (source_record_id,provider_id,query) DO NOTHING""",
+                    (source_record_id, provider_id, query),
+                )
+                job_id = db.execute(
+                    """SELECT job_id FROM uec.geocode_jobs
+                       WHERE source_record_id=%s AND provider_id=%s AND query=%s""",
+                    (source_record_id, provider_id, query),
+                ).fetchone()[0]
+                db.execute(
+                    """INSERT INTO real_preview.geocode_targets(job_id,candidate_id,snapshot_sha256,source_id,source_record_key)
+                       VALUES (%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""",
+                    (job_id, candidate_id, snapshot, source, group_key),
+                )
+                db.execute(
+                    """INSERT INTO uec.geocode_job_events(job_id,event_type,attempt_number,retryable,details)
+                       SELECT %s,'queued',1,false,%s::jsonb
+                       WHERE NOT EXISTS (SELECT 1 FROM uec.geocode_job_events WHERE job_id=%s)""",
+                    (job_id, json.dumps({"provider_configuration": "awaiting_configuration",
+                                         "execution_status": "awaiting_provider_configuration",
+                                         "source_artifact_sha256": source_artifact_sha256,
+                                         "processing_mode": "private_preview_projection"}), job_id),
+                )
+                db.execute(
+                    """INSERT INTO real_preview.enrichment_state_events
+                       (candidate_id,snapshot_sha256,source_id,source_record_key,state_code,reason_code)
+                       SELECT %s,%s,%s,%s,'provider_blocked','provider_unconfigured'
+                       WHERE NOT EXISTS (SELECT 1 FROM real_preview.enrichment_state_events
+                                         WHERE candidate_id=%s AND state_code='provider_blocked')""",
+                    (candidate_id, snapshot, source, group_key, candidate_id),
+                )
         if activity["crosswalk_document"]:
             persist_preview_candidate_assignment_set(
                 db,
@@ -828,7 +915,7 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
         )
     group_keys = set(representatives)
     rejected_zero_coordinates = len(zero_coordinate_groups - usable_coordinate_groups)
-    unmapped_candidate_count = candidate_map_unmapped_count(len(group_keys), numeric_count, coarse_placeable)
+    unmapped_candidate_count = map_unmapped_candidate_count(len(group_keys), map_visible_groups)
     return count, numeric_count, coarse_count, candidate_count, unmapped_count, mapped_non_candidate_count, len(group_keys), len(parsed_rows), rejected_zero_coordinates, precision_unknown_coordinate_count, source_provided_coordinate_count, group_keys, coarse_placeable, unmapped_candidate_count
 
 
@@ -985,6 +1072,7 @@ def import_offline_handoffs(root: Path, database_url: str) -> dict[str, Any]:
             (observations, numeric, coarse, candidates, unmapped, mapped_non_candidates, _, _, rejected_zero,
              precision_unknown, source_provided, _, placeable, unplaceable) = import_rows(
                 db, source, item["normalized_path"], expected_rows, snapshot)
+            map_visible = candidates - unplaceable
             details = {"offline_handoff": True, "fresh_live_run": False, "test_only_simulated_reviews": False,
                        "source_manifest_sha256": hashlib.sha256(item["manifest_path"].read_bytes()).hexdigest(),
                        "graph_manifest_sha256": hashlib.sha256(item["graph_manifest_path"].read_bytes()).hexdigest(),
@@ -1000,17 +1088,17 @@ def import_offline_handoffs(root: Path, database_url: str) -> dict[str, Any]:
                 ON CONFLICT (run_id) DO NOTHING""",
                 (f"{run_id}-{source}", source, snapshot, source_url, retrieved, source_hash, normalized_hash, code, config,
                  expected_rows + quarantined, expected_rows, quarantined, observations, candidates, numeric, placeable,
-                 unplaceable, candidates, numeric + placeable, psycopg.types.json.Jsonb(details)))
+                 unplaceable, candidates, map_visible, psycopg.types.json.Jsonb(details)))
             counts_by_source[source] = {"accepted_normalized_rows": expected_rows, "quarantined_source_rows": quarantined,
                 "observations": observations, "candidates": candidates,
                 "source_provided_unverified": source_provided if source == "us.fsis" else 0,
                 "exact": 0, "coarse": coarse, "coarse_placeable": placeable,
-                "unmapped_candidates": map_unmapped_candidate_count(candidates, numeric + placeable),
-                "unmapped_observations": unmapped, "map_visible": numeric + placeable,
+                "unmapped_candidates": unplaceable,
+                "unmapped_observations": unmapped, "map_visible": map_visible,
                 "rejected_zero_coordinates": rejected_zero, "precision_unknown": precision_unknown}
             total_observations += observations
             total_candidates += candidates
-            total_visible += numeric + placeable
+            total_visible += map_visible
             total_numeric += numeric
             total_city_postal += coarse
             total_provided += source_provided if source == "us.fsis" else 0
@@ -1444,7 +1532,13 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
                 raise ImportFailure("manifest_row_count_missing")
             if manifest["normalized_rows"] != expected.get(source) or (source_id is None and EXPECTED_OBSERVATIONS[source] != expected.get(source)):
                 raise ImportFailure("readiness_observation_mismatch")
-            rows, exact, coarse_rows, candidate_rows, unmapped_rows, mapped_non_candidate_rows, _, _, zero_zero_rows, precision_unknown_rows, source_provided_rows, group_keys, placeable_rows, unplaceable_rows = import_rows(db, source, artifacts[source], expected[source], snapshot, municipality_index if source_id == source else None, policy.get("display_policy", {}) if source_id == source else None)
+            source_hash, _, _, source_url, source_retrieved_at, _, _ = manifest_provenance(manifest)
+            artifact_size = acquisition_evidence.get("byte_size") if isinstance(acquisition_evidence, dict) else None
+            rows, exact, coarse_rows, candidate_rows, unmapped_rows, mapped_non_candidate_rows, _, _, zero_zero_rows, precision_unknown_rows, source_provided_rows, group_keys, placeable_rows, unplaceable_rows = import_rows(
+                db, source, artifacts[source], expected[source], snapshot,
+                municipality_index if source_id == source else None,
+                policy.get("display_policy", {}) if source_id == source else None,
+                source_hash, source_url, source_retrieved_at, artifact_size)
             total += rows
             numeric += exact
             coarse += coarse_rows
@@ -1491,8 +1585,8 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
                     or candidate_observation_count != row_count or candidate_observation_count > accepted_count
                     or input_count != accepted_count + quarantined_count):
                 raise ImportFailure("runtime_counts_do_not_reconcile")
-            map_visible_count = numeric + placeable_rows
-            unmapped_map_candidate_count = candidates - numeric - coarse
+            map_visible_count = candidates - unplaceable_rows
+            unmapped_map_candidate_count = unplaceable_rows
             if unmapped_map_candidate_count < 0:
                 raise ImportFailure("runtime_location_classes_do_not_reconcile")
             runtime_details = {"quarantine_reasons": source_summary.get("quarantine_reasons", {}),
