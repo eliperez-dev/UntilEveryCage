@@ -37,10 +37,13 @@ OFFLINE_RESUME_EXPECTED = {
     "au.npi.facilities": (8116, 8116, 0, 0, 0),
     "au.sa.epa.licensed-activities": (43, 41, 41, 0, 41),
     "be.locations": (4032, 1794, 0, 1793, 1793),
+    "br.sif.registered": (24174, 3147, 0, 0, 0),
+    "ca.ontario.meat-plants": (460, 460, 0, 0, 0),
     "es.cat.feed-sandach": (12117, 4367, 0, 0, 0),
     "fr.dgal.section-i": (1449, 1449, 0, 0, 0),
     "fr.dgal.section-ii": (1068, 1067, 0, 0, 0),
     "fsa_approved_establishments": (4291, 4291, 0, 0, 0),
+    "fss_approved_establishments": (595, 595, 0, 0, 0),
     "it.1069-2009": (9960, 6538, 5296, 0, 5296),
     "it.853-2004": (41849, 25316, 24263, 0, 24263),
     "us.fsis": (7241, 7241, 7241, 0, 7241),
@@ -565,7 +568,7 @@ def _validate_offline_resume_aggregates(rows: list[tuple[object, ...]], publicat
     numeric = sum(values[2] for values in by_source.values())
     coarse = sum(values[3] for values in by_source.values())
     map_visible = sum(values[4] for values in by_source.values())
-    if numeric + coarse != map_visible or candidates - map_visible != 21586:
+    if numeric + coarse != map_visible or candidates - map_visible != 25788:
         raise PreviewError("offline preview map/unmapped aggregate relationship is invalid")
     return {"observation_count": observations, "source_scoped_candidate_count": candidates,
             "numeric_coordinate_count": numeric, "coarse_placeable_count": coarse,

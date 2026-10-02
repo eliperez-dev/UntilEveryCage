@@ -1475,7 +1475,7 @@ fn valid_real_preview_tile_source(value: Option<&str>) -> bool {
             && source.len() <= 128
             && source
                 .bytes()
-                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'.' | b'-'))
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'.' | b'-' | b'_'))
     })
 }
 
@@ -3999,6 +3999,22 @@ mod v2_api_tests {
         )).await.unwrap();
         assert_eq!(invalid_source.status(), StatusCode::BAD_REQUEST);
         assert_eq!(invalid_source.headers().get("cache-control").unwrap(), "no-store");
+
+        let underscore_source = Router::new()
+            .route("/dev/real-preview/map/feed", axum::routing::get(get_real_preview_map_feed_handler))
+            .with_state(ApiState {
+                database: None,
+                dev_preview_token: Some("local-test-token-with-at-least-32-characters".into()),
+                dev_test_release_id: None,
+                dev_test_release_token: None,
+            })
+            .oneshot(request(
+                "/dev/real-preview/map/feed?source_id=fss_approved_establishments",
+                Some("local-test-token-with-at-least-32-characters"),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(underscore_source.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 
     #[test]
