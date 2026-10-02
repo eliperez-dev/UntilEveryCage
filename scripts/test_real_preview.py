@@ -127,9 +127,9 @@ class LifecycleTests(unittest.TestCase):
             valid, {"releases": 0, "release_members": 0},
             {"054_public_suppression_generation"}, rp.OFFLINE_RESUME_REQUIRED_TABLES)
         self.assertEqual(summary, {
-            "observation_count": 90164, "source_scoped_candidate_count": 60218,
-            "numeric_coordinate_count": 36840, "coarse_placeable_count": 1793,
-            "map_visible_count": 38633, "unmapped_facility_count": 21585,
+            "observation_count": 90166, "source_scoped_candidate_count": 60220,
+            "numeric_coordinate_count": 36841, "coarse_placeable_count": 1793,
+            "map_visible_count": 38634, "unmapped_facility_count": 21586,
             "public_release_count": 0, "public_projection_count": 0,
         })
         invalid_cases = [

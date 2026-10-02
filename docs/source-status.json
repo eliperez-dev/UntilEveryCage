@@ -25,42 +25,90 @@
     },
     "authoritative_retained_preview_database_changed": false
   },
+  "latest_backend_truth_gate": {
+    "as_of": "2026-10-01",
+    "database": "uec-offline-fsis-private-postgres-1/uec",
+    "verification": "Aggregate-only SQL against latest source snapshots; physical observation/candidate counts matched each run ledger; latest taxonomy assignment counts reconciled; public and release tables empty. Source values and rows were not selected.",
+    "database_certification": {
+      "source_count": 10,
+      "observations": 90166,
+      "candidates": 60220,
+      "numeric_coordinate_candidates": 36841,
+      "coarse_city_candidates": 1793,
+      "map_visible_candidates": 38634,
+      "candidate_assignment_sets": 60220,
+      "assignment_rows": 61775,
+      "public_preview_rows": 0,
+      "public_release_and_projection_rows": 0,
+      "migrations": ["054_real_preview_activity_contract", "055_versioned_taxonomy_assignments", "056_real_preview_taxonomy_assignments"],
+      "source_counts": {
+        "au.npi.facilities": {"observations": 8116, "candidates": 8116, "numeric": 0, "coarse": 0, "map_visible": 0, "input": 8140, "accepted": 8116, "quarantined": 24, "out_of_scope": 0, "taxonomy_sets": 8116, "taxonomy_rows": 8116, "taxonomy": "candidate/ambiguous"},
+        "au.sa.epa.licensed-activities": {"observations": 43, "candidates": 41, "numeric": 41, "coarse": 0, "map_visible": 41, "input": 4531, "accepted": 43, "quarantined": 4488, "out_of_scope": 4488, "taxonomy_sets": 41, "taxonomy_rows": 41, "taxonomy": "candidate/ambiguous"},
+        "be.locations": {"observations": 4032, "candidates": 1794, "numeric": 0, "coarse": 1793, "map_visible": 1793, "input": 310806, "accepted": 310786, "quarantined": 20, "out_of_scope": 306754, "taxonomy_sets": 1794, "taxonomy_rows": 2290, "taxonomy": "direct/mapped"},
+        "es.cat.feed-sandach": {"observations": 12117, "candidates": 4367, "numeric": 0, "coarse": 0, "map_visible": 0, "input": 12341, "accepted": 12117, "quarantined": 224, "out_of_scope": 0, "taxonomy_sets": 4367, "taxonomy_rows": 4367, "taxonomy": "derived/unclassified"},
+        "fr.dgal.section-i": {"observations": 1449, "candidates": 1449, "numeric": 0, "coarse": 0, "map_visible": 0, "input": 1449, "accepted": 1449, "quarantined": 0, "out_of_scope": 0, "taxonomy_sets": 1449, "taxonomy_rows": 1623, "taxonomy": "direct/mapped"},
+        "fr.dgal.section-ii": {"observations": 1068, "candidates": 1067, "numeric": 0, "coarse": 0, "map_visible": 0, "input": 1068, "accepted": 1068, "quarantined": 0, "out_of_scope": 0, "taxonomy_sets": 1067, "taxonomy_rows": 1494, "taxonomy": "direct/mapped"},
+        "fsa_approved_establishments": {"observations": 4291, "candidates": 4291, "numeric": 0, "coarse": 0, "map_visible": 0, "input": 5342, "accepted": 4291, "quarantined": 1051, "out_of_scope": 0, "taxonomy_sets": 4291, "taxonomy_rows": 4749, "taxonomy": "derived/partial=3204;unmapped=1087"},
+        "it.1069-2009": {"observations": 9960, "candidates": 6538, "numeric": 5296, "coarse": 0, "map_visible": 5296, "input": 9960, "accepted": 9960, "quarantined": 0, "out_of_scope": 0, "taxonomy_sets": 6538, "taxonomy_rows": 6538, "taxonomy": "derived/unclassified"},
+        "it.853-2004": {"observations": 41849, "candidates": 25316, "numeric": 24263, "coarse": 0, "map_visible": 24263, "input": 41849, "accepted": 41849, "quarantined": 0, "out_of_scope": 0, "taxonomy_sets": 25316, "taxonomy_rows": 25316, "taxonomy": "direct/unclassified"},
+        "us.fsis": {"observations": 7241, "candidates": 7241, "numeric": 7241, "coarse": 0, "map_visible": 7241, "input": 7241, "accepted": 7241, "quarantined": 0, "out_of_scope": 0, "taxonomy_sets": 7241, "taxonomy_rows": 7241, "taxonomy": "direct/unmapped=7082;unclassified=159"}
+      }
+    },
+    "refresh_interface": {
+      "one_source_command": "python scripts/real_preview.py strict-refresh --source <source_id>",
+      "runner_path": "scripts/real_preview.py -> pipeline.refresh_private -> source adapter -> private preview importer -> source certificate",
+      "configured_live_runnable_sources": ["au.npi.facilities", "au.sa.epa.licensed-activities", "be.locations", "ca.cfia.federal-meat", "dk.smiley", "es.cat.feed-sandach", "fr.dgal.section-i", "fr.dgal.section-ii", "fsa_approved_establishments", "it.1069-2009", "it.853-2004", "us.fsis"],
+      "terms_review_configuration": "All 12 configured sources have enabled private-preview entries and approved checked-in terms-review decisions; this is configuration evidence, not a live health check or publication approval.",
+      "isolated_strict_e2e_command_support": ["au.npi.facilities", "au.sa.epa.licensed-activities", "be.locations", "ca.cfia.federal-meat", "es.cat.feed-sandach", "fsa_approved_establishments"],
+      "not_in_authoritative_retained_snapshot": ["ca.cfia.federal-meat", "dk.smiley"],
+      "authoritative_snapshot_refresh": "No offline-refresh command exists; offline-resume verifies and serves the retained snapshot only. strict-refresh targets the configured real-preview stack, not this offline retained database.",
+      "recurring_automation": "not_configured",
+      "source_readiness_distribution": {"live_runnable_by_checked_in_config": 12, "artifact_or_private_capture_only_without_live_preview_runner": 19, "recon_only_not_run": 105, "blocked": 121, "registered_sources": 257},
+      "next_low_friction_candidates": [
+        {"source_id": "ca.ontario.meat-plants", "evidence": "Shared-runner adapter and live acquisition hook already exist; missing strict private-preview registration/import verification, terms and field privacy review."},
+        {"source_id": "fss_approved_establishments", "evidence": "Typed adapter, fixture, and preserved-local-artifact lifecycle already exist; live capture, terms, coordinate privacy, and strict preview verification remain."},
+        {"source_id": "br.sif.registered", "evidence": "Current official CSV capture and detailed schema/count/hash notes exist; source adapter, repeated-row semantics, terms, privacy, and strict private import remain."}
+      ],
+      "deferred_candidate": {"source_id": "br.sif.export", "reason": "Captured companion source, but it represents dated country/product authorization events rather than facility records and requires separate event semantics."}
+    },
+    "limitations": ["One-time live success does not establish recurring health, source completeness, factual correctness, privacy clearance, or release approval.", "Numeric coordinates are not necessarily exact facility locations; coarse city references are counted separately.", "Current map-visible totals describe the retained private preview snapshot, not all historical acquisitions or all locally stored private artifacts."]
+  },
   "retained_private_preview_taxonomy_projection": {
     "applied_at_utc": "2026-10-01T19:05:21Z",
     "database": "uec-offline-fsis-private-postgres-1/uec",
     "scope": "authoritative retained private preview; additive only; not public or approval state",
     "migrations": ["054_real_preview_activity_contract", "055_versioned_taxonomy_assignments", "056_real_preview_taxonomy_assignments"],
     "latest_per_source_baseline": {
-      "observations": 90164,
-      "candidates": 60218,
-      "numeric_map_visible": 36840,
+      "observations": 90166,
+      "candidates": 60220,
+      "numeric_map_visible": 36841,
       "coarse_map_visible": 1793,
-      "map_visible": 38633,
+      "map_visible": 38634,
       "public_rows": 0
     },
     "taxonomy_version": "uec-taxonomy-v1",
-    "crosswalks": 4,
-    "candidate_assignment_sets": 35073,
-    "assignment_rows": 35674,
-    "mapped_candidate_sets": 2516,
+    "crosswalks": 10,
+    "candidate_assignment_sets": 60220,
+    "assignment_rows": 61775,
+    "mapped_candidate_sets": 4310,
     "per_source": {
-      "fr.dgal.section-i": {"candidate_sets": 1449, "status": "mapped_from_exact_normalized_artifact"},
-      "fr.dgal.section-ii": {"candidate_sets": 1067, "status": "mapped_from_exact_normalized_artifact"},
+      "fr.dgal.section-i": {"candidate_sets": 1449, "assignment_rows": 1623, "status": "direct_mapped"},
+      "fr.dgal.section-ii": {"candidate_sets": 1067, "assignment_rows": 1494, "status": "direct_mapped"},
       "it.853-2004": {"candidate_sets": 25316, "status": "explicitly_unclassified"},
       "us.fsis": {"candidate_sets": 7241, "unmapped": 7082, "unclassified": 159, "positive_primary_assignments": 0},
-      "au.npi.facilities": {"candidate_sets": 8116, "status": "disposable_preview_validated; authoritative_retained_preview_unchanged"},
-      "au.sa.epa.licensed-activities": {"candidate_sets": 41, "status": "disposable_preview_validated; authoritative_retained_preview_unchanged"},
-      "be.locations": {"candidate_sets": 1794, "status": "not_projected_exact_artifact_missing"},
-      "es.cat.feed-sandach": {"candidate_sets": 4367, "status": "not_projected_exact_artifact_missing"},
-      "fsa_approved_establishments": {"candidate_sets": 4291, "status": "not_projected_exact_artifact_missing"},
-      "it.1069-2009": {"candidate_sets": 6536, "status": "not_projected_exact_artifact_missing"}
+      "au.npi.facilities": {"candidate_sets": 8116, "status": "candidate_ambiguous"},
+      "au.sa.epa.licensed-activities": {"candidate_sets": 41, "status": "candidate_ambiguous"},
+      "be.locations": {"candidate_sets": 1794, "assignment_rows": 2290, "multi_activity_candidate_sets": 363, "status": "direct_mapped"},
+      "es.cat.feed-sandach": {"candidate_sets": 4367, "status": "derived_unclassified"},
+      "fsa_approved_establishments": {"candidate_sets": 4291, "assignment_rows": 4749, "partial": 3204, "unmapped": 1087, "multi_activity_candidate_sets": 402, "status": "derived_partial_or_unmapped"},
+      "it.1069-2009": {"candidate_sets": 6538, "status": "derived_unclassified"}
     },
     "backup": {
       "logical_dump_path": "D:\\UntilEveryCage-backups\\database\\taxonomy-pre-reprojection-authoritative-20261001-113806\\uec.logical.dump",
       "logical_dump_sha256": "2EF936FCB99CB973618AAF74AE1655EC874DA799EDE2C6F426DDBD6D22162A93",
       "restore_verified": true
     },
-    "live_api_browser_verification": "not_run; preview API/browser service was not started in the authorized container-local DB context"
+    "live_api_browser_verification": "not_run; preview service ports were occupied by processes without verified ownership during this audit"
   },
   "latest_country_capture": "data/manifests/italy-1069-preview-e2e-20261001.json",
   "legacy_archive": {
