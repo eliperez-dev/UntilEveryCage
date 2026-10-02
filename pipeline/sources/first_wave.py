@@ -382,6 +382,8 @@ class FirstWaveRefreshAdapter:
                 "publication_date": source_artifact.publication_date,
                 "effective_date": source_artifact.effective_date,
             }
+        elif isinstance(manifest.get("geocode_queue"), dict):
+            summary["geocode_queue"] = manifest["geocode_queue"]
         if candidate_handoff:
             handoff_root = lifecycle_root / "candidate-handoff" if isinstance(source_adapter, DenmarkSmileyAdapter) else run_dir / "candidate-handoff"
             handoff_manifest = json.loads((handoff_root / "manifest.json").read_text(encoding="utf-8"))

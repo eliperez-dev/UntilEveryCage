@@ -70,6 +70,26 @@ def _denmark_geocoding_evidence(source_summary: dict[str, Any], accepted_rows: i
             "geocoder_called": False, "publication_approval": False}
 
 
+def _npi_geocode_queue_evidence(source_summary: dict[str, Any], accepted_rows: int,
+                                source_coordinate_rows: int) -> dict[str, Any]:
+    """Validate aggregate-only NPI address fallback queue evidence."""
+    value = source_summary.get("geocode_queue")
+    if not isinstance(value, dict) or value.get("status") != "success":
+        raise CertificationError("Australia NPI shared address queue evidence is missing")
+    fields = ("records_seen", "records_queued", "records_with_source_coordinates",
+              "records_without_usable_address")
+    counts = {field: _integer(value.get(field), f"NPI geocode queue {field}") for field in fields}
+    if (counts["records_seen"] != accepted_rows
+            or counts["records_with_source_coordinates"] != source_coordinate_rows
+            or counts["records_queued"] + counts["records_with_source_coordinates"]
+            + counts["records_without_usable_address"] != counts["records_seen"]
+            or value.get("geocoder_status_policy") != "pending; no external geocoder has been called"):
+        raise CertificationError("Australia NPI source-coordinate and address queue counts do not reconcile")
+    return {**counts, "external_geocoder_called": False,
+            "provider_review_state": value.get("provider_review_state"),
+            "publication_approval": False}
+
+
 def validate_ledger(ledger: dict[str, Any], source_id: str) -> dict[str, Any]:
     """Validate exact run identity and safe row-free lifecycle aggregates."""
     if ledger.get("status") != "imported" or ledger.get("source_id") != source_id:
@@ -134,8 +154,9 @@ def validate_ledger(ledger: dict[str, Any], source_id: str) -> dict[str, Any]:
             raise CertificationError("CFIA city/postal listable counts do not reconcile")
     if source_id == "au.npi.facilities":
         counts["unmapped"] = 0
-        if counts["city_postal"] != counts["candidates"] or counts["numeric_coordinates"] != 0:
-            raise CertificationError("Australia NPI privacy-safe city/postal candidate counts do not reconcile")
+        if counts["numeric_coordinates"] + counts["city_postal"] != counts["candidates"]:
+            raise CertificationError("Australia NPI source-coordinate and address-fallback location counts do not reconcile")
+        _npi_geocode_queue_evidence(source_summary, counts["candidates"], counts["numeric_coordinates"])
     if source_id == "au.sa.epa.licensed-activities":
         # The source points are approximate and remain private review claims;
         # they are still a location class for reconciliation, while the
@@ -165,7 +186,12 @@ def validate_ledger(ledger: dict[str, Any], source_id: str) -> dict[str, Any]:
     elif counts["numeric_coordinates"] + counts["city_postal"] + location_unmapped != counts["candidates"]:
         raise CertificationError("candidate location classes do not reconcile")
     precision = ledger.get("coordinate_precision_breakdown")
-    if not isinstance(precision, dict) or _integer(precision.get("exact"), "exact coordinate count") != 0:
+    if source_id == "au.npi.facilities":
+        if (not isinstance(precision, dict)
+                or _integer(precision.get("exact_source_provided"), "NPI source-coordinate count")
+                != counts["numeric_coordinates"]):
+            raise CertificationError("NPI source-coordinate precision evidence does not reconcile")
+    elif not isinstance(precision, dict) or _integer(precision.get("exact"), "exact coordinate count") != 0:
         raise CertificationError("coordinate precision evidence is missing or claims exact points")
 
     quarantine = ledger.get("quarantine")
@@ -183,7 +209,10 @@ def validate_ledger(ledger: dict[str, Any], source_id: str) -> dict[str, Any]:
     if accepted_count < counts["observations"]:
         raise CertificationError("imported observations exceed accepted source rows")
     geocoding = (_denmark_geocoding_evidence(source_summary, accepted_count)
-                 if source_id == "dk.smiley" else None)
+                 if source_id == "dk.smiley" else
+                 (_npi_geocode_queue_evidence(source_summary, accepted_count,
+                                              counts["numeric_coordinates"])
+                  if source_id == "au.npi.facilities" else None))
 
     acquisition_hashes: set[str] = set()
     def collect_hashes(value: Any) -> None:

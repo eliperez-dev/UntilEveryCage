@@ -20,7 +20,11 @@ Publication remains blocked. Current evidence is sufficient to build a metadata-
 Both sources completed a strict live private E2E from their current official
 catalogue routes. NPI yielded 8,140 input rows, 8,116 accepted/listable
 candidates, and 24 quarantined invalid-coordinate rows. Its exact importer
-replay passed; source coordinates remain withheld from map/API location fields.
+replay passed. The official Facilities CSV's latitude/longitude fields are
+preserved as source-reported reporting-site coordinates in the private map;
+the source method, provider, confidence band, and precision are retained for
+disclosure. This does not establish current operation or authorize public
+release.
 SA EPA yielded 4,531 input features, 43 accepted observations, 4,488 out of
 scope rows, and 41 licence-grouped candidates. All 41 source points have
 unspecified approximate precision and are visible only in the private preview.

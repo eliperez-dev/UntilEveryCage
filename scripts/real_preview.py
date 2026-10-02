@@ -34,7 +34,7 @@ IMPORTER = ROOT / "pipeline" / "scripts" / "maintenance" / "import-real-preview.
 MIGRATIONS = ROOT / "pipeline" / "scripts" / "maintenance" / "apply-migrations.py"
 ACTIVE_PREVIEW_TOKEN: str | None = None
 OFFLINE_RESUME_EXPECTED = {
-    "au.npi.facilities": (8116, 8116, 0, 0, 0),
+    "au.npi.facilities": (8140, 8140, 8116, 0, 8116),
     "au.sa.epa.licensed-activities": (43, 41, 41, 0, 41),
     "be.locations": (4032, 1794, 0, 1793, 1793),
     "br.sif.registered": (24174, 3147, 0, 0, 0),
@@ -1067,7 +1067,9 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
         "preview_policy_version": policy.get("contract_version"),
         "public_rows": import_result.get("public_release_count", 0) + import_result.get("public_projection_count", 0),
         "map_visible_count": import_result.get("numeric_coordinate_count", 0) + import_result.get("coarse_placeable_facility_count", 0),
-        "map_readiness": "coarse-city-reference" if geography and import_result.get("coarse_placeable_facility_count", 0) else ("source-precision-unknown" if import_result.get("numeric_coordinate_count", 0) else "unmapped"),
+        "map_readiness": ("source-coordinates" if source_id == "au.npi.facilities" and import_result.get("numeric_coordinate_count", 0)
+                          else ("coarse-city-reference" if geography and import_result.get("coarse_placeable_facility_count", 0)
+                                else ("source-precision-unknown" if import_result.get("numeric_coordinate_count", 0) else "unmapped"))),
     }
     if source_id == "dk.smiley":
         acquisition_path = source_dir / "acquisition" / source_id / run_id / "acquisition-metadata.json"
@@ -1296,10 +1298,11 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                     "observation_count", "facility_candidate_count", "numeric_coordinate_count",
                     "city_postal_count", "unmapped_observation_count", "unmapped_facility_count",
                     "public_release_count", "public_projection_count")},
-                "coordinate_precision_breakdown": {"exact": 0, "source_provided_unspecified": 0,
+                "coordinate_precision_breakdown": {"exact_source_provided": import_result.get("numeric_coordinate_count"),
                                                     "city_or_postal_only": import_result.get("city_postal_count"),
                                                     "unmapped": import_result.get("unmapped_map_candidate_count")},
-                "location_policy": "NPI source coordinates are preserved only in restricted raw/source values pending privacy and precision review; normalized preview coordinates are withheld and map-visible count is intentionally zero.",
+                "geocode_queue": source_summary.get("geocode_queue", {}),
+                "location_policy": "Valid official NPI latitude/longitude fields are used as source-reported reporting-site coordinates in this private preview. Accepted rows without valid coordinates retain their official facility address in the restricted handoff and enter the shared address queue; no geocoder is called during acquisition.",
             })
         else:
             terms_review_evidence = acquisition_evidence.get("terms_review")
@@ -1826,7 +1829,7 @@ def enrich_locations(source_id: str | None, limit: int, database_url: str | None
     from pipeline.sources.denmark.location import classify_location
     from pipeline.sources.canada.location import resolve_local_reference
     selected_source = None if source_id is None else source_id
-    allowed = {"dk.smiley", "ca.cfia.federal-meat", "ca.ontario.meat-plants", "es.cat.feed-sandach"}
+    allowed = {"dk.smiley", "ca.cfia.federal-meat", "ca.ontario.meat-plants", "es.cat.feed-sandach", "au.npi.facilities"}
     if selected_source is not None and selected_source not in allowed:
         raise PreviewError("source has no local-only enrichment adapter")
     db_url = _operator_database_url(database_url)

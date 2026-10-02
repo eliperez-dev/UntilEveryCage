@@ -37,14 +37,24 @@ class NpiAdapterTests(unittest.TestCase):
     def test_fixture_parses_coordinates_and_quarantines_bad_identity_and_point(self):
         result = NpiFacilitiesAdapter().parse_bytes(FIXTURE.read_bytes())
         self.assertEqual(result["input_rows"], 5)
-        self.assertEqual(len(result["accepted"]), 3)
-        self.assertEqual(len(result["quarantined"]), 2)
-        self.assertEqual(result["accepted"][0]["normalized"]["coordinate_state"], "source-value-present-pending-privacy-review")
-        self.assertIsNone(result["accepted"][0]["normalized"]["coordinates"])
+        self.assertEqual(len(result["accepted"]), 4)
+        self.assertEqual(len(result["quarantined"]), 1)
+        self.assertEqual(result["accepted"][0]["normalized"]["coordinate_state"], "source-coordinate")
+        self.assertEqual(result["accepted"][0]["normalized"]["coordinates"], {
+            "latitude": -32.9283, "longitude": 151.7817, "precision": "source-provided",
+            "method": "source_coordinates", "provider": "Australian National Pollutant Inventory",
+            "confidence": "high_source_reported_location",
+        })
+        self.assertEqual(result["accepted"][0]["normalized"]["address"], "1 Example Road")
+        self.assertEqual(result["accepted"][0]["normalized"]["address_state"], "source-reported-facility-address")
+        self.assertTrue(result["accepted"][0]["normalized"]["in_default_map_scope"])
         self.assertEqual(result["accepted"][0]["source_values"]["latitude"], "-32.9283")
         self.assertEqual(result["accepted"][2]["normalized"]["coordinate_state"], "not-supplied-by-source")
+        self.assertFalse(result["accepted"][2]["normalized"]["in_default_map_scope"])
+        self.assertEqual(result["accepted"][3]["normalized"]["coordinate_state"], "invalid-source-coordinate")
+        self.assertTrue(result["accepted"][3]["normalized"]["address"])
         reasons = {reason for item in result["quarantined"] for reason in item["reasons"]}
-        self.assertEqual(reasons, {"invalid_source_coordinate", "missing_facility_id"})
+        self.assertEqual(reasons, {"missing_facility_id"})
 
     def test_missing_column_is_schema_drift(self):
         raw = FIXTURE.read_bytes().replace(b",reports\r\n", b"\r\n", 1)
@@ -61,9 +71,9 @@ class NpiAdapterTests(unittest.TestCase):
         self.assertEqual(meat["animal_relevance"], "meat-processing-industry-candidate")
         self.assertEqual(meat["activity_categories"], ["processing"])
         self.assertEqual(meat["privacy_gate"], "pending-review")
-        self.assertEqual(meat["coordinate_gate"], "review_required")
-        self.assertFalse(meat["in_default_map_scope"])
-        self.assertIsNone(meat["coordinates"])
+        self.assertEqual(meat["coordinate_gate"], "source-coordinate")
+        self.assertTrue(meat["in_default_map_scope"])
+        self.assertIsNotNone(meat["coordinates"])
 
     def test_live_fetch_checks_official_catalogue_and_records_immutable_provenance(self):
         raw = FIXTURE.read_bytes()
@@ -132,8 +142,15 @@ class NpiAdapterTests(unittest.TestCase):
             manifest = json.loads((Path(result["run_dir"]) / "manifest.json").read_text())
             self.assertEqual(manifest["source_id"], SOURCE_ID)
             self.assertEqual(manifest["input_rows"], 5)
-            self.assertEqual(manifest["normalized_rows"], 3)
-            self.assertEqual(manifest["quarantined_rows"], 2)
+            self.assertEqual(manifest["normalized_rows"], 4)
+            self.assertEqual(manifest["quarantined_rows"], 1)
+            self.assertEqual(manifest["geocode_queue"]["records_queued"], 2)
+            self.assertEqual(manifest["geocode_queue"]["records_with_source_coordinates"], 2)
+            queue_path = Path(result["run_dir"]) / "geocode-queue" / "geocode-queue.jsonl"
+            queue_rows = [json.loads(line) for line in queue_path.read_text().splitlines()]
+            self.assertTrue(all(item["status"] == "pending-provider-configuration" for item in queue_rows))
+            self.assertTrue(any("Example Crescent" in item["geocoder_query"] for item in queue_rows))
+            self.assertTrue(all("Synthetic" not in item["geocoder_query"] for item in queue_rows))
             self.assertEqual(manifest["release_state"], "not-created")
             self.assertFalse(manifest.get("published", False))
         finally:

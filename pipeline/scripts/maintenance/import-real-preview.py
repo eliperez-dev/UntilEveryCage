@@ -397,6 +397,13 @@ def parse_row(source: str, row: Any) -> tuple[Any, ...]:
                 "longitude": source_longitude,
                 "precision": "source-precision-unknown",
             }
+    coordinate_method = normalized.get("coordinate_method")
+    coordinate_provider = normalized.get("coordinate_provider")
+    coordinate_confidence = normalized.get("coordinate_confidence")
+    if isinstance(coordinates, dict):
+        coordinate_method = coordinate_method or coordinates.get("method")
+        coordinate_provider = coordinate_provider or coordinates.get("provider")
+        coordinate_confidence = coordinate_confidence or coordinates.get("confidence")
     lat_raw = pick(coordinates, "latitude")
     lon_raw = pick(coordinates, "longitude")
     precision_raw = pick(coordinates, "precision") or pick(normalized, "coordinate_precision", "geography_precision")
@@ -421,6 +428,12 @@ def parse_row(source: str, row: Any) -> tuple[Any, ...]:
             numeric = True
         else:
             lat = lon = None
+    if source == "au.npi.facilities" and numeric and (
+            coordinate_method != "source_coordinates"
+            or coordinate_provider != "Australian National Pollutant Inventory"
+            or coordinate_confidence != "high_source_reported_location"
+            or precision != "source-provided"):
+        raise ImportFailure("source_coordinate_provenance_invalid")
     city = pick(normalized, "city", "municipality")
     postal = pick(normalized, "postal_code")
     city = city.strip() if isinstance(city, str) and city.strip() else None
@@ -459,6 +472,12 @@ def parse_row(source: str, row: Any) -> tuple[Any, ...]:
         activity = contract["category"]
     activity_source = "source" if activity else None
     evidence_summary = safe_preview_text(pick(normalized, "evidence_summary"), 500)
+    if evidence_summary is None and source == "au.npi.facilities" and numeric:
+        evidence_summary = safe_preview_text(
+            "method=" + str(coordinate_method or "source_coordinates")
+            + "; provider=" + str(coordinate_provider or SOURCE_NAMES.get(source))
+            + "; confidence=" + str(coordinate_confidence or "high_source_reported_location")
+            + "; precision=" + str(precision or "source-provided"), 500)
     record_url = safe_https_url(pick(normalized, "source_record_url"))
     default_map_scope = source != "dk.smiley"
     map_scope = (
@@ -703,6 +722,14 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
         place, place_match = _resolve_municipality(municipality_index or {}, city, municipality_policy or {}, department)
         display_lat = place.get("latitude") if isinstance(place, dict) else None
         display_lon = place.get("longitude") if isinstance(place, dict) else None
+        source_coordinate_provenance = None
+        if klass == "numeric_source_coordinate" and source == "au.npi.facilities":
+            display_lat, display_lon = lat, lon
+            source_coordinate_provenance = (
+                "Source coordinates; method=source_coordinates; "
+                "provider=Australian National Pollutant Inventory; "
+                f"confidence=high_source_reported_location; precision={precision or 'source-provided'}"
+            )
         if display_lat is not None and display_lon is not None:
             coarse_placeable += klass == "city_postal"
         preview_id = db.execute(
@@ -714,7 +741,7 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
             (snapshot_sha256,source_id,source_group_key,representative_observation_id,location_class,country_code,city,postal_code,latitude,longitude,coordinate_precision,observation_count,display_latitude,display_longitude,display_geometry_source,display_name,activity_label,activity_source,source_record_url,evidence_summary,source_name,observed_at,default_map_scope,map_scope_reason,municipality_code,category,activity_categories,source_activity_codes,source_activity_labels,activity_mapping_status,classification_ruleset_version)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (snapshot_sha256,source_id,source_group_key) DO NOTHING""",
             (snapshot, source, group_key, preview_id, klass, country, city, postal, lat, lon, precision, observations_per_group[group_key], display_lat, display_lon,
-             f"{(municipality_policy or {}).get('source', 'Administrative commune reference')}; approximate city location, not facility coordinates; name_match={place_match}" if display_lat is not None else None,
+             source_coordinate_provenance or (f"{(municipality_policy or {}).get('source', 'Administrative commune reference')}; approximate city location, not facility coordinates; name_match={place_match}" if display_lat is not None else None),
              display_name, activity_label, activity_source, source_record_url, evidence_summary, SOURCE_NAMES.get(source), observed,
              default_map_scope, map_scope_reason, municipality_code, activity["category"], activity["activity_categories"],
              activity["source_activity_codes"], activity["source_activity_labels"], activity["activity_mapping_status"],

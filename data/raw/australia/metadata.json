@@ -36,6 +36,7 @@
     "rows_with_invalid_source_coordinates_quarantined": 24,
     "normalized_coordinate_pairs": 0,
     "source_coordinate_pairs_retained_private_pending_review": 8116,
+    "expected_private_preview_source_coordinate_pairs_after_geospatial_unlock": 8116,
     "possible_mailing_address_signals": 2,
     "possible_mixed_use_or_residential_address_signals": 28,
     "distinct_facility_id": 8140,

@@ -314,23 +314,42 @@ class RealPreviewImporterTests(unittest.TestCase):
         self.assertIsNone(conflict["category"])
         self.assertEqual(conflict["activity_categories"], ["fish_processing"])
 
-    def test_australia_npi_coordinates_are_withheld_and_city_search_remains_listable(self):
+    def test_australia_npi_source_coordinates_and_location_provenance_are_imported(self):
         row = IMPORTER.parse_row("au.npi.facilities", {
             "source_id": "au.npi.facilities", "source_record_key": "NPI-1",
             "normalized": {"establishment_id": "NPI-1", "name": "Sensitive facility",
                 "city": "Example", "postal_code": "2000", "country_code": "AU",
-                "coordinates": None, "coordinate_state": "source-value-present-pending-privacy-review",
-                "coordinate_precision": "source-provided; precision semantics not documented",
-                "privacy_gate": "pending-review", "in_default_map_scope": False,
-                "map_scope_reason": "pending privacy review"},
+                "coordinates": {"latitude": "-33.1", "longitude": "151.2", "precision": "source-provided",
+                    "method": "source_coordinates", "provider": "Australian National Pollutant Inventory",
+                    "confidence": "high_source_reported_location"},
+                "coordinate_state": "source-coordinate", "coordinate_precision": "source-provided",
+                "coordinate_method": "source_coordinates", "coordinate_provider": "Australian National Pollutant Inventory",
+                "coordinate_confidence": "high_source_reported_location",
+                "evidence_summary": "Coordinates supplied by official NPI facility record.",
+                "privacy_gate": "pending-review", "in_default_map_scope": True,
+                "map_scope_reason": "official_source_facility_coordinates"},
             "source_values": {"street_address": "1 private road", "latitude": "-33.1", "longitude": "151.2"},
         })
-        self.assertEqual(row[1], "city_postal")
+        self.assertEqual(row[1], "numeric_source_coordinate")
         self.assertEqual((row[2], row[3], row[4]), ("AU", "Example", "2000"))
-        self.assertIsNone(row[5])
-        self.assertIsNone(row[6])
+        self.assertEqual((row[5], row[6]), (-33.1, 151.2))
         self.assertIsNone(row[11], "pending privacy must suppress the facility name")
-        self.assertFalse(row[16], "NPI records must remain outside default map scope")
+        self.assertTrue(row[16], "valid source facility coordinates are map-visible in private preview")
+        self.assertIn("Coordinates supplied", row[15])
+
+    def test_australia_npi_rejects_coordinate_provenance_mismatch(self):
+        with self.assertRaisesRegex(IMPORTER.ImportFailure, "source_coordinate_provenance_invalid"):
+            IMPORTER.parse_row("au.npi.facilities", {
+                "source_id": "au.npi.facilities", "source_record_key": "NPI-2",
+                "normalized": {"establishment_id": "NPI-2", "country_code": "AU",
+                    "coordinates": {"latitude": "-33.1", "longitude": "151.2", "precision": "source-provided",
+                        "method": "source_coordinates", "provider": "unexpected source",
+                        "confidence": "high_source_reported_location"},
+                    "coordinate_method": "source_coordinates", "coordinate_provider": "unexpected source",
+                    "coordinate_confidence": "high_source_reported_location",
+                    "coordinate_precision": "source-provided"},
+                "source_values": {},
+            })
         self.assertEqual(IMPORTER.SOURCE_NAMES["au.npi.facilities"],
                          "Australian Department of Climate Change, Energy, the Environment and Water — National Pollutant Inventory")
 

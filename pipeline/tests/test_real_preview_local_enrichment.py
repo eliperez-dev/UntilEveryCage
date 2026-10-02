@@ -13,6 +13,23 @@ SPEC.loader.exec_module(PREVIEW)
 
 
 class LocalEnrichmentTests(unittest.TestCase):
+    def test_npi_source_coordinates_are_recorded_by_shared_enrichment(self):
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connection.execute.return_value.fetchall.return_value = [
+            ("candidate", "a" * 64, "au.npi.facilities", "NPI-1", "numeric_source_coordinate", "AU", None, None, -33.1, 151.2, None)
+        ]
+        with patch.object(__import__("psycopg"), "connect", return_value=connection):
+            result = PREVIEW.enrich_locations("au.npi.facilities", 10, "postgresql://localhost/test")
+        self.assertEqual(result["resolved"], 0)
+        self.assertEqual(result["provider_blocked"], 0)
+        self.assertEqual(result["unresolved"], 0)
+        sql = " ".join(str(call.args[0]) for call in connection.execute.call_args_list)
+        self.assertIn("state_code", sql)
+        self.assertTrue(any("source_coordinate" in call.args[1] and "source_coordinate_present" in call.args[1]
+                            for call in connection.execute.call_args_list if len(call.args) > 1))
+        self.assertNotIn("geocode_jobs", sql)
+
     def test_canada_without_local_reference_is_provider_blocked(self):
         connection = MagicMock()
         connection.__enter__.return_value = connection

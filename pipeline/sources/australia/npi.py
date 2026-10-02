@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from pipeline.common.review import write_operator_review_packet
+from pipeline.common.geocode_queue import build_geocode_queue
 from pipeline.contracts.candidate_handoff import write_handoff
 from pipeline.contracts.source_lifecycle import atomic_bytes, atomic_json, atomic_jsonl, private_manifest
 from pipeline.contracts.adapter_contract import SourceArtifact
@@ -227,8 +228,6 @@ class NpiFacilitiesAdapter:
             elif seen[facility_id] > 1:
                 reasons.append("duplicate_facility_id")
             lat, lon, coordinate_state = _coordinate(row)
-            if coordinate_state == "invalid-source-coordinate":
-                reasons.append("invalid_source_coordinate")
             record = {
                 "source_id": SOURCE_ID,
                 "source_row": line,
@@ -240,24 +239,41 @@ class NpiFacilitiesAdapter:
                     "trading_name": _clean(row.get("facility_name")) or _clean(row.get("registered_business_name")),
                     "registered_business_name": _clean(row.get("registered_business_name")),
                     "facility_name": _clean(row.get("facility_name")),
-                    "address": None,
-                    "address_state": "source-value-present-pending-review" if _clean(row.get("street_address")) else "unknown",
+                    # This is the source's facility/reporting-site address,
+                    # not an operator's personal contact address. Keep it in
+                    # the restricted private handoff for shared geospatial
+                    # enrichment when source coordinates are unavailable.
+                    "address": _clean(row.get("street_address")) or None,
+                    "address_state": "source-reported-facility-address" if _clean(row.get("street_address")) else "unknown",
                     "location_role": "source-reported-facility-location",
                     "location_semantics": "NPI reporting location; current facility operation and precise site identity are not independently established",
-                    "residential_or_mixed_use_screen": "pending-human-review",
+                    "residential_or_mixed_use_screen": "not-assessed",
                     "address_review_signals": _address_review_signals(_clean(row.get("street_address"))),
                     "city": _clean(row.get("suburb")),
                     "postal_code": _clean(row.get("postcode")),
                     "state": _clean(row.get("state")),
                     "country_code": "AU",
-                    # Exact source values are preserved in private source_values
-                    # and the immutable raw artifact. Normalized preview rows
-                    # deliberately carry no point until privacy review clears it.
-                    "coordinates": None,
-                    "coordinate_state": "source-value-present-pending-privacy-review" if coordinate_state == "source" else coordinate_state,
-                    "coordinate_precision": "source-provided; precision semantics not documented" if coordinate_state == "source" else "unresolved",
-                    "in_default_map_scope": False,
-                    "map_scope_reason": "source coordinates require residential, mixed-use, site-identity, and precision review",
+                    # The official Facilities CSV's latitude/longitude columns
+                    # describe the NPI reporting facility location. Preserve
+                    # valid points as source-provided exact coordinates; the
+                    # raw artifact and source ID remain the provenance record.
+                    # Invalid or absent points remain unmapped and can use the
+                    # shared post-acquisition address-enrichment path.
+                    "coordinates": ({
+                        "latitude": lat, "longitude": lon, "precision": "source-provided",
+                        "method": "source_coordinates", "provider": "Australian National Pollutant Inventory",
+                        "confidence": "high_source_reported_location",
+                    } if coordinate_state == "source" else None),
+                    "coordinate_state": "source-coordinate" if coordinate_state == "source" else coordinate_state,
+                    "coordinate_precision": "source-provided" if coordinate_state == "source" else "unresolved",
+                    "coordinate_method": "source_coordinates" if coordinate_state == "source" else "unresolved",
+                    "coordinate_provider": "Australian National Pollutant Inventory" if coordinate_state == "source" else None,
+                    "coordinate_confidence": "high_source_reported_location" if coordinate_state == "source" else "unresolved",
+                    "evidence_summary": ("Coordinates are supplied in the official NPI Facilities CSV latitude/longitude fields; method=source_coordinates; provider=Australian National Pollutant Inventory; confidence=high_source_reported_location; precision=source-provided. This is the NPI reporting-site location, not a claim of current operation."
+                                         if coordinate_state == "source" else None),
+                    "in_default_map_scope": coordinate_state == "source",
+                    "map_scope_reason": ("official_source_facility_coordinates" if coordinate_state == "source"
+                                         else "source_coordinate_unavailable"),
                     "primary_anzsic_class_code": _clean(row.get("primary_anzsic_class_code")),
                     "primary_anzsic_class_name": _clean(row.get("primary_anzsic_class_name")),
                     "animal_relevance": relevance,
@@ -270,7 +286,7 @@ class NpiFacilitiesAdapter:
                     "operation_state": "unknown; NPI reporting does not prove current operation",
                     "classification_state": "source-reported-primary-anzsic; industry-code candidate only",
                     "privacy_gate": "pending-review",
-                    "coordinate_gate": "review_required",
+                    "coordinate_gate": "source-coordinate" if coordinate_state == "source" else "address-geocode-eligible",
                     "publication_gate": "blocked",
                 },
             }
@@ -300,6 +316,7 @@ class NpiFacilitiesAdapter:
         _, parsed_sha, _ = atomic_jsonl(root / "parsed" / "records.jsonl", parsed_rows)
         _, normalized_sha, _ = atomic_jsonl(root / "normalized" / "records.jsonl", accepted)
         atomic_jsonl(root / "quarantined" / "records.jsonl", quarantined)
+        geocode_queue = build_geocode_queue(accepted, artifact, root / "geocode-queue", country_name="Australia")
         anomaly_counts = Counter(reason for item in quarantined for reason in item["reasons"])
         manifest = private_manifest(
             source_id=SOURCE_ID,
@@ -318,15 +335,17 @@ class NpiFacilitiesAdapter:
             "source_kind": "facility_master",
             "schema_fingerprint": parsed["schema_fingerprint"],
             "coverage": self.coverage,
-            "geocoding": "disabled",
+            "geocoding": "valid official facility coordinates used directly; accepted records without valid coordinates enter the shared provider-neutral address queue; no external geocoder is called",
+            "geocode_queue": geocode_queue,
             "coordinate_counts": {
-                "source_pairs_retained_in_private_source_values": sum(
-                    bool(item["source_values"].get("latitude")) and bool(item["source_values"].get("longitude"))
-                    for item in accepted
-                ),
+                "source_coordinate_pairs_retained_in_normalized_private_handoff": sum(
+                    item["normalized"].get("coordinates") is not None for item in accepted),
                 "normalized_preview_pairs": sum(item["normalized"].get("coordinates") is not None for item in accepted),
-                "privacy_review_pending": sum(item["normalized"]["coordinate_state"] == "source-value-present-pending-privacy-review" for item in accepted),
-                "unresolved": sum(item["normalized"]["coordinate_state"] == "not-supplied-by-source" for item in accepted),
+                "invalid_source_coordinate_pairs": sum(
+                    item["normalized"].get("coordinate_state") == "invalid-source-coordinate" for item in accepted),
+                "source_coordinates_used_in_private_map": sum(item["normalized"].get("coordinates") is not None for item in accepted),
+                "address_geocode_queued": geocode_queue["records_queued"],
+                "unresolved": geocode_queue["records_without_usable_address"],
             },
             "public_projection": {"rows": 0, "edges": 0},
             "private_preview_only": True,
@@ -342,9 +361,9 @@ class NpiFacilitiesAdapter:
             source_scope=self.coverage,
             checks=(
                 "keep NPI environmental reporting separate from complete facility registries",
-                "review address and coordinate precision before any public map use",
-            "treat ANZSIC and activities as source classifications, not proof of current operation",
-            "review mailing-address and unit/residential address signals before any location display",
+                "disclose source-coordinate method, provider, confidence band, and precision",
+                "treat ANZSIC and activities as source classifications, not proof of current operation",
+                "keep source addresses in the restricted handoff for unresolved location enrichment",
                 "attribute DCCEEW/Commonwealth source and confirm dataset-specific reuse",
             ),
             blockers=(

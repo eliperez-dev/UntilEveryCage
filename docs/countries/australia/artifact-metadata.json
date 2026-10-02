@@ -41,7 +41,8 @@
         "raw_path": "target/real-preview/runs/refresh-16c0214992879a34/sources/au.npi.facilities/acquisition/au.npi.facilities/preview-au-npi-facilities-9c59d47c-244c-4e55-84fb-b2dcc106f30b/source.csv",
         "normalized_path": "target/real-preview/runs/refresh-16c0214992879a34/sources/au.npi.facilities/candidate-handoff/normalized/records.jsonl"
       },
-      "retention": "ignored private raw artifact; source coordinates remain restricted to private source evidence and are withheld from normalized preview pending privacy review; do not commit or publish"
+      "post_acquisition_geospatial_projection": {"status": "adapter implementation; disposable E2E pending", "source_artifact_sha256": "a0be4c37d588b391ea81baf240f675b2c9f3d9ee0210f9c451c7371eac11d6c7", "accepted_rows_expected": 8140, "valid_source_coordinate_candidates_expected": 8116, "address_fallback_queue_expected": 24, "map_visible_candidates_expected": 8116, "precision": "source-provided", "method": "source_coordinates", "provider": "Australian National Pollutant Inventory", "confidence": "high_source_reported_location", "invalid_coordinate_rows_retained_as_address_candidates": 24},
+      "retention": "ignored private raw artifact; valid official NPI facility/reporting-site coordinates are carried in the normalized private handoff with source, method, confidence, and precision provenance; this does not authorize public release; do not commit the raw artifact"
     },
     {
       "source_id": "au.sa.epa.licensed-activities",

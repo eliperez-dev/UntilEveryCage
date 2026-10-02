@@ -24,12 +24,14 @@ class NpiRunnerTests(unittest.TestCase):
             item = result["results"][0]
             self.assertEqual(item["source_id"], "au.npi.facilities")
             self.assertEqual(item["acquisition_classification"], "assisted")
-            self.assertEqual(item["summary"]["normalized_rows"], 3)
+            self.assertEqual(item["summary"]["normalized_rows"], 4)
+            self.assertEqual(item["summary"]["geocode_queue"]["records_queued"], 2)
             self.assertFalse(item["publication"]["published"])
             manifest_path = Path(directory) / result["run_id"] / "sources" / "au.npi.facilities" / "manifest.json"
             self.assertTrue(manifest_path.exists())
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             self.assertEqual(manifest["source_id"], "au.npi.facilities")
+            self.assertEqual(manifest["summary"]["geocode_queue"]["records_queued"], 2)
         finally:
             shutil.rmtree(directory, ignore_errors=True)
 
@@ -60,7 +62,7 @@ class NpiRunnerTests(unittest.TestCase):
             self.assertEqual(result["exit_status"], "ok")
             item = result["results"][0]
             self.assertEqual(item["status"], "succeeded")
-            self.assertEqual(item["summary"]["normalized_rows"], 3)
+            self.assertEqual(item["summary"]["normalized_rows"], 4)
             self.assertFalse(item["publication"]["published"])
             self.assertFalse(item.get("public_exposure", False))
         finally:

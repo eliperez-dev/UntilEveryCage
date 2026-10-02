@@ -495,7 +495,7 @@
       "attribution_licensing_notes": "Catalogue identifies CC BY 4.0; attribute Commonwealth of Australia/DCCEEW and complete privacy/release review",
       "adapter_status": "implemented_partial",
       "expected_artifact_schema": "Official UTF-8 CSV Facilities resource with facility_id, jurisdiction IDs, names, ABN/ACN, address, coordinates, primary ANZSIC, activities, report IDs/URLs; strict schema and checksum validation; invalid coordinates quarantined",
-      "blockers": ["NPI is an emissions-reporting population, not a complete slaughter or animal-facility registry; ANZSIC is not proof of current activity. Raw addresses and coordinates remain private; normalized coordinates and default map scope are withheld pending residential, mixed-use, site-identity, and precision review. No project approval or public row release exists."]
+      "blockers": ["NPI is an emissions-reporting population, not a complete slaughter or animal-facility registry; ANZSIC is not proof of current activity. Valid official facility/reporting-site coordinates are used in the local private map with source, method, confidence, and precision provenance; address-only fallbacks use the shared provider-neutral queue. No project approval or public row release exists."]
     },
     {
       "source_id": "au.nsw.epa-poeo",
