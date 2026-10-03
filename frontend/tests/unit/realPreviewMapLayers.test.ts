@@ -12,6 +12,8 @@ describe('real-preview native clustering layers', () => {
     };
     const data = { type: 'FeatureCollection' as const, features: [
       { type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [4, 51] as [number, number] }, properties: { kind: 'source-coordinate', weight: 1 } },
+      { type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [145, -37] as [number, number] }, properties: { kind: 'provider_address_point_private', precision: 'provider_address_point_high_confidence', weight: 1 } },
+      { type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [144, -36] as [number, number] }, properties: { kind: 'provider_locality_approximate', precision: 'provider_locality_approximate', weight: 2 } },
       { type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [4.1, 51.1] as [number, number] }, properties: { kind: 'reference', weight: 12 } },
     ] };
     addRealPreviewMapLayers(map as any, data);
@@ -30,15 +32,16 @@ describe('real-preview native clustering layers', () => {
       paint: { 'text-color': '#172019' },
     });
     expect(layers.find(layer => layer.id === 'aggregate-count')?.filter).toEqual([
-      'all', ['!', ['has', 'cluster']], ['==', ['get', 'kind'], 'reference'],
-      ['!', ['any', ['==', ['get', 'precision'], 'city'], ['==', ['get', 'precision'], 'city_reference_approximate']]],
+      'all', ['!', ['has', 'cluster']], ['in', ['get', 'kind'], ['literal', ['reference', 'provider_locality_approximate']]],
+      ['!', ['any', ['==', ['get', 'precision'], 'city'], ['==', ['get', 'precision'], 'city_reference_approximate'], ['==', ['get', 'precision'], 'provider_locality_approximate']]],
     ]);
     expect(layers.find(layer => layer.id === 'aggregate-outer')?.paint['circle-color']).toEqual([
-      'case', ['any', ['==', ['get', 'precision'], 'city'], ['==', ['get', 'precision'], 'city_reference_approximate']],
+      'case', ['any', ['==', ['get', 'precision'], 'city'], ['==', ['get', 'precision'], 'city_reference_approximate'], ['==', ['get', 'precision'], 'provider_locality_approximate']],
       '#79b9da', '#15252c',
     ]);
-    expect(layers.find(layer => layer.id === 'aggregate-outer')?.filter).toEqual(['all', ['!', ['has', 'cluster']], ['==', ['get', 'kind'], 'reference']]);
-    expect(layers.find(layer => layer.id === 'source-coordinate-points')?.filter).toEqual(['all', ['!', ['has', 'cluster']], ['==', ['get', 'kind'], 'source-coordinate']]);
+    expect(layers.find(layer => layer.id === 'aggregate-outer')?.filter).toEqual(['all', ['!', ['has', 'cluster']], ['in', ['get', 'kind'], ['literal', ['reference', 'provider_locality_approximate']]]]);
+    expect(layers.find(layer => layer.id === 'source-coordinate-points')?.filter).toEqual(['all', ['!', ['has', 'cluster']], ['in', ['get', 'kind'], ['literal', ['source-coordinate', 'provider_address_point_private']]]]);
+    expect(layers.find(layer => layer.id === 'source-coordinate-points')?.filter).toContainEqual(['in', ['get', 'kind'], ['literal', ['source-coordinate', 'provider_address_point_private']]]);
     expect(layers.find(layer => layer.id === 'source-coordinate-points')?.paint?.['circle-color']).toEqual(
       ['match', ['get', 'precision'], 'source_provided_unverified', '#e0a45d', '#d8c99b'],
     );

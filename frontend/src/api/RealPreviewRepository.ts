@@ -9,7 +9,9 @@ export type RealPreviewPrecision =
   | 'approximate_source_precision_unknown_pending_review'
   | 'city_postal_coarse'
   | 'city_reference_approximate'
-  | 'locality_reference_coarse';
+  | 'locality_reference_coarse'
+  | 'provider_address_point_high_confidence'
+  | 'provider_locality_approximate';
 
 export type RealPreviewCandidate = Readonly<{
   candidateId: string;
@@ -71,6 +73,8 @@ const DISPLAY_PRECISIONS = new Set<RealPreviewPrecision>([
   'city_postal_coarse',
   'city_reference_approximate',
   'locality_reference_coarse',
+  'provider_address_point_high_confidence',
+  'provider_locality_approximate',
 ]);
 
 function object(value: unknown): Record<string, unknown> {
@@ -136,9 +140,12 @@ export function parseRealPreviewCandidate(value: unknown): RealPreviewCandidate 
   }
   if (kind === 'numeric_source_coordinate' && latitude === null) throw new RealPreviewError('invalid-response', 'The private preview returned a numeric record without coordinates.');
   if (kind !== 'numeric_source_coordinate' && latitude !== null
-    && !(kind === 'city_postal' && ['city_reference_approximate', 'locality_reference_coarse'].includes(displayPrecision))) throw new RealPreviewError('invalid-response', 'The private preview attached a point to a non-numeric record.');
+    && !(kind === 'city_postal' && ['city_reference_approximate', 'locality_reference_coarse', 'provider_address_point_high_confidence', 'provider_locality_approximate'].includes(displayPrecision))) throw new RealPreviewError('invalid-response', 'The private preview attached a point to a non-numeric record.');
   if (displayPrecision === 'city_reference_approximate' && (kind !== 'city_postal' || latitude === null)) throw new RealPreviewError('invalid-response', 'The private preview returned an invalid city reference point.');
   if (displayPrecision === 'locality_reference_coarse' && (kind !== 'city_postal' || latitude === null)) throw new RealPreviewError('invalid-response', 'The private preview returned an invalid locality reference point.');
+  if (['provider_address_point_high_confidence', 'provider_locality_approximate'].includes(displayPrecision)
+    && (kind !== 'city_postal' || latitude === null || row.coordinate_provider !== 'Geoapify'
+      || typeof row.coordinate_method !== 'string' || !row.coordinate_method.startsWith('geoapify_'))) throw new RealPreviewError('invalid-response', 'The private preview returned invalid provider location evidence.');
   const projectApproval = row.project_approval;
   if (projectApproval !== false) throw new RealPreviewError('invalid-response', 'The private preview omitted its approval boundary.');
   if (typeof row.coordinate_review_status !== 'string' || typeof row.factual_review_status !== 'string'
@@ -179,7 +186,8 @@ export function parseRealPreviewCandidate(value: unknown): RealPreviewCandidate 
 
 export function mapRealPreviewCandidate(candidate: RealPreviewCandidate): LabRecord & Pick<RealPreviewCandidate, 'displayName' | 'activityLabel' | 'activitySource' | 'sourceName' | 'sourceRecordId' | 'sourceUrl' | 'sourceRecordUrl' | 'retrievedAt' | 'observedAt' | 'evidenceSummary'> {
   const precision = candidate.locationClass === 'unmapped_private_observation' ? 'unmapped'
-    : candidate.displayPrecision === 'city_reference_approximate' ? 'city'
+    : ['city_reference_approximate', 'provider_locality_approximate'].includes(candidate.displayPrecision) ? 'city'
+    : candidate.displayPrecision === 'provider_address_point_high_confidence' ? 'approximate'
     : candidate.locationClass === 'city_postal' || candidate.displayPrecision === 'city_postal_coarse' ? 'coarse'
       : candidate.displayPrecision === 'source_numeric_pending_review' ? 'exact' : 'approximate';
   return Object.freeze({

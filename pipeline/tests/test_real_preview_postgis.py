@@ -1,15 +1,26 @@
 """Disposable PostGIS integration for the isolated preview migration."""
 
+import json
+import importlib.util
+import io
 import os
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 import psycopg
+from pipeline.geocoding.base import GeocodeOutcome
 from pipeline.taxonomy.persistence import persist_preview_candidate_assignment_set
 from pipeline.taxonomy_crosswalk import crosswalk_document, persistence_assignments, project_observation
 
 MIGRATIONS = sorted((Path(__file__).parents[1] / "migrations").glob("*.sql"))
 DATABASE_URL = os.environ.get("UEC_REAL_PREVIEW_TEST_DATABASE_URL")
+WORKER_SPEC = importlib.util.spec_from_file_location(
+    "preview_geocode_worker", Path(__file__).parents[1] / "scripts/stages/geocode-worker.py"
+)
+WORKER = importlib.util.module_from_spec(WORKER_SPEC)
+WORKER_SPEC.loader.exec_module(WORKER)
 
 
 @unittest.skipUnless(DATABASE_URL, "requires a dedicated disposable PostGIS test database")
@@ -211,6 +222,184 @@ class RealPreviewPostgisTests(unittest.TestCase):
                 self.assertEqual(connection.execute(
                     "SELECT map_scope_reason FROM real_preview.candidates WHERE source_group_key='source-group-3'"
                 ).fetchone()[0], "general-food")
+
+                # Synthetic-only worker handoff: the old placeholder job and
+                # the configured Geoapify job both keep immutable target rows.
+                connection.execute("""
+                    INSERT INTO real_preview.source_manifests
+                      (snapshot_sha256,source_id,source_artifact_sha256,normalized_sha256,normalized_rows,source_url,retrieved_at,code_version,config_version)
+                    VALUES (%s,'au.npi.facilities',%s,%s,1,'https://example.invalid/','2026-10-01T00:00:00Z','synthetic','synthetic')
+                """, ("a" * 64, "b" * 64, "c" * 64))
+                au_observation_id = connection.execute(insert + " RETURNING preview_id", (
+                    "a" * 64, "au.npi.facilities", "synthetic-au-geocode", "city_postal", True,
+                    "AU", "Melbourne", "3000", None, None, None,
+                )).fetchone()[0]
+                connection.execute("""
+                    INSERT INTO real_preview.candidates
+                      (snapshot_sha256,source_id,source_group_key,representative_observation_id,
+                       location_class,country_code,city,postal_code,observation_count)
+                    VALUES (%s,'au.npi.facilities','synthetic-au-geocode',%s,
+                            'city_postal','AU','Melbourne','3000',1)
+                """, ("a" * 64, au_observation_id))
+                au_candidate_id = connection.execute(
+                    "SELECT candidate_id FROM real_preview.candidates WHERE source_group_key='synthetic-au-geocode'"
+                ).fetchone()[0]
+                connection.execute("""
+                    INSERT INTO real_preview.candidate_private_location_evidence
+                      (candidate_id,snapshot_sha256,source_id,location_evidence)
+                    VALUES (%s,%s,'au.npi.facilities',%s::jsonb)
+                """, (au_candidate_id, "a" * 64, json.dumps({"address": "10 Synthetic Test Road", "city": "Melbourne"})))
+                connection.execute("""
+                    INSERT INTO uec.sources(source_id,country_code,name,official_url,access_method)
+                    VALUES ('au.npi.facilities','AU','Synthetic source','https://example.invalid/','synthetic_test')
+                    ON CONFLICT (source_id) DO NOTHING
+                """)
+                connection.execute("""
+                    INSERT INTO uec.raw_artifacts(storage_key,sha256,byte_size,media_type,retrieved_at)
+                    VALUES ('synthetic-preview-artifact',%s,1,'text/csv',now()) ON CONFLICT (sha256) DO NOTHING
+                """, ("d" * 64,))
+                artifact_id = connection.execute("SELECT artifact_id FROM uec.raw_artifacts WHERE sha256=%s", ("d" * 64,)).fetchone()[0]
+                source_record_id = connection.execute("""
+                    INSERT INTO uec.source_records(source_id,source_record_key,artifact_id,raw_fields,parsed_at)
+                    VALUES ('au.npi.facilities','synthetic-preview-link',%s,'{}'::jsonb,now())
+                    RETURNING source_record_id
+                """, (artifact_id,)).fetchone()[0]
+                synthetic_query = "10 Synthetic Test Road, Melbourne, AU"
+                placeholder_job_id = connection.execute("""
+                    INSERT INTO uec.geocode_jobs(source_record_id,provider_id,query)
+                    VALUES (%s,'pending-provider-review',%s) RETURNING job_id
+                """, (source_record_id, synthetic_query)).fetchone()[0]
+                geoapify_job_id = connection.execute("""
+                    INSERT INTO uec.geocode_jobs(source_record_id,provider_id,query)
+                    VALUES (%s,'geoapify',%s) RETURNING job_id
+                """, (source_record_id, synthetic_query)).fetchone()[0]
+                for job_id in (placeholder_job_id, geoapify_job_id):
+                    connection.execute("""
+                        INSERT INTO real_preview.geocode_targets(job_id,candidate_id,snapshot_sha256,source_id,source_record_key)
+                        VALUES (%s,%s,%s,'au.npi.facilities','synthetic-au-geocode')
+                    """, (job_id, au_candidate_id, "a" * 64))
+                connection.execute("""
+                    INSERT INTO uec.geocode_job_events(job_id,event_type,attempt_number,retryable,details)
+                    VALUES (%s,'queued',1,false,
+                      '{"processing_mode":"private_au_preview_pilot","provider_configuration":"geoapify_au_country_filter"}'::jsonb)
+                """, (geoapify_job_id,))
+                synthetic_response = {
+                    "features": [{
+                        "geometry": {"type": "Point", "coordinates": [144.9, -37.8]},
+                        "properties": {"result_type": "building", "country_code": "au",
+                                       "address_line1": "10 Synthetic Test Road",
+                                       "rank": {"confidence": 0.97}},
+                    }],
+                }
+                class ReuseConnection:
+                    def __enter__(self):
+                        return connection
+
+                    def __exit__(self, *_args):
+                        return False
+
+                adapter = Mock()
+                adapter.geocode.return_value = GeocodeOutcome(
+                    "accepted", "high_confidence_address_match", -37.8, 144.9,
+                    "synthetic-place", "geoapify_address_point", "geoapify_forward", False,
+                    synthetic_response,
+                )
+                worker_args = (
+                    DATABASE_URL, "geoapify", 24, 0, 1,
+                )
+                worker_options = {
+                    "daily_budget": 24, "max_attempts": 1, "provider_interval": 1,
+                    "worker_id": "synthetic-au-pilot", "au_npi_pilot": True,
+                }
+                display_revision_before = connection.execute(
+                    "SELECT real_preview.display_evidence_revision()"
+                ).fetchone()[0]
+                with patch.object(WORKER.psycopg, "connect", return_value=ReuseConnection()), \
+                     patch.object(WORKER, "get_adapter", return_value=adapter), \
+                     redirect_stdout(io.StringIO()):
+                    self.assertEqual(WORKER.run(*worker_args, **worker_options), 1)
+                    display_revision_after = connection.execute(
+                        "SELECT real_preview.display_evidence_revision()"
+                    ).fetchone()[0]
+                    self.assertEqual(WORKER.run(*worker_args, **worker_options), 0)
+                    self.assertEqual(connection.execute(
+                        "SELECT real_preview.display_evidence_revision()"
+                    ).fetchone()[0], display_revision_after)
+                self.assertNotEqual(display_revision_before, display_revision_after,
+                                    "provider display evidence must invalidate the private map cache")
+                adapter.geocode.assert_called_once_with(synthetic_query)
+                self.assertEqual(connection.execute(
+                    "SELECT count(*) FROM real_preview.geocode_targets WHERE candidate_id=%s", (au_candidate_id,)
+                ).fetchone()[0], 2)
+                api_row = connection.execute("""
+                    SELECT candidate.display_latitude,candidate.display_longitude,
+                           candidate.display_geometry_source,candidate.coordinate_method,
+                           candidate.coordinate_provider,candidate.coordinate_confidence,
+                           candidate.coordinate_confidence_band,candidate.latitude,candidate.longitude
+                    FROM real_preview.candidates candidate
+                    JOIN real_preview.source_manifests manifest
+                      ON manifest.snapshot_sha256=candidate.snapshot_sha256 AND manifest.source_id=candidate.source_id
+                    WHERE candidate.candidate_id=%s AND candidate.default_map_scope=true
+                """, (au_candidate_id,)).fetchone()
+                self.assertEqual(api_row[:2], (-37.8, 144.9))
+                self.assertIn("normalized source-address line match", api_row[2])
+                self.assertEqual(api_row[3:7], ("geoapify_forward", "Geoapify", 0.97, "high"))
+                self.assertEqual(api_row[7:], (None, None), "source coordinates remain unchanged")
+                self.assertEqual(connection.execute(
+                    "SELECT count(*) FROM real_preview.geocode_display_evidence WHERE candidate_id=%s AND coordinate_review_status='automated_high_confidence_private_display'",
+                    (au_candidate_id,),
+                ).fetchone()[0], 1)
+
+                def queued_job(source_key, query):
+                    linked_record = connection.execute("""
+                        INSERT INTO uec.source_records(source_id,source_record_key,artifact_id,raw_fields,parsed_at)
+                        VALUES ('au.npi.facilities',%s,%s,'{}'::jsonb,now()) RETURNING source_record_id
+                    """, (source_key, artifact_id)).fetchone()[0]
+                    linked_job = connection.execute("""
+                        INSERT INTO uec.geocode_jobs(source_record_id,provider_id,query)
+                        VALUES (%s,'geoapify',%s) RETURNING job_id
+                    """, (linked_record, query)).fetchone()[0]
+                    connection.execute("""
+                        INSERT INTO real_preview.geocode_targets(job_id,candidate_id,snapshot_sha256,source_id,source_record_key)
+                        VALUES (%s,%s,%s,'au.npi.facilities','synthetic-au-geocode')
+                    """, (linked_job, au_candidate_id, "a" * 64))
+                    connection.execute("""
+                        INSERT INTO uec.geocode_job_events(job_id,event_type,attempt_number,retryable,details)
+                        VALUES (%s,'queued',1,false,
+                          '{"processing_mode":"private_au_preview_pilot"}'::jsonb)
+                    """, (linked_job,))
+                    return linked_record
+
+                restricted_before_record = queued_job("synthetic-restricted-before", "synthetic before restriction")
+                connection.execute("""
+                    INSERT INTO uec.record_access_events(source_record_id,action,reason_category,policy_version,maintainer)
+                    VALUES (%s,'public_access_revoked','privacy','synthetic-test','synthetic-test')
+                """, (restricted_before_record,))
+                with patch.object(WORKER.psycopg, "connect", return_value=ReuseConnection()), \
+                     patch.object(WORKER, "get_adapter", return_value=adapter), \
+                     redirect_stdout(io.StringIO()):
+                    self.assertEqual(WORKER.run(*worker_args, **worker_options), 0)
+                adapter.geocode.assert_called_once()
+
+                restricted_during_record = queued_job("synthetic-restricted-during", "synthetic during restriction")
+                def restrict_during_request(_query):
+                    connection.execute("""
+                        INSERT INTO uec.record_access_events(source_record_id,action,reason_category,policy_version,maintainer)
+                        VALUES (%s,'public_access_revoked','privacy','synthetic-test','synthetic-test')
+                    """, (restricted_during_record,))
+                    return adapter.geocode.return_value
+                adapter.geocode.side_effect = restrict_during_request
+                with patch.object(WORKER.psycopg, "connect", return_value=ReuseConnection()), \
+                     patch.object(WORKER, "get_adapter", return_value=adapter), \
+                     redirect_stdout(io.StringIO()):
+                    self.assertEqual(WORKER.run(*worker_args, **worker_options), 1)
+                self.assertEqual(connection.execute(
+                    "SELECT count(*) FROM uec.geocode_results WHERE source_record_id=%s", (restricted_during_record,)
+                ).fetchone()[0], 0)
+                self.assertEqual(connection.execute(
+                    "SELECT count(*) FROM real_preview.geocode_display_evidence WHERE candidate_id=%s AND coordinate_review_status='automated_high_confidence_private_display'",
+                    (au_candidate_id,),
+                ).fetchone()[0], 1)
                 for relation in (
                     "uec.release_members",
                     "uec.map_facilities_public_discovery",

@@ -65,6 +65,23 @@ describe('private real-preview repository', () => {
     });
   });
 
+  it('parses Geoapify display points as provider evidence without changing source-coordinate semantics', () => {
+    const providerAddress = parseRealPreviewCandidate(record({
+      source_id: 'au.npi.facilities', location_class: 'city_postal', display_precision: 'provider_address_point_high_confidence',
+      country_code: 'AU', latitude: -37.8, longitude: 144.9, coordinate_precision: 'provider_address_point_high_confidence',
+      coordinate_provider: 'Geoapify', coordinate_method: 'geoapify_forward', coordinate_confidence: 0.97,
+      coordinate_confidence_band: 'high', coordinate_review_status: 'automated_high_confidence_private_display',
+    }));
+    expect(mapRealPreviewCandidate(providerAddress)).toMatchObject({
+      precision: 'approximate', coordinateProvider: 'Geoapify', coordinateConfidence: 0.97,
+      coordinateMethod: 'geoapify_forward', latitude: -37.8,
+    });
+    expect(() => parseRealPreviewCandidate(record({
+      location_class: 'city_postal', display_precision: 'provider_address_point_high_confidence',
+      coordinate_provider: 'Other', coordinate_method: 'other',
+    }))).toThrow(RealPreviewError);
+  });
+
   it('rejects zero-zero, out-of-range, non-finite, and incomplete coordinate pairs', () => {
     for (const bad of [
       record({ latitude: 0, longitude: 0 }),

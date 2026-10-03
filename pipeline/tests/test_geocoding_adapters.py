@@ -1,6 +1,7 @@
 import json
 import socket
 import urllib.error
+import urllib.parse
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -57,23 +58,99 @@ class DawaAdapterTests(unittest.TestCase):
 
 
 class GeoapifyAdapterTests(unittest.TestCase):
+    QUERY = "10 Example Road, Melbourne, VIC 3000, Australia"
+
+    @staticmethod
+    def pilot_adapter(**kwargs):
+        return geoapify.GeoapifyAdapter(country_code="au", pilot_auto_display=True, **kwargs)
+
     def test_key_is_required(self):
         with patch.dict("os.environ", {}, clear=True):
             with self.assertRaisesRegex(ValueError, "GEOAPIFY_API_KEY"):
                 geoapify.GeoapifyAdapter()
 
-    def test_candidate_is_stored_but_requires_review(self):
+    def test_high_confidence_address_match_is_private_exact_candidate(self):
         payload = {"type": "FeatureCollection", "features": [{
             "type": "Feature",
             "geometry": {"type": "Point", "coordinates": [12.5, 55.6]},
-            "properties": {"place_id": "candidate-1", "result_type": "building"},
+            "properties": {"place_id": "candidate-1", "result_type": "building",
+                           "country_code": "au", "address_line1": "10 Example Road",
+                           "rank": {"confidence": 0.98}},
+        }]}
+        opener = unittest.mock.Mock(return_value=FakeResponse(payload))
+        result = self.pilot_adapter(api_key="test-secret", opener=opener).geocode(self.QUERY)
+        self.assertEqual(result.status, "accepted")
+        self.assertEqual(result.acceptance, "high_confidence_address_match")
+        self.assertEqual((result.latitude, result.longitude), (55.6, 12.5))
+        self.assertEqual(result.provider_address_id, "candidate-1")
+        self.assertNotIn("test-secret", json.dumps(result.response))
+        request = opener.call_args.args[0]
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(request.full_url).query)
+        self.assertEqual(query["filter"], ["countrycode:au"])
+        self.assertEqual(query["bias"], ["countrycode:none"])
+        self.assertEqual(query["limit"], ["2"])
+
+    def test_generic_geoapify_remains_unfiltered_and_review_gated(self):
+        payload = {"features": [{
+            "geometry": {"type": "Point", "coordinates": [12.5, 55.6]},
+            "properties": {"place_id": "candidate", "result_type": "building"},
         }]}
         opener = unittest.mock.Mock(return_value=FakeResponse(payload))
         result = geoapify.GeoapifyAdapter(api_key="test-secret", opener=opener).geocode("Example address")
         self.assertEqual(result.status, "review_required")
+        self.assertEqual(result.acceptance, "review_provider_candidate")
         self.assertEqual((result.latitude, result.longitude), (55.6, 12.5))
-        self.assertEqual(result.provider_address_id, "candidate-1")
-        self.assertNotIn("test-secret", json.dumps(result.response))
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(opener.call_args.args[0].full_url).query)
+        self.assertNotIn("filter", query)
+        self.assertNotIn("bias", query)
+
+    def test_country_mismatch_and_address_mismatch_do_not_return_points(self):
+        for country, address in (("nz", "10 Example Road"), ("au", "99 Other Street")):
+            payload = {"features": [{
+                "geometry": {"coordinates": [144.9, -37.8]},
+                "properties": {"place_id": "candidate", "result_type": "building",
+                               "country_code": country, "address_line1": address,
+                               "rank": {"confidence": 0.99}},
+            }]}
+            result = self.pilot_adapter(
+                api_key="test-secret", opener=unittest.mock.Mock(return_value=FakeResponse(payload))
+            ).geocode(self.QUERY)
+            self.assertEqual(result.status, "review_required")
+            self.assertIsNone(result.latitude)
+            self.assertIsNone(result.longitude)
+
+    def test_low_confidence_and_ambiguous_results_do_not_return_points(self):
+        feature = {"geometry": {"coordinates": [144.9, -37.8]}, "properties": {
+            "result_type": "building", "country_code": "au",
+            "address_line1": "10 Example Road", "rank": {"confidence": 0.89},
+        }}
+        for features in ([feature], [feature, feature]):
+            payload = {"features": features}
+            result = self.pilot_adapter(
+                api_key="test-secret", opener=unittest.mock.Mock(return_value=FakeResponse(payload))
+            ).geocode(self.QUERY)
+            self.assertEqual(result.status, "review_required")
+            self.assertIsNone(result.latitude)
+
+    def test_city_point_requires_country_and_query_locality_and_is_approximate(self):
+        payload = {"features": [{
+            "geometry": {"coordinates": [144.9, -37.8]},
+            "properties": {"result_type": "city", "country_code": "au", "city": "Melbourne",
+                           "rank": {"confidence": 0.94}},
+        }]}
+        result = self.pilot_adapter(
+            api_key="test-secret", opener=unittest.mock.Mock(return_value=FakeResponse(payload))
+        ).geocode("10 Example Road, Melbourne, Australia")
+        self.assertEqual(result.status, "accepted")
+        self.assertEqual(result.acceptance, "approximate_locality_match")
+        self.assertEqual(result.precision, "geoapify_locality_point")
+
+        payload["features"][0]["properties"]["city"] = "Sydney"
+        mismatch = self.pilot_adapter(
+            api_key="test-secret", opener=unittest.mock.Mock(return_value=FakeResponse(payload))
+        ).geocode("10 Example Road, Melbourne, Australia")
+        self.assertEqual(mismatch.status, "review_required")
+        self.assertIsNone(mismatch.latitude)
 
     def test_invalid_coordinates_fail_closed(self):
         payload = {"features": [{"geometry": {"coordinates": [999, 55]}, "properties": {}}]}

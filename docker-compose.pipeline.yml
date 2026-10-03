@@ -27,6 +27,17 @@ services:
       - pipeline/scripts/stages/geocode-worker.py
       - --provider
       - geoapify
+      - --au-npi-pilot
+      - --limit
+      - "24"
+      - --daily-budget
+      - "24"
+      - --max-attempts
+      - "1"
+      - --retries
+      - "1"
+      - --provider-interval
+      - "1"
     environment:
       UEC_DATABASE_URL: postgresql://uec:uec-local-development-only@postgres:5432/uec
       GEOAPIFY_API_KEY: ${GEOAPIFY_API_KEY:-}

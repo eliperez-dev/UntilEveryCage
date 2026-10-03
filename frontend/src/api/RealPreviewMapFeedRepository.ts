@@ -37,7 +37,7 @@ export function parseRealPreviewMapFeed(payload: unknown): RealPreviewMapFeed {
     const kind = row.kind;
     const key = row.key;
     const weight = row.weight;
-    if ((kind !== 'source_coordinate' && kind !== 'city_reference') || typeof key !== 'string' || !key || key.length > 160
+    if (!['source_coordinate', 'city_reference', 'provider_address_point_private', 'provider_locality_approximate'].includes(String(kind)) || typeof key !== 'string' || !key || key.length > 160
       || typeof row.source_id !== 'string' || typeof row.precision !== 'string'
       || !finiteCoordinate(row.latitude, -90, 90) || !finiteCoordinate(row.longitude, -180, 180)
       || typeof weight !== 'number' || !Number.isSafeInteger(weight) || weight < 1) {
@@ -56,7 +56,7 @@ export function parseRealPreviewMapFeed(payload: unknown): RealPreviewMapFeed {
       properties: {
         key,
         source_id: row.source_id,
-        kind: kind === 'city_reference' ? 'reference' : 'source-coordinate',
+        kind: kind === 'city_reference' ? 'reference' : kind === 'source_coordinate' ? 'source-coordinate' : String(kind),
         precision,
         weight,
         category_key: categoryKey,

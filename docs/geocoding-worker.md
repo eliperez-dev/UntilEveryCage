@@ -72,7 +72,8 @@ candidate handoff with `candidate_id`, `snapshot_sha256`, `source_id`,
 `normalized_query` is required only when a reviewed source/provider privacy
 profile permits external submission. Raw source rows and addresses are not
 valid handoff fields. Preview-target provider submission remains fail-closed
-until that profile and the shared worker target bridge are implemented.
+except for a reviewed, source-specific pilot with explicit worker mode and
+bounded target scope.
 
 The shared schema links preview candidates to the existing durable geocode job
 machinery; it does not add another lease, retry, or provider budget
@@ -83,9 +84,38 @@ aggregate state/reason counts only. It emits no candidate IDs, queries, or
 provider evidence.
 
 The importer initializes source-coordinate, local coarse-reference, or
-insufficient states. Local reference geometry remains approximate. The schema
-provides a place for later provider-derived display evidence with provenance
-and `pending_human_review`; it cannot create release or publication membership.
-Exact-provider submissions for preview candidates remain disabled until the
-relevant source/provider privacy profile is explicitly authorized and the
-worker bridge is added.
+insufficient states. Local reference geometry remains approximate. Provider
+display evidence is append-only, retains match confidence and provenance, and
+never creates release or publication membership.
+
+### Bounded Australian NPI address pilot
+
+`au.npi.facilities` is the only source enabled for the Geoapify pilot. Its 24
+already imported address-only targets are selected by
+`python pipeline/scripts/stages/activate-au-geoapify-preview.py`; activation
+does not reacquire, reimport, change the source snapshot, or make a provider
+request. It requires `GEOAPIFY_API_KEY` in the process environment and is
+idempotent: existing placeholder jobs and target rows are retained, while one
+separate Geoapify job/target per candidate is created.
+
+The explicit worker invocation is bounded to 24 requests/day, at most 24
+jobs, one attempt per job, one shared request/second, and one worker:
+
+```powershell
+python pipeline/scripts/stages/geocode-worker.py --provider geoapify --au-npi-pilot --limit 24 --daily-budget 24 --max-attempts 1 --retries 1 --provider-interval 1
+```
+
+The adapter sends Geoapify's country filter `countrycode:au` and disables IP
+bias with `countrycode:none`. It considers a single result for private display
+only when Australia matches and Geoapify rank confidence is at least 0.90,
+plus the normalized source address line exactly matches for an address point.
+This threshold is a project matching heuristic, not a calibrated probability
+or factual review. A locality match is labeled approximate and requires an
+exact locality match in the submitted query; ambiguous, mismatched, and
+unsupported results remain non-displayed. Source addresses and source
+coordinates are not overwritten.
+
+Provider results remain private. Any future public map use requires separate
+privacy/release authorization and the required Geoapify and OpenStreetMap
+attribution review. See the [Geoapify terms](https://www.geoapify.com/terms-and-conditions/)
+and [geocoding API documentation](https://www.geoapify.com/geocoding-api/).

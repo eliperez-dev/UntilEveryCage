@@ -16,6 +16,26 @@ SPEC.loader.exec_module(WORKER)
 
 
 class GeocodeWorkerDurabilityTests(unittest.TestCase):
+    def test_au_pilot_requires_explicitly_bounded_worker_options(self):
+        for kwargs in (
+            {"provider_id": "dawa", "limit": 24, "daily_budget": 24, "max_attempts": 1, "retries": 1, "provider_interval": 1},
+            {"provider_id": "geoapify", "limit": None, "daily_budget": 24, "max_attempts": 1, "retries": 1, "provider_interval": 1},
+            {"provider_id": "geoapify", "limit": 25, "daily_budget": 24, "max_attempts": 1, "retries": 1, "provider_interval": 1},
+            {"provider_id": "geoapify", "limit": 24, "daily_budget": 25, "max_attempts": 1, "retries": 1, "provider_interval": 1},
+            {"provider_id": "geoapify", "limit": 24, "daily_budget": 24, "max_attempts": 2, "retries": 1, "provider_interval": 1},
+            {"provider_id": "geoapify", "limit": 24, "daily_budget": 24, "max_attempts": 1, "retries": 2, "provider_interval": 1},
+            {"provider_id": "geoapify", "limit": 24, "daily_budget": 24, "max_attempts": 1, "retries": 1, "provider_interval": 0.5},
+        ):
+            with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
+                WORKER.run(
+                    "postgresql://synthetic", kwargs.pop("provider_id"),  # worker validation precedes connection
+                    kwargs.pop("limit"), 0, kwargs.pop("retries"),
+                    daily_budget=kwargs.pop("daily_budget"),
+                    max_attempts=kwargs.pop("max_attempts"),
+                    provider_interval=kwargs.pop("provider_interval"),
+                    au_npi_pilot=True,
+                )
+
     def test_migration_adds_lease_fence_and_atomic_request_ledger(self):
         migration = (ROOT / "migrations/040_geocode_worker_durability.sql").read_text()
         for required in (
@@ -32,7 +52,7 @@ class GeocodeWorkerDurabilityTests(unittest.TestCase):
         connection = Mock()
         connection.__enter__ = Mock(return_value=connection)
         connection.__exit__ = Mock(return_value=False)
-        job = (uuid.uuid4(), uuid.uuid4(), "private synthetic query", 1, uuid.uuid4())
+        job = (uuid.uuid4(), uuid.uuid4(), "private synthetic query", 1, uuid.uuid4(), "queued")
         reservations = [(uuid.uuid4(), None), (uuid.uuid4(), None)]
         adapter = Mock()
         adapter.geocode.side_effect = [
@@ -58,7 +78,7 @@ class GeocodeWorkerDurabilityTests(unittest.TestCase):
         connection = Mock()
         connection.__enter__ = Mock(return_value=connection)
         connection.__exit__ = Mock(return_value=False)
-        job = (uuid.uuid4(), uuid.uuid4(), "private synthetic query", 1, uuid.uuid4())
+        job = (uuid.uuid4(), uuid.uuid4(), "private synthetic query", 1, uuid.uuid4(), "queued")
         adapter = Mock()
         adapter.geocode.return_value = GeocodeOutcome(
             "accepted", "accepted_single_point", 55.0, 12.0, "fixture", "point", "fixture", False, {}
@@ -81,7 +101,7 @@ class GeocodeWorkerDurabilityTests(unittest.TestCase):
         connection = Mock()
         connection.__enter__ = Mock(return_value=connection)
         connection.__exit__ = Mock(return_value=False)
-        job = (uuid.uuid4(), uuid.uuid4(), "private synthetic query", 1, uuid.uuid4())
+        job = (uuid.uuid4(), uuid.uuid4(), "private synthetic query", 1, uuid.uuid4(), "queued")
         adapter = Mock()
         with patch.object(WORKER.psycopg, "connect", return_value=connection), \
              patch.object(WORKER, "get_adapter", return_value=adapter), \

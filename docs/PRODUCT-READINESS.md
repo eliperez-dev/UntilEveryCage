@@ -29,8 +29,9 @@ candidate groups have no rendered point. The API's 4,886
 `unmapped_candidate_count` is the unmapped location-class subset, not all
 no-point candidates. NPI/Ontario/Catalonia updates were hash-verified archived
 replays, not fresh acquisitions. The replay manifest records source hashes,
-aggregate results, and limits. Twenty-four NPI address jobs await provider
-configuration; no provider call occurred. Catalonia has 2,370 local coarse
+aggregate results, and limits. The 24-address Australian NPI Geoapify pilot is
+implemented but blocked pending a locally available key; no provider call has
+occurred, so these baseline map counts remain unchanged. Catalonia has 2,370 local coarse
 references and 1,997 unresolved candidates. All public/release rows remain
 zero; no source release is authorized. See the [current source status](source-status.md)
 and [geospatial replay manifest](../data/manifests/geospatial-replay-integration-20261002.json).

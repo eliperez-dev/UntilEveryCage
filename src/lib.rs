@@ -1372,19 +1372,28 @@ fn real_preview_candidate(row: &tokio_postgres::Row, include_facility_address: b
         stored_latitude,
         stored_longitude,
     );
+    let is_provider_display = kind == "city_postal"
+        && display_geometry_source.as_deref().is_some_and(|value| value.starts_with("Geoapify;"))
+        && safe_real_preview_location("numeric_source_coordinate", false, false, display_latitude, display_longitude).1.is_some();
+    let provider_disclosure = is_provider_display
+        .then(|| real_preview_provider_display_disclosure(display_geometry_source.as_deref()))
+        .flatten();
     let is_city_reference = kind == "city_postal"
+        && !is_provider_display
         && display_geometry_source.is_some()
         && safe_real_preview_location("numeric_source_coordinate", false, false, display_latitude, display_longitude).1.is_some();
     let reference_disclosure = is_city_reference
         .then(|| real_preview_reference_disclosure(display_geometry_source.as_deref()));
-    let coordinate_provenance = if is_city_reference {
+    let coordinate_provenance = if is_city_reference || is_provider_display {
         display_geometry_source.clone()
     } else {
         coordinate_provider.as_ref().map(|provider| format!(
             "{provider}; source-supplied coordinate; precision unverified"
         ))
     };
-    let preview_label = if is_city_reference {
+    let preview_label = if let Some((_, label, _)) = provider_disclosure {
+        label
+    } else if is_city_reference {
         "Approximate city location — not a facility point; private preview only"
     } else if coordinate_method.as_deref() == Some("source_coordinate") {
         "Official source coordinate — positional precision unspecified; private preview only"
@@ -1420,7 +1429,9 @@ fn real_preview_candidate(row: &tokio_postgres::Row, include_facility_address: b
         "evidence_summary": row.get::<_, Option<String>>("evidence_summary"),
         "source_id": row.get::<_, String>("source_id"),
         "location_class": kind,
-        "display_precision": if kind == "numeric_source_coordinate" {
+        "display_precision": if let Some((precision, _, _)) = provider_disclosure {
+            precision
+        } else if kind == "numeric_source_coordinate" {
             real_preview_coordinate_precision(
                 row.get::<_, String>("source_id").as_str(),
                 row.get::<_, Option<String>>("coordinate_precision").as_deref(),
@@ -1431,11 +1442,16 @@ fn real_preview_candidate(row: &tokio_postgres::Row, include_facility_address: b
         "map_scope_reason": row.get::<_, Option<String>>("map_scope_reason"),
         "city": city,
         "postal_code": postal_code,
-        "latitude": if is_city_reference { display_latitude } else { latitude },
-        "longitude": if is_city_reference { display_longitude } else { longitude },
-        "coordinate_precision": if let Some((_, coordinate_precision, _)) = reference_disclosure { Some(coordinate_precision.to_string()) } else if stored_kind == "numeric_source_coordinate" && kind != stored_kind { None::<String> } else { row.get::<_, Option<String>>("coordinate_precision") },
+        "latitude": if is_city_reference || is_provider_display { display_latitude } else { latitude },
+        "longitude": if is_city_reference || is_provider_display { display_longitude } else { longitude },
+        "coordinate_precision": if let Some((precision, _, _)) = provider_disclosure { Some(precision.to_string()) } else if let Some((_, coordinate_precision, _)) = reference_disclosure { Some(coordinate_precision.to_string()) } else if stored_kind == "numeric_source_coordinate" && kind != stored_kind { None::<String> } else { row.get::<_, Option<String>>("coordinate_precision") },
         "coordinate_provenance": coordinate_provenance,
-        "coordinate_review_status": if let Some((_, _, review_status)) = reference_disclosure { review_status } else if coordinate_method.as_deref() == Some("source_coordinate") { "source_coordinate_precision_disclosed" } else if kind == "numeric_source_coordinate" { "pending_human_privacy_review" } else { "coarse_non_point" },
+        "coordinate_confidence_basis": if coordinate_provider.as_deref() == Some("Geoapify") {
+            Some("Geoapify rank.confidence; the 0.90 threshold is a matching heuristic, not a probability or factual review")
+        } else {
+            None::<&str>
+        },
+        "coordinate_review_status": if let Some((_, _, status)) = provider_disclosure { status } else if let Some((_, _, review_status)) = reference_disclosure { review_status } else if coordinate_method.as_deref() == Some("source_coordinate") { "source_coordinate_precision_disclosed" } else if kind == "numeric_source_coordinate" { "pending_human_privacy_review" } else { "coarse_non_point" },
         "factual_review_status": "not_reviewed",
         "privacy_screening_status": "pending",
         "project_approval": false,
@@ -1478,7 +1494,27 @@ fn real_preview_reference_disclosure(source: Option<&str>) -> (&'static str, &'s
     }
 }
 
+fn real_preview_provider_display_disclosure(source: Option<&str>) -> Option<(&'static str, &'static str, &'static str)> {
+    let source = source?;
+    if source.contains("approximate city point") {
+        Some((
+            "provider_locality_approximate",
+            "Approximate Geoapify city location — not a facility point; private preview only",
+            "approximate_provider_locality_private_display",
+        ))
+    } else if source.starts_with("Geoapify;") {
+        Some((
+            "provider_address_point_high_confidence",
+            "Private preview Geoapify address match — high-confidence heuristic; not project-approved or published",
+            "automated_high_confidence_private_display",
+        ))
+    } else {
+        None
+    }
+}
+
 const REAL_PREVIEW_LATEST_SNAPSHOT: &str = "candidate.snapshot_sha256 = COALESCE((SELECT run.snapshot_sha256 FROM real_preview.source_preview_runs run WHERE run.source_id=candidate.source_id ORDER BY run.created_at DESC,run.run_id DESC LIMIT 1),(SELECT manifest.snapshot_sha256 FROM real_preview.source_manifests manifest WHERE manifest.source_id=candidate.source_id ORDER BY manifest.retrieved_at DESC,manifest.snapshot_sha256 DESC LIMIT 1))";
+const REAL_PREVIEW_SNAPSHOT_BOUNDARY_SQL: &str = "WITH sources AS (SELECT source_id FROM real_preview.source_preview_runs UNION SELECT source_id FROM real_preview.source_manifests), latest AS (SELECT sources.source_id,COALESCE((SELECT run.snapshot_sha256 FROM real_preview.source_preview_runs run WHERE run.source_id=sources.source_id ORDER BY run.created_at DESC,run.run_id DESC LIMIT 1),(SELECT manifest.snapshot_sha256 FROM real_preview.source_manifests manifest WHERE manifest.source_id=sources.source_id ORDER BY manifest.retrieved_at DESC,manifest.snapshot_sha256 DESC LIMIT 1)) AS snapshot_sha256 FROM sources) SELECT COALESCE(string_agg(source_id || ':' || snapshot_sha256, ',' ORDER BY source_id), 'no-snapshots') || ':display:' || real_preview.display_evidence_revision() FROM latest";
 
 fn safe_real_preview_location(
     stored_kind: &str,
@@ -1833,7 +1869,7 @@ pub async fn get_real_preview_map_feed_handler(
         return real_preview_unavailable();
     };
     let snapshot_boundary: String = match client.query_one(
-        "WITH sources AS (SELECT source_id FROM real_preview.source_preview_runs UNION SELECT source_id FROM real_preview.source_manifests), latest AS (SELECT sources.source_id,COALESCE((SELECT run.snapshot_sha256 FROM real_preview.source_preview_runs run WHERE run.source_id=sources.source_id ORDER BY run.created_at DESC,run.run_id DESC LIMIT 1),(SELECT manifest.snapshot_sha256 FROM real_preview.source_manifests manifest WHERE manifest.source_id=sources.source_id ORDER BY manifest.retrieved_at DESC,manifest.snapshot_sha256 DESC LIMIT 1)) AS snapshot_sha256 FROM sources) SELECT COALESCE(string_agg(source_id || ':' || snapshot_sha256, ',' ORDER BY source_id), 'no-snapshots') FROM latest",
+        REAL_PREVIEW_SNAPSHOT_BOUNDARY_SQL,
         &[],
     ).await {
         Ok(row) => row.get(0),
@@ -1911,9 +1947,9 @@ WITH sources AS (
          category_key, category_keys
   FROM current_map WHERE display_geometry_source IS NULL OR location_class='numeric_source_coordinate'
   UNION ALL
-  SELECT md5('city-reference:' || ST_X(geom)::text || ':' || ST_Y(geom)::text) AS feature_key,
-         'city_reference'::text AS kind,
-         'city_reference_approximate'::text AS precision,
+  SELECT md5(kind || ':' || ST_X(geom)::text || ':' || ST_Y(geom)::text) AS feature_key,
+         kind,
+         precision,
          source_id,
          ST_Y(ST_Transform(geom,4326)) AS latitude,
          ST_X(ST_Transform(geom,4326)) AS longitude,
@@ -1922,10 +1958,18 @@ WITH sources AS (
          ARRAY['unclassified']::text[] AS category_keys
   FROM (
     SELECT source_id,
+           CASE WHEN display_geometry_source LIKE 'Geoapify; high rank confidence heuristic and normalized source-address%'
+                THEN 'provider_address_point_private'
+                WHEN display_geometry_source LIKE 'Geoapify;%' THEN 'provider_locality_approximate'
+                ELSE 'city_reference' END AS kind,
+           CASE WHEN display_geometry_source LIKE 'Geoapify; high rank confidence heuristic and normalized source-address%'
+                THEN 'provider_address_point_high_confidence'
+                WHEN display_geometry_source LIKE 'Geoapify;%' THEN 'provider_locality_approximate'
+                ELSE 'city_reference_approximate' END AS precision,
            ST_Transform(ST_SetSRID(ST_MakePoint(longitude,latitude),4326),3857) AS geom
     FROM current_map WHERE display_geometry_source IS NOT NULL AND location_class<>'numeric_source_coordinate'
   ) reference_geometries
-  GROUP BY source_id, geom
+  GROUP BY source_id, kind, precision, geom
 )
 SELECT feature_key,kind,precision,source_id,latitude,longitude,weight,category_key,category_keys
 FROM projected
@@ -2193,7 +2237,7 @@ pub async fn get_real_preview_counts_handler(
         return real_preview_unavailable();
     };
     let snapshot_boundary: String = match client.query_one(
-        "WITH sources AS (SELECT source_id FROM real_preview.source_preview_runs UNION SELECT source_id FROM real_preview.source_manifests), latest AS (SELECT sources.source_id,COALESCE((SELECT run.snapshot_sha256 FROM real_preview.source_preview_runs run WHERE run.source_id=sources.source_id ORDER BY run.created_at DESC,run.run_id DESC LIMIT 1),(SELECT manifest.snapshot_sha256 FROM real_preview.source_manifests manifest WHERE manifest.source_id=sources.source_id ORDER BY manifest.retrieved_at DESC,manifest.snapshot_sha256 DESC LIMIT 1)) AS snapshot_sha256 FROM sources) SELECT COALESCE(string_agg(source_id || ':' || snapshot_sha256, ',' ORDER BY source_id), 'no-snapshots') FROM latest",
+        REAL_PREVIEW_SNAPSHOT_BOUNDARY_SQL,
         &[],
     ).await {
         Ok(row) => row.get(0),
@@ -3726,6 +3770,31 @@ mod v2_api_tests {
                 "approximate_city_location_not_facility_point",
             )
         );
+    }
+
+    #[test]
+    fn geoapify_private_display_exposes_precision_and_heuristic_status() {
+        assert_eq!(
+            real_preview_provider_display_disclosure(Some(
+                "Geoapify; high rank confidence heuristic and normalized source-address line match; private preview only",
+            )),
+            Some((
+                "provider_address_point_high_confidence",
+                "Private preview Geoapify address match — high-confidence heuristic; not project-approved or published",
+                "automated_high_confidence_private_display",
+            ))
+        );
+        assert_eq!(
+            real_preview_provider_display_disclosure(Some(
+                "Geoapify; high rank confidence locality and Australia match; approximate city point, not facility coordinates; private preview only",
+            )),
+            Some((
+                "provider_locality_approximate",
+                "Approximate Geoapify city location — not a facility point; private preview only",
+                "approximate_provider_locality_private_display",
+            ))
+        );
+        assert_eq!(real_preview_provider_display_disclosure(Some("Local reference")), None);
     }
 
     #[test]

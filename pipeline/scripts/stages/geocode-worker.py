@@ -22,15 +22,18 @@ from pipeline.geocoding.registry import get_adapter
 from pipeline.geocoding.base import GeocodeOutcome
 
 
-def _claim_job(connection, provider_id: str, worker_id: str, max_attempts: int, lease_timeout: int):
+def _claim_job(connection, provider_id: str, worker_id: str, max_attempts: int, lease_timeout: int, au_npi_pilot: bool = False):
     with connection.transaction():
         job = connection.execute("""
             SELECT job.job_id, job.source_record_id, job.query,
-                   COALESCE(current.attempt_number, 0)
+                   COALESCE(current.attempt_number, 0), current.event_type
             FROM uec.geocode_jobs AS job
             LEFT JOIN uec.geocode_job_current AS current ON current.job_id = job.job_id
             WHERE job.provider_id = %s
-              AND COALESCE(current.attempt_number, 0) < %s
+              AND (
+                    COALESCE(current.attempt_number, 0) < %s
+                    OR (%s::boolean AND current.event_type = 'queued' AND current.attempt_number = 1)
+              )
               AND (
                     current.event_type IS NULL
                     OR current.event_type = 'queued'
@@ -43,14 +46,28 @@ def _claim_job(connection, provider_id: str, worker_id: str, max_attempts: int, 
                   SELECT 1 FROM uec.public_access_restricted restricted
                   WHERE restricted.source_record_id = job.source_record_id
               )
+              AND (
+                    NOT %s::boolean
+                    OR EXISTS (
+                        SELECT 1
+                        FROM real_preview.geocode_targets target
+                        JOIN real_preview.candidates candidate ON candidate.candidate_id=target.candidate_id
+                        WHERE target.job_id=job.job_id
+                          AND candidate.source_id='au.npi.facilities'
+                          AND candidate.country_code='AU'
+                    )
+              )
             ORDER BY job.created_at, job.job_id
             FOR UPDATE OF job SKIP LOCKED
             LIMIT 1
-        """, (provider_id, max_attempts, lease_timeout)).fetchone()
+        """, (provider_id, max_attempts, au_npi_pilot, lease_timeout, au_npi_pilot)).fetchone()
         if not job:
             return None
-        job_id, source_record_id, query, prior_attempt = job
-        attempt = prior_attempt + 1
+        job_id, source_record_id, query, prior_attempt, prior_event_type = job
+        # Queue events use attempt_number=1 in the existing event contract.
+        # For this one-attempt pilot, that denotes the initial queue state,
+        # not a provider call; preserve attempt 1 for its first and only call.
+        attempt = prior_attempt if au_npi_pilot and prior_event_type == "queued" else prior_attempt + 1
         lease_token = uuid.uuid4()
         connection.execute("""
             INSERT INTO uec.geocode_job_events
@@ -61,7 +78,7 @@ def _claim_job(connection, provider_id: str, worker_id: str, max_attempts: int, 
             json.dumps({"lease_timeout_seconds": lease_timeout}),
             datetime.now(timezone.utc),
         ))
-        return job_id, source_record_id, query, attempt, lease_token
+        return job_id, source_record_id, query, attempt, lease_token, prior_event_type
 
 
 def _is_restricted(connection, source_record_id) -> bool:
@@ -82,6 +99,7 @@ def _reserve_request(
     retry_number: int,
     daily_budget: int,
     provider_interval: float,
+    au_npi_pilot: bool = False,
 ):
     """Commit one shared provider/day reservation before outbound work.
 
@@ -95,8 +113,11 @@ def _reserve_request(
             INSERT INTO uec.geocode_provider_budgets
                 (provider_id, budget_date, daily_limit)
             VALUES (%s, %s, %s)
-            ON CONFLICT (provider_id, budget_date) DO NOTHING
-        """, (provider_id, today, daily_budget))
+            ON CONFLICT (provider_id, budget_date) DO UPDATE
+                SET daily_limit = CASE WHEN %s
+                    THEN LEAST(uec.geocode_provider_budgets.daily_limit, EXCLUDED.daily_limit)
+                    ELSE uec.geocode_provider_budgets.daily_limit END
+        """, (provider_id, today, daily_budget, au_npi_pilot))
         row = connection.execute("""
             UPDATE uec.geocode_provider_budgets
                SET reserved_requests = reserved_requests + 1,
@@ -252,18 +273,25 @@ def run(
     lease_timeout: int = 900,
     provider_interval: float = 1.0,
     worker_id: str | None = None,
+    au_npi_pilot: bool = False,
 ) -> int:
     if daily_budget < 1 or max_attempts < 1 or lease_timeout < 1 or retries < 1 or provider_interval < 0:
         raise ValueError("budgets, attempts, lease timeout, retries, and provider interval must be valid")
-    adapter = get_adapter(provider_id)
+    if au_npi_pilot and provider_id != "geoapify":
+        raise ValueError("AU NPI pilot requires Geoapify")
+    if au_npi_pilot and (
+        daily_budget > 24 or limit is None or limit > 24 or provider_interval < 1.0 or max_attempts > 1 or retries > 1
+    ):
+        raise ValueError("AU NPI pilot is bounded to 24 requests, 24 one-attempt jobs, and one shared request per second")
+    adapter = get_adapter(provider_id, au_npi_pilot=au_npi_pilot)
     worker_id = worker_id or f"geocoder-{uuid.uuid4().hex[:12]}"
     processed = 0
     with psycopg.connect(database_url) as connection:
         while limit is None or processed < limit:
-            job = _claim_job(connection, provider_id, worker_id, max_attempts, lease_timeout)
+            job = _claim_job(connection, provider_id, worker_id, max_attempts, lease_timeout, au_npi_pilot)
             if not job:
                 break
-            job_id, source_record_id, query, attempt, lease_token = job
+            job_id, source_record_id, query, attempt, lease_token, _prior_event_type = job
             if _is_restricted(connection, source_record_id):
                 status = _finish_restricted(connection, job_id, attempt, worker_id, lease_token)
                 if status != "stale_lease":
@@ -281,7 +309,7 @@ def run(
                     break
                 reservation_id, reservation_reason = _reserve_request(
                     connection, provider_id, job_id, attempt, retry_number,
-                    daily_budget, provider_interval,
+                    daily_budget, provider_interval, au_npi_pilot,
                 )
                 if reservation_id is None:
                     if reservation_reason == "rate_limited":
@@ -341,12 +369,13 @@ if __name__ == "__main__":
     parser.add_argument("--max-attempts", type=int, default=5)
     parser.add_argument("--lease-timeout", type=int, default=900, help="Seconds before an abandoned started event can be reclaimed")
     parser.add_argument("--provider-interval", type=float, default=1.0, help="Minimum shared seconds between provider reservations")
+    parser.add_argument("--au-npi-pilot", action="store_true", help="Enable only the bounded AU NPI Geoapify matching/display policy")
     parser.add_argument("--worker-id", default=os.environ.get("UEC_GEOCODE_WORKER_ID"))
     args = parser.parse_args()
     count = run(
         args.database_url, args.provider, args.limit, args.delay, args.retries,
         daily_budget=args.daily_budget, max_attempts=args.max_attempts,
         lease_timeout=args.lease_timeout, provider_interval=args.provider_interval,
-        worker_id=args.worker_id,
+        worker_id=args.worker_id, au_npi_pilot=args.au_npi_pilot,
     )
     print(f"provider={args.provider} status=complete processed={count}")

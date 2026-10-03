@@ -16,6 +16,18 @@ describe('real-preview native map feed', () => {
     const feature = parseRealPreviewMapFeed(payload).collection.features[0];
     expect(feature?.properties).toMatchObject({ kind: 'source-coordinate', precision: 'source_provided_unverified' });
   });
+  it('preserves provider address and locality feature kinds and never projects address details', () => {
+    const payload = { ...envelope, data: [
+      { ...envelope.data[0], kind: 'provider_address_point_private', precision: 'provider_address_point_high_confidence' },
+      { ...envelope.data[1], kind: 'provider_locality_approximate', precision: 'provider_locality_approximate' },
+    ] };
+    const features = parseRealPreviewMapFeed(payload).collection.features;
+    expect(features.map(feature => feature.properties)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'provider_address_point_private', precision: 'provider_address_point_high_confidence' }),
+      expect.objectContaining({ kind: 'provider_locality_approximate', precision: 'provider_locality_approximate' }),
+    ]));
+    expect(JSON.stringify(features)).not.toMatch(/address_line|facility address|Geoapify/i);
+  });
   it('projects only minimal coordinates, kind, opaque key, precision, and weight', () => {
     const result = parseRealPreviewMapFeed(envelope);
     expect(result.collection.features).toHaveLength(2);

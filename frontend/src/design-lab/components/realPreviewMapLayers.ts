@@ -44,7 +44,7 @@ export type RealPreviewVisualSettings = Readonly<{
   selectedKey?: string | null;
 }>;
 
-const cityReference = ['any', ['==', ['get', 'precision'], 'city'], ['==', ['get', 'precision'], 'city_reference_approximate']];
+const cityReference = ['any', ['==', ['get', 'precision'], 'city'], ['==', ['get', 'precision'], 'city_reference_approximate'], ['==', ['get', 'precision'], 'provider_locality_approximate']];
 
 /** Pixel radius of a map-scale distance at each feature's latitude. */
 export function referenceRadiusExpression(radiusKm: number): unknown[] {
@@ -88,7 +88,7 @@ export function addRealPreviewMapLayers(
     paint: { 'text-color': '#172019' },
   } as any);
 
-  const reference = ['all', unclustered, ['==', ['get', 'kind'], 'reference']];
+  const reference = ['all', unclustered, ['in', ['get', 'kind'], ['literal', ['reference', 'provider_locality_approximate']]]];
   const weight = ['get', 'weight'];
   map.addLayer({
     id: 'aggregate-outer', type: 'circle', source: 'locations', filter: reference,
@@ -129,7 +129,7 @@ export function addRealPreviewMapLayers(
     paint: { 'text-color': '#86aeca', 'text-halo-color': '#171a18', 'text-halo-width': 1.5 },
   } as any);
 
-  const coordinate = ['all', unclustered, ['==', ['get', 'kind'], 'source-coordinate']];
+  const coordinate = ['all', unclustered, ['in', ['get', 'kind'], ['literal', ['source-coordinate', 'provider_address_point_private']]]];
   map.addLayer({
     id: 'source-coordinate-points', type: 'circle', source: 'locations', filter: coordinate,
     paint: { 'circle-radius': 7, 'circle-color': ['match', ['get', 'precision'], 'source_provided_unverified', '#e0a45d', '#d8c99b'], 'circle-opacity': 0.94, 'circle-stroke-color': '#171a18', 'circle-stroke-width': 2.5 },
