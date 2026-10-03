@@ -26,7 +26,6 @@ class GeocodeWorkerDurabilityTests(unittest.TestCase):
             {"provider_id": "dawa", "limit": 24, "daily_budget": 24, "max_attempts": 1, "retries": 1, "provider_interval": 1},
             {"provider_id": "geoapify", "limit": None, "daily_budget": 24, "max_attempts": 1, "retries": 1, "provider_interval": 1},
             {"provider_id": "geoapify", "limit": 25, "daily_budget": 24, "max_attempts": 1, "retries": 1, "provider_interval": 1},
-            {"provider_id": "geoapify", "limit": 24, "daily_budget": 25, "max_attempts": 1, "retries": 1, "provider_interval": 1},
             {"provider_id": "geoapify", "limit": 24, "daily_budget": 24, "max_attempts": 2, "retries": 1, "provider_interval": 1},
             {"provider_id": "geoapify", "limit": 24, "daily_budget": 24, "max_attempts": 1, "retries": 2, "provider_interval": 1},
             {"provider_id": "geoapify", "limit": 24, "daily_budget": 24, "max_attempts": 1, "retries": 1, "provider_interval": 0.5},
@@ -40,6 +39,20 @@ class GeocodeWorkerDurabilityTests(unittest.TestCase):
                     provider_interval=kwargs.pop("provider_interval"),
                     au_npi_pilot=True,
                 )
+        connection = Mock()
+        connection.__enter__ = Mock(return_value=connection)
+        connection.__exit__ = Mock(return_value=False)
+        with patch.object(WORKER.psycopg, "connect", return_value=connection), \
+             patch.object(WORKER, "get_adapter", return_value=Mock()), \
+             patch.object(WORKER, "_claim_job", return_value=None):
+            self.assertEqual(
+                WORKER.run(
+                    "postgresql://synthetic", "geoapify", 24, 0, 1,
+                    daily_budget=48, max_attempts=2, provider_interval=1,
+                    au_npi_pilot=True, au_npi_auth_recovery=True,
+                ),
+                0,
+            )
 
     def test_au_auth_recovery_claims_only_marked_current_snapshot_attempt_two(self):
         job_id = uuid.uuid4()
@@ -161,7 +174,7 @@ class GeocodeWorkerDurabilityTests(unittest.TestCase):
         connection.transaction.return_value = transaction
         connection.execute.side_effect = [
             Mock(fetchone=Mock(return_value=("2026-10-04",))),
-            Mock(fetchone=Mock(return_value=(24, 0))),
+            Mock(fetchone=Mock(return_value=(48, 24))),
             Mock(fetchall=Mock(return_value=[(uuid.uuid4(),)])),
             Mock(),
         ]

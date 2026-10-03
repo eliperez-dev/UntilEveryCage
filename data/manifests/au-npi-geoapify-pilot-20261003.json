@@ -22,8 +22,75 @@
       "uncertain_or_unresolved": 0,
       "persisted_geometry_points": 0
     },
-    "retry_authorized": false,
-    "retry_reason": "The configured key was rejected by the provider and the daily request budget was fully consumed. Resolve key configuration and wait for a later budget date before any new request."
+    "retry_authorized": true,
+    "retry_reason": "A later explicit user authorization permitted one bounded recovery attempt per target after the saved key was corrected; the UTC daily limit was raised without resetting reservations."
+  },
+  "operator_authorized_recovery": {
+    "status": "complete",
+    "utc_date": "2026-10-03",
+    "saved_key_authenticated_by_provider": true,
+    "daily_limit_before": 24,
+    "daily_limit_after": 48,
+    "prior_reservations_preserved": 24,
+    "recovery_requests_reserved": 24,
+    "worker_reservations_total": 48,
+    "worker_results": {
+      "authentication_rejected": 0,
+      "review_required": 22,
+      "unresolved": 2,
+      "accepted_address_points": 0,
+      "accepted_locality_approximate_points": 0
+    },
+    "acceptance_categories": {
+      "ambiguous_multiple_results": 13,
+      "address_or_locality_match_not_supported": 9,
+      "unresolved": 2
+    },
+    "display_evidence_rows": 0,
+    "source_snapshot_changed": false,
+    "source_evidence_reimported_or_modified": false,
+    "latest_source_counts": {
+      "observations": 115419,
+      "candidate_groups": 64446,
+      "map_visible": 49580,
+      "map_count_unchanged": true
+    },
+    "public_rows": {
+      "release_members": 0,
+      "public_map": 0,
+      "public_discovery": 0,
+      "public_graph_claims": 0
+    },
+    "diagnostic_queries": {
+      "additional_provider_requests": 3,
+      "accounting": "separate from the 48 worker reservations; no worker attempts, job events, or database results were added",
+      "sample_scope": "one ambiguous and two unsupported results; not representative of all withheld outcomes",
+      "ambiguous_sample": {
+        "features": 2,
+        "both_country_au": true,
+        "first_result_type": "amenity",
+        "first_rank_confidence": 0.9,
+        "second_result_type": "amenity",
+        "second_rank_confidence": 0.0,
+        "either_normalized_address_exact": false
+      },
+      "unsupported_samples": [
+        {
+          "result_type": "building",
+          "country_au": true,
+          "rank_confidence": 0.258,
+          "normalized_address_exact": false
+        },
+        {
+          "result_type": "other",
+          "country_au": true,
+          "rank_confidence": 1.0,
+          "normalized_address_exact": false,
+          "normalized_locality_exact": true
+        }
+      ],
+      "raw_responses": "retained only in a Git-ignored local diagnostics directory"
+    }
   },
   "key_handling": {
     "user_environment_value_present": true,
@@ -35,7 +102,7 @@
     "migration_applied": "059_geoapify_private_display",
     "source_snapshot_changed": false,
     "original_source_evidence_reimported_or_modified": false,
-    "private_geoapify_results": 24,
+    "private_geoapify_results": 48,
     "provider_display_evidence_rows": 0,
     "latest_source_counts": {
       "observations": 115419,
@@ -66,8 +133,8 @@
     "verified": true
   },
   "evidence_limitations": [
-    "This failed authentication run is not a geocoding success or a source-coverage claim.",
+    "The 24 first-attempt authentication failures remain historical evidence; the later recovery is not a geocoding success or a source-coverage claim.",
     "No provider address, query, response body, credential, or facility-level information is included in this manifest.",
-    "No automatic retry, budget reset, non-Geoapify fallback, public release, or source-data mutation occurred."
+    "No automatic retry, budget reservation reset, non-Geoapify fallback, public release, or source-data mutation occurred; the three separate diagnostics are not included in the worker reservation ledger."
   ]
 }

@@ -130,10 +130,13 @@ inspect the aggregate result before considering the remaining targets:
 
 ```powershell
 python pipeline/scripts/stages/requeue-au-npi-geoapify-auth-failures.py --limit 1 --confirm-key-verified
-python pipeline/scripts/stages/geocode-worker.py --provider geoapify --au-npi-pilot --au-npi-auth-recovery --limit 1 --daily-budget 24 --max-attempts 2 --retries 1 --provider-interval 1
+python pipeline/scripts/stages/geocode-worker.py --provider geoapify --au-npi-pilot --au-npi-auth-recovery --limit 1 --daily-budget 48 --max-attempts 2 --retries 1 --provider-interval 1
 ```
 
-Only after the first call authenticates and its private outcome is verified,
-repeat both commands with limit 23, and only if the same UTC-day budget has
-capacity. Do not run the recovery requeue while the daily budget is exhausted;
-no requeue or provider request was made for recovery on 2026-10-03 UTC.
+For the completed 2026-10-03 recovery, the user explicitly authorized a daily
+limit of 48 so the existing 24 reservations plus up to 24 recovery requests
+fit without resetting history. Only after the first call authenticates and
+its private outcome is verified, repeat both commands with limit 23. The
+configured limit is a conservative pilot allowance, not the provider account
+quota. See the row-free [pilot manifest](../../data/manifests/au-npi-geoapify-pilot-20261003.json)
+for actual outcomes; no acceptance threshold was loosened.

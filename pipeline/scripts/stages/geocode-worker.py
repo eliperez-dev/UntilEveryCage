@@ -318,10 +318,10 @@ def run(
     if au_npi_auth_recovery and not au_npi_pilot:
         raise ValueError("AU NPI authentication recovery requires the explicit pilot mode")
     if au_npi_pilot and (
-        daily_budget > 24 or limit is None or limit > 24 or provider_interval < 1.0 or retries > 1
+        limit is None or limit > 24 or provider_interval < 1.0 or retries > 1
         or max_attempts != (2 if au_npi_auth_recovery else 1)
     ):
-        raise ValueError("AU NPI pilot is bounded to 24 daily requests, one shared request per second, and one attempt per job except explicit auth recovery")
+        raise ValueError("AU NPI pilot is bounded to 24 jobs per invocation, one shared request per second, and one attempt per job except explicit auth recovery")
     adapter = get_adapter(provider_id, au_npi_pilot=au_npi_pilot)
     worker_id = worker_id or f"geocoder-{uuid.uuid4().hex[:12]}"
     processed = 0

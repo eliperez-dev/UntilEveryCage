@@ -173,13 +173,20 @@ were verified by hash-checked archived replay, not fresh acquisition; see the
 [row-free replay manifest](../data/manifests/geospatial-replay-integration-20261002.json).
 NPI has 24 current-snapshot address-enrichment targets. The bounded
 source-scoped Geoapify activation and private display bridge are implemented.
-The 2026-10-03 pilot made 24 requests, all rejected for authentication; no
-result was accepted and the current 49,580 map-visible count is unchanged.
-Do not retry until the key configuration is corrected and the daily budget is
-available on a later date. The row-free [pilot manifest](../data/manifests/au-npi-geoapify-pilot-20261003.json)
-records the backup and aggregate outcome. The key was present in the local
-user environment but its value is not recorded; a 32-hex formatting check did
-not match (heuristic only, not a provider syntax guarantee).
+The 2026-10-03 first pass made 24 requests, all rejected for authentication.
+After explicit user authorization and key correction, the daily limit was
+raised from 24 to 48 without resetting the 24 prior reservations; 24 bounded
+recovery requests authenticated but produced 22 `review_required` and 2
+`unresolved` outcomes. Their categories were 13 ambiguous multiple results,
+9 unsupported address/locality matches, and 2 unresolved. No address or
+approximate locality point met the existing display rule, so the latest
+49,580 map-visible count is unchanged and provider display evidence remains
+zero. Three additional diagnostic lookups (outside the worker reservation
+ledger) sampled withheld results; none changed matching policy or preview
+data. No public rows were created. The row-free [pilot manifest](../data/manifests/au-npi-geoapify-pilot-20261003.json)
+records the backup and aggregate outcome. The prior 32-hex key-format check
+was only a heuristic; successful recovery requests confirm provider
+authentication without recording the key.
 The row-free backlog audit found 2,021 address-bearing candidates (NPI 24 and
 Catalonia 1,997; only the NPI 24 are in this pilot), 7,959 locality-only
 candidates, and 4,886 with neither address nor locality (FSA 4,291; FSS 595).
@@ -204,7 +211,7 @@ rows remain zero and publication is not authorized.
 | `uk.locations` | partial | artifact_private_only | unknown | blocked | Legacy umbrella only. The England/Wales FSA and Scotland/Northern Ireland FSS identities remain separate; see `docs/country-recon-uk.md` |
 | `fsa_approved_establishments` | verified | verified | not_run | blocked | Strict live private E2E reacquired 2026-10-01: same official 2026-09-01 snapshot (5,342 inputs, 4,291 accepted/candidates, 1,051 quarantined; zero source-count delta), idempotent replay passed. Grouped `uec-taxonomy-v1`: 4,291 derived assignment sets, 3,204 partial and 1,087 unmapped; 402 multi-activity candidates. Zero coordinates/map pins and public rows. One-time private evidence only; England and Wales; FSS remains separate; see `pipeline/sources/uk/fsa_approved/README.md` and `data/manifests/source-evidence-be-uk-20261001.json` |
 | `fss_approved_establishments` | verified | verified | not_run | blocked | Scotland-only strict private E2E (2026-10-02) imported into the authoritative private preview: 728 inputs, 595 accepted/listable candidates, 133 quarantined, zero coordinates/map-visible/public rows; 595 taxonomy sets / 696 derived assignment rows (192 mapped, 424 partial, 80 unmapped); same-database replay passed. FSA England/Wales and Northern Ireland remain separate. Privacy, completeness, recurring retrieval and release remain unapproved; see [manifest](../data/manifests/fss-approved-establishments-e2e-20261002.json) |
-| `au.npi.facilities` | verified | verified | not_run | blocked | Latest retained artifact was hash-verified and archived-replayed (not freshly acquired): 8,140 observations/candidates, 8,116 source-coordinate points and 24 persistent address jobs. Bounded Geoapify pilot made 24 requests on 2026-10-03; all were authentication-rejected, none produced a display point, and the 49,580 total map count remains unchanged. No public rows. Do not retry until key configuration and budget are resolved; see the [pilot manifest](../data/manifests/au-npi-geoapify-pilot-20261003.json), [geospatial replay manifest](../data/manifests/geospatial-replay-integration-20261002.json), and [Australia NPI notes](country-recon-au.md). |
+| `au.npi.facilities` | verified | verified | not_run | blocked | Latest retained artifact was hash-verified and archived-replayed (not freshly acquired): 8,140 observations/candidates, 8,116 source-coordinate points and 24 persistent address jobs. First-pass 24 authentication failures were followed by 24 user-authorized recovery requests: 22 review-required (13 ambiguous, 9 unsupported matches), 2 unresolved, 0 displayed points; current map remains 49,580 and public rows remain 0. Three separate diagnostic lookups sampled withheld cases; no matching rule was loosened. See the [pilot manifest](../data/manifests/au-npi-geoapify-pilot-20261003.json), [geospatial replay manifest](../data/manifests/geospatial-replay-integration-20261002.json), and [Australia NPI notes](country-recon-au.md). |
 | `es.cat.feed-sandach` | verified | verified | not_run | blocked | Latest retained artifact was hash-verified and archived-replayed (not freshly acquired): 12,117 observations / 4,367 candidates; local ICGC exact-code matching resolved 2,370 coarse locality references and left 1,997 unresolved; zero external geocoder calls or public rows. Catalonia only; see [geospatial replay manifest](../data/manifests/geospatial-replay-integration-20261002.json) |
 | `dk.smiley` | verified | verified | not_run | blocked | Latest strict private-preview E2E verified 2026-10-01 04:01:38Z: 58,815 parsed, 58,765 accepted private candidates, 50 quarantined, 0 mapped and 58,765 unmapped. Configured as private-preview eligible, but not included in the active preview DB. All accepted candidates remain held for privacy review; address privacy, category review, source currentness, and publication gates remain open. One-time E2E only, not recurring health or completeness; see `pipeline/sources/denmark/README.md` |
 | `de.locations` | partial | artifact_private_only | not_run | blocked | Current public general-list export parsed privately: 15,788 input, 2,691 normalized, 13,097 quarantined; session-bound export route, unknown effective date, terms/privacy/coverage and project approval remain unresolved; see `docs/germany-source-assessment.md` and `data/manifests/de-be-private-candidates-2026-09-17.json` |

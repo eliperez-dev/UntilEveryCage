@@ -169,13 +169,25 @@
     "as_of": "2026-10-03",
     "manifest": "data/manifests/au-npi-geoapify-pilot-20261003.json",
     "current_snapshot_targets": 24,
-    "requests_reserved": 24,
-    "authentication_rejected": 24,
+    "first_attempt_authentication_rejected": 24,
+    "recovery_requests_reserved": 24,
+    "worker_requests_reserved_total": 48,
+    "recovery_results": {
+      "authentication_rejected": 0,
+      "review_required": 22,
+      "unresolved": 2
+    },
+    "recovery_acceptance_categories": {
+      "ambiguous_multiple_results": 13,
+      "address_or_locality_match_not_supported": 9,
+      "unresolved": 2
+    },
+    "diagnostic_provider_requests_outside_worker_ledger": 3,
     "accepted_points": 0,
     "map_visible_candidates": 49580,
     "map_count_unchanged": true,
     "public_rows": 0,
-    "retry_authorized": false,
+    "recovery_completed": true,
     "publication": "not_authorized"
   },
   "latest_country_capture": "data/manifests/italy-1069-preview-e2e-20261001.json",

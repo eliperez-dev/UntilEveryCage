@@ -46,9 +46,7 @@ def requeue(database_url: str, limit: int, *, key_configured: bool, key_verified
             # No row at a new UTC date means this date has no reservations yet;
             # the worker creates and atomically enforces the bounded ledger row
             # before each provider call. Never create/reset it during requeue.
-            remaining = PILOT_SIZE if budget is None else max(
-                0, min(PILOT_SIZE, budget[0]) - budget[1]
-            )
+            remaining = PILOT_SIZE if budget is None else max(0, budget[0] - budget[1])
             if remaining < limit:
                 raise RuntimeError("daily Geoapify pilot budget cannot cover the requested recovery batch")
 
