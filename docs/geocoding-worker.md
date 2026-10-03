@@ -119,3 +119,21 @@ Provider results remain private. Any future public map use requires separate
 privacy/release authorization and the required Geoapify and OpenStreetMap
 attribution review. See the [Geoapify terms](https://www.geoapify.com/terms-and-conditions/)
 and [geocoding API documentation](https://www.geoapify.com/geocoding-api/).
+
+An operator-authorized recovery path exists only for the 24 current AU NPI
+targets whose first attempt ended as non-retryable `authentication_rejected`.
+It appends a marked attempt-2 queue event without changing prior events,
+results, or request reservations. It requires explicit corrected-key
+confirmation, a configured key, the current snapshot, and sufficient existing
+UTC-day budget; it never raises or resets that budget. Start with limit 1 and
+inspect the aggregate result before considering the remaining targets:
+
+```powershell
+python pipeline/scripts/stages/requeue-au-npi-geoapify-auth-failures.py --limit 1 --confirm-key-verified
+python pipeline/scripts/stages/geocode-worker.py --provider geoapify --au-npi-pilot --au-npi-auth-recovery --limit 1 --daily-budget 24 --max-attempts 2 --retries 1 --provider-interval 1
+```
+
+Only after the first call authenticates and its private outcome is verified,
+repeat both commands with limit 23, and only if the same UTC-day budget has
+capacity. Do not run the recovery requeue while the daily budget is exhausted;
+no requeue or provider request was made for recovery on 2026-10-03 UTC.

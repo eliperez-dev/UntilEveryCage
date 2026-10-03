@@ -14,6 +14,11 @@ SPEC = importlib.util.spec_from_file_location(
 WORKER = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(WORKER)
 
+REQUEUE_PATH = ROOT / "scripts/stages/requeue-au-npi-geoapify-auth-failures.py"
+REQUEUE_SPEC = importlib.util.spec_from_file_location("requeue_au_npi", REQUEUE_PATH)
+REQUEUE = importlib.util.module_from_spec(REQUEUE_SPEC)
+REQUEUE_SPEC.loader.exec_module(REQUEUE)
+
 
 class GeocodeWorkerDurabilityTests(unittest.TestCase):
     def test_au_pilot_requires_explicitly_bounded_worker_options(self):
@@ -35,6 +40,154 @@ class GeocodeWorkerDurabilityTests(unittest.TestCase):
                     provider_interval=kwargs.pop("provider_interval"),
                     au_npi_pilot=True,
                 )
+
+    def test_au_auth_recovery_claims_only_marked_current_snapshot_attempt_two(self):
+        job_id = uuid.uuid4()
+        source_record_id = uuid.uuid4()
+        lease_token = uuid.uuid4()
+
+        class Cursor:
+            def fetchone(self):
+                return (job_id, source_record_id, "synthetic query", 2, "queued")
+
+        class Transaction:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                return False
+
+        class Connection:
+            def __init__(self):
+                self.executed = []
+
+            def transaction(self):
+                return Transaction()
+
+            def execute(self, query, params=None):
+                self.executed.append((query, params))
+                if query.lstrip().startswith("SELECT job.job_id"):
+                    return Cursor()
+                return Cursor()
+
+        connection = Connection()
+        claimed = WORKER._claim_job(
+            connection, "geoapify", "synthetic-worker", 2, 900,
+            au_npi_pilot=True, au_npi_auth_recovery=True,
+        )
+        self.assertEqual(claimed[3], 2)
+        self.assertEqual(connection.executed[1][1][1], 2)
+        claim_sql, claim_params = connection.executed[0]
+        self.assertIn("current.attempt_number = 2", claim_sql)
+        self.assertIn("current.details->>'recovery_reason' = 'operator_authorized_geoapify_key_recovery'", claim_sql)
+        self.assertIn("candidate.snapshot_sha256=COALESCE(", claim_sql)
+        self.assertIn("NOT %s::boolean AND (", claim_sql)
+        self.assertIn("current.event_type = 'queued' AND (", claim_sql)
+        self.assertNotIn("OR (%s::boolean AND current.event_type = 'started'", claim_sql)
+        self.assertTrue(claim_params[3])
+        self.assertTrue(claim_params[6])
+
+    def test_au_attempt_two_requires_explicit_recovery_mode_and_uses_new_reservation_identity(self):
+        connection = Mock()
+        connection.__enter__ = Mock(return_value=connection)
+        connection.__exit__ = Mock(return_value=False)
+        job = (uuid.uuid4(), uuid.uuid4(), "private synthetic query", 2, uuid.uuid4(), "queued")
+        adapter = Mock()
+        adapter.geocode.return_value = GeocodeOutcome(
+            "unresolved", "unresolved", None, None, None, None, "fixture", False, {}
+        )
+        with patch.object(WORKER.psycopg, "connect", return_value=connection), \
+             patch.object(WORKER, "get_adapter", return_value=adapter), \
+             patch.object(WORKER, "_claim_job", side_effect=[job, None]), \
+             patch.object(WORKER, "_is_restricted", return_value=False), \
+             patch.object(WORKER, "_reserve_request", return_value=(uuid.uuid4(), None)) as reserve, \
+             patch.object(WORKER, "_persist_outcome", return_value="unresolved"):
+            processed = WORKER.run(
+                "postgresql://synthetic", "geoapify", 1, 0, 1,
+                daily_budget=24, max_attempts=2, provider_interval=1,
+                worker_id="synthetic-worker", au_npi_pilot=True,
+                au_npi_auth_recovery=True,
+            )
+        self.assertEqual(processed, 1)
+        self.assertEqual(adapter.geocode.call_count, 1)
+        self.assertEqual(reserve.call_args.args[3:5], (2, 1))
+        durability = (ROOT / "migrations/040_geocode_worker_durability.sql").read_text()
+        self.assertIn("UNIQUE (job_id, attempt_number, retry_number)", durability)
+
+    def test_au_recovery_requeue_refuses_exhausted_budget_before_selecting_targets(self):
+        connection = Mock()
+        connection.__enter__ = Mock(return_value=connection)
+        connection.__exit__ = Mock(return_value=False)
+        connection.transaction.return_value.__enter__ = Mock(return_value=None)
+        connection.transaction.return_value.__exit__ = Mock(return_value=False)
+        connection.execute.side_effect = [Mock(fetchone=Mock(return_value=("2026-10-03",))),
+                                          Mock(fetchone=Mock(return_value=(24, 24)))]
+        with patch.object(REQUEUE.psycopg, "connect", return_value=connection):
+            with self.assertRaisesRegex(RuntimeError, "budget"):
+                REQUEUE.requeue("postgresql://synthetic", 1, key_configured=True, key_verified=True)
+        self.assertEqual(connection.execute.call_count, 2)
+        self.assertFalse(any("INSERT INTO uec.geocode_job_events" in call.args[0]
+                             for call in connection.execute.call_args_list))
+
+    def test_au_recovery_allows_new_utc_day_without_creating_or_resetting_budget(self):
+        connection = Mock()
+        connection.__enter__ = Mock(return_value=connection)
+        connection.__exit__ = Mock(return_value=False)
+        transaction = Mock()
+        transaction.__enter__ = Mock(return_value=None)
+        transaction.__exit__ = Mock(return_value=False)
+        connection.transaction.return_value = transaction
+        connection.execute.side_effect = [
+            Mock(fetchone=Mock(return_value=("2026-10-04",))),
+            Mock(fetchone=Mock(return_value=None)),
+            Mock(fetchall=Mock(return_value=[])),
+        ]
+        with patch.object(REQUEUE.psycopg, "connect", return_value=connection):
+            outcome = REQUEUE.requeue(
+                "postgresql://synthetic", 1, key_configured=True, key_verified=True
+            )
+        self.assertEqual(outcome["remaining_budget"], 24)
+        self.assertEqual(outcome["requeued"], 0)
+        sql_statements = [call.args[0] for call in connection.execute.call_args_list]
+        self.assertFalse(any("INSERT INTO uec.geocode_provider_budgets" in sql for sql in sql_statements))
+
+    def test_au_recovery_appends_only_auth_failure_attempt_two_and_never_calls_provider(self):
+        connection = Mock()
+        connection.__enter__ = Mock(return_value=connection)
+        connection.__exit__ = Mock(return_value=False)
+        transaction = Mock()
+        transaction.__enter__ = Mock(return_value=None)
+        transaction.__exit__ = Mock(return_value=False)
+        connection.transaction.return_value = transaction
+        connection.execute.side_effect = [
+            Mock(fetchone=Mock(return_value=("2026-10-04",))),
+            Mock(fetchone=Mock(return_value=(24, 0))),
+            Mock(fetchall=Mock(return_value=[(uuid.uuid4(),)])),
+            Mock(),
+        ]
+        with patch.object(REQUEUE.psycopg, "connect", return_value=connection):
+            outcome = REQUEUE.requeue(
+                "postgresql://synthetic", 1, key_configured=True, key_verified=True
+            )
+        self.assertEqual(outcome["requeued"], 1)
+        target_sql = connection.execute.call_args_list[2].args[0]
+        self.assertIn("current.event_type='failed'", target_sql)
+        self.assertIn("current.attempt_number=1", target_sql)
+        self.assertIn("current.retryable=false", target_sql)
+        self.assertIn("result.response->>'error'='authentication_rejected'", target_sql)
+        self.assertIn("candidate.snapshot_sha256=latest.snapshot_sha256", target_sql)
+        insert_sql, insert_params = connection.execute.call_args_list[3].args
+        self.assertIn("VALUES (%s,'queued',2,false,%s)", insert_sql)
+        self.assertIn(REQUEUE.RECOVERY_REASON, insert_params[1])
+
+    def test_au_recovery_requeue_requires_explicit_verified_key(self):
+        for configured, verified in ((False, True), (True, False)):
+            with self.subTest(configured=configured, verified=verified):
+                with self.assertRaises(ValueError):
+                    REQUEUE.requeue(
+                        "postgresql://synthetic", 1,
+                        key_configured=configured, key_verified=verified,
+                    )
 
     def test_migration_adds_lease_fence_and_atomic_request_ledger(self):
         migration = (ROOT / "migrations/040_geocode_worker_durability.sql").read_text()

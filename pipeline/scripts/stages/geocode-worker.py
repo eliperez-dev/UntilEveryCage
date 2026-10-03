@@ -21,8 +21,18 @@ sys.path.insert(0, str(ROOT))
 from pipeline.geocoding.registry import get_adapter
 from pipeline.geocoding.base import GeocodeOutcome
 
+AU_NPI_AUTH_REQUEUE_REASON = "operator_authorized_geoapify_key_recovery"
 
-def _claim_job(connection, provider_id: str, worker_id: str, max_attempts: int, lease_timeout: int, au_npi_pilot: bool = False):
+
+def _claim_job(
+    connection,
+    provider_id: str,
+    worker_id: str,
+    max_attempts: int,
+    lease_timeout: int,
+    au_npi_pilot: bool = False,
+    au_npi_auth_recovery: bool = False,
+):
     with connection.transaction():
         job = connection.execute("""
             SELECT job.job_id, job.source_record_id, job.query,
@@ -32,15 +42,25 @@ def _claim_job(connection, provider_id: str, worker_id: str, max_attempts: int, 
             WHERE job.provider_id = %s
               AND (
                     COALESCE(current.attempt_number, 0) < %s
-                    OR (%s::boolean AND current.event_type = 'queued' AND current.attempt_number = 1)
+                    OR (%s::boolean AND NOT %s::boolean
+                        AND current.event_type = 'queued' AND current.attempt_number = 1)
+                    OR (%s::boolean AND current.event_type = 'queued'
+                        AND current.attempt_number = 2
+                        AND current.details->>'recovery_reason' = 'operator_authorized_geoapify_key_recovery')
               )
               AND (
-                    current.event_type IS NULL
-                    OR current.event_type = 'queued'
-                    OR (current.event_type = 'failed' AND current.retryable
-                        AND (current.next_attempt_at IS NULL OR current.next_attempt_at <= now()))
-                    OR (current.event_type = 'started'
-                        AND current.occurred_at < now() - (%s * interval '1 second'))
+                    (NOT %s::boolean AND current.event_type IS NULL)
+                    OR (current.event_type = 'queued' AND (
+                        NOT %s::boolean
+                        OR (current.attempt_number = 2
+                            AND current.details->>'recovery_reason' = 'operator_authorized_geoapify_key_recovery')
+                    ))
+                    OR (NOT %s::boolean AND (
+                        (current.event_type = 'failed' AND current.retryable
+                         AND (current.next_attempt_at IS NULL OR current.next_attempt_at <= now()))
+                        OR (current.event_type = 'started'
+                            AND current.occurred_at < now() - (%s * interval '1 second'))
+                    ))
               )
               AND NOT EXISTS (
                   SELECT 1 FROM uec.public_access_restricted restricted
@@ -53,20 +73,35 @@ def _claim_job(connection, provider_id: str, worker_id: str, max_attempts: int, 
                         FROM real_preview.geocode_targets target
                         JOIN real_preview.candidates candidate ON candidate.candidate_id=target.candidate_id
                         WHERE target.job_id=job.job_id
+                          AND target.source_id='au.npi.facilities'
                           AND candidate.source_id='au.npi.facilities'
                           AND candidate.country_code='AU'
+                          AND candidate.location_class='city_postal'
+                          AND target.snapshot_sha256=candidate.snapshot_sha256
+                          AND candidate.snapshot_sha256=COALESCE(
+                              (SELECT run.snapshot_sha256 FROM real_preview.source_preview_runs run
+                               WHERE run.source_id='au.npi.facilities'
+                               ORDER BY run.created_at DESC,run.run_id DESC LIMIT 1),
+                              (SELECT manifest.snapshot_sha256 FROM real_preview.source_manifests manifest
+                               WHERE manifest.source_id='au.npi.facilities'
+                               ORDER BY manifest.retrieved_at DESC,manifest.snapshot_sha256 DESC LIMIT 1)
+                          )
                     )
               )
             ORDER BY job.created_at, job.job_id
             FOR UPDATE OF job SKIP LOCKED
             LIMIT 1
-        """, (provider_id, max_attempts, au_npi_pilot, lease_timeout, au_npi_pilot)).fetchone()
+        """, (
+            provider_id, max_attempts, au_npi_pilot, au_npi_auth_recovery,
+            au_npi_auth_recovery, au_npi_pilot, au_npi_auth_recovery,
+            au_npi_pilot, lease_timeout, au_npi_pilot,
+        )).fetchone()
         if not job:
             return None
         job_id, source_record_id, query, prior_attempt, prior_event_type = job
         # Queue events use attempt_number=1 in the existing event contract.
-        # For this one-attempt pilot, that denotes the initial queue state,
-        # not a provider call; preserve attempt 1 for its first and only call.
+        # Queue attempt 1 is the initial pilot state. The opt-in recovery event
+        # is explicitly queued at attempt 2 and consumes a distinct reservation.
         attempt = prior_attempt if au_npi_pilot and prior_event_type == "queued" else prior_attempt + 1
         lease_token = uuid.uuid4()
         connection.execute("""
@@ -274,21 +309,28 @@ def run(
     provider_interval: float = 1.0,
     worker_id: str | None = None,
     au_npi_pilot: bool = False,
+    au_npi_auth_recovery: bool = False,
 ) -> int:
     if daily_budget < 1 or max_attempts < 1 or lease_timeout < 1 or retries < 1 or provider_interval < 0:
         raise ValueError("budgets, attempts, lease timeout, retries, and provider interval must be valid")
     if au_npi_pilot and provider_id != "geoapify":
         raise ValueError("AU NPI pilot requires Geoapify")
+    if au_npi_auth_recovery and not au_npi_pilot:
+        raise ValueError("AU NPI authentication recovery requires the explicit pilot mode")
     if au_npi_pilot and (
-        daily_budget > 24 or limit is None or limit > 24 or provider_interval < 1.0 or max_attempts > 1 or retries > 1
+        daily_budget > 24 or limit is None or limit > 24 or provider_interval < 1.0 or retries > 1
+        or max_attempts != (2 if au_npi_auth_recovery else 1)
     ):
-        raise ValueError("AU NPI pilot is bounded to 24 requests, 24 one-attempt jobs, and one shared request per second")
+        raise ValueError("AU NPI pilot is bounded to 24 daily requests, one shared request per second, and one attempt per job except explicit auth recovery")
     adapter = get_adapter(provider_id, au_npi_pilot=au_npi_pilot)
     worker_id = worker_id or f"geocoder-{uuid.uuid4().hex[:12]}"
     processed = 0
     with psycopg.connect(database_url) as connection:
         while limit is None or processed < limit:
-            job = _claim_job(connection, provider_id, worker_id, max_attempts, lease_timeout, au_npi_pilot)
+            job = _claim_job(
+                connection, provider_id, worker_id, max_attempts, lease_timeout,
+                au_npi_pilot, au_npi_auth_recovery,
+            )
             if not job:
                 break
             job_id, source_record_id, query, attempt, lease_token, _prior_event_type = job
@@ -370,6 +412,7 @@ if __name__ == "__main__":
     parser.add_argument("--lease-timeout", type=int, default=900, help="Seconds before an abandoned started event can be reclaimed")
     parser.add_argument("--provider-interval", type=float, default=1.0, help="Minimum shared seconds between provider reservations")
     parser.add_argument("--au-npi-pilot", action="store_true", help="Enable only the bounded AU NPI Geoapify matching/display policy")
+    parser.add_argument("--au-npi-auth-recovery", action="store_true", help="Permit only queued attempt-2 events carrying the explicit AU NPI authentication recovery marker")
     parser.add_argument("--worker-id", default=os.environ.get("UEC_GEOCODE_WORKER_ID"))
     args = parser.parse_args()
     count = run(
@@ -377,5 +420,6 @@ if __name__ == "__main__":
         daily_budget=args.daily_budget, max_attempts=args.max_attempts,
         lease_timeout=args.lease_timeout, provider_interval=args.provider_interval,
         worker_id=args.worker_id, au_npi_pilot=args.au_npi_pilot,
+        au_npi_auth_recovery=args.au_npi_auth_recovery,
     )
     print(f"provider={args.provider} status=complete processed={count}")
