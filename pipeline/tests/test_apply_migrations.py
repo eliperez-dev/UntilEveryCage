@@ -108,6 +108,48 @@ class MigrationRunnerTests(unittest.TestCase):
                     MODULE.apply("postgresql://test", root)
             self.assertFalse(any("SELECT 1;" in query for query, _, _ in connection.executed))
 
+    def test_applied_lf_migration_accepts_crlf_checkout_without_reexecution(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            migration = root / "001_first.sql"
+            migration.write_bytes(b"SELECT 1;\n")
+            connection = Connection()
+            with patch.object(MODULE.psycopg, "connect", return_value=connection):
+                self.assertEqual(MODULE.apply("postgresql://test", root), ["001_first"])
+            migration.write_bytes(b"SELECT 1;\r\n")
+            with patch.object(MODULE.psycopg, "connect", return_value=connection):
+                self.assertEqual(MODULE.apply("postgresql://test", root), [])
+            self.assertEqual(sum(query.strip() == "SELECT 1;" for query, _, _ in connection.executed), 1)
+            self.assertEqual(connection.ledger["001_first"][0], MODULE.hashlib.sha256(b"SELECT 1;\n").hexdigest())
+
+    def test_applied_crlf_migration_accepts_lf_checkout_without_reexecution(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            migration = root / "001_first.sql"
+            migration.write_bytes(b"SELECT 1;\r\n")
+            connection = Connection()
+            with patch.object(MODULE.psycopg, "connect", return_value=connection):
+                self.assertEqual(MODULE.apply("postgresql://test", root), ["001_first"])
+            migration.write_bytes(b"SELECT 1;\n")
+            with patch.object(MODULE.psycopg, "connect", return_value=connection):
+                self.assertEqual(MODULE.apply("postgresql://test", root), [])
+            self.assertEqual(sum(query.strip() == "SELECT 1;" for query, _, _ in connection.executed), 1)
+            self.assertEqual(connection.ledger["001_first"][0], MODULE.hashlib.sha256(b"SELECT 1;\r\n").hexdigest())
+
+    def test_applied_migration_rejects_sql_edit_even_with_newline_conversion(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            migration = root / "001_first.sql"
+            migration.write_bytes(b"SELECT 1;\n")
+            connection = Connection()
+            with patch.object(MODULE.psycopg, "connect", return_value=connection):
+                MODULE.apply("postgresql://test", root)
+            migration.write_bytes(b"SELECT 2;\r\n")
+            with patch.object(MODULE.psycopg, "connect", return_value=connection):
+                with self.assertRaisesRegex(ValueError, "checksum changed"):
+                    MODULE.apply("postgresql://test", root)
+            self.assertEqual(sum(query.strip() == "SELECT 1;" for query, _, _ in connection.executed), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

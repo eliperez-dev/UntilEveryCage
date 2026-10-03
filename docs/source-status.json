@@ -165,6 +165,19 @@
     "external_geocoder_calls": 0,
     "publication": "not_authorized"
   },
+  "latest_au_npi_geoapify_pilot": {
+    "as_of": "2026-10-03",
+    "manifest": "data/manifests/au-npi-geoapify-pilot-20261003.json",
+    "current_snapshot_targets": 24,
+    "requests_reserved": 24,
+    "authentication_rejected": 24,
+    "accepted_points": 0,
+    "map_visible_candidates": 49580,
+    "map_count_unchanged": true,
+    "public_rows": 0,
+    "retry_authorized": false,
+    "publication": "not_authorized"
+  },
   "latest_country_capture": "data/manifests/italy-1069-preview-e2e-20261001.json",
   "legacy_archive": {
     "manifest": "data/manifests/legacy-files.csv",

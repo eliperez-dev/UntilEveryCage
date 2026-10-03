@@ -23,7 +23,15 @@ def activate(database_url: str) -> dict[str, int]:
     with psycopg.connect(database_url) as connection:
         with connection.transaction():
             targets = connection.execute(
-                """SELECT candidate.candidate_id, candidate.snapshot_sha256,
+                """WITH latest AS (
+                       SELECT COALESCE(
+                           (SELECT run.snapshot_sha256 FROM real_preview.source_preview_runs run
+                            WHERE run.source_id=%s ORDER BY run.created_at DESC,run.run_id DESC LIMIT 1),
+                           (SELECT manifest.snapshot_sha256 FROM real_preview.source_manifests manifest
+                            WHERE manifest.source_id=%s ORDER BY manifest.retrieved_at DESC,manifest.snapshot_sha256 DESC LIMIT 1)
+                       ) AS snapshot_sha256
+                   )
+                   SELECT candidate.candidate_id, candidate.snapshot_sha256,
                           candidate.source_id, candidate.source_group_key,
                           candidate.country_code, placeholder.source_record_id,
                           placeholder.query
@@ -32,13 +40,15 @@ def activate(database_url: str) -> dict[str, int]:
                      JOIN real_preview.candidates candidate ON candidate.candidate_id=old_target.candidate_id
                      JOIN real_preview.candidate_private_location_evidence private_location
                        ON private_location.candidate_id=candidate.candidate_id
+                     CROSS JOIN latest
                     WHERE candidate.source_id=%s
+                      AND candidate.snapshot_sha256=latest.snapshot_sha256
                       AND candidate.country_code='AU'
                       AND candidate.location_class='city_postal'
                       AND placeholder.provider_id=%s
                       AND NULLIF(BTRIM(private_location.location_evidence->>'address'),'') IS NOT NULL
                     ORDER BY candidate.candidate_id""",
-                (SOURCE_ID, PLACEHOLDER_PROVIDER),
+                (SOURCE_ID, SOURCE_ID, SOURCE_ID, PLACEHOLDER_PROVIDER),
             ).fetchall()
             if len(targets) != PILOT_SIZE:
                 raise RuntimeError("AU Geoapify pilot target set is not the expected bounded size")

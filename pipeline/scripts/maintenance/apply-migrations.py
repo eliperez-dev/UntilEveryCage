@@ -17,6 +17,18 @@ def migration_files(directory: Path) -> list[Path]:
     return files
 
 
+def checksum_matches(recorded: str, content: bytes) -> bool:
+    """Accept only raw or LF/CRLF-equivalent migration bytes for applied SQL."""
+    lf_content = content.replace(b"\r\n", b"\n")
+    crlf_content = lf_content.replace(b"\n", b"\r\n")
+    accepted = {
+        hashlib.sha256(content).hexdigest(),
+        hashlib.sha256(lf_content).hexdigest(),
+        hashlib.sha256(crlf_content).hexdigest(),
+    }
+    return recorded.strip() in accepted
+
+
 def apply(database_url: str, directory: Path) -> list[str]:
     files = migration_files(directory)
     applied: list[str] = []
@@ -48,14 +60,18 @@ def apply(database_url: str, directory: Path) -> list[str]:
             )
         for path in files:
             version = path.stem
-            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            content = path.read_bytes()
+            # Preserve the exact on-disk digest for new ledger rows. For rows
+            # already recorded, also accept only the equivalent LF/CRLF byte
+            # representations that Windows checkout conversion can produce.
+            digest = hashlib.sha256(content).hexdigest()
             with connection.transaction():
                 row = connection.execute(
                     "SELECT sha256 FROM uec.schema_migrations WHERE version = %s",
                     (version,),
                 ).fetchone()
                 if row:
-                    if row[0] != digest:
+                    if not checksum_matches(row[0], content):
                         raise ValueError(f"migration checksum changed after application: {version}")
                     continue
                 sql = path.read_text(encoding="utf-8")

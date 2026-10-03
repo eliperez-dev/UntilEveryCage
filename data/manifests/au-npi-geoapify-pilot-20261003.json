@@ -1,0 +1,73 @@
+{
+  "manifest_type": "row_free_private_geocoding_pilot",
+  "verified_date_utc": "2026-10-03",
+  "source_id": "au.npi.facilities",
+  "provider": "Geoapify",
+  "scope": "Single bounded current-snapshot private preview pilot; no acquisition, reimport, publication, or public release.",
+  "current_snapshot_targets": 24,
+  "retained_placeholder_provider_targets_across_history": 48,
+  "activation": {
+    "status": "complete",
+    "queued_geoapify_jobs": 24,
+    "provider_calls": 0
+  },
+  "worker": {
+    "status": "authentication_rejected",
+    "attempts_reserved": 24,
+    "daily_budget": 24,
+    "results": {
+      "authentication_rejected": 24,
+      "accepted_address_points": 0,
+      "accepted_locality_approximate_points": 0,
+      "uncertain_or_unresolved": 0,
+      "persisted_geometry_points": 0
+    },
+    "retry_authorized": false,
+    "retry_reason": "The configured key was rejected by the provider and the daily request budget was fully consumed. Resolve key configuration and wait for a later budget date before any new request."
+  },
+  "key_handling": {
+    "user_environment_value_present": true,
+    "value_recorded": false,
+    "heuristic_32_hex_format_check": false,
+    "format_check_limitation": "Heuristic only; not a statement of the provider's accepted key syntax."
+  },
+  "database": {
+    "migration_applied": "059_geoapify_private_display",
+    "source_snapshot_changed": false,
+    "original_source_evidence_reimported_or_modified": false,
+    "private_geoapify_results": 24,
+    "provider_display_evidence_rows": 0,
+    "latest_source_counts": {
+      "observations": 115419,
+      "candidate_groups": 64446,
+      "map_visible": 49580,
+      "numeric_source_points": 45417,
+      "coarse_references": 4163,
+      "candidates_without_rendered_point": 14866
+    },
+    "latest_map_count_unchanged": true,
+    "public_release_member_rows": 0,
+    "public_map_rows": 0
+  },
+  "isolated_current_api_verification": {
+    "status": "verified",
+    "port": 38002,
+    "process_stopped": true,
+    "facility_candidate_count": 64446,
+    "numeric_coordinate_count": 45417,
+    "city_postal_count": 14143,
+    "map_visible_count": 49580,
+    "unmapped_candidate_count": 4886
+  },
+  "pre_change_backup": {
+    "path": "D:/UntilEveryCage-backups/database/address-pilot-20261002/uec.dump",
+    "sha256": "40FC9D27A549F53A672C9E780243D4168FC5A959E74A4F5893231047B5B09C16",
+    "bytes": 49954106,
+    "verified": true
+  },
+  "evidence_limitations": [
+    "This failed authentication run is not a geocoding success or a source-coverage claim.",
+    "No provider address, query, response body, credential, or facility-level information is included in this manifest.",
+    "No automatic retry, budget reset, non-Geoapify fallback, public release, or source-data mutation occurred."
+  ]
+}
