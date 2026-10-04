@@ -20,6 +20,41 @@ for implementation claims. A count in this document is an aggregate candidate
 or evidence count, never a count of approved, accurate, operating, or
 publishable facilities unless explicitly labelled that way.
 
+## v0 dataset release sequence
+
+**Maintainer decision: 2026-10-03.** Dataset release names are independent of
+the V2 website and the legacy V1 application. `v0` is the first public dataset
+release; `v1` is a later dataset release, potentially adding countries and
+source families. These names do not imply that either release exists yet.
+
+1. **Candidate sprint:** the proposed UK location-recovery, Denmark integration,
+   and Netherlands onboarding sprint closes the v0 candidate intake window.
+   Its integrated, verified output becomes the v0 release-candidate pool, not
+   an automatically approved or published dataset. Record exact source
+   snapshots, hashes, transformations, counts, and outstanding exclusions.
+2. **Human-review sprint:** the maintainer reviews that bounded pool and records
+   source/profile-level publication decisions, representative checks, and
+   specific exceptions. Do not create a blanket requirement for manual
+   confirmation of every facility, geocode, or exact/inferred graph edge.
+   Existing privacy, terms, evidence, and release controls still apply.
+3. **Public v0 data release:** after approval and verification of the applicable
+   publication controls, publish the approved snapshot as v0 and freeze its
+   membership and source versions. A candidate may be excluded or deferred;
+   a new country or optional frontend feature must not restart candidate intake
+   or postpone v0 solely because it is unfinished.
+
+Freeze means no silent refreshes or additions to the published snapshot.
+Corrections, suppression, and necessary removals still apply to v0 and its
+caches/exports under [ETHICS.md](ETHICS.md); record changes transparently.
+Further acquisition may continue privately toward v1 without altering v0.
+The public data release and the V1-to-V2 website cutover are separate milestones;
+an unfinished optional visualization is not a data-release gate.
+
+**Current state:** sequence agreed; candidate sprint not yet exercised, human
+review pending, and no v0 publication authorized by this decision. This
+sequence governs near-term dataset delivery; historical sprint descriptions
+below remain evidence, not reasons to reopen the expansion scope.
+
 ## Verified checkpoint
 
 **Current retained private preview (2026-10-02):** the latest-source snapshot
@@ -29,10 +64,15 @@ candidate groups have no rendered point. The API's 4,886
 `unmapped_candidate_count` is the unmapped location-class subset, not all
 no-point candidates. NPI/Ontario/Catalonia updates were hash-verified archived
 replays, not fresh acquisitions. The replay manifest records source hashes,
-aggregate results, and limits. The 24-address Australian NPI Geoapify pilot
-made 24 bounded requests, all authentication-rejected; no result was accepted
-and these baseline map counts remain unchanged. Do not retry until key
-configuration is corrected and the daily budget is available on a later date.
+aggregate results, and limits. The Australian NPI Geoapify pilot's initial
+24 authentication failures were preserved. After the saved key was corrected,
+24 user-authorized recovery requests authenticated: 22 required review and
+2 were unresolved; no point met the existing private-display rule. Three
+additional diagnostic lookups did not change that rule or display state.
+The 24-target pilot scope is separate from the configurable provider daily
+allowance; the earlier self-imposed 24-request daily cap is not a provider
+quota or a reason to delay authorized work. These baseline map counts remain
+unchanged. See [source status](source-status.md) for the current run boundary.
 See the [row-free pilot manifest](../data/manifests/au-npi-geoapify-pilot-20261003.json).
 Catalonia has 2,370 local coarse
 references and 1,997 unresolved candidates. All public/release rows remain
@@ -628,6 +668,7 @@ and source rights decisions belong in [architecture/source-rights-decisions.md](
 
 | Date | Decision | Scope | Evidence / authority | Next review |
 | --- | --- | --- | --- | --- |
+| 2026-10-03 | Close v0 candidate intake after the UK/Denmark/Netherlands expansion sprint, then conduct human review and publish an approved frozen v0 dataset; later expansion belongs to v1. | Dataset release sequence, separate from V2 website delivery and legacy V1. | Maintainer instruction in this chat; [v0 release sequence](#v0-dataset-release-sequence). Candidate status is not publication approval; applicable ethics and publication controls remain required. | At candidate-sprint integration and before public v0 publication. |
 | 2026-09-20 | Establish this document as the sole product-level readiness and overall V2 roadmap authority. | V2 product completeness and V1 replacement sequencing. | C1 approved scope; governing policy remains [ETHICS.md](ETHICS.md). | At the next integration sprint or any material gate change. |
 | 2026-09-20 | Keep V1 public and V2 private/local until a reviewed named release completes all launch gates. | All public application surfaces. | [V2 API contract](api/v2-contract.md), [source status](source-status.json), [reviewed release guidance](reviewed-demonstration-release.md). | Before private E2E trial. |
 | 2026-09-20 | Accept the France, Denmark, and US sanitized private lifecycle rehearsals as backend readiness evidence only; no rehearsal changes approval, publication, or facility identity status. | B3 selective convergence integration. | [France rehearsal](../data/manifests/france-golden-country-private-2026-09-18.json), [Denmark rehearsal](../data/manifests/denmark-private-golden-rehearsal-2026-09-18.json), [US rehearsal](../data/manifests/us-private-golden-rehearsal-2026-09-18.json). | Re-run against a named reviewed private release before frontend cutover. |
