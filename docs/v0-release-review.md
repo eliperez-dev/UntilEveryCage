@@ -65,7 +65,7 @@ cache, or publication audit.
 | `be.locations` | 4,032 | 1,794 | live acquisition |
 | `br.sif.registered` | 24,174 | 3,147 | live acquisition; exact retrieval evidence still needs resolution |
 | `ca.ontario.meat-plants` | 460 | 460 | archived replay |
-| `dk.smiley` | 58,795 | 58,795 | live acquisition |
+| `dk.smiley` | 58,795 | 58,795 | verified retained-artifact replay after live retrieval |
 | `es.cat.feed-sandach` | 12,117 | 4,367 | archived replay |
 | `fr.dgal.section-i` | 1,449 | 1,449 | offline handoff |
 | `fr.dgal.section-ii` | 1,068 | 1,067 | offline handoff |
@@ -97,13 +97,17 @@ candidates and remains low-yield. Keep source labels and activity evidence in
 the private source record; these aggregates alone do not support relabeling or
 merging candidates.
 
-The separate frozen review database staging operation is still pending NL
-freeze metadata. Do not describe any canonical v0 release as staged, validated,
+All twelve provisional handoff packages passed the bridge's evidence checks.
+Their freeze metadata is prepared locally; final source selection awaits the
+maintainer's choice to defer or reacquire the three evidence-blocked sources.
+The database backup has been restored into separate `uec_v0_review`, with
+migration 061 applied, but canonical candidate staging has not yet run.
+Do not describe any canonical v0 release as staged, validated,
 promoted, or public until its exact bridge run and subsequent review/activation
 steps are verified. The independently verified protected database backup is
-`D:\\UntilEveryCage-backups\\database\\v0-candidate-20261004\\uec-frozen.dump`
+`D:\UntilEveryCage-backups\database\v0-candidate-20261004\uec-frozen.dump`
 (71,598,797 bytes; SHA-256
-`1f1dabb319b279bd796901825320610fa37cd357eff0c07de4d2d7864e79b9d8`).
+`31f1dabb319b279bd796901825320610fa37cd357eff0c07de4d2d7864e79b9d`).
 
 ## Dataset identity
 

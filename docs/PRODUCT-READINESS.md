@@ -50,9 +50,15 @@ Further acquisition may continue privately toward v1 without altering v0.
 The public data release and the V1-to-V2 website cutover are separate milestones;
 an unfinished optional visualization is not a data-release gate.
 
-**Current state:** candidate sprint in progress (UK location evidence, Denmark
-integration, and Netherlands NVWA onboarding); human review pending, and no v0
-publication authorized by this decision. The source registry and immutable
+**Current state (2026-10-04):** UK, Denmark, and Netherlands private imports and
+bounded geocoding are integrated. The measured inventory reconciles fifteen
+source snapshots; twelve have verified candidate handoffs. Final selection is
+awaiting the maintainer's decision to defer or reacquire South Australia EPA,
+Italy 1069, and Brazil SIF because exact retained evidence is unavailable or
+does not match recorded provenance. A verified D: backup is restored into a
+separate review database, but canonical candidate staging, graph projection,
+human review, and public activation are not complete. No v0 publication is
+authorized by the candidate work. The source registry and immutable
 release-manifest machinery exist, but the retained private preview is not a
 populated public release. The v0 review must identify its exact source versions
 and distinguish frozen candidate evidence from approved release membership. This
