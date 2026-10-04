@@ -50,17 +50,37 @@ class DenmarkSmileyAdapter:
             code = fields.get("FVST_branchenummer") or fields.get("brancheKode")
             label = fields.get("FVST_branche") or fields.get("branche")
             category_label = fields.get("Smileybranche") or fields.get("Pixibranche")
+            activity_labels = list(dict.fromkeys(
+                value for value in (source_classification.get("labels") or [label])
+                if isinstance(value, str) and value.strip()
+            ))
+            category_labels = list(dict.fromkeys(
+                value for value in (source_classification.get("category_labels") or [category_label])
+                if isinstance(value, str) and value.strip()
+            ))
+            private_address = {
+                key: value for key, value in {
+                    "address": fields.get("Adresse"),
+                    "postal_code": fields.get("Postnummer"),
+                    "city": fields.get("By"),
+                    "country_code": "DK",
+                }.items() if value is not None and value != ""
+            }
             handoff_rows.append({"source_id": SOURCE_ID, "source_row": row.get("source_row", 0),
                                  "source_record_key": key,
                                  "source_values": fields, "normalized": {
                                      "establishment_id": key, "trading_name": fields.get("Virksomhed"),
                                      "city": fields.get("By"), "postal_code": fields.get("Postnummer"),
+                                     "source_observation_date": row.get("source_observation_date") or row.get("latest_inspection_date"),
+                                     "private_location_evidence": private_address,
                                      "country_code": "DK", "coordinate_precision": "city_postal",
                                      "coordinates": None,
                                      "activities": list(classification.get("activity_categories") or ()),
                                      "activity_categories": list(classification.get("activity_categories") or ()),
                                      "activity_codes": list(source_classification.get("codes") or ([code] if code else [])),
-                                     "activity_descriptions": [item for item in (label, category_label) if item],
+                                     "activity_descriptions": list(dict.fromkeys(activity_labels + category_labels)),
+                                     "source_activity_labels": activity_labels,
+                                     "source_category_labels": category_labels,
                                      "source_classification_code": code,
                                      "source_classification_label": label,
                                      "classification_ruleset_version": classification.get("ruleset_id"),

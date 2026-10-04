@@ -53,8 +53,9 @@ def classify_record(record: dict, ruleset: dict, location_references: list[dict]
     }
     result["source_classification"] = {
         "codes": codes,
-        "labels": [source_activity.get("label")] if source_activity.get("label") else [],
+        "labels": list(source_activity.get("labels") or ([source_activity.get("label")] if source_activity.get("label") else [])),
         "category_label": source_activity.get("category"),
+        "category_labels": list(source_activity.get("category_labels") or ([source_activity.get("category")] if source_activity.get("category") else [])),
     }
     result["location"] = classify_location(result, location_references)
     return result

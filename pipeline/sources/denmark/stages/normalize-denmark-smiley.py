@@ -46,6 +46,14 @@ def iso_date(value: str | None) -> str | None:
 
 def normalize_record(envelope: dict) -> dict:
     source = envelope.get("fields", {})
+    activity_labels = list(dict.fromkeys(
+        value for value in (source.get("FVST_branche"), source.get("branche"))
+        if isinstance(value, str) and value.strip()
+    ))
+    category_labels = list(dict.fromkeys(
+        value for value in (source.get("Smileybranche"), source.get("Pixibranche"))
+        if isinstance(value, str) and value.strip()
+    ))
     normalized = {
         "source_id": envelope.get("source_id", "dk.smiley"),
         "source_row": envelope.get("source_row"),
@@ -63,7 +71,9 @@ def normalize_record(envelope: dict) -> dict:
         "activity": {
             "code": source.get("FVST_branchenummer") or source.get("brancheKode"),
             "label": source.get("FVST_branche") or source.get("branche"),
+            "labels": activity_labels,
             "category": source.get("Smileybranche") or source.get("Pixibranche"),
+            "category_labels": category_labels,
         },
         "business_type": source.get("Virksomhedstype") or source.get("virksomhedstype"),
         "coordinates": {
@@ -73,6 +83,7 @@ def normalize_record(envelope: dict) -> dict:
             "review_status": "source" if source.get("Geo_Lat") and source.get("Geo_Lng") else "unresolved",
         },
         "latest_inspection_date": iso_date(source.get("Seneste_kontrol_dato") or source.get("seneste_kontrol_dato")),
+        "source_observation_date": iso_date(source.get("Seneste_kontrol_dato") or source.get("seneste_kontrol_dato")),
         "source_url": source.get("URL"),
         "source_fields": source,
     }
