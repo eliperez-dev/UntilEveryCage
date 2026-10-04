@@ -50,10 +50,18 @@ Further acquisition may continue privately toward v1 without altering v0.
 The public data release and the V1-to-V2 website cutover are separate milestones;
 an unfinished optional visualization is not a data-release gate.
 
-**Current state:** sequence agreed; candidate sprint not yet exercised, human
-review pending, and no v0 publication authorized by this decision. This
+**Current state:** candidate sprint in progress (UK location evidence, Denmark
+integration, and Netherlands NVWA onboarding); human review pending, and no v0
+publication authorized by this decision. The source registry and immutable
+release-manifest machinery exist, but the retained private preview is not a
+populated public release. The v0 review must identify its exact source versions
+and distinguish frozen candidate evidence from approved release membership. This
 sequence governs near-term dataset delivery; historical sprint descriptions
 below remain evidence, not reasons to reopen the expansion scope.
+
+The bounded maintainer review and its measured evidence are routed through
+[the v0 release review](v0-release-review.md); that packet is not a second
+product roadmap or publication authorization.
 
 ## Verified checkpoint
 
