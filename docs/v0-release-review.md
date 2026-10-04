@@ -83,17 +83,24 @@ activity mappings, confirm the taxonomy coverage and preserve `unclassified`,
 them as approved scope. Record lawful/private address and coordinate
 restrictions without copying their payload into public-facing review notes.
 
-The current retained candidate importer stores source snapshots in the
-isolated `real_preview` schema. Those rows are not `uec.observations`, do not
-belong to `uec.release_members`, and cannot be promoted by the public release
-commands. `pipeline/scripts/maintenance/import-candidate.py` is restricted to
-an explicitly marked disposable loopback database and is a test-only bridge;
-it is not authorized for the retained candidate database or a full release.
-The reviewed-demonstration path is a small explicitly selected subset, not a
-full-pool importer. Before v0 can advance, maintainers must use an already
-approved canonical source importer or explicitly authorize and verify a
-bounded, idempotent transfer from reviewed source snapshots into the canonical
-`uec` release data model. No such transfer is performed by the inventory.
+The retained candidate importer stores source snapshots in the isolated
+`real_preview` schema. The row-free inventory does not transfer those rows.
+`pipeline/scripts/maintenance/import-candidate.py` remains restricted to an
+explicitly marked disposable loopback database and is a test-only importer.
+For bounded v0 preparation, `pipeline/scripts/maintenance/bridge-v0-candidates.py`
+can stage an explicitly frozen full source selection into a separate
+`uec_v0_review` database as a non-visible `candidate` release. It verifies the
+authenticated normalized and graph handoffs against the exact latest private
+preview snapshot, preserves every source observation and source-native group,
+and records source-byte retention honestly: unavailable original bytes have
+no fabricated locator or size. The command requires an explicit freeze file,
+inventory digest, isolated loopback database, and `--candidate-only-ack`.
+It creates no approval, rights decision, public projection, release manifest,
+validation, or promotion. Same-freeze reruns are idempotent; conflicting
+release IDs or changed source snapshots are rejected. Do not point it at the
+authoritative private pipeline database. The bridge is not the publication
+workflow; source/profile review, per-record review outcomes, rights decisions,
+validation, and public-map contract work remain separate activation steps.
 
 ## Existing release activation path and remaining gates
 

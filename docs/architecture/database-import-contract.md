@@ -14,7 +14,7 @@ Geocoding scheduling follows the same rule. `geocode_jobs` provides a stable job
 
 ## Required inputs
 
-- archived raw artifact metadata with source URL, retrieval timestamp, byte size, and SHA-256;
+- archived raw artifact metadata with source URL, retrieval timestamp, byte size, and SHA-256. When originals are no longer retained, the explicit `retention_status='not_retained'` contract permits a null locator and size while preserving the recorded source hash and URL; this does not claim the unavailable bytes were reverified. Retained artifacts remain the default and require both locator and exact byte size;
 - parsed JSONL output whose records reference the raw artifact hash;
 - normalized JSONL output preserving `source_fields`;
 - classified JSONL output with a ruleset ID, rule ID, category, review status, and visibility policy;
@@ -53,5 +53,15 @@ Use `source_id=dk.smiley` plus `source_record_key=ID_nummer` as the source ident
 ## Release policy
 
 The first imported dataset creates a `candidate` release named from the source run and ruleset. It can become `validated` only after the validation report and review summary are accepted. Release membership selects the observation and carries the default visibility flag; acquisition success alone never promotes a release.
+
+The v0 candidate-review bridge is a separate, explicitly frozen, candidate-only
+path. It accepts authenticated normalized and graph handoffs only after exact
+source snapshot, identifier, grouping, representative, and preview-row
+reconciliation. It preserves the original source observation history, records
+unknown source dates as unknown (using retrieval time only for the required
+project observation timestamp), and stages one non-visible release member per
+source-native facility group in a separate review database. It creates no
+review or rights decisions, does not validate or promote the release, and is
+not a substitute for the standard source importer or a public release workflow.
 
 Publication additionally requires ETHICS.md privacy and source-status checks. A default visibility flag is not authorization to expose restricted records through another endpoint. Historical release membership is subject to current restrictions, including removal of residential addresses and precise coordinates where required. Unimplemented policy gates must be recorded as blockers for affected publication.
