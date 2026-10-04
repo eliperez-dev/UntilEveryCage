@@ -161,7 +161,9 @@ class ReleaseCandidateInventoryTests(unittest.TestCase):
         sql = inventory._GEOGRAPHY_SQL
         self.assertIn("END AS geometry_source", sql)
         self.assertIn("FROM categorized", sql)
-        self.assertIn("JOIN real_preview.candidate_display display USING (candidate_id)", sql)
+        self.assertIn("ON display.candidate_id = candidate.candidate_id", sql)
+        self.assertIn("ON latest.source_id = candidate.source_id", sql)
+        self.assertNotIn("JOIN latest USING (source_id, snapshot_sha256)", sql)
         self.assertIn("GROUP BY source_id, geometry_source", sql)
         self.assertIn("candidate.coordinate_method IN ('address_geocode', 'geoapify_forward') THEN 'provider_derived'", sql)
         self.assertIn("candidate.location_class = 'numeric_source_coordinate' THEN 'source_coordinate'", sql)

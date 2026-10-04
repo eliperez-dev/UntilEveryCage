@@ -194,7 +194,7 @@ WITH latest AS (
              WHEN candidate.default_map_scope
                   AND candidate.location_class = 'numeric_source_coordinate'
                   AND candidate.latitude IS NOT NULL AND candidate.longitude IS NOT NULL THEN 'source_coordinate_fallback'
-             WHEN candidate.display_latitude IS NULL THEN 'no_display_point'
+             WHEN display.display_latitude IS NULL THEN 'no_display_point'
              ELSE 'other_or_unrecognized'
            END AS geometry_source,
            display.display_latitude,
@@ -203,8 +203,11 @@ WITH latest AS (
                  AND candidate.location_class = 'numeric_source_coordinate'
                  AND candidate.latitude IS NOT NULL AND candidate.longitude IS NOT NULL) AS served_by_private_map
     FROM real_preview.candidates candidate
-    JOIN real_preview.candidate_display display USING (candidate_id)
-    JOIN latest USING (source_id, snapshot_sha256)
+    JOIN real_preview.candidate_display display
+      ON display.candidate_id = candidate.candidate_id
+    JOIN latest
+      ON latest.source_id = candidate.source_id
+     AND latest.snapshot_sha256 = candidate.snapshot_sha256
 )
 SELECT source_id, geometry_source, count(*),
        count(*) FILTER (WHERE display_latitude IS NOT NULL),
