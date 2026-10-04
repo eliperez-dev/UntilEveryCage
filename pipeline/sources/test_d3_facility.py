@@ -27,6 +27,14 @@ class D3FacilityAdapterTests(unittest.TestCase):
         for item in D3_DESCRIPTORS():
             self.assertTrue(item["fixture"].exists(), item["source_id"])
 
+    def test_uk_descriptors_match_their_pinned_adapter_contracts(self):
+        from pipeline.sources.uk.fss_approved.adapter import CONFIG as FSS_CONFIG
+
+        descriptor = next(item for item in D3_DESCRIPTORS()
+                          if item["source_id"] == "fss_approved_establishments")
+        self.assertEqual(descriptor["adapter_version"], FSS_CONFIG["adapter_version"])
+        self.assertEqual(descriptor["schema_version"], FSS_CONFIG["contract_version"])
+
     def test_private_fixture_runs_preserve_provenance_and_block_release(self):
         for item in D3_DESCRIPTORS():
             path = item["fixture"]

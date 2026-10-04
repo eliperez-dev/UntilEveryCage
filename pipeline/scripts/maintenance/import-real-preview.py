@@ -360,7 +360,15 @@ SOURCE_NAMES = {
     "fr.dgal.section-ii": "French Ministry of Agriculture — DGAL Section II",
     "it.1069-2009": "Italian Ministry of Health — Regulation 1069/2009",
     "it.853-2004": "Italian Ministry of Health — Regulation 853/2004",
+    "nl.nvwa.approved-food": "Netherlands Food and Consumer Product Safety Authority — Approved Food Lists",
     "us.fsis": "USDA Food Safety and Inspection Service",
+}
+
+SOURCE_MEDIA_TYPES = {
+    "dk.smiley": "application/xml",
+    "fsa_approved_establishments": "text/csv",
+    "fss_approved_establishments": "text/csv",
+    "nl.nvwa.approved-food": "application/json",
 }
 
 
@@ -472,6 +480,7 @@ def parse_row(source: str, row: Any) -> tuple[Any, ...]:
     else:
         location_class = "unmapped_private_observation"
     group_key = (identifier if source == "fsa_approved_establishments" else
+                 pick(normalized, "facility_grouping_key") if source == "nl.nvwa.approved-food" else
                  pick(normalized, "establishment_id", "recognition_number", "establishment_number"))
     if not isinstance(group_key, (str, int)) or not str(group_key).strip():
         raise ImportFailure("source_group_key_missing")
@@ -647,7 +656,8 @@ def _resolve_municipality(index: dict[str, Any], value: Any, alias_policy: dict[
 
 
 def validate_preview_fields(path: Path, allowed_fields: set[str]) -> None:
-    top_level = {"source_id", "source_row", "source_row_id", "source_record_key", "source_values", "source_rows", "normalized"}
+    top_level = {"source_id", "source_row", "source_row_id", "source_record_key", "source_artifact_sha256",
+                 "source_list_code", "source_list_label", "source_values", "source_rows", "normalized"}
     for line in path.read_text(encoding="utf-8").splitlines():
         try:
             row = json.loads(line)
@@ -703,6 +713,7 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
     parsed_rows: list[tuple[Any, ...]] = []
     administrative_codes: dict[str, str | None] = {}
     private_location_by_identifier: dict[str, dict[str, Any]] = {}
+    normalized_by_identifier: dict[str, dict[str, Any]] = {}
     activity_contracts_by_group: dict[str, list[dict[str, Any]]] = {}
     with path.open("r", encoding="utf-8") as stream:
         for line in stream:
@@ -714,6 +725,7 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
                 raise ImportFailure("row_schema_invalid") from None
             parsed = parse_row(source, record)
             parsed_rows.append(parsed)
+            normalized_by_identifier[str(parsed[0])] = record["normalized"]
             location = record["normalized"].get("private_location_evidence")
             if isinstance(location, dict) and location:
                 private_location_by_identifier[str(parsed[0])] = location
@@ -840,8 +852,9 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
         private_profile = profile_for_source(source)
         private_location_available = (isinstance(location_evidence, dict)
                                        and (location_evidence.get("address") or location_evidence.get("address_lines")))
+        representative_normalized = normalized_by_identifier.get(str(identifier), {})
         profile_queue_eligible = private_geocode_queue_eligible(
-            source, record["normalized"], location_evidence or {}, klass, private_profile)
+            source, representative_normalized, location_evidence or {}, klass, private_profile)
         if ((source == "au.npi.facilities" or profile_queue_eligible)
                 and private_location_available and source_artifact_sha256
                 and source_url and source_retrieved_at is not None
@@ -863,8 +876,9 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
                 )
                 db.execute(
                     """INSERT INTO uec.raw_artifacts(storage_key,sha256,byte_size,media_type,retrieved_at)
-                       VALUES (%s,%s,%s,'text/csv',%s) ON CONFLICT (sha256) DO NOTHING""",
-                    (f"private-preview-source-artifact:{source}:{source_artifact_sha256}", source_artifact_sha256, source_artifact_byte_size, source_retrieved_at),
+                       VALUES (%s,%s,%s,%s,%s) ON CONFLICT (sha256) DO NOTHING""",
+                    (f"private-preview-source-artifact:{source}:{source_artifact_sha256}", source_artifact_sha256,
+                     source_artifact_byte_size, SOURCE_MEDIA_TYPES.get(source, "text/csv"), source_retrieved_at),
                 )
                 artifact_id = db.execute(
                     "SELECT artifact_id FROM uec.raw_artifacts WHERE sha256=%s", (source_artifact_sha256,)
@@ -1226,7 +1240,13 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
         max_age = policy.get("freshness_max_days")
         if not isinstance(max_age, int) or max_age < 1 or datetime.now(timezone.utc) - retrieved_at > timedelta(days=max_age):
             raise ImportFailure("source_artifact_stale")
-        if code_version != policy.get("adapter_version") or config_version != policy.get("schema_version"):
+        if code_version != policy.get("adapter_version"):
+            raise ImportFailure("preview_version_mismatch")
+        if source_id == "nl.nvwa.approved-food":
+            if (manifest.get("schema_version") != policy.get("schema_version")
+                    or config_version != policy.get("config_version")):
+                raise ImportFailure("preview_version_mismatch")
+        elif config_version != policy.get("schema_version"):
             raise ImportFailure("preview_version_mismatch")
         if not isinstance(run_id, str) or not run_id or run_manifest_path is None or not run_manifest_path.is_file():
             raise ImportFailure("runtime_run_manifest_missing")
@@ -1254,6 +1274,64 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
             archived_replay_evidence = validate_archived_replay(
                 runtime_manifest, source_result, source_id, source_hash, retrieved_at,
                 acquisition_evidence, expected_artifact)
+        if source_id in {"fsa_approved_establishments", "fss_approved_establishments"}:
+            acquisition_path = root / "acquisition" / source_id / run_id / "acquisition-metadata.json"
+            expected_artifact = acquisition_path.parent / "source.csv"
+            if (not acquisition_path.is_file() or acquisition_path.is_symlink()
+                    or not expected_artifact.is_file() or expected_artifact.is_symlink()):
+                raise ImportFailure("uk_acquisition_provenance_missing")
+            acquisition_evidence = json_object(acquisition_path)
+            artifact_hash, artifact_size = digest_file(expected_artifact)
+            try:
+                acquired_at = datetime.fromisoformat(
+                    str(acquisition_evidence.get("retrieved_at_utc")).replace("Z", "+00:00"))
+            except ValueError:
+                raise ImportFailure("uk_acquisition_timestamp_invalid") from None
+            terms_evidence = acquisition_evidence.get("terms_review")
+            if (acquisition_evidence.get("source_id") != source_id
+                    or acquisition_evidence.get("run_id") != run_id
+                    or acquisition_evidence.get("sha256") != source_hash
+                    or artifact_hash != source_hash
+                    or acquisition_evidence.get("byte_size") != artifact_size
+                    or acquisition_evidence.get("final_url") != manifest.get("source_url")
+                    or acquisition_evidence.get("retrieved_at_utc") != manifest.get("retrieved_at_utc")
+                    or acquisition_evidence.get("adapter_version") != code_version
+                    or acquisition_evidence.get("config_version") != config_version
+                    or not isinstance(terms_evidence, dict)
+                    or terms_evidence.get("decision") != "approved"
+                    or acquired_at.utcoffset() is None
+                    or acquired_at > datetime.now(timezone.utc) + timedelta(minutes=5)
+                    or datetime.now(timezone.utc) - acquired_at > timedelta(days=max_age)):
+                raise ImportFailure("uk_acquisition_provenance_mismatch")
+        elif source_id == "nl.nvwa.approved-food":
+            acquisition_path = root / "acquisition" / source_id / run_id / "acquisition-metadata.json"
+            expected_artifact = acquisition_path.parent / "bundle-manifest.json"
+            if (not acquisition_path.is_file() or acquisition_path.is_symlink()
+                    or not expected_artifact.is_file() or expected_artifact.is_symlink()):
+                raise ImportFailure("nl_acquisition_provenance_missing")
+            acquisition_evidence = json_object(acquisition_path)
+            artifact_hash, artifact_size = digest_file(expected_artifact)
+            try:
+                acquired_at = datetime.fromisoformat(
+                    str(acquisition_evidence.get("retrieved_at_utc")).replace("Z", "+00:00"))
+            except ValueError:
+                raise ImportFailure("nl_acquisition_timestamp_invalid") from None
+            terms_evidence = acquisition_evidence.get("terms_review")
+            if (acquisition_evidence.get("source_id") != source_id
+                    or acquisition_evidence.get("run_id") != run_id
+                    or acquisition_evidence.get("sha256") != source_hash
+                    or artifact_hash != source_hash
+                    or acquisition_evidence.get("byte_size") != artifact_size
+                    or acquisition_evidence.get("final_url") != manifest.get("source_url")
+                    or acquisition_evidence.get("retrieved_at_utc") != manifest.get("retrieved_at_utc")
+                    or acquisition_evidence.get("adapter_version") != code_version
+                    or acquisition_evidence.get("config_version") != config_version
+                    or not isinstance(terms_evidence, dict)
+                    or terms_evidence.get("decision") != "approved"
+                    or acquired_at.utcoffset() is None
+                    or acquired_at > datetime.now(timezone.utc) + timedelta(minutes=5)
+                    or datetime.now(timezone.utc) - acquired_at > timedelta(days=max_age)):
+                raise ImportFailure("nl_acquisition_provenance_mismatch")
         if source_id == "be.locations":
             pair_path = root / "acquisition" / source_id / run_id / "pair-metadata.json"
             if not pair_path.is_file() or pair_path.is_symlink():

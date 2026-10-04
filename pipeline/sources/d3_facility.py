@@ -16,8 +16,8 @@ from pipeline.contracts.adapter_contract import SourceAdapter, SourceArtifact
 from pipeline.contracts.candidate_handoff import write_handoff
 from pipeline.contracts.refresh import AdapterCapabilities
 from pipeline.germany import bltu_adapter
-from pipeline.sources.uk.fsa_approved.adapter import FsaApprovedEstablishmentsAdapter
-from pipeline.sources.uk.fss_approved.adapter import FssApprovedEstablishmentsAdapter
+from pipeline.sources.uk.fsa_approved.adapter import CONFIG as FSA_CONFIG, FsaApprovedEstablishmentsAdapter
+from pipeline.sources.uk.fss_approved.adapter import CONFIG as FSS_CONFIG, FssApprovedEstablishmentsAdapter
 from pipeline.sources.us.fsis.adapter import FsisMpiAdapter
 
 ROOT = Path(__file__).resolve().parent
@@ -220,8 +220,8 @@ def D3_DESCRIPTORS() -> tuple[dict[str, Any], ...]:
     return (
         {"source_id": "us.fsis", "country_code": "us", "url": "https://www.fsis.usda.gov/inspection/establishments/meat-poultry-and-egg-product-inspection-directory", "factory": FsisMpiAdapter, "fixture": ROOT / "us" / "fsis" / "fixtures", "adapter_version": "us-fsis-candidate-v2", "schema_version": "us-fsis-mpi-v1", "acquisition": "operator_assisted_only"},
         {"source_id": "de.locations", "country_code": "de", "url": "https://www.bvl.bund.de/bltu", "factory": GermanyBltuAdapter, "fixture": ROOT.parent / "germany" / "fixtures" / "synthetic_bltu.csv", "adapter_version": bltu_adapter.ADAPTER_VERSION, "schema_version": bltu_adapter.SCHEMA_VERSION, "acquisition": "assisted_only"},
-        {"source_id": "fsa_approved_establishments", "country_code": "gb", "url": "https://data.food.gov.uk/catalog/datasets/", "factory": FsaApprovedEstablishmentsAdapter, "fixture": ROOT / "uk" / "fsa_approved" / "fixtures" / "valid.csv", "adapter_version": "fsa-uk-v2-1", "schema_version": "fsa-uk-approved-v1", "acquisition": "bounded_private_fetch"},
-        {"source_id": "fss_approved_establishments", "country_code": "gb", "url": "https://www.foodstandards.gov.scot/open-data-portal/approved-establishments-in-scotland", "factory": FssApprovedEstablishmentsAdapter, "fixture": ROOT / "uk" / "fss_approved" / "fixtures" / "valid.csv", "adapter_version": "fss-scotland-v2-2", "schema_version": "fss-scotland-approved-v2", "acquisition": "bounded_private_fetch"},
+        {"source_id": "fsa_approved_establishments", "country_code": "gb", "url": FSA_CONFIG["catalog_url"], "factory": FsaApprovedEstablishmentsAdapter, "fixture": ROOT / "uk" / "fsa_approved" / "fixtures" / "valid.csv", "adapter_version": FSA_CONFIG["adapter_version"], "schema_version": FSA_CONFIG["contract_version"], "acquisition": "bounded_private_fetch"},
+        {"source_id": "fss_approved_establishments", "country_code": "gb", "url": FSS_CONFIG["catalog_url"], "factory": FssApprovedEstablishmentsAdapter, "fixture": ROOT / "uk" / "fss_approved" / "fixtures" / "valid.csv", "adapter_version": FSS_CONFIG["adapter_version"], "schema_version": FSS_CONFIG["contract_version"], "acquisition": "bounded_private_fetch"},
     )
 
 

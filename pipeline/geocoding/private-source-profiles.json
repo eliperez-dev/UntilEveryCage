@@ -8,7 +8,7 @@
     "geocoding_api_url": "https://www.geoapify.com/geocoding-api/",
     "data_processing_agreement_url": "https://www.geoapify.com/data-processing-agreement/",
     "key_source": "GEOAPIFY_API_KEY from the process environment only",
-    "daily_request_ceiling": 2800,
+    "daily_request_ceiling": 3000,
     "minimum_interval_seconds": 1,
     "requests_per_address": 1,
     "key_or_address_logging": "never log or print keys, address queries, or raw provider responses",

@@ -28,7 +28,7 @@ from .spain_cat.adapter import CataloniaFeedSandachAdapter
 from .australia.npi import NpiFacilitiesAdapter
 from .australia.sa_epa import SouthAustraliaEpaAdapter
 from .us.fsis.runner_adapter import FsisRefreshAdapter
-from .uk.fsa_approved.adapter import FsaApprovedEstablishmentsAdapter
+from .uk.fsa_approved.adapter import CONFIG as FSA_CONFIG, FsaApprovedEstablishmentsAdapter
 from .brazil.sif_registered import SifRegisteredAdapter
 
 
@@ -149,7 +149,7 @@ FIRST_WAVE: tuple[SourceDescriptor, ...] = (
     SourceDescriptor("be.locations", "BE", BELGIUM_CONFIG["operator_url"], _belgium, (ROOT / "belgium" / "fixtures" / "synthetic_operators.csv", ROOT / "belgium" / "fixtures" / "synthetic_activity_codes.csv"), BELGIUM_CONFIG["adapter_version"], BELGIUM_CONFIG["schema_version"], "bounded_private_fetch"),
     SourceDescriptor("ca.ontario.meat-plants", "CA", "https://data.ontario.ca/dataset/a763088c-018d-48b7-bf47-3027a8c725b8/resource/ee6d559a-78de-40e6-b2ba-ad3c4a674b96/download/1._all_meat_plants.csv", OntarioMeatPlantsAdapter, (ROOT / "canada" / "fixtures" / "ontario.csv",), "ca-meat-v4-private-location-evidence", "ca-meat-tabular-workbook-v2", "verified"),
     SourceDescriptor("ca.cfia.federal-meat", "CA", "https://active.inspection.gc.ca/scripts/meavia/reglist/download.asp?lang=e", CfiaFederalMeatAdapter, (ROOT / "canada" / "fixtures" / "cfia.csv",), "ca-meat-v4-private-location-evidence", "ca-meat-tabular-workbook-v2", "bounded_private_fetch"),
-    SourceDescriptor("fsa_approved_establishments", "GB", "https://fsaopendata.blob.core.windows.net/opendatacatalog/Approved-Establishments-01-09-26.csv", _fsa, (ROOT / "uk" / "fsa_approved" / "fixtures" / "valid.csv",), "fsa-uk-v2-2", "fsa-uk-approved-v1", "bounded_private_fetch"),
+    SourceDescriptor("fsa_approved_establishments", "GB", FSA_CONFIG["source_url"], _fsa, (ROOT / "uk" / "fsa_approved" / "fixtures" / "valid.csv",), FSA_CONFIG["adapter_version"], FSA_CONFIG["contract_version"], "bounded_private_fetch"),
     SourceDescriptor("fr.dgal.section-i", "FR", "https://fichiers-publics.agriculture.gouv.fr/dgal/ListesOfficielles/SSA1_VIAN_ONG_DOM.txt", _france_i, (ROOT / "france" / "fixtures" / "section_i.csv",), "fr-dgal-853-v3-private-location-evidence", "fr-dgal-853-txt-v2", "verified"),
     SourceDescriptor("fr.dgal.section-ii", "FR", "https://fichiers-publics.agriculture.gouv.fr/dgal/ListesOfficielles/SSA1_VIAN_COL_LAGO.txt", _france_ii, (ROOT / "france" / "fixtures" / "section_ii.csv",), "fr-dgal-853-v3-private-location-evidence", "fr-dgal-853-txt-v2", "verified"),
     SourceDescriptor("it.853-2004", "IT", "https://www.dati.salute.gov.it/", _italy, (ROOT / "italy" / "fixtures" / "synthetic_853.csv",), "it-853-candidate-v3-private-location-evidence", "it-853-csv-v2.0", "verified"),
@@ -521,6 +521,18 @@ def register_first_wave(catalog: Any) -> None:
     # cohort while source-local contracts remain isolated.
     from .d3_facility import register_d3
     register_d3(catalog)
+    # NVWA has its own strict bundle/terms handling and refresh contract; keep
+    # it source-owned rather than routing SOAP observations through a generic
+    # fixture adapter.
+    from .netherlands.nvwa_approved_food.refresh import NvwaRefreshAdapter
+    catalog.register(NvwaRefreshAdapter(), AdapterCapabilities(
+        source_id="nl.nvwa.approved-food", adapter_version="nvwa-approved-food-v0",
+        schema_version="nvwa-approval-observations-v1", acquisition="bounded_private_fetch",
+        geocoding="separate-private-profile", publication="human_gate_required",
+        adapter_path="pipeline/sources/netherlands/nvwa_approved_food/refresh.py",
+        country_code="nl", source_kind="facility_master",
+        operational_classification="live", live_callable=True,
+    ))
     catalog.register(FsisRefreshAdapter(), AdapterCapabilities(
         source_id="us.fsis", adapter_version="us-fsis-candidate-v2",
         schema_version="us-fsis-mpi-v1", acquisition="bounded_authorized_browser_download",

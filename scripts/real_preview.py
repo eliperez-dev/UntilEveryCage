@@ -1268,7 +1268,8 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                 "unmapped": import_result.get("unmapped_map_candidate_count")},
             "location_policy": "Ontario source address and coordinate fields are withheld pending privacy/location review; candidates remain listable and unmapped; no geocoding is performed.",
         })
-    elif source_id in {"au.npi.facilities", "fsa_approved_establishments", "fss_approved_establishments"}:
+    elif source_id in {"au.npi.facilities", "fsa_approved_establishments", "fss_approved_establishments",
+                       "nl.nvwa.approved-food"}:
         acquisition_path = source_dir / "acquisition" / source_id / run_id / "acquisition-metadata.json"
         if not acquisition_path.is_file() or acquisition_path.is_symlink():
             raise PreviewError(f"{source_id} acquisition provenance is unavailable")
@@ -1329,6 +1330,8 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
             location_policy = (
                 "FSS Scotland source addresses and remarks remain restricted pending privacy review; no coordinates are supplied, no geocoding is performed, and Northern Ireland/FSA are separate sources."
                 if source_id == "fss_approved_establishments" else
+                "Eight NVWA approval lists provide observations, not a facility count. No source coordinates are supplied; exact source address evidence remains restricted and is eligible only for the separate privacy-filtered NL private geocoding profile. No public release."
+                if source_id == "nl.nvwa.approved-food" else
                 "FSA monthly source addresses and coordinates are suppressed pending privacy review; all listable records remain unmapped and are not geocoded."
             )
             ledger.update({
@@ -1637,7 +1640,8 @@ def strict_live_private_e2e(source_id: str, existing_runner_run_id: str | None =
     global PROJECT, VOLUME, DB_PORT, API_PORT, WEB_PORT, PRIVATE_ROOT, ACTIVE_PREVIEW_TOKEN
     if source_id not in {"be.locations", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "au.npi.facilities",
                           "au.sa.epa.licensed-activities", "fsa_approved_establishments",
-                          "fss_approved_establishments", "es.cat.feed-sandach", "br.sif.registered"}:
+                          "fss_approved_establishments", "es.cat.feed-sandach", "br.sif.registered",
+                          "nl.nvwa.approved-food"}:
         raise PreviewError("strict-live-private-e2e supports only assigned source lanes")
     import uuid
     suffix = uuid.uuid4().hex[:10]
@@ -1645,7 +1649,8 @@ def strict_live_private_e2e(source_id: str, existing_runner_run_id: str | None =
                    "ca.cfia.federal-meat": "cfia", "au.npi.facilities": "au-npi",
                    "au.sa.epa.licensed-activities": "au-sa-epa",
                    "fsa_approved_establishments": "fsa", "fss_approved_establishments": "fss",
-                   "es.cat.feed-sandach": "es-cat", "br.sif.registered": "br-sif"}[source_id]
+                   "es.cat.feed-sandach": "es-cat", "br.sif.registered": "br-sif",
+                   "nl.nvwa.approved-food": "nl-nvwa"}[source_id]
     project = f"uec-preview-{safe_source}-{suffix}"
     private_root = (Path(os.environ["UEC_REAL_PREVIEW_ROOT"]) if source_id == "br.sif.registered"
                     and os.environ.get("UEC_REAL_PREVIEW_ROOT") else
@@ -1685,7 +1690,8 @@ def strict_live_private_e2e(source_id: str, existing_runner_run_id: str | None =
         preview = first_preview
         ledger_path = Path(str(preview.get("ledger", "")))
         if source_id in {"be.locations", "ca.ontario.meat-plants", "au.npi.facilities", "fsa_approved_establishments",
-                         "fss_approved_establishments", "es.cat.feed-sandach", "br.sif.registered"}:
+                         "fss_approved_establishments", "es.cat.feed-sandach", "br.sif.registered",
+                         "nl.nvwa.approved-food"}:
             # Replay the identical immutable handoff in the same disposable
             # database. This explicitly proves conflict-safe importer
             # idempotency, rather than inferring it from two fresh databases.
@@ -1755,7 +1761,8 @@ def strict_live_private_e2e(source_id: str, existing_runner_run_id: str | None =
                 "checks": certificate["checks"],
                 "refreshes": 1, "idempotent_replay": source_id in {
                     "be.locations", "ca.ontario.meat-plants", "au.npi.facilities", "fsa_approved_establishments",
-                    "fss_approved_establishments", "es.cat.feed-sandach", "br.sif.registered"},
+                    "fss_approved_establishments", "es.cat.feed-sandach", "br.sif.registered",
+                    "nl.nvwa.approved-food"},
                 "publication": "not_authorized", "public_rows": 0}
     except BaseException as error:
         primary_error = error

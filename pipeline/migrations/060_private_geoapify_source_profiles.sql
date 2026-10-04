@@ -43,10 +43,10 @@ CREATE TABLE real_preview.private_geocoding_source_profiles (
 );
 
 INSERT INTO real_preview.private_geocoding_source_profiles(profile_id, source_id, country_code, source_scope) VALUES
-('geoapify-gb-fsa-approved-establishments', 'fsa_approved_establishments', 'accepted non-withheld address rows; unverified source axes remain diagnostic and are not display points'),
-('geoapify-gb-fss-approved-establishments', 'fss_approved_establishments', 'accepted Food Standards Scotland address-only rows'),
-('geoapify-dk-smiley', 'dk.smiley', 'explicitly eligible, privacy-screened address-only source rows'),
-('geoapify-nl-nvwa-approved-food', 'nl.nvwa.approved-food', 'explicitly eligible, privacy-screened address-only source rows')
+('geoapify-gb-fsa-approved-establishments', 'fsa_approved_establishments', 'GB', 'accepted non-withheld address rows; unverified source axes remain diagnostic and are not display points'),
+('geoapify-gb-fss-approved-establishments', 'fss_approved_establishments', 'GB', 'accepted Food Standards Scotland address-only rows'),
+('geoapify-dk-smiley', 'dk.smiley', 'DK', 'explicitly eligible, privacy-screened address-only source rows'),
+('geoapify-nl-nvwa-approved-food', 'nl.nvwa.approved-food', 'NL', 'explicitly eligible, privacy-screened address-only source rows')
 ON CONFLICT (profile_id) DO UPDATE SET
     source_id=EXCLUDED.source_id,
     country_code=EXCLUDED.country_code,
@@ -142,7 +142,7 @@ BEGIN
             AND NULLIF(trim(source_address),'') IS NOT NULL
             AND lower(regexp_replace(trim(COALESCE(candidate_properties->>'address_line1',
                 CASE WHEN candidate_properties->>'housenumber' IS NOT NULL AND candidate_properties->>'street' IS NOT NULL
-                     THEN candidate_properties->>'housenumber' || ' ' || candidate_properties->>'street' END)),
+                     THEN (candidate_properties->>'housenumber') || ' ' || (candidate_properties->>'street') END)),
                 '[^[:alnum:]]+', ' ', 'g'))
               = lower(regexp_replace(trim(source_address), '[^[:alnum:]]+', ' ', 'g')))
            OR (candidate_properties->>'result_type' = 'city'

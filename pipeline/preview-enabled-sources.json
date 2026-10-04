@@ -197,6 +197,21 @@
       "adapter_version": "fr-dgal-853-v3-private-location-evidence",
       "schema_version": "fr-dgal-853-txt-v2"
     },
+    "nl.nvwa.approved-food": {
+      "enabled": true,
+      "runtime_classification": "production-e2e",
+      "public_release": false,
+      "runner": "pipeline.sources.netherlands.nvwa_approved_food.refresh:NvwaRefreshAdapter",
+      "terms_review": "data/terms-reviews/nl.nvwa.approved-food.json",
+      "terms_decision": "approved",
+      "freshness_max_days": 1,
+      "expected_artifacts": ["bundle-manifest.json"],
+      "allowed_preview_fields": ["establishment_id", "recognition_number", "facility_grouping_key", "trading_name", "country_code", "activities", "activity_codes", "activity_descriptions", "species", "activity_observations", "approval_lifecycle_values", "source_scope_eligibility", "privacy_gate", "coordinate_gate", "publication_gate", "coordinate_precision", "coordinate_state", "coordinates"],
+      "display_policy": {"kind": "unmapped_source_observations", "precision": "no-source-coordinates", "disclosure": "Eight NVWA approval lists only. Rows are approval/activity observations, not a facility count. No source coordinates are supplied; exact address evidence remains in the restricted private layer and is considered only by the separate NL private-geocoding profile after privacy screening. No public release or project approval."},
+      "adapter_version": "nvwa-approved-food-v0",
+      "schema_version": "nvwa-approval-observations-v1",
+      "config_version": "nvwa-approved-food-config-v1"
+    },
     "us.fsis": {
       "enabled": true,
       "runtime_classification": "production-e2e",

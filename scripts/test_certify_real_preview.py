@@ -68,5 +68,39 @@ class OntarioLocationCertificateTests(unittest.TestCase):
         with self.assertRaisesRegex(certificate.CertificationError, "Ontario.*do not reconcile"):
             certificate._validate_ontario_location_classes(counts)
 
+
+class AddressOnlyLocationCertificateTests(unittest.TestCase):
+    def test_address_only_candidates_remain_unmapped_until_async_geocoding(self):
+        counts = {"candidates": 600, "numeric_coordinates": 0, "city_postal": 600,
+                  "map_visible": 0, "coarse_placeable": 0, "unmapped": 600}
+
+        certificate._validate_address_only_location_classes(counts, "NVWA")
+
+        self.assertEqual(counts["unmapped"], 600)
+
+    def test_rejects_unreviewed_source_or_coarse_locations(self):
+        counts = {"candidates": 600, "numeric_coordinates": 1, "city_postal": 600,
+                  "map_visible": 0, "coarse_placeable": 0, "unmapped": 0}
+
+        with self.assertRaisesRegex(certificate.CertificationError, "NVWA.*reconcile"):
+            certificate._validate_address_only_location_classes(counts, "NVWA")
+
+
+class FsaLocationCertificateTests(unittest.TestCase):
+    def test_unverified_axes_and_withheld_addresses_stay_unmapped(self):
+        counts = {"candidates": 4291, "numeric_coordinates": 0, "city_postal": 4204,
+                  "coarse_placeable": 0, "map_visible": 0, "unmapped": 4291}
+
+        certificate._validate_fsa_location_classes(counts)
+
+        self.assertEqual(counts["candidates"] - counts["city_postal"], 87)
+
+    def test_rejects_source_axes_as_display_coordinates(self):
+        counts = {"candidates": 4291, "numeric_coordinates": 2475, "city_postal": 4204,
+                  "coarse_placeable": 0, "map_visible": 2475, "unmapped": 4291}
+
+        with self.assertRaisesRegex(certificate.CertificationError, "FSA.*unverified"):
+            certificate._validate_fsa_location_classes(counts)
+
 if __name__ == "__main__":
     unittest.main()

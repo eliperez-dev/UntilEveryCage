@@ -22,6 +22,7 @@ VERIFIED_PRIVATE_E2E = {
     "fr.dgal.section-ii",
     "it.853-2004",
     "it.1069-2009",
+    "nl.nvwa.approved-food",
     "us.fsis",
 }
 

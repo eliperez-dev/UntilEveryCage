@@ -133,6 +133,7 @@ def _make_record(
     normalized: dict[str, Any] = {
         "establishment_id": recognition,
         "recognition_number": recognition,
+        "facility_grouping_key": f"{list_code}|{recognition}" if recognition else None,
         "trading_name": cleaned.get("handelsnaam"),
         "country_code": "NL",
         "activity_observations": [activity_observation],

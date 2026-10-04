@@ -10,7 +10,7 @@ The SOAP request is a bounded `zoekBedrijf` POST (one-second delay between calls
 
 ## Identity, observations, and normalization
 
-`erkenningsnummer` is the source-qualified recognition identifier. Each SOAP record remains a distinct approval/activity/product/species observation, including repeated recognition numbers and identical duplicate rows. Stable row keys include the list code, recognition number (or a quarantine marker), a field digest, and a duplicate ordinal. There is no name-only collapse or cross-list summed facility count.
+`erkenningsnummer` is a recognition identifier within its advertised list. Each SOAP record remains a distinct approval/activity/product/species observation, including repeated recognition numbers and identical duplicate rows. Stable row keys include the list code, recognition number (or a quarantine marker), a field digest, and a duplicate ordinal. Preview grouping uses list code plus recognition number so repeats within one list share a provisional candidate while cross-list records remain separate. There is no name-only collapse or cross-list summed facility count.
 
 The live capture on 2026-10-04 returned 1,259 XML observations across the eight lists; all 1,259 normalized and none quarantined for a missing recognition number. This is a count of observations, not 1,259 facilities. Unique recognition numbers are reported separately within each list. The service's `cvgTotal`/`cvgReturned` values match its deduplicated result count and can be lower than XML observation count (for example, 115 versus 118 in `overig_303`). Both are retained as distinct diagnostics.
 

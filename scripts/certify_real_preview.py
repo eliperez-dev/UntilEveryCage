@@ -36,6 +36,27 @@ def _validate_ontario_location_classes(counts: dict[str, int]) -> None:
         raise CertificationError("Ontario privacy-safe city/postal candidate counts do not reconcile")
 
 
+def _validate_address_only_location_classes(counts: dict[str, int], source_name: str) -> None:
+    """Keep address-only candidates listable but off-map pending review."""
+    if (counts["numeric_coordinates"] != 0
+            or counts["city_postal"] != counts["candidates"]
+            or counts["map_visible"] != 0
+            or counts["coarse_placeable"] != 0):
+        raise CertificationError(f"{source_name} address-only location evidence does not reconcile")
+
+
+def _validate_fsa_location_classes(counts: dict[str, int]) -> None:
+    """Keep unverified FSA axes suppressed; split address and withheld rows."""
+    if (counts["numeric_coordinates"] != 0
+            or counts["city_postal"] > counts["candidates"]
+            or counts["coarse_placeable"] != 0
+            or counts["map_visible"] != 0):
+        raise CertificationError("FSA unverified source axes or address-only counts do not reconcile")
+    # The importer also reports these candidates as unmapped because no
+    # approved geography resolver places their restricted address evidence.
+    # That is a status, not a second disjoint location class.
+
+
 def _integer(value: Any, name: str) -> int:
     if not isinstance(value, int) or isinstance(value, bool) or value < 0:
         raise CertificationError(f"invalid or missing {name}")
@@ -147,6 +168,10 @@ def validate_ledger(ledger: dict[str, Any], source_id: str) -> dict[str, Any]:
         # class.
         counts["unmapped"] = counts["unmapped_map_candidates"]
         _validate_ontario_location_classes(counts)
+    if source_id in {"nl.nvwa.approved-food", "fss_approved_establishments"}:
+        _validate_address_only_location_classes(counts, "NVWA" if source_id.startswith("nl.") else "FSS")
+    if source_id == "fsa_approved_establishments":
+        _validate_fsa_location_classes(counts)
     if source_id == "ca.cfia.federal-meat" and location_policy == (
             "CFIA workbook provides no coordinates; city/postal candidates are listable, remain unmapped, and are not geocoded."):
         counts["unmapped"] = 0
@@ -174,7 +199,9 @@ def validate_ledger(ledger: dict[str, Any], source_id: str) -> dict[str, Any]:
             raise CertificationError("Brazil SIF municipality-listable candidate counts do not reconcile")
     if counts["numeric_coordinates"] + counts["coarse_placeable"] != counts["map_visible"]:
         raise CertificationError("map-visible count does not reconcile with coordinate/coarse counts")
-    location_unmapped = (counts["unmapped_map_candidates"] if source_id == "dk.smiley"
+    location_unmapped = (counts["candidates"] - counts["city_postal"] if source_id == "fsa_approved_establishments" else
+                         0 if source_id in {"nl.nvwa.approved-food", "fss_approved_establishments"} else
+                         counts["unmapped_map_candidates"] if source_id == "dk.smiley"
                          else counts["unmapped"])
     if source_id == "be.locations":
         # Belgium's raw city/postal count includes candidates whose official
@@ -463,7 +490,7 @@ def _db_check(database_url: str, source_id: str, evidence: dict[str, Any]) -> di
                     for method, status, candidate_sets, assignment_count in status_rows
                 ],
             }
-        elif source_id == "fss_approved_establishments":
+        elif source_id in {"fss_approved_establishments", "nl.nvwa.approved-food"}:
             taxonomy_candidates, assignment_rows, taxonomy_versions = connection.execute("""
                 SELECT count(DISTINCT s.candidate_id), count(*), count(DISTINCT s.taxonomy_version)
                 FROM real_preview.candidate_taxonomy_assignment_sets s
@@ -472,7 +499,7 @@ def _db_check(database_url: str, source_id: str, evidence: dict[str, Any]) -> di
             """, (snapshot, source_id)).fetchone()
             if (taxonomy_candidates != expected["candidates"] or assignment_rows < taxonomy_candidates
                     or taxonomy_versions != 1):
-                raise CertificationError("FSS taxonomy-v1 candidate assignments do not reconcile")
+                raise CertificationError("source taxonomy-v1 candidate assignments do not reconcile")
             status_rows = connection.execute("""SELECT a.mapping_status, count(*)
                 FROM real_preview.candidate_taxonomy_assignment_sets s
                 JOIN real_preview.candidate_taxonomy_assignments a USING (assignment_set_id)

@@ -28,8 +28,8 @@ class RealPreviewPostgisTests(unittest.TestCase):
     def test_private_rows_are_idempotent_and_stay_out_of_public_release_membership(self):
         with psycopg.connect(DATABASE_URL) as connection:
             database_name = connection.execute("SELECT current_database()").fetchone()[0]
-            if not database_name.startswith("uec_real_preview_test"):
-                self.fail("integration database must use the dedicated uec_real_preview_test prefix")
+            if not database_name.startswith(("uec_real_preview_test", "uec_v0_geo_test_")):
+                self.fail("integration database must use a dedicated disposable PostGIS test prefix")
             extensions = connection.execute("SELECT extname FROM pg_extension WHERE extname='postgis'").fetchall()
             self.assertEqual(len(extensions), 1, "dedicated integration database must have PostGIS")
             with connection.transaction():
@@ -228,30 +228,30 @@ class RealPreviewPostgisTests(unittest.TestCase):
                 connection.execute("""
                     INSERT INTO real_preview.source_manifests
                       (snapshot_sha256,source_id,source_artifact_sha256,normalized_sha256,normalized_rows,source_url,retrieved_at,code_version,config_version)
-                    VALUES (%s,'au.npi.facilities',%s,%s,1,'https://example.invalid/','2026-10-01T00:00:00Z','synthetic','synthetic')
+                    VALUES (%s,'fss_approved_establishments',%s,%s,1,'https://example.invalid/','2026-10-01T00:00:00Z','synthetic','synthetic')
                 """, ("a" * 64, "b" * 64, "c" * 64))
                 au_observation_id = connection.execute(insert + " RETURNING preview_id", (
-                    "a" * 64, "au.npi.facilities", "synthetic-au-geocode", "city_postal", True,
-                    "AU", "Melbourne", "3000", None, None, None,
+                    "a" * 64, "fss_approved_establishments", "synthetic-gb-geocode", "city_postal", True,
+                    "GB", "Example City", "EH1", None, None, None,
                 )).fetchone()[0]
                 connection.execute("""
                     INSERT INTO real_preview.candidates
                       (snapshot_sha256,source_id,source_group_key,representative_observation_id,
                        location_class,country_code,city,postal_code,observation_count)
-                    VALUES (%s,'au.npi.facilities','synthetic-au-geocode',%s,
-                            'city_postal','AU','Melbourne','3000',1)
+                    VALUES (%s,'fss_approved_establishments','synthetic-gb-geocode',%s,
+                            'city_postal','GB','Example City','EH1',1)
                 """, ("a" * 64, au_observation_id))
                 au_candidate_id = connection.execute(
-                    "SELECT candidate_id FROM real_preview.candidates WHERE source_group_key='synthetic-au-geocode'"
+                    "SELECT candidate_id FROM real_preview.candidates WHERE source_group_key='synthetic-gb-geocode'"
                 ).fetchone()[0]
                 connection.execute("""
                     INSERT INTO real_preview.candidate_private_location_evidence
                       (candidate_id,snapshot_sha256,source_id,location_evidence)
-                    VALUES (%s,%s,'au.npi.facilities',%s::jsonb)
-                """, (au_candidate_id, "a" * 64, json.dumps({"address": "10 Synthetic Test Road", "city": "Melbourne"})))
+                    VALUES (%s,%s,'fss_approved_establishments',%s::jsonb)
+                """, (au_candidate_id, "a" * 64, json.dumps({"address": "10 Synthetic Test Road", "city": "Example City", "country_code": "GB"})))
                 connection.execute("""
                     INSERT INTO uec.sources(source_id,country_code,name,official_url,access_method)
-                    VALUES ('au.npi.facilities','AU','Synthetic source','https://example.invalid/','synthetic_test')
+                    VALUES ('fss_approved_establishments','GB','Synthetic source','https://example.invalid/','synthetic_test')
                     ON CONFLICT (source_id) DO NOTHING
                 """)
                 connection.execute("""
@@ -261,10 +261,10 @@ class RealPreviewPostgisTests(unittest.TestCase):
                 artifact_id = connection.execute("SELECT artifact_id FROM uec.raw_artifacts WHERE sha256=%s", ("d" * 64,)).fetchone()[0]
                 source_record_id = connection.execute("""
                     INSERT INTO uec.source_records(source_id,source_record_key,artifact_id,raw_fields,parsed_at)
-                    VALUES ('au.npi.facilities','synthetic-preview-link',%s,'{}'::jsonb,now())
+                    VALUES ('fss_approved_establishments','synthetic-preview-link',%s,'{}'::jsonb,now())
                     RETURNING source_record_id
                 """, (artifact_id,)).fetchone()[0]
-                synthetic_query = "10 Synthetic Test Road, Melbourne, AU"
+                synthetic_query = "10 Synthetic Test Road, Example City, United Kingdom"
                 placeholder_job_id = connection.execute("""
                     INSERT INTO uec.geocode_jobs(source_record_id,provider_id,query)
                     VALUES (%s,'pending-provider-review',%s) RETURNING job_id
@@ -276,17 +276,17 @@ class RealPreviewPostgisTests(unittest.TestCase):
                 for job_id in (placeholder_job_id, geoapify_job_id):
                     connection.execute("""
                         INSERT INTO real_preview.geocode_targets(job_id,candidate_id,snapshot_sha256,source_id,source_record_key)
-                        VALUES (%s,%s,%s,'au.npi.facilities','synthetic-au-geocode')
+                        VALUES (%s,%s,%s,'fss_approved_establishments','synthetic-gb-geocode')
                     """, (job_id, au_candidate_id, "a" * 64))
                 connection.execute("""
                     INSERT INTO uec.geocode_job_events(job_id,event_type,attempt_number,retryable,details)
                     VALUES (%s,'queued',1,false,
-                      '{"processing_mode":"private_au_preview_pilot","provider_configuration":"geoapify_au_country_filter"}'::jsonb)
+                      '{"processing_mode":"private_geoapify_source_profile","provider_configuration":"geoapify-gb-fss-approved-establishments","profile_id":"geoapify-gb-fss-approved-establishments"}'::jsonb)
                 """, (geoapify_job_id,))
                 synthetic_response = {
                     "features": [{
                         "geometry": {"type": "Point", "coordinates": [144.9, -37.8]},
-                        "properties": {"result_type": "building", "country_code": "au",
+                        "properties": {"result_type": "building", "country_code": "gb",
                                        "address_line1": "10 Synthetic Test Road",
                                        "rank": {"confidence": 0.97}},
                     }],
@@ -305,11 +305,12 @@ class RealPreviewPostgisTests(unittest.TestCase):
                     synthetic_response,
                 )
                 worker_args = (
-                    DATABASE_URL, "geoapify", 24, 0, 1,
+                    DATABASE_URL, "geoapify", 3000, 0, 1,
                 )
                 worker_options = {
-                    "daily_budget": 24, "max_attempts": 1, "provider_interval": 1,
-                    "worker_id": "synthetic-au-pilot", "au_npi_pilot": True,
+                    "daily_budget": 3000, "max_attempts": 5, "provider_interval": 1,
+                    "worker_id": "synthetic-gb-profile-test",
+                    "private_source_profile_id": "geoapify-gb-fss-approved-establishments",
                 }
                 display_revision_before = connection.execute(
                     "SELECT real_preview.display_evidence_revision()"
@@ -353,7 +354,7 @@ class RealPreviewPostgisTests(unittest.TestCase):
                 def queued_job(source_key, query):
                     linked_record = connection.execute("""
                         INSERT INTO uec.source_records(source_id,source_record_key,artifact_id,raw_fields,parsed_at)
-                        VALUES ('au.npi.facilities',%s,%s,'{}'::jsonb,now()) RETURNING source_record_id
+                        VALUES ('fss_approved_establishments',%s,%s,'{}'::jsonb,now()) RETURNING source_record_id
                     """, (source_key, artifact_id)).fetchone()[0]
                     linked_job = connection.execute("""
                         INSERT INTO uec.geocode_jobs(source_record_id,provider_id,query)
@@ -361,12 +362,12 @@ class RealPreviewPostgisTests(unittest.TestCase):
                     """, (linked_record, query)).fetchone()[0]
                     connection.execute("""
                         INSERT INTO real_preview.geocode_targets(job_id,candidate_id,snapshot_sha256,source_id,source_record_key)
-                        VALUES (%s,%s,%s,'au.npi.facilities','synthetic-au-geocode')
+                        VALUES (%s,%s,%s,'fss_approved_establishments','synthetic-gb-geocode')
                     """, (linked_job, au_candidate_id, "a" * 64))
                     connection.execute("""
                         INSERT INTO uec.geocode_job_events(job_id,event_type,attempt_number,retryable,details)
                         VALUES (%s,'queued',1,false,
-                          '{"processing_mode":"private_au_preview_pilot"}'::jsonb)
+                          '{"processing_mode":"private_geoapify_source_profile","provider_configuration":"geoapify-gb-fss-approved-establishments","profile_id":"geoapify-gb-fss-approved-establishments"}'::jsonb)
                     """, (linked_job,))
                     return linked_record
 
@@ -418,6 +419,88 @@ class RealPreviewPostgisTests(unittest.TestCase):
                     with connection.transaction():
                         connection.execute("UPDATE real_preview.candidates SET city='Changed' WHERE source_group_key='source-group-1'")
             # The migration and all synthetic rows are rolled back with the disposable test transaction.
+
+    def test_geoapify_private_source_profile_gate_for_gb_candidates(self):
+        """Migration 060 accepts one viable match and rejects mismatches, restrictions and ambiguity."""
+        with psycopg.connect(DATABASE_URL) as connection:
+            database_name = connection.execute("SELECT current_database()").fetchone()[0]
+            if not database_name.startswith(("uec_real_preview_test", "uec_v0_geo_test_")):
+                self.fail("integration database must use a dedicated disposable PostGIS test prefix")
+            with connection.transaction():
+                for migration in MIGRATIONS:
+                    connection.execute(migration.read_text(encoding="utf-8"))
+                snapshot = "e" * 64
+                connection.execute("INSERT INTO real_preview.imports(snapshot_sha256,observation_count) VALUES (%s,4)", (snapshot,))
+                connection.execute("""INSERT INTO real_preview.source_manifests
+                  (snapshot_sha256,source_id,source_artifact_sha256,normalized_sha256,normalized_rows,source_url,retrieved_at,code_version,config_version)
+                  VALUES (%s,'fss_approved_establishments',%s,%s,4,'https://example.invalid/','2026-10-03T00:00:00Z','synthetic','synthetic')""",
+                    (snapshot, "f" * 64, "1" * 64))
+                connection.execute("""INSERT INTO uec.sources(source_id,country_code,name,official_url,access_method)
+                  VALUES ('fss_approved_establishments','GB','Synthetic source','https://example.invalid/','synthetic_test')
+                  ON CONFLICT (source_id) DO NOTHING""")
+                artifact_id = connection.execute("""INSERT INTO uec.raw_artifacts(storage_key,sha256,byte_size,media_type,retrieved_at)
+                  VALUES ('synthetic-gb-geocode-artifact',%s,1,'text/csv',now()) ON CONFLICT (sha256) DO UPDATE SET sha256=EXCLUDED.sha256
+                  RETURNING artifact_id""", ("2" * 64,)).fetchone()[0]
+
+                def insert_case(key, source_country, address, feature_rows, *, restricted=False):
+                    observation_id = connection.execute("""INSERT INTO real_preview.observations
+                      (snapshot_sha256,source_id,source_identifier,location_class,facility_candidate,country_code,coordinate_precision)
+                      VALUES (%s,'fss_approved_establishments',%s,'unmapped_private_observation',true,%s,'unavailable')
+                      RETURNING preview_id""", (snapshot, key, source_country)).fetchone()[0]
+                    candidate_id = connection.execute("""INSERT INTO real_preview.candidates
+                      (snapshot_sha256,source_id,source_group_key,representative_observation_id,location_class,country_code,observation_count)
+                      VALUES (%s,'fss_approved_establishments',%s,%s,'unmapped_private_observation',%s,1)
+                      RETURNING candidate_id""", (snapshot, key, observation_id, source_country)).fetchone()[0]
+                    location = {"address": address, "address_lines": [address], "country_code": source_country}
+                    connection.execute("""INSERT INTO real_preview.candidate_private_location_evidence
+                      (candidate_id,snapshot_sha256,source_id,location_evidence) VALUES (%s,%s,'fss_approved_establishments',%s::jsonb)""",
+                        (candidate_id, snapshot, json.dumps(location)))
+                    record_id = connection.execute("""INSERT INTO uec.source_records(source_id,source_record_key,artifact_id,raw_fields,parsed_at)
+                      VALUES ('fss_approved_establishments',%s,%s,'{}'::jsonb,now()) RETURNING source_record_id""",
+                        (f"synthetic-{key}", artifact_id)).fetchone()[0]
+                    if restricted:
+                        connection.execute("""INSERT INTO uec.record_access_events(source_record_id,action,reason_category,policy_version,maintainer)
+                          VALUES (%s,'public_access_revoked','privacy','synthetic-test','synthetic-test')""", (record_id,))
+                    query = f"{address}, United Kingdom"
+                    job_id = connection.execute("""INSERT INTO uec.geocode_jobs(source_record_id,provider_id,query)
+                      VALUES (%s,'geoapify',%s) RETURNING job_id""", (record_id, query)).fetchone()[0]
+                    connection.execute("""INSERT INTO real_preview.geocode_targets
+                      (job_id,candidate_id,snapshot_sha256,source_id,source_record_key)
+                      VALUES (%s,%s,%s,'fss_approved_establishments',%s)""", (job_id,candidate_id,snapshot,key))
+                    connection.execute("""INSERT INTO uec.geocode_job_events(job_id,event_type,attempt_number,retryable,details)
+                      VALUES (%s,'queued',1,false,%s::jsonb)""", (job_id, json.dumps({
+                        "processing_mode": "private_geoapify_source_profile",
+                        "profile_id": "geoapify-gb-fss-approved-establishments"})))
+                    response = {"features": feature_rows}
+                    connection.execute("""INSERT INTO uec.geocode_results
+                      (source_record_id,provider_id,query,match_method,status,attempt_number,result,response,queried_at)
+                      VALUES (%s,'geoapify',%s,'geoapify_forward','accepted',1,
+                        ST_SetSRID(ST_MakePoint(-4.2,56.1),4326)::geography,%s::jsonb,now())""",
+                        (record_id, query, json.dumps(response)))
+                    return candidate_id
+
+                def feature(address, confidence, *, country="gb", result_type="building"):
+                    return {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-4.2,56.1]},
+                            "properties": {"result_type": result_type, "country_code": country,
+                                           "address_line1": address, "rank": {"confidence": confidence}}}
+
+                accepted = insert_case("one-viable", "GB", "1 Synthetic Road", [
+                    feature("1 Synthetic Road", 0.96), feature("Incompatible Street", 0.42)])
+                wrong_country = insert_case("wrong-country", "NL", "2 Synthetic Road", [
+                    feature("2 Synthetic Road", 0.97)])
+                restricted = insert_case("restricted", "GB", "3 Synthetic Road", [
+                    feature("3 Synthetic Road", 0.99)], restricted=True)
+                ambiguous = insert_case("ambiguous", "GB", "4 Synthetic Road", [
+                    feature("4 Synthetic Road", 0.96), feature("4 Synthetic Road", 0.94)])
+                statuses = connection.execute("""SELECT candidate_id,count(*)
+                    FROM real_preview.geocode_display_evidence
+                    WHERE candidate_id = ANY(%s::uuid[])
+                    GROUP BY candidate_id""", ([accepted, wrong_country, restricted, ambiguous],)).fetchall()
+                accepted_counts = {str(candidate): count for candidate, count in statuses}
+                self.assertEqual(accepted_counts.get(str(accepted)), 1)
+                self.assertNotIn(str(wrong_country), accepted_counts)
+                self.assertNotIn(str(restricted), accepted_counts)
+                self.assertNotIn(str(ambiguous), accepted_counts)
             connection.rollback()
 
 

@@ -83,6 +83,8 @@ def refresh(
     manifest = lifecycle.get("manifest", {})
     schema_status = manifest.get("schema_status", "unknown")
     handoff_written = False
+    handoff_sha256 = None
+    schema_fingerprint = None
     if lifecycle.get("status") == "candidate-ready" and schema_status != "schema-drift":
         lifecycle_root = Path(lifecycle["run_dir"])
         rows = [
@@ -91,6 +93,16 @@ def refresh(
             if line.strip()
         ]
         handoff = adapter.write_candidate_handoff(Path(run_dir) / "candidate-handoff", artifact, rows)
+        handoff_manifest_path = Path(run_dir) / "candidate-handoff" / "manifest.json"
+        handoff_manifest = json.loads(handoff_manifest_path.read_text(encoding="utf-8"))
+        handoff_manifest["schema_version"] = SCHEMA_VERSION
+        handoff_manifest["config_version"] = CONFIG["config_version"]
+        atomic_json(handoff_manifest_path, handoff_manifest)
+        handoff_sha256 = handoff.get("normalized_sha256")
+        schema_fields = sorted({key for row in rows for key in row.get("normalized", {})})
+        schema_fingerprint = hashlib.sha256(json.dumps(
+            schema_fields, ensure_ascii=False, separators=(",", ":")
+        ).encode("utf-8")).hexdigest()
         write_operator_review_packet(
             lifecycle_root,
             lifecycle["manifest"],
@@ -132,6 +144,8 @@ def refresh(
         "count_semantics": "Counts are observations and recognition numbers within each list only; no summed facility count is computed.",
         "lifecycle_run_dir": lifecycle.get("run_dir"),
         "candidate_handoff": lifecycle.get("candidate_handoff") or {"written": handoff_written},
+        "candidate_handoff_sha256": handoff_sha256,
+        "schema_fingerprint": schema_fingerprint,
         "publication_state": lifecycle.get("publication_state", "private-candidate"),
         "release_state": "not-created",
         "geocoding": "no provider call during acquisition; address evidence is eligible for the separate private profile and privacy filter",
@@ -154,15 +168,31 @@ class NvwaRefreshAdapter:
         review_path = review_path or options.get("terms_review_path")
         if not review_path:
             raise ValueError("NVWA live acquisition requires a source terms-review path")
-        output_root = Path(str(options.get("raw_output_root") or "data/raw"))
+        run_id = str(options.get("acquisition_run_id") or default_run_id())
+        output_root = run_dir / "acquisition"
         acquisition = acquire_bundle(
             output_root=output_root,
-            run_id=str(options.get("acquisition_run_id") or default_run_id()),
+            run_id=run_id,
             terms_review_path=Path(str(review_path)),
             timeout_seconds=float(options.get("timeout_seconds", 60.0)),
         )
         path = Path(acquisition["bundle_path"])
         raw = path.read_bytes()
+        bundle = json.loads(raw.decode("utf-8"))
+        evidence = {
+            "source_id": SOURCE_ID, "run_id": run_id,
+            "requested_url": CONFIG["source_url"], "final_url": CONFIG["source_url"],
+            "requested_at_utc": bundle.get("requested_at_utc"),
+            "retrieved_at_utc": acquisition["retrieved_at_utc"],
+            "sha256": hashlib.sha256(raw).hexdigest(), "byte_size": len(raw),
+            "terms_review": bundle.get("terms_review"),
+            "rights_caveat": "NVWA site content is stated to be CC0 unless an item says otherwise; no implied endorsement.",
+            "privacy_caveat": "Restricted private staging; location evidence enters a separate privacy-filtered profile; no publication approval.",
+            "coverage": CONFIG["coverage"], "adapter_version": ADAPTER_VERSION,
+            "config_version": CONFIG["config_version"],
+        }
+        from pipeline.contracts.source_lifecycle import atomic_json
+        atomic_json(path.parent / "acquisition-metadata.json", evidence)
         return {
             "artifact_path": str(path),
             "source_url": CONFIG["source_url"],
@@ -173,6 +203,7 @@ class NvwaRefreshAdapter:
             "config_version": CONFIG["config_version"],
             "coverage": CONFIG["coverage"],
             "publication_state": "private-only",
+            "acquisition_metadata": str(path.parent / "acquisition-metadata.json"),
         }
 
     def refresh(self, *, mode: str, run_dir: Path, artifact: Path | None,
@@ -200,11 +231,15 @@ class NvwaRefreshAdapter:
             "publication_state": report.get("publication_state"),
             "input_rows": report.get("input_observations", 0),
             "normalized_rows": report.get("normalized_observations", 0),
+            "candidate_observation_rows": report.get("normalized_observations", 0),
             "quarantined_rows": report.get("quarantined_observations", 0),
+            "quarantine_reasons": manifest.get("anomaly_counts", {}),
             "observation_rows_by_list": report.get("observation_rows_by_list", {}),
             "unique_recognition_numbers_by_list": report.get("unique_recognition_numbers_by_list", {}),
             "count_semantics": report.get("count_semantics"),
             "candidate_handoff": bool(report.get("candidate_handoff", {}).get("written")),
+            "candidate_handoff_sha256": report.get("candidate_handoff_sha256"),
+            "schema_fingerprint": report.get("schema_fingerprint"),
             "schema_status": manifest.get("schema_status"),
             "review_required": True,
             "source_artifact_sha256": report.get("checksum_sha256"),

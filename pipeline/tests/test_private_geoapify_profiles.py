@@ -44,6 +44,31 @@ class PrivateGeoapifyProfileTests(unittest.TestCase):
         self.assertFalse(IMPORTER.private_geocode_queue_eligible(
             "fss_approved_establishments", base, location, "numeric_source_coordinate", profile))
 
+    def test_fsa_and_nvwa_profiles_apply_their_source_country_and_restriction_gates(self):
+        fsa = profile_for_source("fsa_approved_establishments")
+        fsa_base = {"country_code": "GB", "privacy_gate": "privacy-review-required"}
+        fsa_location = {"country_code": "GB", "address_lines": ["Synthetic Industrial Road"]}
+        self.assertTrue(IMPORTER.private_geocode_queue_eligible(
+            "fsa_approved_establishments", fsa_base, fsa_location,
+            "city_postal", fsa))
+        self.assertFalse(IMPORTER.private_geocode_queue_eligible(
+            "fsa_approved_establishments", {**fsa_base, "privacy_gate": "restricted-withheld-address"},
+            fsa_location, "city_postal", fsa))
+
+        nvwa = profile_for_source("nl.nvwa.approved-food")
+        nvwa_base = {"country_code": "NL", "privacy_gate": "pending",
+                     "source_scope_eligibility": "eligible"}
+        nvwa_location = {"country_code": "NL", "address_lines": ["Synthetic Source Road"]}
+        self.assertTrue(IMPORTER.private_geocode_queue_eligible(
+            "nl.nvwa.approved-food", nvwa_base, nvwa_location,
+            "city_postal", nvwa))
+        self.assertFalse(IMPORTER.private_geocode_queue_eligible(
+            "nl.nvwa.approved-food", {**nvwa_base, "country_code": "GB"},
+            nvwa_location, "city_postal", nvwa))
+        self.assertFalse(IMPORTER.private_geocode_queue_eligible(
+            "nl.nvwa.approved-food", {**nvwa_base, "source_scope_eligibility": "excluded"},
+            nvwa_location, "city_postal", nvwa))
+
     def test_migration_contains_private_only_source_country_match_and_restriction_gates(self):
         sql = (ROOT / "migrations/060_private_geoapify_source_profiles.sql").read_text(encoding="utf-8")
         for required in (

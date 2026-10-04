@@ -15,6 +15,13 @@ class FirstWaveDescriptorTests(unittest.TestCase):
             {"dk.smiley", "be.locations", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "fsa_approved_establishments", "fr.dgal.section-i", "fr.dgal.section-ii", "it.853-2004", "it.1069-2009", "es.cat.feed-sandach", "au.npi.facilities", "au.sa.epa.licensed-activities", "br.sif.registered"},
         )
 
+    def test_fsa_descriptor_version_matches_the_pinned_adapter_contract(self):
+        from .uk.fsa_approved.adapter import CONFIG
+
+        descriptor = next(item for item in FIRST_WAVE if item.source_id == "fsa_approved_establishments")
+        self.assertEqual(descriptor.adapter_version, CONFIG["adapter_version"])
+        self.assertEqual(descriptor.schema_version, CONFIG["contract_version"])
+
     def test_descriptors_are_fixture_and_local_artifact_ready(self):
         for item in FIRST_WAVE:
             self.assertEqual(item.readiness()["fixture_ready"], bool(item.fixture_paths))
