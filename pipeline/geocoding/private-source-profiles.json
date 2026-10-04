@@ -1,0 +1,63 @@
+{
+  "schema_version": "private-geocoding-source-profiles-v1",
+  "publication_boundary": "private geocoding evidence only; no release eligibility",
+  "provider": "geoapify",
+  "operational_policy": {
+    "endpoint": "https://api.geoapify.com/v1/geocode/search",
+    "provider_terms_url": "https://www.geoapify.com/terms-and-conditions/",
+    "geocoding_api_url": "https://www.geoapify.com/geocoding-api/",
+    "data_processing_agreement_url": "https://www.geoapify.com/data-processing-agreement/",
+    "key_source": "GEOAPIFY_API_KEY from the process environment only",
+    "daily_request_ceiling": 2800,
+    "minimum_interval_seconds": 1,
+    "requests_per_address": 1,
+    "key_or_address_logging": "never log or print keys, address queries, or raw provider responses",
+    "provider_processing": "address query, client IP and request metadata are sent to Geoapify; its published DPA says detailed personal data are normally kept no longer than 24 hours, with exceptional retention up to two months",
+    "result_retention": "stored results are allowed under Geoapify's open-data terms when required data-source attribution is retained",
+    "attribution": "retain Geoapify and source-data attribution with private results; free-plan display requires Geoapify attribution/follow-link and OpenStreetMap attribution",
+    "publication_boundary": "provider terms, source rights, privacy, attribution, and publication require separate review; this profile grants private processing only"
+  },
+  "match_policy": {
+    "country_filter_required": true,
+    "ip_bias_disabled": true,
+    "maximum_results": 2,
+    "single_result_required": true,
+    "minimum_rank_confidence": 0.9,
+    "address_acceptance": "building or amenity result; normalized provider address line exactly matches the first source address line; country matches",
+    "locality_acceptance": "city result; normalized locality exactly matches an explicitly supplied source city/locality; country matches",
+    "other_results": "review required; no point displayed",
+    "confidence_disclosure": "Geoapify rank confidence is provider metadata, not a calibrated probability or factual review",
+    "precision_disclosure": "address matches are address-level provider points; city matches are approximate locality points, not facility coordinates",
+    "provenance": "retain full provider result privately with source ID, source key, artifact hash, query, timestamp, confidence, result type and match method"
+  },
+  "profiles": [
+    {
+      "profile_id": "geoapify-gb-fsa-approved-establishments",
+      "source_id": "fsa_approved_establishments",
+      "country_code": "GB",
+      "status": "enabled-private-only",
+      "source_scope": "FSA England and Wales accepted source records only; AddressWithheld rows have no location evidence and are never queried"
+    },
+    {
+      "profile_id": "geoapify-gb-fss-approved-establishments",
+      "source_id": "fss_approved_establishments",
+      "country_code": "GB",
+      "status": "enabled-private-only",
+      "source_scope": "Food Standards Scotland accepted source records only; Scotland feed remains distinct"
+    },
+    {
+      "profile_id": "geoapify-dk-smiley",
+      "source_id": "dk.smiley",
+      "country_code": "DK",
+      "status": "enabled-private-only",
+      "source_scope": "Only records explicitly marked eligible by the source lane; coordinate-bearing, withheld, unknown-scope and non-core records are excluded"
+    },
+    {
+      "profile_id": "geoapify-nl-nvwa-approved-food",
+      "source_id": "nl.nvwa.approved-food",
+      "country_code": "NL",
+      "status": "enabled-private-only",
+      "source_scope": "Only explicitly eligible, privacy-screened source address evidence; this profile grants no public approval"
+    }
+  ]
+}

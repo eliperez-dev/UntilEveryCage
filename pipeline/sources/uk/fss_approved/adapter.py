@@ -54,6 +54,13 @@ def _split(value: str | None) -> tuple[str, ...]:
 def _record(row: dict[str, str], line: int) -> dict[str, Any]:
     approval = _clean(row.get("approval_number"))
     nation = _clean(row.get("nation"))
+    address_lines = tuple(_clean(row.get(f"address_line_{number}")) for number in range(1, 5)
+                          if _clean(row.get(f"address_line_{number}")))
+    private_location = {"country_code": "GB"}
+    if address_lines:
+        private_location["address_lines"] = address_lines
+    if _clean(row.get("postcode")):
+        private_location["postal_code"] = _clean(row.get("postcode"))
     return {"source_id": CONFIG["source_id"], "source_row": line,
             "source_record_key": f"{nation or 'unknown'}|{approval or 'unknown'}",
             "source_values": dict(row), "normalized": {
@@ -63,16 +70,17 @@ def _record(row: dict[str, str], line: int) -> dict[str, Any]:
                 # used to merge records across authorities.
                 "establishment_id": _clean(row.get("approval_number")),
                 "trading_name": _clean(row.get("trading_name")),
-                "address_lines": tuple(_clean(row.get(f"address_line_{n}")) for n in range(1, 4)),
+                "address_lines": address_lines,
                 "postcode": _clean(row.get("postcode")), "activities": _split(row.get("activities")),
                 "activity_categories": classify_activities(_split(row.get("activities"))),
                 "species": _clean(row.get("species")),
                 "competent_authority": _clean(row.get("competent_authority")),
-                "nation": nation, "status": _clean(row.get("status")),
+                "nation": nation, "country_code": "GB", "status": _clean(row.get("status")),
                 "remarks": _clean(row.get("remarks")), "published_date": _clean(row.get("published_date")),
                 "coordinates": None, "coordinate_state": "not-supplied",
                 "coordinate_precision": "not-supplied", "coordinate_gate": "not-supplied",
-                "privacy_gate": "privacy-review-required", "publication_gate": "blocked"}}
+                "privacy_gate": "privacy-review-required", "publication_gate": "blocked",
+                "private_location_evidence": private_location}}
 
 
 class FssApprovedEstablishmentsAdapter:

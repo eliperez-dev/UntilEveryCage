@@ -48,11 +48,14 @@ class FsaHandoffTests(unittest.TestCase):
             self.assertEqual(row["source_values"]["X"], "-0.12")
             self.assertIsNone(row["normalized"]["coordinates"])
             evidence = row["normalized"]["private_location_evidence"]
-            self.assertEqual(evidence["address"], ["House Farm", "London"])
+            self.assertEqual(evidence["address"], "House Farm")
+            self.assertEqual(evidence["address_lines"], ["House Farm"])
             self.assertEqual(evidence["postal_code"], "SW1")
             self.assertEqual(evidence["city"], "London")
             self.assertEqual(evidence["coordinates"], {
-                "latitude": 51.50, "longitude": -0.12, "precision": "source-precision-unspecified",
+                "x": "-0.12", "y": "51.50", "axis_labels": ["X", "Y"],
+                "coordinate_reference_system": "unverified",
+                "precision": "unverified-source-semantics",
             })
             self.assertEqual(row["normalized"]["privacy_gate"], "privacy-review-required")
             self.assertEqual(row["normalized"]["coordinate_gate"], "privacy-review-required")
@@ -62,7 +65,9 @@ class FsaHandoffTests(unittest.TestCase):
             withheld_evidence = withheld["normalized"]["private_location_evidence"]
             self.assertNotIn("address", withheld_evidence)
             self.assertNotIn("coordinates", withheld_evidence)
-            self.assertEqual(withheld_evidence["city"], "Cardiff")
+            self.assertNotIn("address_lines", withheld_evidence)
+            self.assertNotIn("postal_code", withheld_evidence)
+            self.assertNotIn("city", withheld_evidence)
 
     def test_source_mismatch_fails_before_handoff(self):
         with tempfile.TemporaryDirectory() as directory:

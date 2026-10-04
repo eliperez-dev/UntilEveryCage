@@ -11,7 +11,7 @@ from typing import Any
 
 
 LOCATION_ALIASES: dict[str, tuple[str, ...]] = {
-    "address": ("address", "street_address", "street", "address_line", "address_line_1", "address_line_2", "address_line_3", "address_line_4", "address_lines", "address1", "address2", "address3", "address4", "physical_address", "establishment_address", "logradouro", "adre_a", "adresse"),
+    "address": ("address", "street_address", "street", "address_line", "address_line_1", "address_line_2", "address_line_3", "address_line_4", "address1", "address2", "address3", "address4", "physical_address", "establishment_address", "logradouro", "adre_a", "adresse"),
     "city": ("city", "municipality", "locality", "town", "suburb", "municipi", "localidad", "ort", "plaats", "commune"),
     "postal_code": ("postal_code", "postcode", "post_code", "zip", "zip_code", "postal", "codi_postal", "cep", "post_code"),
     "region": ("region", "province", "state", "department", "county", "autonomous_community", "comarca", "uf", "prov_ncia", "provincia"),
@@ -50,20 +50,39 @@ def project_private_location_evidence(record: Mapping[str, Any]) -> dict[str, An
     # projection; arbitrary raw columns may describe contact/correspondence.
     result: dict[str, Any] = {}
     for canonical, aliases in LOCATION_ALIASES.items():
-        if withheld and canonical in {"address", "coordinates"}:
+        if withheld and canonical in {"address", "city", "postal_code", "region"}:
             continue
         value = _first(normalized, aliases)
         if value is None:
             value = explicit_private.get(canonical)
         if value is not None:
             result[canonical] = value
-    for key in ("address", "city", "postal_code", "region", "country_code", "municipality_code", "comarca_code", "department_number", "region_code"):
+    for key in ("address", "address_lines", "city", "postal_code", "region", "country_code", "municipality_code", "comarca_code", "department_number", "region_code"):
         value = explicit_private.get(key)
-        if key not in result and _nonempty(value) and not (withheld and key == "address"):
+        if key not in result and _nonempty(value) and not (
+            withheld and key in {"address", "address_lines", "city", "postal_code", "region"}
+        ):
             result[key] = value
+    lines = result.get("address_lines")
+    if isinstance(lines, (list, tuple)):
+        normalized_lines = [" ".join(str(line).split()) for line in lines if _nonempty(line)]
+        if normalized_lines:
+            result["address_lines"] = normalized_lines
+            if not isinstance(result.get("address"), str) or not result["address"].strip():
+                result["address"] = ", ".join(normalized_lines)
 
     coordinates = normalized.get("coordinates")
     private_coordinates = explicit_private.get("coordinates")
+    # Preserve source-reported axes as evidence only. They are not WGS84
+    # coordinates and must never be projected into display geometry here.
+    if (not withheld and isinstance(private_coordinates, Mapping)
+            and _nonempty(private_coordinates.get("x")) and _nonempty(private_coordinates.get("y"))):
+        result["coordinates"] = {
+            "x": private_coordinates["x"], "y": private_coordinates["y"],
+            "axis_labels": private_coordinates.get("axis_labels"),
+            "coordinate_reference_system": private_coordinates.get("coordinate_reference_system", "unverified"),
+            "precision": private_coordinates.get("precision", "unverified-source-semantics"),
+        }
     if (not withheld and isinstance(private_coordinates, Mapping)
             and _nonempty(private_coordinates.get("latitude")) and _nonempty(private_coordinates.get("longitude"))):
         result["coordinates"] = {"latitude": private_coordinates["latitude"],

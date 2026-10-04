@@ -13,9 +13,10 @@ explicit review outcomes. Remarks remain quarantined because their free text is
 retained in restricted source values and has not passed privacy review. Address
 privacy heuristics intentionally exclude generic facility-building names such as
 "house", "home", and "lodge"; explicit residential or intermediary indicators
-still require review. `AddressWithheld=Yes` emits no address or coordinates;
-X/Y are validated as source longitude/latitude without geocoding, but monthly
-normalized coordinates remain suppressed behind an explicit
+still require review. `AddressWithheld=Yes` emits no address or coordinate
+evidence. Non-withheld X/Y values are preserved only as raw source axes with
+unverified CRS and precision; they are neither interpreted as longitude/latitude
+nor displayed. Monthly normalized coordinates remain null behind an explicit
 `privacy-review-required` gate even when no heuristic address-risk token is
 present. A heuristic pass is not privacy clearance. Registered runs
 write deterministic parsed, normalized, and quarantined states with a manifest
@@ -52,10 +53,12 @@ Reason counts are `remarks_present` 999, `no_relevant_activity` 9,
 reason totals overlap. The mapping covers explicit animal-product categories
 found in the FSA feed, including egg packing, fish processing, LBM dispatch and
 purification, while crop-only sprout production and a generic wholesale market
-remain unresolved. All normalized monthly coordinates stay null pending
-privacy review; geocoding is disabled. Records are private candidates only and
-the catalogue's licence statement is not redistribution or publication
-approval. Scotland and Northern Ireland remain distinct source scopes.
+remain unresolved. All normalized monthly coordinates stay null; unverified
+X/Y pairs remain private diagnostics, not usable points. Address-only evidence
+may enter a separate source-scoped private Geoapify queue, while acquisition
+makes no provider request. Records remain private candidates only and the
+catalogue's licence statement is not redistribution or publication approval.
+Scotland and Northern Ireland remain distinct source scopes.
 
 ## Strict live private E2E reacquisition — 2026-10-01
 

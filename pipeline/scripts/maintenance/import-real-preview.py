@@ -29,6 +29,7 @@ from pipeline.taxonomy_crosswalk import (
 )
 from pipeline.taxonomy.persistence import persist_preview_candidate_assignment_set
 from pipeline.geocoding.source_queue import source_geocode_query
+from pipeline.geocoding.private_profiles import profile_for_source
 
 POLICY = Path(__file__).parents[2] / "preview-enabled-sources.json"
 SNAPSHOT_PROJECTION_VERSION = "real-preview-candidate-projection-v9"
@@ -457,7 +458,7 @@ def parse_row(source: str, row: Any) -> tuple[Any, ...]:
     postal = pick(normalized, "postal_code", "postcode") or location_evidence.get("postal_code")
     city = city.strip() if isinstance(city, str) and city.strip() else None
     postal = postal.strip() if isinstance(postal, str) and postal.strip() else None
-    country = pick(normalized, "country_code")
+    country = pick(normalized, "country_code") or location_evidence.get("country_code")
     country = country.strip().upper() if isinstance(country, str) and len(country.strip()) == 2 else None
     department = pick(normalized, "department_number")
     department = department.strip() if isinstance(department, str) and department.strip() else None
@@ -660,15 +661,35 @@ def validate_preview_fields(path: Path, allowed_fields: set[str]) -> None:
             raise ImportFailure("preview_field_not_allowed")
         location = normalized.get("private_location_evidence", {})
         if (not isinstance(location, dict)
-                or set(location) - {"address", "city", "postal_code", "region", "country_code", "coordinates",
+                or set(location) - {"address", "address_lines", "city", "postal_code", "region", "country_code", "coordinates",
                                     "municipality_code", "comarca_code", "department_number", "region_code"}):
             raise ImportFailure("private_location_evidence_invalid")
         coordinates = location.get("coordinates")
         if coordinates is not None and (not isinstance(coordinates, dict)
-                or set(coordinates) - {"latitude", "longitude", "precision"}):
+                or set(coordinates) - {"latitude", "longitude", "precision", "x", "y",
+                                       "axis_labels", "coordinate_reference_system"}):
+            raise ImportFailure("private_location_evidence_invalid")
+        if isinstance(coordinates, dict) and (("x" in coordinates) != ("y" in coordinates)):
             raise ImportFailure("private_location_evidence_invalid")
         if not isinstance(source_values, dict):
             raise ImportFailure("row_schema_invalid")
+
+
+def private_geocode_queue_eligible(source: str, normalized: dict[str, Any],
+                                   location: dict[str, Any], location_class: str,
+                                   profile: dict[str, Any] | None) -> bool:
+    """Check source/profile scope before creating a provider job."""
+    if profile is None or profile.get("source_id") != source or location_class == "numeric_source_coordinate":
+        return False
+    country = normalized.get("country_code") or location.get("country_code")
+    if not isinstance(country, str) or country.upper() != profile.get("country_code"):
+        return False
+    if not (location.get("address") or location.get("address_lines")):
+        return False
+    if normalized.get("privacy_gate") in {"restricted", "restricted-withheld-address", "blocked"}:
+        return False
+    scope = normalized.get("source_scope_eligibility")
+    return scope in (None, "eligible")
 
 
 def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: int, snapshot: str,
@@ -816,9 +837,13 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
         # NPI's 24 accepted address-only rows use the durable provider queue.
         # Catalonia is intentionally resolved only through its approved local
         # municipality reference; address presence must not shadow that path.
-        if (source == "au.npi.facilities"
-                and isinstance(location_evidence, dict) and location_evidence.get("address")
-                and klass != "numeric_source_coordinate" and source_artifact_sha256
+        private_profile = profile_for_source(source)
+        private_location_available = (isinstance(location_evidence, dict)
+                                       and (location_evidence.get("address") or location_evidence.get("address_lines")))
+        profile_queue_eligible = private_geocode_queue_eligible(
+            source, record["normalized"], location_evidence or {}, klass, private_profile)
+        if ((source == "au.npi.facilities" or profile_queue_eligible)
+                and private_location_available and source_artifact_sha256
                 and source_url and source_retrieved_at is not None
                 and isinstance(source_artifact_byte_size, int) and source_artifact_byte_size >= 0):
             query = source_geocode_query({
@@ -857,7 +882,17 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
                        WHERE source_id=%s AND source_record_key=%s AND artifact_id=%s""",
                     (source, linkage_key, artifact_id),
                 ).fetchone()[0]
-                provider_id = "pending-provider-review"
+            if query:
+                if private_profile is not None:
+                    if country != private_profile["country_code"]:
+                        raise ImportFailure("geocode_target_profile_country_mismatch")
+                    provider_id = "geoapify"
+                    processing_mode = "private_geoapify_source_profile"
+                    provider_configuration = private_profile["profile_id"]
+                else:
+                    provider_id = "pending-provider-review"
+                    processing_mode = "private_preview_projection"
+                    provider_configuration = "awaiting_configuration"
                 db.execute(
                     """INSERT INTO uec.geocode_jobs(source_record_id,provider_id,query)
                        VALUES (%s,%s,%s) ON CONFLICT (source_record_id,provider_id,query) DO NOTHING""",
@@ -877,19 +912,30 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
                     """INSERT INTO uec.geocode_job_events(job_id,event_type,attempt_number,retryable,details)
                        SELECT %s,'queued',1,false,%s::jsonb
                        WHERE NOT EXISTS (SELECT 1 FROM uec.geocode_job_events WHERE job_id=%s)""",
-                    (job_id, json.dumps({"provider_configuration": "awaiting_configuration",
-                                         "execution_status": "awaiting_provider_configuration",
+                    (job_id, json.dumps({"provider_configuration": provider_configuration,
+                                         "execution_status": ("ready_for_explicit_profile_worker"
+                                                              if private_profile else "awaiting_provider_configuration"),
                                          "source_artifact_sha256": source_artifact_sha256,
-                                         "processing_mode": "private_preview_projection"}), job_id),
+                                         "processing_mode": processing_mode,
+                                         "profile_id": private_profile["profile_id"] if private_profile else None}), job_id),
                 )
-                db.execute(
-                    """INSERT INTO real_preview.enrichment_state_events
-                       (candidate_id,snapshot_sha256,source_id,source_record_key,state_code,reason_code)
-                       SELECT %s,%s,%s,%s,'provider_blocked','provider_unconfigured'
-                       WHERE NOT EXISTS (SELECT 1 FROM real_preview.enrichment_state_events
-                                         WHERE candidate_id=%s AND state_code='provider_blocked')""",
-                    (candidate_id, snapshot, source, group_key, candidate_id),
-                )
+                if private_profile is None:
+                    db.execute(
+                        """INSERT INTO real_preview.enrichment_state_events
+                           (candidate_id,snapshot_sha256,source_id,source_record_key,state_code,reason_code)
+                           SELECT %s,%s,%s,%s,'provider_blocked','provider_unconfigured'
+                           WHERE NOT EXISTS (SELECT 1 FROM real_preview.enrichment_state_events
+                                             WHERE candidate_id=%s AND state_code='provider_blocked')""",
+                        (candidate_id, snapshot, source, group_key, candidate_id),
+                    )
+                else:
+                    db.execute(
+                        """INSERT INTO real_preview.enrichment_state_events
+                           (candidate_id,snapshot_sha256,source_id,source_record_key,state_code,reason_code)
+                           SELECT %s,%s,%s,%s,'queued','source_scoped_private_profile'
+                           WHERE NOT EXISTS (SELECT 1 FROM real_preview.enrichment_state_events WHERE candidate_id=%s)""",
+                        (candidate_id, snapshot, source, group_key, candidate_id),
+                    )
         if activity["crosswalk_document"]:
             persist_preview_candidate_assignment_set(
                 db,

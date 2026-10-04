@@ -93,7 +93,7 @@ The monthly profile treats England and Wales as the current source scope and kee
 Northern Ireland as a separate future feed. It quarantines duplicate IDs within a
 nation, unknown jurisdictions, malformed rows, missing activities, remarks and
 address-risk rows; suppresses `AddressWithheld` addresses and coordinates; validates
-X/Y as source longitude/latitude without geocoding; and reports aggregate coverage
+X/Y as raw source axes with unverified CRS/precision (not longitude/latitude); and reports aggregate coverage
 and anomaly counts. Remarks remain a quarantine reason because their free text is
 preserved in restricted source values and has not passed privacy review. The address
 heuristic was narrowed after aggregate QA: generic facility-building words such as
@@ -249,3 +249,27 @@ review packet. Source coordinates remain null/suppressed and no geocoding is
 enabled. Northern Ireland remains quarantined/out of scope in the monthly FSA
 profile until its separate catalogue resource, terms, schema, and privacy
 handling are independently supported.
+
+### Current private location lane (2026-10-03)
+
+The retained FSA snapshot has 2,475 paired X/Y values among 5,342 source rows,
+but the FSA-owned [field schema](https://fsadata.github.io/approved-food-establishments/)
+names `X` and `Y` without documenting a coordinate reference system or point
+semantics. Their ranges are not sufficient to assign EPSG:27700 or transform
+them. The adapter preserves paired values as private source evidence marked
+`coordinate_reference_system=unverified` and
+`precision=unverified-source-semantics`; they remain null in normalized
+coordinates and are not displayed. Non-withheld address lines may independently
+enter a separate private enrichment queue. All 104 rows explicitly marked
+`AddressWithheld=Yes` carry no address, locality, postcode, or coordinate
+evidence and are not queued.
+
+The current FSS retained artifact produced 595 accepted candidates with
+address-only evidence and no source points. Address-risk and other quarantined
+rows remain outside the queue. FSA and FSS private Geoapify profiles are
+country-filtered (`GB`), country/candidate/source/latest-snapshot checked, and
+use a 0.90 rank-confidence heuristic with exact normalized address-line or
+explicit locality matching; exactly one viable result is required. This is a
+private enrichment capability, not publication approval. Provider-result
+display remains contingent on the migration/trigger integration check and no
+public release is created by this lane.

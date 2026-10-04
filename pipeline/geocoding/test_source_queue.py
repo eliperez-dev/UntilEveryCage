@@ -59,6 +59,26 @@ class SourceLocationQueueTests(unittest.TestCase):
                 self.assertEqual(summary["records_with_source_coordinates"], 0)
                 self.assertEqual(summary["records_queued"], 1)
 
+    def test_fsa_unverified_source_axes_do_not_become_points_or_block_address_query(self):
+        artifact = SourceArtifact("https://example.test/fsa", "2026-10-01T00:00:00Z",
+                                 hashlib.sha256(b"fixture").hexdigest(), 7)
+        record = {"source_id": "fsa_approved_establishments", "source_record_key": "England|A-1",
+                  "source_values": {"Phone": "555-0100"},
+                  "normalized": {"coordinates": None, "private_location_evidence": {
+                      "country_code": "GB", "address_lines": ["10 Example Road"],
+                      "city": "Exampleton", "postal_code": "AB1 2CD",
+                      "coordinates": {"x": "430000", "y": "780000",
+                                      "coordinate_reference_system": "unverified",
+                                      "precision": "unverified-source-semantics"},
+                  }}}
+        with tempfile.TemporaryDirectory() as directory:
+            summary = build_geocode_queue([record], artifact, directory)
+            queued = json.loads((Path(directory) / "geocode-queue.jsonl").read_text(encoding="utf-8"))
+        self.assertEqual(summary["records_with_source_coordinates"], 0)
+        self.assertEqual(summary["records_queued"], 1)
+        self.assertEqual(queued["geocoder_query"], "10 Example Road, Exampleton, AB1 2CD, United Kingdom")
+        self.assertNotIn("555-0100", queued["geocoder_query"])
+
 
 if __name__ == "__main__":
     unittest.main()

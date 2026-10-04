@@ -122,9 +122,9 @@
       "terms_decision": "approved",
       "freshness_max_days": 60,
       "expected_artifacts": ["source.csv"],
-      "allowed_preview_fields": ["establishment_id", "trading_name", "address_lines", "postcode", "activities", "activity_categories", "species", "competent_authority", "nation", "authority_nation_key", "status", "published_date", "coordinates", "coordinate_state", "coordinate_precision", "coordinate_gate", "privacy_gate", "publication_gate"],
-      "display_policy": {"kind": "unmapped_source_records_only", "precision": "no-coordinate-disclosure", "disclosure": "The FSA monthly feed's address and coordinate fields are withheld from this private preview pending privacy review. Records are listable but unmapped; no geocoding or map pins are created. England and Wales only; Northern Ireland (FSS) and Scotland (FSS) remain separate sources. Private preview only; no public release."},
-      "adapter_version": "fsa-uk-v2-2",
+      "allowed_preview_fields": ["establishment_id", "trading_name", "address_lines", "postcode", "activities", "activity_categories", "species", "competent_authority", "nation", "country_code", "authority_nation_key", "status", "published_date", "coordinates", "coordinate_state", "coordinate_precision", "coordinate_gate", "privacy_gate", "publication_gate"],
+      "display_policy": {"kind": "unmapped_source_records_only", "precision": "no-coordinate-disclosure", "disclosure": "FSA X/Y values are retained as private source evidence with CRS and point semantics unverified; they are not transformed or displayed. Address-only evidence is eligible for a later source-scoped private geocoding run. AddressWithheld rows carry no private address, locality, postcode, or coordinate evidence. England and Wales only; Scotland and Northern Ireland remain separate sources. Private preview only; no public release."},
+      "adapter_version": "fsa-uk-v2-3",
       "schema_version": "fsa-uk-approved-v1"
     },
     "fss_approved_establishments": {
@@ -136,9 +136,9 @@
       "terms_decision": "approved",
       "freshness_max_days": 35,
       "expected_artifacts": ["source.csv"],
-      "allowed_preview_fields": ["approval_number", "establishment_id", "trading_name", "address_lines", "postcode", "activities", "activity_categories", "species", "competent_authority", "nation", "status", "remarks", "published_date", "coordinates", "coordinate_state", "coordinate_precision", "coordinate_gate", "privacy_gate", "publication_gate"],
-      "display_policy": {"kind": "unmapped_source_records_only", "precision": "no-coordinate-disclosure", "disclosure": "Food Standards Scotland approved establishments, Scotland only. Source addresses and remarks remain restricted; coordinates are not supplied to map preview and no geocoding is performed. Private preview only; no public release. England/Wales FSA and Northern Ireland data remain separate."},
-      "adapter_version": "fss-scotland-v2-2",
+      "allowed_preview_fields": ["approval_number", "establishment_id", "trading_name", "address_lines", "postcode", "activities", "activity_categories", "species", "competent_authority", "nation", "country_code", "status", "remarks", "published_date", "coordinates", "coordinate_state", "coordinate_precision", "coordinate_gate", "privacy_gate", "publication_gate"],
+      "display_policy": {"kind": "unmapped_source_records_only", "precision": "no-coordinate-disclosure", "disclosure": "Food Standards Scotland approved establishments, Scotland only. Address-only evidence is retained in the private location projection and may be queued for a separate source-scoped Geoapify run. Source addresses and remarks are excluded from public and map read models. No source coordinates are supplied. Private preview only; no public release. England/Wales FSA and Northern Ireland data remain separate."},
+      "adapter_version": "fss-scotland-v2-3",
       "schema_version": "fss-scotland-approved-v2"
     },
     "it.853-2004": {

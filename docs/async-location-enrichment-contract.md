@@ -14,6 +14,12 @@ fields, and source coordinates are preserved in an allow-listed private
 location-evidence table for enrichment. Personal contact fields are excluded
 from that projection. Public API and release projections control exposure;
 upstream candidate normalization does not discard facility-location evidence.
+Address line arrays remain alongside a canonical private query address. Raw
+source X/Y axes with an unverified CRS remain diagnostic evidence only and are
+never interpreted as display coordinates. Provider lookups are a distinct,
+explicitly source/country-scoped async operation; source queue eligibility and
+privacy restrictions are checked before enqueue, and geocoding never grants
+release eligibility.
 
 Catalonia's register contains a source-published establishment address and
 five-digit INE or six-digit Idescat municipality codes. These location values

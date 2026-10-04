@@ -64,6 +64,10 @@ class GeoapifyAdapterTests(unittest.TestCase):
     def pilot_adapter(**kwargs):
         return geoapify.GeoapifyAdapter(country_code="au", pilot_auto_display=True, **kwargs)
 
+    @staticmethod
+    def gb_private_adapter(**kwargs):
+        return geoapify.GeoapifyAdapter(country_code="gb", private_source_profile=True, **kwargs)
+
     def test_key_is_required(self):
         with patch.dict("os.environ", {}, clear=True):
             with self.assertRaisesRegex(ValueError, "GEOAPIFY_API_KEY"):
@@ -131,6 +135,40 @@ class GeoapifyAdapterTests(unittest.TestCase):
             ).geocode(self.QUERY)
             self.assertEqual(result.status, "review_required")
             self.assertIsNone(result.latitude)
+
+    def test_private_source_profile_accepts_one_viable_match_among_weak_alternatives(self):
+        good = {"geometry": {"type": "Point", "coordinates": [-2.5, 55.9]},
+                "properties": {"place_id": "good", "result_type": "building", "country_code": "gb",
+                               "address_line1": "10 Example Road", "rank": {"confidence": 0.96}}}
+        weak = {"geometry": {"type": "Point", "coordinates": [-3, 56]},
+                "properties": {"place_id": "weak", "result_type": "building", "country_code": "gb",
+                               "address_line1": "Elsewhere Road", "rank": {"confidence": 0.80}}}
+        query = "10 Example Road, Exampleton, AB1 2CD, United Kingdom"
+        result = self.gb_private_adapter(
+            api_key="test-secret", opener=unittest.mock.Mock(return_value=FakeResponse({"features": [good, weak]}))
+        ).geocode(query)
+        self.assertEqual(result.status, "accepted")
+        self.assertEqual(result.provider_address_id, "good")
+        self.assertEqual(result.response["_uec_selected_feature_index"], 0)
+
+    def test_private_source_profile_rejects_multiple_viable_or_wrong_country(self):
+        base = {"geometry": {"type": "Point", "coordinates": [-2.5, 55.9]},
+                "properties": {"result_type": "building", "country_code": "gb",
+                               "address_line1": "10 Example Road", "rank": {"confidence": 0.96}}}
+        query = "10 Example Road, Exampleton, AB1 2CD, United Kingdom"
+        duplicate = json.loads(json.dumps(base))
+        outcome = self.gb_private_adapter(
+            api_key="test-secret", opener=unittest.mock.Mock(return_value=FakeResponse({"features": [base, duplicate]}))
+        ).geocode(query)
+        self.assertEqual(outcome.status, "review_required")
+        self.assertEqual(outcome.acceptance, "ambiguous_multiple_viable_results")
+        wrong_country = json.loads(json.dumps(base))
+        wrong_country["properties"]["country_code"] = "ie"
+        outcome = self.gb_private_adapter(
+            api_key="test-secret", opener=unittest.mock.Mock(return_value=FakeResponse({"features": [wrong_country]}))
+        ).geocode(query)
+        self.assertEqual(outcome.status, "review_required")
+        self.assertIsNone(outcome.latitude)
 
     def test_city_point_requires_country_and_query_locality_and_is_approximate(self):
         payload = {"features": [{

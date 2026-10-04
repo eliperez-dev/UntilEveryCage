@@ -1,6 +1,6 @@
 """FSA approved-establishments adapter for synthetic and monthly source profiles."""
 from __future__ import annotations
-import csv, hashlib, json, os, tempfile
+import csv, hashlib, json, math, os, tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -89,10 +89,19 @@ def _csv(content):
 def _synthetic_record(row,line):
     nation=_clean(row.get("nation"));ident=_clean(row.get("establishment_id"));acts=_split(row.get("activities"));return {"source_id":CONFIG["source_id"],"source_row":line,"source_record_key":f"{nation or 'unknown'}|{ident or 'unknown'}","source_values":dict(row),"normalized":{"establishment_id":ident,"trading_name":_clean(row.get("trading_name")),"address_lines":tuple(_clean(row.get(f"address_line_{n}")) for n in range(1,4)),"postcode":_clean(row.get("postcode")),"activities":acts,"activity_categories":classify_activities(acts),"species":_clean(row.get("species")),"competent_authority":_clean(row.get("competent_authority")),"nation":nation,"authority_nation_key":nation,"status":_clean(row.get("status")),"remarks":_clean(row.get("remarks")),"published_date":_clean(row.get("published_date")),"coordinates":None}}
 def _coords(row):
-    try:x,y=float(row.get("X","").strip()),float(row.get("Y","").strip())
-    except ValueError:return None,None,"unresolved-nonnumeric"
-    if not(-8.5<=x<=2.5 and 49.0<=y<=61.5):return None,None,"unresolved-out-of-range"
-    return x,y,"source-x-lon-y-lat"
+    """Retain source X/Y without assigning an undocumented CRS or precision."""
+    x, y = _clean(row.get("X")), _clean(row.get("Y"))
+    if not x and not y:
+        return None, None, "not-supplied"
+    if not x or not y:
+        return None, None, "unresolved-incomplete-pair"
+    try:
+        numeric_x, numeric_y = float(x), float(y)
+    except ValueError:
+        return None, None, "unresolved-nonnumeric"
+    if not (math.isfinite(numeric_x) and math.isfinite(numeric_y)):
+        return None, None, "unresolved-nonnumeric"
+    return x, y, "source-x-y-crs-unverified"
 def _monthly_record(row,line):
     withheld=(_clean(row.get("AddressWithheld")) or "").lower()=="yes";x=y=None;status="withheld" if withheld else "unavailable"
     if not withheld:x,y,status=_coords(row)
@@ -100,15 +109,15 @@ def _monthly_record(row,line):
     privacy_gate="restricted-withheld-address" if withheld else "privacy-review-required"
     coordinate_gate="restricted-withheld-address" if withheld else "privacy-review-required"
     ident=_clean(row.get("AppNo"));nation=_clean(row.get("Country"))
-    private_location={}
-    if _clean(row.get("Postcode")): private_location["postal_code"]=_clean(row.get("Postcode"))
-    if _clean(row.get("Town")): private_location["city"]=_clean(row.get("Town"))
+    private_location={"country_code":"GB"} if not withheld else {}
     if not withheld:
-        address_lines=tuple(_clean(row.get(key)) for key in ("Address1","Address2","Address3","Town") if _clean(row.get(key)))
-        if address_lines: private_location["address"]=address_lines
+        address_lines=tuple(_clean(row.get(key)) for key in ("Address1","Address2","Address3") if _clean(row.get(key)))
+        if address_lines: private_location["address_lines"]=address_lines
+        if _clean(row.get("Postcode")): private_location["postal_code"]=_clean(row.get("Postcode"))
+        if _clean(row.get("Town")): private_location["city"]=_clean(row.get("Town"))
         if x is not None and y is not None:
-            private_location["coordinates"]={"latitude":y,"longitude":x,"precision":"source-precision-unspecified"}
-    normalized={"establishment_id":ident,"trading_name":_clean(row.get("TradingName")),"activities":acts,"activity_categories":_monthly_activity_categories(acts),"species":_clean(row.get("Species")),"competent_authority":_clean(row.get("CompetentAuthority")),"nation":nation,"authority_nation_key":nation,"status":None,"published_date":None,"coordinates":None,"coordinate_state":status,"coordinate_precision":"withheld" if withheld else "source-precision-unspecified","coordinate_gate":coordinate_gate,"privacy_gate":privacy_gate,"publication_gate":"blocked"}
+            private_location["coordinates"]={"x":x,"y":y,"axis_labels":["X","Y"],"coordinate_reference_system":"unverified","precision":"unverified-source-semantics"}
+    normalized={"establishment_id":ident,"trading_name":_clean(row.get("TradingName")),"activities":acts,"activity_categories":_monthly_activity_categories(acts),"species":_clean(row.get("Species")),"competent_authority":_clean(row.get("CompetentAuthority")),"nation":nation,"country_code":"GB","authority_nation_key":nation,"status":None,"published_date":None,"coordinates":None,"coordinate_state":status,"coordinate_precision":"withheld" if withheld else ("unverified-source-semantics" if x is not None else "not-supplied"),"coordinate_gate":coordinate_gate,"privacy_gate":privacy_gate,"publication_gate":"blocked"}
     if private_location: normalized["private_location_evidence"]=private_location
     return {"source_id":CONFIG["source_id"],"source_row":line,"source_record_key":f"{nation or 'unknown'}|{ident or 'unknown'}","source_values":dict(row),"normalized":normalized}
 
@@ -176,7 +185,7 @@ class FsaApprovedEstablishmentsAdapter:
         if digest!=artifact["checksum_sha256"] or len(raw)!=int(artifact["byte_size"]):raise FsaContractError("source checksum or byte size mismatch")
         result=self.parse_bytes(raw);accepted=list(result.accepted);quarantined=list(result.quarantined);root=Path(run_dir);parsed=accepted+[x["record"] for x in quarantined]
         normalized_sha=_jsonl(root/"normalized"/"records.jsonl",accepted);_jsonl(root/"parsed"/"records.jsonl",parsed);_jsonl(root/"quarantined"/"records.jsonl",quarantined);(root/"released").mkdir(parents=True,exist_ok=True)
-        manifest={**artifact,"source_id":self.source_id,"country_code":"GB","adapter_version":self.adapter_version,"schema_version":self.schema_version,"checksum_sha256":digest,"byte_size":len(raw),"input_rows":len(parsed),"normalized_rows":len(accepted),"normalized_sha256":normalized_sha,"quarantined_rows":len(quarantined),"profile":result.profile,"schema_fingerprint":result.schema_fingerprint,"coverage_counts":result.coverage_counts or {},"anomaly_counts":result.anomaly_counts or {},"geocoding":"disabled","release_state":"not-created","publication_state":"private-candidate"}
+        manifest={**artifact,"source_id":self.source_id,"country_code":"GB","adapter_version":self.adapter_version,"schema_version":self.schema_version,"checksum_sha256":digest,"byte_size":len(raw),"input_rows":len(parsed),"normalized_rows":len(accepted),"normalized_sha256":normalized_sha,"quarantined_rows":len(quarantined),"profile":result.profile,"schema_fingerprint":result.schema_fingerprint,"coverage_counts":result.coverage_counts or {},"anomaly_counts":result.anomaly_counts or {},"geocoding":"not-run-separate-private-profile","release_state":"not-created","publication_state":"private-candidate"}
         _atomic(root/"manifest.json",(json.dumps(manifest,ensure_ascii=False,sort_keys=True,indent=2,default=list)+"\n").encode());return manifest
 
 def run_registered(raw_path,run_dir,config):return FsaApprovedEstablishmentsAdapter().run(raw_path,run_dir,config)

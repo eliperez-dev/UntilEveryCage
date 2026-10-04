@@ -46,8 +46,22 @@ class CandidateHandoffTests(unittest.TestCase):
         }, "normalized": {
             "establishment_id": "A", "privacy_gate": "restricted-withheld-address",
             "coordinate_gate": "restricted-withheld-address",
-            "private_location_evidence": {"city": "Exampleton"},
+            "private_location_evidence": {"address_lines": ["Withheld Facility Address"],
+                                          "city": "Exampleton", "postal_code": "A1A 1A1"},
         }}
-        self.assertEqual(project_private_location_evidence(row), {"city": "Exampleton"})
+        self.assertEqual(project_private_location_evidence(row), {})
+
+    def test_address_lines_and_unverified_source_axes_survive_private_projection(self):
+        row = {"normalized": {"private_location_evidence": {
+            "address_lines": ["Industrial Road", "Unit 4"], "country_code": "GB",
+            "coordinates": {"x": "430000", "y": "780000", "axis_labels": ["X", "Y"],
+                             "coordinate_reference_system": "unverified",
+                             "precision": "unverified-source-semantics"},
+        }}}
+        result = project_private_location_evidence(row)
+        self.assertEqual(result["address"], "Industrial Road, Unit 4")
+        self.assertEqual(result["address_lines"], ["Industrial Road", "Unit 4"])
+        self.assertEqual(result["coordinates"]["coordinate_reference_system"], "unverified")
+        self.assertNotIn("latitude", result["coordinates"])
 
 if __name__ == "__main__": unittest.main()

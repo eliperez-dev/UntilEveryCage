@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 from pipeline.geocoding.registry import get_adapter
 from pipeline.geocoding.base import GeocodeOutcome
+from pipeline.geocoding.private_profiles import profile_by_id
 
 AU_NPI_AUTH_REQUEUE_REASON = "operator_authorized_geoapify_key_recovery"
 
@@ -32,6 +33,7 @@ def _claim_job(
     lease_timeout: int,
     au_npi_pilot: bool = False,
     au_npi_auth_recovery: bool = False,
+    private_source_profile_id: str | None = None,
 ):
     with connection.transaction():
         job = connection.execute("""
@@ -88,6 +90,29 @@ def _claim_job(
                           )
                     )
               )
+              AND (
+                    %s::text IS NULL OR EXISTS (
+                        SELECT 1
+                        FROM real_preview.geocode_targets target
+                        JOIN real_preview.candidates candidate ON candidate.candidate_id=target.candidate_id
+                        JOIN uec.geocode_job_events queued ON queued.job_id=job.job_id
+                          AND queued.event_type='queued'
+                          AND queued.details->>'processing_mode'='private_geoapify_source_profile'
+                          AND queued.details->>'profile_id'=%s
+                        WHERE target.job_id=job.job_id
+                          AND target.source_id=%s AND candidate.source_id=%s
+                          AND candidate.country_code=%s
+                          AND target.snapshot_sha256=candidate.snapshot_sha256
+                          AND candidate.snapshot_sha256=COALESCE(
+                              (SELECT run.snapshot_sha256 FROM real_preview.source_preview_runs run
+                               WHERE run.source_id=%s
+                               ORDER BY run.created_at DESC,run.run_id DESC LIMIT 1),
+                              (SELECT manifest.snapshot_sha256 FROM real_preview.source_manifests manifest
+                               WHERE manifest.source_id=%s
+                               ORDER BY manifest.retrieved_at DESC,manifest.snapshot_sha256 DESC LIMIT 1)
+                          )
+                    )
+              )
             ORDER BY job.created_at, job.job_id
             FOR UPDATE OF job SKIP LOCKED
             LIMIT 1
@@ -95,6 +120,12 @@ def _claim_job(
             provider_id, max_attempts, au_npi_pilot, au_npi_auth_recovery,
             au_npi_auth_recovery, au_npi_pilot, au_npi_auth_recovery,
             au_npi_pilot, lease_timeout, au_npi_pilot,
+            private_source_profile_id, private_source_profile_id,
+            profile_by_id(private_source_profile_id)["source_id"] if private_source_profile_id else None,
+            profile_by_id(private_source_profile_id)["source_id"] if private_source_profile_id else None,
+            profile_by_id(private_source_profile_id)["country_code"] if private_source_profile_id else None,
+            profile_by_id(private_source_profile_id)["source_id"] if private_source_profile_id else None,
+            profile_by_id(private_source_profile_id)["source_id"] if private_source_profile_id else None,
         )).fetchone()
         if not job:
             return None
@@ -310,6 +341,7 @@ def run(
     worker_id: str | None = None,
     au_npi_pilot: bool = False,
     au_npi_auth_recovery: bool = False,
+    private_source_profile_id: str | None = None,
 ) -> int:
     if daily_budget < 1 or max_attempts < 1 or lease_timeout < 1 or retries < 1 or provider_interval < 0:
         raise ValueError("budgets, attempts, lease timeout, retries, and provider interval must be valid")
@@ -317,12 +349,17 @@ def run(
         raise ValueError("AU NPI pilot requires Geoapify")
     if au_npi_auth_recovery and not au_npi_pilot:
         raise ValueError("AU NPI authentication recovery requires the explicit pilot mode")
+    if private_source_profile_id and (au_npi_pilot or au_npi_auth_recovery):
+        raise ValueError("private source profile mode is separate from the AU pilot")
+    if private_source_profile_id and (provider_id != "geoapify" or profile_by_id(private_source_profile_id) is None):
+        raise ValueError("enabled private Geoapify source profile required")
     if au_npi_pilot and (
         limit is None or limit > 24 or provider_interval < 1.0 or retries > 1
         or max_attempts != (2 if au_npi_auth_recovery else 1)
     ):
         raise ValueError("AU NPI pilot is bounded to 24 jobs per invocation, one shared request per second, and one attempt per job except explicit auth recovery")
-    adapter = get_adapter(provider_id, au_npi_pilot=au_npi_pilot)
+    adapter = get_adapter(provider_id, au_npi_pilot=au_npi_pilot,
+                          private_source_profile_id=private_source_profile_id)
     worker_id = worker_id or f"geocoder-{uuid.uuid4().hex[:12]}"
     processed = 0
     with psycopg.connect(database_url) as connection:
@@ -330,6 +367,7 @@ def run(
             job = _claim_job(
                 connection, provider_id, worker_id, max_attempts, lease_timeout,
                 au_npi_pilot, au_npi_auth_recovery,
+                private_source_profile_id,
             )
             if not job:
                 break
@@ -413,6 +451,7 @@ if __name__ == "__main__":
     parser.add_argument("--provider-interval", type=float, default=1.0, help="Minimum shared seconds between provider reservations")
     parser.add_argument("--au-npi-pilot", action="store_true", help="Enable only the bounded AU NPI Geoapify matching/display policy")
     parser.add_argument("--au-npi-auth-recovery", action="store_true", help="Permit only queued attempt-2 events carrying the explicit AU NPI authentication recovery marker")
+    parser.add_argument("--private-source-profile", help="Explicitly process only the named enabled private Geoapify source profile")
     parser.add_argument("--worker-id", default=os.environ.get("UEC_GEOCODE_WORKER_ID"))
     args = parser.parse_args()
     count = run(
@@ -421,5 +460,6 @@ if __name__ == "__main__":
         lease_timeout=args.lease_timeout, provider_interval=args.provider_interval,
         worker_id=args.worker_id, au_npi_pilot=args.au_npi_pilot,
         au_npi_auth_recovery=args.au_npi_auth_recovery,
+        private_source_profile_id=args.private_source_profile,
     )
     print(f"provider={args.provider} status=complete processed={count}")

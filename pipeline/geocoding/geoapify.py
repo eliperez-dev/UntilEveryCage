@@ -1,4 +1,4 @@
-"""Geoapify adapter for bounded, private AU address enrichment.
+"""Geoapify adapter for bounded, private source-scoped address enrichment.
 
 The API key is read from the environment and is never included in outcomes,
 logs, exceptions, or checked-in configuration. Provider matches are retained as
@@ -30,6 +30,7 @@ class GeoapifyAdapter:
         *,
         country_code: str | None = None,
         pilot_auto_display: bool = False,
+        private_source_profile: bool = False,
     ):
         self.api_key = (api_key or os.environ.get("GEOAPIFY_API_KEY", "")).strip()
         if not self.api_key:
@@ -38,8 +39,14 @@ class GeoapifyAdapter:
             raise ValueError("country_code must be a lowercase ISO alpha-2 code")
         if pilot_auto_display and country_code != "au":
             raise ValueError("automatic preview display is only configured for the AU pilot")
+        if private_source_profile and country_code not in {"gb", "dk", "nl"}:
+            raise ValueError("private source profiles are not enabled for this country")
+        if pilot_auto_display and private_source_profile:
+            raise ValueError("AU pilot and source profile modes are mutually exclusive")
         self.country_code = country_code
         self.pilot_auto_display = pilot_auto_display
+        self.private_source_profile = private_source_profile
+        self.strict_matching = pilot_auto_display or private_source_profile
         self.timeout = timeout
         self.opener = opener
 
@@ -88,13 +95,66 @@ class GeoapifyAdapter:
                 "unresolved", "unresolved", None, None, None, None,
                 "geoapify_forward", False, payload,
             )
-        if self.pilot_auto_display and len(features) != 1:
-            return GeocodeOutcome(
-                "review_required", "ambiguous_multiple_results", None, None,
-                None, None, "geoapify_forward", False,
-                {"result_count": len(features)},
-            )
-        feature = features[0]
+        # Ignore weak/incompatible alternatives, but require exactly one
+        # independently viable match. A second returned feature alone is not
+        # evidence of ambiguity.
+        candidate_features = features if self.strict_matching else features[:1]
+        viable = []
+        for candidate in candidate_features:
+            if not isinstance(candidate, dict):
+                continue
+            candidate_props = candidate.get("properties")
+            candidate_geometry = candidate.get("geometry")
+            if not isinstance(candidate_props, dict) or not isinstance(candidate_geometry, dict):
+                continue
+            candidate_coords = candidate_geometry.get("coordinates")
+            if not isinstance(candidate_coords, list) or len(candidate_coords) != 2:
+                continue
+            lng, lat = candidate_coords
+            if (isinstance(lng, bool) or isinstance(lat, bool)
+                    or not isinstance(lng, (int, float)) or not isinstance(lat, (int, float))
+                    or not isfinite(lng) or not isfinite(lat)
+                    or not (-180 <= lng <= 180) or not (-90 <= lat <= 90)):
+                continue
+            if not self.strict_matching:
+                viable.append((candidate, "review_provider_candidate"))
+                continue
+            if str(candidate_props.get("country_code", "")).lower() != self.country_code:
+                continue
+            candidate_rank = candidate_props.get("rank")
+            candidate_confidence = candidate_rank.get("confidence") if isinstance(candidate_rank, dict) else None
+            if (isinstance(candidate_confidence, bool) or not isinstance(candidate_confidence, (int, float))
+                    or not isfinite(candidate_confidence) or candidate_confidence < self.minimum_rank_confidence):
+                continue
+            candidate_type = candidate_props.get("result_type")
+            parts = [self._normalize(part) for part in query.split(",") if self._normalize(part)]
+            candidate_address = candidate_props.get("address_line1")
+            candidate_street = candidate_props.get("street")
+            candidate_house = candidate_props.get("housenumber")
+            normalized_address = self._normalize(candidate_address) if isinstance(candidate_address, str) else ""
+            if not normalized_address and isinstance(candidate_street, str) and isinstance(candidate_house, (str, int)):
+                normalized_address = self._normalize(f"{candidate_house} {candidate_street}")
+            if candidate_type in {"building", "amenity"} and parts and normalized_address == parts[0]:
+                viable.append((candidate, "high_confidence_address_match"))
+            elif candidate_type == "city":
+                locality = candidate_props.get("city")
+                locality = self._normalize(locality) if isinstance(locality, str) else ""
+                if locality and locality in parts[1:]:
+                    viable.append((candidate, "approximate_locality_match"))
+        if self.strict_matching:
+            if len(viable) != 1:
+                return GeocodeOutcome(
+                    "review_required", "ambiguous_multiple_viable_results" if len(viable) > 1 else "address_or_locality_match_not_supported",
+                    None, None, None, None, "geoapify_forward", False,
+                    {"result_count": len(features), "viable_result_count": len(viable)},
+                )
+            feature, accepted_match = viable[0]
+        else:
+            if not viable:
+                return self._failed("invalid_provider_coordinates", False)
+            feature, accepted_match = viable[0]
+        selected_index = next((index for index, item in enumerate(features) if item is feature), 0)
+        retained_payload = {**payload, "_uec_selected_feature_index": selected_index}
         if not isinstance(feature, dict):
             return self._failed("invalid_provider_feature", False)
         geometry = feature.get("geometry")
@@ -110,7 +170,7 @@ class GeoapifyAdapter:
         if not isfinite(longitude) or not isfinite(latitude) or not (-180 <= longitude <= 180) or not (-90 <= latitude <= 90):
             return self._failed("invalid_provider_coordinates", False)
 
-        if self.pilot_auto_display and str(properties.get("country_code", "")).lower() != self.country_code:
+        if self.strict_matching and str(properties.get("country_code", "")).lower() != self.country_code:
             return GeocodeOutcome(
                 "review_required", "country_mismatch", None, None,
                 None, None, "geoapify_forward", False,
@@ -128,7 +188,7 @@ class GeoapifyAdapter:
         if not isinstance(place_id, str):
             place_id = None
 
-        if not self.pilot_auto_display:
+        if not self.strict_matching:
             acceptance = "review_multiple_points" if len(features) > 1 else "review_provider_candidate"
             return GeocodeOutcome(
                 "review_required", acceptance, float(latitude), float(longitude),
@@ -151,7 +211,7 @@ class GeoapifyAdapter:
         ):
             return GeocodeOutcome(
                 "accepted", "high_confidence_address_match", float(latitude), float(longitude),
-                place_id, "geoapify_address_point", "geoapify_forward", False, payload,
+                place_id, "geoapify_address_point", "geoapify_forward", False, retained_payload,
             )
 
         locality = properties.get("city")
@@ -165,7 +225,7 @@ class GeoapifyAdapter:
         ):
             return GeocodeOutcome(
                 "accepted", "approximate_locality_match", float(latitude), float(longitude),
-                place_id, "geoapify_locality_point", "geoapify_forward", False, payload,
+                place_id, "geoapify_locality_point", "geoapify_forward", False, retained_payload,
             )
 
         return GeocodeOutcome(

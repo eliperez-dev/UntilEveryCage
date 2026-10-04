@@ -120,6 +120,25 @@ privacy/release authorization and the required Geoapify and OpenStreetMap
 attribution review. See the [Geoapify terms](https://www.geoapify.com/terms-and-conditions/)
 and [geocoding API documentation](https://www.geoapify.com/geocoding-api/).
 
+The AU pilot is distinct from source-scoped private profiles for eligible GB,
+DK, and NL inputs. Those profiles are invoked explicitly with
+`--private-source-profile PROFILE_ID`; they select only current-snapshot jobs
+whose queued event names that exact profile, source, and country. Example UK
+commands (after source import and the private-profile migration) are:
+
+```powershell
+python pipeline/scripts/stages/geocode-worker.py --provider geoapify --private-source-profile geoapify-gb-fsa-approved-establishments --limit 100 --daily-budget 2800 --max-attempts 2 --retries 1 --provider-interval 1
+python pipeline/scripts/stages/geocode-worker.py --provider geoapify --private-source-profile geoapify-gb-fss-approved-establishments --limit 100 --daily-budget 2800 --max-attempts 2 --retries 1 --provider-interval 1
+```
+
+`GEOAPIFY_API_KEY` must be loaded from the operator's private environment.
+The profile filter does not override source withholding, active restrictions,
+or publication review. FSA X/Y values with undocumented CRS remain raw
+diagnostics; eligible addresses are a separate input. Geoapify receives each
+address and request metadata under its published processing terms. Results
+remain private, confidence is described as a provider heuristic, and city
+matches are labeled approximate rather than facility coordinates.
+
 An operator-authorized recovery path exists only for the 24 current AU NPI
 targets whose first attempt ended as non-retryable `authentication_rejected`.
 It appends a marked attempt-2 queue event without changing prior events,

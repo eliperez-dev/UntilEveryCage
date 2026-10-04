@@ -21,6 +21,36 @@ REQUEUE_SPEC.loader.exec_module(REQUEUE)
 
 
 class GeocodeWorkerDurabilityTests(unittest.TestCase):
+    def test_private_profile_claim_is_exact_source_country_profile_and_snapshot_scoped(self):
+        class Transaction:
+            def __enter__(self): return self
+            def __exit__(self, *_): return False
+
+        class Cursor:
+            def fetchone(self): return None
+
+        class Connection:
+            def __init__(self): self.executed = []
+            def transaction(self): return Transaction()
+            def execute(self, query, params=None):
+                self.executed.append((query, params))
+                return Cursor()
+
+        connection = Connection()
+        result = WORKER._claim_job(
+            connection, "geoapify", "synthetic-worker", 3, 900,
+            private_source_profile_id="geoapify-gb-fss-approved-establishments",
+        )
+        self.assertIsNone(result)
+        query, params = connection.executed[0]
+        self.assertEqual(query.count("%s"), len(params))
+        self.assertIn("private_geoapify_source_profile", query)
+        self.assertIn("target.source_id=%s AND candidate.source_id=%s", query)
+        self.assertIn("candidate.country_code=%s", query)
+        self.assertIn("candidate.snapshot_sha256=COALESCE(", query)
+        self.assertIn("fss_approved_establishments", params)
+        self.assertIn("GB", params)
+
     def test_au_pilot_requires_explicitly_bounded_worker_options(self):
         for kwargs in (
             {"provider_id": "dawa", "limit": 24, "daily_budget": 24, "max_attempts": 1, "retries": 1, "provider_interval": 1},

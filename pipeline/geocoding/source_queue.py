@@ -13,7 +13,7 @@ from pipeline.contracts.source_lifecycle import atomic_json, atomic_jsonl
 
 _ADDRESS_KEYS = frozenset({
     "address", "streetaddress", "street", "streetaddressline", "addressline",
-    "addressline1", "addressline2", "addressline3", "locadd1", "locadd2",
+    "addressline1", "addressline2", "addressline3", "addressline4", "locadd1", "locadd2",
     "locadd3", "locationaddress", "streetaddress1", "streetaddress2",
 })
 
@@ -48,7 +48,7 @@ def _source_address(source_values: dict[str, Any]) -> list[str]:
             continue
         value = " ".join(str(raw).split())
         if value:
-            suffix = re.search(r"([123])$", key)
+            suffix = re.search(r"([1-4])$", key)
             fields.append((int(suffix.group(1)) if suffix else 1, value))
     return [value for _, value in sorted(fields)]
 
@@ -60,16 +60,22 @@ def source_geocode_query(record: dict[str, Any], *, country_name: str | None = N
     if not isinstance(private_location, dict):
         private_location = {}
     parts: list[str] = []
+    address_lines = private_location.get("address_lines")
+    if isinstance(address_lines, (list, tuple)):
+        parts.extend(" ".join(str(line).split()) for line in address_lines
+                     if isinstance(line, str) and line.strip())
     address = private_location.get("address") or normalized.get("facility_address") or normalized.get("address")
-    if isinstance(address, str) and address.strip():
+    if not parts and isinstance(address, str) and address.strip():
         parts.append(" ".join(address.split()))
-    else:
+    elif not parts:
         parts.extend(_source_address(record.get("source_values") or {}))
     for field in ("city", "municipality", "state", "province", "region", "postal_code", "postcode"):
         value = private_location.get(field) or normalized.get(field)
         if value and str(value).strip():
             parts.append(str(value).strip())
     country = private_location.get("country_code") or normalized.get("nation") or normalized.get("country_code") or country_name
+    if isinstance(country, str):
+        country = {"GB": "United Kingdom", "DK": "Denmark", "NL": "Netherlands"}.get(country.upper(), country)
     if country:
         parts.append(str(country).strip())
     query = ", ".join(dict.fromkeys(" ".join(part.split()) for part in parts if part))

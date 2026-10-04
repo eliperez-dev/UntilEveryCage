@@ -1,6 +1,6 @@
 {
   "contract_version": "fsa-uk-approved-v1",
-  "adapter_version": "fsa-uk-v2-2",
+  "adapter_version": "fsa-uk-v2-3",
   "source_id": "fsa_approved_establishments",
   "authority": "Food Standards Agency",
   "source_url": "https://fsaopendata.blob.core.windows.net/opendatacatalog/Approved-Establishments-01-09-26.csv",

@@ -77,7 +77,11 @@ class FsaAdapterTests(unittest.TestCase):
         monthly = "AppNo,TradingName,Country,CompetentAuthority,X,Y,AddressWithheld,All_Activities,Address1,Town,Postcode\nA-1,House Foods,England,Food Standards Agency,-0.12,51.50,No,CP,House Farm,London,SW1\n"
         result = self.adapter.parse_bytes(monthly.encode("cp1252"))
         self.assertEqual(len(result.accepted), 1)
-        self.assertNotIn("address_lines", result.accepted[0]["normalized"])
+        self.assertEqual(result.accepted[0]["normalized"]["private_location_evidence"]["address_lines"], ("House Farm",))
+        self.assertEqual(result.accepted[0]["normalized"]["private_location_evidence"]["coordinates"], {
+            "x": "-0.12", "y": "51.50", "axis_labels": ["X", "Y"],
+            "coordinate_reference_system": "unverified", "precision": "unverified-source-semantics",
+        })
         self.assertEqual(result.accepted[0]["normalized"]["privacy_gate"], "privacy-review-required")
         self.assertEqual(result.accepted[0]["normalized"]["coordinate_gate"], "privacy-review-required")
         self.assertIsNone(result.accepted[0]["normalized"]["coordinates"])

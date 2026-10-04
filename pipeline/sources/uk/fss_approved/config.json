@@ -1,6 +1,6 @@
 {
   "contract_version": "fss-scotland-approved-v2",
-  "adapter_version": "fss-scotland-v2-2",
+  "adapter_version": "fss-scotland-v2-3",
   "source_id": "fss_approved_establishments",
   "authority": "Food Standards Scotland",
   "source_url": "https://www.foodstandards.gov.scot/sites/default/files/2026-09/Approved%20Establishments%20in%20Scotland_1.csv",

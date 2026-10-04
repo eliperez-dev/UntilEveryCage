@@ -22,6 +22,10 @@ class FssAdapterTests(unittest.TestCase):
         self.assertEqual(result.accepted[0]["normalized"]["coordinate_state"], "not-supplied")
         self.assertEqual(result.accepted[0]["normalized"]["privacy_gate"], "privacy-review-required")
         self.assertEqual(result.accepted[0]["normalized"]["publication_gate"], "blocked")
+        evidence = result.accepted[0]["normalized"]["private_location_evidence"]
+        self.assertEqual(evidence["country_code"], "GB")
+        self.assertEqual(evidence["address_lines"], ("Industrial Estate", "Unit 4"))
+        self.assertNotIn("phone", json.dumps(evidence).lower())
         self.assertFalse(result.release_allowed)
 
     def test_quarantines_duplicate_activity_status_remarks_and_privacy(self):

@@ -17,7 +17,7 @@ from .handoff import write_private_monthly_handoff
 
 REVIEW_BLOCKERS = {
     "terms": ["UK OGL v3 is indicated by the catalogue; attribution, national-scope terms, and project redistribution review remain separate gates."],
-    "privacy": ["AddressWithheld rows and precise X/Y coordinates require privacy classification; withheld addresses remain suppressed and geocoding is disabled."],
+    "privacy": ["AddressWithheld rows are suppressed; non-withheld X/Y remain raw evidence with unverified CRS/precision and are not display points. Any permitted address lookup is a separate private enrichment operation."],
     "completeness": ["The monthly feed covers England and Wales in this adapter; Northern Ireland remains a separate authority/source scope and disappearance is not closure."],
     "classification": ["Activity values are source-native and mapped conservatively; unknown activity, status, authority/nation mismatch, duplicates, and remarks quarantine."],
     "coverage": ["The inspected monthly schema/fingerprint and baseline are evidence for the retained snapshot only; live drift and source effective-date semantics require repeatable refresh review."],

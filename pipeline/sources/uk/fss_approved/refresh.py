@@ -18,7 +18,7 @@ from .handoff import write_private_handoff
 
 REVIEW_BLOCKERS = {
     "terms": ["FSS indicates OGL v3; exact CSV terms, attribution, and project redistribution review remain human gates."],
-    "privacy": ["Address fields and remarks require privacy/safety review; no coordinates are published or geocoded by this adapter."],
+    "privacy": ["Address fields and remarks require privacy/safety review; no coordinates are published, and any permitted address lookup occurs only in the separate private enrichment worker."],
     "completeness": ["This lane is Scotland only; FSA England/Wales/Northern Ireland are separate feeds, and a missing source row is not closure."],
     "classification": ["Live activity columns are preserved and classified conservatively; remarks, duplicate approval IDs, unknown activity/status, and privacy-risk addresses quarantine."],
     "coverage": ["The retained live header contract is inspected but current source effective-date and full category coverage remain subject to each bounded refresh."],

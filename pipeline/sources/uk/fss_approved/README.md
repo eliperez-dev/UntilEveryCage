@@ -6,8 +6,11 @@ shared private acquisition primitive: raw bytes and acquisition metadata remain
 under ignored private storage, with requested/final URLs, redirect chain,
 response headers, retrieval/effective dates, hashes, byte size, code/config
 versions, coverage, privacy/rights caveats, and the operator terms record.
-The adapter never promotes, publishes, exports, or geocodes. It preserves source cells and approval IDs as strings,
-including leading zeroes, while representing absent coordinates as `null`.
+The adapter never promotes, publishes, or exports. It preserves source cells
+and approval IDs as strings, including leading zeroes, while representing absent
+coordinates as `null`. Accepted address-only evidence may be queued separately
+for source-scoped private Geoapify processing; acquisition itself makes no
+provider request, and results do not grant release eligibility.
 
 Rows with duplicate or missing approval IDs, missing/unknown activities,
 unknown statuses, malformed cells, remarks, or privacy-risk address tokens are
@@ -26,7 +29,7 @@ python scripts/real_preview.py strict-live-private-e2e --source fss_approved_est
 ```
 
 This one-time run is limited to Scotland. It does not include Northern Ireland,
-FSA England/Wales, geocoding, unattended recurring retrieval, or public release.
+FSA England/Wales, unattended recurring retrieval, or public release.
 
 Before acquisition, a maintainer must verify the current FSS artifact URL,
 schema, publication/effective date, licence and attribution terms in an
