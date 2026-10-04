@@ -23,6 +23,7 @@ owning country page identifies their authority.
 | Denmark | [Data flow](denmark/denmark-data-flow.md), [classification scope](denmark/denmark-classification-scope.md) | **Canonical** |
 | France | [Country reconnaissance](../country-recon-fr.md), [DGAL pipeline](france/dgal-853-pipeline.md) | **Canonical** |
 | United Kingdom | [Country reconnaissance](../country-recon-uk.md), [Scotland source assessment](uk/fss-approved-establishments-source-assessment.md) | **Canonical** |
+| Netherlands | [Country reconnaissance](../country-recon-nl.md), [NVWA approved-food adapter](nl/nvwa-approved-food-v0.md) | **Canonical** |
 | Other countries | `country-recon-<code>.md` | **Canonical** research pages |
 
 Do not create a country packet for a task or copy source facts into a second

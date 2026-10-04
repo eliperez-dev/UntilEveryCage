@@ -1,0 +1,7 @@
+{
+  "decision": "approved",
+  "notes": "The human operator authorized the approved Netherlands NVWA source lane and a bounded private live acquisition, parsing, validation, and candidate-preview handoff in the 2026-10-03 Codex task. NVWA's current copyright page says site content is CC0 unless a particular item notes an exception; this source package uses the list control XML and SOAP text records, not images, logos, or house style. Do not imply NVWA endorsement. Privacy rights and project publication approval remain separate; raw rows and precise addresses stay in restricted local staging, and no public release is authorized.",
+  "reference": "https://www.nvwa.nl/service/copyright ; https://www.nvwa.nl/onderwerpen/dier/slachthuis-uitsnijderij/overzicht-erkende-slachthuizen-en-uitsnijderijen ; user authorization in Codex task 2026-10-03",
+  "reviewed_at": "2026-10-04T00:52:27Z",
+  "reviewer": "human operator (explicit source-lane authorization recorded in task)"
+}

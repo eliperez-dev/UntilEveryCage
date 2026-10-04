@@ -1,0 +1,19 @@
+{
+  "source_id": "nl.nvwa.approved-food",
+  "source_url": "https://www.nvwa.nl/site/binaries/content/assets/site-content/webapp-data/lijsten-erkende-bedrijven/stuurbestand-lijsten-erkende-bedrijven",
+  "viewer_url": "https://www.nvwa.nl/onderwerpen/dier/slachthuis-uitsnijderij/overzicht-erkende-slachthuizen-en-uitsnijderijen",
+  "soap_endpoint": "https://e-certnl.nvwa.nl/VINDBAARHEID_EBF-Berichtenboek-context-root/Berichtenboek",
+  "soap_action": "http://nl/minlnv/cvg/Berichtenboek.wsdl/zoekBedrijf",
+  "soap_operation_namespace": "http://nl/minlnv/cvg/Berichtenboek.wsdl",
+  "soap_type_namespace": "http://nl/minlnv/cvg/Berichtenboek.wsdl/types/",
+  "adapter_version": "nvwa-approved-food-v0",
+  "schema_version": "nvwa-approval-observations-v1",
+  "config_version": "nvwa-approved-food-config-v1",
+  "coverage": "NVWA overig_303 through overig_310 approved slaughter/cutting/game list observations advertised by the current control XML; not a complete Dutch facility census",
+  "list_codes": ["overig_303", "overig_304", "overig_305", "overig_306", "overig_307", "overig_308", "overig_309", "overig_310"],
+  "page_size": 10000,
+  "max_pages_per_list": 100,
+  "max_bytes_per_response": 8388608,
+  "request_delay_seconds": 1.0,
+  "geocoding": "disabled in adapter; private address evidence is handed to the separately approved Netherlands geocoding profile"
+}

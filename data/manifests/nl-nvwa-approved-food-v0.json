@@ -1,0 +1,50 @@
+{
+  "manifest_version": "country-source-capture-v1",
+  "source_id": "nl.nvwa.approved-food",
+  "source_url": "https://www.nvwa.nl/site/binaries/content/assets/site-content/webapp-data/lijsten-erkende-bedrijven/stuurbestand-lijsten-erkende-bedrijven",
+  "viewer_url": "https://www.nvwa.nl/onderwerpen/dier/slachthuis-uitsnijderij/overzicht-erkende-slachthuizen-en-uitsnijderijen",
+  "soap_endpoint": "https://e-certnl.nvwa.nl/VINDBAARHEID_EBF-Berichtenboek-context-root/Berichtenboek",
+  "soap_action": "http://nl/minlnv/cvg/Berichtenboek.wsdl/zoekBedrijf",
+  "retrieved_at_utc": "2026-10-04T01:07:37Z",
+  "private_bundle_path": "data/raw/nl.nvwa.approved-food/nvwa-nl-20261003-v0a/bundle-manifest.json",
+  "private_bundle_sha256": "4527d63b700e5639f95a4e77140c7cbe149271d03d022b009ef9e97e26f8d7f9",
+  "private_bundle_byte_size": 7970,
+  "adapter_version": "nvwa-approved-food-v0",
+  "schema_version": "nvwa-approval-observations-v1",
+  "coverage": "Current-control-XML lists overig_303 through overig_310 only; not a national facility census.",
+  "count_semantics": "SOAP XML observation records and unique source recognition numbers within each list. No cross-list facility total is computed.",
+  "input_observations": 1259,
+  "normalized_observations": 1259,
+  "quarantined_observations": 0,
+  "candidate_handoff_observations": 1259,
+  "schema_status": "known-wsdl-fields",
+  "publication_state": "human-gate-required",
+  "release_state": "not-created",
+  "geocoding": "No source coordinates; address evidence is private and no provider call occurs during acquisition.",
+  "terms_review": {
+    "decision": "approved",
+    "reviewed_at": "2026-10-04T00:52:27Z",
+    "reference": "https://www.nvwa.nl/service/copyright"
+  },
+  "lists": [
+    {"list_code":"overig_303","service_label":"Slaughterhouse","page_count":1,"observation_rows":118,"unique_recognition_numbers_within_list":115,"api_total":115,"api_returned":115,"byte_size":100137,"sha256":"3653b1fa80b39ce4de5e4af385fd9ca87507405105390e83b9df44373940c811"},
+    {"list_code":"overig_304","service_label":"Cutting plant","page_count":1,"observation_rows":470,"unique_recognition_numbers_within_list":470,"api_total":470,"api_returned":470,"byte_size":376998,"sha256":"171cba3f850808ea9a9686e2376e8cddbd9d12ee476bd9df5ce6c1f140eb0c40"},
+    {"list_code":"overig_305","service_label":"Slaughterhouse","page_count":1,"observation_rows":25,"unique_recognition_numbers_within_list":23,"api_total":23,"api_returned":23,"byte_size":20865,"sha256":"10ff4400afeb3ce04c151977c8a0ffd039d55bf32bedff412901826f687e2432"},
+    {"list_code":"overig_306","service_label":"Cutting plant","page_count":1,"observation_rows":425,"unique_recognition_numbers_within_list":356,"api_total":356,"api_returned":356,"byte_size":333349,"sha256":"6b7ed05def0b32e5cb3610619261b6a21933ccc434728cea60285d79dda3bd16"},
+    {"list_code":"overig_307","service_label":"Slaughterhouse","page_count":1,"observation_rows":16,"unique_recognition_numbers_within_list":14,"api_total":14,"api_returned":14,"byte_size":14199,"sha256":"b4558c1f6a5d1c637dfb1111a5c444879fa2c1be57039bfb26cabfc0dc6758fc"},
+    {"list_code":"overig_308","service_label":"Cutting plant","page_count":1,"observation_rows":102,"unique_recognition_numbers_within_list":102,"api_total":102,"api_returned":102,"byte_size":80636,"sha256":"2a807bcb273189507522cd4f7382a5cab4b8ede5d6767c77c1b11c196ed90a71"},
+    {"list_code":"overig_309","service_label":"Game-handling establishment","page_count":1,"observation_rows":17,"unique_recognition_numbers_within_list":10,"api_total":10,"api_returned":10,"byte_size":14894,"sha256":"3be0e8283bd56bc53cb704fcee0198ac481eb75755c727512bdcab66bd87285c"},
+    {"list_code":"overig_310","service_label":"Cutting plant","page_count":1,"observation_rows":86,"unique_recognition_numbers_within_list":86,"api_total":86,"api_returned":86,"byte_size":67567,"sha256":"a54952e40d2922799f2b3ce96dd49c2d4079a8de8f0ca85b886945273dc0fcad"}
+  ],
+  "control_artifact": {
+    "byte_size": 377481,
+    "sha256": "63736b359f8428dfe365ef014c3c2abb3bf5d0de071515f7c40821ed328352b0"
+  },
+  "observed_http": {
+    "soap_status": 200,
+    "control_status": 200,
+    "soap_server_date_range": "2026-10-04T01:07:22Z/2026-10-04T01:07:36Z"
+  },
+  "source_specific_document": "docs/countries/nl/nvwa-approved-food-v0.md",
+  "private_content_in_git": false
+}
