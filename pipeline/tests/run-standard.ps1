@@ -41,6 +41,19 @@ try {
   & docker compose -p $project -f $compose exec -T postgres psql -v ON_ERROR_STOP=1 -U uec -d $previewTestDatabase -c 'CREATE EXTENSION postgis'
   if ($LASTEXITCODE -ne 0) { throw "Real-preview PostGIS extension creation failed (exit $LASTEXITCODE)." }
   $env:UEC_REAL_PREVIEW_TEST_DATABASE_URL = "postgresql://uec:uec-local-development-only@localhost:$port/$previewTestDatabase"
+  # Candidate-bridge integration coverage owns a different empty database in
+  # this same disposable Compose stack. It never reuses the contract seed DB
+  # or the retained private preview database.
+  $bridgeTestDatabase = 'uec_v0_review_bridgetest20261004'
+  & docker compose -p $project -f $compose exec -T postgres createdb -U uec $bridgeTestDatabase
+  if ($LASTEXITCODE -ne 0) { throw "V0 bridge test database creation failed (exit $LASTEXITCODE)." }
+  & docker compose -p $project -f $compose exec -T postgres psql -v ON_ERROR_STOP=1 -U uec -d $bridgeTestDatabase -c 'CREATE EXTENSION postgis'
+  if ($LASTEXITCODE -ne 0) { throw "V0 bridge PostGIS extension creation failed (exit $LASTEXITCODE)." }
+  $bridgeTestDatabaseUrl = "postgresql://uec:uec-local-development-only@localhost:$port/${bridgeTestDatabase}?sslmode=disable"
+  python pipeline/scripts/maintenance/apply-migrations.py --database-url $bridgeTestDatabaseUrl
+  if ($LASTEXITCODE -ne 0) { throw "V0 bridge test database migration failed (exit $LASTEXITCODE)." }
+  $env:UEC_V0_BRIDGE_TEST_DATABASE = $bridgeTestDatabase
+  $env:UEC_V0_BRIDGE_TEST_DATABASE_URL = $bridgeTestDatabaseUrl
   python pipeline/scripts/maintenance/repository_hygiene.py
   if ($LASTEXITCODE -ne 0) { throw "Repository hygiene checks failed (exit $LASTEXITCODE)." }
   python pipeline/tests/run_unittest.py --start-directory pipeline/tests
@@ -52,6 +65,8 @@ try {
 finally {
   Remove-Item Env:UEC_RUN_RIGHTS_DB -ErrorAction SilentlyContinue
   Remove-Item Env:UEC_REAL_PREVIEW_TEST_DATABASE_URL -ErrorAction SilentlyContinue
+  Remove-Item Env:UEC_V0_BRIDGE_TEST_DATABASE -ErrorAction SilentlyContinue
+  Remove-Item Env:UEC_V0_BRIDGE_TEST_DATABASE_URL -ErrorAction SilentlyContinue
   $savedPreference = $ErrorActionPreference
   $ErrorActionPreference = 'Continue'
   & docker compose -p $project -f $compose down -v --remove-orphans *> $null
