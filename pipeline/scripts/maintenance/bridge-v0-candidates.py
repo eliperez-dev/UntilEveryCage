@@ -96,6 +96,21 @@ def _read_json(path: Path) -> dict[str, Any]:
     return value
 
 
+def _read_approved_terms(path: Path, source: str) -> tuple[dict[str, Any], str]:
+    """Read an approved source decision and bind its exact bytes into provenance."""
+    if path.is_symlink() or not path.is_file():
+        raise BridgeError("source_terms_review_unavailable")
+    try:
+        raw = path.read_bytes()
+        terms = json.loads(raw)
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        raise BridgeError("source_terms_review_unavailable") from None
+    if (not isinstance(terms, dict) or terms.get("decision") != "approved"
+            or ("source_id" in terms and terms.get("source_id") != source)):
+        raise BridgeError("source_terms_review_not_approved")
+    return terms, hashlib.sha256(raw).hexdigest()
+
+
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     if path.is_symlink() or not path.is_file():
         raise BridgeError("handoff_file_unavailable")
@@ -273,15 +288,7 @@ def verify_handoff(entry: dict[str, Any], inventory_source: dict[str, Any]) -> d
     if policy.get("terms_decision") != "approved" or not isinstance(policy.get("terms_review"), str):
         raise BridgeError("source_terms_review_unavailable")
     terms_path = ROOT / policy["terms_review"]
-    try:
-        terms = json.loads(terms_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError):
-        raise BridgeError("source_terms_review_unavailable") from None
-    if (not isinstance(terms, dict) or terms.get("decision") != "approved"
-            or not isinstance(terms.get("scope"), str)
-            or not any(word in terms["scope"].casefold() for word in ("private", "local"))):
-        raise BridgeError("source_terms_review_not_private_approved")
-    terms_digest, _ = _digest(terms_path)
+    terms, terms_digest = _read_approved_terms(terms_path, source)
     IMPORTER.validate_preview_fields(normalized_path, set(policy.get("allowed_preview_fields", [])))
     parsed = []
     grouped: dict[str, list[tuple[tuple[Any, ...], dict[str, Any]]]] = defaultdict(list)

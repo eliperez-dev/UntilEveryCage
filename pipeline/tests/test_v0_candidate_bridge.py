@@ -110,6 +110,37 @@ class CandidateBridgeTests(unittest.TestCase):
             self.assertEqual(set(verified["groups"]), {"DK-GROUP-1"})
             self.assertEqual(verified["representatives"]["DK-GROUP-1"][0][0], "DK-1")
 
+    def test_terms_review_accepts_approved_notes_format_and_binds_exact_file_hash(self):
+        with tempfile.TemporaryDirectory(dir=bridge.ROOT) as temporary:
+            terms_path = Path(temporary) / "terms.json"
+            raw = _canonical({
+                "source_id": "dk.smiley",
+                "decision": "approved",
+                "notes": "Authorized restricted private preview only; no public release.",
+            })
+            terms_path.write_bytes(raw)
+            terms, digest = bridge._read_approved_terms(terms_path, "dk.smiley")
+            self.assertEqual(terms["notes"], "Authorized restricted private preview only; no public release.")
+            self.assertEqual(digest, hashlib.sha256(raw).hexdigest())
+
+    def test_terms_review_rejects_denied_or_mismatched_source(self):
+        with tempfile.TemporaryDirectory(dir=bridge.ROOT) as temporary:
+            terms_path = Path(temporary) / "terms.json"
+            for terms in (
+                {"source_id": "dk.smiley", "decision": "denied", "notes": "Not authorized."},
+                {"source_id": "other.source", "decision": "approved", "notes": "Not this source."},
+            ):
+                terms_path.write_bytes(_canonical(terms))
+                with self.assertRaisesRegex(bridge.BridgeError, "source_terms_review_not_approved"):
+                    bridge._read_approved_terms(terms_path, "dk.smiley")
+
+    def test_terms_review_rejects_malformed_json(self):
+        with tempfile.TemporaryDirectory(dir=bridge.ROOT) as temporary:
+            terms_path = Path(temporary) / "terms.json"
+            terms_path.write_text("{broken", encoding="utf-8")
+            with self.assertRaisesRegex(bridge.BridgeError, "source_terms_review_unavailable"):
+                bridge._read_approved_terms(terms_path, "dk.smiley")
+
     def test_graph_identifier_or_group_association_mismatch_is_rejected(self):
         with tempfile.TemporaryDirectory(dir=bridge.ROOT) as temporary:
             manifest_path, _, manifest, policy = self._handoff(Path(temporary))
