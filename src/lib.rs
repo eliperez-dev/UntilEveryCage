@@ -1959,10 +1959,12 @@ WITH sources AS (
   FROM (
     SELECT source_id,
            CASE WHEN display_geometry_source LIKE 'Geoapify; high rank confidence heuristic and normalized source-address%'
+                  OR display_geometry_source LIKE 'Geoapify; rank confidence >= 0.90 heuristic and normalized source-address%'
                 THEN 'provider_address_point_private'
                 WHEN display_geometry_source LIKE 'Geoapify;%' THEN 'provider_locality_approximate'
                 ELSE 'city_reference' END AS kind,
            CASE WHEN display_geometry_source LIKE 'Geoapify; high rank confidence heuristic and normalized source-address%'
+                  OR display_geometry_source LIKE 'Geoapify; rank confidence >= 0.90 heuristic and normalized source-address%'
                 THEN 'provider_address_point_high_confidence'
                 WHEN display_geometry_source LIKE 'Geoapify;%' THEN 'provider_locality_approximate'
                 ELSE 'city_reference_approximate' END AS precision,
@@ -3786,6 +3788,16 @@ mod v2_api_tests {
         );
         assert_eq!(
             real_preview_provider_display_disclosure(Some(
+                "Geoapify; rank confidence >= 0.90 heuristic and normalized source-address line match; private preview only",
+            )),
+            Some((
+                "provider_address_point_high_confidence",
+                "Private preview Geoapify address match — high-confidence heuristic; not project-approved or published",
+                "automated_high_confidence_private_display",
+            ))
+        );
+        assert_eq!(
+            real_preview_provider_display_disclosure(Some(
                 "Geoapify; high rank confidence locality and Australia match; approximate city point, not facility coordinates; private preview only",
             )),
             Some((
@@ -3795,6 +3807,15 @@ mod v2_api_tests {
             ))
         );
         assert_eq!(real_preview_provider_display_disclosure(Some("Local reference")), None);
+    }
+
+    #[test]
+    fn real_preview_map_feed_classifies_current_and_legacy_geoapify_address_evidence() {
+        let source = include_str!("lib.rs");
+        let current = "display_geometry_source LIKE 'Geoapify; rank confidence >= 0.90 heuristic and normalized source-address%'";
+        let legacy = "display_geometry_source LIKE 'Geoapify; high rank confidence heuristic and normalized source-address%'";
+        assert!(source.matches(current).count() >= 2);
+        assert!(source.matches(legacy).count() >= 2);
     }
 
     #[test]

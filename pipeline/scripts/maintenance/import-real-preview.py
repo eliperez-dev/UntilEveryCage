@@ -698,6 +698,30 @@ def private_geocode_queue_eligible(source: str, normalized: dict[str, Any],
         return False
     if normalized.get("privacy_gate") in {"restricted", "restricted-withheld-address", "blocked"}:
         return False
+    if normalized.get("source_address_restricted") is True:
+        return False
+    if source == "dk.smiley":
+        allowed_categories = {
+            "slaughter", "meat_processing", "fish_processing",
+            "dairy_processing", "egg_processing",
+        }
+        categories = normalized.get("activity_categories")
+        exact_candidate = normalized.get("exact_geocode_candidate")
+        if not isinstance(exact_candidate, dict):
+            exact_candidate = location.get("exact_geocode_candidate")
+        source_eligible = (normalized.get("source_address_eligible") is True
+                           or (isinstance(exact_candidate, dict)
+                               and exact_candidate.get("source_eligible") is True))
+        if (normalized.get("private_geocode_scope") != "animal_product_production_and_processing"
+                or normalized.get("private_geocode_scope_policy_id") != "denmark-private-geocode-scope-v1"
+                or normalized.get("classification_optional_filter") != "production-and-processing"
+                or normalized.get("classification_review_status") != "approved"
+                or not source_eligible
+                or not isinstance(categories, list) or not categories
+                or any(category not in allowed_categories for category in categories)
+                or normalized.get("coordinates") is not None
+                or location.get("coordinates") is not None):
+            return False
     scope = normalized.get("source_scope_eligibility")
     return scope in (None, "eligible")
 

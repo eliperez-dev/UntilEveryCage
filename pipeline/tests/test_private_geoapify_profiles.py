@@ -69,6 +69,46 @@ class PrivateGeoapifyProfileTests(unittest.TestCase):
             "nl.nvwa.approved-food", {**nvwa_base, "source_scope_eligibility": "excluded"},
             nvwa_location, "city_postal", nvwa))
 
+    def test_denmark_requires_exact_policy_core_category_and_explicit_source_eligibility(self):
+        profile = profile_for_source("dk.smiley")
+        base = {
+            "country_code": "DK", "privacy_gate": "pending", "coordinates": None,
+            "private_geocode_scope": "animal_product_production_and_processing",
+            "private_geocode_scope_policy_id": "denmark-private-geocode-scope-v1",
+            "classification_optional_filter": "production-and-processing",
+            "classification_review_status": "approved",
+            "activity_categories": ["slaughter"],
+            "source_address_eligible": True,
+        }
+        location = {"country_code": "DK", "address": "Synthetic Road 1",
+                    "address_lines": ["Synthetic Road 1"]}
+        eligible = IMPORTER.private_geocode_queue_eligible(
+            "dk.smiley", base, location, "unmapped_private_observation", profile)
+        self.assertTrue(eligible)
+
+        self.assertFalse(IMPORTER.private_geocode_queue_eligible(
+            "dk.smiley", {**base, "private_geocode_scope": "out_of_scope"},
+            location, "unmapped_private_observation", profile))
+        self.assertFalse(IMPORTER.private_geocode_queue_eligible(
+            "dk.smiley", {**base, "private_geocode_scope_policy_id": "other-policy"},
+            location, "unmapped_private_observation", profile))
+        self.assertFalse(IMPORTER.private_geocode_queue_eligible(
+            "dk.smiley", {**base, "activity_categories": ["general_food_business"]},
+            location, "unmapped_private_observation", profile))
+        self.assertFalse(IMPORTER.private_geocode_queue_eligible(
+            "dk.smiley", {**base, "source_address_eligible": False},
+            location, "unmapped_private_observation", profile))
+        self.assertFalse(IMPORTER.private_geocode_queue_eligible(
+            "dk.smiley", {**base, "source_address_restricted": True},
+            location, "unmapped_private_observation", profile))
+        self.assertFalse(IMPORTER.private_geocode_queue_eligible(
+            "dk.smiley", {**base, "coordinates": {"latitude": 56.0, "longitude": 10.0}},
+            location, "unmapped_private_observation", profile))
+        self.assertFalse(IMPORTER.private_geocode_queue_eligible(
+            "dk.smiley", {key: value for key, value in base.items()
+                          if key != "source_address_eligible"},
+            location, "unmapped_private_observation", profile))
+
     def test_migration_contains_private_only_source_country_match_and_restriction_gates(self):
         sql = (ROOT / "migrations/060_private_geoapify_source_profiles.sql").read_text(encoding="utf-8")
         for required in (
