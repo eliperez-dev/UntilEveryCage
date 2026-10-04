@@ -33,6 +33,10 @@ SESSION_TOKEN: str | None = None
 IMPORTER = ROOT / "pipeline" / "scripts" / "maintenance" / "import-real-preview.py"
 MIGRATIONS = ROOT / "pipeline" / "scripts" / "maintenance" / "apply-migrations.py"
 ACTIVE_PREVIEW_TOKEN: str | None = None
+# Denmark's live register contains ~59k observations and its source-scoped
+# importer performs per-observation reconciliation. Keep it bounded while
+# allowing that larger transaction to finish on the supported local database.
+SOURCE_IMPORT_TIMEOUT_SECONDS = {"dk.smiley": 1800}
 _PREVIEW_SOURCE_CONFIG = json.loads(
     (ROOT / "pipeline" / "preview-enabled-sources.json").read_text(encoding="utf-8")
 )["sources"]
@@ -1033,7 +1037,8 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
             "--database-url-env", "UEC_DATABASE_URL", "--json",
             *( ["--municipality-index", str(municipality_index)] if municipality_index is not None else []),
             "--run-id", run_id, "--run-manifest", str(output_root / runner_run_id / "manifest.json"),
-        ], cwd=ROOT, env=env, capture_output=True, text=True, timeout=600)
+        ], cwd=ROOT, env=env, capture_output=True, text=True,
+            timeout=SOURCE_IMPORT_TIMEOUT_SECONDS.get(source_id, 600))
         try:
             import_result = json.loads(imported.stdout)
         except json.JSONDecodeError:

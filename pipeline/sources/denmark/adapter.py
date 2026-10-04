@@ -68,6 +68,32 @@ class DenmarkSmileyAdapter:
                     "country_code": "DK",
                 }.items() if value is not None and value != ""
             }
+            location = row.get("location") if isinstance(row.get("location"), dict) else {}
+            exact_candidate = location.get("exact_geocode_candidate")
+            if isinstance(exact_candidate, dict):
+                # Address values already live in the separately protected
+                # private_location_evidence field. Carry only the decision
+                # evidence needed by the importer, not a second address copy.
+                exact_candidate = {
+                    key: exact_candidate[key]
+                    for key in ("status", "source_eligible", "eligible")
+                    if key in exact_candidate
+                }
+            classification_scope = classification.get("private_geocode_scope", "out_of_scope")
+            geocode_decisions = {
+                target: location[source]
+                for source, target in (
+                    ("source_address_eligible", "source_address_eligible"),
+                    ("source_address_restricted", "source_address_restricted"),
+                    ("source_scope_eligible", "source_scope_eligible"),
+                    ("exact_geocode_candidate_state", "exact_geocode_candidate_state"),
+                    ("exact_geocode_eligible", "exact_geocode_eligible"),
+                    ("privacy_status", "privacy_status"),
+                )
+                if source in location
+            }
+            if "exact_geocode_candidate" in location:
+                geocode_decisions["exact_geocode_candidate"] = exact_candidate
             handoff_rows.append({"source_id": SOURCE_ID, "source_row": row.get("source_row", 0),
                                  "source_record_key": key,
                                  "source_values": fields, "normalized": {
@@ -75,8 +101,11 @@ class DenmarkSmileyAdapter:
                                      "city": fields.get("By"), "postal_code": fields.get("Postnummer"),
                                      "source_observation_date": row.get("source_observation_date") or row.get("latest_inspection_date"),
                                      "private_location_evidence": private_address,
-                                     "private_geocode_scope": classification.get("private_geocode_scope", "out_of_scope"),
+                                     "private_geocode_scope": classification_scope,
                                      "private_geocode_scope_policy_id": classification.get("private_geocode_scope_policy_id"),
+                                     # Preserve only explicit classifier decisions; absent values
+                                     # remain absent rather than being guessed from scope/address.
+                                     **geocode_decisions,
                                      "country_code": "DK", "coordinate_precision": "city_postal",
                                      "coordinates": None,
                                      "activities": list(classification.get("activity_categories") or ()),

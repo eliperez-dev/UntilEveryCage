@@ -127,9 +127,15 @@ whose queued event names that exact profile, source, and country. Example UK
 commands (after source import and the private-profile migration) are:
 
 ```powershell
-python pipeline/scripts/stages/geocode-worker.py --provider geoapify --private-source-profile geoapify-gb-fsa-approved-establishments --limit 100 --daily-budget 2800 --max-attempts 2 --retries 1 --provider-interval 1
-python pipeline/scripts/stages/geocode-worker.py --provider geoapify --private-source-profile geoapify-gb-fss-approved-establishments --limit 100 --daily-budget 2800 --max-attempts 2 --retries 1 --provider-interval 1
+python pipeline/scripts/stages/geocode-worker.py --provider geoapify --private-source-profile geoapify-gb-fsa-approved-establishments --limit 100 --daily-budget 3000 --max-attempts 2 --retries 1 --provider-interval 1
+python pipeline/scripts/stages/geocode-worker.py --provider geoapify --private-source-profile geoapify-gb-fss-approved-establishments --limit 100 --daily-budget 3000 --max-attempts 2 --retries 1 --provider-interval 1
+python pipeline/scripts/stages/geocode-worker.py --provider geoapify --private-source-profile geoapify-dk-smiley --limit 100 --daily-budget 3000 --max-attempts 2 --retries 1 --provider-interval 1
+python pipeline/scripts/stages/geocode-worker.py --provider geoapify --private-source-profile geoapify-nl-nvwa-approved-food --limit 100 --daily-budget 3000 --max-attempts 2 --retries 1 --provider-interval 1
 ```
+
+The 3,000-request allowance is shared across Geoapify profiles and the UTC
+provider-day ledger. `--daily-budget` does not reset or replenish reservations;
+the database's existing remaining balance is authoritative.
 
 `GEOAPIFY_API_KEY` must be loaded from the operator's private environment.
 The profile filter does not override source withholding, active restrictions,

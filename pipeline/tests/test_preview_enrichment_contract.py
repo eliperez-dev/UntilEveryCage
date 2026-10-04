@@ -51,6 +51,11 @@ class PreviewEnrichmentContractTests(unittest.TestCase):
         self.assertNotIn("geocoder.geocode", refresh)
         self.assertNotIn("enrich-locations", refresh)
 
+    def test_large_denmark_snapshot_has_a_longer_but_bounded_import_timeout(self):
+        source = (ROOT.parent / "scripts/real_preview.py").read_text()
+        self.assertIn('SOURCE_IMPORT_TIMEOUT_SECONDS = {"dk.smiley": 1800}', source)
+        self.assertIn("timeout=SOURCE_IMPORT_TIMEOUT_SECONDS.get(source_id, 600)", source)
+
 
 if __name__ == "__main__":
     unittest.main()
