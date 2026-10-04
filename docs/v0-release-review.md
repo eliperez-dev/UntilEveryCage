@@ -44,12 +44,66 @@ public count or an approval state. A zero projection count describes only the
 listed database relations during that transaction; it does not audit deployed
 copies, CDN caches, exports, or other environments.
 
-At this preparation checkpoint, do not copy old retained-preview totals into a
-new frozen inventory or present pre-integration counts as the final v0 pool.
-Root integration must first finish the source imports and verify the protected
-database backup. Then record the generated inventory digest and the independently
-verified backup digest/byte size with that frozen evidence. Those values are
-not supplied by this document and must not be inferred from earlier snapshots.
+## Final measured private inventory (not the final source selection)
+
+The repeatable-read inventory at
+[`v0-candidate-20261004-inventory.json`](../data/manifests/v0-candidate-20261004-inventory.json)
+measured 15 latest imported private snapshots: 175,473 observations grouped
+into 124,417 source-qualified candidate groups. Of those groups, 50,610 meet
+the current private map-feed geometry and scope checks. These counts are not
+globally deduplicated facilities or rendered marker counts; coarse points may
+share a rendered marker. The inventory digest is
+`6f73244963ab11fbc78883e1e6e41661b1d2f64b5ce7b3fa3948d18f355daf3c`.
+It measured zero release rows, members, manifests, public map/discovery rows,
+and graph-public rows. That is the measured database state, not a deployment,
+cache, or publication audit.
+
+| Source snapshot | Observations | Candidate groups | Recorded acquisition mode |
+| --- | ---: | ---: | --- |
+| `au.npi.facilities` | 8,140 | 8,140 | archived replay |
+| `au.sa.epa.licensed-activities` | 43 | 41 | live acquisition; broader source rows were excluded/quarantined |
+| `be.locations` | 4,032 | 1,794 | live acquisition |
+| `br.sif.registered` | 24,174 | 3,147 | live acquisition; exact retrieval evidence still needs resolution |
+| `ca.ontario.meat-plants` | 460 | 460 | archived replay |
+| `dk.smiley` | 58,795 | 58,795 | live acquisition |
+| `es.cat.feed-sandach` | 12,117 | 4,367 | archived replay |
+| `fr.dgal.section-i` | 1,449 | 1,449 | offline handoff |
+| `fr.dgal.section-ii` | 1,068 | 1,067 | offline handoff |
+| `fsa_approved_establishments` | 4,291 | 4,291 | live acquisition |
+| `fss_approved_establishments` | 595 | 595 | live acquisition |
+| `it.1069-2009` | 9,960 | 6,538 | live acquisition; exact supporting evidence still needed |
+| `it.853-2004` | 41,849 | 25,316 | offline handoff |
+| `nl.nvwa.approved-food` | 1,259 | 1,176 | live acquisition |
+| `us.fsis` | 7,241 | 7,241 | offline handoff |
+
+“Live acquisition” and “offline handoff” describe recorded run provenance,
+not source completeness, currentness, legal clearance, review, or readiness to
+publish. The provisional 12-source review subset currently totals 141,296
+observations and 114,691 source-qualified candidate groups; 45,273 groups meet
+the same current private map-feed geometry and scope checks. It is not a final
+selection. `au.sa.epa.licensed-activities`, `it.1069-2009`, and
+`br.sif.registered` remain deferred pending the exact evidence gaps above. The
+maintainer must choose whether to defer them or reacquire/resolve their
+evidence; do not silently substitute this provisional subset for that choice.
+
+For Denmark, the current classification separates 565 core facility candidates
+from 58,230 optional candidates rather than treating every source row as an
+animal-facility marker. Provider results add accepted private points for 422
+candidates; 143 still carry location uncertainty. In the Netherlands, 602
+candidates have accepted provider-derived points while 574 remain uncertain.
+Those results remain private enrichment, not evidence of factual facility
+status or permission to publish. The UK source yielded only 6 accepted
+candidates and remains low-yield. Keep source labels and activity evidence in
+the private source record; these aggregates alone do not support relabeling or
+merging candidates.
+
+The separate frozen review database staging operation is still pending NL
+freeze metadata. Do not describe any canonical v0 release as staged, validated,
+promoted, or public until its exact bridge run and subsequent review/activation
+steps are verified. The independently verified protected database backup is
+`D:\\UntilEveryCage-backups\\database\\v0-candidate-20261004\\uec-frozen.dump`
+(71,598,797 bytes; SHA-256
+`1f1dabb319b279bd796901825320610fa37cd357eff0c07de4d2d7864e79b9d8`).
 
 ## Dataset identity
 
@@ -137,6 +191,18 @@ manifest or adding an alternate publication mechanism:
 Until these actions are complete, v0 remains a candidate-review milestone,
 not a public release. The separate V2 website cutover remains governed by the
 product readiness roadmap and may not be inferred from the dataset milestone.
+
+The current private map feed is not a public-source-coordinate projection:
+the measured public map and discovery relations are empty, and the inventory
+does not prove how a future public projection will encode source-provided
+coordinates, provider-derived points, or coarse references. Before public map
+activation, verify the release-scoped projection and API preserve those
+distinct provenance/precision classes, honor eligibility and suppression, and
+render co-located coarse geometry consistently. The production Svelte frontend
+is still deferred; production packaging, production-shaped end-to-end testing,
+V1/V2 route comparison, and a controlled route cutover with V1 rollback remain
+unfinished. Do not treat private map-feed eligibility as completion of any of
+those gates.
 
 ## Evidence and limits
 
