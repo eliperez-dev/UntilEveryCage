@@ -36,7 +36,34 @@ does not copy legacy rows, addresses, coordinates, or source payloads. Unknown
 source dates remain unknown, and the manifest generation time is not a source
 currentness claim.
 
-## Latest strict live private E2E — 2026-09-27
+## Current private-preview source imports — 2026-10-04
+
+The latest-per-source metadata in the retained `uec-offline-fsis-private-postgres-1/uec`
+preview database verifies imported source manifests and observation/candidate
+counts for the four lanes below. These are private, source-qualified
+observations and provisional candidates—not approved or published facilities.
+All four have zero map-visible candidates and zero public rows. Acquisition
+evidence for one run does not establish recurring operational health, so
+`runtime_health` remains `not_run`; `publication_eligibility` remains
+`blocked`.
+
+| Source | Latest private import | Location and interpretation |
+|---|---|---|
+| `dk.smiley` | 58,848 parsed; 58,795 observations/candidates; 53 quarantined | 565 candidates are in core source scope and 58,230 are optional/out of default scope. The source artifact was freshly acquired on 2026-10-04; the pipeline/DB step was a local replay of that retained artifact, not a second acquisition. The row-free manifest calls it a replay, while the generic DB `fresh_live_run=true` flag conflicts; owner correction is pending. A separately authorized provider operation is pending. |
+| `fsa_approved_establishments` | 5,342 input rows; 4,291 observations/candidates; 1,051 quarantined | England and Wales only. The 2026-10-04 strict live private E2E used the recurring-health acquisition path and imported into the retained private preview. Location processing remains separate from approval or publication. |
+| `fss_approved_establishments` | 728 input rows; 595 observations/candidates; 133 quarantined | Scotland only. The 2026-10-04 strict live private E2E used the recurring-health acquisition path and imported into the retained private preview. Keep separate from FSA England/Wales and any Northern Ireland source. |
+| `nl.nvwa.approved-food` | 1,259 observations; 1,176 source-qualified candidate groups; 0 quarantined | Eight approved-food lists; repeated activity/species observations are preserved. 1,259 is not a unique-facility count. NVWA supplies no coordinates; source address evidence remains private and geocoding is separate. |
+
+The machine-readable run IDs, snapshot and artifact hashes, and counts are in
+[`source-status.json`](source-status.json). DK scope counts come from its
+[row-free replay manifest](../data/manifests/denmark-private-v0-refresh-2026-10-04.json);
+NL acquisition evidence is in its [row-free source manifest](../data/manifests/nl-nvwa-approved-food-v0.json).
+UK address/geocoding outcomes remain separate from source acquisition and
+candidate counts; final current aggregate results are pending. The v0 release
+candidate inventory at `data/manifests/v0-release-candidate-inventory.json`
+has not yet been generated. No source in this section is approved for release.
+
+## Historical strict live private E2E checkpoint — 2026-09-27
 
 Ten named official sources completed strict live private E2E through acquisition,
 candidate processing, disposable-database import, and run verification. The
@@ -72,6 +99,8 @@ privacy clearance, recurring retrieval, or release approval. It covers
 Scotland only; FSA England/Wales and any Northern Ireland feed remain separate.
 See the [row-free E2E manifest](../data/manifests/fss-approved-establishments-e2e-20261002.json)
 and [FSS source assessment](countries/uk/fss-approved-establishments-source-assessment.md).
+This dated isolated-database result did not change the retained preview then;
+the separate 2026-10-04 import is summarized above.
 
 ## Italy 1069 and Catalonia evidence recovery — 2026-10-01
 
