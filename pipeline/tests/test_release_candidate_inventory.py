@@ -170,6 +170,14 @@ class ReleaseCandidateInventoryTests(unittest.TestCase):
         self.assertIn("AND candidate.location_class = 'city_postal' THEN 'coarse_reference'", sql)
         self.assertIn("THEN 'source_coordinate_fallback'", sql)
         self.assertIn("count(*) FILTER (WHERE served_by_private_map)", sql)
+        self.assertIn("candidate.default_map_scope AND (", sql)
+        self.assertIn("display.display_geometry_source IS NULL", sql)
+        self.assertIn("display.display_geometry_source IS NOT NULL", sql)
+        self.assertIn("candidate.latitude BETWEEN -90 AND 90", sql)
+        self.assertIn("candidate.longitude BETWEEN -180 AND 180", sql)
+        self.assertIn("display.display_latitude BETWEEN -90 AND 90", sql)
+        self.assertIn("display.display_longitude BETWEEN -180 AND 180", sql)
+        self.assertIn("(display.display_latitude <> 0 OR display.display_longitude <> 0)", sql)
 
     def test_current_map_geometry_is_not_compared_with_import_time_counters(self):
         row = {

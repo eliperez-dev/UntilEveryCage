@@ -184,24 +184,29 @@ WITH latest AS (
 ), categorized AS (
     SELECT candidate.source_id,
            CASE
-             WHEN display.display_latitude IS NOT NULL
+             WHEN display.display_geometry_source IS NOT NULL
                   AND candidate.coordinate_method IN ('address_geocode', 'geoapify_forward') THEN 'provider_derived'
-             WHEN display.display_latitude IS NOT NULL
+             WHEN display.display_geometry_source IS NOT NULL
                   AND candidate.location_class = 'numeric_source_coordinate' THEN 'source_coordinate'
-             WHEN display.display_latitude IS NOT NULL
+             WHEN display.display_geometry_source IS NOT NULL
                   AND candidate.location_class = 'city_postal' THEN 'coarse_reference'
-             WHEN display.display_latitude IS NOT NULL THEN 'other_display_point'
-             WHEN candidate.default_map_scope
-                  AND candidate.location_class = 'numeric_source_coordinate'
-                  AND candidate.latitude IS NOT NULL AND candidate.longitude IS NOT NULL THEN 'source_coordinate_fallback'
-             WHEN display.display_latitude IS NULL THEN 'no_display_point'
+             WHEN display.display_geometry_source IS NOT NULL THEN 'other_display_point'
+             WHEN candidate.location_class = 'numeric_source_coordinate' THEN 'source_coordinate_fallback'
+             WHEN display.display_geometry_source IS NULL THEN 'no_display_point'
              ELSE 'other_or_unrecognized'
            END AS geometry_source,
            display.display_latitude,
-           (display.display_latitude IS NOT NULL AND display.display_longitude IS NOT NULL)
-             OR (candidate.default_map_scope
-                 AND candidate.location_class = 'numeric_source_coordinate'
-                 AND candidate.latitude IS NOT NULL AND candidate.longitude IS NOT NULL) AS served_by_private_map
+           candidate.default_map_scope AND (
+             (display.display_geometry_source IS NULL
+              AND candidate.location_class = 'numeric_source_coordinate'
+              AND candidate.latitude BETWEEN -90 AND 90
+              AND candidate.longitude BETWEEN -180 AND 180
+              AND (candidate.latitude <> 0 OR candidate.longitude <> 0))
+             OR (display.display_geometry_source IS NOT NULL
+              AND display.display_latitude BETWEEN -90 AND 90
+              AND display.display_longitude BETWEEN -180 AND 180
+              AND (display.display_latitude <> 0 OR display.display_longitude <> 0))
+           ) AS served_by_private_map
     FROM real_preview.candidates candidate
     JOIN real_preview.candidate_display display
       ON display.candidate_id = candidate.candidate_id
