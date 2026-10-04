@@ -511,6 +511,11 @@ def _coordinate(normalized: dict[str, Any], preview_candidate: tuple[Any, ...], 
     return lat, lon, method, precision, provider, origin
 
 
+def _point_sql_parameters(latitude: float, longitude: float) -> tuple[float, float]:
+    """Return PostGIS ST_MakePoint parameters in its required x, y order."""
+    return longitude, latitude
+
+
 def _insert_source(connection: Any, source: str, country: str, name: str, url: str) -> None:
     if len(country) != 2:
         raise BridgeError("source_country_missing")
@@ -782,7 +787,7 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                         Jsonb(classification_data), contract.get("classification_ruleset_version") or "v0-unmapped",
                         "source-handoff-candidate", category, parsed[17])
                     if latitude is not None:
-                        observation_params += (latitude, longitude)
+                        observation_params += _point_sql_parameters(latitude, longitude)
                     observation_params += (coord_method, coord_precision, observed_at)
                     observation_row = connection.execute(f"""INSERT INTO uec.observations
                         (facility_id,source_record_id,observed_at,observation,classification,ruleset_id,rule_id,

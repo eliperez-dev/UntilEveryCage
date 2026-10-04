@@ -20,7 +20,7 @@ def _canonical(value):
 
 
 class CandidateBridgeTests(unittest.TestCase):
-    def _handoff(self, root: Path):
+    def _handoff(self, root: Path, *, source_coordinates: bool = False):
         source = "dk.smiley"
         folder = root / source
         (folder / "normalized").mkdir(parents=True)
@@ -31,6 +31,12 @@ class CandidateBridgeTests(unittest.TestCase):
             {"source_id": source, "source_row": 2, "source_record_key": "DK-1", "source_values": {},
              "normalized": {"establishment_id": "DK-GROUP-1", "country_code": "DK", "city": "Aalborg", "postal_code": "9000"}},
         ]
+        if source_coordinates:
+            for row in normalized_rows:
+                row["normalized"]["coordinates"] = {
+                    "latitude": 56.123456, "longitude": 10.654321,
+                    "precision": "numeric", "method": "source_coordinates",
+                }
         normalized_bytes = b"".join(_canonical(row) for row in normalized_rows)
         normalized_hash = hashlib.sha256(normalized_bytes).hexdigest()
         normalized_path = folder / "normalized" / "records.jsonl"
@@ -247,6 +253,7 @@ class CandidateBridgeTests(unittest.TestCase):
         provider = bridge._coordinate({}, tuple(candidate), allow_display=True)
         self.assertEqual(provider[-1], "provider_derived")
         self.assertEqual(provider[2:5], ("geoapify_forward", "house_number", "geoapify"))
+        self.assertEqual(bridge._point_sql_parameters(*provider[:2]), (10.2, 56.1))
 
         candidate[24] = None
         candidate[27:30] = [None, None, None]
@@ -255,11 +262,13 @@ class CandidateBridgeTests(unittest.TestCase):
         coarse = bridge._coordinate({}, tuple(candidate), allow_display=True)
         self.assertEqual(coarse[-1], "verified_coarse_reference")
         self.assertEqual(coarse[2:5], ("coarse_reference", "city", "official-municipality-grid"))
+        self.assertEqual(bridge._point_sql_parameters(*coarse[:2]), (10.2, 56.1))
 
         source = bridge._coordinate({"coordinates": {"latitude": 55.7, "longitude": 12.5,
             "precision": "source-provided", "method": "source_coordinates"}}, tuple(candidate), allow_display=True)
         self.assertEqual(source[:2], (55.7, 12.5))
         self.assertEqual(source[-1], "source_coordinates")
+        self.assertEqual(bridge._point_sql_parameters(*source[:2]), (12.5, 55.7))
 
     def test_restricted_private_address_is_not_mistaken_for_public_clearance(self):
         normalized = {"privacy_gate": "restricted", "source_address_restricted": True,
@@ -308,7 +317,7 @@ class CandidateBridgeDatabaseTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory(dir=bridge.ROOT) as temporary:
             root = Path(temporary)
-            handoff_path, _rows, manifest, policy = self._handoff(root)
+            handoff_path, _rows, manifest, policy = self._handoff(root, source_coordinates=True)
             inventory, inventory_source, inventory_hash = self._inventory(manifest, policy)
             inventory.update(inventory_sha256=inventory_hash, read_at_utc="2026-10-04T01:00:00Z")
             database = os.environ["UEC_V0_BRIDGE_TEST_DATABASE"]
@@ -355,7 +364,7 @@ class CandidateBridgeDatabaseTests(unittest.TestCase):
                      adapter_version,schema_version,input_count,accepted_count,quarantined_count,out_of_scope_count,
                      imported_observation_count,facility_count,numeric_coordinate_count,coarse_placeable_count,unmapped_count,
                      api_listable_count,map_visible_count,idempotent_replay,public_rows,runtime_details)
-                    VALUES ('bridge-dbtest','dk.smiley',%s,%s,%s,%s,%s,%s,%s,2,2,0,0,2,1,0,1,0,0,0,false,0,'{}')""",
+                    VALUES ('bridge-dbtest','dk.smiley',%s,%s,%s,%s,%s,%s,%s,2,2,0,0,2,1,1,0,0,1,1,false,0,'{}')""",
                     ("c" * 64, manifest["source_url"], retrieved, manifest["checksum_sha256"], manifest["normalized_sha256"],
                      manifest["code_version"], manifest["config_version"]))
                 preview_ids = {}
@@ -367,12 +376,14 @@ class CandidateBridgeDatabaseTests(unittest.TestCase):
                         VALUES (%s,'dk.smiley',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING preview_id""",
                         ("c" * 64, identifier, parsed[1], identifier == "DK-1", parsed[2], parsed[3], parsed[4],
                          parsed[5], parsed[6], parsed[7], parsed[8])).fetchone()[0]
+                representative = next(parsed for parsed, _raw in handoff["rows"] if parsed[0] == "DK-1")
                 connection.execute("""INSERT INTO real_preview.candidates
                     (snapshot_sha256,source_id,source_group_key,representative_observation_id,location_class,country_code,city,postal_code,
-                     coordinate_precision,observation_count,category,activity_categories,source_activity_codes,source_activity_labels,
+                     latitude,longitude,coordinate_precision,observation_count,category,activity_categories,source_activity_codes,source_activity_labels,
                      activity_mapping_status,classification_ruleset_version)
-                    VALUES (%s,'dk.smiley','DK-GROUP-1',%s,'city_postal','DK','Aalborg','9000','city_postal',2,%s,%s,%s,%s,%s,%s)""",
-                    ("c" * 64, preview_ids["DK-1"], merged["category"], merged["activity_categories"],
+                    VALUES (%s,'dk.smiley','DK-GROUP-1',%s,%s,%s,%s,%s,%s,%s,%s,2,%s,%s,%s,%s,%s,%s)""",
+                    ("c" * 64, preview_ids["DK-1"], representative[1], representative[2], representative[3],
+                     representative[4], representative[5], representative[6], representative[7], merged["category"], merged["activity_categories"],
                      merged["source_activity_codes"], merged["source_activity_labels"], merged["activity_mapping_status"],
                      merged["classification_ruleset_version"]))
                 connection.execute("""INSERT INTO real_preview.taxonomy_crosswalks
@@ -419,6 +430,9 @@ class CandidateBridgeDatabaseTests(unittest.TestCase):
                                  ("not_retained", None, None))
                 dates = connection.execute("SELECT observation->>'source_observed_at',observation->>'observed_at_basis' FROM uec.observations").fetchall()
                 self.assertTrue(all(source_date is None and basis == "project_retrieved_at" for source_date, basis in dates))
+                coordinates = connection.execute("""SELECT ST_Y(coordinate::geometry),ST_X(coordinate::geometry)
+                    FROM uec.observations ORDER BY source_record_id""").fetchall()
+                self.assertEqual(coordinates, [(56.123456, 10.654321), (56.123456, 10.654321)])
 
 
 if __name__ == "__main__":
