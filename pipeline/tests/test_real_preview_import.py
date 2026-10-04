@@ -132,6 +132,71 @@ class RealPreviewImporterTests(unittest.TestCase):
                                                    "ca.ontario.meat-plants", source_hash,
                                                    retrieved, evidence, artifact)
 
+    def test_retained_live_acquisition_replay_is_not_reported_as_a_fresh_import(self):
+        retrieved = IMPORTER.datetime.fromisoformat("2026-10-04T00:39:16+00:00")
+        runtime = {"processing_mode": "verified_replay_of_retained_live_acquisition"}
+        source_result = {"acquisition_classification": "live"}
+        evidence = {"acquisition_method": "network_fetch", "source_id": "dk.smiley",
+                    "run_id": "denmark-v0-live-20261003", "sha256": "a" * 64,
+                    "retrieved_at_utc": "2026-10-04T00:39:16Z"}
+        details = IMPORTER.source_processing_provenance(
+            "dk.smiley", runtime, source_result, evidence, "a" * 64, retrieved,
+            "denmark-v0-live-20261003", archived_replay=False,
+            archived_replay_evidence=None)
+        self.assertFalse(details["fresh_live_run"])
+        self.assertEqual(details["processing_mode"], "verified_retained_artifact_replay")
+        self.assertEqual(details["acquisition_classification"], "live")
+        self.assertEqual(details["replay_of"]["source_artifact_sha256"], "a" * 64)
+        evidence["sha256"] = "b" * 64
+        with self.assertRaisesRegex(IMPORTER.ImportFailure, "retained_live_replay_provenance_mismatch"):
+            IMPORTER.source_processing_provenance(
+                "dk.smiley", runtime, source_result, evidence, "a" * 64, retrieved,
+                "denmark-v0-live-20261003", archived_replay=False,
+                archived_replay_evidence=None)
+
+    def test_retained_replay_correction_is_deterministic_and_hash_linked(self):
+        runtime = {
+            "run_id": "dk-smiley-v0-private-20261004",
+            "processing_mode": "verified_replay_of_retained_live_acquisition",
+            "completed_at_utc": "2026-10-04T21:30:17Z",
+            "results": [{"source_id": "dk.smiley", "status": "succeeded",
+                         "acquisition_classification": "live",
+                         "summary": {"candidate_handoff": True,
+                                     "candidate_handoff_sha256": "b" * 64,
+                                     "candidate_observation_rows": 4,
+                                     "quarantined_rows": 1, "out_of_scope_rows": 0,
+                                     "input_rows": 5}}],
+        }
+        handoff = {"source_id": "dk.smiley", "checksum_sha256": "a" * 64,
+                   "normalized_sha256": "b" * 64, "normalized_rows": 4,
+                   "retrieved_at_utc": "2026-10-04T00:39:16Z"}
+        first = IMPORTER.prepare_retained_replay_correction(
+            "dk.smiley", "denmark-v0-live-20261003", "dk-smiley-v0-private-20261004",
+            runtime, handoff)
+        second = IMPORTER.prepare_retained_replay_correction(
+            "dk.smiley", "denmark-v0-live-20261003", "dk-smiley-v0-private-20261004",
+            runtime, handoff)
+        self.assertEqual(first, second)
+        self.assertEqual(first["normalized_sha256"], "b" * 64)
+        self.assertEqual(first["retrieved_at_utc"], "2026-10-04T00:39:16Z")
+        self.assertEqual(first["replayed_at_utc"], "2026-10-04T21:30:17Z")
+        handoff["normalized_sha256"] = "c" * 64
+        with self.assertRaisesRegex(IMPORTER.ImportFailure, "retained_replay_correction_artifact_mismatch"):
+            IMPORTER.prepare_retained_replay_correction(
+                "dk.smiley", "denmark-v0-live-20261003", "dk-smiley-v0-private-20261004",
+                runtime, handoff)
+
+    def test_retained_replay_correction_is_append_only_and_does_not_reimport_source_rows(self):
+        source = (Path(__file__).parents[1] / "scripts" / "maintenance" / "import-real-preview.py").read_text(encoding="utf-8")
+        start = source.index("def record_retained_replay_correction(")
+        end = source.index("\ndef ", start + 5)
+        correction = source[start:end]
+        self.assertIn("INSERT INTO real_preview.source_preview_runs", correction)
+        self.assertIn("ON CONFLICT (run_id) DO NOTHING", correction)
+        self.assertNotIn("UPDATE real_preview.", correction)
+        self.assertNotIn("INSERT INTO real_preview.observations", correction)
+        self.assertNotIn("INSERT INTO real_preview.candidates", correction)
+
     def test_catalonia_locality_candidates_use_map_scope_after_reference_enrichment(self):
         parsed = IMPORTER.parse_row("es.cat.feed-sandach", {
             "source_id": "es.cat.feed-sandach",

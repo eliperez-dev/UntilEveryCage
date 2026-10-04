@@ -1238,6 +1238,172 @@ def validate_archived_replay(runtime_manifest: dict[str, Any], source_result: di
             "source_artifact_sha256": source_hash, "retrieved_at_utc": retrieved_text}
 
 
+def source_processing_provenance(source_id: str, runtime_manifest: dict[str, Any],
+                                 source_result: dict[str, Any], acquisition_evidence: dict[str, Any] | None,
+                                 source_hash: str, retrieved_at: datetime, run_id: str, *,
+                                 archived_replay: bool,
+                                 archived_replay_evidence: dict[str, Any] | None) -> dict[str, Any]:
+    if archived_replay:
+        return {"fresh_live_run": False, "processing_mode": "archived_replay",
+                "acquisition_classification": "archived-replay",
+                "replay_of": archived_replay_evidence}
+    if runtime_manifest.get("processing_mode") == "verified_replay_of_retained_live_acquisition":
+        retrieved_text = retrieved_at.isoformat().replace("+00:00", "Z")
+        if (source_id != "dk.smiley" or not isinstance(acquisition_evidence, dict)
+                or source_result.get("acquisition_classification") != "live"
+                or acquisition_evidence.get("acquisition_method") != "network_fetch"
+                or acquisition_evidence.get("source_id") != source_id
+                or acquisition_evidence.get("run_id") != run_id
+                or acquisition_evidence.get("sha256") != source_hash
+                or acquisition_evidence.get("retrieved_at_utc") != retrieved_text):
+            raise ImportFailure("retained_live_replay_provenance_mismatch")
+        return {"fresh_live_run": False,
+                "processing_mode": "verified_retained_artifact_replay",
+                "acquisition_classification": "live",
+                "replay_of": {"original_acquisition_run_id": run_id,
+                              "source_artifact_sha256": source_hash,
+                              "retrieved_at_utc": retrieved_text}}
+    return {"fresh_live_run": True, "processing_mode": "live_acquisition",
+            "acquisition_classification": "live", "replay_of": None}
+
+
+def prepare_retained_replay_correction(source_id: str, original_run_id: str,
+                                       correction_token: str, runtime_manifest: dict[str, Any],
+                                       handoff_manifest: dict[str, Any]) -> dict[str, Any]:
+    """Validate a DK retained-artifact replay without re-importing source rows."""
+    if (source_id != "dk.smiley"
+            or runtime_manifest.get("processing_mode") != "verified_replay_of_retained_live_acquisition"
+            or runtime_manifest.get("run_id") != correction_token
+            or not correction_token or len(correction_token) > 120):
+        raise ImportFailure("retained_replay_correction_identity_mismatch")
+    results = runtime_manifest.get("results")
+    source_result = next((row for row in results if isinstance(row, dict)
+                          and row.get("source_id") == source_id), None) if isinstance(results, list) else None
+    summary = source_result.get("summary") if isinstance(source_result, dict) else None
+    counts = tuple(summary.get(key) for key in (
+        "candidate_observation_rows", "quarantined_rows", "out_of_scope_rows", "input_rows")) if isinstance(summary, dict) else ()
+    if (not isinstance(summary, dict) or source_result.get("status") != "succeeded"
+            or source_result.get("acquisition_classification") != "live"
+            or summary.get("candidate_handoff") is not True
+            or not isinstance(summary.get("candidate_handoff_sha256"), str)
+            or len(summary.get("candidate_handoff_sha256", "")) != 64
+            or any(not isinstance(value, int) or value < 0 for value in counts)
+            or summary.get("candidate_observation_rows") != handoff_manifest.get("normalized_rows")
+            or summary.get("candidate_observation_rows") + summary.get("quarantined_rows")
+               + summary.get("out_of_scope_rows") != summary.get("input_rows")):
+        raise ImportFailure("retained_replay_correction_handoff_mismatch")
+    if (handoff_manifest.get("source_id") != source_id
+            or not isinstance(handoff_manifest.get("checksum_sha256"), str)
+            or len(handoff_manifest["checksum_sha256"]) != 64
+            or handoff_manifest.get("normalized_sha256") != summary.get("candidate_handoff_sha256")):
+        raise ImportFailure("retained_replay_correction_artifact_mismatch")
+    try:
+        replayed_at = datetime.fromisoformat(str(runtime_manifest.get("completed_at_utc")).replace("Z", "+00:00"))
+        retrieved_at = datetime.fromisoformat(str(handoff_manifest.get("retrieved_at_utc")).replace("Z", "+00:00"))
+    except ValueError:
+        raise ImportFailure("retained_replay_correction_timestamp_invalid") from None
+    if (replayed_at.utcoffset() is None or retrieved_at.utcoffset() is None
+            or replayed_at <= retrieved_at
+            or replayed_at > datetime.now(timezone.utc) + timedelta(minutes=5)):
+        raise ImportFailure("retained_replay_correction_timestamp_invalid")
+    token_digest = hashlib.sha256(correction_token.encode("utf-8")).hexdigest()[:20]
+    return {
+        "correction_run_id": f"{original_run_id}-replay-{token_digest}",
+        "correction_token": correction_token,
+        "original_run_id": original_run_id,
+        "source_artifact_sha256": handoff_manifest["checksum_sha256"],
+        "normalized_sha256": handoff_manifest["normalized_sha256"],
+        "replayed_at_utc": replayed_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "retrieved_at_utc": retrieved_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }
+
+
+def record_retained_replay_correction(database_url: str, source_id: str, original_run_id: str,
+                                      correction_token: str, run_manifest_path: Path) -> dict[str, Any]:
+    if not run_manifest_path.is_file() or run_manifest_path.is_symlink():
+        raise ImportFailure("retained_replay_correction_manifest_missing")
+    runtime_manifest = json_object(run_manifest_path)
+    handoff_manifest_path = run_manifest_path.parent / "sources" / source_id / "candidate-handoff" / "manifest.json"
+    if not handoff_manifest_path.is_file() or handoff_manifest_path.is_symlink():
+        raise ImportFailure("retained_replay_correction_handoff_missing")
+    handoff_manifest = json_object(handoff_manifest_path)
+    correction = prepare_retained_replay_correction(
+        source_id, original_run_id, correction_token, runtime_manifest, handoff_manifest)
+    correction_details = {
+        "fresh_live_run": False,
+        "processing_mode": "verified_retained_artifact_replay",
+        "acquisition_classification": "live",
+        "replay_of": {
+            "original_acquisition_run_id": original_run_id,
+            "source_artifact_sha256": correction["source_artifact_sha256"],
+            "retrieved_at_utc": correction["retrieved_at_utc"],
+            "replayed_at_utc": correction["replayed_at_utc"],
+        },
+        "supersedes_run_id": original_run_id,
+        "correction": {
+            "token": correction_token,
+            "reason": "Runtime normalization and import replayed the retained freshly acquired artifact; no second source acquisition occurred.",
+            "recorded_at_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        },
+    }
+    columns = ("run_id,source_id,snapshot_sha256,source_url,retrieved_at,source_artifact_sha256,normalized_sha256,"
+               "adapter_version,schema_version,input_count,accepted_count,quarantined_count,out_of_scope_count,"
+               "imported_observation_count,facility_count,numeric_coordinate_count,coarse_placeable_count,unmapped_count,"
+               "api_listable_count,map_visible_count,idempotent_replay,public_rows,runtime_details")
+    with psycopg.connect(database_url) as connection, connection.transaction():
+        original = connection.execute("""SELECT snapshot_sha256,source_artifact_sha256,normalized_sha256,
+            retrieved_at,facility_count,runtime_details
+            FROM real_preview.source_preview_runs
+            WHERE source_id=%s AND run_id=%s""", (source_id, original_run_id)).fetchone()
+        if not original:
+            raise ImportFailure("retained_replay_correction_original_run_missing")
+        snapshot, artifact_hash, normalized_hash, retrieved_at, facilities, original_details = original
+        acquisition = original_details.get("source_artifacts") if isinstance(original_details, dict) else None
+        terms = acquisition.get("terms_review") if isinstance(acquisition, dict) else None
+        if (artifact_hash.strip() != correction["source_artifact_sha256"]
+                or normalized_hash.strip() != correction["normalized_sha256"]
+                or retrieved_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z") != correction["retrieved_at_utc"]
+                or facilities != handoff_manifest.get("normalized_rows")
+                or not isinstance(acquisition, dict)
+                or acquisition.get("source_id") != source_id
+                or acquisition.get("run_id") != original_run_id
+                or acquisition.get("sha256") != correction["source_artifact_sha256"]
+                or acquisition.get("retrieved_at_utc") != correction["retrieved_at_utc"]
+                or not isinstance(terms, dict) or terms.get("decision") != "approved"):
+            raise ImportFailure("retained_replay_correction_database_mismatch")
+        if not (original_details.get("fresh_live_run") is True
+                and original_details.get("processing_mode") == "live_acquisition"):
+            raise ImportFailure("retained_replay_correction_original_state_mismatch")
+        merged_details = {**original_details, **correction_details}
+        connection.execute(f"""INSERT INTO real_preview.source_preview_runs ({columns})
+            SELECT %s,source_id,snapshot_sha256,source_url,retrieved_at,source_artifact_sha256,normalized_sha256,
+                   adapter_version,schema_version,input_count,accepted_count,quarantined_count,out_of_scope_count,
+                   imported_observation_count,facility_count,numeric_coordinate_count,coarse_placeable_count,unmapped_count,
+                   api_listable_count,map_visible_count,true,public_rows,%s::jsonb
+            FROM real_preview.source_preview_runs WHERE source_id=%s AND run_id=%s
+            ON CONFLICT (run_id) DO NOTHING""",
+            (correction["correction_run_id"], json.dumps(merged_details), source_id, original_run_id))
+        recorded = connection.execute("""SELECT source_id,snapshot_sha256,source_artifact_sha256,
+            normalized_sha256,facility_count,runtime_details
+            FROM real_preview.source_preview_runs WHERE run_id=%s""",
+            (correction["correction_run_id"],)).fetchone()
+        if (not recorded or recorded[0] != source_id or recorded[1].strip() != snapshot.strip()
+                or recorded[2].strip() != correction["source_artifact_sha256"]
+                or recorded[3].strip() != correction["normalized_sha256"]
+                or recorded[4] != facilities
+                or recorded[5].get("correction", {}).get("token") != correction_token
+                or recorded[5].get("processing_mode") != "verified_retained_artifact_replay"
+                or recorded[5].get("fresh_live_run") is not False
+                or recorded[5].get("supersedes_run_id") != original_run_id
+                or recorded[5].get("replay_of", {}).get("replayed_at_utc") != correction["replayed_at_utc"]):
+            raise ImportFailure("retained_replay_correction_idempotency_conflict")
+    return {"status": "recorded" if recorded[5].get("correction", {}).get("recorded_at_utc") == correction_details["correction"]["recorded_at_utc"] else "already_recorded",
+            "source_id": source_id, "run_id": correction["correction_run_id"],
+            "original_run_id": original_run_id, "facility_candidate_count": facilities,
+            "fresh_live_run": False, "processing_mode": correction_details["processing_mode"],
+            "public_rows": 0, "source_rows_reimported": 0}
+
+
 def run(root: Path, database_url: str, *, source_id: str | None = None,
         manifest_path: Path | None = None, municipality_index_path: Path | None = None,
         run_id: str | None = None, run_manifest_path: Path | None = None,
@@ -1280,6 +1446,9 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
         source_summary = source_result.get("summary") if isinstance(source_result, dict) else None
         if not isinstance(source_summary, dict) or source_result.get("status") != "succeeded":
             raise ImportFailure("runtime_source_run_not_succeeded")
+        retained_live_replay = runtime_manifest.get("processing_mode") == "verified_replay_of_retained_live_acquisition"
+        if retained_live_replay and (source_id != "dk.smiley" or archived_replay):
+            raise ImportFailure("retained_live_replay_source_not_supported")
         if archived_replay:
             if source_id not in ARCHIVED_REPLAY_SOURCES:
                 raise ImportFailure("archived_replay_source_not_supported")
@@ -1741,6 +1910,11 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
             unmapped_map_candidate_count = unplaceable_rows
             if unmapped_map_candidate_count < 0:
                 raise ImportFailure("runtime_location_classes_do_not_reconcile")
+            processing_provenance = source_processing_provenance(
+                source_id, runtime_manifest, source_result, acquisition_evidence,
+                source_hash, retrieved_at, run_id,
+                archived_replay=archived_replay,
+                archived_replay_evidence=archived_replay_evidence)
             runtime_details = {"quarantine_reasons": source_summary.get("quarantine_reasons", {}),
                                "source_artifacts": acquisition_evidence,
                                "source_specific_counts": {key: source_summary.get(key) for key in (
@@ -1749,10 +1923,7 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
                                    "activity_counts", "observed_activity_categories", "source_license",
                                    "source_canonical_url", "source_as_of", "graph_relationships_emitted")},
                                "geometry_reference": ({**{key: index_payload.get(key) for key in ("source", "source_url", "license", "reference_date", "retrieved_at_utc", "source_last_modified", "source_sha256", "source_byte_size", "method", "version")}, "derived_index_sha256": digest_file(municipality_index_path)[0]} if municipality_index is not None else None),
-                               "fresh_live_run": not archived_replay,
-                               "processing_mode": "archived_replay" if archived_replay else "live_acquisition",
-                               "acquisition_classification": "archived-replay" if archived_replay else "live",
-                               "replay_of": archived_replay_evidence,
+                               **processing_provenance,
                                "preview_policy_version": json_object(POLICY).get("contract_version"),
                                "preview_candidate_projection_version": SNAPSHOT_PROJECTION_VERSION}
             if source_id == "au.npi.facilities":
@@ -1838,13 +2009,21 @@ def main() -> int:
     parser.add_argument("--run-manifest", type=Path, help="exact shared refresh-run manifest")
     parser.add_argument("--archived-replay", action="store_true", help="import one hash-verified retained official artifact; records archived replay, not live acquisition")
     parser.add_argument("--offline-handoff", action="store_true", help="import only the hash-verified retained FSIS private handoff; never reacquire")
+    parser.add_argument("--record-retained-replay-correction", action="store_true",
+                        help="append one hash-checked DK replay provenance row without reimporting source observations")
+    parser.add_argument("--correction-token", help="stable retained replay correction identity")
     args = parser.parse_args()
     result: dict[str, Any]
     try:
         database_url = os.environ.get(args.database_url_env)
         if not database_url:
             raise ImportFailure("database_configuration_missing")
-        if args.offline_handoff:
+        if args.record_retained_replay_correction:
+            if not args.source_id or not args.run_id or not args.run_manifest or not args.correction_token:
+                raise ImportFailure("retained_replay_correction_arguments_missing")
+            result = record_retained_replay_correction(database_url, args.source_id, args.run_id,
+                                                       args.correction_token, args.run_manifest)
+        elif args.offline_handoff:
             if args.source_id not in (None, "us.fsis"):
                 raise ImportFailure("offline_source_not_supported")
             result = import_offline_handoffs(args.root, database_url)
