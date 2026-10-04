@@ -7,6 +7,7 @@
     "database": "uec-offline-fsis-private-postgres-1/uec",
     "scope": "Latest source-qualified private-preview imports for Denmark, FSA England/Wales, FSS Scotland, and Netherlands NVWA approved-food. Counts are observations and provisional candidate groups, not approved or published facilities.",
     "map_visible_candidates": 0,
+    "map_visibility_counter_basis": "Import-time geometry counters, before separate private provider/geocoder display processing; these are not current private-map availability counts.",
     "public_rows": 0,
     "release_candidate_inventory": {
       "status": "pending",
@@ -19,6 +20,7 @@
         "source_artifact_sha256": "7f1b4850dbfaa9efdbee02edc368622e1d2c9a05fb138563cb9d7dee917c6522",
         "normalized_sha256": "2ed02b84d6bb6532160f76e2e4fe204928061f52580b3fe57646b35923c9e884",
         "retrieved_at_utc": "2026-10-04T00:39:16Z",
+        "retrieval_time_note": "UTC timestamp; this was 2026-10-03 in America/Los_Angeles.",
         "parsed_observations": 58848,
         "observations": 58795,
         "candidates": 58795,
@@ -80,7 +82,8 @@
         "runtime_health": "not_run",
         "map_visible": 0,
         "public_rows": 0,
-        "evidence": "data/manifests/nl-nvwa-approved-food-v0.json"
+        "evidence": "data/manifests/nl-nvwa-approved-food-v0.json",
+        "evidence_scope": "Earlier source-capture manifest; the latest certified/imported snapshot is identified by this entry's database run metadata and hashes."
       }
     },
     "publication": "not_authorized"
