@@ -139,7 +139,39 @@ gates.
 
 Each strict run also records a row-free location-eligibility summary beside the
 private geocode queue. The source pipeline queues only address candidates that
-have passed privacy, DAWA terms, and provider-profile approval; it does not call
-the geocoder unless a separate, explicitly reviewed geocoding run is requested.
-Unresolved records held at those gates remain visible as aggregate counts in
-the certificate and are not silently discarded or sent to a provider.
+pass the source-scope and explicit-address checks: validated slaughter, meat,
+fish, dairy, or egg production/processing records with an exact street and
+postal code, no source point, and no explicit restricted/correspondence-address
+signal. Retail, restaurants, general food, logistics, catering, packaging,
+unknown, and change-status categories are not queued. Exact addresses are
+carried only as private location evidence. This does not itself approve a
+provider request; the shared provider-terms/profile gate must pass separately,
+and refresh does not call the geocoder.
+
+The official Find Smiley XML endpoint was successfully fetched again on
+2026-10-04 at 00:39:16 UTC (59,893,151 bytes; SHA-256
+`7f1b4850dbfaa9efdbee02edc368622e1d2c9a05fb138563cb9d7dee917c6522`). The
+response supplied ETag `0x8DF21AED55B5695` and Last-Modified
+`Sun, 04 Oct 2026 00:31:29 GMT`. The current export parsed 58,848 source
+observations; 58,795 passed validation and 53 remained quarantined for
+classification review. The activity rules classified 565 as core production /
+processing, 58,230 as adjacent or out of default scope, and 53 as
+review-required. All 58,848 had unresolved source coordinates. The endpoint
+responded despite the DAWA documentation's closing warning; this observed
+availability does not establish provider support or future service. No address
+was sent to a geocoder, no database was imported, and no release was created.
+This current acquisition is distinct from replaying the retained artifact.
+
+The updated source pipeline was then run as a local replay against that
+retained fresh acquisition. It parsed 58,848 observations, accepted 58,795,
+and quarantined 53 for classification review. The explicit activity taxonomy
+classified 100 slaughter, 154 meat-processing, 206 fish-processing, 100
+dairy-processing, and 5 egg-processing observations; 58,230 were adjacent or
+outside the default scope. All source activity-code and label aliases remain
+preserved in private provenance. The provider-neutral queue contained 565
+exact-address candidates in the eligible categories; explicit restrictions
+and noneligible states remained held. The queue made no provider requests.
+The row-free summary is [the 2026-10-04 manifest](../../../data/manifests/denmark-private-v0-refresh-2026-10-04.json).
+This replay is not a second live acquisition or a full database/API E2E. It
+did not import a database, enable a provider profile, approve publication, or
+create a release.

@@ -22,10 +22,12 @@ class DenmarkAdapterTests(unittest.TestCase):
     def test_denmark_classifier_keeps_raw_values_all_recognized_activities_and_unknowns_unclassified(self):
         rules = json.loads((Path(__file__).parents[2] / "config" / "denmark-classification-v1.json").read_text(encoding="utf-8"))
         row = {"activity": {"code": ["EB.10.10.99", "EB.10.10.13"],
-                            "label": "source label", "category": "source category"}}
+                            "labels": ["source label", "alternate source label"],
+                            "category": "source category", "category_labels": ["source category", "alternate category"]}}
         classified = CLASSIFIER.classify_record(row, rules)
         self.assertEqual(classified["source_classification"]["codes"], ["EB.10.10.99", "EB.10.10.13"])
-        self.assertEqual(classified["source_classification"]["labels"], ["source label"])
+        self.assertEqual(classified["source_classification"]["labels"], ["source label", "alternate source label"])
+        self.assertEqual(classified["source_classification"]["category_labels"], ["source category", "alternate category"])
         self.assertEqual(classified["classification"]["activity_categories"], ["slaughter", "meat_processing"])
         self.assertEqual(classified["classification"]["category"], "slaughter")
         self.assertEqual(classified["classification"]["mapping_status"], "mapped")
@@ -75,7 +77,8 @@ class DenmarkAdapterTests(unittest.TestCase):
             self.assertEqual(handoff["normalized"]["establishment_id"], "1")
             self.assertEqual(handoff["normalized"]["classification_category"], "general_food_business")
             self.assertFalse(handoff["normalized"]["in_default_map_scope"])
-            self.assertNotIn("address_lines", handoff["normalized"])
+            self.assertEqual(handoff["normalized"]["private_location_evidence"]["address"], "Road 1")
+            self.assertEqual(handoff["normalized"]["private_location_evidence"]["address_lines"], ["Road 1"])
 
     def test_candidate_mapping_preserves_denmark_classification_fields_and_all_activities(self):
         with tempfile.TemporaryDirectory() as d:
@@ -98,6 +101,24 @@ class DenmarkAdapterTests(unittest.TestCase):
             self.assertEqual(normalized["activity_codes"], ["EB.10.10.99", "EB.10.10.13"])
             self.assertEqual(normalized["activity_categories"], ["slaughter", "meat_processing"])
             self.assertEqual(normalized["classification_ruleset_version"], "denmark-classification-v1")
+
+    def test_normalization_and_private_handoff_keep_all_codes_labels_and_observation_date(self):
+        from pipeline.sources.denmark.stages import __path__ as _stages_path
+        normalize_script = Path(_stages_path[0]) / "normalize-denmark-smiley.py"
+        spec = importlib.util.spec_from_file_location("denmark_normalizer", normalize_script)
+        module = importlib.util.module_from_spec(spec)
+        assert spec and spec.loader
+        spec.loader.exec_module(module)
+        source = {"ID_nummer": "1", "Adresse": "Industrial Road 2", "Postnummer": "0123", "By": "Testby",
+                  "FVST_branchenummer": "EB.10.10.99", "brancheKode": "EB.10.10.13",
+                  "FVST_branche": "Slagterier", "branche": "Fremstilling af animalske produkter - Kød",
+                  "Smileybranche": "Animalske produkter", "Pixibranche": "Kødprodukter",
+                  "Seneste_kontrol_dato": "02/09/2024"}
+        normalized = module.normalize_record({"source_row": 1, "fields": source})
+        self.assertEqual(normalized["activity"]["codes"], ["EB.10.10.99", "EB.10.10.13"])
+        self.assertEqual(normalized["activity"]["labels"], ["Slagterier", "Fremstilling af animalske produkter - Kød"])
+        self.assertEqual(normalized["source_observation_date"], "2024-09-02")
+        self.assertEqual(normalized["source_fields"], source)
 
     def test_refresh_guards_reject_schema_count_and_duplicate_drift(self):
         with self.assertRaisesRegex(ValueError, "schema"):
@@ -177,8 +198,9 @@ class DenmarkAdapterTests(unittest.TestCase):
                               "exact_geocode_candidate_state": "held_for_privacy_review"}},
                 {"source_record_key": "eligible", "coordinates": {"latitude": None, "longitude": None},
                  "location": {"exact_geocode_eligible": True,
+                              "source_address_eligible": True,
                               "exact_geocode_candidate_state": "eligible_pending_queue",
-                              "exact_geocode_candidate": {"eligible": True}}},
+                              "exact_geocode_candidate": {"eligible": True, "source_eligible": True}}},
                 {"source_record_key": "source-point", "coordinates": {"latitude": 55.5, "longitude": 12.3},
                  "location": {"exact_geocode_eligible": False,
                               "exact_geocode_candidate_state": "insufficient_location_fields"}},
@@ -195,6 +217,20 @@ class DenmarkAdapterTests(unittest.TestCase):
             self.assertFalse(summary["geocoder_called"])
             queued = [json.loads(line) for line in target.read_text(encoding="utf-8").splitlines()]
             self.assertEqual([item["source_record_key"] for item in queued], ["eligible"])
+
+    def test_only_core_facility_activity_codes_make_private_address_queue_candidates(self):
+        rules = json.loads((Path(__file__).parents[2] / "config" / "denmark-classification-v1.json").read_text(encoding="utf-8"))
+        for code, expected in (("EB.10.10.99", True), ("EB.10.50.00", True),
+                               ("DD.56.10.99", False), ("DD.47.22.00", False),
+                               ("00.00.02.A", False), ("NEW.CODE", False)):
+            record = {"source_id": "dk.smiley", "source_record_key": code,
+                      "source_fields": {"Adresse": "Example Street 1", "Postnummer": "1234", "By": "Exampleby"},
+                      "address": {"street": "Example Street 1", "postal_code": "1234", "city": "Exampleby", "country_code": "DK"},
+                      "coordinates": {"latitude": None, "longitude": None},
+                      "activity": {"code": code, "label": f"source label {code}"}}
+            classified = CLASSIFIER.classify_record(record, rules)
+            self.assertEqual(classified["location"]["source_address_eligible"], expected, code)
+            self.assertEqual(classified["classification"]["default_visible"], expected, code)
 
     def test_local_acquisition_keeps_fixed_provenance_for_reruns(self):
         path = Path(__file__).parents[2] / "sources" / "denmark" / "stages" / "acquire-denmark-smiley.py"

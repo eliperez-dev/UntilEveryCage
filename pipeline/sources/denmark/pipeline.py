@@ -124,8 +124,8 @@ def _write_geocode_eligible_candidates(input_path: Path, output_path: Path) -> d
     source_coordinate_records = 0
     eligible = [
         row for row in rows
-        if (row.get("location") or {}).get("exact_geocode_eligible") is True
-        and ((row.get("location") or {}).get("exact_geocode_candidate") or {}).get("eligible") is True
+        if (row.get("location") or {}).get("source_address_eligible") is True
+        and ((row.get("location") or {}).get("exact_geocode_candidate") or {}).get("source_eligible") is True
     ]
     for row in rows:
         location = row.get("location") or {}
@@ -362,7 +362,7 @@ def main(*, run_stage_fn: Callable[[str, Path, list[str]], None] | None = None,
             "eligible_without_usable_address": queue_metadata.get("records_without_usable_address"),
             "eligibility_state_counts": eligibility["eligibility_state_counts"],
             "geocoder_called": args.geocode_limit is not None,
-            "policy": "exact address geocoding requires privacy, provider-terms, and profile approval; queueing makes no provider request",
+            "policy": "source eligibility limits candidates to validated core animal-product facility categories and exact non-restricted addresses; provider terms/profile approval remains required before any lookup; queueing makes no provider request",
         })
         if args.geocode_limit is not None:
             geo = [str(geocode_dir / "geocode-queue.jsonl"), "--output", str(run_dir / "06-geocode-results.jsonl"), "--limit", str(args.geocode_limit), "--delay", str(args.geocode_delay), "--provider-config", str(args.geocode_provider_config.resolve()), "--terms-review", str(args.geocode_terms_review.resolve()), "--network"]

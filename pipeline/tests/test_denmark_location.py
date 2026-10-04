@@ -50,17 +50,39 @@ class DenmarkLocationTests(unittest.TestCase):
         result = classify_location(record, refs)
         self.assertEqual(result["state"], "ambiguous_reference")
         self.assertIsNone(result["coarse_display_reference"])
-        self.assertEqual(result["exact_geocode_candidate_state"], "held_for_privacy_review")
+        self.assertEqual(result["exact_geocode_candidate_state"], "held_out_of_scope")
         self.assertFalse(result["exact_geocode_candidate"]["eligible"])
         self.assertEqual(result["publication_state"], "blocked")
 
     def test_exact_job_requires_all_three_gates_and_preserves_source_spelling(self):
         record = {**self.record, "coordinates": {"latitude": None, "longitude": None}}
-        result = classify_location(record, privacy_status="eligible", dawa_terms_approved=True, dawa_profile_approved=True)
+        result = classify_location(record, privacy_status="eligible", dawa_terms_approved=True,
+                                   dawa_profile_approved=True, source_scope_eligible=True)
         self.assertTrue(result["exact_geocode_eligible"])
         self.assertEqual(result["exact_geocode_candidate_state"], "eligible_pending_queue")
         self.assertEqual(result["exact_geocode_candidate"]["address"]["city"], "København")
-        self.assertEqual(result["exact_geocode_candidate"]["provider_id"], "dk.dawa")
+        self.assertTrue(result["source_address_eligible"])
+        self.assertNotIn("provider_id", result["exact_geocode_candidate"])
+
+    def test_source_scope_can_prepare_provider_neutral_candidate_without_lookup_approval(self):
+        record = {**self.record, "coordinates": {"latitude": None, "longitude": None}}
+        result = classify_location(record, privacy_status="eligible", source_scope_eligible=True)
+        self.assertTrue(result["source_address_eligible"])
+        self.assertFalse(result["exact_geocode_eligible"])
+        self.assertEqual(result["exact_geocode_candidate_state"], "source_eligible_provider_gate_pending")
+        self.assertFalse(result["exact_geocode_candidate"]["eligible"])
+
+    def test_care_of_and_explicitly_restricted_addresses_are_not_queued(self):
+        record = {**self.record, "coordinates": {"latitude": None, "longitude": None},
+                  "address": {**self.record["address"], "street": "C/O Example Person, Eksempelvej 2"}}
+        result = classify_location(record, privacy_status="eligible", source_scope_eligible=True)
+        self.assertFalse(result["source_address_eligible"])
+        self.assertEqual(result["exact_geocode_candidate_state"], "held_for_explicit_address_restriction")
+
+        restricted = {**self.record, "coordinates": {"latitude": None, "longitude": None},
+                      "source_fields": {"Adressebeskyttet": "Ja"}}
+        result = classify_location(restricted, privacy_status="eligible", source_scope_eligible=True)
+        self.assertFalse(result["source_address_eligible"])
 
     def test_local_references_are_loaded_without_any_network_dependency(self):
         path = Path(__file__).parent / "fixtures" / "denmark-locality-reference.synthetic.jsonl"

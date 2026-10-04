@@ -1,6 +1,11 @@
 {
   "ruleset_id": "denmark-classification-v1",
   "default_visibility_profile": "production-and-processing",
+  "private_geocode_scope": {
+    "policy_id": "denmark-private-geocode-scope-v1",
+    "activity_categories": ["slaughter", "meat_processing", "fish_processing", "dairy_processing", "egg_processing"],
+    "purpose": "Private exact-address queue candidates for explicit animal-product production and processing activities only. This is not an authorization to contact a provider or publish a point."
+  },
   "rules": [
     {"rule_id": "DK-INC-SLAUGHTER", "codes": ["EB.10.10.99", "EB.10.10.88"], "classification": "slaughter", "review_status": "approved", "default_visible": true, "optional_filter": "production-and-processing"},
     {"rule_id": "DK-INC-MEAT", "codes": ["EB.10.10.13", "EB.20.59.99"], "classification": "meat_processing", "review_status": "approved", "default_visible": true, "optional_filter": "production-and-processing"},

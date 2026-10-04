@@ -6,6 +6,7 @@ separate geocode worker; source refresh may classify and emit queue candidates.
 from __future__ import annotations
 
 import json
+import re
 import unicodedata
 from pathlib import Path
 
@@ -43,6 +44,31 @@ def _source_point_is_present(record: dict) -> bool:
     return coordinates.get("latitude") not in (None, "") and coordinates.get("longitude") not in (None, "")
 
 
+def _explicitly_restricted(record: dict, address: dict) -> bool:
+    """Hold explicit private-address signals and personal correspondence addresses."""
+    normalized = record.get("normalized") or record
+    restricted_states = {"restricted", "suppressed", "withheld", "review_required"}
+    for key in ("privacy_status", "privacy_gate", "address_privacy_status"):
+        if str(normalized.get(key) or "").strip().casefold() in restricted_states:
+            return True
+
+    source_fields = record.get("source_fields") or record.get("fields") or {}
+    restricted_keys = {
+        "address_withheld", "adressebeskyttet", "adressebeskyttelse",
+        "adresseudeladt", "privatadresse", "residential_address",
+    }
+    true_values = {"1", "true", "yes", "y", "ja", "withheld", "restricted"}
+    for key, value in source_fields.items() if isinstance(source_fields, dict) else ():
+        normalized_key = unicodedata.normalize("NFKD", str(key)).encode("ascii", "ignore").decode().casefold().replace(" ", "_")
+        if normalized_key in restricted_keys and str(value or "").strip().casefold() in true_values:
+            return True
+
+    # Do not send care-of or postal-box text, which can identify a person or
+    # refer to a correspondence address instead of the inspected facility.
+    street = str(address.get("street") or "")
+    return bool(re.search(r"\b(?:c\s*/\s*o|v\s*/|postboks|postbox|p\.?\s*o\.?\s*box|privatadresse|hjemmeadresse)\b", street, re.IGNORECASE))
+
+
 def classify_location(
     record: dict,
     references: list[dict] | None = None,
@@ -50,6 +76,7 @@ def classify_location(
     privacy_status: str = "pending",
     dawa_terms_approved: bool = False,
     dawa_profile_approved: bool = False,
+    source_scope_eligible: bool = False,
 ) -> dict:
     """Return candidate location fields without changing source coordinates.
 
@@ -95,30 +122,33 @@ def classify_location(
         state = "unresolved"
         queue_eligible = False
 
-    exact_eligible = bool(
+    address_is_restricted = _explicitly_restricted(record, address)
+    source_address_eligible = bool(
         not _source_point_is_present(record)
-        and address.get("street")
+        and isinstance(address.get("street"), str)
+        and address.get("street").strip()
         and postal
+        and source_scope_eligible
+        and not address_is_restricted
         and privacy_status == "eligible"
-        and dawa_terms_approved
-        and dawa_profile_approved
     )
+    exact_eligible = bool(source_address_eligible and dawa_terms_approved and dawa_profile_approved)
     job_candidate = None
-    candidate_state = "insufficient_location_fields"
+    candidate_state = "out_of_scope"
     if address.get("street") and postal and not _source_point_is_present(record):
-        if exact_eligible:
-            candidate_state = "eligible_pending_queue"
+        if address_is_restricted:
+            candidate_state = "held_for_explicit_address_restriction"
+        elif not source_scope_eligible:
+            candidate_state = "held_out_of_scope"
         elif privacy_status != "eligible":
             candidate_state = "held_for_privacy_review"
-        elif not dawa_terms_approved:
-            candidate_state = "held_for_terms_review"
-        elif not dawa_profile_approved:
-            candidate_state = "held_for_profile_approval"
+        elif not dawa_terms_approved or not dawa_profile_approved:
+            candidate_state = "source_eligible_provider_gate_pending"
         else:
             candidate_state = "eligible_pending_queue"
         job_candidate = {
-            "provider_id": "dk.dawa",
             "status": candidate_state,
+            "source_eligible": source_address_eligible,
             "eligible": exact_eligible,
             "address": {
                 "street": address.get("street"),
@@ -152,6 +182,9 @@ def classify_location(
         "coarse_display_reference": coarse,
         "exact_geocode_candidate": job_candidate,
         "exact_geocode_candidate_state": candidate_state,
+        "source_address_eligible": source_address_eligible,
+        "source_address_restricted": address_is_restricted,
+        "source_scope_eligible": bool(source_scope_eligible),
         "exact_geocode_eligible": exact_eligible,
         "privacy_status": privacy_status,
         "dawa_terms_approved": bool(dawa_terms_approved),

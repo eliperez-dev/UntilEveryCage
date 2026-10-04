@@ -43,7 +43,11 @@ The raw XML remains in artifact storage. Staging can be a local JSONL/CSV plus a
 
 ## Coordinate policy
 
-Development provider: DAWA (`https://api.dataforsyningen.dk/adresser`) is approved for local development only. This choice must be reevaluated before production because the current Dataforsyningen documentation warns that DAWA is closing. The provider is configurable and must not be embedded in domain logic.
+The source stage is provider-neutral. It may emit exact-address candidates privately only for the explicit animal-product production/processing taxonomy (slaughter, meat, fish, dairy, and eggs), with an exact street address and postal code, and no source coordinates. Retail, restaurants, catering, logistics, packaging, mixed/general food activity, change-status, and unknown categories do not enter this source geocoding scope. Explicit address restrictions, care-of addresses, postal boxes, and other correspondence/private-address indicators remain held.
+
+Candidate eligibility does not approve a provider request. A separate source-profile gate must verify the provider's current terms, processing/retention, attribution and budget profile before any network lookup; refresh/import only stages candidates. The Find Smiley export contains source addresses and no coordinates, so a candidate remains a private address observation until a provider result is separately reviewed. Never infer that a registered address is an operating site or publish a guessed point.
+
+DAWA (`https://api.dataforsyningen.dk/adresser`) is a legacy option, not a hard dependency. Its official documentation currently warns “DAWA lukker”; the endpoint returned a complete XML response on 2026-10-04 at 00:39:16 UTC, but that one observation does not establish support, future availability, or a usable production profile. The official Datafordeler catalogue exposes DAR address and address-point entities through GraphQL/file-download services that require an account and API-key/OAuth authentication; these are structured register lookups, not a verified drop-in geocoder. Any provider choice remains configurable and source-profile specific.
 
 For a Danish record:
 

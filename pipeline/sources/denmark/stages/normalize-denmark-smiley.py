@@ -54,6 +54,10 @@ def normalize_record(envelope: dict) -> dict:
         value for value in (source.get("Smileybranche"), source.get("Pixibranche"))
         if isinstance(value, str) and value.strip()
     ))
+    activity_codes = list(dict.fromkeys(
+        value for value in (source.get("FVST_branchenummer"), source.get("brancheKode"))
+        if isinstance(value, str) and value.strip()
+    ))
     normalized = {
         "source_id": envelope.get("source_id", "dk.smiley"),
         "source_row": envelope.get("source_row"),
@@ -69,7 +73,8 @@ def normalize_record(envelope: dict) -> dict:
             "country_code": "DK",
         },
         "activity": {
-            "code": source.get("FVST_branchenummer") or source.get("brancheKode"),
+            "code": activity_codes[0] if activity_codes else None,
+            "codes": activity_codes,
             "label": source.get("FVST_branche") or source.get("branche"),
             "labels": activity_labels,
             "category": source.get("Smileybranche") or source.get("Pixibranche"),

@@ -22,7 +22,7 @@ def load_rules(path: Path) -> dict:
 
 def classify_record(record: dict, ruleset: dict, location_references: list[dict] | None = None) -> dict:
     source_activity = record.get("activity", {})
-    code = source_activity.get("code")
+    code = source_activity.get("codes") or source_activity.get("code")
     codes = code if isinstance(code, (list, tuple)) else [code]
     codes = [str(value).strip() for value in codes if value is not None and str(value).strip()]
     decisions = []
@@ -38,6 +38,8 @@ def classify_record(record: dict, ruleset: dict, location_references: list[dict]
     decision = primary or ruleset["fallback"]
     categories = [rule["classification"] for rule in ruleset["rules"]
                   if rule["classification"] in unique_decisions]
+    geocode_categories = set((ruleset.get("private_geocode_scope") or {}).get("activity_categories", ()))
+    source_scope_eligible = bool(geocode_categories.intersection(categories))
     mapping_status = "unmapped" if not categories else (
         "partial" if len(decisions) != len(codes) else "mapped")
     result = dict(record)
@@ -50,6 +52,8 @@ def classify_record(record: dict, ruleset: dict, location_references: list[dict]
         "review_status": decision["review_status"],
         "default_visible": decision["default_visible"],
         "optional_filter": decision.get("optional_filter"),
+        "private_geocode_scope": "animal_product_production_and_processing" if source_scope_eligible else "out_of_scope",
+        "private_geocode_scope_policy_id": (ruleset.get("private_geocode_scope") or {}).get("policy_id"),
     }
     result["source_classification"] = {
         "codes": codes,
@@ -57,7 +61,12 @@ def classify_record(record: dict, ruleset: dict, location_references: list[dict]
         "category_label": source_activity.get("category"),
         "category_labels": list(source_activity.get("category_labels") or ([source_activity.get("category")] if source_activity.get("category") else [])),
     }
-    result["location"] = classify_location(result, location_references)
+    result["location"] = classify_location(
+        result,
+        location_references,
+        privacy_status="eligible" if source_scope_eligible else "pending",
+        source_scope_eligible=source_scope_eligible,
+    )
     return result
 
 

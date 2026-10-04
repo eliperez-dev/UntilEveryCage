@@ -1,0 +1,55 @@
+{
+  "manifest_version": "denmark-private-refresh-v1",
+  "source_id": "dk.smiley",
+  "source_url": "https://pub.fvst.dk/publikationer/Smileydata.xml",
+  "retrieved_at_utc": "2026-10-04T00:39:16Z",
+  "source_last_modified": "Sun, 04 Oct 2026 00:31:29 GMT",
+  "source_etag": "0x8DF21AED55B5695",
+  "artifact_bytes": 59893151,
+  "artifact_sha256": "7f1b4850dbfaa9efdbee02edc368622e1d2c9a05fb138563cb9d7dee917c6522",
+  "pipeline_observation": "local replay of retained fresh acquisition; not a second acquisition",
+  "pipeline_completed_at_utc": "2026-10-04T00:54:08Z",
+  "parsed_observations": 58848,
+  "validation_accepted": 58795,
+  "quarantined_for_review": 53,
+  "quarantine_reason_counts": {
+    "temporary_or_change_status": 53
+  },
+  "taxonomy_counts_among_accepted": {
+    "slaughter": 100,
+    "meat_processing": 154,
+    "fish_processing": 206,
+    "dairy_processing": 100,
+    "egg_processing": 5,
+    "adjacent_or_out_of_default_scope": 58230
+  },
+  "source_location_counts": {
+    "source_coordinates_present": 0,
+    "source_coordinates_unresolved": 58848,
+    "private_source_geocode_candidates": 565,
+    "held_for_explicit_address_restriction": 1,
+    "held_out_of_scope_or_other_noneligible_state": 58229
+  },
+  "candidate_handoff": {
+    "contract": "candidate-handoff-v1",
+    "rows": 58795,
+    "normalized_artifact_sha256": "c71c209e1f91a0d7f10ca051b6335855d34bb01988a016bfa14d7f77e8ba012a",
+    "release_state": "not-created",
+    "privacy_state": "pending",
+    "coordinate_gate": "review_required"
+  },
+  "geocoding": {
+    "provider_requests": 0,
+    "provider_profile": "not-enabled",
+    "candidate_policy": "denmark-private-geocode-scope-v1"
+  },
+  "database_import": false,
+  "public_approval": false,
+  "public_release": false,
+  "limitations": [
+    "Find Smiley coverage is not a Denmark facility census.",
+    "The publisher supplies no dataset effective date; HTTP metadata is retrieval evidence only.",
+    "The local replay validates the updated pipeline against the retained fresh acquisition but is not a fresh end-to-end acquisition run.",
+    "No provider terms/profile approval, geocoding, database import, public approval, or release is evidenced by this manifest."
+  ]
+}

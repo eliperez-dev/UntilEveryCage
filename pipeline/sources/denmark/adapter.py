@@ -58,9 +58,11 @@ class DenmarkSmileyAdapter:
                 value for value in (source_classification.get("category_labels") or [category_label])
                 if isinstance(value, str) and value.strip()
             ))
+            street = fields.get("Adresse")
             private_address = {
                 key: value for key, value in {
-                    "address": fields.get("Adresse"),
+                    "address": street if isinstance(street, str) and street.strip() else None,
+                    "address_lines": [street] if isinstance(street, str) and street.strip() else None,
                     "postal_code": fields.get("Postnummer"),
                     "city": fields.get("By"),
                     "country_code": "DK",
@@ -73,6 +75,8 @@ class DenmarkSmileyAdapter:
                                      "city": fields.get("By"), "postal_code": fields.get("Postnummer"),
                                      "source_observation_date": row.get("source_observation_date") or row.get("latest_inspection_date"),
                                      "private_location_evidence": private_address,
+                                     "private_geocode_scope": classification.get("private_geocode_scope", "out_of_scope"),
+                                     "private_geocode_scope_policy_id": classification.get("private_geocode_scope_policy_id"),
                                      "country_code": "DK", "coordinate_precision": "city_postal",
                                      "coordinates": None,
                                      "activities": list(classification.get("activity_categories") or ()),
@@ -91,7 +95,23 @@ class DenmarkSmileyAdapter:
                                      "classification_optional_filter": classification.get("optional_filter"),
                                      "privacy_gate": "pending", "coordinate_gate": "review_required",
                                      "publication_gate": "blocked"}})
-        return write_handoff(run_dir, handoff_rows, artifact, source_id=SOURCE_ID)
+        manifest = write_handoff(run_dir, handoff_rows, artifact, source_id=SOURCE_ID)
+        # The shared projection has historically used only `address`; restore
+        # Denmark's original ordered lines as private evidence too, so a later
+        # queue adapter can use the normalized form without reading contact or
+        # arbitrary raw source columns.
+        handoff_path = Path(run_dir) / "normalized" / "records.jsonl"
+        persisted = [json.loads(line) for line in handoff_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+        for source_row, output_row in zip(handoff_rows, persisted, strict=True):
+            source_private = source_row["normalized"]["private_location_evidence"]
+            output_private = output_row["normalized"].setdefault("private_location_evidence", {})
+            for key in ("address", "address_lines", "city", "postal_code", "country_code"):
+                if key in source_private:
+                    output_private[key] = source_private[key]
+        _, normalized_hash, _ = atomic_jsonl(handoff_path, persisted)
+        manifest["normalized_sha256"] = normalized_hash
+        atomic_json(Path(run_dir) / "manifest.json", manifest)
+        return manifest
 
     def run_registered(self, raw_path: str | Path, run_dir: str | Path, config: dict[str, Any]) -> dict[str, Any]:
         """Bridge the shared registered-input runner using recorded evidence."""
