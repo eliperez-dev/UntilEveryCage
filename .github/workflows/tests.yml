@@ -89,3 +89,7 @@ jobs:
       - run: npm run build
       - run: npx playwright install --with-deps chromium firefox webkit
       - run: npx playwright test tests/e2e/shell-routes.spec.ts tests/e2e/local-safety.spec.ts tests/e2e/private-preview.spec.ts --project=chromium --project=firefox --project=webkit --workers=2
+      - name: Community pilot browser proof (synthetic only)
+        env:
+          VITE_COMMUNITY_PILOT: 'true'
+        run: npx playwright test tests/e2e/community-pilot.spec.ts --project=chromium --workers=1

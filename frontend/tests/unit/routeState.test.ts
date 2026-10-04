@@ -12,6 +12,17 @@ describe('routeState', () => {
     expect(parseRoute('#/database')).toEqual({ kind: 'database' });
   });
 
+  it('parses the gated community pilot destinations and record prefill', () => {
+    expect(parseRoute('#/contribute?target=synthetic-record')).toEqual({ kind: 'community', page: 'contribute', targetRecordId: 'synthetic-record' });
+    expect(parseRoute('#/contribution-status')).toEqual({ kind: 'community', page: 'status' });
+    expect(parseRoute('#/community')).toEqual({ kind: 'community', page: 'claims' });
+    const claimRoute = { kind: 'community' as const, page: 'claim-detail' as const, claimId: 'synthetic-claim', releaseId: 'synthetic-release' };
+    expect(parseRoute('#/community/claim?id=synthetic-claim&release_id=synthetic-release')).toEqual(claimRoute);
+    expect(serializeRoute(claimRoute)).toBe('#/community/claim?id=synthetic-claim&release_id=synthetic-release');
+    expect(parseRoute('#/contribution-review')).toEqual({ kind: 'community', page: 'review' });
+    expect(serializeRoute({ kind: 'community', page: 'contribute', targetRecordId: 'synthetic-record' })).toBe('#/contribute?target=synthetic-record');
+  });
+
   it('parses the methodology route without treating return context as a route', () => {
     expect(parseRoute('#/methodology?map=%23%2Fmap%3Ff1a%3Dfield')).toEqual({ kind: 'methodology' });
     expect(serializeRoute({ kind: 'methodology' })).toBe('#/methodology');

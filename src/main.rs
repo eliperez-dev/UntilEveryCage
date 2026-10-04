@@ -49,8 +49,15 @@ async fn private_preview_no_store(
 
 pub fn app(state: uec_api::ApiState, proxy: private_environment::ProxyConfig) -> Router {
     let cors = cors_layer().expect("CORS configuration must be validated before app startup");
+    let runtime_mode = std::env::var("UEC_RUNTIME_MODE").unwrap_or_else(|_| "development".into());
+    let community = uec_api::community::CommunityConfig::from_env(&runtime_mode)
+        .expect("community pilot configuration must be valid before app startup");
+    let bind_host = std::env::var("UEC_BIND_HOST").unwrap_or_else(|_| "127.0.0.1".into());
+    validate_community_bind(community.enabled, &runtime_mode, &bind_host)
+        .expect("community pilot requires development mode and a loopback bind");
     let metrics = Arc::new(OperationalMetrics::default());
     Router::new()
+        .merge(uec_api::community::routes(community))
         .route("/health/live", get(liveness))
         .route("/health/ready", get(readiness))
         .route("/health/diagnostics", get(diagnostics))
@@ -179,7 +186,28 @@ pub fn app(state: uec_api::ApiState, proxy: private_environment::ProxyConfig) ->
         .layer(axum::middleware::from_fn(request_observability))
         .layer(cors)
         .layer(Extension(metrics))
+        .layer(axum::middleware::from_fn(community_no_store))
         .with_state(state)
+}
+
+// Cover outer middleware failures and preflights as well as handler responses.
+async fn community_no_store(
+    request: Request<axum::body::Body>,
+    next: axum::middleware::Next,
+) -> Response<axum::body::Body> {
+    let is_community = request.uri().path().starts_with("/api/community/")
+        || request.uri().path().starts_with("/api/private/community/");
+    let mut response = next.run(request).await;
+    if is_community {
+        response
+            .headers_mut()
+            .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+        response.headers_mut().insert(
+            header::REFERRER_POLICY,
+            HeaderValue::from_static("no-referrer"),
+        );
+    }
+    response
 }
 
 /// Aggregate-only, process-local operational counters. No request paths,
@@ -653,6 +681,16 @@ fn validate_bind_host(bind_host: &str) -> Result<IpAddr, &'static str> {
         .map_err(|_| "UEC_BIND_HOST must be a valid IP address")
 }
 
+fn validate_community_bind(enabled: bool, mode: &str, bind_host: &str) -> Result<(), &'static str> {
+    if enabled
+        && (mode != "development"
+            || !bind_host.parse::<IpAddr>().is_ok_and(|ip| ip.is_loopback()))
+    {
+        return Err("community pilot requires development mode and a loopback bind");
+    }
+    Ok(())
+}
+
 #[cfg(unix)]
 async fn shutdown_signal() {
     let ctrl_c = async {
@@ -1092,6 +1130,46 @@ mod config_tests {
 mod rate_limit_tests {
     use super::*;
     use tower::ServiceExt;
+
+    #[test]
+    fn community_pilot_cannot_bind_a_public_interface() {
+        assert!(validate_community_bind(true, "development", "127.0.0.1").is_ok());
+        assert!(validate_community_bind(true, "development", "::1").is_ok());
+        assert!(validate_community_bind(true, "development", "0.0.0.0").is_err());
+        assert!(validate_community_bind(true, "production", "127.0.0.1").is_err());
+        assert!(validate_community_bind(false, "production", "0.0.0.0").is_ok());
+    }
+
+    #[tokio::test]
+    async fn community_failures_from_outer_limiter_are_not_cacheable() {
+        let router = Router::new()
+            .route(
+                "/api/community/status",
+                axum::routing::post(|| async { StatusCode::OK }),
+            )
+            .layer(axum::middleware::from_fn_with_state(
+                RateLimitState {
+                    limiter: Limiter::default(),
+                    proxy: private_environment::parse_proxy_config("development", None, None)
+                        .unwrap(),
+                },
+                rate_limit,
+            ))
+            .layer(axum::middleware::from_fn(community_no_store));
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/community/status")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(response.headers()["cache-control"], "no-store");
+        assert_eq!(response.headers()["referrer-policy"], "no-referrer");
+    }
     #[test]
     fn enforces_limit_and_resets_window() {
         let limiter = Limiter::default();

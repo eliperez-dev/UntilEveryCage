@@ -37,6 +37,50 @@ Clients discard or refresh cursor pages when release metadata changes. Current
 suppression is authoritative on every read, including filtered results,
 exports, history, reimports, and restores.
 
+## Local community pilot
+
+These separate routes are disabled by default, require explicit development
+configuration and refuse production/non-loopback operation. They do not change
+V2 location DTOs or curated release membership. The machine contract includes a
+`community_pilot` boundary; [development](../development.md#local-community-contribution-pilot)
+owns setup and maintenance, and [governance](../governance/user-submitted-data.md)
+owns publication policy and unresolved launch requirements.
+
+| Route | Access and response |
+| --- | --- |
+| `POST /api/community/submissions` | Bounded JSON, five kinds; returns ID, one-time receipt secret and `received`. Contact stored separately; no fetching or automatic publication. |
+| `POST /api/community/status` | ID and secret in JSON body only; returns processing status and, when currently eligible, a community record link. Invalid/expired/revoked credentials use generic 404. |
+| `GET /api/private/community/submissions` | Distinct bearer operator credential; pending by default, optional status filter, limit 1–50. Restricted claim fields, no contact/hash/secret. |
+| `POST /api/private/community/submissions/{id}/disposition` | Operator actions `hold`, `screen`, `reject`, `restrict`, `remove`, `link_community`; fixed reason categories. Screen is privacy screening, never factual endorsement. |
+| `POST /api/private/community/maintenance` | Operator-only aggregate expiry counts. Clears expired contact/claims and hashes; preserves decision tombstones/events. Requires an external maintenance schedule. |
+| `GET /api/community/claims` and `GET /api/community/claims/{id}` | Separately enabled, explicit `profile=community` and release ID. Live eligible release links only; persistent warning, unreviewed/not-approved metadata, separate linked-claim count. List fails closed above 500 linked candidates. |
+
+Intake bodies are limited to 12 KiB and deny unknown fields. Facility claims
+require label, ISO country and source URL; evidence requires target UUID/source;
+correction and privacy/removal require target UUID/description; duplicates
+require two distinct UUIDs. All require `consent=true`. Optional fields have
+server bounds: label/locality/activity 160 bytes, location text 1,000,
+description 2,000, source URL 2,048, contact 254 and ISO observation date.
+Coordinates must be a finite in-range pair and remain private; precision is
+`unknown|exact|coarse|unmapped`, input method `manual_pin|text|unknown`.
+There are no files, contributor accounts or cookie sessions.
+
+`link_community` consumes a source-record UUID in `community_record_id`, not
+the facility UUID. It requires a screened case and an already released,
+privacy-passed, unreviewed community source record. The public DTO's `record_id`
+is the facility UUID and its link pins that community release. Privacy requests
+cannot be linked. Removing a submission revokes its receipt and clears its
+payload/contact/link; removal of its target record is a separate suppression
+operation. No intake route creates source records, release members or map pins.
+
+Responses use `no-store` and `no-referrer`, including errors/preflight/outer
+rate-limit responses. Disabled/unauthorized operator routes return 404; invalid
+input 400, admission limit 429, unavailable storage/projection 503. Client errors
+use static messages and do not echo submitted data. There is no retry/idempotency
+contract yet. A lost success response may require a new report; do not retry
+blindly. The launch role split and submission-specific restore ledger are
+unimplemented; the application pool can access intake tables.
+
 ## Public cached map tiles
 
 An eligible map release carries a versioned `map_artifact` object. It identifies

@@ -35,6 +35,7 @@ use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
+pub mod community;
 pub mod graph_private;
 pub mod graph_public;
 

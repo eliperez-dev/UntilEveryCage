@@ -61,7 +61,11 @@
     {#if toolsOpen}<aside id="shared-tools-menu" class="header-menu tools-menu" aria-label="Tools">
       <header><strong><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> Map tools</strong><button type="button" aria-label="Close Tools" onclick={() => closeMenus("tools")}>×</button></header>
       <section><label class="toggle"><input type="checkbox" checked={debugEnabled} onchange={(event) => ondebugchange?.(event.currentTarget.checked)} /> Enable debug menu</label><small>Local development controls and diagnostics.</small></section>
-      <section><button type="button" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18"/></svg>Add a location · planned</button><small>Submissions require review before appearing on the map.</small></section>
+      {#if import.meta.env.VITE_COMMUNITY_PILOT === "true"}
+        <section><button type="button" onclick={() => { window.location.hash = "#/contribute"; closeMenus(); }}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18"/></svg>Contribute</button><button type="button" onclick={() => { window.location.hash = "#/contribution-status"; closeMenus(); }}>Check contribution status</button><button type="button" onclick={() => { window.location.hash = "#/community"; closeMenus(); }}>Community claims</button><small>Submissions remain private and require human review before any publication.</small></section>
+      {:else}
+        <section><button type="button" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18"/></svg>Add a location · planned</button><small>Submissions require review before appearing on the map.</small></section>
+      {/if}
     </aside>{/if}
     {#if accountOpen}<aside id="shared-account-menu" class="header-menu account-menu" aria-label="Account">
       <header><strong>Account</strong><button type="button" aria-label="Close Account" onclick={() => closeMenus("account")}>×</button></header>

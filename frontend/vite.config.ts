@@ -10,6 +10,7 @@ export default defineConfig(({ command }) => {
   const realPreviewMapSource = localRealPreview
     ? process.env.VITE_REAL_PREVIEW_MAP_SOURCE ?? 'mvt'
     : undefined;
+  const apiOrigin = process.env.VITE_API_ORIGIN ?? 'http://127.0.0.1:8000';
   const realPreviewProxy: Record<string, string | ProxyOptions> = {};
   if (previewToken && process.env.VITE_LOCAL_DATA_MODE === 'real-preview') {
     realPreviewProxy['/dev/real-preview'] = {
@@ -20,7 +21,7 @@ export default defineConfig(({ command }) => {
       },
     };
   }
-  const localApiProxy = { '/api': { target: 'http://127.0.0.1:8000', changeOrigin: false }, ...realPreviewProxy };
+  const localApiProxy = { '/api': { target: apiOrigin, changeOrigin: false }, ...realPreviewProxy };
   const previewModeMeta = {
     name: 'uec-local-data-mode',
     transformIndexHtml(html: string) {
