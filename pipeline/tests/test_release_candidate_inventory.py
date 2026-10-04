@@ -157,6 +157,13 @@ class ReleaseCandidateInventoryTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 inventory._safe_source_url(url)
 
+    def test_geometry_origin_aggregate_groups_the_classified_bucket(self):
+        sql = inventory._GEOGRAPHY_SQL
+        self.assertIn("END AS geometry_source", sql)
+        self.assertIn("FROM categorized", sql)
+        self.assertIn("GROUP BY source_id, geometry_source", sql)
+        self.assertNotIn("COALESCE(candidate.display_geometry_source", sql)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -181,20 +181,24 @@ WITH latest AS (
     SELECT DISTINCT ON (source_id) source_id, snapshot_sha256
     FROM real_preview.source_preview_runs
     ORDER BY source_id, created_at DESC, run_id DESC
+), categorized AS (
+    SELECT candidate.source_id,
+           CASE
+             WHEN candidate.display_latitude IS NULL THEN 'no_display_point'
+             WHEN candidate.location_class = 'city_postal' THEN 'coarse_reference'
+             WHEN candidate.coordinate_method = 'address_geocode' THEN 'provider_derived'
+             WHEN candidate.location_class = 'numeric_source_coordinate' THEN 'source_coordinate'
+             ELSE 'other_or_unrecognized'
+           END AS geometry_source,
+           candidate.display_latitude
+    FROM real_preview.candidates candidate
+    JOIN latest USING (source_id, snapshot_sha256)
 )
-SELECT candidate.source_id,
-       CASE
-         WHEN candidate.display_latitude IS NULL THEN 'no_display_point'
-         WHEN candidate.location_class = 'city_postal' THEN 'coarse_reference'
-         WHEN candidate.coordinate_method = 'address_geocode' THEN 'provider_derived'
-         WHEN candidate.location_class = 'numeric_source_coordinate' THEN 'source_coordinate'
-         ELSE 'other_or_unrecognized'
-       END,
-       count(*), count(*) FILTER (WHERE candidate.display_latitude IS NOT NULL)
-FROM real_preview.candidates candidate
-JOIN latest USING (source_id, snapshot_sha256)
-GROUP BY candidate.source_id, COALESCE(candidate.display_geometry_source, 'no_display_coordinate')
-ORDER BY candidate.source_id, 2
+SELECT source_id, geometry_source, count(*),
+       count(*) FILTER (WHERE display_latitude IS NOT NULL)
+FROM categorized
+GROUP BY source_id, geometry_source
+ORDER BY source_id, geometry_source
 """
 
 _ENRICHMENT_SQL = """
