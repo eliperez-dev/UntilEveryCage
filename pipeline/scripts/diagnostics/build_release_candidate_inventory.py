@@ -184,18 +184,31 @@ WITH latest AS (
 ), categorized AS (
     SELECT candidate.source_id,
            CASE
+             WHEN display.display_latitude IS NOT NULL
+                  AND candidate.coordinate_method IN ('address_geocode', 'geoapify_forward') THEN 'provider_derived'
+             WHEN display.display_latitude IS NOT NULL
+                  AND candidate.location_class = 'numeric_source_coordinate' THEN 'source_coordinate'
+             WHEN display.display_latitude IS NOT NULL
+                  AND candidate.location_class = 'city_postal' THEN 'coarse_reference'
+             WHEN display.display_latitude IS NOT NULL THEN 'other_display_point'
+             WHEN candidate.default_map_scope
+                  AND candidate.location_class = 'numeric_source_coordinate'
+                  AND candidate.latitude IS NOT NULL AND candidate.longitude IS NOT NULL THEN 'source_coordinate_fallback'
              WHEN candidate.display_latitude IS NULL THEN 'no_display_point'
-             WHEN candidate.location_class = 'city_postal' THEN 'coarse_reference'
-             WHEN candidate.coordinate_method = 'address_geocode' THEN 'provider_derived'
-             WHEN candidate.location_class = 'numeric_source_coordinate' THEN 'source_coordinate'
              ELSE 'other_or_unrecognized'
            END AS geometry_source,
-           candidate.display_latitude
+           display.display_latitude,
+           (display.display_latitude IS NOT NULL AND display.display_longitude IS NOT NULL)
+             OR (candidate.default_map_scope
+                 AND candidate.location_class = 'numeric_source_coordinate'
+                 AND candidate.latitude IS NOT NULL AND candidate.longitude IS NOT NULL) AS served_by_private_map
     FROM real_preview.candidates candidate
+    JOIN real_preview.candidate_display display USING (candidate_id)
     JOIN latest USING (source_id, snapshot_sha256)
 )
 SELECT source_id, geometry_source, count(*),
-       count(*) FILTER (WHERE display_latitude IS NOT NULL)
+       count(*) FILTER (WHERE display_latitude IS NOT NULL),
+       count(*) FILTER (WHERE served_by_private_map)
 FROM categorized
 GROUP BY source_id, geometry_source
 ORDER BY source_id, geometry_source
@@ -451,8 +464,10 @@ def _source_report(row: dict[str, Any], *, taxonomy: list[dict[str, Any]], cross
         "candidate_groups_match_facility_counter": counts["physical_candidate_count"] == counts["facility_count"],
         "source_coordinate_candidates_match_import_counter": counts["source_coordinate_candidates"] == counts["numeric_coordinate_count"],
         "api_listable_matches_physical_candidates": counts["physical_candidate_count"] == counts["api_listable_count"],
-        "display_point_groups_match_map_visible_counter": counts["display_coordinate_candidates"] == counts["map_visible_count"],
-        "unmapped_groups_match_unmapped_counter": counts["physical_candidate_count"] - counts["map_visible_count"] == counts["unmapped_count"],
+        # These are import-time counters. Later private provider/reference
+        # enrichment and source-coordinate fallback can change current map
+        # serving without changing the immutable source-preview run.
+        "import_time_map_counters_not_compared_to_current_geometry": True,
         "source_run_public_rows_zero": counts["public_rows"] == 0,
         "idempotent_replay_recorded": isinstance(row["idempotent_replay"], bool),
     }
@@ -536,7 +551,7 @@ def build_inventory(connection: Any) -> dict[str, Any]:
         "definition_sha256", "rule_count",
     ))
     geography_rows = _typed_rows(connection, _GEOGRAPHY_SQL, (
-        "source_id", "geometry_source", "candidate_count", "display_point_count",
+        "source_id", "geometry_source", "candidate_count", "display_point_count", "private_map_served_count",
     ))
     enrichment_rows = _typed_rows(connection, _ENRICHMENT_SQL, (
         "source_id", "state_code", "reason_code", "count",
@@ -549,6 +564,7 @@ def build_inventory(connection: Any) -> dict[str, Any]:
         geo_by_source.setdefault(source, {})[geometry] = {
             "candidate_groups": _safe_count(row["candidate_count"], "geometry_candidate_groups"),
             "display_point_groups": _safe_count(row["display_point_count"], "geometry_display_point_groups"),
+            "currently_private_map_served_groups": _safe_count(row["private_map_served_count"], "geometry_private_map_served_groups"),
         }
     for row in enrichment_rows:
         row["state_code"] = _safe_dimension(row["state_code"], "enrichment_state")

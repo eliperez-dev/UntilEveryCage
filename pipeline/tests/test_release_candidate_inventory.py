@@ -161,8 +161,50 @@ class ReleaseCandidateInventoryTests(unittest.TestCase):
         sql = inventory._GEOGRAPHY_SQL
         self.assertIn("END AS geometry_source", sql)
         self.assertIn("FROM categorized", sql)
+        self.assertIn("JOIN real_preview.candidate_display display USING (candidate_id)", sql)
         self.assertIn("GROUP BY source_id, geometry_source", sql)
-        self.assertNotIn("COALESCE(candidate.display_geometry_source", sql)
+        self.assertIn("candidate.coordinate_method IN ('address_geocode', 'geoapify_forward') THEN 'provider_derived'", sql)
+        self.assertIn("candidate.location_class = 'numeric_source_coordinate' THEN 'source_coordinate'", sql)
+        self.assertIn("AND candidate.location_class = 'city_postal' THEN 'coarse_reference'", sql)
+        self.assertIn("THEN 'source_coordinate_fallback'", sql)
+        self.assertIn("count(*) FILTER (WHERE served_by_private_map)", sql)
+
+    def test_current_map_geometry_is_not_compared_with_import_time_counters(self):
+        row = {
+            "source_id": "test.source",
+            "snapshot_sha256": "a" * 64,
+            "source_artifact_sha256": "b" * 64,
+            "normalized_sha256": "c" * 64,
+            "source_url": "https://example.gov/data.csv",
+            "retrieved_at": datetime(2026, 10, 4, tzinfo=timezone.utc),
+            "adapter_version": "adapter-v1",
+            "schema_version": "schema-v1",
+            "manifest_artifact_sha256": None,
+            "manifest_normalized_sha256": None,
+            "manifest_normalized_rows": None,
+            "manifest_source_url": None,
+            "manifest_retrieved_at": None,
+            "manifest_code_version": None,
+            "manifest_config_version": None,
+            "runtime_details": {},
+            "idempotent_replay": False,
+            **{key: 1 for key in (
+                "input_count", "accepted_count", "quarantined_count", "out_of_scope_count",
+                "imported_observation_count", "facility_count", "numeric_coordinate_count",
+                "coarse_placeable_count", "unmapped_count", "api_listable_count", "map_visible_count",
+                "public_rows", "physical_observation_count", "physical_candidate_count",
+                "source_coordinate_candidates", "coarse_location_candidates",
+                "display_coordinate_candidates", "unmapped_observations",
+            )},
+        }
+        report = inventory._source_report(
+            row, taxonomy=[], crosswalks=[], geography={}, enrichment={}, providers={}, display_providers={},
+        )
+        checks = report["physical_reconciliation"]
+        self.assertTrue(checks["observations_match_import_counter"])
+        self.assertTrue(checks["import_time_map_counters_not_compared_to_current_geometry"])
+        self.assertNotIn("display_point_groups_match_map_visible_counter", checks)
+        self.assertNotIn("unmapped_groups_match_unmapped_counter", checks)
 
 
 if __name__ == "__main__":
