@@ -138,5 +138,5 @@ limit of 48 so the existing 24 reservations plus up to 24 recovery requests
 fit without resetting history. Only after the first call authenticates and
 its private outcome is verified, repeat both commands with limit 23. The
 configured limit is a conservative pilot allowance, not the provider account
-quota. See the row-free [pilot manifest](../../data/manifests/au-npi-geoapify-pilot-20261003.json)
+quota. See the row-free [pilot manifest](../data/manifests/au-npi-geoapify-pilot-20261003.json)
 for actual outcomes; no acceptance threshold was loosened.
