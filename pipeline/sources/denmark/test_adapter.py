@@ -87,11 +87,24 @@ class DenmarkAdapterTests(unittest.TestCase):
                       "FVST_branche": "Slaughterhouse", "Smileybranche": "Animal food business"}
             parsed = {"source_id": "dk.smiley", "source_row": 2, "source_record_key": "1",
                       "source_fields": fields,
+                      "location": {
+                          "source_address_eligible": True,
+                          "source_address_restricted": False,
+                          "source_scope_eligible": True,
+                          "exact_geocode_candidate_state": "eligible_pending_queue",
+                          "exact_geocode_eligible": False,
+                          "privacy_status": "eligible",
+                          "exact_geocode_candidate": {"source_eligible": True, "eligible": False,
+                                                       "address": {"country_code": "DK"}},
+                      },
                       "source_classification": {"codes": ["EB.10.10.99", "EB.10.10.13"],
                                                  "labels": ["Slaughterhouse", "Meat processing"]},
                       "classification": {"category": "slaughter", "activity_categories": ["slaughter", "meat_processing"],
                                          "mapping_status": "mapped", "ruleset_id": "denmark-classification-v1",
-                                         "review_status": "approved", "default_visible": True}}
+                                         "review_status": "approved", "default_visible": True,
+                                         "private_geocode_scope": "animal_product_production_and_processing",
+                                         "private_geocode_scope_policy_id": "denmark-private-geocode-scope-v1",
+                                         "optional_filter": "production-and-processing"}}
             DenmarkSmileyAdapter().write_candidate_handoff(root / "handoff", self.artifact(), [parsed])
             handoff = json.loads((root / "handoff" / "normalized/records.jsonl").read_text())
             normalized = handoff["normalized"]
@@ -101,6 +114,23 @@ class DenmarkAdapterTests(unittest.TestCase):
             self.assertEqual(normalized["activity_codes"], ["EB.10.10.99", "EB.10.10.13"])
             self.assertEqual(normalized["activity_categories"], ["slaughter", "meat_processing"])
             self.assertEqual(normalized["classification_ruleset_version"], "denmark-classification-v1")
+            self.assertTrue(normalized["source_address_eligible"])
+            self.assertTrue(normalized["exact_geocode_candidate"]["source_eligible"])
+            self.assertFalse(normalized["exact_geocode_eligible"])
+            self.assertEqual(normalized["exact_geocode_candidate_state"], "eligible_pending_queue")
+            self.assertNotIn("source_address_eligible", normalized["private_location_evidence"])
+
+    def test_candidate_mapping_does_not_invent_missing_address_eligibility(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            row = {"source_id": "dk.smiley", "source_row": 1, "source_record_key": "missing-flags",
+                   "source_fields": {"ID_nummer": "missing-flags", "Adresse": "Synthetic Road 1"},
+                   "classification": {"review_status": "approved"}}
+            DenmarkSmileyAdapter().write_candidate_handoff(root / "handoff", self.artifact(), [row])
+            handoff = json.loads((root / "handoff" / "normalized/records.jsonl").read_text())
+            normalized = handoff["normalized"]
+            self.assertNotIn("source_address_eligible", normalized)
+            self.assertNotIn("exact_geocode_candidate", normalized)
 
     def test_normalization_and_private_handoff_keep_all_codes_labels_and_observation_date(self):
         from pipeline.sources.denmark.stages import __path__ as _stages_path
