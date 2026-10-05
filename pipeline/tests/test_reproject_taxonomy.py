@@ -82,9 +82,18 @@ class ReprojectTaxonomyTests(unittest.TestCase):
             "postgresql://user:pass@localhost:55433/uec_v0_review_r2", "uec_v0_review_r2")
         REPROJECT._validate_preview_database_url(
             "postgresql://user:pass@127.0.0.1:55433/uec", "uec")
+        REPROJECT._validate_preview_database_url(
+            "postgresql://user:pass@localhost:55433/uec?sslmode=disable", "uec")
         for url, database in (("postgresql://u:p@example.test/db", "uec"),
                               ("postgresql://u:p@localhost/db", "uec"),
-                              ("postgresql://u:p@localhost/uec", "other")):
+                              ("postgresql://u:p@localhost/uec", "other"),
+                              ("mysql://u:p@localhost/uec", "uec"),
+                              ("postgresql://u:p@localhost/uec?host=remote.example", "uec"),
+                              ("postgresql://u:p@localhost/uec?hostaddr=203.0.113.9", "uec"),
+                              ("postgresql://u:p@localhost/uec?dbname=other", "uec"),
+                              ("postgresql://u:p@localhost/uec?port=6543", "uec"),
+                              ("postgresql://u:p@localhost,remote.example/uec", "uec"),
+                              ("postgresql://u:p@localhost/uec?sslmode=disable&host=remote.example", "uec")):
             with self.subTest(url=url, database=database), self.assertRaises(ValueError):
                 REPROJECT._validate_preview_database_url(url, database)
 

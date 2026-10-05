@@ -16,7 +16,7 @@ import os
 from pathlib import Path
 import sys
 import tempfile
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qsl, unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
@@ -47,9 +47,23 @@ def _load_bridge_module():
 def _validate_preview_database_url(database_url: str, expected_database: str) -> None:
     if expected_database not in {"uec_v0_review_r2", "uec"}:
         raise ValueError("expected database must be uec_v0_review_r2 or uec")
-    parsed = urlsplit(database_url)
-    host = (parsed.hostname or "").casefold()
-    database = unquote(parsed.path.lstrip("/"))
+    try:
+        parsed = urlsplit(database_url)
+        host = (parsed.hostname or "").casefold()
+        database = unquote(parsed.path.lstrip("/"))
+        authority_host = parsed.netloc.rsplit("@", 1)[-1]
+        query = parse_qsl(parsed.query, keep_blank_values=True, strict_parsing=True) if parsed.query else []
+    except ValueError:
+        raise ValueError("database URL must target the exact expected loopback database") from None
+    if parsed.scheme.casefold() not in {"postgresql", "postgres"}:
+        raise ValueError("database URL must use the PostgreSQL scheme")
+    # libpq accepts routing overrides in URI query parameters; reject them all,
+    # along with multi-host authorities. sslmode is the sole permitted option.
+    if "," in authority_host or (query and (len(query) != 1 or query[0][0].casefold() != "sslmode"
+                                               or query[0][1].casefold() not in {
+                                                   "disable", "allow", "prefer", "require", "verify-ca", "verify-full"
+                                               })):
+        raise ValueError("database URL routing overrides are not allowed")
     if host not in {"localhost", "127.0.0.1", "::1"} or database != expected_database:
         raise ValueError("database URL must target the exact expected loopback database")
 
