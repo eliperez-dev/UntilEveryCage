@@ -3,6 +3,7 @@
   import * as maplibregl from 'maplibre-gl';
   import type { Map as MapLibreMap, Marker as MapLibreMarker } from 'maplibre-gl';
   import 'maplibre-gl/dist/maplibre-gl.css';
+  import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
   import { createBaseStyle } from '../map/baseMapStyle';
   import { normalizeClaimedPoint } from '../map/claimedPoint';
 
@@ -56,6 +57,7 @@
   onMount(() => {
     if (!host) return;
     try {
+      maplibregl.setWorkerUrl(workerUrl);
       map = new maplibregl.Map({
         container: host,
         style: createBaseStyle('muted', { includeTransport: false }) as maplibregl.StyleSpecification,
@@ -75,7 +77,7 @@
     } catch {
       map = undefined;
       marker = undefined;
-      basemapMessage = 'The map could not be opened. You can still enter coordinates below.';
+      basemapMessage = 'The map could not be opened. You can enter coordinates below instead.';
     }
   });
 
@@ -91,9 +93,7 @@
 </script>
 
 <div class="picker-shell">
-  <div bind:this={host} class="pin-map" role="application" aria-label="Map pin picker. Click to place an unverified contributor-selected point. Use the coordinate inputs for keyboard entry." ></div>
-  <p class="map-caption">CONTRIBUTOR-SELECTED · UNVERIFIED</p>
-  <p class="map-provider">Muted OpenStreetMap basemap · © OpenStreetMap contributors</p>
+  <div bind:this={host} class="pin-map" role="application" aria-label="Choose a location on the map. Click to place a suggested point, or enter coordinates below." ></div>
   {#if basemapMessage}<p class="map-error" role="status">{basemapMessage}</p>{/if}
 </div>
 <div class="coordinate-inputs">
@@ -103,5 +103,5 @@
 <button class="clear-point" type="button" onclick={clearPoint} disabled={latitude === undefined && longitude === undefined}>Clear selected point</button>
 
 <style>
-  .picker-shell{position:relative;height:19rem;border:1px solid #67706a;background:#202726}.pin-map{position:absolute;inset:0}.map-caption{position:absolute;top:.65rem;left:.7rem;z-index:2;margin:0;padding:.28rem .45rem;border:1px solid #59635c;background:#171a18ed;color:#f0e8d5;font:600 .62rem ui-monospace,monospace;pointer-events:none}.map-provider{position:absolute;left:.35rem;bottom:.2rem;z-index:2;margin:0;padding:.15rem .3rem;background:#171a18e8;color:#eee9df;font: .6rem/1.35 system-ui;pointer-events:none}.map-error{position:absolute;top:2.6rem;left:.65rem;z-index:2;max-width:20rem;margin:0;padding:.35rem .5rem;background:#171a18eb;color:#f0d6c4;font:.75rem system-ui}.pin-map :global(.maplibregl-ctrl-attrib){background:#171a18eb;color:#eee9df;font:.58rem system-ui}.pin-map :global(.maplibregl-ctrl-attrib a){color:#ded1a9}.pin-map :global(.maplibregl-ctrl-group){border:1px solid #69716a;border-radius:2px;background:#171a18}.pin-map :global(.maplibregl-ctrl-group button){width:2rem;height:2rem;background-color:transparent}.pin-map :global(.maplibregl-ctrl-group button+button){border-top:1px solid #4c554f}.pin-map :global(.maplibregl-ctrl-icon){filter:invert(.9)}:global(.contribution-pin){display:block;width:1.1rem;height:1.1rem;border:2px solid #eee9df;border-radius:50% 50% 50% 0;background:#ad5b47;transform:rotate(-45deg);box-shadow:0 1px 7px #000}.coordinate-inputs{display:grid;grid-template-columns:1fr 1fr;gap:1rem;max-width:34rem}.coordinate-inputs label{display:grid;gap:.35rem;color:#e6e2d8;font-size:.9rem}.coordinate-inputs input{width:100%;min-height:2.6rem;padding:.55rem .65rem;border:1px solid #59615c;border-radius:2px;background:#202523;color:#f4f1e9;font:inherit}.clear-point{justify-self:start;min-height:2.4rem;padding:.4rem .65rem;border:1px solid #59615c;background:#202523;color:#e5ddcf;font:inherit;cursor:pointer}.clear-point:disabled{opacity:.45;cursor:default}@media(max-width:38rem){.picker-shell{height:15rem}.coordinate-inputs{grid-template-columns:1fr}}
+  .picker-shell{position:relative;height:19rem;border:1px solid #67706a;background:#202726}.pin-map{position:absolute;inset:0}.map-error{position:absolute;top:.65rem;left:.65rem;z-index:2;max-width:20rem;margin:0;padding:.35rem .5rem;background:#171a18eb;color:#f0d6c4;font:.75rem system-ui}.pin-map :global(.maplibregl-ctrl-attrib){background:#171a18eb;color:#eee9df;font:.58rem system-ui}.pin-map :global(.maplibregl-ctrl-attrib a){color:#ded1a9}.pin-map :global(.maplibregl-ctrl-group){border:1px solid #69716a;border-radius:2px;background:#171a18}.pin-map :global(.maplibregl-ctrl-group button){width:2rem;height:2rem;background-color:transparent}.pin-map :global(.maplibregl-ctrl-group button+button){border-top:1px solid #4c554f}.pin-map :global(.maplibregl-ctrl-icon){filter:invert(.9)}:global(.contribution-pin){display:block;width:1.1rem;height:1.1rem;border:2px solid #eee9df;border-radius:50% 50% 50% 0;background:#ad5b47;transform:rotate(-45deg);box-shadow:0 1px 7px #000}.coordinate-inputs{display:grid;grid-template-columns:1fr 1fr;gap:1rem;max-width:34rem}.coordinate-inputs label{display:grid;gap:.35rem;color:#e6e2d8;font-size:.9rem}.coordinate-inputs input{width:100%;min-height:2.6rem;padding:.55rem .65rem;border:1px solid #59615c;border-radius:2px;background:#202523;color:#f4f1e9;font:inherit}.clear-point{justify-self:start;min-height:2.4rem;padding:.4rem .65rem;border:1px solid #59615c;background:#202523;color:#e5ddcf;font:inherit;cursor:pointer}.clear-point:disabled{opacity:.45;cursor:default}@media(max-width:38rem){.picker-shell{height:15rem}.coordinate-inputs{grid-template-columns:1fr}}
 </style>

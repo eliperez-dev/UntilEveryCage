@@ -20,6 +20,13 @@ describe('community contribution repository', () => {
     expect(() => validateContributionDraft({ ...accepted, claimed_latitude: 55.7, claimed_longitude: 12.5, location_input_method: 'manual_pin' })).not.toThrow();
   });
 
+  it('accepts minimal facility claims and evidence with either a source or a description', () => {
+    expect(() => validateContributionDraft({ kind: 'facility', label: 'Synthetic name only', consent: true })).not.toThrow();
+    expect(() => validateContributionDraft({ kind: 'evidence', target_record_id: id, description: 'Synthetic observation', consent: true })).not.toThrow();
+    expect(() => validateContributionDraft({ kind: 'evidence', target_record_id: id, source_url: 'https://example.test/evidence', consent: true })).not.toThrow();
+    expect(() => validateContributionDraft({ kind: 'evidence', target_record_id: id, consent: true })).toThrow(CommunityError);
+  });
+
   it('normalizes map-picked longitudes and rejects non-finite or out-of-range latitude', () => {
     expect(normalizeClaimedPoint(55.6761119, 190.1234567)).toEqual({ latitude: 55.676112, longitude: -169.876543 });
     expect(normalizeClaimedPoint(91, 12)).toBeNull();
@@ -83,5 +90,34 @@ describe('community contribution repository', () => {
     const fetcher = vi.fn(async () => response({ error: 'Synthetic private server detail', address: 'Synthetic private value' }, 500));
     await expect(createCommunityRepository(fetcher).submit(accepted)).rejects.toMatchObject({ category: 'unavailable' });
     expect(fetcher.mock.calls[0]?.[1]?.cache).toBe('no-store');
+  });
+
+  it('maps allowlisted validation messages to useful guidance without echoing server text', async () => {
+    const badRequest = vi.fn(async () => response({ error: { code: 'invalid_submission', message: 'facility requires a label' } }, 400));
+    await expect(createCommunityRepository(badRequest).submit(accepted)).rejects.toMatchObject({ category: 'invalid', message: 'Add a facility name.' });
+
+    for (const message of ['<script>synthetic-secret</script>', '__proto__', 'constructor']) {
+      const malicious = vi.fn(async () => response({ error: { message } }, 422));
+      const repository = createCommunityRepository(malicious);
+      let caught: unknown;
+      try { await repository.submit(accepted); } catch (error) { caught = error; }
+      expect(caught).toBeInstanceOf(CommunityError);
+      expect((caught as Error).message).not.toContain(message);
+    }
+  });
+
+  it('distinguishes capacity, missing receipts, service failures, and network errors', async () => {
+    const atCapacity = createCommunityRepository(vi.fn(async () => response({}, 429)));
+    await expect(atCapacity.submit(accepted)).rejects.toMatchObject({ category: 'unavailable', message: 'Submissions are temporarily at capacity. Please try again later.' });
+
+    const missingReceipt = createCommunityRepository(vi.fn(async () => response({}, 404)));
+    await expect(missingReceipt.status(id, 'synthetic-receipt')).rejects.toMatchObject({ category: 'invalid', message: 'No active submission matches that receipt. Check the values and try again.' });
+
+    const serviceFailure = createCommunityRepository(vi.fn(async () => response({ error: { message: 'synthetic private detail' } }, 503)));
+    await expect(serviceFailure.submit(accepted)).rejects.toMatchObject({ category: 'unavailable' });
+    await expect(serviceFailure.submit(accepted)).rejects.not.toThrow('synthetic private detail');
+
+    const networkFailure = createCommunityRepository(vi.fn(async () => { throw new Error('synthetic connection detail'); }));
+    await expect(networkFailure.submit(accepted)).rejects.toMatchObject({ category: 'network' });
   });
 });

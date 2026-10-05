@@ -157,6 +157,13 @@ class CommunityIntakeProof(unittest.TestCase):
             self.submit({"kind": "privacy_removal", "target_record_id": str(facility),
                          "description": marker, "consent": True}),
         ]
+        optional_facility = self.submit({"kind": "facility", "label": "Synthetic no-source facility",
+                                         "consent": True})
+        unknown_country_facility = self.submit({"kind": "facility", "label": "Synthetic unknown-country facility",
+                                                "country_code": "unknown", "consent": True})
+        source_free_evidence = self.submit({"kind": "evidence", "target_record_id": str(facility),
+                                            "description": "Synthetic supporting context without a URL",
+                                            "consent": True})
         private = receipts[0]
         code, status = self.request("/api/community/status", {
             "submission_id": private["submission_id"], "receipt_secret": private["receipt_secret"]})
@@ -164,7 +171,7 @@ class CommunityIntakeProof(unittest.TestCase):
         code, _ = self.request("/api/private/community/submissions", token=private["receipt_secret"])
         self.assertTrue(code == 404, "receipt must not authorize the operator")
         code, queue = self.request("/api/private/community/submissions", token=self.token)
-        self.assertTrue(code == 200 and len(queue["submissions"]) == 5)
+        self.assertTrue(code == 200 and len(queue["submissions"]) == 8)
         serialized = json.dumps(queue)
         self.assertTrue("contact_email" not in serialized and private["receipt_secret"] not in serialized)
         with psycopg.connect(self.dsn) as db:
@@ -174,6 +181,21 @@ class CommunityIntakeProof(unittest.TestCase):
             self.assertTrue("contact_email" not in claim)
             self.assertTrue(stored_hash == hashlib.sha256(private["receipt_secret"].encode()).hexdigest())
             self.assertTrue(db.execute("SELECT count(*) FROM uec.community_submission_contacts").fetchone()[0] == 1)
+            optional_claim = db.execute(
+                "SELECT claim FROM uec.community_submissions WHERE submission_id=%s",
+                (optional_facility["submission_id"],)).fetchone()[0]
+            self.assertTrue(optional_claim.get("label") == "Synthetic no-source facility"
+                            and "country_code" not in optional_claim and "source_url" not in optional_claim)
+            unknown_claim = db.execute(
+                "SELECT claim FROM uec.community_submissions WHERE submission_id=%s",
+                (unknown_country_facility["submission_id"],)).fetchone()[0]
+            self.assertTrue("country_code" not in unknown_claim and "source_url" not in unknown_claim)
+            source_free_claim = db.execute(
+                "SELECT claim FROM uec.community_submissions WHERE submission_id=%s",
+                (source_free_evidence["submission_id"],)).fetchone()[0]
+            self.assertTrue(source_free_claim.get("kind") == "evidence"
+                            and source_free_claim.get("description") == "Synthetic supporting context without a URL"
+                            and "source_url" not in source_free_claim)
         code, _ = self.request("/api/community/submissions", {**facility_claim, "unexpected": marker})
         self.assertTrue(code == 400)
         code, _ = self.request("/api/community/submissions", raw=b'{"kind":"facility","label":"' + b"x" * 13000 + b'"}')

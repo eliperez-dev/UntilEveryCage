@@ -2,17 +2,31 @@
   import { onMount } from 'svelte';
   import { parseRoute, type RouteState } from './routeState';
   import MethodologyPage from './MethodologyPage.svelte';
-  let DesignLab: typeof import('../design-lab/DesignLab.svelte').default | null = null;
-  let DatabaseResearch: typeof import('./DatabaseResearch.svelte').default | null = null;
-  let RecordPage: typeof import('./RecordPage.svelte').default | null = null;
-  let PublicReleaseMap: typeof import('./PublicReleaseMap.svelte').default | null = null;
-  let CommunityContributions: typeof import('./CommunityContributions.svelte').default | null = null;
+  import AboutPage from './AboutPage.svelte';
+  import ContributePage from './ContributePage.svelte';
+  import BugReportPage from './BugReportPage.svelte';
+  let DesignLab = $state<typeof import('../design-lab/DesignLab.svelte').default | null>(null);
+  let DatabaseResearch = $state<typeof import('./DatabaseResearch.svelte').default | null>(null);
+  let RecordPage = $state<typeof import('./RecordPage.svelte').default | null>(null);
+  let PublicReleaseMap = $state<typeof import('./PublicReleaseMap.svelte').default | null>(null);
+  let CommunityContributions = $state<typeof import('./CommunityContributions.svelte').default | null>(null);
   let communityModule: Promise<typeof import('./CommunityContributions.svelte')> | null = null;
-  let reviewMode = false;
+  let reviewMode = $state(false);
 
-  let route: RouteState = { kind: 'map' };
-  let loading = true;
-  let loadError = '';
+  let route = $state<RouteState>({ kind: 'map' });
+  let loading = $state(true);
+  let loadError = $state('');
+  let returnMapHref = $derived.by(() => {
+    if (route.kind === 'about' || route.kind === 'contribute' || route.kind === 'bug-report' || route.kind === 'community') return route.returnMapHref ?? '#/map';
+    const currentQuery = new URLSearchParams(window.location.hash.split('?')[1] ?? '');
+    return import.meta.env.DEV && currentQuery.get('f1a') === 'field' ? '#/map?f1a=field' : '#/map';
+  });
+  let databaseHref = $derived.by(() => {
+    const query = returnMapHref.split('?')[1];
+    return query ? `#/database?${query}` : '#/database';
+  });
+  let contributeHref = $derived(`#/contribute${route.kind === 'contribute' && route.targetRecordId ? `?target=${encodeURIComponent(route.targetRecordId)}` : ''}${returnMapHref !== '#/map' ? `${route.kind === 'contribute' && route.targetRecordId ? '&' : '?'}map=${encodeURIComponent(returnMapHref)}` : ''}`);
+  let aboutHref = $derived(`#/about${returnMapHref !== '#/map' ? `?map=${encodeURIComponent(returnMapHref)}` : ''}`);
 
   const syncRoute = () => {
     try {
@@ -60,26 +74,24 @@
 </svelte:head>
 
 {#if route.kind === 'methodology'}
-  <MethodologyPage />
+  <MethodologyPage returnMapHref={route.returnMapHref ?? '#/map'} />
 {:else if reviewMode && route.kind === 'map' && DesignLab}
-  <svelte:component this={DesignLab} />
+  <DesignLab />
 {:else if reviewMode && route.kind === 'database' && DatabaseResearch}
-  <svelte:component this={DatabaseResearch} />
+  <DatabaseResearch />
 {:else if reviewMode && route.kind === 'record' && RecordPage}
-  <svelte:component this={RecordPage} id={route.facilityId} />
+  <RecordPage id={route.facilityId} />
 {:else if reviewMode && (route.kind === 'map' || route.kind === 'database' || route.kind === 'record')}
   <main class="review-loading" aria-live="polite"><p role="status">Preparing the private-preview workspace…</p><small>The map module and its local data boundary are loading.</small></main>
 {:else}
 <div class="shell">
   <header class="site-header">
-    <a class="wordmark" href="#/map">Until Every Cage</a>
+    <a class="wordmark" href={returnMapHref}>Until Every Cage</a>
     <nav aria-label="Main navigation">
-      <a href="#/map" aria-current={route.kind === 'map' ? 'page' : undefined}>Map</a>
-      <a href="#/database" aria-current={route.kind === 'database' ? 'page' : undefined}>Database</a>
-      <a href="#/methodology">Methodology</a>
-      {#if import.meta.env.VITE_COMMUNITY_PILOT === 'true'}
-        <details class="tools-menu"><summary>Tools</summary><div class="tools-links"><a href="#/contribute">Contribute</a><a href="#/contribution-status">Check a receipt</a><a href="#/community">Community claims</a></div></details>
-      {/if}
+      <a href={returnMapHref} aria-current={route.kind === 'map' ? 'page' : undefined}>Map</a>
+      <a href={databaseHref} aria-current={route.kind === 'database' ? 'page' : undefined}>Database</a>
+      <a class="secondary-link" href={contributeHref} aria-current={route.kind === 'contribute' || (route.kind === 'community' && route.page === 'form') ? 'page' : undefined}>Contribute</a>
+      <a href={aboutHref} aria-current={route.kind === 'about' ? 'page' : undefined}>About</a>
     </nav>
   </header>
 
@@ -98,9 +110,15 @@
         <p>This address does not match a page in the preview.</p>
         <a href="#/map">Return to the map</a>
       </section>
+    {:else if route.kind === 'about'}
+      <AboutPage section={route.section} returnMapHref={route.returnMapHref ?? '#/map'} />
+    {:else if route.kind === 'contribute'}
+      <ContributePage enabled={import.meta.env.VITE_COMMUNITY_PILOT === 'true'} targetRecordId={route.targetRecordId ?? ''} returnMapHref={route.returnMapHref ?? '#/map'} />
+    {:else if route.kind === 'bug-report'}
+      <BugReportPage returnMapHref={route.returnMapHref ?? '#/map'} />
     {:else if route.kind === 'map'}
       {#if PublicReleaseMap}
-        <svelte:component this={PublicReleaseMap} />
+        <PublicReleaseMap />
       {:else}
         <p class="state" role="status">Preparing the map…</p>
       {/if}
@@ -115,11 +133,11 @@
         <h1 id="page-heading">Record</h1>
         <p class="record-id">Record ID: <code>{route.facilityId}</code></p>
         <p>This page is a structural shell. Record details are not connected yet.</p>
-        {#if import.meta.env.VITE_COMMUNITY_PILOT === 'true'}<p><a href={`#/contribute?target=${encodeURIComponent(route.facilityId)}`}>Contribute evidence or a correction</a></p>{/if}
+        {#if import.meta.env.VITE_COMMUNITY_PILOT === 'true'}<p><a href={`#/contribute/evidence?target=${encodeURIComponent(route.facilityId)}${returnMapHref !== '#/map' ? `&map=${encodeURIComponent(returnMapHref)}` : ''}`}>Add evidence</a></p>{/if}
       </section>
     {:else if route.kind === 'community'}
       {#if CommunityContributions}
-        <svelte:component this={CommunityContributions} page={route.page} targetRecordId={route.targetRecordId ?? ''} claimId={route.claimId ?? ''} releaseId={route.releaseId ?? ''} />
+        <CommunityContributions page={route.page} formKind={route.formKind ?? 'facility'} targetRecordId={route.targetRecordId ?? ''} claimId={route.claimId ?? ''} releaseId={route.releaseId ?? ''} returnMapHref={route.returnMapHref ?? '#/map'} />
       {:else}
         <p class="state" role="status">Preparing the community pilot…</p>
       {/if}
@@ -131,5 +149,5 @@
 <style>
   .review-loading{display:grid;place-content:center;min-height:100dvh;padding:2rem;background:#171a18;color:#f1efe8;font:1rem system-ui;text-align:center}
   .review-loading small{margin-top:.55rem;color:#b9c1b7;font-size:.76rem}
-  .tools-menu{position:relative}.tools-menu summary{cursor:pointer;list-style:none}.tools-menu summary::-webkit-details-marker{display:none}.tools-menu summary::after{content:'⌄';margin-left:.3rem;color:#858e87}.tools-links{position:absolute;z-index:10;top:calc(100% + .6rem);right:0;display:grid;min-width:12rem;padding:.4rem;border:1px solid #69716a;background:#171a18;box-shadow:0 8px 24px #0008}.tools-links a{padding:.55rem;color:#ded8c9;text-decoration:none}.tools-links a:hover{background:#282e2a}
+  .secondary-link{margin-left:.3rem;padding-left:1rem;border-left:1px solid #48524a}
 </style>

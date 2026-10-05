@@ -40,13 +40,11 @@
       ],
       "required_by_kind": {
         "facility": [
-          "label",
-          "country_code",
-          "source_url"
+          "label"
         ],
         "evidence": [
           "target_record_id",
-          "source_url"
+          "source_url or description"
         ],
         "correction": [
           "target_record_id",
@@ -63,6 +61,7 @@
       },
       "optional_field_bounds": {
         "label": 160,
+        "country_code": "optional ISO alpha-2; omitted or unknown means absent stored country",
         "locality": 160,
         "claimed_activity": 160,
         "location_text": 1000,

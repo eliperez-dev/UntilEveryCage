@@ -1,14 +1,10 @@
 <script lang="ts">
   import PreviewMasthead from './PreviewMasthead.svelte';
+  import AboutSubnav from './AboutSubnav.svelte';
 
-  // The link from the map preserves its current viewport without restoring or
-  // fetching any private records on this informational route.
-  const requestedMapHref = new URLSearchParams(
-    typeof window === 'undefined' ? '' : window.location.hash.split('?')[1] ?? '',
-  ).get('map');
-  const mapHref = requestedMapHref?.startsWith('#/map?') || requestedMapHref === '#/map'
-    ? requestedMapHref
-    : '#/map';
+  let { returnMapHref = '#/map' }: { returnMapHref?: string } = $props();
+  let mapHref = $derived(returnMapHref);
+  let databaseHref = $derived.by(() => returnMapHref.includes('?') ? `#/database?${returnMapHref.split('?')[1]}` : '#/database');
 </script>
 
 <svelte:head>
@@ -16,10 +12,11 @@
   <meta name="description" content="How Until Every Cage handles source evidence, map precision, publication, and corrections." />
 </svelte:head>
 
-<PreviewMasthead current="methodology" {mapHref} databaseHref="#/database" />
+<PreviewMasthead current="about" {mapHref} {databaseHref} />
 
 <main id="main-content" class="methodology">
   <div class="page-frame">
+    <AboutSubnav current="sources" {returnMapHref} />
     <header class="intro">
       <p class="eyebrow">Reading the map</p>
       <h1>Sources & Methodology</h1>
@@ -53,6 +50,7 @@
       <div class="chapter-body">
         <h2 id="precision-title">What a point means</h2>
         <p>The map deliberately distinguishes these states. Zoom level, satellite imagery, and a neat-looking symbol do not improve the evidence behind a location.</p>
+        <p>Maps use OpenStreetMap tiles; viewing a map contacts the tile provider. Placing a pin supplies the chosen location directly.</p>
         <dl class="precision-ladder">
           <div><dt><span class="ladder-index">A</span> Mapped at a facility coordinate</dt><dd>A published coordinate associated with the record. Its source and precision still matter; a displayed point is not a guarantee that it identifies the operating site.</dd></div>
           <div><dt><span class="ladder-index">B</span> Mapped to a locality reference</dt><dd>An approximate city, commune, municipality, or postal reference. A centroid is <em>not</em> a facility point. A circular halo on the map is a visual aid, not a measured uncertainty boundary.</dd></div>

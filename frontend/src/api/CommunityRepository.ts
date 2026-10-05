@@ -145,15 +145,42 @@ async function request<T>(fetcher: FetchLike, path: string, init: RequestInit, p
   let response: Response;
   try { response = await fetcher(path, { ...init, cache: 'no-store', headers: { 'Content-Type': 'application/json', ...init.headers }, credentials: 'same-origin' }); }
   catch { throw new CommunityError('network', 'The community service is unavailable. Your information was not shown again.'); }
-  if (!response.ok) throw new CommunityError(response.status === 401 || response.status === 403 ? 'unauthorized' : 'unavailable', response.status === 401 || response.status === 403 ? 'The operator credential was not accepted.' : 'The community service is unavailable.');
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) throw new CommunityError('unauthorized', 'The operator credential was not accepted.');
+    if (response.status === 429) throw new CommunityError('unavailable', 'Submissions are temporarily at capacity. Please try again later.');
+    if (response.status === 404 && path === '/api/community/status') throw new CommunityError('invalid', 'No active submission matches that receipt. Check the values and try again.');
+    if (response.status === 404 && path.startsWith('/api/v2/releases/manifest?profile=community')) throw new CommunityError('unavailable', 'Community submissions aren’t available here yet.');
+    if (response.status === 400 || response.status === 422) {
+      let message = 'Some details need attention before this can be submitted.';
+      try {
+        const body = record(await response.json());
+        const error = record(body.error);
+        const safeMessages: Record<string, string> = {
+          'facility requires a label': 'Add a facility name.',
+          'evidence requires target_record_id and a description or source_url': 'Add a record ID and either a source link or a short description of what you found.',
+          'this submission requires target_record_id and description': 'Add a record ID and a short description.',
+          'duplicate requires two distinct record IDs': 'Enter two different record IDs.',
+          'latitude and longitude must be provided together': 'Enter both latitude and longitude, or clear both fields.',
+          'claimed coordinates are out of range': 'Check that the coordinates are within the valid range.',
+          'country_code must be an uppercase two-letter code': 'Choose a country from the list or leave it as unknown.',
+          'source_url must be an http(s) URL without credentials': 'Use a complete web link without embedded sign-in details.',
+          'observed_on must be an ISO date': 'Choose a valid observation date.',
+          'one or more fields exceed their length limit': 'One or more fields are too long. Shorten them and try again.',
+        };
+        if (typeof error.message === 'string' && Object.hasOwn(safeMessages, error.message)) message = safeMessages[error.message]!;
+      } catch { /* Error bodies are intentionally not exposed. */ }
+      throw new CommunityError('invalid', message);
+    }
+    throw new CommunityError('unavailable', 'The community service is unavailable. Please try again later.');
+  }
   try { return parse(await response.json()); } catch (error) { if (error instanceof CommunityError) throw error; throw new CommunityError('invalid', 'The community service returned an invalid response.'); }
 }
 export function validateContributionDraft(draft: ContributionDraft): void {
   if (!draft.consent || !KINDS.has(draft.kind)) throw new CommunityError('invalid', 'Consent is required.');
   if (draft.target_record_id && !UUID.test(draft.target_record_id)) throw new CommunityError('invalid', 'Enter a valid record identifier.');
   if (draft.duplicate_record_id && !UUID.test(draft.duplicate_record_id)) throw new CommunityError('invalid', 'Enter a valid duplicate record identifier.');
-  if (draft.kind === 'facility' && (!draft.label || !draft.country_code || !draft.source_url)) throw new CommunityError('invalid', 'Facility claims need a label, country, and source.');
-  if (draft.kind === 'evidence' && (!draft.target_record_id || !draft.source_url)) throw new CommunityError('invalid', 'Evidence needs a target record and source.');
+  if (draft.kind === 'facility' && !draft.label) throw new CommunityError('invalid', 'Add a facility name.');
+  if (draft.kind === 'evidence' && (!draft.target_record_id || (!draft.source_url && !draft.description))) throw new CommunityError('invalid', 'Add a record ID and either a source link or a short description of what you found.');
   if (draft.kind === 'correction' && (!draft.target_record_id || !draft.description)) throw new CommunityError('invalid', 'Corrections need a target record and explanation.');
   if (draft.kind === 'duplicate' && (!draft.target_record_id || !draft.duplicate_record_id || draft.target_record_id === draft.duplicate_record_id)) throw new CommunityError('invalid', 'Choose two different record identifiers.');
   if (draft.kind === 'privacy_removal' && (!draft.target_record_id || !draft.description)) throw new CommunityError('invalid', 'Privacy requests need a target record and explanation.');

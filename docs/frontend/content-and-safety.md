@@ -34,6 +34,15 @@ the existence of uncertainty. Source terminology may be quoted, but the project
 explanation is separate. Avoid animal totals or global claims unless the page
 has a named, cited aggregate product.
 
+Private contribution forms use familiar task names: Add a facility, Add
+evidence, Correct a record, Report a duplicate, and Privacy or removal.
+Ask for country names rather than codes; country and evidence links are
+optional for facility tips. Explain a map pin as choosing the location, not as
+a geocoding operation. Use one concise note that submissions are reviewed
+before publication, without repeating pilot/review badges throughout the form.
+Keep map attribution visible and put provider details in methodology.
+Public unreviewed community results retain the warning required above.
+
 ## Safety rules in UI
 
 - Do not expose private-person names, residential addresses, worker details, or

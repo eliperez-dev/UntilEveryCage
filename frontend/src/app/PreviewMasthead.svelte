@@ -7,7 +7,7 @@
     debugEnabled = false,
     ondebugchange,
   }: {
-    current: "map" | "database" | "methodology";
+    current: "map" | "database" | "methodology" | "about" | "contribute";
     mapHref: string;
     databaseHref: string;
     debugEnabled?: boolean;
@@ -15,7 +15,8 @@
   } = $props();
 
   const logo = `${import.meta.env.BASE_URL}assets/icon.png`;
-  const methodologyHref = $derived(`#/methodology?map=${encodeURIComponent(mapHref)}`);
+  const aboutHref = $derived(`#/about?map=${encodeURIComponent(mapHref)}`);
+  const contributeHref = $derived(`#/contribute?map=${encodeURIComponent(mapHref)}`);
   let toolsOpen = $state(false);
   let releaseOpen = $state(false);
   let accountOpen = $state(false);
@@ -43,7 +44,8 @@
   <nav aria-label="Primary">
     <a href={mapHref} aria-current={current === "map" ? "page" : undefined}>Map</a>
     <a href={databaseHref} aria-current={current === "database" ? "page" : undefined}>Database</a>
-    <a class="secondary-link" href={methodologyHref} aria-current={current === "methodology" ? "page" : undefined}>Methodology</a>
+    <a class="secondary-link" href={contributeHref} aria-current={current === "contribute" ? "page" : undefined}>Contribute</a>
+    <a href={aboutHref} aria-current={current === "about" || current === "methodology" ? "page" : undefined}>About</a>
   </nav>
   <div class="masthead-actions" bind:this={actionArea}>
     <button bind:this={releaseButton} type="button" class="header-action preview-action" aria-expanded={releaseOpen} aria-controls="shared-release-menu" onclick={toggleRelease}>Preview</button>
@@ -61,11 +63,6 @@
     {#if toolsOpen}<aside id="shared-tools-menu" class="header-menu tools-menu" aria-label="Tools">
       <header><strong><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> Map tools</strong><button type="button" aria-label="Close Tools" onclick={() => closeMenus("tools")}>×</button></header>
       <section><label class="toggle"><input type="checkbox" checked={debugEnabled} onchange={(event) => ondebugchange?.(event.currentTarget.checked)} /> Enable debug menu</label><small>Local development controls and diagnostics.</small></section>
-      {#if import.meta.env.VITE_COMMUNITY_PILOT === "true"}
-        <section><button type="button" onclick={() => { window.location.hash = "#/contribute"; closeMenus(); }}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18"/></svg>Contribute</button><button type="button" onclick={() => { window.location.hash = "#/contribution-status"; closeMenus(); }}>Check contribution status</button><button type="button" onclick={() => { window.location.hash = "#/community"; closeMenus(); }}>Community claims</button><small>Submissions remain private and require human review before any publication.</small></section>
-      {:else}
-        <section><button type="button" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18"/></svg>Add a location · planned</button><small>Submissions require review before appearing on the map.</small></section>
-      {/if}
     </aside>{/if}
     {#if accountOpen}<aside id="shared-account-menu" class="header-menu account-menu" aria-label="Account">
       <header><strong>Account</strong><button type="button" aria-label="Close Account" onclick={() => closeMenus("account")}>×</button></header>

@@ -32,6 +32,14 @@ information architecture.
    `release_id` and `manifest_sha256` separate, and keep software/API versions
    as SemVer.
 
+Navigation revision authorized by the maintainer on 2026-10-04: the shared
+header is **Map, Database | Contribute, About**. Contribute owns standalone
+submission tools, receipt lookup, bug reporting and project links; About owns the introduction/manifesto and
+Sources & methodology. Country and source links are optional on facility
+intake. Private forms use clear labels and concise guidance, without technical
+geocoding language or repeated review badges. Public community-unreviewed
+warnings and private publication gates remain required.
+
 ## Remaining implementation decisions
 
 10. **Map engine:** benchmark MapLibre/WebGL against Leaflet; MapLibre is the

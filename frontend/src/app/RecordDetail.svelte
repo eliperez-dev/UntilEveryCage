@@ -283,6 +283,9 @@
   <p class="context">PRIVATE DEVELOPMENT PREVIEW · NOT PUBLICATION-APPROVED</p>
   <p class="kind">Facility candidate</p>
   <h1 id="record-title">{name}</h1>
+  {#if presentation === 'page' && import.meta.env.VITE_COMMUNITY_PILOT === 'true' && id}
+    <p><a class="evidence-link" href={`#/contribute/evidence?target=${encodeURIComponent(id)}&map=${encodeURIComponent('#/map?f1a=field')}`}>Add evidence</a></p>
+  {/if}
   {#if nameWithheld}
     <dl class="identity"><div><dt>Name</dt><dd>Name not shown — privacy review pending</dd></div></dl>
   {/if}

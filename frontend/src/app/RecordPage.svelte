@@ -2,6 +2,8 @@
   import { createRealPreviewRepository, mapRealPreviewCandidate, RealPreviewError } from '../api/RealPreviewRepository';
   import type { LabRecord } from '../design-lab/contract';
   import RecordDetail from './RecordDetail.svelte';
+  import PreviewMasthead from './PreviewMasthead.svelte';
+  const mapHref = '#/map?f1a=field';
 
   let { id }: { id: string } = $props();
   const repository = createRealPreviewRepository();
@@ -32,10 +34,7 @@
 
 <svelte:head><title>Record — Until Every Cage</title></svelte:head>
 <div class="record-page">
-  <header class="page-header">
-    <a class="brand" href="#/map?f1a=field">Until Every Cage</a>
-    <nav aria-label="Primary navigation"><a href="#/map?f1a=field">Map</a><a href="#/database">Database</a></nav>
-  </header>
+  <PreviewMasthead current="database" {mapHref} databaseHref="#/database?f1a=field" />
   <main id="main-content">
     {#if status === 'loading'}<p class="state" role="status">Loading record evidence…</p>
     {:else if status === 'error' || status === 'unauthorized'}<div class="state" role="alert"><h1>Record unavailable</h1><p>{error}</p><a href="#/database">Return to database</a></div>
@@ -45,9 +44,6 @@
 
 <style>
   .record-page{min-height:100dvh;background:#171a18;color:#f1efe8;font-family:system-ui,sans-serif}
-  .page-header{display:flex;align-items:center;justify-content:space-between;gap:1rem;min-height:4rem;padding:.7rem clamp(1rem,4vw,3rem);border-bottom:1px solid #414843}
-  .brand{color:#f1efe8;font:600 1.15rem Georgia,serif;text-decoration:none}
-  nav{display:flex;gap:1.2rem}nav a,.state a{color:#ded8c9;text-underline-offset:.2em}
+  .state a{color:#ded8c9;text-underline-offset:.2em}
   .state{max-width:50rem;margin:4rem auto;padding:1rem}.state h1{font:500 1.8rem Georgia,serif}
-  @media(max-width:35rem){.page-header{align-items:flex-start;flex-direction:column}nav{font-size:.8rem}}
 </style>

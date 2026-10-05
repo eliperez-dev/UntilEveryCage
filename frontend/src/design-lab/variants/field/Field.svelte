@@ -334,6 +334,7 @@
   const databaseHref = $derived(
     (() => {
       const q = new URLSearchParams();
+      q.set("f1a", "field");
       if (state.sourceId) q.set("source", state.sourceId);
       if (state.selectedId) q.set("selected", state.selectedId);
       q.set("lat", String(state.viewport.centerLat));

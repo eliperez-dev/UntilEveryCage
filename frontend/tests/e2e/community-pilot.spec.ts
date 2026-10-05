@@ -54,14 +54,15 @@ async function mockCommunityApi(page: Page) {
 
 test.beforeEach(async ({ page }) => mockCommunityApi(page));
 
-test('status route can transition to contribute and the pin can be added and cleared', async ({ page }) => {
+test('status route can transition through the Contribute hub and the pin can be added and cleared', async ({ page }) => {
   const pageErrors: string[] = [];
   page.on('pageerror', error => pageErrors.push(error.message));
   await page.goto('#/contribution-status');
   await expect(page.getByRole('heading', { name: 'Check contribution status' })).toBeVisible();
-  await page.getByRole('navigation', { name: 'Main navigation' }).getByText('Tools').click();
-  await page.getByRole('link', { name: 'Contribute' }).click();
-  await expect(page.getByRole('heading', { name: 'Contribute a claim' })).toBeVisible();
+  await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Contribute' }).click();
+  await expect(page.getByRole('heading', { name: 'Contribute' })).toBeVisible();
+  await page.getByRole('link', { name: 'Add a facility' }).click();
+  await expect(page.getByRole('heading', { name: 'Add a facility' })).toBeVisible();
   const canvas = page.locator('.pin-map canvas');
   await expect(canvas).toBeVisible();
   await expect(page.locator('.pin-map .maplibregl-ctrl-zoom-in')).toBeVisible();
@@ -84,9 +85,12 @@ test('status route can transition to contribute and the pin can be added and cle
   await page.getByLabel('Latitude').fill('91');
   await expect(page.getByLabel('Latitude')).toHaveValue('91');
   await page.getByLabel('Latitude').fill('55.7');
-  await page.getByLabel('Contribution type').selectOption('evidence');
+  await page.locator('.community-page').getByRole('link', { name: 'Contribute' }).click();
+  await page.getByRole('heading', { name: 'Contribute', level: 1 }).waitFor();
+  await page.getByRole('link', { name: 'Add evidence' }).click();
   await expect(page.locator('.pin-map')).toHaveCount(0);
-  await page.getByLabel('Contribution type').selectOption('facility');
+  await page.locator('.community-page').getByRole('link', { name: 'Contribute' }).click();
+  await page.getByRole('link', { name: 'Add a facility' }).click();
   await expect(page.locator('.pin-map')).toBeVisible();
   await expect(page.getByLabel('Latitude')).toHaveValue('');
   expect(pageErrors).toEqual([]);
@@ -105,13 +109,13 @@ test('form remains usable with coordinate fallback when map construction fails',
     submitted = route.request().postDataJSON() as Record<string, unknown>;
     await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ submission_id: id, receipt_secret: secret, status: 'received' }) });
   });
-  await page.goto('#/contribute');
-  await expect(page.getByText('The map could not be opened. You can still enter coordinates below.')).toBeVisible();
+  await page.goto('#/contribute/facility');
+  await expect(page.getByText('The map could not be opened. You can enter coordinates below instead.')).toBeVisible();
   await page.getByLabel('Latitude').fill('55.7');
   await page.getByLabel('Longitude').fill('12.5');
-  await page.getByLabel('Claim label').fill('Synthetic fallback facility');
-  await page.getByLabel('Country code').fill('DK');
-  await page.getByLabel('Source URL').fill('https://example.test/fallback-source');
+  await page.getByLabel('Facility name').fill('Synthetic fallback facility');
+  await page.getByLabel('Country (optional)').selectOption('DK');
+  await page.getByLabel('Source link (optional)').fill('https://example.test/fallback-source');
   await page.getByLabel(/I have permission to share/).check();
   await page.getByRole('button', { name: 'Send for review' }).click();
   await expect(page.getByRole('heading', { name: 'Contribution received' })).toBeVisible();
@@ -124,10 +128,10 @@ test('a valid submission displays its receipt once in memory without putting it 
     submitted = route.request().postDataJSON() as Record<string, unknown>;
     await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ submission_id: id, receipt_secret: secret, status: 'received' }) });
   });
-  await page.goto('#/contribute');
-  await page.getByLabel('Claim label').fill('Synthetic facility claim');
-  await page.getByLabel('Country code').fill('DK');
-  await page.getByLabel('Source URL').fill('https://example.test/synthetic-source');
+  await page.goto('#/contribute/facility');
+  await page.getByLabel('Facility name').fill('Synthetic facility claim');
+  await page.getByLabel('Country (optional)').selectOption('DK');
+  await page.getByLabel('Source link (optional)').fill('https://example.test/synthetic-source');
   await page.getByLabel(/I have permission to share/).check();
   await page.getByRole('button', { name: 'Send for review' }).click();
   await expect(page.getByRole('heading', { name: 'Contribution received' })).toBeVisible();
@@ -136,9 +140,8 @@ test('a valid submission displays its receipt once in memory without putting it 
   expect(submitted).not.toHaveProperty('contact_email');
   expect(page.url()).not.toContain(secret);
   await page.getByRole('link', { name: 'I saved my receipt' }).click();
-  await page.getByRole('navigation', { name: 'Main navigation' }).getByText('Tools').click();
-  await page.getByRole('link', { name: 'Contribute' }).click();
-  await expect(page.getByRole('heading', { name: 'Contribute a claim' })).toBeVisible();
+  await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Contribute' }).click();
+  await expect(page.getByRole('heading', { name: 'Contribute' })).toBeVisible();
   await expect(page.getByLabel('Private receipt')).toHaveCount(0);
 });
 
@@ -147,7 +150,7 @@ test('the operator queue shows structured private context but never contact or r
   await expect(page.getByText(/Private intake warning/)).toBeVisible();
   await page.getByLabel('Local operator token').fill('synthetic-operator-token');
   await page.getByRole('button', { name: 'Open restricted queue' }).click();
-  for (const value of ['Synthetic facility claim', 'DK', 'Sample locality', 'Synthetic activity', '2026-09-20', 'Broad synthetic area', 'coarse', 'manual_pin', 'Synthetic queue context']) {
+  for (const value of ['Synthetic facility claim', 'Denmark', 'Sample locality', 'Synthetic activity', '2026-09-20', 'Broad synthetic area', 'coarse', 'map pin', 'Synthetic queue context']) {
     await expect(page.getByText(value, { exact: false })).toBeVisible();
   }
   await expect(page.getByText('private-synthetic@example.test')).toHaveCount(0);
@@ -170,4 +173,21 @@ test('community claims are opt-in, scoped to the current profile, and prominentl
   await expect(page.getByText(claimWarning)).toBeVisible();
   await page.getByRole('button', { name: 'Load this claim' }).click();
   await expect(page.getByRole('link', { name: 'View released record data (JSON)' })).toBeVisible();
+});
+
+test('a facility can be submitted with only a name and consent', async ({ page }) => {
+  let submitted: Record<string, unknown> | undefined;
+  await page.route('**/api/community/submissions', async route => {
+    submitted = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ submission_id: id, receipt_secret: secret, status: 'received' }) });
+  });
+  await page.goto('#/contribute/facility');
+  await page.getByLabel('Facility name').fill('Synthetic facility without location metadata');
+  await page.getByLabel(/I have permission to share/).check();
+  await page.getByRole('button', { name: 'Send for review' }).click();
+  await expect(page.getByRole('heading', { name: 'Contribution received' })).toBeVisible();
+  expect(submitted).toMatchObject({ kind: 'facility', label: 'Synthetic facility without location metadata', consent: true });
+  expect(submitted).not.toHaveProperty('country_code');
+  expect(submitted).not.toHaveProperty('source_url');
+  expect(submitted).not.toHaveProperty('claimed_latitude');
 });

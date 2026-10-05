@@ -8,52 +8,61 @@ describe('routeState', () => {
     expect(parseRoute('#/map')).toEqual({ kind: 'map' });
   });
 
-  it('parses the database route', () => {
+  it('parses the database route independently', () => {
     expect(parseRoute('#/database')).toEqual({ kind: 'database' });
   });
 
-  it('parses the gated community pilot destinations and record prefill', () => {
-    expect(parseRoute('#/contribute?target=synthetic-record')).toEqual({ kind: 'community', page: 'contribute', targetRecordId: 'synthetic-record' });
+  it('keeps the requested About hierarchy and the old methodology alias', () => {
+    expect(parseRoute('#/about')).toEqual({ kind: 'about', section: 'overview' });
+    expect(parseRoute('#/about/manifesto')).toEqual({ kind: 'about', section: 'manifesto' });
+    expect(parseRoute('#/about/sources')).toEqual({ kind: 'methodology' });
+    expect(parseRoute('#/methodology?map=%23%2Fmap%3Ff1a%3Dfield')).toEqual({ kind: 'methodology', returnMapHref: '#/map?f1a=field' });
+    expect(serializeRoute({ kind: 'methodology' })).toBe('#/methodology');
+    expect(serializeRoute({ kind: 'methodology', returnMapHref: '#/map?f1a=field' })).toBe('#/methodology?map=%23%2Fmap%3Ff1a%3Dfield');
+  });
+
+  it('parses the contribution hub, form subroutes, and bug route', () => {
+    expect(parseRoute('#/contribute?target=synthetic-record')).toEqual({ kind: 'contribute', targetRecordId: 'synthetic-record' });
+    expect(parseRoute('#/contribute/facility')).toEqual({ kind: 'community', page: 'form', formKind: 'facility' });
+    expect(parseRoute('#/contribute/evidence?target=synthetic-record&map=%23%2Fmap%3Ff1a%3Dfield')).toEqual({ kind: 'community', page: 'form', formKind: 'evidence', targetRecordId: 'synthetic-record', returnMapHref: '#/map?f1a=field' });
+    expect(parseRoute('#/contribute/privacy-removal')).toEqual({ kind: 'community', page: 'form', formKind: 'privacy_removal' });
+    expect(parseRoute('#/contribute/bug')).toEqual({ kind: 'bug-report' });
+    expect(serializeRoute({ kind: 'community', page: 'form', formKind: 'evidence', targetRecordId: 'synthetic-record' })).toBe('#/contribute/evidence?target=synthetic-record');
+  });
+
+  it('preserves receipt, review, and release-pinned community routes', () => {
     expect(parseRoute('#/contribution-status')).toEqual({ kind: 'community', page: 'status' });
     expect(parseRoute('#/community')).toEqual({ kind: 'community', page: 'claims' });
     const claimRoute = { kind: 'community' as const, page: 'claim-detail' as const, claimId: 'synthetic-claim', releaseId: 'synthetic-release' };
-    expect(parseRoute('#/community/claim?id=synthetic-claim&release_id=synthetic-release')).toEqual(claimRoute);
-    expect(serializeRoute(claimRoute)).toBe('#/community/claim?id=synthetic-claim&release_id=synthetic-release');
+    const link = '#/community/claim?id=synthetic-claim&release_id=synthetic-release';
+    expect(parseRoute(link)).toEqual(claimRoute);
+    expect(serializeRoute(claimRoute)).toBe(link);
     expect(parseRoute('#/contribution-review')).toEqual({ kind: 'community', page: 'review' });
-    expect(serializeRoute({ kind: 'community', page: 'contribute', targetRecordId: 'synthetic-record' })).toBe('#/contribute?target=synthetic-record');
   });
 
-  it('parses the methodology route without treating return context as a route', () => {
-    expect(parseRoute('#/methodology?map=%23%2Fmap%3Ff1a%3Dfield')).toEqual({ kind: 'methodology' });
-    expect(serializeRoute({ kind: 'methodology' })).toBe('#/methodology');
+  it('round-trips a public claim link with its explicit release context', () => {
+    const route = { kind: 'community' as const, page: 'claim-detail' as const, claimId: 'claim-42', releaseId: 'release-2026-10', returnMapHref: '#/map?f1a=field' };
+    const serialized = serializeRoute(route);
+    expect(serialized).toContain('release_id=release-2026-10');
+    expect(parseRoute(serialized)).toEqual(route);
   });
 
-  it('parses record routes and ignores unrelated query parameters', () => {
-    expect(parseRoute('#/records/syn-north-star?source=shared')).toEqual({
-      kind: 'record',
-      facilityId: 'syn-north-star',
-    });
+  it('preserves record links and rejects unsupported paths', () => {
+    expect(parseRoute('#/records/syn-north-star?source=shared')).toEqual({ kind: 'record', facilityId: 'syn-north-star' });
+    expect(parseRoute('#/locations/syn-river-meadow')).toEqual({ kind: 'record', facilityId: 'syn-river-meadow' });
+    expect(parseRoute('#/search?q=eggs')).toEqual({ kind: 'not-found', fragment: '/search?q=eggs' });
   });
 
-  it('keeps old location links compatible with record pages', () => {
-    expect(parseRoute('#/locations/syn-river-meadow')).toEqual({
-      kind: 'record',
-      facilityId: 'syn-river-meadow',
-    });
-  });
-
-  it('round-trips canonical routes', () => {
-    expect(serializeRoute({ kind: 'map' })).toBe('#/map');
-    expect(serializeRoute({ kind: 'database' })).toBe('#/database');
-    expect(serializeRoute({ kind: 'record', facilityId: 'syn-river-meadow' })).toBe('#/records/syn-river-meadow');
-  });
-
-  it('supports hash fallback below a preview base path', () => {
+  it('keeps legacy location routes and hash fallback below a preview base path', () => {
+    expect(parseRoute('#/locations/syn-river-meadow')).toEqual({ kind: 'record', facilityId: 'syn-river-meadow' });
     const previewUrl = new URL('https://example.test/v2-preview/#/records/syn-north-star');
     expect(parseRoute(previewUrl.hash)).toEqual({ kind: 'record', facilityId: 'syn-north-star' });
   });
 
-  it('does not guess unsupported paths', () => {
+  it('rejects malformed public claim links and does not guess unsupported paths', () => {
+    expect(parseRoute('#/community/claim?id=')).toEqual({ kind: 'not-found', fragment: '/community/claim?id=' });
+    expect(parseRoute('#/community/claim?id=synthetic-claim')).toEqual({ kind: 'not-found', fragment: '/community/claim?id=synthetic-claim' });
+    expect(parseRoute('#/community/claim?id=synthetic-claim&release_id=unsafe%2Fvalue')).toEqual({ kind: 'not-found', fragment: '/community/claim?id=synthetic-claim&release_id=unsafe%2Fvalue' });
     expect(parseRoute('#/search?q=eggs')).toEqual({ kind: 'not-found', fragment: '/search?q=eggs' });
   });
 });

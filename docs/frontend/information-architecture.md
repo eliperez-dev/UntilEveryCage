@@ -2,15 +2,22 @@
 
 ## Top-level model
 
-The public product has one compact header and two primary destinations:
+The public product has one compact header. Map and Database are the discovery
+destinations; Contribute and About remain visible alongside them:
 
 ```
-Until Every Cage     MAP        DATABASE        About / Methodology      [release context]
+Until Every Cage     MAP        DATABASE     |     CONTRIBUTE        ABOUT
 ```
 
-The header is not a dashboard. It should remain available without competing
-with the current task. On narrow screens, Map and Database become a two-item
-segmented navigation control; secondary links move into an accessible menu.
+The header remains available without competing with the current task. On narrow
+screens, all four links remain reachable without horizontal overflow.
+Contribute groups facility, evidence, correction, duplicate and privacy/removal
+tools with receipt lookup, bug reporting and the existing project links. Bug
+reports use an email template or a GitHub issue; they are not facility claims
+and do not require a contributor account. About contains the
+introduction/manifesto and Sources & methodology. The existing methodology
+route remains a working alias. Navigation preserves the active local preview
+mode when returning to Map or Database.
 
 ### Routes
 
@@ -32,7 +39,7 @@ hop detail is insufficient.
 
 Every public route has:
 
-- a concise site identity and two primary destinations;
+- a concise site identity and consistent Map, Database, Contribute and About links;
 - a persistent release/profile/coverage notice that can expand for details;
 - a search affordance that routes to the appropriate surface rather than
   silently changing contexts;

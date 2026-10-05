@@ -55,12 +55,17 @@ owns publication policy and unresolved launch requirements.
 | `POST /api/private/community/maintenance` | Operator-only aggregate expiry counts. Clears expired contact/claims and hashes; preserves decision tombstones/events. Requires an external maintenance schedule. |
 | `GET /api/community/claims` and `GET /api/community/claims/{id}` | Separately enabled, explicit `profile=community` and release ID. Live eligible release links only; persistent warning, unreviewed/not-approved metadata, separate linked-claim count. List fails closed above 500 linked candidates. |
 
-Intake bodies are limited to 12 KiB and deny unknown fields. Facility claims
-require label, ISO country and source URL; evidence requires target UUID/source;
+Intake bodies are limited to 12 KiB and deny unknown fields. Facility tips
+require a label; country and source URL are optional. Evidence requires a target
+UUID and either a source URL or description;
 correction and privacy/removal require target UUID/description; duplicates
 require two distinct UUIDs. All require `consent=true`. Optional fields have
 server bounds: label/locality/activity 160 bytes, location text 1,000,
 description 2,000, source URL 2,048, contact 254 and ISO observation date.
+Omitted country remains unknown; a supplied country must be an ISO alpha-2 code.
+The intake alias `unknown` is accepted and normalized to an omitted stored field.
+The UI presents country names rather than requiring contributors to know codes.
+Omitted source remains unknown and is not fabricated or fetched.
 Coordinates must be a finite in-range pair and remain private; precision is
 `unknown|exact|coarse|unmapped`, input method `manual_pin|text|unknown`.
 There are no files, contributor accounts or cookie sessions.

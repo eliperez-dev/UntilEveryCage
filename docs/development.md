@@ -44,8 +44,14 @@ These bounds are implementation limits, not approved operational defaults.
 Run `cargo run --locked --bin uec-api`. For a separate Vite instance, set
 `VITE_COMMUNITY_PILOT=true` and `VITE_API_ORIGIN` to that loopback API origin,
 then `npm --prefix frontend run dev -- --host 127.0.0.1 --port <unused-port>`.
-Open `/v2-preview/#/contribute`; Tools also links contribution and receipt
-lookup. Other local routes are `#/contribution-status`,
+Open `/v2-preview/#/contribute` for the landing page. Its tools open separate
+facility, evidence, correction, duplicate and privacy/removal forms under
+`#/contribute/…`, plus bug reporting and receipt lookup. The shared header is
+Map, Database | Contribute, About; About links Sources & methodology.
+Country names and source links are optional on facility intake; a name is
+required. Evidence needs a record reference and either a link or explanation.
+Bug reports compose email or open GitHub; the user sends the report.
+Other local routes are `#/contribution-status`,
 `#/contribution-review` and `#/community`. Supply the operator credential
 in the private review form; it remains in memory. Privacy-request actions
 operate on the submission; target-record suppression follows the governance

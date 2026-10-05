@@ -261,11 +261,9 @@ fn validate(input: &SubmissionInput) -> Result<(), &'static str> {
     {
         return Err("one or more fields exceed their length limit");
     }
-    if input
-        .country_code
-        .as_ref()
-        .is_some_and(|v| !ISO_3166_ALPHA2.split_whitespace().any(|code| code == v))
-    {
+    if input.country_code.as_ref().is_some_and(|v| {
+        v != "unknown" && !ISO_3166_ALPHA2.split_whitespace().any(|code| code == v)
+    }) {
         return Err("country_code must be an uppercase two-letter code");
     }
     if input.claimed_latitude.is_some() != input.claimed_longitude.is_some() {
@@ -320,15 +318,12 @@ fn validate(input: &SubmissionInput) -> Result<(), &'static str> {
         return Err("contact_email is invalid");
     }
     match input.kind.as_str() {
-        "facility"
-            if !nonblank(&input.label, 160)
-                || !input.country_code.is_some()
-                || !input.source_url.is_some() =>
+        "facility" if !nonblank(&input.label, 160) => Err("facility requires a label"),
+        "evidence"
+            if input.target_record_id.is_none()
+                || (input.source_url.is_none() && !nonblank(&input.description, 2000)) =>
         {
-            Err("facility requires label, country_code, and source_url")
-        }
-        "evidence" if input.target_record_id.is_none() || input.source_url.is_none() => {
-            Err("evidence requires target_record_id and source_url")
+            Err("evidence requires target_record_id and a description or source_url")
         }
         "correction" | "privacy_removal"
             if input.target_record_id.is_none() || !nonblank(&input.description, 2000) =>
@@ -350,6 +345,9 @@ fn restricted_claim(input: &SubmissionInput) -> Result<Value, serde_json::Error>
     let mut claim = serde_json::to_value(input)?;
     if let Some(fields) = claim.as_object_mut() {
         fields.retain(|name, value| name != "contact_email" && !value.is_null());
+        if fields.get("country_code").and_then(Value::as_str) == Some("unknown") {
+            fields.remove("country_code");
+        }
     }
     Ok(claim)
 }
@@ -973,6 +971,9 @@ mod tests {
         let mut e = sample("evidence");
         e.target_record_id = Some(Uuid::nil());
         assert!(validate(&e).is_err());
+        e.description = Some("Synthetic context without a source link".into());
+        assert!(validate(&e).is_ok());
+        e.description = None;
         e.source_url = Some("https://example.org/evidence".into());
         assert!(validate(&e).is_ok());
         let mut c = sample("correction");
@@ -989,6 +990,44 @@ mod tests {
         p.target_record_id = Some(Uuid::nil());
         p.description = Some("Synthetic request".into());
         assert!(validate(&p).is_ok());
+    }
+    #[test]
+    fn facility_country_and_source_are_optional_but_supplied_values_are_checked() {
+        let mut x = sample("facility");
+        x.label = Some("Synthetic facility".into());
+        assert!(validate(&x).is_ok());
+
+        x.country_code = Some("unknown".into());
+        assert!(validate(&x).is_ok());
+        let claim = restricted_claim(&x).expect("serializes unknown country as absent");
+        assert!(!claim.as_object().unwrap().contains_key("country_code"));
+        x.country_code = Some("DK".into());
+        assert!(validate(&x).is_ok());
+        x.country_code = Some("dk".into());
+        assert!(validate(&x).is_err());
+        x.country_code = None;
+
+        x.source_url = Some("https://example.org/source".into());
+        assert!(validate(&x).is_ok());
+        x.source_url = Some("javascript:alert(1)".into());
+        assert!(validate(&x).is_err());
+        x.source_url = None;
+        assert!(validate(&x).is_ok());
+    }
+    #[test]
+    fn evidence_without_source_needs_target_and_nonblank_description() {
+        let mut x = sample("evidence");
+        x.target_record_id = Some(Uuid::nil());
+        assert!(validate(&x).is_err());
+        x.description = Some("   ".into());
+        assert!(validate(&x).is_err());
+        x.description = Some("Synthetic supporting context".into());
+        assert!(validate(&x).is_ok());
+        x.source_url = Some("https://example.org/evidence".into());
+        x.description = None;
+        assert!(validate(&x).is_ok());
+        x.source_url = Some("file:///private".into());
+        assert!(validate(&x).is_err());
     }
     #[test]
     fn credentials_contact_and_unknown_fields_are_separate_or_rejected() {
