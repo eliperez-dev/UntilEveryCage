@@ -7,6 +7,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "maintenance" / "bridge-v0-candidates.py"
 SPEC = importlib.util.spec_from_file_location("bridge_v0_candidates", SCRIPT)
@@ -115,6 +116,70 @@ class CandidateBridgeTests(unittest.TestCase):
             self.assertEqual(len(verified["rows"]), 2)
             self.assertEqual(set(verified["groups"]), {"DK-GROUP-1"})
             self.assertEqual(verified["representatives"]["DK-GROUP-1"][0][0], "DK-1")
+            self.assertEqual(verified["manifest_sha256"], bridge._digest(manifest_path)[0])
+            self.assertEqual(verified["graph_manifest_sha256"], bridge._digest(
+                manifest_path.parent / "graph-candidates" / "manifest.json")[0])
+
+    def test_all_preview_sources_validate_before_any_canonical_insert(self):
+        from contextlib import nullcontext
+
+        sources = ("dk.smiley", "nl.synthetic")
+        freeze = {"release_id": "v0-candidate-preflight", "selected_sources": [
+            {"source_id": source, "snapshot_sha256": "c" * 64,
+             "source_artifact_sha256": "a" * 64, "source_bytes_state": "not_retained",
+             "source_artifact_byte_size": None} for source in sources],
+            "excluded_sources": [], "inventory_sha256": "b" * 64}
+        inventory = {"inventory_sha256": "b" * 64, "source_scope": {"sources": [
+            {"source_id": source} for source in sources]}}
+        handoffs = {source: {"source_url": "https://example.test/source", "source_host": "example.test",
+            "manifest_path": Path("manifest.json"), "manifest": {}, "normalized_sha256": "d" * 64,
+            "manifest_sha256": "e" * 64, "graph_manifest_sha256": "f" * 64,
+            "graph_records_sha256": "1" * 64, "terms_review_sha256": "2" * 64,
+            "rows": [], "representatives": {}} for source in sources}
+
+        class Result:
+            def __init__(self, row):
+                self.row = row
+
+            def fetchone(self):
+                return self.row
+
+        class Connection:
+            def __init__(self):
+                self.statements = []
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def transaction(self):
+                return nullcontext()
+
+            def execute(self, sql, _params=None):
+                self.statements.append(sql)
+                if sql == "SELECT current_database()":
+                    return Result(("uec_v0_review_preflight",))
+                if "to_regclass" in sql:
+                    return Result((None,))
+                if sql.startswith("SELECT count(*)"):
+                    return Result((0,))
+                if sql.startswith("SELECT status,profile,test_only,ruleset_version,summary"):
+                    return Result(None)
+                return Result(None)
+
+        connection = Connection()
+        with patch.object(bridge.psycopg, "connect", return_value=connection), \
+                patch.object(bridge, "verify_handoff", side_effect=lambda entry, _inventory: handoffs[entry["source_id"]]), \
+                patch.object(bridge, "_verify_preview_source", side_effect=[{}, bridge.BridgeError("preview_candidate_taxonomy_mismatch")]) as verify:
+            with self.assertRaisesRegex(bridge.BridgeError, "preview_candidate_taxonomy_mismatch"):
+                bridge.bridge("postgresql://127.0.0.1/uec_v0_review_preflight", "uec_v0_review_preflight",
+                              freeze, inventory, candidate_only_ack=True)
+
+        self.assertEqual([call.args[1] for call in verify.call_args_list], list(sources))
+        self.assertFalse(any(sql.lstrip().upper().startswith(("INSERT", "UPDATE", "DELETE"))
+                             for sql in connection.statements))
 
     def test_terms_review_accepts_approved_notes_format_and_binds_exact_file_hash(self):
         with tempfile.TemporaryDirectory(dir=bridge.ROOT) as temporary:
@@ -430,6 +495,11 @@ class CandidateBridgeDatabaseTests(unittest.TestCase):
                                  ("not_retained", None, None))
                 dates = connection.execute("SELECT observation->>'source_observed_at',observation->>'observed_at_basis' FROM uec.observations").fetchall()
                 self.assertTrue(all(source_date is None and basis == "project_retrieved_at" for source_date, basis in dates))
+                provenance = connection.execute("SELECT summary FROM uec.releases").fetchone()[0]["source_provenance"][0]
+                self.assertEqual(provenance["handoff_manifest_sha256"], handoff["manifest_sha256"])
+                self.assertEqual(provenance["graph_manifest_sha256"], handoff["graph_manifest_sha256"])
+                evidence_hashes = connection.execute("SELECT observation->>'handoff_manifest_sha256',observation->>'graph_manifest_sha256' FROM uec.observations").fetchall()
+                self.assertEqual(evidence_hashes, [(handoff["manifest_sha256"], handoff["graph_manifest_sha256"])] * 2)
                 coordinates = connection.execute("""SELECT ST_Y(coordinate::geometry),ST_X(coordinate::geometry)
                     FROM uec.observations ORDER BY source_record_id""").fetchall()
                 self.assertEqual(coordinates, [(56.123456, 10.654321), (56.123456, 10.654321)])

@@ -276,6 +276,8 @@ def verify_handoff(entry: dict[str, Any], inventory_source: dict[str, Any]) -> d
     graph_hash, _ = _digest(graph_records_path)
     if graph_hash != graph_manifest.get("records_sha256"):
         raise BridgeError("graph_handoff_hash_mismatch")
+    manifest_hash, _ = _digest(manifest_path)
+    graph_manifest_hash, _ = _digest(graph_manifest_path)
     rows = _read_jsonl(normalized_path)
     if len(rows) != inventory_source["counts"]["imported_observation_count"]:
         raise BridgeError("normalized_handoff_count_mismatch")
@@ -320,6 +322,8 @@ def verify_handoff(entry: dict[str, Any], inventory_source: dict[str, Any]) -> d
         "graph_records_path": graph_records_path,
         "manifest": manifest,
         "graph_manifest": graph_manifest,
+        "manifest_sha256": manifest_hash,
+        "graph_manifest_sha256": graph_manifest_hash,
         "source_url": source_url,
         "source_host": urlsplit(source_url).hostname,
         "normalized_sha256": normalized_hash,
@@ -605,8 +609,8 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                    "source_host": handoffs[source]["source_host"],
                    "handoff_manifest_path": str(handoffs[source]["manifest_path"]),
                    "normalized_sha256": handoffs[source]["normalized_sha256"],
-                   "handoff_manifest_sha256": _digest(handoffs[source]["manifest_path"])[0],
-                   "graph_manifest_sha256": _digest(handoffs[source]["graph_manifest_path"])[0],
+                   "handoff_manifest_sha256": handoffs[source]["manifest_sha256"],
+                   "graph_manifest_sha256": handoffs[source]["graph_manifest_sha256"],
                    "graph_records_sha256": handoffs[source]["graph_records_sha256"],
                    "terms_review_sha256": handoffs[source]["terms_review_sha256"],
                    "retrieved_at": handoffs[source]["manifest"].get("retrieved_at_utc"),
@@ -644,12 +648,20 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                     raise BridgeError("candidate_database_membership_not_empty")
                 if connection.execute("SELECT count(*) FROM uec.releases").fetchone()[0] != 0:
                     raise BridgeError("candidate_database_releases_not_empty")
+            # Validate every frozen source while the transaction is still
+            # read-only. A late source mismatch must not follow hours of
+            # canonical inserts only to force a rollback.
+            preview_checks = {
+                source: _verify_preview_source(connection, source, entry, handoffs[source])
+                for source, entry in entries.items()
+            }
+            if not existing:
                 connection.execute("""INSERT INTO uec.releases(release_id,status,ruleset_version,summary,profile,test_only)
                     VALUES (%s,'candidate',%s,%s,%s,false)""",
                     (freeze["release_id"], "v0-candidate-freeze-v1", Jsonb(summary), PROFILE))
             for source, entry in entries.items():
                 handoff = handoffs[source]
-                preview_check = _verify_preview_source(connection, source, entry, handoff)
+                preview_check = preview_checks[source]
                 run, manifest = preview_check["run"], preview_check["manifest"]
                 retrieved = _utc(str(handoff["manifest"].get("retrieved_at_utc") or handoff["manifest"].get("retrieved_at")), "retrieved_at")
                 source_url = str(handoff["manifest"].get("source_url"))
@@ -753,8 +765,8 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                         "source_observed_at": source_observed.isoformat() if source_observed else None,
                         "observed_at_basis": observed_basis,
                         "handoff_normalized_sha256": handoff["normalized_sha256"],
-                        "handoff_manifest_sha256": _digest(handoff["manifest_path"])[0],
-                        "graph_manifest_sha256": _digest(handoff["graph_manifest_path"])[0],
+                        "handoff_manifest_sha256": handoff["manifest_sha256"],
+                        "graph_manifest_sha256": handoff["graph_manifest_sha256"],
                         "graph_records_sha256": handoff["graph_records_sha256"],
                         "location_class": parsed[1], "source_location": {
                             "latitude": parsed[5], "longitude": parsed[6], "precision": parsed[7],
