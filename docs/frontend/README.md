@@ -30,13 +30,16 @@ The product principle is **quiet on first contact, powerful when investigated**.
 
 The maintainer's 2026-10-04 navigation revision adds **Contribute** and **About**
 beside these two discovery views: `Map, Database | Contribute, About`.
-Contribute combines a type-selecting form with receipt lookup, project
-contact, code, community and support links. About groups the project
-introduction/manifesto and Sources & methodology. These links must appear
+Contribute opens Add a facility by default, with visible task links to switch
+the form, plus receipt lookup, community browsing and project/support links.
+About groups Overview (the project manifesto) and Sources & methodology.
+These links must appear
 consistently in the public shell and local preview; following them must preserve
 the selected preview context. Private submission forms use ordinary language;
-publication warnings belong on public unreviewed community results. About and
-Contribute expose their destinations through accessible header dropdowns. Use
+publication warnings belong on public unreviewed community results. Contribute
+is a direct header link; About exposes its two destinations through a text-only
+menu without an arrow. State that the code is open source and provide an
+explicit GitHub path for code contributions on Overview and Contribute. Use
 the same styled masthead on all pages. Informational pages use compact type,
 short copy and modest spacing rather than oversized editorial sections.
 

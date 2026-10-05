@@ -14,7 +14,8 @@ describe('routeState', () => {
 
   it('keeps the requested About hierarchy and the old methodology alias', () => {
     expect(parseRoute('#/about')).toEqual({ kind: 'about', section: 'overview' });
-    expect(parseRoute('#/about/manifesto')).toEqual({ kind: 'about', section: 'manifesto' });
+    expect(parseRoute('#/about/manifesto')).toEqual({ kind: 'about', section: 'overview' });
+    expect(serializeRoute(parseRoute('#/about/manifesto') as { kind: 'about'; section: 'overview' })).toBe('#/about');
     expect(parseRoute('#/about/sources')).toEqual({ kind: 'methodology' });
     expect(parseRoute('#/methodology?map=%23%2Fmap%3Ff1a%3Dfield')).toEqual({ kind: 'methodology', returnMapHref: '#/map?f1a=field' });
     expect(serializeRoute({ kind: 'methodology' })).toBe('#/methodology');

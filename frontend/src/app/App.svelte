@@ -101,7 +101,7 @@
         <a href="#/map">Return to the map</a>
       </section>
     {:else if route.kind === 'about'}
-      <AboutPage section={route.section} returnMapHref={route.returnMapHref ?? '#/map'} />
+      <AboutPage returnMapHref={route.returnMapHref ?? '#/map'} />
     {:else if route.kind === 'contribute'}
       <ContributePage formKind={route.formKind ?? 'facility'} targetRecordId={route.targetRecordId ?? ''} returnMapHref={route.returnMapHref ?? '#/map'} />
     {:else if route.kind === 'bug-report'}

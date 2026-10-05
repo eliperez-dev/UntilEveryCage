@@ -44,23 +44,28 @@ test('the four primary links retain the rich preview context across Contribute a
   const primary = page.getByRole('navigation', { name: 'Primary' });
   await page.goto('/#/map?f1a=field&list=closed');
   await expect(page.getByRole('button', { name: /Search map Places, facilities, sources/ })).toBeVisible();
-  for (const label of ['Map', 'Database', 'Contribute', 'About']) await expect(primary.getByRole('link', { name: label })).toBeVisible();
+  for (const label of ['Map', 'Database', 'Contribute']) await expect(primary.getByRole('link', { name: label })).toBeVisible();
+  await expect(primary.getByRole('button', { name: 'About', exact: true })).toBeVisible();
 
   await primary.getByRole('link', { name: 'Contribute' }).click();
-  await expect(page.getByRole('heading', { name: 'Contribute' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Add a facility' })).toBeVisible();
   await expect.poll(() => new URL(page.url()).hash).toContain('map=%23%2Fmap%3Ff1a%3Dfield');
   const shellNav = page.getByRole('navigation', { name: 'Primary' });
-  for (const label of ['Map', 'Database', 'Contribute', 'About']) await expect(shellNav.getByRole('link', { name: label })).toBeVisible();
+  for (const label of ['Map', 'Database', 'Contribute']) await expect(shellNav.getByRole('link', { name: label })).toBeVisible();
+  await expect(shellNav.getByRole('button', { name: 'About', exact: true })).toBeVisible();
 
-  await shellNav.getByRole('link', { name: 'About' }).click();
-  await expect(page.getByRole('heading', { name: 'About Until Every Cage' })).toBeVisible();
+  await shellNav.getByRole('button', { name: 'About', exact: true }).click();
+  await page.locator('#shared-about-nav').getByRole('link', { name: 'Overview' }).click();
+  await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible();
   await shellNav.getByRole('link', { name: 'Map' }).click();
   await expect(page.getByRole('button', { name: /Search map Places, facilities, sources/ })).toBeVisible();
-  for (const label of ['Map', 'Database', 'Contribute', 'About']) await expect(primary.getByRole('link', { name: label })).toBeVisible();
+  for (const label of ['Map', 'Database', 'Contribute']) await expect(primary.getByRole('link', { name: label })).toBeVisible();
+  await expect(primary.getByRole('button', { name: 'About', exact: true })).toBeVisible();
 
   await primary.getByRole('link', { name: 'Database' }).click();
   await expect(page.getByRole('heading', { name: 'Research index' })).toBeVisible();
-  for (const label of ['Map', 'Database', 'Contribute', 'About']) await expect(primary.getByRole('link', { name: label })).toBeVisible();
+  for (const label of ['Map', 'Database', 'Contribute']) await expect(primary.getByRole('link', { name: label })).toBeVisible();
+  await expect(primary.getByRole('button', { name: 'About', exact: true })).toBeVisible();
   expect(new URL(page.url()).hash).toContain('f1a=field');
   await primary.getByRole('link', { name: 'Map' }).click();
   await expect(page.getByRole('button', { name: /Search map Places, facilities, sources/ })).toBeVisible();

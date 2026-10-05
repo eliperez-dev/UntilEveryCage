@@ -18,12 +18,11 @@
   const context = $derived(mapHref === '#/map' ? '' : `map=${encodeURIComponent(mapHref)}`);
   const aboutHref = $derived(`#/about${context ? `?${context}` : ''}`);
   const contributeHref = $derived(`#/contribute${context ? `?${context}` : ''}`);
-  const menuHref = (path: string, type?: string) => `#/${path}${type || context ? `?${[type ? `type=${type}` : '', context].filter(Boolean).join('&')}` : ''}`;
-  let navOpen = $state<'about' | 'contribute' | null>(null);
+  const menuHref = (path: string) => `#/${path}${context ? `?${context}` : ''}`;
+  let navOpen = $state<'about' | null>(null);
   let navArea: HTMLElement;
   let aboutButton: HTMLButtonElement;
-  let contributeButton: HTMLButtonElement;
-  function toggleNav(menu: 'about' | 'contribute', focusFirst = false) {
+  function toggleNav(menu: 'about', focusFirst = false) {
     const next = focusFirst || navOpen !== menu; closeMenus(); navOpen = next ? menu : null;
     if (next && focusFirst) void tick().then(() => navArea?.querySelector<HTMLAnchorElement>(`#shared-${menu}-nav a`)?.focus());
   }
@@ -34,12 +33,12 @@
   let toolsButton: HTMLButtonElement;
   let accountButton: HTMLButtonElement;
   let releaseButton: HTMLButtonElement;
-  function closeMenus(returnFocus: "release" | "tools" | "account" | "about" | "contribute" | null = null) {
+  function closeMenus(returnFocus: "release" | "tools" | "account" | "about" | null = null) {
     navOpen = null;
     releaseOpen = false;
     toolsOpen = false;
     accountOpen = false;
-    if (returnFocus) void tick().then(() => (returnFocus === "release" ? releaseButton : returnFocus === "tools" ? toolsButton : returnFocus === "account" ? accountButton : returnFocus === "about" ? aboutButton : contributeButton)?.focus());
+    if (returnFocus) void tick().then(() => (returnFocus === "release" ? releaseButton : returnFocus === "tools" ? toolsButton : returnFocus === "account" ? accountButton : aboutButton)?.focus());
   }
   function toggleRelease() { navOpen = null; toolsOpen = false; accountOpen = false; releaseOpen = !releaseOpen; }
   function toggleTools() { navOpen = null; releaseOpen = false; accountOpen = false; toolsOpen = !toolsOpen; }
@@ -55,18 +54,11 @@
   <nav aria-label="Primary" bind:this={navArea}>
     <a href={mapHref} aria-current={current === "map" ? "page" : undefined}>Map</a>
     <a href={databaseHref} aria-current={current === "database" ? "page" : undefined}>Database</a>
-    <div class="nav-group secondary-link">
-      <a href={contributeHref} aria-current={current === "contribute" ? "page" : undefined}>Contribute</a>
-      <button bind:this={contributeButton} class="nav-toggle" type="button" aria-label="Contribute menu" aria-expanded={navOpen === 'contribute'} aria-controls="shared-contribute-nav" onclick={() => toggleNav('contribute')} onkeydown={(event) => { if (event.key === 'ArrowDown') { event.preventDefault(); toggleNav('contribute', true); } }}>&#8964;</button>
-      {#if navOpen === 'contribute'}<div id="shared-contribute-nav" class="nav-dropdown" aria-label="Contribute destinations">
-        <a href={menuHref('contribute','facility')}>Add a facility</a><a href={menuHref('contribute','evidence')}>Add evidence</a><a href={menuHref('contribute','correction')}>Correction</a><a href={menuHref('contribute','duplicate')}>Duplicate</a><a href={menuHref('contribute','privacy_removal')}>Privacy/removal</a><a href={menuHref('contribute','bug')}>Report a bug</a><a href={menuHref('contribution-status')}>Check status</a><a href={menuHref('community')}>Community submissions</a>
-      </div>{/if}
-    </div>
+    <a class="secondary-link" href={contributeHref} aria-current={current === "contribute" ? "page" : undefined}>Contribute</a>
     <div class="nav-group">
-      <a href={aboutHref} aria-current={current === "about" || current === "methodology" ? "page" : undefined}>About</a>
-      <button bind:this={aboutButton} class="nav-toggle" type="button" aria-label="About menu" aria-expanded={navOpen === 'about'} aria-controls="shared-about-nav" onclick={() => toggleNav('about')} onkeydown={(event) => { if (event.key === 'ArrowDown') { event.preventDefault(); toggleNav('about', true); } }}>&#8964;</button>
+      <button bind:this={aboutButton} class="about-control" type="button" aria-current={current === "about" || current === "methodology" ? 'page' : undefined} aria-expanded={navOpen === 'about'} aria-controls="shared-about-nav" onclick={() => toggleNav('about')} onkeydown={(event) => { if (event.key === 'ArrowDown') { event.preventDefault(); toggleNav('about', true); } }}>About</button>
       {#if navOpen === 'about'}<div id="shared-about-nav" class="nav-dropdown about-dropdown" aria-label="About destinations">
-        <a href={aboutHref}>Overview</a><a href={menuHref('about/manifesto')}>Manifesto</a><a href={menuHref('about/sources')}>Sources & methodology</a>
+        <a href={aboutHref}>Overview</a><a href={menuHref('about/sources')}>Sources & methodology</a>
       </div>{/if}
     </div>
   </nav>
@@ -122,8 +114,9 @@
   nav a[aria-current] { color: #f1efe8; text-decoration: underline; text-underline-offset: 0.35rem; }
   nav .secondary-link { margin-left:.2rem; padding-left:1rem; border-left:1px solid #48524a; }
   .nav-group{position:relative;display:flex;align-items:center;gap:.1rem}
-  .nav-toggle{display:grid;place-content:center;min-width:1.7rem;min-height:2rem;padding:0;border:0;background:transparent;color:#b9c2b9;cursor:pointer;font:1rem system-ui}
-  .nav-toggle:hover,.nav-toggle[aria-expanded="true"]{color:#fff;background:#252d27}
+  .about-control{display:flex;align-items:center;min-height:2rem;padding:0;border:0;background:transparent;color:#aeb9af;cursor:pointer;font:inherit}
+  .about-control:hover,.about-control[aria-expanded="true"]{color:#fff}
+  .about-control[aria-current]{color:#f1efe8;text-decoration:underline;text-underline-offset:.35rem}
   .nav-dropdown{position:absolute;z-index:50;top:calc(100% + .5rem);left:0;display:grid;width:13rem;max-width:calc(100vw - 2rem);padding:.35rem;border:1px solid #536158;background:#171a18;box-shadow:0 .5rem 1rem #0007}
   .nav-dropdown a{display:flex;align-items:center;min-height:2.35rem;padding:.4rem .6rem;color:#eee9df;font-size:.82rem;text-decoration:none}
   .nav-dropdown a:hover{background:#2a332c}.about-dropdown{left:auto;right:0;width:14rem}
@@ -157,7 +150,6 @@
     .wordmark{font-size:.9rem}.wordmark img{width:1.6rem;height:1.6rem}
     .masthead { min-height: 3.9rem; }
     .preview-action, .tools-action span { display:none; }
-    .nav-group.secondary-link .nav-dropdown{left:auto;right:0}
     .masthead-actions { gap:.25rem; }
     nav { gap:.65rem; }
     nav .secondary-link { margin-left:0; padding-left:.5rem; }
