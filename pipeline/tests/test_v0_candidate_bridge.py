@@ -442,20 +442,36 @@ class CandidateBridgeDatabaseTests(unittest.TestCase):
                         ("c" * 64, identifier, parsed[1], identifier == "DK-1", parsed[2], parsed[3], parsed[4],
                          parsed[5], parsed[6], parsed[7], parsed[8])).fetchone()[0]
                 representative = next(parsed for parsed, _raw in handoff["rows"] if parsed[0] == "DK-1")
-                connection.execute("""INSERT INTO real_preview.candidates
+                candidate_id = connection.execute("""INSERT INTO real_preview.candidates
                     (snapshot_sha256,source_id,source_group_key,representative_observation_id,location_class,country_code,city,postal_code,
-                     latitude,longitude,coordinate_precision,observation_count,category,activity_categories,source_activity_codes,source_activity_labels,
-                     activity_mapping_status,classification_ruleset_version)
-                    VALUES (%s,'dk.smiley','DK-GROUP-1',%s,%s,%s,%s,%s,%s,%s,%s,2,%s,%s,%s,%s,%s,%s)""",
+                     latitude,longitude,coordinate_precision,observation_count)
+                    VALUES (%s,'dk.smiley','DK-GROUP-1',%s,%s,%s,%s,%s,%s,%s,%s,2)
+                    RETURNING candidate_id""",
                     ("c" * 64, preview_ids["DK-1"], representative[1], representative[2], representative[3],
-                     representative[4], representative[5], representative[6], representative[7], merged["category"], merged["activity_categories"],
-                     merged["source_activity_codes"], merged["source_activity_labels"], merged["activity_mapping_status"],
-                     merged["classification_ruleset_version"]))
+                     representative[4], representative[5], representative[6], representative[7])).fetchone()[0]
                 connection.execute("""INSERT INTO real_preview.taxonomy_crosswalks
                     (source_id,taxonomy_version,crosswalk_version,ruleset_version,definition,definition_sha256)
                     VALUES (%s,%s,%s,%s,%s,%s)""",
                     ("dk.smiley", document["taxonomy_version"], document["crosswalk_version"], document["ruleset_version"],
                      Jsonb(document), bridge.crosswalk_sha256(document)))
+                candidate_before_assignment = connection.execute(
+                    "SELECT to_jsonb(candidate) FROM real_preview.candidates candidate WHERE candidate_id=%s",
+                    (candidate_id,),
+                ).fetchone()[0]
+                self.assertIsNone(candidate_before_assignment["category"])
+                self.assertIsNone(candidate_before_assignment["classification_ruleset_version"])
+                self.assertEqual(candidate_before_assignment["activity_categories"], [])
+                self.assertEqual(candidate_before_assignment["activity_mapping_status"], "unclassified")
+                bridge.IMPORTER.persist_preview_candidate_assignment_set(
+                    connection, candidate_id=str(candidate_id),
+                    representative_observation_id=str(preview_ids["DK-1"]), snapshot_sha256="c" * 64,
+                    source_id="dk.smiley", document=document,
+                    assignment_rows=merged["taxonomy_assignment_rows"],
+                )
+                self.assertEqual(connection.execute(
+                    "SELECT to_jsonb(candidate) FROM real_preview.candidates candidate WHERE candidate_id=%s",
+                    (candidate_id,),
+                ).fetchone()[0], candidate_before_assignment)
             verified_freeze = dict(freeze)
             verified_inventory = dict(inventory)
             url = os.environ["UEC_V0_BRIDGE_TEST_DATABASE_URL"]
@@ -475,6 +491,10 @@ class CandidateBridgeDatabaseTests(unittest.TestCase):
             with psycopg.connect(url) as connection:
                 for table in ("uec.releases", "uec.release_members", "uec.raw_artifacts", "uec.source_records", "uec.observations"):
                     self.assertEqual(connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0], 0, table)
+                self.assertEqual(connection.execute(
+                    "SELECT to_jsonb(candidate) FROM real_preview.candidates candidate WHERE candidate_id=%s",
+                    (candidate_id,),
+                ).fetchone()[0], candidate_before_assignment)
                 connection.execute("DROP TRIGGER v0_bridge_test_abort ON uec.release_members")
                 connection.execute("DROP FUNCTION uec.v0_bridge_test_abort()")
             try:
@@ -488,6 +508,10 @@ class CandidateBridgeDatabaseTests(unittest.TestCase):
             self.assertEqual(first["counts"]["source_observations"], 2)
             self.assertEqual(first["counts"]["facility_candidates"], 1)
             with psycopg.connect(url) as connection:
+                self.assertEqual(connection.execute(
+                    "SELECT to_jsonb(candidate) FROM real_preview.candidates candidate WHERE candidate_id=%s",
+                    (candidate_id,),
+                ).fetchone()[0], candidate_before_assignment)
                 self.assertEqual(connection.execute("SELECT status,profile,test_only FROM uec.releases").fetchone(),
                                  ("candidate", "official", False))
                 self.assertEqual(connection.execute("SELECT count(*) FROM uec.release_members WHERE default_visible").fetchone()[0], 0)

@@ -23,7 +23,8 @@ from urllib.parse import urlsplit
 
 import psycopg
 from psycopg.types.json import Jsonb
-from pipeline.taxonomy.contract import crosswalk_sha256
+from pipeline.taxonomy.contract import choose_display_category, crosswalk_sha256
+from pipeline.taxonomy.persistence import _canonical_rows
 
 ROOT = Path(__file__).resolve().parents[3]
 IMPORTER_PATH = ROOT / "pipeline" / "scripts" / "maintenance" / "import-real-preview.py"
@@ -336,6 +337,52 @@ def verify_handoff(entry: dict[str, Any], inventory_source: dict[str, Any]) -> d
     }
 
 
+def verify_current_candidate_taxonomy(connection: Any, *, candidate_id: str,
+                                      representative_observation_id: str, snapshot_sha256: str,
+                                      source_id: str, document: dict[str, Any],
+                                      assignment_rows: list[dict[str, Any]]) -> None:
+    """Require the exact append-only current assignment set, independent of legacy cache columns."""
+    try:
+        expected_rows = _canonical_rows(representative_observation_id, candidate_id, snapshot_sha256,
+                                        document, assignment_rows)
+        display_category = choose_display_category(expected_rows)
+    except Exception:
+        raise BridgeError("preview_candidate_taxonomy_expectation_invalid") from None
+    sets = connection.execute("""SELECT assignment_set_id::text,representative_observation_id::text,
+            snapshot_sha256,source_id,taxonomy_version,crosswalk_version,ruleset_version,display_category
+        FROM real_preview.candidate_taxonomy_assignment_sets assignment_set
+        WHERE candidate_id=%s AND snapshot_sha256=%s AND source_id=%s
+          AND taxonomy_version=%s AND crosswalk_version=%s AND ruleset_version=%s
+          AND NOT EXISTS (
+              SELECT 1 FROM real_preview.candidate_taxonomy_assignment_sets newer
+              WHERE newer.candidate_id=assignment_set.candidate_id
+                AND newer.taxonomy_version=assignment_set.taxonomy_version
+                AND (newer.created_at,newer.assignment_set_id) >
+                    (assignment_set.created_at,assignment_set.assignment_set_id)
+          )""",
+        (candidate_id, snapshot_sha256, source_id, document["taxonomy_version"],
+         document["crosswalk_version"], document["ruleset_version"])).fetchall()
+    if len(sets) != 1:
+        raise BridgeError("preview_candidate_taxonomy_assignment_set_missing_or_ambiguous")
+    set_row = sets[0]
+    expected_lineage = (representative_observation_id, snapshot_sha256, source_id,
+                        document["taxonomy_version"], document["crosswalk_version"],
+                        document["ruleset_version"], display_category)
+    actual_lineage = tuple(str(value).strip() for value in set_row[1:])
+    if actual_lineage != expected_lineage:
+        raise BridgeError("preview_candidate_taxonomy_assignment_lineage_mismatch")
+    actual_rows = connection.execute("""SELECT assignment_ordinal,primary_key,leaf_key,leaf_label,
+            source_code_reference,source_label_reference,source_code,source_label,mapping_method,mapping_status
+        FROM real_preview.candidate_taxonomy_assignments
+        WHERE assignment_set_id=%s ORDER BY assignment_ordinal""", (set_row[0],)).fetchall()
+    expected_assignments = tuple((ordinal, row.primary_key, row.leaf_key, row.leaf_label,
+                                  row.source_code_reference, row.source_label_reference,
+                                  row.source_code, row.source_label, row.method, row.status)
+                                 for ordinal, row in enumerate(expected_rows))
+    if tuple(tuple(row) for row in actual_rows) != expected_assignments:
+        raise BridgeError("preview_candidate_taxonomy_assignments_mismatch")
+
+
 def _verify_preview_source(connection: Any, source: str, entry: dict[str, Any], handoff: dict[str, Any]) -> dict[str, Any]:
     snapshot = entry["snapshot_sha256"]
     run = connection.execute("""SELECT source_artifact_sha256, normalized_sha256, source_url, retrieved_at,
@@ -441,13 +488,12 @@ def _verify_preview_source(connection: Any, source: str, entry: dict[str, Any], 
         group_contracts = [taxonomy_by_identifier[str(row.get("source_record_key", row.get("source_row_id")))]
                            for _, row in handoff["groups"][group]]
         merged = IMPORTER.merge_activity_contracts(group_contracts, source)
-        if (db_candidate[18] != merged["category"]
-                or list(db_candidate[19] or []) != merged["activity_categories"]
-                or list(db_candidate[20] or []) != merged["source_activity_codes"]
-                or list(db_candidate[21] or []) != merged["source_activity_labels"]
-                or db_candidate[22] != merged["activity_mapping_status"]
-                or db_candidate[23] != merged["classification_ruleset_version"]):
-            raise BridgeError("preview_candidate_taxonomy_mismatch")
+        verify_current_candidate_taxonomy(
+            connection, candidate_id=str(db_candidate[0]),
+            representative_observation_id=str(db_candidate[2]), snapshot_sha256=snapshot,
+            source_id=source, document=merged["crosswalk_document"],
+            assignment_rows=merged["taxonomy_assignment_rows"],
+        )
         rep_by_id[group] = identifier
     for parsed, raw in handoff["rows"]:
         identifier = str(parsed[0])

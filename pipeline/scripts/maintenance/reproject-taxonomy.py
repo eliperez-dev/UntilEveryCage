@@ -3,8 +3,8 @@
 
 The legacy JSONL mode defaults to a dry run and writes only the derived
 ``taxonomy`` object when applied. Frozen-preview mode is read-only by default;
-``--apply`` appends v2 assignment sets and synchronizes only six legacy
-taxonomy projection columns after exact frozen identity checks.
+``--apply`` appends v2 assignment sets after exact frozen identity checks and
+leaves immutable real-preview source and candidate rows unchanged.
 """
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import sys
 import tempfile
 from urllib.parse import parse_qsl, unquote, urlsplit
@@ -81,6 +82,29 @@ def _json_digest(connection, query: str, params: tuple = ()) -> str:
                                      separators=(",", ":"), default=str).encode("utf-8"))
             hasher.update(b"\n")
     return hasher.hexdigest()
+
+
+def _frozen_progress(source_id: str, phase: str, candidate_groups: int) -> None:
+    sys.stderr.write(json.dumps({"source_id": source_id, "phase": phase,
+                                 "candidate_groups": candidate_groups}, sort_keys=True) + "\n")
+
+
+def _blocked_report(error: Exception) -> dict:
+    report = {"mode": "blocked", "reason_code": "candidate_preview_reconciliation_failed",
+              "error_class": type(error).__name__, "private_payload_included": False}
+    if type(error).__name__ == "BridgeError":
+        reason = str(error)
+        if re.fullmatch(r"[a-z][a-z0-9_]{0,95}", reason):
+            report["reason_code"] = reason
+    else:
+        sqlstate = getattr(error, "sqlstate", None)
+        if (type(error).__module__.startswith("psycopg") and isinstance(sqlstate, str)
+                and re.fullmatch(r"[0-9A-Z]{5}", sqlstate)):
+            report["reason_code"] = "database_operation_failed"
+            report["database_sqlstate"] = sqlstate
+        elif isinstance(error, ValueError):
+            report["reason_code"] = "taxonomy_reconciliation_validation_failed"
+    return report
 
 
 def _assert_preview_source_identity(connection, source: str, entry: dict, handoff: dict, importer) -> dict:
@@ -175,12 +199,12 @@ def _reconcile_preview_freeze_in_transaction(connection, freeze_path: Path, inve
     results = []
     for entry in freeze["selected_sources"]:
         source = entry["source_id"]
+        expected_group_count = int(entry["facility_count"])
+        _frozen_progress(source, "handoff_verification_started", expected_group_count)
         handoff = bridge.verify_handoff(entry, inventory_sources[source])
         checked = _assert_preview_source_identity(connection, source, entry, handoff, importer)
         snapshot = entry["snapshot_sha256"]
-        before_candidates[source] = _json_digest(connection, """SELECT to_jsonb(candidate) - ARRAY[
-            'category','activity_categories','source_activity_codes','source_activity_labels',
-            'activity_mapping_status','classification_ruleset_version']::text[]
+        before_candidates[source] = _json_digest(connection, """SELECT to_jsonb(candidate)
             FROM real_preview.candidates candidate WHERE source_id=%s AND snapshot_sha256=%s ORDER BY candidate_id""",
             (source, snapshot))
         before_observations[source] = _json_digest(connection, """SELECT to_jsonb(observation)
@@ -204,6 +228,7 @@ def _reconcile_preview_freeze_in_transaction(connection, freeze_path: Path, inve
                               before_observations[source], before_v1_assignments[source])
         results.append({"source_id": source, "observations": checked["observation_count"],
                         "candidate_groups": len(group_results)})
+        _frozen_progress(source, "preview_identity_verified", len(group_results))
 
     if apply_changes:
         for source, (handoff, checked, group_results, candidate_hash, observation_hash, v1_hash) in projected.items():
@@ -218,19 +243,14 @@ def _reconcile_preview_freeze_in_transaction(connection, freeze_path: Path, inve
                     snapshot_sha256=snapshot, source_id=source, document=document,
                     assignment_rows=activity["taxonomy_assignment_rows"],
                 )
-                importer.sync_candidate_taxonomy_projection(
-                    connection, candidate_id=str(candidate[0]), snapshot=snapshot,
-                    source=source, activity=activity,
-                )
-            # Strict bridge verification now checks v2 assignments and the six synchronized fields.
+            # Strict bridge verification checks append-only v2 assignment sets;
+            # legacy candidate taxonomy columns remain unchanged and immutable.
             bridge._verify_preview_source(connection, source,
                 next(row for row in freeze["selected_sources"] if row["source_id"] == source), handoff)
-            if _json_digest(connection, """SELECT to_jsonb(candidate) - ARRAY[
-                    'category','activity_categories','source_activity_codes','source_activity_labels',
-                    'activity_mapping_status','classification_ruleset_version']::text[]
+            if _json_digest(connection, """SELECT to_jsonb(candidate)
                     FROM real_preview.candidates candidate WHERE source_id=%s AND snapshot_sha256=%s ORDER BY candidate_id""",
                 (source, snapshot)) != candidate_hash:
-                raise ValueError("non-taxonomy candidate data changed")
+                raise ValueError("candidate source evidence changed")
             if _json_digest(connection, """SELECT to_jsonb(observation) FROM real_preview.observations observation
                 WHERE source_id=%s AND snapshot_sha256=%s ORDER BY preview_id""", (source, snapshot)) != observation_hash:
                 raise ValueError("source observations changed")
@@ -249,6 +269,7 @@ def _reconcile_preview_freeze_in_transaction(connection, freeze_path: Path, inve
                 (source, snapshot, CROSSWALK_VERSION)).fetchone()[0]
             if int(v2_count) != len(group_results):
                 raise ValueError("v2 assignment set count mismatch")
+            _frozen_progress(source, "append_only_assignments_verified", len(group_results))
     public_state = connection.execute("""SELECT
         (SELECT count(*) FROM uec.releases),
         (SELECT count(*) FROM uec.release_members)""").fetchone()
@@ -335,8 +356,7 @@ def main() -> int:
                 report = reconcile_preview_freeze(connection, args.preview_freeze, args.inventory,
                                                   apply_changes=args.apply, expected_database=args.expected_database)
         except Exception as error:
-            blocked = {"mode": "blocked", "reason_code": "candidate_preview_reconciliation_failed",
-                       "error_class": type(error).__name__, "private_payload_included": False}
+            blocked = _blocked_report(error)
             payload = json.dumps(blocked, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
             if args.report:
                 args.report.parent.mkdir(parents=True, exist_ok=True)

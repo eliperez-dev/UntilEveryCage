@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import psycopg
+from psycopg.types.json import Jsonb
 from pipeline.geocoding.base import GeocodeOutcome
 from pipeline.taxonomy.persistence import persist_preview_candidate_assignment_set
 from pipeline.taxonomy_crosswalk import crosswalk_document, persistence_assignments, project_observation
@@ -21,6 +22,12 @@ WORKER_SPEC = importlib.util.spec_from_file_location(
 )
 WORKER = importlib.util.module_from_spec(WORKER_SPEC)
 WORKER_SPEC.loader.exec_module(WORKER)
+BRIDGE_SPEC = importlib.util.spec_from_file_location(
+    "v0_candidate_bridge_postgis_test",
+    Path(__file__).parents[1] / "scripts" / "maintenance" / "bridge-v0-candidates.py",
+)
+BRIDGE = importlib.util.module_from_spec(BRIDGE_SPEC)
+BRIDGE_SPEC.loader.exec_module(BRIDGE)
 
 
 @unittest.skipUnless(DATABASE_URL, "requires a dedicated disposable PostGIS test database")
@@ -129,12 +136,82 @@ class RealPreviewPostgisTests(unittest.TestCase):
                     "normalized": {"source_category": "UNKNOWN-SOURCE-CODE"},
                 })
                 self.assertEqual(fsis_projection["taxonomy_mapping_status"], "unmapped")
-                persist_preview_candidate_assignment_set(
+                fsis_candidate_before_taxonomy = connection.execute(
+                    "SELECT to_jsonb(candidate) FROM real_preview.candidates candidate WHERE candidate_id=%s",
+                    (fsis_candidate_id,),
+                ).fetchone()[0]
+                self.assertIsNone(fsis_candidate_before_taxonomy["category"])
+                self.assertIsNone(fsis_candidate_before_taxonomy["classification_ruleset_version"])
+                with self.assertRaises(psycopg.Error):
+                    with connection.transaction():
+                        connection.execute("UPDATE real_preview.candidates SET category='slaughter' WHERE candidate_id=%s",
+                                           (fsis_candidate_id,))
+                fsis_document = crosswalk_document("us.fsis")
+                fsis_assignment_rows = persistence_assignments(fsis_projection)
+                fsis_set_id = persist_preview_candidate_assignment_set(
                     connection, candidate_id=str(fsis_candidate_id),
                     representative_observation_id=str(unmapped_observation_id), snapshot_sha256="a" * 64,
-                    source_id="us.fsis", document=crosswalk_document("us.fsis"),
-                    assignment_rows=persistence_assignments(fsis_projection),
+                    source_id="us.fsis", document=fsis_document,
+                    assignment_rows=fsis_assignment_rows,
                 )
+                fsis_candidate_after_taxonomy = connection.execute(
+                    "SELECT to_jsonb(candidate) FROM real_preview.candidates candidate WHERE candidate_id=%s",
+                    (fsis_candidate_id,),
+                ).fetchone()[0]
+                self.assertEqual(fsis_candidate_after_taxonomy, fsis_candidate_before_taxonomy)
+                BRIDGE.verify_current_candidate_taxonomy(
+                    connection, candidate_id=str(fsis_candidate_id),
+                    representative_observation_id=str(unmapped_observation_id), snapshot_sha256="a" * 64,
+                    source_id="us.fsis", document=fsis_document,
+                    assignment_rows=fsis_assignment_rows,
+                )
+                mismatched_projection = project_observation({
+                    "source_id": "us.fsis", "normalized": {"species_slaughtered": {"synthetic": "yes"}},
+                })
+                with self.assertRaises(BRIDGE.BridgeError):
+                    BRIDGE.verify_current_candidate_taxonomy(
+                        connection, candidate_id=str(fsis_candidate_id),
+                        representative_observation_id=str(unmapped_observation_id), snapshot_sha256="a" * 64,
+                        source_id="us.fsis", document=fsis_document,
+                        assignment_rows=persistence_assignments(mismatched_projection),
+                    )
+                missing_projection = project_observation({"source_id": "au.npi.facilities", "normalized": {}})
+                with self.assertRaises(BRIDGE.BridgeError):
+                    BRIDGE.verify_current_candidate_taxonomy(
+                        connection, candidate_id=str(missing_artifact_candidate_id),
+                        representative_observation_id=str(missing_artifact_observation_id), snapshot_sha256="a" * 64,
+                        source_id="au.npi.facilities", document=crosswalk_document("au.npi.facilities"),
+                        assignment_rows=persistence_assignments(missing_projection),
+                    )
+                newer_document = dict(fsis_document)
+                newer_document["crosswalk_version"] = fsis_document["crosswalk_version"] + "-shadow-test"
+                connection.execute("""INSERT INTO real_preview.taxonomy_crosswalks
+                    (source_id,taxonomy_version,crosswalk_version,ruleset_version,definition,definition_sha256)
+                    VALUES (%s,%s,%s,%s,%s,%s)""",
+                    ("us.fsis", newer_document["taxonomy_version"], newer_document["crosswalk_version"],
+                     newer_document["ruleset_version"], Jsonb(newer_document),
+                     BRIDGE.crosswalk_sha256(newer_document)))
+                newer_set_id = connection.execute("""INSERT INTO real_preview.candidate_taxonomy_assignment_sets
+                    (candidate_id,representative_observation_id,snapshot_sha256,source_id,taxonomy_version,
+                     crosswalk_version,ruleset_version,display_category,created_at)
+                    SELECT candidate_id,representative_observation_id,snapshot_sha256,source_id,taxonomy_version,
+                           %s,ruleset_version,display_category,clock_timestamp()+interval '1 day'
+                    FROM real_preview.candidate_taxonomy_assignment_sets WHERE assignment_set_id=%s
+                    RETURNING assignment_set_id""",
+                    (newer_document["crosswalk_version"], fsis_set_id)).fetchone()[0]
+                connection.execute("""INSERT INTO real_preview.candidate_taxonomy_assignments
+                    (assignment_set_id,assignment_ordinal,primary_key,leaf_key,leaf_label,source_code_reference,
+                     source_label_reference,source_code,source_label,mapping_method,mapping_status)
+                    SELECT %s,assignment_ordinal,primary_key,leaf_key,leaf_label,source_code_reference,
+                           source_label_reference,source_code,source_label,mapping_method,mapping_status
+                    FROM real_preview.candidate_taxonomy_assignments WHERE assignment_set_id=%s""",
+                    (newer_set_id, fsis_set_id))
+                with self.assertRaises(BRIDGE.BridgeError):
+                    BRIDGE.verify_current_candidate_taxonomy(
+                        connection, candidate_id=str(fsis_candidate_id),
+                        representative_observation_id=str(unmapped_observation_id), snapshot_sha256="a" * 64,
+                        source_id="us.fsis", document=fsis_document, assignment_rows=fsis_assignment_rows,
+                    )
                 france_lineage = connection.execute("""
                     SELECT source_identifier,display_category,count(*)::int,
                            count(DISTINCT primary_key)::int,bool_and(source_code_reference IS NOT NULL)

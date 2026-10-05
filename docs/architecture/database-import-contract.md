@@ -46,6 +46,40 @@ Any unexpected error rolls back the transaction. The previous validated release 
 
 The importer may be rerun with the same staging directory. It must not create duplicate source records, facilities, observations, geocode results, or release members. Database uniqueness constraints and deterministic keys are the final safety layer; application checks alone are insufficient.
 
+### Private-preview taxonomy reconciliation
+
+`uec-taxonomy-v1` remains the category taxonomy. The interpretation version
+`uec-source-crosswalk-v2` preserves direct mapping-method provenance and the
+union of all observations in a source-native candidate group. Earlier v1
+assignment sets remain immutable; a changed interpretation appends a new set,
+not a rewrite of source observations or prior assignments.
+
+Candidate rows are append-only too. Importer replay must not rewrite their
+legacy taxonomy cache columns. Current taxonomy is read from the newest
+versioned assignment set; staging checks its exact lineage, display category,
+and complete ordered assignment payload against the frozen source group.
+Retained source fields, addresses, coordinates, candidate rows, and earlier
+assignment sets remain intact.
+
+For an already frozen private cohort, use the existing maintenance CLI:
+
+```powershell
+python pipeline/scripts/maintenance/reproject-taxonomy.py `
+  --preview-freeze <freeze.json> --inventory <measured-inventory.json> `
+  --expected-database uec_v0_review_r2 --report <new-row-free-report.json>
+```
+
+It defaults to serializable read-only verification. `--apply` explicitly
+enables transactional reconciliation. `UEC_DATABASE_URL` supplies the local
+credential; never commit it or paste it into reports. The guarded target is
+exactly `uec_v0_review_r2` or `uec`, with a loopback PostgreSQL URL and no
+routing overrides. Verify on the isolated copy first. Successful apply checks
+the complete frozen handoff and database identity, hashes unchanged source
+observations/full candidate rows/v1 history, reconciles every new assignment
+set, and requires zero release rows and members. It does not stage a release,
+approve publication, or import graph claims. Keep failure receipts historical
+and build a fresh measured inventory/freeze after successful reconciliation.
+
 ## Identity policy for the first Denmark import
 
 Use `source_id=dk.smiley` plus `source_record_key=ID_nummer` as the source identity. Create a durable facility for each first-seen source record. Do not merge records solely because names or addresses look similar. Identity merges and splits become explicit decisions in later review work.
