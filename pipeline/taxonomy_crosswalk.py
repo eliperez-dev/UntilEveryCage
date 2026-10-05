@@ -12,7 +12,9 @@ from pathlib import Path
 from typing import Any, Iterable
 
 TAXONOMY_VERSION = "uec-taxonomy-v1"
-CROSSWALK_VERSION = "uec-source-crosswalk-v1"
+# v2 preserves the same source classification rules while versioning the
+# group-union assignment and mapping-method provenance corrections.
+CROSSWALK_VERSION = "uec-source-crosswalk-v2"
 PRIMARY_PRECEDENCE = (
     "slaughter", "research_and_animal_use", "animal_keeping_and_production",
     "processing_and_preparation", "other_regulated_premises", "unclassified",
@@ -314,6 +316,7 @@ def project_observation(record: dict[str, Any]) -> dict[str, Any]:
     return {
         "taxonomy_version": TAXONOMY_VERSION,
         "crosswalk_version": CROSSWALK_VERSION,
+        "ruleset_version": CROSSWALK_VERSION,
         "taxonomy_assignments": enriched,
         "taxonomy_primaries": primaries,
         "taxonomy_mapping_method": next(iter(methods)) if len(methods) == 1 else (

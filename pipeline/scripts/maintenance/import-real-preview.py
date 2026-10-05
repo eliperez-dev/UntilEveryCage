@@ -304,6 +304,7 @@ def merge_activity_contracts(contracts: list[dict[str, Any]], source_id: str | N
         source_ruleset = TAXONOMY_VERSION
     statuses = {contract["activity_mapping_status"] for contract in contracts}
     methods = {contract["taxonomy_mapping_method"] for contract in contracts}
+    mapping_method = next(iter(methods)) if len(methods) == 1 else ("candidate" if "candidate" in methods else "derived" if methods else "candidate")
     if "conflicting" in statuses:
         status = "conflicting"
     elif "ambiguous" in statuses:
@@ -321,14 +322,36 @@ def merge_activity_contracts(contracts: list[dict[str, Any]], source_id: str | N
         "taxonomy_assignment_rows": persistence_assignments({
             "taxonomy_assignments": ordered_assignments,
             "taxonomy_mapping_status": status,
+            "taxonomy_mapping_method": mapping_method,
         }),
         "crosswalk_document": next((contract["crosswalk_document"] for contract in contracts if contract["crosswalk_document"]), None),
-        "taxonomy_mapping_method": next(iter(methods)) if len(methods) == 1 else ("candidate" if "candidate" in methods else "derived" if methods else "candidate"),
+        "taxonomy_mapping_method": mapping_method,
         "source_activity_codes": codes,
         "source_activity_labels": labels,
         "activity_mapping_status": status,
         "classification_ruleset_version": source_ruleset,
     }
+
+
+def sync_candidate_taxonomy_projection(db: Any, *, candidate_id: str, snapshot: str,
+                                       source: str, activity: dict[str, Any]) -> None:
+    """Refresh only the six legacy taxonomy projection fields after v2 persistence."""
+    projection = (
+        activity["category"], activity["activity_categories"],
+        activity["source_activity_codes"], activity["source_activity_labels"],
+        activity["activity_mapping_status"], activity["classification_ruleset_version"],
+    )
+    db.execute(
+        """UPDATE real_preview.candidates
+              SET category=%s,activity_categories=%s,source_activity_codes=%s,
+                  source_activity_labels=%s,activity_mapping_status=%s,
+                  classification_ruleset_version=%s
+            WHERE candidate_id=%s AND snapshot_sha256=%s AND source_id=%s
+              AND ROW(category,activity_categories,source_activity_codes,source_activity_labels,
+                      activity_mapping_status,classification_ruleset_version)
+                  IS DISTINCT FROM ROW(%s,%s,%s,%s,%s,%s)""",
+        (*projection, candidate_id, snapshot, source, *projection),
+    )
 
 
 def safe_https_url(value: Any) -> str | None:
@@ -983,6 +1006,10 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
                 source_id=source,
                 document=activity["crosswalk_document"],
                 assignment_rows=activity["taxonomy_assignment_rows"],
+            )
+            sync_candidate_taxonomy_projection(
+                db, candidate_id=str(candidate_id), snapshot=snapshot,
+                source=source, activity=activity,
             )
         enrichment_state, enrichment_reason = (
             ("source_coordinate", "source_coordinate_present") if klass == "numeric_source_coordinate" else

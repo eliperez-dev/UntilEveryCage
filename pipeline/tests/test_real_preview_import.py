@@ -16,6 +16,30 @@ SPEC.loader.exec_module(IMPORTER)
 
 
 class RealPreviewImporterTests(unittest.TestCase):
+    def test_existing_candidate_taxonomy_sync_updates_only_projection_columns(self):
+        class FakeDatabase:
+            def __init__(self):
+                self.statement = None
+                self.parameters = None
+
+            def execute(self, statement, parameters):
+                self.statement = str(statement)
+                self.parameters = parameters
+
+        db = FakeDatabase()
+        activity = {"category": "unclassified", "activity_categories": [],
+                    "source_activity_codes": ["C-1"], "source_activity_labels": ["Example"],
+                    "activity_mapping_status": "unclassified",
+                    "classification_ruleset_version": "uec-taxonomy-v1"}
+        IMPORTER.sync_candidate_taxonomy_projection(
+            db, candidate_id="candidate-test", snapshot="a" * 64, source="it.853-2004", activity=activity)
+        self.assertIn("UPDATE real_preview.candidates", db.statement)
+        self.assertIn("IS DISTINCT FROM", db.statement)
+        self.assertNotIn("address", db.statement)
+        self.assertEqual(db.parameters[:6], ("unclassified", [], ["C-1"], ["Example"],
+                                             "unclassified", "uec-taxonomy-v1"))
+        self.assertEqual(db.parameters[6:9], ("candidate-test", "a" * 64, "it.853-2004"))
+
     def test_activity_schema_migration_is_additive_and_keeps_legacy_display_fields(self):
         migration = (Path(__file__).parents[1] / "migrations" / "054_real_preview_activity_contract.sql").read_text(encoding="utf-8")
         for column in ("category", "activity_categories", "source_activity_codes", "source_activity_labels",

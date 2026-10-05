@@ -5,7 +5,7 @@ import importlib.util
 from pathlib import Path
 import unittest
 
-from pipeline.taxonomy_crosswalk import TAXONOMY_VERSION, crosswalk_document, persistence_assignments, project_observation, reproject
+from pipeline.taxonomy_crosswalk import CROSSWALK_VERSION, TAXONOMY_VERSION, crosswalk_document, persistence_assignments, project_observation, reproject
 
 FIXTURES = Path(__file__).parent / "fixtures" / "taxonomy_crosswalk_cases.json"
 IMPORTER_PATH = Path(__file__).parents[1] / "scripts" / "maintenance" / "import-real-preview.py"
@@ -154,11 +154,33 @@ class TaxonomyCrosswalkTests(unittest.TestCase):
             document = crosswalk_document(source)
             self.assertEqual(document["source_id"], source)
             self.assertEqual(document["taxonomy_version"], TAXONOMY_VERSION)
+            self.assertEqual(document["crosswalk_version"], CROSSWALK_VERSION)
             self.assertTrue(document["crosswalk_version"])
             self.assertTrue(document["ruleset_version"])
             self.assertTrue(document["rules"])
             self.assertTrue(all(rule.get("method") in {"direct", "derived", "candidate"}
                                 for rule in document["rules"]))
+
+    def test_v2_preserves_direct_method_for_empty_unclassified_projection(self):
+        projected = project_observation({"source_id": "us.fsis", "normalized": {}})
+        rows = persistence_assignments(projected)
+        self.assertEqual(projected["crosswalk_version"], CROSSWALK_VERSION)
+        self.assertEqual(projected["ruleset_version"], CROSSWALK_VERSION)
+        self.assertEqual(rows[0]["primary_key"], "unclassified")
+        self.assertEqual(rows[0]["mapping_method"], "direct")
+        italian = IMPORTER.activity_contract({}, "it.853-2004", {})
+        merged_italian = IMPORTER.merge_activity_contracts([italian], "it.853-2004")
+        self.assertEqual(merged_italian["taxonomy_mapping_method"], "direct")
+        self.assertEqual(merged_italian["taxonomy_assignment_rows"][0]["mapping_method"], "direct")
+
+    def test_france_group_union_retains_distinct_observation_assignments_in_v2(self):
+        first = IMPORTER.activity_contract({"activity_codes": ["SH"]}, "fr.dgal.section-ii", {})
+        second = IMPORTER.activity_contract({"activity_codes": ["CP"]}, "fr.dgal.section-ii", {})
+        merged = IMPORTER.merge_activity_contracts([first, second], "fr.dgal.section-ii")
+        self.assertEqual(merged["crosswalk_document"]["crosswalk_version"], "uec-source-crosswalk-v2")
+        self.assertEqual({row["leaf_key"] for row in merged["taxonomy_assignment_rows"]}, {"slaughter", "cutting"})
+        self.assertEqual({row["mapping_method"] for row in merged["taxonomy_assignment_rows"]}, {"direct"})
+        self.assertEqual(merged["taxonomy_mapping_method"], "direct")
 
     def test_assignment_rows_match_core_adapter_shape(self):
         projected = project_observation(self.by_name["multiple-activities"])
