@@ -21,6 +21,20 @@ def _canonical(value):
 
 
 class CandidateBridgeTests(unittest.TestCase):
+    def test_per_observation_taxonomy_dedupes_only_exact_semantic_claims(self):
+        base = {
+            "assignment_ordinal": 1, "primary_key": "slaughter", "leaf_key": "red-meat",
+            "leaf_label": "Red meat", "source_code_reference": "activity-code",
+            "source_label_reference": "activity-label", "source_code": "A1",
+            "source_label": "Example", "mapping_method": "direct", "mapping_status": "mapped",
+        }
+        exact_duplicate = {**base, "assignment_ordinal": 2}
+        distinct_reference = {**base, "assignment_ordinal": 3, "source_code_reference": "other-code"}
+
+        result = bridge._deduplicate_exact_assignment_rows([base, exact_duplicate, distinct_reference])
+
+        self.assertEqual(result, [base, distinct_reference])
+
     def _handoff(self, root: Path, *, source_coordinates: bool = False):
         source = "dk.smiley"
         folder = root / source

@@ -383,6 +383,23 @@ def verify_current_candidate_taxonomy(connection: Any, *, candidate_id: str,
         raise BridgeError("preview_candidate_taxonomy_assignments_mismatch")
 
 
+def _deduplicate_exact_assignment_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Collapse only rows equivalent under TaxonomyAssignment.ordering_key()."""
+    unique = []
+    seen = set()
+    for row in rows:
+        key = (
+            row.get("primary_key"), row.get("leaf_key") or "", row.get("leaf_label") or "",
+            row.get("source_code_reference") or "", row.get("source_label_reference") or "",
+            row.get("source_code") or "", row.get("source_label") or "",
+            row.get("mapping_method"), row.get("mapping_status"),
+        )
+        if key not in seen:
+            seen.add(key)
+            unique.append(row)
+    return unique
+
+
 def _verify_preview_source(connection: Any, source: str, entry: dict[str, Any], handoff: dict[str, Any]) -> dict[str, Any]:
     snapshot = entry["snapshot_sha256"]
     run = connection.execute("""SELECT source_artifact_sha256, normalized_sha256, source_url, retrieved_at,
@@ -457,7 +474,20 @@ def _verify_preview_source(connection: Any, source: str, entry: dict[str, Any], 
         identifier = str(parsed[0])
         normalized = raw.get("normalized") if isinstance(raw.get("normalized"), dict) else {}
         source_values = raw.get("source_values") if isinstance(raw.get("source_values"), dict) else {}
-        taxonomy_by_identifier[identifier] = IMPORTER.activity_contract(normalized, source, source_values)
+        contract = IMPORTER.activity_contract(normalized, source, source_values)
+        contract["taxonomy_assignment_rows"] = _deduplicate_exact_assignment_rows(
+            contract["taxonomy_assignment_rows"]
+        )
+        try:
+            _canonical_rows(
+                preview_id_by_identifier[identifier],
+                _uuid("preflight-source-record", source, snapshot, identifier),
+                _uuid("preflight-artifact", source, snapshot),
+                contract["crosswalk_document"], contract["taxonomy_assignment_rows"],
+            )
+        except Exception:
+            raise BridgeError("preview_observation_taxonomy_contract_invalid") from None
+        taxonomy_by_identifier[identifier] = contract
     taxonomy_documents = {}
     for contract in taxonomy_by_identifier.values():
         document = contract.get("crosswalk_document")

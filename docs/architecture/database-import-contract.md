@@ -98,4 +98,12 @@ source-native facility group in a separate review database. It creates no
 review or rights decisions, does not validate or promote the release, and is
 not a substitute for the standard source importer or a public release workflow.
 
+Before any canonical writes, the bridge validates each observation's taxonomy
+assignment contract as well as the merged facility-group contract. Exact
+repeated semantic claims are coalesced for the derived assignment set only;
+different source references, values, mapping methods or statuses remain
+distinct. Source observations and authenticated handoff bytes are unchanged.
+Group-level validation alone is insufficient: it can hide malformed or repeated
+claims present in an individual observation.
+
 Publication additionally requires ETHICS.md privacy and source-status checks. A default visibility flag is not authorization to expose restricted records through another endpoint. Historical release membership is subject to current restrictions, including removal of residential addresses and precise coordinates where required. Unimplemented policy gates must be recorded as blockers for affected publication.
