@@ -1,9 +1,10 @@
+export type ContributionType = 'facility' | 'evidence' | 'correction' | 'duplicate' | 'privacy_removal' | 'bug';
 export type RouteState =
   | Readonly<{ kind: 'map' }>
   | Readonly<{ kind: 'database' }>
   | Readonly<{ kind: 'methodology'; returnMapHref?: string }>
   | Readonly<{ kind: 'about'; section: 'overview' | 'manifesto'; returnMapHref?: string }>
-  | Readonly<{ kind: 'contribute'; targetRecordId?: string; returnMapHref?: string }>
+  | Readonly<{ kind: 'contribute'; formKind?: ContributionType; targetRecordId?: string; returnMapHref?: string }>
   | Readonly<{ kind: 'bug-report'; returnMapHref?: string }>
   | Readonly<{ kind: 'record'; facilityId: string }>
   | Readonly<{ kind: 'community'; page: 'form' | 'status' | 'claims' | 'claim-detail' | 'review'; formKind?: 'facility' | 'evidence' | 'correction' | 'duplicate' | 'privacy_removal'; claimId?: string; targetRecordId?: string; releaseId?: string; returnMapHref?: string }>
@@ -26,7 +27,9 @@ export function parseRoute(hash: string): RouteState {
   if (path === '/contribute/bug') return { kind: 'bug-report', ...(returnMapHref ? { returnMapHref } : {}) };
   if (path === '/contribute') {
     const targetRecordId = params.get('target');
-    return { kind: 'contribute', ...(targetRecordId ? { targetRecordId } : {}), ...(returnMapHref ? { returnMapHref } : {}) };
+    const type = params.get('type');
+    const formKind = type && ['facility', 'evidence', 'correction', 'duplicate', 'privacy_removal', 'bug'].includes(type) ? type as ContributionType : undefined;
+    return { kind: 'contribute', ...(formKind ? { formKind } : {}), ...(targetRecordId ? { targetRecordId } : {}), ...(returnMapHref ? { returnMapHref } : {}) };
   }
   const contributionPath = path.match(/^\/contribute\/(facility|evidence|correction|duplicate|privacy-removal)$/);
   if (contributionPath) {
@@ -55,7 +58,7 @@ export function serializeRoute(route: RoutableState): string {
   if (route.kind === 'database') return '#/database';
   if (route.kind === 'methodology') return `#/methodology${route.returnMapHref ? `?map=${encodeURIComponent(route.returnMapHref)}` : ''}`;
   if (route.kind === 'about') return `#/${route.section === 'overview' ? 'about' : 'about/manifesto'}${route.returnMapHref ? `?map=${encodeURIComponent(route.returnMapHref)}` : ''}`;
-  if (route.kind === 'contribute') return `#/contribute${route.targetRecordId || route.returnMapHref ? `?${new URLSearchParams({ ...(route.targetRecordId ? { target: route.targetRecordId } : {}), ...(route.returnMapHref ? { map: route.returnMapHref } : {}) })}` : ''}`;
+  if (route.kind === 'contribute') return `#/contribute${route.formKind || route.targetRecordId || route.returnMapHref ? `?${new URLSearchParams({ ...(route.formKind ? { type: route.formKind } : {}), ...(route.targetRecordId ? { target: route.targetRecordId } : {}), ...(route.returnMapHref ? { map: route.returnMapHref } : {}) })}` : ''}`;
   if (route.kind === 'bug-report') return `#/contribute/bug${route.returnMapHref ? `?map=${encodeURIComponent(route.returnMapHref)}` : ''}`;
   if (route.kind === 'community') {
     const context = route.returnMapHref ? `map=${encodeURIComponent(route.returnMapHref)}` : '';

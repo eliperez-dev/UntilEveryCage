@@ -4,7 +4,7 @@
   import MethodologyPage from './MethodologyPage.svelte';
   import AboutPage from './AboutPage.svelte';
   import ContributePage from './ContributePage.svelte';
-  import BugReportPage from './BugReportPage.svelte';
+  import PreviewMasthead from './PreviewMasthead.svelte';
   let DesignLab = $state<typeof import('../design-lab/DesignLab.svelte').default | null>(null);
   let DatabaseResearch = $state<typeof import('./DatabaseResearch.svelte').default | null>(null);
   let RecordPage = $state<typeof import('./RecordPage.svelte').default | null>(null);
@@ -17,7 +17,7 @@
   let loading = $state(true);
   let loadError = $state('');
   let returnMapHref = $derived.by(() => {
-    if (route.kind === 'about' || route.kind === 'contribute' || route.kind === 'bug-report' || route.kind === 'community') return route.returnMapHref ?? '#/map';
+    if (route.kind === 'about' || route.kind === 'contribute' || route.kind === 'bug-report' || route.kind === 'community' || route.kind === 'methodology') return route.returnMapHref ?? '#/map';
     const currentQuery = new URLSearchParams(window.location.hash.split('?')[1] ?? '');
     return import.meta.env.DEV && currentQuery.get('f1a') === 'field' ? '#/map?f1a=field' : '#/map';
   });
@@ -25,8 +25,6 @@
     const query = returnMapHref.split('?')[1];
     return query ? `#/database?${query}` : '#/database';
   });
-  let contributeHref = $derived(`#/contribute${route.kind === 'contribute' && route.targetRecordId ? `?target=${encodeURIComponent(route.targetRecordId)}` : ''}${returnMapHref !== '#/map' ? `${route.kind === 'contribute' && route.targetRecordId ? '&' : '?'}map=${encodeURIComponent(returnMapHref)}` : ''}`);
-  let aboutHref = $derived(`#/about${returnMapHref !== '#/map' ? `?map=${encodeURIComponent(returnMapHref)}` : ''}`);
 
   const syncRoute = () => {
     try {
@@ -85,17 +83,9 @@
   <main class="review-loading" aria-live="polite"><p role="status">Preparing the private-preview workspace…</p><small>The map module and its local data boundary are loading.</small></main>
 {:else}
 <div class="shell">
-  <header class="site-header">
-    <a class="wordmark" href={returnMapHref}>Until Every Cage</a>
-    <nav aria-label="Main navigation">
-      <a href={returnMapHref} aria-current={route.kind === 'map' ? 'page' : undefined}>Map</a>
-      <a href={databaseHref} aria-current={route.kind === 'database' ? 'page' : undefined}>Database</a>
-      <a class="secondary-link" href={contributeHref} aria-current={route.kind === 'contribute' || (route.kind === 'community' && route.page === 'form') ? 'page' : undefined}>Contribute</a>
-      <a href={aboutHref} aria-current={route.kind === 'about' ? 'page' : undefined}>About</a>
-    </nav>
-  </header>
+  <PreviewMasthead current={route.kind === 'about' ? 'about' : route.kind === 'contribute' || route.kind === 'bug-report' || route.kind === 'community' ? 'contribute' : route.kind === 'database' || route.kind === 'record' ? 'database' : 'map'} mapHref={returnMapHref} {databaseHref} />
 
-  <main id="main-content" tabindex="-1">
+  <main id="main-content" class="shell-content" tabindex="-1">
     {#if loading}
       <p class="state" role="status">Loading page…</p>
     {:else if loadError}
@@ -113,9 +103,9 @@
     {:else if route.kind === 'about'}
       <AboutPage section={route.section} returnMapHref={route.returnMapHref ?? '#/map'} />
     {:else if route.kind === 'contribute'}
-      <ContributePage enabled={import.meta.env.VITE_COMMUNITY_PILOT === 'true'} targetRecordId={route.targetRecordId ?? ''} returnMapHref={route.returnMapHref ?? '#/map'} />
+      <ContributePage formKind={route.formKind ?? 'facility'} targetRecordId={route.targetRecordId ?? ''} returnMapHref={route.returnMapHref ?? '#/map'} />
     {:else if route.kind === 'bug-report'}
-      <BugReportPage returnMapHref={route.returnMapHref ?? '#/map'} />
+      <ContributePage formKind="bug" returnMapHref={route.returnMapHref ?? '#/map'} />
     {:else if route.kind === 'map'}
       {#if PublicReleaseMap}
         <PublicReleaseMap />
@@ -136,7 +126,9 @@
         {#if import.meta.env.VITE_COMMUNITY_PILOT === 'true'}<p><a href={`#/contribute/evidence?target=${encodeURIComponent(route.facilityId)}${returnMapHref !== '#/map' ? `&map=${encodeURIComponent(returnMapHref)}` : ''}`}>Add evidence</a></p>{/if}
       </section>
     {:else if route.kind === 'community'}
-      {#if CommunityContributions}
+      {#if route.page === 'form'}
+        <ContributePage formKind={route.formKind ?? 'facility'} targetRecordId={route.targetRecordId ?? ''} returnMapHref={route.returnMapHref ?? '#/map'} />
+      {:else if CommunityContributions}
         <CommunityContributions page={route.page} formKind={route.formKind ?? 'facility'} targetRecordId={route.targetRecordId ?? ''} claimId={route.claimId ?? ''} releaseId={route.releaseId ?? ''} returnMapHref={route.returnMapHref ?? '#/map'} />
       {:else}
         <p class="state" role="status">Preparing the community pilot…</p>
@@ -149,5 +141,5 @@
 <style>
   .review-loading{display:grid;place-content:center;min-height:100dvh;padding:2rem;background:#171a18;color:#f1efe8;font:1rem system-ui;text-align:center}
   .review-loading small{margin-top:.55rem;color:#b9c1b7;font-size:.76rem}
-  .secondary-link{margin-left:.3rem;padding-left:1rem;border-left:1px solid #48524a}
+  .shell{max-width:none;padding:0}.shell-content{padding:0}.shell-content > :global(section:not(.contribute-page):not(.about-page):not(.community-page)){padding:1.5rem}
 </style>

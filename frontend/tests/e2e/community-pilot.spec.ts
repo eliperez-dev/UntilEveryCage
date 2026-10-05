@@ -59,10 +59,9 @@ test('status route can transition through the Contribute hub and the pin can be 
   page.on('pageerror', error => pageErrors.push(error.message));
   await page.goto('#/contribution-status');
   await expect(page.getByRole('heading', { name: 'Check contribution status' })).toBeVisible();
-  await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Contribute' }).click();
+  await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Contribute' }).click();
   await expect(page.getByRole('heading', { name: 'Contribute' })).toBeVisible();
-  await page.getByRole('link', { name: 'Add a facility' }).click();
-  await expect(page.getByRole('heading', { name: 'Add a facility' })).toBeVisible();
+  await expect(page.getByLabel('Contribution type')).toHaveValue('facility');
   const canvas = page.locator('.pin-map canvas');
   await expect(canvas).toBeVisible();
   await expect(page.locator('.pin-map .maplibregl-ctrl-zoom-in')).toBeVisible();
@@ -85,12 +84,9 @@ test('status route can transition through the Contribute hub and the pin can be 
   await page.getByLabel('Latitude').fill('91');
   await expect(page.getByLabel('Latitude')).toHaveValue('91');
   await page.getByLabel('Latitude').fill('55.7');
-  await page.locator('.community-page').getByRole('link', { name: 'Contribute' }).click();
-  await page.getByRole('heading', { name: 'Contribute', level: 1 }).waitFor();
-  await page.getByRole('link', { name: 'Add evidence' }).click();
+  await page.getByLabel('Contribution type').selectOption('evidence');
   await expect(page.locator('.pin-map')).toHaveCount(0);
-  await page.locator('.community-page').getByRole('link', { name: 'Contribute' }).click();
-  await page.getByRole('link', { name: 'Add a facility' }).click();
+  await page.getByLabel('Contribution type').selectOption('facility');
   await expect(page.locator('.pin-map')).toBeVisible();
   await expect(page.getByLabel('Latitude')).toHaveValue('');
   expect(pageErrors).toEqual([]);
@@ -140,7 +136,7 @@ test('a valid submission displays its receipt once in memory without putting it 
   expect(submitted).not.toHaveProperty('contact_email');
   expect(page.url()).not.toContain(secret);
   await page.getByRole('link', { name: 'I saved my receipt' }).click();
-  await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Contribute' }).click();
+  await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Contribute' }).click();
   await expect(page.getByRole('heading', { name: 'Contribute' })).toBeVisible();
   await expect(page.getByLabel('Private receipt')).toHaveCount(0);
 });
@@ -190,4 +186,88 @@ test('a facility can be submitted with only a name and consent', async ({ page }
   expect(submitted).not.toHaveProperty('country_code');
   expect(submitted).not.toHaveProperty('source_url');
   expect(submitted).not.toHaveProperty('claimed_latitude');
+});
+
+test('six contribution types switch in place with prefilled records and cleared draft state', async ({ page }) => {
+  let communityWrites = 0;
+  await page.route('**/api/community/submissions', async route => {
+    communityWrites += 1;
+    await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ submission_id: id, receipt_secret: secret, status: 'received' }) });
+  });
+  await page.goto(`#/contribute/evidence?target=${recordId}&map=%23%2Fmap%3Ff1a%3Dfield`);
+  const type = page.getByLabel('Contribution type');
+  await expect(type).toHaveValue('evidence');
+  await expect(page.getByLabel('Record ID', { exact: true })).toHaveValue(recordId);
+  await page.getByLabel('What did you find?').fill('Synthetic draft that must be cleared');
+  await type.selectOption('correction');
+  await expect(page.getByLabel('What should be corrected?')).toHaveValue('');
+  await expect(page.getByLabel('Record ID', { exact: true })).toHaveValue(recordId);
+  await type.selectOption('duplicate');
+  await expect(page.getByLabel('Possible duplicate record ID')).toBeVisible();
+  await expect(page.locator('.pin-map')).toHaveCount(0);
+  await type.selectOption('privacy_removal');
+  await expect(page.getByLabel('What should we review?')).toBeVisible();
+  await expect(page.getByLabel('Possible duplicate record ID')).toHaveCount(0);
+  await type.selectOption('bug');
+  await page.getByLabel('What happened?').fill('Synthetic bug draft');
+  await page.getByLabel('Steps to reproduce').fill('Switch a synthetic form.');
+  await page.getByRole('button', { name: 'Prepare email' }).click();
+  await expect(page.getByRole('link', { name: 'Open email draft' })).toBeVisible();
+  expect(communityWrites).toBe(0);
+  await type.selectOption('facility');
+  await expect(page.getByLabel('Facility name')).toHaveValue('');
+  await page.getByLabel('Facility name').fill('Synthetic selector submission');
+  await page.getByLabel(/I have permission to share/).check();
+  await page.getByRole('button', { name: 'Send for review' }).click();
+  await expect(page.getByLabel('Private receipt')).toHaveValue(secret);
+  await type.selectOption('bug');
+  await expect(page.getByLabel('Private receipt')).toHaveCount(0);
+  await expect(page.getByLabel('What happened?')).toHaveValue('');
+  await expect(page.getByRole('link', { name: 'Open email draft' })).toHaveCount(0);
+  expect(communityWrites).toBe(1);
+  expect(page.url()).not.toContain(secret);
+  const params = new URLSearchParams(new URL(page.url()).hash.split('?')[1]);
+  expect(params.get('map')).toBe('#/map?f1a=field');
+  expect(params.get('target')).toBe(recordId);
+});
+
+test('header dropdowns support keyboard, dismissal, and direct destination links', async ({ page }) => {
+  await page.goto('#/contribute');
+  const about = page.getByRole('button', { name: 'About menu' });
+  await about.focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('#shared-about-nav').getByRole('link', { name: 'Overview' })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(about).toBeFocused();
+  await expect(about).toHaveAttribute('aria-expanded', 'false');
+  await about.click();
+  await about.focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('#shared-about-nav').getByRole('link', { name: 'Overview' })).toBeFocused();
+  await page.getByRole('main').click({ position: { x: 10, y: 220 } });
+  await expect(about).toHaveAttribute('aria-expanded', 'false');
+  await page.getByRole('button', { name: 'Contribute menu' }).click();
+  await page.locator('#shared-contribute-nav').getByRole('link', { name: 'Privacy/removal' }).click();
+  await expect(page.getByLabel('Contribution type')).toHaveValue('privacy_removal');
+  await expect(page.getByRole('button', { name: 'Contribute menu' })).toHaveAttribute('aria-expanded', 'false');
+});
+
+test('compact pages and dropdowns work on a narrow touch screen without overflow', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 360, height: 800 }, hasTouch: true, isMobile: true });
+  const page = await context.newPage();
+  await mockCommunityApi(page);
+  await page.goto(`${process.env.UEC_REAL_PREVIEW_URL ?? 'http://127.0.0.1:4173/v2-preview/'}#/contribute`);
+  for (const type of ['facility', 'evidence', 'correction', 'duplicate', 'privacy_removal', 'bug']) {
+    await page.getByLabel('Contribution type').selectOption(type);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  }
+  await page.getByRole('button', { name: 'About menu' }).tap();
+  const sources = page.locator('#shared-about-nav').getByRole('link', { name: 'Sources & methodology' });
+  const box = await sources.boundingBox();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(360);
+  await sources.tap();
+  await expect(page.getByRole('heading', { name: 'Sources & Methodology' })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await context.close();
 });

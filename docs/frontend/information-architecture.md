@@ -11,13 +11,17 @@ Until Every Cage     MAP        DATABASE     |     CONTRIBUTE        ABOUT
 
 The header remains available without competing with the current task. On narrow
 screens, all four links remain reachable without horizontal overflow.
-Contribute groups facility, evidence, correction, duplicate and privacy/removal
-tools with receipt lookup, bug reporting and the existing project links. Bug
+Contribute uses one form whose type selector changes the fields for facility,
+evidence, correction, duplicate, privacy/removal and bug reports. It also
+provides receipt lookup and the existing project links. Bug
 reports use an email template or a GitHub issue; they are not facility claims
 and do not require a contributor account. About contains the
 introduction/manifesto and Sources & methodology. The existing methodology
-route remains a working alias. Navigation preserves the active local preview
-mode when returning to Map or Database.
+route remains a working alias. About and Contribute header dropdowns expose
+their destinations directly, with keyboard, click and touch access. Existing
+contribution links preselect the form type. Navigation preserves the active
+local preview mode when returning to Map or Database. Every surface uses the
+same styled masthead, including informational pages and status lookup.
 
 ### Routes
 

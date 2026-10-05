@@ -43,6 +43,13 @@ before publication, without repeating pilot/review badges throughout the form.
 Keep map attribution visible and put provider details in methodology.
 Public unreviewed community results retain the warning required above.
 
+Keep informational copy short and concrete. Omit decorative eyebrows such as
+“Reading the map” and repeated explanations around a form. A bug-report page
+needs practical fields and an email-draft action, not a separate precautionary
+paragraph. Optional fields use “(optional)” without instructions such as
+“enter it yourself”. The form still avoids collecting credentials or silently
+copying private page context; concise copy does not weaken those behaviors.
+
 ## Safety rules in UI
 
 - Do not expose private-person names, residential addresses, worker details, or

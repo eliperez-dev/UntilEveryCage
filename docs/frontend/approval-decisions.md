@@ -33,12 +33,15 @@ information architecture.
    as SemVer.
 
 Navigation revision authorized by the maintainer on 2026-10-04: the shared
-header is **Map, Database | Contribute, About**. Contribute owns standalone
-submission tools, receipt lookup, bug reporting and project links; About owns the introduction/manifesto and
+header is **Map, Database | Contribute, About**, with About and Contribute
+dropdowns for direct access. Contribute owns one type-selecting submission
+form, receipt lookup, bug reporting and project links; About owns the introduction/manifesto and
 Sources & methodology. Country and source links are optional on facility
 intake. Private forms use clear labels and concise guidance, without technical
 geocoding language or repeated review badges. Public community-unreviewed
-warnings and private publication gates remain required.
+warnings and private publication gates remain required. The follow-up density
+revision calls for compact type and spacing, fewer headings and shorter copy,
+with the same styled masthead across all pages.
 
 ## Remaining implementation decisions
 

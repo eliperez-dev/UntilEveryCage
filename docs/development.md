@@ -44,10 +44,13 @@ These bounds are implementation limits, not approved operational defaults.
 Run `cargo run --locked --bin uec-api`. For a separate Vite instance, set
 `VITE_COMMUNITY_PILOT=true` and `VITE_API_ORIGIN` to that loopback API origin,
 then `npm --prefix frontend run dev -- --host 127.0.0.1 --port <unused-port>`.
-Open `/v2-preview/#/contribute` for the landing page. Its tools open separate
-facility, evidence, correction, duplicate and privacy/removal forms under
-`#/contribute/…`, plus bug reporting and receipt lookup. The shared header is
-Map, Database | Contribute, About; About links Sources & methodology.
+Open `/v2-preview/#/contribute` for one form with a contribution-type selector:
+facility, evidence, correction, duplicate, privacy/removal or bug report.
+Canonical type links use `#/contribute?type=facility`, `evidence`, `correction`,
+`duplicate`, `privacy_removal` or `bug`. Existing `#/contribute/…` links
+preselect the appropriate type. The shared
+styled header is Map, Database | Contribute, About; dropdowns offer direct
+access to contribution types, status, and About's subpages.
 Country names and source links are optional on facility intake; a name is
 required. Evidence needs a record reference and either a link or explanation.
 Bug reports compose email or open GitHub; the user sends the report.

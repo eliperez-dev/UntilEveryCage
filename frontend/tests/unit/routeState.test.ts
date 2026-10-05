@@ -30,6 +30,14 @@ describe('routeState', () => {
     expect(serializeRoute({ kind: 'community', page: 'form', formKind: 'evidence', targetRecordId: 'synthetic-record' })).toBe('#/contribute/evidence?target=synthetic-record');
   });
 
+  it('round-trips all selector types with record and map context, retaining old aliases', () => {
+    for (const formKind of ['facility', 'evidence', 'correction', 'duplicate', 'privacy_removal', 'bug'] as const) {
+      const route = { kind: 'contribute' as const, formKind, targetRecordId: 'synthetic-record', returnMapHref: '#/map?f1a=field' };
+      expect(parseRoute(serializeRoute(route))).toEqual(route);
+    }
+    expect(parseRoute('#/contribute?type=unsupported')).toEqual({ kind: 'contribute' });
+  });
+
   it('preserves receipt, review, and release-pinned community routes', () => {
     expect(parseRoute('#/contribution-status')).toEqual({ kind: 'community', page: 'status' });
     expect(parseRoute('#/community')).toEqual({ kind: 'community', page: 'claims' });

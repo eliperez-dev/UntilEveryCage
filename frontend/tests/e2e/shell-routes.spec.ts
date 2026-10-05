@@ -37,10 +37,11 @@ test('the shell keeps route context in the URL through back and forward navigati
 
 test('About contains the sources & methodology page and returns via browser history', async ({ page }) => {
   await page.goto('./#/database');
-  await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'About' }).click();
+  await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'About' }).click();
   await expect.poll(() => new URL(page.url()).hash).toBe('#/about');
   await expect(page.getByRole('heading', { level: 1, name: 'About Until Every Cage' })).toBeVisible();
-  await page.getByRole('navigation', { name: 'About' }).getByRole('link', { name: 'Sources & methodology' }).click();
+  await page.getByRole('button', { name: 'About menu' }).click();
+  await page.locator('#shared-about-nav').getByRole('link', { name: 'Sources & methodology' }).click();
   await expect.poll(() => new URL(page.url()).hash).toBe('#/about/sources');
   await expect(page.getByRole('heading', { level: 1, name: 'Sources & Methodology' })).toBeVisible();
   await expect(page.getByText('A centroid is', { exact: false })).toBeVisible();
@@ -52,12 +53,12 @@ test('About contains the sources & methodology page and returns via browser hist
 
 test('the Contribute hub, bug report, and About pages share the primary navigation', async ({ page }) => {
   await page.goto('./#/contribute');
-  const nav = page.getByRole('navigation', { name: 'Main navigation' });
+  const nav = page.getByRole('navigation', { name: 'Primary' });
   for (const label of ['Map', 'Database', 'Contribute', 'About']) await expect(nav.getByRole('link', { name: label })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Contribute', level: 1 })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Report a bug' })).toHaveAttribute('href', '#/contribute/bug');
-  await page.getByRole('link', { name: 'Report a bug' }).click();
-  await expect(page.getByRole('heading', { name: 'Report a bug', level: 1 })).toBeVisible();
+  await page.getByRole('button', { name: 'Contribute menu' }).click();
+  await page.locator('#shared-contribute-nav').getByRole('link', { name: 'Report a bug' }).click();
+  await expect(page.getByLabel('Contribution type')).toHaveValue('bug');
   await expect(page.getByRole('link', { name: 'Report a public issue on GitHub' })).toHaveAttribute('href', 'https://github.com/eliperez-dev/UntilEveryCage/issues/new');
   await page.goto('./#/about/manifesto');
   await expect(page.getByRole('heading', { name: 'Make the hidden visible.' })).toBeVisible();

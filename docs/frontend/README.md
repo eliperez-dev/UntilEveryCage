@@ -30,12 +30,15 @@ The product principle is **quiet on first contact, powerful when investigated**.
 
 The maintainer's 2026-10-04 navigation revision adds **Contribute** and **About**
 beside these two discovery views: `Map, Database | Contribute, About`.
-Contribute is a landing page for submission tools, receipt lookup, project
+Contribute combines a type-selecting form with receipt lookup, project
 contact, code, community and support links. About groups the project
 introduction/manifesto and Sources & methodology. These links must appear
 consistently in the public shell and local preview; following them must preserve
 the selected preview context. Private submission forms use ordinary language;
-publication warnings belong on public unreviewed community results.
+publication warnings belong on public unreviewed community results. About and
+Contribute expose their destinations through accessible header dropdowns. Use
+the same styled masthead on all pages. Informational pages use compact type,
+short copy and modest spacing rather than oversized editorial sections.
 
 ## Reading order
 
