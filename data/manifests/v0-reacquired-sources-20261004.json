@@ -1,0 +1,44 @@
+{
+  "authentication": "passed",
+  "browser_rendering_verified": false,
+  "code_commit": "e6af0a0774c784cad24c914f05e834bf20b6b6f8",
+  "inventory_sha256": "4227575dda8e2841beae6501ce71ae7789b23bebb7ce3e3d850e23905449326b",
+  "public_release_authorized": false,
+  "schema_version": "v0-reacquired-private-preview-verification-v1",
+  "sources": [
+    {
+      "list_detail": "passed",
+      "map_feed_snapshot_id": "3b66fc809e5c50fa037e49e5acfb8377d8ee70b6f09995e3f59f2fae2a7582c3",
+      "observations": 43,
+      "private_map_features": 41,
+      "private_map_group_weight": 41,
+      "project_approval": false,
+      "snapshot_sha256": "785475262acbfce8390dfaa15210592b81cdeefc2df80246f8bff772c28e4747",
+      "source_id": "au.sa.epa.licensed-activities",
+      "source_qualified_candidate_groups": 41
+    },
+    {
+      "list_detail": "passed",
+      "map_feed_snapshot_id": "3b66fc809e5c50fa037e49e5acfb8377d8ee70b6f09995e3f59f2fae2a7582c3",
+      "observations": 36639,
+      "private_map_features": 0,
+      "private_map_group_weight": 0,
+      "project_approval": false,
+      "snapshot_sha256": "cfefea24f48b1a17f52ab53af9031fd00793f138d5eddba655b762a9aef9c3c8",
+      "source_id": "br.sif.registered",
+      "source_qualified_candidate_groups": 3143
+    },
+    {
+      "list_detail": "passed",
+      "map_feed_snapshot_id": "3b66fc809e5c50fa037e49e5acfb8377d8ee70b6f09995e3f59f2fae2a7582c3",
+      "observations": 9962,
+      "private_map_features": 5297,
+      "private_map_group_weight": 5297,
+      "project_approval": false,
+      "snapshot_sha256": "39d8af33b433494fdd4e13b5f442cd2d7b7b742b356a56b08141fe679770d62a",
+      "source_id": "it.1069-2009",
+      "source_qualified_candidate_groups": 6539
+    }
+  ],
+  "status": "passed"
+}

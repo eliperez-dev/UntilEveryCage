@@ -1,0 +1,38 @@
+{
+  "schema_version": "v0-candidate-preflight-verification-v1",
+  "status": "blocked",
+  "database": "uec_v0_review_r2",
+  "release_id": "v0-candidate-2026-10-04-r2",
+  "inventory_sha256": "4227575dda8e2841beae6501ce71ae7789b23bebb7ce3e3d850e23905449326b",
+  "verification": "Read-only _verify_preview_source against all fifteen authenticated handoffs; row-free results transcribed from completed diagnostic output.",
+  "sources": [
+    {"source_id": "au.npi.facilities", "status": "passed"},
+    {"source_id": "au.sa.epa.licensed-activities", "status": "passed"},
+    {"source_id": "be.locations", "status": "passed"},
+    {"source_id": "br.sif.registered", "status": "passed"},
+    {"source_id": "ca.ontario.meat-plants", "status": "passed"},
+    {"source_id": "dk.smiley", "status": "passed"},
+    {"source_id": "es.cat.feed-sandach", "status": "passed"},
+    {"source_id": "fr.dgal.section-i", "status": "blocked", "reason_code": "preview_candidate_taxonomy_mismatch", "mismatched_fields": ["category", "activity_categories", "source_activity_labels", "activity_mapping_status", "classification_ruleset_version"]},
+    {"source_id": "fr.dgal.section-ii", "status": "blocked", "reason_code": "preview_candidate_taxonomy_mismatch", "mismatched_fields": ["category", "activity_categories", "activity_mapping_status", "classification_ruleset_version"]},
+    {"source_id": "fsa_approved_establishments", "status": "passed"},
+    {"source_id": "fss_approved_establishments", "status": "passed"},
+    {"source_id": "it.1069-2009", "status": "passed"},
+    {"source_id": "it.853-2004", "status": "blocked", "reason_code": "preview_candidate_taxonomy_mismatch", "mismatched_fields": ["category", "source_activity_codes", "source_activity_labels", "classification_ruleset_version"]},
+    {"source_id": "nl.nvwa.approved-food", "status": "passed"},
+    {"source_id": "us.fsis", "status": "blocked", "reason_code": "preview_candidate_taxonomy_mismatch", "mismatched_fields": ["category", "activity_mapping_status", "classification_ruleset_version"]}
+  ],
+  "passed_sources": 11,
+  "blocked_sources": 4,
+  "full_staging": "rolled_back",
+  "release_rows_after_rollback": 0,
+  "release_member_rows_after_rollback": 0,
+  "guarded_review_copy_reprojection": {
+    "status": "rolled_back",
+    "reason_code": "idempotency key already has a different taxonomy assignment set",
+    "retained_database_modified": false,
+    "validation_bypassed": false
+  },
+  "public_authorized": false,
+  "graph_claims_imported": false
+}

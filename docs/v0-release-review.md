@@ -44,16 +44,17 @@ public count or an approval state. A zero projection count describes only the
 listed database relations during that transaction; it does not audit deployed
 copies, CDN caches, exports, or other environments.
 
-## Final measured private inventory (not the final source selection)
+## Reacquired measured private inventory (not publication approval)
 
 The repeatable-read inventory at
-[`v0-candidate-20261004-inventory.json`](../data/manifests/v0-candidate-20261004-inventory.json)
-measured 15 latest imported private snapshots: 175,473 observations grouped
-into 124,417 source-qualified candidate groups. Of those groups, 50,610 meet
+[`v0-candidate-20261004-reacquired-inventory.json`](../data/manifests/v0-candidate-20261004-reacquired-inventory.json)
+measured 15 latest imported private snapshots after the authorized three-source
+reacquisition: 187,940 observations grouped
+into 124,414 source-qualified candidate groups. Of those groups, 50,611 meet
 the current private map-feed geometry and scope checks. These counts are not
 globally deduplicated facilities or rendered marker counts; coarse points may
 share a rendered marker. The inventory digest is
-`6f73244963ab11fbc78883e1e6e41661b1d2f64b5ce7b3fa3948d18f355daf3c`.
+`4227575dda8e2841beae6501ce71ae7789b23bebb7ce3e3d850e23905449326b`.
 It measured zero release rows, members, manifests, public map/discovery rows,
 and graph-public rows. That is the measured database state, not a deployment,
 cache, or publication audit.
@@ -63,7 +64,7 @@ cache, or publication audit.
 | `au.npi.facilities` | 8,140 | 8,140 | archived replay |
 | `au.sa.epa.licensed-activities` | 43 | 41 | live acquisition; broader source rows were excluded/quarantined |
 | `be.locations` | 4,032 | 1,794 | live acquisition |
-| `br.sif.registered` | 24,174 | 3,147 | live acquisition; exact retrieval evidence still needs resolution |
+| `br.sif.registered` | 36,639 | 3,143 | reacquired live; exact raw/normalized evidence retained |
 | `ca.ontario.meat-plants` | 460 | 460 | archived replay |
 | `dk.smiley` | 58,795 | 58,795 | verified retained-artifact replay after live retrieval |
 | `es.cat.feed-sandach` | 12,117 | 4,367 | archived replay |
@@ -71,20 +72,28 @@ cache, or publication audit.
 | `fr.dgal.section-ii` | 1,068 | 1,067 | offline handoff |
 | `fsa_approved_establishments` | 4,291 | 4,291 | live acquisition |
 | `fss_approved_establishments` | 595 | 595 | live acquisition |
-| `it.1069-2009` | 9,960 | 6,538 | live acquisition; exact supporting evidence still needed |
+| `it.1069-2009` | 9,962 | 6,539 | reacquired live; exact raw/normalized evidence retained |
 | `it.853-2004` | 41,849 | 25,316 | offline handoff |
 | `nl.nvwa.approved-food` | 1,259 | 1,176 | live acquisition |
 | `us.fsis` | 7,241 | 7,241 | offline handoff |
 
 “Live acquisition” and “offline handoff” describe recorded run provenance,
 not source completeness, currentness, legal clearance, review, or readiness to
-publish. The provisional 12-source review subset currently totals 141,296
-observations and 114,691 source-qualified candidate groups; 45,273 groups meet
-the same current private map-feed geometry and scope checks. It is not a final
-selection. `au.sa.epa.licensed-activities`, `it.1069-2009`, and
-`br.sif.registered` remain deferred pending the exact evidence gaps above. The
-maintainer must choose whether to defer them or reacquire/resolve their
-evidence; do not silently substitute this provisional subset for that choice.
+publish. The earlier twelve-source subset was not selected: the maintainer
+chose on 2026-10-04 to reacquire all three evidence-blocked sources. All three
+now have checksum-verified original captures, normalized handoffs and matching
+private database provenance. Their imports first passed physical/provenance
+reconciliation in the isolated review copy, then ran serially against the
+retained preview. Italy's initial restricted-network failures were resolved by
+the network-enabled existing runner; do not describe them as an upstream outage.
+Brazil's observation increase is repeated source observations, not 12,465 new
+facilities; its source-qualified group count changed from 3,147 to 3,143.
+Prior snapshots are preserved and disappearance is not interpreted as closure.
+The [reacquired-source API receipt](../data/manifests/v0-reacquired-sources-20261004.json)
+verifies authentication and source-scoped list/detail access for all three,
+plus 41 South Australian, zero Brazilian and 5,297 Italian private map-feed
+features. It used an owned loopback API, stopped afterward; browser rendering
+was not verified and no approval is inferred.
 
 For Denmark, the current classification separates 565 core facility candidates
 from 58,230 optional candidates rather than treating every source row as an
@@ -97,17 +106,44 @@ candidates and remains low-yield. Keep source labels and activity evidence in
 the private source record; these aggregates alone do not support relabeling or
 merging candidates.
 
-All twelve provisional handoff packages passed the bridge's evidence checks.
-Their freeze metadata is prepared locally; final source selection awaits the
-maintainer's choice to defer or reacquire the three evidence-blocked sources.
-The database backup has been restored into separate `uec_v0_review`, with
-migration 061 applied, but canonical candidate staging has not yet run.
-Do not describe any canonical v0 release as staged, validated,
-promoted, or public until its exact bridge run and subsequent review/activation
-steps are verified. The independently verified protected database backup is
-`D:\UntilEveryCage-backups\database\v0-candidate-20261004\uec-frozen.dump`
-(71,598,797 bytes; SHA-256
-`31f1dabb319b279bd796901825320610fa37cd357eff0c07de4d2d7864e79b9d`).
+All fifteen handoff packages passed the bridge's local evidence checks.
+The post-reacquisition database backup has been restored into separate
+`uec_v0_review_r2`, with migration 061 applied. Full canonical candidate staging
+is not yet complete; local handoff validation alone does not prove it succeeded.
+The first full-cohort attempt failed closed with
+`observation_idempotency_conflict`: the bridge supplied latitude/longitude in
+reverse order to `ST_MakePoint`. Its transaction left zero release rows and
+members. The source captures and retained preview were not altered. The bounded
+coordinate-order correction is integrated; all 13 focused bridge tests passed,
+including real PostGIS coordinates, late rollback and same-freeze idempotency.
+The corrected full-cohort attempt then failed closed with
+`preview_candidate_taxonomy_mismatch` and rolled back. The completed
+[read-only database preflight](../data/manifests/v0-candidate-20261004-preflight.json)
+passed eleven sources, including all three reacquired sources. France I/II,
+Italy 853, and US FSIS have blank legacy candidate taxonomy columns that differ
+from the normalized-record projection. Their exact frozen snapshots do have
+versioned assignment sets; a guarded review-copy-only reprojection additionally
+failed the existing assignment-set idempotency check and rolled back. Do not
+overwrite those assignments, bypass the checks, or silently exclude the four
+sources. Reconcile their taxonomy evidence and projection semantics before
+another full-cohort attempt. No retained source observations, addresses,
+coordinates, or history were changed by either failed transaction.
+
+The bridge now validates every source inside the same serializable transaction
+before any canonical writes and reuses verified per-source manifest hashes
+instead of hashing them for every observation. All 14 focused tests passed,
+including the disposable real PostGIS integration test. This is not evidence
+that the blocked real cohort staged successfully.
+Do not describe any canonical v0 release as staged, validated, promoted, or
+public until its exact bridge run and subsequent review/activation steps are
+verified. The independently verified protected database backup is
+`D:\UntilEveryCage-backups\database\v0-candidate-20261004-r2\uec-frozen.dump`
+(77,838,741 bytes; SHA-256
+`f286f464c9a1ff2ff6cb896e67f21f74811d7773bac2fa16e05699e1b7abc6e9`).
+The archive was listed (668 entries), copied with matching hashes, and restored
+successfully. Earlier backups remain intact. All three reacquired source runs
+are additionally checksum-verified under
+`D:\UntilEveryCage-backups\v0-source-evidence\reacquired-20261004`.
 
 ## Dataset identity
 

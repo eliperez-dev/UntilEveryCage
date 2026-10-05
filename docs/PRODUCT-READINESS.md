@@ -51,13 +51,20 @@ The public data release and the V1-to-V2 website cutover are separate milestones
 an unfinished optional visualization is not a data-release gate.
 
 **Current state (2026-10-04):** UK, Denmark, and Netherlands private imports and
-bounded geocoding are integrated. The measured inventory reconciles fifteen
-source snapshots; twelve have verified candidate handoffs. Final selection is
-awaiting the maintainer's decision to defer or reacquire South Australia EPA,
-Italy 1069, and Brazil SIF because exact retained evidence is unavailable or
-does not match recorded provenance. A verified D: backup is restored into a
-separate review database, but canonical candidate staging, graph projection,
-human review, and public activation are not complete. No v0 publication is
+bounded geocoding are integrated. South Australia EPA, Italy 1069, and Brazil
+SIF were reacquired and their exact captures imported on 2026-10-04 under the
+maintainer's instruction. The [reacquired inventory](../data/manifests/v0-candidate-20261004-reacquired-inventory.json)
+reconciles fifteen source snapshots: 187,940 observations and 124,414
+source-qualified candidate groups; 50,611 groups meet current private map
+geometry/scope checks, not a globally deduplicated facility or marker count.
+All fifteen handoffs passed local bridge evidence checks. A checksum-verified
+post-reacquisition D: backup is restored into separate `uec_v0_review_r2`,
+but full canonical candidate staging is blocked: the [actual database preflight](../data/manifests/v0-candidate-20261004-preflight.json)
+passed eleven sources and found taxonomy inconsistencies in the retained France
+I/II, Italy 853, and FSIS projections. Both staging and the guarded review-copy
+repair rolled back; retained evidence was not modified. Reconcile these four
+projections against their existing versioned assignments before retrying.
+Graph projection, human review, and public activation are also incomplete. No v0 publication is
 authorized by the candidate work. The source registry and immutable
 release-manifest machinery exist, but the retained private preview is not a
 populated public release. The v0 review must identify its exact source versions
@@ -71,7 +78,7 @@ product roadmap or publication authorization.
 
 ## Verified checkpoint
 
-**Current retained private preview (2026-10-02):** the latest-source snapshot
+**Historical retained private preview checkpoint (2026-10-02):** the latest-source snapshot
 contains 115,419 observations and 64,446 candidates, of which 49,580 are
 map-visible (45,417 numeric source points and 4,163 coarse references); 14,866
 candidate groups have no rendered point. The API's 4,886
