@@ -184,7 +184,7 @@ class CandidateBridgeTests(unittest.TestCase):
                 return Result(None)
 
         connection = Connection()
-        with patch.object(bridge.psycopg, "connect", return_value=connection), \
+        with patch.object(bridge.psycopg, "connect", return_value=connection) as connect, \
                 patch.object(bridge, "verify_handoff", side_effect=lambda entry, _inventory: handoffs[entry["source_id"]]), \
                 patch.object(bridge, "_verify_preview_source", side_effect=[{}, bridge.BridgeError("preview_candidate_taxonomy_mismatch")]) as verify:
             with self.assertRaisesRegex(bridge.BridgeError, "preview_candidate_taxonomy_mismatch"):
@@ -192,6 +192,7 @@ class CandidateBridgeTests(unittest.TestCase):
                               freeze, inventory, candidate_only_ack=True)
 
         self.assertEqual([call.args[1] for call in verify.call_args_list], list(sources))
+        connect.assert_called_once_with("postgresql://127.0.0.1/uec_v0_review_preflight", prepare_threshold=None)
         self.assertFalse(any(sql.lstrip().upper().startswith(("INSERT", "UPDATE", "DELETE"))
                              for sql in connection.statements))
 

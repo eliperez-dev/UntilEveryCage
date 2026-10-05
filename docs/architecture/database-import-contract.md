@@ -106,4 +106,9 @@ distinct. Source observations and authenticated handoff bytes are unchanged.
 Group-level validation alone is insufficient: it can hide malformed or repeated
 claims present in an individual observation.
 
+The bridge disables automatic statement preparation on its own connection.
+Repeated lookups prepared while canonical tables are empty can retain a stale
+generic scan plan as the atomic cohort grows; per-execution planning avoids
+that risk without changing server configuration or validation semantics.
+
 Publication additionally requires ETHICS.md privacy and source-status checks. A default visibility flag is not authorization to expose restricted records through another endpoint. Historical release membership is subject to current restrictions, including removal of residential addresses and precise coordinates where required. Unimplemented policy gates must be recorded as blockers for affected publication.

@@ -704,7 +704,10 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
               "source_coordinates": 0, "provider_derived_coordinates": 0, "coarse_references": 0,
               "unmapped": 0, "release_members": 0}
     try:
-        with psycopg.connect(database_url) as connection, connection.transaction():
+        # This transaction grows substantially as the selected cohort is inserted.
+        # Disable psycopg's automatic prepared-statement promotion so plans are
+        # not fixed against the initially empty isolated candidate database.
+        with psycopg.connect(database_url, prepare_threshold=None) as connection, connection.transaction():
             connection.execute("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
             connection.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", ("v0-candidate-bridge:" + freeze["release_id"],))
             db_name = connection.execute("SELECT current_database()").fetchone()[0]
