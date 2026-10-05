@@ -11,12 +11,24 @@
     "public_rows": 0,
     "release_candidate_inventory": {
       "status": "measured_not_publication_approved",
-      "manifest": "data/manifests/v0-candidate-20261004-reacquired-inventory.json",
-      "inventory_sha256": "4227575dda8e2841beae6501ce71ae7789b23bebb7ce3e3d850e23905449326b",
+      "manifest": "data/manifests/v0-candidate-20261004-taxonomy-inventory.json",
+      "inventory_sha256": "23adeac2487ee163e78918ba53f8aa01d274e2900cc4a8bf8b26e60cbd566d21",
       "source_snapshots": 15,
       "observations": 187940,
       "source_qualified_candidate_groups": 124414,
-      "currently_private_map_served_groups": 50611
+      "currently_private_map_served_groups": 50611,
+      "isolated_staging": {
+        "database": "uec_v0_review_r3",
+        "release_id": "v0-candidate-2026-10-04-r3",
+        "status": "candidate_only_staged",
+        "receipt": "data/manifests/v0-candidate-20261004-r3-staging-custom-plan.json",
+        "inventory_manifest": "data/manifests/v0-candidate-20261005-r3-staged-inventory.json",
+        "inventory_sha256": "122c51502f639326b3c9100414e604a08103f12e263828445c587d9f690b68c6",
+        "release_members": 124414,
+        "default_visible_members": 0,
+        "public_authorized": false,
+        "graph_readiness": "not_imported"
+      }
     },
     "sources": {
       "dk.smiley": {

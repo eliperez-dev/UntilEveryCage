@@ -1,0 +1,131 @@
+{
+  "sources": [
+    {
+      "exact_repeat_assignment_rows": 0,
+      "groups": 8140,
+      "observations": 8140,
+      "per_observation_invalid_count": 0,
+      "source_id": "au.npi.facilities",
+      "status": "passed"
+    },
+    {
+      "exact_repeat_assignment_rows": 0,
+      "groups": 41,
+      "observations": 43,
+      "per_observation_invalid_count": 0,
+      "source_id": "au.sa.epa.licensed-activities",
+      "status": "passed"
+    },
+    {
+      "exact_repeat_assignment_rows": 0,
+      "groups": 1794,
+      "observations": 4032,
+      "per_observation_invalid_count": 0,
+      "source_id": "be.locations",
+      "status": "passed"
+    },
+    {
+      "exact_repeat_assignment_rows": 0,
+      "groups": 3143,
+      "observations": 36639,
+      "per_observation_invalid_count": 0,
+      "source_id": "br.sif.registered",
+      "status": "passed"
+    },
+    {
+      "exact_repeat_assignment_rows": 0,
+      "groups": 460,
+      "observations": 460,
+      "per_observation_invalid_count": 0,
+      "source_id": "ca.ontario.meat-plants",
+      "status": "passed"
+    },
+    {
+      "exact_repeat_assignment_rows": 0,
+      "groups": 58795,
+      "observations": 58795,
+      "per_observation_invalid_count": 0,
+      "source_id": "dk.smiley",
+      "status": "passed"
+    },
+    {
+      "exact_repeat_assignment_rows": 0,
+      "groups": 4367,
+      "observations": 12117,
+      "per_observation_invalid_count": 0,
+      "source_id": "es.cat.feed-sandach",
+      "status": "passed"
+    },
+    {
+      "exact_repeat_assignment_rows": 0,
+      "groups": 1449,
+      "observations": 1449,
+      "per_observation_invalid_count": 0,
+      "source_id": "fr.dgal.section-i",
+      "status": "passed"
+    },
+    {
+      "exact_repeat_assignment_rows": 0,
+      "groups": 1067,
+      "observations": 1068,
+      "per_observation_invalid_count": 0,
+      "source_id": "fr.dgal.section-ii",
+      "status": "passed"
+    },
+    {
+      "exact_repeat_assignment_rows": 0,
+      "groups": 4291,
+      "observations": 4291,
+      "per_observation_invalid_count": 0,
+      "source_id": "fsa_approved_establishments",
+      "status": "passed"
+    },
+    {
+      "exact_repeat_assignment_rows": 503,
+      "groups": 595,
+      "observations": 595,
+      "per_observation_invalid_count": 0,
+      "source_id": "fss_approved_establishments",
+      "status": "passed"
+    },
+    {
+      "exact_repeat_assignment_rows": 0,
+      "groups": 6539,
+      "observations": 9962,
+      "per_observation_invalid_count": 0,
+      "source_id": "it.1069-2009",
+      "status": "passed"
+    },
+    {
+      "exact_repeat_assignment_rows": 0,
+      "groups": 25316,
+      "observations": 41849,
+      "per_observation_invalid_count": 0,
+      "source_id": "it.853-2004",
+      "status": "passed"
+    },
+    {
+      "exact_repeat_assignment_rows": 0,
+      "groups": 1176,
+      "observations": 1259,
+      "per_observation_invalid_count": 0,
+      "source_id": "nl.nvwa.approved-food",
+      "status": "passed"
+    },
+    {
+      "exact_repeat_assignment_rows": 0,
+      "groups": 7241,
+      "observations": 7241,
+      "per_observation_invalid_count": 0,
+      "source_id": "us.fsis",
+      "status": "passed"
+    }
+  ],
+  "status": "passed",
+  "totals": {
+    "exact_repeat_assignment_rows": 503,
+    "groups": 124414,
+    "observations": 187940,
+    "per_observation_invalid_count": 0
+  }
+}

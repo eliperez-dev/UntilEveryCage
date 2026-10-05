@@ -6,6 +6,18 @@ approval, a publication record, or evidence that candidate intake has closed.
 The controlling roadmap is [PRODUCT-READINESS.md](PRODUCT-READINESS.md); the
 governing requirements are [ETHICS.md](ETHICS.md).
 
+**Current checkpoint:** all fifteen frozen source snapshots passed append-only
+taxonomy reconciliation on the isolated copy and retained preview. The
+[current measured pool](../data/manifests/v0-candidate-20261004-taxonomy-inventory.json)
+contains 187,940 observations, 124,414 source-qualified groups and 50,611
+private-map-served groups. [Full candidate-only staging](../data/manifests/v0-candidate-20261004-r3-staging-custom-plan.json)
+has now committed successfully in isolated `uec_v0_review_r3`: all fifteen
+sources, 187,940 observations and 124,414 candidate release members, with zero
+default-visible members or release manifests. Earlier failed runs are retained
+as history below. No public release approval
+has been recorded. Source snapshots are not globally deduplicated, reviewed,
+operating or publishable facility counts.
+
 ## Candidate inventory boundary
 
 The release-candidate pool is the latest successfully imported private source
@@ -106,10 +118,13 @@ candidates and remains low-yield. Keep source labels and activity evidence in
 the private source record; these aggregates alone do not support relabeling or
 merging candidates.
 
+### Earlier staging attempts (historical)
+
 All fifteen handoff packages passed the bridge's local evidence checks.
 The post-reacquisition database backup has been restored into separate
-`uec_v0_review_r2`, with migration 061 applied. Full canonical candidate staging
-is not yet complete; local handoff validation alone does not prove it succeeded.
+`uec_v0_review_r2`, with migration 061 applied. At that historical checkpoint,
+full canonical candidate staging was not complete; local handoff validation
+alone did not prove it succeeded.
 The first full-cohort attempt failed closed with
 `observation_idempotency_conflict`: the bridge supplied latitude/longitude in
 reverse order to `ST_MakePoint`. Its transaction left zero release rows and
@@ -145,16 +160,134 @@ successfully. Earlier backups remain intact. All three reacquired source runs
 are additionally checksum-verified under
 `D:\UntilEveryCage-backups\v0-source-evidence\reacquired-20261004`.
 
+## Taxonomy reconciliation checkpoint (2026-10-04 PDT / 2026-10-05 UTC)
+
+The preceding failures are historical. A subsequent attempt to synchronize
+legacy taxonomy cache columns also failed and rolled back: migration 046
+correctly makes the entire candidate row append-only. The final repair does
+not update those columns, disable their trigger, or rewrite prior assignments.
+It appends a new interpretation version, `uec-source-crosswalk-v2`, while
+keeping category taxonomy `uec-taxonomy-v1`. The strict bridge verifier now
+checks the exact current assignment set's lineage, display category and ordered
+payload against the frozen group, using the same newest-set ordering as the
+API. Direct mapping-method provenance and the two-observation France II group
+are represented correctly without erasing their earlier v1 interpretation.
+
+All fifteen sources passed actual reconciliation on the isolated copy and then
+the retained preview. The [retained receipt](../data/manifests/v0-taxonomy-reconciliation-20261004.json)
+records 124,414 candidate groups and 187,940 observations. Full candidate rows,
+source observations, and prior v1 assignment history were hashed before and
+after and checked unchanged. Both databases had zero release rows and members
+after reconciliation. The [fresh measured inventory](../data/manifests/v0-candidate-20261004-taxonomy-inventory.json)
+has digest `23adeac2487ee163e78918ba53f8aa01d274e2900cc4a8bf8b26e60cbd566d21`;
+the 50,611 private-map-served group count is unchanged. Do not substitute the
+47,211 summed import-time map counters for current geometry availability.
+
+The reconciled database archive is
+`D:\UntilEveryCage-backups\database\v0-taxonomy-reconciled-20261004\uec-frozen.dump`
+(89,657,234 bytes; SHA-256
+`413d006bccd3ddcac77ae6383ef838b8abe365bb085f565e06d8c8fd110129c4`).
+Its container/disk hashes match, its archive lists 653 entries, and it restored
+successfully into fresh `uec_v0_review_r3`. Existing migration 061 was then
+applied only to that review database. The fresh freeze selects all fifteen
+sources, excludes none, and reverified every handoff; its file SHA-256 is
+`de8090190cc25a22fc21e9694303248a9e1cd168f6414c09a1795dafc34aae6b`.
+The earlier backup and failed-run receipts remain preserved. Successful and
+failed reconciliation receipts are also checksum-verified on D: under
+`v0-source-evidence\taxonomy-reconciled-20261004\review-evidence`.
+
+All 90 affected tests passed, including actual disposable PostGIS, immutable
+stale candidate rows, mismatched/missing assignments, newest-version shadow
+rejection, late rollback and same-freeze replay. Independent integration review
+found no remaining issue; all six [CI jobs for the code repair](https://github.com/eliperez-dev/UntilEveryCage/actions/runs/37254629562)
+passed on `fa13792d1e8dbd493c032b8e7994ba4c53d47a35`. These fixture/CI
+results are separate from full-cohort staging. Staging of
+`v0-candidate-2026-10-04-r3` initially failed with a taxonomy contract error in
+the isolated restore and rolled back to zero canonical observations, releases
+and members. Its [sanitized failure receipt](../data/manifests/v0-candidate-20261004-r3-staging.json)
+is retained rather than overwritten. The cause was exact repeated semantic
+claims in 262 of 595 Scottish observations, hidden by group-level merging.
+The bridge now coalesces only exact semantic repeats in the derived assignment
+set and validates every observation before canonical writes; raw observations,
+different source evidence references and the frozen handoff bytes are preserved.
+The [full offline preflight](../data/manifests/v0-candidate-20261004-taxonomy-observation-preflight.json)
+passed all fifteen sources, 187,940 observations and 124,414 groups, with zero
+invalid observation contracts and 503 exact repeated claims coalesced. All 91
+affected tests passed with actual disposable PostGIS and independent review
+found no evidence-loss or validation-placement issue. A subsequent slow run was
+operator-stopped, not rejected by another taxonomy contract:
+its [shutdown receipt](../data/manifests/v0-candidate-20261004-r3-staging-retry.json)
+records SQLSTATE `57P01`, and rollback again left zero canonical observations,
+releases and members. A tiny synthetic PostgreSQL probe reproduced a generic
+sequential-scan plan retained after an analyzed-empty table grew to 20,000 rows;
+a fresh lookup used the index. That demonstrates the planning risk, not the
+exact plan inside the stopped connection. The bridge now disables automatic
+statement preparation on its own connection; no server settings, schema rules
+or source data were changed. All 91 affected tests passed again with actual
+PostGIS. All six [CI jobs for this connection-only safeguard](https://github.com/eliperez-dev/UntilEveryCage/actions/runs/37267704007)
+passed on `c85490530a0708202ae402b7b8a02e38af4eb0e4`.
+
+### Successful full-cohort staging (2026-10-05)
+
+The [generated staging receipt](../data/manifests/v0-candidate-20261004-r3-staging-custom-plan.json)
+records `candidate_only_staged` for the same fifteen-source freeze. Independent
+SQL checks confirmed 187,940 committed canonical observations, 124,414
+source-qualified candidate facilities and release members, and fifteen
+represented sources. The single release has status `candidate`, profile
+`official` and `test_only=false`; this identifies real retained data, not
+publication approval. All members have `default_visible=false`, and no release
+manifest exists. The retained `uec` preview still has zero releases and members.
+The [read-only post-staging inventory](../data/manifests/v0-candidate-20261005-r3-staged-inventory.json)
+independently confirms this candidate state, zero promoted releases and zero
+rows in the measured public projections; unavailable relations are labeled
+unavailable rather than assigned invented zero counts. Its digest is
+`122c51502f639326b3c9100414e604a08103f12e263828445c587d9f690b68c6`.
+
+Coordinate evidence in the receipt counts **observations**, not unique groups
+or map markers: 64,055 source-coordinate observations, 1,030 provider-derived
+observations, 2,370 verified coarse-reference observations and 120,485 unmapped
+observations. These sum to 187,940. The separate retained-preview measurement
+remains 50,611 currently map-served source-qualified groups. Source coordinates
+are not automatically an exact-address or rooftop claim.
+
+The bridge's canonical freeze digest is
+`bce1cd69dd2f37fbee3faf5d92079324ccc85fd4fbb1fc8419672dd6d1b76bbb`;
+this is distinct from the freeze file-byte SHA-256 recorded above. Neither
+digest nor the candidate status grants publication permission. Full-cohort
+same-freeze replay was not rerun; replay/rollback were exercised in the actual
+PostGIS test suite, and the complete frozen cohort was staged once successfully.
+
+The staged review database is backed up on D: at
+`D:\UntilEveryCage-backups\database\v0-candidate-staged-20261005-r3\uec-candidate.dump`
+(181,321,962 bytes; SHA-256
+`74051def8732e7193e373cacd0f27c7be92b4ba3cdafbf576f9394e846781fcf`).
+Container/disk hashes match and the archive lists 654 entries. This newer
+staged archive was not independently restore-tested; the earlier reconciled
+baseline archive was actually restored before this successful staging run.
+
+Closeout removed only the superseded isolated `uec_v0_review_r2` copy after
+checking that it had no connections and that both D: backup hashes still
+matched. Its measured database size was 1,042,035,171 bytes. The retained `uec`
+preview and successfully staged `uec_v0_review_r3` remain intact. Owned
+container dump copies, five D-backed temporary helpers/receipts and the tiny
+synthetic query-plan probe were removed; the active freeze and source captures
+remain available. There are four worktrees, including the unchanged primary,
+frontend and community worktrees. Database/container cleanup does not claim
+that Windows has physically compacted Docker's virtual disk.
+
+Graph import/projection, human review, and public activation
+remain separate, incomplete steps; no public approval has been created.
+
 ## Dataset identity
 
 `v0` names the first public dataset milestone and is independent of the V2
 website release and the legacy V1 application. The current naming recommendation
 is CalVer `2026.10.1-rc.1`; this is pending maintainer choice and is not a
-machine release identifier. Before freezing, maintainers must choose a stable
-machine `release_id`, profile, ruleset/version labels, and whether a candidate
-release should use a separate pre-release version. Bind those choices to the
-frozen inventory digest and exact source artifact digests. Do not claim a v0
-release exists until the canonical release workflow has actually created it.
+machine release identifier. The private frozen candidate's machine ID is
+`v0-candidate-2026-10-04-r3`, bound to the new inventory and exact source
+artifacts. The public release ID/profile and version labels still require the
+release decision; candidate naming is not publication approval. Do not claim
+a public v0 release exists until its release workflow has actually created it.
 
 ## Human review sprint
 

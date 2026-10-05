@@ -1,0 +1,22 @@
+{
+  "counts": {
+    "coarse_references": 2370,
+    "facility_candidates": 124414,
+    "provider_derived_coordinates": 1030,
+    "release_members": 124414,
+    "source_coordinates": 64055,
+    "source_observations": 187940,
+    "sources": 15,
+    "unmapped": 120485
+  },
+  "freeze_sha256": "bce1cd69dd2f37fbee3faf5d92079324ccc85fd4fbb1fc8419672dd6d1b76bbb",
+  "graph_claims_imported": false,
+  "graph_projection_verified": false,
+  "graph_readiness": "not_imported",
+  "public_authorized": false,
+  "public_projection_rows_created": 0,
+  "release_id": "v0-candidate-2026-10-04-r3",
+  "review_events_created": 0,
+  "rights_decisions_created": 0,
+  "status": "candidate_only_staged"
+}

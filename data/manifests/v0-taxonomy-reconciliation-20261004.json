@@ -1,0 +1,86 @@
+{
+  "approval_events_created": 0,
+  "candidate_freeze_id": "v0-candidate-2026-10-04-r2",
+  "mode": "applied",
+  "private_payload_included": false,
+  "public_release_members_created": 0,
+  "public_release_rows_created": 0,
+  "selected_source_count": 15,
+  "sources": [
+    {
+      "candidate_groups": 8140,
+      "observations": 8140,
+      "source_id": "au.npi.facilities"
+    },
+    {
+      "candidate_groups": 41,
+      "observations": 43,
+      "source_id": "au.sa.epa.licensed-activities"
+    },
+    {
+      "candidate_groups": 1794,
+      "observations": 4032,
+      "source_id": "be.locations"
+    },
+    {
+      "candidate_groups": 3143,
+      "observations": 36639,
+      "source_id": "br.sif.registered"
+    },
+    {
+      "candidate_groups": 460,
+      "observations": 460,
+      "source_id": "ca.ontario.meat-plants"
+    },
+    {
+      "candidate_groups": 58795,
+      "observations": 58795,
+      "source_id": "dk.smiley"
+    },
+    {
+      "candidate_groups": 4367,
+      "observations": 12117,
+      "source_id": "es.cat.feed-sandach"
+    },
+    {
+      "candidate_groups": 1449,
+      "observations": 1449,
+      "source_id": "fr.dgal.section-i"
+    },
+    {
+      "candidate_groups": 1067,
+      "observations": 1068,
+      "source_id": "fr.dgal.section-ii"
+    },
+    {
+      "candidate_groups": 4291,
+      "observations": 4291,
+      "source_id": "fsa_approved_establishments"
+    },
+    {
+      "candidate_groups": 595,
+      "observations": 595,
+      "source_id": "fss_approved_establishments"
+    },
+    {
+      "candidate_groups": 6539,
+      "observations": 9962,
+      "source_id": "it.1069-2009"
+    },
+    {
+      "candidate_groups": 25316,
+      "observations": 41849,
+      "source_id": "it.853-2004"
+    },
+    {
+      "candidate_groups": 1176,
+      "observations": 1259,
+      "source_id": "nl.nvwa.approved-food"
+    },
+    {
+      "candidate_groups": 7241,
+      "observations": 7241,
+      "source_id": "us.fsis"
+    }
+  ]
+}

@@ -50,20 +50,33 @@ Further acquisition may continue privately toward v1 without altering v0.
 The public data release and the V1-to-V2 website cutover are separate milestones;
 an unfinished optional visualization is not a data-release gate.
 
-**Current state (2026-10-04):** UK, Denmark, and Netherlands private imports and
+**Current state (2026-10-05):** UK, Denmark, and Netherlands private imports and
 bounded geocoding are integrated. South Australia EPA, Italy 1069, and Brazil
 SIF were reacquired and their exact captures imported on 2026-10-04 under the
-maintainer's instruction. The [reacquired inventory](../data/manifests/v0-candidate-20261004-reacquired-inventory.json)
+maintainer's instruction. The [taxonomy-reconciled inventory](../data/manifests/v0-candidate-20261004-taxonomy-inventory.json)
 reconciles fifteen source snapshots: 187,940 observations and 124,414
 source-qualified candidate groups; 50,611 groups meet current private map
 geometry/scope checks, not a globally deduplicated facility or marker count.
-All fifteen handoffs passed local bridge evidence checks. A checksum-verified
-post-reacquisition D: backup is restored into separate `uec_v0_review_r2`,
-but full canonical candidate staging is blocked: the [actual database preflight](../data/manifests/v0-candidate-20261004-preflight.json)
-passed eleven sources and found taxonomy inconsistencies in the retained France
-I/II, Italy 853, and FSIS projections. Both staging and the guarded review-copy
-repair rolled back; retained evidence was not modified. Reconcile these four
-projections against their existing versioned assignments before retrying.
+All fifteen handoffs passed local bridge evidence checks. The earlier
+[database preflight](../data/manifests/v0-candidate-20261004-preflight.json)
+found stale taxonomy caches in France I/II, Italy 853, and FSIS. The verified
+[append-only reconciliation](../data/manifests/v0-taxonomy-reconciliation-20261004.json)
+now appends `uec-source-crosswalk-v2` sets for all 124,414 current groups in
+both the isolated copy and retained preview. The category taxonomy remains
+`uec-taxonomy-v1`; original candidate rows, source observations, and earlier
+v1 assignments are unchanged. No trigger was disabled or migration added.
+A checksum-verified reconciled D: backup has been restored into fresh
+`uec_v0_review_r3`, with existing migration 061 applied. Full candidate-only
+staging of `v0-candidate-2026-10-04-r3` initially failed with repeated Scottish
+taxonomy claims and rolled back. The bounded exact-repeat correction passed
+all 187,940 frozen observation contracts and 91 affected tests, including real
+PostGIS. The [full frozen-cohort staging receipt](../data/manifests/v0-candidate-20261004-r3-staging-custom-plan.json)
+now records `candidate_only_staged`: all fifteen sources, 187,940 canonical
+observations and 124,414 candidate facilities/release members. Independent SQL
+checks confirmed the committed totals, fifteen represented sources, candidate
+status, zero default-visible members and zero release manifests. These are
+source-qualified groups, not globally deduplicated or operating facilities.
+The retained preview still has zero releases and members.
 Graph projection, human review, and public activation are also incomplete. No v0 publication is
 authorized by the candidate work. The source registry and immutable
 release-manifest machinery exist, but the retained private preview is not a

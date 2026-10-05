@@ -41,7 +41,14 @@ currentness claim.
 The latest-per-source metadata in the retained `uec-offline-fsis-private-postgres-1/uec`
 preview database verifies imported source manifests and observation/candidate
 counts for the recent import lanes below. The complete fifteen-source measured
-state is in the [reacquired inventory](../data/manifests/v0-candidate-20261004-reacquired-inventory.json).
+state is in the [taxonomy-reconciled inventory](../data/manifests/v0-candidate-20261004-taxonomy-inventory.json).
+The same frozen cohort has also been [staged successfully](../data/manifests/v0-candidate-20261004-r3-staging-custom-plan.json)
+in isolated `uec_v0_review_r3`: 187,940 canonical observations and 124,414
+candidate release members across fifteen sources. A [fresh read-only staged inventory](../data/manifests/v0-candidate-20261005-r3-staged-inventory.json)
+confirms one candidate release, no release manifest or promoted release, and
+zero rows in the measured public projections. This is not another acquisition,
+proof of recurring live readiness, public approval or graph activation; the
+retained preview still has no release rows or members.
 These are private, source-qualified
 observations and provisional candidates—not approved or published facilities.
 At source-import time, the UK, DK and NL lanes had zero source-coordinate/map-visible
@@ -73,10 +80,21 @@ documents an earlier capture, not the latest certified/imported snapshot.
 UK address/geocoding outcomes and later private provider-display evidence
 remain separate from source acquisition and candidate counts: UK has six
 accepted provider results; NL has 602 accepted and 574 uncertain results.
-The reacquired inventory measures 187,940 observations, 124,414 source-qualified
+The taxonomy-reconciled inventory measures 187,940 observations, 124,414 source-qualified
 groups and 50,611 currently private-map-served groups across fifteen snapshots.
 It is not a globally deduplicated facility or rendered-marker count. No source
 in this section is approved for release.
+
+The [append-only reconciliation receipt](../data/manifests/v0-taxonomy-reconciliation-20261004.json)
+records successful application to the retained preview after the isolated copy
+passed. All 124,414 current groups now have `uec-source-crosswalk-v2` assignment
+sets under the unchanged `uec-taxonomy-v1` categories. Entire original candidate
+rows, source observations and v1 assignment history were checked unchanged.
+The new inventory digest is
+`23adeac2487ee163e78918ba53f8aa01d274e2900cc4a8bf8b26e60cbd566d21`.
+This repairs interpretation/projection consistency; it does not add source
+observations, improve location precision, approve release, or establish live
+readiness of archived routes. See the canonical roadmap for staging status.
 
 ## Historical strict live private E2E checkpoint — 2026-09-27
 

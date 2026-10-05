@@ -1,0 +1,7 @@
+{
+  "database_sqlstate": "57P01",
+  "exception_type": "BridgeError",
+  "private_payload_included": false,
+  "reason_code": "candidate_bridge_database_operation_failed",
+  "status": "blocked"
+}
