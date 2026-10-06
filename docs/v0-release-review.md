@@ -1,8 +1,8 @@
 # v0 dataset release review
 
-**Owner:** project maintainers. **Purpose:** guide the bounded human review and
-freeze of the first public dataset version. This document is not release
-approval, a publication record, or evidence that candidate intake has closed.
+**Owner:** project maintainers. **Purpose:** summarize the approved first dataset
+release and retain its review evidence. The database approval and immutable
+release manifest are the machine-verifiable publication records.
 The controlling roadmap is [PRODUCT-READINESS.md](PRODUCT-READINESS.md); the
 governing requirements are [ETHICS.md](ETHICS.md).
 
@@ -10,14 +10,26 @@ governing requirements are [ETHICS.md](ETHICS.md).
 
 ### Short release report (2026-10-06)
 
+**Owner approved, 2026-10-06: v0 — Early Access.** This approval covers the
+13-source subset and exclusions explained below. Preserve it as the historical
+v0 dataset; make a separate v1 release before website launch. Future data-backed
+development and new acceptance tests use verified v0 copies, not the frozen
+reference. The local approval/activation receipt records completion separately
+from this authorization; no external website deployment is authorized.
+
 **ELI5:** We had the records, but our importer threw away their name tags.
 We fixed it and restored **115,069 facility/business labels** from the retained
 files. No records were deleted, no locations changed, and nothing was fetched
-again. The dataset has **not been published yet**.
+again. The dataset is approved, validated and activated locally. The website
+has not been deployed.
 
-**Recommendation: release the 13-source subset below as v0.**
+The immutable release manifest is recorded, the D: backup was restored and
+verified, and `uec_v0_dev` is the writable development baseline. The reference
+database is read-only by default. See the [baseline workflow](development.md#approved-v0-development-baseline).
 
-| Proposed v0 output | Records |
+**Approved v0 output:**
+
+| Approved v0 output | Records |
 | --- | ---: |
 | Searchable | 63,601 |
 | On the map | 48,756 |

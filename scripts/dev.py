@@ -84,6 +84,8 @@ def main() -> int:
     sub.add_parser("test", help="root legacy static/Jest tests").add_argument("--full", action="store_true")
     sub.add_parser("pipeline", help="run Python pipeline tests").add_argument("args", nargs=argparse.REMAINDER)
     sub.add_parser("contracts", help="run contract tests")
+    baseline = sub.add_parser("baseline", help="read-only verify the promoted development baseline (UEC_DATABASE_URL required)")
+    baseline.add_argument("--baseline-contract", default=str(ROOT / "pipeline" / "contracts" / "development-baseline.json"))
     sub.add_parser("demo", help="run the safe synthetic/private tooling demo")
     sub.add_parser("preflight", help="alias for doctor: verify local prerequisites before a run")
     sub.add_parser("platform-registry", help="validate the joined country/source registry")
@@ -114,6 +116,20 @@ def main() -> int:
         runner = "pytest" if shutil.which("pytest") else "unittest"
         targets = ["pipeline/contracts", "pipeline/tests/test_database_contract.py", "pipeline/tests/test_graph_database_contract.py"] if runner == "pytest" else ["discover", "-s", "pipeline/contracts", "-t", str(ROOT)]
         code = run([sys.executable, "-m", runner, *targets], capture=args.json)
+    elif args.command == "baseline":
+        result = subprocess.run([sys.executable, str(ROOT / "pipeline" / "scripts" / "release_baseline.py"),
+                                 "--baseline-contract", args.baseline_contract],
+                               cwd=ROOT, capture_output=True, text=True)
+        try:
+            report = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            report = {"status": "blocked", "reason": "baseline_verifier_output_invalid"}
+        SUMMARY["baseline"] = report
+        SUMMARY["checks"].append({"name": "development-baseline", "ok": result.returncode == 0,
+                                  "detail": report.get("status", "blocked")})
+        if not args.json:
+            print(json.dumps(report, sort_keys=True))
+        code = result.returncode
     elif args.command == "demo":
         # The demo is intentionally synthetic and read-only: it exercises the
         # contract/review boundary without acquiring, importing, or publishing.

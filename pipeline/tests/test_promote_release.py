@@ -59,6 +59,24 @@ class ReleasePromotionTests(unittest.TestCase):
         proposed = {**original, "distributed_artifacts": [{"name": "data.csv", "sha256": "0" * 64, "byte_size": 1}]}
         self.assertFalse(MODULE._same_immutable_manifest(original, proposed))
 
+    def test_optional_dataset_release_metadata_is_projected_and_immutable(self):
+        metadata = {"version": "v0", "label": "v0 — Early Access", "channel": "early-access",
+                    "approved_on": "2026-10-06", "approval_reference": "synthetic", "website_deployed": False}
+        self.assertEqual(MODULE._dataset_release_metadata({"dataset_release": metadata}), {
+            "dataset_version": "v0", "release_label": "v0 — Early Access", "release_channel": "early-access"})
+        self.assertEqual(MODULE._dataset_release_metadata({}), {})
+        with self.assertRaisesRegex(ValueError, "dataset release metadata"):
+            MODULE._dataset_release_metadata({"dataset_release": {**metadata, "channel": "unsafe channel"}})
+
+        legacy = {"manifest_version": "uec-release-manifest-v2", "release_id": "synthetic",
+                  "profile": "official", "distributed_artifacts": []}
+        self.assertTrue(MODULE._same_immutable_manifest(legacy, dict(legacy)))
+        labeled = {**legacy, "dataset_version": "v0", "release_label": "v0 — Early Access",
+                   "release_channel": "early-access"}
+        self.assertFalse(MODULE._same_immutable_manifest(legacy, labeled))
+        changed = {**labeled, "release_label": "different label"}
+        self.assertFalse(MODULE._same_immutable_manifest(labeled, changed))
+
     def test_activation_build_runs_inside_the_promotion_transaction(self):
         source = SCRIPT.read_text(encoding="utf-8")
         self.assertIn("pg_advisory_xact_lock", source)

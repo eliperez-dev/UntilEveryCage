@@ -1,0 +1,16 @@
+{
+  "schema_version": "uec-development-baseline-v1",
+  "release_id": "v0-candidate-2026-10-04-r3",
+  "profile": "official",
+  "manifest_sha256": "8c961c0e11902cf916e9242875610f66fbfd4103d8e761b3dd00e5e4a804cdd1",
+  "dataset_version": "v0",
+  "release_label": "v0 — Early Access",
+  "release_channel": "early-access",
+  "expected": {
+    "public_rows": 63601,
+    "mapped_rows": 48756,
+    "named_rows": 54256,
+    "unmapped_rows": 14845,
+    "source_count": 13
+  }
+}

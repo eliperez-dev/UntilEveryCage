@@ -1,5 +1,64 @@
 # Developer entrypoint
 
+## Approved v0 development baseline
+
+**Maintainer decision, 2026-10-06:** `v0 — Early Access` is the approved
+real-data baseline. It contains 63,601 curated searchable records from 13
+sources, including 48,756 map locations and 54,256 names. It is approved
+release data, not an externally deployed website. V1 is required before
+website launch. V0 must remain available as a historical release, subject
+to current corrections and privacy restrictions.
+
+The tracked aggregate-only contract is
+`pipeline/contracts/development-baseline.json`. It binds the exact internal
+release ID and immutable manifest checksum to these counts. The public dataset
+version is `v0`; schema/product contract versions are separate identifiers.
+
+Run the read-only verification with the local database URL supplied privately
+through `UEC_DATABASE_URL`:
+
+```powershell
+python scripts/dev.py baseline
+```
+
+Verified local setup (2026-10-06), in the existing PostgreSQL container at
+`127.0.0.1:55433`:
+
+- Frozen reference: `uec_v0_review_r3`, read-only by default; never a test target.
+- Writable development copy: `uec_v0_dev`, restored from the verified archive.
+- Private backup: `D:/UntilEveryCage-backups/database/v0-early-access-20261006/`.
+  The archive checksum and restore receipt are in `backup-verification.json`.
+
+Point the development API's privately supplied database URL at `uec_v0_dev`
+and its official release projection. Do not point the public-data UI at the
+larger private research projection: withheld records remain in the private
+backup for provenance, but are not part of approved v0 output. Database
+credentials are not stored in the tracked baseline contract. A rollback-only
+write probe passed on the copy; the reference's verified counts were unchanged.
+
+For later restores, replay the latest restriction ledger using the production
+operations runbook; an old snapshot does not override newer restrictions.
+
+Use a verified disposable v0 copy for normal development, migration trials
+and mutating tests. Never run a reset, seed, truncate, schema experiment or
+destructive test against the frozen reference database. A clone starts with
+the exact approved snapshot; subsequent source refreshes create future-release
+work and do not change v0. Preserve the verified snapshot on D: and use the
+existing PostgreSQL backup/restore procedure, rather than another Docker stack.
+
+All new data-backed integration and feature acceptance tests must run against
+v0 copies. Keep synthetic unit and adversarial fixtures where needed to test
+cases the real dataset does not contain, but do not count fixture-only success
+as real-data readiness. If the real baseline is unavailable, report that test
+as blocked; do not silently switch datasets. Public CI can continue its
+sanitized fixture tests until a secure real-baseline input is configured; a
+local verified v0 acceptance run is required in addition. Never upload private
+source artifacts, excluded rows, database credentials, or a full research
+snapshot to public CI or Git.
+
+The older fixture/legacy workflows below remain diagnostic tools, not the
+default data-backed product development environment.
+
 Production-shaped deploy, rollback, backup, restore, incident, and
 fresh-machine procedures are in
 [`deployment/production-operations.md`](deployment/production-operations.md).
@@ -94,11 +153,11 @@ npm run build
 npm run dev
 ```
 
-The fixture preview is the default, does not need a database, and is the correct first environment for UI work. `npm run test:e2e:fixture` starts its own local preview. Do not add `?mode=local-v2` until `python scripts/dev.py --json doctor` reports a healthy environment, then use `up`, `probe`, and `npm run test:e2e:local` as documented in the frontend README. `status` distinguishes a running Axum process from a database-only local environment, and `probe` reports a concise next step when the backend is unavailable. Port conflicts and an unavailable Docker engine are environment problems, not a reason to stop an unknown process or silently fall back to fixtures.
+The fixture preview is available for isolated UI/unit checks without a database. Use the approved v0 copy for data-backed UI development. `npm run test:e2e:fixture` starts its own local preview and proves fixture behavior only. Do not add `?mode=local-v2` until `python scripts/dev.py --json doctor` reports a healthy environment, then use `up`, `probe`, and `npm run test:e2e:local` as documented in the frontend README. `status` distinguishes a running Axum process from a database-only local environment, and `probe` reports a concise next step when the backend is unavailable. Port conflicts and an unavailable Docker engine are environment problems, not a reason to stop an unknown process or silently fall back to fixtures.
 
 ### Local real-preview for map testing
 
-Synthetic fixtures remain the default. For a prepared disposable candidate
+Synthetic fixtures remain available for diagnostics. For a prepared disposable candidate
 release that needs real-location rendering tests, use the guarded local
 real-preview route only after following
 [the preview protocol](deployment/dev-preview.md#local-real-preview-protocol).
@@ -124,7 +183,7 @@ analytics, CSV export, screenshots with sensitive rows, or a remote host.
 `launchpad-stop` and clearing these variables ends the local session; it does
 not make a candidate published or alter the empty public projection.
 
-The currently approved local rehearsal is a bounded 50,750-row legacy V1
+The superseded local rehearsal used a bounded 50,750-row legacy V1
 snapshot (48,703 mapped; 2,047 unmapped), explicitly labeled
 legacy/development-only/not-V2-reviewed and never promotable. Keep map reads
 viewport-bounded; do not mount all rows as DOM markers or serialize the corpus

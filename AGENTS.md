@@ -24,6 +24,20 @@ has separate dependencies under `frontend/`. For the standard database-backed
 pipeline gate, use `pwsh -NoProfile -ExecutionPolicy Bypass -File
 pipeline/tests/run-standard.ps1`.
 
+## Approved real-data development baseline
+
+Use **v0 — Early Access** for all future data-backed development and new
+integration/feature acceptance tests. Its aggregate identity and expected
+counts live in `pipeline/contracts/development-baseline.json`; follow
+[the v0 baseline workflow](docs/development.md#approved-v0-development-baseline).
+Run `python scripts/dev.py baseline` before claiming real-data readiness.
+The frozen reference database is not a writable test target: use a verified
+disposable copy for migrations and mutating tests. Do not silently substitute
+synthetic or legacy V1 data when v0 is unavailable. Retain synthetic unit and
+negative-case tests, but they do not replace the required v0 acceptance run.
+Never commit real rows or include them in test output. Keep current privacy
+restrictions effective in historical releases and restored copies.
+
 Preserve existing and untracked work. Do not commit private source rows,
 addresses, coordinates, credentials, or geocoder responses. Keep changes scoped
 and report verification and evidence limits. Documentation additions and

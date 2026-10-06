@@ -22,25 +22,46 @@ publishable facilities unless explicitly labelled that way.
 
 ## v0 dataset release sequence
 
+**Owner approval, 2026-10-06:** the explained 13-source subset is approved as
+**v0 — Early Access**: 63,601 searchable records, 48,756 map locations,
+14,845 unmapped records and 54,256 names. Keep the stated France, Denmark and
+record-specific exclusions. This is the release decision, not another
+candidate/scope approval. Approval is recorded, full-cohort validation passed,
+and local activation built the 63,601-row approved discovery read model.
+Website deployment has not occurred. The D: backup was independently restored
+to `uec_v0_dev`; both databases passed the immutable-manifest, migrations and
+public-count checks. The reference `uec_v0_review_r3` is read-only by default.
+
+All future data-backed development and new integration/feature acceptance
+tests use verified disposable v0 copies; preserve the frozen reference.
+The [baseline workflow](development.md#approved-v0-development-baseline)
+is binding; fixture-only success does not establish real-data readiness.
+
+**Before website launch:** complete a separate **v1 dataset release**, and
+provide persistent v0 historical access. Historical views must serve the
+frozen release rather than silently switching to new data, while honoring
+current corrections, privacy restrictions and source-rights changes. The
+current active-release-only API must not make v0 disappear when v1 activates;
+historical selection is a launch requirement, not a claim it already works.
+
 The [actual publication assessment](v0-release-review.md#final-publication-assessment-2026-10-05)
 preserves the approved fifteen-source candidate scope; no second scope approval
-is requested. The final exception-qualified stamp packet proposes 63,601
+is requested. The approved exception-qualified packet specifies 63,601
 curated-default listable records: 48,756 mapped and 14,845 unmapped, from 13
 sources. All fifteen source snapshots and 124,414 frozen members remain
 retained. The packet names the 68 precautionary privacy holds, Denmark's
 58,230 non-core scope exclusions (one overlapping privacy hold), France's
 2,516 rights-pending records and the Belgian unmapped limitation.
 The name-import defect was repaired on 2026-10-06: 115,069 retained labels
-restored, without changing frozen records or coordinates. The proposed public
+restored, without changing frozen records or coordinates. The approved public
 subset has 54,256 named records; 9,345 lack supported normalized name fields.
 The [short release report](v0-release-review.md#short-release-report-2026-10-06)
 replaces the earlier recommendation to accept an unnamed release.
-Those are proposed outputs, not approved or published counts. The exact
-membership digest was recomputed unchanged. Record-level exceptions now pass
-all six actual disposable-PostGIS tests with no skips. No real candidate
-approval or publication event was created. The remaining maintainer decision
-is the final publication stamp and controlled activation with exact
-binding/suppression/rights rechecks and required CI—not another scope review.
+The exact membership digest was recomputed unchanged. Record-level exceptions
+pass all six actual disposable-PostGIS tests with no skips. The owner has now
+given the final release approval; no further generic scope or publication
+stamp is needed. Complete local activation with exact binding, suppression,
+rights and baseline rechecks, and distinguish it from external deployment.
 
 **Maintainer decision: 2026-10-03.** Dataset release names are independent of
 the V2 website and the legacy V1 application. `v0` is the first public dataset

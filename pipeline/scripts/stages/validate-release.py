@@ -61,50 +61,6 @@ def validate(database_url: str, release_id: str, expected_records: int | None, m
         release = connection.execute("SELECT status, test_only FROM uec.releases WHERE release_id = %s", (release_id,)).fetchone()
         if not release:
             raise ValueError(f"release not found: {release_id}")
-        metrics = connection.execute("""
-            SELECT
-                count(*)::int AS release_records,
-                count(DISTINCT release_member.observation_id)::int AS distinct_observations,
-                (count(*) - count(DISTINCT release_member.observation_id))::int AS duplicate_observations,
-                count(*) FILTER (WHERE observation.classification_review_status <> 'approved' AND release_member.default_visible)::int AS review_visible,
-                count(*) FILTER (WHERE release_member.default_visible AND latest.status = 'accepted' AND latest.result IS NOT NULL
-                    AND (ST_X(latest.result::geometry) <> 0 OR ST_Y(latest.result::geometry) <> 0))::int AS exact_display_ready,
-                count(*) FILTER (WHERE release_member.default_visible AND latest.status = 'review_required' AND city.reference_location IS NOT NULL
-                    AND (ST_X(city.reference_location::geometry) <> 0 OR ST_Y(city.reference_location::geometry) <> 0))::int AS city_display_ready,
-                count(*) FILTER (WHERE release_member.default_visible AND NOT (
-                    (latest.status = 'accepted' AND latest.result IS NOT NULL
-                        AND (ST_X(latest.result::geometry) <> 0 OR ST_Y(latest.result::geometry) <> 0))
-                    OR (latest.status = 'review_required' AND city.reference_location IS NOT NULL
-                        AND (ST_X(city.reference_location::geometry) <> 0 OR ST_Y(city.reference_location::geometry) <> 0))
-                ))::int AS unmapped_display,
-                count(*) FILTER (WHERE release_member.default_visible AND (
-                    latest.status IS NULL
-                    OR latest.status = 'failed'
-                    OR (latest.status = 'accepted' AND (
-                        latest.result IS NULL
-                        OR (ST_X(latest.result::geometry) = 0 AND ST_Y(latest.result::geometry) = 0)
-                    ))
-                    OR (latest.status = 'unresolved' AND latest.result IS NOT NULL)
-                    OR (latest.status = 'review_required' AND city.reference_location IS NOT NULL
-                        AND ST_X(city.reference_location::geometry) = 0
-                        AND ST_Y(city.reference_location::geometry) = 0)
-                ))::int AS coordinate_not_ready,
-                count(*) FILTER (WHERE review.release_id IS NULL OR review.publication_eligible IS DISTINCT FROM true OR review.privacy_screening_status IS DISTINCT FROM 'passed' OR review.maintainer_approval IS DISTINCT FROM 'approved')::int AS publication_not_approved,
-                count(*) FILTER (WHERE restricted.source_record_id IS NOT NULL)::int AS active_suppression,
-                count(*) FILTER (WHERE release_member.default_visible AND (release.summary->'demonstration' IS NOT NULL AND release.summary->'demonstration'->>'rights_status' IS DISTINCT FROM 'cleared'))::int AS rights_not_cleared,
-                (SELECT count(*)::int FROM uec.validation_findings finding WHERE finding.severity = 'error' AND (finding.source_record_id IS NULL OR finding.source_record_id IN (SELECT source_record_id FROM uec.observations WHERE observation_id IN (SELECT observation_id FROM uec.release_members WHERE release_id = %s)))) AS validation_errors
-            FROM uec.release_members AS release_member
-            JOIN uec.releases AS release ON release.release_id = release_member.release_id
-            JOIN uec.observations AS observation ON observation.observation_id = release_member.observation_id
-            JOIN uec.facilities AS facility ON facility.facility_id = release_member.facility_id
-            LEFT JOIN LATERAL (SELECT status, result FROM uec.geocode_results WHERE source_record_id = observation.source_record_id ORDER BY queried_at DESC, geocode_result_id DESC LIMIT 1) AS latest ON true
-            LEFT JOIN LATERAL (SELECT reference_location FROM uec.city_reference_points WHERE country_code = facility.country_code AND lower(city_name) = lower(facility.city) AND (postal_code IS NULL OR postal_code = facility.postal_code) LIMIT 1) AS city ON true
-            LEFT JOIN uec.publication_review_release_current review
-              ON review.source_record_id = observation.source_record_id
-             AND review.release_id = release_member.release_id
-            LEFT JOIN uec.public_access_restricted restricted ON restricted.source_record_id = observation.source_record_id
-            WHERE release_member.release_id = %s
-        """, (release_id, release_id)).fetchone()
         metrics = connection.execute(RELEASE_GATE_METRICS_SQL,
                                      (release_id, release_id, release_id)).fetchone()
         names = ["release_records", "visible_records", "distinct_observations", "duplicate_observations",

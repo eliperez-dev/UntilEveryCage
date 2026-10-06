@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 from datetime import timezone
 from pathlib import Path
@@ -129,6 +130,7 @@ def _same_immutable_manifest(existing: dict, proposed: dict) -> bool:
     """Compare the release identity and every immutable publication input."""
     keys = (
         "manifest_version", "data_product_version", "release_id", "profile",
+        "dataset_version", "release_label", "release_channel",
         "release_status", "test_only", "ruleset_version", "schema_version",
         "suppression_generation", "retrieved_at", "source_ids", "source_coverage",
         "eligible_record_count", "row_counts", "checksums", "review_state",
@@ -136,6 +138,22 @@ def _same_immutable_manifest(existing: dict, proposed: dict) -> bool:
         "distributed_artifacts", "map_artifact",
     )
     return all(existing.get(key) == proposed.get(key) for key in keys)
+
+
+def _dataset_release_metadata(summary: object) -> dict[str, str]:
+    """Project optional human release labels without changing the frozen ID."""
+    metadata = summary.get("dataset_release") if isinstance(summary, dict) else None
+    if metadata is None:
+        return {}
+    if not isinstance(metadata, dict):
+        raise ValueError("dataset release metadata is invalid")
+    version, label, channel = (metadata.get("version"), metadata.get("label"), metadata.get("channel"))
+    if (not isinstance(version, str) or not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,63}", version)
+            or not isinstance(channel, str) or not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,63}", channel)
+            or not isinstance(label, str) or not label.strip() or len(label) > 200
+            or any(ord(char) < 32 for char in label)):
+        raise ValueError("dataset release metadata is invalid")
+    return {"dataset_version": version, "release_label": label.strip(), "release_channel": channel}
 
 
 def promote(database_url: str, release_id: str, artifacts: list[dict], map_artifact: dict | None = None,
@@ -162,41 +180,6 @@ def promote(database_url: str, release_id: str, artifacts: list[dict], map_artif
                     raise ValueError("test-only releases cannot be validated or promoted")
                 raise ValueError(f"release must be validated before promotion; current status is {target[0]}")
             rights_gate = require_cleared(connection, release_id)
-            unsafe = connection.execute("""
-                SELECT
-                  count(*) FILTER (WHERE m.default_visible AND (
-                    g.status IS NULL
-                    OR g.status = 'failed'
-                    OR (g.status = 'accepted' AND (
-                        g.result IS NULL
-                        OR (ST_X(g.result::geometry) = 0 AND ST_Y(g.result::geometry) = 0)
-                    ))
-                    OR (g.status = 'unresolved' AND g.result IS NOT NULL)
-                    OR (g.status = 'review_required' AND city.reference_location IS NOT NULL
-                        AND ST_X(city.reference_location::geometry) = 0
-                        AND ST_Y(city.reference_location::geometry) = 0)
-                  )),
-                  count(*) FILTER (WHERE o.classification_review_status <> 'approved' AND m.default_visible),
-                  count(*) FILTER (WHERE r.release_id IS NULL OR r.publication_eligible IS DISTINCT FROM true OR r.privacy_screening_status IS DISTINCT FROM 'passed' OR r.maintainer_approval IS DISTINCT FROM 'approved'),
-                  count(*) FILTER (WHERE s.source_record_id IS NOT NULL),
-                  count(*) FILTER (WHERE m.default_visible AND (release.summary->'demonstration' IS NOT NULL AND release.summary->'demonstration'->>'rights_status' IS DISTINCT FROM 'cleared'))
-                FROM uec.release_members m
-                JOIN uec.releases release ON release.release_id = m.release_id
-                JOIN uec.observations o ON o.observation_id = m.observation_id
-                LEFT JOIN LATERAL (SELECT status, result FROM uec.geocode_results WHERE source_record_id=o.source_record_id ORDER BY queried_at DESC, geocode_result_id DESC LIMIT 1) g ON true
-                LEFT JOIN uec.facilities facility ON facility.facility_id=m.facility_id
-                LEFT JOIN LATERAL (
-                  SELECT reference_location FROM uec.city_reference_points
-                  WHERE country_code=facility.country_code
-                    AND lower(city_name)=lower(facility.city)
-                    AND (postal_code IS NULL OR postal_code=facility.postal_code)
-                  ORDER BY postal_code NULLS LAST LIMIT 1
-                ) city ON true
-                LEFT JOIN uec.publication_review_release_current r
-                  ON r.source_record_id=o.source_record_id AND r.release_id=m.release_id
-                LEFT JOIN uec.public_access_restricted s ON s.source_record_id=o.source_record_id
-                WHERE m.release_id=%s
-            """, (release_id,)).fetchone()
             geometry_metrics = connection.execute(
                 RELEASE_GATE_METRICS_SQL, (release_id, release_id, release_id)
             ).fetchone()
@@ -292,6 +275,7 @@ def promote(database_url: str, release_id: str, artifacts: list[dict], map_artif
                 "created_at": utc_iso(created_at),
                 "distributed_artifacts": artifacts,
             }
+            manifest.update(_dataset_release_metadata(target[4]))
             if map_artifact is not None:
                 manifest["map_artifact"] = map_artifact
             prior_manifest_row = connection.execute(

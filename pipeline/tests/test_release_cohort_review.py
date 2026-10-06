@@ -91,6 +91,13 @@ class CohortReviewContractTests(unittest.TestCase):
         query = contract.geometry_approval_sql("SELECT observation_id FROM approved_geometry_members")
         self.assertIn("scope.excluded_source_record_ids ? observation.source_record_id::text", query)
 
+    def test_publication_generation_migration_batches_event_invalidation(self):
+        migration = (ROOT / "pipeline" / "migrations" / "065_publication_review_generation_statement.sql").read_text(encoding="utf-8").lower()
+        self.assertIn("referencing new table as inserted_publication_reviews", migration)
+        self.assertIn("for each statement", migration)
+        self.assertIn("generation = generation + inserted_count", migration)
+        self.assertIn("inserted_count > 0", migration)
+
     def test_operator_document_must_remain_in_ignored_local_reports(self):
         with self.assertRaises(contract.CohortReviewError):
             recorder._read_operator_document(ROOT / "README.md")
@@ -280,6 +287,46 @@ class CohortReviewPostgresTests(unittest.TestCase):
 
                     # The fixture transaction rolls back every synthetic row,
                     # including the successful apply, when this sentinel exits.
+                    raise _RollbackFixture()
+
+    def test_multirow_publication_insert_bumps_generation_once_by_event_count(self):
+        with psycopg.connect(self.url) as connection:
+            with self.assertRaises(_RollbackFixture):
+                with connection.transaction():
+                    document = self._fixture(connection)
+                    release_id = document["release_id"]
+                    generation_before = connection.execute(
+                        "SELECT generation FROM uec.public_suppression_generation WHERE singleton=true"
+                    ).fetchone()[0]
+                    inserted = 6
+                    connection.execute("""
+                        INSERT INTO uec.publication_review_events
+                            (source_record_id,release_id,factual_review_status,privacy_screening_status,
+                             maintainer_approval,publication_eligible,reviewer_role,reviewed_at)
+                        SELECT observation.source_record_id,%s,'unreviewed','pending','pending',false,
+                               'importer','2020-01-02T00:00:00Z'
+                        FROM generate_series(1,3) repetition
+                        CROSS JOIN uec.release_members member
+                        JOIN uec.observations observation USING(observation_id)
+                        WHERE member.release_id=%s
+                    """, (release_id, release_id))
+                    generation_after = connection.execute(
+                        "SELECT generation FROM uec.public_suppression_generation WHERE singleton=true"
+                    ).fetchone()[0]
+                    self.assertEqual(generation_after - generation_before, inserted)
+                    connection.execute("""
+                        INSERT INTO uec.publication_review_events
+                            (source_record_id,release_id,factual_review_status,privacy_screening_status,
+                             maintainer_approval,publication_eligible,reviewer_role,reviewed_at)
+                        SELECT observation.source_record_id,%s,'unreviewed','pending','pending',false,
+                               'importer','2020-01-03T00:00:00Z'
+                        FROM uec.release_members member
+                        JOIN uec.observations observation USING(observation_id)
+                        WHERE member.release_id=%s AND false
+                    """, (release_id, release_id))
+                    self.assertEqual(connection.execute(
+                        "SELECT generation FROM uec.public_suppression_generation WHERE singleton=true"
+                    ).fetchone()[0], generation_after)
                     raise _RollbackFixture()
 
 
