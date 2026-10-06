@@ -189,7 +189,11 @@ SELECT count(*)::int AS release_records,
        count(*) FILTER (WHERE geometry.default_visible AND (
            (geometry.is_frozen_candidate AND geometry.geometry_evidence_kind IN
              ('source_coordinates','provider_derived','verified_coarse_reference')
-             AND NOT geometry.candidate_geometry_valid)
+             -- Maintainer authorization: eligible records with unusable
+             -- geometry remain listable as unmapped, never as guessed points.
+             -- Still block any invalid geometry actually selected for display.
+             AND geometry.display_location IS NOT NULL
+             AND geometry.candidate_geometry_valid IS DISTINCT FROM true)
            OR (NOT geometry.is_frozen_candidate AND (
              geometry.geocode_status='failed'
              OR (geometry.geocode_status='accepted' AND (
