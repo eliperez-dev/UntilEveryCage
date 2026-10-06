@@ -27,7 +27,7 @@ GEOMETRY_MEMBERS_CTE = APPROVED_GEOMETRY_MEMBERS_CTE + """
                THEN 'source_coordinates'
              ELSE NULL
            END AS geometry_evidence_kind,
-           release.summary->>'candidate_only' = 'true' AS is_frozen_candidate,
+           COALESCE(release.summary->>'candidate_only' = 'true', false) AS is_frozen_candidate,
            scope.excluded_display_categories,
            scope.geometry_interpretation_status,
            scope.classification_interpretation_status,

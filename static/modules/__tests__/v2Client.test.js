@@ -23,6 +23,7 @@ const record = (overrides = {}) => ({
         taxonomy_version: 'uec-taxonomy-v1', crosswalk_version: 'crosswalk-v1', ruleset_version: 'rules-v1'
     }],
     display_precision: 'city',
+    geometry_provenance: { origin: 'city_reference', method: 'city_reference' },
     latitude: 55.67,
     longitude: 12.56,
     publication_profile: 'official',
@@ -116,8 +117,19 @@ test('contract rejects privacy-ineligible records before rendering', () => {
 
 test('contract rejects fields not in the frozen public projection', () => {
     expect(V2_LOCATION_FIELDS).toContain('source_rights_status');
+    expect(V2_LOCATION_FIELDS).toContain('geometry_provenance');
     expect(V2_LOCATION_FIELDS).not.toContain('evidence_content_hash');
     expect(() => validateV2Location({ ...exactOfficialLocation, evidence_content_hash: 'deferred' })).toThrow('unsupported field');
+});
+
+test.each(['source_reported', 'approximate'])('contract preserves the additive %s precision', precision => {
+    const location = { ...exactOfficialLocation, display_precision: precision, geometry_provenance: { origin: 'source_coordinates' } };
+    expect(validateV2Location(location)).toBe(location);
+});
+
+test('contract rejects unrestricted geometry provenance payloads', () => {
+    expect(() => validateV2Location({ ...exactOfficialLocation, geometry_provenance: { origin: 'provider_derived', raw_provider_response: 'private' } }))
+        .toThrow('invalid geometry_provenance');
 });
 
 test('client preserves compatibility offset as a query parameter', async () => {

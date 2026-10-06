@@ -288,6 +288,53 @@ class PublicGeometryPostgresTests(unittest.TestCase):
                         WHERE member.release_id=%s
                     """, (release_id,)).fetchone()[0]
                     self.assertEqual(before, after)
+
+                    legacy_ids = dict(connection.execute("""
+                        SELECT observation.observation->>'fixture_kind',
+                               observation.source_record_id::text
+                        FROM uec.observations observation
+                        JOIN uec.release_members member USING(observation_id)
+                        WHERE member.release_id=%s
+                          AND observation.observation->>'fixture_kind' IN
+                              ('source_unknown_precision','verified_coarse','unmapped')
+                    """, (release_id,)).fetchall())
+                    connection.execute("""
+                        INSERT INTO uec.geocode_results
+                            (source_record_id,provider_id,query,match_method,status,attempt_number,
+                             result,precision,queried_at)
+                        VALUES (%s,'synthetic-legacy','synthetic exact','fixture','accepted',1,
+                                ST_SetSRID(ST_MakePoint(10.2,55.5),4326)::geography,'exact',now()),
+                               (%s,'synthetic-legacy','synthetic city','fixture','review_required',1,
+                                NULL,'city',now())
+                    """, (legacy_ids["source_unknown_precision"], legacy_ids["verified_coarse"]))
+                    connection.execute("""
+                        INSERT INTO uec.city_reference_points
+                            (country_code,city_name,reference_location,reference_source,
+                             source_retrieved_at,source_reference_id)
+                        VALUES ('ZZ','Example',ST_SetSRID(ST_MakePoint(10,55),4326)::geography,
+                                'synthetic legacy fixture',now(),%s)
+                    """, (f"legacy-{uuid.uuid4().hex}",))
+                    connection.execute(
+                        "UPDATE uec.releases SET summary=summary-'candidate_only' WHERE release_id=%s",
+                        (release_id,),
+                    )
+                    legacy_query = geometry_rows_sql("""
+                        SELECT evidence->>'fixture_kind', display_precision,
+                               ST_Y(display_location::geometry), ST_X(display_location::geometry),
+                               geometry_origin, is_frozen_candidate
+                        FROM eligible_geometry
+                        WHERE evidence->>'fixture_kind' IN
+                              ('source_unknown_precision','verified_coarse','unmapped')
+                        ORDER BY evidence->>'fixture_kind'
+                    """)
+                    legacy_rows = connection.execute(
+                        legacy_query, (release_id, release_id)
+                    ).fetchall()
+                    self.assertEqual({row[0]: row[1:] for row in legacy_rows}, {
+                        "source_unknown_precision": ("exact", 55.5, 10.2, "provider_geocode", False),
+                        "unmapped": ("unmapped", None, None, "unmapped", False),
+                        "verified_coarse": ("city", 55.0, 10.0, "city_reference", False),
+                    })
                     raise _RollbackFixture()
 
 

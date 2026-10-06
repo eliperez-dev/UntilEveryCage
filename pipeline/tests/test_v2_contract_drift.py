@@ -11,5 +11,5 @@ class V2ContractDriftTests(unittest.TestCase):
         self.assertEqual(rust_fields, set(schema["properties"]))
         js = (ROOT / "static/modules/v2Contract.js").read_text(encoding="utf-8")
         required = set(re.findall(r"'([a-z_]+)'", re.search(r"for \(const field of \[(.*?)\]\)", js, re.S).group(1)))
-        required |= {"canonical_name", "city", "reviewer_role", "publication_warning", "latitude", "longitude", "first_observed_at", "last_observed_at", "observation_count", "provenance_source", "taxonomy_display_category", "taxonomy_primary_categories", "taxonomy_leaf_activities", "taxonomy_assignments"}
+        required |= {"canonical_name", "city", "reviewer_role", "publication_warning", "latitude", "longitude", "first_observed_at", "last_observed_at", "observation_count", "provenance_source", "geometry_provenance", "taxonomy_display_category", "taxonomy_primary_categories", "taxonomy_leaf_activities", "taxonomy_assignments"}
         self.assertEqual(rust_fields, required)

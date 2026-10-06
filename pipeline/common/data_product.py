@@ -298,7 +298,7 @@ def data_dictionary() -> dict[str, Any]:
         "country_code": "ISO 3166-1 alpha-2 country code.",
         "city": "Public city or region label; not a street address.",
         "category": "Project classification category under the release ruleset.",
-        "display_precision": "Public location precision: exact, city, or unmapped.",
+        "display_precision": "Public location precision: exact, city, source_reported, approximate, or unmapped.",
         "latitude": "Public latitude; blank when unmapped or not allowed by display precision.",
         "longitude": "Public longitude; blank when unmapped or not allowed by display precision.",
         "lifecycle_status": "Observed lifecycle label; disappearance is not closure.",
@@ -323,7 +323,7 @@ def data_dictionary() -> dict[str, Any]:
     return {
         "data_product_version": DATA_PRODUCT_VERSION,
         "schema_version": SCHEMA_VERSION,
-        "coordinate_policy": "Coordinates are emitted only for exact or city display precision; city points are coarse/approximate and no guessed point is substituted.",
+        "coordinate_policy": "Coordinates are emitted only for exact, city, source_reported, or approximate display precision. City and approximate points are coarse display locations; source_reported preserves the source precision statement. No guessed point is substituted.",
         "unknown_values": "Blank/null means unknown or unavailable and is not an assertion of absence.",
         "fields": [
             {"name": field, "description": descriptions[field], "nullable": field not in {"facility_id", "country_code", "category", "display_precision", "source_type", "publication_profile", "release_id"}}

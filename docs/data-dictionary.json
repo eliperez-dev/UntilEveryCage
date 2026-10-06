@@ -1,7 +1,7 @@
 {
   "data_product_version": "uec-public-data-product-v1",
   "schema_version": "uec-location-projection-v1",
-  "coordinate_policy": "Coordinates are emitted only for exact or city display precision; city coordinates are coarse/approximate display points and no guessed point is substituted.",
+  "coordinate_policy": "Coordinates are emitted only for exact, city, source_reported, or approximate display precision. City and approximate points are coarse display locations; source_reported preserves the source coordinate precision statement. No guessed point is substituted.",
   "unknown_values": "Blank or null means unknown or unavailable and is not an assertion of absence.",
   "fields": [
     {"name": "facility_id", "type": "string", "required": true, "description": "Stable project facility identifier."},
@@ -9,7 +9,7 @@
     {"name": "country_code", "type": "string", "required": true, "description": "ISO 3166-1 alpha-2 country code."},
     {"name": "city", "type": "string", "required": false, "description": "Public city or region label, not a street address."},
     {"name": "category", "type": "string", "required": true, "description": "Release-ruleset classification category."},
-    {"name": "display_precision", "type": "string", "required": true, "description": "Public location precision: exact, city, or unmapped."},
+    {"name": "display_precision", "type": "string", "required": true, "description": "Public location precision: exact, city, source_reported, approximate, or unmapped."},
     {"name": "latitude", "type": "number", "required": false, "description": "Public latitude; null when not allowed by display precision."},
     {"name": "longitude", "type": "number", "required": false, "description": "Public longitude; null when not allowed by display precision."},
     {"name": "lifecycle_status", "type": "string", "required": true, "description": "Observed lifecycle label; disappearance is not closure."},

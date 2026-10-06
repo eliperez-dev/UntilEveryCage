@@ -6,7 +6,17 @@
  */
 export const V2_PROFILES = Object.freeze(['official', 'secondary', 'community']);
 export const V2_SOURCE_TYPES = Object.freeze(['official', 'secondary', 'user_submitted']);
-export const V2_DISPLAY_PRECISIONS = Object.freeze(['exact', 'city', 'unmapped']);
+export const V2_DISPLAY_PRECISIONS = Object.freeze(['exact', 'city', 'source_reported', 'approximate', 'unmapped']);
+export const V2_GEOMETRY_ORIGINS = Object.freeze([
+    'source_coordinates', 'provider_derived', 'verified_coarse_reference',
+    'provider_geocode', 'city_reference', 'unmapped'
+]);
+const V2_GEOMETRY_FIELDS = new Set([
+    'origin', 'method', 'source_precision', 'provider', 'provider_status',
+    'provider_queried_at', 'confidence', 'confidence_band',
+    'coordinate_review_status', 'reference_source_id', 'reference_source',
+    'evidence_kind', 'evidence_id'
+]);
 export const V2_LIFECYCLE_STATUSES = Object.freeze([
     'active_observed',
     'explicitly_closed',
@@ -21,7 +31,7 @@ export const V2_LOCATION_FIELDS = Object.freeze([
     'facility_id', 'canonical_name', 'country_code', 'city', 'category',
     'taxonomy_display_category', 'taxonomy_primary_categories', 'taxonomy_leaf_activities', 'taxonomy_assignments',
     'publication_profile', 'factual_review_status', 'privacy_screening_status',
-    'project_approval', 'reviewer_role', 'publication_warning', 'display_precision',
+    'project_approval', 'reviewer_role', 'publication_warning', 'display_precision', 'geometry_provenance',
     'latitude', 'longitude', 'first_observed_at', 'last_observed_at',
     'observation_count', 'lifecycle_status', 'source_type', 'source_rights_status',
     'provenance_source', 'release_id', 'release_ruleset_version',
@@ -79,6 +89,17 @@ export function validateV2Location(record) {
     if (!isHttpUrl(record.provenance_source_url)) throw new TypeError('V2 location has invalid provenance_source_url');
     if (!V2_SOURCE_TYPES.includes(record.source_type)) throw new TypeError('V2 location has invalid source_type');
     if (!V2_DISPLAY_PRECISIONS.includes(record.display_precision)) throw new TypeError('V2 location has invalid display_precision');
+    if (!isObject(record.geometry_provenance) ||
+        Object.keys(record.geometry_provenance).some(field => !V2_GEOMETRY_FIELDS.has(field)) ||
+        !V2_GEOMETRY_ORIGINS.includes(record.geometry_provenance.origin) ||
+        Object.entries(record.geometry_provenance).some(([field, value]) =>
+            field !== 'origin' && (typeof value !== 'string' || value.length > 200))) {
+        throw new TypeError('V2 location has invalid geometry_provenance');
+    }
+    if (record.geometry_provenance.provider_queried_at !== undefined &&
+        !isDateTime(record.geometry_provenance.provider_queried_at)) {
+        throw new TypeError('V2 location has invalid geometry_provenance.provider_queried_at');
+    }
     if (!V2_LIFECYCLE_STATUSES.includes(record.lifecycle_status)) throw new TypeError('V2 location has invalid lifecycle_status');
     if (!V2_TAXONOMY_PRIMARY_KEYS.includes(record.taxonomy_display_category) ||
         !Array.isArray(record.taxonomy_primary_categories) ||
