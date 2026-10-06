@@ -27,9 +27,17 @@ def canonical_sha256(value: Any) -> str:
 
 
 def _text(value: Any, field: str, *, maximum: int = 2000) -> str:
-    if not isinstance(value, str) or not value.strip() or len(value) > maximum or "\x00" in value:
+    if (not isinstance(value, str) or not value.strip() or len(value) > maximum
+            or any(ord(character) < 32 for character in value)):
         raise CohortReviewError(f"{field} must be a non-empty safe string")
     return value.strip()
+
+
+def _reference(value: Any, field: str) -> str:
+    text = _text(value, field, maximum=500)
+    if not re.fullmatch(r"[A-Za-z0-9:/._#-]+", text):
+        raise CohortReviewError(f"{field} must be a safe reference token or URL without query data")
+    return text
 
 
 def _timestamp(value: Any, field: str) -> str:
@@ -73,6 +81,7 @@ def validate_document(document: Any) -> dict[str, Any]:
     _timestamp(reviewer.get("reviewed_at"), "reviewer.reviewed_at")
     for field in ("review_method", "review_evidence_reference"):
         _text(document.get(field), field)
+    _reference(document.get("review_evidence_reference"), "review_evidence_reference")
     scopes = document.get("source_artifact_scopes")
     if not isinstance(scopes, list) or not scopes:
         raise CohortReviewError("source_artifact_scopes must be a non-empty list")
@@ -125,6 +134,9 @@ def validate_document(document: Any) -> dict[str, Any]:
         for field in ("privacy_method", "privacy_evidence_reference", "project_approval_method",
                       "project_approval_evidence_reference", "rights_actor", "rights_reference"):
             _text(scope.get(field), f"scope.{field}")
+        for field in ("privacy_evidence_reference", "project_approval_evidence_reference", "rights_reference",
+                      "classification_evidence_reference", "geometry_evidence_reference"):
+            _reference(scope.get(field), f"scope.{field}")
         _timestamp(scope.get("rights_decided_at"), "scope.rights_decided_at")
         excluded = scope.get("excluded_display_categories", [])
         if (not isinstance(excluded, list) or any(item not in DISPLAY_CATEGORIES for item in excluded)
@@ -132,7 +144,7 @@ def validate_document(document: Any) -> dict[str, Any]:
             raise CohortReviewError("excluded_display_categories must contain unique confirmed taxonomy IDs")
         if excluded:
             _text(scope.get("exclusion_reason_category"), "scope.exclusion_reason_category", maximum=100)
-            _text(scope.get("exclusion_policy_reference"), "scope.exclusion_policy_reference")
+            _reference(scope.get("exclusion_policy_reference"), "scope.exclusion_policy_reference")
     return document
 
 
