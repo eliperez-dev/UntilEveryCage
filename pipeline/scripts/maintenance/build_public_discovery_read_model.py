@@ -25,6 +25,9 @@ from pipeline.common.source_rights import require_cleared
 from pipeline.common.release_geometry import geometry_rows_sql
 
 
+PUBLIC_RELEASE_STATUS_PREDICATE = "release.status='promoted'"
+
+
 class ReadModelBlocked(ValueError):
     """The read model cannot safely be activated."""
 
@@ -283,7 +286,7 @@ JOIN LATERAL (
     ) decision
     ORDER BY decision.decided_at DESC, decision.tie_break DESC LIMIT 1
 ) review ON true
-WHERE release.status='promoted' AND release.test_only IS NOT TRUE
+WHERE __PUBLIC_RELEASE_STATUS_PREDICATE__ AND release.test_only IS NOT TRUE
   AND (NOT eligible.is_frozen_candidate OR eligible.approved_member_ok)
   AND review.publication_eligible=true AND review.privacy_screening_status='passed'
   AND review.factual_review_status<>'rejected'
@@ -308,7 +311,7 @@ WHERE release.status='promoted' AND release.test_only IS NOT TRUE
         AND case_record.status IN ('active','review','closed','expired')
         AND suppressed_record.source_record_id=observation.source_record_id)
 ORDER BY eligible.facility_id, eligible.observation_id
-""")
+""").replace("__PUBLIC_RELEASE_STATUS_PREDICATE__", PUBLIC_RELEASE_STATUS_PREDICATE)
 
 
 SELECT_ROWS = """
@@ -323,6 +326,16 @@ FROM (
 """ + SOURCE_ROWS + """
 ) selected
 """
+
+
+def public_release_query(statuses: tuple[str, ...] = ("promoted",)) -> str:
+    """Return the shared projection for the explicitly allowed build statuses."""
+    allowed = {"validated", "promoted"}
+    if not statuses or any(status not in allowed for status in statuses):
+        raise ValueError("public projection release status is not allowed")
+    status_values = ",".join(f"'{status}'" for status in dict.fromkeys(statuses))
+    predicate = f"release.status IN ({status_values})"
+    return SELECT_ROWS.replace(PUBLIC_RELEASE_STATUS_PREDICATE, predicate)
 
 
 # Keep the normal activation path set-based.  The source projection is already

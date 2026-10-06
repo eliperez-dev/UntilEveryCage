@@ -167,9 +167,7 @@ def build(database_url: str, release_id: str, output_root: Path) -> dict[str, An
         # The projection's normal query remains the single source of precision,
         # review, profile, source-rights, and suppression semantics. During this
         # private build only, validated releases are admitted to its CTE.
-        query = discovery.SELECT_ROWS.replace(
-            "release.status = 'promoted'", "release.status IN ('validated', 'promoted')"
-        )
+        query = discovery.public_release_query(("validated", "promoted"))
         rows = connection.execute(query, (release_id, release_id)).fetchall()
 
         eligible_observation_ids = sorted({row[1] for row in rows})

@@ -77,7 +77,15 @@ GEOMETRY_MEMBERS_CTE = APPROVED_GEOMETRY_MEMBERS_CTE + """
                   AND evidence #>> '{display_location,evidence_id}' IS NOT NULL)
               OR (geometry_evidence_kind='provider_derived'
                   AND evidence #>> '{display_location,provider_status}'='accepted'
-                  AND evidence #>> '{display_location,confidence_band}'='high'))
+                  AND evidence #>> '{display_location,confidence_band}'='high'
+                  AND NULLIF(btrim(evidence #>> '{display_location,provider}'),'') IS NOT NULL
+                  AND NULLIF(btrim(evidence #>> '{display_location,provider_queried_at}'),'') IS NOT NULL
+                  AND NULLIF(btrim(evidence #>> '{display_location,method}'),'') IS NOT NULL
+                  AND NULLIF(btrim(evidence #>> '{display_location,precision}'),'') IS NOT NULL
+                  AND NULLIF(btrim(evidence #>> '{display_location,evidence_id}'),'') IS NOT NULL
+                  AND CASE WHEN evidence #>> '{display_location,confidence}' ~ '^[0-9]+([.][0-9]+)?$'
+                           THEN (evidence #>> '{display_location,confidence}')::numeric BETWEEN 0 AND 1
+                           ELSE false END))
              AND coordinate IS NOT NULL
              AND (ST_X(coordinate::geometry)<>0 OR ST_Y(coordinate::geometry)<>0)
              AND ST_X(coordinate::geometry) BETWEEN -180 AND 180

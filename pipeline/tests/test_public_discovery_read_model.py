@@ -39,6 +39,14 @@ class PublicDiscoveryReadModelTests(unittest.TestCase):
         self.assertIn("suppression_case_current", query)
         self.assertNotIn("public_access_restricted", query)
 
+    def test_private_prepublication_selector_is_separate_from_public_query(self):
+        self.assertIn("release.status in ('promoted')", MODULE.public_release_query().lower())
+        private_query = MODULE.public_release_query(("validated", "promoted")).lower()
+        self.assertIn("release.status in ('validated','promoted')", private_query)
+        self.assertNotIn("__public_release_status_predicate__", private_query)
+        with self.assertRaises(ValueError):
+            MODULE.public_release_query(("candidate",))
+
     def test_high_volume_activation_has_set_based_path_and_interrupt_hook(self):
         self.assertIn("insert into uec.public_discovery_read_model_rows", MODULE.INSERT_ROWS.lower())
         self.assertIn("from (", MODULE.INSERT_ROWS.lower())

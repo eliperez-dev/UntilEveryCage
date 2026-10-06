@@ -110,6 +110,11 @@ class PublicGeometryPostgresTests(unittest.TestCase):
                  "coordinate_review_status": "pending_human_review",
                  "confidence": 0.95, "confidence_band": "high"}},
              "geoapify_forward", "locality"),
+            ("provider_missing_metadata", "processing_and_preparation", 58.8, 10.8,
+             {"display_location": {"latitude": 58.8, "longitude": 10.8,
+                 "evidence_kind": "provider_derived", "provider_status": "accepted",
+                 "confidence_band": "high"}},
+             "geoapify_forward", "locality"),
             ("malformed_source", "processing_and_preparation", None, None,
              {"source_location": {"latitude": "not-a-number", "longitude": 10,
                                   "precision": "numeric", "coordinate_method": "source_coordinates"}},
@@ -193,7 +198,7 @@ class PublicGeometryPostgresTests(unittest.TestCase):
                         WHERE member.release_id=%s
                     """, (release_id,)).fetchone()[0]
                     review = RECORDER._verify(connection, document, apply_changes=True)
-                    self.assertEqual(review["default_visible_count"], 6)
+                    self.assertEqual(review["default_visible_count"], 8)
                     query = geometry_rows_sql("""
                         SELECT evidence->>'fixture_kind', display_precision,
                                ST_Y(display_location::geometry), ST_X(display_location::geometry),
@@ -202,7 +207,7 @@ class PublicGeometryPostgresTests(unittest.TestCase):
                     """)
                     rows = connection.execute(query, (release_id, release_id)).fetchall()
                     by_kind = {row[0]: row[1:] for row in rows}
-                    self.assertEqual(len(by_kind), 7)
+                    self.assertEqual(len(by_kind), 9)
                     self.assertEqual(by_kind["source_unknown_precision"][0], "source_reported")
                     self.assertEqual(by_kind["source_unknown_precision"][1:3], (55.5, 10.2))
                     self.assertEqual(by_kind["source_unknown_precision"][3]["source_precision"], "source-precision-unknown")
@@ -214,6 +219,7 @@ class PublicGeometryPostgresTests(unittest.TestCase):
                     self.assertEqual(by_kind["unmapped"][0:3], ("unmapped", None, None))
                     self.assertEqual(by_kind["zero_zero"][0:3], ("unmapped", None, None))
                     self.assertEqual(by_kind["provider_pending"][0:3], ("unmapped", None, None))
+                    self.assertEqual(by_kind["provider_missing_metadata"][0:3], ("unmapped", None, None))
                     self.assertEqual(by_kind["malformed_source"][0:3], ("unmapped", None, None))
                     self.assertEqual(by_kind["excluded_category"][0:3], ("source_reported", 59.5, 10.6))
                     self.assertFalse(by_kind["excluded_category"][4])
@@ -234,7 +240,7 @@ class PublicGeometryPostgresTests(unittest.TestCase):
                     """, (release_id,))
                     metrics = connection.execute(RELEASE_GATE_METRICS_SQL,
                                                   (release_id, release_id, release_id)).fetchone()
-                    self.assertEqual(metrics[1], 6)
+                    self.assertEqual(metrics[1], 8)
                     self.assertEqual(metrics[4], 0)  # immutable source review_required is not promoted to approved
                     self.assertEqual(metrics[11], 1)  # active suppression is counted only on visible membership
                     after = connection.execute("""

@@ -72,6 +72,12 @@ class PublicMapArtifactTests(unittest.TestCase):
         self.assertIsNone(MODULE.map_geometry_kind("unmapped", None))
         self.assertIsNone(MODULE.map_geometry_kind("source_reported", None))
 
+    def test_prepublication_builder_uses_private_validated_selector(self):
+        source = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn('discovery.public_release_query(("validated", "promoted"))', source)
+        discovery = (ROOT / "scripts" / "maintenance" / "build_public_discovery_read_model.py").read_text(encoding="utf-8")
+        self.assertIn('PUBLIC_RELEASE_STATUS_PREDICATE = "release.status=\'promoted\'"', discovery)
+
     def test_coincident_exact_records_remain_distinct_at_max_zoom(self):
         facilities = [
             {"record_id": "exact-a", "longitude": 12, "latitude": 55, "kind": "exact", "category_key": "farm"},
