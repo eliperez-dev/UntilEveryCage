@@ -405,8 +405,14 @@ proofs and actual-cohort measurements are separate evidence: passing fixtures
 does not establish that this real cohort is approved or publicly rendered.
 Fifty focused local integration tests passed, including the actual disposable
 PostGIS cohort and geometry proofs without skips, plus 24 frontend wire/map
-projection tests. Full activation/API and CI verification are pending; do not
-treat this preparation checkpoint as promotion or launch. The maintainer
+projection tests. An additional actual SQL proof confirms that a validated
+synthetic release has zero default-public rows, while its private preparation
+query has eight eligible rows: three mapped and five unmapped, with the excluded
+record absent. The initial CI run caught an optional-property type error; the
+minimal fix passed Svelte check with zero errors/warnings and the 24 focused tests.
+Full activation/API evidence requires all six jobs passing for the exact
+integrated commit in the [Tests workflow](https://github.com/eliperez-dev/UntilEveryCage/actions/workflows/tests.yml?query=branch%3Aeli%2Fv2), not a previous run.
+Do not treat this preparation checkpoint as promotion or launch. The maintainer
 explicitly authorized private pre-publication tile generation and eligible
 null/unmapped records on 2026-10-05; neither decision authorizes public access
 to restricted evidence or changes the public promoted-release gate.

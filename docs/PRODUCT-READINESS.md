@@ -94,7 +94,11 @@ product roadmap or publication authorization.
 for full-cohort decision recording, public geometry parity, atomic activation
 and rollback, and source-rights verification. The implementation is integrated;
 50 focused local tests, including actual disposable-PostGIS cohort/geometry
-proofs, passed. Independent full CI and activation/API verification are pending;
+proofs, passed. The final independent verification gate is all six jobs green
+for the exact current `eli/v2` commit in the [Tests workflow](https://github.com/eliperez-dev/UntilEveryCage/actions/workflows/tests.yml?query=branch%3Aeli%2Fv2);
+an older green run is not evidence for newer code. The initial enablement run
+caught a frontend optional-property type error, reproduced and corrected with
+zero Svelte check errors/warnings and all 24 focused frontend tests passing.
 approval of sprint scope does not supply missing factual/privacy/rights
 outcomes or authorize website launch. Candidate intake stays closed, original
 evidence stays immutable, and public graph readiness remains a separate check.
