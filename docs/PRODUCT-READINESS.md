@@ -89,6 +89,21 @@ The bounded maintainer review and its measured evidence are routed through
 [the v0 release review](v0-release-review.md); that packet is not a second
 product roadmap or publication authorization.
 
+**Release-enablement decision (2026-10-05):** the maintainer approved frozen
+`v0-candidate-2026-10-04-r3` as the v0 scope and authorized bounded engineering
+for full-cohort decision recording, public geometry parity, atomic activation
+and rollback, and source-rights verification. The implementation is integrated;
+50 focused local tests, including actual disposable-PostGIS cohort/geometry
+proofs, passed. Independent full CI and activation/API verification are pending;
+approval of sprint scope does not supply missing factual/privacy/rights
+outcomes or authorize website launch. Candidate intake stays closed, original
+evidence stays immutable, and public graph readiness remains a separate check.
+The isolated candidate now has additive migrations 062/063 and an unapproved
+local review template binding all fifteen scopes and 124,414 members. Source
+record and observation digests are unchanged; actual cohort decisions, rights
+decisions, visible members and manifests remain zero. Source reuse conditions
+and the remaining operator decisions are in the [v0 packet](v0-release-review.md).
+
 ## Verified checkpoint
 
 **Historical retained private preview checkpoint (2026-10-02):** the latest-source snapshot
@@ -702,6 +717,7 @@ and source rights decisions belong in [architecture/source-rights-decisions.md](
 
 | Date | Decision | Scope | Evidence / authority | Next review |
 | --- | --- | --- | --- | --- |
+| 2026-10-05 | Approve the frozen fifteen-source candidate as v0 scope, using the public label v0; authorize bounded release-enablement engineering, not website launch. | Exact `v0-candidate-2026-10-04-r3`, cohort recording, geometry parity, activation/rollback, and source-rights checks; no new countries or platform overhaul. | Maintainer approval in this chat; [v0 review packet](v0-release-review.md). Source-specific rights, privacy and publication outcomes remain separate recorded decisions. | At integrated tests/CI and before any real publication decision or promotion. |
 | 2026-10-03 | Close v0 candidate intake after the UK/Denmark/Netherlands expansion sprint, then conduct human review and publish an approved frozen v0 dataset; later expansion belongs to v1. | Dataset release sequence, separate from V2 website delivery and legacy V1. | Maintainer instruction in this chat; [v0 release sequence](#v0-dataset-release-sequence). Candidate status is not publication approval; applicable ethics and publication controls remain required. | At candidate-sprint integration and before public v0 publication. |
 | 2026-09-20 | Establish this document as the sole product-level readiness and overall V2 roadmap authority. | V2 product completeness and V1 replacement sequencing. | C1 approved scope; governing policy remains [ETHICS.md](ETHICS.md). | At the next integration sprint or any material gate change. |
 | 2026-09-20 | Keep V1 public and V2 private/local until a reviewed named release completes all launch gates. | All public application surfaces. | [V2 API contract](api/v2-contract.md), [source status](source-status.json), [reviewed release guidance](reviewed-demonstration-release.md). | Before private E2E trial. |

@@ -54,6 +54,17 @@ try {
   if ($LASTEXITCODE -ne 0) { throw "V0 bridge test database migration failed (exit $LASTEXITCODE)." }
   $env:UEC_V0_BRIDGE_TEST_DATABASE = $bridgeTestDatabase
   $env:UEC_V0_BRIDGE_TEST_DATABASE_URL = $bridgeTestDatabaseUrl
+  # Cohort publication controls must have an actual PostGIS proof in CI, not
+  # silently pass because their explicit disposable-database guard was absent.
+  $cohortTestDatabase = 'uec_v0_cohort_review_test20261005'
+  & docker compose -p $project -f $compose exec -T postgres createdb -U uec $cohortTestDatabase
+  if ($LASTEXITCODE -ne 0) { throw "Cohort review test database creation failed (exit $LASTEXITCODE)." }
+  & docker compose -p $project -f $compose exec -T postgres psql -v ON_ERROR_STOP=1 -U uec -d $cohortTestDatabase -c 'CREATE EXTENSION postgis'
+  if ($LASTEXITCODE -ne 0) { throw "Cohort review PostGIS extension creation failed (exit $LASTEXITCODE)." }
+  $env:UEC_COHORT_REVIEW_TEST_DATABASE = $cohortTestDatabase
+  $env:UEC_COHORT_REVIEW_TEST_DATABASE_URL = "postgresql://uec:uec-local-development-only@localhost:$port/${cohortTestDatabase}?sslmode=disable"
+  python pipeline/scripts/maintenance/apply-migrations.py --database-url $env:UEC_COHORT_REVIEW_TEST_DATABASE_URL
+  if ($LASTEXITCODE -ne 0) { throw "Cohort review test database migration failed (exit $LASTEXITCODE)." }
   python pipeline/scripts/maintenance/repository_hygiene.py
   if ($LASTEXITCODE -ne 0) { throw "Repository hygiene checks failed (exit $LASTEXITCODE)." }
   python pipeline/tests/run_unittest.py --start-directory pipeline/tests
@@ -67,6 +78,8 @@ finally {
   Remove-Item Env:UEC_REAL_PREVIEW_TEST_DATABASE_URL -ErrorAction SilentlyContinue
   Remove-Item Env:UEC_V0_BRIDGE_TEST_DATABASE -ErrorAction SilentlyContinue
   Remove-Item Env:UEC_V0_BRIDGE_TEST_DATABASE_URL -ErrorAction SilentlyContinue
+  Remove-Item Env:UEC_COHORT_REVIEW_TEST_DATABASE -ErrorAction SilentlyContinue
+  Remove-Item Env:UEC_COHORT_REVIEW_TEST_DATABASE_URL -ErrorAction SilentlyContinue
   $savedPreference = $ErrorActionPreference
   $ErrorActionPreference = 'Continue'
   & docker compose -p $project -f $compose down -v --remove-orphans *> $null

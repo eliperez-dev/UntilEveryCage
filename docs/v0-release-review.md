@@ -281,15 +281,60 @@ remain separate, incomplete steps; no public approval has been created.
 ## Dataset identity
 
 `v0` names the first public dataset milestone and is independent of the V2
-website release and the legacy V1 application. The current naming recommendation
-is CalVer `2026.10.1-rc.1`; this is pending maintainer choice and is not a
-machine release identifier. The private frozen candidate's machine ID is
+website release and the legacy V1 application. The maintainer chose the simple
+public label **v0**, not the earlier proposed CalVer label. The private frozen candidate's machine ID is
 `v0-candidate-2026-10-04-r3`, bound to the new inventory and exact source
-artifacts. The public release ID/profile and version labels still require the
-release decision; candidate naming is not publication approval. Do not claim
+artifacts. The maintainer approved that frozen candidate as the v0 scope and
+authorized release preparation, verification, and bounded release-enablement
+engineering on 2026-10-05. That instruction is not a record of artifact-specific
+rights clearance, privacy screening, individual factual confirmation, public
+promotion, or website launch. The candidate remains frozen during this work.
+Do not claim
 a public v0 release exists until its release workflow has actually created it.
 
 ## Human review sprint
+
+### Source-rights verification (2026-10-05)
+
+Current publisher pages were checked for the frozen sources below. This is
+licence/reuse evidence, not an artifact-scoped rights decision or privacy
+approval. Exact candidate artifact digests remain in the linked taxonomy
+inventory; do not substitute a current upstream download for the frozen bytes.
+Licence exceptions, source dates, attribution and no-endorsement conditions
+must accompany any approved output. A missing original capture remains
+`not_retained`, not retrospectively byte-verified.
+
+| Frozen source | Primary reuse evidence and remaining conditions |
+| --- | --- |
+| Australia NPI | [Exact Facilities CSV resource](https://www.data.gov.au/data/dataset/npi/resource/f83cdee9-ebcb-4f24-941b-34bb2f0996cf?inner_span=True) identifies CC BY 4.0; preserve Commonwealth/NPI credit and stated exceptions. This is the CSV, not the separately licensed GeoJSON resource. |
+| South Australia EPA | [Government resource metadata](https://data.gov.au/data/dataset/https-www-waterconnect-sa-gov-au-content-downloads-dewnr-topo-epa-activities-sag-shp-zip/resource/26e076f3-c37f-4089-8f28-3f7c9afd997e) records CC BY 3.0 Australia and approximate locations; publisher-side catalogue verification was unavailable in this check. |
+| Belgium FASFC | [Open-data terms](https://www.foodweb.favv-afsca.be/professionelen/praktisch/opendata/) support reuse with source/latest-update credit and non-misleading presentation; account for both operator-list and activity-code evidence. |
+| Brazil SIF | [MAPA resource](https://dados.agricultura.gov.br/pt_PT/dataset/servico-de-inspecao-federal-sif/resource/97277e92-264a-4dc0-9aea-f87b8ea93798) records CC Attribution; retain MAPA credit and assess excluded personal/third-party material separately. |
+| Ontario meat plants | [Catalogue](https://data.ontario.ca/dataset/provincially-licensed-meat-plants) records OGL-ON-1.0; contact data and third-party material are not cleared merely by that label. |
+| Denmark Find Smiley | [Download/use conditions](https://www.findsmiley.dk/om-smiley/statistik-og-data/hent-smileydata) require authority credit and prohibit logo use; displayed individual smiley status has currentness/design requirements. A dated facility snapshot is not a claim of current smiley status. |
+| Catalonia feed/SANDACH | [Dataset](https://analisi.transparenciacatalunya.cat/d/m48e-zdz9) is identified, but exact dataset-specific reuse conditions still require confirmation; preserve Generalitat source/update-date context. |
+| France DGAL I and II | [Source lists](https://agriculture.gouv.fr/liste-des-etablissements-agrees-ce-conformement-au-reglement-ce-ndeg8532004-lists-ue-approved) and [legal notice](https://agriculture.gouv.fr/mentions-legales) require citation/integrity and distinguish non-commercial reuse from commercial/advertising reuse requiring prior request. Do not describe these snapshots as unrestricted commercial open data without an applicable basis. |
+| UK FSA | [Catalogue](https://www.data.gov.uk/dataset/2c80e0ce-ee1c-4f26-ba6f-1e1ae1bd8ee9/approved-food-establishments) records OGL; preserve the frozen snapshot date, attribution and licence exceptions. |
+| UK FSS | [Source portal](https://www.foodstandards.gov.scot/open-data-portal/approved-establishments-in-scotland) records OGL v3; retain Scotland-only scope, frozen edition and attribution. |
+| Italy 1069 and 853 | [1069](https://www.dati.salute.gov.it/it/dataset/stabilimenti-italiani-i-sottoprodotti-di-origine-animale/) and [853](https://www.dati.salute.gov.it/it/dataset/stabilimenti-italiani-gli-alimenti-di-origine-animale/) record IODL v2.0 and identify some coordinates as OSM-derived without identifying individual rows. Preserve attribution and assess the applicable ODbL/derived-database duties; do not silently label all coordinates exclusively Ministry-origin or impose a blanket OSM ban. |
+| Netherlands NVWA | [Copyright policy](https://www.nvwa.nl/service/copyright) establishes a CC0 default with item-specific exceptions and no implied endorsement; privacy/third-party rights remain separate. |
+| US FSIS | [Directory](https://www.fsis.usda.gov/inspection/establishments/meat-poultry-and-egg-product-inspection-directory) offers the CSV; [USDA rights policy](https://www.usda.gov/about-usda/policies-and-links) permits copying/distributing public-domain material, requests USDA credit and identifies exceptions. This supports a conditional reuse basis, not a blanket assumption that every embedded item is unrestricted or a requirement for fresh permission solely because the CSV lacks a licence banner. |
+
+Provider-derived geometry is separate evidence. [Geoapify terms](https://www.geoapify.com/terms-and-conditions/)
+and [geocoding documentation](https://www.geoapify.com/geocoding-api/) support
+storage/reuse subject to source attribution, OSM obligations and Geoapify credit
+on the free plan. Preserve datasource provenance; provider permission does not
+clear the original facility data, establish an operating-site address or resolve
+privacy eligibility. Mixed-source outputs must retain their distinct terms;
+this review does not establish one blanket licence for the combined dataset.
+
+The real candidate validation dry run found 124,414 missing release-scoped
+publication decisions, zero duplicate members and zero validation errors. Its
+zero rights requirements/"cleared" status was vacuous because all members were
+non-visible; it did not check or clear any contributing artifact. Full-cohort
+decision recording, geometry parity and database activation failure tests are
+the bounded engineering work authorized here. No decision events or public
+projections have been created for this real candidate by these checks.
 
 Review the frozen pool as a bounded whole, with source/profile-level decisions,
 representative checks, and explicit exceptions. The review does not require
@@ -326,10 +371,45 @@ It creates no approval, rights decision, public projection, release manifest,
 validation, or promotion. Same-freeze reruns are idempotent; conflicting
 release IDs or changed source snapshots are rejected. Do not point it at the
 authoritative private pipeline database. The bridge is not the publication
-workflow; source/profile review, per-record review outcomes, rights decisions,
+workflow; source/profile review, scoped cohort decisions and specific exceptions, rights decisions,
 validation, and public-map contract work remain separate activation steps.
 
 ## Existing release activation path and remaining gates
+
+### Bounded release-enablement verification
+
+The cohort recorder now measures the exact frozen membership and prepares an
+operator review document without approving it. Its release/artifact-scoped
+decisions keep factual review, privacy screening, project approval, source
+rights, classification interpretation, and geometry interpretation separate.
+It supports source/category/record exclusions without editing original facts;
+approval does not certify every government-source statement as independently
+verified. The [cohort contract](architecture/release-manifest-verification.md)
+documents the dry-run and explicit application commands.
+
+On 2026-10-05, additive migrations 062 and 063 were applied only to isolated
+`uec_v0_review_r3`, after rechecking the staged D: backup checksum. The recorder
+prepared ignored local `data/reports/v0-candidate-20261005-r3-unapproved-review.json`
+for all fifteen source/artifact scopes and 124,414 members. All approval fields
+remain pending/unapproved, and method/evidence references require an actual
+operator decision. No review document, rights decision, visible member, or
+release manifest was inserted. Before/after row-free digests agreed for all
+198,895 retained canonical source records and 187,940 observations; neither
+original evidence table changed. The retained private preview was not migrated.
+
+The shared public geometry selector carries original source precision and
+allowlisted provider/method/confidence metadata; source-reported, approximate,
+exact, city and unmapped display states are distinct. Invalid or insufficient
+geometry must not become a guessed public point. Synthetic disposable-PostGIS
+proofs and actual-cohort measurements are separate evidence: passing fixtures
+does not establish that this real cohort is approved or publicly rendered.
+Fifty focused local integration tests passed, including the actual disposable
+PostGIS cohort and geometry proofs without skips, plus 24 frontend wire/map
+projection tests. Full activation/API and CI verification are pending; do not
+treat this preparation checkpoint as promotion or launch. The maintainer
+explicitly authorized private pre-publication tile generation and eligible
+null/unmapped records on 2026-10-05; neither decision authorizes public access
+to restricted evidence or changes the public promoted-release gate.
 
 Once the reviewed candidate set is represented in canonical release membership,
 use the existing release contracts rather than treating the inventory as a
@@ -339,10 +419,12 @@ manifest or adding an alternate publication mechanism:
    redistribution terms, privacy/suppression state, source scope, and the
    authorized maintainer review. Record exact release/profile-scoped source
    rights decisions; attribution text alone is not clearance.
-2. Ensure every selected canonical observation has a current, release-scoped
-   project review outcome that passes the applicable factual, privacy, and
-   publication gates. Quarantined, restricted, unresolved, or excluded evidence
-   remains out of release membership unless a documented review resolves it.
+2. Record the operator-authored cohort decision and any specific exclusions
+   against the exact release/artifact/taxonomy bindings. Preserve factual review
+   status independently of project release approval; no manual confirmation of
+   every government-source fact is required. Privacy-ineligible or excluded
+   members stay non-visible. Otherwise eligible unmapped records may remain
+   listable without claiming a map location.
 3. Run the existing release validation without `--mark-validated` first; inspect
    its row-free blockers and release/profile totals. The command only marks a
    release validated when the checks pass and an operator explicitly requests
@@ -351,10 +433,11 @@ manifest or adding an alternate publication mechanism:
    coverage, source/raw artifact hashes, included-row counts, limitations,
    current suppression generation, review/publication state, and actual
    distributed artifacts (or an explicit no-artifacts declaration).
-5. Promote through the existing checked workflow, build and verify the public
-   discovery/map artifacts, and independently hash the canonical manifest and
-   each distributed file. Confirm the actual public projection counts and
-   versioned release identifier after these steps.
+5. Build and verify private map artifacts for the validated release, then
+   promote through the checked atomic activation workflow. Independently hash
+   the canonical manifest and each distributed file. Confirm actual public
+   projection counts and the versioned release identifier afterward. Private
+   tile preparation does not enable public API access before promotion.
 6. Exercise suppression/revocation, cache/export propagation, rollback, source
    attribution and visitor/provider disclosures for the actual deployment.
    Existing documentation records remaining cross-stage activation/revocation
