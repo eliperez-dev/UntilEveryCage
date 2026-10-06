@@ -282,6 +282,214 @@ pub async fn get_v2_release_manifest_handler(
         .into_response()
 }
 
+#[derive(Debug, Deserialize)]
+pub struct PublicMapFeedParams {
+    pub profile: Option<String>,
+    pub release_id: Option<String>,
+}
+
+const PUBLIC_MAP_FEED_MAX_FEATURES: i64 = 75_000;
+
+/// Return the small, public, release-pinned point projection used by the
+/// native GeoJSON map. It reads the same live-gated view as the V2 API and
+/// never exposes names, addresses, or source payloads.
+pub async fn get_v2_public_map_feed_handler(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Query(params): Query<PublicMapFeedParams>,
+) -> Response<axum::body::Body> {
+    let profile = params.profile.as_deref().unwrap_or("official");
+    if !V2_PROFILES.contains(&profile) {
+        return v2_error(StatusCode::BAD_REQUEST, "invalid_profile", "profile is unsupported");
+    }
+    let Some(release_id) = params.release_id.as_deref() else {
+        return v2_error(StatusCode::BAD_REQUEST, "release_id_required", "release_id is required");
+    };
+    if !valid_public_release_id(release_id) {
+        return v2_error(StatusCode::BAD_REQUEST, "invalid_release_id", "release_id is invalid");
+    }
+    let Some(pool) = state.database else {
+        return v2_error(StatusCode::SERVICE_UNAVAILABLE, "database_not_configured", "V2 database is not configured");
+    };
+    let mut client = match pool.get().await {
+        Ok(client) => client,
+        Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "database_pool_unavailable", "database pool unavailable"),
+    };
+    let transaction = match client
+        .build_transaction()
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .read_only(true)
+        .start()
+        .await
+    {
+        Ok(transaction) => transaction,
+        Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "database_transaction_unavailable", "V2 database transaction unavailable"),
+    };
+    let release = match transaction.query_opt(
+        "SELECT manifest.manifest::text, manifest.manifest_sha256, model.manifest_sha256 FROM uec.releases release JOIN uec.public_discovery_read_models model ON model.release_id=release.release_id JOIN uec.release_manifests manifest ON manifest.release_id=release.release_id AND manifest.manifest_sha256=model.manifest_sha256 WHERE release.release_id=$1 AND release.profile=$2 AND release.status='promoted' AND release.test_only IS NOT TRUE",
+        &[&release_id, &profile],
+    ).await {
+        Ok(row) => row,
+        Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "map_feed_unavailable", "public map feed unavailable"),
+    };
+    let Some(release) = release else {
+        return v2_error(StatusCode::GONE, "release_unavailable", "displayed release is no longer eligible");
+    };
+    let manifest_text: String = release.get(0);
+    let manifest: Value = match serde_json::from_str(&manifest_text) {
+        Ok(manifest) => manifest,
+        Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "release_manifest_invalid", "release manifest integrity check failed"),
+    };
+    let manifest_sha256: String = release.get(1);
+    let model_sha256: String = release.get(2);
+    if manifest_sha256 != model_sha256
+        || format!("{:x}", Sha256::digest(canonical_json(&manifest).as_bytes())) != manifest_sha256
+    {
+        return v2_error(StatusCode::SERVICE_UNAVAILABLE, "release_manifest_invalid", "release manifest integrity check failed");
+    }
+    let suppression_generation: i64 = match transaction.query_one(
+        "SELECT generation FROM uec.public_suppression_generation",
+        &[],
+    ).await {
+        Ok(row) => row.get(0),
+        Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "suppression_generation_unavailable", "current publication eligibility unavailable"),
+    };
+    let rows = match transaction.query(
+        r#"
+        WITH current_facilities AS MATERIALIZED (
+          SELECT DISTINCT ON (facility_id)
+                 facility_id, observation_id, display_location, display_precision,
+                 provenance_source_id
+          FROM uec.map_facilities_public_discovery_read_model
+          WHERE release_id=$1
+          ORDER BY facility_id,
+                   (display_location IS NOT NULL AND display_precision <> 'unmapped') DESC,
+                   observation_id
+        ), counts AS (
+          SELECT count(*)::bigint AS public_record_count,
+                 count(*) FILTER (WHERE display_location IS NOT NULL AND display_precision <> 'unmapped')::bigint AS feature_count
+          FROM current_facilities
+        ), taxonomy AS MATERIALIZED (
+          SELECT current.observation_id, min(s.display_category) AS display_category,
+                 array_agg(DISTINCT a.primary_key ORDER BY a.primary_key)
+                   FILTER (WHERE a.primary_key IS NOT NULL) AS primary_categories
+          FROM current_facilities current
+          JOIN uec.observation_taxonomy_assignment_sets s
+            ON s.observation_id=current.observation_id
+           AND s.taxonomy_version='uec-taxonomy-v1'
+           AND NOT EXISTS (
+             SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer
+             WHERE newer.observation_id=s.observation_id
+               AND newer.taxonomy_version=s.taxonomy_version
+               AND (newer.created_at,newer.assignment_set_id)>(s.created_at,s.assignment_set_id)
+           )
+          LEFT JOIN uec.observation_taxonomy_assignments a
+            ON a.assignment_set_id=s.assignment_set_id
+          GROUP BY current.observation_id
+        ), feed AS (
+          SELECT current.facility_id, ST_X(current.display_location::geometry) AS longitude,
+                 ST_Y(current.display_location::geometry) AS latitude, current.display_precision AS precision,
+                 current.provenance_source_id AS source_id,
+                 COALESCE(taxonomy.display_category, 'unclassified') AS category_key,
+                 COALESCE(taxonomy.primary_categories, ARRAY['unclassified']::text[]) AS category_keys
+          FROM current_facilities current
+          LEFT JOIN taxonomy ON taxonomy.observation_id=current.observation_id
+          WHERE current.display_location IS NOT NULL AND current.display_precision <> 'unmapped'
+        ), bounded_feed AS (
+          SELECT * FROM feed ORDER BY facility_id LIMIT $2
+        )
+        SELECT counts.public_record_count, counts.feature_count,
+               bounded_feed.facility_id, bounded_feed.longitude, bounded_feed.latitude,
+               bounded_feed.precision, bounded_feed.source_id, bounded_feed.category_key,
+               bounded_feed.category_keys
+        FROM counts LEFT JOIN bounded_feed ON TRUE
+        ORDER BY bounded_feed.facility_id
+        "#,
+        &[&release_id, &(PUBLIC_MAP_FEED_MAX_FEATURES + 1)],
+    ).await {
+        Ok(rows) => rows,
+        Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "map_feed_unavailable", "public map feed unavailable"),
+    };
+    let Some(first_row) = rows.first() else {
+        return v2_error(StatusCode::SERVICE_UNAVAILABLE, "map_feed_unavailable", "public map feed is inconsistent with its release counts");
+    };
+    let public_record_count: i64 = first_row.get(0);
+    let feature_count: i64 = first_row.get(1);
+    if feature_count > PUBLIC_MAP_FEED_MAX_FEATURES {
+        return v2_error(StatusCode::PAYLOAD_TOO_LARGE, "map_feed_too_large", "public map feed exceeds its feature limit");
+    }
+    if rows.iter().filter(|row| row.get::<_, Option<uuid::Uuid>>(2).is_some()).count() as i64 != feature_count {
+        return v2_error(StatusCode::SERVICE_UNAVAILABLE, "map_feed_unavailable", "public map feed is inconsistent with its release counts");
+    }
+    let features: Vec<Value> = rows.iter().filter_map(|row| {
+        let facility_id: uuid::Uuid = row.get::<_, Option<uuid::Uuid>>(2)?;
+        let category_key: String = row.get(7);
+        Some(json!({
+            "type": "Feature",
+            "id": facility_id,
+            "geometry": {"type": "Point", "coordinates": [row.get::<_, f64>(3), row.get::<_, f64>(4)]},
+            "properties": {
+                "facility_id": facility_id,
+                "source_id": row.get::<_, String>(6),
+                "category_key": category_key,
+                "category_keys": row.get::<_, Vec<String>>(8),
+                "precision": row.get::<_, String>(5),
+                "weight": 1
+            }
+        }))
+    }).collect();
+    if transaction.commit().await.is_err() {
+        return v2_error(StatusCode::SERVICE_UNAVAILABLE, "database_transaction_failed", "V2 database transaction failed");
+    }
+    let etag = release_manifest_etag(&manifest_sha256, suppression_generation);
+    let cache_control = HeaderValue::from_static("public, max-age=0, must-revalidate");
+    let unmapped_count = public_record_count - feature_count;
+    if if_none_match(&headers, &etag) {
+        return Response::builder()
+            .status(StatusCode::NOT_MODIFIED)
+            .header(axum::http::header::ETAG, etag)
+            .header(axum::http::header::CACHE_CONTROL, cache_control)
+            .header("x-uec-release-id", release_id)
+            .header("x-uec-profile", profile)
+            .header("x-uec-suppression-generation", suppression_generation.to_string())
+            .body(axum::body::Body::empty())
+            .expect("map feed 304 response is valid");
+    }
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(axum::http::header::CONTENT_TYPE, "application/geo+json")
+        .header(axum::http::header::ETAG, etag)
+        .header(axum::http::header::CACHE_CONTROL, cache_control)
+        .header("x-uec-release-id", release_id)
+        .header("x-uec-profile", profile)
+        .header("x-uec-manifest-sha256", manifest_sha256.as_str())
+        .header("x-uec-suppression-generation", suppression_generation.to_string())
+        .body(axum::body::Body::from(Json(json!({
+            "api_version": "v2",
+            "data": {"type": "FeatureCollection", "features": features},
+            "meta": {
+                "profile": profile,
+                "release_id": release_id,
+                "manifest_sha256": manifest_sha256,
+                "suppression_generation": suppression_generation,
+                "dataset_version": manifest.get("dataset_version").and_then(Value::as_str),
+                "release_label": manifest.get("release_label").and_then(Value::as_str),
+                "public_record_count": public_record_count,
+                "feature_count": feature_count,
+                "unmapped_count": unmapped_count
+            }
+        })).to_string()))
+        .expect("map feed response is valid")
+}
+
+fn valid_public_release_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 160
+        && value != "."
+        && value != ".."
+        && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+}
+
 #[derive(Deserialize)]
 pub struct PublicMapTilePath {
     release_id: String,
@@ -475,7 +683,7 @@ fn csv_safe_option(value: Option<String>) -> Option<String> {
 
 pub async fn get_v2_locations_export_handler(
     State(state): State<ApiState>,
-    Query(params): Query<ProfileParams>,
+    Query(params): Query<V2ExportParams>,
 ) -> impl IntoResponse {
     let profile = params.profile.as_deref().unwrap_or("official");
     if !["official", "secondary", "community"].contains(&profile) {
@@ -537,18 +745,31 @@ pub async fn get_v2_locations_export_handler(
             "public discovery read model is missing or stale",
         );
     }
-    let rows = match transaction.query("SELECT h.facility_id, h.canonical_name, h.country_code, h.city, h.classification_category, h.display_precision, h.factual_review_status, h.privacy_screening_status, h.maintainer_approval, h.reviewer_role, h.provenance_origin_type, h.provenance_source_id, h.provenance_source_name, h.provenance_source_url, h.provenance_retrieved_at, h.source_rights_status, h.release_id, h.geometry_provenance::text FROM uec.map_facilities_public_discovery_read_model h WHERE h.release_id=$1 ORDER BY h.facility_id LIMIT 1001", &[&release_id]).await {
-        Ok(rows) => rows, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "export_query_failed", "public export unavailable")
+    let requested_limit = match params.limit.as_deref().map(str::parse::<i64>).transpose() {
+        Ok(Some(value)) if (1..=1000).contains(&value) => Some(value),
+        Ok(None) => None,
+        _ => return v2_error(StatusCode::BAD_REQUEST, "invalid_limit", "limit must be between 1 and 1000"),
     };
-    if rows.len() > 1000 {
+    let limit = requested_limit.unwrap_or(1000);
+    let total_count: i64 = match transaction.query_one(
+        "SELECT count(*)::bigint FROM uec.map_facilities_public_discovery_read_model WHERE release_id=$1",
+        &[&release_id],
+    ).await {
+        Ok(row) => row.get(0),
+        Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "export_query_failed", "public export unavailable"),
+    };
+    if requested_limit.is_none() && total_count > 1000 {
         return v2_error(
             StatusCode::BAD_REQUEST,
             "export_too_large",
-            "export exceeds the bounded limit",
+            "export exceeds the bounded limit; specify an explicit limit to download a bounded first page",
         );
     }
+    let rows = match transaction.query("SELECT h.facility_id, h.canonical_name, h.country_code, h.city, h.classification_category, h.display_precision, h.factual_review_status, h.privacy_screening_status, h.maintainer_approval, h.reviewer_role, h.provenance_origin_type, h.provenance_source_id, h.provenance_source_name, h.provenance_source_url, h.provenance_retrieved_at, h.source_rights_status, h.release_id, h.geometry_provenance::text FROM uec.map_facilities_public_discovery_read_model h WHERE h.release_id=$1 ORDER BY h.facility_id LIMIT $2", &[&release_id, &(limit + 1)]).await {
+        Ok(rows) => rows, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "export_query_failed", "public export unavailable")
+    };
     let mut writer = csv::Writer::from_writer(Vec::new());
-    for row in rows {
+    for row in rows.into_iter().take(limit as usize) {
         let factual_review_status: String = row.get(6);
         if writer
             .serialize(V2ExportRow {
@@ -616,6 +837,9 @@ pub async fn get_v2_locations_export_handler(
         .header("x-uec-manifest-sha256", manifest_sha256)
         .header("x-uec-data-product-version", "uec-public-data-product-v1")
         .header("x-uec-schema-version", "uec-location-projection-v1")
+        .header("x-uec-export-total-count", total_count.to_string())
+        .header("x-uec-export-returned-count", limit.min(total_count).to_string())
+        .header("x-uec-export-truncated", if total_count > limit { "true" } else { "false" })
         .body(axum::body::Body::from(body))
         .unwrap()
         .into_response()
@@ -3670,6 +3894,14 @@ pub struct ProfileParams {
     pub release_id: Option<String>,
 }
 
+#[derive(Deserialize)]
+pub struct V2ExportParams {
+    pub profile: Option<String>,
+    /// Supplying a limit opts into a deterministic first page, including when
+    /// the selected release has more rows than the legacy export cap.
+    pub limit: Option<String>,
+}
+
 #[cfg(test)]
 mod v2_api_tests {
     use super::*;
@@ -3685,6 +3917,38 @@ mod v2_api_tests {
     fn manifest_validator_etag_changes_when_suppression_generation_changes() {
         assert_ne!(release_manifest_etag("abc", 7), release_manifest_etag("abc", 8));
         assert_eq!(release_manifest_etag("abc", 7), "\"abc-7\"");
+    }
+
+    #[test]
+    fn public_release_id_is_bounded_and_path_safe() {
+        assert!(valid_public_release_id("v0-candidate-2026-10-04-r3"));
+        assert!(!valid_public_release_id(""));
+        assert!(!valid_public_release_id("../private"));
+        assert!(!valid_public_release_id("release/secret"));
+        assert!(!valid_public_release_id(&"r".repeat(161)));
+    }
+
+    #[tokio::test]
+    async fn public_map_feed_requires_a_valid_pinned_release_before_database_access() {
+        let state = || ApiState {
+            database: None,
+            dev_preview_token: None,
+            dev_test_release_id: None,
+            dev_test_release_token: None,
+        };
+        for (params, expected) in [
+            (PublicMapFeedParams { profile: Some("private".into()), release_id: Some("r1".into()) }, StatusCode::BAD_REQUEST),
+            (PublicMapFeedParams { profile: None, release_id: None }, StatusCode::BAD_REQUEST),
+            (PublicMapFeedParams { profile: None, release_id: Some("../private".into()) }, StatusCode::BAD_REQUEST),
+            (PublicMapFeedParams { profile: None, release_id: Some("r1".into()) }, StatusCode::SERVICE_UNAVAILABLE),
+        ] {
+            let response = get_v2_public_map_feed_handler(
+                axum::extract::State(state()),
+                HeaderMap::new(),
+                Query(params),
+            ).await;
+            assert_eq!(response.status(), expected);
+        }
     }
 
     #[test]

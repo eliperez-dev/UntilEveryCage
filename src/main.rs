@@ -90,6 +90,10 @@ pub fn app(state: uec_api::ApiState, proxy: private_environment::ProxyConfig) ->
             get(uec_api::get_v2_release_manifest_handler),
         )
         .route(
+            "/api/v2/map/feed",
+            get(uec_api::get_v2_public_map_feed_handler),
+        )
+        .route(
             "/api/v2/releases/{release_id}/map/tiles/{*tile_path}",
             get(uec_api::get_v2_map_tile_handler),
         )
@@ -483,6 +487,7 @@ fn request_route_class(path: &str) -> &'static str {
         "/health/live" | "/health/ready" | "/health/diagnostics" => "health",
         "/api/v2/locations" => "v2_locations_list",
         "/api/v2/locations.csv" => "v2_locations_export",
+        "/api/v2/map/feed" => "v2_map_feed",
         "/api/v2/discovery/filters" => "v2_discovery_filters",
         "/api/v2/discovery/facets" => "v2_discovery_facets",
         "/api/v2/releases/manifest" => "v2_release_manifest",
@@ -1041,6 +1046,7 @@ mod config_tests {
             request_route_class("/api/v2/releases/private-release/map/tiles/4/8/6.mvt"),
             "v2_map_tile"
         );
+        assert_eq!(request_route_class("/api/v2/map/feed"), "v2_map_feed");
         assert_eq!(payload["route_class"], "v2_location_detail");
         assert_eq!(payload["status"], 429);
         assert_eq!(payload["outcome"], "client_error");

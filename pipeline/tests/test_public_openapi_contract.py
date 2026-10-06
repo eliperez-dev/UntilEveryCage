@@ -12,6 +12,7 @@ PUBLIC_PATHS = {
     "/api/v2/locations",
     "/api/v2/locations/{facility_id}",
     "/api/v2/locations.csv",
+    "/api/v2/map/feed",
     "/api/v2/releases/manifest",
     "/api/v2/discovery/filters",
     "/api/v2/discovery/facets",
@@ -135,7 +136,10 @@ class PublicOpenApiContractTests(unittest.TestCase):
         ]:
             used = set(re.findall(r"params\s*\.\s*(\w+)", self.handler(self.rust, name)))
             self.assertEqual(self.query_names(path), used)
-            self.assertEqual(used, {"profile"})
+            self.assertEqual(used, {"profile"} if path.endswith("manifest") else {"profile", "limit"})
+        map_feed = self.handler(self.rust, "get_v2_public_map_feed_handler")
+        self.assertEqual(self.query_names("/api/v2/map/feed"), self.fields(self.rust, "PublicMapFeedParams"))
+        self.assertEqual(self.query_names("/api/v2/map/feed"), set(re.findall(r"params\s*\.\s*(\w+)", map_feed)))
         detail = self.handler(self.rust, "get_v2_location_detail_handler")
         self.assertEqual(self.query_names("/api/v2/locations/{facility_id}"), set(re.findall(r"params\s*\.\s*(\w+)", detail)))
 
@@ -168,7 +172,15 @@ class PublicOpenApiContractTests(unittest.TestCase):
         self.assertIn("const DEFAULT_LIMIT: i64 = 50;", self.graph)
         self.assertIn("unwrap_or(100).clamp(1, 1000)", self.rust)
         self.assertIn("unwrap_or(0).clamp(0, 1_000_000)", self.rust)
-        self.assertIn("rows.len() > 1000", self.handler(self.rust, "get_v2_locations_export_handler"))
+        export = self.handler(self.rust, "get_v2_locations_export_handler")
+        self.assertIn("total_count > 1000", export)
+        self.assertIn("requested_limit.is_none()", export)
+        self.assertIn("x-uec-export-truncated", export)
+        map_feed = self.handler(self.rust, "get_v2_public_map_feed_handler")
+        self.assertIn("PUBLIC_MAP_FEED_MAX_FEATURES", map_feed)
+        self.assertIn("RepeatableRead", map_feed)
+        self.assertNotIn("canonical_name", map_feed)
+        self.assertNotIn("address", map_feed)
         self.assertEqual(self.spec["components"]["schemas"]["FacetValues"]["maxItems"], 20)
         self.assertIn(".take(20)", self.handler(self.rust, "get_v2_facets_handler"))
         self.assertEqual(params["zPath"]["schema"]["maximum"], 14)
@@ -180,8 +192,9 @@ class PublicOpenApiContractTests(unittest.TestCase):
         internal = self.spec["components"]["responses"]["Internal"]
         self.assertIn("text/plain", internal["content"])
         self.assertIn("No eligible unpinned release", self.spec["paths"]["/api/v2/locations"]["get"]["description"])
-        for path in PUBLIC_PATHS - {"/api/v2/locations", "/api/v2/discovery/filters"}:
+        for path in PUBLIC_PATHS - {"/api/v2/locations", "/api/v2/discovery/filters", "/api/v2/map/feed"}:
             self.assertIn("404", self.spec["paths"][path]["get"]["responses"])
+        self.assertIn("410", self.spec["paths"]["/api/v2/map/feed"]["get"]["responses"])
         self.assertIn("does not announce a public release", self.spec["info"]["description"])
 
     def test_graph_dtos_match_published_fields(self):

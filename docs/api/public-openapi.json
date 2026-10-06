@@ -200,18 +200,21 @@
       "get": {
         "operationId": "downloadLocationsCsv",
         "summary": "Download bounded CSV",
-        "description": "Exports the latest promoted eligible profile in facility UUID order, with release/profile/digest/rights and publication context on each row. Rejects more than 1,000 rows; does not truncate. Only profile is effective: search, pagination, spatial filters and release_id are not applied. Use paginated JSON for larger reads. Empty eligible exports may have an empty body.",
+        "description": "Exports the latest promoted eligible profile in facility UUID order, with release/profile/digest/rights and publication context on each row. Without limit, rejects more than 1,000 rows. Supplying limit=1..1000 explicitly opts into the first bounded page; response headers disclose total, returned and truncated status. Only profile and limit are effective: search, cursor, spatial filters and release_id are not applied. Use paginated JSON for larger reads. Empty eligible exports may have an empty body.",
         "tags": [
           "Downloads"
         ],
         "parameters": [
           {
             "$ref": "#/components/parameters/profile"
+          },
+          {
+            "$ref": "#/components/parameters/exportLimit"
           }
         ],
         "responses": {
           "200": {
-            "description": "CSV attachment, at most 1,000 rows.",
+            "description": "CSV attachment, at most the requested limit or 1,000 rows.",
             "headers": {
               "Content-Disposition": {
                 "schema": {
@@ -242,6 +245,17 @@
                 "schema": {
                   "type": "string"
                 }
+              },
+              "x-uec-export-total-count": {
+                "description": "Total currently eligible rows in the selected public release/profile.",
+                "schema": {"type": "integer", "minimum": 0}
+              },
+              "x-uec-export-returned-count": {
+                "schema": {"type": "integer", "minimum": 0, "maximum": 1000}
+              },
+              "x-uec-export-truncated": {
+                "description": "True when the bounded CSV contains only the first page.",
+                "schema": {"type": "boolean"}
               }
             },
             "content": {
@@ -264,6 +278,43 @@
           "503": {
             "$ref": "#/components/responses/Unavailable"
           }
+        }
+      }
+    },
+    "/api/v2/map/feed": {
+      "get": {
+        "operationId": "getPublicMapFeed",
+        "summary": "Read a compact public release map feed",
+        "description": "Returns one map-eligible point per facility from the selected promoted non-test release. Uses the current public projection and suppression/review gates in a repeatable-read snapshot. The compact allowlist contains only facility ID, source ID, taxonomy display/category keys, precision, weight and coordinates. Exact/source-reported/approximate/city precision is preserved; unmapped facilities are counted but remain list-only. The response is bounded and fails explicitly when it exceeds the feature cap.",
+        "tags": ["Map"],
+        "parameters": [
+          {"$ref": "#/components/parameters/profile"},
+          {"name": "release_id", "in": "query", "required": true, "description": "Promoted release ID currently displayed by the client.", "schema": {"type": "string", "maxLength": 160}},
+          {"$ref": "#/components/parameters/ifNoneMatch"}
+        ],
+        "responses": {
+          "200": {
+            "description": "Compact GeoJSON map feed.",
+            "headers": {
+              "ETag": {"schema": {"type": "string"}},
+              "Cache-Control": {"schema": {"type": "string"}},
+              "x-uec-release-id": {"schema": {"type": "string"}},
+              "x-uec-profile": {"schema": {"type": "string"}},
+              "x-uec-manifest-sha256": {"schema": {"type": "string", "pattern": "^[a-f0-9]{64}$"}},
+              "x-uec-suppression-generation": {"schema": {"type": "string"}}
+            },
+            "content": {
+              "application/geo+json": {
+                "schema": {"$ref": "#/components/schemas/PublicMapFeed"}
+              }
+            }
+          },
+          "304": {"$ref": "#/components/responses/NotModified"},
+          "400": {"$ref": "#/components/responses/Invalid"},
+          "410": {"$ref": "#/components/responses/Gone"},
+          "413": {"description": "Eligible point count exceeds the documented endpoint bound.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "429": {"$ref": "#/components/responses/Limited"},
+          "503": {"$ref": "#/components/responses/Unavailable"}
         }
       }
     },
@@ -727,6 +778,72 @@
       },
       "Location": {
         "$ref": "./v2-location.schema.json"
+      },
+      "PublicMapFeed": {
+        "type": "object",
+        "required": ["api_version", "data", "meta"],
+        "properties": {
+          "api_version": {"const": "v2"},
+          "data": {
+            "type": "object",
+            "required": ["type", "features"],
+            "properties": {
+              "type": {"const": "FeatureCollection"},
+              "features": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["type", "id", "geometry", "properties"],
+                  "properties": {
+                    "type": {"const": "Feature"},
+                    "id": {"type": "string", "format": "uuid"},
+                    "geometry": {
+                      "type": "object",
+                      "required": ["type", "coordinates"],
+                      "properties": {
+                        "type": {"const": "Point"},
+                        "coordinates": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2}
+                      },
+                      "additionalProperties": false
+                    },
+                    "properties": {
+                      "type": "object",
+                      "required": ["facility_id", "source_id", "category_key", "category_keys", "precision", "weight"],
+                      "properties": {
+                        "facility_id": {"type": "string", "format": "uuid"},
+                        "source_id": {"type": "string"},
+                        "category_key": {"enum": ["animal_keeping_and_production", "slaughter", "processing_and_preparation", "research_and_animal_use", "other_regulated_premises", "unclassified"]},
+                        "category_keys": {"type": "array", "items": {"enum": ["animal_keeping_and_production", "slaughter", "processing_and_preparation", "research_and_animal_use", "other_regulated_premises", "unclassified"]}},
+                        "precision": {"enum": ["exact", "city", "source_reported", "approximate"]},
+                        "weight": {"const": 1}
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "meta": {
+            "type": "object",
+            "required": ["profile", "release_id", "manifest_sha256", "suppression_generation", "dataset_version", "release_label", "public_record_count", "feature_count", "unmapped_count"],
+            "properties": {
+              "profile": {"enum": ["official", "secondary", "community"]},
+              "release_id": {"type": "string"},
+              "manifest_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+              "suppression_generation": {"type": "integer", "minimum": 0},
+              "dataset_version": {"type": ["string", "null"]},
+              "release_label": {"type": ["string", "null"]},
+              "public_record_count": {"type": "integer", "minimum": 0},
+              "feature_count": {"type": "integer", "minimum": 0, "maximum": 75000},
+              "unmapped_count": {"type": "integer", "minimum": 0}
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
       },
       "QueryFilters": {
         "type": "object",
@@ -1652,9 +1769,18 @@
           "enum": [
             "exact",
             "city",
+            "source_reported",
+            "approximate",
             "unmapped"
           ]
         }
+      },
+      "exportLimit": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "description": "Explicitly opt into the deterministic first page of a bounded CSV export. Without this parameter, datasets over 1,000 rows return export_too_large.",
+        "schema": {"type": "integer", "minimum": 1, "maximum": 1000}
       },
       "lifecycle_status": {
         "name": "lifecycle_status",
