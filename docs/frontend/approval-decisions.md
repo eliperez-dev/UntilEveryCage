@@ -35,9 +35,13 @@ information architecture.
 Navigation revision authorized by the maintainer on 2026-10-04: the shared
 header is **Map, Database | Contribute, About**. The latest refinement makes
 Contribute a direct link to Add a facility, with visible task links switching
-the unified form. About uses a text-only menu without an arrow and contains
-only Overview (the manifesto) and
-Sources & methodology. Country and source links are optional on facility
+the unified form, visibly labeled **Choose a contribution type**. About uses a
+text-only menu without an arrow and contains Overview (the manifesto),
+Sources & methodology, Help, and API & downloads. The Help/API additions and
+clearer existing-record evidence guidance were requested on 2026-10-05.
+Help uses short written guides and controlled tutorial media; Swagger exposes
+only the implemented public read API, with published-release access boundaries.
+Country and source links are optional on facility
 intake. Private forms use clear labels and concise guidance, without technical
 geocoding language or repeated review badges. Public community-unreviewed
 warnings and private publication gates remain required. The follow-up density

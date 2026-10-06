@@ -7,6 +7,7 @@ public V1 migration boundary remains documented in
 | Contract | Label | Boundary |
 | --- | --- | --- |
 | [V2 contract index](v2-contract.md) | **Canonical** | Stable V2 API contracts and linked schemas. |
+| [Public OpenAPI document](public-openapi.json) | **Canonical** | Implemented public data GET operations for the self-hosted API explorer; shares the location schema and is checked against registered routes. |
 | [Public graph contract](public-graph-contract.md) | **Canonical** | Release-scoped public graph projection. |
 | [Private graph contract](private-graph-contract.md) | **Canonical** | Operator-only graph analysis. |
 | [Real preview contract](real-preview-contract.md) and [candidate DTO schema](real-preview-candidate.schema.json) | **Canonical** | Local/private preview API and import behavior. |

@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import type { ProxyOptions } from 'vite';
+import { publicReferenceAssets } from './scripts/publicReferenceAssets';
 
 export default defineConfig(({ command }) => {
   // The secret exists only in this local dev-server process. It is never placed
@@ -32,7 +33,7 @@ export default defineConfig(({ command }) => {
   return {
     base: localRealPreview ? '/' : '/v2-preview/',
     publicDir: 'public',
-    plugins: [svelte(), previewModeMeta],
+    plugins: [svelte(), previewModeMeta, publicReferenceAssets()],
     define: realPreviewMapSource
       ? { 'import.meta.env.VITE_REAL_PREVIEW_MAP_SOURCE': JSON.stringify(realPreviewMapSource) }
       : {},

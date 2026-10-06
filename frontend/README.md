@@ -10,11 +10,41 @@ fall back to synthetic records if the private service fails.
 - `#/map` — map; real MapLibre field when the local real-preview mode is enabled
 - `#/database` — paginated research index in local real-preview mode
 - `#/records/:id` — stable, directly addressable record evidence page in local real-preview mode
+- `#/contribute` — Add a facility by default; labeled task links switch contribution type
+- `#/about` — Overview; the About menu also links Sources & methodology
+- `#/about/help` — written guides and a controlled contribution walkthrough
+- `#/about/api` — public API documentation, Swagger explorer and bounded download links
 
 The hash routes work under the `/v2-preview/` base path without server-side
 route rewrites. Old `#/locations/:id` links remain compatible. Unknown paths
 show a not-found state. The browser uses the Vite same-origin proxy; it never
 receives the private-preview token.
+
+The Help tutorial contains blank UI only, has native playback controls and no
+autoplay, and has equivalent written steps. Refresh it when the contribution
+flow changes. Do not record real preview rows, filled submissions, receipts or
+operator screens.
+
+With a pilot-enabled loopback preview running, regenerate the blank walkthrough
+from `frontend/`:
+
+```powershell
+node scripts/capture-contribution-tutorial.mjs http://127.0.0.1:4173/v2-preview/
+```
+
+The recorder blocks API/private/external requests, submits nothing, and writes
+the reusable WebM under `public/tutorials/`. Review playback before committing it.
+
+The API page loads pinned, self-hosted Swagger assets only when opened. Vite
+serves the canonical `docs/api/public-openapi.json` and shared location schema
+together under `reference/`; builds emit the same files and Swagger license
+notices into `dist/reference/` for the existing staging command. Do not maintain
+copied specifications in `public/`. API execution is same-origin GET-only, with
+no online validator, remote spec configuration or credentials. Published-release
+eligibility still applies; private preview data are not an export source.
+CSV rejects datasets over 1,000 records; larger exports use paginated JSON.
+From the repository root, check API specification drift with
+`python -B -m unittest pipeline.tests.test_public_openapi_contract pipeline.tests.test_v2_contract_convergence`.
 
 ## Frontend checks
 

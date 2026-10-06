@@ -32,12 +32,16 @@ The maintainer's 2026-10-04 navigation revision adds **Contribute** and **About*
 beside these two discovery views: `Map, Database | Contribute, About`.
 Contribute opens Add a facility by default, with visible task links to switch
 the form, plus receipt lookup, community browsing and project/support links.
-About groups Overview (the project manifesto) and Sources & methodology.
+About groups Overview (the project manifesto), Sources & methodology, Help,
+and API & downloads. Help provides short written guides and controlled tutorial
+recordings; API & downloads exposes the implemented public read API through a
+self-hosted Swagger explorer. Data access still requires an eligible published
+release, independently of the local preview or submission pilot.
 These links must appear
 consistently in the public shell and local preview; following them must preserve
 the selected preview context. Private submission forms use ordinary language;
 publication warnings belong on public unreviewed community results. Contribute
-is a direct header link; About exposes its two destinations through a text-only
+is a direct header link; About exposes its destinations through a text-only
 menu without an arrow. State that the code is open source and provide an
 explicit GitHub path for code contributions on Overview and Contribute. Use
 the same styled masthead on all pages. Informational pages use compact type,

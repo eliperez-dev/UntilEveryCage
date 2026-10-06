@@ -106,7 +106,7 @@ test('route controls are focusable links with explicit destinations', async ({ p
   await expect(databaseLink).toHaveAttribute('href', '#/database');
 });
 
-test('direct Contribute tasks, two About destinations, and code help are easy to find', async ({ page }) => {
+test('direct Contribute tasks, four About destinations, and code help are easy to find', async ({ page }) => {
   await page.goto('./#/contribute');
   await expect(page.getByRole('heading', { level: 1, name: 'Add a facility' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Contribute menu' })).toHaveCount(0);
@@ -120,7 +120,7 @@ test('direct Contribute tasks, two About destinations, and code help are easy to
   const about = page.getByRole('button', { name: 'About', exact: true });
   await expect(about).toHaveText('About');
   await about.click();
-  await expect(page.locator('#shared-about-nav').getByRole('link')).toHaveCount(2);
+  await expect(page.locator('#shared-about-nav').getByRole('link')).toHaveCount(4);
   await expect(page.getByRole('link', { name: 'Manifesto', exact: true })).toHaveCount(0);
   await page.locator('#shared-about-nav').getByRole('link', { name: 'Overview' }).click();
   await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible();

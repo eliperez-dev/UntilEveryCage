@@ -12,12 +12,12 @@ Until Every Cage     MAP        DATABASE     |     CONTRIBUTE        ABOUT
 The header remains available without competing with the current task. On narrow
 screens, all four links remain reachable without horizontal overflow.
 Contribute opens the facility form by default. A compact row of visible task
-links changes the fields for facility, evidence, correction, duplicate,
+links, labeled **Choose a contribution type**, changes the fields for facility, evidence, correction, duplicate,
 privacy/removal and bug reports. It also
 provides receipt lookup and the existing project links. Bug
 reports use an email template or a GitHub issue; they are not facility claims
 and do not require a contributor account. About contains the
-Overview (the manifesto) and Sources & methodology. The old manifesto URL and
+Overview (the manifesto), Sources & methodology, Help, and API & downloads. The old manifesto URL and
 methodology route remain working aliases. Contribute is a direct header link;
 About uses a text-only menu without an arrow, with keyboard, click and touch
 access. Existing
@@ -26,6 +26,25 @@ local preview mode when returning to Map or Database. Every surface uses the
 same styled masthead, including informational pages and status lookup. Overview
 and Contribute explicitly invite developers to contribute to the open-source
 code on GitHub; software and data licensing remain distinct.
+
+Help lives under About rather than adding a primary destination. It supplies
+short written workflows with optional, controlled tutorial videos using native
+controls and no autoplay. Written steps remain usable without the media. Only
+blank or synthetic UI may appear in committed tutorials; private preview rows,
+submission payloads, receipt credentials and operator screens are excluded.
+Evidence guidance identifies the existing record being supported and explains
+that review precedes a change to the published record.
+
+API & downloads contains a lazily loaded, self-hosted Swagger UI for the
+implemented public data GET routes, generated from the canonical
+[public OpenAPI document](../api/public-openapi.json). It defaults to the curated
+profile and same-origin API, with no private, intake or write operations. CSV
+exports are limited to 1,000 records; larger queries use paginated JSON. A local
+preview is not a downloadable public release, and bulk release packages have no
+public download route yet.
+
+Current preview routes for these destinations are `#/about/help` and
+`#/about/api`; navigation retains the active Map/Database context.
 
 ### Routes
 

@@ -22,6 +22,13 @@ describe('routeState', () => {
     expect(serializeRoute({ kind: 'methodology', returnMapHref: '#/map?f1a=field' })).toBe('#/methodology?map=%23%2Fmap%3Ff1a%3Dfield');
   });
 
+  it('round-trips Help and API pages with map context', () => {
+    for (const kind of ['help', 'api'] as const) {
+      const route = { kind, returnMapHref: '#/map?f1a=field' };
+      expect(parseRoute(serializeRoute(route))).toEqual(route);
+    }
+  });
+
   it('parses the contribution hub, form subroutes, and bug route', () => {
     expect(parseRoute('#/contribute?target=synthetic-record')).toEqual({ kind: 'contribute', targetRecordId: 'synthetic-record' });
     expect(parseRoute('#/contribute/facility')).toEqual({ kind: 'community', page: 'form', formKind: 'facility' });

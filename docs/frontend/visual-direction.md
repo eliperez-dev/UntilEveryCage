@@ -25,9 +25,11 @@ are understood; system fallbacks are acceptable and preferable to a blocking
 font request.
 
 The maintainer's 2026-10-04 density revision sets About and Contribute body
-copy around 14–15px, page headings around 28–32px, and section headings around
+copy around 14–15px, including Help and API guidance, page headings around 28–32px, and section headings around
 16–20px. Keep mobile headings proportionate. Use short copy, ordinary labels
 and only the headings needed to navigate the content; avoid large hero type.
+The embedded Swagger explorer follows the same dark, compact direction without
+changing shared page or masthead styles. Load its assets only on the API page.
 
 ## Palette intent
 

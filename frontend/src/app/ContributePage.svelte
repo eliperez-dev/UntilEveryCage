@@ -19,7 +19,8 @@
 <svelte:head><title>{labels[formKind]} · Until Every Cage</title></svelte:head>
 <section class="contribute-page" aria-labelledby="contribute-title">
   <h1 id="contribute-title">{labels[formKind]}</h1>
-  <nav class="task-nav" aria-label="Contribution tasks">
+  <p id="contribution-choice" class="choice-label">Choose a contribution type</p>
+  <nav class="task-nav" aria-label="Contribution tasks" aria-describedby="contribution-choice">
     {#each Object.entries(taskNames) as [type, label]}<a href={taskHref(type as ContributionType)} aria-current={formKind === type ? 'page' : undefined}>{label}</a>{/each}
   </nav>
   {#key `${formKind}:${targetRecordId}`}
@@ -45,7 +46,7 @@
   .contribute-page{width:min(100% - 3rem,46rem);margin:auto;padding:1.5rem 0 2.5rem;font:.9rem/1.5 system-ui,sans-serif;color:#f1efe8}
   h1{margin:0 0 1rem;font:500 2rem/1.15 Georgia,serif;letter-spacing:-.02em}
   .task-nav{display:flex;flex-wrap:wrap;gap:.3rem 1.1rem;margin:0 0 1rem;font-size:.85rem}
-  .task-nav a{display:flex;align-items:center;min-height:2rem;color:#bfc9bd;text-decoration:none}
+  .choice-label{margin:0;font-weight:600;font-size:.85rem}.task-nav a{display:flex;align-items:center;min-height:2rem;color:#bfc9bd;text-decoration:underline;text-underline-offset:.25rem;text-decoration-color:#637266}
   .task-nav a[aria-current]{color:#f1efe8;text-decoration:underline;text-underline-offset:.35rem;text-decoration-thickness:2px}
   .task-nav a:hover{color:#fff}
   .contribute-footer{margin-top:1.5rem;padding-top:1rem;border-top:1px solid #3d4740}.code-invitation{margin:0 0 .75rem;color:#c6d0c5;font-size:.85rem}

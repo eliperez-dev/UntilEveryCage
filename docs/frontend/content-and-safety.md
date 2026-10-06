@@ -43,6 +43,13 @@ before publication, without repeating pilot/review badges throughout the form.
 Keep map attribution visible and put provider details in methodology.
 Public unreviewed community results retain the warning required above.
 
+Label the task links **Choose a contribution type** so the alternatives are
+discoverable. Evidence supports an existing record: ask for its record link or
+ID and explain that a submission is reviewed before changing published data.
+Do not imply that sending evidence immediately edits or appends to the curated
+record. Help uses short steps and media with an equivalent written explanation;
+API guidance distinguishes published downloads from private preview data.
+
 Keep informational copy short and concrete. Omit decorative eyebrows such as
 “Reading the map” and repeated explanations around a form. A bug-report page
 needs practical fields and an email-draft action, not a separate precautionary

@@ -4,6 +4,8 @@ export type RouteState =
   | Readonly<{ kind: 'database' }>
   | Readonly<{ kind: 'methodology'; returnMapHref?: string }>
   | Readonly<{ kind: 'about'; section: 'overview'; returnMapHref?: string }>
+  | Readonly<{ kind: 'help'; returnMapHref?: string }>
+  | Readonly<{ kind: 'api'; returnMapHref?: string }>
   | Readonly<{ kind: 'contribute'; formKind?: ContributionType; targetRecordId?: string; returnMapHref?: string }>
   | Readonly<{ kind: 'bug-report'; returnMapHref?: string }>
   | Readonly<{ kind: 'record'; facilityId: string }>
@@ -24,6 +26,7 @@ export function parseRoute(hash: string): RouteState {
   if (path === '/database') return { kind: 'database' };
   if (path === '/methodology' || path === '/about/sources') return { kind: 'methodology', ...(returnMapHref ? { returnMapHref } : {}) };
   if (path === '/about' || path === '/about/manifesto') return { kind: 'about', section: 'overview', ...(returnMapHref ? { returnMapHref } : {}) };
+  if (path === '/about/help' || path === '/about/api') return { kind: path === '/about/help' ? 'help' : 'api', ...(returnMapHref ? { returnMapHref } : {}) };
   if (path === '/contribute/bug') return { kind: 'bug-report', ...(returnMapHref ? { returnMapHref } : {}) };
   if (path === '/contribute') {
     const targetRecordId = params.get('target');
@@ -58,6 +61,7 @@ export function serializeRoute(route: RoutableState): string {
   if (route.kind === 'database') return '#/database';
   if (route.kind === 'methodology') return `#/methodology${route.returnMapHref ? `?map=${encodeURIComponent(route.returnMapHref)}` : ''}`;
   if (route.kind === 'about') return `#/about${route.returnMapHref ? `?map=${encodeURIComponent(route.returnMapHref)}` : ''}`;
+  if (route.kind === 'help' || route.kind === 'api') return `#/about/${route.kind}${route.returnMapHref ? `?map=${encodeURIComponent(route.returnMapHref)}` : ''}`;
   if (route.kind === 'contribute') return `#/contribute${route.formKind || route.targetRecordId || route.returnMapHref ? `?${new URLSearchParams({ ...(route.formKind ? { type: route.formKind } : {}), ...(route.targetRecordId ? { target: route.targetRecordId } : {}), ...(route.returnMapHref ? { map: route.returnMapHref } : {}) })}` : ''}`;
   if (route.kind === 'bug-report') return `#/contribute/bug${route.returnMapHref ? `?map=${encodeURIComponent(route.returnMapHref)}` : ''}`;
   if (route.kind === 'community') {

@@ -15,8 +15,9 @@ private or candidate rows.
 * `GET /api/v2/graph/entities`
 * `GET /api/v2/graph/entities/{entity_id}/neighborhood`
 
-All endpoints are GET-only, bounded, and use the normal `{api_version, error}`
-envelope. The graph page maximum is 100. Cursors are opaque UUID continuation
+All endpoints are GET-only and bounded; explicit handler errors use the normal
+`{api_version, error}` envelope. Framework extraction failures may differ.
+The graph page maximum is 100 (default 50). Cursors are opaque UUID continuation
 tokens for the selected release snapshot. A response includes `release_id` and
 `ruleset_version`; clients must not combine pages from different snapshots.
 
@@ -24,6 +25,15 @@ Connection filters are `profile`, `connection_type` (`exact` or `inferred`),
 `min_confidence`, `max_confidence`, `confidence_band` (`exact`, `high`,
 `medium`, `low`), `include_conflicting`, `source_id`, `entity_id`, `cursor`,
 and `limit`. Entity search additionally accepts `q` and `entity_type`.
+
+Effective entity-search inputs are `profile`, `q`, `entity_type`, `cursor` and
+`limit`; connection-specific filters do not apply to that route. Neighborhood
+returns connections adjacent to its path entity using the connection filters.
+Although `direction` and `depth` are validated, they currently do not change
+traversal or provide multi-hop results. Graph routes select the latest eligible
+profile and do not accept an effective `release_id` pin. Refresh pagination when
+response release metadata changes. The [public OpenAPI document](public-openapi.json)
+exposes effective inputs only.
 
 The database retains the historical `probable` and `possible` labels. The
 public contract normalizes those to `high` and `medium`; this is a display band,

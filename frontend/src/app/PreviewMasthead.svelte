@@ -58,7 +58,7 @@
     <div class="nav-group">
       <button bind:this={aboutButton} class="about-control" type="button" aria-current={current === "about" || current === "methodology" ? 'page' : undefined} aria-expanded={navOpen === 'about'} aria-controls="shared-about-nav" onclick={() => toggleNav('about')} onkeydown={(event) => { if (event.key === 'ArrowDown') { event.preventDefault(); toggleNav('about', true); } }}>About</button>
       {#if navOpen === 'about'}<div id="shared-about-nav" class="nav-dropdown about-dropdown" aria-label="About destinations">
-        <a href={aboutHref}>Overview</a><a href={menuHref('about/sources')}>Sources & methodology</a>
+        <a href={aboutHref}>Overview</a><a href={menuHref('about/sources')}>Sources & methodology</a><a href={menuHref('about/help')}>Help</a><a href={menuHref('about/api')}>API & downloads</a>
       </div>{/if}
     </div>
   </nav>

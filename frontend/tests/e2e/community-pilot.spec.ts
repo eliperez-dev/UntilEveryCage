@@ -198,7 +198,7 @@ test('six contribution task links switch in place with prefilled records and cle
   const tasks = page.getByRole('navigation', { name: 'Contribution tasks' });
   const switchTask = async (name: string) => tasks.getByRole('link', { name, exact: true }).click();
   await expect(tasks.getByRole('link', { name: 'Evidence', exact: true })).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByLabel('Record ID', { exact: true })).toHaveValue(recordId);
+  await expect(page.getByLabel('Record link or ID', { exact: true })).toHaveValue(recordId);
   await page.getByLabel('What did you find?').fill('Synthetic draft that must be cleared');
   await switchTask('Correction');
   await expect(page.getByLabel('What should be corrected?')).toHaveValue('');
