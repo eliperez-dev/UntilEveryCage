@@ -2,14 +2,16 @@ import{describe,expect,it}from'vitest';import{locations}from'../../src/fixtures/
 describe('map projection',()=>{
   it('excludes unmapped fixtures',()=>expect(projectLocations(locations)).toHaveLength(2));
   it('preserves exact and city precision while keeping unmapped records out of spatial results',()=>{
-    const record=(id:string,precision:'exact'|'city'|'unmapped',lat:number|null,lon:number|null):Location=>({
+    const record=(id:string,precision:'exact'|'city'|'source_reported'|'approximate'|'unmapped',lat:number|null,lon:number|null):Location=>({
       ...locations[0]!,id,lat,lon,
       evidence:{displayPrecision:precision} as NonNullable<Location['evidence']>,
     });
-    expect(projectLocations([record('exact','exact',55,10),record('coarse','city',56,11),record('unknown','unmapped',null,null)]))
+    expect(projectLocations([record('exact','exact',55,10),record('coarse','city',56,11),record('reported','source_reported',57,12),record('approx','approximate',58,13),record('unknown','unmapped',null,null)]))
       .toEqual([
         expect.objectContaining({id:'exact',precision:'exact',lat:55,lon:10}),
         expect.objectContaining({id:'coarse',precision:'city',lat:56,lon:11}),
+        expect.objectContaining({id:'reported',precision:'source_reported',lat:57,lon:12}),
+        expect.objectContaining({id:'approx',precision:'approximate',lat:58,lon:13}),
       ]);
   });
   it('clusters only the current release-filtered page and preserves member IDs',()=>{

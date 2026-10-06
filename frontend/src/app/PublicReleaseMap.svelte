@@ -268,7 +268,7 @@
               {/each}
             </section>
           {/if}
-          <p>{selectedLocation.evidence?.displayPrecision === 'city' ? 'Approximate city-level location; this is not a facility point.' : selectedLocation.evidence?.displayPrecision === 'exact' ? 'Exact location shown from an approved source coordinate.' : 'No eligible map position.'}</p>
+          <p>{selectedLocation.evidence?.displayPrecision === 'city' ? 'Approximate city-level location; this is not a facility point.' : selectedLocation.evidence?.displayPrecision === 'source_reported' ? 'Source-reported location; the source precision is not independently established as an exact facility point.' : selectedLocation.evidence?.displayPrecision === 'approximate' ? 'Approximate location; this is not an exact facility point.' : selectedLocation.evidence?.displayPrecision === 'exact' ? 'Exact location shown from an approved source coordinate.' : 'No eligible map position.'}</p>
           {#if selectedLocation.evidence?.sourceUrl}<a href={selectedLocation.evidence.sourceUrl} target="_blank" rel="noreferrer">View source</a>{/if}
           <small>Official profile · release {activeManifest.releaseId}</small>
         </article>

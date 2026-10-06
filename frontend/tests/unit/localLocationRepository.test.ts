@@ -55,6 +55,14 @@ describe('LocalLocationRepository query contract', () => {
 });
 
 describe('current V2 wire edge cases', () => {
+  it('accepts five geometry precision states, preserves allowlisted provenance, and rejects unexpected payload fields', async () => {
+    const provenance = { origin: 'provider_derived', method: 'provider_geocode', source_precision: 'municipality', provider: 'Example', provider_status: 'accepted', confidence_band: 'high', evidence_id: 'evidence-1' };
+    const reported = await new LocalLocationRepository(vi.fn().mockResolvedValue(response(envelope([{ ...row, display_precision: 'source_reported', geometry_provenance: { ...provenance, origin: 'source_coordinates' } }])))).list();
+    expect(reported.locations[0]?.evidence).toMatchObject({ displayPrecision: 'source_reported', geometryProvenance: { origin: 'source_coordinates', evidence_id: 'evidence-1' } });
+    const approximate = await new LocalLocationRepository(vi.fn().mockResolvedValue(response(envelope([{ ...row, display_precision: 'approximate', geometry_provenance: provenance }])))).list();
+    expect(approximate.locations[0]?.evidence?.displayPrecision).toBe('approximate');
+    await expect(new LocalLocationRepository(vi.fn().mockResolvedValue(response(envelope([{ ...row, geometry_provenance: { origin: 'provider_derived', raw_provider_response: 'private' } }])))).list()).rejects.toMatchObject({ kind: 'invalid-contract' });
+  });
   it('accepts a null canonical name and exposes an explicit safe display label', async () => {
     const fetcher = vi.fn().mockResolvedValue(response(envelope([{ ...row, canonical_name: null }])));
     await expect(new LocalLocationRepository(fetcher).list()).resolves.toMatchObject({ locations: [{ name: 'Unnamed candidate record' }] });

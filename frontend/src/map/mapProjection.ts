@@ -1,8 +1,8 @@
 import type { Location } from '../domain/location';
-export type DisplayFeature=Readonly<{id:string,label:string,lat:number,lon:number,precision:'exact'|'city'}>;
+export type DisplayFeature=Readonly<{id:string,label:string,lat:number,lon:number,precision:'exact'|'city'|'source_reported'|'approximate'}>;
 export type DisplayCluster=Readonly<{id:string,label:string,lat:number,lon:number,count:number,memberIds:readonly string[]}>;
 export type MapDisplayItem=DisplayFeature|DisplayCluster;
-export const projectLocations=(items:readonly Location[]):readonly DisplayFeature[]=>items.flatMap((item)=>item.lat===null||item.lon===null?[]:[{id:item.id,label:item.evidence?.publicationProfile==='community'&&item.evidence.factualReviewStatus==='unreviewed'?`${item.name} · Unreviewed community claim — not verified by Until Every Cage`:item.name,lat:item.lat,lon:item.lon,precision:item.evidence?.displayPrecision==='exact'?'exact':'city'}]);
+export const projectLocations=(items:readonly Location[]):readonly DisplayFeature[]=>items.flatMap((item)=>item.lat===null||item.lon===null?[]:[{id:item.id,label:item.evidence?.publicationProfile==='community'&&item.evidence.factualReviewStatus==='unreviewed'?`${item.name} · Unreviewed community claim — not verified by Until Every Cage`:item.name,lat:item.lat,lon:item.lon,precision:item.evidence?.displayPrecision==='exact'||item.evidence?.displayPrecision==='source_reported'||item.evidence?.displayPrecision==='approximate'?item.evidence.displayPrecision:'city'}]);
 
 /**
  * Cluster only the already release-filtered page received by the client. The

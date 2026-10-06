@@ -10,6 +10,21 @@ const sourceUrl = z.string().url().refine(value => {
   }
 }, 'source URL must use HTTP or HTTPS');
 const nullableText = z.string().nullable().optional();
+const geometryProvenanceSchema = z.object({
+  origin: z.enum(['source_coordinates', 'provider_derived', 'verified_coarse_reference', 'provider_geocode', 'city_reference', 'unmapped']),
+  method: z.string().max(120).optional(),
+  source_precision: z.string().max(120).optional(),
+  provider: z.string().max(160).optional(),
+  provider_status: z.string().max(80).optional(),
+  provider_queried_at: z.string().datetime({ offset: true }).optional(),
+  confidence: z.string().max(40).optional(),
+  confidence_band: z.string().max(40).optional(),
+  coordinate_review_status: z.string().max(80).optional(),
+  reference_source_id: z.string().max(160).optional(),
+  reference_source: z.string().max(200).optional(),
+  evidence_kind: z.string().max(80).optional(),
+  evidence_id: z.string().max(160).optional(),
+}).strict();
 const taxonomyAssignmentSchema = z.object({
   primary_key: z.string().min(1),
   leaf_key: nullableText,
@@ -49,7 +64,8 @@ const locationShape = {
   project_approval: z.string(),
   reviewer_role: textOrNull,
   publication_warning: textOrNull,
-  display_precision: z.enum(['exact', 'city', 'unmapped']),
+  display_precision: z.enum(['exact', 'city', 'source_reported', 'approximate', 'unmapped']),
+  geometry_provenance: geometryProvenanceSchema.optional(),
   latitude: z.number().finite().nullable(),
   longitude: z.number().finite().nullable(),
   first_observed_at: dateTimeOrNull,
