@@ -60,13 +60,14 @@ replaces the earlier recommendation to accept an unnamed release.
 The exact membership digest was recomputed unchanged. Record-level exceptions
 pass all six actual disposable-PostGIS tests with no skips. The owner has now
 given the final release approval; no further generic scope or publication
-stamp is needed. Complete local activation with exact binding, suppression,
-rights and baseline rechecks, and distinguish it from external deployment.
+stamp is needed. Local activation and backup/restore baseline verification are
+complete; frontend/community integration is in progress. External deployment
+has not occurred.
 
 **Maintainer decision: 2026-10-03.** Dataset release names are independent of
 the V2 website and the legacy V1 application. `v0` is the first public dataset
 release; `v1` is a later dataset release, potentially adding countries and
-source families. These names do not imply that either release exists yet.
+source families. V0 is now approved and locally promoted; v1 does not exist yet.
 
 1. **Candidate sprint:** the proposed UK location-recovery, Denmark integration,
    and Netherlands onboarding sprint closes the v0 candidate intake window.
@@ -91,7 +92,8 @@ Further acquisition may continue privately toward v1 without altering v0.
 The public data release and the V1-to-V2 website cutover are separate milestones;
 an unfinished optional visualization is not a data-release gate.
 
-**Current state (2026-10-05):** UK, Denmark, and Netherlands private imports and
+**Historical candidate checkpoint (2026-10-05; superseded by the approval above):**
+UK, Denmark, and Netherlands private imports and
 bounded geocoding are integrated. South Australia EPA, Italy 1069, and Brazil
 SIF were reacquired and their exact captures imported on 2026-10-04 under the
 maintainer's instruction. The [taxonomy-reconciled inventory](../data/manifests/v0-candidate-20261004-taxonomy-inventory.json)
@@ -118,8 +120,11 @@ checks confirmed the committed totals, fifteen represented sources, candidate
 status, zero default-visible members and zero release manifests. These are
 source-qualified groups, not globally deduplicated or operating facilities.
 The retained preview still has zero releases and members.
-Graph projection, human review, and public activation are also incomplete. No v0 publication is
-authorized by the candidate work. The source registry and immutable
+At that candidate checkpoint, graph projection, human review, and public
+activation were incomplete; the candidate work alone did not authorize
+publication. The subsequent 2026-10-06 decision above approved v0 and local
+activation completed. Public graph projection remains outside this integration
+sprint. The source registry and immutable
 release-manifest machinery exist, but the retained private preview is not a
 populated public release. The v0 review must identify its exact source versions
 and distinguish frozen candidate evidence from approved release membership. This
@@ -130,7 +135,8 @@ The bounded maintainer review and its measured evidence are routed through
 [the v0 release review](v0-release-review.md); that packet is not a second
 product roadmap or publication authorization.
 
-**Release-enablement decision (2026-10-05):** the maintainer approved frozen
+**Historical release-enablement decision (2026-10-05; activation completed
+2026-10-06):** the maintainer approved frozen
 `v0-candidate-2026-10-04-r3` as the v0 scope and authorized bounded engineering
 for full-cohort decision recording, public geometry parity, atomic activation
 and rollback, and source-rights verification. The implementation is integrated;
@@ -175,9 +181,12 @@ and [geospatial replay manifest](../data/manifests/geospatial-replay-integration
 
 - **Baseline:** D6.2 remains the reusable-backend architecture checkpoint (2026-09-21 UTC). On 2026-09-24, seven named official sources completed strict live private E2E through acquisition, candidate processing, disposable-database import, and run verification. Their combined private result is 64,701 observations, 42,875 candidates, 41,110 map-visible candidates, and 1,765 listable but unmapped candidates. SQL verification confirmed zero public rows. These are source-scoped private observations, not publication approval or recurring service health.
 - **Current public product:** V1 remains production and the public default.
-- **V2 frontend:** Svelte/TypeScript fixture and local synthetic preview; it is
-  not the production replacement and has no configured external tile service.
-- **Public release:** no V2 public release has been created or promoted.
+- **V2 frontend:** reviewed Svelte/TypeScript map and community/search UI exist;
+  integration against the approved v0 API is in progress. It is not externally
+  deployed or the production replacement.
+- **Public release:** v0 is approved and locally promoted, with 63,601 searchable
+  records and 48,756 map locations. External website launch still requires v1,
+  historical v0 access and the remaining launch gates.
 - **Evidence:** D1's [contract convergence ledger](api/v2-product-convergence-gap-ledger.md),
   [V1 behavioral contract](frontend/v1-behavioral-contract.md), and row-free
   [data readiness report](../data/manifests/d1-data-readiness-report.json)
@@ -762,6 +771,7 @@ and source rights decisions belong in [architecture/source-rights-decisions.md](
 
 | Date | Decision | Scope | Evidence / authority | Next review |
 | --- | --- | --- | --- | --- |
+| 2026-10-06 | Approve and locally promote v0 — Early Access; establish it as the real-data development baseline. | 13-source curated subset: 63,601 searchable, 48,756 mapped, 14,845 unmapped; frozen reference and verified writable copy. Website launch requires v1 and historical v0 access. | Maintainer final publication approval; [baseline contract](../pipeline/contracts/development-baseline.json), [baseline workflow](development.md#approved-v0-development-baseline), and short v0 release report. | Verify frontend/community integration against a disposable v0 copy; no second generic publication stamp. |
 | 2026-10-05 | Approve the frozen fifteen-source candidate as v0 scope, using the public label v0; authorize bounded release-enablement engineering, not website launch. | Exact `v0-candidate-2026-10-04-r3`, cohort recording, geometry parity, activation/rollback, and source-rights checks; no new countries or platform overhaul. | Maintainer approval in this chat; [v0 review packet](v0-release-review.md). Source-specific rights, privacy and publication outcomes remain separate recorded decisions. | At integrated tests/CI and before any real publication decision or promotion. |
 | 2026-10-03 | Close v0 candidate intake after the UK/Denmark/Netherlands expansion sprint, then conduct human review and publish an approved frozen v0 dataset; later expansion belongs to v1. | Dataset release sequence, separate from V2 website delivery and legacy V1. | Maintainer instruction in this chat; [v0 release sequence](#v0-dataset-release-sequence). Candidate status is not publication approval; applicable ethics and publication controls remain required. | At candidate-sprint integration and before public v0 publication. |
 | 2026-09-20 | Establish this document as the sole product-level readiness and overall V2 roadmap authority. | V2 product completeness and V1 replacement sequencing. | C1 approved scope; governing policy remains [ETHICS.md](ETHICS.md). | At the next integration sprint or any material gate change. |
