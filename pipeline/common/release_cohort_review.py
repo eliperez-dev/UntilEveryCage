@@ -166,7 +166,7 @@ WITH approved_geometry_members AS (
      AND assignments.crosswalk_version=scope.crosswalk_version
      AND assignments.ruleset_version=scope.classification_ruleset_version
     WHERE member.release_id=%s
-      AND release.status='candidate'
+      AND release.status IN ('candidate','validated','promoted')
       AND release.test_only IS FALSE
       AND release.profile=scope.profile
       AND release.ruleset_version=scope.ruleset_version
