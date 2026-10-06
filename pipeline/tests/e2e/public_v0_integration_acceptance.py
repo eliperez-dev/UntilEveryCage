@@ -1,7 +1,7 @@
 """Opt-in acceptance against the disposable database-backed local API.
 
 Run with UEC_API_ORIGIN=http://127.0.0.1:38206 python -m unittest
-pipeline.tests.e2e.test_public_v0_integration_acceptance -v
+pipeline.tests.e2e.public_v0_integration_acceptance -v
 """
 
 import csv
