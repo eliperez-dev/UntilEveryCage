@@ -14,7 +14,7 @@ async function isolate(context: BrowserContext) {
   });
 }
 
-test('the footer offers project and utility links, preserves context, and appears once', async ({ page, context }) => {
+test('the disclosure and credits preserve data context and appear once per non-map surface', async ({ page, context }) => {
   await isolate(context);
   const map = '#/map?f1a=field&list=closed';
   const suffix = `?map=${encodeURIComponent(map)}`;
@@ -22,43 +22,42 @@ test('the footer offers project and utility links, preserves context, and appear
   await page.goto(`./#/about/faq${suffix}`);
   const footer = page.getByRole('contentinfo', { name: 'Project information' });
   await expect(footer).toHaveCount(1);
-  await expect(footer.getByText('An independent, open-source project.', { exact: true })).toBeVisible();
-  const project = footer.getByRole('navigation', { name: 'Project links' });
+  await expect(footer).toContainText('An independent, open-source project.');
+  await expect(footer).toContainText('Records may be incomplete or out of date. Inclusion does not establish current operation or wrongdoing.');
+  await expect(footer).toContainText('Original website inspired by Final Nail.');
+  await expect(footer.getByRole('navigation')).toHaveCount(0);
+  await expect(footer.getByRole('link')).toHaveCount(5);
   const destinations = [
-    ['Contact', 'mailto:untileverycageproject@protonmail.com'],
-    ['Support on Ko-fi', 'https://ko-fi.com/untileverycageisempty'],
-    ['GitHub', 'https://github.com/eliperez-dev/UntilEveryCage'],
-    ['Discord', 'https://discord.gg/wbdTHzAZ4b'],
-    ['Resources', 'https://linktr.ee/veganresource'],
+    ['Get in touch', 'mailto:untileverycageproject@protonmail.com'],
+    ['support its hosting and data work', 'https://ko-fi.com/untileverycageisempty'],
+    ['AGPLv3 or later', 'https://www.gnu.org/licenses/agpl-3.0.html'],
+    ['Final Nail', 'https://finalnail.com/'],
   ];
   for (const [name, href] of destinations) {
-    const link = project.getByRole('link', { name, exact: true });
+    const link = footer.getByRole('link', { name, exact: true });
     await expect(link).toHaveAttribute('href', href);
     if (!href.startsWith('mailto:')) { await expect(link).toHaveAttribute('target', '_blank'); await expect(link).toHaveAttribute('rel', 'noreferrer'); }
   }
-  const utilities = footer.getByRole('navigation', { name: 'Help and feedback' });
-  const routes = [['Help', 'about/help'], ['Report a bug', 'contribute/bug'], ['Privacy or removal', 'contribute/privacy-removal'], ['Sources & methodology', 'about/sources']];
-  for (const [name, path] of routes) await expect(utilities.getByRole('link', { name, exact: true })).toHaveAttribute('href', `#/${path}${suffix}`);
-  await expect(footer.getByRole('link', { name: 'AGPLv3 or later' })).toHaveAttribute('href', 'https://www.gnu.org/licenses/agpl-3.0.html');
-  await expect(footer.getByRole('link', { name: 'reuse terms' })).toHaveAttribute('href', `#/database/downloads${suffix}`);
-  const help = utilities.getByRole('link', { name: 'Help', exact: true });
-  await help.focus(); await expect(help).toBeFocused();
-  expect(await help.evaluate(element => getComputedStyle(element).outlineStyle)).toBe('solid');
-  await page.screenshot({ path: '../target/footer-draft-desktop-1440.png', fullPage: true });
-  for (const [name] of routes) {
-    await utilities.getByRole('link', { name, exact: true }).click();
-    await expect(footer).toHaveCount(1);
-    expect(new URL(page.url()).hash).toContain(`map=${encodeURIComponent(map)}`);
-    await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Map', exact: true })).toHaveAttribute('href', map);
-  }
-  await footer.getByRole('link', { name: 'reuse terms' }).click();
+  const data = footer.getByRole('link', { name: 'reuse terms' });
+  await expect(data).toHaveAttribute('href', `#/database/downloads${suffix}`);
+  const contact = footer.getByRole('link', { name: 'Get in touch' });
+  await contact.focus(); await expect(contact).toBeFocused();
+  expect(await contact.evaluate(element => getComputedStyle(element).outlineStyle)).toBe('solid');
+  await page.keyboard.press('Tab');
+  await expect(footer.getByRole('link', { name: 'support its hosting and data work' })).toBeFocused();
+  await page.screenshot({ path: '../target/footer-copy-desktop-1440.png', fullPage: true });
+  await data.click();
   await expect(page.getByRole('heading', { name: 'Downloads', exact: true })).toBeVisible();
-  await page.goto('./#/database'); await expect(footer).toHaveCount(1);
-  await page.goto('./#/records/synthetic-record'); await expect(footer).toHaveCount(1);
+  await expect(footer).toHaveCount(1);
+  expect(new URL(page.url()).hash).toContain(`map=${encodeURIComponent(map)}`);
+  await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Map', exact: true })).toHaveAttribute('href', map);
+  for (const route of ['about', 'about/sources', 'contribute/bug', 'database', 'records/synthetic-record']) {
+    await page.goto(`./#/${route}`); await expect(footer).toHaveCount(1);
+  }
   await page.goto('./#/map'); await expect(footer).toHaveCount(0);
 });
 
-test('touch footer links wrap at 375px and 320px with usable targets', async ({ browser, baseURL }) => {
+test('touch disclosure wraps readably at 375px and 320px and data terms remain usable', async ({ browser, baseURL }) => {
   const context = await browser.newContext({ baseURL, viewport: { width: 375, height: 844 }, isMobile: true, hasTouch: true });
   await isolate(context);
   const page = await context.newPage();
@@ -68,17 +67,16 @@ test('touch footer links wrap at 375px and 320px with usable targets', async ({ 
     await page.setViewportSize({ width, height: 844 });
     await footer.scrollIntoViewIfNeeded();
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    for (const link of await footer.getByRole('navigation').getByRole('link').all()) {
+    for (const link of await footer.getByRole('link').all()) {
       await expect(link).toBeVisible();
-      const box = (await link.boundingBox())!;
-      expect(box.height).toBeGreaterThanOrEqual(44);
-      expect(box.x).toBeGreaterThanOrEqual(0);
-      expect(box.x + box.width).toBeLessThanOrEqual(width);
+      const rects = await link.evaluate(element => Array.from(element.getClientRects()).map(rect => ({ left: rect.left, right: rect.right })));
+      for (const rect of rects) { expect(rect.left).toBeGreaterThanOrEqual(0); expect(rect.right).toBeLessThanOrEqual(width); }
+      expect(await link.evaluate(element => parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(13);
     }
-    if (width === 375) await page.screenshot({ path: '../target/footer-draft-touch-375.png', fullPage: false });
+    if (width === 375) await page.screenshot({ path: '../target/footer-copy-touch-375.png', fullPage: false });
   }
-  await footer.getByRole('navigation', { name: 'Help and feedback' }).getByRole('link', { name: 'Report a bug' }).tap();
-  await expect(page.getByRole('heading', { name: 'Report a bug', exact: true })).toBeVisible();
+  await footer.getByRole('link', { name: 'reuse terms' }).tap();
+  await expect(page.getByRole('heading', { name: 'Downloads', exact: true })).toBeVisible();
   await expect(footer).toHaveCount(1);
   await context.close();
 });
