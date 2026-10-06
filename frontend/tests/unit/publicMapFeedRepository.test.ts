@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createPublicMapFeedRepository, parsePublicMapFeed } from '../../src/api/PublicMapFeedRepository';
+import { canReusePublicMapFeed, createPublicMapFeedRepository, parsePublicMapFeed } from '../../src/api/PublicMapFeedRepository';
 
 const releaseId = 'synthetic-v0-release';
 const featureId = '550e8400-e29b-41d4-a716-446655440000';
@@ -13,6 +13,15 @@ const payload = {
 };
 
 describe('public release map feed', () => {
+  it('reuses points only while the release and suppression identity are unchanged', () => {
+    const identity = `${releaseId}:${'a'.repeat(64)}:7`;
+    expect(canReusePublicMapFeed(releaseId, identity, releaseId, identity, true)).toBe(true);
+    expect(canReusePublicMapFeed(releaseId, `${releaseId}:${'a'.repeat(64)}:8`, releaseId, identity, true)).toBe(false);
+    expect(canReusePublicMapFeed(releaseId, identity, 'other-release', identity, true)).toBe(false);
+    expect(canReusePublicMapFeed(null, null, releaseId, identity, true)).toBe(false);
+    expect(canReusePublicMapFeed(releaseId, identity, releaseId, identity, false)).toBe(false);
+  });
+
   it('projects only point identity and allowlisted display fields, preserving source-reported precision', () => {
     const result = parsePublicMapFeed(payload, 'official', releaseId);
     expect(result.collection.features[0]).toMatchObject({ id: featureId, geometry: { coordinates: [4.4, 51.2] }, properties: { id: featureId, kind: 'source-coordinate', precision: 'source_reported', weight: 1, category_key: 'slaughter' } });

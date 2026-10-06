@@ -52,7 +52,7 @@
     setRealPreviewPinMode,
   } from "./realPreviewMapLayers";
   import { clearRealPreviewMapCache, createRealPreviewMapFeedRepository, realPreviewMapCacheEntryCount } from "../../api/RealPreviewMapFeedRepository";
-  import { createPublicMapFeedRepository } from "../../api/PublicMapFeedRepository";
+  import { canReusePublicMapFeed, createPublicMapFeedRepository } from "../../api/PublicMapFeedRepository";
 
   let {
     records,
@@ -623,7 +623,29 @@
     const instance = map;
     if (!instance) return () => {};
     if (!nativeStyleReady) return () => {};
-    if (nativeFullCollection) applyLocalSourceFilter(mapState.sourceId);
+    if (mode === "public-release") {
+      if (!publicReleaseId) {
+        if (requestedPublicReleaseId || nativeFullCollection) {
+          feedGeneration++;
+          feedAbort?.abort();
+          feedAbort = undefined;
+          requestedPublicReleaseId = null;
+          requestedPublicReleaseIdentity = publicReleaseIdentity;
+          requestedFeedSourceId = undefined;
+          nativeFullCollection = undefined;
+          appliedNativeSourceId = undefined;
+          if (instance.getSource("locations")) setRealPreviewMapData(instance, { type: "FeatureCollection", features: [] });
+          onMapFeedMeta?.(null);
+          feedStatus = "error";
+          startupStage = "ready";
+          mvtError = "No current public map release is available.";
+        }
+      } else if (canReusePublicMapFeed(publicReleaseId, publicReleaseIdentity, requestedPublicReleaseId, requestedPublicReleaseIdentity, !!nativeFullCollection)) {
+        applyLocalSourceFilter(mapState.sourceId);
+      } else {
+        void loadNativeFeed();
+      }
+    } else if (nativeFullCollection) applyLocalSourceFilter(mapState.sourceId);
     else void loadNativeFeed();
     return () => {};
   }

@@ -20,6 +20,19 @@ export class PublicMapFeedError extends Error {
   constructor(message = 'The public map feed could not be loaded.') { super(message); this.name = 'PublicMapFeedError'; }
 }
 
+/** Reuse a map projection only when its public release and suppression identity still match. */
+export function canReusePublicMapFeed(
+  currentReleaseId: string | null | undefined,
+  currentIdentity: string | null | undefined,
+  loadedReleaseId: string | null | undefined,
+  loadedIdentity: string | null | undefined,
+  hasCollection: boolean,
+): boolean {
+  return !!currentReleaseId && hasCollection
+    && currentReleaseId === loadedReleaseId
+    && currentIdentity === loadedIdentity;
+}
+
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const categories = new Set(['animal_keeping_and_production', 'slaughter', 'processing_and_preparation', 'research_and_animal_use', 'other_regulated_premises', 'unclassified']);
 const precisions = new Set(['source_reported', 'exact', 'approximate', 'city']);
