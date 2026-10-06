@@ -1,5 +1,5 @@
 export type ExplorerRequest = { url: string; method?: string; headers?: Record<string, string>; credentials?: RequestCredentials };
-const publicGetPath = /^\/api\/v2\/(?:locations(?:\/[0-9a-f-]{36})?|locations\.csv|releases\/manifest|releases\/[A-Za-z0-9._-]+\/map\/tiles\/\d+\/\d+\/\d+\.mvt|discovery\/(?:filters|facets)|graph\/(?:connections|entities(?:\/[0-9a-f-]{36}\/neighborhood)?))$/i;
+const publicGetPath = /^\/api\/v2\/(?:locations(?:\/[0-9a-f-]{36})?|locations\.csv|map\/feed|releases\/manifest|releases\/[A-Za-z0-9._-]+\/map\/tiles\/\d+\/\d+\/\d+\.mvt|discovery\/(?:filters|facets)|graph\/(?:connections|entities(?:\/[0-9a-f-]{36}\/neighborhood)?))$/i;
 export function guardExplorerRequest(request: ExplorerRequest, origin: string, assetBase: string): ExplorerRequest {
   const url = new URL(request.url, origin);
   const referenceFiles = ['public-openapi.json', 'v2-location.schema.json'].map(name => new URL(`${assetBase}reference/${name}`, origin).pathname);

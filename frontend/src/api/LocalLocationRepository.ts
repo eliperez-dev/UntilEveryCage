@@ -5,7 +5,7 @@ import { isTaxonomyPrimaryKey, TAXONOMY_PRIMARY_KEYS, TAXONOMY_VERSION, type Tax
 
 export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 export type LocalProfile = 'official' | 'secondary' | 'community';
-export type LocationFilters = Readonly<{ q?: string | undefined; country_code?: string | undefined; region?: string | undefined; category?: string | undefined; category_keys?: readonly TaxonomyPrimaryKey[] | undefined; source_type?: string | undefined; display_precision?: string | undefined; lifecycle_status?: string | undefined; min_lon?: number | undefined; min_lat?: number | undefined; max_lon?: number | undefined; max_lat?: number | undefined; latitude?: number | undefined; longitude?: number | undefined; radius_km?: number | undefined; cursor?: string | undefined; offset?: number | undefined; limit?: number | undefined }>;
+export type LocationFilters = Readonly<{ q?: string | undefined; country_code?: string | undefined; region?: string | undefined; category?: string | undefined; category_keys?: readonly TaxonomyPrimaryKey[] | undefined; source_type?: string | undefined; precision?: string | undefined; display_precision?: string | undefined; lifecycle_status?: string | undefined; min_lon?: number | undefined; min_lat?: number | undefined; max_lon?: number | undefined; max_lat?: number | undefined; latitude?: number | undefined; longitude?: number | undefined; radius_km?: number | undefined; cursor?: string | undefined; offset?: number | undefined; limit?: number | undefined }>;
 export type LocalListResult = Readonly<{ locations: readonly Location[]; releaseId: string; profile: LocalProfile; coverageNote: string; coverageScope?: string; countSemantics?: string; nextCursor: string | null; ruleset?: string }>;
 export const localOrigin = (value: string | undefined): string | undefined => { if (!value) return undefined; const url = new URL(value); if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost', '::1'].includes(url.hostname)) throw new Error('Local API origin must be loopback HTTP.'); return url.origin; };
 const fail = (kind: ApiError['kind'], message: string, status?: number, code?: string): ApiError => Object.assign(new Error(message), { kind, ...(status === undefined ? {} : { status }), ...(code ? { code } : {}) });
@@ -26,7 +26,7 @@ export const mapWireLocation = (r: WireLocation): Location => {
     : r.taxonomy_display_category !== undefined ? 'unclassified'
       : primaryCategories.length === 1 ? primaryCategories[0]! : 'unclassified';
   return {
-  id: r.facility_id, name: r.canonical_name ?? 'Unnamed candidate record', region: r.city ?? r.country_code, category: r.category,
+  id: r.facility_id, name: r.canonical_name ?? 'Name not provided', region: r.city ?? r.country_code, category: r.category,
   sourceId: r.provenance_source_id,
   taxonomy: {
     displayCategory: category as TaxonomyPrimaryKey,

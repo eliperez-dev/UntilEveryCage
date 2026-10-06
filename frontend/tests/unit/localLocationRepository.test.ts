@@ -65,7 +65,7 @@ describe('current V2 wire edge cases', () => {
   });
   it('accepts a null canonical name and exposes an explicit safe display label', async () => {
     const fetcher = vi.fn().mockResolvedValue(response(envelope([{ ...row, canonical_name: null }])));
-    await expect(new LocalLocationRepository(fetcher).list()).resolves.toMatchObject({ locations: [{ name: 'Unnamed candidate record' }] });
+    await expect(new LocalLocationRepository(fetcher).list()).resolves.toMatchObject({ locations: [{ name: 'Name not provided' }] });
   });
   it('classifies structured server failures for first-class UI states', async () => {
     const unavailable = vi.fn().mockResolvedValue(new Response(JSON.stringify({ api_version: 'v2', error: { code: 'database_pool_unavailable', message: 'database unavailable' } }), { status: 503 }));

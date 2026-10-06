@@ -3,6 +3,7 @@
   import type { Location } from '../domain/location';
   import CopyValue from './CopyValue.svelte';
   import { serializeRoute } from './routeState';
+  import { precisionPresentation } from '../features/locations/precisionPresentation';
   let { id, profile = 'official', releaseId }: { id: string; profile?: LocalProfile; releaseId?: string | undefined } = $props();
   const repository = new LocalLocationRepository();
   let record = $state<Location | null>(null);
@@ -17,7 +18,7 @@
     return () => controller.abort();
   });
   const human = (value: string | false | undefined) => value === undefined ? 'Unknown' : String(value).replaceAll('_',' ').replaceAll('-',' ');
-  const precision = $derived(record?.evidence?.displayPrecision === 'exact' ? 'Exact public point' : record?.evidence?.displayPrecision === 'city' ? 'City-level approximation' : 'Unmapped');
+  const precision = $derived(precisionPresentation(record?.evidence?.displayPrecision));
   const recordLink = $derived(`${window.location.origin}${window.location.pathname}${serializeRoute({kind:'record',facilityId:id,profile,...(currentRelease ? {releaseId:currentRelease} : {})})}`);
 </script>
 <svelte:head><title>{record?.name ?? 'Record'} · Until Every Cage</title></svelte:head>
@@ -25,7 +26,7 @@
   {#if profile === 'community'}<p class="warning"><strong>Unreviewed community claim — not verified by Until Every Cage.</strong> Privacy screening is not factual review or project approval. Community counts are separate.</p>{/if}
   {#if busy}<p role="status">Loading record…</p>{:else if error}<h1>Record unavailable</h1><p role="alert">{error}</p><button type="button" onclick={() => retry += 1}>Retry</button><p><a href="#/database">Browse records</a></p>{:else if record}<h1>{record.name}</h1><p>{record.region} · {precision}</p>
     <dl><div><dt>Activity</dt><dd>{record.taxonomy?.leafActivities.map(activity => activity.label).join(' · ') || record.category}</dd></div><div><dt>Source</dt><dd>{record.source} {#if record.evidence?.sourceUrl}<a href={record.evidence.sourceUrl} target="_blank" rel="noreferrer">Open source</a>{/if}</dd></div><div><dt>Source origin</dt><dd>{record.evidence?.sourceType === 'user_submitted' ? 'Community-submitted' : record.evidence?.sourceType === 'secondary' ? 'Secondary source' : 'Government-sourced'}</dd></div><div><dt>Observed</dt><dd>{record.observed}</dd></div><div><dt>Retrieved</dt><dd>{record.evidence?.retrievedAt ?? 'Unknown'}</dd></div><div><dt>Factual review</dt><dd>{human(record.evidence?.factualReviewStatus)}{#if record.evidence?.reviewerRole} · {human(record.evidence.reviewerRole)}{/if}</dd></div><div><dt>Privacy screening</dt><dd>{human(record.evidence?.privacyScreeningStatus)}</dd></div><div><dt>Project approval</dt><dd>{human(record.evidence?.projectApproval)}</dd></div><div><dt>Publication</dt><dd>{profile === 'official' ? 'Curated records' : profile === 'community' ? 'Community submissions' : 'Secondary sources'} · release {currentRelease}</dd></div><div><dt>Lifecycle</dt><dd>{human(record.evidence?.lifecycleStatus)}</dd></div></dl>
-    <p class="limitation">A source record does not establish current operation or an exact operating address. City-level locations are approximations; unmapped records have no public point.</p>
+    <p class="limitation">A source record does not establish current operation or an exact operating address. Source-reported precision is not independently verified; approximate and city-level locations are not exact facility points.</p>
     <p class="record-id">Record ID: <code>{record.id}</code></p><CopyValue value={record.id} label="Record ID" buttonLabel="Copy record ID" /><CopyValue value={recordLink} label="Record link" buttonLabel="Copy record link" />
     <nav aria-label="Record contribution actions">{#each [['evidence','Add evidence'],['correction','Suggest a correction'],['privacy-removal','Privacy or removal']] as [type,label]}<a href={`#/contribute/${type}?target=${encodeURIComponent(record.id)}`}>{label}</a>{/each}</nav>
   {/if}

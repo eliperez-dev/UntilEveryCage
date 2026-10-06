@@ -1,20 +1,50 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { LabAction, LabRecord, LabState, MapDiagnostics } from './contract';
-  import { labRecords, LAB_SENTINEL } from './fixtures';
   import { decodeLabHash, encodeLabHash, reduceLabState } from './state';
   import { createLabViewModel } from './viewModel';
   import { createRealPreviewRepository, mapRealPreviewCandidate, RealPreviewError, type RealPreviewCounts, type RealPreviewFacet } from '../api/RealPreviewRepository';
+  import { LocalLocationRepository } from '../api/LocalLocationRepository';
+  import { PublicReleaseRepository } from '../api/PublicReleaseRepository';
+  import type { Location } from '../domain/location';
+  import { CATEGORY_PRESENTATIONS } from '../features/locations/categoryPresentation';
+  import type { PublicMapFeed } from '../api/PublicMapFeedRepository';
   import { selectDesignLabDataMode } from './dataMode';
   import Field from './variants/field/Field.svelte';
 
   let state: LabState = decodeLabHash(typeof location === 'undefined' ? '' : location.hash);
   const serverMode = typeof document === 'undefined' ? null : document.querySelector<HTMLMetaElement>('meta[name="uec-local-data-mode"]')?.content ?? null;
-  const mode = selectDesignLabDataMode(import.meta.env.DEV, serverMode);
+  const privatePreview = typeof location !== 'undefined' && new URLSearchParams(location.hash.split('?')[1] ?? '').has('f1a');
+  const mode = selectDesignLabDataMode(import.meta.env.DEV, serverMode, privatePreview);
   // Fixture projections run only in the synthetic mode.
-  let model = createLabViewModel(mode === 'synthetic' ? labRecords : [], state);
-  $: if (mode === 'synthetic') model = createLabViewModel(labRecords, state);
+  let syntheticRecords: readonly LabRecord[] = [];
+  let labSentinel: string | undefined;
+  let model = createLabViewModel([], state);
+  $: if (mode === 'synthetic') model = createLabViewModel(syntheticRecords, state);
   const repository = createRealPreviewRepository();
+  const publicLocationRepository = new LocalLocationRepository();
+  const publicReleaseRepository = new PublicReleaseRepository();
+  let publicReleaseId: string | null = null;
+  let publicReleaseIdentity: string | null = null;
+  let publicMapMeta: PublicMapFeed['meta'] | null = null;
+  function mapPublicLocation(location: Location): LabRecord {
+    const precision = location.evidence?.displayPrecision ?? 'unmapped';
+    return {
+      id: location.id,
+      name: location.name,
+      category: CATEGORY_PRESENTATIONS[location.taxonomy?.displayCategory ?? 'unclassified'].label,
+      country: location.region,
+      locality: location.region,
+      precision,
+      latitude: location.lat,
+      longitude: location.lon,
+      ...(location.sourceId ? { sourceId: location.sourceId } : {}),
+      ...(location.taxonomy ? { taxonomy: location.taxonomy } : {}),
+      ...(location.evidence?.factualReviewStatus ? { factualReviewStatus: location.evidence.factualReviewStatus } : {}),
+      ...(location.evidence?.privacyScreeningStatus ? { privacyScreeningStatus: location.evidence.privacyScreeningStatus } : {}),
+      projectApproval: location.evidence?.projectApproval === 'approved',
+    };
+  }
   let sourceId: string | null = state.sourceId;
   $: sourceId = state.sourceId;
   let apiRecords: LabRecord[] = [];
@@ -50,7 +80,7 @@
     if (!location.hash.startsWith('#/map')) return;
     const wasSelected = state.selectedId !== null;
     state = reduceLabState(state, action);
-    const nextHash = encodeLabHash(state);
+    const nextHash = encodeLabHash(state, mode === 'real-preview');
     if (action.type === 'select' && action.value && !wasSelected) {
       // Selection is a navigable map state: Back dismisses the dossier. Other
       // frequent map updates (especially viewport movement) stay replace-only.
@@ -79,6 +109,22 @@
       nextCursor = null;
     } else pageLoading = true;
     try {
+      if (mode === 'public-release') {
+        if (!publicReleaseId) {
+          const current = await publicReleaseRepository.current('official', controller.signal);
+          if (controller.signal.aborted) return;
+          if (!current) { dataStatus = 'empty'; return; }
+          publicReleaseId = current.releaseId;
+        }
+        const categoryKeys = state.filters.categories.map(value => ({ Poultry: 'animal_keeping_and_production', Pig: 'animal_keeping_and_production', Dairy: 'animal_keeping_and_production', Processing: 'processing_and_preparation', Laboratory: 'research_and_animal_use', Aquaculture: 'animal_keeping_and_production' } as Record<string, string>)[value]).filter((value): value is import('../domain/taxonomy').TaxonomyPrimaryKey => !!value);
+        const page = await publicLocationRepository.list('official', { q: query, category_keys: [...new Set(categoryKeys)], ...(state.filters.precisions.length ? { precision: state.filters.precisions.join(',') } : {}), cursor: reset ? undefined : nextCursor ?? undefined, limit: 100 }, controller.signal, publicReleaseId);
+        if (controller.signal.aborted) return;
+        const mapped = page.locations.map(mapPublicLocation);
+        apiRecords = reset ? mapped : [...new Map([...apiRecords, ...mapped].map(record => [record.id, record])).values()];
+        nextCursor = page.nextCursor;
+        dataStatus = apiRecords.length ? 'ready' : 'empty';
+        return;
+      }
       const page = await repository.list({ query, sourceId, cursor: reset ? null : nextCursor, limit: 200, signal: controller.signal });
       if (controller.signal.aborted) return;
       const mapped = page.records.map(mapRealPreviewCandidate);
@@ -89,7 +135,7 @@
     } catch (error) {
       if (controller.signal.aborted) return;
       dataStatus = errorState(error);
-      dataError = error instanceof Error ? error.message : 'The private real-data preview could not be loaded.';
+      dataError = error instanceof Error ? error.message : mode === 'public-release' ? 'Public release records could not be loaded.' : 'The private real-data preview could not be loaded.';
     } finally {
       if (listAbort === controller) pageLoading = false;
     }
@@ -125,8 +171,8 @@
 
   let observedListKey: string | undefined;
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
-  $: if (mode === 'real-preview' && observedListKey !== `${state.query}\u0000${sourceId ?? ''}`) {
-    observedListKey = `${state.query}\u0000${sourceId ?? ''}`;
+  $: if (mode !== 'synthetic' && observedListKey !== `${state.query}\u0000${sourceId ?? ''}\u0000${state.filters.categories.join(',')}\u0000${state.filters.precisions.join(',')}`) {
+    observedListKey = `${state.query}\u0000${sourceId ?? ''}\u0000${state.filters.categories.join(',')}\u0000${state.filters.precisions.join(',')}`;
     if (searchTimer) clearTimeout(searchTimer);
     listAbort?.abort();
     const query = state.query;
@@ -135,7 +181,7 @@
 
 
   let observedSelection: string | null | undefined;
-  $: if (mode === 'real-preview' && observedSelection !== state.selectedId) {
+  $: if (mode !== 'synthetic' && observedSelection !== state.selectedId) {
     observedSelection = state.selectedId;
     detailAbort?.abort();
     if (!state.selectedId) { detailRecord = null; detailStatus = 'ready'; detailError = ''; }
@@ -144,8 +190,11 @@
       const controller = new AbortController();
       detailAbort = controller;
       detailStatus = 'loading'; detailRecord = null; detailError = '';
-      void repository.detail(id, controller.signal).then(candidate => {
-        if (!controller.signal.aborted) { detailRecord = mapRealPreviewCandidate(candidate); detailStatus = 'ready'; }
+      const detailRequest = mode === 'public-release'
+        ? publicReleaseId ? publicLocationRepository.detail(id, 'official', controller.signal, publicReleaseId).then(result => mapPublicLocation(result.location)) : Promise.reject(new Error('The public release is unavailable.'))
+        : repository.detail(id, controller.signal).then(mapRealPreviewCandidate);
+      void detailRequest.then(record => {
+        if (!controller.signal.aborted) { detailRecord = record; detailStatus = 'ready'; }
       }).catch(error => {
         if (!controller.signal.aborted) {
           detailStatus = errorState(error);
@@ -156,13 +205,48 @@
   }
 
   onMount(() => {
+    if (import.meta.env.DEV && mode === 'synthetic') {
+      void import('./fixtures').then(fixtures => {
+        syntheticRecords = fixtures.labRecords;
+        labSentinel = fixtures.LAB_SENTINEL;
+      });
+    }
     const sync = () => {
       if (location.hash.startsWith('#/map')) state = decodeLabHash(location.hash);
     };
     addEventListener('hashchange', sync);
     addEventListener('popstate', sync);
     let summaryAbort: AbortController | undefined;
-    if (mode === 'real-preview') {
+    if (mode === 'public-release') {
+      summaryAbort = new AbortController();
+      void publicReleaseRepository.current('official', summaryAbort.signal).then(current => {
+        if (!summaryAbort?.signal.aborted) {
+          publicReleaseId = current?.releaseId ?? null;
+          publicReleaseIdentity = current ? `${current.releaseId}:${current.manifestSha256}:${current.suppressionGeneration}` : null;
+          dataStatus = current ? 'loading' : 'empty';
+          if (current) void loadPage(state.query, true);
+        }
+      }).catch(() => { if (!summaryAbort?.signal.aborted) { dataStatus = 'error'; dataError = 'The public release could not be checked.'; } });
+      const checkRelease = async () => {
+        try {
+          const current = await publicReleaseRepository.current('official', summaryAbort?.signal);
+          if (summaryAbort?.signal.aborted) return;
+          const identity = current ? `${current.releaseId}:${current.manifestSha256}:${current.suppressionGeneration}` : null;
+          if (identity !== publicReleaseIdentity) {
+            publicReleaseId = current?.releaseId ?? null;
+            publicReleaseIdentity = identity;
+            apiRecords = []; nextCursor = null; publicMapMeta = null;
+            observedSelection = undefined;
+            dataStatus = current ? 'loading' : 'empty';
+            if (current) void loadPage(state.query, true);
+          }
+        } catch { /* The map feed and record APIs report current request failures. */ }
+      };
+      const timer = setInterval(() => { if (!document.hidden) void checkRelease(); }, 60_000);
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) void checkRelease(); }, { signal: summaryAbort.signal });
+      // The abort signal removes the listener; the local timer is cleared below.
+      (summaryAbort as AbortController & { releaseTimer?: ReturnType<typeof setInterval> }).releaseTimer = timer;
+    } else if (mode === 'real-preview') {
       summaryAbort = new AbortController();
       void repository.counts(summaryAbort.signal).then(value => { if (!summaryAbort?.signal.aborted) counts = value; }).catch(() => { /* The primary list surface reports request failures. */ });
       void repository.facets(summaryAbort.signal).then(value => { if (!summaryAbort?.signal.aborted) { facets = value; facetsStatus = 'ready'; } }).catch(error => { if (!summaryAbort?.signal.aborted) facetsStatus = errorState(error); });
@@ -171,14 +255,17 @@
       removeEventListener('hashchange', sync);
       removeEventListener('popstate', sync);
       if (searchTimer) clearTimeout(searchTimer);
-      summaryAbort?.abort(); listAbort?.abort(); referenceAbort?.abort(); detailAbort?.abort();
+      summaryAbort?.abort();
+      const releaseTimer = (summaryAbort as (AbortController & { releaseTimer?: ReturnType<typeof setInterval> }) | undefined)?.releaseTimer;
+      if (releaseTimer) clearInterval(releaseTimer);
+      listAbort?.abort(); referenceAbort?.abort(); detailAbort?.abort();
     };
   });
 </script>
 <svelte:head><title>Until Every Cage — Map</title></svelte:head>
-<div class="lab" data-review-sentinel={mode === 'synthetic' ? LAB_SENTINEL : undefined} data-direction="field" data-scenario={state.scenario} data-data-mode={mode}>
+<div class="lab" data-review-sentinel={mode === 'synthetic' ? labSentinel : undefined} data-direction="field" data-scenario={state.scenario} data-data-mode={mode}>
   <main aria-label="Map preview"><h1 class="sr-only">Investigative map</h1>
-    <Field {state} {coverageOpen} records={mode === 'real-preview' ? apiRecords : model.listRecords} mapRecords={mode === 'real-preview' ? [] : model.mapRecords} {mode}
+    <Field {state} {coverageOpen} records={mode !== 'synthetic' ? apiRecords : model.listRecords} mapRecords={mode !== 'synthetic' ? [] : model.mapRecords} {mode} {publicReleaseId} {publicReleaseIdentity} {publicMapMeta} onMapFeedMeta={(meta) => { publicMapMeta = meta; }}
       dataStatus={dataStatus} {dataError}
       {detailRecord} {detailStatus} {detailError} {nextCursor} {pageLoading}
       {facets} {facetsStatus} {mapDiagnostics} {aggregateMemberRecords} {aggregateNextCursor} {aggregateLoading} {aggregateError} onMapTiming={timing=>{sourceMaterializeMs=timing.sourceMaterializeMs;clusterReadyMs=timing.clusterReadyMs;if(timing.zoomSettleMs!==undefined)zoomSettleMs=timing.zoomSettleMs;}} onLoadMore={() => void loadPage(state.query, false)} onMapReference={(key, refSourceId) => void loadReference(key, true, refSourceId)} onLoadMoreAggregate={() => { if (aggregateReferenceKey) void loadReference(aggregateReferenceKey, false); }} {dispatch}/>

@@ -48,14 +48,19 @@
     setClusterTileRounding,
     useRoundedClusterTiles,
     setRealPreviewMapData,
+    setRealPreviewCategoryFilter,
     setRealPreviewPinMode,
   } from "./realPreviewMapLayers";
   import { clearRealPreviewMapCache, createRealPreviewMapFeedRepository, realPreviewMapCacheEntryCount } from "../../api/RealPreviewMapFeedRepository";
+  import { createPublicMapFeedRepository } from "../../api/PublicMapFeedRepository";
 
   let {
     records,
     state: mapState,
     mode = "synthetic",
+    publicReleaseId,
+    publicReleaseIdentity,
+    onMapFeedMeta,
     mapStatus = "idle",
     mapError = "",
     mapTruncated = false,
@@ -75,7 +80,10 @@
   }: {
     records: readonly LabRecord[];
     state: LabState;
-    mode?: "synthetic" | "real-preview";
+    mode?: "synthetic" | "real-preview" | "public-release";
+    publicReleaseId?: string | null;
+    publicReleaseIdentity?: string | null;
+    onMapFeedMeta?: ((meta: import('../../api/PublicMapFeedRepository').PublicMapFeed['meta'] | null) => void) | undefined;
     mapStatus?:
       | "idle"
       | "loading"
@@ -112,9 +120,12 @@
   let interactionsBound = false;
   let mvtError = $state("");
   const mapFeedRepository = createRealPreviewMapFeedRepository();
+  const publicMapFeedRepository = createPublicMapFeedRepository();
   let feedAbort: AbortController | undefined;
   let feedGeneration = 0;
   let requestedFeedSourceId: string | null | undefined;
+  let requestedPublicReleaseId: string | null | undefined;
+  let requestedPublicReleaseIdentity: string | null | undefined;
   let nativeFullCollection: JsonMapCollection | undefined;
   // Viewport updates replace `state`; only a changed source filter may rebuild
   // the native Supercluster index from the already-loaded map projection.
@@ -242,10 +253,9 @@
         ].slice(0, 80)
       : [],
   );
-  const diagnosticsEnabled = $derived(
-    import.meta.env.DEV && mode === "real-preview" && debugEnabled,
-  );
+  const diagnosticsEnabled = $derived(import.meta.env.DEV && mode !== "synthetic" && debugEnabled);
   const isRealPreview = () => mode === "real-preview";
+  const isNativeMap = () => mode !== "synthetic";
   // The private development preview intentionally uses the reviewed, in-memory
   // GeoJSON/Supercluster path. The server-generated MVT implementation remains
   // available for public releases and future experiments, but must not sit in
@@ -360,6 +370,7 @@
     const source = map?.getSource("locations") as GeoJSONSource | undefined;
     if (!source || !map) return;
     const startedAt = performance.now();
+    if (mode === "public-release") return;
     const data = createJsonMapCollection(mapped, mode);
     setJsonFallbackData(map, data);
     const sourceMaterializeMs = Math.round(performance.now() - startedAt);
@@ -426,7 +437,7 @@
         }
         return;
       }
-      const source = mode === "real-preview" ? map?.getSource("locations") as GeoJSONSource | undefined : undefined;
+      const source = isNativeMap() ? map?.getSource("locations") as GeoJSONSource | undefined : undefined;
       if (!source) return;
       try {
         const startedAt = performance.now();
@@ -446,7 +457,7 @@
     }, clusterRebuildDebounce);
   }
   function updateVisualSettings() {
-    if (!map || mode !== "real-preview") return;
+    if (!map || !isNativeMap()) return;
     if (usingMvt) {
       syncMvtReferenceAreas(map);
       if (map.getLayer("mvt-approx-reference-area"))
@@ -466,7 +477,7 @@
     });
   }
   function updateVisibleApproximateCount(instance: MapLibreMap): void {
-    if (mode !== "real-preview" || !instance.getLayer("approx-reference-points")) {
+    if (!isNativeMap() || !instance.getLayer("approx-reference-points")) {
       visibleApproximateCount = 0;
       return;
     }
@@ -486,7 +497,7 @@
   });
   async function updatePinMode() {
     const instance = map;
-    if (!instance || mode !== "real-preview") return;
+    if (!instance || !isNativeMap()) return;
     try {
       await setRealPreviewPinMode(instance, useV1Pins, `${import.meta.env.BASE_URL}v1-pins/`);
       pinModeError = "";
@@ -498,8 +509,20 @@
   async function addLayers() {
     if (!map || map.getSource("locations")) return;
     loadClusterImages();
-    if (mode === "real-preview") {
-      await loadRealPreviewFeed();
+    if (mode === "public-release" && !publicReleaseId) return;
+    if (mode !== "synthetic") {
+      if (mode === "public-release" && nativeFullCollection
+        && requestedPublicReleaseId === publicReleaseId
+        && requestedPublicReleaseIdentity === publicReleaseIdentity) {
+        addRealPreviewMapLayers(map, filteredNativeCollection(nativeFullCollection, mapState.sourceId), { enabled: clusterEnabled, radius: clusterRadius, maxZoom: clusterMaxZoom });
+        setRealPreviewCategoryFilter(map, publicCategoryFilterKeys());
+        roundedClusterTilesAvailable = setClusterTileRounding(map, clusterMaxZoom);
+        updateVisualSettings();
+        startupStage = "rendering";
+        feedStatus = "ready";
+        return;
+      }
+      await loadNativeFeed();
       return;
     }
     await loadJsonFallbackImages(
@@ -508,9 +531,17 @@
     );
     addJsonLocationLayers(map, createJsonMapCollection(mapped, mode));
   }
-  async function loadRealPreviewFeed() {
+  async function loadNativeFeed() {
     const instance = map;
     if (!instance) return;
+    if (mode === "public-release" && !publicReleaseId) return;
+    if (mode === "public-release" && (requestedPublicReleaseId !== publicReleaseId || requestedPublicReleaseIdentity !== publicReleaseIdentity)) {
+      requestedPublicReleaseId = publicReleaseId;
+      requestedPublicReleaseIdentity = publicReleaseIdentity;
+      requestedFeedSourceId = undefined;
+      nativeFullCollection = undefined;
+      if (instance.getSource("locations")) setRealPreviewMapData(instance, { type: "FeatureCollection", features: [] });
+    }
     const sourceId = null;
     if (requestedFeedSourceId === sourceId &&
         (feedStatus === "loading" || (feedStatus === "ready" && instance.getSource("locations")))) return;
@@ -528,12 +559,15 @@
     mvtError = "";
     try {
       const requestedAt = performance.now();
-      const result = await mapFeedRepository.load(sourceId, controller.signal);
+      const result = publicReleaseId
+        ? await publicMapFeedRepository.load("official", publicReleaseId, controller.signal)
+        : await mapFeedRepository.load(sourceId, controller.signal);
       if (controller.signal.aborted || map !== instance || generation !== feedGeneration) return;
-      nativeSnapshotId = result.snapshotId;
-      nativeCacheStatus = result.cacheStatus;
-      nativeDecodedBytes = result.decodedBytes ?? null;
-      nativeCacheEntries = await realPreviewMapCacheEntryCount();
+      onMapFeedMeta?.("meta" in result ? result.meta : null);
+      nativeSnapshotId = "snapshotId" in result ? result.snapshotId : result.meta.manifestSha256;
+      nativeCacheStatus = "cacheStatus" in result ? result.cacheStatus : "not cached";
+      nativeDecodedBytes = "decodedBytes" in result ? result.decodedBytes ?? null : new TextEncoder().encode(JSON.stringify(result.collection)).byteLength;
+      nativeCacheEntries = publicReleaseId ? null : await realPreviewMapCacheEntryCount();
       nativeFeedMs = Math.round(performance.now() - requestedAt);
       nativeUnitCount = result.collection.features.length;
       nativeRepresentedCount = result.collection.features.reduce((total, feature) => total + Number(feature.properties.weight), 0);
@@ -553,8 +587,23 @@
     } catch (error) {
       if (controller.signal.aborted || generation !== feedGeneration) return;
       feedStatus = "error";
-      mvtError = error instanceof Error ? error.message : "The private map feed could not be loaded.";
+      onMapFeedMeta?.(null);
+      mvtError = error instanceof Error ? error.message : "The map feed could not be loaded.";
     }
+  }
+
+  $effect(() => {
+    if (mode === "public-release" && map) {
+      setRealPreviewCategoryFilter(map, publicCategoryFilterKeys());
+    }
+  });
+  function publicCategoryFilterKeys(): string[] {
+    const keys: Record<string, string> = {
+      Poultry: "animal_keeping_and_production", Pig: "animal_keeping_and_production",
+      Dairy: "animal_keeping_and_production", Aquaculture: "animal_keeping_and_production",
+      Processing: "processing_and_preparation", Laboratory: "research_and_animal_use",
+    };
+    return [...new Set(mapState.filters.categories.map(value => keys[value]).filter((value): value is string => !!value))];
   }
   function filteredNativeCollection(collection: JsonMapCollection, sourceId: string | null): JsonMapCollection {
     return sourceId
@@ -568,6 +617,20 @@
     startupStage = "indexing";
     setRealPreviewMapData(map, filteredNativeCollection(nativeFullCollection, sourceId));
     appliedNativeSourceId = sourceId;
+  }
+  function ensureNativeFeedWhenStyleReady(): () => void {
+    const instance = map;
+    if (!instance) return () => {};
+    const loadWhenReady = () => {
+      if (map !== instance) { instance.off("styledata", loadWhenReady); return; }
+      if (!instance.isStyleLoaded()) return;
+      instance.off("styledata", loadWhenReady);
+      if (nativeFullCollection) applyLocalSourceFilter(mapState.sourceId);
+      else void loadNativeFeed();
+    };
+    if (instance.isStyleLoaded()) loadWhenReady();
+    else instance.on("styledata", loadWhenReady);
+    return () => instance.off("styledata", loadWhenReady);
   }
   async function clearProjectionCache() {
     const removed = await clearRealPreviewMapCache();
@@ -921,7 +984,7 @@
           });
         });
     });
-    for (const layer of isRealPreview()
+    for (const layer of isNativeMap()
       ? ["source-coordinate-points"]
       : ["exact-pins", "approximate-points", "source-coordinate-points"])
       map.on("click", layer, (event: any) => {
@@ -951,6 +1014,11 @@
         }
         return;
       }
+      if (mode === "public-release") {
+        const id = event.features?.[0]?.properties?.id;
+        if (typeof id === "string") onselect(id);
+        return;
+      }
       try {
         const ids = JSON.parse(
           event.features?.[0]?.properties?.memberIds ?? "[]",
@@ -962,9 +1030,9 @@
       }
     };
     map.on("click", "aggregate-outer", (event: any) => handleReferenceClick(event, "aggregate-outer"));
-    if (isRealPreview())
+    if (isNativeMap())
       map.on("click", "approx-reference-points", (event: any) => handleReferenceClick(event, "approx-reference-points"));
-    for (const layer of isRealPreview()
+    for (const layer of isNativeMap()
       ? ["clusters", "source-coordinate-points", "aggregate-outer", "approx-reference-points"]
       : ["clusters", "exact-pins", "approximate-points", "source-coordinate-points", "aggregate-outer"]) {
       map.on("mouseenter", layer, () => {
@@ -1047,13 +1115,13 @@
     });
     instance.on("movestart", (event: any) => {
       if (usingMvt) mvtCameraStartedAt ??= performance.now();
-      if (mode === "real-preview") nativeCameraStartedAt ??= performance.now();
+      if (isNativeMap()) nativeCameraStartedAt ??= performance.now();
       if (mode === "synthetic") {
         jsonMotionController?.cancel();
       }
     });
     instance.on("sourcedata", (event: any) => {
-      if (mode === "real-preview" && event?.sourceId === "locations" &&
+      if (isNativeMap() && event?.sourceId === "locations" &&
           nativeIndexStartedAt !== null && instance.isSourceLoaded("locations")) {
         nativeIndexMs = Math.round(performance.now() - nativeIndexStartedAt);
         nativeIndexStartedAt = null;
@@ -1066,11 +1134,11 @@
       }
     });
     instance.on("render", () => {
-      if (mode === "real-preview" && startupStage === "rendering" &&
+      if (isNativeMap() && startupStage === "rendering" &&
           instance.isSourceLoaded("locations")) startupStage = "ready";
     });
     instance.on("idle", () => {
-      if (mode === "real-preview") {
+      if (isNativeMap()) {
         updateVisibleApproximateCount(instance);
         if (startupStage === "rendering" && instance.isSourceLoaded("locations")) startupStage = "ready";
         if (nativeCameraStartedAt !== null) {
@@ -1089,7 +1157,7 @@
     });
     instance.on("moveend", () => {
       activeFlight = false;
-      if (mode === "real-preview" && nativeCameraStartedAt !== null) {
+      if (isNativeMap() && nativeCameraStartedAt !== null) {
         nativeCameraMoveendMs = Math.round(performance.now() - nativeCameraStartedAt);
         nativeBasemapPendingAtMoveend = !instance.isSourceLoaded("base");
         nativeOverlayPendingAtMoveend = !instance.isSourceLoaded("locations");
@@ -1136,13 +1204,14 @@
   });
   $effect(() => {
     const source = mapState.sourceId;
+    const releaseId = publicReleaseId;
+    const releaseIdentity = publicReleaseIdentity;
     if (usingMvt && map?.isStyleLoaded()) {
       source;
       replaceMapProjection();
-    } else if (mode === "real-preview" && map?.isStyleLoaded()) {
-      source;
-      if (nativeFullCollection) applyLocalSourceFilter(source);
-      else void loadRealPreviewFeed();
+    } else if (isNativeMap() && map) {
+      source; releaseId; releaseIdentity;
+      return ensureNativeFeedWhenStyleReady();
     }
   });
   $effect(() => {
@@ -1189,7 +1258,7 @@
   });
   $effect(() => {
     if (diagnosticsOpen && usingMvt && map) updateMvtDiagnostics(map);
-    if (diagnosticsOpen && mode === "real-preview" && map?.getLayer("clusters"))
+    if (diagnosticsOpen && isNativeMap() && map?.getLayer("clusters"))
       nativeRenderedCount = map.queryRenderedFeatures({ layers: ["clusters", "aggregate-outer", "approx-reference-points", "source-coordinate-points", "v1-source-pins"] }).length;
   });
 </script>
@@ -1200,7 +1269,7 @@
     if (diagnosticsOpen) setDiagnosticsOpen(false);
   }}
 />
-{#if mode === "real-preview" && feedStatus === "error"}<small class="map-status mvt-status" role="alert"
+{#if mode !== "synthetic" && feedStatus === "error"}<small class="map-status mvt-status" role="alert"
     >{mvtError}</small
   >{/if}
 <section
@@ -1209,13 +1278,13 @@
   aria-label="Map showing records"
 >
   <div class="map-host" bind:this={host}></div>
-  <small class="review-disclosure" aria-label="Private preview status"
-    >{mode === "real-preview"
+  <small class="review-disclosure" aria-label={mode === "public-release" ? "Public release status" : "Private preview status"}
+  >{mode === "real-preview"
       ? mapState.sourceId === "us.fsis"
         ? "Local private rehearsal · FSIS source-provided coordinates, precision unverified · not approved or published"
         : "Private preview · not published"
-      : "Synthetic development data"}</small
-  >{#if mode === "real-preview" && visibleApproximateCount > 0}<small class="approximation-cue"
+      : mode === "public-release" ? "Public release · current suppression checked by the API" : "Synthetic development data"}</small
+  >{#if isNativeMap() && visibleApproximateCount > 0}<small class="approximation-cue"
       ><i aria-hidden="true"></i>Approximate locations · 3 km display area</small
   >{/if}{#if basemapSwitching && pendingBasemap}<small
       class="map-status"
@@ -1227,7 +1296,7 @@
       class="map-status reference-status"
       role="status"
       >Loading {pendingReference.count || "represented"} reference records…</small
-    >{:else if mode === "real-preview" && startupStage !== "ready" && feedStatus !== "error"}<div
+    >{:else if isNativeMap() && startupStage !== "ready" && feedStatus !== "error"}<div
       class="map-status startup-status"
       role="status" aria-live="polite">
         <span>{startupStage === "initializing" ? "Preparing map · step 1 of 4" : startupStage === "fetching" ? "Fetching map projection · step 2 of 4" : startupStage === "indexing" ? "Building cluster index · step 3 of 4" : "Drawing map marks · step 4 of 4"}</span>
@@ -1371,7 +1440,7 @@
             <small>Cluster membership and expansion levels come from the server-generated cached tile hierarchy; camera zoom remains fractional between tile levels.</small>
           </fieldset>
         {/if}
-        {#if mode === "real-preview" && !usingMvt}
+        {#if isNativeMap() && !usingMvt}
           <fieldset class="cluster-settings">
             <legend>Clustering</legend>
             <label class="cluster-checkbox" for="cluster-enabled"><input id="cluster-enabled" type="checkbox" checked={clusterEnabled}

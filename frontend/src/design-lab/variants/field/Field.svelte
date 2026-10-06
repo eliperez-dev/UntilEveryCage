@@ -20,6 +20,10 @@
     mapRecords,
     coverageOpen = false,
     mode = "synthetic",
+    publicReleaseId = null,
+    publicReleaseIdentity = null,
+    publicMapMeta = null,
+    onMapFeedMeta,
     dataStatus = "ready",
     dataError = "",
     mapStatus = "idle",
@@ -59,6 +63,8 @@
   ];
   const precisions: readonly Precision[] = [
     "exact",
+    "source_reported",
+    "approximate",
     "city",
     "coarse",
     "unmapped",
@@ -116,7 +122,10 @@
               : record.precision === "coarse"
                 ? "City or postal · no approved map geometry"
                 : "Unmapped · list only"
-      : `${record.precision} precision`;
+      : record.precision === 'source_reported' ? 'Source-reported location · precision not independently established'
+        : record.precision === 'approximate' ? 'Approximate location · not an exact facility point'
+          : record.precision === 'exact' ? 'Exact location shown from an approved source coordinate'
+            : `${record.precision} precision`;
   function category(value: string, checked: boolean) {
     dispatch({
       type: "filters",
@@ -334,7 +343,7 @@
   const databaseHref = $derived(
     (() => {
       const q = new URLSearchParams();
-      q.set("f1a", "field");
+      if (mode === "real-preview") q.set("f1a", "field");
       if (state.sourceId) q.set("source", state.sourceId);
       if (state.selectedId) q.set("selected", state.selectedId);
       q.set("lat", String(state.viewport.centerLat));
@@ -346,14 +355,17 @@
     })(),
   );
   const mapHref = $derived(
-    `#/map?${new URLSearchParams({ f1a: "field", scenario: state.scenario, ...Object.fromEntries(new URLSearchParams(databaseHref.split("?")[1] ?? "")) })}`,
+    `#/map?${new URLSearchParams({ ...(mode === "real-preview" ? { f1a: "field" } : {}), scenario: state.scenario, ...Object.fromEntries(new URLSearchParams(databaseHref.split("?")[1] ?? "")) })}`,
   );
 </script>
 
 <svelte:window onkeydown={onKeydown} />
 <section class="field-view">
-  <PreviewMasthead privateTools current="map" {mapHref} {databaseHref} debugEnabled={$debugEnabled} ondebugchange={(enabled) => { debugEnabled.set(enabled); if (!enabled) debugOpen.set(false); }} />
+  <PreviewMasthead privateTools={mode === "real-preview"} current="map" {mapHref} {databaseHref} debugEnabled={$debugEnabled} ondebugchange={(enabled) => { debugEnabled.set(enabled); if (!enabled) debugOpen.set(false); }} />
   <section class="map-stage" aria-label="Investigative map field">
+    {#if mode === "public-release" && publicMapMeta}<aside class="public-release-summary" aria-label="Public release coverage">
+      <strong>{publicMapMeta.releaseLabel}</strong><span>{publicMapMeta.publicRecordCount.toLocaleString()} eligible records</span><span>{publicMapMeta.featureCount.toLocaleString()} mapped · {publicMapMeta.unmappedCount.toLocaleString()} unmapped</span>
+    </aside>{/if}
     {#if mode === "synthetic" && state.scenario === "loading"}<div class="status" role="status">
         Loading records…
       </div>{:else if mode === "synthetic" && state.scenario === "error"}<div
@@ -365,6 +377,9 @@
         records={mapped}
         {state}
         {mode}
+        {publicReleaseId}
+        {publicReleaseIdentity}
+        {onMapFeedMeta}
         {mapStatus}
         {mapError}
         {mapTruncated}
@@ -382,24 +397,24 @@
         onviewport={(value) => dispatch({ type: "viewport", value })}
         onbounds={(bounds) => onViewportBounds?.(bounds)}
       />{/if}
-    {#if mode === "real-preview" && dataStatus === "loading"}<div
+    {#if mode !== "synthetic" && dataStatus === "loading"}<div
         class="status"
         role="status"
       >
         Loading search results…
       </div>{/if}
-    {#if (mode === "synthetic" && (state.scenario === "empty" || (state.scenario !== "loading" && state.scenario !== "error" && records.length === 0))) || (mode === "real-preview" && dataStatus === "empty")}<div
+    {#if (mode === "synthetic" && (state.scenario === "empty" || (state.scenario !== "loading" && state.scenario !== "error" && records.length === 0))) || (mode !== "synthetic" && dataStatus === "empty")}<div
         class="status"
         role="status"
       >
         No records match this search and these filters.
       </div>{/if}
-    {#if mode === "real-preview" && dataStatus === "error"}<div
+    {#if mode !== "synthetic" && dataStatus === "error"}<div
         class="status"
         role="alert"
       >
         {dataError}
-      </div>{:else if mode === "real-preview" && dataStatus === "unauthorized"}<div
+      </div>{:else if mode !== "synthetic" && dataStatus === "unauthorized"}<div
         class="status"
         role="alert"
       >
@@ -429,7 +444,7 @@
         </header>
         <div class="search-tools">
           <form class="search" role="search" onsubmit={(event) => event.preventDefault()}>
-            <label for="field-search">Search across preview records</label>
+            <label for="field-search">Search across {mode === "public-release" ? "public release records" : "preview records"}</label>
             <input id="field-search" type="search" placeholder="Name, activity, source, or place"
               value={state.query} oninput={(event) => dispatch({ type: "query", value: event.currentTarget.value })} />
           </form>
@@ -483,7 +498,7 @@
           records={aggregateRecords}
           selectedId={state.selectedId}
           onselect={selectSearchRecord}
-        />{#if mode === "real-preview" && nextCursor && !aggregateOpen}<button
+        />{#if mode !== "synthetic" && nextCursor && !aggregateOpen}<button
             type="button"
             disabled={pageLoading}
             style="width:calc(100% - 1rem);min-height:2.2rem;margin:.35rem .5rem .5rem;border:1px solid #69716a;color:#f1efe8;background:#171a18;font:.72rem system-ui;cursor:pointer"
@@ -502,20 +517,20 @@
             style="margin:.5rem;color:#f1c7b8;font-size:.72rem"
           >
             {aggregateError}
-          </p>{:else if mode === "real-preview" && (dataStatus === "unauthorized" || dataStatus === "error")}<p
+          </p>{:else if mode !== "synthetic" && (dataStatus === "unauthorized" || dataStatus === "error")}<p
             role="alert"
             style="margin:.5rem;color:#f1c7b8;font-size:.72rem"
           >
             {dataError}
           </p>{/if}
       </aside>{/if}
-    {#if state.selectedId && mode === "real-preview" && detailStatus === "loading"}<aside
+    {#if state.selectedId && mode !== "synthetic" && detailStatus === "loading"}<aside
         class="reading-sheet dossier"
         role="status"
       >
         <header class="dossier-header"><span>Record evidence</span><button type="button" aria-label="Close record detail" onclick={dismissSelection}>×</button></header>
         <p class="dossier-message">Loading record evidence…</p>
-      </aside>{:else if state.selectedId && mode === "real-preview" && (detailStatus === "error" || detailStatus === "unauthorized")}<aside
+      </aside>{:else if state.selectedId && mode !== "synthetic" && (detailStatus === "error" || detailStatus === "unauthorized")}<aside
         class="reading-sheet dossier"
         role="alert"
       >
@@ -525,7 +540,7 @@
         <header class="dossier-header"><span>Record evidence</span><button type="button" aria-label="Close record detail" onclick={dismissSelection}>×</button></header>
         {#if aggregateOpen}<button type="button" class="back" onclick={dismissSelection}>← Members</button>{/if}
         <a class="full-record" href={`#/records/${encodeURIComponent(selected.id)}`}>Open full record <span aria-hidden="true">↗</span></a>
-        <RecordDetail record={selected} presentation="rail" />
+        <RecordDetail record={selected} presentation="rail" publicRelease={mode === "public-release"} />
         <section
           class="connections-evidence"
           aria-labelledby="connections-title"
@@ -716,6 +731,7 @@
     position: absolute;
     inset: 4.8rem 0 0;
   }
+  .public-release-summary{position:absolute;z-index:5;bottom:.55rem;left:50%;display:flex;flex-wrap:wrap;justify-content:center;gap:.35rem .8rem;max-width:calc(100vw - 2rem);padding:.35rem .65rem;border:1px solid #48504b;background:#171a18eF;color:#d9ded5;font:.64rem/1.3 system-ui;transform:translateX(-50%);text-align:center}.public-release-summary strong{color:#f1efe8}
   .map-stage :global(.map-surface),
   .map-stage :global(.map-host) {
     position: absolute;
