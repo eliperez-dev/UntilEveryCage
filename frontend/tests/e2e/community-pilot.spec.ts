@@ -161,14 +161,19 @@ test('the operator queue shows structured private context but never contact or r
 
 test('community claims are opt-in, scoped to the current profile, and prominently warned', async ({ page }) => {
   await page.goto('#/community');
-  await expect(page.getByText(claimWarning)).toBeVisible();
+  const profileWarning = page.locator('.community-page > .review-warning strong');
+  await expect(profileWarning).toHaveText(claimWarning);
+  await expect(profileWarning).toBeVisible();
   await page.getByRole('button', { name: 'Open community profile' }).click();
   await expect(page.getByText('1 community claims · separate profile count')).toBeVisible();
   await page.locator('.claim-row').click();
   await expect(page.getByRole('heading', { name: 'Community claim' })).toBeVisible();
-  await expect(page.getByText(claimWarning)).toBeVisible();
+  const claimPageWarning = page.locator('.community-page > .review-warning strong');
+  await expect(claimPageWarning).toHaveText(claimWarning);
+  await expect(claimPageWarning).toBeVisible();
   await page.getByRole('button', { name: 'Load this claim' }).click();
   await expect(page.getByRole('link', { name: 'View released record data (JSON)' })).toBeVisible();
+  await expect(page.locator('.claim-detail').getByText(claimWarning, { exact: true })).toBeVisible();
 });
 
 test('a facility can be submitted with only a name and consent', async ({ page }) => {
