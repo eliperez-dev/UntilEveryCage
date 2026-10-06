@@ -7,6 +7,7 @@
   import RecordTable from './RecordTable.svelte';
   import { serializeRoute } from './routeState';
   import CopyValue from './CopyValue.svelte';
+  import { precisionPresentation } from '../features/locations/precisionPresentation';
   const repository = new LocalLocationRepository();
   let query = $state('');
   let categories = $state<readonly TaxonomyPrimaryKey[]>([]);
@@ -21,7 +22,7 @@
   let controller: AbortController;
   let timer: ReturnType<typeof setTimeout>;
   const selected = $derived(records.find(record => record.id === selectedId));
-  const precision = (record: Location) => record.evidence?.displayPrecision === 'exact' ? 'Exact public point' : record.evidence?.displayPrecision === 'city' ? 'City-level approximation' : 'Unmapped';
+  const precision = (record: Location) => precisionPresentation(record.evidence?.displayPrecision);
   async function load(reset = true) {
     controller?.abort(); controller = new AbortController(); const current = controller;
     busy = true; error = ''; unavailable = false;

@@ -5,7 +5,7 @@ const response=(body:unknown,status=200)=>new Response(JSON.stringify(body),{sta
 describe('public download availability',()=>{
  it('validates a data release without requiring a map artifact and returns only its safe identity',async()=>{
   const fetcher=vi.fn().mockResolvedValue(response(envelope()));
-  expect(await new PublicReleaseRepository(fetcher).current('official')).toEqual({releaseId:'synthetic-release'});
+  expect(await new PublicReleaseRepository(fetcher).current('official')).toEqual({releaseId:'synthetic-release',manifestSha256:'a'.repeat(64),suppressionGeneration:1});
   expect(fetcher).toHaveBeenCalledWith('/api/v2/releases/manifest?profile=official',expect.objectContaining({method:'GET',cache:'no-store',credentials:'omit'}));
  });
  it('distinguishes a missing release from service failure and malformed or mismatched manifests',async()=>{

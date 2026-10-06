@@ -2,7 +2,7 @@ export const DIRECTIONS = ['field'] as const;
 export const SCENARIOS = ['default', 'dense', 'loading', 'empty', 'error', 'mobile'] as const;
 export type Direction = (typeof DIRECTIONS)[number];
 export type Scenario = (typeof SCENARIOS)[number];
-export type Precision = 'exact' | 'approximate' | 'city' | 'coarse' | 'unmapped';
+export type Precision = 'exact' | 'source_reported' | 'approximate' | 'city' | 'coarse' | 'unmapped';
 export type Basemap = 'vector' | 'muted' | 'satellite';
 export type LabFilters = Readonly<{ categories: readonly string[]; precisions: readonly Precision[] }>;
 
@@ -43,7 +43,11 @@ export interface DirectionViewProps {
   state: LabState;
   records: readonly LabRecord[];
   mapRecords?: readonly LabRecord[];
-  mode?: 'synthetic' | 'real-preview';
+  mode?: 'synthetic' | 'real-preview' | 'public-release';
+  publicReleaseId?: string | null;
+  publicReleaseIdentity?: string | null;
+  publicMapMeta?: import('../api/PublicMapFeedRepository').PublicMapFeed['meta'] | null;
+  onMapFeedMeta?: ((meta: import('../api/PublicMapFeedRepository').PublicMapFeed['meta'] | null) => void) | undefined;
   dataStatus?: 'loading' | 'ready' | 'empty' | 'error' | 'unauthorized';
   dataError?: string;
   mapStatus?: 'idle' | 'loading' | 'ready' | 'empty' | 'error' | 'unauthorized';

@@ -4,7 +4,7 @@ const origin = 'https://example.test';
 const base = '/v2-preview/';
 describe('publicApiExplorer', () => {
   it('allows only documented same-origin public GETs and local spec/schema references', () => {
-    for (const path of ['/api/v2/locations', '/api/v2/locations.csv', '/api/v2/releases/manifest', '/api/v2/discovery/filters', '/api/v2/graph/connections', '/v2-preview/reference/public-openapi.json', '/v2-preview/reference/v2-location.schema.json']) {
+    for (const path of ['/api/v2/locations', '/api/v2/locations.csv', '/api/v2/map/feed', '/api/v2/releases/manifest', '/api/v2/discovery/filters', '/api/v2/graph/connections', '/v2-preview/reference/public-openapi.json', '/v2-preview/reference/v2-location.schema.json']) {
       const result = guardExplorerRequest({ url: path, headers: { Authorization: 'synthetic-token', Accept: 'application/json' } }, origin, base);
       expect(result.url).toBe(origin + path); expect(result.method).toBe('GET'); expect(result.credentials).toBe('omit'); expect(result.headers).not.toHaveProperty('Authorization');
     }

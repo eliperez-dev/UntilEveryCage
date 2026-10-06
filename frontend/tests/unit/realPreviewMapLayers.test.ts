@@ -43,7 +43,7 @@ describe('real-preview native clustering layers', () => {
     expect(layers.find(layer => layer.id === 'source-coordinate-points')?.filter).toEqual(['all', ['!', ['has', 'cluster']], ['in', ['get', 'kind'], ['literal', ['source-coordinate', 'provider_address_point_private']]]]);
     expect(layers.find(layer => layer.id === 'source-coordinate-points')?.filter).toContainEqual(['in', ['get', 'kind'], ['literal', ['source-coordinate', 'provider_address_point_private']]]);
     expect(layers.find(layer => layer.id === 'source-coordinate-points')?.paint?.['circle-color']).toEqual(
-      ['match', ['get', 'precision'], 'source_provided_unverified', '#e0a45d', '#d8c99b'],
+      ['match', ['get', 'precision'], 'source_provided_unverified', '#e0a45d', 'source_reported', '#e0a45d', 'approximate', '#e0a45d', '#d8c99b'],
     );
   });
 

@@ -16,7 +16,6 @@
   let DesignLab = $state<typeof import('../design-lab/DesignLab.svelte').default | null>(null);
   let DatabaseResearch = $state<typeof import('./DatabaseResearch.svelte').default | null>(null);
   let RecordPage = $state<typeof import('./RecordPage.svelte').default | null>(null);
-  let PublicReleaseMap = $state<typeof import('./PublicReleaseMap.svelte').default | null>(null);
   let CommunityContributions = $state<typeof import('./CommunityContributions.svelte').default | null>(null);
   let communityModule: Promise<typeof import('./CommunityContributions.svelte')> | null = null;
   let reviewMode = $state(false);
@@ -37,6 +36,9 @@
   const syncRoute = () => {
     try {
       route = parseRoute(window.location.hash);
+      if (route.kind === 'map' && !DesignLab) {
+        void import('../design-lab/DesignLab.svelte').then(module => DesignLab = module.default).catch(() => { loadError = 'The public map could not be opened.'; });
+      }
       if (route.kind === 'api' && !ApiPage) {
         apiModule ??= import('./ApiPage.svelte');
         void apiModule.then(module => ApiPage = module.default).catch(() => { apiModule = null; loadError = 'The API page could not be opened.'; });
@@ -57,7 +59,7 @@
       const query = new URLSearchParams(window.location.hash.split('?')[1] ?? '');
       const serverDataMode = document.querySelector<HTMLMetaElement>('meta[name="uec-local-data-mode"]')?.content ?? null;
       const explicitPublicRecord = route.kind === 'record' && (query.has('profile') || query.has('release_id'));
-      reviewMode = import.meta.env.DEV && !explicitPublicRecord && (query.has('f1a') || (serverDataMode === 'real-preview' && (route.kind === 'map' || route.kind === 'database' || route.kind === 'record')));
+      reviewMode = import.meta.env.DEV && !explicitPublicRecord && (query.has('f1a') || (serverDataMode === 'real-preview' && route.kind === 'map'));
       loading = false;
       loadError = '';
     } catch {
@@ -67,9 +69,7 @@
   };
 
   onMount(() => {
-    import('./PublicReleaseMap.svelte').then(module => PublicReleaseMap = module.default);
     if (import.meta.env.DEV) {
-      import('../design-lab/DesignLab.svelte').then(module => DesignLab = module.default);
       import('./DatabaseResearch.svelte').then(module => DatabaseResearch = module.default);
       import('./RecordPage.svelte').then(module => RecordPage = module.default);
     }
@@ -86,13 +86,13 @@
 
 {#if route.kind === 'methodology'}
   <MethodologyPage returnMapHref={route.returnMapHref ?? '#/map'} />
-{:else if reviewMode && route.kind === 'map' && DesignLab}
+{:else if route.kind === 'map' && DesignLab}
   <DesignLab />
 {:else if reviewMode && route.kind === 'database' && DatabaseResearch}
   <DatabaseResearch />
 {:else if reviewMode && route.kind === 'record' && RecordPage}
   <RecordPage id={route.facilityId} />
-{:else if reviewMode && (route.kind === 'map' || route.kind === 'database' || route.kind === 'record')}
+{:else if reviewMode && (route.kind === 'database' || route.kind === 'record')}
   <main class="review-loading" aria-live="polite"><p role="status">Preparing the private-preview workspace…</p><small>The map module and its local data boundary are loading.</small></main>
 {:else}
 <div class="shell">
@@ -128,11 +128,7 @@
     {:else if route.kind === 'bug-report'}
       <ContributePage formKind="bug" returnMapHref={route.returnMapHref ?? '#/map'} />
     {:else if route.kind === 'map'}
-      {#if PublicReleaseMap}
-        <PublicReleaseMap />
-      {:else}
-        <p class="state" role="status">Preparing the map…</p>
-      {/if}
+      <p class="state" role="status">Preparing the map…</p>
     {:else if route.kind === 'database'}
       <PublicDatabase />
     {:else if route.kind === 'record'}

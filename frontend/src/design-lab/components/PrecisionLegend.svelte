@@ -1,17 +1,17 @@
 <script lang="ts">
-  let { mode = "synthetic" }: { mode?: "synthetic" | "real-preview" } =
+  let { mode = "synthetic" }: { mode?: "synthetic" | "real-preview" | "public-release" } =
     $props();
   let expanded = $state(false);
 </script>
 
 <div class="precision-legend" class:expanded aria-label="Map symbol legend">
   <strong>Map symbols</strong><button type="button" class="legend-toggle" aria-expanded={expanded} onclick={() => (expanded = !expanded)}>Map symbols <span aria-hidden="true">{expanded ? "−" : "+"}</span></button><span
-    ><i class:coordinate={mode === "real-preview"} class="glyph exact"
+    ><i class:coordinate={mode !== "synthetic"} class="glyph exact"
     ></i>{mode === "real-preview"
       ? "Numeric source coordinate · review pending"
-      : "Exact site"}</span
+      : mode === "public-release" ? "Approved source coordinate · record precision shown below" : "Exact site"}</span
   ><span><i class="glyph approximate"></i>Approximate source coordinate</span
-  ><span><i class="glyph unverified"></i>Source-provided · unverified (private rehearsal)</span
+  >{#if mode === "real-preview"}<span><i class="glyph unverified"></i>Source-provided · unverified (private rehearsal)</span>{/if}
   ><span><i class="glyph cluster"></i>Parent cluster</span
   >{#if mode === "synthetic"}<span
       ><i class="glyph cluster city"></i>CITY aggregate</span
@@ -29,7 +29,7 @@
       <b class="laboratory"></b>Lab
       <b class="aquaculture"></b>Aquaculture</small
     >{:else}<small class="preview-disclosure"
-      >Private development preview · not publication-approved</small
+      >{mode === "public-release" ? "Public release · current suppression checked by the API" : "Private development preview · not publication-approved"}</small
     >{/if}
 </div>
 

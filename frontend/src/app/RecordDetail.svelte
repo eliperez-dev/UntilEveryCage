@@ -65,10 +65,12 @@
   let {
     record,
     presentation = 'rail',
+    publicRelease = false,
     onclose,
   }: {
     record: LabRecord | RecordDetailRecord;
     presentation?: 'rail' | 'page';
+    publicRelease?: boolean;
     onclose?: () => void;
   } = $props();
 
@@ -205,8 +207,10 @@
     ),
   );
   const previewLabel = $derived(
-    value('previewLabel' in record ? record.previewLabel : null) ??
-      'Private development preview · not publication-approved',
+    publicRelease
+      ? 'Official public release record · inclusion does not establish current operation or wrongdoing'
+      : value('previewLabel' in record ? record.previewLabel : null) ??
+        'Private development preview · not publication-approved',
   );
   const locationText = $derived(
     [value(record.locality), value(record.country)].filter(Boolean).join(', ') ||
@@ -235,6 +239,12 @@
     } catch { return null; }
   }
   function precisionLabelFor(raw: string): string {
+    if (raw === 'source_reported') {
+      return 'Source-reported coordinate · precision not independently verified';
+    }
+    if (raw === 'approximate') {
+      return 'Approximate location · not an exact facility point';
+    }
     if (raw === 'source_provided_unverified') {
       return 'Source-provided coordinate · precision unverified (not exact; private rehearsal only)';
     }

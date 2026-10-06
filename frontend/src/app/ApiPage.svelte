@@ -56,7 +56,7 @@
 <section class="api-page" aria-labelledby="api-title">
   <h1 id="api-title">API documentation</h1>
   <p>Public data are available when a release has been published. The explorer reads public releases only.</p>
-  <p class="download-links"><a href="/api/v2/locations.csv?profile=official">Curated CSV (up to 1,000 records)</a> · <a href="/api/v2/locations?profile=official&limit=100">Paginated JSON</a> · <a href={`${reference}public-openapi.json`} download>OpenAPI specification</a></p>
+  <p class="download-links"><a href="/api/v2/locations.csv?profile=official&limit=1000">Curated CSV · first up to 1,000 records (facility ID order)</a> · <a href="/api/v2/locations?profile=official&limit=100">Paginated JSON</a> · <a href={`${reference}public-openapi.json`} download>OpenAPI specification</a></p>
   <p class="pagination-note">For larger exports, follow the JSON response’s next cursor to retrieve each page.</p>
   {#if communitySelected || communityRequested}<p class="community-warning" role="status"><strong>Unreviewed community claim — not verified by Until Every Cage.</strong> Community results are separate from curated totals; privacy screening is not factual review or project approval.</p>{/if}
   {#if loading}<p role="status">Loading the API explorer…</p>{/if}

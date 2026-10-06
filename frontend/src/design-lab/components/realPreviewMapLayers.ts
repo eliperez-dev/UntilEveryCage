@@ -132,7 +132,7 @@ export function addRealPreviewMapLayers(
   const coordinate = ['all', unclustered, ['in', ['get', 'kind'], ['literal', ['source-coordinate', 'provider_address_point_private']]]];
   map.addLayer({
     id: 'source-coordinate-points', type: 'circle', source: 'locations', filter: coordinate,
-    paint: { 'circle-radius': 7, 'circle-color': ['match', ['get', 'precision'], 'source_provided_unverified', '#e0a45d', '#d8c99b'], 'circle-opacity': 0.94, 'circle-stroke-color': '#171a18', 'circle-stroke-width': 2.5 },
+    paint: { 'circle-radius': 7, 'circle-color': ['match', ['get', 'precision'], 'source_provided_unverified', '#e0a45d', 'source_reported', '#e0a45d', 'approximate', '#e0a45d', '#d8c99b'], 'circle-opacity': 0.94, 'circle-stroke-color': '#171a18', 'circle-stroke-width': 2.5 },
   } as any);
   // Exact V1 raster assets, anchored at the record coordinate as Leaflet did.
   // They remain hidden unless explicitly selected in the local debug menu.
@@ -184,4 +184,17 @@ export function setRealPreviewMapData(map: MapLibreMap, data: JsonMapCollection)
   if (!source?.setData) return false;
   source.setData(data);
   return true;
+}
+
+/** Category selection filters individual public coordinate marks; clusters and city references remain neutral context. */
+export function setRealPreviewCategoryFilter(map: MapLibreMap, categories: readonly string[]): void {
+  if (!map.getLayer('source-coordinate-points')) return;
+  const base = ['all', ['!', ['has', 'cluster']], ['in', ['get', 'kind'], ['literal', ['source-coordinate', 'provider_address_point_private']]]];
+  const categoryFilter = categories.length
+    ? ['any', ...categories.map(key => ['in', key, ['get', 'category_keys']])]
+    : true;
+  const filter = categoryFilter === true ? base : ['all', base, categoryFilter];
+  map.setFilter('source-coordinate-points', filter as any);
+  if (map.getLayer('v1-source-pins')) map.setFilter('v1-source-pins', filter as any);
+  if (map.getLayer('v1-source-shadows')) map.setFilter('v1-source-shadows', filter as any);
 }

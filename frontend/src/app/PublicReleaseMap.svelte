@@ -3,19 +3,20 @@
   import * as maplibregl from 'maplibre-gl';
   import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
   import 'maplibre-gl/dist/maplibre-gl.css';
-  import { ReleaseMapManifestRepository, type ReleaseMapManifest } from '../api/ReleaseMapManifestRepository';
+  import { PublicReleaseRepository, type PublicReleaseIdentity } from '../api/PublicReleaseRepository';
+  import { createPublicMapFeedRepository, type PublicMapFeed } from '../api/PublicMapFeedRepository';
   import { LocalLocationRepository } from '../api/LocalLocationRepository';
   import type { Location } from '../domain/location';
   import { TAXONOMY_PRIMARY_KEYS, type TaxonomyPrimaryKey } from '../domain/taxonomy';
   import { CATEGORY_PRESENTATIONS } from '../features/locations/categoryPresentation';
-  import { createBaseStyle } from '../design-lab/components/mapSurfaceLayers';
-  import { addReleaseMapLayers, removeReleaseMapLayers, setReleaseMapCategoryFilter } from '../design-lab/components/releaseMapLayers';
+  import { createBaseStyle } from '../map/baseMapStyle';
+  import { addRealPreviewMapLayers, setRealPreviewMapData, setRealPreviewCategoryFilter } from '../design-lab/components/realPreviewMapLayers';
 
   let container: HTMLDivElement;
   let map: maplibregl.Map | null = null;
-  let activeNamespace: string | null = null;
+  let activeRelease: PublicReleaseIdentity | null = null;
   let selectedCategories = $state<readonly TaxonomyPrimaryKey[]>([]);
-  let activeManifest = $state<ReleaseMapManifest | null>(null);
+  let activeManifest = $state<PublicMapFeed['meta'] | null>(null);
   let status = $state('Checking the current map release…');
   let error = $state('');
   let disposed = false;
@@ -24,15 +25,18 @@
   let listController: AbortController | null = null;
   let detailController: AbortController | null = null;
   let searchQuery = $state('');
+  let basemap = $state<'vector' | 'muted' | 'satellite'>('vector');
   let searchResults = $state<readonly Location[]>([]);
   let searchStatus = $state<'idle' | 'loading' | 'ready' | 'error'>('idle');
   let selectedLocation = $state<Location | null>(null);
   let detailStatus = $state<'idle' | 'loading' | 'ready' | 'error'>('idle');
   let detailMessage = $state('');
   let timer: ReturnType<typeof setInterval> | null = null;
-  const manifestRepository = new ReleaseMapManifestRepository();
+  const manifestRepository = new PublicReleaseRepository();
+  const mapFeedRepository = createPublicMapFeedRepository();
   const locationRepository = new LocalLocationRepository();
   let activeInteractionCleanup: (() => void) | null = null;
+  let activeCollection: PublicMapFeed['collection'] | null = null;
   const categoryGlyph = (key: TaxonomyPrimaryKey): string => ({
     animal_keeping_and_production: '●', slaughter: '◆', processing_and_preparation: '■',
     research_and_animal_use: '⬢', other_regulated_premises: '▲', unclassified: '○',
@@ -45,7 +49,7 @@
     selectedCategories = checked
       ? [...new Set([...selectedCategories, key])]
       : selectedCategories.filter(value => value !== key);
-    if (map && activeNamespace) setReleaseMapCategoryFilter(map, activeNamespace, selectedCategories);
+    if (map) setRealPreviewCategoryFilter(map, selectedCategories);
   }
 
   function clearSelection(): void {
@@ -106,64 +110,73 @@
   function clearRelease(): void {
     activeInteractionCleanup?.();
     activeInteractionCleanup = null;
-    if (map && activeNamespace) removeReleaseMapLayers(map, activeNamespace);
-    activeNamespace = null;
+    if (map?.getSource('locations')) setRealPreviewMapData(map, { type: 'FeatureCollection', features: [] });
+    activeRelease = null;
     activeManifest = null;
+    activeCollection = null;
     clearSelection();
   }
 
-  function installRelease(manifest: ReleaseMapManifest): void {
+  function installInteractions(): void {
     if (!map) return;
-    const namespace = `${manifest.releaseId.replace(/[^a-zA-Z0-9_-]/g, '-')}-${String(manifest.suppressionGeneration).replace(/[^a-zA-Z0-9_-]/g, '-')}`;
-    const unchanged = activeManifest?.releaseId === manifest.releaseId
-      && activeManifest?.suppressionGeneration === manifest.suppressionGeneration
-      && activeManifest?.tileUrlTemplate === manifest.tileUrlTemplate;
-    if (unchanged) return;
-
-    // Switching is deliberately fail-closed. We do not mix old and new release
-    // features while MapLibre requests the next immutable tile set.
-    clearRelease();
-    addReleaseMapLayers(map, namespace, {
-      tileTemplate: manifest.tileUrlTemplate,
-      minZoom: manifest.minZoom,
-      maxZoom: manifest.maxZoom,
-    });
-    activeNamespace = namespace;
-    setReleaseMapCategoryFilter(map, namespace, selectedCategories);
-    activeManifest = manifest;
-    const clusterLayer = `release-${namespace}-cluster-circle`;
-    const exactLayer = `release-${namespace}-exact-pin`;
+    activeInteractionCleanup?.();
     const onClusterClick = (event: maplibregl.MapLayerMouseEvent) => {
       const feature = event.features?.[0];
-      const rawCoordinates = feature?.geometry;
-      const nextZoom = Number(feature?.properties?.next_zoom);
-      if (!feature || feature.properties?.kind !== 'cluster' || !Number.isFinite(nextZoom)
-        || !rawCoordinates || rawCoordinates.type !== 'Point') return;
-      const coordinates = rawCoordinates.coordinates as [number, number];
-      if (!coordinates.every(Number.isFinite)) return;
-      map?.easeTo({
-        center: coordinates,
-        zoom: Math.max((map?.getZoom() ?? 0) + 1, Math.min(manifest.maxZoom, nextZoom)),
-        duration: 460,
-        easing: (t) => 1 - Math.pow(1 - t, 3),
-        essential: false,
+      if (!feature) return;
+      const clusterId = feature?.properties?.cluster_id;
+      if (typeof clusterId !== 'number') return;
+      (map?.getSource('locations') as maplibregl.GeoJSONSource | undefined)?.getClusterExpansionZoom(clusterId).then(zoom => {
+        if (map && feature.geometry.type === 'Point') map.easeTo({ center: feature.geometry.coordinates as [number, number], zoom, duration: 460, essential: false });
       });
     };
-    const onExactClick = (event: maplibregl.MapLayerMouseEvent) => {
-      const feature = event.features?.[0];
-      const id = feature?.properties?.record_id;
-      if (feature?.properties?.kind === 'exact' && typeof id === 'string') void openLocation(id);
+    const onRecordClick = (event: maplibregl.MapLayerMouseEvent) => {
+      const id = event.features?.[0]?.properties?.id;
+      if (typeof id === 'string') void openLocation(id);
     };
-    map.on('click', clusterLayer, onClusterClick);
-    map.on('click', exactLayer, onExactClick);
-    for (const layer of [clusterLayer, exactLayer]) {
-      map.on('mouseenter', layer, () => { if (map) map.getCanvas().style.cursor = 'pointer'; });
-      map.on('mouseleave', layer, () => { if (map) map.getCanvas().style.cursor = ''; });
+    const onEnter = () => { if (map) map.getCanvas().style.cursor = 'pointer'; };
+    const onLeave = () => { if (map) map.getCanvas().style.cursor = ''; };
+    map.on('click', 'clusters', onClusterClick);
+    for (const layer of ['source-coordinate-points', 'approx-reference-points']) map.on('click', layer, onRecordClick);
+    for (const layer of ['clusters', 'source-coordinate-points', 'approx-reference-points']) {
+      if (!map.getLayer(layer)) continue;
+      map.on('mouseenter', layer, onEnter);
+      map.on('mouseleave', layer, onLeave);
     }
     activeInteractionCleanup = () => {
-      map?.off('click', clusterLayer, onClusterClick);
-      map?.off('click', exactLayer, onExactClick);
+      map?.off('click', 'clusters', onClusterClick);
+      for (const layer of ['source-coordinate-points', 'approx-reference-points']) map?.off('click', layer, onRecordClick);
+      for (const layer of ['clusters', 'source-coordinate-points', 'approx-reference-points']) {
+        map?.off('mouseenter', layer, onEnter);
+        map?.off('mouseleave', layer, onLeave);
+      }
+      if (map) map.getCanvas().style.cursor = '';
     };
+  }
+
+  async function installRelease(release: PublicReleaseIdentity, signal: AbortSignal): Promise<void> {
+    if (!map) return;
+    const unchanged = activeRelease?.releaseId === release.releaseId
+      && activeRelease.manifestSha256 === release.manifestSha256
+      && activeRelease.suppressionGeneration === release.suppressionGeneration;
+    if (unchanged) {
+      if (!map.getSource('locations') && activeCollection) addRealPreviewMapLayers(map, activeCollection);
+      if (activeCollection) {
+        setRealPreviewCategoryFilter(map, selectedCategories);
+        installInteractions();
+      }
+      return;
+    }
+    clearRelease();
+    const feed = await mapFeedRepository.load('official', release.releaseId, signal);
+    if (signal.aborted || !map || feed.meta.manifestSha256 !== release.manifestSha256
+      || feed.meta.suppressionGeneration !== release.suppressionGeneration) throw new Error('The public map changed while it was loading.');
+    activeRelease = release;
+    activeManifest = feed.meta;
+    activeCollection = feed.collection;
+    if (map.getSource('locations')) setRealPreviewMapData(map, feed.collection);
+    else addRealPreviewMapLayers(map, feed.collection);
+    setRealPreviewCategoryFilter(map, selectedCategories);
+    installInteractions();
   }
 
   async function revalidate(): Promise<void> {
@@ -172,7 +185,7 @@
     requestController = new AbortController();
     const epoch = ++requestEpoch;
     try {
-      const manifest = await manifestRepository.load('official', requestController.signal);
+      const manifest = await manifestRepository.current('official', requestController.signal);
       if (disposed || epoch !== requestEpoch) return;
       if (!manifest) {
         clearRelease();
@@ -180,7 +193,7 @@
         error = '';
         return;
       }
-      installRelease(manifest);
+      await installRelease(manifest, requestController.signal);
       status = '';
       error = '';
     } catch {
@@ -190,6 +203,12 @@
         error = 'The current map release could not be verified. Please try again.';
       }
     }
+  }
+
+  function changeBasemap(next: 'vector' | 'muted' | 'satellite'): void {
+    if (!map || basemap === next) return;
+    basemap = next;
+    map.setStyle(createBaseStyle(next) as maplibregl.StyleSpecification);
   }
 
   onMount(() => {
@@ -206,8 +225,6 @@
     map.on('style.load', () => { void revalidate(); });
     const onVisible = () => {
       if (!document.hidden) {
-        clearRelease();
-        status = 'Checking the current map release…';
         void revalidate();
       }
     };
@@ -215,6 +232,7 @@
     timer = setInterval(() => { if (!document.hidden) void revalidate(); }, 60_000);
     return () => {
       disposed = true;
+      activeInteractionCleanup?.();
       requestController?.abort();
       listController?.abort();
       detailController?.abort();
@@ -231,9 +249,11 @@
 <section class="release-map" aria-label="Map of public facilities">
   <h1 class="sr-only">Map</h1>
   <div class="map" class:gated={!activeManifest} bind:this={container}></div>
+  <nav class="basemap-controls" aria-label="Basemap">{#each [['vector','Map'],['muted','Muted'],['satellite','Satellite']] as [value,label]}<button type="button" aria-pressed={basemap === value} onclick={() => changeBasemap(value as 'vector' | 'muted' | 'satellite')}>{label}</button>{/each}</nav>
   {#if status}<p class="map-state" role="status">{status}</p>{/if}
   {#if error}<div class="map-state" role="alert"><p>{error}</p><button type="button" onclick={() => void revalidate()}>Retry</button></div>{/if}
   {#if activeManifest}
+    <aside class="release-summary" aria-label="Public release coverage"><strong>{activeManifest.releaseLabel}</strong><span>{activeManifest.publicRecordCount.toLocaleString()} eligible records</span><span>{activeManifest.featureCount.toLocaleString()} mapped · {activeManifest.unmappedCount.toLocaleString()} unmapped</span></aside>
     <aside class="map-panel" aria-label="Search this release">
       <form onsubmit={searchLocations}>
         <label for="release-map-search">Search public locations</label>
@@ -281,6 +301,8 @@
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
   .release-map { position: relative; min-height: calc(100dvh - 5rem); background: #dce5e0; }
   .map { position: absolute; inset: 0; }
+  .basemap-controls{position:absolute;z-index:2;left:1rem;bottom:1rem;display:flex;gap:.2rem;padding:.2rem;background:#171a18ef;box-shadow:0 4px 18px #0004}.basemap-controls button{min-height:2rem;padding:.35rem .55rem;border:1px solid transparent;background:transparent;color:#d4d9d0;font:.75rem system-ui;cursor:pointer}.basemap-controls button[aria-pressed=true]{border-color:#a4b5a1;color:#fff;background:#303a32}.basemap-controls button:focus-visible{outline:2px solid #eee7d6;outline-offset:2px}
+  .release-summary{position:absolute;z-index:2;bottom:1rem;left:50%;display:flex;flex-wrap:wrap;justify-content:center;gap:.35rem .8rem;max-width:calc(100vw - 2rem);padding:.35rem .65rem;border:1px solid #48504b;background:#171a18ef;color:#d9ded5;font:.64rem/1.3 system-ui;transform:translateX(-50%);text-align:center}.release-summary strong{color:#f1efe8}
   .map.gated { visibility: hidden; }
   .map-state { position: absolute; top: 1rem; left: 50%; transform: translateX(-50%); max-width: min(90vw, 28rem); margin: 0; padding: .8rem 1rem; background: #171a18; color: #f1efe8; text-align: center; font: .85rem system-ui, sans-serif; box-shadow: 0 4px 18px #0003; }
   .map-state p { margin: 0 0 .5rem; }

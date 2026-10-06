@@ -11,7 +11,7 @@ export function decodeLabHash(hash: string): LabState {
   const q = new URLSearchParams(queryString);
   const direction = 'field';
   const scenario = SCENARIOS.find(value => value === q.get('scenario')) ?? DEFAULT_LAB_STATE.scenario;
-  const precisionOptions = ['exact', 'city', 'coarse', 'unmapped'] as const;
+  const precisionOptions = ['exact', 'source_reported', 'approximate', 'city', 'coarse', 'unmapped'] as const;
   const filters: LabFilters = {
     categories: unique(q.getAll('category').filter(value => ['Poultry', 'Pig', 'Dairy', 'Processing', 'Laboratory', 'Aquaculture'].includes(value))),
     precisions: unique(q.getAll('precision').filter((value): value is (typeof precisionOptions)[number] => precisionOptions.some(option => option === value))),
@@ -23,8 +23,8 @@ export function decodeLabHash(hash: string): LabState {
     basemap: q.get('basemap') === 'satellite' ? 'satellite' : q.get('basemap') === 'muted' ? 'muted' : 'vector', listOpen: q.get('list') !== 'closed',
     viewport: { centerLat: safeNumber(q.get('lat'), 45, -90, 90), centerLon: safeNumber(q.get('lon'), 5, -180, 180), zoom: safeNumber(q.get('z'), 2, 1, 18) } };
 }
-export function encodeLabHash(state: LabState): string {
-  const q = new URLSearchParams({ f1a: state.direction, scenario: state.scenario });
+export function encodeLabHash(state: LabState, privatePreview = true): string {
+  const q = new URLSearchParams({ ...(privatePreview ? { f1a: state.direction } : {}), scenario: state.scenario });
   // Search input may contain a home address. Keep it in memory rather than
   // browser history or a shareable URL; old q links are still decoded above.
   if (state.selectedId) q.set('selected', state.selectedId);
