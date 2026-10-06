@@ -59,6 +59,28 @@ snapshot to public CI or Git.
 The older fixture/legacy workflows below remain diagnostic tools, not the
 default data-backed product development environment.
 
+### Integrated public-data frontend
+
+The ordinary `/v2-preview/#/map` and `#/database` routes use the approved
+official release, including in development. Set `VITE_API_ORIGIN` to your
+local API origin; do not add private-preview credentials for this workflow.
+The map fetches the release-scoped `/api/v2/map/feed` point projection once
+per release identity and clusters it locally. Search and record pages fetch
+their data separately. CSV downloads explicitly contain at most 1,000 rows
+and report whether the export is truncated; JSON remains paginated.
+
+After migrations, run the real-data acceptance against an API serving a
+verified v0 copy:
+
+```powershell
+$env:UEC_API_ORIGIN = 'http://127.0.0.1:<api-port>'
+python -m unittest pipeline.tests.e2e.public_v0_integration_acceptance -v
+```
+
+The acceptance checks real release identity, counts, map precision, record
+lookup and export bounds. Mutating contribution checks belong on a disposable
+copy; submissions do not change the approved release or its map.
+
 Production-shaped deploy, rollback, backup, restore, incident, and
 fresh-machine procedures are in
 [`deployment/production-operations.md`](deployment/production-operations.md).
