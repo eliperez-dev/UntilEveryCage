@@ -8,6 +8,45 @@ governing requirements are [ETHICS.md](ETHICS.md).
 
 ## Final publication assessment (2026-10-05)
 
+### Short release report (2026-10-06)
+
+**ELI5:** We had the records, but our importer threw away their name tags.
+We fixed it and restored **115,069 facility/business labels** from the retained
+files. No records were deleted, no locations changed, and nothing was fetched
+again. The dataset has **not been published yet**.
+
+**Recommendation: release the 13-source subset below as v0.**
+
+| Proposed v0 output | Records |
+| --- | ---: |
+| Searchable | 63,601 |
+| On the map | 48,756 |
+| Searchable but unmapped | 14,845 |
+| With restored names | 54,256 |
+| Without supported name fields | 9,345 |
+
+The unnamed records are from South Australia EPA (41), Belgium (1,794),
+Brazil (3,143), and Catalonia (4,367). They need source IDs as labels unless
+their names are recovered separately; this repair did not invent names or
+extract ambiguous operator/contact fields. These are source-qualified records,
+not a globally deduplicated count of physical sites.
+
+**Keep the existing exclusions:** France I/II await a redistribution basis;
+Denmark contributes its 565 core records; the previously identified privacy
+exceptions stay withheld. The full 124,414-member frozen pool is unchanged.
+
+**Verification:** all 16 focused tests passed against disposable PostGIS,
+including dry-run, apply, replay, unchanged evidence and wrong-target rejection.
+The real repair filled blank names only. The
+[aggregate receipt](../data/reports/v0-name-repair-20261006.json) holds the exact
+counts and digests; integrated CI is tracked on `eli/v2`.
+
+The recommendation to accept an entirely unnamed release is superseded.
+The details below are the earlier assessment and supporting evidence.
+
+<details>
+<summary>Earlier assessment and detailed release evidence</summary>
+
 **Approved candidate scope remains unchanged:** fifteen frozen source snapshots,
 187,940 observations and 124,414 source-qualified groups. The earlier
 twelve-source recommendation was not a maintainer-approved scope change and
@@ -61,12 +100,12 @@ The stamp would accept these explicit treatments:
   table below. Keep source licences distinct; do not assign a blanket CC0
   licence to the combined product. Preserve OSM/Geoapify attribution and
   mixed-coordinate origin rather than treating all points as government-only.
-- **Known output limits:** canonical facility names are currently null;
-  source provenance, identifiers and locations remain available, but name
-  search/detail usability is limited. Belgium's 1,793 private locality points
+- **Known output limits:** the missing canonical facility names are an importer
+  defect being repaired before publication, not an accepted release limitation.
+  Belgium's 1,793 private locality points
   remain unmapped in the staged selector; its 1,794 records stay listable.
-  Accept those disclosed limits for this freeze rather than starting another
-  geocoding or identity-migration sprint before the stamp.
+  No additional geocoding or identity-migration sprint is required for that
+  disclosed Belgium limitation.
 
 The proposed safety method is source-scoped public-field restriction plus a
 full-population automated screen of retained address evidence, staged city
@@ -647,3 +686,5 @@ The database boundary is described in the
 The inventory is a snapshot of measured database state, not a legal
 determination, a source-completeness claim, an accuracy certification, a
 privacy clearance, or an authorization to publish.
+
+</details>

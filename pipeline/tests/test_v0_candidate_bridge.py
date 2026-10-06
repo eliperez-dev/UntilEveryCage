@@ -21,6 +21,25 @@ def _canonical(value):
 
 
 class CandidateBridgeTests(unittest.TestCase):
+    def test_facility_display_names_are_source_typed_and_never_use_operator_fallback(self):
+        self.assertEqual(bridge._facility_display_name("au.npi.facilities", {
+            "facility_name": "  Synthetic   Works ", "operator_name": "Synthetic Person"}), "Synthetic Works")
+        self.assertEqual(bridge._facility_display_name("dk.smiley", {
+            "name": "Synthetic Person", "trading_name": "Synthetic Foods"}), "Synthetic Foods")
+        self.assertIsNone(bridge._facility_display_name("ca.cfia.federal-meat", {
+            "name": "Synthetic Person", "operator_name": "Synthetic Person"}))
+        self.assertEqual(bridge._facility_display_name("ca.ontario.meat-plants",
+            {"name": "Operator fallback", "trading_name": "Operator fallback", "operator_name": "Person"},
+            {"Plant Name_ Nom de l'usine": "Synthetic Ontario Plant", "Telephone_Téléphone": "not-used"}),
+            "Synthetic Ontario Plant")
+        self.assertIsNone(bridge._facility_display_name("ca.ontario.meat-plants",
+            {"name": "Operator fallback", "trading_name": "Operator fallback"},
+            {"operator name": "Person", "Telephone_Téléphone": "not-used"}))
+        self.assertIsNone(bridge._facility_display_name("au.npi.facilities", {
+            "facility_name": "   ", "operator_name": "Synthetic Person"}))
+        self.assertIsNone(bridge._facility_display_name("dk.smiley", {
+            "trading_name": "x" * 201}))
+
     def test_per_observation_taxonomy_dedupes_only_exact_semantic_claims(self):
         base = {
             "assignment_ordinal": 1, "primary_key": "slaughter", "leaf_key": "red-meat",
@@ -42,9 +61,9 @@ class CandidateBridgeTests(unittest.TestCase):
         (folder / "graph-candidates").mkdir()
         normalized_rows = [
             {"source_id": source, "source_row": 1, "source_record_key": "DK-2", "source_values": {},
-             "normalized": {"establishment_id": "DK-GROUP-1", "country_code": "DK", "city": "Aalborg", "postal_code": "9000"}},
+             "normalized": {"establishment_id": "DK-GROUP-1", "country_code": "DK", "city": "Aalborg", "postal_code": "9000", "trading_name": "Synthetic Foods"}},
             {"source_id": source, "source_row": 2, "source_record_key": "DK-1", "source_values": {},
-             "normalized": {"establishment_id": "DK-GROUP-1", "country_code": "DK", "city": "Aalborg", "postal_code": "9000"}},
+             "normalized": {"establishment_id": "DK-GROUP-1", "country_code": "DK", "city": "Aalborg", "postal_code": "9000", "trading_name": "Synthetic Foods"}},
         ]
         if source_coordinates:
             for row in normalized_rows:
@@ -529,6 +548,10 @@ class CandidateBridgeDatabaseTests(unittest.TestCase):
                 ).fetchone()[0], candidate_before_assignment)
                 self.assertEqual(connection.execute("SELECT status,profile,test_only FROM uec.releases").fetchone(),
                                  ("candidate", "official", False))
+                self.assertEqual(connection.execute("SELECT canonical_name FROM uec.facilities").fetchone(),
+                                 ("Synthetic Foods",))
+                raw_fields = connection.execute("SELECT raw_fields FROM uec.source_records LIMIT 1").fetchone()[0]
+                self.assertNotIn("trading_name", raw_fields["normalized"])
                 self.assertEqual(connection.execute("SELECT count(*) FROM uec.release_members WHERE default_visible").fetchone()[0], 0)
                 self.assertEqual(connection.execute("SELECT retention_status,storage_key,byte_size FROM uec.raw_artifacts").fetchone(),
                                  ("not_retained", None, None))
@@ -542,6 +565,64 @@ class CandidateBridgeDatabaseTests(unittest.TestCase):
                 coordinates = connection.execute("""SELECT ST_Y(coordinate::geometry),ST_X(coordinate::geometry)
                     FROM uec.observations ORDER BY source_record_id""").fetchall()
                 self.assertEqual(coordinates, [(56.123456, 10.654321), (56.123456, 10.654321)])
+
+            # Exercise the bounded repair on the synthetic candidate only.
+            # The production wrapper is pinned to the real r3 identifiers;
+            # this core helper is invoked with this test's exact owned DB/release.
+            test_release = verified_freeze["release_id"]
+            def safe_state(connection):
+                return (
+                    connection.execute("SELECT count(*) FROM uec.observations").fetchone()[0],
+                    connection.execute("SELECT count(*) FROM uec.source_records").fetchone()[0],
+                    connection.execute("SELECT count(*) FROM uec.publication_review_events").fetchone()[0],
+                    connection.execute("SELECT count(*) FROM uec.release_members").fetchone()[0],
+                )
+
+            with psycopg.connect(url) as connection:
+                evidence_before = safe_state(connection)
+                connection.execute("UPDATE uec.facilities SET canonical_name=NULL")
+            dry = bridge._repair_candidate_names_checked(url, database, verified_freeze, verified_inventory,
+                apply=False, required_database=database, required_release_id=test_release)
+            self.assertEqual(dry["status"], "dry_run")
+            self.assertEqual(dry["member_digest_before"], dry["member_digest_after"])
+            with psycopg.connect(url) as connection:
+                self.assertIsNone(connection.execute("SELECT canonical_name FROM uec.facilities").fetchone()[0])
+            applied = bridge._repair_candidate_names_checked(url, database, verified_freeze, verified_inventory,
+                apply=True, required_database=database, required_release_id=test_release)
+            self.assertEqual(applied["sources"]["dk.smiley"]["updated_or_would_update"], 1)
+            self.assertEqual(applied["member_digest_before"], applied["member_digest_after"])
+            replay = bridge._repair_candidate_names_checked(url, database, verified_freeze, verified_inventory,
+                apply=True, required_database=database, required_release_id=test_release)
+            self.assertEqual(replay["sources"]["dk.smiley"]["updated_or_would_update"], 0)
+            self.assertEqual(replay["sources"]["dk.smiley"]["already_named_unchanged"], 1)
+            with psycopg.connect(url) as connection:
+                connection.execute("UPDATE uec.facilities SET canonical_name='Synthetic Existing Label'")
+            preserved = bridge._repair_candidate_names_checked(url, database, verified_freeze, verified_inventory,
+                apply=True, required_database=database, required_release_id=test_release)
+            with psycopg.connect(url) as connection:
+                self.assertEqual(connection.execute("SELECT canonical_name FROM uec.facilities").fetchone()[0],
+                                 "Synthetic Existing Label")
+                self.assertEqual(safe_state(connection), evidence_before)
+            wrong_freeze = {**verified_freeze, "inventory_sha256": "0" * 64}
+            with self.assertRaisesRegex(bridge.BridgeError, "frozen_candidate_identity_mismatch"):
+                bridge._repair_candidate_names_checked(url, database, wrong_freeze, verified_inventory,
+                    apply=False, required_database=database, required_release_id=test_release)
+            self.assertEqual(preserved["member_digest_before"], preserved["member_digest_after"])
+            import uuid
+            extra_facility, extra_observation = str(uuid.uuid4()), str(uuid.uuid4())
+            with psycopg.connect(url) as connection:
+                source_record_id = connection.execute("SELECT source_record_id FROM uec.source_records LIMIT 1").fetchone()[0]
+                connection.execute("INSERT INTO uec.facilities(facility_id,country_code) VALUES (%s,'DK')", (extra_facility,))
+                connection.execute("""INSERT INTO uec.observations
+                    (observation_id,facility_id,source_record_id,observed_at,observation,classification,ruleset_id,rule_id,
+                     classification_category,classification_review_status,default_visible,coordinate_review_status,first_observed_at)
+                    VALUES (%s,%s,%s,now(),'{}','{}','synthetic','candidate','unclassified','review_required',false,'review_required',now())""",
+                    (extra_observation, extra_facility, source_record_id))
+                connection.execute("INSERT INTO uec.release_members(release_id,facility_id,observation_id,default_visible) VALUES (%s,%s,%s,false)",
+                    (test_release, extra_facility, extra_observation))
+            with self.assertRaisesRegex(bridge.BridgeError, "frozen_membership_identity_mismatch"):
+                bridge._repair_candidate_names_checked(url, database, verified_freeze, verified_inventory,
+                    apply=False, required_database=database, required_release_id=test_release)
 
 
 if __name__ == "__main__":

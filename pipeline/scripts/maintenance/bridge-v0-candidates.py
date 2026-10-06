@@ -70,6 +70,24 @@ _NORMALIZED_KEYS = {
 _PRIVATE_LOCATION_KEYS = {"address", "address_lines", "city", "postal_code", "region", "country_code",
                           "coordinates", "municipality_code", "comarca_code", "department_number", "region_code"}
 
+# Explicit normalized business/facility labels only. In particular, never fall
+# back to operator_name or generic name for sources whose adapters conflate
+# facilities and people. Keep this projection separate from raw_fields so
+# replay equality and the retained evidence schema remain unchanged.
+_FACILITY_NAME_FIELDS = {
+    "au.npi.facilities": ("facility_name", "trading_name", "name", "registered_business_name"),
+    "dk.smiley": ("trading_name",),
+    "ca.ontario.meat-plants": ("trading_name",),
+    "fsa_approved_establishments": ("trading_name",),
+    "nl.nvwa.approved-food": ("trading_name",),
+    "fr.dgal.section-i": ("trading_name", "name"),
+    "fr.dgal.section-ii": ("trading_name", "name"),
+    "it.853-2004": ("trading_name", "name"),
+    "it.1069-2009": ("trading_name", "name"),
+    "us.fsis": ("canonical_name",),
+    "fss_approved_establishments": ("trading_name",),
+}
+
 
 class BridgeError(ValueError):
     """Safe, non-payload-bearing bridge failure."""
@@ -556,6 +574,25 @@ def _safe_normalized(normalized: Any) -> dict[str, Any]:
             if key in _NORMALIZED_KEYS and key.casefold() not in _FORBIDDEN_KEYS}
 
 
+def _facility_display_name(source: str, normalized: Any, source_values: Any = None) -> str | None:
+    """Return a bounded source-typed facility label, never a contact/operator name."""
+    if source == "ca.ontario.meat-plants":
+        # Ontario's adapter normalizes a dedicated Plant Name column, while
+        # the shared Canadian adapter also handles CFIA operator-name data.
+        # Keep this source pinned to the exact bilingual acquisition header.
+        value = source_values.get("Plant Name_ Nom de l'usine") if isinstance(source_values, dict) else None
+        values = (value,)
+    else:
+        values = (normalized.get(field) for field in _FACILITY_NAME_FIELDS.get(source, ())) if isinstance(normalized, dict) else ()
+    for value in values:
+        if not isinstance(value, str):
+            continue
+        value = " ".join(value.split())
+        if value and len(value) <= 200 and not any(ord(char) < 32 for char in value):
+            return value
+    return None
+
+
 def _coordinate(normalized: dict[str, Any], preview_candidate: tuple[Any, ...], *, allow_display: bool) -> tuple[float | None, float | None, str | None, str | None, str | None, str | None]:
     coords = normalized.get("coordinates") if isinstance(normalized.get("coordinates"), dict) else {}
     lat, lon = coords.get("latitude"), coords.get("longitude")
@@ -786,7 +823,7 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                     facility_id = _uuid("facility", source, group)
                     representative_parsed, _ = handoff["representatives"][group]
                     country = str(representative_parsed[2] or country).upper()
-                    existing_facility = connection.execute("SELECT country_code FROM uec.facilities WHERE facility_id=%s", (facility_id,)).fetchone()
+                    existing_facility = connection.execute("SELECT country_code,canonical_name FROM uec.facilities WHERE facility_id=%s", (facility_id,)).fetchone()
                     if existing_facility and str(existing_facility[0]).strip().upper() != country:
                         raise BridgeError("canonical_facility_identity_conflict")
                     linked_sources = connection.execute("""SELECT DISTINCT source_record.source_id
@@ -794,9 +831,14 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                         WHERE link.facility_id=%s""", (facility_id,)).fetchall()
                     if any(row[0] != source for row in linked_sources):
                         raise BridgeError("canonical_facility_source_identity_conflict")
-                    connection.execute("""INSERT INTO uec.facilities(facility_id,country_code,city,postal_code)
-                        VALUES (%s,%s,%s,%s) ON CONFLICT (facility_id) DO NOTHING""",
-                        (facility_id, country, representative_parsed[3], representative_parsed[4]))
+                    rep_row = handoff["representatives"][group][1]
+                    display_name = _facility_display_name(source, rep_row.get("normalized"), rep_row.get("source_values"))
+                    if existing_facility and existing_facility[1] and display_name and existing_facility[1] != display_name:
+                        raise BridgeError("canonical_facility_name_conflict")
+                    connection.execute("""INSERT INTO uec.facilities(facility_id,canonical_name,country_code,city,postal_code)
+                        VALUES (%s,%s,%s,%s,%s) ON CONFLICT (facility_id) DO UPDATE
+                        SET canonical_name=COALESCE(NULLIF(BTRIM(uec.facilities.canonical_name),''),EXCLUDED.canonical_name)""",
+                        (facility_id, display_name, country, representative_parsed[3], representative_parsed[4]))
                     connection.execute("""INSERT INTO uec.facility_source_links(facility_id,source_record_id,match_method,review_status)
                         VALUES (%s,%s,'source_native_group_key','automatic') ON CONFLICT DO NOTHING""",
                         (facility_id, source_record_id))
@@ -976,6 +1018,133 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
             "public_projection_rows_created": 0}
 
 
+def _repair_candidate_names_checked(database_url: str, expected_database: str, freeze: dict[str, Any],
+                                    inventory: dict[str, Any], *, apply: bool,
+                                    required_database: str, required_release_id: str) -> dict[str, Any]:
+    """Project verified retained facility labels onto blank names only.
+
+    This operation deliberately does not rewrite evidence, observations,
+    membership, or review state. Dry-run is the default.
+    """
+    if expected_database != required_database or freeze.get("release_id") != required_release_id:
+        raise BridgeError("name_repair_target_mismatch")
+    parsed_url = urlsplit(database_url)
+    if parsed_url.scheme not in {"postgres", "postgresql"} or parsed_url.hostname not in {"127.0.0.1", "localhost", "::1"}:
+        raise BridgeError("database_must_be_loopback")
+    if parsed_url.path.lstrip("/") != expected_database:
+        raise BridgeError("database_name_does_not_match_expected")
+    entries = {item["source_id"]: item for item in freeze["selected_sources"]}
+    inventory_sources = {item["source_id"]: item for item in inventory["source_scope"]["sources"]}
+    handoffs = {source: verify_handoff(entry, inventory_sources[source]) for source, entry in entries.items()}
+    freeze_hash = hashlib.sha256((json.dumps(freeze, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode()).hexdigest()
+    expected: dict[str, str | None] = {}
+    facility_sources: dict[str, str] = {}
+    source_counts: dict[str, dict[str, int]] = {}
+    for source, handoff in handoffs.items():
+        metrics = {"groups": len(handoff["representatives"]), "with_name": 0, "missing_name": 0,
+                   "ambiguous_name": 0, "updated_or_would_update": 0, "already_named_unchanged": 0}
+        for group, (_rep, rep_row) in handoff["representatives"].items():
+            name = _facility_display_name(source, rep_row.get("normalized"), rep_row.get("source_values"))
+            if name is None:
+                names = {_facility_display_name(source, row.get("normalized"), row.get("source_values"))
+                         for _parsed, row in handoff["groups"][group]}
+                names.discard(None)
+                if len(names) == 1:
+                    name = next(iter(names))
+                elif len(names) > 1:
+                    metrics["ambiguous_name"] += 1
+            if name is None:
+                metrics["missing_name"] += 1
+            else:
+                metrics["with_name"] += 1
+            facility_id = str(_uuid("facility", source, group))
+            expected[facility_id] = name
+            facility_sources[facility_id] = source
+        source_counts[source] = metrics
+
+    def member_snapshot(connection: Any) -> tuple[list[tuple[str, str]], str]:
+        rows = connection.execute("""SELECT member.facility_id::text,member.observation_id::text
+            FROM uec.release_members member WHERE member.release_id=%s
+            ORDER BY member.facility_id,member.observation_id""", (freeze["release_id"],)).fetchall()
+        digest = hashlib.sha256()
+        for facility_id, observation_id in rows:
+            digest.update((json.dumps([freeze["release_id"], str(facility_id), str(observation_id)],
+                                      separators=(",", ":")) + "\n").encode())
+        return [(str(row[0]), str(row[1])) for row in rows], digest.hexdigest()
+
+    try:
+        with psycopg.connect(database_url, prepare_threshold=None) as connection, connection.transaction():
+            connection.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", ("v0-candidate-name-repair:" + freeze["release_id"],))
+            if connection.execute("SELECT current_database()").fetchone()[0] != expected_database:
+                raise BridgeError("connected_database_mismatch")
+            release = connection.execute("SELECT status,profile,test_only,summary FROM uec.releases WHERE release_id=%s",
+                                         (freeze["release_id"],)).fetchone()
+            if (release is None or release[0] != "candidate" or release[1] != PROFILE or release[2] is not False
+                    or not isinstance(release[3], dict) or release[3].get("candidate_only") is not True
+                    or release[3].get("freeze_sha256") != freeze_hash):
+                raise BridgeError("frozen_candidate_identity_mismatch")
+            members, before_digest = member_snapshot(connection)
+            if len(members) != len(expected) or {row[0] for row in members} != set(expected):
+                raise BridgeError("frozen_membership_identity_mismatch")
+            if connection.execute("SELECT count(*) FROM uec.release_members WHERE release_id=%s AND default_visible",
+                                  (freeze["release_id"],)).fetchone()[0] != 0:
+                raise BridgeError("candidate_member_visibility_mismatch")
+            if connection.execute("SELECT count(*) FROM uec.releases WHERE release_id<>%s",
+                                  (freeze["release_id"],)).fetchone()[0] != 0:
+                raise BridgeError("candidate_database_has_unrelated_release")
+            connection.execute("""CREATE TEMP TABLE candidate_name_repair (
+                facility_id uuid PRIMARY KEY, source_id text NOT NULL, display_name text
+            ) ON COMMIT DROP""")
+            with connection.cursor().copy("COPY candidate_name_repair(facility_id,source_id,display_name) FROM STDIN") as copy:
+                for facility_id in sorted(expected):
+                    copy.write_row((facility_id, facility_sources[facility_id], expected[facility_id]))
+            joined = connection.execute("""SELECT repair.facility_id::text,repair.source_id,
+                    facility.canonical_name,repair.display_name
+                FROM candidate_name_repair repair
+                JOIN uec.release_members member ON member.facility_id=repair.facility_id
+                    AND member.release_id=%s
+                JOIN uec.facilities facility ON facility.facility_id=repair.facility_id
+                ORDER BY repair.facility_id""", (freeze["release_id"],)).fetchall()
+            if len(joined) != len(expected):
+                raise BridgeError("candidate_facility_or_membership_missing")
+            for _facility_id, source, current, desired in joined:
+                if current is not None and str(current).strip():
+                    source_counts[source]["already_named_unchanged"] += 1
+                elif desired is not None:
+                    source_counts[source]["updated_or_would_update"] += 1
+            if apply:
+                updated_rows = connection.execute("""UPDATE uec.facilities facility
+                    SET canonical_name=repair.display_name
+                    FROM candidate_name_repair repair
+                    JOIN uec.release_members member ON member.facility_id=repair.facility_id
+                        AND member.release_id=%s
+                    WHERE facility.facility_id=repair.facility_id
+                      AND repair.display_name IS NOT NULL
+                      AND (facility.canonical_name IS NULL OR BTRIM(facility.canonical_name)='')
+                    RETURNING repair.facility_id::text,repair.source_id""", (freeze["release_id"],)).fetchall()
+                if len(updated_rows) != sum(item["updated_or_would_update"] for item in source_counts.values()):
+                    raise BridgeError("candidate_name_update_count_mismatch")
+            after_members, after_digest = member_snapshot(connection)
+            if members != after_members or before_digest != after_digest:
+                raise BridgeError("frozen_membership_changed")
+    except psycopg.Error as error:
+        failure = BridgeError("candidate_name_repair_database_operation_failed")
+        failure.database_error_class = type(error).__name__
+        failure.database_sqlstate = getattr(error, "sqlstate", None)
+        raise failure from None
+    return {"status": "applied" if apply else "dry_run", "release_id": freeze["release_id"],
+            "freeze_sha256": freeze_hash, "member_count": len(members), "member_digest_before": before_digest,
+            "member_digest_after": after_digest, "sources": source_counts, "public_authorized": False}
+
+
+def repair_candidate_names(database_url: str, expected_database: str, freeze: dict[str, Any],
+                           inventory: dict[str, Any], *, apply: bool = False) -> dict[str, Any]:
+    """Run the narrowly bound r3 repair; dry-run is the default."""
+    return _repair_candidate_names_checked(database_url, expected_database, freeze, inventory,
+        apply=apply, required_database="uec_v0_review_r3",
+        required_release_id="v0-candidate-2026-10-04-r3")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--database-url", default=os.environ.get("UEC_DATABASE_URL"))
@@ -983,13 +1152,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--freeze", type=Path, required=True)
     parser.add_argument("--inventory", type=Path, required=True)
     parser.add_argument("--candidate-only-ack", action="store_true")
+    parser.add_argument("--repair-names", action="store_true", help="dry-run a bounded facility-name projection repair")
+    parser.add_argument("--apply-names", action="store_true", help="apply the verified name repair; requires --repair-names")
     args = parser.parse_args(argv)
     if not args.database_url:
         parser.error("--database-url or UEC_DATABASE_URL is required")
+    if args.apply_names and not args.repair_names:
+        parser.error("--apply-names requires --repair-names")
     try:
         freeze, inventory = load_freeze(args.freeze, args.inventory)
-        report = bridge(args.database_url, args.expected_database, freeze, inventory,
-                        candidate_only_ack=args.candidate_only_ack)
+        if args.repair_names:
+            report = repair_candidate_names(args.database_url, args.expected_database, freeze, inventory,
+                                            apply=args.apply_names)
+        else:
+            report = bridge(args.database_url, args.expected_database, freeze, inventory,
+                            candidate_only_ack=args.candidate_only_ack)
     except (BridgeError, OSError, ValueError):
         print(json.dumps({"status": "blocked", "reason": "candidate_bridge_validation_failed"}, sort_keys=True))
         return 2

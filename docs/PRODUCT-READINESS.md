@@ -29,12 +29,17 @@ curated-default listable records: 48,756 mapped and 14,845 unmapped, from 13
 sources. All fifteen source snapshots and 124,414 frozen members remain
 retained. The packet names the 68 precautionary privacy holds, Denmark's
 58,230 non-core scope exclusions (one overlapping privacy hold), France's
-2,516 rights-pending records and the Belgian unmapped/null-name limitations.
+2,516 rights-pending records and the Belgian unmapped limitation.
+The name-import defect was repaired on 2026-10-06: 115,069 retained labels
+restored, without changing frozen records or coordinates. The proposed public
+subset has 54,256 named records; 9,345 lack supported normalized name fields.
+The [short release report](v0-release-review.md#short-release-report-2026-10-06)
+replaces the earlier recommendation to accept an unnamed release.
 Those are proposed outputs, not approved or published counts. The exact
 membership digest was recomputed unchanged. Record-level exceptions now pass
 all six actual disposable-PostGIS tests with no skips. No real candidate
 approval or publication event was created. The remaining maintainer decision
-is the final publication stamp, followed by controlled activation with exact
+is the final publication stamp and controlled activation with exact
 binding/suppression/rights rechecks and required CI—not another scope review.
 
 **Maintainer decision: 2026-10-03.** Dataset release names are independent of
