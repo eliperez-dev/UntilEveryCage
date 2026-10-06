@@ -61,8 +61,16 @@ The exact membership digest was recomputed unchanged. Record-level exceptions
 pass all six actual disposable-PostGIS tests with no skips. The owner has now
 given the final release approval; no further generic scope or publication
 stamp is needed. Local activation and backup/restore baseline verification are
-complete; frontend/community integration is in progress. External deployment
-has not occurred.
+complete. Frontend/community integration now uses the approved official v0
+read model: the reviewed map, database search, public record pages, bounded
+downloads and local contribution intake share the API. Real-v0 acceptance
+passed on both an isolated migrated restore and the persistent development
+copy. Cold map startup, closing search, record selection, pan/zoom and basemap
+switching were checked locally; pan/zoom and basemap switching issued no extra
+map-feed requests. Intake does not add records to the released dataset.
+The isolated test database and sprint worktree were cleaned up; the frozen
+reference remains unchanged. This is local integration, not website deployment,
+historical-release selection, public account setup or public contribution launch.
 
 **Maintainer decision: 2026-10-03.** Dataset release names are independent of
 the V2 website and the legacy V1 application. `v0` is the first public dataset
