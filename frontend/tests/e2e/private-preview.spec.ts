@@ -34,7 +34,7 @@ test('test-release mode cannot enable preview CSV or list/detail requests', asyn
   });
 
   await page.goto('./?preview=test-release#/database');
-  await expect(page.getByRole('heading', { name: 'Database' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Browse records' })).toBeVisible();
   await expect(page.getByRole('button', { name: /download|export/i })).toHaveCount(0);
   await expect(page.getByLabel(/operator token/i)).toHaveCount(0);
   expect(previewRequests).toEqual([]);

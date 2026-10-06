@@ -8,8 +8,11 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/v2-preview/', async route => { const response = await route.fetch(); await route.fulfill({ response, body: (await response.text()).replace(/<meta name="uec-local-data-mode" content="real-preview">/g, '') }); });
 });
 
-const routeTail = (page: import('@playwright/test').Page, tail: string) =>
-  expect(new URL(page.url()).hash).toBe(`#/${tail}`);
+const routePath = (page: import('@playwright/test').Page) =>
+  new URL(`http://test${new URL(page.url()).hash.slice(1)}`);
+
+const expectRoute = async (page: import('@playwright/test').Page, pathname: string) =>
+  expect(routePath(page).pathname).toBe(pathname);
 
 test('the shared shell exposes the primary map and database routes', async ({ page }) => {
   await page.goto('./#/map');
@@ -18,7 +21,10 @@ test('the shared shell exposes the primary map and database routes', async ({ pa
   await expect(page.getByRole('heading', { level: 1, name: /map/i })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Database', exact: true })).toBeVisible();
   await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Database', exact: true }).click();
-  await routeTail(page, 'database');
+  await expectRoute(page, '/database');
+  expect(routePath(page).searchParams.get('lat')).toBe('45');
+  expect(routePath(page).searchParams.get('lon')).toBe('5');
+  expect(routePath(page).searchParams.get('z')).toBe('2');
   await expect(page.getByRole('heading', { level: 1, name: /Browse records/i })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Map' })).toBeVisible();
 });
@@ -32,24 +38,37 @@ test('a record URL is directly addressable and has a route-specific heading', as
 });
 
 test('the shell keeps route context in the URL through back and forward navigation', async ({ page }) => {
-  await page.goto('./#/map?profile=community&query=synthetic');
+  await page.goto('./#/map?lat=44.5&lon=8.1&z=5&list=closed&basemap=satellite');
   await expect(page.getByRole('heading', { level: 1, name: /map/i })).toBeVisible();
   await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Database', exact: true }).click();
-  await routeTail(page, 'database');
-  await expect.poll(() => new URL(page.url()).hash).toBe('#/database');
+  await expectRoute(page, '/database');
+  expect(routePath(page).searchParams.get('lat')).toBe('44.5');
+  expect(routePath(page).searchParams.get('lon')).toBe('8.1');
+  expect(routePath(page).searchParams.get('z')).toBe('5');
+  expect(routePath(page).searchParams.get('list')).toBe('closed');
+  expect(routePath(page).searchParams.get('basemap')).toBe('satellite');
   await page.goBack();
-  await expect.poll(() => new URL(page.url()).hash).toBe('#/map?profile=community&query=synthetic');
+  await expect.poll(() => routePath(page).pathname).toBe('/map');
+  expect(routePath(page).searchParams.get('lat')).toBe('44.5');
+  expect(routePath(page).searchParams.get('lon')).toBe('8.1');
+  expect(routePath(page).searchParams.get('z')).toBe('5');
+  expect(routePath(page).searchParams.get('list')).toBe('closed');
+  expect(routePath(page).searchParams.get('basemap')).toBe('satellite');
   await page.goForward();
-  await routeTail(page, 'database');
+  await expectRoute(page, '/database');
+  expect(routePath(page).searchParams.get('basemap')).toBe('satellite');
 });
 
 test('About contains the sources & methodology page and returns via browser history', async ({ page }) => {
   await page.goto('./#/database');
-  await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'About', exact: true }).hover();
+  const aboutLink = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'About', exact: true });
+  await aboutLink.focus();
+  await aboutLink.press('ArrowDown');
   await page.locator('#shared-about-nav').getByRole('link', { name: 'Overview' }).click();
   await expect.poll(() => new URL(page.url()).hash).toBe('#/about');
   await expect(page.getByRole('heading', { level: 1, name: 'Overview' })).toBeVisible();
-  await page.getByRole('link', { name: 'About', exact: true }).hover();
+  await aboutLink.focus();
+  await aboutLink.press('ArrowDown');
   await page.locator('#shared-about-nav').getByRole('link', { name: 'Sources & methodology' }).click();
   await expect.poll(() => new URL(page.url()).hash).toBe('#/about/sources');
   await expect(page.getByRole('heading', { level: 1, name: 'Sources & Methodology' })).toBeVisible();
@@ -107,12 +126,18 @@ test('route controls are focusable links with explicit destinations', async ({ p
   const mapLink = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Map' });
   await mapLink.focus();
   await expect(mapLink).toBeFocused();
-  await expect(mapLink).toHaveAttribute('href', '#/map');
-  await page.getByRole('link', { name: 'Database', exact: true }).hover();
+  await expect(mapLink).toHaveAttribute('href', /#\/map\?/);
+  const databaseNavLink = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Database', exact: true });
+  await databaseNavLink.focus();
+  await databaseNavLink.press('ArrowDown');
   const databaseLink = page.locator('#shared-database-nav').getByRole('link', { name: 'Browse records' });
   await databaseLink.focus();
   await expect(databaseLink).toBeFocused();
-  await expect(databaseLink).toHaveAttribute('href', '#/database');
+  await expect(databaseLink).toHaveAttribute('href', /#\/database\?/);
+  const destination = new URL(`http://test/${(await databaseLink.getAttribute('href') ?? '').slice(2)}`);
+  expect(destination.pathname).toBe('/database');
+  expect(destination.searchParams.get('lat')).toBe('45');
+  expect(destination.searchParams.get('lon')).toBe('5');
 });
 
 test('direct Contribute tasks, four About destinations, and code help are easy to find', async ({ page }) => {

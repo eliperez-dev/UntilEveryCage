@@ -83,7 +83,7 @@
 </script>
 
 <svelte:window onpointerdown={() => { keyboardInput = false; keyboardFocusedSection = null; }} onhashchange={() => closeMenus()} onkeydown={(event) => { keyboardInput = true; if (event.key === "Escape" && (navOpen || releaseOpen || toolsOpen)) { event.preventDefault(); closeMenus(navOpen ?? (releaseOpen ? "release" : toolsOpen ? "tools" : "tools")); } }} onclick={(event) => { if (event.target instanceof Node && !actionArea?.contains(event.target) && !navArea?.contains(event.target)) closeMenus(); }} />
-<header class="masthead">
+<div class="masthead" role="banner">
   <a class="wordmark" href={mapHref} aria-label="Until Every Cage map home">
     <img src={logo} alt="" />
     <span>Until Every Cage</span>
@@ -119,7 +119,7 @@
       <section><label class="toggle"><input type="checkbox" checked={debugEnabled} onchange={(event) => ondebugchange?.(event.currentTarget.checked)} /> Enable debug menu</label><small>Local development controls and diagnostics.</small></section>
     </aside>{/if}
   </div>{/if}
-</header>
+</div>
 
 <style>
   .masthead {
