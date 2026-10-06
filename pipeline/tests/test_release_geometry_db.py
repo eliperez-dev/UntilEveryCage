@@ -23,6 +23,11 @@ SPEC = importlib.util.spec_from_file_location("geometry_test_cohort_review", COH
 RECORDER = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader
 SPEC.loader.exec_module(RECORDER)
+DISCOVERY_SCRIPT = ROOT / "pipeline" / "scripts" / "maintenance" / "build_public_discovery_read_model.py"
+DISCOVERY_SPEC = importlib.util.spec_from_file_location("geometry_test_discovery", DISCOVERY_SCRIPT)
+DISCOVERY = importlib.util.module_from_spec(DISCOVERY_SPEC)
+assert DISCOVERY_SPEC.loader
+DISCOVERY_SPEC.loader.exec_module(DISCOVERY)
 
 
 class _RollbackFixture(Exception):
@@ -199,6 +204,37 @@ class PublicGeometryPostgresTests(unittest.TestCase):
                     """, (release_id,)).fetchone()[0]
                     review = RECORDER._verify(connection, document, apply_changes=True)
                     self.assertEqual(review["default_visible_count"], 8)
+                    # The verifier records scoped cohort approval but intentionally
+                    # leaves release lifecycle transitions to the release workflow.
+                    # Move only this rollback-only synthetic fixture to validated.
+                    connection.execute(
+                        "UPDATE uec.releases SET status='validated' WHERE release_id=%s",
+                        (release_id,),
+                    )
+                    release_status = connection.execute(
+                        "SELECT status FROM uec.releases WHERE release_id=%s", (release_id,)
+                    ).fetchone()[0]
+                    self.assertEqual(release_status, "validated")
+                    default_discovery = connection.execute(
+                        DISCOVERY.SELECT_ROWS, (release_id, release_id)
+                    ).fetchall()
+                    self.assertEqual(default_discovery, [])
+                    discovery_rows = connection.execute(
+                        DISCOVERY.public_release_query(("validated", "promoted")),
+                        (release_id, release_id),
+                    ).fetchall()
+                    self.assertEqual(len(discovery_rows), 8)
+                    self.assertEqual(sum(row[8] != "unmapped" for row in discovery_rows), 3)
+                    self.assertEqual(sum(row[8] == "unmapped" for row in discovery_rows), 5)
+                    excluded_record_id = connection.execute("""
+                        SELECT observation.source_record_id::text
+                        FROM uec.observations observation
+                        JOIN uec.release_members member USING(observation_id)
+                        WHERE member.release_id=%s
+                          AND observation.observation->>'fixture_kind'='excluded_category'
+                    """, (release_id,)).fetchone()[0]
+                    self.assertNotIn(excluded_record_id, {row[2] for row in discovery_rows})
+                    self.assertTrue(all(json.loads(row[22]).get("origin") for row in discovery_rows))
                     query = geometry_rows_sql("""
                         SELECT evidence->>'fixture_kind', display_precision,
                                ST_Y(display_location::geometry), ST_X(display_location::geometry),
@@ -221,7 +257,7 @@ class PublicGeometryPostgresTests(unittest.TestCase):
                     self.assertEqual(by_kind["provider_pending"][0:3], ("unmapped", None, None))
                     self.assertEqual(by_kind["provider_missing_metadata"][0:3], ("unmapped", None, None))
                     self.assertEqual(by_kind["malformed_source"][0:3], ("unmapped", None, None))
-                    self.assertEqual(by_kind["excluded_category"][0:3], ("source_reported", 59.5, 10.6))
+                    self.assertEqual(by_kind["excluded_category"][0:3], ("unmapped", None, None))
                     self.assertFalse(by_kind["excluded_category"][4])
                     self.assertFalse(by_kind["excluded_category"][5])
                     self.assertTrue(all(row[4] for kind, row in by_kind.items()
@@ -242,6 +278,8 @@ class PublicGeometryPostgresTests(unittest.TestCase):
                                                   (release_id, release_id, release_id)).fetchone()
                     self.assertEqual(metrics[1], 8)
                     self.assertEqual(metrics[4], 0)  # immutable source review_required is not promoted to approved
+                    self.assertEqual(metrics[8], 5)  # unusable evidence remains explicitly unmapped
+                    self.assertEqual(metrics[9], 0)  # null geometry does not block otherwise eligible records
                     self.assertEqual(metrics[11], 1)  # active suppression is counted only on visible membership
                     after = connection.execute("""
                         SELECT md5(string_agg(to_jsonb(observation)::text,E'\\n' ORDER BY observation.observation_id))
