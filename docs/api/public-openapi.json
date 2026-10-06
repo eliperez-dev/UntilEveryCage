@@ -1,0 +1,2085 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Until Every Cage public data API",
+    "version": "v2",
+    "description": "Implemented public read API. Availability depends on a promoted eligible release; documentation does not announce a public release or expose private preview data. Public access is profile-scoped and current suppression applies to all reads. Curated official is the default. Explicit community selection may return privacy-screened, factually unreviewed claims which are not project-approved; retain publication warnings and separate counts. The API does not certify completeness, current operation, factual truth or animal totals."
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Same-origin backend"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Locations"
+    },
+    {
+      "name": "Downloads"
+    },
+    {
+      "name": "Releases"
+    },
+    {
+      "name": "Discovery"
+    },
+    {
+      "name": "Graph"
+    },
+    {
+      "name": "Map"
+    }
+  ],
+  "paths": {
+    "/api/v2/locations": {
+      "get": {
+        "operationId": "listLocations",
+        "summary": "Search public locations",
+        "description": "Paginated public facility projection for a promoted non-test release. No eligible unpinned release returns an empty list with reduced metadata. Preserve profile, release and ruleset across pages. Bbox and radius require complete inputs and cannot be combined; cursor and offset cannot be combined.",
+        "tags": [
+          "Locations"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/profile"
+          },
+          {
+            "$ref": "#/components/parameters/release_id"
+          },
+          {
+            "$ref": "#/components/parameters/country_code"
+          },
+          {
+            "$ref": "#/components/parameters/region"
+          },
+          {
+            "$ref": "#/components/parameters/category"
+          },
+          {
+            "$ref": "#/components/parameters/category_keys"
+          },
+          {
+            "$ref": "#/components/parameters/source_type"
+          },
+          {
+            "$ref": "#/components/parameters/display_precision"
+          },
+          {
+            "$ref": "#/components/parameters/lifecycle_status"
+          },
+          {
+            "$ref": "#/components/parameters/q"
+          },
+          {
+            "$ref": "#/components/parameters/limit"
+          },
+          {
+            "$ref": "#/components/parameters/offset"
+          },
+          {
+            "$ref": "#/components/parameters/cursor"
+          },
+          {
+            "$ref": "#/components/parameters/min_lon"
+          },
+          {
+            "$ref": "#/components/parameters/min_lat"
+          },
+          {
+            "$ref": "#/components/parameters/max_lon"
+          },
+          {
+            "$ref": "#/components/parameters/max_lat"
+          },
+          {
+            "$ref": "#/components/parameters/latitude"
+          },
+          {
+            "$ref": "#/components/parameters/longitude"
+          },
+          {
+            "$ref": "#/components/parameters/radius_km"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Public results, or a successful empty list when no promoted release exists.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/LocationList"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EmptyLocationList"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "429": {
+            "$ref": "#/components/responses/Limited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/v2/locations/{facility_id}": {
+      "get": {
+        "operationId": "getLocation",
+        "summary": "Read a public location",
+        "description": "Current suppression applies even when release_id is supplied. A missing/suppressed record returns 404; this does not prove closure or absence.",
+        "tags": [
+          "Locations"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/facility_idPath"
+          },
+          {
+            "$ref": "#/components/parameters/profile"
+          },
+          {
+            "$ref": "#/components/parameters/release_id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Eligible public projection.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "404": {
+            "description": "Location missing/suppressed, or no eligible unpinned release.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "429": {
+            "$ref": "#/components/responses/Limited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/v2/locations.csv": {
+      "get": {
+        "operationId": "downloadLocationsCsv",
+        "summary": "Download bounded CSV",
+        "description": "Exports the latest promoted eligible profile in facility UUID order, with release/profile/digest/rights and publication context on each row. Rejects more than 1,000 rows; does not truncate. Only profile is effective: search, pagination, spatial filters and release_id are not applied. Use paginated JSON for larger reads. Empty eligible exports may have an empty body.",
+        "tags": [
+          "Downloads"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/profile"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "CSV attachment, at most 1,000 rows.",
+            "headers": {
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "x-uec-release-id": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "x-uec-export-profile": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "x-uec-manifest-sha256": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "x-uec-data-product-version": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "x-uec-schema-version": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "404": {
+            "$ref": "#/components/responses/NoRelease"
+          },
+          "429": {
+            "$ref": "#/components/responses/Limited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/v2/releases/manifest": {
+      "get": {
+        "operationId": "getReleaseManifest",
+        "summary": "Read the current release manifest",
+        "description": "Latest promoted non-test release for the selected profile. Canonical SHA-256 integrity checked. Only profile is effective; release_id is not applied. ETag includes current suppression generation and stored data must be revalidated.",
+        "tags": [
+          "Releases"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/profile"
+          },
+          {
+            "$ref": "#/components/parameters/ifNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Eligible public projection.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Manifest"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "x-uec-suppression-generation": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "404": {
+            "$ref": "#/components/responses/NoRelease"
+          },
+          "429": {
+            "$ref": "#/components/responses/Limited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/v2/discovery/filters": {
+      "get": {
+        "operationId": "getDiscoveryFilters",
+        "summary": "Discover filter vocabulary",
+        "description": "Static implemented vocabulary and search/spatial/pagination definitions. Country inventory currently lists DK; coverage and availability are separate. This endpoint requires no database and does not certify a release exists.",
+        "tags": [
+          "Discovery"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Eligible public projection.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Filters"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "429": {
+            "$ref": "#/components/responses/Limited"
+          }
+        }
+      }
+    },
+    "/api/v2/discovery/facets": {
+      "get": {
+        "operationId": "getDiscoveryFacets",
+        "summary": "Count public filter values",
+        "description": "Counts eligible facility projection rows after suppression, not animals or story-wide totals. Latest promoted profile; each dimension is sorted by value and capped at 20. Only documented parameters are applied: q, category_keys, spatial, release_id and pagination are ignored.",
+        "tags": [
+          "Discovery"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/profile"
+          },
+          {
+            "$ref": "#/components/parameters/country_code"
+          },
+          {
+            "$ref": "#/components/parameters/region"
+          },
+          {
+            "$ref": "#/components/parameters/category"
+          },
+          {
+            "$ref": "#/components/parameters/source_type"
+          },
+          {
+            "$ref": "#/components/parameters/display_precision"
+          },
+          {
+            "$ref": "#/components/parameters/lifecycle_status"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Eligible public projection.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Facets"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "404": {
+            "$ref": "#/components/responses/NoRelease"
+          },
+          "429": {
+            "$ref": "#/components/responses/Limited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/v2/graph/connections": {
+      "get": {
+        "operationId": "listGraphConnections",
+        "summary": "Read public connections",
+        "description": "Latest promoted release-scoped public projection; no release_id pin is implemented. Check response release/ruleset before combining pages. Inferred confidence is a deterministic ruleset estimate, not a measured probability or proof of ownership, identity or supply-chain control. Preserve publication warnings.",
+        "tags": [
+          "Graph"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/profile"
+          },
+          {
+            "$ref": "#/components/parameters/connection_type"
+          },
+          {
+            "$ref": "#/components/parameters/min_confidence"
+          },
+          {
+            "$ref": "#/components/parameters/max_confidence"
+          },
+          {
+            "$ref": "#/components/parameters/confidence_band"
+          },
+          {
+            "$ref": "#/components/parameters/include_conflicting"
+          },
+          {
+            "$ref": "#/components/parameters/source_id"
+          },
+          {
+            "$ref": "#/components/parameters/entity_id"
+          },
+          {
+            "$ref": "#/components/parameters/graphCursor"
+          },
+          {
+            "$ref": "#/components/parameters/graphLimit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Eligible public projection.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphConnections"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "404": {
+            "$ref": "#/components/responses/NoRelease"
+          },
+          "429": {
+            "$ref": "#/components/responses/Limited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/v2/graph/entities": {
+      "get": {
+        "operationId": "listGraphEntities",
+        "summary": "Find public graph entities",
+        "description": "Public facilities and eligible organizations from the latest promoted profile. No release_id pin is implemented; check release/ruleset across cursor pages.",
+        "tags": [
+          "Graph"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/profile"
+          },
+          {
+            "$ref": "#/components/parameters/graphQ"
+          },
+          {
+            "$ref": "#/components/parameters/entity_type"
+          },
+          {
+            "$ref": "#/components/parameters/graphCursor"
+          },
+          {
+            "$ref": "#/components/parameters/graphLimit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Eligible public projection.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphEntities"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "404": {
+            "$ref": "#/components/responses/NoRelease"
+          },
+          "429": {
+            "$ref": "#/components/responses/Limited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/v2/graph/entities/{entity_id}/neighborhood": {
+      "get": {
+        "operationId": "getGraphNeighborhood",
+        "summary": "Read adjacent public connections",
+        "description": "Latest promoted release-scoped public projection; no release_id pin is implemented. Check response release/ruleset before combining pages. Inferred confidence is a deterministic ruleset estimate, not a measured probability or proof of ownership, identity or supply-chain control. Preserve publication warnings. Returns connections adjacent to the path entity. Direction/depth are not effective traversal controls and are omitted; no multi-hop behavior is promised.",
+        "tags": [
+          "Graph"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/entity_idPath"
+          },
+          {
+            "$ref": "#/components/parameters/profile"
+          },
+          {
+            "$ref": "#/components/parameters/connection_type"
+          },
+          {
+            "$ref": "#/components/parameters/min_confidence"
+          },
+          {
+            "$ref": "#/components/parameters/max_confidence"
+          },
+          {
+            "$ref": "#/components/parameters/confidence_band"
+          },
+          {
+            "$ref": "#/components/parameters/include_conflicting"
+          },
+          {
+            "$ref": "#/components/parameters/source_id"
+          },
+          {
+            "$ref": "#/components/parameters/graphCursor"
+          },
+          {
+            "$ref": "#/components/parameters/graphLimit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Eligible public projection.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphConnections"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "404": {
+            "$ref": "#/components/responses/NoRelease"
+          },
+          "429": {
+            "$ref": "#/components/responses/Limited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/api/v2/releases/{release_id}/map/tiles/{z}/{x}/{y}.mvt": {
+      "get": {
+        "operationId": "getMapTile",
+        "summary": "Read an eligible map vector tile",
+        "description": "Binary MVT, source layer uec_map. Requires promoted release/profile, canonical manifest, current suppression generation and inventoried tile checksum. Exact/coarse leaves remain distinct; unmapped records remain list-only. Feature schemas v1 and v2 are supported. No names, evidence, addresses or tokens in tile properties. Stored bytes require eligibility revalidation.",
+        "tags": [
+          "Map"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/release_idPath"
+          },
+          {
+            "$ref": "#/components/parameters/zPath"
+          },
+          {
+            "$ref": "#/components/parameters/xPath"
+          },
+          {
+            "$ref": "#/components/parameters/yPath"
+          },
+          {
+            "$ref": "#/components/parameters/profile"
+          },
+          {
+            "$ref": "#/components/parameters/ifNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Immutable eligible tile, at most 2 MiB.",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "x-uec-release-id": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "x-uec-profile": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "x-uec-suppression-generation": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/vnd.mapbox-vector-tile": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
+          },
+          "400": {
+            "$ref": "#/components/responses/Invalid"
+          },
+          "404": {
+            "description": "No eligible map artifact or inventoried feature tile.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "429": {
+            "$ref": "#/components/responses/Limited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": [
+          "api_version",
+          "error"
+        ],
+        "properties": {
+          "api_version": {
+            "const": "v2"
+          },
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "Location": {
+        "$ref": "./v2-location.schema.json"
+      },
+      "QueryFilters": {
+        "type": "object",
+        "required": [
+          "country_code",
+          "region",
+          "category",
+          "source_type",
+          "display_precision",
+          "lifecycle_status"
+        ],
+        "properties": {
+          "country_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "region": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "category": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "display_precision": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lifecycle_status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReleaseMetadata": {
+        "type": "object",
+        "required": [
+          "release_id",
+          "ruleset_version",
+          "release_created_at",
+          "profile",
+          "coverage_scope",
+          "count_semantics"
+        ],
+        "properties": {
+          "release_id": {
+            "type": "string"
+          },
+          "ruleset_version": {
+            "type": "string"
+          },
+          "release_created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "profile": {
+            "type": "string",
+            "enum": [
+              "official",
+              "secondary",
+              "community"
+            ],
+            "default": "official"
+          },
+          "coverage_scope": {
+            "const": "selected_promoted_release_public_facilities"
+          },
+          "count_semantics": {
+            "type": "string"
+          },
+          "data_product_version": {
+            "const": "uec-public-data-product-v1"
+          },
+          "schema_version": {
+            "const": "uec-location-projection-v1"
+          }
+        },
+        "additionalProperties": true
+      },
+      "LocationListMetadata": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ReleaseMetadata"
+          },
+          {
+            "type": "object",
+            "required": [
+              "next_cursor",
+              "coverage_note",
+              "query"
+            ],
+            "properties": {
+              "next_cursor": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              },
+              "coverage_note": {
+                "type": "string"
+              },
+              "query": {
+                "type": "object",
+                "required": [
+                  "q",
+                  "filters"
+                ],
+                "properties": {
+                  "q": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "filters": {
+                    "$ref": "#/components/schemas/QueryFilters"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        ]
+      },
+      "LocationList": {
+        "type": "object",
+        "required": [
+          "api_version",
+          "data",
+          "meta"
+        ],
+        "properties": {
+          "api_version": {
+            "const": "v2"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Location"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/LocationListMetadata"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EmptyLocationList": {
+        "type": "object",
+        "required": [
+          "api_version",
+          "data",
+          "meta"
+        ],
+        "properties": {
+          "api_version": {
+            "const": "v2"
+          },
+          "data": {
+            "type": "array",
+            "maxItems": 0
+          },
+          "meta": {
+            "type": "object",
+            "required": [
+              "release_id",
+              "profile",
+              "coverage_note"
+            ],
+            "properties": {
+              "release_id": {
+                "type": "null"
+              },
+              "profile": {
+                "type": "string",
+                "enum": [
+                  "official",
+                  "secondary",
+                  "community"
+                ],
+                "default": "official"
+              },
+              "coverage_note": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "LocationDetail": {
+        "type": "object",
+        "required": [
+          "api_version",
+          "data",
+          "meta"
+        ],
+        "properties": {
+          "api_version": {
+            "const": "v2"
+          },
+          "data": {
+            "$ref": "#/components/schemas/Location"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ReleaseMetadata"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Manifest": {
+        "type": "object",
+        "required": [
+          "api_version",
+          "data"
+        ],
+        "properties": {
+          "api_version": {
+            "const": "v2"
+          },
+          "data": {
+            "type": "object",
+            "required": [
+              "release_id",
+              "profile",
+              "manifest",
+              "manifest_sha256",
+              "suppression_generation"
+            ],
+            "properties": {
+              "release_id": {
+                "type": "string"
+              },
+              "profile": {
+                "type": "string",
+                "enum": [
+                  "official",
+                  "secondary",
+                  "community"
+                ],
+                "default": "official"
+              },
+              "manifest": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "Versioned release manifest; map_artifact, when present, describes eligible immutable tiles, attribution, bounds, zooms, checksums and cache policy."
+              },
+              "manifest_sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "suppression_generation": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "FacetValues": {
+        "type": "array",
+        "maxItems": 20,
+        "items": {
+          "type": "object",
+          "required": [
+            "value",
+            "count"
+          ],
+          "properties": {
+            "value": {
+              "type": "string"
+            },
+            "count": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "Facets": {
+        "type": "object",
+        "required": [
+          "api_version",
+          "meta",
+          "dimensions"
+        ],
+        "properties": {
+          "api_version": {
+            "const": "v2"
+          },
+          "meta": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ReleaseMetadata"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "filters"
+                ],
+                "properties": {
+                  "filters": {
+                    "$ref": "#/components/schemas/QueryFilters"
+                  }
+                }
+              }
+            ]
+          },
+          "dimensions": {
+            "type": "object",
+            "required": [
+              "country_code",
+              "category",
+              "display_precision",
+              "lifecycle_status",
+              "source_type",
+              "region"
+            ],
+            "properties": {
+              "country_code": {
+                "$ref": "#/components/schemas/FacetValues"
+              },
+              "category": {
+                "$ref": "#/components/schemas/FacetValues"
+              },
+              "display_precision": {
+                "$ref": "#/components/schemas/FacetValues"
+              },
+              "lifecycle_status": {
+                "$ref": "#/components/schemas/FacetValues"
+              },
+              "source_type": {
+                "$ref": "#/components/schemas/FacetValues"
+              },
+              "region": {
+                "$ref": "#/components/schemas/FacetValues"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "FilterDimension": {
+        "type": "object",
+        "required": [
+          "values"
+        ],
+        "properties": {
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "source": {
+            "type": "string"
+          },
+          "default": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Filters": {
+        "type": "object",
+        "required": [
+          "api_version",
+          "contract_version",
+          "dimensions",
+          "spatial",
+          "search",
+          "pagination",
+          "privacy"
+        ],
+        "properties": {
+          "api_version": {
+            "const": "v2"
+          },
+          "contract_version": {
+            "const": "v1"
+          },
+          "dimensions": {
+            "type": "object",
+            "required": [
+              "country_code",
+              "region",
+              "category",
+              "source_type",
+              "profile",
+              "display_precision",
+              "lifecycle_status"
+            ],
+            "properties": {
+              "country_code": {
+                "$ref": "#/components/schemas/FilterDimension"
+              },
+              "region": {
+                "$ref": "#/components/schemas/FilterDimension"
+              },
+              "category": {
+                "$ref": "#/components/schemas/FilterDimension"
+              },
+              "source_type": {
+                "$ref": "#/components/schemas/FilterDimension"
+              },
+              "profile": {
+                "$ref": "#/components/schemas/FilterDimension"
+              },
+              "display_precision": {
+                "$ref": "#/components/schemas/FilterDimension"
+              },
+              "lifecycle_status": {
+                "$ref": "#/components/schemas/FilterDimension"
+              }
+            },
+            "additionalProperties": false
+          },
+          "spatial": {
+            "type": "object",
+            "required": [
+              "bbox",
+              "radius"
+            ],
+            "properties": {
+              "bbox": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "radius": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "search": {
+            "type": "object",
+            "required": [
+              "parameter",
+              "fields"
+            ],
+            "properties": {
+              "parameter": {
+                "const": "q"
+              },
+              "fields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "pagination": {
+            "type": "object",
+            "required": [
+              "limit_max",
+              "cursor"
+            ],
+            "properties": {
+              "limit_max": {
+                "const": 1000
+              },
+              "cursor": {
+                "const": "facility_id"
+              }
+            },
+            "additionalProperties": false
+          },
+          "privacy": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "GraphEndpoint": {
+        "type": "object",
+        "required": [
+          "entity_id",
+          "entity_type",
+          "source_id",
+          "identifier_type",
+          "source_identifier"
+        ],
+        "properties": {
+          "entity_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "entity_type": {
+            "type": "string",
+            "enum": [
+              "facility",
+              "organization"
+            ]
+          },
+          "source_id": {
+            "type": "string"
+          },
+          "identifier_type": {
+            "type": "string"
+          },
+          "source_identifier": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "GraphEdge": {
+        "type": "object",
+        "required": [
+          "connection_edge_id",
+          "from",
+          "to",
+          "relationship_type",
+          "connection_type",
+          "confidence",
+          "confidence_band",
+          "match_method",
+          "signals",
+          "contradictions",
+          "provenance",
+          "source_references",
+          "observed_at",
+          "computed_at",
+          "ruleset",
+          "conflicting",
+          "publication_warning",
+          "disclaimer"
+        ],
+        "properties": {
+          "connection_edge_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "from": {
+            "$ref": "#/components/schemas/GraphEndpoint"
+          },
+          "to": {
+            "$ref": "#/components/schemas/GraphEndpoint"
+          },
+          "relationship_type": {
+            "type": "string"
+          },
+          "connection_type": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "inferred"
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "confidence_band": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "high",
+              "medium",
+              "low"
+            ]
+          },
+          "match_method": {
+            "type": "string"
+          },
+          "signals": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "contradictions": {
+            "type": "array",
+            "items": {}
+          },
+          "provenance": {
+            "type": "object",
+            "required": [
+              "source_ids",
+              "observed_at",
+              "release_id"
+            ],
+            "properties": {
+              "source_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "observed_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "release_id": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "source_references": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "source_id"
+              ],
+              "properties": {
+                "source_id": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "computed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ruleset": {
+            "type": "string"
+          },
+          "conflicting": {
+            "type": "boolean"
+          },
+          "publication_warning": {
+            "type": "string"
+          },
+          "disclaimer": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "GraphEntity": {
+        "type": "object",
+        "required": [
+          "entity_id",
+          "entity_type",
+          "display_name",
+          "country_code"
+        ],
+        "properties": {
+          "entity_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "entity_type": {
+            "type": "string",
+            "enum": [
+              "facility",
+              "organization"
+            ]
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "country_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "GraphMetadata": {
+        "type": "object",
+        "required": [
+          "profile",
+          "release_id",
+          "ruleset_version",
+          "limit",
+          "page_max",
+          "next_cursor",
+          "public_projection"
+        ],
+        "properties": {
+          "profile": {
+            "type": "string",
+            "enum": [
+              "official",
+              "secondary",
+              "community"
+            ],
+            "default": "official"
+          },
+          "release_id": {
+            "type": "string"
+          },
+          "ruleset_version": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "page_max": {
+            "const": 100
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "public_projection": {
+            "const": true
+          }
+        },
+        "additionalProperties": true
+      },
+      "GraphConnectionMetadata": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/GraphMetadata"
+          },
+          {
+            "type": "object",
+            "required": [
+              "confidence_kind",
+              "suppressed",
+              "human_confirmed_state",
+              "automatic_merge",
+              "claim_transfer"
+            ],
+            "properties": {
+              "confidence_kind": {
+                "const": "ruleset_estimate_not_probability"
+              },
+              "suppressed": {
+                "const": false
+              },
+              "human_confirmed_state": {
+                "const": false
+              },
+              "automatic_merge": {
+                "const": false
+              },
+              "claim_transfer": {
+                "const": false
+              }
+            }
+          }
+        ]
+      },
+      "GraphConnections": {
+        "type": "object",
+        "required": [
+          "api_version",
+          "data",
+          "meta"
+        ],
+        "properties": {
+          "api_version": {
+            "const": "v2-graph-v1"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GraphEdge"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/GraphConnectionMetadata"
+          }
+        },
+        "additionalProperties": false
+      },
+      "GraphEntities": {
+        "type": "object",
+        "required": [
+          "api_version",
+          "data",
+          "meta"
+        ],
+        "properties": {
+          "api_version": {
+            "const": "v2-graph-v1"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GraphEntity"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/GraphMetadata"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "parameters": {
+      "profile": {
+        "name": "profile",
+        "in": "query",
+        "required": false,
+        "description": "Select an independent publication profile. Defaults to curated official. Selecting community explicitly opts into privacy-screened claims which may be factually unreviewed and not project-approved; retain each publication_warning.",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "official",
+            "secondary",
+            "community"
+          ],
+          "default": "official"
+        }
+      },
+      "release_id": {
+        "name": "release_id",
+        "in": "query",
+        "required": false,
+        "description": "Pin a location read to the displayed eligible release/profile. A withdrawn or mismatched release returns 410.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "country_code": {
+        "name": "country_code",
+        "in": "query",
+        "required": false,
+        "description": "Uppercase two-letter country code. Discover current coverage with filters/facets; a valid code does not imply data availability.",
+        "schema": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$"
+        }
+      },
+      "region": {
+        "name": "region",
+        "in": "query",
+        "required": false,
+        "description": "Exact release-backed city/region value; nonblank and at most 120 UTF-8 bytes.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "category": {
+        "name": "category",
+        "in": "query",
+        "required": false,
+        "description": "Legacy category filter. Use category_keys on locations for the current taxonomy.",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "slaughter",
+            "fish_processing",
+            "logistics_and_storage",
+            "retail_and_prepared_food"
+          ]
+        }
+      },
+      "category_keys": {
+        "name": "category_keys",
+        "in": "query",
+        "required": false,
+        "description": "Comma-separated taxonomy primary keys with OR semantics: animal_keeping_and_production, slaughter, processing_and_preparation, research_and_animal_use, other_regulated_premises, unclassified. Deduplicated; at most six distinct keys.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "source_type": {
+        "name": "source_type",
+        "in": "query",
+        "required": false,
+        "description": "Evidence origin, distinct from approval or factual review.",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "official",
+            "secondary",
+            "user_submitted"
+          ]
+        }
+      },
+      "display_precision": {
+        "name": "display_precision",
+        "in": "query",
+        "required": false,
+        "description": "Public location precision; unmapped records remain available in results.",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "exact",
+            "city",
+            "unmapped"
+          ]
+        }
+      },
+      "lifecycle_status": {
+        "name": "lifecycle_status",
+        "in": "query",
+        "required": false,
+        "description": "Observed source lifecycle, not a guarantee of current operation.",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "active_observed",
+            "explicitly_closed",
+            "not_seen_recently",
+            "status_unknown"
+          ]
+        }
+      },
+      "q": {
+        "name": "q",
+        "in": "query",
+        "required": false,
+        "description": "Nonblank search text, at most 120 UTF-8 bytes. Locations searches name, city, country, legacy category and source name.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "limit": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "description": "Location page size; integer values are clamped to 1 to 1,000.",
+        "schema": {
+          "type": "integer",
+          "default": 100
+        }
+      },
+      "offset": {
+        "name": "offset",
+        "in": "query",
+        "required": false,
+        "description": "Compatibility pagination; clamped to 0 to 1,000,000. Cannot be combined with cursor.",
+        "schema": {
+          "type": "integer",
+          "default": 0
+        }
+      },
+      "cursor": {
+        "name": "cursor",
+        "in": "query",
+        "required": false,
+        "description": "Last returned facility UUID; continue ascending facility order in the same release/profile. Cannot be combined with offset.",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "min_lon": {
+        "name": "min_lon",
+        "in": "query",
+        "required": false,
+        "description": "Finite longitude. Bbox requires all min/max fields with minimum below maximum; radius requires latitude, longitude and radius_km. Spatial forms cannot be combined.",
+        "schema": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180
+        }
+      },
+      "max_lon": {
+        "name": "max_lon",
+        "in": "query",
+        "required": false,
+        "description": "Finite longitude. Bbox requires all min/max fields with minimum below maximum; radius requires latitude, longitude and radius_km. Spatial forms cannot be combined.",
+        "schema": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180
+        }
+      },
+      "longitude": {
+        "name": "longitude",
+        "in": "query",
+        "required": false,
+        "description": "Finite longitude. Bbox requires all min/max fields with minimum below maximum; radius requires latitude, longitude and radius_km. Spatial forms cannot be combined.",
+        "schema": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180
+        }
+      },
+      "min_lat": {
+        "name": "min_lat",
+        "in": "query",
+        "required": false,
+        "description": "Finite latitude. Provide a complete bbox or radius query; these forms cannot be combined.",
+        "schema": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90
+        }
+      },
+      "max_lat": {
+        "name": "max_lat",
+        "in": "query",
+        "required": false,
+        "description": "Finite latitude. Provide a complete bbox or radius query; these forms cannot be combined.",
+        "schema": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90
+        }
+      },
+      "latitude": {
+        "name": "latitude",
+        "in": "query",
+        "required": false,
+        "description": "Finite latitude. Provide a complete bbox or radius query; these forms cannot be combined.",
+        "schema": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90
+        }
+      },
+      "radius_km": {
+        "name": "radius_km",
+        "in": "query",
+        "required": false,
+        "description": "Finite radius in kilometres, with latitude and longitude; cannot combine with bbox.",
+        "schema": {
+          "type": "number",
+          "minimum": 0.001,
+          "maximum": 5000
+        }
+      },
+      "facility_idPath": {
+        "name": "facility_id",
+        "in": "path",
+        "required": true,
+        "description": "Public facility UUID.",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "release_idPath": {
+        "name": "release_id",
+        "in": "path",
+        "required": true,
+        "description": "Tile release identifier; '.' and '..' are rejected.",
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "pattern": "^[A-Za-z0-9_.-]+$"
+        }
+      },
+      "zPath": {
+        "name": "z",
+        "in": "path",
+        "required": true,
+        "description": "Tile zoom.",
+        "schema": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 14
+        }
+      },
+      "xPath": {
+        "name": "x",
+        "in": "path",
+        "required": true,
+        "description": "Tile index, less than 2 raised to z.",
+        "schema": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "yPath": {
+        "name": "y",
+        "in": "path",
+        "required": true,
+        "description": "Tile index, less than 2 raised to z.",
+        "schema": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "entity_id": {
+        "name": "entity_id",
+        "in": "query",
+        "required": false,
+        "description": "Limit connections to an adjacent public entity.",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "entity_idPath": {
+        "name": "entity_id",
+        "in": "path",
+        "required": true,
+        "description": "Public facility or organization UUID.",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "entity_type": {
+        "name": "entity_type",
+        "in": "query",
+        "required": false,
+        "description": "Type of public graph entity.",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "facility",
+            "organization"
+          ]
+        }
+      },
+      "connection_type": {
+        "name": "connection_type",
+        "in": "query",
+        "required": false,
+        "description": "Source-backed exact connection or ruleset inference. Neither merges identities automatically.",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "exact",
+            "inferred"
+          ]
+        }
+      },
+      "min_confidence": {
+        "name": "min_confidence",
+        "in": "query",
+        "required": false,
+        "description": "Finite ruleset estimate, not a measured probability; minimum cannot exceed maximum.",
+        "schema": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "max_confidence": {
+        "name": "max_confidence",
+        "in": "query",
+        "required": false,
+        "description": "Finite ruleset estimate, not a measured probability; minimum cannot exceed maximum.",
+        "schema": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "confidence_band": {
+        "name": "confidence_band",
+        "in": "query",
+        "required": false,
+        "description": "Public confidence band; historical probable/possible labels become high/medium.",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "exact",
+            "high",
+            "medium",
+            "low"
+          ]
+        }
+      },
+      "include_conflicting": {
+        "name": "include_conflicting",
+        "in": "query",
+        "required": false,
+        "description": "Include conflicting public connections; suppressed connections are always excluded.",
+        "schema": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "source_id": {
+        "name": "source_id",
+        "in": "query",
+        "required": false,
+        "description": "Connections involving the selected source ID.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "graphLimit": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "description": "Graph page size, strictly 1 to 100; default 50.",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 50
+        }
+      },
+      "graphCursor": {
+        "name": "cursor",
+        "in": "query",
+        "required": false,
+        "description": "Last returned edge/entity UUID; continue descending UUID order. Check release_id and ruleset_version across pages because graph reads select the latest release and cannot be pinned.",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "graphQ": {
+        "name": "q",
+        "in": "query",
+        "required": false,
+        "description": "Entity name search; trimmed, at most 120 characters. Omitted/blank selects all eligible entities.",
+        "schema": {
+          "type": "string",
+          "maxLength": 120
+        }
+      },
+      "ifNoneMatch": {
+        "name": "If-None-Match",
+        "in": "header",
+        "required": false,
+        "description": "Previously returned ETag; an eligible unchanged representation returns 304.",
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "responses": {
+      "Invalid": {
+        "description": "Invalid query or path. Application validation returns the V2 error envelope; malformed framework extraction can return plain text.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          },
+          "text/plain": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "Unavailable": {
+        "description": "Database, pool, public projection or eligible artifact unavailable. Application errors use the V2 envelope; middleware may return an empty 503.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Limited": {
+        "description": "Request rate exceeded (currently 60 requests per client per 60 seconds).",
+        "headers": {
+          "Retry-After": {
+            "description": "Seconds before retrying.",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Internal": {
+        "description": "Release/location query or transaction failure. May return a V2 JSON error or a plain-text transaction failure.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          },
+          "text/plain": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "NoRelease": {
+        "description": "No promoted eligible release/profile; private candidates are never substituted.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Gone": {
+        "description": "Release withdrawn, profile mismatch, or current tile suppression generation revoked.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "NotModified": {
+        "description": "Eligible representation unchanged.",
+        "headers": {
+          "ETag": {
+            "schema": {
+              "type": "string"
+            }
+          },
+          "Cache-Control": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  },
+  "x-uec-contract-source": "docs/api/v2-contract.json",
+  "x-uec-schema-source": "docs/api/v2-location.schema.json"
+}

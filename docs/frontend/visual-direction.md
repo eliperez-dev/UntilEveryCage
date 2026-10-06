@@ -24,6 +24,13 @@ The implementation should self-host only fonts whose licensing and loading cost
 are understood; system fallbacks are acceptable and preferable to a blocking
 font request.
 
+The maintainer's 2026-10-04 density revision sets About and Contribute body
+copy around 14–15px, including Help and API guidance, page headings around 28–32px, and section headings around
+16–20px. Keep mobile headings proportionate. Use short copy, ordinary labels
+and only the headings needed to navigate the content; avoid large hero type.
+The embedded Swagger explorer follows the same dark, compact direction without
+changing shared page or masthead styles. Load its assets only on the API page.
+
 ## Palette intent
 
 The base is near-black charcoal with layered graphite surfaces, warm off-white
@@ -48,6 +55,11 @@ inferred edge is not colored or worded as exact.
 - Borders and rules carry hierarchy better than shadows.
 - Map overlays should be translucent only where contrast remains reliable.
 - Avoid full-screen cards inside cards; use a single detail surface with sections.
+
+For informational and contribution pages, start content about 24px below the
+masthead, use roughly 16–24px between sections and 10–14px between form fields.
+Keep interactive targets usable. Remove decorative chapter labels and repeated
+callouts; retain map attribution and required public publication warnings.
 
 ## Components
 

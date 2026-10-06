@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import type { ProxyOptions } from 'vite';
+import { publicReferenceAssets } from './scripts/publicReferenceAssets';
 
 export default defineConfig(({ command }) => {
   // The secret exists only in this local dev-server process. It is never placed
@@ -10,17 +11,18 @@ export default defineConfig(({ command }) => {
   const realPreviewMapSource = localRealPreview
     ? process.env.VITE_REAL_PREVIEW_MAP_SOURCE ?? 'mvt'
     : undefined;
+  const apiOrigin = process.env.VITE_API_ORIGIN ?? 'http://127.0.0.1:8000';
   const realPreviewProxy: Record<string, string | ProxyOptions> = {};
   if (previewToken && process.env.VITE_LOCAL_DATA_MODE === 'real-preview') {
     realPreviewProxy['/dev/real-preview'] = {
-      target: process.env.VITE_API_ORIGIN ?? 'http://127.0.0.1:38001',
+      target: process.env.UEC_REAL_PREVIEW_API_ORIGIN ?? process.env.VITE_API_ORIGIN ?? 'http://127.0.0.1:38001',
       changeOrigin: false,
       configure(proxy) {
         proxy.on('proxyReq', request => request.setHeader('x-uec-dev-preview-token', previewToken));
       },
     };
   }
-  const localApiProxy = { '/api': { target: 'http://127.0.0.1:8000', changeOrigin: false }, ...realPreviewProxy };
+  const localApiProxy = { '/api': { target: apiOrigin, changeOrigin: false }, ...realPreviewProxy };
   const previewModeMeta = {
     name: 'uec-local-data-mode',
     transformIndexHtml(html: string) {
@@ -29,9 +31,9 @@ export default defineConfig(({ command }) => {
   };
 
   return {
-    base: localRealPreview ? '/' : '/v2-preview/',
+    base: process.env.UEC_COMBINED_PREVIEW === 'true' ? '/v2-preview/' : localRealPreview ? '/' : '/v2-preview/',
     publicDir: 'public',
-    plugins: [svelte(), previewModeMeta],
+    plugins: [svelte(), previewModeMeta, publicReferenceAssets()],
     define: realPreviewMapSource
       ? { 'import.meta.env.VITE_REAL_PREVIEW_MAP_SOURCE': JSON.stringify(realPreviewMapSource) }
       : {},

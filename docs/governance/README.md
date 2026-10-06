@@ -9,7 +9,7 @@ status, privacy, suppression, and claim evidence.
 | [Ethics changelog](ethics-changelog.md) | **Canonical** | Approved policy amendments. |
 | [Policy implementation tasks](policy-implementation-todo.md) | **Canonical** | Open implementation gaps; not proof that controls exist. |
 | [Suppression runbook](suppression-runbook.md) and [private data removal runbook](private-data-removal-runbook.md) | **Canonical** | Restriction, removal, and recovery procedures. |
-| [Community contributions and accounts proposal](user-submitted-data.md) | **Canonical** | Recommended MVP, screening workload, submission/review boundaries and later acceptance gates; not implemented or launch-approved. |
+| [Community contributions and accounts proposal](user-submitted-data.md) | **Canonical** | Approved local MVP scope, screening workload, submission/review boundaries, and remaining integration/launch gates. |
 | [Visitor privacy inventory](visitor-privacy-inventory.md) | **Reference** | Current privacy surface inventory. |
 | [V2 MVP claim/evidence ledger](v2-mvp-claim-evidence.json) | **Generated** | Claim-to-implementation evidence map. |
 

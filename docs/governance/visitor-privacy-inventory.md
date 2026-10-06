@@ -18,6 +18,7 @@ published.
 | Geocoding pipeline (`pipeline/geocoding`, `pipeline/config`) | Restricted operational address queries only; not visitor location | Restricted pipeline logs; provider retention and deletion limits unresolved | Pipeline maintainer | Development-only provider gate |
 | Analytics/error reporting | No analytics or error-reporting integration found by repository search | Deployment/CDN/provider behavior still unknown | Maintainer to audit | No “no tracking” or “no logging” claim follows |
 | Application diagnostics (`/health/diagnostics`) | No request payload, address, path, or forwarded address in response | Returns coarse control status only | Service operator | Implemented and covered by Rust contract; host logs still unknown |
+| Local community intake/status (2026-10-05 code review) | Contributor-entered fields and optional contact email in POST bodies; status ID/receipt in a separate POST body | Contact is stored separately, omitted from queue/public/status responses; receipts are hashed server-side and copied only by explicit user action | Local operator chooses bounded claim/contact/receipt retention; expiry needs a maintenance caller | No email delivery/account/recovery; current disposable test uses one day. Receipt/contact never enter URLs/browser storage. Production remains disabled; deployment logging and idle expiry scheduling are unproved. |
 
 Repository search found no `navigator.geolocation` use. Visitor location entry is
 optional and device geolocation must not be required. Precise visitor

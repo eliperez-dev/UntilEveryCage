@@ -14,7 +14,7 @@ decisions and contracts. Product scope and launch sequencing belong to
 | [API location contract](api-location-contract.md) | **Canonical** | Location and precision semantics. |
 | [Database import contract](database-import-contract.md) | **Canonical** | Private import boundary. |
 | [Release manifest verification](release-manifest-verification.md) | **Canonical** | Release integrity requirements. |
-| [Source rights decisions](source-rights-decisions.md) | **Canonical** | Recorded rights and access decisions. |
+| [Source rights decisions](source-rights-decisions.md) | **Canonical** | Recorded rights/access decisions and code, compilation, dependency and contribution license alignment. |
 | [Identity review](d4-identity-review.md) | **Canonical** | Identity-candidate review measures; synthetic controls remain distinct from adjudicated accuracy. |
 | [V1–V2 reconciliation](v1-v2-reconciliation.md) | **Reference** | Migration and coexistence model. |
 | [API contracts](../api/v2-contract.md) | **Canonical** | Public and private API contract index; related contracts are linked there. |

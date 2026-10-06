@@ -5,53 +5,109 @@
     mapHref,
     databaseHref,
     debugEnabled = false,
+    privateTools = false,
     ondebugchange,
   }: {
-    current: "map" | "database" | "methodology";
+    current: "map" | "database" | "methodology" | "about" | "contribute";
     mapHref: string;
     databaseHref: string;
     debugEnabled?: boolean;
+    privateTools?: boolean;
     ondebugchange?(enabled: boolean): void;
   } = $props();
 
   const logo = `${import.meta.env.BASE_URL}assets/icon.png`;
-  const methodologyHref = $derived(`#/methodology?map=${encodeURIComponent(mapHref)}`);
+  const context = $derived(mapHref === '#/map' ? '' : `map=${encodeURIComponent(mapHref)}`);
+  const aboutHref = $derived(`#/about${context ? `?${context}` : ''}`);
+  const contributeHref = $derived(`#/contribute${context ? `?${context}` : ''}`);
+  const menuHref = (path: string) => `#/${path}${context ? `?${context}` : ''}`;
+  type NavSection = 'about' | 'database';
+  let navOpen = $state<NavSection | null>(null);
+  let dismissedSection: NavSection | null = null;
+  let hoveredSection: NavSection | null = null;
+  let keyboardInput = true;
+  let keyboardFocusedSection: NavSection | null = null;
+  let navArea: HTMLElement;
+  let aboutLink: HTMLAnchorElement;
+  let databaseLink: HTMLAnchorElement;
+  let navFocusTarget: HTMLElement | undefined;
+  let restoringNavFocus = false;
+  const parentLink = (section: NavSection) => section === 'about' ? aboutLink : databaseLink;
+  function openNav(section: NavSection, focusFirst = false, trigger: HTMLElement = parentLink(section)) {
+    dismissedSection = null; releaseOpen = false; toolsOpen = false;
+    navOpen = section; navFocusTarget = trigger;
+    if (focusFirst) void tick().then(() => navArea?.querySelector<HTMLAnchorElement>(`#shared-${section}-nav a`)?.focus());
+  }
+  function hoverNav(section: NavSection, event: PointerEvent) {
+    if (event.pointerType === 'touch') return;
+    keyboardInput = false; hoveredSection = section; openNav(section);
+  }
+  function leaveNav(section: NavSection, event: PointerEvent) {
+    if (event.pointerType === 'touch') return;
+    hoveredSection = null;
+    if (!(keyboardFocusedSection === section && (event.currentTarget as HTMLElement).contains(document.activeElement)) && navOpen === section) navOpen = null;
+  }
+  function focusNav(section: NavSection) {
+    if (keyboardInput) {
+      keyboardFocusedSection = section;
+      if (dismissedSection !== section) openNav(section);
+    }
+  }
+  function blurNav(section: NavSection, event: FocusEvent) {
+    if (event.relatedTarget instanceof Node && (event.currentTarget as HTMLElement).contains(event.relatedTarget)) return;
+    if (keyboardFocusedSection === section) keyboardFocusedSection = null;
+    if (navOpen === section && hoveredSection !== section) navOpen = null;
+    if (!restoringNavFocus && dismissedSection === section) dismissedSection = null;
+  }
+  function touchNav(section: NavSection, trigger: HTMLButtonElement) {
+    if (navOpen === section) closeMenus(); else openNav(section, false, trigger);
+  }
   let toolsOpen = $state(false);
   let releaseOpen = $state(false);
-  let accountOpen = $state(false);
-  let actionArea: HTMLDivElement;
-  let toolsButton: HTMLButtonElement;
-  let accountButton: HTMLButtonElement;
-  let releaseButton: HTMLButtonElement;
-  function closeMenus(returnFocus: "release" | "tools" | "account" | null = null) {
+  let actionArea = $state<HTMLDivElement>();
+  let toolsButton = $state<HTMLButtonElement>();
+  let releaseButton = $state<HTMLButtonElement>();
+  function closeMenus(returnFocus: "release" | "tools" | "about" | "database" | null = null) {
+    if (navOpen) dismissedSection = navOpen;
+    restoringNavFocus = returnFocus === "about" || returnFocus === "database";
+    navOpen = null;
     releaseOpen = false;
     toolsOpen = false;
-    accountOpen = false;
-    if (returnFocus) void tick().then(() => (returnFocus === "release" ? releaseButton : returnFocus === "tools" ? toolsButton : accountButton)?.focus());
+    if (returnFocus) void tick().then(() => {
+      (returnFocus === "release" ? releaseButton : returnFocus === "tools" ? toolsButton : navFocusTarget ?? parentLink(returnFocus as NavSection))?.focus();
+      restoringNavFocus = false;
+    });
   }
-  function toggleRelease() { toolsOpen = false; accountOpen = false; releaseOpen = !releaseOpen; }
-  function toggleTools() { releaseOpen = false; accountOpen = false; toolsOpen = !toolsOpen; }
-  function toggleAccount() { releaseOpen = false; toolsOpen = false; accountOpen = !accountOpen; }
+  function toggleRelease() { navOpen = null; toolsOpen = false; releaseOpen = !releaseOpen; }
+  function toggleTools() { navOpen = null; releaseOpen = false; toolsOpen = !toolsOpen; }
 </script>
 
-<svelte:window onkeydown={(event) => { if (event.key === "Escape" && (releaseOpen || toolsOpen || accountOpen)) { event.preventDefault(); closeMenus(releaseOpen ? "release" : toolsOpen ? "tools" : "account"); } }} onclick={(event) => { if ((releaseOpen || toolsOpen || accountOpen) && event.target instanceof Node && !actionArea?.contains(event.target)) closeMenus(); }} />
+<svelte:window onpointerdown={() => { keyboardInput = false; keyboardFocusedSection = null; }} onhashchange={() => closeMenus()} onkeydown={(event) => { keyboardInput = true; if (event.key === "Escape" && (navOpen || releaseOpen || toolsOpen)) { event.preventDefault(); closeMenus(navOpen ?? (releaseOpen ? "release" : toolsOpen ? "tools" : "tools")); } }} onclick={(event) => { if (event.target instanceof Node && !actionArea?.contains(event.target) && !navArea?.contains(event.target)) closeMenus(); }} />
 <header class="masthead">
   <a class="wordmark" href={mapHref} aria-label="Until Every Cage map home">
     <img src={logo} alt="" />
     <span>Until Every Cage</span>
   </a>
-  <nav aria-label="Primary">
-    <a href={mapHref} aria-current={current === "map" ? "page" : undefined}>Map</a>
-    <a href={databaseHref} aria-current={current === "database" ? "page" : undefined}>Database</a>
-    <a class="secondary-link" href={methodologyHref} aria-current={current === "methodology" ? "page" : undefined}>Methodology</a>
+  <nav aria-label="Primary" bind:this={navArea}>
+    <a href={mapHref} onclick={() => closeMenus()} aria-current={current === "map" ? "page" : undefined}>Map</a>
+    <div class="nav-group" role="group" onpointerenter={event => hoverNav('database', event)} onpointerleave={event => leaveNav('database', event)} onfocusin={() => focusNav('database')} onfocusout={event => blurNav('database', event)}>
+      <a bind:this={databaseLink} class="nav-parent" href={databaseHref} aria-current={current === 'database' ? 'page' : undefined} aria-expanded={navOpen === 'database'} aria-controls="shared-database-nav" onclick={() => closeMenus()} onkeydown={(event) => { if (event.key === 'ArrowDown') { event.preventDefault(); openNav('database', true); } }}>Database</a>
+      <button class="touch-pages" type="button" aria-label="Show Database pages" aria-expanded={navOpen === 'database'} aria-controls="shared-database-nav" onclick={event => touchNav('database', event.currentTarget)}>…</button>
+      {#if navOpen === 'database'}<div id="shared-database-nav" class="nav-dropdown" aria-label="Database destinations"><a href={databaseHref} onclick={() => closeMenus()}>Browse records</a><a href={menuHref('database/downloads')} onclick={() => closeMenus()}>Downloads</a><a href={menuHref('database/api')} onclick={() => closeMenus()}>API documentation</a></div>{/if}
+    </div>
+    <a class="secondary-link" href={contributeHref} onclick={() => closeMenus()} aria-current={current === "contribute" ? "page" : undefined}>Contribute</a>
+    <div class="nav-group" role="group" onpointerenter={event => hoverNav('about', event)} onpointerleave={event => leaveNav('about', event)} onfocusin={() => focusNav('about')} onfocusout={event => blurNav('about', event)}>
+      <a bind:this={aboutLink} class="nav-parent" href={aboutHref} aria-current={current === 'about' || current === 'methodology' ? 'page' : undefined} aria-expanded={navOpen === 'about'} aria-controls="shared-about-nav" onclick={() => closeMenus()} onkeydown={(event) => { if (event.key === 'ArrowDown') { event.preventDefault(); openNav('about', true); } }}>About</a>
+      <button class="touch-pages" type="button" aria-label="Show About pages" aria-expanded={navOpen === 'about'} aria-controls="shared-about-nav" onclick={event => touchNav('about', event.currentTarget)}>…</button>
+      {#if navOpen === 'about'}<div id="shared-about-nav" class="nav-dropdown about-dropdown" aria-label="About destinations">
+        <a href={aboutHref} onclick={() => closeMenus()}>Overview</a><a href={menuHref('about/sources')} onclick={() => closeMenus()}>Sources & methodology</a><a href={menuHref('about/faq')} onclick={() => closeMenus()}>FAQ</a><a href={menuHref('about/help')} onclick={() => closeMenus()}>Help</a>
+      </div>{/if}
+    </div>
   </nav>
-  <div class="masthead-actions" bind:this={actionArea}>
+  {#if privateTools}<div class="masthead-actions" bind:this={actionArea}>
     <button bind:this={releaseButton} type="button" class="header-action preview-action" aria-expanded={releaseOpen} aria-controls="shared-release-menu" onclick={toggleRelease}>Preview</button>
     <button bind:this={toolsButton} type="button" class="header-action tools-action" aria-expanded={toolsOpen} aria-controls="shared-tools-menu" onclick={toggleTools}>
       <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg><span>Tools</span>
-    </button>
-    <button bind:this={accountButton} type="button" class="header-action account-action" aria-label="Account menu" aria-expanded={accountOpen} aria-controls="shared-account-menu" onclick={toggleAccount}>
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20c.4-4.1 3-6.3 7.5-6.3s7.1 2.2 7.5 6.3"/></svg>
     </button>
     {#if releaseOpen}<aside id="shared-release-menu" class="header-menu release-menu" aria-label="Preview release">
       <header><strong>Preview release</strong><button type="button" aria-label="Close Preview release" onclick={() => closeMenus("release")}>×</button></header>
@@ -61,13 +117,8 @@
     {#if toolsOpen}<aside id="shared-tools-menu" class="header-menu tools-menu" aria-label="Tools">
       <header><strong><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> Map tools</strong><button type="button" aria-label="Close Tools" onclick={() => closeMenus("tools")}>×</button></header>
       <section><label class="toggle"><input type="checkbox" checked={debugEnabled} onchange={(event) => ondebugchange?.(event.currentTarget.checked)} /> Enable debug menu</label><small>Local development controls and diagnostics.</small></section>
-      <section><button type="button" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18"/></svg>Add a location · planned</button><small>Submissions require review before appearing on the map.</small></section>
     </aside>{/if}
-    {#if accountOpen}<aside id="shared-account-menu" class="header-menu account-menu" aria-label="Account">
-      <header><strong>Account</strong><button type="button" aria-label="Close Account" onclick={() => closeMenus("account")}>×</button></header>
-      <section><p>No account is connected.</p><button type="button" disabled>Sign in · planned</button></section>
-    </aside>{/if}
-  </div>
+  </div>{/if}
 </header>
 
 <style>
@@ -76,8 +127,8 @@
     grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     align-items: center;
     gap: 1.25rem;
-    min-height: 4.8rem;
-    padding: 0.75rem clamp(1rem, 3vw, 3.2rem);
+    min-height: 4rem;
+    padding: 0.5rem clamp(1rem, 3vw, 3.2rem);
     border-bottom: 1px solid #3d4740;
     background: #141916;
     color: #f1efe8;
@@ -93,33 +144,47 @@
     white-space: nowrap;
   }
   .wordmark img { width: 2rem; height: 2rem; }
-  nav { display: flex; gap: 1.2rem; font: 0.77rem ui-sans-serif, system-ui, sans-serif; }
+  nav { display: flex; align-items:center; gap: 1rem; font: 0.77rem ui-sans-serif, system-ui, sans-serif; }
   nav a { color: #aeb9af; text-decoration: none; }
   nav a[aria-current] { color: #f1efe8; text-decoration: underline; text-underline-offset: 0.35rem; }
   nav .secondary-link { margin-left:.2rem; padding-left:1rem; border-left:1px solid #48524a; }
+  .nav-group{position:relative;display:flex;align-items:center;gap:.1rem}
+  .nav-parent{display:flex;align-items:center;min-height:2rem;padding:0;border:0;background:transparent;color:#aeb9af;cursor:pointer;font:inherit}
+  .nav-parent:hover,.nav-parent[aria-expanded="true"]{color:#fff}
+  .nav-parent[aria-current]{color:#f1efe8;text-decoration:underline;text-underline-offset:.35rem}
+  .touch-pages{display:none;-webkit-tap-highlight-color:transparent}
+  .nav-dropdown::before{content:"";position:absolute;left:0;right:0;top:-.6rem;height:.6rem}
+  .nav-dropdown{position:absolute;z-index:50;top:calc(100% + .5rem);left:0;display:grid;width:13rem;max-width:calc(100vw - 2rem);padding:.35rem;border:1px solid #536158;background:#171a18;box-shadow:0 .5rem 1rem #0007}
+  .nav-dropdown a{display:flex;align-items:center;min-height:2.35rem;padding:.4rem .6rem;color:#eee9df;font-size:.82rem;text-decoration:none}
+  .nav-dropdown a:hover{background:#2a332c}.about-dropdown{left:auto;right:0;width:14rem}
   .masthead-actions { position:relative; justify-self:end; display:flex; align-items:center; gap:.4rem; font-family:system-ui,sans-serif; }
   .header-action { display:flex; align-items:center; justify-content:center; gap:.4rem; min-height:2.1rem; padding:.3rem .45rem; border:1px solid #536158; background:#1a201c; color:#f1efe8; cursor:pointer; font:650 .68rem system-ui; }
   .preview-action { color:#c7d0c7; font-weight:600; }
   .header-action svg, .header-menu svg { width:1rem; height:1rem; flex:none; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
-  .account-action { width:2.1rem; padding:.3rem; }
   .header-menu { position:absolute; z-index:30; top:calc(100% + .65rem); right:0; width:min(19rem, calc(100vw - 1rem)); border:1px solid #536158; background:#171a18; color:#f1efe8; box-shadow:0 .7rem 1.5rem #0009; }
   .header-menu header { display:flex; align-items:center; justify-content:space-between; min-height:2.5rem; padding:.45rem .7rem; border-bottom:1px solid #48504b; }
   .header-menu header strong { display:flex; align-items:center; gap:.45rem; font-size:.77rem; }
   .header-menu header button { border:0; background:none; color:#f1efe8; cursor:pointer; font-size:1.2rem; }
   .header-menu section { display:grid; gap:.35rem; padding:.7rem; border-bottom:1px solid #343a36; }
   .header-menu label, .header-menu h2 { margin:0; font-size:.7rem; font-weight:650; }
-  .header-menu select, .header-menu section button { width:100%; min-height:2rem; padding:.35rem .5rem; border:1px solid #5c665e; background:#202622; color:#f1efe8; text-align:left; font:.7rem system-ui; }
-  .header-menu section button { display:flex; align-items:center; gap:.5rem; }
-  .header-menu section button:disabled { color:#b8c0b8; cursor:not-allowed; }
   .header-menu .toggle { display:flex; align-items:center; gap:.55rem; min-height:2rem; cursor:pointer; }
   .header-menu p, .header-menu small { margin:0; color:#b9c2b9; font-size:.64rem; line-height:1.4; }
   a:focus-visible, button:focus-visible, select:focus-visible { outline:2px solid #eee7d6; outline-offset:2px; }
+  @media (any-pointer:coarse) {
+    .touch-pages{display:inline-flex;align-items:center;justify-content:center;min-width:2.75rem;min-height:2.75rem;padding:0;border:0;background:transparent;color:#aeb9af;cursor:pointer;font:1.2rem system-ui,sans-serif}
+    nav > a,.nav-parent{display:flex;align-items:center;min-height:2.75rem}
+  }
+  @media (max-width: 60rem) {
+    .masthead{grid-template-columns:minmax(0,1fr) auto;gap:.35rem 1rem;padding:.55rem 1rem}
+    nav{grid-column:1 / -1;grid-row:2;justify-content:center;gap:1.2rem}
+    .masthead-actions{grid-column:2;grid-row:1}
+  }
   @media (max-width: 50rem) {
     .masthead { gap: 0.7rem; padding-inline: 0.75rem; }
-    .masthead { grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); }
+    .masthead { grid-template-columns:minmax(0,1fr) auto; }
   }
   @media (max-width: 25rem) {
-    .wordmark span { display: none; }
+    .wordmark{font-size:.9rem}.wordmark img{width:1.6rem;height:1.6rem}
     .masthead { min-height: 3.9rem; }
     .preview-action, .tools-action span { display:none; }
     .masthead-actions { gap:.25rem; }

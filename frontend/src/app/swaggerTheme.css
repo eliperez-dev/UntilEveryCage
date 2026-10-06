@@ -1,0 +1,26 @@
+:host{font:14px/1.5 system-ui,sans-serif;color:#eee9df;color-scheme:dark;display:block;min-width:0}
+.swagger-ui{color:#eee9df;font-family:system-ui,sans-serif}
+.swagger-ui .wrapper{padding:0;max-width:none}.swagger-ui .information-container{display:none}.swagger-ui .scheme-container{margin:0 0 1rem;padding:.5rem 0;background:transparent;box-shadow:none}
+.swagger-ui .opblock-tag{padding:.6rem 0;font-size:18px;border-bottom:1px solid #48524a;color:#eee9df}.swagger-ui .opblock{box-shadow:none;border-color:#536158;border-radius:2px;background:#1d2520}.swagger-ui .opblock.opblock-get{background:#1b2822;border-color:#5d796a}.swagger-ui .opblock.opblock-get .opblock-summary{border-color:#5d796a}.swagger-ui .opblock.opblock-get .opblock-summary-method{background:#395f4c;color:#fff}.swagger-ui .opblock-summary-path,.swagger-ui .opblock-summary-description,.swagger-ui .opblock-description-wrapper p,.swagger-ui .opblock-title_normal,.swagger-ui .opblock-title,.swagger-ui .response-col_status,.swagger-ui .response-col_description,.swagger-ui .parameter__name,.swagger-ui .parameter__type,.swagger-ui .parameter__in,.swagger-ui .parameter__deprecated,.swagger-ui .prop-type,.swagger-ui .prop-format,.swagger-ui .model,.swagger-ui label,.swagger-ui table thead tr th,.swagger-ui table thead tr td,.swagger-ui .tab li,.swagger-ui .info p,.swagger-ui .info li,.swagger-ui .renderedMarkdown,.swagger-ui .servers-title{color:#eee9df}
+.swagger-ui .opblock-summary-path{font-size:13px;overflow-wrap:anywhere;word-break:break-word;min-width:0}.swagger-ui .opblock-summary-description{font-size:13px}.swagger-ui .opblock .opblock-section-header{background:#252f29;box-shadow:none}.swagger-ui .opblock .opblock-section-header h4{color:#eee9df;font-size:14px}.swagger-ui .opblock-description-wrapper,.swagger-ui .opblock-external-docs-wrapper,.swagger-ui .opblock-title_normal{font-size:14px;padding:.75rem}
+.swagger-ui .btn{color:#eee9df;border-color:#87998a;border-radius:2px;box-shadow:none}.swagger-ui .btn.execute{background:#395f4c;border-color:#8aa695}.swagger-ui input[type=text],.swagger-ui textarea,.swagger-ui select{background:#202523;color:#f4f1e9;border:1px solid #59615c;border-radius:2px;font-size:14px;max-width:100%;box-sizing:border-box}.swagger-ui select option{background:#202523}.swagger-ui .model-box,.swagger-ui .model-container{background:#202523}.swagger-ui .highlight-code{background:#111915}.swagger-ui .opblock-body pre.microlight{background:#111915;color:#e3e8dd;overflow:auto;max-width:100%}.swagger-ui a{color:#c8dcc6}.swagger-ui svg{fill:#d5ddd2}.swagger-ui .topbar,.swagger-ui .auth-wrapper{display:none}.swagger-ui .servers select{width:auto;min-width:12rem}.swagger-ui .opblock-summary{align-items:flex-start}.swagger-ui .opblock-summary-control{min-width:0}.swagger-ui table{table-layout:fixed}.swagger-ui td,.swagger-ui th{overflow-wrap:anywhere}.swagger-ui .parameters-col_name{width:30%}.swagger-ui .parameters-col_description{width:70%}.swagger-ui .response-col_status{width:4rem}.swagger-ui .response-col_links{display:none}.swagger-ui .parameter__name{font-size:13px}.swagger-ui .parameter__name.required:after{color:#e5b291}.swagger-ui .copy-to-clipboard{display:none}
+.swagger-ui :focus-visible{outline:2px solid #eee7d6;outline-offset:2px}
+@media(max-width:40rem){.swagger-ui .opblock-summary-description{display:none}.swagger-ui .opblock-summary-path{font-size:12px}.swagger-ui .opblock-summary-method{min-width:3rem;font-size:12px}.swagger-ui .opblock-tag{font-size:16px}.swagger-ui .opblock-body{padding:0}.swagger-ui .opblock-section-header{padding:.5rem}.swagger-ui .parameters-col_name{width:37%}.swagger-ui .parameters-col_description{width:63%}.swagger-ui .opblock-description-wrapper{padding:.65rem}.swagger-ui .btn{padding:.4rem .7rem}.swagger-ui .opblock-summary-control{gap:.2rem}}
+
+/* Match the operation hierarchy so Swagger's default dark colors cannot win. */
+.swagger-ui .opblock .opblock-summary .opblock-summary-path,
+.swagger-ui .opblock .opblock-summary .opblock-summary-path a,
+.swagger-ui .opblock .opblock-summary .opblock-summary-description{color:#eee9df}
+.swagger-ui .opblock-tag svg,
+.swagger-ui .opblock-tag svg path,
+.swagger-ui .opblock .opblock-summary svg,
+.swagger-ui .opblock .opblock-summary svg path{fill:#d5ddd2;stroke:#d5ddd2}
+@media(max-width:40rem){
+ .swagger-ui table.parameters thead{display:none}
+ .swagger-ui table.parameters tbody,.swagger-ui table.parameters tbody tr{display:block;width:100%}
+ .swagger-ui table.parameters tbody tr{padding:.75rem 0;border-bottom:1px solid #425149}
+ .swagger-ui table.parameters .parameters-col_name,.swagger-ui table.parameters .parameters-col_description{display:block;width:100%;padding:0}
+ .swagger-ui table.parameters .parameters-col_name{margin-bottom:.4rem}
+ .swagger-ui table.parameters .parameters-col_description input,.swagger-ui table.parameters .parameters-col_description select{width:100%;max-width:100%}
+ .swagger-ui table.parameters .parameters-col_description .renderedMarkdown p{margin:.3rem 0 .5rem;line-height:1.5}
+}

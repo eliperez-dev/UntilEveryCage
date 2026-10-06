@@ -2,15 +2,70 @@
 
 ## Top-level model
 
-The public product has one compact header and two primary destinations:
+The public product has one compact header. Map and Database are the discovery
+destinations; Contribute and About remain visible alongside them:
 
 ```
-Until Every Cage     MAP        DATABASE        About / Methodology      [release context]
+Until Every Cage     MAP        DATABASE     |     CONTRIBUTE        ABOUT
 ```
 
-The header is not a dashboard. It should remain available without competing
-with the current task. On narrow screens, Map and Database become a two-item
-segmented navigation control; secondary links move into an accessible menu.
+The header remains available without competing with the current task. On narrow
+screens, all four links remain reachable without horizontal overflow.
+Contribute opens the facility form by default. A compact row of visible task
+links, labeled **Choose a contribution type**, changes the fields for facility, evidence, correction, duplicate,
+privacy/removal and bug reports. It also
+provides receipt lookup and the existing project links. Bug
+reports use an email template or a GitHub issue; they are not facility claims
+and do not require a contributor account. About contains the
+Overview (the manifesto), Sources & methodology, FAQ and Help. Database groups
+Browse records, Downloads and API documentation. The old manifesto URL and
+methodology route remain working aliases. Contribute is a direct header link;
+Database and About are links to Browse records and Overview respectively.
+Hovering or keyboard focus reveals their text-only subpage menus, without
+arrows. Title clicks and Enter navigate normally; a separate touch-only pages
+control opens subpages. Escape dismisses the menu and restores focus, and the
+pointer can move from title to menu without losing it. Existing
+contribution links preselect the form type. Navigation preserves the active
+local preview mode when returning to Map or Database. Every surface uses the
+same styled masthead, including informational pages and status lookup. Overview
+and Contribute explicitly invite developers to contribute to the open-source
+code on GitHub; software and data licensing remain distinct.
+
+Help lives under About rather than adding a primary destination. It supplies
+short written workflows with optional, controlled tutorial videos using native
+controls and no autoplay. Written steps remain usable without the media. Only
+blank or synthetic UI may appear in committed tutorials; private preview rows,
+submission payloads, receipt credentials and operator screens are excluded.
+Evidence guidance identifies the existing record being supported and explains
+that review precedes a change to the published record.
+
+API documentation contains a lazily loaded, self-hosted Swagger UI for the
+implemented public data GET routes, generated from the canonical
+[public OpenAPI document](../api/public-openapi.json). It defaults to the curated
+profile and same-origin API, with no private, intake or write operations. CSV
+exports cover the selected public profile and are limited to 1,000 records;
+they do not export the current browser filters. Larger datasets use paginated JSON. A local
+preview is not a downloadable public release, and bulk release packages have no
+public download route yet.
+
+Routes are `#/about/help`, `#/about/faq`, `#/database/downloads` and
+`#/database/api`; `#/about/api` remains an alias. Navigation retains the active
+Map/Database context. Downloads links to available formats, reuse terms and
+field definitions. A compact footer supplies project/support/code links and
+keeps software licensing distinct from data reuse terms.
+
+The footer takes V1's independent-project identity, short disclosure and
+credits into compact paragraphs. Contact and support are inline links;
+software licensing and data reuse terms remain distinct. Credit the original
+website's inspiration without implying removed V1 features exist in V2.
+Do not duplicate navigation or task menus in the footer. It remains below
+non-map content rather than covering the map.
+
+Receipt success explains and offers explicit copy actions for the Submission
+ID and Private receipt. Status requires both in the request body; neither is
+persisted in a URL or browser storage. Existing record details expose Copy
+record ID and targeted contribution actions. Optional email is separate private
+contact information; delivery, accounts and recovery are unavailable.
 
 ### Routes
 
@@ -32,7 +87,7 @@ hop detail is insufficient.
 
 Every public route has:
 
-- a concise site identity and two primary destinations;
+- a concise site identity and consistent Map, Database, Contribute and About links;
 - a persistent release/profile/coverage notice that can expand for details;
 - a search affordance that routes to the appropriate surface rather than
   silently changing contexts;
@@ -90,6 +145,13 @@ never hidden behind hover-only interactions. In the first implementation, the
 table's production scope must match the current public location/search DTO;
 evidence, event, source-record, and community rows remain design targets until
 their public record-index contract exists.
+
+The compact local browser uses clear table headings, readable metadata and
+labeled mobile rows. Show the detail surface only after selection. Category
+filters query the repository with `categoryKeys` and reset pagination; they
+must not filter only the currently loaded page. Result counts are explicitly
+loaded counts unless a verified query total is returned. Clear filters and
+selected chips make the current query visible.
 
 ## Shared record detail composition
 

@@ -5,6 +5,9 @@
  */
 
 import type { Map as MapLibreMap } from 'maplibre-gl';
+import { baseRasterPaint, createBaseStyle, type BasemapKind } from '../../map/baseMapStyle';
+export { baseRasterPaint, createBaseStyle };
+export type { BasemapKind };
 
 export const JSON_LOCATION_LAYER_IDS = [
   'clusters',
@@ -61,53 +64,6 @@ type MapLike = {
   removeLayer(id: string): void;
   removeSource(id: string): void;
 };
-
-export type BasemapKind = 'vector' | 'muted' | 'satellite';
-
-/** Desaturate existing OSM imagery without adding a provider or tile request. */
-export function baseRasterPaint(basemap: BasemapKind): Record<string, number> {
-  return basemap === 'muted'
-    ? { 'raster-saturation': -1, 'raster-contrast': 0.12, 'raster-brightness-min': 0.08, 'raster-brightness-max': 0.92 }
-    : { 'raster-saturation': 0, 'raster-contrast': 0, 'raster-brightness-min': 0, 'raster-brightness-max': 1 };
-}
-
-/** The deliberately restrained raster base style used by both data projections. */
-export function createBaseStyle(basemap: BasemapKind): Record<string, unknown> {
-  const base = basemap === 'satellite'
-    ? {
-        type: 'raster',
-        tiles: [
-          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        ],
-        tileSize: 256,
-        attribution: 'Tiles © Esri',
-      }
-    : {
-        type: 'raster',
-        tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-        tileSize: 256,
-        attribution: '© OpenStreetMap contributors',
-      };
-
-  return {
-    version: 8,
-    sources: {
-      base,
-      transport: {
-        type: 'raster',
-        tiles: [
-          'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}',
-        ],
-        tileSize: 256,
-        attribution: 'Transportation © Esri',
-      },
-    },
-    layers: [
-      { id: 'base', type: 'raster', source: 'base', paint: baseRasterPaint(basemap) },
-      { id: 'transport', type: 'raster', source: 'transport', paint: { 'raster-opacity': basemap === 'satellite' ? 0.72 : 0 } },
-    ],
-  };
-}
 
 /**
  * Attach the server-owned MVT hierarchy. City and coarse references begin only

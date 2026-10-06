@@ -22,10 +22,54 @@ test('map shell mounts and keeps Search, map modes, and navigation operable', as
   await muted.click();
   await expect(muted).toHaveAttribute('aria-pressed', 'true');
 
-  await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Database' }).click();
-  await expect(page.getByRole('heading', { name: 'Research index' })).toBeVisible();
+  await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Database', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Browse records' })).toBeVisible();
   await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Map' }).click();
   await expect(search).toBeVisible();
+});
+
+test('the four primary links retain the rich preview context across Contribute and About', async ({ page }) => {
+  test.skip(!process.env.UEC_REAL_PREVIEW_URL, 'Requires the isolated local preview fixture');
+  await page.route('https://tile.openstreetmap.org/**', route => route.abort());
+  await page.route('https://server.arcgisonline.com/**', route => route.abort());
+  await page.route('**/dev/real-preview/**', async route => {
+    const path = new URL(route.request().url()).pathname;
+    const body = path.endsWith('/counts')
+      ? { api_version: 'real-preview-v1', data: { facility_candidate_count: 0, numeric_coordinate_count: 0, city_postal_count: 0, map_visible_count: 0 } }
+      : path.endsWith('/facets')
+        ? { api_version: 'real-preview-v1', data: [] }
+        : { api_version: 'real-preview-v1', data: [], meta: { private_preview: true, next_cursor: null } };
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) });
+  });
+  const primary = page.getByRole('navigation', { name: 'Primary' });
+  await page.goto('/#/map?f1a=field&list=closed');
+  await expect(page.getByRole('button', { name: /Search map Places, facilities, sources/ })).toBeVisible();
+  for (const label of ['Map', 'Contribute']) await expect(primary.getByRole('link', { name: label })).toBeVisible();
+  await expect(primary.getByRole('link', { name: 'About', exact: true })).toBeVisible();
+
+  await primary.getByRole('link', { name: 'Contribute' }).click();
+  await expect(page.getByRole('heading', { name: 'Add a facility' })).toBeVisible();
+  await expect.poll(() => new URL(page.url()).hash).toContain('map=%23%2Fmap%3Ff1a%3Dfield');
+  const shellNav = page.getByRole('navigation', { name: 'Primary' });
+  for (const label of ['Map', 'Contribute']) await expect(shellNav.getByRole('link', { name: label })).toBeVisible();
+  await expect(shellNav.getByRole('link', { name: 'About', exact: true })).toBeVisible();
+
+  await shellNav.getByRole('link', { name: 'About', exact: true }).hover();
+  await page.locator('#shared-about-nav').getByRole('link', { name: 'Overview' }).click();
+  await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible();
+  await shellNav.getByRole('link', { name: 'Map' }).click();
+  await expect(page.getByRole('button', { name: /Search map Places, facilities, sources/ })).toBeVisible();
+  for (const label of ['Map', 'Contribute']) await expect(primary.getByRole('link', { name: label })).toBeVisible();
+  await expect(primary.getByRole('link', { name: 'About', exact: true })).toBeVisible();
+
+  await primary.getByRole('link', { name: 'Database', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Browse records' })).toBeVisible();
+  for (const label of ['Map', 'Contribute']) await expect(primary.getByRole('link', { name: label })).toBeVisible();
+  await expect(primary.getByRole('link', { name: 'About', exact: true })).toBeVisible();
+  expect(new URL(page.url()).hash).toContain('f1a=field');
+  await primary.getByRole('link', { name: 'Map' }).click();
+  await expect(page.getByRole('button', { name: /Search map Places, facilities, sources/ })).toBeVisible();
+  expect(new URL(page.url()).hash).toContain('f1a=field');
 });
 
 test('320px shell keeps the locator clear of counts and hides it behind Debug', async ({ page }) => {

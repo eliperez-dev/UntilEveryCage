@@ -8,8 +8,10 @@
     type RealPreviewFacet,
   } from "../api/RealPreviewRepository";
   import type { LabRecord } from "../design-lab/contract";
-  import { TAXONOMY_PRIMARY_KEYS, taxonomyMatchesFilters, type TaxonomyPrimaryKey } from "../domain/taxonomy";
+  import { TAXONOMY_PRIMARY_KEYS, type TaxonomyPrimaryKey } from "../domain/taxonomy";
   import { CATEGORY_PRESENTATIONS } from "../features/locations/categoryPresentation";
+  import RecordTable from './RecordTable.svelte';
+  import ProjectFooter from './ProjectFooter.svelte';
   import PreviewMasthead from "./PreviewMasthead.svelte";
   const repository = createRealPreviewRepository();
   type Status = "loading" | "ready" | "empty" | "error" | "unauthorized";
@@ -34,20 +36,20 @@
   const sourceLabel = (value: string | null) => value ?? "All source feeds";
   const treatment = (record: LabRecord) =>
     record.sourceId === 'us.fsis' && record.coordinatePrecision === 'source-provided'
-      ? 'Source-provided coordinate · precision unverified · private rehearsal, not approved'
+      ? 'Source-provided · precision unverified'
       : record.defaultMapScope === false
-      ? `Outside the default map scope${record.mapScopeReason ? ` · ${record.mapScopeReason.replaceAll('_', ' ')}` : ''} · list/search only`
+      ? 'Outside default map scope'
       : record.latitude === null || record.longitude === null
-      ? "No map position · list/search only"
+      ? "Unmapped"
       : record.precision === "city"
-        ? "Administrative city reference · approximate"
+        ? "City-level approximation"
         : record.precision === "coarse"
-          ? "City or postal reference · approximate"
+          ? "City/postal approximation"
           : record.precision === "exact"
-            ? "Numeric source coordinate · pending review"
+            ? "Source coordinate · awaiting review"
             : record.coordinatePrecision === "source-precision-unknown"
-              ? "Approximate source coordinate · precision unknown"
-              : "Approximate source coordinate · pending review";
+              ? "Approximate · precision unknown"
+              : "Approximate · awaiting review";
   const statusText = (record: LabRecord) =>
     record.publicationStatus?.replaceAll("_", " ") ?? "Not supplied";
   const mapHref = (id = selectedId, focusSelected = false) => {
@@ -135,6 +137,7 @@
       const page = await repository.list({
         query,
         sourceId,
+        categoryKeys: selectedCategories,
         cursor: reset ? null : nextCursor,
         limit: 100,
         signal: controller.signal,
@@ -172,18 +175,24 @@
   const sources = $derived(
     [...new Set(facets.map((facet) => facet.sourceId))].sort(),
   );
-  const filteredRecords = $derived(records.filter(record => taxonomyMatchesFilters(record, selectedCategories, null)));
   function toggleCategory(key: TaxonomyPrimaryKey, checked: boolean) {
     selectedCategories = checked
       ? [...new Set([...selectedCategories, key])]
       : selectedCategories.filter(value => value !== key);
+    selectedId = null; void load(true);
+  }
+  function clearFilters() {
+    selectedCategories = []; selectedId = null;
+    if (searchTimer) clearTimeout(searchTimer);
+    const changed = !!query || sourceId !== null;
+    write({ query: '', sourceId: null, selectedId: null });
+    if (!changed) void load(true);
   }
   const noMap = $derived(
     records.filter(
       (record) => record.defaultMapScope === false || record.latitude === null || record.longitude === null,
     ).length,
   );
-  const mapped = $derived(records.length - noMap);
   const selected = $derived(
     records.find((record) => record.id === selectedId) ?? null,
   );
@@ -212,18 +221,12 @@
 
 <svelte:head><title>Until Every Cage — Database</title></svelte:head>
 <div class="database-research">
-  <PreviewMasthead current="database" mapHref={mapHref()} databaseHref="#/database" />
+  <PreviewMasthead privateTools current="database" mapHref={mapHref()} databaseHref="#/database" />
   <main aria-labelledby="database-title">
     <section class="intro">
       <div>
-        <p class="eyebrow">DATABASE / PRIVATE PREVIEW</p>
-        <h1 id="database-title">Research index</h1>
-        <p>
-          Search all accessible preview candidates—not just the current map view.
-          Search names, activities, sources, cities, and postal codes across
-          the private index. Records without map positions remain in these
-          paginated results.
-        </p>
+        <h1 id="database-title">Browse records</h1>
+        <p>Search private preview records by name, activity, source, or place. This data is not publication-approved.</p>
       </div>
       <dl class="index-context">
         <div>
@@ -231,8 +234,8 @@
           <dd>{sourceLabel(sourceId)}</dd>
         </div>
         <div>
-          <dt>Loaded working set</dt>
-          <dd>{records.length} records</dd>
+          <dt>Loaded records</dt>
+          <dd>{records.length} {records.length === 1 ? 'record' : 'records'}</dd>
         </div>
         <div>
           <dt>No-map in loaded records</dt>
@@ -240,7 +243,7 @@
         </div>
       </dl>
     </section>
-    <section class="index-shell" aria-label="Database search">
+    <section class="index-shell" class:has-selection={!!selected} aria-label="Database search">
       <aside class="facets" aria-label="Research filters">
         <label class="search-label" for="database-query"
           >Search records</label
@@ -283,17 +286,9 @@
           {#each TAXONOMY_PRIMARY_KEYS as key (key)}
             <label><input type="checkbox" checked={selectedCategories.includes(key)} onchange={(event) => toggleCategory(key, event.currentTarget.checked)} />{CATEGORY_PRESENTATIONS[key].label}</label>
           {/each}
-          <small>Applied to loaded results only; categories combine with the source feed.</small>
+
         </fieldset>
-        <section
-          class="precision-note"
-          aria-labelledby="location-treatment-title"
-        >
-          <h2 id="location-treatment-title">Location treatment</h2>
-          <p>Mapped in loaded records: {mapped}</p>
-          <p>Not on the default map in loaded records: {noMap}</p>
-          <small>Search covers safe name, activity, source, city, and postal fields. Evidence text is not searched.</small>
-        </section>
+        {#if query || sourceId || selectedCategories.length}<div class="active-filters" aria-label="Selected filters">{#if query}<button type="button" onclick={() => write({ query: '', selectedId: null })}>Search: {query} ×</button>{/if}{#if sourceId}<button type="button" onclick={() => write({ sourceId: null, selectedId: null })}>{sourceId} ×</button>{/if}{#each selectedCategories as key}<button type="button" onclick={() => toggleCategory(key, false)}>{CATEGORY_PRESENTATIONS[key].label} ×</button>{/each}<button type="button" onclick={clearFilters}>Clear filters</button></div>{/if}
       </aside>
       <section class="records" aria-live="polite">
         <header>
@@ -303,11 +298,11 @@
                 ? "Loading index"
                 : status === "empty"
                   ? "No matching records"
-                  : `${filteredRecords.length} matching loaded records`}</strong
+                  : `${records.length} ${records.length === 1 ? 'record' : 'records'} loaded`}</strong
             ><span>{query ? `Query: “${query}”` : "All accessible candidates"}</span>
           </p>
           <p class="quiet">
-            Results retain source and location context across API pages.
+            {nextCursor ? "More records available." : "End of results."}
           </p>
         </header>
         {#if status === "loading"}<div class="state-card" role="status">
@@ -332,43 +327,23 @@
             <button
               type="button"
               onclick={() =>
-                write({ query: "", sourceId: null, selectedId: null })}
-              >Clear search and source</button
+                clearFilters()}
+              >Clear filters</button
             >
-          </div>{:else if filteredRecords.length === 0}<div class="state-card"><strong>No loaded records match these categories.</strong><p>Change the activity category or load a different source and query.</p></div>{:else}<ol>
-            {#each filteredRecords as record (record.id)}<li
-                class:selected={record.id === selectedId}
-              >
-                <button
-                  type="button"
-                  onclick={() => write({ selectedId: record.id })}
-                  ><span class="record-name">{record.name}</span><span class="record-activity">{record.taxonomy?.leafActivities.map(activity => activity.label).join(' · ') || record.activityLabel || record.category}</span><span
-                    class="record-place"
-                    >{record.locality}, {record.country}</span
-                  ><span
-                    class:unmapped={record.defaultMapScope === false || record.latitude === null || record.longitude === null}
-                    class="record-treatment">{treatment(record)}</span
-                  ><span class="record-source"
-                    >{record.sourceName ?? record.sourceId ?? "Source unavailable"}</span
-                  ><span class="record-status">{statusText(record)}</span
-                  ></button
-                >
-              </li>{/each}
-          </ol>{/if}{#if status === "ready" && nextCursor}<button
+          </div>{:else}<RecordTable records={records.map(record => ({ id: record.id, name: record.name, activity: record.taxonomy?.leafActivities.map(activity => activity.label).join(' · ') || record.activityLabel || record.category, place: `${record.locality}, ${record.country}`, source: record.sourceName ?? record.sourceId ?? 'Unavailable', precision: treatment(record) }))} {selectedId} onselect={id => write({ selectedId: id })} />{/if}{#if status === "ready" && nextCursor}<button
             class="more"
             type="button"
             disabled={loadingMore}
             onclick={() => void load(false)}
-          >{loadingMore ? "Loading next page…" : "Load next page · 100 records"}</button
+          >{loadingMore ? "Loading next page…" : "Load more"}</button
           >{/if}
       </section>
-      <aside class="selection" aria-label="Selected record">
-        {#if selected}<p class="eyebrow">SELECTED PREVIEW CANDIDATE</p>
+      {#if selected}<aside class="selection" aria-label="Selected record"><button class="close-selection" type="button" onclick={() => write({ selectedId: null })}>Close details</button>
           <h2>{selected.name}</h2>
           <p>{selected.locality}, {selected.country}</p>
           <dl>
             <div>
-              <dt>Candidate ID</dt>
+              <dt>Record ID</dt>
               <dd>{selected.id}</dd>
             </div>
             <div>
@@ -408,374 +383,13 @@
           {#if selected.defaultMapScope !== false && selected.latitude !== null && selected.longitude !== null}<a class="dossier-link" href={mapHref(selected.id, true)}>Open on map <span>→</span></a>{/if}
           <p class="quiet">
             Fields not supplied by the current private-preview API remain unavailable.
-          </p>{:else}<p class="eyebrow">SELECT A RECORD</p>
-          <h2>Candidate data, with its limits.</h2>
-          <p>
-            Select a result to inspect the fields returned by the current
-            private-preview API.
           </p>
-          <p class="quiet">
-            Missing names, classifications, source links, and evidence are never inferred.
-          </p>{/if}
-      </aside>
+      </aside>{/if}
     </section>
   </main>
+  <ProjectFooter returnMapHref={mapHref()} />
 </div>
 
 <style>
-  .database-research {
-    --ink: #edf0e9;
-    --muted: #a9b0a9;
-    --line: #3c4640;
-    --panel: #151a17;
-    min-height: 100dvh;
-    background: #101412;
-    color: var(--ink);
-    font-family: ui-sans-serif, system-ui, sans-serif;
-  }
-  .database-research * {
-    box-sizing: border-box;
-  }
-  main {
-    max-width: 96rem;
-    margin: 0 auto;
-    padding: clamp(1.1rem, 3vw, 3.4rem);
-  }
-  .intro {
-    display: flex;
-    justify-content: space-between;
-    gap: 3rem;
-    padding: 0 0 2rem;
-    border-bottom: 1px solid var(--line);
-  }
-  .intro > div {
-    max-width: 44rem;
-  }
-  .eyebrow {
-    margin: 0 0 0.45rem;
-    color: #b9c7b8;
-    font:
-      0.6rem ui-monospace,
-      monospace;
-    letter-spacing: 0.13em;
-  }
-  .intro h1 {
-    margin: 0;
-    font:
-      500 clamp(2.1rem, 5vw, 4rem) / 0.95 Georgia,
-      serif;
-  }
-  .intro > div > p:last-child {
-    max-width: 38rem;
-    color: var(--muted);
-    font-size: 0.86rem;
-    line-height: 1.55;
-  }
-  .index-context {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(6.5rem, 1fr));
-    align-self: end;
-    margin: 0;
-    border-left: 1px solid var(--line);
-  }
-  .index-context div {
-    padding: 0.25rem 0.8rem;
-    border-right: 1px solid var(--line);
-  }
-  dt {
-    color: var(--muted);
-    font-size: 0.62rem;
-  }
-  dd {
-    margin: 0.3rem 0 0;
-    font-size: 0.76rem;
-    line-height: 1.35;
-  }
-  .index-shell {
-    display: grid;
-    grid-template-columns: 14rem minmax(0, 1fr) 17rem;
-    min-height: 34rem;
-    border: 1px solid var(--line);
-    border-top: 0;
-  }
-  .facets,
-  .selection {
-    padding: 1rem;
-    background: var(--panel);
-  }
-  .facets {
-    border-right: 1px solid var(--line);
-  }
-  .search-label,
-  legend {
-    display: block;
-    margin-bottom: 0.4rem;
-    color: var(--muted);
-    font-size: 0.66rem;
-  }
-  .facets input[type="search"] {
-    width: 100%;
-    padding: 0.65rem;
-    border: 1px solid #566159;
-    background: #0e1210;
-    color: var(--ink);
-    font: inherit;
-  }
-  .facets fieldset {
-    display: grid;
-    gap: 0.52rem;
-    margin: 1.2rem 0;
-    padding: 0;
-    border: 0;
-  }
-  .facets fieldset label {
-    font-size: 0.72rem;
-    line-height: 1.3;
-  }
-  .facets input[type="checkbox"] {
-    accent-color: #c9d5c4;
-  }
-  .facets input[type="radio"] {
-    accent-color: #c9d5c4;
-  }
-  .precision-note {
-    margin-top: 1.4rem;
-    padding-top: 0.8rem;
-    border-top: 1px solid var(--line);
-  }
-  .precision-note h2,
-  .selection h2 {
-    margin: 0;
-    font:
-      600 1rem Georgia,
-      serif;
-  }
-  .precision-note p {
-    margin: 0.45rem 0;
-    font-size: 0.73rem;
-  }
-  .precision-note small,
-  .quiet {
-    color: var(--muted);
-    font-size: 0.66rem;
-    line-height: 1.45;
-  }
-  .records {
-    min-width: 0;
-    background: #111613;
-  }
-  .records > header {
-    display: flex;
-    justify-content: space-between;
-    gap: 1rem;
-    padding: 0.8rem 1rem;
-    border-bottom: 1px solid var(--line);
-  }
-  .records > header p {
-    margin: 0;
-    font-size: 0.72rem;
-  }
-  .records > header span {
-    display: block;
-    margin-top: 0.18rem;
-    color: var(--muted);
-    font-size: 0.65rem;
-  }
-  .records ol {
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-  .records li {
-    border-bottom: 1px solid #2e3731;
-  }
-  .records li.selected {
-    background: #1b251d;
-    box-shadow: inset 2px 0 #b9c7b8;
-  }
-  .records li button {
-    display: grid;
-    grid-template-columns: 1.25fr 1.4fr 0.8fr 1.6fr 0.8fr 0.75fr;
-    gap: 0.65rem;
-    width: 100%;
-    padding: 0.74rem 1rem;
-    border: 0;
-    color: inherit;
-    background: transparent;
-    text-align: left;
-    cursor: pointer;
-  }
-  .records li button:hover {
-    background: #18201a;
-  }
-  .record-name {
-    font:
-      600 0.76rem Georgia,
-      serif;
-  }
-  .record-activity { color: #c7ccc5; font-size: .8rem; }
-  .taxonomy-assignment { display: block; padding: .2rem 0; }
-  .record-place,
-  .record-treatment,
-  .record-source,
-  .record-status {
-    color: var(--muted);
-    font-size: 0.66rem;
-    line-height: 1.35;
-  }
-  .record-treatment {
-    color: #cbd5c8;
-  }
-  .record-treatment.unmapped {
-    color: #decf9d;
-  }
-  .record-status {
-    text-transform: capitalize;
-  }
-  .more,
-  .state-card button {
-    margin: 1rem;
-    padding: 0.55rem 0.8rem;
-    border: 1px solid #657064;
-    background: #1e2820;
-    color: var(--ink);
-    font: 0.7rem system-ui;
-    cursor: pointer;
-  }
-  .more:disabled {
-    opacity: 0.6;
-    cursor: wait;
-  }
-  .state-card {
-    margin: 1rem;
-    padding: 1rem;
-    border: 1px solid #566159;
-    background: #171d19;
-    font-size: 0.77rem;
-  }
-  .state-card p {
-    color: var(--muted);
-    line-height: 1.45;
-  }
-  .state-card.error {
-    border-color: #8b5c4e;
-  }
-  .selection {
-    border-left: 1px solid var(--line);
-  }
-  .selection h2 {
-    margin: 0.25rem 0 0.7rem;
-    font-size: 1.15rem;
-  }
-  .selection > p:not(.eyebrow):not(.quiet) {
-    color: var(--muted);
-    font-size: 0.73rem;
-    line-height: 1.5;
-  }
-  .selection dl {
-    margin: 1rem 0;
-  }
-  .selection dl div {
-    padding: 0.58rem 0;
-    border-top: 1px solid var(--line);
-  }
-  .dossier-link {
-    display: flex;
-    justify-content: space-between;
-    gap: 0.5rem;
-    padding: 0.7rem;
-    border: 1px solid #839281;
-    color: var(--ink);
-    background: #1d271f;
-    font-size: 0.72rem;
-    text-decoration: none;
-  }
-  .dossier-link span {
-    font-size: 1rem;
-    line-height: 0.7;
-  }
-  .selection .quiet {
-    margin-top: 1rem;
-  }
-  @media (max-width: 62rem) {
-    .index-shell {
-      grid-template-columns: 13rem minmax(0, 1fr);
-    }
-    .selection {
-      grid-column: 1/-1;
-      border-top: 1px solid var(--line);
-      border-left: 0;
-    }
-    .selection dl {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 0.6rem;
-    }
-    .selection dl div {
-      border-top: 0;
-    }
-    .records li button {
-      grid-template-columns: 1.2fr 0.8fr 1.3fr 0.75fr;
-    }
-    .record-status {
-      display: none;
-    }
-  }
-  @media (max-width: 43rem) {
-    main {
-      padding: 1rem;
-      max-width: 100%;
-    }
-    .intro {
-      display: grid;
-      gap: 1.2rem;
-    }
-    .intro > div, .intro p, .facets, .records, .selection { min-width: 0; overflow-wrap: anywhere; }
-    .index-context {
-      align-self: auto;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-    .index-context div { min-width: 0; padding-inline: .5rem; }
-    .index-shell {
-      display: block;
-      border: 0;
-    }
-    .facets,
-    .records,
-    .selection {
-      border: 1px solid var(--line);
-    }
-    .facets {
-      border-bottom: 0;
-    }
-    .facets fieldset {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-    .facets fieldset label { min-width:0; overflow-wrap:anywhere; }
-    .precision-note {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0.3rem 0.8rem;
-    }
-    .precision-note h2,
-    .precision-note small {
-      grid-column: 1/-1;
-    }
-    .records li button {
-      grid-template-columns: 1fr 1fr;
-      padding: 0.75rem;
-    }
-    .record-treatment {
-      grid-column: 1/-1;
-    }
-    .record-source {
-      display: none;
-    }
-    .selection {
-      border-top: 0;
-    }
-    .selection dl {
-      grid-template-columns: 1fr;
-    }
-  }
+  .database-research{--ink:#edf0e9;--muted:#b9c3b7;--line:#3c4640;min-height:100dvh;background:#171a18;color:var(--ink);font:.9rem/1.5 system-ui,sans-serif}.database-research *{box-sizing:border-box}main{max-width:96rem;margin:auto;padding:1.5rem}.intro{display:flex;flex-wrap:wrap;justify-content:space-between;gap:1rem;padding-bottom:1rem;border-bottom:1px solid var(--line)}.intro>div{max-width:40rem}h1{margin:0 0 .75rem;font:500 2rem/1.15 Georgia,serif}.intro p{margin:0;color:var(--muted)}.index-context{display:flex;flex-wrap:wrap;gap:.6rem 1.5rem;margin:0;align-self:end}dt{color:var(--muted);font-size:.8rem}dd{margin:.2rem 0 0;font-size:.88rem;overflow-wrap:anywhere}.index-shell{display:grid;grid-template-columns:13rem minmax(0,1fr);border-bottom:1px solid var(--line)}.index-shell.has-selection{grid-template-columns:13rem minmax(0,1fr) 19rem}.facets{padding:1rem 1rem 1rem 0;border-right:1px solid var(--line)}.search-label,legend{display:block;margin-bottom:.4rem;font-size:.86rem;font-weight:600}.facets input[type=search]{width:100%;padding:.55rem;border:1px solid #59615c;background:#202523;color:var(--ink);font:inherit}.facets fieldset{display:grid;gap:.4rem;padding:0;border:0;margin:1rem 0}.facets fieldset label{font-size:.85rem}.facets input{accent-color:#c9d5c4}.active-filters{display:flex;flex-wrap:wrap;gap:.4rem}.active-filters button,.close-selection,.more,.state-card button{min-height:2rem;padding:.35rem .55rem;border:1px solid #657466;background:#252f28;color:var(--ink);font:.85rem system-ui;cursor:pointer}.records{min-width:0}.records>header{display:flex;flex-wrap:wrap;justify-content:space-between;gap:.5rem;padding:.85rem .75rem;border-bottom:1px solid var(--line)}.records>header p{margin:0}.records>header span{display:block;color:var(--muted);font-size:.82rem}.quiet{color:var(--muted);font-size:.82rem}.more{margin:1rem}.state-card{margin:1rem;font-size:.9rem}.state-card p{color:var(--muted)}.selection{min-width:0;padding:1rem;border-left:1px solid var(--line)}.selection h2{margin:.75rem 0 .5rem;font-size:1.15rem}.selection p{font-size:.9rem}.selection dl div{padding:.5rem 0;border-top:1px solid var(--line)}.taxonomy-assignment{display:block}.dossier-link{display:block;margin:.6rem 0;color:#dce8d9;text-underline-offset:.2em}.dossier-link span{float:right}button:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid #eee7d6;outline-offset:3px}@media(max-width:72rem){.index-shell.has-selection{grid-template-columns:13rem minmax(0,1fr)}.selection{grid-column:1/-1;border-left:0;border-top:1px solid var(--line)}}@media(max-width:43rem){main{padding:1.5rem 1rem}h1{font-size:1.75rem}.index-shell,.index-shell.has-selection{display:block}.facets{border-right:0;border-bottom:1px solid var(--line);padding:1rem 0}.facets fieldset{grid-template-columns:repeat(2,minmax(0,1fr))}.index-context{font-size:.82rem}.selection{padding:1rem 0}}
 </style>

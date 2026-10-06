@@ -1,6 +1,7 @@
 :root {
-  color: #202b36;
-  background: #fff;
+  color: #eee9df;
+  background: #171a18;
+  color-scheme: dark;
   font: 16px/1.5 system-ui, sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -8,13 +9,14 @@
 
 * { box-sizing: border-box; }
 
-body { margin: 0; }
+html, body, #app { min-height: 100%; }
+body { margin: 0; background: #171a18; color: #eee9df; }
 
-a { color: #145a86; }
+a { color: #dce8d9; }
 
 a:focus-visible,
 button:focus-visible {
-  outline: 3px solid #a4491d;
+  outline: 3px solid #d49a62;
   outline-offset: 3px;
 }
 
@@ -26,7 +28,8 @@ button:focus-visible {
   justify-content: space-between;
   gap: 2rem;
   min-height: 4.5rem;
-  border-bottom: 1px solid #d6dce1;
+  border-bottom: 1px solid #3d4740;
+  color: #f1efe8;
 }
 
 .wordmark { color: inherit; font-weight: 700; text-decoration: none; }
@@ -39,11 +42,11 @@ main { min-height: 65vh; padding: 3rem 0; }
 
 h1 { margin: 0 0 1rem; font-size: clamp(2rem, 5vw, 3rem); line-height: 1.1; }
 
-.state { max-width: 42rem; padding: 1.5rem; border: 1px solid #d6dce1; }
+.state { max-width: 42rem; padding: 1.5rem; border: 1px solid #46514a; color: #eee9df; }
 
 .record-id { overflow-wrap: anywhere; }
 
-button { min-height: 2.75rem; padding: .5rem 1rem; font: inherit; cursor: pointer; }
+button { min-height: 2.75rem; padding: .5rem 1rem; color: inherit; background: #222725; border: 1px solid #626a64; font: inherit; cursor: pointer; }
 
 /* Development-only design-lab structure. Direction agents own composition polish. */
 .lab { min-height: 100vh; color: #eee9df; background: #151718; font-family: Georgia, serif; }

@@ -1,6 +1,13 @@
 # V2 API contract
 
-The machine-readable contract is [v2-contract.json](v2-contract.json). Successful list/detail response shapes remain unchanged; additive metadata identifies release coverage and prevents facility rows from being mistaken for story-wide or animal totals. Errors use one additive, stable envelope:
+The machine-readable contract is [v2-contract.json](v2-contract.json). The
+[public OpenAPI document](public-openapi.json) describes the implemented public
+data GET routes for the frontend's **About → API & downloads** explorer. It
+reuses [the location schema](v2-location.schema.json); convergence tests guard
+route registration, effective parameters, references and public-only scope.
+Successful list/detail response shapes remain unchanged; additive metadata
+identifies release coverage and prevents facility rows from being mistaken for
+story-wide or animal totals. Explicit API errors generally use this envelope:
 
 The final backend boundary, including private exact/inferred graph semantics,
 is frozen in [v2-backend-contract-freeze.md](v2-backend-contract-freeze.md) and
@@ -13,13 +20,22 @@ contract; the graph contract does not make private edges public.
 
 Frontend clients should branch on HTTP status and `error.code`, display `message` only as user-safe text, and treat unknown codes as generic failures. A list request with no promoted eligible release is a successful empty response; an unavailable database is `503`; an absent or suppressed detail is `404`; rate limiting is `429` with `Retry-After`.
 
-Researchers may request `GET /api/v2/locations.csv?profile=official` (or another explicit supported profile). The export is bounded to 1,000 rows, uses deterministic CSV columns and escaping, contains only the public reviewed projection, and includes `release_profile`, `release_id`, and `manifest_sha256` on every row plus matching response headers. It is unavailable when no promoted release with a manifest exists; it never exposes raw evidence or restricted records.
+Framework extractor rejections and some list/detail transaction failures can
+return non-JSON errors, including plain-text `500`. Clients must tolerate those
+responses. The explorer self-hosts Swagger assets, permits GET execution only,
+disables the online validator and remote configuration, and has no credential
+controls. These settings follow the [Swagger configuration documentation](https://swagger.io/docs/open-source-tools/swagger-ui/usage/configuration/).
+Loading the explorer does not fetch facility records. Public reads still check
+release eligibility and current suppression; a private preview does not make
+data downloadable. No public bulk-package route is implemented.
+
+Researchers may request `GET /api/v2/locations.csv?profile=official` (or another explicit supported profile). The export is bounded to 1,000 rows and rejects larger eligible datasets rather than truncating. It uses deterministic CSV columns and escaping, contains only the selected public projection, and includes `release_profile`, `release_id`, and `manifest_sha256` on every row plus matching response headers. Community exports retain their unreviewed/not-approved warning. It is unavailable when no promoted release with a manifest exists; it never exposes raw evidence or restricted records. CSV and manifest currently select the latest eligible profile; `release_id` is ineffective on these routes, and CSV does not apply discovery filters or pagination. Use paginated location JSON for larger queries and pin list/detail reads to their displayed release.
 
 For reproducible bulk snapshots, use `pipeline/scripts/stages/export-release.py` with an explicit release ID and profile. It emits deterministic CSV and GeoJSON, a schema/data dictionary, `manifest.json`, and `SHA256SUMS.json`; it fails closed on test-only, unapproved, privacy-failed, suppressed, profile-mismatched, or unclear-rights rows. See [the data-product contract](../data-product.md) and [the machine-readable dictionary](../data-dictionary.json). The package is the citation artifact; the bounded API export is a convenience view of the same public projection.
 
 Clients can discover the current controlled vocabularies at `GET /api/v2/discovery/filters`. Category/source/profile/precision/lifecycle values are allowlisted and versioned; `country_code` is validated as an uppercase ISO alpha-2 code and `region` is a bounded release-backed city/region value. The bounded `q` parameter searches canonical name, city, country, category, and source name server-side. Bbox (`min_lon`, `min_lat`, `max_lon`, `max_lat`) and radius (`latitude`, `longitude`, `radius_km`) are mutually exclusive and validated before release access. New country adapters should register capabilities and vocabularies in the contract before becoming public.
 
-`GET /api/v2/discovery/facets` returns deterministic value/count pairs for the same controlled dimensions, scoped to the selected promoted profile and current public projection. Its metadata includes the selected release, ruleset, release creation time, and an explicit coverage scope. Counts are eligible public facility-projection rows after current suppression; they are not story-wide totals or animal counts. It applies the supplied filters before counting, caps each dimension at 20 values, and returns no addresses, queries, raw payloads, inactive releases, or restricted records.
+`GET /api/v2/discovery/facets` returns deterministic value/count pairs for the same controlled dimensions, scoped to the selected promoted profile and current public projection. Its metadata includes the selected release, ruleset, release creation time, and an explicit coverage scope. Counts are eligible public facility-projection rows after current suppression; they are not story-wide totals or animal counts. Effective filters are profile, country, region, legacy category, source type, precision and lifecycle status. It currently ignores `q`, `category_keys`, spatial filters, `release_id` and pagination; do not present those as supported facet inputs. Each dimension is capped at 20 values. It returns no addresses, queries, raw payloads, inactive releases, or restricted records.
 
 Pagination is deterministic and bounded (`limit` defaults to 100 and is capped at
 1,000). `cursor` is the preferred continuation mechanism and contains the last
@@ -36,6 +52,60 @@ if a detail is absent or currently suppressed, it returns `404 location_not_foun
 Clients discard or refresh cursor pages when release metadata changes. Current
 suppression is authoritative on every read, including filtered results,
 exports, history, reimports, and restores.
+
+## Local community pilot
+
+These separate routes are disabled by default, require explicit development
+configuration and refuse production/non-loopback operation. They do not change
+V2 location DTOs or curated release membership. The machine contract includes a
+`community_pilot` boundary; [development](../development.md#local-community-contribution-pilot)
+owns setup and maintenance, and [governance](../governance/user-submitted-data.md)
+owns publication policy and unresolved launch requirements.
+
+| Route | Access and response |
+| --- | --- |
+| `POST /api/community/submissions` | Bounded JSON, five kinds; returns ID, one-time receipt secret and `received`. Contact stored separately; no fetching or automatic publication. |
+| `POST /api/community/status` | ID and secret in JSON body only; returns processing status and, when currently eligible, a community record link. Invalid/expired/revoked credentials use generic 404. |
+| `GET /api/private/community/submissions` | Distinct bearer operator credential; pending by default, optional status filter, limit 1–50. Restricted claim fields, no contact/hash/secret. |
+| `POST /api/private/community/submissions/{id}/disposition` | Operator actions `hold`, `screen`, `reject`, `restrict`, `remove`, `link_community`; fixed reason categories. Screen is privacy screening, never factual endorsement. |
+| `POST /api/private/community/maintenance` | Operator-only aggregate expiry counts. Clears expired contact/claims and hashes; preserves decision tombstones/events. Requires an external maintenance schedule. |
+| `GET /api/community/claims` and `GET /api/community/claims/{id}` | Separately enabled, explicit `profile=community` and release ID. Live eligible release links only; persistent warning, unreviewed/not-approved metadata, separate linked-claim count. List fails closed above 500 linked candidates. |
+
+Intake bodies are limited to 12 KiB and deny unknown fields. Facility tips
+require a label; country and source URL are optional. Evidence requires a target
+UUID and either a source URL or description;
+correction and privacy/removal require target UUID/description; duplicates
+require two distinct UUIDs. All require `consent=true`. Optional fields have
+server bounds: label/locality/activity 160 bytes, location text 1,000,
+description 2,000, source URL 2,048, contact 254 and ISO observation date.
+Omitted country remains unknown; a supplied country must be an ISO alpha-2 code.
+The intake alias `unknown` is accepted and normalized to an omitted stored field.
+The UI presents country names rather than requiring contributors to know codes.
+Omitted source remains unknown and is not fabricated or fetched.
+The UI accepts optional `contact_email` for private contribution follow-up;
+it is stored separately and excluded from receipt, status, operator queue and
+public claim responses. It is not email authentication or a notification
+subscription. No delivery or receipt recovery endpoint exists. Contact expiry
+continues to use the explicitly configured retention period.
+Coordinates must be a finite in-range pair and remain private; precision is
+`unknown|exact|coarse|unmapped`, input method `manual_pin|text|unknown`.
+There are no files, contributor accounts or cookie sessions.
+
+`link_community` consumes a source-record UUID in `community_record_id`, not
+the facility UUID. It requires a screened case and an already released,
+privacy-passed, unreviewed community source record. The public DTO's `record_id`
+is the facility UUID and its link pins that community release. Privacy requests
+cannot be linked. Removing a submission revokes its receipt and clears its
+payload/contact/link; removal of its target record is a separate suppression
+operation. No intake route creates source records, release members or map pins.
+
+Responses use `no-store` and `no-referrer`, including errors/preflight/outer
+rate-limit responses. Disabled/unauthorized operator routes return 404; invalid
+input 400, admission limit 429, unavailable storage/projection 503. Client errors
+use static messages and do not echo submitted data. There is no retry/idempotency
+contract yet. A lost success response may require a new report; do not retry
+blindly. The launch role split and submission-specific restore ledger are
+unimplemented; the application pool can access intake tables.
 
 ## Public cached map tiles
 

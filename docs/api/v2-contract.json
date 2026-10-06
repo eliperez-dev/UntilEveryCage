@@ -19,5 +19,146 @@
     "GET /api/v2/graph/entities/{entity_id}/neighborhood": {"success": {"api_version": "v2-graph-v1", "data": "release-scoped public connections adjacent to an entity", "meta": {"profile": "official", "release_id": "string", "ruleset_version": "string", "public_projection": true}}, "query": ["profile", "connection_type", "min_confidence", "max_confidence", "confidence_band", "include_conflicting", "source_id", "cursor", "limit"], "not_found_without_promoted_release": 404}
   },
   "error": {"shape": {"api_version": "v2", "error": {"code": "string", "message": "string"}}, "codes": ["invalid_filter", "invalid_profile", "invalid_source_type", "invalid_display_precision", "invalid_lifecycle_status", "invalid_limit", "invalid_offset", "invalid_cursor", "invalid_pagination", "invalid_spatial_query", "invalid_map_tile", "database_not_configured", "database_pool_unavailable", "database_transaction_unavailable", "release_query_failed", "release_not_found", "release_unavailable", "read_model_unavailable", "location_query_failed", "facets_query_failed", "export_query_failed", "export_too_large", "export_encoding_failed", "database_transaction_failed", "release_manifest_unavailable", "release_manifest_invalid", "suppression_generation_unavailable", "map_artifact_unavailable", "map_artifact_invalid", "map_artifact_not_found", "map_artifact_revoked", "map_tile_not_found", "location_not_found", "rate_limited"]},
-  "privacy": "Public responses contain reviewed projection fields only; restricted records and raw evidence are never returned."
+  "community_pilot": {
+    "enabled_by_default": false,
+    "runtime": "development loopback only; production refused",
+    "policy": "docs/governance/user-submitted-data.md",
+    "submission": {
+      "route": "POST /api/community/submissions",
+      "body_max_bytes": 12288,
+      "deny_unknown_fields": true,
+      "kinds": [
+        "facility",
+        "evidence",
+        "correction",
+        "duplicate",
+        "privacy_removal"
+      ],
+      "required_for_all": [
+        "kind",
+        "consent=true"
+      ],
+      "required_by_kind": {
+        "facility": [
+          "label"
+        ],
+        "evidence": [
+          "target_record_id",
+          "source_url or description"
+        ],
+        "correction": [
+          "target_record_id",
+          "description"
+        ],
+        "duplicate": [
+          "target_record_id",
+          "duplicate_record_id (distinct)"
+        ],
+        "privacy_removal": [
+          "target_record_id",
+          "description"
+        ]
+      },
+      "optional_field_bounds": {
+        "label": 160,
+        "country_code": "optional ISO alpha-2; omitted or unknown means absent stored country",
+        "locality": 160,
+        "claimed_activity": 160,
+        "location_text": 1000,
+        "description": 2000,
+        "source_url": 2048,
+        "contact_email": 254
+      },
+      "location": {
+        "coordinates": "paired finite WGS84; restricted",
+        "claimed_precision": [
+          "unknown",
+          "exact",
+          "coarse",
+          "unmapped"
+        ],
+        "location_input_method": [
+          "manual_pin",
+          "text",
+          "unknown"
+        ]
+      },
+      "success_fields": [
+        "submission_id",
+        "receipt_secret",
+        "status"
+      ],
+      "creates_release_membership": false,
+      "fetches_source_urls": false
+    },
+    "status": {
+      "route": "POST /api/community/status",
+      "required": [
+        "submission_id",
+        "receipt_secret"
+      ],
+      "success_fields": [
+        "submission_id",
+        "status",
+        "public_record_url (optional live eligible link)"
+      ],
+      "failure_status": 404
+    },
+    "operator": {
+      "credential": "distinct bearer token; never receipt/preview token",
+      "queue": "GET /api/private/community/submissions",
+      "queue_default": "received or held; up to50; optional explicit status",
+      "disposition": "POST /api/private/community/submissions/{id}/disposition",
+      "actions": [
+        "hold",
+        "screen",
+        "reject",
+        "restrict",
+        "remove",
+        "link_community"
+      ],
+      "link_id": "existing released source-record UUID, not facility UUID",
+      "maintenance": "POST /api/private/community/maintenance; external scheduler required"
+    },
+    "public": {
+      "separately_enabled": true,
+      "routes": [
+        "GET /api/community/claims",
+        "GET /api/community/claims/{id}"
+      ],
+      "required_query": [
+        "profile=community",
+        "release_id"
+      ],
+      "max_linked_candidates": 500,
+      "excess_status": 503,
+      "success_fields": [
+        "submission_id",
+        "kind",
+        "record_id",
+        "release_id",
+        "public_record_url",
+        "origin",
+        "factual_review_status",
+        "project_approval",
+        "warning"
+      ],
+      "origin": "community-submitted",
+      "factual_review_status": "unreviewed",
+      "project_approval": "not-approved",
+      "new_submitted_pins_published": false
+    },
+    "responses": {
+      "cache_control": "no-store",
+      "referrer_policy": "no-referrer"
+    },
+    "launch_gaps": [
+      "scheduled expiry",
+      "approved triage/retention/terms",
+      "least-privilege database roles",
+      "submission removal restore/replay",
+      "new screened derivative release handoff"
+    ]
+  },
+  "privacy": "Public responses contain eligible released projection fields; screened unreviewed community claims carry persistent warnings. Restricted records and raw intake are never returned."
 }

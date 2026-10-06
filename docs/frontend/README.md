@@ -28,6 +28,30 @@ they are not a separate social network or a claim of universal identity.
 
 The product principle is **quiet on first contact, powerful when investigated**.
 
+The maintainer's 2026-10-04 navigation revision adds **Contribute** and **About**
+beside these two discovery views: `Map, Database | Contribute, About`.
+Contribute opens Add a facility by default, with visible task links to switch
+the form, plus receipt lookup, community browsing and project/support links.
+Database groups Browse records, Downloads and API documentation. About groups
+Overview (the project manifesto), Sources & methodology, FAQ and Help.
+FAQ answers common questions; it does not replace the evidence and methods page.
+Help provides short written guides and controlled tutorial
+recordings; API & downloads exposes the implemented public read API through a
+self-hosted Swagger explorer. Data access still requires an eligible published
+release, independently of the local preview or submission pilot.
+These links must appear
+consistently in the public shell and local preview; following them must preserve
+the selected preview context. Private submission forms use ordinary language;
+publication warnings belong on public unreviewed community results. Contribute
+is a direct header link; Database and About expose destinations through text-only
+menus without arrows. Clicking Database opens Browse records; clicking About
+opens Overview. Hover or keyboard focus reveals subpages. On touch devices,
+a separate compact pages control reveals the menu while title taps navigate.
+State that the code is open source and provide an
+explicit GitHub path for code contributions on Overview and Contribute. Use
+the same styled masthead on all pages. Informational pages use compact type,
+short copy and modest spacing rather than oversized editorial sections.
+
 ## Reading order
 
 - [principles and audiences](principles.md) — **Canonical**
