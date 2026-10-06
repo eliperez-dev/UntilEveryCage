@@ -16,6 +16,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from pipeline.common.source_rights import require_cleared
+from pipeline.scripts.maintenance import build_public_discovery_read_model as discovery
 
 
 def can_promote(status: str, test_only: bool = False) -> bool:
@@ -123,12 +124,38 @@ def utc_iso(value) -> str:
     return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def promote(database_url: str, release_id: str, artifacts: list[dict], map_artifact: dict | None = None) -> dict:
+def _same_immutable_manifest(existing: dict, proposed: dict) -> bool:
+    """Compare the release identity and every immutable publication input."""
+    keys = (
+        "manifest_version", "data_product_version", "release_id", "profile",
+        "release_status", "test_only", "ruleset_version", "schema_version",
+        "suppression_generation", "retrieved_at", "source_ids", "source_coverage",
+        "eligible_record_count", "row_counts", "checksums", "review_state",
+        "publication_state", "limitations", "rights_review", "source_rights_gate",
+        "distributed_artifacts", "map_artifact",
+    )
+    return all(existing.get(key) == proposed.get(key) for key in keys)
+
+
+def promote(database_url: str, release_id: str, artifacts: list[dict], map_artifact: dict | None = None,
+            *, _fail_after_read_model_rows: int | None = None) -> dict:
     with psycopg.connect(database_url) as connection:
         with connection.transaction():
+            profile_row = connection.execute(
+                "SELECT profile FROM uec.releases WHERE release_id=%s", (release_id,)
+            ).fetchone()
+            if not profile_row:
+                raise ValueError(f"release not found: {release_id}")
+            # Serialize activation by profile before locking release rows. The
+            # namespace separates this lock from unrelated advisory-lock users.
+            connection.execute(
+                "SELECT pg_advisory_xact_lock(82017, hashtext(%s))", (profile_row[0],)
+            )
             target = connection.execute("SELECT status, profile, ruleset_version, test_only, summary FROM uec.releases WHERE release_id = %s FOR UPDATE", (release_id,)).fetchone()
             if not target:
                 raise ValueError(f"release not found: {release_id}")
+            if target[1] != profile_row[0]:
+                raise ValueError("release profile changed during activation")
             if not can_promote(target[0], target[3]):
                 if target[3]:
                     raise ValueError("test-only releases cannot be validated or promoted")
@@ -174,7 +201,26 @@ def promote(database_url: str, release_id: str, artifacts: list[dict], map_artif
             demonstration = target[4].get("demonstration") if isinstance(target[4], dict) else None
             if demonstration is not None and demonstration.get("review_status") != "approved":
                 raise ValueError("demonstration release requires an explicit recorded review")
-            previous = connection.execute("SELECT release_id FROM uec.releases WHERE status = 'promoted' AND profile = %s AND release_id <> %s ORDER BY created_at DESC, release_id DESC LIMIT 1", (target[1], release_id)).fetchone()
+            previous = connection.execute(
+                "SELECT release_id FROM uec.releases WHERE status='promoted' AND profile=%s AND release_id<>%s FOR UPDATE",
+                (target[1], release_id),
+            ).fetchall()
+            if len(previous) > 1:
+                raise ValueError("multiple active releases exist for this profile; activation is unsafe")
+            previous = previous[0] if previous else None
+            if previous:
+                active_manifest_sha = discovery._release_manifest(connection, previous[0])
+                active_model = connection.execute(
+                    """SELECT model.manifest_sha256, model.row_count,
+                              (SELECT count(*) FROM uec.public_discovery_read_model_rows stored_row
+                               WHERE stored_row.release_id=model.release_id)
+                       FROM uec.public_discovery_read_models model
+                       WHERE model.release_id=%s""",
+                    (previous[0],),
+                ).fetchone()
+                if (not active_model or active_model[0] != active_manifest_sha
+                        or active_model[1] != active_model[2]):
+                    raise ValueError("current promoted release has no complete usable read model")
             summary = connection.execute("""
                 SELECT count(*), coalesce(array_agg(DISTINCT sr.source_id ORDER BY sr.source_id), ARRAY[]::text[])
                 FROM uec.release_members m JOIN uec.observations o ON o.observation_id=m.observation_id
@@ -240,14 +286,34 @@ def promote(database_url: str, release_id: str, artifacts: list[dict], map_artif
             }
             if map_artifact is not None:
                 manifest["map_artifact"] = map_artifact
-            # Python's sorted-key JSON is the canonical representation shared by consumers.
-            canonical = canonical_json(manifest)
-            digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-            connection.execute("INSERT INTO uec.release_manifests (release_id,manifest,manifest_sha256) VALUES (%s,%s,%s)", (release_id, canonical, digest))
-            previous_rows = connection.execute("SELECT release_id FROM uec.releases WHERE status = 'promoted' AND profile = %s AND release_id <> %s", (target[1], release_id)).fetchall()
+            prior_manifest_row = connection.execute(
+                "SELECT manifest::text, manifest_sha256 FROM uec.release_manifests WHERE release_id=%s",
+                (release_id,),
+            ).fetchone()
+            if prior_manifest_row:
+                prior_manifest = json.loads(prior_manifest_row[0])
+                prior_digest = hashlib.sha256(canonical_json(prior_manifest).encode("utf-8")).hexdigest()
+                if prior_digest != prior_manifest_row[1]:
+                    raise ValueError("existing immutable manifest checksum is invalid")
+                if not _same_immutable_manifest(prior_manifest, manifest):
+                    raise ValueError("existing immutable manifest does not match current release inputs, rights, suppression, or artifacts")
+                manifest = prior_manifest
+                digest = prior_manifest_row[1]
+            else:
+                canonical = canonical_json(manifest)
+                digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+                connection.execute(
+                    "INSERT INTO uec.release_manifests (release_id,manifest,manifest_sha256) VALUES (%s,%s,%s)",
+                    (release_id, canonical, digest),
+                )
+            previous_rows = [row[0] for row in previous] if previous else []
             connection.execute("UPDATE uec.releases SET status = 'validated' WHERE status = 'promoted' AND profile = %s AND release_id <> %s", (target[1], release_id))
             connection.execute("UPDATE uec.releases SET status = 'promoted' WHERE release_id = %s", (release_id,))
-            return {"release_id": release_id, "status": "promoted", "previously_promoted": [row[0] for row in previous_rows], "manifest": manifest, "manifest_sha256": digest}
+            read_model = discovery.build_in_transaction(
+                connection, release_id, fail_after_rows=_fail_after_read_model_rows
+            )
+            return {"release_id": release_id, "status": "promoted", "previously_promoted": previous_rows,
+                    "manifest": manifest, "manifest_sha256": digest, "read_model": read_model}
 
 
 if __name__ == "__main__":

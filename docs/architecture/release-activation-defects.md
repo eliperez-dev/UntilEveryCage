@@ -1,33 +1,34 @@
-# Deferred release activation reproductions
+# Release activation and recovery contract
 
-Sprint 01 keeps the known activation defects visible while the source-rights
-gate is added. These are synthetic, private launch blockers; this lane does
-not redesign activation or rollback.
+Promotion and construction of the public discovery read model are one database
+transaction. The promoter serializes activations by profile, rechecks current
+rights, review, suppression, coordinate, and publication gates, writes or
+revalidates the immutable manifest, selects the new release, and builds its
+read model before commit. If any step fails, the transaction restores the
+previous release selection and removes the attempted manifest/model writes.
+The standalone read-model builder remains available for already promoted
+releases; activation calls its shared transaction-level builder on the same
+connection.
 
-## Failed replacement build can remove the active release
+Reactivation (A→B→A) reuses A's original immutable manifest. Before changing
+release state, the promoter verifies the stored manifest digest and compares
+its release/profile/ruleset, source coverage and counts, distributed artifact
+inventory, map artifact, rights/review state, and suppression generation with
+the current candidate inputs. Artifact changes, changed publication state, or
+a newer suppression generation block reactivation. The promoter never
+rewrites an existing manifest. Map releases must supply the matching map
+artifact manifest again when reactivated.
 
-Create a promoted release `synthetic-a`, a validated release `synthetic-b`,
-and exact cleared source-rights decisions for each artifact in `synthetic-b`.
-Run `promote-release.py synthetic-b --no-distributed-artifacts`, then inject a
-failure before `build_public_discovery_read_model.py synthetic-b` commits its
-model (the builder's `fail_after_rows` hook is the existing injection point).
-The current promotion transaction demotes `synthetic-a` before the model is
-built. A public read therefore has no usable promoted model after the failed
-build. The existing `pipeline/tests/e2e/test_public_discovery_read_model.py`
-interruption test proves row/model rollback inside the builder, but does not
-claim cross-stage active-release safety.
+The per-profile transaction lock prevents concurrent promotions from selecting
+two active releases or racing their manifest/model writes. A pre-existing
+promoted release must have a complete read model whose manifest digest and row
+count agree; otherwise replacement is refused. The check does not make
+external file distribution atomic. Exporting `--manifest` to the operator's
+filesystem remains a separate step after the database transaction, as
+described in the [manifest verification contract](release-manifest-verification.md).
 
-## Re-promoting an old release collides with its immutable manifest
-
-Promote `synthetic-a`, promote `synthetic-b`, then set `synthetic-a` back to
-`validated` in the disposable database without changing its existing
-`uec.release_manifests` row. Running `promote-release.py synthetic-a` reaches
-the unconditional manifest insert and fails on the manifest primary key. The
-immutable manifest is preserved, but the old release cannot be selected again
-through the current command. The following sprint must stage validation and
-active-release selection so A→B→A and an injected build failure preserve a
-usable active service.
-
-These reproductions contain no real records or approvals. Source-rights
-validation is still required before either promotion attempt; the fixture
-decisions are synthetic and do not authorize publication.
+These controls do not create review or rights decisions, weaken any release
+gate, or prove that listed distribution artifacts were complete. Tests must
+exercise interrupted replacement rollback, successful A→B→A reuse, and
+rejection of changed artifact and suppression inputs using disposable PostGIS
+fixtures; those results establish only the behavior exercised by those tests.

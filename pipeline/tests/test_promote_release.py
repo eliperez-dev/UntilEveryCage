@@ -40,6 +40,32 @@ class ReleasePromotionTests(unittest.TestCase):
         self.assertIn('"rights_review":', source)
         self.assertIn('"suppression_generation": suppression_generation', source)
 
+    def test_reactivation_requires_the_same_immutable_release_inputs(self):
+        original = {
+            "manifest_version": "uec-release-manifest-v2",
+            "release_id": "synthetic-a",
+            "profile": "official",
+            "suppression_generation": 4,
+            "checksums": {"algorithm": "sha256", "distributed_artifacts": []},
+            "distributed_artifacts": [],
+            "source_ids": ["synthetic.source"],
+            "source_coverage": [{"source_id": "synthetic.source", "row_count": 1}],
+            "eligible_record_count": 1,
+        }
+        proposed = {**original, "generated_at": "later", "supersedes": "synthetic-b"}
+        self.assertTrue(MODULE._same_immutable_manifest(original, proposed))
+        proposed["suppression_generation"] = 5
+        self.assertFalse(MODULE._same_immutable_manifest(original, proposed))
+        proposed = {**original, "distributed_artifacts": [{"name": "data.csv", "sha256": "0" * 64, "byte_size": 1}]}
+        self.assertFalse(MODULE._same_immutable_manifest(original, proposed))
+
+    def test_activation_build_runs_inside_the_promotion_transaction(self):
+        source = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn("pg_advisory_xact_lock", source)
+        self.assertIn("discovery.build_in_transaction(", source)
+        builder = (SCRIPT.parents[1] / "maintenance" / "build_public_discovery_read_model.py").read_text(encoding="utf-8")
+        self.assertIn("def build_in_transaction(connection", builder)
+
     def test_suppression_generation_covers_publication_and_location_changes(self):
         migration = (SCRIPT.parents[2] / "migrations" / "054_public_suppression_generation.sql").read_text(encoding="utf-8")
         for table in ("record_access_events", "suppression_case_events", "publication_review_events", "source_rights_decisions", "geocode_results"):

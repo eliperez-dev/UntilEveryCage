@@ -265,53 +265,63 @@ FROM (
 """
 
 
+def build_in_transaction(connection: Any, release_id: str, fail_after_rows: int | None = None) -> dict[str, Any]:
+    """Build a release model inside the caller's transaction.
+
+    Promotion uses this entry point so release selection, immutable manifest,
+    and the model become visible together. The standalone CLI still owns its
+    transaction through :func:`build`.
+    """
+    manifest_sha256 = _release_manifest(connection, release_id)
+    require_cleared(connection, release_id)
+    rows = connection.execute(SELECT_ROWS, (release_id,)).fetchall()
+    content_sha256 = content_digest(rows)
+    existing = connection.execute(
+        "SELECT manifest_sha256, content_sha256, row_count FROM uec.public_discovery_read_models WHERE release_id=%s",
+        (release_id,),
+    ).fetchone()
+    if existing:
+        if existing != (manifest_sha256, content_sha256, len(rows)):
+            raise ReadModelBlocked("existing read model does not match the current release content")
+        stored_rows = connection.execute(
+            "SELECT count(*) FROM uec.public_discovery_read_model_rows WHERE release_id=%s",
+            (release_id,),
+        ).fetchone()[0]
+        if stored_rows != len(rows):
+            raise ReadModelBlocked("read model metadata exists but row storage is incomplete")
+        return {"status": "idempotent", "release_id": release_id, "manifest_sha256": manifest_sha256, "content_sha256": content_sha256, "row_count": len(rows)}
+
+    if fail_after_rows is not None:
+        # This hook deliberately retains the row-at-a-time path so tests can
+        # interrupt after a known prefix and prove rollback.
+        insert_sql = """
+            INSERT INTO uec.public_discovery_read_model_rows
+            (release_id,facility_id,observation_id,source_record_id,canonical_name,
+             country_code,postal_code,city,display_location,display_precision,
+             display_label,geocoding_status,geocoder_provider,geocoded_at,
+             classification_category,observed_at,first_observed_at,
+             provenance_origin_type,provenance_source_id,provenance_source_name,
+             provenance_source_url,provenance_retrieved_at,source_rights_status)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,ST_GeogFromText(%s),%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        """
+        with connection.cursor() as cursor:
+            for index, row in enumerate(rows, start=1):
+                cursor.execute(insert_sql, (release_id, *row))
+                if index >= fail_after_rows:
+                    raise RuntimeError("synthetic interrupted read model build")
+    else:
+        connection.execute(INSERT_ROWS, (release_id, release_id))
+    connection.execute(
+        "INSERT INTO uec.public_discovery_read_models (release_id,manifest_sha256,content_sha256,row_count) VALUES (%s,%s,%s,%s)",
+        (release_id, manifest_sha256, content_sha256, len(rows)),
+    )
+    return {"status": "built", "release_id": release_id, "manifest_sha256": manifest_sha256, "content_sha256": content_sha256, "row_count": len(rows)}
+
+
 def build(database_url: str, release_id: str, fail_after_rows: int | None = None) -> dict[str, Any]:
     with psycopg.connect(database_url) as connection:
         with connection.transaction():
-            manifest_sha256 = _release_manifest(connection, release_id)
-            require_cleared(connection, release_id)
-            rows = connection.execute(SELECT_ROWS, (release_id,)).fetchall()
-            content_sha256 = content_digest(rows)
-            existing = connection.execute(
-                "SELECT manifest_sha256, content_sha256, row_count FROM uec.public_discovery_read_models WHERE release_id=%s",
-                (release_id,),
-            ).fetchone()
-            if existing:
-                if existing != (manifest_sha256, content_sha256, len(rows)):
-                    raise ReadModelBlocked("existing read model does not match the current release content")
-                stored_rows = connection.execute(
-                    "SELECT count(*) FROM uec.public_discovery_read_model_rows WHERE release_id=%s",
-                    (release_id,),
-                ).fetchone()[0]
-                if stored_rows != len(rows):
-                    raise ReadModelBlocked("read model metadata exists but row storage is incomplete")
-                return {"status": "idempotent", "release_id": release_id, "manifest_sha256": manifest_sha256, "content_sha256": content_sha256, "row_count": len(rows)}
-
-            if fail_after_rows is not None:
-                # This hook deliberately retains the row-at-a-time path so
-                # tests can interrupt after a known prefix and prove rollback.
-                insert_sql = """
-                    INSERT INTO uec.public_discovery_read_model_rows
-                    (release_id,facility_id,observation_id,source_record_id,canonical_name,
-                     country_code,postal_code,city,display_location,display_precision,
-                     display_label,geocoding_status,geocoder_provider,geocoded_at,
-                     classification_category,observed_at,first_observed_at,
-                     provenance_origin_type,provenance_source_id,provenance_source_name,
-                     provenance_source_url,provenance_retrieved_at,source_rights_status)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,ST_GeogFromText(%s),%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                """
-                with connection.cursor() as cursor:
-                    for index, row in enumerate(rows, start=1):
-                        cursor.execute(insert_sql, (release_id, *row))
-                        if index >= fail_after_rows:
-                            raise RuntimeError("synthetic interrupted read model build")
-            else:
-                connection.execute(INSERT_ROWS, (release_id, release_id))
-            connection.execute(
-                "INSERT INTO uec.public_discovery_read_models (release_id,manifest_sha256,content_sha256,row_count) VALUES (%s,%s,%s,%s)",
-                (release_id, manifest_sha256, content_sha256, len(rows)),
-            )
-            return {"status": "built", "release_id": release_id, "manifest_sha256": manifest_sha256, "content_sha256": content_sha256, "row_count": len(rows)}
+            return build_in_transaction(connection, release_id, fail_after_rows)
 
 
 def main() -> int:
