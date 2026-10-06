@@ -54,6 +54,11 @@ Map/Database context. Downloads links to available formats, reuse terms and
 field definitions. A compact footer supplies project/support/code links and
 keeps software licensing distinct from data reuse terms.
 
+The footer draft takes V1's independent-project identity, contact and support
+links into a shorter layout. It adds Help, Report a bug, Privacy or removal,
+and Sources & methodology shortcuts, with no repeated disclaimer paragraphs
+or version badge. It remains below non-map content rather than covering the map.
+
 Receipt success explains and offers explicit copy actions for the Submission
 ID and Private receipt. Status requires both in the request body; neither is
 persisted in a URL or browser storage. Existing record details expose Copy

@@ -4,6 +4,12 @@ function operation(page: Page, path: string) {
   return page.locator('.opblock').filter({ has: page.locator('.opblock-summary-path').filter({ hasText: new RegExp(`^${path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`) }) });
 }
 async function isolatedPage(page: Page) {
+  await page.route('**/*', route => {
+    const url = new URL(route.request().url());
+    if (url.protocol.startsWith('http') && !['localhost', '127.0.0.1'].includes(url.hostname)) return route.abort();
+    if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/dev/real-preview/')) return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
+    return route.fallback();
+  });
   await page.route('https://tile.openstreetmap.org/**', route => route.abort());
   await page.route('https://server.arcgisonline.com/**', route => route.abort());
 }

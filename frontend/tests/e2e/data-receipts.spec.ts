@@ -73,7 +73,7 @@ test('public record navigation reads the selected release and unavailable record
   await page.route(`**/api/v2/locations/${id}?**`,route => { reads.push(new URL(route.request().url())); return route.fulfill({contentType:'application/json',body:JSON.stringify({api_version:'v2',data:wire,meta:{release_id:'synthetic-release',ruleset_version:'synthetic-rules',profile:'official',release_created_at:'2026-01-01T00:00:00Z'}})}); });
   await page.goto('./#/database'); await page.getByRole('button',{name:'Synthetic public record',exact:true}).click();
   await page.getByRole('link',{name:'Open record page',exact:true}).click();
-  await expect(page.getByRole('heading',{name:'Synthetic public record',exact:true})).toBeVisible();
+  await expect(page.getByRole('region',{name:'Public record'}).getByRole('heading',{name:'Synthetic public record',exact:true})).toBeVisible();
   expect(reads[0]!.searchParams.get('release_id')).toBe('synthetic-release'); expect(reads[0]!.searchParams.get('profile')).toBe('official');
   await expect(page.getByText('Unmapped',{exact:false}).first()).toBeVisible();
   await expect(page.getByRole('button',{name:'Copy record id',exact:true})).toBeVisible();
@@ -164,5 +164,5 @@ test('record details copy an ID and link and prefill correction and privacy requ
   await expect(page.getByRole('button',{name:'Copy record id',exact:true})).toBeVisible();
   await expect(page.getByRole('button',{name:'Copy record link',exact:true})).toBeVisible();
   await expect(page.getByRole('link',{name:'Suggest a correction',exact:true})).toHaveAttribute('href',new RegExp(`target=${id}`));
-  await expect(page.getByRole('link',{name:'Privacy or removal',exact:true})).toHaveAttribute('href',new RegExp(`target=${id}`));
+  await expect(page.getByRole('article').getByRole('link',{name:'Privacy or removal',exact:true})).toHaveAttribute('href',new RegExp(`target=${id}`));
 });
