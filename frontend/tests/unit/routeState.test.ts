@@ -23,10 +23,18 @@ describe('routeState', () => {
   });
 
   it('round-trips Help and API pages with map context', () => {
-    for (const kind of ['help', 'api'] as const) {
+    for (const kind of ['help', 'api', 'faq', 'downloads'] as const) {
       const route = { kind, returnMapHref: '#/map?f1a=field' };
       expect(parseRoute(serializeRoute(route))).toEqual(route);
     }
+  });
+
+  it('retains the old API URL and uses the Database destination for new links', () => {
+    expect(parseRoute('#/about/api')).toEqual({ kind: 'api' });
+    expect(parseRoute('#/database/api')).toEqual({ kind: 'api' });
+    expect(serializeRoute({ kind: 'api' })).toBe('#/database/api');
+    expect(parseRoute('#/database/downloads')).toEqual({ kind: 'downloads' });
+    expect(parseRoute('#/about/faq')).toEqual({ kind: 'faq' });
   });
 
   it('parses the contribution hub, form subroutes, and bug route', () => {
@@ -67,6 +75,12 @@ describe('routeState', () => {
     expect(parseRoute('#/records/syn-north-star?source=shared')).toEqual({ kind: 'record', facilityId: 'syn-north-star' });
     expect(parseRoute('#/locations/syn-river-meadow')).toEqual({ kind: 'record', facilityId: 'syn-river-meadow' });
     expect(parseRoute('#/search?q=eggs')).toEqual({ kind: 'not-found', fragment: '/search?q=eggs' });
+  });
+
+  it('round-trips a public record snapshot with profile and release membership', () => {
+    const route = { kind: 'record' as const, facilityId: '18c6ef3a-28cd-4c8e-a9bb-3951f45f210d', profile: 'community' as const, releaseId: 'synthetic-release' };
+    expect(parseRoute(serializeRoute(route))).toEqual(route);
+    expect(parseRoute('#/records/synthetic?profile=private&release_id=bad/value')).toEqual({kind:'record',facilityId:'synthetic'});
   });
 
   it('keeps legacy location routes and hash fallback below a preview base path', () => {

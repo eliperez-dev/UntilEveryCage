@@ -86,17 +86,19 @@ This project includes a `Dockerfile` optimized for production (multi-stage build
 This is a living project, and collaboration is vital to its success. We welcome contributions of all kinds.
 
 * **Contributing International Data:** A primary goal is to expand our global coverage. If you know of a public, official dataset for your country, please open an "Issue" with a link to the source. We welcome help in sourcing, cleaning, and integrating new datasets.
-* **Reporting Bugs or Data Errors:** If you find a bug on the website or see data that seems incorrect, please open an "Issue" on our GitHub repository. Provide as much detail as possible.
+* **Reporting Bugs or Data Errors:** Use GitHub issues for software bugs. For record corrections or privacy/removal requests, use the site's Contribute form or the project email below.
 * **Suggesting Features:** Have an idea for a new feature? We'd love to hear it. Open an "Issue" and label it as an "enhancement."
 * **Contributing Code:** If you are a developer, feel free to fork the repository and submit a pull request with your changes. Please try to adhere to the existing code style.
 
 ## License
 
-The source code for this project is licensed under the **GNU Affero General Public License v3.0 (AGPLv3)**.
+The project's source code is licensed under the **GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later)**, as stated in its source headers. See [LICENSE](LICENSE). Dependencies and third-party assets retain their own licenses and notices.
 
-This is a "copyleft" license, which means that any derivative work (e.g., if you run a modified version of this code on your own public-facing website) must also be open-sourced under the same AGPLv3 license. This ensures the project and its derivatives remain free and open for the entire community, preventing corporate co-opting. You can read the full license text in the `LICENSE` file.
+AGPL is a copyleft software license. When a modified version supports remote network interaction, section 13 requires an offer of its Corresponding Source to those users. Distribution obligations also apply; the license text defines their scope.
 
-The compiled data presented on this map is licensed separately under a <a href="http://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License</a>. The full text of this license can be found in the `DATA_LICENSE` file.
+The project's compilation rights are licensed separately under [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/); see [DATA_LICENSE](DATA_LICENSE). This covers rights held by the project, not every upstream record or linked document. Preserve source-specific terms and attribution. Public-domain material remains public domain. This noncommercial data license is separate from the open-source software license and does not permit unrestricted commercial reuse of the compilation.
+
+The [license and source-rights review](docs/architecture/source-rights-decisions.md#license-alignment-review-2026-10-05) records the verified scope and remaining release checks.
 
 ## Acknowledgements
 

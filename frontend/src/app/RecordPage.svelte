@@ -1,6 +1,7 @@
 <script lang="ts">
   import { createRealPreviewRepository, mapRealPreviewCandidate, RealPreviewError } from '../api/RealPreviewRepository';
   import type { LabRecord } from '../design-lab/contract';
+  import ProjectFooter from './ProjectFooter.svelte';
   import RecordDetail from './RecordDetail.svelte';
   import PreviewMasthead from './PreviewMasthead.svelte';
   const mapHref = '#/map?f1a=field';
@@ -40,6 +41,7 @@
     {:else if status === 'error' || status === 'unauthorized'}<div class="state" role="alert"><h1>Record unavailable</h1><p>{error}</p><a href="#/database">Return to database</a></div>
     {:else if record}<RecordDetail {record} presentation="page" />{/if}
   </main>
+  <ProjectFooter returnMapHref={mapHref} />
 </div>
 
 <style>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import CopyValue from './CopyValue.svelte';
   import type { LabRecord } from '../design-lab/contract';
   import { categoryPresentation } from '../features/locations/categoryPresentation';
   import type { TaxonomyClassification } from '../domain/taxonomy';
@@ -71,7 +72,6 @@
     onclose?: () => void;
   } = $props();
 
-  let copied = $state(false);
 
   const value = (...items: Array<string | null | undefined>) =>
     items.find((item) => typeof item === 'string' && item.trim())?.trim() ?? null;
@@ -252,19 +252,6 @@
     }
     return 'Unmapped · no map location supplied';
   }
-  async function copyUrl() {
-    const url = typeof window === 'undefined'
-      ? ''
-      : `${window.location.origin}${window.location.pathname}#/records/${encodeURIComponent(id)}`;
-    if (!url || !navigator.clipboard?.writeText) return;
-    try {
-      await navigator.clipboard.writeText(url);
-      copied = true;
-      window.setTimeout(() => (copied = false), 1800);
-    } catch {
-      copied = false;
-    }
-  }
 </script>
 
 <article
@@ -284,7 +271,7 @@
   <p class="kind">Facility candidate</p>
   <h1 id="record-title">{name}</h1>
   {#if presentation === 'page' && import.meta.env.VITE_COMMUNITY_PILOT === 'true' && id}
-    <p><a class="evidence-link" href={`#/contribute/evidence?target=${encodeURIComponent(id)}&map=${encodeURIComponent('#/map?f1a=field')}`}>Add evidence</a></p>
+    <p class="contribution-actions">{#each [['evidence','Add evidence'],['correction','Suggest a correction'],['privacy-removal','Privacy or removal']] as [type, label]}<a class="evidence-link" href={`#/contribute/${type}?target=${encodeURIComponent(id)}&map=${encodeURIComponent('#/map?f1a=field')}`}>{label}</a>{/each}</p>
   {/if}
   {#if nameWithheld}
     <dl class="identity"><div><dt>Name</dt><dd>Name not shown — privacy review pending</dd></div></dl>
@@ -435,16 +422,13 @@
 
   <footer>
     <span class="record-id">Record ID · {id || 'Unavailable'}</span>
-    <button
-      type="button"
-      onclick={copyUrl}
-      disabled={!id}
-      aria-label="Copy stable record URL"
-    >{copied ? 'Copied' : 'Copy record link'}</button>
+    <CopyValue value={id} label="Record ID" buttonLabel="Copy record ID" />
+    <CopyValue value={id ? `${window.location.origin}${window.location.pathname}#/records/${encodeURIComponent(id)}` : ''} label="Record link" buttonLabel="Copy record link" />
   </footer>
 </article>
 
 <style>
+  .contribution-actions{display:flex;flex-wrap:wrap;gap:.5rem 1rem}
   .detail {
     --ink: #f1efe8;
     --muted: #aab0aa;

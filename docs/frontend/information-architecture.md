@@ -17,9 +17,10 @@ privacy/removal and bug reports. It also
 provides receipt lookup and the existing project links. Bug
 reports use an email template or a GitHub issue; they are not facility claims
 and do not require a contributor account. About contains the
-Overview (the manifesto), Sources & methodology, Help, and API & downloads. The old manifesto URL and
+Overview (the manifesto), Sources & methodology, FAQ and Help. Database groups
+Browse records, Downloads and API documentation. The old manifesto URL and
 methodology route remain working aliases. Contribute is a direct header link;
-About uses a text-only menu without an arrow, with keyboard, click and touch
+Database and About use text-only menus without arrows, with keyboard, click and touch
 access. Existing
 contribution links preselect the form type. Navigation preserves the active
 local preview mode when returning to Map or Database. Every surface uses the
@@ -35,16 +36,26 @@ submission payloads, receipt credentials and operator screens are excluded.
 Evidence guidance identifies the existing record being supported and explains
 that review precedes a change to the published record.
 
-API & downloads contains a lazily loaded, self-hosted Swagger UI for the
+API documentation contains a lazily loaded, self-hosted Swagger UI for the
 implemented public data GET routes, generated from the canonical
 [public OpenAPI document](../api/public-openapi.json). It defaults to the curated
 profile and same-origin API, with no private, intake or write operations. CSV
-exports are limited to 1,000 records; larger queries use paginated JSON. A local
+exports cover the selected public profile and are limited to 1,000 records;
+they do not export the current browser filters. Larger datasets use paginated JSON. A local
 preview is not a downloadable public release, and bulk release packages have no
 public download route yet.
 
-Current preview routes for these destinations are `#/about/help` and
-`#/about/api`; navigation retains the active Map/Database context.
+Routes are `#/about/help`, `#/about/faq`, `#/database/downloads` and
+`#/database/api`; `#/about/api` remains an alias. Navigation retains the active
+Map/Database context. Downloads links to available formats, reuse terms and
+field definitions. A compact footer supplies project/support/code links and
+keeps software licensing distinct from data reuse terms.
+
+Receipt success explains and offers explicit copy actions for the Submission
+ID and Private receipt. Status requires both in the request body; neither is
+persisted in a URL or browser storage. Existing record details expose Copy
+record ID and targeted contribution actions. Optional email is separate private
+contact information; delivery, accounts and recovery are unavailable.
 
 ### Routes
 
@@ -124,6 +135,13 @@ never hidden behind hover-only interactions. In the first implementation, the
 table's production scope must match the current public location/search DTO;
 evidence, event, source-record, and community rows remain design targets until
 their public record-index contract exists.
+
+The compact local browser uses clear table headings, readable metadata and
+labeled mobile rows. Show the detail surface only after selection. Category
+filters query the repository with `categoryKeys` and reset pagination; they
+must not filter only the currently loaded page. Result counts are explicitly
+loaded counts unless a verified query total is returned. Clear filters and
+selected chips make the current query visible.
 
 ## Shared record detail composition
 

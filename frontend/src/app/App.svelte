@@ -5,6 +5,11 @@
   import AboutPage from './AboutPage.svelte';
   import ContributePage from './ContributePage.svelte';
   import HelpPage from './HelpPage.svelte';
+  import DownloadsPage from './DownloadsPage.svelte';
+  import FaqPage from './FaqPage.svelte';
+  import ProjectFooter from './ProjectFooter.svelte';
+  import PublicDatabase from './PublicDatabase.svelte';
+  import PublicRecord from './PublicRecord.svelte';
   let ApiPage = $state<typeof import('./ApiPage.svelte').default | null>(null);
   let apiModule: Promise<typeof import('./ApiPage.svelte')> | null = null;
   import PreviewMasthead from './PreviewMasthead.svelte';
@@ -20,7 +25,7 @@
   let loading = $state(true);
   let loadError = $state('');
   let returnMapHref = $derived.by(() => {
-    if (route.kind === 'about' || route.kind === 'contribute' || route.kind === 'bug-report' || route.kind === 'community' || route.kind === 'methodology' || route.kind === 'help' || route.kind === 'api') return route.returnMapHref ?? '#/map';
+    if (route.kind === 'about' || route.kind === 'contribute' || route.kind === 'bug-report' || route.kind === 'community' || route.kind === 'methodology' || route.kind === 'help' || route.kind === 'api' || route.kind === 'faq' || route.kind === 'downloads') return route.returnMapHref ?? '#/map';
     const currentQuery = new URLSearchParams(window.location.hash.split('?')[1] ?? '');
     return import.meta.env.DEV && currentQuery.get('f1a') === 'field' ? '#/map?f1a=field' : '#/map';
   });
@@ -51,7 +56,8 @@
       }
       const query = new URLSearchParams(window.location.hash.split('?')[1] ?? '');
       const serverDataMode = document.querySelector<HTMLMetaElement>('meta[name="uec-local-data-mode"]')?.content ?? null;
-      reviewMode = import.meta.env.DEV && (query.has('f1a') || (serverDataMode === 'real-preview' && (route.kind === 'map' || route.kind === 'database' || route.kind === 'record')));
+      const explicitPublicRecord = route.kind === 'record' && (query.has('profile') || query.has('release_id'));
+      reviewMode = import.meta.env.DEV && !explicitPublicRecord && (query.has('f1a') || (serverDataMode === 'real-preview' && (route.kind === 'map' || route.kind === 'database' || route.kind === 'record')));
       loading = false;
       loadError = '';
     } catch {
@@ -90,7 +96,7 @@
   <main class="review-loading" aria-live="polite"><p role="status">Preparing the private-preview workspace…</p><small>The map module and its local data boundary are loading.</small></main>
 {:else}
 <div class="shell">
-  <PreviewMasthead current={route.kind === 'about' || route.kind === 'help' || route.kind === 'api' ? 'about' : route.kind === 'contribute' || route.kind === 'bug-report' || route.kind === 'community' ? 'contribute' : route.kind === 'database' || route.kind === 'record' ? 'database' : 'map'} mapHref={returnMapHref} {databaseHref} />
+  <PreviewMasthead current={route.kind === 'about' || route.kind === 'help' || route.kind === 'faq' ? 'about' : route.kind === 'contribute' || route.kind === 'bug-report' || route.kind === 'community' ? 'contribute' : route.kind === 'database' || route.kind === 'record' || route.kind === 'api' || route.kind === 'downloads' ? 'database' : 'map'} mapHref={returnMapHref} {databaseHref} />
 
   <main id="main-content" class="shell-content" tabindex="-1">
     {#if loading}
@@ -109,6 +115,10 @@
       </section>
     {:else if route.kind === 'about'}
       <AboutPage returnMapHref={route.returnMapHref ?? '#/map'} />
+    {:else if route.kind === 'downloads'}
+      <DownloadsPage {returnMapHref} />
+    {:else if route.kind === 'faq'}
+      <FaqPage {returnMapHref} />
     {:else if route.kind === 'help'}
       <HelpPage returnMapHref={route.returnMapHref ?? '#/map'} />
     {:else if route.kind === 'api'}
@@ -124,18 +134,9 @@
         <p class="state" role="status">Preparing the map…</p>
       {/if}
     {:else if route.kind === 'database'}
-      <section aria-labelledby="page-heading">
-        <h1 id="page-heading">Database</h1>
-        <p>This page is a structural shell. Database content is not connected yet.</p>
-      </section>
+      <PublicDatabase />
     {:else if route.kind === 'record'}
-      <section aria-labelledby="page-heading">
-        <p><a href="#/database">Database</a></p>
-        <h1 id="page-heading">Record</h1>
-        <p class="record-id">Record ID: <code>{route.facilityId}</code></p>
-        <p>This page is a structural shell. Record details are not connected yet.</p>
-        {#if import.meta.env.VITE_COMMUNITY_PILOT === 'true'}<p><a href={`#/contribute/evidence?target=${encodeURIComponent(route.facilityId)}${returnMapHref !== '#/map' ? `&map=${encodeURIComponent(returnMapHref)}` : ''}`}>Add evidence</a></p>{/if}
-      </section>
+      <PublicRecord id={route.facilityId} profile={route.profile ?? 'official'} releaseId={route.releaseId} />
     {:else if route.kind === 'community'}
       {#if route.page === 'form'}
         <ContributePage formKind={route.formKind ?? 'facility'} targetRecordId={route.targetRecordId ?? ''} returnMapHref={route.returnMapHref ?? '#/map'} />
@@ -146,11 +147,12 @@
       {/if}
     {/if}
   </main>
+  {#if route.kind !== 'map'}<ProjectFooter {returnMapHref} />{/if}
 </div>
 {/if}
 
 <style>
   .review-loading{display:grid;place-content:center;min-height:100dvh;padding:2rem;background:#171a18;color:#f1efe8;font:1rem system-ui;text-align:center}
   .review-loading small{margin-top:.55rem;color:#b9c1b7;font-size:.76rem}
-  .shell{max-width:none;padding:0}.shell-content{padding:0}.shell-content > :global(section:not(.contribute-page):not(.about-page):not(.community-page):not(.help-page):not(.api-page)){padding:1.5rem}
+  .shell{max-width:none;padding:0}.shell-content{padding:0}.shell-content > :global(section:not(.contribute-page):not(.about-page):not(.community-page):not(.help-page):not(.api-page):not(.downloads-page):not(.faq-page):not(.public-database):not(.public-record)){padding:1.5rem}
 </style>

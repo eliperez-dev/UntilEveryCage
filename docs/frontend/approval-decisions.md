@@ -37,7 +37,9 @@ header is **Map, Database | Contribute, About**. The latest refinement makes
 Contribute a direct link to Add a facility, with visible task links switching
 the unified form, visibly labeled **Choose a contribution type**. About uses a
 text-only menu without an arrow and contains Overview (the manifesto),
-Sources & methodology, Help, and API & downloads. The Help/API additions and
+Sources & methodology, FAQ and Help. Database groups Browse records,
+Downloads and API documentation, with the old About/API URL preserved.
+The Help/API additions and
 clearer existing-record evidence guidance were requested on 2026-10-05.
 Help uses short written guides and controlled tutorial media; Swagger exposes
 only the implemented public read API, with published-release access boundaries.
@@ -48,6 +50,15 @@ warnings and private publication gates remain required. The follow-up density
 revision calls for compact type and spacing, fewer headings and shorter copy,
 with the same styled masthead across all pages. Overview and Contribute make
 the open-source code and GitHub contribution path explicit.
+
+The 2026-10-05 follow-up adds a compact shared informational footer, optional
+private contact email, explicit receipt copy controls and practical status
+guidance. Email collection does not enable delivery or receipt recovery.
+Submission ID identifies intake; Record ID identifies an existing record.
+Database category selections must query the complete backing dataset, while
+displayed counts describe loaded results unless the API supplies a total.
+Downloads describe the actual bounded public exports, never private preview
+data or an unimplemented filtered/bulk export.
 
 ## Remaining implementation decisions
 

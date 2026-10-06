@@ -21,7 +21,7 @@ test('Help provides written guides and a real, accessible local silent tutorial'
   const duration = await video.evaluate(element => (element as HTMLVideoElement).duration);
   expect(duration).toBeGreaterThan(5); expect(duration).toBeLessThan(30);
   await expect(page.getByRole('link', { name: 'Check status', exact: true })).toHaveAttribute('href', /map=%23%2Fmap%3Ff1a%3Dfield/);
-  await expect(page.getByRole('link', { name: 'API & downloads', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'API documentation', exact: true })).toBeVisible();
 });
 
 test('Swagger is local and lazy, renders real GET operations and executes only on request', async ({ page, baseURL }) => {
@@ -42,8 +42,8 @@ test('Swagger is local and lazy, renders real GET operations and executes only o
   await page.goto('./#/about');
   await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible();
   expect(swaggerAssets).toBe(0);
-  await page.getByRole('button', { name: 'About', exact: true }).click();
-  await page.locator('#shared-about-nav').getByRole('link', { name: 'API & downloads' }).click();
+  await page.getByRole('button', { name: 'Database', exact: true }).click();
+  await page.locator('#shared-database-nav').getByRole('link', { name: 'API documentation' }).click();
   await expect(page.locator('.opblock')).toHaveCount(10);
   await expect(page.locator('.opblock-summary-method')).toHaveText(Array(10).fill('GET'));
   expect(reads).toBe(0); expect(writes).toBe(0);
@@ -55,7 +55,7 @@ test('Swagger is local and lazy, renders real GET operations and executes only o
   await list.getByRole('button', { name: 'Execute', exact: true }).click();
   await expect(list.locator('.responses-inner')).toContainText('200');
   expect(reads).toBe(1); expect(writes).toBe(0); expect(external).toEqual([]);
-  expect(new URL(page.url()).hash).toBe('#/about/api');
+  expect(new URL(page.url()).hash).toMatch(/^#\/(?:about|database)\/api$/);
   await expect(page.getByRole('link', { name: 'Curated CSV (up to 1,000 records)' })).toHaveAttribute('href', '/api/v2/locations.csv?profile=official');
 });
 
@@ -138,7 +138,7 @@ test('conditional manifest GET preserves If-None-Match and handles 304 without c
   await manifest.getByRole('button', { name: 'Execute', exact: true }).click();
   await expect(manifest.locator('.responses-inner')).toContainText('304');
   expect(conditionalHeader).toBe('"synthetic-etag"');
-  expect(new URL(page.url()).hash).toBe('#/about/api');
+  expect(new URL(page.url()).hash).toMatch(/^#\/(?:about|database)\/api$/);
 });
 
 test('explorer text remains readable and narrow parameters use the available page width', async ({ page }) => {

@@ -18,6 +18,7 @@ export type ContributionDraft = Readonly<{
   source_url?: string;
   observed_on?: string;
   description?: string;
+  contact_email?: string;
   consent: true;
 }>;
 export type Receipt = Readonly<{ submission_id: string; receipt_secret: string; status: 'received' }>;
@@ -156,6 +157,7 @@ async function request<T>(fetcher: FetchLike, path: string, init: RequestInit, p
         const body = record(await response.json());
         const error = record(body.error);
         const safeMessages: Record<string, string> = {
+          'contact_email is invalid': 'Enter a valid email address or leave it blank.',
           'facility requires a label': 'Add a facility name.',
           'evidence requires target_record_id and a description or source_url': 'Add a record ID and either a source link or a short description of what you found.',
           'this submission requires target_record_id and description': 'Add a record ID and a short description.',
@@ -177,6 +179,7 @@ async function request<T>(fetcher: FetchLike, path: string, init: RequestInit, p
 }
 export function validateContributionDraft(draft: ContributionDraft): void {
   if (!draft.consent || !KINDS.has(draft.kind)) throw new CommunityError('invalid', 'Consent is required.');
+  if (draft.contact_email !== undefined && (draft.contact_email.length > 254 || !/^[^\s@]+@[^\s@]+$/.test(draft.contact_email))) throw new CommunityError('invalid', 'Enter a valid email address or leave it blank.');
   if (draft.target_record_id && !UUID.test(draft.target_record_id)) throw new CommunityError('invalid', 'Enter a valid record identifier.');
   if (draft.duplicate_record_id && !UUID.test(draft.duplicate_record_id)) throw new CommunityError('invalid', 'Enter a valid duplicate record identifier.');
   if (draft.kind === 'facility' && !draft.label) throw new CommunityError('invalid', 'Add a facility name.');

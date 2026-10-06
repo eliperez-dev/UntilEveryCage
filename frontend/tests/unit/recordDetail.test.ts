@@ -40,7 +40,8 @@ describe('private preview record detail surface', () => {
     expect(component).toContain("url.protocol === 'https:'");
     expect(component).toContain('rel="noopener noreferrer"');
     expect(component).toContain("${window.location.origin}${window.location.pathname}#/records/${encodeURIComponent(id)}");
-    expect(component).toContain('Copy stable record URL');
+    expect(component).toContain('Copy record link');
+    expect(component).toContain('Copy record ID');
     expect(component).toContain("'sourceRecordId' in record ? record.sourceRecordId : null");
   });
 

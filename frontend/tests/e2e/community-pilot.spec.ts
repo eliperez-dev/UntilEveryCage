@@ -131,14 +131,14 @@ test('a valid submission displays its receipt once in memory without putting it 
   await page.getByLabel(/I have permission to share/).check();
   await page.getByRole('button', { name: 'Send for review' }).click();
   await expect(page.getByRole('heading', { name: 'Contribution received' })).toBeVisible();
-  await expect(page.getByLabel('Private receipt')).toHaveValue(secret);
+  await expect(page.getByLabel('Private receipt', { exact: true })).toHaveValue(secret);
   expect(submitted).toMatchObject({ kind: 'facility', consent: true, claimed_precision: 'unknown' });
   expect(submitted).not.toHaveProperty('contact_email');
   expect(page.url()).not.toContain(secret);
-  await page.getByRole('link', { name: 'I saved my receipt' }).click();
+  await page.getByRole('link', { name: 'Check contribution status', exact: true }).click();
   await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Contribute' }).click();
   await expect(page.getByRole('heading', { name: 'Add a facility' })).toBeVisible();
-  await expect(page.getByLabel('Private receipt')).toHaveCount(0);
+  await expect(page.getByLabel('Private receipt', { exact: true })).toHaveCount(0);
 });
 
 test('the operator queue shows structured private context but never contact or receipt fields', async ({ page }) => {
@@ -220,9 +220,9 @@ test('six contribution task links switch in place with prefilled records and cle
   await page.getByLabel('Facility name').fill('Synthetic selector submission');
   await page.getByLabel(/I have permission to share/).check();
   await page.getByRole('button', { name: 'Send for review' }).click();
-  await expect(page.getByLabel('Private receipt')).toHaveValue(secret);
+  await expect(page.getByLabel('Private receipt', { exact: true })).toHaveValue(secret);
   await switchTask('Bug report');
-  await expect(page.getByLabel('Private receipt')).toHaveCount(0);
+  await expect(page.getByLabel('Private receipt', { exact: true })).toHaveCount(0);
   await expect(page.getByLabel('What happened?')).toHaveValue('');
   await expect(page.getByRole('link', { name: 'Open email draft' })).toHaveCount(0);
   expect(communityWrites).toBe(1);
@@ -270,4 +270,21 @@ test('compact pages and dropdowns work on a narrow touch screen without overflow
   await expect(page.getByRole('heading', { name: 'Sources & Methodology' })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await context.close();
+});
+
+test('published status records past publication without promising a currently available claim', async ({ page }) => {
+  let showPublicLink = false;
+  await page.route('**/api/community/status', route => route.fulfill({contentType:'application/json',body:JSON.stringify({submission_id:id,status:'published',...(showPublicLink ? {public_record_url:claimDto.public_record_url} : {})})}));
+  await page.goto('#/contribution-status');
+  await page.getByLabel('Submission ID',{exact:true}).fill(id);
+  await page.getByLabel('Private receipt',{exact:true}).fill(secret);
+  await page.getByRole('button',{name:'Check status',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Published to community submissions',exact:true})).toBeVisible();
+  await expect(page.getByText('Your contribution was published as an unreviewed community claim, separate from the curated release.',{exact:true})).toBeVisible();
+  await expect(page.getByText('No public link is currently available.',{exact:true})).toBeVisible();
+  await expect(page.getByRole('link',{name:'Open the claim details',exact:true})).toHaveCount(0);
+  showPublicLink = true;
+  await page.getByRole('button',{name:'Check status',exact:true}).click();
+  await expect(page.getByRole('link',{name:'Open the claim details',exact:true})).toHaveAttribute('href',`#/community/claim?id=${id}&release_id=${release}`);
+  await expect(page.getByText('No public link is currently available.',{exact:true})).toHaveCount(0);
 });

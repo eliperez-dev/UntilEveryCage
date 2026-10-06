@@ -50,17 +50,40 @@ Canonical type links use `#/contribute?type=facility`, `evidence`, `correction`,
 `duplicate`, `privacy_removal` or `bug`. Existing `#/contribute/…` links
 preselect the appropriate type. The shared
 styled header is Map, Database | Contribute, About. Contribute is a direct
-link; About's text-only menu offers Overview and Sources & methodology.
+link; Database's text-only menu offers Browse records, Downloads and API
+documentation. About offers Overview, Sources & methodology, FAQ and Help.
 `#/about/manifesto` remains an alias for Overview. Overview and Contribute
 provide the open-source code contribution link on GitHub.
 Country names and source links are optional on facility intake; a name is
 required. Evidence needs a record reference and either a link or explanation.
+Contact email is optional for private follow-up and is stored separately from
+the claim. No automated email is sent; entering email is not an account,
+receipt recovery method or subscription. It expires under the configured
+contact retention period (the current disposable user test uses one day), so
+this pilot is not a durable list for future notifications. Future delivery
+needs approved retention/purpose, sender verification, a restricted contact
+workflow and delivery controls before enabling it.
+Receipt lookup uses the **Submission ID** and **Private receipt** returned
+after sending. Save both with the explicit copy controls; neither is stored
+in a link or browser storage. A **Record ID** identifies an existing facility
+and is used to target evidence/corrections; it cannot replace a Submission ID.
 Bug reports compose email or open GitHub; the user sends the report.
 Other local routes are `#/contribution-status`,
 `#/contribution-review` and `#/community`. Supply the operator credential
 in the private review form; it remains in memory. Privacy-request actions
 operate on the submission; target-record suppression follows the governance
 runbook. Accounts, uploads and email delivery are absent.
+
+For a separately authorized combined local preview, keep `/api/community/*`
+on the isolated intake service. Vite's server-only
+`UEC_REAL_PREVIEW_API_ORIGIN` can route `/dev/real-preview/*` to a different
+authenticated loopback service against the retained database;
+`UEC_COMBINED_PREVIEW=true` preserves the `/v2-preview/` base. The existing
+`UEC_DEV_PREVIEW_TOKEN` and `VITE_LOCAL_DATA_MODE=real-preview` gate still apply.
+Keep credentials in process memory and make retained-database sessions read-only.
+This does not import data, apply migrations, make a public release or enable
+private downloads. Verify authenticated aggregate responses and independent
+intake health; a synthetic browser test does not prove this connection.
 
 `UEC_COMMUNITY_PUBLIC_ENABLED=true` separately enables safe linkage reads.
 It does not release submitted pins. An authenticated `link_community` API

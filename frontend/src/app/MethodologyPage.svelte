@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ProjectFooter from './ProjectFooter.svelte';
   import PreviewMasthead from './PreviewMasthead.svelte';
   let { returnMapHref = '#/map' }: { returnMapHref?: string } = $props();
   let databaseHref = $derived(returnMapHref.includes('?') ? `#/database?${returnMapHref.split('?')[1]}` : '#/database');
@@ -33,8 +34,9 @@
     <a href={databaseHref}>Explore the Database</a>
   </section>
 </main>
+<ProjectFooter {returnMapHref} />
 <style>
-  .methodology{width:min(100% - 3rem,46rem);margin:auto;padding:1.5rem 0 2.5rem;color:#f1efe8;font:.9rem/1.5 system-ui,sans-serif;min-height:calc(100dvh - 4rem)}
+  .methodology{width:min(100% - 3rem,46rem);margin:auto;padding:1.5rem 0 2.5rem;color:#f1efe8;font:.9rem/1.5 system-ui,sans-serif;min-height:0}
   h1{margin:0 0 1rem;font:500 2rem/1.15 Georgia,serif;letter-spacing:-.02em}h2{margin:0 0 .5rem;font:600 1.1rem/1.3 system-ui,sans-serif}section{margin-top:1.5rem}p{margin:0 0 .75rem;color:#c6d0c5}a{color:#dce8d9;text-underline-offset:.2em;overflow-wrap:anywhere}dl{margin:0 0 .75rem}dl div{display:grid;grid-template-columns:9rem minmax(0,1fr);gap:1rem;margin:.6rem 0}dt{font-weight:600}dd{margin:0;color:#c6d0c5}
   @media(max-width:40rem){.methodology{width:calc(100% - 2rem)}h1{font-size:1.65rem}dl div{grid-template-columns:1fr;gap:.2rem}}
 </style>

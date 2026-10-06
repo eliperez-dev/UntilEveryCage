@@ -82,6 +82,11 @@ Omitted country remains unknown; a supplied country must be an ISO alpha-2 code.
 The intake alias `unknown` is accepted and normalized to an omitted stored field.
 The UI presents country names rather than requiring contributors to know codes.
 Omitted source remains unknown and is not fabricated or fetched.
+The UI accepts optional `contact_email` for private contribution follow-up;
+it is stored separately and excluded from receipt, status, operator queue and
+public claim responses. It is not email authentication or a notification
+subscription. No delivery or receipt recovery endpoint exists. Contact expiry
+continues to use the explicitly configured retention period.
 Coordinates must be a finite in-range pair and remain private; precision is
 `unknown|exact|coarse|unmapped`, input method `manual_pin|text|unknown`.
 There are no files, contributor accounts or cookie sessions.

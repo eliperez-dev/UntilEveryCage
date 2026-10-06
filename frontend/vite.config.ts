@@ -15,7 +15,7 @@ export default defineConfig(({ command }) => {
   const realPreviewProxy: Record<string, string | ProxyOptions> = {};
   if (previewToken && process.env.VITE_LOCAL_DATA_MODE === 'real-preview') {
     realPreviewProxy['/dev/real-preview'] = {
-      target: process.env.VITE_API_ORIGIN ?? 'http://127.0.0.1:38001',
+      target: process.env.UEC_REAL_PREVIEW_API_ORIGIN ?? process.env.VITE_API_ORIGIN ?? 'http://127.0.0.1:38001',
       changeOrigin: false,
       configure(proxy) {
         proxy.on('proxyReq', request => request.setHeader('x-uec-dev-preview-token', previewToken));
@@ -31,7 +31,7 @@ export default defineConfig(({ command }) => {
   };
 
   return {
-    base: localRealPreview ? '/' : '/v2-preview/',
+    base: process.env.UEC_COMBINED_PREVIEW === 'true' ? '/v2-preview/' : localRealPreview ? '/' : '/v2-preview/',
     publicDir: 'public',
     plugins: [svelte(), previewModeMeta, publicReferenceAssets()],
     define: realPreviewMapSource

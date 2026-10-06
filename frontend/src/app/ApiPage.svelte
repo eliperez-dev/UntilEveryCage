@@ -52,9 +52,9 @@
     return () => { disposed = true; shadow.removeEventListener('change', watchProfile); shadow.removeEventListener('input', watchProfile); instance?.unmount?.(); shadow.replaceChildren(); };
   });
 </script>
-<svelte:head><title>API & downloads · Until Every Cage</title></svelte:head>
+<svelte:head><title>API documentation · Until Every Cage</title></svelte:head>
 <section class="api-page" aria-labelledby="api-title">
-  <h1 id="api-title">API & downloads</h1>
+  <h1 id="api-title">API documentation</h1>
   <p>Public data are available when a release has been published. The explorer reads public releases only.</p>
   <p class="download-links"><a href="/api/v2/locations.csv?profile=official">Curated CSV (up to 1,000 records)</a> · <a href="/api/v2/locations?profile=official&limit=100">Paginated JSON</a> · <a href={`${reference}public-openapi.json`} download>OpenAPI specification</a></p>
   <p class="pagination-note">For larger exports, follow the JSON response’s next cursor to retrieve each page.</p>

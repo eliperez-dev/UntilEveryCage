@@ -27,6 +27,24 @@ describe('community contribution repository', () => {
     expect(() => validateContributionDraft({ kind: 'evidence', target_record_id: id, consent: true })).toThrow(CommunityError);
   });
 
+  it('keeps optional email exclusively in the submission body and drops it from receipt and status responses', async () => {
+    const email = 'synthetic-followup@example.test';
+    const fetcher = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => response(String(input).endsWith('/status') ? { submission_id: id, status: 'received', contact_email: email } : { submission_id: id, receipt_secret: 'synthetic-private-receipt', status: 'received', contact_email: email }));
+    const repository = createCommunityRepository(fetcher);
+    expect(await repository.submit({ ...accepted, contact_email: email })).not.toHaveProperty('contact_email');
+    expect(JSON.parse(String(fetcher.mock.calls[0]![1]?.body)).contact_email).toBe(email);
+    expect(String(fetcher.mock.calls[0]![0])).not.toContain(email);
+    expect(await repository.status(id, 'synthetic-private-receipt')).not.toHaveProperty('contact_email');
+    expect(JSON.parse(String(fetcher.mock.calls[1]![1]?.body))).toEqual({ submission_id: id, receipt_secret: 'synthetic-private-receipt' });
+    expect(String(fetcher.mock.calls[1]![0])).not.toContain(email);
+    for (const contact_email of ['not-an-email', 'a@@example.test', 'has space@example.test', `${'a'.repeat(250)}@x.test`]) expect(() => validateContributionDraft({ ...accepted, contact_email })).toThrow('Enter a valid email address or leave it blank.');
+  });
+
+  it('maps the backend email validation message without echoing the submitted address', async () => {
+    const repository = createCommunityRepository(async () => response({ error: { message: 'contact_email is invalid' } }, 400));
+    await expect(repository.submit({ ...accepted, contact_email: 'synthetic@example.test' })).rejects.toThrow('Enter a valid email address or leave it blank.');
+  });
+
   it('normalizes map-picked longitudes and rejects non-finite or out-of-range latitude', () => {
     expect(normalizeClaimedPoint(55.6761119, 190.1234567)).toEqual({ latitude: 55.676112, longitude: -169.876543 });
     expect(normalizeClaimedPoint(91, 12)).toBeNull();

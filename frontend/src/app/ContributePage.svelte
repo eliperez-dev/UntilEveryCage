@@ -34,11 +34,6 @@
     <div class="project-links" aria-label="Project links">
     <a href={utilityHref('contribution-status')}>Check status</a>
     <a href={utilityHref('community')}>Community submissions</a>
-    <a href="mailto:untileverycageproject@protonmail.com">Email</a>
-    <a href="https://ko-fi.com/untileverycageisempty" target="_blank" rel="noreferrer">Ko-fi</a>
-    <a href="https://github.com/eliperez-dev/UntilEveryCage" target="_blank" rel="noreferrer">GitHub</a>
-    <a href="https://discord.gg/wbdTHzAZ4b" target="_blank" rel="noreferrer">Discord</a>
-    <a href="https://linktr.ee/veganresource" target="_blank" rel="noreferrer">Resources</a>
     </div>
   </footer>
 </section>
