@@ -234,14 +234,14 @@ test('six contribution task links switch in place with prefilled records and cle
 
 test('the text-only About menu supports keyboard, dismissal, and direct destination links', async ({ page }) => {
   await page.goto('#/contribute');
-  const about = page.getByRole('button', { name: 'About', exact: true });
+  const about = page.getByRole('link', { name: 'About', exact: true });
   await about.focus();
   await page.keyboard.press('ArrowDown');
   await expect(page.locator('#shared-about-nav').getByRole('link', { name: 'Overview' })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(about).toBeFocused();
   await expect(about).toHaveAttribute('aria-expanded', 'false');
-  await about.click();
+  await about.hover();
   await about.focus();
   await page.keyboard.press('ArrowDown');
   await expect(page.locator('#shared-about-nav').getByRole('link', { name: 'Overview' })).toBeFocused();
@@ -261,7 +261,7 @@ test('compact pages and dropdowns work on a narrow touch screen without overflow
     await page.getByRole('navigation', { name: 'Contribution tasks' }).getByRole('link', { name: task, exact: true }).tap();
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   }
-  await page.getByRole('button', { name: 'About', exact: true }).tap();
+  await page.getByRole('button', { name: 'Show About pages' }).tap();
   const sources = page.locator('#shared-about-nav').getByRole('link', { name: 'Sources & methodology' });
   const box = await sources.boundingBox();
   expect(box!.x).toBeGreaterThanOrEqual(0);

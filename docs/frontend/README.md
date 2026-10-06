@@ -44,7 +44,10 @@ consistently in the public shell and local preview; following them must preserve
 the selected preview context. Private submission forms use ordinary language;
 publication warnings belong on public unreviewed community results. Contribute
 is a direct header link; Database and About expose destinations through text-only
-menus without arrows. State that the code is open source and provide an
+menus without arrows. Clicking Database opens Browse records; clicking About
+opens Overview. Hover or keyboard focus reveals subpages. On touch devices,
+a separate compact pages control reveals the menu while title taps navigate.
+State that the code is open source and provide an
 explicit GitHub path for code contributions on Overview and Contribute. Use
 the same styled masthead on all pages. Informational pages use compact type,
 short copy and modest spacing rather than oversized editorial sections.

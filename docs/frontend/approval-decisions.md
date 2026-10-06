@@ -60,6 +60,11 @@ displayed counts describe loaded results unless the API supplies a total.
 Downloads describe the actual bounded public exports, never private preview
 data or an unimplemented filtered/bulk export.
 
+The next 2026-10-05 refinement makes Database and About ordinary links to
+their default pages (Browse records and Overview). Hover reveals subpages;
+keyboard access and Escape dismissal remain available. Touch uses a separate
+compact pages control, preserving direct title navigation without an arrow.
+
 ## Remaining implementation decisions
 
 10. **Map engine:** benchmark MapLibre/WebGL against Leaflet; MapLibre is the

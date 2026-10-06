@@ -20,8 +20,11 @@ and do not require a contributor account. About contains the
 Overview (the manifesto), Sources & methodology, FAQ and Help. Database groups
 Browse records, Downloads and API documentation. The old manifesto URL and
 methodology route remain working aliases. Contribute is a direct header link;
-Database and About use text-only menus without arrows, with keyboard, click and touch
-access. Existing
+Database and About are links to Browse records and Overview respectively.
+Hovering or keyboard focus reveals their text-only subpage menus, without
+arrows. Title clicks and Enter navigate normally; a separate touch-only pages
+control opens subpages. Escape dismisses the menu and restores focus, and the
+pointer can move from title to menu without losing it. Existing
 contribution links preselect the form type. Navigation preserves the active
 local preview mode when returning to Map or Database. Every surface uses the
 same styled masthead, including informational pages and status lookup. Overview

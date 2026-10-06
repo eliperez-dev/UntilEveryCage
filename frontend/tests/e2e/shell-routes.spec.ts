@@ -16,9 +16,8 @@ test('the shared shell exposes the primary map and database routes', async ({ pa
   await expect(page.getByRole('banner')).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible();
   await expect(page.getByRole('heading', { level: 1, name: /map/i })).toBeVisible();
-  await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Database', exact: true })).toBeVisible();
-  await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Database', exact: true }).click();
-  await page.locator('#shared-database-nav').getByRole('link', { name: 'Browse records' }).click();
+  await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Database', exact: true })).toBeVisible();
+  await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Database', exact: true }).click();
   await routeTail(page, 'database');
   await expect(page.getByRole('heading', { level: 1, name: /Browse records/i })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Map' })).toBeVisible();
@@ -29,14 +28,13 @@ test('a record URL is directly addressable and has a route-specific heading', as
   await expect(new URL(page.url()).hash).toBe('#/records/synthetic-record-1');
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible();
-  await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Database', exact: true })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Database', exact: true })).toBeVisible();
 });
 
 test('the shell keeps route context in the URL through back and forward navigation', async ({ page }) => {
   await page.goto('./#/map?profile=community&query=synthetic');
   await expect(page.getByRole('heading', { level: 1, name: /map/i })).toBeVisible();
-  await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Database', exact: true }).click();
-  await page.locator('#shared-database-nav').getByRole('link', { name: 'Browse records' }).click();
+  await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Database', exact: true }).click();
   await routeTail(page, 'database');
   await expect.poll(() => new URL(page.url()).hash).toBe('#/database');
   await page.goBack();
@@ -47,11 +45,11 @@ test('the shell keeps route context in the URL through back and forward navigati
 
 test('About contains the sources & methodology page and returns via browser history', async ({ page }) => {
   await page.goto('./#/database');
-  await page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'About', exact: true }).click();
+  await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'About', exact: true }).hover();
   await page.locator('#shared-about-nav').getByRole('link', { name: 'Overview' }).click();
   await expect.poll(() => new URL(page.url()).hash).toBe('#/about');
   await expect(page.getByRole('heading', { level: 1, name: 'Overview' })).toBeVisible();
-  await page.getByRole('button', { name: 'About', exact: true }).click();
+  await page.getByRole('link', { name: 'About', exact: true }).hover();
   await page.locator('#shared-about-nav').getByRole('link', { name: 'Sources & methodology' }).click();
   await expect.poll(() => new URL(page.url()).hash).toBe('#/about/sources');
   await expect(page.getByRole('heading', { level: 1, name: 'Sources & Methodology' })).toBeVisible();
@@ -66,7 +64,7 @@ test('the Contribute hub, bug report, and About pages share the primary navigati
   await page.goto('./#/contribute');
   const nav = page.getByRole('navigation', { name: 'Primary' });
   for (const label of ['Map', 'Contribute']) await expect(nav.getByRole('link', { name: label })).toBeVisible();
-  await expect(nav.getByRole('button', { name: 'About', exact: true })).toBeVisible();
+  await expect(nav.getByRole('link', { name: 'About', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Add a facility', level: 1 })).toBeVisible();
   await page.getByRole('navigation', { name: 'Contribution tasks' }).getByRole('link', { name: 'Bug report' }).click();
   await expect(page.getByRole('heading', { name: 'Report a bug' })).toBeVisible();
@@ -74,7 +72,7 @@ test('the Contribute hub, bug report, and About pages share the primary navigati
   await page.goto('./#/about/manifesto');
   await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible();
   for (const label of ['Map', 'Contribute']) await expect(nav.getByRole('link', { name: label })).toBeVisible();
-  await expect(nav.getByRole('button', { name: 'About', exact: true })).toBeVisible();
+  await expect(nav.getByRole('link', { name: 'About', exact: true })).toBeVisible();
 });
 
 test('bug reports prepare a user-controlled email draft without copying URL context', async ({ page }) => {
@@ -110,7 +108,7 @@ test('route controls are focusable links with explicit destinations', async ({ p
   await mapLink.focus();
   await expect(mapLink).toBeFocused();
   await expect(mapLink).toHaveAttribute('href', '#/map');
-  await page.getByRole('button', { name: 'Database', exact: true }).click();
+  await page.getByRole('link', { name: 'Database', exact: true }).hover();
   const databaseLink = page.locator('#shared-database-nav').getByRole('link', { name: 'Browse records' });
   await databaseLink.focus();
   await expect(databaseLink).toBeFocused();
@@ -128,9 +126,9 @@ test('direct Contribute tasks, four About destinations, and code help are easy t
   await expect(page.getByRole('link', { name: 'Check status', exact: true })).toHaveAttribute('href', '#/contribution-status');
   await expect(page.getByRole('link', { name: 'Community submissions', exact: true })).toHaveAttribute('href', '#/community');
   await expect(page.getByRole('link', { name: 'Contribute code on GitHub' })).toHaveAttribute('href', 'https://github.com/eliperez-dev/UntilEveryCage');
-  const about = page.getByRole('button', { name: 'About', exact: true });
+  const about = page.getByRole('link', { name: 'About', exact: true });
   await expect(about).toHaveText('About');
-  await about.click();
+  await about.hover();
   await expect(page.locator('#shared-about-nav').getByRole('link')).toHaveCount(4);
   await expect(page.getByRole('link', { name: 'Manifesto', exact: true })).toHaveCount(0);
   await page.locator('#shared-about-nav').getByRole('link', { name: 'Overview' }).click();

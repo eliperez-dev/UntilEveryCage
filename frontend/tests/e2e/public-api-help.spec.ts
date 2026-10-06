@@ -42,7 +42,7 @@ test('Swagger is local and lazy, renders real GET operations and executes only o
   await page.goto('./#/about');
   await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible();
   expect(swaggerAssets).toBe(0);
-  await page.getByRole('button', { name: 'Database', exact: true }).click();
+  await page.getByRole('link', { name: 'Database', exact: true }).hover();
   await page.locator('#shared-database-nav').getByRole('link', { name: 'API documentation' }).click();
   await expect(page.locator('.opblock')).toHaveCount(10);
   await expect(page.locator('.opblock-summary-method')).toHaveText(Array(10).fill('GET'));
@@ -86,7 +86,7 @@ test('Help and expanded API paths stay usable on mobile without changing the mas
   await list.locator('.opblock-summary-control').click();
   await list.getByRole('button', { name: 'Try it out', exact: true }).click();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.getByRole('button', { name: 'About', exact: true }).click();
+  await page.getByRole('link', { name: 'About', exact: true }).hover();
   await page.locator('#shared-about-nav').getByRole('link', { name: 'Help' }).click();
   await expect(page.getByRole('heading', { name: 'Help', exact: true })).toBeVisible();
   await expect(page.getByRole('banner')).toBeVisible();
