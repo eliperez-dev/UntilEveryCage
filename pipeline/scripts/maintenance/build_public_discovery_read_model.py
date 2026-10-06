@@ -22,6 +22,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from pipeline.common.source_rights import require_cleared
+from pipeline.common.release_geometry import geometry_rows_sql
 
 
 class ReadModelBlocked(ValueError):
@@ -227,13 +228,97 @@ ORDER BY eligible.facility_id, eligible.observation_id
 """
 
 
+SOURCE_ROWS = geometry_rows_sql("""
+SELECT eligible.facility_id, eligible.observation_id, eligible.source_record_id,
+       facility.canonical_name, facility.country_code, facility.postal_code, facility.city,
+       eligible.display_location, eligible.display_precision,
+       CASE eligible.display_precision
+         WHEN 'source_reported' THEN 'Source-reported coordinates; precision as supplied by source'
+         WHEN 'approximate' THEN 'Approximate display geometry; not a facility-coordinate claim'
+         WHEN 'exact' THEN 'Accepted geocoder result'
+         WHEN 'city' THEN 'Approximate city location — multiple geocoder matches'
+         ELSE 'No publishable location' END AS display_label,
+       eligible.geocode_status AS geocoding_status,
+       eligible.geocode_provider AS geocoder_provider,
+       eligible.geocode_queried_at AS geocoded_at,
+       observation.classification_category, observation.observed_at, observation.first_observed_at,
+       source.origin_type AS provenance_origin_type, source.source_id AS provenance_source_id,
+       source.name AS provenance_source_name, source.official_url AS provenance_source_url,
+       artifact.retrieved_at AS provenance_retrieved_at,
+       CASE WHEN source.attribution IS NULL OR btrim(source.attribution) = ''
+            THEN 'cleared' ELSE 'attribution_required' END AS source_rights_status,
+       eligible.geometry_provenance
+FROM eligible_geometry eligible
+JOIN uec.release_members member
+  ON member.release_id=eligible.release_id AND member.observation_id=eligible.observation_id
+ AND member.default_visible=true
+JOIN uec.releases release ON release.release_id=member.release_id
+JOIN uec.observations observation ON observation.observation_id=eligible.observation_id
+JOIN uec.facilities facility ON facility.facility_id=eligible.facility_id
+JOIN uec.source_records record ON record.source_record_id=eligible.source_record_id
+JOIN uec.sources source ON source.source_id=record.source_id
+JOIN uec.raw_artifacts artifact ON artifact.artifact_id=record.artifact_id
+JOIN LATERAL (
+    SELECT decision.factual_review_status, decision.privacy_screening_status,
+           decision.maintainer_approval, decision.publication_eligible
+    FROM (
+      SELECT review.factual_review_status, review.privacy_screening_status,
+             review.maintainer_approval, review.publication_eligible,
+             review.reviewed_at AS decided_at, review.publication_review_event_id::text AS tie_break
+      FROM uec.publication_review_events review
+      JOIN uec.publication_review_release_scopes review_scope
+        ON review_scope.publication_review_event_id=review.publication_review_event_id
+       AND review_scope.release_id=member.release_id
+      WHERE review.source_record_id=observation.source_record_id
+        AND release.summary->>'candidate_only' IS DISTINCT FROM 'true'
+      UNION ALL
+      SELECT cohort.factual_review_status, cohort.privacy_screening_status,
+             cohort.maintainer_approval, cohort.publication_eligible,
+             cohort.reviewed_at AS decided_at, cohort.document_sha256 AS tie_break
+      FROM uec.release_cohort_review_current cohort
+      WHERE cohort.release_id=member.release_id
+        AND cohort.source_id=record.source_id
+        AND cohort.artifact_id=record.artifact_id
+        AND release.summary->>'candidate_only'='true'
+    ) decision
+    ORDER BY decision.decided_at DESC, decision.tie_break DESC LIMIT 1
+) review ON true
+WHERE release.status='promoted' AND release.test_only IS NOT TRUE
+  AND (NOT eligible.is_frozen_candidate OR eligible.approved_member_ok)
+  AND review.publication_eligible=true AND review.privacy_screening_status='passed'
+  AND review.factual_review_status<>'rejected'
+  AND (review.maintainer_approval='approved'
+       OR (release.profile='community' AND source.origin_type='user_submitted'
+           AND review.factual_review_status='unreviewed' AND review.maintainer_approval='pending'))
+  AND NOT EXISTS (SELECT 1 FROM uec.record_access_current access
+                  WHERE access.source_record_id=observation.source_record_id
+                    AND access.action='public_access_revoked')
+  AND NOT EXISTS (
+      SELECT 1 FROM uec.suppression_case_current current_case
+      JOIN uec.suppression_cases case_record ON case_record.case_id=current_case.case_id
+      JOIN uec.suppression_references ref ON ref.case_id=current_case.case_id
+      JOIN uec.source_records suppressed_record ON (
+          (ref.facility_id IS NOT NULL AND EXISTS (
+              SELECT 1 FROM uec.observations restricted_observation
+              WHERE restricted_observation.facility_id=ref.facility_id
+                AND restricted_observation.source_record_id=suppressed_record.source_record_id))
+          OR (ref.source_id=suppressed_record.source_id
+              AND ref.source_record_key=suppressed_record.source_record_key))
+      WHERE current_case.event_type='suppressed'
+        AND case_record.status IN ('active','review','closed','expired')
+        AND suppressed_record.source_record_id=observation.source_record_id)
+ORDER BY eligible.facility_id, eligible.observation_id
+""")
+
+
 SELECT_ROWS = """
 SELECT facility_id, observation_id, source_record_id, canonical_name,
        country_code, postal_code, city, ST_AsText(display_location::geometry),
        display_precision, display_label, geocoding_status, geocoder_provider,
        geocoded_at, classification_category, observed_at, first_observed_at,
        provenance_origin_type, provenance_source_id, provenance_source_name,
-       provenance_source_url, provenance_retrieved_at, source_rights_status
+       provenance_source_url, provenance_retrieved_at, source_rights_status,
+       geometry_provenance::text
 FROM (
 """ + SOURCE_ROWS + """
 ) selected
@@ -252,13 +337,13 @@ INSERT INTO uec.public_discovery_read_model_rows
      display_label,geocoding_status,geocoder_provider,geocoded_at,
      classification_category,observed_at,first_observed_at,
      provenance_origin_type,provenance_source_id,provenance_source_name,
-     provenance_source_url,provenance_retrieved_at,source_rights_status)
+     provenance_source_url,provenance_retrieved_at,source_rights_status,geometry_provenance)
 SELECT %s, facility_id, observation_id, source_record_id, canonical_name,
        country_code, postal_code, city, display_location, display_precision,
        display_label, geocoding_status, geocoder_provider, geocoded_at,
        classification_category, observed_at, first_observed_at,
        provenance_origin_type, provenance_source_id, provenance_source_name,
-       provenance_source_url, provenance_retrieved_at, source_rights_status
+       provenance_source_url, provenance_retrieved_at, source_rights_status, geometry_provenance
 FROM (
 """ + SOURCE_ROWS + """
 ) selected
@@ -274,7 +359,7 @@ def build_in_transaction(connection: Any, release_id: str, fail_after_rows: int 
     """
     manifest_sha256 = _release_manifest(connection, release_id)
     require_cleared(connection, release_id)
-    rows = connection.execute(SELECT_ROWS, (release_id,)).fetchall()
+    rows = connection.execute(SELECT_ROWS, (release_id, release_id)).fetchall()
     content_sha256 = content_digest(rows)
     existing = connection.execute(
         "SELECT manifest_sha256, content_sha256, row_count FROM uec.public_discovery_read_models WHERE release_id=%s",
@@ -301,8 +386,8 @@ def build_in_transaction(connection: Any, release_id: str, fail_after_rows: int 
              display_label,geocoding_status,geocoder_provider,geocoded_at,
              classification_category,observed_at,first_observed_at,
              provenance_origin_type,provenance_source_id,provenance_source_name,
-             provenance_source_url,provenance_retrieved_at,source_rights_status)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,ST_GeogFromText(%s),%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+             provenance_source_url,provenance_retrieved_at,source_rights_status,geometry_provenance)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,ST_GeogFromText(%s),%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)
         """
         with connection.cursor() as cursor:
             for index, row in enumerate(rows, start=1):
@@ -310,7 +395,7 @@ def build_in_transaction(connection: Any, release_id: str, fail_after_rows: int 
                 if index >= fail_after_rows:
                     raise RuntimeError("synthetic interrupted read model build")
     else:
-        connection.execute(INSERT_ROWS, (release_id, release_id))
+        connection.execute(INSERT_ROWS, (release_id, release_id, release_id))
     connection.execute(
         "INSERT INTO uec.public_discovery_read_models (release_id,manifest_sha256,content_sha256,row_count) VALUES (%s,%s,%s,%s)",
         (release_id, manifest_sha256, content_sha256, len(rows)),

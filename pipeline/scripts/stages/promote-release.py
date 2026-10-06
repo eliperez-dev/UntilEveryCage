@@ -16,6 +16,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from pipeline.common.source_rights import require_cleared
+from pipeline.common.release_geometry import RELEASE_GATE_METRICS_SQL
 from pipeline.scripts.maintenance import build_public_discovery_read_model as discovery
 
 
@@ -196,6 +197,13 @@ def promote(database_url: str, release_id: str, artifacts: list[dict], map_artif
                 LEFT JOIN uec.public_access_restricted s ON s.source_record_id=o.source_record_id
                 WHERE m.release_id=%s
             """, (release_id,)).fetchone()
+            geometry_metrics = connection.execute(
+                RELEASE_GATE_METRICS_SQL, (release_id, release_id, release_id)
+            ).fetchone()
+            unsafe = (geometry_metrics[9], geometry_metrics[4], geometry_metrics[10],
+                      geometry_metrics[11], geometry_metrics[12])
+            if not geometry_metrics[1]:
+                raise ValueError("release has no public-eligible visible members")
             if any(unsafe) or rights_gate["blockers"]:
                 raise ValueError(f"release safety gates failed: coordinate_not_ready={unsafe[0]}, review_required={unsafe[1]}, publication_not_approved={unsafe[2]}, active_suppression={unsafe[3]}, rights_not_cleared={unsafe[4] + len(rights_gate['blockers'])}")
             demonstration = target[4].get("demonstration") if isinstance(target[4], dict) else None
@@ -306,7 +314,7 @@ def promote(database_url: str, release_id: str, artifacts: list[dict], map_artif
                     "INSERT INTO uec.release_manifests (release_id,manifest,manifest_sha256) VALUES (%s,%s,%s)",
                     (release_id, canonical, digest),
                 )
-            previous_rows = [row[0] for row in previous] if previous else []
+            previous_rows = [previous[0]] if previous else []
             connection.execute("UPDATE uec.releases SET status = 'validated' WHERE status = 'promoted' AND profile = %s AND release_id <> %s", (target[1], release_id))
             connection.execute("UPDATE uec.releases SET status = 'promoted' WHERE release_id = %s", (release_id,))
             read_model = discovery.build_in_transaction(

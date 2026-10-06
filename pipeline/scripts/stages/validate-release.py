@@ -15,6 +15,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from pipeline.common.source_rights import evaluate as evaluate_source_rights
+from pipeline.common.release_geometry import RELEASE_GATE_METRICS_SQL
 
 
 def evaluate(metrics: dict, expected_records: int | None = None) -> dict:
@@ -27,6 +28,8 @@ def evaluate(metrics: dict, expected_records: int | None = None) -> dict:
         findings.append({"code": "validation_errors", "count": metrics["validation_errors"]})
     if metrics["review_visible"]:
         findings.append({"code": "review_required_visible", "count": metrics["review_visible"]})
+    if metrics.get("visible_records", metrics.get("release_records", 0)) == 0:
+        findings.append({"code": "no_public_eligible_records", "count": 1})
     if metrics.get("coordinate_not_ready"):
         findings.append({"code": "coordinate_not_ready", "count": metrics["coordinate_not_ready"]})
     if metrics.get("publication_not_approved"):
@@ -102,10 +105,15 @@ def validate(database_url: str, release_id: str, expected_records: int | None, m
             LEFT JOIN uec.public_access_restricted restricted ON restricted.source_record_id = observation.source_record_id
             WHERE release_member.release_id = %s
         """, (release_id, release_id)).fetchone()
-        names = ["release_records", "distinct_observations", "duplicate_observations", "review_visible", "exact_display_ready", "city_display_ready", "unmapped_display", "coordinate_not_ready", "publication_not_approved", "active_suppression", "rights_not_cleared", "validation_errors"]
+        metrics = connection.execute(RELEASE_GATE_METRICS_SQL,
+                                     (release_id, release_id, release_id)).fetchone()
+        names = ["release_records", "visible_records", "distinct_observations", "duplicate_observations",
+                 "review_visible", "exact_display_ready", "source_reported_display_ready", "coarse_display_ready",
+                 "unmapped_display", "coordinate_not_ready", "publication_not_approved", "active_suppression",
+                 "demonstration_rights_not_cleared", "validation_errors"]
         metrics_dict = dict(zip(names, metrics))
         rights_gate = evaluate_source_rights(connection, release_id)
-        metrics_dict["rights_not_cleared"] = len(rights_gate["blockers"])
+        metrics_dict["rights_not_cleared"] = len(rights_gate["blockers"]) + metrics_dict.pop("demonstration_rights_not_cleared")
         metrics_dict["rights_gate"] = rights_gate["status"]
         metrics_dict["rights_requirements"] = len(rights_gate["requirements"])
         metrics_dict["test_only"] = bool(release[1])

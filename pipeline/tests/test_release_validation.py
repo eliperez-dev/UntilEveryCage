@@ -51,6 +51,15 @@ class ReleaseValidationTests(unittest.TestCase):
         report = MODULE.evaluate({"release_records": 0, "duplicate_observations": 0, "validation_errors": 0, "review_visible": 0, "coordinate_not_ready": 0, "publication_not_approved": 0, "active_suppression": 0, "test_only": True})
         self.assertIn("test_only_release", {finding["code"] for finding in report["findings"]})
 
+    def test_empty_visible_candidate_is_not_a_ready_release(self):
+        report = MODULE.evaluate({"release_records": 124414, "visible_records": 0,
+                                  "duplicate_observations": 0, "validation_errors": 0,
+                                  "review_visible": 0, "coordinate_not_ready": 0,
+                                  "publication_not_approved": 0, "active_suppression": 0,
+                                  "rights_not_cleared": 0})
+        self.assertEqual(report["status"], "blocked")
+        self.assertEqual(report["findings"], [{"code": "no_public_eligible_records", "count": 1}])
+
 
 if __name__ == "__main__":
     unittest.main()

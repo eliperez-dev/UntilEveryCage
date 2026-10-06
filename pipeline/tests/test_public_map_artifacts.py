@@ -63,6 +63,15 @@ class PublicMapArtifactTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unusable zero coordinate"):
             MODULE._point("POINT (0 0)")
 
+    def test_source_reported_and_approximate_points_are_clustered_as_coarse(self):
+        point = (10.0, 55.0)
+        self.assertEqual(MODULE.map_geometry_kind("source_reported", point), "coarse")
+        self.assertEqual(MODULE.map_geometry_kind("approximate", point), "coarse")
+        self.assertEqual(MODULE.map_geometry_kind("city", point), "coarse")
+        self.assertEqual(MODULE.map_geometry_kind("exact", point), "exact")
+        self.assertIsNone(MODULE.map_geometry_kind("unmapped", None))
+        self.assertIsNone(MODULE.map_geometry_kind("source_reported", None))
+
     def test_coincident_exact_records_remain_distinct_at_max_zoom(self):
         facilities = [
             {"record_id": "exact-a", "longitude": 12, "latitude": 55, "kind": "exact", "category_key": "farm"},
@@ -81,7 +90,7 @@ class PublicMapArtifactTests(unittest.TestCase):
 
     def test_tile_builder_drops_unmapped_and_selects_only_allowlisted_properties(self):
         source = SCRIPT.read_text(encoding="utf-8")
-        self.assertIn('point is None or row[8] == "unmapped"', source)
+        self.assertIn('kind = map_geometry_kind(row[8], point)', source)
         compact_source = "".join(source.split())
         self.assertIn("SELECTfeature_key,kind,count,exact_count,coarse_count,next_zoom,", compact_source)
         self.assertIn("record_id,category_key,category_keys_compact,geom", compact_source)

@@ -433,6 +433,7 @@ struct V2ExportRow {
     city: Option<String>,
     category: String,
     display_precision: String,
+    geometry_provenance: String,
     factual_review_status: String,
     privacy_screening_status: String,
     project_approval: String,
@@ -535,7 +536,7 @@ pub async fn get_v2_locations_export_handler(
             "public discovery read model is missing or stale",
         );
     }
-    let rows = match transaction.query("SELECT h.facility_id, h.canonical_name, h.country_code, h.city, h.classification_category, h.display_precision, h.factual_review_status, h.privacy_screening_status, h.maintainer_approval, h.reviewer_role, h.provenance_origin_type, h.provenance_source_id, h.provenance_source_name, h.provenance_source_url, h.provenance_retrieved_at, h.source_rights_status, h.release_id FROM uec.map_facilities_public_discovery_read_model h WHERE h.release_id=$1 ORDER BY h.facility_id LIMIT 1001", &[&release_id]).await {
+    let rows = match transaction.query("SELECT h.facility_id, h.canonical_name, h.country_code, h.city, h.classification_category, h.display_precision, h.factual_review_status, h.privacy_screening_status, h.maintainer_approval, h.reviewer_role, h.provenance_origin_type, h.provenance_source_id, h.provenance_source_name, h.provenance_source_url, h.provenance_retrieved_at, h.source_rights_status, h.release_id, h.geometry_provenance::text FROM uec.map_facilities_public_discovery_read_model h WHERE h.release_id=$1 ORDER BY h.facility_id LIMIT 1001", &[&release_id]).await {
         Ok(rows) => rows, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "export_query_failed", "public export unavailable")
     };
     if rows.len() > 1000 {
@@ -556,6 +557,7 @@ pub async fn get_v2_locations_export_handler(
                 city: csv_safe_option(row.get(3)),
                 category: csv_safe_value(row.get(4)),
                 display_precision: csv_safe_value(row.get(5)),
+                geometry_provenance: csv_safe_value(row.get(17)),
                 factual_review_status: csv_safe_value(factual_review_status.clone()),
                 privacy_screening_status: csv_safe_value(row.get(7)),
                 project_approval: csv_safe_value(row.get(8)),
@@ -2863,7 +2865,7 @@ const V2_TAXONOMY_PRIMARY_CATEGORIES: &[&str] = &[
 const V2_COUNTRIES: &[&str] = &["DK"];
 const V2_SOURCE_TYPES: &[&str] = &["official", "secondary", "user_submitted"];
 const V2_PROFILES: &[&str] = &["official", "secondary", "community"];
-const V2_PRECISIONS: &[&str] = &["exact", "city", "unmapped"];
+const V2_PRECISIONS: &[&str] = &["exact", "city", "source_reported", "approximate", "unmapped"];
 const V2_LIFECYCLES: &[&str] = &[
     "active_observed",
     "explicitly_closed",
@@ -3059,6 +3061,7 @@ pub struct V2Location {
     pub reviewer_role: Option<String>,
     pub publication_warning: Option<String>,
     pub display_precision: String,
+    pub geometry_provenance: Value,
     pub latitude: Option<f64>,
     pub longitude: Option<f64>,
     pub first_observed_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -3394,7 +3397,8 @@ pub async fn get_v2_locations_handler(
                COALESCE(taxonomy.display_category, 'unclassified'),
                COALESCE(taxonomy.primary_categories, ARRAY['unclassified']::text[]),
                COALESCE(taxonomy.leaf_activities, '[]'::jsonb)::text,
-               COALESCE(taxonomy.assignments, '[]'::jsonb)::text
+               COALESCE(taxonomy.assignments, '[]'::jsonb)::text,
+               history.geometry_provenance::text
         FROM uec.map_facilities_public_discovery_read_model AS history
         LEFT JOIN LATERAL (
           SELECT min(s.display_category) AS display_category,
@@ -3451,6 +3455,7 @@ pub async fn get_v2_locations_handler(
             },
             publication_profile: promoted_profile.clone(),
             display_precision: row.get(5),
+            geometry_provenance: serde_json::from_str(row.get::<_, String>(28).as_str()).unwrap_or_else(|_| json!({"origin":"unmapped"})),
             latitude: row.get(10),
             longitude: row.get(11),
             first_observed_at: row.get(12),
@@ -3581,7 +3586,8 @@ pub async fn get_v2_location_detail_handler(
                COALESCE(taxonomy.display_category, 'unclassified'),
                COALESCE(taxonomy.primary_categories, ARRAY['unclassified']::text[]),
                COALESCE(taxonomy.leaf_activities, '[]'::jsonb)::text,
-               COALESCE(taxonomy.assignments, '[]'::jsonb)::text
+               COALESCE(taxonomy.assignments, '[]'::jsonb)::text,
+               history.geometry_provenance::text
         FROM uec.map_facilities_public_discovery_read_model AS history
         LEFT JOIN LATERAL (
           SELECT min(s.display_category) AS display_category,
@@ -3630,6 +3636,7 @@ pub async fn get_v2_location_detail_handler(
         },
         publication_profile: profile.clone(),
         display_precision: row.get(5),
+        geometry_provenance: serde_json::from_str(row.get::<_, String>(28).as_str()).unwrap_or_else(|_| json!({"origin":"unmapped"})),
         latitude: row.get(10),
         longitude: row.get(11),
         first_observed_at: row.get(12),
@@ -4586,6 +4593,7 @@ mod v2_api_tests {
             reviewer_role: Some("maintainer".into()),
             publication_warning: None,
             display_precision: "city".into(),
+            geometry_provenance: json!({"origin":"city_reference","method":"city_reference"}),
             latitude: Some(55.0),
             longitude: Some(10.0),
             first_observed_at: None,
@@ -4604,6 +4612,7 @@ mod v2_api_tests {
         };
         let json = serde_json::to_value(item).unwrap();
         assert_eq!(json["display_precision"], "city");
+        assert_eq!(json["geometry_provenance"]["origin"], "city_reference");
         assert_eq!(json["observation_count"], 2);
         assert_eq!(json["lifecycle_status"], "active_observed");
         assert_eq!(json["source_type"], "official");
@@ -4623,6 +4632,7 @@ mod v2_api_tests {
             city: Some("Testby".into()),
             category: "slaughter".into(),
             display_precision: "city".into(),
+            geometry_provenance: "{\"origin\":\"city_reference\"}".into(),
             factual_review_status: "unreviewed".into(),
             privacy_screening_status: "passed".into(),
             project_approval: "pending".into(),

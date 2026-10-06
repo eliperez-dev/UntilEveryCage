@@ -82,6 +82,17 @@ def _point(wkt: str | None) -> tuple[float, float] | None:
     return longitude, latitude
 
 
+def map_geometry_kind(display_precision: str, point: tuple[float, float] | None) -> str | None:
+    """Keep unknown points out of tiles and source/approximate points coarse."""
+    if point is None or display_precision == "unmapped":
+        return None
+    if display_precision == "exact":
+        return "exact"
+    if display_precision in ("city", "source_reported", "approximate"):
+        return "coarse"
+    raise ValueError("public map projection has an unsupported precision")
+
+
 def _feature_key(release_id: str, profile: str, zoom: int, bucket_x: int, bucket_y: int, kind: str, identity: str = "") -> str:
     value = f"{release_id}\0{profile}\0{zoom}\0{bucket_x}\0{bucket_y}\0{kind}\0{identity}"
     return hashlib.sha256(value.encode("utf-8")).hexdigest()[:32]
@@ -159,7 +170,7 @@ def build(database_url: str, release_id: str, output_root: Path) -> dict[str, An
         query = discovery.SELECT_ROWS.replace(
             "release.status = 'promoted'", "release.status IN ('validated', 'promoted')"
         )
-        rows = connection.execute(query, (release_id,)).fetchall()
+        rows = connection.execute(query, (release_id, release_id)).fetchall()
 
         eligible_observation_ids = sorted({row[1] for row in rows})
         taxonomy_by_observation: dict[str, tuple[str, str]] = {}
@@ -190,16 +201,18 @@ def build(database_url: str, release_id: str, output_root: Path) -> dict[str, An
         facilities: dict[str, dict[str, Any]] = {}
         for row in rows:
             point = _point(row[7])
-            if point is None or row[8] == "unmapped":
+            kind = map_geometry_kind(row[8], point)
+            if point is None or kind is None:
                 continue
-            if row[8] not in ("exact", "city"):
-                raise ValueError("public map projection has an unsupported precision")
             facility_id = str(row[0])
             facilities.setdefault(facility_id, {
                 "record_id": facility_id,
                 "longitude": point[0],
                 "latitude": point[1],
-                "kind": "exact" if row[8] == "exact" else "coarse",
+                # Source-reported and locality-provider points remain visible,
+                # but share coarse clustering so the map does not imply a
+                # rooftop-level claim from coordinate digits alone.
+                "kind": kind,
                 "category_key": taxonomy_by_observation.get(str(row[1]), ("unclassified", compact_category_keys(None)))[0],
                 "category_keys_compact": taxonomy_by_observation.get(str(row[1]), ("unclassified", compact_category_keys(None)))[1],
             })
