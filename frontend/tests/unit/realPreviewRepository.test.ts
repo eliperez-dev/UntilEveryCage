@@ -6,7 +6,7 @@ import {
   RealPreviewError,
   type FetchLike,
 } from '../../src/api/RealPreviewRepository';
-import { selectDesignLabDataMode } from '../../src/design-lab/dataMode';
+import { selectDesignLabDataMode, shouldScheduleListLoad } from '../../src/design-lab/dataMode';
 
 const candidateId = 'a0000000-0000-4000-8000-000000000001';
 const record = (overrides: Record<string, unknown> = {}) => ({
@@ -36,6 +36,14 @@ describe('private real-preview repository', () => {
     expect(selectDesignLabDataMode(true, null, true)).toBe('synthetic');
     expect(selectDesignLabDataMode(true, null)).toBe('public-release');
     expect(selectDesignLabDataMode(false, 'real-preview', true)).toBe('public-release');
+  });
+
+  it('starts one public list request only after the manifest identity is known', () => {
+    const key = 'q\u0000\u0000\u0000\u0000v0:manifest:suppression';
+    expect(shouldScheduleListLoad('public-release', null, undefined, key)).toBe(false);
+    expect(shouldScheduleListLoad('public-release', 'v0', undefined, key)).toBe(true);
+    expect(shouldScheduleListLoad('public-release', 'v0', key, key)).toBe(false);
+    expect(shouldScheduleListLoad('real-preview', null, undefined, key)).toBe(true);
   });
 
   it('maps numeric, approximate, coarse, and unmapped records to distinct placement classes', () => {

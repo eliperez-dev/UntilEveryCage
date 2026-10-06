@@ -9,7 +9,7 @@
   import type { Location } from '../domain/location';
   import { CATEGORY_PRESENTATIONS } from '../features/locations/categoryPresentation';
   import type { PublicMapFeed } from '../api/PublicMapFeedRepository';
-  import { selectDesignLabDataMode } from './dataMode';
+  import { selectDesignLabDataMode, shouldScheduleListLoad } from './dataMode';
   import Field from './variants/field/Field.svelte';
 
   let state: LabState = decodeLabHash(typeof location === 'undefined' ? '' : location.hash);
@@ -110,12 +110,7 @@
     } else pageLoading = true;
     try {
       if (mode === 'public-release') {
-        if (!publicReleaseId) {
-          const current = await publicReleaseRepository.current('official', controller.signal);
-          if (controller.signal.aborted) return;
-          if (!current) { dataStatus = 'empty'; return; }
-          publicReleaseId = current.releaseId;
-        }
+        if (!publicReleaseId) { dataStatus = 'loading'; return; }
         const categoryKeys = state.filters.categories.map(value => ({ Poultry: 'animal_keeping_and_production', Pig: 'animal_keeping_and_production', Dairy: 'animal_keeping_and_production', Processing: 'processing_and_preparation', Laboratory: 'research_and_animal_use', Aquaculture: 'animal_keeping_and_production' } as Record<string, string>)[value]).filter((value): value is import('../domain/taxonomy').TaxonomyPrimaryKey => !!value);
         const page = await publicLocationRepository.list('official', { q: query, category_keys: [...new Set(categoryKeys)], ...(state.filters.precisions.length ? { precision: state.filters.precisions.join(',') } : {}), cursor: reset ? undefined : nextCursor ?? undefined, limit: 100 }, controller.signal, publicReleaseId);
         if (controller.signal.aborted) return;
@@ -171,12 +166,15 @@
 
   let observedListKey: string | undefined;
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
-  $: if (mode !== 'synthetic' && observedListKey !== `${state.query}\u0000${sourceId ?? ''}\u0000${state.filters.categories.join(',')}\u0000${state.filters.precisions.join(',')}`) {
-    observedListKey = `${state.query}\u0000${sourceId ?? ''}\u0000${state.filters.categories.join(',')}\u0000${state.filters.precisions.join(',')}`;
-    if (searchTimer) clearTimeout(searchTimer);
-    listAbort?.abort();
-    const query = state.query;
-    searchTimer = setTimeout(() => void loadPage(query, true), 180);
+  $: {
+    const listKey = `${state.query}\u0000${sourceId ?? ''}\u0000${state.filters.categories.join(',')}\u0000${state.filters.precisions.join(',')}\u0000${mode === 'public-release' ? publicReleaseIdentity ?? '' : ''}`;
+    if (shouldScheduleListLoad(mode, publicReleaseId, observedListKey, listKey)) {
+      observedListKey = listKey;
+      if (searchTimer) clearTimeout(searchTimer);
+      listAbort?.abort();
+      const query = state.query;
+      searchTimer = setTimeout(() => void loadPage(query, true), 180);
+    }
   }
 
 
@@ -224,7 +222,6 @@
           publicReleaseId = current?.releaseId ?? null;
           publicReleaseIdentity = current ? `${current.releaseId}:${current.manifestSha256}:${current.suppressionGeneration}` : null;
           dataStatus = current ? 'loading' : 'empty';
-          if (current) void loadPage(state.query, true);
         }
       }).catch(() => { if (!summaryAbort?.signal.aborted) { dataStatus = 'error'; dataError = 'The public release could not be checked.'; } });
       const checkRelease = async () => {
@@ -238,7 +235,6 @@
             apiRecords = []; nextCursor = null; publicMapMeta = null;
             observedSelection = undefined;
             dataStatus = current ? 'loading' : 'empty';
-            if (current) void loadPage(state.query, true);
           }
         } catch { /* The map feed and record APIs report current request failures. */ }
       };

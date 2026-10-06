@@ -109,6 +109,7 @@
   } = $props();
   let host: HTMLDivElement;
   let map: MapLibreMap | undefined;
+  let nativeStyleReady = $state(false);
   let appliedBasemap = $state<Basemap | undefined>();
   let basemapSwitching = $state(false);
   let pendingBasemap = $state<Basemap | undefined>();
@@ -621,16 +622,10 @@
   function ensureNativeFeedWhenStyleReady(): () => void {
     const instance = map;
     if (!instance) return () => {};
-    const loadWhenReady = () => {
-      if (map !== instance) { instance.off("styledata", loadWhenReady); return; }
-      if (!instance.isStyleLoaded()) return;
-      instance.off("styledata", loadWhenReady);
-      if (nativeFullCollection) applyLocalSourceFilter(mapState.sourceId);
-      else void loadNativeFeed();
-    };
-    if (instance.isStyleLoaded()) loadWhenReady();
-    else instance.on("styledata", loadWhenReady);
-    return () => instance.off("styledata", loadWhenReady);
+    if (!nativeStyleReady) return () => {};
+    if (nativeFullCollection) applyLocalSourceFilter(mapState.sourceId);
+    else void loadNativeFeed();
+    return () => {};
   }
   async function clearProjectionCache() {
     const removed = await clearRealPreviewMapCache();
@@ -1095,6 +1090,7 @@
         "Record map. Select a cluster, source coordinate, or approximate area reference.",
       );
     instance.on("style.load", () => {
+      nativeStyleReady = true;
       if (usingMvt) {
         loadClusterImages();
         addMvtLayers();
