@@ -1,9 +1,9 @@
 export type LocationId = string;
 export type GeometryProvenance = Readonly<{
   origin: 'source_coordinates' | 'provider_derived' | 'verified_coarse_reference' | 'provider_geocode' | 'city_reference' | 'unmapped';
-  method?: string; source_precision?: string; provider?: string; provider_status?: string; provider_queried_at?: string;
-  confidence?: string; confidence_band?: string; coordinate_review_status?: string; reference_source_id?: string;
-  reference_source?: string; evidence_kind?: string; evidence_id?: string;
+  method?: string | undefined; source_precision?: string | undefined; provider?: string | undefined; provider_status?: string | undefined; provider_queried_at?: string | undefined;
+  confidence?: string | undefined; confidence_band?: string | undefined; coordinate_review_status?: string | undefined; reference_source_id?: string | undefined;
+  reference_source?: string | undefined; evidence_kind?: string | undefined; evidence_id?: string | undefined;
 }>;
 // Evidence stays separate from the display name: origin, review, privacy,
 // approval, precision, and lifecycle are independent signals.
