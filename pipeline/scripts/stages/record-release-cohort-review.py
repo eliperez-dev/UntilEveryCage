@@ -82,7 +82,9 @@ SELECT record.source_id, record.artifact_id::text, artifact.sha256,
        array_agg(DISTINCT assignment_set.crosswalk_version ORDER BY assignment_set.crosswalk_version) AS crosswalk_versions,
        array_agg(DISTINCT assignment_set.ruleset_version ORDER BY assignment_set.ruleset_version) AS classification_rulesets,
        array_agg(DISTINCT assignment_set.display_category ORDER BY assignment_set.display_category) AS display_categories,
-       count(*) FILTER (WHERE restricted.source_record_id IS NOT NULL)::bigint AS suppressed_count
+       count(*) FILTER (WHERE restricted.source_record_id IS NOT NULL)::bigint AS suppressed_count,
+       COALESCE(jsonb_agg(DISTINCT record.source_record_id::text)
+           FILTER (WHERE restricted.source_record_id IS NOT NULL), '[]'::jsonb) AS active_restricted_record_ids
 FROM uec.release_members member
 JOIN uec.observations observation ON observation.observation_id=member.observation_id
 JOIN uec.source_records record ON record.source_record_id=observation.source_record_id
@@ -177,7 +179,7 @@ def prepare_template(connection, release_id: str, output: Path) -> dict:
     actual = connection.execute(SCOPES_SQL, (release_id,)).fetchall()
     scopes = []
     for row in actual:
-        source_id, artifact_id, artifact_sha, _count, taxonomy_versions, crosswalks, rulesets, _categories, suppressed = row
+        source_id, artifact_id, artifact_sha, _count, taxonomy_versions, crosswalks, rulesets, _categories, suppressed, _restricted_ids = row
         if int(suppressed):
             raise CohortReviewError("active suppression exists inside candidate cohort")
         if len(taxonomy_versions) != 1 or len(crosswalks) != 1 or len(rulesets) != 1:
@@ -232,6 +234,7 @@ def _read_operator_document(path: Path) -> dict:
 
 
 def _verify(connection, document: dict, *, apply_changes: bool) -> dict:
+    validate_document(document)
     release = connection.execute(
         "SELECT status,profile,test_only,ruleset_version,summary FROM uec.releases WHERE release_id=%s" +
         (" FOR UPDATE" if apply_changes else ""), (document["release_id"],)
@@ -258,8 +261,9 @@ def _verify(connection, document: dict, *, apply_changes: bool) -> dict:
         raise CohortReviewError("source/artifact review coverage is incomplete")
     scopes = []
     suppressed_count = 0
+    excluded_record_count = 0
     for row in actual:
-        source_id, artifact_id, artifact_sha, count, taxonomy_versions, crosswalk_versions, rulesets, categories, suppressed = row
+        source_id, artifact_id, artifact_sha, count, taxonomy_versions, crosswalk_versions, rulesets, categories, suppressed, restricted_ids = row
         scope = expected.get((source_id, artifact_id))
         if scope is None or artifact_sha != scope["artifact_sha256"]:
             raise CohortReviewError("source/artifact review coverage or digest mismatch")
@@ -269,10 +273,30 @@ def _verify(connection, document: dict, *, apply_changes: bool) -> dict:
             raise CohortReviewError("source/artifact taxonomy interpretation binding mismatch")
         if not set(scope.get("excluded_display_categories", [])).issubset(set(categories)):
             raise CohortReviewError("category exclusion is outside this source/artifact taxonomy scope")
-        if int(suppressed):
-            raise CohortReviewError("active suppression exists inside candidate cohort")
+        excluded_ids = set(scope.get("excluded_source_record_ids", []))
+        restricted_ids = set(restricted_ids or [])
+        if not restricted_ids.issubset(excluded_ids):
+            raise CohortReviewError("active restriction inside candidate cohort is not explicitly excluded")
+        if excluded_ids:
+            unbound = connection.execute("""
+                SELECT count(*) FROM jsonb_array_elements_text(%s::jsonb) AS excluded(source_record_id)
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM uec.release_members member
+                    JOIN uec.observations observation ON observation.observation_id=member.observation_id
+                    JOIN uec.source_records record ON record.source_record_id=observation.source_record_id
+                    WHERE member.release_id=%s
+                      AND record.source_record_id=excluded.source_record_id::uuid
+                      AND record.source_id=%s AND record.artifact_id=%s::uuid
+                )
+            """, (json.dumps(sorted(excluded_ids)), document["release_id"], source_id, artifact_id)).fetchone()[0]
+            if unbound:
+                raise CohortReviewError("record exclusion is outside its exact release source/artifact membership")
+        excluded_record_count += len(excluded_ids)
         suppressed_count += int(suppressed)
-        scopes.append({**scope, "member_count": int(count)})
+        scopes.append({**scope,
+                       "excluded_display_categories": scope.get("excluded_display_categories", []),
+                       "excluded_source_record_ids": scope.get("excluded_source_record_ids", []),
+                       "member_count": int(count)})
     if sum(scope["member_count"] for scope in scopes) != member_count:
         raise CohortReviewError("source/artifact member coverage does not match cohort")
 
@@ -312,7 +336,8 @@ def _verify(connection, document: dict, *, apply_changes: bool) -> dict:
                 raise CohortReviewError("rights decision timestamp is stale or conflicts with existing history")
 
     report = {"status": "verified", "member_count": member_count,
-              "scope_count": len(scopes), "document_sha256": document_sha}
+              "scope_count": len(scopes), "excluded_record_count": excluded_record_count,
+              "document_sha256": document_sha}
     if not apply_changes:
         report["default_visible_count"] = int(connection.execute("""
             WITH reviewed_scope AS (
@@ -321,7 +346,8 @@ def _verify(connection, document: dict, *, apply_changes: bool) -> dict:
                     privacy_screening_status text, publication_eligible boolean,
                     factual_review_status text, maintainer_approval text,
                     classification_interpretation_status text, geometry_interpretation_status text,
-                    excluded_display_categories jsonb, taxonomy_version text,
+                    excluded_display_categories jsonb, excluded_source_record_ids jsonb,
+                    taxonomy_version text,
                     crosswalk_version text, classification_ruleset_version text
                 )
             )
@@ -334,8 +360,9 @@ def _verify(connection, document: dict, *, apply_changes: bool) -> dict:
                      (release.profile='community' AND source.origin_type='user_submitted'
                       AND scope.factual_review_status='unreviewed' AND scope.maintainer_approval='pending'))
                 AND scope.classification_interpretation_status='approved'
-                AND scope.geometry_interpretation_status='approved'
-                AND NOT (scope.excluded_display_categories ? assignment_set.display_category)
+                    AND scope.geometry_interpretation_status='approved'
+                    AND NOT (scope.excluded_display_categories ? assignment_set.display_category)
+                    AND NOT (scope.excluded_source_record_ids ? observation.source_record_id::text)
             )::bigint
             FROM uec.release_members member
             JOIN uec.releases release ON release.release_id=member.release_id
@@ -383,8 +410,9 @@ def _verify(connection, document: dict, *, apply_changes: bool) -> dict:
                  classification_interpretation_status,classification_method,classification_evidence_reference,
                  geometry_interpretation_status,geometry_method,geometry_evidence_reference,
                  taxonomy_version,crosswalk_version,classification_ruleset_version,
-                 excluded_display_categories,exclusion_reason_category,exclusion_policy_reference)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s)
+                 excluded_display_categories,excluded_source_record_ids,
+                 exclusion_reason_category,exclusion_policy_reference)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s::jsonb,%s,%s)
         """, (document["release_id"], scope["source_id"], scope["artifact_id"], scope["artifact_sha256"],
               scope["factual_review_status"], scope["privacy_screening_status"], scope["privacy_method"],
               scope["privacy_evidence_reference"], scope["maintainer_approval"], scope["publication_eligible"],
@@ -396,6 +424,7 @@ def _verify(connection, document: dict, *, apply_changes: bool) -> dict:
               scope["geometry_evidence_reference"], scope["taxonomy_version"],
               scope["crosswalk_version"], scope["classification_ruleset_version"],
               json.dumps(scope.get("excluded_display_categories", [])),
+              json.dumps(scope.get("excluded_source_record_ids", [])),
               scope.get("exclusion_reason_category"), scope.get("exclusion_policy_reference")))
         connection.execute("""
             INSERT INTO uec.source_rights_decisions
@@ -417,6 +446,7 @@ def _verify(connection, document: dict, *, apply_changes: bool) -> dict:
                min(scope.maintainer_approval),
                bool_and(scope.publication_eligible AND scope.privacy_screening_status='passed'
                         AND scope.factual_review_status<>'rejected'
+                        AND NOT (scope.excluded_source_record_ids ? observation.source_record_id::text)
                         AND NOT (scope.excluded_display_categories ? assignment_set.display_category)),
                %s, %s, %s
         FROM uec.release_members member
@@ -443,7 +473,7 @@ def _verify(connection, document: dict, *, apply_changes: bool) -> dict:
 
     updated = connection.execute("""
         WITH desired_visibility AS (
-          SELECT member.release_id, member.facility_id,
+          SELECT member.release_id, member.facility_id, member.observation_id,
             (
             scope.redistribution_status='cleared'
             AND scope.privacy_screening_status='passed'
@@ -455,6 +485,7 @@ def _verify(connection, document: dict, *, apply_changes: bool) -> dict:
             AND scope.classification_interpretation_status='approved'
             AND scope.geometry_interpretation_status='approved'
             AND NOT (scope.excluded_display_categories ? assignment_set.display_category)
+            AND NOT (scope.excluded_source_record_ids ? observation.source_record_id::text)
             ) AS default_visible
           FROM uec.release_members member
         JOIN uec.releases release ON release.release_id=member.release_id
@@ -481,6 +512,7 @@ def _verify(connection, document: dict, *, apply_changes: bool) -> dict:
            SET default_visible=desired.default_visible
           FROM desired_visibility desired
          WHERE desired.release_id=member.release_id AND desired.facility_id=member.facility_id
+           AND desired.observation_id=member.observation_id
     """, (document["release_id"],))
     visible_count = connection.execute(
         "SELECT count(*) FROM uec.release_members WHERE release_id=%s AND default_visible",
@@ -494,7 +526,8 @@ def _verify(connection, document: dict, *, apply_changes: bool) -> dict:
                        (json.dumps(summary), document["release_id"]))
     report.update({"status": "recorded", "default_visible_count": int(visible_count),
                    "visibility_rows_changed": updated.rowcount,
-                   "publication_events_created": publication_insert.rowcount})
+                   "publication_events_created": publication_insert.rowcount,
+                   "excluded_record_count": excluded_record_count})
     return report
 
 

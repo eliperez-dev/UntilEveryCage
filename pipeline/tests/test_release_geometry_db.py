@@ -196,6 +196,31 @@ class PublicGeometryPostgresTests(unittest.TestCase):
                 with connection.transaction():
                     document = self._candidate(connection)
                     release_id = document["release_id"]
+                    restricted_record_id = connection.execute("""
+                        SELECT observation.source_record_id::text
+                        FROM uec.observations observation
+                        JOIN uec.release_members member USING(observation_id)
+                        WHERE member.release_id=%s
+                          AND observation.observation->>'fixture_kind'='source_unknown_precision'
+                    """, (release_id,)).fetchone()[0]
+                    scope = document["source_artifact_scopes"][0]
+                    scope["excluded_source_record_ids"] = [restricted_record_id]
+                    scope["exclusion_reason_category"] = "privacy"
+                    scope["exclusion_policy_reference"] = "test:privacy-exclusion"
+                    connection.execute("""
+                        INSERT INTO uec.record_access_events(source_record_id,action,reason_category,
+                            policy_version,maintainer,note)
+                        VALUES (%s,'public_access_revoked','privacy','ethics-v1',
+                                'maintainer:synthetic','synthetic active restriction')
+                    """, (restricted_record_id,))
+                    unacknowledged = json.loads(json.dumps(document))
+                    unacknowledged["source_artifact_scopes"][0]["excluded_source_record_ids"] = []
+                    with self.assertRaises(RECORDER.CohortReviewError):
+                        RECORDER._verify(connection, unacknowledged, apply_changes=False)
+                    foreign = json.loads(json.dumps(document))
+                    foreign["source_artifact_scopes"][0]["excluded_source_record_ids"].append(str(uuid.uuid4()))
+                    with self.assertRaises(RECORDER.CohortReviewError):
+                        RECORDER._verify(connection, foreign, apply_changes=False)
                     before = connection.execute("""
                         SELECT md5(string_agg(to_jsonb(observation)::text,E'\\n' ORDER BY observation.observation_id))
                         FROM uec.observations observation
@@ -203,7 +228,7 @@ class PublicGeometryPostgresTests(unittest.TestCase):
                         WHERE member.release_id=%s
                     """, (release_id,)).fetchone()[0]
                     review = RECORDER._verify(connection, document, apply_changes=True)
-                    self.assertEqual(review["default_visible_count"], 8)
+                    self.assertEqual(review["default_visible_count"], 7)
                     # The verifier records scoped cohort approval but intentionally
                     # leaves release lifecycle transitions to the release workflow.
                     # Move only this rollback-only synthetic fixture to validated.
@@ -223,17 +248,23 @@ class PublicGeometryPostgresTests(unittest.TestCase):
                         DISCOVERY.public_release_query(("validated", "promoted")),
                         (release_id, release_id),
                     ).fetchall()
-                    self.assertEqual(len(discovery_rows), 8)
-                    self.assertEqual(sum(row[8] != "unmapped" for row in discovery_rows), 3)
+                    self.assertEqual(len(discovery_rows), 7)
+                    self.assertEqual(sum(row[8] != "unmapped" for row in discovery_rows), 2)
                     self.assertEqual(sum(row[8] == "unmapped" for row in discovery_rows), 5)
-                    excluded_record_id = connection.execute("""
+                    category_excluded_record_id = connection.execute("""
                         SELECT observation.source_record_id::text
                         FROM uec.observations observation
                         JOIN uec.release_members member USING(observation_id)
                         WHERE member.release_id=%s
                           AND observation.observation->>'fixture_kind'='excluded_category'
                     """, (release_id,)).fetchone()[0]
-                    self.assertNotIn(excluded_record_id, {row[2] for row in discovery_rows})
+                    self.assertNotIn(category_excluded_record_id, {row[2] for row in discovery_rows})
+                    self.assertNotIn(restricted_record_id, {row[2] for row in discovery_rows})
+                    self.assertFalse(connection.execute("""
+                        SELECT publication_eligible
+                        FROM uec.publication_review_release_current
+                        WHERE release_id=%s AND source_record_id=%s
+                    """, (release_id, restricted_record_id)).fetchone()[0])
                     self.assertTrue(all(json.loads(row[22]).get("origin") for row in discovery_rows))
                     query = geometry_rows_sql("""
                         SELECT evidence->>'fixture_kind', display_precision,
@@ -244,9 +275,9 @@ class PublicGeometryPostgresTests(unittest.TestCase):
                     rows = connection.execute(query, (release_id, release_id)).fetchall()
                     by_kind = {row[0]: row[1:] for row in rows}
                     self.assertEqual(len(by_kind), 9)
-                    self.assertEqual(by_kind["source_unknown_precision"][0], "source_reported")
-                    self.assertEqual(by_kind["source_unknown_precision"][1:3], (55.5, 10.2))
-                    self.assertEqual(by_kind["source_unknown_precision"][3]["source_precision"], "source-precision-unknown")
+                    self.assertEqual(by_kind["source_unknown_precision"][0:3], ("unmapped", None, None))
+                    self.assertFalse(by_kind["source_unknown_precision"][4])
+                    self.assertFalse(by_kind["source_unknown_precision"][5])
                     self.assertEqual(by_kind["provider_high_accepted"][0], "approximate")
                     self.assertEqual(by_kind["provider_high_accepted"][1:3], (56.5, 10.3))
                     self.assertEqual(by_kind["provider_high_accepted"][3]["provider_status"], "accepted")
@@ -261,7 +292,7 @@ class PublicGeometryPostgresTests(unittest.TestCase):
                     self.assertFalse(by_kind["excluded_category"][4])
                     self.assertFalse(by_kind["excluded_category"][5])
                     self.assertTrue(all(row[4] for kind, row in by_kind.items()
-                                        if kind != "excluded_category"))
+                                        if kind not in {"excluded_category", "source_unknown_precision"}))
 
                     wrong_scope = connection.execute(query, ("another-release", "another-release")).fetchall()
                     self.assertEqual(wrong_scope, [])
@@ -272,11 +303,11 @@ class PublicGeometryPostgresTests(unittest.TestCase):
                                'ethics-v1','maintainer:synthetic','synthetic suppression proof'
                         FROM uec.observations observation
                         JOIN uec.release_members member USING(observation_id)
-                        WHERE member.release_id=%s AND observation.observation->>'fixture_kind'='source_unknown_precision'
+                        WHERE member.release_id=%s AND observation.observation->>'fixture_kind'='provider_high_accepted'
                     """, (release_id,))
                     metrics = connection.execute(RELEASE_GATE_METRICS_SQL,
                                                   (release_id, release_id, release_id)).fetchone()
-                    self.assertEqual(metrics[1], 8)
+                    self.assertEqual(metrics[1], 7)
                     self.assertEqual(metrics[4], 0)  # immutable source review_required is not promoted to approved
                     self.assertEqual(metrics[8], 5)  # unusable evidence remains explicitly unmapped
                     self.assertEqual(metrics[9], 0)  # null geometry does not block otherwise eligible records
@@ -376,15 +407,16 @@ class PublicGeometryPostgresTests(unittest.TestCase):
                         (release_id,),
                     ).fetchone()[0], 0)
                     built = DISCOVERY.build_in_transaction(connection, release_id)
-                    self.assertEqual(built["row_count"], 7)
+                    self.assertEqual(built["row_count"], 6)
                     model_rows = connection.execute("""
                         SELECT source_record_id::text,display_precision
                         FROM uec.public_discovery_read_model_rows WHERE release_id=%s
                     """, (release_id,)).fetchall()
-                    self.assertEqual(len(model_rows), 7)
-                    self.assertEqual(sum(precision != "unmapped" for _, precision in model_rows), 2)
+                    self.assertEqual(len(model_rows), 6)
+                    self.assertEqual(sum(precision != "unmapped" for _, precision in model_rows), 1)
                     self.assertEqual(sum(precision == "unmapped" for _, precision in model_rows), 5)
                     self.assertNotIn(legacy_ids["source_unknown_precision"], {source_id for source_id, _ in model_rows})
+                    self.assertNotIn(restricted_record_id, {source_id for source_id, _ in model_rows})
                     raise _RollbackFixture()
 
 

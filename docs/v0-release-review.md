@@ -6,6 +6,172 @@ approval, a publication record, or evidence that candidate intake has closed.
 The controlling roadmap is [PRODUCT-READINESS.md](PRODUCT-READINESS.md); the
 governing requirements are [ETHICS.md](ETHICS.md).
 
+## Final publication assessment (2026-10-05)
+
+**Approved candidate scope remains unchanged:** fifteen frozen source snapshots,
+187,940 observations and 124,414 source-qualified groups. The earlier
+twelve-source recommendation was not a maintainer-approved scope change and
+has been removed. No second candidate/scope approval is requested.
+
+**Decision requested: the final, exception-qualified v0 publication stamp.**
+This is not another candidate or scope approval. The decision below uses the
+actual frozen cohort and preserves its full membership. Nothing has been
+published, and the automated checks are not individual factual verification
+or a guarantee of privacy/legal compliance.
+
+### The publication decision in one place
+
+| Proposed curated-default v0 output | Measured count |
+| --- | ---: |
+| Listable source-qualified records | 63,601 |
+| Mapped records | 48,756 |
+| Explicitly unmapped records | 14,845 |
+| Sources contributing public records | 13 of the 15 frozen sources |
+| Retained frozen membership, unchanged | 124,414 |
+
+These are **proposed output counts, not published counts or globally
+deduplicated physical facilities**. A read-only what-if used the shared
+geometry selector, kept its geometry/provenance checks, and applied the
+specific proposed exclusions below. Approval predicates were neutralized
+only to measure the proposal; no approval events or visibility were written.
+The complete member digest was recomputed and matches
+`9aa0321f555c670c7454d3dcee8a00ee8c6a33845c8440cf94f23bed9b65fd2b`.
+
+The stamp would accept these explicit treatments:
+
+- **Privacy exceptions:** withhold 55 NPI, 12 Italian 1069 and one explicitly
+  restricted Danish record. These 68 are precautionary flags, not findings
+  that all are residences. The Danish record overlaps the scope exclusion
+  below, so it is not subtracted twice. All 87 FSA withheld-address records
+  have null canonical coordinates; do not reconstruct their withheld location.
+- **Denmark:** publish the existing source-core 565 records, including 422
+  mapped and 143 unmapped. Retain 58,230 non-core records privately for now:
+  57,745 `other_regulated_premises` and 485 processing records outside the
+  source's core scope. This does not classify them as unsafe or delete them;
+  an optional broader public filter is not part of this default v0 decision.
+- **France I/II:** retain all 2,516 records in the frozen pool, but do not
+  publish them under an invented redistribution clearance. The exact
+  [section I catalogue](https://www.data.gouv.fr/datasets/viandes-dongules-domestiques-meat-of-domestic-ungulates)
+  and [section II catalogue](https://www.data.gouv.fr/datasets/viandes-de-volailles-et-lagomorphes-meat-from-poultry-and-lagomorphs)
+  state “License Not Specified”; the ministry notice has conflicting reuse
+  context. No fresh permission is required merely because a licence label is
+  missing, but a defensible applicable distribution basis remains unresolved.
+- **Other source rights:** accept the scoped reuse bases and attribution,
+  snapshot-date, licence-exception and no-endorsement conditions in the source
+  table below. Keep source licences distinct; do not assign a blanket CC0
+  licence to the combined product. Preserve OSM/Geoapify attribution and
+  mixed-coordinate origin rather than treating all points as government-only.
+- **Known output limits:** canonical facility names are currently null;
+  source provenance, identifiers and locations remain available, but name
+  search/detail usability is limited. Belgium's 1,793 private locality points
+  remain unmapped in the staged selector; its 1,794 records stay listable.
+  Accept those disclosed limits for this freeze rather than starting another
+  geocoding or identity-migration sprint before the stamp.
+
+The proposed safety method is source-scoped public-field restriction plus a
+full-population automated screen of retained address evidence, staged city
+fields and explicit source restrictions, with the measured exceptions above.
+It is **not** a representative manual residential assessment, a universal
+multilingual detector, or factual confirmation of every facility. The stamp
+must expressly accept that bounded method and its residual limits; absence of
+a regex match is not independently a privacy clearance. Raw addresses,
+contact fields, provider queries/responses and original payloads remain out
+of public data-product rows. New identifying fields or source versions do not
+inherit this decision.
+
+**Stamp wording:** “I approve the exception-qualified v0 curated-default
+dataset publication described in this packet for
+`v0-candidate-2026-10-04-r3`, profile `official`, its exact frozen artifact and
+member bindings, the stated screening method, source conditions, exclusions,
+counts and output limitations. I authorize recording those scoped decisions,
+validation, artifact generation and controlled dataset activation after the
+integrated code's required CI passes.”
+
+This authorizes the dataset, **not website deployment, community-data
+publication, public graph activation, or certification of government facts**.
+Application must recheck the exact digest, exclusions, rights and suppression
+state; a changed binding or actual failed check is a specific blocker, not
+grounds for another generic scope-approval cycle. Factual review remains
+`unreviewed`, independently of project release approval.
+
+### Actual evidence, not another proposed scope
+
+The [row-free assessment receipt](../data/reports/v0-publication-assessment-20261005.json)
+records read-only SQL against isolated `uec_v0_review_r3`, the existing release
+validator, and a separate geometry-only what-if using the existing selector.
+No source observations, candidate membership, review/rights events, release
+state or public projection were changed.
+
+| Check | Actual result | Meaning |
+| --- | --- | --- |
+| Candidate membership | 124,414 groups across fifteen sources | Matches frozen group count; not globally deduplicated physical facilities. |
+| Release state | Candidate; zero visible members, cohort review documents, rights decisions and manifests | No publication occurred. |
+| Existing validator | Blocked: `no_public_eligible_records`; zero duplicate observations and validation errors | Lack of current approval is expected before the stamp. The reported rights gate is vacuous: zero visible rows means zero evaluated rights requirements. It does not clear the sources. |
+| Existing English address-risk signal applied to retained private evidence | 37 NPI groups; 12 Italy 1069 groups | Cases to assess or withhold, not confirmed residences. No-match is not clearance; the detector is not a universal multilingual residential test. |
+| Explicit source restrictions | One Danish restricted group; 87 FSA withheld-address groups | Restrictions must survive publication. Withheld-address records may remain eligible and unmapped if their remaining fields are safe; do not reconstruct their location. |
+| Canonical facility fields | Zero nonempty canonical names and street addresses | This staged projection omitted those fields; it does not mean the upstream evidence lacks them. Null names are permitted by the data-product contract, but this is a material search/detail usability limitation, not a new legal approval gate. |
+| Geometry-only what-if, without privacy/rights exceptions | 48,818 mapped groups; 75,596 unmapped groups | Not approved/public totals. Approval eligibility was neutralized only in the read-only query to measure existing geometry behavior. |
+| Belgium geometry parity | 1,793 private locality points; zero mapped groups in the staged selector | The staged observations have null canonical coordinates and label locality metadata `source_coordinates`/`city_postal`. They remain unmapped in the public selector. This is an actual projection discrepancy, not missing acquisition. |
+
+The per-source geometry measurements are in the receipt. Source-location
+fallbacks preserve 24,263 Italian 853 and 7,241 FSIS points despite absent
+display-location discriminators. The initial diagnostic that tested only the
+display-location discriminator was incomplete; the final 48,818 total comes
+from the shared selector with its real fallback logic. It must not be
+substituted for the previous 50,611 private-map count or represented as a
+post-approval marker count.
+
+### Source-rights assessment update
+
+The exact
+[national-government catalogue entry for Catalonia](https://datos.gob.es/es/catalogo/a09002970-registro-de-establecimientos-del-sector-de-la-alimentacion-animal-y-del-ambito-de-los-sandach)
+identifies dataset `m48e-zdz9` and links its licence to
+[Generalitat's reuse licence](https://web.gencat.cat/ca/generalitat/dades-indicadors/dades-obertes/llicencies).
+This resolves the earlier missing dataset-to-licence association; the proposed
+Catalonia deferral on that ground is withdrawn. Attribution, update-date,
+no-endorsement and stated exception handling remain applicable. It is evidence
+for the final scoped decision, not a retroactive public-release event.
+
+France remains a named publication exception, not an unresolved whole-release
+scope proposal:
+the [Ministry notice](https://agriculture.gouv.fr/mentions-legales) contains
+reuse/integrity and commercial-use restrictions alongside an Etalab footer.
+This assessment does not silently choose the most permissive clause or remove
+France from the approved frozen pool. The proposed final stamp withholds only
+its public distribution while preserving its evidence.
+
+The Italian catalogues identify IODL v2.0 and some OSM-derived coordinates
+without row-level lineage. OSM is usable under its terms, not banned; preserve
+the mixed-origin disclosure and record the applicable distribution treatment.
+[OSM licensing](https://www.openstreetmap.org/copyright) and
+[Geoapify terms](https://www.geoapify.com/terms-and-conditions/) remain separate
+from facility-source rights and privacy. No unsupported blanket licence is
+assigned to the combined dataset. Other source reuse evidence is retained in
+[source-rights verification](#source-rights-verification-2026-10-05), without
+repeating already completed research.
+
+### Verified selective-exception path
+
+The earlier claim that the recorder already supported individual exclusions
+was inaccurate. Migration 064 now adds optional
+`excluded_source_record_ids` to each immutable source/artifact review scope.
+The recorder rejects malformed/duplicate UUIDs, foreign or missing membership,
+and active restrictions not explicitly acknowledged by an exclusion. It keeps
+the complete member count/digest, denies excluded-record publication and
+default visibility, and excludes their approved geometry. Category exclusions
+remain available; there is no new generic field-redaction engine.
+
+All six focused tests passed on an actually migrated disposable PostGIS
+database, with no skips. They cover old documents without the optional field,
+dry-run/apply/replay and unchanged original evidence, restriction handling,
+geometry and discovery/read-model exclusion. Repository hygiene and Python
+compilation passed. The disposable database was removed after every run;
+the real candidate and retained preview were unchanged. These are synthetic
+implementation proofs, separate from the real-cohort screening/count evidence
+and the maintainer's final publication decision. Required remote CI must pass
+on the integrated code head before activation.
+
+
 **Current checkpoint:** all fifteen frozen source snapshots passed append-only
 taxonomy reconciliation on the isolated copy and retained preview. The
 [current measured pool](../data/manifests/v0-candidate-20261004-taxonomy-inventory.json)
@@ -312,7 +478,7 @@ must accompany any approved output. A missing original capture remains
 | Brazil SIF | [MAPA resource](https://dados.agricultura.gov.br/pt_PT/dataset/servico-de-inspecao-federal-sif/resource/97277e92-264a-4dc0-9aea-f87b8ea93798) records CC Attribution; retain MAPA credit and assess excluded personal/third-party material separately. |
 | Ontario meat plants | [Catalogue](https://data.ontario.ca/dataset/provincially-licensed-meat-plants) records OGL-ON-1.0; contact data and third-party material are not cleared merely by that label. |
 | Denmark Find Smiley | [Download/use conditions](https://www.findsmiley.dk/om-smiley/statistik-og-data/hent-smileydata) require authority credit and prohibit logo use; displayed individual smiley status has currentness/design requirements. A dated facility snapshot is not a claim of current smiley status. |
-| Catalonia feed/SANDACH | [Dataset](https://analisi.transparenciacatalunya.cat/d/m48e-zdz9) is identified, but exact dataset-specific reuse conditions still require confirmation; preserve Generalitat source/update-date context. |
+| Catalonia feed/SANDACH | [Exact national-government catalogue entry](https://datos.gob.es/es/catalogo/a09002970-registro-de-establecimientos-del-sector-de-la-alimentacion-animal-y-del-ambito-de-los-sandach) identifies `m48e-zdz9` and links Generalitat reuse licensing. Preserve source/update-date context, no endorsement and stated exceptions; this evidence is not a recorded release rights decision. |
 | France DGAL I and II | [Source lists](https://agriculture.gouv.fr/liste-des-etablissements-agrees-ce-conformement-au-reglement-ce-ndeg8532004-lists-ue-approved) and [legal notice](https://agriculture.gouv.fr/mentions-legales) require citation/integrity and distinguish non-commercial reuse from commercial/advertising reuse requiring prior request. Do not describe these snapshots as unrestricted commercial open data without an applicable basis. |
 | UK FSA | [Catalogue](https://www.data.gov.uk/dataset/2c80e0ce-ee1c-4f26-ba6f-1e1ae1bd8ee9/approved-food-establishments) records OGL; preserve the frozen snapshot date, attribution and licence exceptions. |
 | UK FSS | [Source portal](https://www.foodstandards.gov.scot/open-data-portal/approved-establishments-in-scotland) records OGL v3; retain Scotland-only scope, frozen edition and attribution. |
@@ -382,7 +548,9 @@ The cohort recorder now measures the exact frozen membership and prepares an
 operator review document without approving it. Its release/artifact-scoped
 decisions keep factual review, privacy screening, project approval, source
 rights, classification interpretation, and geometry interpretation separate.
-It supports source/category/record exclusions without editing original facts;
+It supports source/artifact decisions, taxonomy-category exclusions and exact
+source-record UUID exclusions without editing original facts. Arbitrary
+field-level redactions are not supported by this recorder. Project release
 approval does not certify every government-source statement as independently
 verified. The [cohort contract](architecture/release-manifest-verification.md)
 documents the dry-run and explicit application commands.

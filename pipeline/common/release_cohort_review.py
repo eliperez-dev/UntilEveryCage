@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import uuid
 from datetime import datetime
 from typing import Any
 
@@ -94,7 +95,8 @@ def validate_document(document: Any) -> dict[str, Any]:
                     "classification_method", "classification_evidence_reference",
                     "geometry_interpretation_status", "geometry_method", "geometry_evidence_reference",
                     "taxonomy_version", "crosswalk_version", "classification_ruleset_version",
-                    "excluded_display_categories", "exclusion_reason_category", "exclusion_policy_reference"}
+                    "excluded_display_categories", "excluded_source_record_ids",
+                    "exclusion_reason_category", "exclusion_policy_reference"}
     for scope in scopes:
         if not isinstance(scope, dict):
             raise CohortReviewError("source artifact scope must be an object")
@@ -142,7 +144,20 @@ def validate_document(document: Any) -> dict[str, Any]:
         if (not isinstance(excluded, list) or any(item not in DISPLAY_CATEGORIES for item in excluded)
                 or len(set(excluded)) != len(excluded)):
             raise CohortReviewError("excluded_display_categories must contain unique confirmed taxonomy IDs")
-        if excluded:
+        excluded_records = scope.get("excluded_source_record_ids", [])
+        if (not isinstance(excluded_records, list)
+                or any(not isinstance(record_id, str) for record_id in excluded_records)):
+            raise CohortReviewError("excluded_source_record_ids must contain unique UUIDs")
+        if len(excluded_records) != len(set(excluded_records)):
+            raise CohortReviewError("excluded_source_record_ids must contain unique UUIDs")
+        for record_id in excluded_records:
+            try:
+                parsed = uuid.UUID(record_id)
+            except (ValueError, AttributeError):
+                raise CohortReviewError("excluded_source_record_ids must contain canonical UUID strings") from None
+            if str(parsed) != record_id:
+                raise CohortReviewError("excluded_source_record_ids must contain canonical UUID strings")
+        if excluded or excluded_records:
             _text(scope.get("exclusion_reason_category"), "scope.exclusion_reason_category", maximum=100)
             _reference(scope.get("exclusion_policy_reference"), "scope.exclusion_policy_reference")
     return document
@@ -176,7 +191,9 @@ WITH approved_geometry_members AS (
      AND assignments.artifact_id=record.artifact_id
      AND assignments.taxonomy_version=scope.taxonomy_version
      AND assignments.crosswalk_version=scope.crosswalk_version
-     AND assignments.ruleset_version=scope.classification_ruleset_version
+      AND assignments.ruleset_version=scope.classification_ruleset_version
+      AND NOT (scope.excluded_display_categories ? assignments.display_category)
+      AND NOT (scope.excluded_source_record_ids ? observation.source_record_id::text)
     WHERE member.release_id=%s
       AND release.status IN ('candidate','validated','promoted')
       AND release.test_only IS FALSE

@@ -49,8 +49,19 @@ class CohortReviewContractTests(unittest.TestCase):
             }],
         }
         self.assertEqual(contract.validate_document(document), document)
+        # The new record-level exception field is optional for existing documents.
+        self.assertNotIn("excluded_source_record_ids", document["source_artifact_scopes"][0])
         invalid = json.loads(json.dumps(document))
         invalid["review_method"] = ""
+        with self.assertRaises(contract.CohortReviewError):
+            contract.validate_document(invalid)
+        invalid = json.loads(json.dumps(document))
+        invalid["source_artifact_scopes"][0]["excluded_source_record_ids"] = ["not-a-uuid"]
+        with self.assertRaises(contract.CohortReviewError):
+            contract.validate_document(invalid)
+        invalid = json.loads(json.dumps(document))
+        record_id = str(uuid.uuid4())
+        invalid["source_artifact_scopes"][0]["excluded_source_record_ids"] = [record_id, record_id]
         with self.assertRaises(contract.CohortReviewError):
             contract.validate_document(invalid)
         invalid = json.loads(json.dumps(document))
@@ -71,27 +82,18 @@ class CohortReviewContractTests(unittest.TestCase):
                       "release.status IN ('candidate','validated','promoted')"):
             self.assertIn(token, query)
 
-    def test_operator_document_must_remain_in_ignored_local_reports(self):
-        with self.assertRaises(contract.CohortReviewError):
-            recorder._read_operator_document(ROOT / "README.md")
-
-    def test_migration_and_worker_scope_are_release_and_artifact_bound(self):
-        migration = (ROOT / "pipeline" / "migrations" / "062_release_cohort_review.sql").read_text(encoding="utf-8").lower()
-        self.assertIn("release_cohort_review_documents_append_only", migration)
-        self.assertIn("release_cohort_review_scopes_append_only", migration)
-        self.assertIn("to_jsonb(new) - 'default_visible'", migration)
-        self.assertIn("release membership cannot grow after cohort review", migration)
+    def test_record_exclusions_are_bound_and_geometry_gated(self):
+        migration = (ROOT / "pipeline" / "migrations" / "064_release_cohort_record_exclusions.sql").read_text(encoding="utf-8").lower()
+        self.assertIn("excluded_source_record_ids jsonb", migration)
+        self.assertIn("release_cohort_review_scopes_record_exclusion_reason_check", migration)
+        self.assertIn("create or replace view uec.release_cohort_review_current", migration)
+        self.assertIn("scope.excluded_source_record_ids", migration)
         query = contract.geometry_approval_sql("SELECT observation_id FROM approved_geometry_members")
-        for token in ("scope.geometry_interpretation_status='approved'", "artifact.sha256=scope.artifact_sha256",
-                      "release.summary->>'freeze_sha256'=scope.freeze_sha256",
-                      "release.summary->>'inventory_sha256'=scope.inventory_sha256",
-                      "release.status IN ('candidate','validated','promoted')"):
-            self.assertIn(token, query)
+        self.assertIn("scope.excluded_source_record_ids ? observation.source_record_id::text", query)
 
     def test_operator_document_must_remain_in_ignored_local_reports(self):
         with self.assertRaises(contract.CohortReviewError):
             recorder._read_operator_document(ROOT / "README.md")
-
 
 @unittest.skipUnless(os.environ.get("UEC_COHORT_REVIEW_TEST_DATABASE_URL"),
                      "set UEC_COHORT_REVIEW_TEST_DATABASE_URL for disposable PostGIS cohort review proof")

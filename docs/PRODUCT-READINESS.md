@@ -22,6 +22,21 @@ publishable facilities unless explicitly labelled that way.
 
 ## v0 dataset release sequence
 
+The [actual publication assessment](v0-release-review.md#final-publication-assessment-2026-10-05)
+preserves the approved fifteen-source candidate scope; no second scope approval
+is requested. The final exception-qualified stamp packet proposes 63,601
+curated-default listable records: 48,756 mapped and 14,845 unmapped, from 13
+sources. All fifteen source snapshots and 124,414 frozen members remain
+retained. The packet names the 68 precautionary privacy holds, Denmark's
+58,230 non-core scope exclusions (one overlapping privacy hold), France's
+2,516 rights-pending records and the Belgian unmapped/null-name limitations.
+Those are proposed outputs, not approved or published counts. The exact
+membership digest was recomputed unchanged. Record-level exceptions now pass
+all six actual disposable-PostGIS tests with no skips. No real candidate
+approval or publication event was created. The remaining maintainer decision
+is the final publication stamp, followed by controlled activation with exact
+binding/suppression/rights rechecks and required CI—not another scope review.
+
 **Maintainer decision: 2026-10-03.** Dataset release names are independent of
 the V2 website and the legacy V1 application. `v0` is the first public dataset
 release; `v1` is a later dataset release, potentially adding countries and
