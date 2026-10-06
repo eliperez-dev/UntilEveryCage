@@ -335,6 +335,56 @@ class PublicGeometryPostgresTests(unittest.TestCase):
                         "unmapped": ("unmapped", None, None, "unmapped", False),
                         "verified_coarse": ("city", 55.0, 10.0, "city_reference", False),
                     })
+                    scope = document["source_artifact_scopes"][0]
+                    connection.execute("""
+                        UPDATE uec.releases
+                        SET summary=jsonb_set(summary,'{candidate_only}','true'::jsonb,true)
+                        WHERE release_id=%s
+                    """, (release_id,))
+                    self.assertEqual(connection.execute(
+                        "SELECT summary->>'candidate_only' FROM uec.releases WHERE release_id=%s",
+                        (release_id,),
+                    ).fetchone()[0], "true")
+                    connection.execute(
+                        "UPDATE uec.releases SET status='promoted' WHERE release_id=%s",
+                        (release_id,),
+                    )
+                    connection.execute("""
+                        INSERT INTO uec.source_rights_decisions
+                            (source_id,profile,release_id,artifact_id,artifact_sha256,
+                             redistribution_status,decision_actor,decision_reference,decided_at)
+                        VALUES (%s,'official',%s,%s,%s,'cleared','maintainer:synthetic',
+                                'test:release-geometry-read-model',now())
+                    """, (scope["source_id"], release_id, scope["artifact_id"], scope["artifact_sha256"]))
+                    manifest = {"release_id": release_id, "profile": "official", "schema_version": "synthetic-test"}
+                    manifest_sha = hashlib.sha256(
+                        DISCOVERY.canonical_json(manifest).encode("utf-8")
+                    ).hexdigest()
+                    connection.execute("""
+                        INSERT INTO uec.release_manifests(release_id,manifest,manifest_sha256)
+                        VALUES (%s,%s,%s)
+                    """, (release_id, Jsonb(manifest), manifest_sha))
+                    with self.assertRaisesRegex(RuntimeError, "synthetic interrupted read model build"):
+                        with connection.transaction():
+                            DISCOVERY.build_in_transaction(connection, release_id, fail_after_rows=1)
+                    self.assertEqual(connection.execute(
+                        "SELECT count(*) FROM uec.public_discovery_read_model_rows WHERE release_id=%s",
+                        (release_id,),
+                    ).fetchone()[0], 0)
+                    self.assertEqual(connection.execute(
+                        "SELECT count(*) FROM uec.public_discovery_read_models WHERE release_id=%s",
+                        (release_id,),
+                    ).fetchone()[0], 0)
+                    built = DISCOVERY.build_in_transaction(connection, release_id)
+                    self.assertEqual(built["row_count"], 7)
+                    model_rows = connection.execute("""
+                        SELECT source_record_id::text,display_precision
+                        FROM uec.public_discovery_read_model_rows WHERE release_id=%s
+                    """, (release_id,)).fetchall()
+                    self.assertEqual(len(model_rows), 7)
+                    self.assertEqual(sum(precision != "unmapped" for _, precision in model_rows), 2)
+                    self.assertEqual(sum(precision == "unmapped" for _, precision in model_rows), 5)
+                    self.assertNotIn(legacy_ids["source_unknown_precision"], {source_id for source_id, _ in model_rows})
                     raise _RollbackFixture()
 
 
