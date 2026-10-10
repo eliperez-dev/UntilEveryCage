@@ -237,7 +237,7 @@ class PublicGeometryPostgresTests(unittest.TestCase):
                         WHERE member.release_id=%s
                     """, (release_id,)).fetchone()[0]
                     review = RECORDER._verify(connection, document, apply_changes=True)
-                    self.assertEqual(review["default_visible_count"], 7)
+                    self.assertEqual(review["default_visible_count"], 8)
                     # The verifier records scoped cohort approval but intentionally
                     # leaves release lifecycle transitions to the release workflow.
                     # Move only this rollback-only synthetic fixture to validated.
@@ -257,9 +257,9 @@ class PublicGeometryPostgresTests(unittest.TestCase):
                         DISCOVERY.public_release_query(("validated", "promoted")),
                         (release_id, release_id),
                     ).fetchall()
-                    self.assertEqual(len(discovery_rows), 7)
+                    self.assertEqual(len(discovery_rows), 8)
                     self.assertEqual(sum(row[8] != "unmapped" for row in discovery_rows), 2)
-                    self.assertEqual(sum(row[8] == "unmapped" for row in discovery_rows), 5)
+                    self.assertEqual(sum(row[8] == "unmapped" for row in discovery_rows), 6)
                     category_excluded_record_id = connection.execute("""
                         SELECT observation.source_record_id::text
                         FROM uec.observations observation
@@ -317,9 +317,9 @@ class PublicGeometryPostgresTests(unittest.TestCase):
                     """, (release_id,))
                     metrics = connection.execute(RELEASE_GATE_METRICS_SQL,
                                                   (release_id, release_id, release_id)).fetchone()
-                    self.assertEqual(metrics[1], 7)
+                    self.assertEqual(metrics[1], 8)
                     self.assertEqual(metrics[4], 0)  # immutable source review_required is not promoted to approved
-                    self.assertEqual(metrics[8], 5)  # unusable evidence remains explicitly unmapped
+                    self.assertEqual(metrics[8], 6)  # unusable evidence remains explicitly unmapped
                     self.assertEqual(metrics[9], 0)  # null geometry does not block otherwise eligible records
                     self.assertEqual(metrics[11], 1)  # active suppression is counted only on visible membership
                     after = connection.execute("""
@@ -417,14 +417,14 @@ class PublicGeometryPostgresTests(unittest.TestCase):
                         (release_id,),
                     ).fetchone()[0], 0)
                     built = DISCOVERY.build_in_transaction(connection, release_id)
-                    self.assertEqual(built["row_count"], 6)
+                    self.assertEqual(built["row_count"], 7)
                     model_rows = connection.execute("""
                         SELECT source_record_id::text,display_precision
                         FROM uec.public_discovery_read_model_rows WHERE release_id=%s
                     """, (release_id,)).fetchall()
-                    self.assertEqual(len(model_rows), 6)
+                    self.assertEqual(len(model_rows), 7)
                     self.assertEqual(sum(precision != "unmapped" for _, precision in model_rows), 1)
-                    self.assertEqual(sum(precision == "unmapped" for _, precision in model_rows), 5)
+                    self.assertEqual(sum(precision == "unmapped" for _, precision in model_rows), 6)
                     self.assertNotIn(legacy_ids["source_unknown_precision"], {source_id for source_id, _ in model_rows})
                     self.assertNotIn(restricted_record_id, {source_id for source_id, _ in model_rows})
                     raise _RollbackFixture()
