@@ -219,7 +219,7 @@
   });
 </script>
 
-<svelte:head><title>Until Every Cage — Database</title></svelte:head>
+<svelte:head><title>Until Every Cage: Database</title></svelte:head>
 <div class="database-research">
   <PreviewMasthead privateTools current="database" mapHref={mapHref()} databaseHref="#/database" />
   <main aria-labelledby="database-title">
