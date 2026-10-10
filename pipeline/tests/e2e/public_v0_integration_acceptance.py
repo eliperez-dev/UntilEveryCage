@@ -188,7 +188,31 @@ class PublicV0IntegrationAcceptance(unittest.TestCase):
         detail_query = urllib.parse.urlencode({"profile": "official", "release_id": self.release_id})
         status, _, detail_body = self.request(f"/api/v2/locations/{ids[0]}?{detail_query}")
         self.assertEqual(status, 200)
-        self.assertEqual(json.loads(detail_body)["data"]["facility_id"], ids[0])
+        detail = json.loads(detail_body)["data"]
+        self.assertEqual(detail["facility_id"], ids[0])
+
+        no_match_query = urllib.parse.urlencode({
+            "profile": "official", "release_id": self.release_id,
+            "q": "uec-v0-acceptance-no-match-9f4f641bb77c", "limit": "1",
+        })
+        _, _, no_match = self.get_json("/api/v2/locations?" + no_match_query)
+        self.assertEqual(no_match["meta"]["total_count"], 0)
+        self.assertEqual(no_match["data"], [])
+
+        # Keep a real-name search entirely in memory and never log the value.
+        name_query = detail.get("canonical_name")
+        if isinstance(name_query, str) and name_query.strip():
+            name_query = name_query.strip()[:120]
+            search_query = urllib.parse.urlencode({
+                "profile": "official", "release_id": self.release_id, "q": name_query, "limit": "100",
+            })
+            _, _, name_search = self.get_json("/api/v2/locations?" + search_query)
+            self.assertGreaterEqual(name_search["meta"]["total_count"], 1)
+            self.assertTrue(any(
+                isinstance(row.get("canonical_name"), str)
+                and name_query.casefold() in row["canonical_name"].casefold()
+                for row in name_search["data"]
+            ))
         self.assertEqual(self.request("/api/v2/locations?profile=official&limit=1")[0], 200)
         self.assertEqual(self.request("/api/v2/discovery/facets?profile=official")[0], 200)
 
