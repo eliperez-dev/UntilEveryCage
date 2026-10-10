@@ -130,9 +130,11 @@ class TaxonomyCrosswalkTests(unittest.TestCase):
         spain = project_observation({"source_id": "es.cat.feed-sandach", "normalized": {"sector_code": "SANDACH"}})
         self.assertEqual(spain["taxonomy_display_category"], "other_regulated_premises")
         fsis = project_observation({"source_id": "us.fsis", "normalized": {
+            "establishment_id": "synthetic-fsis-roster-row",
             "species_slaughtered": {"beef_cow_slaughter": "No"},
             "processing_activities": {"raw_intact_beef_processing": "No"}}})
-        self.assertEqual(fsis["taxonomy_display_category"], "unclassified")
+        self.assertEqual(fsis["taxonomy_display_category"], "processing_and_preparation")
+        self.assertEqual(fsis["taxonomy_primaries"], ["processing_and_preparation"])
 
     def test_multi_activity_precedence_is_order_independent(self):
         original = self.by_name["multiple-activities"]

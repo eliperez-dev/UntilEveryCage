@@ -722,6 +722,7 @@ class RealPreviewImporterTests(unittest.TestCase):
                 "coordinate_method": "source_coordinates", "coordinate_provider": "Australian National Pollutant Inventory",
                 "coordinate_confidence": "high_source_reported_location",
                 "evidence_summary": "Coordinates supplied by official NPI facility record.",
+                "primary_anzsic_class_code": "1111",
                 "privacy_gate": "pending-review", "in_default_map_scope": True,
                 "map_scope_reason": "official_source_facility_coordinates"},
             "source_values": {"street_address": "1 private road", "latitude": "-33.1", "longitude": "151.2"},
@@ -732,6 +733,24 @@ class RealPreviewImporterTests(unittest.TestCase):
         self.assertIsNone(row[11], "pending privacy must suppress the facility name")
         self.assertTrue(row[16], "valid source facility coordinates are map-visible in private preview")
         self.assertIn("Coordinates supplied", row[15])
+
+    def test_australia_npi_stale_scope_cannot_expose_non_animal_or_unknown_industry(self):
+        for code in ("0804", "9999"):
+            with self.subTest(code=code):
+                row = IMPORTER.parse_row("au.npi.facilities", {
+                    "source_id": "au.npi.facilities", "source_record_key": f"NPI-{code}",
+                    "normalized": {
+                        "establishment_id": f"NPI-{code}", "country_code": "AU",
+                        "primary_anzsic_class_code": code, "in_default_map_scope": True,
+                        "coordinates": {"latitude": "-33.1", "longitude": "151.2", "precision": "source-provided",
+                            "method": "source_coordinates", "provider": "Australian National Pollutant Inventory",
+                            "confidence": "high_source_reported_location"},
+                        "coordinate_method": "source_coordinates", "coordinate_provider": "Australian National Pollutant Inventory",
+                        "coordinate_confidence": "high_source_reported_location", "coordinate_precision": "source-provided",
+                    },
+                })
+                self.assertFalse(row[16])
+                self.assertEqual(row[17], "outside_explicit_animal_industry_scope")
 
     def test_australia_npi_rejects_coordinate_provenance_mismatch(self):
         with self.assertRaisesRegex(IMPORTER.ImportFailure, "source_coordinate_provenance_invalid"):

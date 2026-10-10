@@ -133,14 +133,15 @@ def _decision(source: str, normalized: dict[str, Any], original: dict[str, Any])
             return assignments, "partial"
     elif source == "us.fsis":
         # Structured FSIS activity columns are source fields, not inspection
-        # system attributes. The adapter emits these groups from exact columns.
+        # system attributes. The user-approved roster projection is exhaustive:
+        # any affirmative slaughter value takes precedence; every other roster
+        # row is a processing candidate. Native flags remain source evidence.
         def affirmative(values: Any) -> bool:
             return isinstance(values, dict) and any(str(value).strip().casefold() in {"yes", "y", "true", "1"}
                                                     for value in values.values())
         if affirmative(normalized.get("species_slaughtered")):
             assignments.append({"leaf_activity": "slaughter", "primary": "slaughter", "method": "direct"})
-        if not assignments and (affirmative(normalized.get("processing_activities"))
-                                or normalized.get("demographics_evidence_state") == "complete-exact-join"):
+        elif normalized.get("establishment_id") or normalized.get("establishment_number"):
             assignments.append({"leaf_activity": "processing", "primary": "processing_and_preparation", "method": "direct"})
     elif source == "us.aphis":
         # This bounded lane accepts only the explicit APHIS Class R

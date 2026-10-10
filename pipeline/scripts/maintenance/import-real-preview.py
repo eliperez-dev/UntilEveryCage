@@ -522,6 +522,21 @@ def parse_row(source: str, row: Any) -> tuple[Any, ...]:
     if not isinstance(map_scope, bool):
         map_scope = default_map_scope
     map_scope_reason = safe_preview_text(pick(normalized, "map_scope_reason", "classification_optional_filter"), 160)
+    if source == "au.npi.facilities":
+        # NPI's primary ANZSIC code is the only reviewed relevance evidence
+        # for default map placement.  Older retained handoffs may carry a
+        # broad, stale boolean scope flag, so derive this projection again
+        # from the versioned exact-code crosswalk rather than trusting it.
+        # This leaves the original source values and private observation
+        # searchable while excluding unknown and explicitly non-animal codes.
+        map_scope = numeric and contract["activity_mapping_status"] == "mapped"
+        map_scope_reason = (
+            "official_source_facility_coordinates_and_explicit_animal_industry_code"
+            if map_scope else
+            "outside_explicit_animal_industry_scope"
+            if contract["activity_mapping_status"] != "mapped" else
+            "source_coordinate_unavailable"
+        )
     facility_address = (safe_preview_text(pick(normalized, "facility_address", "address"), 500)
                         if source in SOURCE_LOCATION_SOURCES else None)
     # Validate and preserve the source-owned administrative key separately
