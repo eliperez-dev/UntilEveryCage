@@ -46,6 +46,7 @@ export type RealPreviewVisualSettings = Readonly<{
 }>;
 
 const cityReference = ['any', ['==', ['get', 'precision'], 'city'], ['==', ['get', 'precision'], 'city_reference_approximate'], ['==', ['get', 'precision'], 'provider_locality_approximate']];
+const approximateCoordinate = ['all', ['==', ['get', 'kind'], 'source-coordinate'], ['in', ['get', 'precision'], ['literal', ['approximate', 'city', 'source_reported', 'source_provided_unverified', 'city_reference_approximate', 'provider_locality_approximate']]]];
 const categoryPairs = Object.entries(CATEGORY_PRIMARY_BY_SOURCE_KEY);
 const categoryColorBySourceKey = ['match', ['get', 'category_key'], ...categoryPairs.flatMap(([sourceKey, primaryKey]) => [sourceKey, CATEGORY_PRESENTATIONS[primaryKey].color]), CATEGORY_PRESENTATIONS.unclassified.color];
 const v1PinByPrimary = {
@@ -134,7 +135,9 @@ export function addRealPreviewMapLayers(
     paint: { 'text-color': '#172019' },
   } as any);
 
-  const reference = ['all', unclustered, ['in', ['get', 'kind'], ['literal', ['reference', 'provider_locality_approximate']]]];
+  const referenceKind = ['in', ['get', 'kind'], ['literal', ['reference', 'provider_locality_approximate']]];
+  const reference = ['all', unclustered, ['any', referenceKind, approximateCoordinate]];
+  const aggregateReference = ['all', unclustered, referenceKind];
   const weight = ['get', 'weight'];
   map.addLayer({
     id: 'aggregate-outer', type: 'circle', source: 'locations', filter: reference,
@@ -154,7 +157,7 @@ export function addRealPreviewMapLayers(
   // disc is subpixel, while the center still makes the reference discoverable.
   map.addLayer({
     id: 'approx-reference-points', type: 'symbol', source: 'locations',
-    filter: ['all', ...reference.slice(1), cityReference],
+    filter: ['all', ...aggregateReference.slice(1), cityReference],
     layout: {
       'icon-image': 'reference-marker', 'icon-size': APPROX_MARKER_SCALE,
       'icon-allow-overlap': true, 'icon-ignore-placement': true,
@@ -165,12 +168,12 @@ export function addRealPreviewMapLayers(
   } as any);
   map.addLayer({
     id: 'aggregate-count', type: 'symbol', source: 'locations',
-    filter: ['all', ...reference.slice(1), ['!', cityReference]],
+    filter: ['all', ...aggregateReference.slice(1), ['!', cityReference]],
     layout: { 'text-field': ['to-string', weight], 'text-font': ['Open Sans Bold'], 'text-size': 12 },
     paint: { 'text-color': '#f1efe8', 'text-halo-color': '#15252c', 'text-halo-width': 1 },
   } as any);
   map.addLayer({
-    id: 'aggregate-kind', type: 'symbol', source: 'locations', filter: reference,
+    id: 'aggregate-kind', type: 'symbol', source: 'locations', filter: aggregateReference,
     layout: { 'visibility': 'none', 'text-field': ['case', cityReference, 'APPROX', 'AREA REF'], 'text-font': ['Open Sans Bold'], 'text-size': 9, 'text-offset': [0, 2.8], 'text-allow-overlap': true, 'text-ignore-placement': true },
     paint: { 'text-color': '#ff9c93', 'text-halo-color': '#171a18', 'text-halo-width': 1.5 },
   } as any);
