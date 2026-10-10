@@ -28,7 +28,8 @@ class PublicDiscoveryQueryContractTests(unittest.TestCase):
     def test_public_queries_use_the_manifest_bound_live_gated_read_model(self):
         source = _source()
         locations = source[source.index("pub async fn get_v2_locations_handler"):source.index("pub async fn get_v2_location_detail_handler")]
-        self.assertIn("FROM uec.public_discovery_api_read_model AS history", locations)
+        self.assertIn('\"uec.public_discovery_api_read_model\"', locations)
+        self.assertIn('\"uec.public_discovery_api_candidate_read_model\"', locations)
         self.assertIn("public_discovery_read_models", locations)
         self.assertIn("manifest.manifest_sha256=model.manifest_sha256", locations)
         self.assertNotIn("JOIN uec.publication_review_release_current AS review", locations)
@@ -49,6 +50,15 @@ class PublicDiscoveryQueryContractTests(unittest.TestCase):
         self.assertIn("release.status='promoted'", migration)
         self.assertIn("release.test_only IS NOT TRUE", migration)
         self.assertIn("event_review.publication_eligible=true", migration)
+
+    def test_candidate_release_uses_the_gated_candidate_only_read_branch(self):
+        migration = (ROOT / "migrations" / "070_public_candidate_read_model.sql").read_text(encoding="utf-8")
+        self.assertIn("release.summary->>'candidate_only'='true'", migration)
+        self.assertIn("record_access_current", migration)
+        self.assertIn("suppression_case_current", migration)
+        self.assertIn("release_manifests", migration)
+        self.assertIn("candidate_reviews AS NOT MATERIALIZED", migration)
+        self.assertNotIn("publication_review_events", migration)
 
     def test_legacy_component_view_remains_documented_but_is_not_the_api_read_path(self):
         migration = (ROOT / "migrations" / "036_public_facility_discovery_view.sql").read_text(encoding="utf-8").lower()

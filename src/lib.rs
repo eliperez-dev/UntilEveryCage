@@ -4052,7 +4052,7 @@ pub async fn get_v2_locations_handler(
         );
     }
     let requested_profile = params.profile.as_deref().unwrap_or("official");
-    let release = transaction.query_opt("SELECT r.release_id, r.ruleset_version, r.created_at, r.profile, (model.release_id IS NOT NULL AND manifest.release_id IS NOT NULL) FROM uec.releases r LEFT JOIN uec.public_discovery_read_models model ON model.release_id=r.release_id LEFT JOIN uec.release_manifests manifest ON manifest.release_id=r.release_id AND manifest.manifest_sha256=model.manifest_sha256 WHERE r.status = 'promoted' AND r.test_only IS NOT TRUE AND r.profile = $1 AND ($2::text IS NULL OR r.release_id = $2) ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1", &[&requested_profile, &params.release_id]).await;
+    let release = transaction.query_opt("SELECT r.release_id, r.ruleset_version, r.created_at, r.profile, (model.release_id IS NOT NULL AND manifest.release_id IS NOT NULL), COALESCE(r.summary->>'candidate_only'='true',false) FROM uec.releases r LEFT JOIN uec.public_discovery_read_models model ON model.release_id=r.release_id LEFT JOIN uec.release_manifests manifest ON manifest.release_id=r.release_id AND manifest.manifest_sha256=model.manifest_sha256 WHERE r.status = 'promoted' AND r.test_only IS NOT TRUE AND r.profile = $1 AND ($2::text IS NULL OR r.release_id = $2) ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1", &[&requested_profile, &params.release_id]).await;
     let release = match release {
         Ok(release) => release,
         Err(_) => {
@@ -4081,6 +4081,11 @@ pub async fn get_v2_locations_handler(
             "public discovery read model is missing or stale",
         );
     }
+    let public_read_model = if release.get::<_, bool>(5) {
+        "uec.public_discovery_api_candidate_read_model"
+    } else {
+        "uec.public_discovery_api_read_model"
+    };
     // Keep the total scoped to exactly the same eligible release and filters
     // as the page. It is deliberately not the size of a client-loaded page.
     let query_limit = limit + 1;
@@ -4088,9 +4093,9 @@ pub async fn get_v2_locations_handler(
     let total_count: i64 = if !taxonomy_filters_requested {
         // Ordinary browsing never examines taxonomy to decide eligibility. Keep
         // the exact facility total, but avoid expanding every assignment set.
-        match transaction.query_one(r#"
+        match transaction.query_one(&format!(r#"
         SELECT count(DISTINCT history.facility_id)::bigint
-        FROM uec.public_discovery_api_read_model AS history
+        FROM {public_read_model} AS history
         LEFT JOIN uec.public_discovery_read_model_rows indexed
           ON indexed.release_id=history.release_id AND indexed.facility_id=history.facility_id AND indexed.observation_id=history.observation_id
         WHERE history.release_id = $1
@@ -4107,12 +4112,12 @@ pub async fn get_v2_locations_handler(
                       AND lower(concat_ws(' ', assignment.leaf_label, assignment.source_code, assignment.source_label, assignment.source_code_reference, assignment.source_label_reference)) LIKE '%' || lower($8) || '%' ESCAPE '\')))
           AND ($9::double precision IS NULL OR (history.display_location && ST_MakeEnvelope($9, $10, $11, $12, 4326)::geography AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($9, $10, $11, $12, 4326))))
           AND ($13::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($14, $15), 4326)::geography, $13 * 1000))
-    "#, &[&promoted_release_id, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude]).await {
+    "#), &[&promoted_release_id, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude]).await {
             Ok(row) => row.get(0), Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
         }
-    } else { match transaction.query_one(r#"
+    } else { match transaction.query_one(&format!(r#"
         SELECT count(DISTINCT history.facility_id)::bigint
-        FROM uec.public_discovery_api_read_model AS history
+        FROM {public_read_model} AS history
         JOIN uec.public_discovery_read_model_rows stored
           ON stored.release_id=history.release_id AND stored.facility_id=history.facility_id AND stored.observation_id=history.observation_id
         WHERE history.release_id = $1
@@ -4136,17 +4141,17 @@ pub async fn get_v2_locations_handler(
                 WHERE sets.observation_id=history.observation_id AND sets.taxonomy_version='uec-taxonomy-v1'
                   AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=sets.observation_id AND newer.taxonomy_version=sets.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(sets.created_at,sets.assignment_set_id))
                   AND assignment.primary_key = ANY($16::text[]))
-    "#, &[&promoted_release_id, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &category_keys]).await {
+    "#), &[&promoted_release_id, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &category_keys]).await {
         Ok(row) => row.get(0), Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
     }};
     let rows = if !taxonomy_filters_requested {
         // Pick the stable page before calculating DTO-only taxonomy. The
         // taxonomy is still returned for each record, but no longer expanded
         // for every eligible facility on an ordinary browse request.
-        match transaction.query(r#"
+        match transaction.query(&format!(r#"
         WITH candidates AS MATERIALIZED (
           SELECT DISTINCT ON (history.facility_id) history.facility_id, history.observation_id
-          FROM uec.public_discovery_api_read_model AS history
+          FROM {public_read_model} AS history
           LEFT JOIN uec.public_discovery_read_model_rows indexed
             ON indexed.release_id=history.release_id AND indexed.facility_id=history.facility_id AND indexed.observation_id=history.observation_id
           WHERE history.release_id = $1
@@ -4185,7 +4190,7 @@ pub async fn get_v2_locations_handler(
                COALESCE(taxonomy.assignments, '[]'::jsonb)::text,
                history.geometry_provenance::text
         FROM page
-        JOIN uec.public_discovery_api_read_model AS history
+        JOIN {public_read_model} AS history
           ON history.release_id = $1
          AND history.facility_id = page.facility_id
          AND history.observation_id = page.observation_id
@@ -4200,11 +4205,11 @@ pub async fn get_v2_locations_handler(
             AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=s.observation_id AND newer.taxonomy_version=s.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(s.created_at,s.assignment_set_id))
         ) taxonomy ON TRUE
         ORDER BY history.facility_id, history.observation_id
-    "#, &[&promoted_release_id, &cursor, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &query_limit, &effective_offset]).await {
+    "#), &[&promoted_release_id, &cursor, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &query_limit, &effective_offset]).await {
             Ok(rows) => rows,
             Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
         }
-    } else { match transaction.query(r#"
+    } else { match transaction.query(&format!(r#"
         SELECT DISTINCT ON (history.facility_id) history.facility_id, history.canonical_name, history.country_code, history.city, history.classification_category, history.display_precision,
                history.factual_review_status, history.privacy_screening_status, history.maintainer_approval, history.reviewer_role,
                ST_Y(history.display_location::geometry), ST_X(history.display_location::geometry),
@@ -4218,7 +4223,7 @@ pub async fn get_v2_locations_handler(
                COALESCE(taxonomy.assignments, '[]'::jsonb)::text,
                history.geometry_provenance::text,
                stored.public_detail::text
-        FROM uec.public_discovery_api_read_model AS history
+        FROM {public_read_model} AS history
         JOIN uec.public_discovery_read_model_rows stored
           ON stored.release_id=history.release_id AND stored.facility_id=history.facility_id AND stored.observation_id=history.observation_id
         LEFT JOIN LATERAL (
@@ -4258,7 +4263,7 @@ pub async fn get_v2_locations_handler(
                   AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=sets.observation_id AND newer.taxonomy_version=sets.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(sets.created_at,sets.assignment_set_id))
                   AND assignment.primary_key = ANY($19::text[]))
         ORDER BY history.facility_id, history.observation_id LIMIT $17 OFFSET $18
-    "#, &[&promoted_release_id, &cursor, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &query_limit, &effective_offset, &category_keys]).await {
+    "#), &[&promoted_release_id, &cursor, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &query_limit, &effective_offset, &category_keys]).await {
         Ok(rows) => rows,
         Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
     }};
