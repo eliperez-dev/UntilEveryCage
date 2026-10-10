@@ -40,6 +40,11 @@ export const mapWireLocation = (r: WireLocation | WireDetailLocation): Location 
       unit: range.unit, period: range.period, methodVersion: range.method_version,
       sourceCodebookUrl: range.source_codebook_url, verificationState: range.verification_state,
     })) } : {}),
+    ...(r.aphis_annual_reports ? { aphisAnnualReports: r.aphis_annual_reports.map(report => ({
+      fiscalYear: report.fiscal_year, speciesCounts: report.species_counts.map(species => ({ species: species.species, count: species.count })),
+      sourceUrl: report.source_url, safeProvenance: { sourceId: report.safe_provenance.source_id, evidenceType: report.safe_provenance.evidence_type,
+        matchMethod: report.safe_provenance.match_method, matchedIdentifierTypes: report.safe_provenance.matched_identifier_types },
+    })) } : {}),
     ...(r.establishment_id ? { establishmentId: r.establishment_id } : {}),
     ...(r.establishment_number ? { establishmentNumber: r.establishment_number } : {}),
     ...(r.grant_date ? { grantDate: r.grant_date } : {}),

@@ -177,3 +177,67 @@ test('candidate map keeps mobile controls clear and uses category and reference 
   });
   expect(controlsDoNotOverlap).toBe(true);
 });
+
+test('plain map entry uses the configured candidate projection and preserves its map controls', async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.goto('/v2-preview/#/map');
+  await page.evaluate(async () => Promise.all((await caches.keys()).map(name => caches.delete(name))));
+  await page.reload();
+  await page.waitForFunction(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return document.querySelector('.lab')?.getAttribute('data-data-mode') === 'candidate-preview'
+      && Boolean(map?.isStyleLoaded() && map.isSourceLoaded('locations') && map.getLayer('aggregate-outer'));
+  }, undefined, { timeout: 90_000 });
+  const mapState = await page.evaluate(async () => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    const reference = map.querySourceFeatures('locations').find((feature: any) => feature.properties?.kind === 'reference');
+    if (reference) {
+      map.jumpTo({ center: reference.geometry.coordinates, zoom: 9 });
+      await new Promise<void>(resolve => map.once('idle', resolve));
+    }
+    return {
+      color: JSON.stringify(map.getPaintProperty('source-coordinate-points', 'circle-color')),
+      referenceColor: map.getPaintProperty('aggregate-outer', 'circle-color'),
+      referenceStroke: map.getPaintProperty('aggregate-outer', 'circle-stroke-color'),
+      referenceOpacity: JSON.stringify(map.getPaintProperty('aggregate-outer', 'circle-opacity')),
+      renderedReferences: map.queryRenderedFeatures({ layers: ['aggregate-outer'] }).length,
+    };
+  });
+  expect(mapState.color).toContain('#009E73');
+  expect(mapState.color).toContain('#0072B2');
+  expect(mapState.referenceColor).toBe('#d8473f');
+  expect(mapState.referenceStroke).toBe('#ff695c');
+  expect(mapState.referenceOpacity).toContain('0.22');
+  expect(mapState.renderedReferences).toBeGreaterThan(0);
+
+  await page.getByRole('button', { name: 'Search map' }).click();
+  await page.locator('details.filters > summary').click();
+  await expect(page.getByRole('group', { name: 'Country' })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Source' })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Activity category' })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Activity' })).toBeVisible();
+  await page.goto('/v2-preview/#/database');
+  await page.goto('/v2-preview/#/map');
+  await page.waitForFunction(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.isSourceLoaded('locations'), undefined, { timeout: 60_000 });
+
+  await page.getByRole('button', { name: 'Tools' }).click();
+  await page.getByLabel('Enable debug menu').check();
+  await page.getByRole('button', { name: 'Debug menu' }).click();
+  await page.getByLabel('Use V1 facility pin PNG + shadow').check();
+  await page.waitForFunction(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getLayoutProperty('v1-source-pins', 'visibility') === 'visible');
+  await page.evaluate(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    const feature = map.querySourceFeatures('locations').find((item: any) => item.properties?.kind === 'source-coordinate');
+    map.jumpTo({ center: feature.geometry.coordinates, zoom: 14 });
+  });
+  await page.waitForFunction(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.queryRenderedFeatures({ layers: ['v1-source-pins'] }).length > 0, undefined, { timeout: 30_000 });
+  const point = await page.evaluate(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    const feature = map.queryRenderedFeatures({ layers: ['v1-source-pins'] })[0];
+    const point = map.project(feature.geometry.coordinates);
+    const box = map.getContainer().getBoundingClientRect();
+    return { x: box.left + point.x, y: box.top + point.y };
+  });
+  await page.mouse.click(point.x, point.y);
+  await expect(page.locator('.reading-sheet').getByRole('heading', { name: 'Source facts' })).toBeVisible({ timeout: 30_000 });
+});

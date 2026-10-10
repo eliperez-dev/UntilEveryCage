@@ -43,6 +43,7 @@ describe('allowlisted source-native detail facts', () => {
     processing_activities: { raw_intact_beef_processing: 'Yes' },
     source_volume_categories: [{ code: '2.0', provenance: { source_field: 'activity_volume_codes', method: 'source_native' } }],
     derived_source_volume_ranges: [{ ordinal_code: '2', lower: 10000, upper: 100000, bounds: 'inclusive_lower_exclusive_upper', unit: 'pounds', period: 'month', method_version: 'fsis-mpi-volume-codebook-2026-03-24-v1', source_codebook_url: 'https://example.test/codebook', verification_state: 'source_codebook_verified' }],
+    aphis_annual_reports: [{ fiscal_year: '2025', species_counts: [{ species: 'cattle', count: 12 }], source_url: 'https://example.test/annual', safe_provenance: { source_id: 'us.aphis.annual-reports', evidence_type: 'annual_reports', match_method: 'exact_source_identifier', matched_identifier_types: ['certificate_number'] } }],
     establishment_id: 'EST-42', establishment_number: 'P-42', grant_date: '2026-01-01',
     native_activity_code: 'SH', native_activity_label: 'Slaughterhouse',
   };
@@ -53,6 +54,7 @@ describe('allowlisted source-native detail facts', () => {
       processingActivities: { raw_intact_beef_processing: 'Yes' }, establishmentId: 'EST-42',
       sourceVolumeCategories: [{ code: '2.0', provenance: { sourceField: 'activity_volume_codes', method: 'source_native' } }],
       derivedSourceVolumeRanges: [{ ordinalCode: '2', lower: 10000, upper: 100000, unit: 'pounds', period: 'month' }],
+      aphisAnnualReports: [{ fiscalYear: '2025', speciesCounts: [{ species: 'cattle', count: 12 }], safeProvenance: { sourceId: 'us.aphis.annual-reports', matchMethod: 'exact_source_identifier' } }],
     });
   });
   it('keeps list payloads minimal and rejects non-allowlisted detail fields', async () => {

@@ -33,6 +33,11 @@ function sourceFacts(row: WireTestReleaseDetailLocation): LocationSourceFacts | 
       unit: range.unit, period: range.period, methodVersion: range.method_version,
       sourceCodebookUrl: range.source_codebook_url, verificationState: range.verification_state,
     })) } : {}),
+    ...(row.aphis_annual_reports ? { aphisAnnualReports: row.aphis_annual_reports.map(report => ({
+      fiscalYear: report.fiscal_year, speciesCounts: report.species_counts.map(species => ({ species: species.species, count: species.count })),
+      sourceUrl: report.source_url, safeProvenance: { sourceId: report.safe_provenance.source_id, evidenceType: report.safe_provenance.evidence_type,
+        matchMethod: report.safe_provenance.match_method, matchedIdentifierTypes: report.safe_provenance.matched_identifier_types },
+    })) } : {}),
     ...(row.establishment_id ? { establishmentId: row.establishment_id } : {}),
     ...(row.establishment_number ? { establishmentNumber: row.establishment_number } : {}),
     ...(row.grant_date ? { grantDate: row.grant_date } : {}),

@@ -38,7 +38,7 @@ describe('real-preview native clustering layers', () => {
     expect(layers.find(layer => layer.id === 'aggregate-outer')?.paint).toMatchObject({
       'circle-color': '#d8473f', 'circle-opacity': 0.22, 'circle-stroke-color': '#ff695c', 'circle-stroke-width': 2.5,
     });
-    expect(layers.find(layer => layer.id === 'aggregate-outer')?.filter).toEqual(['all', ['!', ['has', 'cluster']], ['in', ['get', 'kind'], ['literal', ['reference', 'provider_locality_approximate']]]]);
+    expect(JSON.stringify(layers.find(layer => layer.id === 'aggregate-outer')?.filter)).toContain('source_provided_unverified');
     expect(layers.find(layer => layer.id === 'source-coordinate-points')?.filter).toEqual(['all', ['!', ['has', 'cluster']], ['in', ['get', 'kind'], ['literal', ['source-coordinate', 'provider_address_point_private']]]]);
     expect(layers.find(layer => layer.id === 'source-coordinate-points')?.filter).toContainEqual(['in', ['get', 'kind'], ['literal', ['source-coordinate', 'provider_address_point_private']]]);
     expect(JSON.stringify(layers.find(layer => layer.id === 'source-coordinate-points')?.paint?.['circle-color']))

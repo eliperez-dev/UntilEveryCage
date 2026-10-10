@@ -1057,6 +1057,9 @@
       if (activeFlight) return;
       if (isRealPreview()) {
         const properties = event.features?.[0]?.properties;
+        // Approximate source-coordinate halos are visual context around an
+        // individual pin, not aggregate-member references.
+        if (layer === "aggregate-outer" && properties?.kind === "source-coordinate") return;
         const city = properties?.precision === "city" || properties?.precision === "city_reference_approximate";
         // The center icon overlays the geographic circle at every zoom. Let
         // its own handler own center clicks; the outer circle owns area clicks.

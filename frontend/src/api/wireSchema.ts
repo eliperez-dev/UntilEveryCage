@@ -71,12 +71,24 @@ const derivedSourceVolumeRange = z.object({
       : range.lower !== null && range.upper !== null && range.lower < range.upper;
   if (!valid) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'volume range bounds must match its declared shape' });
 });
+const aphisAnnualReport = z.object({
+  fiscal_year: z.string().regex(/^\d{4}$/),
+  species_counts: z.array(z.object({ species: z.string().min(1).max(120), count: z.number().int().nonnegative() }).strict()).min(1).max(32),
+  source_url: sourceUrl,
+  safe_provenance: z.object({
+    source_id: z.literal('us.aphis.annual-reports'),
+    evidence_type: z.literal('annual_reports'),
+    match_method: z.literal('exact_source_identifier'),
+    matched_identifier_types: z.array(z.enum(['certificate_number', 'customer_number'])).min(1).max(2),
+  }).strict(),
+}).strict();
 const detailFactsShape = {
   alternate_names: z.array(z.string().min(1).max(200)).min(1).max(32).optional(),
   species_slaughtered: sourceFlags.optional(),
   processing_activities: sourceFlags.optional(),
   source_volume_categories: z.array(sourceVolumeCategory).min(1).max(32).optional(),
   derived_source_volume_ranges: z.array(derivedSourceVolumeRange).min(1).max(32).optional(),
+  aphis_annual_reports: z.array(aphisAnnualReport).min(1).max(16).optional(),
   establishment_id: z.string().min(1).max(160).optional(),
   establishment_number: z.string().min(1).max(160).optional(),
   grant_date: z.string().min(1).max(80).optional(),
