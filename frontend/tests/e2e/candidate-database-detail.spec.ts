@@ -15,6 +15,7 @@ test('configured candidate database opens source-native detail facts', async ({ 
   await expect(detail.getByText('Also known as', { exact: true })).toBeVisible();
   await expect(detail.getByText('Processing activities', { exact: true })).toBeVisible();
   await expect(detail.getByText('Source volume categories', { exact: true })).toBeVisible();
+  await expect(detail.getByText('Estimated product volume (pounds/month)', { exact: true })).toBeVisible();
   await expect(detail).not.toContainText('API unavailable');
   await expect(detail).not.toContainText('Name not shown, privacy review pending');
 });
@@ -22,6 +23,10 @@ test('configured candidate database opens source-native detail facts', async ({ 
 test('candidate map exposes projection-cache invalidation through Tools', async ({ page }) => {
   test.setTimeout(90_000);
   await page.goto('/v2-preview/#/map?f1a=field&source=us.fsis');
+  await page.waitForFunction(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return Boolean(map?.isStyleLoaded() && map.isSourceLoaded('locations'));
+  }, undefined, { timeout: 60_000 });
   await page.getByRole('button', { name: 'Tools' }).click();
   await page.getByLabel('Enable debug menu').check();
   await page.getByRole('button', { name: 'Debug menu' }).click();
