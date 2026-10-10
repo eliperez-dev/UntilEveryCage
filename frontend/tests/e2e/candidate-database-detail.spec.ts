@@ -7,12 +7,29 @@ test('configured candidate database opens source-native detail facts', async ({ 
   await page.goto('/v2-preview/#/database?f1a=field&source=us.fsis');
   const table = page.getByRole('table', { name: 'Browse records' });
   await expect(table).toBeVisible({ timeout: 60_000 });
-  await table.getByRole('button').first().click();
+  const fsisRecordId = await page.evaluate(async () => {
+    const listResponse = await fetch('/api/dev/preview/test-release/locations?profile=official&limit=1000&source_id=us.fsis', { cache: 'no-store' });
+    if (!listResponse.ok) throw new Error('FSIS candidate list was unavailable.');
+    const list = await listResponse.json();
+    for (const row of list.data.slice(0, 100)) {
+      const detailResponse = await fetch(`/api/dev/preview/test-release/locations/${encodeURIComponent(row.facility_id)}`, { cache: 'no-store' });
+      if (!detailResponse.ok) continue;
+      const detail = await detailResponse.json();
+      const species = detail.data?.species_slaughtered;
+      const affirmativeSpecies = species && typeof species === 'object'
+        ? Object.values(species).filter(value => value === true || (typeof value === 'string' && value.trim().length > 0)).length
+        : 0;
+      if (affirmativeSpecies >= 2 && Array.isArray(detail.data?.derived_source_volume_ranges) && detail.data.derived_source_volume_ranges.length > 0) return row.facility_id;
+    }
+    throw new Error('No FSIS detail with multiple species and a derived source range was returned.');
+  });
+  await page.goto(`/v2-preview/#/records/${fsisRecordId}?f1a=field`);
 
-  const detail = page.locator('.selection');
+  const detail = page.locator('.detail');
   await expect(detail.getByRole('heading', { name: 'Source facts' })).toBeVisible({ timeout: 30_000 });
   await expect(detail.getByText('Location precision', { exact: true })).toBeVisible();
-  await expect(detail.getByText('Also known as', { exact: true })).toBeVisible();
+  await expect(detail.getByText('Species slaughtered', { exact: true })).toBeVisible();
+  await expect.poll(() => detail.locator('dt:has-text("Species slaughtered") + dd li').count(), { timeout: 30_000 }).toBeGreaterThan(1);
   await expect(detail.getByText('Processing activities', { exact: true })).toBeVisible();
   await expect(detail.getByText('Source volume categories', { exact: true })).toBeVisible();
   await expect(detail.getByText('Estimated product volume (pounds/month)', { exact: true })).toBeVisible();
@@ -195,8 +212,9 @@ test('plain map entry uses the configured candidate projection and preserves its
   }, undefined, { timeout: 90_000 });
   const mapState = await page.evaluate(async () => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
-    const reference = map.querySourceFeatures('locations').find((feature: any) => feature.properties?.kind === 'reference');
-    const approximate = map.querySourceFeatures('locations').find((feature: any) => feature.properties?.kind === 'source-coordinate' && ['approximate', 'city', 'source_reported', 'source_provided_unverified', 'city_reference_approximate', 'provider_locality_approximate', 'locality_reference_coarse'].includes(feature.properties?.precision));
+    const features = map.getSource('locations').serialize().data.features;
+    const reference = features.find((feature: any) => feature.properties?.kind === 'reference');
+    const approximate = features.find((feature: any) => feature.properties?.kind === 'source-coordinate' && ['approximate', 'city', 'source_reported', 'source_provided_unverified', 'city_reference_approximate', 'provider_locality_approximate', 'locality_reference_coarse'].includes(feature.properties?.precision));
     const target = reference ?? approximate;
     if (target) {
       map.jumpTo({ center: target.geometry.coordinates, zoom: 9 });
@@ -207,6 +225,7 @@ test('plain map entry uses the configured candidate projection and preserves its
       referenceColor: map.getPaintProperty('aggregate-outer', 'circle-color'),
       referenceStroke: map.getPaintProperty('aggregate-outer', 'circle-stroke-color'),
       referenceOpacity: JSON.stringify(map.getPaintProperty('aggregate-outer', 'circle-opacity')),
+      v1Icons: JSON.stringify(map.getLayoutProperty('v1-source-pins', 'icon-image')),
       renderedReferences: map.queryRenderedFeatures({ layers: ['aggregate-outer'] }).length,
       hasApproximatePoint: Boolean(approximate),
     };
@@ -216,6 +235,8 @@ test('plain map entry uses the configured candidate projection and preserves its
   expect(mapState.referenceColor).toBe('#d8473f');
   expect(mapState.referenceStroke).toBe('#ff695c');
   expect(mapState.referenceOpacity).toContain('0.22');
+  expect(mapState.v1Icons).toContain('v1-pin-green');
+  expect(mapState.v1Icons).toContain('v1-pin-yellow');
   expect(mapState.hasApproximatePoint).toBe(true);
   expect(mapState.renderedReferences).toBeGreaterThan(0);
 
@@ -251,4 +272,25 @@ test('plain map entry uses the configured candidate projection and preserves its
   });
   await page.mouse.click(point.x, point.y);
   await expect(page.locator('.reading-sheet').getByRole('heading', { name: 'Source facts' })).toBeVisible({ timeout: 30_000 });
+
+  const annualRecordId = await page.evaluate(async () => {
+    const facetsResponse = await fetch('/api/dev/preview/test-release/discovery/facets', { cache: 'no-store' });
+    if (!facetsResponse.ok) throw new Error('Candidate facets were unavailable while locating annual evidence.');
+    const facets = await facetsResponse.json();
+    const source = facets.dimensions.source_id.find((item: { value: string; label?: string }) => /aphis/i.test(`${item.value} ${item.label ?? ''}`));
+    if (!source) throw new Error('No APHIS candidate source was available.');
+    const listResponse = await fetch(`/api/dev/preview/test-release/locations?profile=official&limit=1000&source_id=${encodeURIComponent(source.value)}`, { cache: 'no-store' });
+    if (!listResponse.ok) throw new Error('APHIS candidate list was unavailable.');
+    const list = await listResponse.json();
+    for (const row of list.data.slice(0, 25)) {
+      const detailResponse = await fetch(`/api/dev/preview/test-release/locations/${encodeURIComponent(row.facility_id)}`, { cache: 'no-store' });
+      if (!detailResponse.ok) continue;
+      const detail = await detailResponse.json();
+      if (Array.isArray(detail.data?.aphis_annual_reports) && detail.data.aphis_annual_reports.some((report: { species_counts?: unknown[] }) => Array.isArray(report.species_counts) && report.species_counts.length > 0)) return row.facility_id;
+    }
+    throw new Error('No matched APHIS annual evidence was returned.');
+  });
+  await page.goto(`/v2-preview/#/records/${annualRecordId}?f1a=field`);
+  await expect(page.getByText(/^FY\d{4} reported animals$/)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('link', { name: 'Source report' })).toBeVisible();
 });
