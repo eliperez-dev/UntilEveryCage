@@ -1,0 +1,12 @@
+{
+  "decision": "approved",
+  "scope": "Private local preview acquisition and processing of the official APHIS active licensee and registrant workbook only",
+  "source_id": "us.aphis",
+  "attribution": "USDA Animal and Plant Health Inspection Service, Animal Care",
+  "reference": "https://www.aphis.usda.gov/animal-care/awa-services/usda-animal-care-public-search-tool",
+  "artifact_url": "https://www.aphis.usda.gov/animal_welfare/downloads/List-of-Active-Licensees-and-Registrants.xlsx",
+  "notes": "Project processing approval under the operator-authorized repair sprint. APHIS provides a public facility/register search and publishes the active register workbook. This decision permits the sanctioned download and private processing already authorized by the operator, not public redistribution, publication, independent verification, or use of mailing details as exact operating-site coordinates. Keep source-native evidence, current privacy restrictions, and the candidate-only boundary. Annual reports and inspections are separate acquisition populations.",
+  "reviewed_at": "2026-10-10T00:00:00Z",
+  "reviewer": "Agent Orchestrator under explicit project operator authorization",
+  "public_release": "blocked"
+}
