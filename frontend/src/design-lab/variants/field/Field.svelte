@@ -374,7 +374,7 @@
 <svelte:window onkeydown={onKeydown} />
 <section class="field-view">
   <PreviewMasthead privateTools={mode === "real-preview"} publicReleaseLabel={publicMapMeta?.releaseLabel ?? null} current="map" {mapHref} {databaseHref} debugEnabled={$debugEnabled} ondebugchange={(enabled) => { debugEnabled.set(enabled); if (!enabled) debugOpen.set(false); }} />
-  <section class="map-stage" aria-label="Investigative map field">
+  <main class="map-stage" aria-label="Investigative map field">
     {#if mode === "synthetic" && state.scenario === "loading"}<div class="status" role="status">
         Loading records…
       </div>{:else if mode === "synthetic" && state.scenario === "error"}<div
@@ -611,7 +611,7 @@
         >
       </aside>{/if}
     <label class="basemap-picker">Map style<select aria-label="Map style" value={state.basemap} onchange={(event) => dispatch({ type: 'basemap', value: event.currentTarget.value as typeof state.basemap })}><option value="vector">Street</option><option value="satellite">Satellite</option><option value="muted">Muted</option></select></label>
-  </section>
+  </main>
 </section>
 
 <style>

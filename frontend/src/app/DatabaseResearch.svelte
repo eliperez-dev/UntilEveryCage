@@ -283,7 +283,7 @@
         </fieldset>
         <fieldset>
           <legend>Activity category</legend>
-          {#each TAXONOMY_PRIMARY_KEYS as key (key)}
+          {#each TAXONOMY_PRIMARY_KEYS.filter(key => key !== 'unclassified') as key (key)}
             <label><input type="checkbox" checked={selectedCategories.includes(key)} onchange={(event) => toggleCategory(key, event.currentTarget.checked)} />{CATEGORY_PRESENTATIONS[key].label}</label>
           {/each}
 

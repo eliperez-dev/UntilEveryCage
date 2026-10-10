@@ -5,7 +5,6 @@
 
 <footer class="project-footer" aria-label="Project information">
   <p>An independent, open-source project. <a href="mailto:untileverycageproject@protonmail.com">Get in touch</a> with feedback, or <a href="https://ko-fi.com/untileverycageisempty" target="_blank" rel="noreferrer">support its hosting and data work</a>.</p>
-  <p>Records may be incomplete or out of date. Inclusion does not establish current operation or wrongdoing.</p>
   <p class="credits">Code: <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noreferrer">AGPLv3 or later</a> · Data: <a href={dataHref}>reuse terms</a>. Original website inspired by <a href="https://finalnail.com/" target="_blank" rel="noreferrer">Final Nail</a>.</p>
 </footer>
 
