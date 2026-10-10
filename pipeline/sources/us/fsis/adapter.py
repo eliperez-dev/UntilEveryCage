@@ -196,10 +196,12 @@ _AFFIRMATIVE_FLAGS = frozenset({"yes", "y", "true", "1"})
 
 
 def _is_activity_flag_column(key: str) -> bool:
-    """Recognize source activity flags, never source volume/category columns."""
-    return ("volume" not in key and (
-        "slaughter" in key or key.endswith("_processing") or key in {"processing", "egg_product", "egg_products"}
-    ))
+    """Recognize the supported source flag profile, never derived ordinals."""
+    return key in {"slaughter", "meat_slaughter", "poultry_slaughter", "processing",
+                   "meat_processing", "poultry_processing", "egg_processing",
+                   "egg_product", "egg_products"} or (
+        key.endswith("_slaughter") and "_only_" not in key
+    ) or key.endswith("_processing")
 
 
 def _is_volume_column(key: str) -> bool:
@@ -372,6 +374,9 @@ class FsisMpiAdapter:
         demographic_rows: list[dict[str, Any]] = []
         if demographics is not None:
             demographic_headers, demographic_rows = _csv(demographics, role="demographics")
+        demographics_has_supported_activity_headers = any(
+            _is_activity_flag_column(_header_key(header)) for header in demographic_headers
+        )
         directory_alias_counts = Counter(alias for row in directory_rows for alias in _key_candidates(row))
         duplicate_directory_aliases = {alias for alias, count in directory_alias_counts.items() if count > 1}
         demographic_alias_counts = Counter(alias for row in demographic_rows for alias in _key_candidates(row))
@@ -446,6 +451,17 @@ class FsisMpiAdapter:
             record["source_rows"] = {"directory": None, "demographics": index + 2}
             quarantined.append(_quarantine(record, ("unmatched_demographic_identity",)))
 
+        complete_demographics = bool(
+            demographics is not None and demographics_has_supported_activity_headers
+            and len(matched_demographics) == len(directory_rows)
+            and orphan_demographics == 0 and identity_conflicts == 0
+        )
+        for record in accepted:
+            record["normalized"]["demographics_evidence_state"] = (
+                "complete-exact-join" if complete_demographics
+                else "matched-incomplete-demographic-bundle" if record["source_rows"]["demographics"] is not None
+                else "directory-only-or-unmatched"
+            )
         return {
             "accepted": accepted,
             "quarantined": quarantined,
@@ -460,6 +476,7 @@ class FsisMpiAdapter:
             "matched_demographic_rows": len(matched_demographics),
             "orphan_demographic_rows": orphan_demographics,
             "identity_conflicts": identity_conflicts,
+            "demographics_has_supported_activity_headers": demographics_has_supported_activity_headers,
             "source_metrics": _source_metrics(
                 directory_rows,
                 demographic_rows,
@@ -571,9 +588,10 @@ class FsisMpiAdapter:
             },
             "source_metrics": result["source_metrics"],
             "demographics_parity": {
-                "complete": bool(demographics is not None and result["matched_demographic_rows"] == result["directory_rows"]
+                "complete": bool(demographics is not None and result["demographics_has_supported_activity_headers"]
+                                 and result["matched_demographic_rows"] == result["directory_rows"]
                                  and result["orphan_demographic_rows"] == 0 and result["identity_conflicts"] == 0),
-                "reason": ("exact_complete_bundle" if demographics is not None and result["matched_demographic_rows"] == result["directory_rows"]
+                "reason": ("exact_complete_bundle" if demographics is not None and result["demographics_has_supported_activity_headers"] and result["matched_demographic_rows"] == result["directory_rows"]
                            and result["orphan_demographic_rows"] == 0 and result["identity_conflicts"] == 0
                            else "directory_only_or_incomplete_demographic_join"),
             },

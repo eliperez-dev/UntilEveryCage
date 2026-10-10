@@ -54,6 +54,16 @@ class FsisAdapterTests(unittest.TestCase):
         self.assertEqual(normalized["administrative_facts"]["grant_date"], "2026-01-01")
         self.assertEqual(result["source_metrics"]["category_coverage"]["no_activity_category_rows"], 1)
 
+    def test_ordinal_slaughter_only_class_never_becomes_a_slaughter_flag(self):
+        directory = b"establishment_id,establishment_name\nFSIS-101,Fixture Plant\n"
+        demographics = (
+            b"establishment_id,slaughter_only_class,beef_cow_slaughter\n"
+            b"FSIS-101,1,Yes\n"
+        )
+        normalized = FsisMpiAdapter().parse_sources(directory, demographics)["accepted"][0]["normalized"]
+        self.assertNotIn("slaughter_only_class", normalized["species_slaughtered"])
+        self.assertEqual(normalized["species_slaughtered"]["beef_cow_slaughter"], "Yes")
+
     def test_unmatched_demographics_are_quarantined_not_dropped(self):
         demographic = b"establishment_number,goat_slaughter\nNOT-IN-DIRECTORY,Yes\n"
         result = FsisMpiAdapter().parse_sources((ROOT / "fixtures/valid.csv").read_bytes(), demographic)

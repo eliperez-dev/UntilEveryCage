@@ -1,0 +1,44 @@
+{
+  "it.853-2004": {
+    "SH": ["slaughter", "slaughter"],
+    "CP": ["cutting", "processing_and_preparation"],
+    "PP": ["processing", "processing_and_preparation"],
+    "MP": ["processing", "processing_and_preparation"],
+    "MM": ["processing", "processing_and_preparation"],
+    "MSM": ["processing", "processing_and_preparation"],
+    "FFPP": ["processing", "processing_and_preparation"],
+    "FV": ["processing", "processing_and_preparation"],
+    "LEP": ["processing", "processing_and_preparation"],
+    "EPC": ["processing", "processing_and_preparation"],
+    "GHE": ["processing", "processing_and_preparation"],
+    "CS": ["logistics_and_storage", "other_regulated_premises"],
+    "RW": ["logistics_and_storage", "other_regulated_premises"],
+    "CC": ["logistics_and_storage", "other_regulated_premises"],
+    "DC": ["logistics_and_storage", "other_regulated_premises"],
+    "PC": ["logistics_and_storage", "other_regulated_premises"],
+    "AH": ["logistics_and_storage", "other_regulated_premises"],
+    "WM": ["logistics_and_storage", "other_regulated_premises"],
+    "ZV": ["logistics_and_storage", "other_regulated_premises"]
+  },
+  "it.1069-2009": {},
+  "es.cat.feed-sandach": {
+    "AA": ["processing", "processing_and_preparation"],
+    "SANDACH": ["animal_by_products", "other_regulated_premises"]
+  },
+  "au.npi.facilities": {
+    "0141": ["animal_production", "animal_keeping_and_production"],
+    "0142": ["animal_production", "animal_keeping_and_production"],
+    "0143": ["animal_production", "animal_keeping_and_production"],
+    "0144": ["animal_production", "animal_keeping_and_production"],
+    "0145": ["animal_production", "animal_keeping_and_production"],
+    "0146": ["animal_production", "animal_keeping_and_production"],
+    "0149": ["animal_production", "animal_keeping_and_production"],
+    "0171": ["animal_production", "animal_keeping_and_production"],
+    "1111": ["processing", "processing_and_preparation"],
+    "1112": ["processing", "processing_and_preparation"],
+    "1113": ["processing", "processing_and_preparation"],
+    "1192": ["processing", "processing_and_preparation"],
+    "1320": ["processing", "processing_and_preparation"],
+    "1711": ["processing", "processing_and_preparation"]
+  }
+}

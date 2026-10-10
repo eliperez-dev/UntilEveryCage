@@ -66,7 +66,7 @@ class NpiAdapterTests(unittest.TestCase):
         poultry = result["accepted"][2]["normalized"]
         meat = result["accepted"][0]["normalized"]
         self.assertEqual(poultry["animal_relevance"], "poultry-meat-farming-industry-candidate")
-        self.assertEqual(poultry["activity_categories"], [])
+        self.assertEqual(poultry["activity_categories"], ["animal_production"])
         self.assertEqual(poultry["operation_state"], "unknown; NPI reporting does not prove current operation")
         self.assertEqual(meat["animal_relevance"], "meat-processing-industry-candidate")
         self.assertEqual(meat["activity_categories"], ["processing"])
@@ -74,6 +74,17 @@ class NpiAdapterTests(unittest.TestCase):
         self.assertEqual(meat["coordinate_gate"], "source-coordinate")
         self.assertTrue(meat["in_default_map_scope"])
         self.assertIsNotNone(meat["coordinates"])
+
+    def test_animal_industry_codes_are_scoped_and_mines_are_not(self):
+        raw = FIXTURE.read_bytes().replace(b"1111,Meat processing", b"1090,Metal ore mining", 1)
+        mined = NpiFacilitiesAdapter().parse_bytes(raw)["accepted"][0]["normalized"]
+        self.assertEqual(mined["activity_categories"], [])
+        self.assertFalse(mined["in_default_map_scope"])
+        self.assertEqual(mined["map_scope_reason"], "outside_animal_industry_scope")
+        pig_raw = FIXTURE.read_bytes().replace(b"1111,Meat processing", b"0145,Pig farming", 1)
+        pig = NpiFacilitiesAdapter().parse_bytes(pig_raw)["accepted"][0]["normalized"]
+        self.assertEqual(pig["activity_categories"], ["animal_production"])
+        self.assertTrue(pig["in_default_map_scope"])
 
     def test_live_fetch_checks_official_catalogue_and_records_immutable_provenance(self):
         raw = FIXTURE.read_bytes()
