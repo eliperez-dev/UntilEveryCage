@@ -27,6 +27,7 @@
   let records = $state<readonly DatabaseRecord[]>([]);
   let nextCursor = $state<string | null>(null);
   let totalCount = $state<number | null>(null);
+  let candidateReleaseId = $state<string | null>(null);
   let candidateLabel = $state<string | null>(null);
   let candidateCountries = $state<readonly Readonly<{ value: string; count: number }>[]>([]);
   let candidateSources = $state<readonly Readonly<{ value: string; count: number }>[]>([]);
@@ -158,6 +159,8 @@
       if (candidateMode) {
         const page = await candidateRepository.list({ q: query, ...(sourceId ? { sourceId } : {}), ...(candidateCountry ? { countryCode: candidateCountry } : {}), ...(candidateCategory ? { category: candidateCategory } : {}), cursor: reset ? null : nextCursor, limit: 100, signal: controller.signal });
         if (controller.signal.aborted) return;
+        if (candidateReleaseId !== null && candidateReleaseId !== page.releaseId) throw new Error('The configured candidate release changed while this index was loading. Reload to use the new release.');
+        candidateReleaseId = page.releaseId;
         const incoming = page.locations.map(candidateRecord);
         records = [...new Map((reset ? incoming : [...records, ...incoming]).map(record => [record.id, record])).values()];
         nextCursor = page.nextCursor;

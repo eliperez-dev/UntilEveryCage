@@ -138,8 +138,29 @@ export const testReleaseLocationSchema = z.object(testReleaseLocationShape).stri
 // may add only the same bounded source-native facts as public detail. Keep it
 // distinct from public detail: candidate responses do not promise the public
 // lifecycle, reviewer, taxonomy, or rights fields beyond their core shape.
+const testReleaseDetailLocationShape = {
+  facility_id: z.string().uuid(),
+  canonical_name: z.string().nullable(),
+  country_code: z.string().regex(/^[A-Z]{2}$/),
+  city: textOrNull,
+  category: z.string(),
+  publication_profile: z.enum(['official', 'secondary', 'community']).nullable(),
+  factual_review_status: z.string(),
+  privacy_screening_status: z.enum(['pending', 'passed', 'failed']),
+  project_approval: z.union([z.enum(['pending', 'approved']), z.literal(false), z.literal('not-approved')]),
+  publication_warning: textOrNull,
+  display_precision: z.enum(['exact', 'city', 'source_reported', 'approximate', 'unmapped']),
+  latitude: z.number().finite().nullable(),
+  longitude: z.number().finite().nullable(),
+  provenance_source_id: z.string(),
+  provenance_source_name: z.string(),
+  provenance_source_url: sourceUrl,
+  provenance_retrieved_at: z.string().datetime({ offset: true }),
+  release_id: z.string(),
+  release_ruleset_version: z.string().nullable(),
+};
 export const testReleaseDetailLocationSchema = z.object({
-  ...testReleaseLocationShape,
+  ...testReleaseDetailLocationShape,
   ...detailFactsShape,
 }).strict().superRefine(coordinateRules);
 

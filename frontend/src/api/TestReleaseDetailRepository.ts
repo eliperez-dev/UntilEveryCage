@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { testReleaseDetailLocationSchema, type WireTestReleaseDetailLocation } from './wireSchema';
 import type { FetchLike } from './LocalLocationRepository';
 import type { LabRecord, Precision } from '../design-lab/contract';
@@ -6,6 +7,12 @@ import { TEST_RELEASE_API_VERSION, TEST_RELEASE_PATH } from '../features/devPrev
 import { RealPreviewError } from './RealPreviewRepository';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const detailMetaSchema = z.object({
+  api_version: z.literal(TEST_RELEASE_API_VERSION), private_preview: z.literal(true), candidate_only: z.literal(true), test_only: z.literal(false),
+  environment: z.literal('private-candidate-preview'), release_status: z.literal('candidate'), release_id: z.string().min(1), profile: z.literal('official'),
+  coverage_scope: z.string().min(1), count_semantics: z.string().min(1), preview_label: z.string().min(1), result_count: z.literal(1),
+}).passthrough();
+const detailEnvelopeSchema = z.object({ data: testReleaseDetailLocationSchema, meta: detailMetaSchema }).strict();
 
 const precision = (value: WireTestReleaseDetailLocation['display_precision']): Precision =>
   value === 'source_reported' ? 'source_reported' : value === 'exact' || value === 'city' || value === 'approximate' || value === 'unmapped' ? value : 'unmapped';
@@ -67,11 +74,10 @@ export class TestReleaseDetailRepository {
       throw new RealPreviewError('network', 'The corrected candidate detail could not be reached.');
     }
     if (!response.ok) throw new RealPreviewError(response.status === 401 || response.status === 403 ? 'unauthorized' : 'invalid-response', response.status === 401 || response.status === 403 ? 'The corrected candidate session is not authorized.' : 'The corrected candidate detail could not be loaded.');
-    const payload = await response.json();
-    const parsed = testReleaseDetailLocationSchema.safeParse((payload as { data?: unknown }).data);
-    if (!payload || typeof payload !== 'object' || (payload as { api_version?: unknown }).api_version !== TEST_RELEASE_API_VERSION || !parsed.success || parsed.data.facility_id !== id) {
+    const parsed = detailEnvelopeSchema.safeParse(await response.json());
+    if (!parsed.success || parsed.data.data.facility_id !== id || parsed.data.data.release_id !== parsed.data.meta.release_id) {
       throw new RealPreviewError('invalid-response', 'The corrected candidate detail was rejected safely.');
     }
-    return mapTestReleaseDetail(parsed.data);
+    return mapTestReleaseDetail(parsed.data.data);
   }
 }
