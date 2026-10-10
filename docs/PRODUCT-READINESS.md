@@ -78,10 +78,19 @@ The integrated frontend passed 180 unit tests, type/lint/boundary/build gates,
 and the UI lane passed 48 cross-browser plus 10 community-pilot checks.
 All 63,601 records carry source names and URLs, but the earlier claim that all
 were primary-classified was incorrect: a populated `unclassified` key is not a
-positive classification. The source-specific audit found all 7,241 public FSIS
-records unclassified with no leaf, and no APHIS records in v0. Australian NPI
+positive classification. The actual display-category totals are 57,070
+unclassified, 5,342 processing/preparation, 806 slaughter and 383 other
+regulated premises. These are category counts, not geospatial precision counts.
+The source-specific audit found all 7,241 public FSIS records unclassified with
+no leaf, and no APHIS records in v0. Retained FSIS `source_type` contains activity
+text indicating slaughter for 1,506 records, but the adapter does not populate
+the structured fields consumed by the crosswalk. Australian NPI
 also has a scope defect: valid source coordinates alone set default map scope,
-without requiring animal relevance. Source inclusion and taxonomy coverage are
+without requiring animal relevance. Its 8,085 visible records include known
+unrelated industries such as gold mining (205) and log sawmilling (84). A missing
+match in the current narrow relevance rules is not proof that every other
+industry is irrelevant; audit the full codebook before selecting a correction.
+Source inclusion and taxonomy coverage are
 release-content blockers, not presentation defects. Preserve the frozen v0
 evidence; do not silently relabel records or overwrite its approved membership.
 Current cache and query behavior is owned by
