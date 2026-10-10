@@ -868,6 +868,7 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
             # canonical inserts only to force a rollback.
             preview_checks = {}
             for source, entry in entries.items():
+                print(json.dumps({"phase": "preview_validation", "source_id": source}, sort_keys=True), file=sys.stderr)
                 try:
                     preview_checks[source] = _verify_preview_source(connection, source, entry, handoffs[source])
                 except BridgeError as error:
@@ -1294,8 +1295,9 @@ def main(argv: list[str] | None = None) -> int:
             report = bridge(args.database_url, args.expected_database, freeze, inventory,
                             candidate_only_ack=args.candidate_only_ack,
                             append_to_v0_baseline=args.append_to_v0_baseline)
-    except (BridgeError, OSError, ValueError):
-        print(json.dumps({"status": "blocked", "reason": "candidate_bridge_validation_failed"}, sort_keys=True))
+    except (BridgeError, OSError, ValueError) as error:
+        reason = str(error) if isinstance(error, BridgeError) and re.fullmatch(r"[a-z0-9_.:-]{1,160}", str(error)) else "candidate_bridge_validation_failed"
+        print(json.dumps({"status": "blocked", "reason": reason}, sort_keys=True))
         return 2
     print(json.dumps(report, sort_keys=True))
     return 0
