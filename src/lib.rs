@@ -51,6 +51,32 @@ pub fn v2_error(
         .into_response()
 }
 
+fn test_release_query_error_class(error: &tokio_postgres::Error) -> &'static str {
+    match error.as_db_error().map(|database_error| database_error.code().code()) {
+        Some("57014") => "statement_timeout_or_query_canceled",
+        Some("53300") => "database_capacity",
+        Some("55P03") => "lock_not_available",
+        Some("40P01") => "deadlock",
+        Some("40001") => "serialization_failure",
+        Some(code) if code.starts_with("08") => "database_connection",
+        Some(_) => "database_other",
+        None => "client_or_protocol",
+    }
+}
+
+fn log_test_release_query_error(error: &tokio_postgres::Error) {
+    // This private-route diagnostic intentionally records only a bounded error
+    // class: never SQL, bind values, source data, or database details.
+    println!(
+        "{}",
+        json!({
+            "event": "test_release_query_error",
+            "route": "candidate_locations",
+            "database_error_class": test_release_query_error_class(error),
+        })
+    );
+}
+
 #[derive(Debug, Deserialize)]
 pub struct PrivateGraphSearchParams {
     pub q: Option<String>,
@@ -3306,7 +3332,15 @@ pub async fn get_dev_test_release_locations_handler(
         LEFT JOIN uec.publication_review_release_current review ON review.source_record_id=o.source_record_id AND review.release_id=$1
         LEFT JOIN LATERAL (SELECT result FROM uec.geocode_results WHERE source_record_id=o.source_record_id AND status='accepted' AND result IS NOT NULL ORDER BY queried_at DESC,geocode_result_id DESC LIMIT 1) g ON true
         ORDER BY page.facility_id"#, &[&release_id,&params.country_code,&params.category,&params.source_id,&params.activity,&search_text,&cursor,&query_limit]).await {
-        Ok(rows)=>rows, Err(_)=>return v2_error(StatusCode::SERVICE_UNAVAILABLE,"test_release_query_failed","test release unavailable")
+        Ok(rows) => rows,
+        Err(error) => {
+            log_test_release_query_error(&error);
+            return v2_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "test_release_query_failed",
+                "test release unavailable",
+            );
+        }
     };
     let total_count = rows.first().map(|row| row.get::<_, i64>(20)).unwrap_or(0);
     if rows.first().is_some_and(|row| row.get::<_, Option<uuid::Uuid>>(0).is_none()) {
