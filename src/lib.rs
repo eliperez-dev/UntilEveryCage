@@ -2950,6 +2950,126 @@ fn test_release_native_activity_detail(codes: &str, labels: &str) -> Value {
     Value::Object(detail)
 }
 
+const APHIS_ANNUAL_REPORT_SOURCE_URL: &str =
+    "https://direct.aphis.usda.gov/awa/research-facility-report/annual-summary";
+const APHIS_ANNUAL_REPORT_SPECIES: [(&str, &str); 10] = [
+    ("Dogs", "Dogs"),
+    ("Cats", "Cats"),
+    ("Guinea Pigs", "GuineaPigs"),
+    ("Hamsters", "Hamsters"),
+    ("Rabbits", "Rabbits"),
+    ("Non-Human Primates", "NonHumanPrimates"),
+    ("Sheep", "Sheep"),
+    ("Pigs", "Pigs"),
+    ("Other Farm Animals", "OtherFarmAnimals"),
+    ("All Other Animals", "AllOtherAnimals"),
+];
+
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
+struct AphisAnnualSpeciesCount {
+    species: String,
+    count: i64,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
+struct AphisAnnualSafeProvenance {
+    source_id: String,
+    evidence_type: String,
+    match_method: String,
+    matched_identifier_types: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
+struct AphisAnnualReportDetail {
+    fiscal_year: String,
+    species_counts: Vec<AphisAnnualSpeciesCount>,
+    source_url: String,
+    safe_provenance: AphisAnnualSafeProvenance,
+}
+
+fn aphis_nonnegative_count(value: &Value) -> Option<i64> {
+    match value {
+        Value::Number(number) => number.as_i64().filter(|count| *count >= 0),
+        Value::String(text) => text.trim().parse::<i64>().ok().filter(|count| *count >= 0),
+        _ => None,
+    }
+}
+
+fn aphis_annual_report_detail(
+    fiscal_year: &str,
+    source_values: &Value,
+    matched_identifier_types: Vec<String>,
+) -> Option<AphisAnnualReportDetail> {
+    if fiscal_year.len() != 4 || !fiscal_year.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    let source_values = source_values.as_object()?;
+    let species_counts = APHIS_ANNUAL_REPORT_SPECIES
+        .iter()
+        .filter_map(|(source_column, species)| {
+            aphis_nonnegative_count(source_values.get(*source_column)?)
+                .map(|count| AphisAnnualSpeciesCount { species: (*species).into(), count })
+        })
+        .take(10)
+        .collect::<Vec<_>>();
+    if species_counts.is_empty() || matched_identifier_types.is_empty() {
+        return None;
+    }
+    Some(AphisAnnualReportDetail {
+        fiscal_year: fiscal_year.into(),
+        species_counts,
+        source_url: APHIS_ANNUAL_REPORT_SOURCE_URL.into(),
+        safe_provenance: AphisAnnualSafeProvenance {
+            source_id: "us.aphis.annual-reports".into(),
+            evidence_type: "annual_reports".into(),
+            match_method: "exact_source_identifier".into(),
+            matched_identifier_types,
+        },
+    })
+}
+
+async fn aphis_annual_reports_for_candidate(
+    client: &tokio_postgres::Client,
+    facility_source_id: &str,
+    facility_normalized: &str,
+) -> Result<Vec<AphisAnnualReportDetail>, tokio_postgres::Error> {
+    let rows = client.query(
+        r#"WITH candidate_identifiers AS (
+                SELECT $1::text AS source_id,
+                    COALESCE(NULLIF(($2::jsonb)->'source_native_ids'->>'certificate_number',''),NULLIF(($2::jsonb)->>'certificate_number','')) AS certificate_number,
+                    COALESCE(NULLIF(($2::jsonb)->'source_native_ids'->>'customer_number',''),NULLIF(($2::jsonb)->>'customer_number','')) AS customer_number
+            ), exact_reports AS (
+                SELECT DISTINCT ON (event.event_period)
+                    event.event_period, annual_record.raw_fields->'source_values' AS source_values,
+                    ARRAY_AGG(DISTINCT link.target_identifier_type ORDER BY link.target_identifier_type) AS matched_identifier_types,
+                    event.observed_at
+                FROM uec.graph_evidence_events event
+                JOIN uec.source_records annual_record ON annual_record.source_record_id=event.source_record_id
+                JOIN uec.graph_evidence_links link ON link.evidence_event_id=event.evidence_event_id
+                JOIN candidate_identifiers candidate ON candidate.source_id=link.target_source_id
+                WHERE event.source_id='us.aphis.annual-reports'
+                  AND event.event_type='annual_reports'
+                  AND event.event_period ~ '^[0-9]{4}$'
+                  AND link.match_method='exact_source_identifier'
+                  AND ((link.target_identifier_type='certificate_number' AND link.target_source_identifier=candidate.certificate_number)
+                    OR (link.target_identifier_type='customer_number' AND link.target_source_identifier=candidate.customer_number))
+                GROUP BY event.evidence_event_id,event.event_period,annual_record.raw_fields,event.observed_at
+                ORDER BY event.event_period DESC NULLS LAST,event.observed_at DESC,event.evidence_event_id DESC
+            )
+            SELECT event_period,source_values::text,matched_identifier_types
+            FROM exact_reports
+            ORDER BY event_period DESC NULLS LAST,observed_at DESC
+            LIMIT 5"#,
+        &[&facility_source_id, &facility_normalized],
+    ).await?;
+    Ok(rows.into_iter().filter_map(|row| {
+        let fiscal_year = row.get::<_, Option<String>>(0)?;
+        let source_values = serde_json::from_str::<Value>(row.get::<_, String>(1).as_str()).ok()?;
+        let matched_identifier_types = row.get::<_, Vec<String>>(2);
+        aphis_annual_report_detail(&fiscal_year, &source_values, matched_identifier_types)
+    }).collect())
+}
+
 pub async fn get_dev_test_release_locations_handler(
     State(state): State<ApiState>,
     headers: HeaderMap,
@@ -3211,6 +3331,17 @@ pub async fn get_dev_test_release_location_detail_handler(
         ),
     ) {
         item_fields.extend(detail);
+    }
+    if let Ok(reports) = aphis_annual_reports_for_candidate(
+        &client,
+        row.get::<_, String>(9).as_str(),
+        row.get::<_, String>(17).as_str(),
+    ).await {
+        if !reports.is_empty() {
+            if let Some(item_fields) = item.as_object_mut() {
+                item_fields.insert("aphis_annual_reports".into(), json!(reports));
+            }
+        }
     }
     let mut meta = test_release_meta(release_id, profile, test_only, candidate_only);
     meta["result_count"] = json!(1);
@@ -5724,6 +5855,44 @@ mod v2_api_tests {
         assert!(test_release_native_activity_detail(r#"[""]"#, "not-json")
             .as_object()
             .is_some_and(serde_json::Map::is_empty));
+    }
+
+    #[test]
+    fn aphis_annual_report_detail_parses_typed_multi_species_counts() {
+        let report = aphis_annual_report_detail(
+            "2025",
+            &json!({"Dogs":"12","Cats":3,"Guinea Pigs":"0","Account Name":"not exposed"}),
+            vec!["certificate_number".into(), "customer_number".into()],
+        ).unwrap();
+        assert_eq!(report.fiscal_year, "2025");
+        assert_eq!(report.species_counts, vec![
+            AphisAnnualSpeciesCount { species: "Dogs".into(), count: 12 },
+            AphisAnnualSpeciesCount { species: "Cats".into(), count: 3 },
+            AphisAnnualSpeciesCount { species: "GuineaPigs".into(), count: 0 },
+        ]);
+        assert_eq!(report.source_url, APHIS_ANNUAL_REPORT_SOURCE_URL);
+        let parsed: AphisAnnualReportDetail = serde_json::from_value(json!(report)).unwrap();
+        assert_eq!(parsed.safe_provenance.source_id, "us.aphis.annual-reports");
+        assert_eq!(parsed.safe_provenance.match_method, "exact_source_identifier");
+    }
+
+    #[test]
+    fn aphis_annual_report_detail_excludes_malformed_counts_and_missing_exact_match() {
+        assert!(aphis_annual_report_detail(
+            "2025",
+            &json!({"Dogs":"-1","Cats":"not-a-number","Account Name":"never used"}),
+            vec!["certificate_number".into()],
+        ).is_none());
+        assert!(aphis_annual_report_detail(
+            "2025",
+            &json!({"Dogs":1,"Account Name":"never used"}),
+            Vec::new(),
+        ).is_none());
+        assert!(aphis_annual_report_detail(
+            "25",
+            &json!({"Dogs":1}),
+            vec!["certificate_number".into()],
+        ).is_none());
     }
 
     #[test]
