@@ -398,7 +398,7 @@
         {mapDiagnostics}
         flightTarget={$flightTarget}
         debugEnabled={$debugEnabled}
-        suppressDiagnostics={state.listOpen && !selected}
+        suppressDiagnostics={mode !== "candidate-preview" && state.listOpen && !selected}
         referenceLoading={aggregateLoading}
         onmaptiming={(timing) => onMapTiming?.(timing)}
         onselect={selectRecord}

@@ -51,4 +51,11 @@ describe('private preview record detail surface', () => {
     expect(component).not.toContain('Not available in this release');
     expect(component).toContain('recordNotice');
   });
+
+  it('renders only present, allowlisted source facts for configured candidate details', () => {
+    expect(component).toContain('id="source-facts-heading"');
+    expect(component).toContain('sourceFacts.alternateNames?.length');
+    expect(component).toContain("sourceFactEntries(sourceFacts, 'processingActivities').length");
+    expect(component).toContain('sourceFacts.sourceVolumeCategories?.length');
+  });
 });

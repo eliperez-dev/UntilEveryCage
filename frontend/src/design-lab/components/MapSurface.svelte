@@ -51,7 +51,7 @@
     setRealPreviewCategoryFilter,
     setRealPreviewPinMode,
   } from "./realPreviewMapLayers";
-  import { clearRealPreviewMapCache, createRealPreviewMapFeedRepository, realPreviewMapCacheEntryCount } from "../../api/RealPreviewMapFeedRepository";
+  import { clearRealPreviewMapCache, createRealPreviewMapFeedRepository, RealPreviewMapFeedError, realPreviewMapCacheEntryCount } from "../../api/RealPreviewMapFeedRepository";
   import { clearTestReleaseMapCache, createTestReleaseMapFeedRepository, testReleaseMapCacheEntryCount } from "../../api/TestReleaseMapFeedRepository";
   import { canReusePublicMapFeed, clearPublicMapCache, createPublicMapFeedRepository, publicMapCacheEntryCount } from "../../api/PublicMapFeedRepository";
 
@@ -130,6 +130,10 @@
   const publicMapFeedRepository = createPublicMapFeedRepository();
   let feedAbort: AbortController | undefined;
   let feedGeneration = 0;
+  // A rejected configured-candidate envelope is deterministic for the current
+  // release. Keep the error visible instead of having the reactive source
+  // effect repeatedly request the same invalid projection.
+  let candidateValidationFailed = false;
   let requestedFeedSourceId: string | null | undefined;
   let requestedPublicReleaseId: string | null | undefined;
   let requestedPublicReleaseIdentity: string | null | undefined;
@@ -553,6 +557,7 @@
     const instance = map;
     if (!instance) return;
     if (mode === "public-release" && !publicReleaseId) return;
+    if (mode === "candidate-preview" && candidateValidationFailed) return;
     if (mode === "public-release" && (requestedPublicReleaseId !== publicReleaseId || requestedPublicReleaseIdentity !== publicReleaseIdentity)) {
       requestedPublicReleaseId = publicReleaseId;
       requestedPublicReleaseIdentity = publicReleaseIdentity;
@@ -588,7 +593,10 @@
       nativeSnapshotId = "snapshotId" in result ? result.snapshotId : result.meta.manifestSha256;
       nativeCacheStatus = "cacheStatus" in result ? result.cacheStatus : "not cached";
       nativeDecodedBytes = "decodedBytes" in result ? result.decodedBytes ?? null : new TextEncoder().encode(JSON.stringify(result.collection)).byteLength;
-      nativeCacheEntries = publicReleaseId ? await publicMapCacheEntryCount() : mode === "candidate-preview" ? await testReleaseMapCacheEntryCount() : await realPreviewMapCacheEntryCount();
+      nativeCacheEntries = null;
+      void (publicReleaseId ? publicMapCacheEntryCount() : mode === "candidate-preview" ? testReleaseMapCacheEntryCount() : realPreviewMapCacheEntryCount())
+        .then(count => { if (!controller.signal.aborted && map === instance && generation === feedGeneration) nativeCacheEntries = count; })
+        .catch(() => {});
       nativeFeedMs = Math.round(performance.now() - requestedAt);
       nativeUnitCount = result.collection.features.length;
       nativeRepresentedCount = result.collection.features.reduce((total, feature) => total + Number(feature.properties.weight), 0);
@@ -608,6 +616,7 @@
       feedStatus = "ready";
     } catch (error) {
       if (controller.signal.aborted || generation !== feedGeneration) return;
+      if (mode === "candidate-preview" && error instanceof RealPreviewMapFeedError) candidateValidationFailed = true;
       feedStatus = "error";
       onMapFeedMeta?.(null);
       mvtError = error instanceof Error ? error.message : "The map feed could not be loaded.";
@@ -674,6 +683,10 @@
     const removed = publicReleaseId ? (await clearPublicMapCache(), 1) : mode === "candidate-preview" ? await clearTestReleaseMapCache() : await clearRealPreviewMapCache();
     nativeCacheEntries = 0;
     cacheClearStatus = publicReleaseId ? "Cleared public map projection cache." : removed ? `Cleared ${removed} cached projection ${removed === 1 ? "entry" : "entries"}.` : "Projection cache was already empty.";
+    if (mode === "candidate-preview" && candidateValidationFailed) {
+      candidateValidationFailed = false;
+      void loadNativeFeed();
+    }
   }
   function addMvtLayers() {
     if (!map) return;

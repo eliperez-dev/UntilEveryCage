@@ -2,6 +2,7 @@ import { parseRealPreviewMapFeed, RealPreviewMapFeedError, type RealPreviewMapFe
 import { TEST_RELEASE_PATH } from '../features/devPreview/devPreviewContract';
 
 const CACHE_NAME = 'uec-candidate-map-projection-v1';
+let cacheGeneration = 0;
 
 function cacheKey(releaseId: string, snapshotId: string): Request {
   return new Request(new URL(`/__uec_candidate_map_cache__/${encodeURIComponent(releaseId)}/${snapshotId}`, globalThis.location?.origin ?? 'https://uec.invalid').href, { method: 'GET' });
@@ -37,9 +38,8 @@ export function createTestReleaseMapFeedRepository(fetcher: typeof fetch = fetch
       const flightKey = etag ?? 'candidate-map-without-etag';
       const existing = mapFlights.get(flightKey);
       if (existing) return abortIsolated(existing, signal);
-      const work = (async () => {
-        return loadCandidateFeed(fetcher, cache, undefined, cached, etag);
-      })();
+      const generation = cacheGeneration;
+      const work = loadCandidateFeed(fetcher, cache, undefined, cached, etag, generation);
       mapFlights.set(flightKey, work);
       void work.finally(() => { if (mapFlights.get(flightKey) === work) mapFlights.delete(flightKey); });
       return abortIsolated(work, signal);
@@ -47,7 +47,23 @@ export function createTestReleaseMapFeedRepository(fetcher: typeof fetch = fetch
   };
 }
 
-async function loadCandidateFeed(fetcher: typeof fetch, projectionCache?: Cache, signal?: AbortSignal, cached?: Response, etag?: string | null): Promise<RealPreviewMapFeed> {
+async function persistCandidateFeed(cache: Cache, key: Request, payload: unknown, etag: string | null, generation: number): Promise<void> {
+  // Cache Storage can take much longer than projection parsing for a large
+  // candidate. Yield first so a valid map renders without waiting on disk.
+  await new Promise<void>(resolve => setTimeout(resolve, 0));
+  if (generation !== cacheGeneration) return;
+  await cache.put(key, new Response(JSON.stringify(payload), { headers: { 'content-type': 'application/json', ...(etag ? { etag } : {}) } }));
+  if (generation !== cacheGeneration) {
+    await cache.delete(key);
+    return;
+  }
+  for (const request of await cache.keys()) {
+    if (generation !== cacheGeneration) return;
+    if (request.url !== key.url) await cache.delete(request);
+  }
+}
+
+async function loadCandidateFeed(fetcher: typeof fetch, projectionCache?: Cache, signal?: AbortSignal, cached?: Response, etag?: string | null, generation = cacheGeneration): Promise<RealPreviewMapFeed> {
       let response: Response;
       try {
         response = await fetcher(`${TEST_RELEASE_PATH}/map/feed`, { credentials: 'same-origin', cache: 'no-store', ...(etag ? { headers: { 'If-None-Match': etag } } : {}), ...(signal ? { signal } : {}) });
@@ -75,14 +91,14 @@ async function loadCandidateFeed(fetcher: typeof fetch, projectionCache?: Cache,
       }
       const key = cacheKey(meta.meta.release_id, meta.meta.snapshot_id);
       const responseEtag = response.headers.get('etag');
-      await projectionCache.put(key, new Response(JSON.stringify(payload), { headers: { 'content-type': 'application/json', ...(responseEtag ? { etag: responseEtag } : {}) } }));
-      for (const request of await projectionCache.keys()) {
-        if (request.url !== key.url) await projectionCache.delete(request);
-      }
+      void persistCandidateFeed(projectionCache, key, payload, responseEtag, generation).catch(() => {
+        // Map rendering remains valid when local Cache Storage is unavailable.
+      });
       return { ...parsed, cacheStatus: 'miss', decodedBytes: new TextEncoder().encode(JSON.stringify(parsed.collection)).byteLength };
 }
 
 export async function clearTestReleaseMapCache(): Promise<number> {
+  cacheGeneration++;
   if (typeof caches === 'undefined') return 0;
   const cache = await caches.open(CACHE_NAME);
   const entries = await cache.keys();

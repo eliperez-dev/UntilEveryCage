@@ -8,14 +8,17 @@
     type RealPreviewFacet,
   } from "../api/RealPreviewRepository";
   import { TestReleaseRepository } from '../api/TestReleaseRepository';
+  import { TestReleaseDetailRepository } from '../api/TestReleaseDetailRepository';
   import type { LabRecord } from "../design-lab/contract";
   import { TAXONOMY_PRIMARY_KEYS, type TaxonomyPrimaryKey } from "../domain/taxonomy";
   import { CATEGORY_PRESENTATIONS } from "../features/locations/categoryPresentation";
   import RecordTable from './RecordTable.svelte';
+  import RecordDetail from './RecordDetail.svelte';
   import ProjectFooter from './ProjectFooter.svelte';
   import PreviewMasthead from "./PreviewMasthead.svelte";
   const repository = createRealPreviewRepository();
   const candidateRepository = new TestReleaseRepository();
+  const candidateDetailRepository = new TestReleaseDetailRepository();
   const candidateMode = typeof document !== 'undefined' && document.querySelector<HTMLMetaElement>('meta[name="uec-local-data-mode"]')?.content === 'candidate-preview';
   type Status = "loading" | "ready" | "empty" | "error" | "unauthorized";
   // Continue using the API cursor until it is exhausted; the UI stays paginated.
@@ -28,6 +31,9 @@
   let nextCursor = $state<string | null>(null);
   let totalCount = $state<number | null>(null);
   let candidateReleaseId = $state<string | null>(null);
+  let candidateDetail = $state<LabRecord | null>(null);
+  let candidateDetailStatus = $state<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  let candidateDetailError = $state('');
   let candidateLabel = $state<string | null>(null);
   let candidateCountries = $state<readonly Readonly<{ value: string; count: number }>[]>([]);
   let candidateSources = $state<readonly Readonly<{ value: string; count: number }>[]>([]);
@@ -231,6 +237,28 @@
   const selected = $derived(
     records.find((record) => record.id === selectedId) ?? null,
   );
+  $effect(() => {
+    if (!candidateMode || !selectedId) {
+      candidateDetail = null;
+      candidateDetailStatus = 'idle';
+      candidateDetailError = '';
+      return;
+    }
+    const controller = new AbortController();
+    candidateDetail = null;
+    candidateDetailStatus = 'loading';
+    candidateDetailError = '';
+    void candidateDetailRepository.detail(selectedId, controller.signal).then(detail => {
+      if (controller.signal.aborted) return;
+      candidateDetail = detail;
+      candidateDetailStatus = 'ready';
+    }).catch(cause => {
+      if (controller.signal.aborted) return;
+      candidateDetailStatus = 'error';
+      candidateDetailError = cause instanceof Error ? cause.message : 'The selected candidate detail could not be loaded.';
+    });
+    return () => controller.abort();
+  });
   onMount(() => {
     syncHash();
     if (!records.length) void load(true);
@@ -380,7 +408,12 @@
           >{loadingMore ? "Loading next page…" : "Load more"}</button
           >{/if}
       </section>
-      {#if selected}<aside class="selection" aria-label="Selected record"><button class="close-selection" type="button" onclick={() => write({ selectedId: null })}>Close details</button>
+      {#if candidateMode && selectedId}<aside class="selection" aria-label="Selected record">
+          {#if candidateDetailStatus === 'loading'}<p class="quiet" role="status">Loading record detail…</p>
+          {:else if candidateDetailStatus === 'error'}<div class="state-card error" role="alert"><strong>Record detail unavailable</strong><p>{candidateDetailError}</p><button type="button" onclick={() => { candidateDetailStatus = 'idle'; void candidateDetailRepository.detail(selectedId!).then(detail => { candidateDetail = detail; candidateDetailStatus = 'ready'; }).catch(cause => { candidateDetailStatus = 'error'; candidateDetailError = cause instanceof Error ? cause.message : 'The selected candidate detail could not be loaded.'; }); }}>Retry</button></div>
+          {:else if candidateDetail}<RecordDetail record={candidateDetail} onclose={() => write({ selectedId: null })} />{/if}
+        </aside>
+      {:else if selected}<aside class="selection" aria-label="Selected record"><button class="close-selection" type="button" onclick={() => write({ selectedId: null })}>Close details</button>
           <h2>{selected.name}</h2>
           <p>{selected.locality}, {selected.country}</p>
           <dl>
@@ -394,7 +427,7 @@
             </div>
             <div>
               <dt>Facility name</dt>
-              <dd>{selected.displayName ?? "Name not shown — privacy review pending"}</dd>
+              <dd>{selected.displayName ?? "Name not shown, privacy review pending"}</dd>
             </div>
             <div>
               <dt>Activity/category</dt>

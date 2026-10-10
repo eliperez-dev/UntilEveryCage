@@ -31,8 +31,9 @@ export function parseRealPreviewMapFeed(payload: unknown, candidateOnly = false)
     throw new RealPreviewMapFeedError('The private map feed returned an invalid response.');
   }
   const meta = envelope.meta as Record<string, unknown>;
+  const snapshotPattern = candidateOnly ? /^(?:[a-f0-9]{32}|[a-f0-9]{64})$/ : /^[a-f0-9]{64}$/;
   if (meta.bounded !== true || meta.private_preview !== true || meta.scope !== (candidateOnly ? 'candidate_map' : 'default_map_scope') || meta.zoom_max !== 14
-    || typeof meta.snapshot_id !== 'string' || !/^[a-f0-9]{64}$/.test(meta.snapshot_id)) {
+    || typeof meta.snapshot_id !== 'string' || !snapshotPattern.test(meta.snapshot_id)) {
     throw new RealPreviewMapFeedError('The private map feed did not confirm its private, bounded scope.');
   }
   if (candidateOnly && (meta.candidate_only !== true || meta.test_only !== false || typeof meta.release_id !== 'string' || typeof meta.preview_label !== 'string')) {

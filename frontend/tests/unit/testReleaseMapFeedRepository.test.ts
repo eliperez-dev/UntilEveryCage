@@ -15,6 +15,10 @@ describe('configured candidate map feed', () => {
     expect(JSON.stringify(result.collection)).not.toMatch(/name|address|detail/i);
   });
 
+  it('accepts the configured candidate’s opaque 32-hex snapshot identity', () => {
+    expect(() => parseRealPreviewMapFeed({ ...envelope, meta: { ...envelope.meta, snapshot_id: 'a'.repeat(32) } }, true)).not.toThrow();
+  });
+
   it('rejects fixtures and non-candidate boundaries', () => {
     expect(() => parseRealPreviewMapFeed({ ...envelope, meta: { ...envelope.meta, test_only: true } }, true)).toThrow(RealPreviewMapFeedError);
     expect(() => parseRealPreviewMapFeed({ ...envelope, data: {} }, true)).toThrow(RealPreviewMapFeedError);
@@ -44,6 +48,7 @@ describe('configured candidate map feed', () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(first.cacheStatus).toBe('miss');
     expect(duplicate.cacheStatus).toBe('miss');
+    await vi.waitFor(() => expect(entries.size).toBe(1));
     const hit = await repository.load();
     expect(hit.cacheStatus).toBe('hit');
     expect(fetcher.mock.calls[1]?.[1]).toMatchObject({ headers: { 'If-None-Match': '"candidate-map-' + 'b'.repeat(64) + '"' } });
@@ -59,8 +64,42 @@ describe('configured candidate map feed', () => {
     const next = { ...envelope, meta: { ...envelope.meta, snapshot_id: 'c'.repeat(64) } };
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(next), { status: 200, headers: { etag: '"candidate-map-' + 'c'.repeat(64) + '"' } }));
     await expect(createTestReleaseMapFeedRepository(fetcher as typeof fetch).load()).resolves.toMatchObject({ cacheStatus: 'miss', snapshotId: 'c'.repeat(64) });
-    expect(entries.has(oldKey)).toBe(false);
+    await vi.waitFor(() => expect(entries.has(oldKey)).toBe(false));
     expect(entries.size).toBe(1);
+    vi.unstubAllGlobals();
+  });
+
+  it('renders a parsed candidate projection before a slow Cache Storage write finishes', async () => {
+    let finishPut: (() => void) | undefined;
+    const cache = {
+      keys: vi.fn(async () => []), match: vi.fn(async () => undefined),
+      put: vi.fn(() => new Promise<void>(resolve => { finishPut = resolve; })), delete: vi.fn(async () => true),
+    };
+    vi.stubGlobal('location', new URL('http://127.0.0.1:34206/'));
+    vi.stubGlobal('caches', { open: vi.fn(async () => cache) });
+    const result = await createTestReleaseMapFeedRepository(vi.fn().mockResolvedValue(new Response(JSON.stringify(envelope), { status: 200 })) as typeof fetch).load();
+    expect(result.cacheStatus).toBe('miss');
+    await vi.waitFor(() => expect(finishPut).toBeTypeOf('function'));
+    finishPut?.();
+    vi.unstubAllGlobals();
+  });
+
+  it('does not restore a cache entry after clear while an older write is in flight', async () => {
+    const entries = new Map<string, Response>();
+    let finishPut: (() => void) | undefined;
+    const cache = {
+      keys: vi.fn(async () => [...entries.keys()].map(url => new Request(url))), match: vi.fn(async () => undefined),
+      put: vi.fn(async (request: Request, response: Response) => { await new Promise<void>(resolve => { finishPut = resolve; }); entries.set(request.url, response); }),
+      delete: vi.fn(async (request: Request) => entries.delete(request.url)),
+    };
+    vi.stubGlobal('location', new URL('http://127.0.0.1:34206/'));
+    vi.stubGlobal('caches', { open: vi.fn(async () => cache) });
+    await createTestReleaseMapFeedRepository(vi.fn().mockResolvedValue(new Response(JSON.stringify(envelope), { status: 200 })) as typeof fetch).load();
+    await vi.waitFor(() => expect(finishPut).toBeTypeOf('function'));
+    const { clearTestReleaseMapCache } = await import('../../src/api/TestReleaseMapFeedRepository');
+    await clearTestReleaseMapCache();
+    finishPut?.();
+    await vi.waitFor(() => expect(entries.size).toBe(0));
     vi.unstubAllGlobals();
   });
 });

@@ -13,4 +13,11 @@ describe('real private preview map projection', () => {
     expect(component).toContain('const sourceId = null;');
     expect(component).toContain('camera movement must never reload it');
   });
+
+  it('keeps a rejected candidate envelope visible until an explicit cache-clear retry', () => {
+    expect(component).toContain('let candidateValidationFailed = false;');
+    expect(component).toContain('if (mode === "candidate-preview" && candidateValidationFailed) return;');
+    expect(component).toContain('candidateValidationFailed = false;');
+    expect(component).toContain('void loadNativeFeed();');
+  });
 });
