@@ -325,6 +325,19 @@ fn public_map_feed_response(headers: &HeaderMap, entry: PublicMapFeedCacheEntry,
     builder.status(StatusCode::OK).header(axum::http::header::CONTENT_TYPE, entry.content_type).body(axum::body::Body::from(entry.body.to_string())).expect("map feed response is valid")
 }
 
+fn private_candidate_map_feed_response(
+    entry: PublicMapFeedCacheEntry,
+    etag: &str,
+) -> Response<axum::body::Body> {
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(axum::http::header::ETAG, etag)
+        .header(axum::http::header::CACHE_CONTROL, "private, max-age=0, must-revalidate")
+        .header(axum::http::header::CONTENT_TYPE, entry.content_type)
+        .body(axum::body::Body::from(entry.body.to_string()))
+        .expect("private candidate map feed response is valid")
+}
+
 /// Return the small, public, release-pinned point projection used by the
 /// native GeoJSON map. It reads the same live-gated view as the V2 API and
 /// never exposes names, addresses, or source payloads.
@@ -2972,6 +2985,16 @@ pub async fn get_dev_test_release_map_feed_handler(
         }
         return response;
     }
+    let cache_key = format!("dev-test-candidate-map-v1|{release_id}|{snapshot_id}");
+    if let Some(entry) = public_map_feed_cache_get(&cache_key) {
+        return private_candidate_map_feed_response(entry, &etag);
+    }
+    // Reuse the existing identity-keyed map-projection build lock. A new
+    // candidate client never repeats a completed projection for this snapshot.
+    let _build_guard = PUBLIC_MAP_FEED_BUILD_LOCK.lock().await;
+    if let Some(entry) = public_map_feed_cache_get(&cache_key) {
+        return private_candidate_map_feed_response(entry, &etag);
+    }
     let rows = match client.query(
         r#"SELECT m.facility_id, source.source_id, o.classification_category,
                   CASE WHEN o.coordinate IS NOT NULL THEN 'source_coordinate'
@@ -3027,7 +3050,7 @@ pub async fn get_dev_test_release_map_feed_handler(
             "category_keys": [category_key]
         })
     }).collect::<Vec<_>>();
-    let mut response = Json(json!({
+    let body = Json(json!({
         "api_version":"dev-test-v1",
         "data":{"points":points},
         "meta":{"private_preview":true,"candidate_only":candidate_only,"test_only":test_only,
@@ -3035,11 +3058,10 @@ pub async fn get_dev_test_release_map_feed_handler(
                  "scope":"candidate_map","zoom_max":14,
                  "preview_label":"Private corrected candidate — not project-approved or published"}
     }))
-    .into_response();
-    if let Ok(value) = HeaderValue::from_str(&etag) {
-        response.headers_mut().insert("etag", value);
-    }
-    response
+    .to_string();
+    public_map_feed_cache_put(cache_key.clone(), body, "application/json");
+    let entry = public_map_feed_cache_get(&cache_key).expect("inserted candidate map cache entry is available");
+    private_candidate_map_feed_response(entry, &etag)
 }
 
 pub async fn get_dev_test_release_facets_handler(
