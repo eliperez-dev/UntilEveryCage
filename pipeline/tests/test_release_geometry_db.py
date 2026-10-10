@@ -102,6 +102,14 @@ class PublicGeometryPostgresTests(unittest.TestCase):
                  "source": "Synthetic administrative grid"}},
              "coarse_reference", "municipality"),
             ("unmapped", "processing_and_preparation", None, None, {}, None, None),
+            ("country_coordinate_mismatch", "processing_and_preparation", 44.0, 12.0,
+             {"source_location": {"latitude": 44.0, "longitude": 12.0,
+                                  "precision": "source-precision-unknown",
+                                  "coordinate_method": "source_coordinates"},
+              "display_location": {"evidence_kind": "unmapped",
+                                   "coordinate_review_status": "country-coordinate-mismatch"},
+              "coordinate_review_status": "country-coordinate-mismatch"},
+             "source_coordinates", "source-precision-unknown"),
             ("zero_zero", "processing_and_preparation", 0.0, 0.0,
              {"source_location": {"latitude": 0, "longitude": 0,
                                   "precision": "numeric", "coordinate_method": "source_coordinates"}},
@@ -143,9 +151,10 @@ class PublicGeometryPostgresTests(unittest.TestCase):
                 VALUES (%s,%s,now(),%s,'{}',%s,'fixture',%s,'review_required',now(),
                     CASE WHEN %s::float8 IS NULL THEN NULL
                          ELSE ST_SetSRID(ST_MakePoint(%s,%s),4326)::geography END,
-                    %s,%s,'review_required') RETURNING observation_id::text
+                     %s,%s,%s) RETURNING observation_id::text
             """, (facility_id, record_id, Jsonb(evidence), classification_ruleset, category,
-                  latitude, longitude, latitude, method, precision)).fetchone()[0]
+                  latitude, longitude, latitude, method, precision,
+                  evidence.get("coordinate_review_status", "review_required"))).fetchone()[0]
             set_id = connection.execute("""
                 INSERT INTO uec.observation_taxonomy_assignment_sets
                     (observation_id,source_record_id,source_id,artifact_id,taxonomy_version,
@@ -274,7 +283,7 @@ class PublicGeometryPostgresTests(unittest.TestCase):
                     """)
                     rows = connection.execute(query, (release_id, release_id)).fetchall()
                     by_kind = {row[0]: row[1:] for row in rows}
-                    self.assertEqual(len(by_kind), 9)
+                    self.assertEqual(len(by_kind), 10)
                     self.assertEqual(by_kind["source_unknown_precision"][0:3], ("unmapped", None, None))
                     self.assertFalse(by_kind["source_unknown_precision"][4])
                     self.assertFalse(by_kind["source_unknown_precision"][5])
@@ -284,6 +293,7 @@ class PublicGeometryPostgresTests(unittest.TestCase):
                     self.assertEqual(by_kind["provider_high_accepted"][3]["coordinate_review_status"], "pending_human_review")
                     self.assertEqual(by_kind["verified_coarse"][0], "approximate")
                     self.assertEqual(by_kind["unmapped"][0:3], ("unmapped", None, None))
+                    self.assertEqual(by_kind["country_coordinate_mismatch"][0:3], ("unmapped", None, None))
                     self.assertEqual(by_kind["zero_zero"][0:3], ("unmapped", None, None))
                     self.assertEqual(by_kind["provider_pending"][0:3], ("unmapped", None, None))
                     self.assertEqual(by_kind["provider_missing_metadata"][0:3], ("unmapped", None, None))

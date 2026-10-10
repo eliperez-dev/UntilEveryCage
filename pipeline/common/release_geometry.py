@@ -16,6 +16,7 @@ GEOMETRY_MEMBERS_CTE = APPROVED_GEOMETRY_MEMBERS_CTE + """
            observation.coordinate,
            observation.coordinate_method,
            observation.coordinate_precision,
+           observation.coordinate_review_status,
            observation.classification_category,
            member.default_visible,
            observation.observation AS evidence,
@@ -87,6 +88,7 @@ GEOMETRY_MEMBERS_CTE = APPROVED_GEOMETRY_MEMBERS_CTE + """
                            THEN (evidence #>> '{display_location,confidence}')::numeric BETWEEN 0 AND 1
                            ELSE false END))
              AND coordinate IS NOT NULL
+             AND coordinate_review_status IS DISTINCT FROM 'country-coordinate-mismatch'
              AND (ST_X(coordinate::geometry)<>0 OR ST_Y(coordinate::geometry)<>0)
              AND ST_X(coordinate::geometry) BETWEEN -180 AND 180
              AND ST_Y(coordinate::geometry) BETWEEN -90 AND 90

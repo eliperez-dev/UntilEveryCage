@@ -3278,10 +3278,16 @@ pub async fn get_dev_test_release_map_feed_handler(
     }
     let rows = match client.query(
         r#"SELECT m.facility_id, source.source_id, o.classification_category,
-                  CASE WHEN o.coordinate IS NOT NULL THEN 'source_coordinate'
-                       WHEN city.reference_location IS NOT NULL THEN 'city_reference' END AS kind,
-                  CASE WHEN o.coordinate IS NOT NULL THEN COALESCE(o.coordinate_precision, 'source_reported')
-                       WHEN city.reference_location IS NOT NULL THEN 'city' END AS precision,
+                  CASE WHEN o.coordinate IS NOT NULL
+                              AND o.coordinate_review_status IS DISTINCT FROM 'country-coordinate-mismatch'
+                       THEN 'source_coordinate'
+                       WHEN o.coordinate_review_status IS DISTINCT FROM 'country-coordinate-mismatch'
+                            AND city.reference_location IS NOT NULL THEN 'city_reference' END AS kind,
+                  CASE WHEN o.coordinate IS NOT NULL
+                              AND o.coordinate_review_status IS DISTINCT FROM 'country-coordinate-mismatch'
+                       THEN COALESCE(o.coordinate_precision, 'source_reported')
+                       WHEN o.coordinate_review_status IS DISTINCT FROM 'country-coordinate-mismatch'
+                            AND city.reference_location IS NOT NULL THEN 'city' END AS precision,
                   ST_Y(COALESCE(o.coordinate, city.reference_location)::geometry) AS latitude,
                   ST_X(COALESCE(o.coordinate, city.reference_location)::geometry) AS longitude,
                   f.country_code, COALESCE(sr.raw_fields->'normalized','{}'::jsonb)::text,
@@ -3309,6 +3315,7 @@ pub async fn get_dev_test_release_map_feed_handler(
              -- unknown or absent legacy scope remains privately mappable.
              AND COALESCE(sr.raw_fields->'normalized'->>'in_default_map_scope', '') <> 'false'
               AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted x WHERE x.source_record_id=o.source_record_id)
+              AND o.coordinate_review_status IS DISTINCT FROM 'country-coordinate-mismatch'
               AND COALESCE(o.coordinate, city.reference_location) IS NOT NULL
             ORDER BY m.facility_id LIMIT 250001"#,
         &[&release_id],
