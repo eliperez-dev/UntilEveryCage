@@ -128,4 +128,11 @@ test('candidate map retains native overlays and V1 selection across route and ba
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return map?.getPaintProperty('base', 'raster-saturation') === -1 && map.isSourceLoaded('locations') && ['clusters', 'aggregate-outer', 'source-coordinate-points', 'v1-source-pins'].every(id => map.getLayer(id));
   }, undefined, { timeout: 30_000 });
+  await page.getByLabel('Map style').selectOption('vector');
+  await page.waitForFunction(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getPaintProperty('base', 'raster-saturation') === 0);
+  await page.getByLabel('Map style').selectOption('satellite');
+  await page.waitForFunction(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return map?.isSourceLoaded('locations') && ['clusters', 'aggregate-outer', 'source-coordinate-points', 'v1-source-pins'].every(id => map.getLayer(id));
+  }, undefined, { timeout: 30_000 });
 });
