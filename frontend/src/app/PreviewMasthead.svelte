@@ -66,6 +66,7 @@
   }
   let toolsOpen = $state(false);
   let releaseOpen = $state(false);
+  const displayedReleaseLabel = $derived(publicReleaseLabel?.replaceAll('—', ':') ?? 'No verified public release loaded');
   let actionArea = $state<HTMLDivElement>();
   let toolsButton = $state<HTMLButtonElement>();
   let releaseButton = $state<HTMLButtonElement>();
@@ -114,7 +115,7 @@
     </button>
     {#if releaseOpen}<aside id="shared-release-menu" class="header-menu release-menu" aria-label="Preview release">
       <header><strong>Preview release</strong><button type="button" aria-label="Close Preview release" onclick={() => closeMenus("release")}>×</button></header>
-      <section><label for="release-choice">Current release</label><select id="release-choice" aria-label="Current release"><option>{publicReleaseLabel ?? 'No verified public release loaded'}</option></select><small>{publicReleaseLabel ? 'Verified release metadata from the active public map projection.' : 'Open the public map to load verified release metadata.'}</small></section>
+      <section><label for="release-choice">Current release</label><select id="release-choice" aria-label="Current release"><option>{displayedReleaseLabel}</option></select><small>{publicReleaseLabel ? 'Verified release metadata from the active public map projection.' : 'Open the public map to load verified release metadata.'}</small></section>
       <section><h2>History</h2><p>Release history is available with each record.</p><small>Historical views respect current privacy restrictions.</small></section>
     </aside>{/if}
     {#if toolsOpen}<aside id="shared-tools-menu" class="header-menu tools-menu" aria-label="Tools">
@@ -189,7 +190,7 @@
   @media (max-width: 25rem) {
     .wordmark{font-size:.9rem}.wordmark img{width:1.6rem;height:1.6rem}
     .masthead { min-height: 3.9rem; }
-    .preview-action, .tools-action span { display:none; }
+    .tools-action span { display:none; }
     .masthead-actions { gap:.25rem; }
     nav { gap:.65rem; }
     nav .secondary-link { margin-left:0; padding-left:.5rem; }

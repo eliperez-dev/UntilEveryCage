@@ -1298,13 +1298,7 @@
   aria-label="Map showing records"
 >
   <div class="map-host" bind:this={host}></div>
-  <small class="review-disclosure" aria-label={mode === "public-release" ? "Public release status" : "Private preview status"}
-  >{mode === "real-preview"
-      ? mapState.sourceId === "us.fsis"
-        ? "Local private rehearsal · FSIS source-provided coordinates, precision unverified · not approved or published"
-        : "Private preview · not published"
-      : mode === "public-release" ? "Published release data" : "Synthetic development data"}</small
-  >{#if isNativeMap() && visibleApproximateCount > 0}<small class="approximation-cue"
+  {#if isNativeMap() && visibleApproximateCount > 0}<small class="approximation-cue"
       ><i aria-hidden="true"></i>Approximate locations · 3 km display area</small
   >{/if}{#if basemapSwitching && pendingBasemap}<small
       class="map-status"
@@ -1702,16 +1696,6 @@
   .cluster-settings .cluster-checkbox input {
     width: auto;
     margin: 0;
-  }
-  .review-disclosure {
-    position: absolute;
-    z-index: 2;
-    right: 0.5rem;
-    bottom: 0.35rem;
-    color: #4a504a;
-    background: #f1efe8cc;
-    padding: 0.08rem 0.25rem;
-    font: 0.52rem system-ui;
   }
   .approximation-cue {
     position: absolute;
