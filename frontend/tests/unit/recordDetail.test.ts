@@ -8,13 +8,14 @@ const component = readFileSync(resolve(process.cwd(), 'src/app/RecordDetail.svel
 
 describe('private preview record detail surface', () => {
   it('renders a gated identity as not shown and keeps optional fields conditional', () => {
-    expect(component).toContain('Name not shown — privacy review pending');
-    expect(component).toContain("? 'Facility candidate'");
+    expect(component).toContain('Name not shown, privacy review pending');
+    expect(component).toContain("? 'Name not shown'");
     expect(component).toContain('{#if activity}');
     expect(component).toContain('{#if evidence}');
     expect(component).toContain('{#if retrieved}');
     expect(component).toContain('{#if observed}');
-    expect(component).toContain('PRIVATE DEVELOPMENT PREVIEW · NOT PUBLICATION-APPROVED');
+    expect(component).not.toContain('PRIVATE DEVELOPMENT PREVIEW');
+    expect(component).not.toContain('Facility candidate');
     expect(component).toContain('Activities and classification');
     expect(component).toContain('Classification provenance');
     expect(component).toContain('assignment.taxonomyVersion');
@@ -25,7 +26,7 @@ describe('private preview record detail surface', () => {
     expect(component).toContain('City reference · approximate');
     expect(component).toContain('Coarse city/postal area');
     expect(component).toContain('Approximate source coordinate');
-    expect(component).toContain('Source-provided coordinate · precision unverified (not exact; private rehearsal only)');
+    expect(component).toContain('Source-provided coordinate, precision unverified');
     expect(component).toContain('Unmapped · no map location supplied');
     expect(component).toContain('Coordinate review');
     expect(component).toContain('Factual review');
@@ -48,6 +49,6 @@ describe('private preview record detail surface', () => {
   it('does not invent a graph or render unavailable API fields as placeholders', () => {
     expect(component).not.toContain('Connections');
     expect(component).not.toContain('Not available in this release');
-    expect(component).toContain('Source origin does not establish accuracy');
+    expect(component).toContain('recordNotice');
   });
 });

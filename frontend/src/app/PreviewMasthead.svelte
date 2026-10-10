@@ -6,6 +6,7 @@
     databaseHref,
     debugEnabled = false,
     privateTools = false,
+    publicReleaseLabel = null,
     ondebugchange,
   }: {
     current: "map" | "database" | "methodology" | "about" | "contribute";
@@ -13,6 +14,7 @@
     databaseHref: string;
     debugEnabled?: boolean;
     privateTools?: boolean;
+    publicReleaseLabel?: string | null;
     ondebugchange?(enabled: boolean): void;
   } = $props();
 
@@ -107,12 +109,12 @@
   <div class="masthead-actions" bind:this={actionArea}>
     <button bind:this={releaseButton} type="button" class="header-action preview-action" aria-expanded={releaseOpen} aria-controls="shared-release-menu" onclick={toggleRelease}>Release</button>
     <button type="button" class="header-action" disabled title="Accounts are not available in this release">Account unavailable</button>
-    <button bind:this={toolsButton} type="button" class="header-action tools-action" aria-expanded={toolsOpen} aria-controls="shared-tools-menu" onclick={toggleTools}>
+    <button bind:this={toolsButton} type="button" class="header-action tools-action" aria-label="Tools" aria-expanded={toolsOpen} aria-controls="shared-tools-menu" onclick={toggleTools}>
       <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg><span>Tools</span>
     </button>
     {#if releaseOpen}<aside id="shared-release-menu" class="header-menu release-menu" aria-label="Preview release">
       <header><strong>Preview release</strong><button type="button" aria-label="Close Preview release" onclick={() => closeMenus("release")}>×</button></header>
-      <section><label for="release-choice">Current release</label><select id="release-choice" aria-label="Current release"><option>Current verified release</option></select><small>Release metadata is verified by the record API.</small></section>
+      <section><label for="release-choice">Current release</label><select id="release-choice" aria-label="Current release"><option>{publicReleaseLabel ?? 'No verified public release loaded'}</option></select><small>{publicReleaseLabel ? 'Verified release metadata from the active public map projection.' : 'Open the public map to load verified release metadata.'}</small></section>
       <section><h2>History</h2><p>Release history is available with each record.</p><small>Historical views respect current privacy restrictions.</small></section>
     </aside>{/if}
     {#if toolsOpen}<aside id="shared-tools-menu" class="header-menu tools-menu" aria-label="Tools">

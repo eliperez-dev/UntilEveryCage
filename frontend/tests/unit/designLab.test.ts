@@ -21,6 +21,13 @@ describe('F1A shared design lab', () => {
     expect(decodeLabHash(encodeLabHash(muted))).toEqual(muted);
   });
 
+  it('keeps the map rail closed unless a shared URL explicitly opens it', () => {
+    expect(decodeLabHash('#/map').listOpen).toBe(false);
+    expect(decodeLabHash('#/map?list=open').listOpen).toBe(true);
+    expect(encodeLabHash({ ...decodeLabHash('#/map'), listOpen: false })).not.toContain('list=');
+    expect(encodeLabHash({ ...decodeLabHash('#/map'), listOpen: true })).toContain('list=open');
+  });
+
   it('preserves the Field review state while changing the selected record', () => {
     const state = decodeLabHash('#/map?f1a=atlas&scenario=dense&q=pig&selected=syn-042&cluster=aarhus&lat=40&lon=-12&z=5&category=Pig&precision=coarse');
     expect(reduceLabState(state, { type: 'select', value: 'syn-099' })).toMatchObject({

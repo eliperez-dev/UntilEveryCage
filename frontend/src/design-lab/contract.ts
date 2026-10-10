@@ -46,6 +46,7 @@ export interface DirectionViewProps {
   mode?: 'synthetic' | 'real-preview' | 'public-release';
   publicReleaseId?: string | null;
   publicReleaseIdentity?: string | null;
+  publicReleaseManifestIdentity?: import('../api/PublicReleaseRepository').PublicReleaseIdentity | null;
   publicMapMeta?: import('../api/PublicMapFeedRepository').PublicMapFeed['meta'] | null;
   onMapFeedMeta?: ((meta: import('../api/PublicMapFeedRepository').PublicMapFeed['meta'] | null) => void) | undefined;
   dataStatus?: 'loading' | 'ready' | 'empty' | 'error' | 'unauthorized';

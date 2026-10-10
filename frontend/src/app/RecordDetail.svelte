@@ -277,7 +277,7 @@
     <p class="contribution-actions">{#each [['evidence','Add evidence'],['correction','Suggest a correction'],['privacy-removal','Privacy or removal']] as [type, label]}<a class="evidence-link" href={`#/contribute/${type}?target=${encodeURIComponent(id)}&map=${encodeURIComponent('#/map?f1a=field')}`}>{label}</a>{/each}</p>
   {/if}
   {#if nameWithheld}
-    <dl class="identity"><div><dt>Name</dt><dd>Name not shown — privacy review pending</dd></div></dl>
+    <dl class="identity"><div><dt>Name</dt><dd>Name not shown, privacy review pending</dd></div></dl>
   {/if}
   {#if activity}
     <p class="activity">

@@ -373,11 +373,8 @@
 
 <svelte:window onkeydown={onKeydown} />
 <section class="field-view">
-  <PreviewMasthead privateTools={mode === "real-preview"} current="map" {mapHref} {databaseHref} debugEnabled={$debugEnabled} ondebugchange={(enabled) => { debugEnabled.set(enabled); if (!enabled) debugOpen.set(false); }} />
+  <PreviewMasthead privateTools={mode === "real-preview"} publicReleaseLabel={publicMapMeta?.releaseLabel ?? null} current="map" {mapHref} {databaseHref} debugEnabled={$debugEnabled} ondebugchange={(enabled) => { debugEnabled.set(enabled); if (!enabled) debugOpen.set(false); }} />
   <section class="map-stage" aria-label="Investigative map field">
-    {#if mode === "public-release" && publicMapMeta}<aside class="public-release-summary" aria-label="Public release coverage">
-      <strong>{publicMapMeta.releaseLabel}</strong><span>{publicMapMeta.publicRecordCount.toLocaleString()} eligible records</span><span>{publicMapMeta.featureCount.toLocaleString()} mapped · {publicMapMeta.unmappedCount.toLocaleString()} unmapped</span>
-    </aside>{/if}
     {#if mode === "synthetic" && state.scenario === "loading"}<div class="status" role="status">
         Loading records…
       </div>{:else if mode === "synthetic" && state.scenario === "error"}<div
@@ -739,7 +736,6 @@
     position: absolute;
     inset: 4.8rem 0 0;
   }
-  .public-release-summary{position:absolute;z-index:5;bottom:.55rem;left:50%;display:flex;flex-wrap:wrap;justify-content:center;gap:.35rem .8rem;max-width:calc(100vw - 2rem);padding:.35rem .65rem;border:1px solid #48504b;background:#171a18eF;color:#d9ded5;font:.64rem/1.3 system-ui;transform:translateX(-50%);text-align:center}.public-release-summary strong{color:#f1efe8}
   .map-stage :global(.map-surface),
   .map-stage :global(.map-host) {
     position: absolute;

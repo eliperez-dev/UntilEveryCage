@@ -29,7 +29,7 @@
       <b class="laboratory"></b>Lab
       <b class="aquaculture"></b>Aquaculture</small
     >{:else}<small class="preview-disclosure"
-      >{mode === "public-release" ? "Public release · current suppression checked by the API" : "Private development preview · not publication-approved"}</small
+      >{mode === "public-release" ? "Published release data" : "Private development preview, not publication-approved"}</small
     >{/if}
 </div>
 
