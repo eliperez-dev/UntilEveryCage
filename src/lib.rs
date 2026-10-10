@@ -2917,7 +2917,19 @@ pub async fn get_dev_test_release_map_feed_handler(
     let Some(release) = release else {
         return v2_error(StatusCode::NOT_FOUND, "test_release_unavailable", "test release unavailable");
     };
-    let snapshot_id: Option<String> = release.get(0);
+    let snapshot_id: String = release.get(0);
+    let etag = format!("\"candidate-map-{snapshot_id}\"");
+    if headers
+        .get("if-none-match")
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value == etag)
+    {
+        let mut response = StatusCode::NOT_MODIFIED.into_response();
+        if let Ok(value) = HeaderValue::from_str(&etag) {
+            response.headers_mut().insert("etag", value);
+        }
+        return response;
+    }
     let rows = match client.query(
         r#"SELECT m.facility_id, source.source_id, o.classification_category,
                   CASE WHEN o.coordinate IS NOT NULL THEN 'source_coordinate'
@@ -2973,14 +2985,19 @@ pub async fn get_dev_test_release_map_feed_handler(
             "category_keys": [category_key]
         })
     }).collect::<Vec<_>>();
-    Json(json!({
+    let mut response = Json(json!({
         "api_version":"dev-test-v1",
         "data":{"points":points},
         "meta":{"private_preview":true,"candidate_only":true,"test_only":false,
                  "release_id":release_id,"snapshot_id":snapshot_id,"bounded":true,
                  "scope":"candidate_map","zoom_max":14,
                  "preview_label":"Private corrected candidate — not project-approved or published"}
-    })).into_response()
+    }))
+    .into_response();
+    if let Ok(value) = HeaderValue::from_str(&etag) {
+        response.headers_mut().insert("etag", value);
+    }
+    response
 }
 
 pub async fn get_dev_test_release_facets_handler(
