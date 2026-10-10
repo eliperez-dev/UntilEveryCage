@@ -352,7 +352,7 @@ INSERT INTO uec.public_discovery_read_model_rows
      classification_category,observed_at,first_observed_at,
      provenance_origin_type,provenance_source_id,provenance_source_name,
      provenance_source_url,provenance_retrieved_at,source_rights_status,geometry_provenance,
-     public_detail,search_document)
+     public_detail,public_search_text)
 SELECT %s, facility_id, observation_id, source_record_id, canonical_name,
        country_code, postal_code, city, display_location, display_precision,
        display_label, geocoding_status, geocoder_provider, geocoded_at,
@@ -360,7 +360,8 @@ SELECT %s, facility_id, observation_id, source_record_id, canonical_name,
        provenance_origin_type, provenance_source_id, provenance_source_name,
        provenance_source_url, provenance_retrieved_at, source_rights_status, geometry_provenance,
        public_detail,
-       to_tsvector('simple', coalesce(canonical_name, '') || ' ' || coalesce(public_detail->>'alternate_names', ''))
+       lower(concat_ws(' ', canonical_name, city, country_code, classification_category,
+                       provenance_source_name, public_detail::text))
 FROM (
 """ + SOURCE_ROWS + """
 ) selected
@@ -403,12 +404,12 @@ def build_in_transaction(connection: Any, release_id: str, fail_after_rows: int 
              display_label,geocoding_status,geocoder_provider,geocoded_at,
              classification_category,observed_at,first_observed_at,
              provenance_origin_type,provenance_source_id,provenance_source_name,
-             provenance_source_url,provenance_retrieved_at,source_rights_status,geometry_provenance,public_detail,search_document)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,ST_GeogFromText(%s),%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s::jsonb,to_tsvector('simple', coalesce(%s, '') || ' ' || coalesce(%s::jsonb->>'alternate_names', '')))
+             provenance_source_url,provenance_retrieved_at,source_rights_status,geometry_provenance,public_detail,public_search_text)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,ST_GeogFromText(%s),%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s::jsonb,lower(concat_ws(' ',%s,%s,%s,%s,%s,%s::jsonb::text)))
         """
         with connection.cursor() as cursor:
             for index, row in enumerate(rows, start=1):
-                cursor.execute(insert_sql, (release_id, *row, row[4], row[-1]))
+                cursor.execute(insert_sql, (release_id, *row, row[3], row[6], row[4], row[13], row[18], row[-1]))
                 if index >= fail_after_rows:
                     raise RuntimeError("synthetic interrupted read model build")
     else:

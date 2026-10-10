@@ -57,6 +57,15 @@ class PublicDiscoveryQueryContractTests(unittest.TestCase):
         self.assertNotIn("drop index", migration)
         self.assertNotIn("drop table", migration)
 
+    def test_literal_search_uses_new_allowlist_and_legacy_fallback_consistently(self):
+        source = _source()
+        locations = source[source.index("pub async fn get_v2_locations_handler"):source.index("pub async fn get_v2_location_detail_handler")]
+        self.assertIn("public_search_text ILIKE '%'", locations)
+        self.assertIn("ESCAPE '\\'", locations)
+        self.assertIn("public_search_text = ''", locations)
+        self.assertIn("observation_taxonomy_assignment_sets sets", locations)
+        self.assertNotIn("websearch_to_tsquery", locations)
+
 
 if __name__ == "__main__":
     unittest.main()

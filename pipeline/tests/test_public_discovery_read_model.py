@@ -52,6 +52,18 @@ class PublicDiscoveryReadModelTests(unittest.TestCase):
         self.assertIn("from (", MODULE.INSERT_ROWS.lower())
         self.assertIn("if fail_after_rows is not none", (ROOT / "scripts" / "maintenance" / "build_public_discovery_read_model.py").read_text(encoding="utf-8").lower())
 
+    def test_detail_and_literal_search_are_allowlisted(self):
+        migration = (ROOT / "migrations" / "068_public_discovery_detail_search.sql").read_text(encoding="utf-8").lower()
+        for token in ("public_detail", "public_search_text", "gin_trgm_ops", "alternate_names", "dba_names",
+                      "species_slaughtered", "processing_activities", "activity_volume_codes", "source_volume_categories",
+                      "establishment_id", "grant_date", "native_activity_code"):
+            self.assertIn(token, migration)
+        self.assertNotIn("raw_fields", migration)
+        self.assertNotIn("street_address", migration)
+        self.assertNotIn("observation->'contact'", migration)
+        self.assertIn("public_detail", MODULE.INSERT_ROWS.lower())
+        self.assertIn("public_search_text", MODULE.INSERT_ROWS.lower())
+
 
 if __name__ == "__main__":
     unittest.main()

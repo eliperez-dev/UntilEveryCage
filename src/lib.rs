@@ -3491,7 +3491,11 @@ pub async fn get_v2_locations_handler(
             "region and q must be non-empty and at most 120 characters",
         );
     }
-    let search_text = params.q.as_deref().map(str::trim);
+    // Preserve the documented literal substring semantics. Escape LIKE
+    // metacharacters before binding, including for the legacy-model fallback.
+    let search_text = params.q.as_deref().map(|value| {
+        value.trim().replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
+    });
     let parse_coordinate = |value: &Option<String>, name: &'static str, min: f64, max: f64| {
         value
             .as_deref()
@@ -3709,13 +3713,20 @@ pub async fn get_v2_locations_handler(
         match transaction.query_one(r#"
         SELECT count(DISTINCT history.facility_id)::bigint
         FROM uec.map_facilities_public_discovery_read_model AS history
-        JOIN uec.public_discovery_read_model_rows indexed
+        LEFT JOIN uec.public_discovery_read_model_rows indexed
           ON indexed.release_id=history.release_id AND indexed.facility_id=history.facility_id AND indexed.observation_id=history.observation_id
         WHERE history.release_id = $1
           AND ($2::text IS NULL OR history.country_code = $2) AND ($3::text IS NULL OR history.city = $3)
           AND ($4::text IS NULL OR history.classification_category = $4) AND ($5::text IS NULL OR history.display_precision = $5)
           AND ($6::text IS NULL OR history.lifecycle_status = $6) AND ($7::text IS NULL OR history.provenance_origin_type = $7)
-          AND ($8::text IS NULL OR indexed.search_document @@ websearch_to_tsquery('simple', $8))
+          AND ($8::text IS NULL OR indexed.public_search_text ILIKE '%' || $8 || '%' ESCAPE '\'
+               OR (indexed.public_search_text = '' AND lower(concat_ws(' ', history.canonical_name, history.city, history.country_code, history.classification_category, history.provenance_source_name)) LIKE '%' || lower($8) || '%' ESCAPE '\')
+               OR (indexed.public_search_text = '' AND EXISTS (
+                    SELECT 1 FROM uec.observation_taxonomy_assignment_sets sets
+                    LEFT JOIN uec.observation_taxonomy_assignments assignment ON assignment.assignment_set_id=sets.assignment_set_id
+                    WHERE sets.observation_id=history.observation_id AND sets.taxonomy_version='uec-taxonomy-v1'
+                      AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=sets.observation_id AND newer.taxonomy_version=sets.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(sets.created_at,sets.assignment_set_id))
+                      AND lower(concat_ws(' ', assignment.leaf_label, assignment.source_code, assignment.source_label, assignment.source_code_reference, assignment.source_label_reference)) LIKE '%' || lower($8) || '%' ESCAPE '\')))
           AND ($9::double precision IS NULL OR (history.display_location && ST_MakeEnvelope($9, $10, $11, $12, 4326)::geography AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($9, $10, $11, $12, 4326))))
           AND ($13::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($14, $15), 4326)::geography, $13 * 1000))
     "#, &[&promoted_release_id, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude]).await {
@@ -3724,6 +3735,8 @@ pub async fn get_v2_locations_handler(
     } else { match transaction.query_one(r#"
         SELECT count(DISTINCT history.facility_id)::bigint
         FROM uec.map_facilities_public_discovery_read_model AS history
+        JOIN uec.public_discovery_read_model_rows stored
+          ON stored.release_id=history.release_id AND stored.facility_id=history.facility_id AND stored.observation_id=history.observation_id
         LEFT JOIN LATERAL (
           SELECT array_agg(DISTINCT a.primary_key) FILTER (WHERE a.primary_key IS NOT NULL) AS primary_categories,
                  COALESCE(jsonb_agg(DISTINCT jsonb_build_object('key',a.leaf_key,'label',a.leaf_label)) FILTER (WHERE a.leaf_key IS NOT NULL AND a.leaf_label IS NOT NULL AND a.mapping_method IN ('direct','derived') AND a.mapping_status IN ('mapped','partial')), '[]'::jsonb) AS leaf_activities,
@@ -3737,7 +3750,8 @@ pub async fn get_v2_locations_handler(
           AND ($2::text IS NULL OR history.country_code = $2) AND ($3::text IS NULL OR history.city = $3)
           AND ($4::text IS NULL OR history.classification_category = $4) AND ($5::text IS NULL OR history.display_precision = $5)
           AND ($6::text IS NULL OR history.lifecycle_status = $6) AND ($7::text IS NULL OR history.provenance_origin_type = $7)
-          AND ($8::text IS NULL OR lower(coalesce(history.canonical_name, '') || ' ' || coalesce(history.city, '') || ' ' || history.country_code || ' ' || history.classification_category || ' ' || coalesce(history.provenance_source_name, '') || ' ' || coalesce(taxonomy.leaf_activities::text, '') || ' ' || coalesce(taxonomy.assignments::text, '')) LIKE '%' || lower($8) || '%' ESCAPE '\')
+          AND ($8::text IS NULL OR stored.public_search_text ILIKE '%' || $8 || '%' ESCAPE '\'
+               OR (stored.public_search_text = '' AND lower(coalesce(history.canonical_name, '') || ' ' || coalesce(history.city, '') || ' ' || history.country_code || ' ' || history.classification_category || ' ' || coalesce(history.provenance_source_name, '') || ' ' || coalesce(taxonomy.leaf_activities::text, '') || ' ' || coalesce(taxonomy.assignments::text, '')) LIKE '%' || lower($8) || '%' ESCAPE '\'))
           AND ($9::double precision IS NULL OR (history.display_location && ST_MakeEnvelope($9, $10, $11, $12, 4326)::geography AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($9, $10, $11, $12, 4326))))
           AND ($13::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($14, $15), 4326)::geography, $13 * 1000))
           AND ($16::text[] IS NULL OR taxonomy.primary_categories && $16)
@@ -3752,7 +3766,7 @@ pub async fn get_v2_locations_handler(
         WITH candidates AS MATERIALIZED (
           SELECT DISTINCT ON (history.facility_id) history.facility_id, history.observation_id
           FROM uec.map_facilities_public_discovery_read_model AS history
-          JOIN uec.public_discovery_read_model_rows indexed
+          LEFT JOIN uec.public_discovery_read_model_rows indexed
             ON indexed.release_id=history.release_id AND indexed.facility_id=history.facility_id AND indexed.observation_id=history.observation_id
           WHERE history.release_id = $1
             AND ($2::uuid IS NULL OR history.facility_id > $2)
@@ -3762,7 +3776,14 @@ pub async fn get_v2_locations_handler(
             AND ($6::text IS NULL OR history.display_precision = $6)
             AND ($7::text IS NULL OR history.lifecycle_status = $7)
             AND ($8::text IS NULL OR history.provenance_origin_type = $8)
-            AND ($9::text IS NULL OR indexed.search_document @@ websearch_to_tsquery('simple', $9))
+            AND ($9::text IS NULL OR indexed.public_search_text ILIKE '%' || $9 || '%' ESCAPE '\'
+                 OR (indexed.public_search_text = '' AND lower(concat_ws(' ', history.canonical_name, history.city, history.country_code, history.classification_category, history.provenance_source_name)) LIKE '%' || lower($9) || '%' ESCAPE '\')
+                 OR (indexed.public_search_text = '' AND EXISTS (
+                      SELECT 1 FROM uec.observation_taxonomy_assignment_sets sets
+                      LEFT JOIN uec.observation_taxonomy_assignments assignment ON assignment.assignment_set_id=sets.assignment_set_id
+                      WHERE sets.observation_id=history.observation_id AND sets.taxonomy_version='uec-taxonomy-v1'
+                        AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=sets.observation_id AND newer.taxonomy_version=sets.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(sets.created_at,sets.assignment_set_id))
+                        AND lower(concat_ws(' ', assignment.leaf_label, assignment.source_code, assignment.source_label, assignment.source_code_reference, assignment.source_label_reference)) LIKE '%' || lower($9) || '%' ESCAPE '\')))
             AND ($10::double precision IS NULL OR (history.display_location && ST_MakeEnvelope($10, $11, $12, $13, 4326)::geography AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($10, $11, $12, $13, 4326))))
             AND ($14::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($15, $16), 4326)::geography, $14 * 1000))
           ORDER BY history.facility_id, history.observation_id
@@ -3838,7 +3859,8 @@ pub async fn get_v2_locations_handler(
           AND ($6::text IS NULL OR history.display_precision = $6)
           AND ($7::text IS NULL OR history.lifecycle_status = $7)
           AND ($8::text IS NULL OR history.provenance_origin_type = $8)
-          AND ($9::text IS NULL OR lower(coalesce(history.canonical_name, '') || ' ' || coalesce(history.city, '') || ' ' || history.country_code || ' ' || history.classification_category || ' ' || coalesce(history.provenance_source_name, '') || ' ' || coalesce(taxonomy.leaf_activities::text, '') || ' ' || coalesce(taxonomy.assignments::text, '')) LIKE '%' || lower($9) || '%' ESCAPE '\')
+          AND ($9::text IS NULL OR stored.public_search_text ILIKE '%' || $9 || '%' ESCAPE '\'
+               OR (stored.public_search_text = '' AND lower(coalesce(history.canonical_name, '') || ' ' || coalesce(history.city, '') || ' ' || history.country_code || ' ' || history.classification_category || ' ' || coalesce(history.provenance_source_name, '') || ' ' || coalesce(taxonomy.leaf_activities::text, '') || ' ' || coalesce(taxonomy.assignments::text, '')) LIKE '%' || lower($9) || '%' ESCAPE '\'))
           AND ($10::double precision IS NULL OR (history.display_location && ST_MakeEnvelope($10, $11, $12, $13, 4326)::geography AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($10, $11, $12, $13, 4326))))
           AND ($14::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($15, $16), 4326)::geography, $14 * 1000))
           AND ($19::text[] IS NULL OR taxonomy.primary_categories && $19)
