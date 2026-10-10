@@ -25,5 +25,23 @@ export type LocationEvidence = Readonly<{
   lifecycleStatus: 'active_observed' | 'explicitly_closed' | 'not_seen_recently' | 'status_unknown';
   observationCount: number | null;
 }>;
+export type SourceFlagValue = string | boolean;
+export type SourceVolumeCategory = Readonly<{
+  code: string;
+  provenance?: string | Readonly<{ sourceField?: string; method?: string }>;
+}>;
+// These are source-native, release-built detail facts. They are intentionally
+// absent from list and map projections.
+export type LocationSourceFacts = Readonly<{
+  alternateNames?: readonly string[];
+  speciesSlaughtered?: Readonly<Record<string, SourceFlagValue>>;
+  processingActivities?: Readonly<Record<string, SourceFlagValue>>;
+  sourceVolumeCategories?: readonly SourceVolumeCategory[];
+  establishmentId?: string;
+  establishmentNumber?: string;
+  grantDate?: string;
+  nativeActivityCode?: string;
+  nativeActivityLabel?: string;
+}>;
 import type { TaxonomyClassification } from './taxonomy';
-export type Location = Readonly<{id:LocationId,name:string,region:string,category:string,lat:number|null,lon:number|null,observed:string,source:string,sourceId?:string,taxonomy?:TaxonomyClassification,evidence?:LocationEvidence}>;
+export type Location = Readonly<{id:LocationId,name:string,region:string,category:string,lat:number|null,lon:number|null,observed:string,source:string,sourceId?:string,taxonomy?:TaxonomyClassification,evidence?:LocationEvidence,sourceFacts?:LocationSourceFacts}>;
