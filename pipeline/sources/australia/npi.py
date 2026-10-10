@@ -51,6 +51,22 @@ REQUIRED_COLUMNS = {
     "main_activities", "facility_website", "first_report_year",
     "latest_report_year", "latest_report_id", "latest_report_url", "reports",
 }
+ANZSIC_ANIMAL_RELEVANCE = {
+    "0141": ("sheep-beef-and-feedlot-industry-candidate", "animal_production"),
+    "0142": ("beef-cattle-industry-candidate", "animal_production"),
+    "0143": ("beef-cattle-feedlot-industry-candidate", "animal_production"),
+    "0144": ("dairy-cattle-industry-candidate", "animal_production"),
+    "0145": ("pig-industry-candidate", "animal_production"),
+    "0146": ("poultry-and-egg-industry-candidate", "animal_production"),
+    "0149": ("other-livestock-industry-candidate", "animal_production"),
+    "0171": ("poultry-meat-farming-industry-candidate", "animal_production"),
+    "1111": ("meat-processing-industry-candidate", "processing"),
+    "1112": ("poultry-processing-industry-candidate", "processing"),
+    "1113": ("cured-meat-smallgoods-industry-candidate", "processing"),
+    "1192": ("animal-feed-industry-candidate", "processing"),
+    "1320": ("leather-processing-industry-candidate", "processing"),
+    "1711": ("wool-processing-industry-candidate", "processing"),
+}
 
 
 def _clean(value: Any) -> str:
@@ -211,13 +227,8 @@ class NpiFacilitiesAdapter:
                 raise ValueError("schema drift: NPI row contains extra fields")
             row = {str(key): _clean(value) for key, value in raw.items() if key is not None}
             facility_id = _clean(row.get("facility_id"))
-            relevance = {
-                "0171": "poultry-meat-farming-industry-candidate",
-                "1111": "meat-processing-industry-candidate",
-                "1112": "poultry-processing-industry-candidate",
-                "1113": "cured-meat-smallgoods-industry-candidate",
-                "1192": "animal-feed-industry-adjacent",
-            }.get(_clean(row.get("primary_anzsic_class_code")), "not-indicated-by-primary-anzsic")
+            anzsic = _clean(row.get("primary_anzsic_class_code"))
+            relevance, activity = ANZSIC_ANIMAL_RELEVANCE.get(anzsic, ("not-indicated-by-primary-anzsic", None))
             relevance_counts[relevance] += 1
             code_counts[_clean(row.get("primary_anzsic_class_code")) or "unknown"] += 1
             address_signal_counts.update(_address_review_signals(_clean(row.get("street_address"))))
@@ -271,13 +282,15 @@ class NpiFacilitiesAdapter:
                     "coordinate_confidence": "high_source_reported_location" if coordinate_state == "source" else "unresolved",
                     "evidence_summary": ("Coordinates are supplied in the official NPI Facilities CSV latitude/longitude fields; method=source_coordinates; provider=Australian National Pollutant Inventory; confidence=high_source_reported_location; precision=source-provided. This is the NPI reporting-site location, not a claim of current operation."
                                          if coordinate_state == "source" else None),
-                    "in_default_map_scope": coordinate_state == "source",
-                    "map_scope_reason": ("official_source_facility_coordinates" if coordinate_state == "source"
+                    "in_default_map_scope": coordinate_state == "source" and activity is not None,
+                    "map_scope_reason": ("official_source_facility_coordinates_and_animal_industry_code"
+                                         if coordinate_state == "source" and activity is not None
+                                         else "outside_animal_industry_scope" if activity is None
                                          else "source_coordinate_unavailable"),
-                    "primary_anzsic_class_code": _clean(row.get("primary_anzsic_class_code")),
+                    "primary_anzsic_class_code": anzsic,
                     "primary_anzsic_class_name": _clean(row.get("primary_anzsic_class_name")),
                     "animal_relevance": relevance,
-                    "activity_categories": ["processing"] if _clean(row.get("primary_anzsic_class_code")) in {"1111", "1112", "1113"} else [],
+                    "activity_categories": [activity] if activity else [],
                     "main_activities": _clean(row.get("main_activities")),
                     "first_report_year": _clean(row.get("first_report_year")),
                     "latest_report_year": _clean(row.get("latest_report_year")),

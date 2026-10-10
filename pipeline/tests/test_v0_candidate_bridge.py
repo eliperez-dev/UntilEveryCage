@@ -384,6 +384,22 @@ class CandidateBridgeTests(unittest.TestCase):
         self.assertNotIn("name", stored_status)
         self.assertNotIn("email", stored_address)
 
+    def test_fsis_and_native_evidence_survives_as_bounded_typed_fields(self):
+        stored = bridge._safe_normalized({
+            "dba_names": "Example DBA", "grant_date": "2026-01-01",
+            "species_slaughtered": {"beef_cow_slaughter": "Yes"},
+            "processing_activities": {"raw_intact_beef_processing": "No"},
+            "activity_volume_codes": {"processing_volume_category": {"code": "2.0"}},
+            "native_code": "SH", "native_label": "Slaughterhouse",
+            "address": "not retained here", "phone": "not retained here",
+        })
+        self.assertEqual(stored["alternate_names"], ["Example DBA"])
+        self.assertEqual(stored["source_volume_categories"], [
+            {"code": "2.0", "provenance": "processing_volume_category"}])
+        self.assertEqual(stored["native_code"], "SH")
+        self.assertNotIn("address", stored)
+        self.assertNotIn("phone", stored)
+
     def test_not_retained_migration_preserves_retained_default_and_requires_explicit_state(self):
         migration = (bridge.ROOT / "pipeline" / "migrations" / "061_raw_artifact_retention_state.sql").read_text(encoding="utf-8")
         self.assertIn("DEFAULT 'retained'", migration)

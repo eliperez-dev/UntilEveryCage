@@ -64,6 +64,9 @@ _NORMALIZED_KEYS = {
     "source_record_key", "source_record_url", "source_registration_date", "source_reservation_date",
     "source_scope", "source_status", "source_type", "species_slaughtered", "state",
     "status_state", "activity_mapping_status", "activity_label",
+    "alternate_names", "dba_names", "grant_date", "activity_volume_codes",
+    "primary_anzsic_class_code", "primary_anzsic_class_name", "main_activities",
+    "native_code", "native_label", "sector", "sector_code",
     "private_geocode_scope", "private_geocode_scope_policy_id", "source_address_eligible",
     "source_address_restricted", "evidence_summary", "city",
 }
@@ -570,8 +573,24 @@ def _uuid(namespace: str, *parts: str) -> str:
 def _safe_normalized(normalized: Any) -> dict[str, Any]:
     if not isinstance(normalized, dict):
         return {}
-    return {key: value for key, value in normalized.items()
+    safe = {key: value for key, value in normalized.items()
             if key in _NORMALIZED_KEYS and key.casefold() not in _FORBIDDEN_KEYS}
+    aliases = safe.get("alternate_names")
+    aliases = aliases if isinstance(aliases, list) else []
+    dba = safe.get("dba_names")
+    if isinstance(dba, str) and dba.strip() and dba.strip() not in aliases:
+        aliases.append(dba.strip())
+    if aliases:
+        safe["alternate_names"] = aliases
+    safe.pop("dba_names", None)
+    volumes = safe.get("activity_volume_codes")
+    if isinstance(volumes, dict):
+        safe["source_volume_categories"] = [
+            {"code": str(value.get("code")), "provenance": key}
+            for key, value in sorted(volumes.items()) if isinstance(value, dict) and value.get("code") is not None
+        ]
+    safe.pop("activity_volume_codes", None)
+    return safe
 
 
 def _facility_display_name(source: str, normalized: Any, source_values: Any = None) -> str | None:

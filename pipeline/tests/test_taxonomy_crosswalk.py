@@ -33,7 +33,7 @@ class TaxonomyCrosswalkTests(unittest.TestCase):
 
         candidate = project_observation(self.by_name["australia-candidate"])
         self.assertEqual(candidate["taxonomy_mapping_method"], "candidate")
-        self.assertEqual(candidate["taxonomy_mapping_status"], "ambiguous")
+        self.assertEqual(candidate["taxonomy_mapping_status"], "unmapped")
         self.assertEqual(candidate["taxonomy_display_category"], "unclassified")
 
     def test_exact_be_fsis_and_cfia_source_evidence_is_direct(self):
@@ -122,6 +122,18 @@ class TaxonomyCrosswalkTests(unittest.TestCase):
             rows, _ = reproject([original])
             self.assertEqual(rows[0]["source_values"], original["source_values"])
 
+    def test_v3_native_codes_and_fsis_precedence_are_source_bound(self):
+        italy = project_observation({"source_id": "it.853-2004", "normalized": {"activity_codes": ["SH", "CP", "GHE"]}})
+        self.assertEqual(italy["taxonomy_primaries"], ["slaughter", "processing_and_preparation"])
+        self.assertTrue(all(item["method"] == "direct" for item in italy["taxonomy_assignments"]))
+        self.assertEqual(project_observation({"source_id": "it.853-2004", "normalized": {"activity_codes": ["UNKNOWN"]}})["taxonomy_mapping_status"], "unmapped")
+        spain = project_observation({"source_id": "es.cat.feed-sandach", "normalized": {"sector_code": "SANDACH"}})
+        self.assertEqual(spain["taxonomy_display_category"], "other_regulated_premises")
+        fsis = project_observation({"source_id": "us.fsis", "normalized": {
+            "species_slaughtered": {"beef_cow_slaughter": "No"},
+            "processing_activities": {"raw_intact_beef_processing": "No"}}})
+        self.assertEqual(fsis["taxonomy_display_category"], "unclassified")
+
     def test_multi_activity_precedence_is_order_independent(self):
         original = self.by_name["multiple-activities"]
         reversed_record = {**original, "normalized": {**original["normalized"], "activity_codes": list(reversed(original["normalized"]["activity_codes"]))}}
@@ -177,7 +189,7 @@ class TaxonomyCrosswalkTests(unittest.TestCase):
         first = IMPORTER.activity_contract({"activity_codes": ["SH"]}, "fr.dgal.section-ii", {})
         second = IMPORTER.activity_contract({"activity_codes": ["CP"]}, "fr.dgal.section-ii", {})
         merged = IMPORTER.merge_activity_contracts([first, second], "fr.dgal.section-ii")
-        self.assertEqual(merged["crosswalk_document"]["crosswalk_version"], "uec-source-crosswalk-v2")
+        self.assertEqual(merged["crosswalk_document"]["crosswalk_version"], "uec-source-crosswalk-v3")
         self.assertEqual({row["leaf_key"] for row in merged["taxonomy_assignment_rows"]}, {"slaughter", "cutting"})
         self.assertEqual({row["mapping_method"] for row in merged["taxonomy_assignment_rows"]}, {"direct"})
         self.assertEqual(merged["taxonomy_mapping_method"], "direct")

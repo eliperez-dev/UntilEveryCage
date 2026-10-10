@@ -14,7 +14,7 @@ from typing import Any, Iterable
 TAXONOMY_VERSION = "uec-taxonomy-v1"
 # v2 preserves the same source classification rules while versioning the
 # group-union assignment and mapping-method provenance corrections.
-CROSSWALK_VERSION = "uec-source-crosswalk-v2"
+CROSSWALK_VERSION = "uec-source-crosswalk-v3"
 PRIMARY_PRECEDENCE = (
     "slaughter", "research_and_animal_use", "animal_keeping_and_production",
     "processing_and_preparation", "other_regulated_premises", "unclassified",
@@ -38,6 +38,7 @@ _DK_LEAF_PRIMARY = {
 _DK = {code: (rule["classification"], "direct")
        for rule in _DK_SOURCE["rules"] if rule.get("review_status") == "approved"
        and rule.get("classification") in _DK_LEAF_PRIMARY for code in rule["codes"]}
+_NATIVE_V3 = json.loads((Path(__file__).parent / "config" / "source-taxonomy-v3.json").read_text(encoding="utf-8"))
 _LEAF_TO_PRIMARY = {
     "slaughter": "slaughter", "meat_processing": "processing_and_preparation",
     "fish_processing": "processing_and_preparation", "dairy_processing": "processing_and_preparation",
@@ -92,7 +93,7 @@ def _first_evidence(normalized: dict[str, Any], original: dict[str, Any], names:
 
 
 def _decision(source: str, normalized: dict[str, Any], original: dict[str, Any]) -> tuple[list[dict[str, str]], str]:
-    codes = _values(normalized, ("activity_codes", "source_function_codes", "source_classification_codes", "source_classification_code", "activity_code", "source_category", "primary_anzsic_class_code"))
+    codes = _values(normalized, ("activity_codes", "source_function_codes", "source_classification_codes", "source_classification_code", "activity_code", "source_category", "sector", "sector_code", "native_code", "primary_anzsic_class_code"))
     labels = _values(normalized, ("activity_descriptions", "activity_description", "activity_label", "source_activity", "source_classification_label", "activities", "processing_activities", "primary_anzsic_class_name"))
     # Some adapters intentionally retain exact evidence only in source_values.
     source_values = original.get("source_values") if isinstance(original.get("source_values"), dict) else {}
@@ -138,17 +139,28 @@ def _decision(source: str, normalized: dict[str, Any], original: dict[str, Any])
                                                     for value in values.values())
         if affirmative(normalized.get("species_slaughtered")):
             assignments.append({"leaf_activity": "slaughter", "primary": "slaughter", "method": "direct"})
-        if affirmative(normalized.get("processing_activities")):
+        if not assignments and (affirmative(normalized.get("processing_activities"))
+                                or normalized.get("demographics_evidence_state") == "complete-exact-join"):
             assignments.append({"leaf_activity": "processing", "primary": "processing_and_preparation", "method": "direct"})
-    elif source.startswith("it.") or source.startswith("es."):
-        return [], "unclassified"
-    elif source.startswith("au."):
-        # These feeds have candidate/source-native activity interpretations.
+    elif source in {"it.853-2004", "es.cat.feed-sandach"}:
+        rules = _NATIVE_V3[source]
+        unknown = False
         for code in codes:
-            assignments.append({"leaf_activity": "source_native_activity", "primary": "unclassified", "method": "candidate"})
-        if not codes and labels:
-            assignments.append({"leaf_activity": "source_native_activity", "primary": "unclassified", "method": "candidate"})
-        return assignments, "ambiguous" if assignments else ("unmapped" if codes or labels else "unclassified")
+            rule = rules.get(code.upper())
+            if rule:
+                assignments.append({"leaf_activity": rule[0], "primary": rule[1], "method": "direct"})
+            else:
+                unknown = True
+        return assignments, ("partial" if assignments and unknown else "mapped" if assignments else "unmapped" if codes else "unclassified")
+    elif source == "it.1069-2009":
+        return [], "unmapped" if codes else "unclassified"
+    elif source.startswith("au."):
+        rules = _NATIVE_V3.get(source, {})
+        for code in codes:
+            rule = rules.get(code)
+            if rule:
+                assignments.append({"leaf_activity": rule[0], "primary": rule[1], "method": "derived"})
+        return assignments, ("mapped" if assignments else "unmapped" if codes or labels else "unclassified")
     elif source in {"fr.dgal.section-i", "fr.dgal.section-ii"}:
         text = " ".join(codes + labels).upper()
         import re
