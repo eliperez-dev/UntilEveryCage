@@ -286,9 +286,44 @@ pub async fn get_v2_release_manifest_handler(
 pub struct PublicMapFeedParams {
     pub profile: Option<String>,
     pub release_id: Option<String>,
+    /// Additive compact wire format. Omitted requests retain GeoJSON compatibility.
+    pub format: Option<String>,
 }
 
 const PUBLIC_MAP_FEED_MAX_FEATURES: i64 = 75_000;
+const PUBLIC_MAP_FEED_CACHE_MAX_ENTRIES: usize = 8;
+
+#[derive(Clone)]
+struct PublicMapFeedCacheEntry { body: Arc<str>, content_type: &'static str, last_used: u64 }
+#[derive(Default)]
+struct PublicMapFeedCache { entries: HashMap<String, PublicMapFeedCacheEntry>, clock: u64 }
+static PUBLIC_MAP_FEED_CACHE: Lazy<StdMutex<PublicMapFeedCache>> = Lazy::new(|| StdMutex::new(PublicMapFeedCache::default()));
+/// Coalesce concurrent cold projections. The cache is only consulted after a
+/// live release/manifest/suppression identity check; it is never TTL-authoritative.
+static PUBLIC_MAP_FEED_BUILD_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+
+fn public_map_feed_cache_get(key: &str) -> Option<PublicMapFeedCacheEntry> {
+    let mut cache = PUBLIC_MAP_FEED_CACHE.lock().expect("public map feed cache lock is not poisoned");
+    cache.clock = cache.clock.wrapping_add(1);
+    let clock = cache.clock;
+    cache.entries.get_mut(key).map(|entry| { entry.last_used = clock; entry.clone() })
+}
+fn public_map_feed_cache_put(key: String, body: String, content_type: &'static str) {
+    let mut cache = PUBLIC_MAP_FEED_CACHE.lock().expect("public map feed cache lock is not poisoned");
+    cache.clock = cache.clock.wrapping_add(1);
+    let clock = cache.clock;
+    cache.entries.insert(key, PublicMapFeedCacheEntry { body: Arc::from(body), content_type, last_used: clock });
+    if cache.entries.len() > PUBLIC_MAP_FEED_CACHE_MAX_ENTRIES {
+        if let Some(oldest) = cache.entries.iter().min_by_key(|(_, entry)| entry.last_used).map(|(key, _)| key.clone()) { cache.entries.remove(&oldest); }
+    }
+}
+fn public_map_feed_response(headers: &HeaderMap, entry: PublicMapFeedCacheEntry, release_id: &str, profile: &str, manifest_sha256: &str, suppression_generation: i64) -> Response<axum::body::Body> {
+    let etag = release_manifest_etag(manifest_sha256, suppression_generation);
+    let cache_control = HeaderValue::from_static("public, max-age=0, must-revalidate");
+    let mut builder = Response::builder().header(axum::http::header::ETAG, etag).header(axum::http::header::CACHE_CONTROL, cache_control).header("x-uec-release-id", release_id).header("x-uec-profile", profile).header("x-uec-manifest-sha256", manifest_sha256).header("x-uec-suppression-generation", suppression_generation.to_string());
+    if if_none_match(headers, &release_manifest_etag(manifest_sha256, suppression_generation)) { builder = builder.status(StatusCode::NOT_MODIFIED); return builder.body(axum::body::Body::empty()).expect("map feed 304 response is valid"); }
+    builder.status(StatusCode::OK).header(axum::http::header::CONTENT_TYPE, entry.content_type).body(axum::body::Body::from(entry.body.to_string())).expect("map feed response is valid")
+}
 
 /// Return the small, public, release-pinned point projection used by the
 /// native GeoJSON map. It reads the same live-gated view as the V2 API and
@@ -308,6 +343,11 @@ pub async fn get_v2_public_map_feed_handler(
     if !valid_public_release_id(release_id) {
         return v2_error(StatusCode::BAD_REQUEST, "invalid_release_id", "release_id is invalid");
     }
+    let compact = match params.format.as_deref() {
+        None | Some("geojson") => false,
+        Some("compact") => true,
+        _ => return v2_error(StatusCode::BAD_REQUEST, "invalid_format", "format is unsupported"),
+    };
     let Some(pool) = state.database else {
         return v2_error(StatusCode::SERVICE_UNAVAILABLE, "database_not_configured", "V2 database is not configured");
     };
@@ -354,6 +394,18 @@ pub async fn get_v2_public_map_feed_handler(
         Ok(row) => row.get(0),
         Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "suppression_generation_unavailable", "current publication eligibility unavailable"),
     };
+    let cache_key = format!("v1|{}|{}|{}|{}|{}", profile, release_id, manifest_sha256, suppression_generation, if compact { "compact" } else { "geojson" });
+    if let Some(entry) = public_map_feed_cache_get(&cache_key) {
+        if transaction.commit().await.is_err() { return v2_error(StatusCode::SERVICE_UNAVAILABLE, "database_transaction_failed", "V2 database transaction failed"); }
+        return public_map_feed_response(&headers, entry, release_id, profile, &manifest_sha256, suppression_generation);
+    }
+    // One request constructs a given public identity. Waiters still performed
+    // the live check above, then reuse the exact identity-keyed bytes.
+    let _build_guard = PUBLIC_MAP_FEED_BUILD_LOCK.lock().await;
+    if let Some(entry) = public_map_feed_cache_get(&cache_key) {
+        if transaction.commit().await.is_err() { return v2_error(StatusCode::SERVICE_UNAVAILABLE, "database_transaction_failed", "V2 database transaction failed"); }
+        return public_map_feed_response(&headers, entry, release_id, profile, &manifest_sha256, suppression_generation);
+    }
     let rows = match transaction.query(
         r#"
         WITH current_facilities AS MATERIALIZED (
@@ -455,7 +507,50 @@ pub async fn get_v2_public_map_feed_handler(
             .body(axum::body::Body::empty())
             .expect("map feed 304 response is valid");
     }
-    Response::builder()
+    let data = if compact {
+        let mut source_ids = Vec::<String>::new();
+        let mut category_keys = Vec::<String>::new();
+        let mut precisions = Vec::<String>::new();
+        let mut source_index = HashMap::<String, usize>::new();
+        let mut category_index = HashMap::<String, usize>::new();
+        let mut precision_index = HashMap::<String, usize>::new();
+        let intern = |value: String, values: &mut Vec<String>, indexes: &mut HashMap<String, usize>| {
+            if let Some(index) = indexes.get(&value) { *index } else {
+                let index = values.len(); values.push(value.clone()); indexes.insert(value, index); index
+            }
+        };
+        let compact_features = rows.iter().filter_map(|row| {
+            let facility_id = row.get::<_, Option<uuid::Uuid>>(2)?;
+            let source = intern(row.get::<_, String>(6), &mut source_ids, &mut source_index);
+            let category = intern(row.get::<_, String>(7), &mut category_keys, &mut category_index);
+            let precision = intern(row.get::<_, String>(5), &mut precisions, &mut precision_index);
+            let categories = row.get::<_, Vec<String>>(8).into_iter().map(|value| intern(value, &mut category_keys, &mut category_index)).collect::<Vec<_>>();
+            Some(json!([facility_id, row.get::<_, f64>(3), row.get::<_, f64>(4), source, category, categories, precision]))
+        }).collect::<Vec<_>>();
+        json!({"format":"compact-v1", "dictionaries":{"source_ids":source_ids,"category_keys":category_keys,"precisions":precisions}, "features":compact_features})
+    } else {
+        json!({"type": "FeatureCollection", "features": features})
+    };
+    let body = Json(json!({
+            "api_version": "v2",
+            "data": data,
+            "meta": {
+                "profile": profile,
+                "release_id": release_id,
+                "manifest_sha256": manifest_sha256,
+                "suppression_generation": suppression_generation,
+                "dataset_version": manifest.get("dataset_version").and_then(Value::as_str),
+                "release_label": manifest.get("release_label").and_then(Value::as_str),
+                "public_record_count": public_record_count,
+                "feature_count": feature_count,
+                "unmapped_count": unmapped_count
+            }
+        })).to_string();
+    let content_type = if compact { "application/json" } else { "application/geo+json" };
+    public_map_feed_cache_put(cache_key, body, content_type);
+    let entry = public_map_feed_cache_get(&format!("v1|{}|{}|{}|{}|{}", profile, release_id, manifest_sha256, suppression_generation, if compact { "compact" } else { "geojson" })).expect("inserted public map cache entry is available");
+    public_map_feed_response(&headers, entry, release_id, profile, &manifest_sha256, suppression_generation)
+    /*Response::builder()
         .status(StatusCode::OK)
         .header(axum::http::header::CONTENT_TYPE, "application/geo+json")
         .header(axum::http::header::ETAG, etag)
@@ -466,7 +561,7 @@ pub async fn get_v2_public_map_feed_handler(
         .header("x-uec-suppression-generation", suppression_generation.to_string())
         .body(axum::body::Body::from(Json(json!({
             "api_version": "v2",
-            "data": {"type": "FeatureCollection", "features": features},
+            "data": data,
             "meta": {
                 "profile": profile,
                 "release_id": release_id,
@@ -479,7 +574,7 @@ pub async fn get_v2_public_map_feed_handler(
                 "unmapped_count": unmapped_count
             }
         })).to_string()))
-        .expect("map feed response is valid")
+        .expect("map feed response is valid")*/
 }
 
 fn valid_public_release_id(value: &str) -> bool {
@@ -3503,7 +3598,9 @@ pub async fn get_v2_locations_handler(
         );
     }
     let limit = match params.limit.as_deref().map(str::parse::<i64>).transpose() {
-        Ok(value) => value.unwrap_or(100).clamp(1, 1000),
+        Ok(None) => 25,
+        Ok(Some(value @ (25 | 50 | 100))) => value,
+        Ok(Some(_)) => return v2_error(StatusCode::BAD_REQUEST, "invalid_limit", "limit must be 25, 50, or 100"),
         Err(_) => {
             return v2_error(
                 StatusCode::BAD_REQUEST,
@@ -3610,7 +3707,32 @@ pub async fn get_v2_locations_handler(
             "public discovery read model is missing or stale",
         );
     }
+    // Keep the total scoped to exactly the same eligible release and filters
+    // as the page. It is deliberately not the size of a client-loaded page.
     let query_limit = limit + 1;
+    let total_count: i64 = match transaction.query_one(r#"
+        SELECT count(DISTINCT history.facility_id)::bigint
+        FROM uec.map_facilities_public_discovery_read_model AS history
+        LEFT JOIN LATERAL (
+          SELECT array_agg(DISTINCT a.primary_key) FILTER (WHERE a.primary_key IS NOT NULL) AS primary_categories,
+                 COALESCE(jsonb_agg(DISTINCT jsonb_build_object('key',a.leaf_key,'label',a.leaf_label)) FILTER (WHERE a.leaf_key IS NOT NULL AND a.leaf_label IS NOT NULL AND a.mapping_method IN ('direct','derived') AND a.mapping_status IN ('mapped','partial')), '[]'::jsonb) AS leaf_activities,
+                 COALESCE(jsonb_agg(DISTINCT jsonb_build_object('primary_key',a.primary_key,'leaf_key',a.leaf_key,'leaf_label',a.leaf_label,'source_code_reference',a.source_code_reference,'source_label_reference',a.source_label_reference,'source_code',a.source_code,'source_label',a.source_label,'method',a.mapping_method,'status',a.mapping_status,'taxonomy_version',s.taxonomy_version,'crosswalk_version',s.crosswalk_version,'ruleset_version',s.ruleset_version)) FILTER (WHERE a.assignment_set_id IS NOT NULL), '[]'::jsonb) AS assignments
+          FROM uec.observation_taxonomy_assignment_sets s
+          LEFT JOIN uec.observation_taxonomy_assignments a ON a.assignment_set_id=s.assignment_set_id
+          WHERE s.observation_id=history.observation_id AND s.taxonomy_version='uec-taxonomy-v1'
+            AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=s.observation_id AND newer.taxonomy_version=s.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(s.created_at,s.assignment_set_id))
+        ) taxonomy ON TRUE
+        WHERE history.release_id = $1
+          AND ($3::text IS NULL OR history.country_code = $3) AND ($4::text IS NULL OR history.city = $4)
+          AND ($5::text IS NULL OR history.classification_category = $5) AND ($6::text IS NULL OR history.display_precision = $6)
+          AND ($7::text IS NULL OR history.lifecycle_status = $7) AND ($8::text IS NULL OR history.provenance_origin_type = $8)
+          AND ($9::text IS NULL OR lower(coalesce(history.canonical_name, '') || ' ' || coalesce(history.city, '') || ' ' || history.country_code || ' ' || history.classification_category || ' ' || coalesce(history.provenance_source_name, '') || ' ' || coalesce(taxonomy.leaf_activities::text, '') || ' ' || coalesce(taxonomy.assignments::text, '')) LIKE '%' || lower($9) || '%' ESCAPE '\\')
+          AND ($10::double precision IS NULL OR (history.display_location && ST_MakeEnvelope($10, $11, $12, $13, 4326)::geography AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($10, $11, $12, $13, 4326))))
+          AND ($14::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($15, $16), 4326)::geography, $14 * 1000))
+          AND ($19::text[] IS NULL OR taxonomy.primary_categories && $19)
+    "#, &[&promoted_release_id, &cursor, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &query_limit, &effective_offset, &category_keys]).await {
+        Ok(row) => row.get(0), Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
+    };
     let rows = match transaction.query(r#"
         SELECT DISTINCT ON (history.facility_id) history.facility_id, history.canonical_name, history.country_code, history.city, history.classification_category, history.display_precision,
                history.factual_review_status, history.privacy_screening_status, history.maintainer_approval, history.reviewer_role,
@@ -3710,6 +3832,7 @@ pub async fn get_v2_locations_handler(
         "schema_version": "uec-location-projection-v1",
         "release_created_at": promoted_created_at,
         "profile": promoted_profile,
+        "total_count": total_count,
         "next_cursor": next_cursor,
         "coverage_note": "Results are eligible public facility projection rows from the selected promoted release after current suppression; they are not story-wide or animal counts.",
         "coverage_scope": "selected_promoted_release_public_facilities",
@@ -3937,10 +4060,10 @@ mod v2_api_tests {
             dev_test_release_token: None,
         };
         for (params, expected) in [
-            (PublicMapFeedParams { profile: Some("private".into()), release_id: Some("r1".into()) }, StatusCode::BAD_REQUEST),
-            (PublicMapFeedParams { profile: None, release_id: None }, StatusCode::BAD_REQUEST),
-            (PublicMapFeedParams { profile: None, release_id: Some("../private".into()) }, StatusCode::BAD_REQUEST),
-            (PublicMapFeedParams { profile: None, release_id: Some("r1".into()) }, StatusCode::SERVICE_UNAVAILABLE),
+            (PublicMapFeedParams { profile: Some("private".into()), release_id: Some("r1".into()), format: None }, StatusCode::BAD_REQUEST),
+            (PublicMapFeedParams { profile: None, release_id: None, format: None }, StatusCode::BAD_REQUEST),
+            (PublicMapFeedParams { profile: None, release_id: Some("../private".into()), format: None }, StatusCode::BAD_REQUEST),
+            (PublicMapFeedParams { profile: None, release_id: Some("r1".into()), format: None }, StatusCode::SERVICE_UNAVAILABLE),
         ] {
             let response = get_v2_public_map_feed_handler(
                 axum::extract::State(state()),
