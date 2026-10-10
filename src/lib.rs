@@ -2875,7 +2875,7 @@ pub async fn get_dev_test_release_map_feed_handler(
     };
     let Ok(client) = pool.get().await else { return real_preview_unavailable(); };
     let release = match client.query_opt(
-        "SELECT summary->>'freeze_sha256' FROM uec.releases WHERE release_id=$1 AND status='candidate' AND (test_only=true OR summary->>'candidate_only'='true')",
+        "SELECT md5(COALESCE(summary::text,'') || ':' || ruleset_version) FROM uec.releases WHERE release_id=$1 AND status='candidate' AND (test_only=true OR summary->>'candidate_only'='true')",
         &[&release_id],
     ).await {
         Ok(row) => row,
@@ -2910,13 +2910,13 @@ pub async fn get_dev_test_release_map_feed_handler(
               AND sr.source_state NOT IN ('rejected','superseded')
               AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted x WHERE x.source_record_id=o.source_record_id)
               AND COALESCE(o.coordinate, city.reference_location) IS NOT NULL
-            ORDER BY m.facility_id LIMIT 10001"#,
+            ORDER BY m.facility_id LIMIT 250001"#,
         &[&release_id],
     ).await {
         Ok(rows) => rows,
         Err(_) => return real_preview_unavailable(),
     };
-    if rows.len() > 10_000 {
+    if rows.len() > 250_000 {
         return v2_error(StatusCode::PAYLOAD_TOO_LARGE, "candidate_map_too_large", "candidate map exceeds its feature limit");
     }
     let points = rows.into_iter().map(|row| {
