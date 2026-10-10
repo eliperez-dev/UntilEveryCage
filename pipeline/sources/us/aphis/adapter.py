@@ -11,9 +11,12 @@ import csv
 import hashlib
 import io
 import json
+import re
+import zipfile
 from collections import Counter
 from pathlib import Path
 from typing import Any
+from xml.etree import ElementTree as ET
 
 from pipeline.contracts.adapter_contract import SourceArtifact
 from pipeline.contracts.source_lifecycle import atomic_json, atomic_jsonl, private_manifest
@@ -27,6 +30,14 @@ PROFILES = {
     "annual_reports": ("Account Name", "Certificate Number", "Registration Type", "Year"),
     "inspections": ("Account Name", "Certificate Number", "Certificate Status"),
 }
+
+# The official active-register workbook intentionally has a title block before
+# its table.  Do not treat the first populated row as a header: locate this
+# exact public table schema instead and fail closed on a drift.
+ACTIVE_REGISTER_HEADERS = (
+    "License Type", "APHIS License Number", "Account Name", "DBA Name(s)",
+    "Mailing City", "State Abbreviation", "Expiration Date",
+)
 
 # The current Public Search Tool's annual-report export is intentionally a
 # compact animal-use table: it omits the registrant/status columns that appear
@@ -75,7 +86,90 @@ def _schema_fingerprint(headers: tuple[str, ...]) -> str:
     return hashlib.sha256(json.dumps(headers, separators=(",", ":")).encode()).hexdigest()
 
 
+def _xlsx_column(reference: str) -> int:
+    match = re.fullmatch(r"([A-Z]+)[0-9]+", reference)
+    if match is None:
+        raise AphisContractError("malformed XLSX cell reference")
+    value = 0
+    for character in match.group(1):
+        value = value * 26 + ord(character) - 64
+    return value - 1
+
+
+def _read_active_register_xlsx(content: bytes) -> tuple[tuple[str, ...], list[dict[str, Any]]]:
+    """Read the source-local active-register table without coercing IDs.
+
+    This deliberately supports only a normal OOXML workbook, shared strings,
+    inline strings, and the explicit APHIS header row.  It neither infers cell
+    types nor accepts a near-match schema.
+    """
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as archive:
+            names = set(archive.namelist())
+            if "xl/workbook.xml" not in names or "xl/_rels/workbook.xml.rels" not in names:
+                raise AphisContractError("unsupported active-register XLSX workbook")
+            shared: list[str] = []
+            if "xl/sharedStrings.xml" in names:
+                shared_root = ET.fromstring(archive.read("xl/sharedStrings.xml"))
+                shared = ["".join(node.itertext()) for node in shared_root.findall(".//{*}si")]
+            workbook = ET.fromstring(archive.read("xl/workbook.xml"))
+            relationships = ET.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
+            relmap = {item.attrib.get("Id"): item.attrib.get("Target") for item in relationships}
+            sheet = next(iter(workbook.findall(".//{*}sheet")), None)
+            if sheet is None:
+                raise AphisContractError("active-register workbook has no worksheet")
+            relation = sheet.attrib.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id")
+            target = relmap.get(relation)
+            if not target:
+                raise AphisContractError("active-register workbook sheet relationship missing")
+            sheet_path = target.lstrip("/")
+            if not sheet_path.startswith("xl/"):
+                sheet_path = "xl/" + sheet_path
+            sheet_root = ET.fromstring(archive.read(sheet_path))
+            matrix: list[tuple[int, list[str]]] = []
+            for row in sheet_root.findall(".//{*}sheetData/{*}row"):
+                cells: dict[int, str] = {}
+                for cell in row.findall("{*}c"):
+                    column = _xlsx_column(cell.attrib.get("r", ""))
+                    kind = cell.attrib.get("t")
+                    if kind == "inlineStr":
+                        value = "".join(cell.itertext())
+                    else:
+                        node = cell.find("{*}v")
+                        value = "" if node is None else (node.text or "")
+                        if kind == "s" and value:
+                            value = shared[int(value)]
+                    cells[column] = value
+                if cells:
+                    matrix.append((int(row.attrib.get("r", "0")), [cells.get(index, "") for index in range(max(cells) + 1)]))
+    except (IndexError, KeyError, ValueError, ET.ParseError, zipfile.BadZipFile) as error:
+        raise AphisContractError("malformed or unsupported active-register XLSX workbook") from error
+    header_match = next((
+        (index, values.index(ACTIVE_REGISTER_HEADERS[0]))
+        for index, (_, values) in enumerate(matrix)
+        if any(tuple(values[start:start + len(ACTIVE_REGISTER_HEADERS)]) == ACTIVE_REGISTER_HEADERS
+               for start in range(len(values)))
+    ), None)
+    if header_match is None:
+        raise AphisContractError("active-register XLSX schema drift")
+    header_index, start_column = header_match
+    headers = ACTIVE_REGISTER_HEADERS
+    rows: list[dict[str, Any]] = []
+    for _, values in matrix[header_index + 1:]:
+        values = values[start_column:start_column + len(headers)]
+        values = values + [""] * max(0, len(headers) - len(values))
+        if any(_clean(value) for value in values):
+            if len(values) != len(headers):
+                raise AphisContractError("active-register XLSX row width drift")
+            rows.append(dict(zip(headers, values)))
+    if not rows:
+        raise AphisContractError("active-register XLSX contains no data rows")
+    return headers, rows
+
+
 def _read(content: bytes) -> tuple[tuple[str, ...], list[dict[str, Any]]]:
+    if content.startswith(b"PK\x03\x04"):
+        return _read_active_register_xlsx(content)
     try:
         text = content.decode("utf-8-sig")
         reader = csv.DictReader(io.StringIO(text, newline=""), strict=True)
@@ -105,6 +199,8 @@ def _unsupported() -> str:
 
 
 def _profile(headers: tuple[str, ...]) -> str:
+    if headers == ACTIVE_REGISTER_HEADERS:
+        return "registrations"
     if set(CURRENT_ANNUAL_REQUIRED).issubset(headers):
         return "annual_reports"
     if set(CURRENT_INSPECTION_REQUIRED).issubset(headers):
@@ -138,6 +234,10 @@ def _certificate_or_customer(row: dict[str, Any]) -> str | None:
     return certificate or customers["customer_number"] or customers["customer_number_y"] or customers["customer_number_x"]
 
 
+def _registration_identity(row: dict[str, Any]) -> str | None:
+    return _clean(row.get("APHIS License Number")) or _certificate_or_customer(row)
+
+
 def _year(row: dict[str, Any]) -> str | None:
     return _clean(row.get("Year"))
 
@@ -166,11 +266,12 @@ def _native_inspection_id(row: dict[str, Any]) -> str | None:
 
 def _provisional_event_key(profile: str, row: dict[str, Any]) -> str | None:
     """Return the source-native event key retained for review and tracing."""
-    identity = _certificate_or_customer(row)
+    identity = _registration_identity(row) if profile == "registrations" else _certificate_or_customer(row)
     if not identity:
         return None
     customers = _customer_values(row)
     parts = [
+        f"aphis_license={_clean(row.get('APHIS License Number')) or 'unknown'}",
         f"certificate={_clean(row.get('Certificate Number')) or 'unknown'}",
         f"customer={customers['customer_number'] or 'unknown'}",
         f"customer_x={customers['customer_number_x'] or 'unknown'}",
@@ -262,6 +363,7 @@ def _record(profile: str, row: dict[str, Any], line: int) -> dict[str, Any]:
             "customer_number_x": customers["customer_number_x"],
             "customer_number_y": customers["customer_number_y"],
             "inspection_report_id": native_inspection_id,
+            "aphis_license_number": _clean(row.get("APHIS License Number")),
         }.items() if value
     }
     animal_use_fields = tuple(sorted(key for key, value in row.items() if key not in NON_ANIMAL_COLUMNS and _clean(value)))
@@ -298,6 +400,11 @@ def _record(profile: str, row: dict[str, Any], line: int) -> dict[str, Any]:
         "evidence_type": evidence_type,
         "profile": profile,
         "account_name": _clean(row.get("Account Name")) or _clean(row.get("Site Name")) or _clean(row.get("Legal Name")),
+        "canonical_name": _clean(row.get("Account Name")),
+        "dba_names": [item.strip() for item in (_clean(row.get("DBA Name(s)")) or "").split(";") if item.strip()],
+        "mailing_city": _clean(row.get("Mailing City")),
+        "mailing_state": _clean(row.get("State Abbreviation")),
+        "expiration_date": _clean(row.get("Expiration Date")),
         "certificate_number": certificate,
         "customer_number": customer,
         "customer_number_x": customers["customer_number_x"],
@@ -352,7 +459,10 @@ class AphisPublicSearchAdapter:
         for record, row in zip(records, rows):
             normalized = record["normalized"]
             reasons: list[str] = []
-            if not _certificate_or_customer(row):
+            if profile == "registrations":
+                if not _registration_identity(row):
+                    reasons.append("missing_source_registration_id")
+            elif not _certificate_or_customer(row):
                 reasons.append("missing_certificate_or_customer_id")
             if normalized["source_observation_key"] in duplicates:
                 reasons.append("duplicate_observation_id")

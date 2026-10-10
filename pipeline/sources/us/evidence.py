@@ -25,14 +25,23 @@ SOURCES: dict[str, dict[str, Any]] = {
     "us.aphis": {
         "profile": "registrations",
         "fixture": ROOT / "aphis" / "fixtures" / "registrations.csv",
-        "source_url": CONFIG["public_search_url"],
-        "adapter_version": CONFIG["adapter_version"] + "-evidence",
+        "source_url": CONFIG["active_register_url"],
+        "adapter_version": "us-aphis-active-register-v1",
+        "source_kind": "facility_master",
     },
     "us.inspections": {
         "profile": "inspections",
         "fixture": ROOT / "aphis" / "fixtures" / "inspections.csv",
         "source_url": CONFIG["inspection_reports_url"],
         "adapter_version": CONFIG["adapter_version"] + "-inspection-evidence",
+        "source_kind": "evidence_event",
+    },
+    "us.aphis.annual-reports": {
+        "profile": "annual_reports",
+        "fixture": ROOT / "aphis" / "fixtures" / "annual_reports.csv",
+        "source_url": CONFIG["annual_reports_url"],
+        "adapter_version": "us-aphis-annual-evidence-v1",
+        "source_kind": "evidence_event",
     },
 }
 
@@ -47,6 +56,7 @@ class EvidenceEventAdapter:
         self.source_id = source_id
         self.config = SOURCES[source_id]
         self.adapter_version = self.config["adapter_version"]
+        self.source_kind = str(self.config["source_kind"])
 
     def _artifact(self, path: Path, options: Mapping[str, Any]) -> SourceArtifact:
         raw = path.read_bytes()
@@ -118,9 +128,11 @@ class EvidenceEventAdapter:
         })
         atomic_json(run_dir / "manifest.json", manifest)
         handoff = write_private_handoff(
-            run_dir / "evidence-handoff", accepted, source_artifact,
+            run_dir / ("candidate-handoff" if self.source_kind == "facility_master" else "evidence-handoff"), accepted, source_artifact,
             profile=self.config["profile"], source_sha256=source_artifact.sha256,
-            source_id=self.source_id, entity_scope="evidence_event", graph_candidate_emission=True,
+            source_id=self.source_id,
+            entity_scope="facility_master" if self.source_kind == "facility_master" else "evidence_event",
+            graph_candidate_emission=False,
         )
         return {
             "source_kind": self.source_kind,
@@ -141,8 +153,13 @@ class EvidenceEventAdapter:
     def _reidentify(self, record: dict[str, Any]) -> dict[str, Any]:
         # The parser is source-owned and emits us.aphis.  The runner contract
         # keeps us.inspections distinct without inventing a cross-source ID.
-        if self.source_id == "us.aphis":
-            return record
+        if self.source_id in {"us.aphis", "us.aphis.annual-reports"}:
+            if self.source_id == "us.aphis":
+                return record
+            value = json.loads(json.dumps(record))
+            value["source_id"] = self.source_id
+            value["normalized"]["source_id"] = self.source_id
+            return value
         value = json.loads(json.dumps(record))
         value["source_id"] = self.source_id
         value["normalized"]["source_id"] = self.source_id
@@ -158,10 +175,11 @@ def register_evidence_sources(catalog: Any) -> None:
             AdapterCapabilities(
                 source_id=source_id, adapter_version=config["adapter_version"],
                 schema_version=EvidenceEventAdapter.schema_version,
-                acquisition="assisted_only", geocoding="disabled",
+                acquisition="bounded_private_fetch" if source_id == "us.aphis" else "assisted_only", geocoding="disabled",
                 publication="human_gate_required", adapter_path="pipeline/sources/us/evidence.py",
-                country_code="us", source_kind="evidence_event",
-                operational_classification="assisted", live_callable=False,
+                country_code="us", source_kind=str(config["source_kind"]),
+                operational_classification="live" if source_id == "us.aphis" else "assisted",
+                live_callable=source_id == "us.aphis",
             ),
         )
 

@@ -213,18 +213,18 @@
       "config_version": "nvwa-approved-food-config-v1"
     },
     "us.aphis": {
-      "enabled": false,
-      "runtime_classification": "fixture-only",
-      "activation": "explicit-source-specific-private-import-only",
+      "enabled": true,
+      "runtime_classification": "production-e2e-private-candidate",
+      "activation": "shared-private-registration-import",
       "public_release": false,
-      "runner": "pipeline.scripts.maintenance.import-aphis-research-preview",
+      "runner": "pipeline.refresh_private:us.aphis",
       "terms_decision": "operator-review-required",
       "freshness_max_days": 14,
-      "expected_artifacts": ["APHIS Public Search Tool registrations CSV"],
-      "allowed_preview_fields": ["establishment_id", "facility_identity_state", "country_code", "city", "state", "postal_code", "source_classification_code", "source_classification_label", "source_activity", "aphis_registration_class", "source_status", "status_date", "source_native_ids", "address_state", "coordinates", "coordinate_state", "privacy_gate", "coordinate_gate", "publication_gate", "source_scope_eligibility"],
-      "display_policy": {"kind": "unmapped_private_observation", "precision": "no-source-coordinates", "disclosure": "APHIS Class R Research Facility registration evidence only. This bounded private preview retains source-native registration/status and restricted address evidence, but does not assert an operating laboratory or a complete national research-facility registry. No source coordinates, public release, or project approval."},
-      "adapter_version": "us-aphis-candidate-v3",
-      "schema_version": "us-aphis-public-search-v2"
+      "expected_artifacts": ["APHIS active licensees and registrants XLSX"],
+      "allowed_preview_fields": ["establishment_id", "facility_identity_state", "country_code", "city", "state", "canonical_name", "dba_names", "source_classification_code", "source_classification_label", "source_activity", "aphis_registration_class", "source_status", "source_native_ids", "expiration_date", "address_state", "coordinates", "coordinate_state", "privacy_gate", "coordinate_gate", "publication_gate", "source_scope_eligibility"],
+      "display_policy": {"kind": "unmapped_private_observation", "precision": "no-source-coordinates", "disclosure": "APHIS active registration directory evidence across source-native license classes. Mailing city/state are not operating-site evidence; no source coordinates, public release, or project approval."},
+      "adapter_version": "us-aphis-active-register-v1",
+      "schema_version": "us-aphis-active-register-xlsx-v1"
     },
     "us.fsis": {
       "enabled": true,
