@@ -9,7 +9,6 @@
   } from "../../contract";
   import type { RealPreviewFacet } from "../../../api/RealPreviewRepository";
   import MapSurface from "../../components/MapSurface.svelte";
-  import WorldLocator from "../../components/WorldLocator.svelte";
   import RecordList from "../../components/RecordList.svelte";
   import RecordDetail from "../../../app/RecordDetail.svelte";
   import PreviewMasthead from "../../../app/PreviewMasthead.svelte";
@@ -101,6 +100,19 @@
     ),
   );
   const resultCount = $derived(aggregateRecords.length);
+  const railWidth = writable(420);
+  function resizeRail(event: PointerEvent) {
+    const startX = event.clientX;
+    const startWidth = $railWidth;
+    const resize = (move: PointerEvent) => { railWidth.set(Math.max(300, Math.min(Math.floor(window.innerWidth * 0.55), startWidth + move.clientX - startX))); };
+    const stop = () => { window.removeEventListener('pointermove', resize); window.removeEventListener('pointerup', stop); };
+    window.addEventListener('pointermove', resize); window.addEventListener('pointerup', stop, { once: true });
+  }
+  function resizeRailKey(event: KeyboardEvent) {
+    if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+      event.preventDefault(); railWidth.update(width => Math.max(300, Math.min(Math.floor(window.innerWidth * 0.55), width + (event.key === 'ArrowRight' ? 24 : -24))));
+    }
+  }
   const active = $derived(
     mode === "synthetic"
       ? state.filters.categories.length + state.filters.precisions.length
@@ -361,11 +373,8 @@
 
 <svelte:window onkeydown={onKeydown} />
 <section class="field-view">
-  <PreviewMasthead privateTools={mode === "real-preview"} current="map" {mapHref} {databaseHref} debugEnabled={$debugEnabled} ondebugchange={(enabled) => { debugEnabled.set(enabled); if (!enabled) debugOpen.set(false); }} />
+  <PreviewMasthead privateTools={mode === "real-preview"} publicReleaseLabel={publicMapMeta?.releaseLabel ?? null} current="map" {mapHref} {databaseHref} debugEnabled={$debugEnabled} ondebugchange={(enabled) => { debugEnabled.set(enabled); if (!enabled) debugOpen.set(false); }} />
   <section class="map-stage" aria-label="Investigative map field">
-    {#if mode === "public-release" && publicMapMeta}<aside class="public-release-summary" aria-label="Public release coverage">
-      <strong>{publicMapMeta.releaseLabel}</strong><span>{publicMapMeta.publicRecordCount.toLocaleString()} eligible records</span><span>{publicMapMeta.featureCount.toLocaleString()} mapped · {publicMapMeta.unmappedCount.toLocaleString()} unmapped</span>
-    </aside>{/if}
     {#if mode === "synthetic" && state.scenario === "loading"}<div class="status" role="status">
         Loading records…
       </div>{:else if mode === "synthetic" && state.scenario === "error"}<div
@@ -397,12 +406,6 @@
         onviewport={(value) => dispatch({ type: "viewport", value })}
         onbounds={(bounds) => onViewportBounds?.(bounds)}
       />{/if}
-    {#if mode !== "synthetic" && dataStatus === "loading"}<div
-        class="status"
-        role="status"
-      >
-        Loading search results…
-      </div>{/if}
     {#if (mode === "synthetic" && (state.scenario === "empty" || (state.scenario !== "loading" && state.scenario !== "error" && records.length === 0))) || (mode !== "synthetic" && dataStatus === "empty")}<div
         class="status"
         role="status"
@@ -430,11 +433,13 @@
       ><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg><span class="search-toggle-copy"><strong>Search map</strong><small>{state.query || state.sourceId ? "Search or filters active" : "Places, facilities, sources"}</small></span></button>{/if}
     {#if state.listOpen}<aside
         class="results"
+        style:width={`min(${$railWidth}px, calc(100% - 2rem))`}
         id="field-record-list"
         aria-label={aggregateOpen
           ? "Aggregate member records"
           : "Search, filters, and results"}
       >
+        <button class="rail-resize" type="button" aria-label="Resize search panel" title="Use left and right arrows to resize" onpointerdown={resizeRail} onkeydown={resizeRailKey}></button>
         <header>
           <strong>Search records</strong><button
             type="button"
@@ -605,7 +610,7 @@
           >Open member records</button
         >
       </aside>{/if}
-    <div class="world-position" hidden={$debugOpen || coverageOpen}><WorldLocator latitude={state.viewport.centerLat} longitude={state.viewport.centerLon} basemap={state.basemap} onbasemap={(value) => dispatch({ type: "basemap", value })} /></div>
+    <label class="basemap-picker">Map style<select aria-label="Map style" value={state.basemap} onchange={(event) => dispatch({ type: 'basemap', value: event.currentTarget.value as typeof state.basemap })}><option value="vector">Street</option><option value="satellite">Satellite</option><option value="muted">Muted</option></select></label>
   </section>
 </section>
 
@@ -731,14 +736,13 @@
     position: absolute;
     inset: 4.8rem 0 0;
   }
-  .public-release-summary{position:absolute;z-index:5;bottom:.55rem;left:50%;display:flex;flex-wrap:wrap;justify-content:center;gap:.35rem .8rem;max-width:calc(100vw - 2rem);padding:.35rem .65rem;border:1px solid #48504b;background:#171a18eF;color:#d9ded5;font:.64rem/1.3 system-ui;transform:translateX(-50%);text-align:center}.public-release-summary strong{color:#f1efe8}
   .map-stage :global(.map-surface),
   .map-stage :global(.map-host) {
     position: absolute;
     inset: 0;
   }
-  .world-position { position: absolute; z-index: 3; right: 0.5rem; bottom: 1.65rem; }
-  .map-stage:has(.reading-sheet) .world-position { display: none; }
+  .basemap-picker { position:absolute; z-index:3; right:.65rem; top:.65rem; display:grid; gap:.2rem; padding:.38rem .45rem; border:1px solid var(--line); background:#171a18eF; color:var(--muted); font:.62rem system-ui; }
+  .basemap-picker select { min-width:6.4rem; border:0; background:#202421; color:var(--ink); font:inherit; }
   .status {
     position: absolute;
     z-index: 4;
@@ -773,6 +777,9 @@
     border: 1px solid var(--line);
     background: #171a18;
   }
+  .rail-resize { position:absolute; z-index:2; top:0; right:-.45rem; bottom:0; width:.9rem; padding:0; border:0; background:transparent; cursor:ew-resize; }
+  .rail-resize::after { content:""; position:absolute; top:45%; left:.34rem; width:2px; height:2.5rem; background:#9ba99b; opacity:.65; }
+  .rail-resize:focus-visible { outline:2px solid #eee7d6; outline-offset:2px; }
   .map-stage:has(.results):has(.reading-sheet) .results { width:min(31rem, calc(50% - 1.5rem)); }
   .map-stage:has(.results):has(.reading-sheet) .reading-sheet { width:min(25rem, calc(50% - 1.5rem)); }
   .results header {
@@ -935,13 +942,7 @@
   @media (max-width: 40rem) {
     .map-stage { inset: 4.8rem 0 0; }
     .search-toggle { top: 0.65rem; left: 0.65rem; }
-    .results {
-      top: 0.65rem;
-      right: 0.65rem;
-      bottom: 3rem;
-      left: 0.65rem;
-      width: auto;
-    }
+    .results { top:auto; right:0; bottom:0; left:0; width:auto !important; max-height:min(62dvh, 34rem); }
     .reading-sheet {
       top: auto;
       right: 0.65rem;
@@ -954,10 +955,8 @@
     .map-stage:has(.results):has(.reading-sheet) .results { display:none; }
     .map-stage:has(.results):has(.reading-sheet) .reading-sheet { width:auto; }
     .map-stage:has(.reading-sheet) .search-toggle { display: none; }
-    .world-position { bottom: 7.5rem; right: 0.4rem; }
-    .map-stage:has(.results) .world-position { display: none; }
-    /* Header menus take precedence over the Map lens on a narrow screen. */
-    :global(body:has(.masthead .header-menu) .world-position) { display:none; }
+    .basemap-picker { top:auto; right:.4rem; bottom:2.6rem; }
+    .rail-resize { display:none; }
     .search-tools { grid-template-columns:1fr; }
     .filters { width:100%; }
     .filters summary { justify-content:flex-start; }

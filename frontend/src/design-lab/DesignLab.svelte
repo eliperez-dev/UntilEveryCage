@@ -5,7 +5,7 @@
   import { createLabViewModel } from './viewModel';
   import { createRealPreviewRepository, mapRealPreviewCandidate, RealPreviewError, type RealPreviewCounts, type RealPreviewFacet } from '../api/RealPreviewRepository';
   import { LocalLocationRepository } from '../api/LocalLocationRepository';
-  import { PublicReleaseRepository } from '../api/PublicReleaseRepository';
+  import { PublicReleaseRepository, type PublicReleaseIdentity } from '../api/PublicReleaseRepository';
   import type { Location } from '../domain/location';
   import { CATEGORY_PRESENTATIONS } from '../features/locations/categoryPresentation';
   import type { PublicMapFeed } from '../api/PublicMapFeedRepository';
@@ -26,6 +26,7 @@
   const publicReleaseRepository = new PublicReleaseRepository();
   let publicReleaseId: string | null = null;
   let publicReleaseIdentity: string | null = null;
+  let publicReleaseManifestIdentity: PublicReleaseIdentity | null = null;
   let publicMapMeta: PublicMapFeed['meta'] | null = null;
   function mapPublicLocation(location: Location): LabRecord {
     const precision = location.evidence?.displayPrecision ?? 'unmapped';
@@ -39,6 +40,11 @@
       latitude: location.lat,
       longitude: location.lon,
       ...(location.sourceId ? { sourceId: location.sourceId } : {}),
+      ...(location.source ? { sourceName: location.source } : {}),
+      ...(location.evidence?.sourceUrl ? { sourceUrl: location.evidence.sourceUrl } : {}),
+      ...(location.evidence?.retrievedAt ? { retrievedAt: location.evidence.retrievedAt } : {}),
+      ...(location.observed ? { observedAt: location.observed } : {}),
+      ...(location.evidence?.displayPrecision ? { displayPrecision: location.evidence.displayPrecision } : {}),
       ...(location.taxonomy ? { taxonomy: location.taxonomy } : {}),
       ...(location.evidence?.factualReviewStatus ? { factualReviewStatus: location.evidence.factualReviewStatus } : {}),
       ...(location.evidence?.privacyScreeningStatus ? { privacyScreeningStatus: location.evidence.privacyScreeningStatus } : {}),
@@ -220,6 +226,7 @@
       void publicReleaseRepository.current('official', summaryAbort.signal).then(current => {
         if (!summaryAbort?.signal.aborted) {
           publicReleaseId = current?.releaseId ?? null;
+          publicReleaseManifestIdentity = current;
           publicReleaseIdentity = current ? `${current.releaseId}:${current.manifestSha256}:${current.suppressionGeneration}` : null;
           dataStatus = current ? 'loading' : 'empty';
         }
@@ -231,6 +238,7 @@
           const identity = current ? `${current.releaseId}:${current.manifestSha256}:${current.suppressionGeneration}` : null;
           if (identity !== publicReleaseIdentity) {
             publicReleaseId = current?.releaseId ?? null;
+            publicReleaseManifestIdentity = current;
             publicReleaseIdentity = identity;
             apiRecords = []; nextCursor = null; publicMapMeta = null;
             observedSelection = undefined;
@@ -258,10 +266,10 @@
     };
   });
 </script>
-<svelte:head><title>Until Every Cage — Map</title></svelte:head>
+<svelte:head><title>Until Every Cage: Map</title></svelte:head>
 <div class="lab" data-review-sentinel={mode === 'synthetic' ? labSentinel : undefined} data-direction="field" data-scenario={state.scenario} data-data-mode={mode}>
-  <main aria-label="Map preview"><h1 class="sr-only">Investigative map</h1>
-    <Field {state} {coverageOpen} records={mode !== 'synthetic' ? apiRecords : model.listRecords} mapRecords={mode !== 'synthetic' ? [] : model.mapRecords} {mode} {publicReleaseId} {publicReleaseIdentity} {publicMapMeta} onMapFeedMeta={(meta) => { publicMapMeta = meta; }}
+  <div class="map-preview"><h1 class="sr-only">Investigative map</h1>
+    <Field {state} {coverageOpen} records={mode !== 'synthetic' ? apiRecords : model.listRecords} mapRecords={mode !== 'synthetic' ? [] : model.mapRecords} {mode} {publicReleaseId} {publicReleaseIdentity} {publicReleaseManifestIdentity} {publicMapMeta} onMapFeedMeta={(meta) => { publicMapMeta = meta; }}
       dataStatus={dataStatus} {dataError}
       {detailRecord} {detailStatus} {detailError} {nextCursor} {pageLoading}
       {facets} {facetsStatus} {mapDiagnostics} {aggregateMemberRecords} {aggregateNextCursor} {aggregateLoading} {aggregateError} onMapTiming={timing=>{sourceMaterializeMs=timing.sourceMaterializeMs;clusterReadyMs=timing.clusterReadyMs;if(timing.zoomSettleMs!==undefined)zoomSettleMs=timing.zoomSettleMs;}} onLoadMore={() => void loadPage(state.query, false)} onMapReference={(key, refSourceId) => void loadReference(key, true, refSourceId)} onLoadMoreAggregate={() => { if (aggregateReferenceKey) void loadReference(aggregateReferenceKey, false); }} {dispatch}/>
@@ -283,10 +291,10 @@
         </div>{/if}
       </aside>
     {/if}
-  </main>
+  </div>
 </div>
 <style>
-  .lab, main { height: 100dvh; overflow: hidden; }
+  .lab, .map-preview { height: 100dvh; overflow: hidden; }
   .sr-only { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
   .private-counts {
     position: fixed;

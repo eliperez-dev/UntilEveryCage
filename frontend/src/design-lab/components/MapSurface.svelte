@@ -52,7 +52,7 @@
     setRealPreviewPinMode,
   } from "./realPreviewMapLayers";
   import { clearRealPreviewMapCache, createRealPreviewMapFeedRepository, realPreviewMapCacheEntryCount } from "../../api/RealPreviewMapFeedRepository";
-  import { canReusePublicMapFeed, createPublicMapFeedRepository } from "../../api/PublicMapFeedRepository";
+  import { canReusePublicMapFeed, clearPublicMapCache, createPublicMapFeedRepository, publicMapCacheEntryCount } from "../../api/PublicMapFeedRepository";
 
   let {
     records,
@@ -60,6 +60,7 @@
     mode = "synthetic",
     publicReleaseId,
     publicReleaseIdentity,
+    publicReleaseManifestIdentity,
     onMapFeedMeta,
     mapStatus = "idle",
     mapError = "",
@@ -83,6 +84,7 @@
     mode?: "synthetic" | "real-preview" | "public-release";
     publicReleaseId?: string | null;
     publicReleaseIdentity?: string | null;
+    publicReleaseManifestIdentity?: import('../../api/PublicReleaseRepository').PublicReleaseIdentity | null;
     onMapFeedMeta?: ((meta: import('../../api/PublicMapFeedRepository').PublicMapFeed['meta'] | null) => void) | undefined;
     mapStatus?:
       | "idle"
@@ -143,7 +145,7 @@
   let zoomStartedAt: number | null = null;
   let zoomSettleMs = $state<number | null>(null);
   let nativeFeedRequests = $state(0);
-  let nativeSnapshotId = $state("—");
+  let nativeSnapshotId = $state("Not loaded");
   let nativeCacheStatus = $state("unavailable");
   let nativeCacheEntries = $state<number | null>(null);
   let nativeDecodedBytes = $state<number | null>(null);
@@ -561,14 +563,14 @@
     try {
       const requestedAt = performance.now();
       const result = publicReleaseId
-        ? await publicMapFeedRepository.load("official", publicReleaseId, controller.signal)
+        ? await publicMapFeedRepository.load("official", publicReleaseId, controller.signal, publicReleaseManifestIdentity ?? undefined)
         : await mapFeedRepository.load(sourceId, controller.signal);
       if (controller.signal.aborted || map !== instance || generation !== feedGeneration) return;
       onMapFeedMeta?.("meta" in result ? result.meta : null);
       nativeSnapshotId = "snapshotId" in result ? result.snapshotId : result.meta.manifestSha256;
       nativeCacheStatus = "cacheStatus" in result ? result.cacheStatus : "not cached";
       nativeDecodedBytes = "decodedBytes" in result ? result.decodedBytes ?? null : new TextEncoder().encode(JSON.stringify(result.collection)).byteLength;
-      nativeCacheEntries = publicReleaseId ? null : await realPreviewMapCacheEntryCount();
+      nativeCacheEntries = publicReleaseId ? await publicMapCacheEntryCount() : await realPreviewMapCacheEntryCount();
       nativeFeedMs = Math.round(performance.now() - requestedAt);
       nativeUnitCount = result.collection.features.length;
       nativeRepresentedCount = result.collection.features.reduce((total, feature) => total + Number(feature.properties.weight), 0);
@@ -650,9 +652,9 @@
     return () => {};
   }
   async function clearProjectionCache() {
-    const removed = await clearRealPreviewMapCache();
+    const removed = publicReleaseId ? (await clearPublicMapCache(), 1) : await clearRealPreviewMapCache();
     nativeCacheEntries = 0;
-    cacheClearStatus = removed ? `Cleared ${removed} cached projection ${removed === 1 ? "entry" : "entries"}.` : "Projection cache was already empty.";
+    cacheClearStatus = publicReleaseId ? "Cleared public map projection cache." : removed ? `Cleared ${removed} cached projection ${removed === 1 ? "entry" : "entries"}.` : "Projection cache was already empty.";
   }
   function addMvtLayers() {
     if (!map) return;
@@ -1301,7 +1303,7 @@
       ? mapState.sourceId === "us.fsis"
         ? "Local private rehearsal · FSIS source-provided coordinates, precision unverified · not approved or published"
         : "Private preview · not published"
-      : mode === "public-release" ? "Public release · current suppression checked by the API" : "Synthetic development data"}</small
+      : mode === "public-release" ? "Published release data" : "Synthetic development data"}</small
   >{#if isNativeMap() && visibleApproximateCount > 0}<small class="approximation-cue"
       ><i aria-hidden="true"></i>Approximate locations · 3 km display area</small
   >{/if}{#if basemapSwitching && pendingBasemap}<small
@@ -1363,7 +1365,7 @@
             <div>
               <dt>Camera → idle</dt>
               <dd>
-                {mvtCameraSettleMs === null ? "—" : `${mvtCameraSettleMs} ms`}
+                {mvtCameraSettleMs === null ? "Not sampled" : `${mvtCameraSettleMs} ms`}
               </dd>
             </div>
             <div>
@@ -1393,14 +1395,14 @@
               <dd>{mapDiagnostics.sourceId ?? "All sources"}</dd>
             </div>
           {:else}
-            <div><dt>Snapshot</dt><dd title={nativeSnapshotId}>{nativeSnapshotId === "—" ? "—" : nativeSnapshotId.slice(0, 12)}</dd></div>
+            <div><dt>Snapshot</dt><dd title={nativeSnapshotId}>{nativeSnapshotId === "Not loaded" ? "Not loaded" : nativeSnapshotId.slice(0, 12)}</dd></div>
             <div>
               <dt>Projection / zoom</dt>
               <dd>Native MapLibre · {mapState.viewport.zoom.toFixed(1)}</dd>
             </div>
             <div>
               <dt>Map feed</dt>
-              <dd>{feedStatus} · cache {nativeCacheStatus} · {nativeFeedRequests} request{nativeFeedRequests === 1 ? "" : "s"} · {nativeFeedMs === null ? "—" : `${nativeFeedMs} ms`}</dd>
+              <dd>{feedStatus} · cache {nativeCacheStatus} · {nativeFeedRequests} request{nativeFeedRequests === 1 ? "" : "s"} · {nativeFeedMs === null ? "Not sampled" : `${nativeFeedMs} ms`}</dd>
             </div>
             <div><dt>Projection size</dt><dd>{nativeDecodedBytes === null ? "Unavailable" : `${(nativeDecodedBytes / 1_048_576).toFixed(2)} MB decoded`} · compressed transfer unavailable</dd></div>
             <div><dt>Projection cache</dt><dd>{nativeCacheEntries === null ? "Unavailable" : `${nativeCacheEntries} ${nativeCacheEntries === 1 ? "entry" : "entries"}`}</dd></div>

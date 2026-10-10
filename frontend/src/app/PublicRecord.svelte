@@ -4,7 +4,7 @@
   import CopyValue from './CopyValue.svelte';
   import { serializeRoute } from './routeState';
   import { precisionPresentation } from '../features/locations/precisionPresentation';
-  let { id, profile = 'official', releaseId }: { id: string; profile?: LocalProfile; releaseId?: string | undefined } = $props();
+  let { id, profile = 'official', releaseId, onrelease }: { id: string; profile?: LocalProfile; releaseId?: string | undefined; onrelease?: (label: string | null) => void } = $props();
   const repository = new LocalLocationRepository();
   let record = $state<Location | null>(null);
   let currentRelease = $state('');
@@ -14,7 +14,7 @@
   $effect(() => {
     void retry;
     const controller = new AbortController(); record = null; busy = true; error = '';
-    void repository.detail(id, profile, controller.signal, releaseId).then(result => { if (!controller.signal.aborted) { record = result.location; currentRelease = result.releaseId; } }).catch(cause => { if (!controller.signal.aborted) error = cause && typeof cause === 'object' && 'kind' in cause && cause.kind === 'restricted' ? 'This record is unavailable in the selected public release.' : 'This record could not be loaded. Try again.'; }).finally(() => { if (!controller.signal.aborted) busy = false; });
+    void repository.detail(id, profile, controller.signal, releaseId).then(result => { if (!controller.signal.aborted) { record = result.location; currentRelease = result.releaseId; onrelease?.(result.releaseId); } }).catch(cause => { if (!controller.signal.aborted) error = cause && typeof cause === 'object' && 'kind' in cause && cause.kind === 'restricted' ? 'This record is unavailable in the selected public release.' : 'This record could not be loaded. Try again.'; }).finally(() => { if (!controller.signal.aborted) busy = false; });
     return () => controller.abort();
   });
   const human = (value: string | false | undefined) => value === undefined ? 'Unknown' : String(value).replaceAll('_',' ').replaceAll('-',' ');

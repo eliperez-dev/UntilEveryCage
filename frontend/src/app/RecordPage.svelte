@@ -33,7 +33,7 @@
   });
 </script>
 
-<svelte:head><title>Record — Until Every Cage</title></svelte:head>
+<svelte:head><title>Record: Until Every Cage</title></svelte:head>
 <div class="record-page">
   <PreviewMasthead current="database" {mapHref} databaseHref="#/database?f1a=field" />
   <main id="main-content">

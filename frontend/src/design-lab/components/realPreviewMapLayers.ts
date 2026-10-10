@@ -45,6 +45,7 @@ export type RealPreviewVisualSettings = Readonly<{
 }>;
 
 const cityReference = ['any', ['==', ['get', 'precision'], 'city'], ['==', ['get', 'precision'], 'city_reference_approximate'], ['==', ['get', 'precision'], 'provider_locality_approximate']];
+const categoryColor = ['match', ['get', 'category_key'], 'animal_keeping_and_production', '#009E73', 'slaughter', '#D55E00', 'processing_and_preparation', '#0072B2', 'research_and_animal_use', '#CC79A7', 'other_regulated_premises', '#E69F00', '#B8B8B8'];
 
 /** Pixel radius of a map-scale distance at each feature's latitude. */
 export function referenceRadiusExpression(radiusKm: number): unknown[] {
@@ -132,7 +133,7 @@ export function addRealPreviewMapLayers(
   const coordinate = ['all', unclustered, ['in', ['get', 'kind'], ['literal', ['source-coordinate', 'provider_address_point_private']]]];
   map.addLayer({
     id: 'source-coordinate-points', type: 'circle', source: 'locations', filter: coordinate,
-    paint: { 'circle-radius': 7, 'circle-color': ['match', ['get', 'precision'], 'source_provided_unverified', '#e0a45d', 'source_reported', '#e0a45d', 'approximate', '#e0a45d', '#d8c99b'], 'circle-opacity': 0.94, 'circle-stroke-color': '#171a18', 'circle-stroke-width': 2.5 },
+    paint: { 'circle-radius': 7, 'circle-color': categoryColor, 'circle-opacity': 0.94, 'circle-stroke-color': '#171a18', 'circle-stroke-width': 2.5 },
   } as any);
   // Exact V1 raster assets, anchored at the record coordinate as Leaflet did.
   // They remain hidden unless explicitly selected in the local debug menu.
@@ -143,14 +144,14 @@ export function addRealPreviewMapLayers(
   } as any);
   map.addLayer({
     id: 'v1-source-pins', type: 'symbol', source: 'locations', filter: coordinate,
-    layout: { 'visibility': 'none', 'icon-image': 'v1-pin-red', 'icon-anchor': 'bottom',
+    layout: { 'visibility': 'none', 'icon-image': ['match', ['get', 'category_key'], 'animal_keeping_and_production', 'v1-pin-green', 'slaughter', 'v1-pin-red', 'processing_and_preparation', 'v1-pin-yellow', 'research_and_animal_use', 'v1-pin-violet', 'other_regulated_premises', 'v1-pin-orange', 'v1-pin-grey'], 'icon-anchor': 'bottom',
       'icon-size': 0.5, 'icon-allow-overlap': true, 'icon-ignore-placement': true },
   } as any);
 }
 
 export async function setRealPreviewPinMode(map: MapLibreMap, enabled: boolean, baseUrl: string): Promise<void> {
   if (enabled) {
-    for (const [id, file] of [['v1-pin-red', 'marker-icon-2x-red.png'], ['v1-pin-shadow', 'marker-shadow.png']] as const) {
+    for (const [id, file] of [['v1-pin-red', 'marker-icon-2x-red.png'], ['v1-pin-green', 'marker-icon-2x-green.png'], ['v1-pin-yellow', 'marker-icon-2x-yellow.png'], ['v1-pin-violet', 'marker-icon-2x-violet.png'], ['v1-pin-orange', 'marker-icon-2x-orange.png'], ['v1-pin-grey', 'marker-icon-2x-grey.png'], ['v1-pin-shadow', 'marker-shadow.png']] as const) {
       if (!map.hasImage(id)) map.addImage(id, (await map.loadImage(`${baseUrl}${file}`)).data);
     }
   }

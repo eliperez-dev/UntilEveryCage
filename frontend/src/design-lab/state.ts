@@ -20,7 +20,7 @@ export function decodeLabHash(hash: string): LabState {
   const sourceId = source && /^[A-Za-z0-9.-]{1,80}$/.test(source) ? source : null;
   return { ...DEFAULT_LAB_STATE, direction, scenario, query: q.get('q') ?? '', selectedId: q.get('selected'), sourceId, filters,
     expandedCluster: q.get('cluster') === 'aarhus' ? 'aarhus' : null,
-    basemap: q.get('basemap') === 'satellite' ? 'satellite' : q.get('basemap') === 'muted' ? 'muted' : 'vector', listOpen: q.get('list') !== 'closed',
+    basemap: q.get('basemap') === 'satellite' ? 'satellite' : q.get('basemap') === 'muted' ? 'muted' : 'vector', listOpen: q.get('list') === 'open',
     viewport: { centerLat: safeNumber(q.get('lat'), 45, -90, 90), centerLon: safeNumber(q.get('lon'), 5, -180, 180), zoom: safeNumber(q.get('z'), 2, 1, 18) } };
 }
 export function encodeLabHash(state: LabState, privatePreview = true): string {
@@ -30,7 +30,7 @@ export function encodeLabHash(state: LabState, privatePreview = true): string {
   if (state.selectedId) q.set('selected', state.selectedId);
   if (state.sourceId) q.set('source', state.sourceId);
   if (state.expandedCluster) q.set('cluster', state.expandedCluster);
-  if (state.basemap !== 'vector') q.set('basemap', state.basemap); if (!state.listOpen) q.set('list', 'closed');
+  if (state.basemap !== 'vector') q.set('basemap', state.basemap); if (state.listOpen) q.set('list', 'open');
   if (state.viewport.centerLat !== 45) q.set('lat', String(state.viewport.centerLat));
   if (state.viewport.centerLon !== 5) q.set('lon', String(state.viewport.centerLon));
   if (state.viewport.zoom !== 2) q.set('z', String(state.viewport.zoom));

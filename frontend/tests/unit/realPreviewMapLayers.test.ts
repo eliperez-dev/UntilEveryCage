@@ -43,7 +43,7 @@ describe('real-preview native clustering layers', () => {
     expect(layers.find(layer => layer.id === 'source-coordinate-points')?.filter).toEqual(['all', ['!', ['has', 'cluster']], ['in', ['get', 'kind'], ['literal', ['source-coordinate', 'provider_address_point_private']]]]);
     expect(layers.find(layer => layer.id === 'source-coordinate-points')?.filter).toContainEqual(['in', ['get', 'kind'], ['literal', ['source-coordinate', 'provider_address_point_private']]]);
     expect(layers.find(layer => layer.id === 'source-coordinate-points')?.paint?.['circle-color']).toEqual(
-      ['match', ['get', 'precision'], 'source_provided_unverified', '#e0a45d', 'source_reported', '#e0a45d', 'approximate', '#e0a45d', '#d8c99b'],
+      ['match', ['get', 'category_key'], 'animal_keeping_and_production', '#009E73', 'slaughter', '#D55E00', 'processing_and_preparation', '#0072B2', 'research_and_animal_use', '#CC79A7', 'other_regulated_premises', '#E69F00', '#B8B8B8'],
     );
   });
 
