@@ -40,6 +40,16 @@ class PublicDiscoveryQueryContractTests(unittest.TestCase):
         self.assertIn("release_manifests", optimized)
         self.assertIn("base AS NOT MATERIALIZED", optimized)
 
+    def test_successor_view_allows_release_filter_pushdown_without_relaxing_gates(self):
+        migration = (ROOT / "migrations" / "069_public_discovery_api_filter_pushdown.sql").read_text(encoding="utf-8")
+        self.assertIn("candidate_reviews AS NOT MATERIALIZED", migration)
+        self.assertIn("candidate_review_records AS NOT MATERIALIZED", migration)
+        self.assertIn("record_access_current", migration)
+        self.assertIn("suppression_case_current", migration)
+        self.assertIn("release.status='promoted'", migration)
+        self.assertIn("release.test_only IS NOT TRUE", migration)
+        self.assertIn("event_review.publication_eligible=true", migration)
+
     def test_legacy_component_view_remains_documented_but_is_not_the_api_read_path(self):
         migration = (ROOT / "migrations" / "036_public_facility_discovery_view.sql").read_text(encoding="utf-8").lower()
         self.assertIn("create or replace view uec.map_facilities_public_discovery", migration)
