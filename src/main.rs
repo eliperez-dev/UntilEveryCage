@@ -28,12 +28,33 @@ use std::time::{Duration, Instant};
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
-use deadpool_postgres::{Config, ManagerConfig, RecyclingMethod, Runtime};
+use deadpool_postgres::{Config, Hook, HookError, ManagerConfig, RecyclingMethod, Runtime};
 use tokio_postgres::NoTls;
 use tokio_postgres_rustls::MakeRustlsConnect;
 use tower_http::services::ServeDir;
 
 mod private_environment;
+
+// This belongs to the API process's pool only.  It is deliberately not a
+// database-role setting: importers, migrations, and maintenance connections
+// must be able to run their bounded batch work independently of HTTP request
+// lifetime.  PostgreSQL cancels a statement even if a client disconnect is
+// not observed promptly by the server/pool.
+const API_STATEMENT_TIMEOUT: &str = "30s";
+
+fn api_pool_builder(
+    builder: deadpool_postgres::PoolBuilder,
+) -> deadpool_postgres::PoolBuilder {
+    builder.post_create(Hook::async_fn(|client, _| {
+        Box::pin(async move {
+            let setting = format!("SET statement_timeout = '{API_STATEMENT_TIMEOUT}'");
+            client
+                .batch_execute(&setting)
+                .await
+                .map_err(HookError::Backend)
+        })
+    }))
+}
 
 async fn private_preview_no_store(
     request: axum::extract::Request,
@@ -819,15 +840,17 @@ async fn main() {
         });
         let pool = if mode == "production" {
             let _ = rustls::crypto::ring::default_provider().install_default();
-            match config.create_pool(
-                Some(Runtime::Tokio1),
-                MakeRustlsConnect::with_webpki_roots(),
-            ) {
-                Ok(pool) => Ok(pool),
-                Err(error) => Err(error),
-            }
+            config
+                .builder(MakeRustlsConnect::with_webpki_roots())
+                .map_err(|error| error.to_string())
+                .map(|builder| api_pool_builder(builder).runtime(Runtime::Tokio1))
+                .and_then(|builder| builder.build().map_err(|error| error.to_string()))
         } else {
-            config.create_pool(Some(Runtime::Tokio1), NoTls)
+            config
+                .builder(NoTls)
+                .map_err(|error| error.to_string())
+                .map(|builder| api_pool_builder(builder).runtime(Runtime::Tokio1))
+                .and_then(|builder| builder.build().map_err(|error| error.to_string()))
         };
         match pool {
             Ok(pool) => Some(pool),
@@ -942,7 +965,14 @@ mod config_tests {
     use super::{
         parse_cors_origins, preview_config, request_log_payload, request_route_class,
         validate_bind_host, validate_runtime,
+        API_STATEMENT_TIMEOUT,
     };
+
+    #[test]
+    fn api_database_statements_have_a_bounded_timeout() {
+        assert_eq!(API_STATEMENT_TIMEOUT, "30s");
+    }
+
     #[test]
     fn development_allows_local_defaults() {
         assert_eq!(validate_runtime("development", None, "8000"), Ok(8000));
