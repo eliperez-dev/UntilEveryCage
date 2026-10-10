@@ -3598,9 +3598,9 @@ pub async fn get_v2_locations_handler(
         );
     }
     let limit = match params.limit.as_deref().map(str::parse::<i64>).transpose() {
-        Ok(None) => 25,
-        Ok(Some(value)) if (1..=100).contains(&value) => value,
-        Ok(Some(_)) => return v2_error(StatusCode::BAD_REQUEST, "invalid_limit", "limit must be between 1 and 100"),
+        Ok(None) => 100,
+        Ok(Some(value)) if (1..=1000).contains(&value) => value,
+        Ok(Some(_)) => return v2_error(StatusCode::BAD_REQUEST, "invalid_limit", "limit must be between 1 and 1000"),
         Err(_) => {
             return v2_error(
                 StatusCode::BAD_REQUEST,
