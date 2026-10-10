@@ -890,6 +890,8 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                     VALUES (%s,'candidate',%s,%s,%s,false)""",
                     (freeze["release_id"], "v0-candidate-freeze-v1", Jsonb(summary), PROFILE))
             for source, entry in entries.items():
+                print(json.dumps({"phase": "source_write_started", "source_id": source,
+                                  "observation_count": len(handoffs[source]["rows"])}, sort_keys=True), file=sys.stderr)
                 handoff = handoffs[source]
                 preview_check = preview_checks[source]
                 run, manifest = preview_check["run"], preview_check["manifest"]
@@ -908,6 +910,7 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                 _insert_source(connection, source, country, source_name, source_url)
                 artifact_id = _ensure_artifact(connection, entry, retrieved)
                 candidate_rows = preview_check["candidates"]
+                facility_checks: dict[str, tuple[Any, list[Any]]] = {}
                 # Source-native group identity remains stable across snapshots;
                 # no name/address-based cross-source matching is attempted.
                 for parsed, raw in handoff["rows"]:
@@ -937,12 +940,15 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                     facility_id = _uuid("facility", source, group)
                     representative_parsed, _ = handoff["representatives"][group]
                     country = str(representative_parsed[2] or country).upper()
-                    existing_facility = connection.execute("SELECT country_code,canonical_name FROM uec.facilities WHERE facility_id=%s", (facility_id,)).fetchone()
+                    if group not in facility_checks:
+                        existing = connection.execute("SELECT country_code,canonical_name FROM uec.facilities WHERE facility_id=%s", (facility_id,)).fetchone()
+                        links = connection.execute("""SELECT DISTINCT source_record.source_id
+                            FROM uec.facility_source_links link JOIN uec.source_records source_record USING (source_record_id)
+                            WHERE link.facility_id=%s""", (facility_id,)).fetchall()
+                        facility_checks[group] = (existing, links)
+                    existing_facility, linked_sources = facility_checks[group]
                     if existing_facility and str(existing_facility[0]).strip().upper() != country:
                         raise BridgeError("canonical_facility_identity_conflict")
-                    linked_sources = connection.execute("""SELECT DISTINCT source_record.source_id
-                        FROM uec.facility_source_links link JOIN uec.source_records source_record USING (source_record_id)
-                        WHERE link.facility_id=%s""", (facility_id,)).fetchall()
                     if any(row[0] != source for row in linked_sources):
                         raise BridgeError("canonical_facility_source_identity_conflict")
                     rep_row = handoff["representatives"][group][1]
@@ -1099,6 +1105,8 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                     if member is None or str(member[0]) != str(obs[0]) or member[1] is not False:
                         raise BridgeError("release_member_conflict")
                     counts["release_members"] += 1
+                print(json.dumps({"phase": "source_write_verified", "source_id": source,
+                                  "observation_count": len(handoff["rows"])}, sort_keys=True), file=sys.stderr)
             counts["facility_candidates"] = counts["release_members"]
             if counts["source_observations"] != summary["source_observation_count"] or counts["facility_candidates"] != summary["facility_candidate_count"]:
                 raise BridgeError("bridge_total_reconciliation_failed")
