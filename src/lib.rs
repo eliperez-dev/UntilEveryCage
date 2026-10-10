@@ -3491,13 +3491,7 @@ pub async fn get_v2_locations_handler(
             "region and q must be non-empty and at most 120 characters",
         );
     }
-    let search_text = params.q.as_deref().map(|value| {
-        value
-            .trim()
-            .replace('\\', "\\\\")
-            .replace('%', "\\%")
-            .replace('_', "\\_")
-    });
+    let search_text = params.q.as_deref().map(str::trim);
     let parse_coordinate = |value: &Option<String>, name: &'static str, min: f64, max: f64| {
         value
             .as_deref()
@@ -3708,20 +3702,23 @@ pub async fn get_v2_locations_handler(
     // Keep the total scoped to exactly the same eligible release and filters
     // as the page. It is deliberately not the size of a client-loaded page.
     let query_limit = limit + 1;
-    let taxonomy_filters_requested = search_text.is_some() || category_keys.is_some();
+    let taxonomy_filters_requested = category_keys.is_some();
     let total_count: i64 = if !taxonomy_filters_requested {
         // Ordinary browsing never examines taxonomy to decide eligibility. Keep
         // the exact facility total, but avoid expanding every assignment set.
         match transaction.query_one(r#"
         SELECT count(DISTINCT history.facility_id)::bigint
         FROM uec.map_facilities_public_discovery_read_model AS history
+        JOIN uec.public_discovery_read_model_rows indexed
+          ON indexed.release_id=history.release_id AND indexed.facility_id=history.facility_id AND indexed.observation_id=history.observation_id
         WHERE history.release_id = $1
           AND ($2::text IS NULL OR history.country_code = $2) AND ($3::text IS NULL OR history.city = $3)
           AND ($4::text IS NULL OR history.classification_category = $4) AND ($5::text IS NULL OR history.display_precision = $5)
           AND ($6::text IS NULL OR history.lifecycle_status = $6) AND ($7::text IS NULL OR history.provenance_origin_type = $7)
-          AND ($8::double precision IS NULL OR (history.display_location && ST_MakeEnvelope($8, $9, $10, $11, 4326)::geography AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($8, $9, $10, $11, 4326))))
-          AND ($12::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($13, $14), 4326)::geography, $12 * 1000))
-    "#, &[&promoted_release_id, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude]).await {
+          AND ($8::text IS NULL OR indexed.search_document @@ websearch_to_tsquery('simple', $8))
+          AND ($9::double precision IS NULL OR (history.display_location && ST_MakeEnvelope($9, $10, $11, $12, 4326)::geography AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($9, $10, $11, $12, 4326))))
+          AND ($13::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($14, $15), 4326)::geography, $13 * 1000))
+    "#, &[&promoted_release_id, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude]).await {
             Ok(row) => row.get(0), Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
         }
     } else { match transaction.query_one(r#"
@@ -3755,6 +3752,8 @@ pub async fn get_v2_locations_handler(
         WITH candidates AS MATERIALIZED (
           SELECT DISTINCT ON (history.facility_id) history.facility_id, history.observation_id
           FROM uec.map_facilities_public_discovery_read_model AS history
+          JOIN uec.public_discovery_read_model_rows indexed
+            ON indexed.release_id=history.release_id AND indexed.facility_id=history.facility_id AND indexed.observation_id=history.observation_id
           WHERE history.release_id = $1
             AND ($2::uuid IS NULL OR history.facility_id > $2)
             AND ($3::text IS NULL OR history.country_code = $3)
@@ -3763,12 +3762,13 @@ pub async fn get_v2_locations_handler(
             AND ($6::text IS NULL OR history.display_precision = $6)
             AND ($7::text IS NULL OR history.lifecycle_status = $7)
             AND ($8::text IS NULL OR history.provenance_origin_type = $8)
-            AND ($9::double precision IS NULL OR (history.display_location && ST_MakeEnvelope($9, $10, $11, $12, 4326)::geography AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($9, $10, $11, $12, 4326))))
-            AND ($13::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($14, $15), 4326)::geography, $13 * 1000))
+            AND ($9::text IS NULL OR indexed.search_document @@ websearch_to_tsquery('simple', $9))
+            AND ($10::double precision IS NULL OR (history.display_location && ST_MakeEnvelope($10, $11, $12, $13, 4326)::geography AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($10, $11, $12, $13, 4326))))
+            AND ($14::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($15, $16), 4326)::geography, $14 * 1000))
           ORDER BY history.facility_id, history.observation_id
         ), page AS (
           SELECT facility_id, observation_id FROM candidates
-          ORDER BY facility_id LIMIT $16 OFFSET $17
+          ORDER BY facility_id LIMIT $17 OFFSET $18
         )
         SELECT history.facility_id, history.canonical_name, history.country_code, history.city, history.classification_category, history.display_precision,
                history.factual_review_status, history.privacy_screening_status, history.maintainer_approval, history.reviewer_role,
@@ -3798,7 +3798,7 @@ pub async fn get_v2_locations_handler(
             AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=s.observation_id AND newer.taxonomy_version=s.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(s.created_at,s.assignment_set_id))
         ) taxonomy ON TRUE
         ORDER BY history.facility_id, history.observation_id
-    "#, &[&promoted_release_id, &cursor, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &query_limit, &effective_offset]).await {
+    "#, &[&promoted_release_id, &cursor, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &query_limit, &effective_offset]).await {
             Ok(rows) => rows,
             Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
         }
@@ -3814,8 +3814,11 @@ pub async fn get_v2_locations_handler(
                COALESCE(taxonomy.primary_categories, ARRAY['unclassified']::text[]),
                COALESCE(taxonomy.leaf_activities, '[]'::jsonb)::text,
                COALESCE(taxonomy.assignments, '[]'::jsonb)::text,
-               history.geometry_provenance::text
+               history.geometry_provenance::text,
+               stored.public_detail::text
         FROM uec.map_facilities_public_discovery_read_model AS history
+        JOIN uec.public_discovery_read_model_rows stored
+          ON stored.release_id=history.release_id AND stored.facility_id=history.facility_id AND stored.observation_id=history.observation_id
         LEFT JOIN LATERAL (
           SELECT min(s.display_category) AS display_category,
                  array_agg(DISTINCT a.primary_key ORDER BY a.primary_key) FILTER (WHERE a.primary_key IS NOT NULL) AS primary_categories,
@@ -4004,8 +4007,11 @@ pub async fn get_v2_location_detail_handler(
                COALESCE(taxonomy.primary_categories, ARRAY['unclassified']::text[]),
                COALESCE(taxonomy.leaf_activities, '[]'::jsonb)::text,
                COALESCE(taxonomy.assignments, '[]'::jsonb)::text,
-               history.geometry_provenance::text
+               history.geometry_provenance::text,
+               stored.public_detail::text
         FROM uec.map_facilities_public_discovery_read_model AS history
+        JOIN uec.public_discovery_read_model_rows stored
+          ON stored.release_id=history.release_id AND stored.facility_id=history.facility_id AND stored.observation_id=history.observation_id
         LEFT JOIN LATERAL (
           SELECT min(s.display_category) AS display_category,
                  array_agg(DISTINCT a.primary_key ORDER BY a.primary_key) FILTER (WHERE a.primary_key IS NOT NULL) AS primary_categories,
@@ -4077,7 +4083,12 @@ pub async fn get_v2_location_detail_handler(
         )
             .into_response();
     }
-    Json(serde_json::json!({"data": item, "api_version": "v2", "meta": {"release_id": release_id, "ruleset_version": ruleset, "data_product_version": "uec-public-data-product-v1", "schema_version": "uec-location-projection-v1", "release_created_at": created_at, "profile": profile, "coverage_scope": "selected_promoted_release_public_facilities", "count_semantics": "This record is a public facility projection, not an animal count."}})).into_response()
+    let mut data = serde_json::to_value(item).unwrap_or_else(|_| json!({}));
+    if let (Some(target), Ok(detail)) = (data.as_object_mut(), serde_json::from_str::<serde_json::Map<String, Value>>(row.get::<_, String>(29).as_str())) {
+        // Detail is a release-built allowlist.  Do not add raw/source fields here.
+        target.extend(detail);
+    }
+    Json(serde_json::json!({"data": data, "api_version": "v2", "meta": {"release_id": release_id, "ruleset_version": ruleset, "data_product_version": "uec-public-data-product-v1", "schema_version": "uec-location-projection-v1", "release_created_at": created_at, "profile": profile, "coverage_scope": "selected_promoted_release_public_facilities", "count_semantics": "This record is a public facility projection, not an animal count."}})).into_response()
 }
 
 #[derive(Deserialize)]

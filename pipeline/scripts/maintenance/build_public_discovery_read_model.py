@@ -250,7 +250,8 @@ SELECT eligible.facility_id, eligible.observation_id, eligible.source_record_id,
        artifact.retrieved_at AS provenance_retrieved_at,
        CASE WHEN source.attribution IS NULL OR btrim(source.attribution) = ''
             THEN 'cleared' ELSE 'attribution_required' END AS source_rights_status,
-       eligible.geometry_provenance
+       eligible.geometry_provenance,
+       uec.public_discovery_detail_from_observation(observation.observation) AS public_detail
 FROM eligible_geometry eligible
 JOIN uec.release_members member
   ON member.release_id=eligible.release_id AND member.observation_id=eligible.observation_id
@@ -321,7 +322,7 @@ SELECT facility_id, observation_id, source_record_id, canonical_name,
        geocoded_at, classification_category, observed_at, first_observed_at,
        provenance_origin_type, provenance_source_id, provenance_source_name,
        provenance_source_url, provenance_retrieved_at, source_rights_status,
-       geometry_provenance::text
+       geometry_provenance::text, public_detail::text
 FROM (
 """ + SOURCE_ROWS + """
 ) selected
@@ -350,13 +351,16 @@ INSERT INTO uec.public_discovery_read_model_rows
      display_label,geocoding_status,geocoder_provider,geocoded_at,
      classification_category,observed_at,first_observed_at,
      provenance_origin_type,provenance_source_id,provenance_source_name,
-     provenance_source_url,provenance_retrieved_at,source_rights_status,geometry_provenance)
+     provenance_source_url,provenance_retrieved_at,source_rights_status,geometry_provenance,
+     public_detail,search_document)
 SELECT %s, facility_id, observation_id, source_record_id, canonical_name,
        country_code, postal_code, city, display_location, display_precision,
        display_label, geocoding_status, geocoder_provider, geocoded_at,
        classification_category, observed_at, first_observed_at,
        provenance_origin_type, provenance_source_id, provenance_source_name,
-       provenance_source_url, provenance_retrieved_at, source_rights_status, geometry_provenance
+       provenance_source_url, provenance_retrieved_at, source_rights_status, geometry_provenance,
+       public_detail,
+       to_tsvector('simple', coalesce(canonical_name, '') || ' ' || coalesce(public_detail->>'alternate_names', ''))
 FROM (
 """ + SOURCE_ROWS + """
 ) selected
@@ -399,12 +403,12 @@ def build_in_transaction(connection: Any, release_id: str, fail_after_rows: int 
              display_label,geocoding_status,geocoder_provider,geocoded_at,
              classification_category,observed_at,first_observed_at,
              provenance_origin_type,provenance_source_id,provenance_source_name,
-             provenance_source_url,provenance_retrieved_at,source_rights_status,geometry_provenance)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,ST_GeogFromText(%s),%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)
+             provenance_source_url,provenance_retrieved_at,source_rights_status,geometry_provenance,public_detail,search_document)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,ST_GeogFromText(%s),%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s::jsonb,to_tsvector('simple', coalesce(%s, '') || ' ' || coalesce(%s::jsonb->>'alternate_names', '')))
         """
         with connection.cursor() as cursor:
             for index, row in enumerate(rows, start=1):
-                cursor.execute(insert_sql, (release_id, *row))
+                cursor.execute(insert_sql, (release_id, *row, row[4], row[-1]))
                 if index >= fail_after_rows:
                     raise RuntimeError("synthetic interrupted read model build")
     else:

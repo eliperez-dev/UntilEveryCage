@@ -142,7 +142,7 @@
       "get": {
         "operationId": "getLocation",
         "summary": "Read a public location",
-        "description": "Current suppression applies even when release_id is supplied. A missing/suppressed record returns 404; this does not prove closure or absence.",
+        "description": "Current suppression applies even when release_id is supplied. A missing/suppressed record returns 404; this does not prove closure or absence. Detail may include release-built source-native alternate business names, activity flags, ordinal volume categories with provenance, and establishment/native activity identifiers; unknown fields are absent. It never exposes raw fields, contact data, or street addresses.",
         "tags": [
           "Locations"
         ],
