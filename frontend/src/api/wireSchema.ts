@@ -42,6 +42,28 @@ const taxonomyAssignmentSchema = z.object({
   source_record_id: nullableText,
   artifact_id: nullableText,
 }).strict();
+const sourceFlagValue = z.union([z.string().min(1).max(200), z.boolean()]);
+const sourceFlags = z.record(z.string().min(1).max(120), sourceFlagValue)
+  .refine(value => Object.keys(value).length > 0 && Object.keys(value).length <= 64);
+const sourceVolumeProvenance = z.union([
+  z.string().min(1).max(160),
+  z.object({ source_field: z.string().min(1).max(120).optional(), method: z.string().min(1).max(80).optional() }).strict(),
+]);
+const sourceVolumeCategory = z.object({
+  code: z.string().min(1).max(120),
+  provenance: sourceVolumeProvenance.optional(),
+}).strict();
+const detailFactsShape = {
+  alternate_names: z.array(z.string().min(1).max(200)).min(1).max(32).optional(),
+  species_slaughtered: sourceFlags.optional(),
+  processing_activities: sourceFlags.optional(),
+  source_volume_categories: z.array(sourceVolumeCategory).min(1).max(32).optional(),
+  establishment_id: z.string().min(1).max(160).optional(),
+  establishment_number: z.string().min(1).max(160).optional(),
+  grant_date: z.string().min(1).max(80).optional(),
+  native_activity_code: z.string().min(1).max(160).optional(),
+  native_activity_label: z.string().min(1).max(500).optional(),
+};
 
 // This is the Rust-shaped public projection. Keep this list closed: fields
 // that are not present in the current API belong in the convergence gap ledger
@@ -96,6 +118,10 @@ const coordinateRules = (row: { latitude: number | null; longitude: number | nul
 };
 
 export const locationSchema = z.object(locationShape).strict().superRefine(coordinateRules);
+// Detail accepts only this bounded, source-native allowlist in addition to the
+// list projection. Keep listSchema closed so a detail field cannot leak into
+// map or list payloads unnoticed.
+export const detailLocationSchema = z.object({ ...locationShape, ...detailFactsShape }).strict().superRefine(coordinateRules);
 export const testReleaseLocationSchema = z.object({
   ...locationShape,
   // The disposable test-release fixture predates the optional normalized
@@ -130,10 +156,11 @@ const listMeta = z.object({
 export const envelopeSchema = z.object({ data: z.array(locationSchema), api_version: z.literal('v2'), meta: listMeta }).strict();
 export type WireEnvelope = z.infer<typeof envelopeSchema>;
 export type WireLocation = z.infer<typeof locationSchema>;
+export type WireDetailLocation = z.infer<typeof detailLocationSchema>;
 export type WireTestReleaseLocation = z.infer<typeof testReleaseLocationSchema>;
 
 export const detailEnvelopeSchema = z.object({
-  data: locationSchema,
+  data: detailLocationSchema,
   api_version: z.literal('v2'),
   meta: z.object({
     release_id: z.string(),

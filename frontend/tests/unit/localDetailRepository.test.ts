@@ -35,3 +35,27 @@ describe('community detail safety', () => {
     await expect(new LocalLocationRepository(vi.fn().mockResolvedValue(new Response(JSON.stringify(body({ ...row, release_id: 'other' }))))).detail(row.facility_id)).rejects.toMatchObject({ kind: 'invalid-contract' });
   });
 });
+
+describe('allowlisted source-native detail facts', () => {
+  const facts = {
+    alternate_names: ['Detail DBA'],
+    species_slaughtered: { beef_cow_slaughter: 'No', poultry: true },
+    processing_activities: { raw_intact_beef_processing: 'Yes' },
+    source_volume_categories: [{ code: '2.0', provenance: { source_field: 'activity_volume_codes', method: 'source_native' } }],
+    establishment_id: 'EST-42', establishment_number: 'P-42', grant_date: '2026-01-01',
+    native_activity_code: 'SH', native_activity_label: 'Slaughterhouse',
+  };
+  it('maps populated allowlisted facts while preserving negative source flags', async () => {
+    const result = await new LocalLocationRepository(vi.fn().mockResolvedValue(new Response(JSON.stringify(body({ ...row, ...facts })), { status: 200 }))).detail(row.facility_id);
+    expect(result.location.sourceFacts).toMatchObject({
+      alternateNames: ['Detail DBA'], speciesSlaughtered: { beef_cow_slaughter: 'No', poultry: true },
+      processingActivities: { raw_intact_beef_processing: 'Yes' }, establishmentId: 'EST-42',
+      sourceVolumeCategories: [{ code: '2.0', provenance: { sourceField: 'activity_volume_codes', method: 'source_native' } }],
+    });
+  });
+  it('keeps list payloads minimal and rejects non-allowlisted detail fields', async () => {
+    await expect(new LocalLocationRepository(vi.fn().mockResolvedValue(new Response(JSON.stringify({ ...body(), data: [{ ...row, ...facts }] }), { status: 200 }))).list()).rejects.toMatchObject({ kind: 'invalid-contract' });
+    await expect(new LocalLocationRepository(vi.fn().mockResolvedValue(new Response(JSON.stringify(body({ ...row, raw_source_values: { address: 'private' } })), { status: 200 }))).detail(row.facility_id)).rejects.toMatchObject({ kind: 'invalid-contract' });
+    await expect(new LocalLocationRepository(vi.fn().mockResolvedValue(new Response(JSON.stringify(body({ ...row, contact_email: 'private@example.test' })), { status: 200 }))).detail(row.facility_id)).rejects.toMatchObject({ kind: 'invalid-contract' });
+  });
+});

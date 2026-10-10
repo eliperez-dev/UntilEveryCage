@@ -1,4 +1,4 @@
-import { detailEnvelopeSchema, envelopeSchema, type WireLocation } from './wireSchema';
+import { detailEnvelopeSchema, envelopeSchema, type WireDetailLocation, type WireLocation } from './wireSchema';
 import type { ApiError } from './errors';
 import type { Location } from '../domain/location';
 import { isTaxonomyPrimaryKey, TAXONOMY_PRIMARY_KEYS, TAXONOMY_VERSION, type TaxonomyAssignment, type TaxonomyPrimaryKey } from '../domain/taxonomy';
@@ -9,7 +9,7 @@ export type LocationFilters = Readonly<{ q?: string | undefined; country_code?: 
 export type LocalListResult = Readonly<{ locations: readonly Location[]; releaseId: string; profile: LocalProfile; coverageNote: string; coverageScope?: string; countSemantics?: string; nextCursor: string | null; totalCount?: number; ruleset?: string }>;
 export const localOrigin = (value: string | undefined): string | undefined => { if (!value) return undefined; const url = new URL(value); if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost', '::1'].includes(url.hostname)) throw new Error('Local API origin must be loopback HTTP.'); return url.origin; };
 const fail = (kind: ApiError['kind'], message: string, status?: number, code?: string): ApiError => Object.assign(new Error(message), { kind, ...(status === undefined ? {} : { status }), ...(code ? { code } : {}) });
-export const mapWireLocation = (r: WireLocation): Location => {
+export const mapWireLocation = (r: WireLocation | WireDetailLocation): Location => {
   const rawCategories = r.taxonomy_primary_categories ?? (r.taxonomy_display_category ? [r.taxonomy_display_category] : []);
   const primaryCategories = [...new Set((rawCategories.length ? rawCategories : ['unclassified']).map(key => isTaxonomyPrimaryKey(key) ? key : 'unclassified' as const))]
     .sort((a, b) => TAXONOMY_PRIMARY_KEYS.indexOf(a) - TAXONOMY_PRIMARY_KEYS.indexOf(b));
@@ -25,6 +25,22 @@ export const mapWireLocation = (r: WireLocation): Location => {
     ? r.taxonomy_display_category
     : r.taxonomy_display_category !== undefined ? 'unclassified'
       : primaryCategories.length === 1 ? primaryCategories[0]! : 'unclassified';
+  const sourceFacts = 'alternate_names' in r ? {
+    ...(r.alternate_names ? { alternateNames: r.alternate_names } : {}),
+    ...(r.species_slaughtered ? { speciesSlaughtered: r.species_slaughtered } : {}),
+    ...(r.processing_activities ? { processingActivities: r.processing_activities } : {}),
+    ...(r.source_volume_categories ? { sourceVolumeCategories: r.source_volume_categories.map(category => ({
+      code: category.code,
+      ...(category.provenance === undefined ? {} : { provenance: typeof category.provenance === 'string'
+        ? category.provenance
+        : { ...(category.provenance.source_field ? { sourceField: category.provenance.source_field } : {}), ...(category.provenance.method ? { method: category.provenance.method } : {}) } }),
+    })) } : {}),
+    ...(r.establishment_id ? { establishmentId: r.establishment_id } : {}),
+    ...(r.establishment_number ? { establishmentNumber: r.establishment_number } : {}),
+    ...(r.grant_date ? { grantDate: r.grant_date } : {}),
+    ...(r.native_activity_code ? { nativeActivityCode: r.native_activity_code } : {}),
+    ...(r.native_activity_label ? { nativeActivityLabel: r.native_activity_label } : {}),
+  } : undefined;
   return {
   id: r.facility_id, name: r.canonical_name ?? 'Name not provided', region: r.city ?? r.country_code, category: r.category,
   sourceId: r.provenance_source_id,
@@ -43,6 +59,7 @@ export const mapWireLocation = (r: WireLocation): Location => {
     sourceId: r.provenance_source_id, sourceUrl: r.provenance_source_url, provenanceSource: r.provenance_source, sourceRightsStatus: r.source_rights_status,
     retrievedAt: r.provenance_retrieved_at, displayPrecision: r.display_precision, ...(r.geometry_provenance ? { geometryProvenance: r.geometry_provenance } : {}), lifecycleStatus: r.lifecycle_status, observationCount: r.observation_count,
   },
+  ...(sourceFacts && Object.keys(sourceFacts).length ? { sourceFacts } : {}),
 };
 };
 const query = (profile: LocalProfile, filters: LocationFilters, releaseId?: string) => { const params = new URLSearchParams({ profile }); for (const [key, value] of Object.entries(filters)) if (key !== 'category_keys' && value !== undefined && value !== '') params.set(key, String(value)); const categoryKeys = [...new Set(filters.category_keys ?? [])]; if (categoryKeys.length) params.set('category_keys', categoryKeys.join(',')); if (releaseId !== undefined) params.set('release_id', releaseId); return `/api/v2/locations?${params}`; };
