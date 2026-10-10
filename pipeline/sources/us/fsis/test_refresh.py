@@ -33,8 +33,8 @@ class FsisRefreshTests(unittest.TestCase):
                 run_dir=Path(directory) / "run",
                 directory_path=ROOT / "fixtures/valid.csv",
                 demographics_path=ROOT / "fixtures/demographics.csv",
-                retrieved_at_utc="2026-09-18T00:00:00Z",
-                effective_date="2026-09-14",
+                retrieved_at_utc="2026-10-08T00:00:00Z",
+                effective_date="2026-10-08",
                 mode="handoff",
             )
             manifest = result["manifest"]
@@ -47,6 +47,7 @@ class FsisRefreshTests(unittest.TestCase):
             self.assertEqual(manifest["publication_state"], "private-candidate")
             self.assertEqual(manifest["source_artifacts"]["demographics"]["byte_size"], len((ROOT / "fixtures/demographics.csv").read_bytes()))
             self.assertEqual(manifest["row_reconciliation"]["matched_demographic_rows"], 2)
+            self.assertTrue(manifest["demographics_parity"]["complete"])
             handoff_path = Path(directory) / "run/lifecycle/handoff/manifest.json"
             self.assertTrue(handoff_path.exists())
             handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
@@ -65,8 +66,8 @@ class FsisRefreshTests(unittest.TestCase):
                 run_dir=Path(directory) / "run",
                 directory_path=ROOT / "fixtures/valid.csv",
                 source_url=source_url,
-                retrieved_at_utc="2026-09-20T00:00:00Z",
-                effective_date="2026-09-14",
+                retrieved_at_utc="2026-10-08T00:00:00Z",
+                effective_date="2026-10-08",
                 mode="handoff",
             )
             lifecycle = result["manifest"]
@@ -168,7 +169,7 @@ class FsisRefreshTests(unittest.TestCase):
                 with self.assertRaisesRegex(AcquisitionError, "HTML/login/challenge"):
                     refresh(
                         run_dir=root / "run", fetch=True, terms_review_path=self._terms(root),
-                        effective_date="2026-09-14", mode="handoff",
+                        effective_date="2026-10-08", mode="handoff",
                     )
             self.assertFalse((root / "run/lifecycle/handoff/manifest.json").exists())
 
@@ -206,7 +207,7 @@ class FsisRefreshTests(unittest.TestCase):
                 with self.assertRaisesRegex(AcquisitionError, "HTTP 403"):
                     refresh(
                         run_dir=root / "new", fetch=True, terms_review_path=self._terms(root),
-                        previous_manifest=previous, mode="handoff", effective_date="2026-09-14",
+                        previous_manifest=previous, mode="handoff", effective_date="2026-10-08",
                         max_attempts=3, retry_delay_seconds=0,
                     )
             self.assertEqual(opener.calls, 1)
