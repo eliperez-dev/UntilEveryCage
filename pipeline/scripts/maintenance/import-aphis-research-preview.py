@@ -55,7 +55,10 @@ def _load_handoff(handoff: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
 def prepare(handoff: Path, projection_dir: Path) -> dict[str, Any]:
     """Verify, project, and queue address-only work without provider calls."""
     policy = json.loads(POLICY_PATH.read_text(encoding="utf-8"))["sources"].get("us.aphis")
-    if not isinstance(policy, dict) or policy.get("enabled") is not True or policy.get("public_release") is not False:
+    if (not isinstance(policy, dict)
+            or policy.get("enabled") is not False
+            or policy.get("activation") != "explicit-source-specific-private-import-only"
+            or policy.get("public_release") is not False):
         raise ValueError("aphis_preview_policy_blocked")
     manifest, records = _load_handoff(handoff)
     rows = project_class_r_registrations(records)

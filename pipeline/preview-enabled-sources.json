@@ -213,8 +213,9 @@
       "config_version": "nvwa-approved-food-config-v1"
     },
     "us.aphis": {
-      "enabled": true,
-      "runtime_classification": "bounded-private-preview",
+      "enabled": false,
+      "runtime_classification": "fixture-only",
+      "activation": "explicit-source-specific-private-import-only",
       "public_release": false,
       "runner": "pipeline.scripts.maintenance.import-aphis-research-preview",
       "terms_decision": "operator-review-required",

@@ -43,6 +43,13 @@ class AphisPreviewTests(unittest.TestCase):
         with self.assertRaisesRegex(AphisPreviewError, "explicit_class_r"):
             project_class_r_registration(_record("Class B - Dealer"))
 
+    def test_policy_registers_a_manual_private_lane_not_shared_live_e2e(self):
+        policy = json.loads((ROOT / "preview-enabled-sources.json").read_text(encoding="utf-8"))["sources"]["us.aphis"]
+        self.assertFalse(policy["enabled"])
+        self.assertEqual(policy["runtime_classification"], "fixture-only")
+        self.assertEqual(policy["activation"], "explicit-source-specific-private-import-only")
+        self.assertFalse(policy["public_release"])
+
     def test_prepare_hash_checks_and_writes_only_private_projection(self):
         with tempfile.TemporaryDirectory() as directory:
             handoff = Path(directory) / "handoff"

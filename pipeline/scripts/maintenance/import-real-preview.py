@@ -34,7 +34,13 @@ from pipeline.geocoding.private_profiles import profile_for_source
 POLICY = Path(__file__).parents[2] / "preview-enabled-sources.json"
 SNAPSHOT_PROJECTION_VERSION = "real-preview-candidate-projection-v9"
 LEGACY_ALLOWED = {"fr.dgal.section-i", "fr.dgal.section-ii", "us.fsis"}
-PREVIEW_ENABLED = set(json.loads(POLICY.read_text(encoding="utf-8"))["sources"])
+# A registered policy is not automatically part of the generic live-preview
+# lifecycle.  Source-specific, manually retained imports stay out unless the
+# policy explicitly enables the shared production-E2E lane.
+PREVIEW_ENABLED = {
+    source_id for source_id, config in json.loads(POLICY.read_text(encoding="utf-8"))["sources"].items()
+    if isinstance(config, dict) and config.get("enabled") is True
+}
 ALLOWED = LEGACY_ALLOWED | PREVIEW_ENABLED
 EXPECTED_OBSERVATIONS = {
     "fr.dgal.section-i": 1449,
