@@ -60,7 +60,7 @@
       const query = new URLSearchParams(window.location.hash.split('?')[1] ?? '');
       const serverDataMode = document.querySelector<HTMLMetaElement>('meta[name="uec-local-data-mode"]')?.content ?? null;
       const explicitPublicRecord = route.kind === 'record' && (query.has('profile') || query.has('release_id'));
-      reviewMode = import.meta.env.DEV && !explicitPublicRecord && (query.has('f1a') || (serverDataMode === 'real-preview' && route.kind === 'map'));
+      reviewMode = import.meta.env.DEV && !explicitPublicRecord && (query.has('f1a') || ((serverDataMode === 'real-preview' || serverDataMode === 'candidate-preview') && route.kind === 'map'));
       loading = false;
       loadError = '';
     } catch {

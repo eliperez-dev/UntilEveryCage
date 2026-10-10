@@ -122,7 +122,7 @@ export const locationSchema = z.object(locationShape).strict().superRefine(coord
 // list projection. Keep listSchema closed so a detail field cannot leak into
 // map or list payloads unnoticed.
 export const detailLocationSchema = z.object({ ...locationShape, ...detailFactsShape }).strict().superRefine(coordinateRules);
-export const testReleaseLocationSchema = z.object({
+const testReleaseLocationShape = {
   ...locationShape,
   // The disposable test-release fixture predates the optional normalized
   // provenance label; keep that private-only compatibility surface readable.
@@ -132,6 +132,15 @@ export const testReleaseLocationSchema = z.object({
   project_approval: z.union([z.enum(['pending', 'approved']), z.literal(false), z.literal('not-approved')]),
   source_rights_status: z.string().default('unknown'),
   release_ruleset_version: z.string().nullable(),
+};
+export const testReleaseLocationSchema = z.object(testReleaseLocationShape).strict().superRefine(coordinateRules);
+// The configured candidate detail retains its private test-release core and
+// may add only the same bounded source-native facts as public detail. Keep it
+// distinct from public detail: candidate responses do not promise the public
+// lifecycle, reviewer, taxonomy, or rights fields beyond their core shape.
+export const testReleaseDetailLocationSchema = z.object({
+  ...testReleaseLocationShape,
+  ...detailFactsShape,
 }).strict().superRefine(coordinateRules);
 
 const profile = z.enum(['official', 'secondary', 'community']);
@@ -158,6 +167,7 @@ export type WireEnvelope = z.infer<typeof envelopeSchema>;
 export type WireLocation = z.infer<typeof locationSchema>;
 export type WireDetailLocation = z.infer<typeof detailLocationSchema>;
 export type WireTestReleaseLocation = z.infer<typeof testReleaseLocationSchema>;
+export type WireTestReleaseDetailLocation = z.infer<typeof testReleaseDetailLocationSchema>;
 
 export const detailEnvelopeSchema = z.object({
   data: detailLocationSchema,

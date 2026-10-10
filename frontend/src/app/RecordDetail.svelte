@@ -3,6 +3,7 @@
   import type { LabRecord } from '../design-lab/contract';
   import { categoryPresentation } from '../features/locations/categoryPresentation';
   import type { TaxonomyClassification } from '../domain/taxonomy';
+  import type { LocationSourceFacts } from '../domain/location';
 
   /** Safe fields returned by the local private-preview detail projection. */
   export type RecordDetailRecord = Partial<Omit<LabRecord, 'name' | 'category'>> & {
@@ -60,6 +61,7 @@
     displayPrecision?: string | null;
     display_precision?: string | null;
     taxonomy?: TaxonomyClassification | null;
+    sourceFacts?: LocationSourceFacts;
   };
 
   let {
@@ -216,6 +218,9 @@
       ? 'Source-provided coordinate, precision unverified'
       : precisionLabelFor(precision),
   );
+  const sourceFacts = $derived('sourceFacts' in record ? record.sourceFacts : undefined);
+  const sourceFactEntries = $derived((facts: LocationSourceFacts | undefined, field: 'speciesSlaughtered' | 'processingActivities') =>
+    facts?.[field] ? Object.entries(facts[field]!).filter(([, included]) => included !== false) : []);
 
   function humanizeValue(raw: string | null): string | null {
     if (!raw) return null;
@@ -416,6 +421,23 @@
     </dl>
     {#if evidence}<p class="evidence">{evidence}</p>{/if}
   </section>
+
+  {#if sourceFacts}
+    <section aria-labelledby="source-facts-heading">
+      <h2 id="source-facts-heading">Source facts</h2>
+      <dl>
+        {#if sourceFacts.alternateNames?.length}<div><dt>Also known as</dt><dd>{sourceFacts.alternateNames.join(' · ')}</dd></div>{/if}
+        {#if sourceFacts.establishmentId}<div><dt>Establishment ID</dt><dd>{sourceFacts.establishmentId}</dd></div>{/if}
+        {#if sourceFacts.establishmentNumber}<div><dt>Establishment number</dt><dd>{sourceFacts.establishmentNumber}</dd></div>{/if}
+        {#if sourceFacts.grantDate}<div><dt>Grant date</dt><dd>{sourceFacts.grantDate}</dd></div>{/if}
+        {#if sourceFacts.nativeActivityCode}<div><dt>Native activity code</dt><dd>{sourceFacts.nativeActivityCode}</dd></div>{/if}
+        {#if sourceFacts.nativeActivityLabel}<div><dt>Native activity</dt><dd>{sourceFacts.nativeActivityLabel}</dd></div>{/if}
+        {#if sourceFactEntries(sourceFacts, 'speciesSlaughtered').length}<div><dt>Species slaughtered</dt><dd>{sourceFactEntries(sourceFacts, 'speciesSlaughtered').map(([name, value]) => value === true ? name : `${name}: ${value}`).join(' · ')}</dd></div>{/if}
+        {#if sourceFactEntries(sourceFacts, 'processingActivities').length}<div><dt>Processing activities</dt><dd>{sourceFactEntries(sourceFacts, 'processingActivities').map(([name, value]) => value === true ? name : `${name}: ${value}`).join(' · ')}</dd></div>{/if}
+        {#if sourceFacts.sourceVolumeCategories?.length}<div><dt>Source volume categories</dt><dd>{sourceFacts.sourceVolumeCategories.map(category => category.code).join(' · ')}</dd></div>{/if}
+      </dl>
+    </section>
+  {/if}
 
   <section aria-labelledby="limitations-heading">
     <h2 id="limitations-heading">Limitations</h2>

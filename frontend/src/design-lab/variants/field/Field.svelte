@@ -23,6 +23,7 @@
     publicReleaseIdentity = null,
     publicMapMeta = null,
     onMapFeedMeta,
+    onCandidatePreviewLabel,
     dataStatus = "ready",
     dataError = "",
     mapStatus = "idle",
@@ -389,6 +390,7 @@
         {publicReleaseId}
         {publicReleaseIdentity}
         {onMapFeedMeta}
+        {onCandidatePreviewLabel}
         {mapStatus}
         {mapError}
         {mapTruncated}

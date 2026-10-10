@@ -8,6 +8,7 @@ export default defineConfig(({ command }) => {
   // in import.meta.env, the generated bundle, browser storage, URLs, or logs.
   const previewToken = command === 'serve' ? process.env.UEC_DEV_PREVIEW_TOKEN : undefined;
   const localRealPreview = Boolean(previewToken) && process.env.VITE_LOCAL_DATA_MODE === 'real-preview';
+  const localCandidatePreview = Boolean(previewToken) && process.env.VITE_LOCAL_DATA_MODE === 'candidate-preview';
   const realPreviewMapSource = localRealPreview
     ? process.env.VITE_REAL_PREVIEW_MAP_SOURCE ?? 'mvt'
     : undefined;
@@ -22,16 +23,29 @@ export default defineConfig(({ command }) => {
       },
     };
   }
-  const localApiProxy = { '/api': { target: apiOrigin, changeOrigin: false }, ...realPreviewProxy };
+  const candidatePreviewProxy: Record<string, string | ProxyOptions> = {};
+  if (localCandidatePreview && previewToken) {
+    candidatePreviewProxy['/api/dev/preview/test-release'] = {
+      target: process.env.UEC_CANDIDATE_PREVIEW_API_ORIGIN ?? apiOrigin,
+      changeOrigin: false,
+      configure(proxy) {
+        proxy.on('proxyReq', request => request.setHeader('x-uec-dev-preview-token', previewToken));
+      },
+    };
+  }
+  // Vite resolves proxy contexts in declaration order. Keep the authenticated
+  // candidate route ahead of the generic API route so its token is injected.
+  const localApiProxy = { ...candidatePreviewProxy, ...realPreviewProxy, '/api': { target: apiOrigin, changeOrigin: false } };
   const previewModeMeta = {
     name: 'uec-local-data-mode',
     transformIndexHtml(html: string) {
-      return localRealPreview ? html.replace('<head>', '<head><meta name="uec-local-data-mode" content="real-preview">') : html;
+      const mode = localRealPreview ? 'real-preview' : localCandidatePreview ? 'candidate-preview' : null;
+      return mode ? html.replace('<head>', `<head><meta name="uec-local-data-mode" content="${mode}">`) : html;
     },
   };
 
   return {
-    base: process.env.UEC_COMBINED_PREVIEW === 'true' ? '/v2-preview/' : localRealPreview ? '/' : '/v2-preview/',
+    base: process.env.UEC_COMBINED_PREVIEW === 'true' ? '/v2-preview/' : (localRealPreview || localCandidatePreview) ? '/' : '/v2-preview/',
     publicDir: 'public',
     plugins: [svelte(), previewModeMeta, publicReferenceAssets()],
     define: realPreviewMapSource

@@ -1,5 +1,5 @@
 <script lang="ts">
-  let { mode = "synthetic" }: { mode?: "synthetic" | "real-preview" | "public-release" } =
+  let { mode = "synthetic" }: { mode?: "synthetic" | "real-preview" | "candidate-preview" | "public-release" } =
     $props();
   let expanded = $state(false);
 </script>

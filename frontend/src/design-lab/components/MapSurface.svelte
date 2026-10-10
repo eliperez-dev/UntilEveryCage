@@ -52,6 +52,7 @@
     setRealPreviewPinMode,
   } from "./realPreviewMapLayers";
   import { clearRealPreviewMapCache, createRealPreviewMapFeedRepository, realPreviewMapCacheEntryCount } from "../../api/RealPreviewMapFeedRepository";
+  import { clearTestReleaseMapCache, createTestReleaseMapFeedRepository, testReleaseMapCacheEntryCount } from "../../api/TestReleaseMapFeedRepository";
   import { canReusePublicMapFeed, clearPublicMapCache, createPublicMapFeedRepository, publicMapCacheEntryCount } from "../../api/PublicMapFeedRepository";
 
   let {
@@ -62,6 +63,7 @@
     publicReleaseIdentity,
     publicReleaseManifestIdentity,
     onMapFeedMeta,
+    onCandidatePreviewLabel,
     mapStatus = "idle",
     mapError = "",
     mapTruncated = false,
@@ -81,11 +83,12 @@
   }: {
     records: readonly LabRecord[];
     state: LabState;
-    mode?: "synthetic" | "real-preview" | "public-release";
+    mode?: "synthetic" | "real-preview" | "candidate-preview" | "public-release";
     publicReleaseId?: string | null;
     publicReleaseIdentity?: string | null;
     publicReleaseManifestIdentity?: import('../../api/PublicReleaseRepository').PublicReleaseIdentity | null;
     onMapFeedMeta?: ((meta: import('../../api/PublicMapFeedRepository').PublicMapFeed['meta'] | null) => void) | undefined;
+    onCandidatePreviewLabel?: ((label: string | null) => void) | undefined;
     mapStatus?:
       | "idle"
       | "loading"
@@ -123,6 +126,7 @@
   let interactionsBound = false;
   let mvtError = $state("");
   const mapFeedRepository = createRealPreviewMapFeedRepository();
+  const candidateMapFeedRepository = createTestReleaseMapFeedRepository();
   const publicMapFeedRepository = createPublicMapFeedRepository();
   let feedAbort: AbortController | undefined;
   let feedGeneration = 0;
@@ -258,7 +262,7 @@
       : [],
   );
   const diagnosticsEnabled = $derived(import.meta.env.DEV && mode !== "synthetic" && debugEnabled);
-  const isRealPreview = () => mode === "real-preview";
+  const isRealPreview = () => mode === "real-preview" || mode === "candidate-preview";
   const isNativeMap = () => mode !== "synthetic";
   // The private development preview intentionally uses the reviewed, in-memory
   // GeoJSON/Supercluster path. The server-generated MVT implementation remains
@@ -375,7 +379,7 @@
     if (!source || !map) return;
     const startedAt = performance.now();
     if (mode === "public-release") return;
-    const data = createJsonMapCollection(mapped, mode);
+    const data = createJsonMapCollection(mapped, mode === "candidate-preview" ? "real-preview" : mode);
     setJsonFallbackData(map, data);
     const sourceMaterializeMs = Math.round(performance.now() - startedAt);
     onmaptiming?.({
@@ -575,13 +579,16 @@
       const requestedAt = performance.now();
       const result = publicReleaseId
         ? await publicMapFeedRepository.load("official", publicReleaseId, controller.signal, publicReleaseManifestIdentity ?? undefined)
-        : await mapFeedRepository.load(sourceId, controller.signal);
+        : mode === "candidate-preview"
+          ? await candidateMapFeedRepository.load(controller.signal)
+          : await mapFeedRepository.load(sourceId, controller.signal);
       if (controller.signal.aborted || map !== instance || generation !== feedGeneration) return;
       onMapFeedMeta?.("meta" in result ? result.meta : null);
+      onCandidatePreviewLabel?.("previewLabel" in result ? result.previewLabel ?? null : null);
       nativeSnapshotId = "snapshotId" in result ? result.snapshotId : result.meta.manifestSha256;
       nativeCacheStatus = "cacheStatus" in result ? result.cacheStatus : "not cached";
       nativeDecodedBytes = "decodedBytes" in result ? result.decodedBytes ?? null : new TextEncoder().encode(JSON.stringify(result.collection)).byteLength;
-      nativeCacheEntries = publicReleaseId ? await publicMapCacheEntryCount() : await realPreviewMapCacheEntryCount();
+      nativeCacheEntries = publicReleaseId ? await publicMapCacheEntryCount() : mode === "candidate-preview" ? await testReleaseMapCacheEntryCount() : await realPreviewMapCacheEntryCount();
       nativeFeedMs = Math.round(performance.now() - requestedAt);
       nativeUnitCount = result.collection.features.length;
       nativeRepresentedCount = result.collection.features.reduce((total, feature) => total + Number(feature.properties.weight), 0);
@@ -664,7 +671,7 @@
     return () => {};
   }
   async function clearProjectionCache() {
-    const removed = publicReleaseId ? (await clearPublicMapCache(), 1) : await clearRealPreviewMapCache();
+    const removed = publicReleaseId ? (await clearPublicMapCache(), 1) : mode === "candidate-preview" ? await clearTestReleaseMapCache() : await clearRealPreviewMapCache();
     nativeCacheEntries = 0;
     cacheClearStatus = publicReleaseId ? "Cleared public map projection cache." : removed ? `Cleared ${removed} cached projection ${removed === 1 ? "entry" : "entries"}.` : "Projection cache was already empty.";
   }

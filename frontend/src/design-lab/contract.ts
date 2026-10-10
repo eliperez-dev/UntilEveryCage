@@ -16,6 +16,11 @@ export type LabRecord = Readonly<{
   factualReviewStatus?: string; privacyScreeningStatus?: string; publicationStatus?: string;
   projectApproval?: boolean;
   taxonomy?: import('../domain/taxonomy').TaxonomyClassification;
+  sourceName?: string | null;
+  sourceUrl?: string | null;
+  retrievedAt?: string | null;
+  observedAt?: string | null;
+  sourceFacts?: import('../domain/location').LocationSourceFacts | undefined;
 }>;
 export type ViewportBounds = Readonly<{ west: number; south: number; east: number; north: number }>;
 export type Viewport = Readonly<{ centerLat: number; centerLon: number; zoom: number }>;
@@ -43,12 +48,13 @@ export interface DirectionViewProps {
   state: LabState;
   records: readonly LabRecord[];
   mapRecords?: readonly LabRecord[];
-  mode?: 'synthetic' | 'real-preview' | 'public-release';
+  mode?: 'synthetic' | 'real-preview' | 'candidate-preview' | 'public-release';
   publicReleaseId?: string | null;
   publicReleaseIdentity?: string | null;
   publicReleaseManifestIdentity?: import('../api/PublicReleaseRepository').PublicReleaseIdentity | null;
   publicMapMeta?: import('../api/PublicMapFeedRepository').PublicMapFeed['meta'] | null;
   onMapFeedMeta?: ((meta: import('../api/PublicMapFeedRepository').PublicMapFeed['meta'] | null) => void) | undefined;
+  onCandidatePreviewLabel?: ((label: string | null) => void) | undefined;
   dataStatus?: 'loading' | 'ready' | 'empty' | 'error' | 'unauthorized';
   dataError?: string;
   mapStatus?: 'idle' | 'loading' | 'ready' | 'empty' | 'error' | 'unauthorized';

@@ -6,6 +6,7 @@ export type RealPreviewMapFeed = Readonly<{
   snapshotId: string;
   cacheStatus: 'hit' | 'miss' | 'unavailable';
   decodedBytes?: number;
+  previewLabel?: string;
 }>;
 
 export class RealPreviewMapFeedError extends Error {
@@ -20,18 +21,24 @@ function finiteCoordinate(value: unknown, min: number, max: number): value is nu
 }
 
 /** Parse the compact map-only envelope without carrying record details into the map source. */
-export function parseRealPreviewMapFeed(payload: unknown): RealPreviewMapFeed {
+export function parseRealPreviewMapFeed(payload: unknown, candidateOnly = false): RealPreviewMapFeed {
   if (!payload || typeof payload !== 'object') throw new RealPreviewMapFeedError('The private map feed returned an invalid response.');
   const envelope = payload as Record<string, unknown>;
-  if (envelope.api_version !== 'real-preview-v1' || !Array.isArray(envelope.data) || !envelope.meta || typeof envelope.meta !== 'object') {
+  const rows = candidateOnly && envelope.data && typeof envelope.data === 'object' && !Array.isArray(envelope.data)
+    ? (envelope.data as Record<string, unknown>).points
+    : envelope.data;
+  if ((candidateOnly ? envelope.api_version !== 'dev-test-v1' : envelope.api_version !== 'real-preview-v1') || !Array.isArray(rows) || !envelope.meta || typeof envelope.meta !== 'object') {
     throw new RealPreviewMapFeedError('The private map feed returned an invalid response.');
   }
   const meta = envelope.meta as Record<string, unknown>;
-  if (meta.bounded !== true || meta.private_preview !== true || meta.scope !== 'default_map_scope' || meta.zoom_max !== 14
+  if (meta.bounded !== true || meta.private_preview !== true || meta.scope !== (candidateOnly ? 'candidate_map' : 'default_map_scope') || meta.zoom_max !== 14
     || typeof meta.snapshot_id !== 'string' || !/^[a-f0-9]{64}$/.test(meta.snapshot_id)) {
     throw new RealPreviewMapFeedError('The private map feed did not confirm its private, bounded scope.');
   }
-  const features: JsonMapFeature[] = envelope.data.map((value) => {
+  if (candidateOnly && (meta.candidate_only !== true || meta.test_only !== false || typeof meta.release_id !== 'string' || typeof meta.preview_label !== 'string')) {
+    throw new RealPreviewMapFeedError('The corrected candidate map feed did not confirm its configured private boundary.');
+  }
+  const features: JsonMapFeature[] = rows.map((value) => {
     if (!value || typeof value !== 'object') throw new RealPreviewMapFeedError('The private map feed returned an invalid feature.');
     const row = value as Record<string, unknown>;
     const kind = row.kind;
@@ -70,6 +77,7 @@ export function parseRealPreviewMapFeed(payload: unknown): RealPreviewMapFeed {
     collection: { type: 'FeatureCollection', features },
     snapshotId: meta.snapshot_id,
     cacheStatus: 'unavailable',
+    ...(candidateOnly ? { previewLabel: meta.preview_label as string } : {}),
   };
 }
 
