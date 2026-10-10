@@ -348,6 +348,7 @@ def safe_https_url(value: Any) -> str | None:
 
 
 SOURCE_NAMES = {
+    "us.aphis": "USDA Animal and Plant Health Inspection Service — Animal Care",
     "au.npi.facilities": "Australian Department of Climate Change, Energy, the Environment and Water — National Pollutant Inventory",
     "au.sa.epa.licensed-activities": "South Australian Environment Protection Authority — Licensed Activities",
     "be.locations": "Belgian Federal Agency for the Safety of the Food Chain — Operator Register",

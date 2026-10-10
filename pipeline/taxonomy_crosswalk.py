@@ -142,6 +142,12 @@ def _decision(source: str, normalized: dict[str, Any], original: dict[str, Any])
         if not assignments and (affirmative(normalized.get("processing_activities"))
                                 or normalized.get("demographics_evidence_state") == "complete-exact-join"):
             assignments.append({"leaf_activity": "processing", "primary": "processing_and_preparation", "method": "direct"})
+    elif source == "us.aphis":
+        # This bounded lane accepts only the explicit APHIS Class R
+        # registrant label.  It is a source classification, not an inference
+        # from a name, address, or associated inspection/annual-report row.
+        if normalized.get("aphis_registration_class") == "Class R":
+            assignments.append({"leaf_activity": "research", "primary": "research_and_animal_use", "method": "direct"})
     elif source in {"it.853-2004", "es.cat.feed-sandach"}:
         rules = _NATIVE_V3[source]
         unknown = False
@@ -351,6 +357,9 @@ def crosswalk_document(source_id: str) -> dict[str, Any]:
     elif source_id == "us.fsis":
         rules = [{"source_field": "species_slaughtered", "leaf_key": "slaughter", "primary_key": "slaughter", "mapping_method": "direct"},
                  {"source_field": "processing_activities", "leaf_key": "processing", "primary_key": "processing_and_preparation", "mapping_method": "direct"}]
+    elif source_id == "us.aphis":
+        rules = [{"source_field": "registration_or_license_type", "source_label": "Class R - Research Facility",
+                  "leaf_key": "research", "primary_key": "research_and_animal_use", "mapping_method": "direct"}]
     elif source_id in {"fr.dgal.section-i", "fr.dgal.section-ii"}:
         rules = [{"source_code": "SH", "leaf_key": "slaughter", "primary_key": "slaughter", "mapping_method": "direct"},
                  {"source_code": "CP", "leaf_key": "cutting", "primary_key": "processing_and_preparation", "mapping_method": "direct"},
