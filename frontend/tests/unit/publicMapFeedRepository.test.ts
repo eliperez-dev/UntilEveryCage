@@ -37,4 +37,19 @@ describe('public map compact feed', () => {
     expect(calls).toBe(1);
     Object.defineProperty(globalThis, 'caches', { configurable: true, value: original });
   });
+  it('keeps cache identity versioned across repository instances', async () => {
+    const original = (globalThis as { caches?: unknown }).caches;
+    const entries = new Map<string, Response>();
+    const cache = { match: async (key: Request) => entries.get(key.url)?.clone(), put: async (key: Request, value: Response) => { entries.set(key.url, value.clone()); }, keys: async () => [...entries.keys()].map(url => new Request(url)), delete: async (key: Request) => entries.delete(key.url) };
+    Object.defineProperty(globalThis, 'caches', { configurable: true, value: { open: async () => cache, delete: async () => { entries.clear(); return true; } } });
+    let calls = 0; const payload = { api_version:'v2', data:{type:'FeatureCollection',features:[{type:'Feature',id,geometry:{type:'Point',coordinates:[1,2]},properties:{facility_id:id,source_id:'source',category_key:'slaughter',category_keys:['slaughter'],precision:'exact',weight:1}}]}, meta };
+    const fetcher = (async () => { calls++; return new Response(JSON.stringify({ ...payload, meta: { ...meta, suppression_generation: calls === 1 ? 7 : 8 } })); }) as typeof fetch;
+    const identity = { releaseId:'v0', manifestSha256:'a'.repeat(64), suppressionGeneration:7 };
+    await createPublicMapFeedRepository(fetcher).load('official','v0',undefined,identity);
+    await expect(createPublicMapFeedRepository(fetcher).load('official','v0',undefined,identity)).resolves.toMatchObject({meta:{cacheStatus:'hit'}});
+    await createPublicMapFeedRepository(fetcher).load('official','v0',undefined,{...identity,suppressionGeneration:8});
+    expect(calls).toBe(2);
+    await clearPublicMapCache(); expect(await publicMapCacheEntryCount()).toBe(0);
+    Object.defineProperty(globalThis, 'caches', { configurable: true, value: original });
+  });
 });
