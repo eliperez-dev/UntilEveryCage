@@ -33,6 +33,7 @@ const response = (body: unknown, status = 200) => new Response(JSON.stringify(bo
 describe('private real-preview repository', () => {
   it('selects real data only in the explicitly enabled development server mode', () => {
     expect(selectDesignLabDataMode(true, 'real-preview', true)).toBe('real-preview');
+    expect(selectDesignLabDataMode(true, 'candidate-preview', true)).toBe('candidate-preview');
     expect(selectDesignLabDataMode(true, null, true)).toBe('synthetic');
     expect(selectDesignLabDataMode(true, null)).toBe('public-release');
     expect(selectDesignLabDataMode(false, 'real-preview', true)).toBe('public-release');
