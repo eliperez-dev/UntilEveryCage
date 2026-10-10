@@ -2954,6 +2954,7 @@ const APHIS_ANNUAL_REPORT_SOURCE_URL: &str =
     "https://direct.aphis.usda.gov/awa/research-facility-report/annual-summary";
 const APHIS_REGISTRATION_CERTIFICATE_ALIAS_VERSION: &str =
     "aphis-registration-number-is-certificate-v1";
+const APHIS_REGISTRATION_ESTABLISHMENT_PREFIX: &str = "aphis-registration:";
 const APHIS_ANNUAL_REPORT_SPECIES: [(&str, &str); 10] = [
     ("Dogs", "Dogs"),
     ("Cats", "Cats"),
@@ -3074,7 +3075,14 @@ fn aphis_candidate_native_identifiers(normalized: &str) -> (Option<String>, Opti
     let certificate = native
         .and_then(|values| values.get("aphis_license_number"))
         .and_then(Value::as_str)
-        .and_then(aphis_registration_certificate_alias);
+        .and_then(aphis_registration_certificate_alias)
+        .or_else(|| {
+            normalized
+                .get("establishment_id")
+                .and_then(Value::as_str)
+                .and_then(|value| value.strip_prefix(APHIS_REGISTRATION_ESTABLISHMENT_PREFIX))
+                .and_then(aphis_registration_certificate_alias)
+        });
     let certificate_from_registration_alias = certificate.is_some();
     (certificate, identifier("customer_number"), certificate_from_registration_alias)
 }
@@ -5959,6 +5967,10 @@ mod v2_api_tests {
                 r#"{"source_native_ids":{"aphis_license_number":"87-R-0022"},"establishment_id":"aphis-registration:87-R-0022"}"#,
             ),
             (Some("87-R-0022".into()), None, true),
+        );
+        assert_eq!(
+            aphis_candidate_native_identifiers(r#"{"establishment_id":"aphis-registration:87-F-0022"}"#),
+            (Some("87-F-0022".into()), None, true),
         );
         assert_eq!(
             aphis_candidate_native_identifiers(
