@@ -34,6 +34,26 @@ class FsisAdapterTests(unittest.TestCase):
         self.assertEqual(result["source_metrics"]["category_coverage"]["slaughter_rows"], 2)
         self.assertEqual(result["source_metrics"]["category_coverage"]["processing_rows"], 2)
 
+    def test_negative_flags_and_volume_codes_are_preserved_without_activity_inference(self):
+        directory = (
+            b"establishment_id,establishment_name,processing_volume_category,slaughter_volume_category,dbas,grant_date,district\n"
+            b"FSIS-100,Fixture Plant,2.0,3.0,Fixture DBA,2026-01-01,001\n"
+        )
+        demographics = (
+            b"establishment_id,beef_cow_slaughter,raw_intact_beef_processing\n"
+            b"FSIS-100,No,No\n"
+        )
+        result = FsisMpiAdapter().parse_sources(directory, demographics)
+        normalized = result["accepted"][0]["normalized"]
+        self.assertEqual(normalized["species_slaughtered"]["beef_cow_slaughter"], "No")
+        self.assertEqual(normalized["processing_activities"]["raw_intact_beef_processing"], "No")
+        self.assertEqual(normalized["activity_categories"], ())
+        self.assertEqual(normalized["activity_volume_codes"]["processing_volume_category"],
+                         {"code": "2.0", "unit": None, "unit_state": "not_supplied_by_source"})
+        self.assertEqual(normalized["dba_names"], "Fixture DBA")
+        self.assertEqual(normalized["administrative_facts"]["grant_date"], "2026-01-01")
+        self.assertEqual(result["source_metrics"]["category_coverage"]["no_activity_category_rows"], 1)
+
     def test_unmatched_demographics_are_quarantined_not_dropped(self):
         demographic = b"establishment_number,goat_slaughter\nNOT-IN-DIRECTORY,Yes\n"
         result = FsisMpiAdapter().parse_sources((ROOT / "fixtures/valid.csv").read_bytes(), demographic)
@@ -78,5 +98,6 @@ class FsisAdapterTests(unittest.TestCase):
             self.assertEqual(manifest["input_rows"],manifest["normalized_rows"]+manifest["quarantined_rows"])
             self.assertTrue((Path(directory)/"parsed/records.jsonl").exists()); self.assertEqual(json.loads((Path(directory)/"normalized/records.jsonl").read_text().splitlines()[0])["normalized"]["publication_gate"],"blocked")
             self.assertEqual(manifest["source_profile"], "fsis-mpi-directory-only")
+            self.assertFalse(manifest["demographics_parity"]["complete"])
 
 if __name__ == "__main__": unittest.main()

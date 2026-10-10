@@ -131,8 +131,10 @@ def _source_metrics(
     activity_fields = Counter()
     for item in parsed:
         normalized = item.get("normalized", {})
-        slaughter = bool(normalized.get("species_slaughtered"))
-        processing = bool(normalized.get("processing_activities"))
+        slaughter = any(str(value).strip().casefold() in _AFFIRMATIVE_FLAGS
+                        for value in normalized.get("species_slaughtered", {}).values())
+        processing = any(str(value).strip().casefold() in _AFFIRMATIVE_FLAGS
+                         for value in normalized.get("processing_activities", {}).values())
         if slaughter:
             categories["slaughter"] += 1
         if processing:
@@ -190,21 +192,41 @@ def _coordinate(row: dict[str, Any]) -> tuple[dict[str, Any] | None, str, str | 
     )
 
 
-def _activity_maps(rows: Iterable[dict[str, Any]]) -> tuple[dict[str, str], dict[str, str], dict[str, str], dict[str, str]]:
+_AFFIRMATIVE_FLAGS = frozenset({"yes", "y", "true", "1"})
+
+
+def _is_activity_flag_column(key: str) -> bool:
+    """Recognize source activity flags, never source volume/category columns."""
+    return ("volume" not in key and (
+        "slaughter" in key or key.endswith("_processing") or key in {"processing", "egg_product", "egg_products"}
+    ))
+
+
+def _is_volume_column(key: str) -> bool:
+    return "volume" in key and ("slaughter" in key or "processing" in key)
+
+
+def _activity_maps(rows: Iterable[dict[str, Any]]) -> tuple[dict[str, str], dict[str, str], dict[str, str], dict[str, str], dict[str, dict[str, str | None]]]:
     slaughter: dict[str, str] = {}
     processing: dict[str, str] = {}
     inspection: dict[str, str] = {}
     all_activities: dict[str, str] = {}
+    volume_codes: dict[str, dict[str, str | None]] = {}
     for row in rows:
         for raw_key, raw_value in row.items():
             value = _clean(raw_value)
             key = _header_key(str(raw_key))
             if not value or key in {"establishment_id", "establishment_number", "establishment_name", "name"}:
                 continue
-            if "slaughter" in key:
+            if _is_volume_column(key):
+                # The directory publishes an ordinal/category value, not a
+                # Yes/No activity flag. Preserve it without treating it as
+                # evidence that an activity occurs or inventing a unit.
+                volume_codes[key] = {"code": value, "unit": None, "unit_state": "not_supplied_by_source"}
+            elif _is_activity_flag_column(key) and "slaughter" in key:
                 slaughter[key] = value
                 all_activities[key] = value
-            elif "processing" in key or key in {"egg_product", "egg_products"}:
+            elif _is_activity_flag_column(key):
                 processing[key] = value
                 all_activities[key] = value
             elif key.startswith("inspection") or "inspection_system" in key:
@@ -214,6 +236,7 @@ def _activity_maps(rows: Iterable[dict[str, Any]]) -> tuple[dict[str, str], dict
         dict(sorted(processing.items())),
         dict(sorted(inspection.items())),
         dict(sorted(all_activities.items())),
+        dict(sorted(volume_codes.items())),
     )
 
 
@@ -221,7 +244,7 @@ def _record(directory: dict[str, Any], line: int, demographic: dict[str, Any] | 
     source_rows: list[dict[str, Any]] = [directory]
     if demographic:
         source_rows.append(demographic)
-    slaughter, processing, inspection, all_activities = _activity_maps(source_rows)
+    slaughter, processing, inspection, all_activities, volume_codes = _activity_maps(source_rows)
     inspection_attributes = dict(inspection)
     for attribute, aliases in {
         "establishment_type": ("type", "establishment_type"),
@@ -260,14 +283,23 @@ def _record(directory: dict[str, Any], line: int, demographic: dict[str, Any] | 
         "size": _field(directory, "size", "haccp_size", "establishment_size"),
         "source_type": _field(directory, "type", "establishment_type", "activities", "activity"),
         "grant_date": _field(directory, "grant_date", "grant date"),
+        "dba_names": _field(directory, "dbas", "dba", "doing business as"),
+        "administrative_facts": {key: value for key, value in {
+            "grant_date": _field(directory, "grant_date", "grant date"),
+            "district": _field(directory, "district"), "circuit": _field(directory, "circuit"),
+            "size": _field(directory, "size", "haccp_size", "establishment_size"),
+            "establishment_type": _field(directory, "type", "establishment_type"),
+        }.items() if value is not None},
         "coordinates": coordinates,
         "coordinate_state": coordinate_state,
         "address_state": "source-address-retained-private-pending-review" if _field(directory, "street", "address", "address_line_1") else "unknown",
         "species_slaughtered": slaughter,
         "processing_activities": processing,
+        "activity_volume_codes": volume_codes,
         "inspection_attributes": dict(sorted(inspection_attributes.items())),
         "activities": tuple(sorted(all_activities)),
-        "activity_categories": tuple(category for category, values in (("slaughter", slaughter), ("processing", processing)) if values),
+        "activity_categories": tuple(category for category, values in (("slaughter", slaughter), ("processing", processing))
+                                     if any(value.casefold() in _AFFIRMATIVE_FLAGS for value in values.values())),
         "privacy_gate": "pending-review",
         "coordinate_gate": "review_required",
         "publication_gate": "blocked",
@@ -538,6 +570,13 @@ class FsisMpiAdapter:
                 "identity_conflicts": result["identity_conflicts"], "unmatched_demographic_is_not_closure": True,
             },
             "source_metrics": result["source_metrics"],
+            "demographics_parity": {
+                "complete": bool(demographics is not None and result["matched_demographic_rows"] == result["directory_rows"]
+                                 and result["orphan_demographic_rows"] == 0 and result["identity_conflicts"] == 0),
+                "reason": ("exact_complete_bundle" if demographics is not None and result["matched_demographic_rows"] == result["directory_rows"]
+                           and result["orphan_demographic_rows"] == 0 and result["identity_conflicts"] == 0
+                           else "directory_only_or_incomplete_demographic_join"),
+            },
             "geocoding": "disabled",
             "coverage": "FSIS-regulated meat, poultry, and egg establishments in the captured edition; state-inspection programs and non-FSIS populations excluded",
             "publication_state": "private-candidate",
