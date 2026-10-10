@@ -16,6 +16,14 @@ SPEC.loader.exec_module(IMPORTER)
 
 
 class RealPreviewImporterTests(unittest.TestCase):
+    def test_preview_activity_projection_bounds_only_display_arrays(self):
+        """A source can retain more than 64 native flags without breaking preview."""
+        source = MODULE_PATH.read_text(encoding="utf-8")
+        self.assertIn('preview_activity_codes = list(activity["source_activity_codes"])[:64]', source)
+        self.assertIn('preview_activity_labels = list(activity["source_activity_labels"])[:64]', source)
+        migration = (Path(__file__).parents[1] / "migrations" / "054_real_preview_activity_contract.sql").read_text(encoding="utf-8")
+        self.assertIn("cardinality(source_activity_codes) <= 64", migration)
+
     def test_activity_schema_migration_is_additive_and_keeps_legacy_display_fields(self):
         migration = (Path(__file__).parents[1] / "migrations" / "054_real_preview_activity_contract.sql").read_text(encoding="utf-8")
         for column in ("category", "activity_categories", "source_activity_codes", "source_activity_labels",

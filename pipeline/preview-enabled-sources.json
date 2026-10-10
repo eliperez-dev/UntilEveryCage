@@ -221,7 +221,7 @@
       "terms_decision": "approved",
       "freshness_max_days": 2,
       "expected_artifacts": ["directory.csv", "demographics.csv"],
-      "allowed_preview_fields": ["establishment_id", "establishment_number", "canonical_name", "country_code", "city", "state", "postal_code", "county", "fips_code", "district", "circuit", "size", "source_type", "grant_date", "coordinates", "coordinate_state", "address_state", "species_slaughtered", "processing_activities", "inspection_attributes", "activities", "activity_categories", "privacy_gate", "coordinate_gate", "publication_gate"],
+      "allowed_preview_fields": ["establishment_id", "establishment_number", "canonical_name", "country_code", "city", "state", "postal_code", "county", "fips_code", "district", "circuit", "size", "source_type", "grant_date", "coordinates", "coordinate_state", "address_state", "species_slaughtered", "processing_activities", "inspection_attributes", "activities", "activity_categories", "activity_volume_codes", "administrative_facts", "dba_names", "demographics_evidence_state", "privacy_gate", "coordinate_gate", "publication_gate"],
       "display_policy": {"kind": "source_numeric_coordinate", "precision": "source-provided-unspecified", "disclosure": "FSIS source-provided coordinate; precision and address suitability have not been reviewed. Private preview only; not an exact verified facility point."},
       "adapter_version": "us-fsis-candidate-v2",
       "schema_version": "us-fsis-mpi-v1"

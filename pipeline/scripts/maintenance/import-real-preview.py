@@ -811,6 +811,12 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
         default_map_scope, map_scope_reason = chosen[16:18]
         facility_address, coordinate_method, coordinate_provider, coordinate_confidence, coordinate_confidence_band = chosen[18:23]
         activity = merge_activity_contracts(activity_contracts_by_group.get(str(group_key), []), source)
+        # The private preview is a bounded projection, not a second raw
+        # evidence store.  Keep its arrays within the database contract while
+        # the complete normalized record and taxonomy assignment rows retain
+        # the source evidence for review.
+        preview_activity_codes = list(activity["source_activity_codes"])[:64]
+        preview_activity_labels = list(activity["source_activity_labels"])[:64]
         activity_label = safe_preview_text("; ".join(activity["source_activity_labels"]), 240)
         if activity_label is None:
             activity_label = activity["category"]
@@ -856,7 +862,7 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
              display_name, activity_label, activity_source, source_record_url, evidence_summary, SOURCE_NAMES.get(source), observed,
              default_map_scope, map_scope_reason, facility_address, coordinate_method, coordinate_provider,
              coordinate_confidence, coordinate_confidence_band, municipality_code, activity["category"], activity["activity_categories"],
-             activity["source_activity_codes"], activity["source_activity_labels"], activity["activity_mapping_status"],
+             preview_activity_codes, preview_activity_labels, activity["activity_mapping_status"],
              activity["classification_ruleset_version"]),
         )
         candidate_id = db.execute(
