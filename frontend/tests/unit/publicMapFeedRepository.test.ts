@@ -10,6 +10,11 @@ describe('public map compact feed', () => {
     expect(feed.collection.features).toHaveLength(1);
     expect(feed.collection.features[0]?.properties).toMatchObject({ facility_id: id, source_id: 'source', category_key: 'slaughter', precision: 'exact' });
   });
+  it('keeps approximate precision as a reference in compact and legacy feeds', () => {
+    const compact = parsePublicMapFeed({ api_version: 'v2', data: { format: 'compact-v1', dictionaries: { source_ids: ['source'], category_keys: ['slaughter'], precisions: ['approximate'] }, features: [[id, 1, 2, 0, 0, [0], 0]] }, meta }, 'official', 'v0');
+    const legacy = parsePublicMapFeed({ api_version: 'v2', data: { type: 'FeatureCollection', features: [{ type: 'Feature', id, geometry: { type: 'Point', coordinates: [1, 2] }, properties: { facility_id: id, source_id: 'source', category_key: 'slaughter', category_keys: ['slaughter'], precision: 'approximate', weight: 1 } }] }, meta }, 'official', 'v0');
+    for (const feed of [compact, legacy]) expect(feed.collection.features[0]?.properties).toMatchObject({ precision: 'approximate', kind: 'reference' });
+  });
   it('rejects compact indices outside their dictionaries', () => {
     expect(() => parsePublicMapFeed({ api_version: 'v2', data: { format: 'compact-v1', dictionaries: { source_ids: [], category_keys: [], precisions: [] }, features: [[id, 1, 2, 0, 0, [], 0]] }, meta }, 'official', 'v0')).toThrow();
   });

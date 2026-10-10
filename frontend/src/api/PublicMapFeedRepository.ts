@@ -98,7 +98,10 @@ export function parsePublicMapFeed(payload: unknown, profile: LocalProfile, rele
       throw new PublicMapFeedError('The public map feed returned an invalid feature.');
     }
     const precision = props.precision;
-    const kind = precision === 'city' ? 'reference' : 'source-coordinate';
+    // Approximate coordinates are display references, not facility pins. They
+    // retain their source precision while using the existing pixel-scale blue
+    // reference treatment rather than claiming a city-radius geometry.
+    const kind = precision === 'city' || precision === 'approximate' ? 'reference' : 'source-coordinate';
     return {
       type: 'Feature', id: value.id,
       geometry: { type: 'Point', coordinates: [longitude, latitude] },

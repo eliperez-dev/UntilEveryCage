@@ -18,10 +18,10 @@ describe('real-preview native clustering layers', () => {
     ] };
     addRealPreviewMapLayers(map as any, data);
     expect(Object.keys(sources)).toEqual(['locations']);
-    expect(sources.locations).toMatchObject({ cluster: true, clusterRadius: 30, clusterMaxZoom: 7, roundZoom: true, clusterProperties: { representedCount: ['+', ['get', 'weight']] } });
+    expect(sources.locations).toMatchObject({ cluster: true, clusterRadius: 30, clusterMaxZoom: 7, roundZoom: true, clusterProperties: { representedCount: ['+', ['get', 'weight']], approximateCount: ['+', ['case', ['any', ['==', ['get', 'precision'], 'approximate'], ['==', ['get', 'precision'], 'city']], ['get', 'weight'], 0]] } });
     expect(layers.find(layer => layer.id === 'clusters')?.filter).toEqual(['has', 'cluster']);
     expect(layers.find(layer => layer.id === 'clusters')?.layout['icon-image'])
-      .toEqual(['step', ['get', 'representedCount'], 'cluster-low', 10, 'cluster-mid', 100, 'cluster-high', 1001, 'cluster-very-high']);
+      .toEqual(['case', ['==', ['get', 'approximateCount'], ['get', 'representedCount']], 'cluster-approx', ['>', ['get', 'approximateCount'], 0], ['step', ['get', 'representedCount'], 'cluster-mixed-low', 10, 'cluster-mixed-mid', 100, 'cluster-mixed-high', 1001, 'cluster-mixed-very-high'], ['step', ['get', 'representedCount'], 'cluster-low', 10, 'cluster-mid', 100, 'cluster-high', 1001, 'cluster-very-high']]);
     expect(layers.find(layer => layer.id === 'approx-reference-points')?.maxzoom).toBeUndefined();
     expect(layers.find(layer => layer.id === 'approx-reference-points')).toMatchObject({
       type: 'symbol',
