@@ -32,9 +32,9 @@ class TaxonomyCrosswalkTests(unittest.TestCase):
         self.assertEqual(derived["taxonomy_display_category"], "slaughter")
 
         candidate = project_observation(self.by_name["australia-candidate"])
-        self.assertEqual(candidate["taxonomy_mapping_method"], "candidate")
-        self.assertEqual(candidate["taxonomy_mapping_status"], "unmapped")
-        self.assertEqual(candidate["taxonomy_display_category"], "unclassified")
+        self.assertEqual(candidate["taxonomy_mapping_method"], "derived")
+        self.assertEqual(candidate["taxonomy_mapping_status"], "mapped")
+        self.assertEqual(candidate["taxonomy_display_category"], "animal_keeping_and_production")
 
     def test_exact_be_fsis_and_cfia_source_evidence_is_direct(self):
         belgium = project_observation({"source_id": "be.locations", "normalized": {

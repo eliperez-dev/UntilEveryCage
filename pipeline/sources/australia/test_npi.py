@@ -81,10 +81,24 @@ class NpiAdapterTests(unittest.TestCase):
         self.assertEqual(mined["activity_categories"], [])
         self.assertFalse(mined["in_default_map_scope"])
         self.assertEqual(mined["map_scope_reason"], "outside_animal_industry_scope")
-        pig_raw = FIXTURE.read_bytes().replace(b"1111,Meat processing", b"0145,Pig farming", 1)
+        pig_raw = FIXTURE.read_bytes().replace(b"1111,Meat processing", b"0192,Pig farming", 1)
         pig = NpiFacilitiesAdapter().parse_bytes(pig_raw)["accepted"][0]["normalized"]
         self.assertEqual(pig["activity_categories"], ["animal_production"])
         self.assertTrue(pig["in_default_map_scope"])
+
+    def test_anzsic_scope_matches_official_animal_classes(self):
+        from pipeline.sources.australia.npi import ANZSIC_ANIMAL_RELEVANCE
+        from pipeline.taxonomy_crosswalk import project_observation
+        for code in ANZSIC_ANIMAL_RELEVANCE:
+            with self.subTest(code=code):
+                projected = project_observation({"source_id": SOURCE_ID, "normalized": {
+                    "primary_anzsic_class_code": code}})
+                self.assertEqual(projected["taxonomy_mapping_status"], "mapped")
+        for code in ("0146", "0149", "1711", "1411", "0804"):
+            with self.subTest(code=code):
+                raw = FIXTURE.read_bytes().replace(b"1111,Meat processing", (code + ",Non-animal industry").encode(), 1)
+                normalized = NpiFacilitiesAdapter().parse_bytes(raw)["accepted"][0]["normalized"]
+                self.assertFalse(normalized["in_default_map_scope"])
 
     def test_live_fetch_checks_official_catalogue_and_records_immutable_provenance(self):
         raw = FIXTURE.read_bytes()
