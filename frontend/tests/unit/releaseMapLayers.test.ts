@@ -61,6 +61,7 @@ describe('release map layers', () => {
     ]);
     expect(JSON.stringify(layers[1])).toContain('exact_count');
     expect(JSON.stringify(layers[1])).toContain('coarse_count');
+    expect(layers[0].paint['circle-color']).toBe('#667168');
     expect(layers[4].layout['text-field']).toBe('APPROX.');
     expect(layers[2].paint['circle-radius']).toBe(17);
   });

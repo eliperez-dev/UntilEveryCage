@@ -188,11 +188,12 @@
     .masthead { grid-template-columns:minmax(0,1fr) auto; }
   }
   @media (max-width: 25rem) {
+    .masthead { grid-template-columns:minmax(0,1fr); min-height:0; gap:.35rem; }
     .wordmark{font-size:.9rem}.wordmark img{width:1.6rem;height:1.6rem}
-    .masthead { min-height: 3.9rem; }
+    .masthead-actions { grid-column:1; grid-row:2; justify-self:start; }
     .tools-action span { display:none; }
     .masthead-actions { gap:.25rem; }
-    nav { gap:.65rem; }
+    nav { grid-row:3; gap:.65rem; }
     nav .secondary-link { margin-left:0; padding-left:.5rem; }
   }
 </style>
