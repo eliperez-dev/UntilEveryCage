@@ -71,6 +71,21 @@ class PublicDiscoveryQueryContractTests(unittest.TestCase):
         self.assertIn("observation_taxonomy_assignment_sets sets", locations)
         self.assertNotIn("websearch_to_tsquery", locations)
 
+    def test_public_discovery_transactions_disable_jit_locally(self):
+        source = _source()
+        endpoints = (
+            "get_v2_public_map_feed_handler",
+            "get_v2_locations_export_handler",
+            "get_v2_facets_handler",
+            "get_v2_locations_handler",
+            "get_v2_location_detail_handler",
+        )
+        for endpoint in endpoints:
+            start = source.index(f"pub async fn {endpoint}")
+            next_handler = source.find("pub async fn ", start + 1)
+            body = source[start:next_handler if next_handler != -1 else None]
+            self.assertIn('batch_execute("SET LOCAL jit = off")', body)
+
 
 if __name__ == "__main__":
     unittest.main()

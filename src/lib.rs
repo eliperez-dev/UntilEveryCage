@@ -365,6 +365,9 @@ pub async fn get_v2_public_map_feed_handler(
         Ok(transaction) => transaction,
         Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "database_transaction_unavailable", "V2 database transaction unavailable"),
     };
+    if transaction.batch_execute("SET LOCAL jit = off").await.is_err() {
+        return v2_error(StatusCode::SERVICE_UNAVAILABLE, "database_transaction_unavailable", "V2 database transaction unavailable");
+    }
     let release = match transaction.query_opt(
         "SELECT manifest.manifest::text, manifest.manifest_sha256, model.manifest_sha256 FROM uec.releases release JOIN uec.public_discovery_read_models model ON model.release_id=release.release_id JOIN uec.release_manifests manifest ON manifest.release_id=release.release_id AND manifest.manifest_sha256=model.manifest_sha256 WHERE release.release_id=$1 AND release.profile=$2 AND release.status='promoted' AND release.test_only IS NOT TRUE",
         &[&release_id, &profile],
@@ -821,6 +824,13 @@ pub async fn get_v2_locations_export_handler(
             );
         }
     };
+    if transaction.batch_execute("SET LOCAL jit = off").await.is_err() {
+        return v2_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "database_transaction_unavailable",
+            "V2 database transaction unavailable",
+        );
+    }
     let release = match transaction.query_opt("SELECT r.release_id, m.manifest_sha256, (model.release_id IS NOT NULL AND manifest.release_id IS NOT NULL) FROM uec.releases r LEFT JOIN uec.public_discovery_read_models model ON model.release_id=r.release_id LEFT JOIN uec.release_manifests manifest ON manifest.release_id=r.release_id AND manifest.manifest_sha256=model.manifest_sha256 LEFT JOIN uec.release_manifests m ON m.release_id=r.release_id WHERE r.status='promoted' AND r.test_only IS NOT TRUE AND r.profile=$1 ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1", &[&profile]).await {
         Ok(row) => row, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "release_query_failed", "release query failed")
     };
@@ -3277,6 +3287,13 @@ pub async fn get_v2_facets_handler(
             );
         }
     };
+    if transaction.batch_execute("SET LOCAL jit = off").await.is_err() {
+        return v2_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "database_transaction_unavailable",
+            "V2 database transaction unavailable",
+        );
+    }
     let release = match transaction.query_opt("SELECT r.release_id, r.ruleset_version, r.created_at, (model.release_id IS NOT NULL AND manifest.release_id IS NOT NULL) FROM uec.releases r LEFT JOIN uec.public_discovery_read_models model ON model.release_id=r.release_id LEFT JOIN uec.release_manifests manifest ON manifest.release_id=r.release_id AND manifest.manifest_sha256=model.manifest_sha256 WHERE r.status='promoted' AND r.test_only IS NOT TRUE AND r.profile=$1 ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1", &[&profile]).await { Ok(row) => row, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "release_query_failed", "release query failed") };
     let Some(release) = release else {
         return v2_error(
@@ -3673,6 +3690,13 @@ pub async fn get_v2_locations_handler(
             );
         }
     };
+    if transaction.batch_execute("SET LOCAL jit = off").await.is_err() {
+        return v2_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "database_transaction_unavailable",
+            "V2 database transaction unavailable",
+        );
+    }
     let requested_profile = params.profile.as_deref().unwrap_or("official");
     let release = transaction.query_opt("SELECT r.release_id, r.ruleset_version, r.created_at, r.profile, (model.release_id IS NOT NULL AND manifest.release_id IS NOT NULL) FROM uec.releases r LEFT JOIN uec.public_discovery_read_models model ON model.release_id=r.release_id LEFT JOIN uec.release_manifests manifest ON manifest.release_id=r.release_id AND manifest.manifest_sha256=model.manifest_sha256 WHERE r.status = 'promoted' AND r.test_only IS NOT TRUE AND r.profile = $1 AND ($2::text IS NULL OR r.release_id = $2) ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1", &[&requested_profile, &params.release_id]).await;
     let release = match release {
@@ -3983,6 +4007,13 @@ pub async fn get_v2_location_detail_handler(
             );
         }
     };
+    if transaction.batch_execute("SET LOCAL jit = off").await.is_err() {
+        return v2_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "database_transaction_unavailable",
+            "V2 database transaction unavailable",
+        );
+    }
     let requested_profile = params.profile.as_deref().unwrap_or("official");
     if !["official", "secondary", "community"].contains(&requested_profile) {
         return v2_error(
