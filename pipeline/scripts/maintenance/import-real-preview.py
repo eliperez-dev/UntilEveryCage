@@ -713,7 +713,12 @@ def private_geocode_queue_eligible(source: str, normalized: dict[str, Any],
                                    location: dict[str, Any], location_class: str,
                                    profile: dict[str, Any] | None) -> bool:
     """Check source/profile scope before creating a provider job."""
-    if profile is None or profile.get("source_id") != source or location_class == "numeric_source_coordinate":
+    # An adapter may mark a source point as demonstrated to be in the wrong
+    # country using retained address/admin evidence. Preserve that raw point,
+    # but allow the existing bounded address-enrichment path; do not infer the
+    # state from broad geography or an apparent axis swap.
+    demonstrated_country_mismatch = normalized.get("coordinate_state") == "source-country-mismatch-demonstrated"
+    if profile is None or profile.get("source_id") != source or (location_class == "numeric_source_coordinate" and not demonstrated_country_mismatch):
         return False
     country = normalized.get("country_code") or location.get("country_code")
     if not isinstance(country, str) or country.upper() != profile.get("country_code"):

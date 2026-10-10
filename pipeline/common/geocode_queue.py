@@ -41,6 +41,12 @@ def _has_valid_coordinates(normalized: dict[str, Any]) -> bool:
     # suppressing its point from the preview projection. Do not send those
     # addresses to a geocoder unless the adapter explicitly classifies the
     # source point as invalid.
+    # A source point explicitly demonstrated to be in the wrong country is
+    # preserved as raw evidence but must not suppress address enrichment.  The
+    # adapter is responsible for that evidence-backed state; broad envelopes
+    # and axis-shaped values alone never set it.
+    if normalized.get("coordinate_state") == "source-country-mismatch-demonstrated":
+        return False
     if normalized.get("coordinate_state") in {
         "source-coordinate", "source_coordinates_preserved",
         "source-value-present-pending-review",

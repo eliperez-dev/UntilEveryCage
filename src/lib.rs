@@ -295,7 +295,7 @@ const PUBLIC_MAP_FEED_CACHE_MAX_ENTRIES: usize = 8;
 // Increment whenever the private candidate map projection changes while its
 // immutable candidate snapshot may remain the same. This keeps both the
 // in-process cache and browser validators from reusing an older projection.
-const PRIVATE_CANDIDATE_MAP_PROJECTION_VERSION: &str = "v2";
+const PRIVATE_CANDIDATE_MAP_PROJECTION_VERSION: &str = "v3";
 
 #[derive(Clone)]
 struct PublicMapFeedCacheEntry { body: Arc<str>, content_type: &'static str, last_used: u64 }
@@ -2673,6 +2673,105 @@ fn csv_safe_value(value: String) -> String {
     }
 }
 
+const TEST_RELEASE_TAXONOMY_KEYS: &[&str] = &[
+    "animal_keeping_and_production",
+    "slaughter",
+    "processing_and_preparation",
+    "research_and_animal_use",
+    "other_regulated_premises",
+    "unclassified",
+];
+
+fn test_release_category_keys(category: &str, normalized: &str) -> Vec<String> {
+    let mut keys = vec![if TEST_RELEASE_TAXONOMY_KEYS.contains(&category) {
+        category.to_owned()
+    } else {
+        "unclassified".into()
+    }];
+    let Ok(Value::Object(source)) = serde_json::from_str::<Value>(normalized) else {
+        return keys;
+    };
+    let values = source
+        .get("activity_categories")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten();
+    for value in values.filter_map(Value::as_str) {
+        let key = match value {
+            "processing" => "processing_and_preparation",
+            value if TEST_RELEASE_TAXONOMY_KEYS.contains(&value) => value,
+            _ => continue,
+        };
+        if !keys.iter().any(|existing| existing == key) {
+            keys.push(key.to_owned());
+        }
+    }
+    keys.sort();
+    keys
+}
+
+fn test_release_percent_encode(value: &str) -> String {
+    value
+        .bytes()
+        .flat_map(|byte| {
+            if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+                vec![(byte as char).to_string()]
+            } else {
+                vec![format!("%{byte:02X}")]
+            }
+        })
+        .collect()
+}
+
+fn test_release_activity_keys(source_id: &str, codes: &str) -> Vec<String> {
+    let Ok(Value::Array(codes)) = serde_json::from_str::<Value>(codes) else {
+        return vec![];
+    };
+    let mut result = codes
+        .iter()
+        .filter_map(Value::as_str)
+        .filter(|code| {
+            !code.trim().is_empty() && code.len() <= 160 && !code.chars().any(char::is_control)
+        })
+        .map(|code| format!("{source_id}:{}", test_release_percent_encode(code)))
+        .collect::<Vec<_>>();
+    result.sort();
+    result.dedup();
+    result
+}
+
+fn test_release_volume_ranges(normalized: &str) -> Vec<Value> {
+    let Ok(Value::Object(source)) = serde_json::from_str::<Value>(normalized) else {
+        return vec![];
+    };
+    let Some(Value::Array(categories)) = source.get("source_volume_categories") else {
+        return vec![];
+    };
+    categories.iter().filter_map(Value::as_object).filter_map(|category| {
+        let ordinal = category.get("code")?.as_str()?;
+        let canonical_ordinal = ordinal.strip_suffix(".0").unwrap_or(ordinal);
+        let provenance = category.get("provenance")?.as_str()?;
+        let (lower, upper, period) = match (provenance, canonical_ordinal) {
+            ("processing_volume_category", "1") => (None, Some(10_000), "month"),
+            ("processing_volume_category", "2") => (Some(10_000), Some(100_000), "month"),
+            ("processing_volume_category", "3") => (Some(100_000), Some(1_000_000), "month"),
+            ("processing_volume_category", "4") => (Some(1_000_000), Some(10_000_000), "month"),
+            ("processing_volume_category", "5") => (Some(10_000_000), None, "month"),
+            ("slaughter_volume_category", "1") => (None, Some(1_000), "trailing_360_days"),
+            ("slaughter_volume_category", "2") => (Some(1_000), Some(10_000), "trailing_360_days"),
+            ("slaughter_volume_category", "3") => (Some(10_000), Some(100_000), "trailing_360_days"),
+            ("slaughter_volume_category", "4") => (Some(100_000), Some(10_000_000), "trailing_360_days"),
+            ("slaughter_volume_category", "5") => (Some(10_000_000), None, "trailing_360_days"),
+            _ => return None,
+        };
+        Some(json!({"ordinal_code":ordinal,"lower":lower,"upper":upper,
+          "bounds": if lower.is_none() { "exclusive_upper" } else if upper.is_none() { "inclusive_lower_unbounded" } else { "inclusive_lower_exclusive_upper" },
+          "unit":"pounds","period":period,"method_version":"fsis-mpi-volume-codebook-2026-03-24-v1",
+          "source_codebook_url":"https://www.govinfo.gov/content/pkg/FR-2026-03-24/pdf/FR-2026-03-24.pdf",
+          "verification_state":"source_codebook_verified"}))
+    }).collect()
+}
+
 /// The test-release route may read only the bridge's normalized, allowlisted
 /// object. It never returns the surrounding source-record JSON.
 fn test_release_allowlisted_detail(normalized: &str) -> Value {
@@ -2818,7 +2917,11 @@ pub async fn get_dev_test_release_locations_handler(
         }
     };
     let Some((test_only, candidate_only)) = test_release_flags(&client, release_id).await else {
-        return v2_error(StatusCode::NOT_FOUND, "test_release_unavailable", "test release unavailable");
+        return v2_error(
+            StatusCode::NOT_FOUND,
+            "test_release_unavailable",
+            "test release unavailable",
+        );
     };
     let limit = params
         .limit
@@ -2856,9 +2959,17 @@ pub async fn get_dev_test_release_locations_handler(
         None => None,
     };
     let search_text = params.q.as_deref().map(|value| {
-        value.trim().replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
+        value
+            .trim()
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_")
     });
-    if params.q.as_deref().is_some_and(|value| value.trim().is_empty() || value.len() > 120) {
+    if params
+        .q
+        .as_deref()
+        .is_some_and(|value| value.trim().is_empty() || value.len() > 120)
+    {
         return v2_error(
             StatusCode::BAD_REQUEST,
             "invalid_filter",
@@ -2868,9 +2979,11 @@ pub async fn get_dev_test_release_locations_handler(
     if params.source_id.as_deref().is_some_and(|value| {
         value.is_empty()
             || value.len() > 120
-            || !value
-                .bytes()
-                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'.' | b'_' | b'-'))
+            || !value.bytes().all(|byte| {
+                byte.is_ascii_lowercase()
+                    || byte.is_ascii_digit()
+                    || matches!(byte, b'.' | b'_' | b'-' | b',')
+            })
     }) {
         return v2_error(
             StatusCode::BAD_REQUEST,
@@ -2878,10 +2991,30 @@ pub async fn get_dev_test_release_locations_handler(
             "source_id is invalid",
         );
     }
+    if [
+        params.country_code.as_deref(),
+        params.category.as_deref(),
+        params.activity.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .any(|value| {
+        value.is_empty()
+            || value.len() > 200
+            || value.split(',').any(|part| {
+                part.is_empty() || part.len() > 160 || part.chars().any(char::is_control)
+            })
+    }) {
+        return v2_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_filter",
+            "candidate filter is invalid",
+        );
+    }
     let query_limit = limit + 1;
     let total_count: i64 = match client.query_one(
-        "SELECT count(DISTINCT f.facility_id)::bigint FROM uec.release_members member JOIN uec.releases r ON r.release_id=member.release_id JOIN uec.observations o ON o.observation_id=member.observation_id JOIN uec.facilities f ON f.facility_id=member.facility_id JOIN uec.source_records record ON record.source_record_id=o.source_record_id LEFT JOIN uec.publication_review_release_current review ON review.source_record_id=o.source_record_id AND review.release_id=member.release_id WHERE r.release_id=$1 AND r.status='candidate' AND (r.test_only=true OR r.summary->>'candidate_only'='true') AND record.source_state NOT IN ('rejected','superseded') AND COALESCE(review.privacy_screening_status,'pending') <> 'failed' AND COALESCE(review.factual_review_status,'unreviewed') <> 'rejected' AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted restricted WHERE restricted.source_record_id=o.source_record_id) AND ($2::text IS NULL OR f.country_code=$2) AND ($3::text IS NULL OR o.classification_category=$3) AND ($4::text IS NULL OR record.source_id=$4) AND ($5::text IS NULL OR COALESCE(NULLIF(record.raw_fields->'normalized'->>'facility_display_name',''),NULLIF(f.canonical_name,''),'') ILIKE '%' || $5 || '%' ESCAPE '\\' OR COALESCE(f.city,'') ILIKE '%' || $5 || '%' ESCAPE '\\' OR COALESCE(record.raw_fields->'normalized'->>'alternate_names','') ILIKE '%' || $5 || '%' ESCAPE '\\' OR record.source_id ILIKE '%' || $5 || '%' ESCAPE '\\' OR o.classification_category ILIKE '%' || $5 || '%' ESCAPE '\\')",
-        &[&release_id, &params.country_code, &params.category, &params.source_id, &search_text],
+        "SELECT count(DISTINCT f.facility_id)::bigint FROM uec.release_members member JOIN uec.releases r ON r.release_id=member.release_id JOIN uec.observations o ON o.observation_id=member.observation_id JOIN uec.facilities f ON f.facility_id=member.facility_id JOIN uec.source_records record ON record.source_record_id=o.source_record_id LEFT JOIN uec.publication_review_release_current review ON review.source_record_id=o.source_record_id AND review.release_id=member.release_id WHERE r.release_id=$1 AND r.status='candidate' AND (r.test_only=true OR r.summary->>'candidate_only'='true') AND record.source_state NOT IN ('rejected','superseded') AND COALESCE(review.privacy_screening_status,'pending') <> 'failed' AND COALESCE(review.factual_review_status,'unreviewed') <> 'rejected' AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted restricted WHERE restricted.source_record_id=o.source_record_id) AND ($2::text IS NULL OR f.country_code=ANY(string_to_array($2,','))) AND ($3::text IS NULL OR o.classification_category=ANY(string_to_array($3,','))) AND ($4::text IS NULL OR record.source_id=ANY(string_to_array($4,','))) AND ($5::text IS NULL OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(record.raw_fields->'source_activity_codes','[]'::jsonb)) code WHERE record.source_id || ':' || code = ANY(string_to_array($5,',')))) AND ($6::text IS NULL OR COALESCE(NULLIF(record.raw_fields->'normalized'->>'facility_display_name',''),NULLIF(f.canonical_name,''),'') ILIKE '%' || $6 || '%' ESCAPE '\\' OR COALESCE(f.city,'') ILIKE '%' || $6 || '%' ESCAPE '\\' OR COALESCE(record.raw_fields->'normalized'->>'alternate_names','') ILIKE '%' || $6 || '%' ESCAPE '\\' OR record.source_id ILIKE '%' || $6 || '%' ESCAPE '\\' OR o.classification_category ILIKE '%' || $6 || '%' ESCAPE '\\')",
+        &[&release_id, &params.country_code, &params.category, &params.source_id, &params.activity, &search_text],
     ).await {
         Ok(row) => row.get(0),
         Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "test_release_query_failed", "test release unavailable"),
@@ -2891,7 +3024,8 @@ pub async fn get_dev_test_release_locations_handler(
         CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN ST_Y(g.result::geometry) ELSE NULL END,
         CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN ST_X(g.result::geometry) ELSE NULL END,
         review.factual_review_status,review.privacy_screening_status,review.maintainer_approval,review.reviewer_role,
-        source.origin_type, source.source_id, source.name, source.official_url, r.ruleset_version, artifact.retrieved_at
+        source.origin_type, source.source_id, source.name, source.official_url, r.ruleset_version, artifact.retrieved_at,
+        COALESCE(record.raw_fields->'normalized','{}'::jsonb)::text, COALESCE(record.raw_fields->'source_activity_codes','[]'::jsonb)::text
         FROM uec.release_members member JOIN uec.releases r ON r.release_id=member.release_id
         JOIN uec.observations o ON o.observation_id=member.observation_id JOIN uec.facilities f ON f.facility_id=member.facility_id
         JOIN uec.source_records record ON record.source_record_id=o.source_record_id JOIN uec.sources source ON source.source_id=record.source_id
@@ -2901,18 +3035,25 @@ pub async fn get_dev_test_release_locations_handler(
         WHERE r.release_id=$1 AND r.status='candidate' AND (r.test_only=true OR r.summary->>'candidate_only'='true') AND record.source_state NOT IN ('rejected','superseded')
           AND COALESCE(review.privacy_screening_status,'pending') <> 'failed' AND COALESCE(review.factual_review_status,'unreviewed') <> 'rejected'
           AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted restricted WHERE restricted.source_record_id=o.source_record_id)
-          AND ($2::text IS NULL OR f.country_code=$2) AND ($3::text IS NULL OR o.classification_category=$3)
-          AND ($4::text IS NULL OR record.source_id=$4)
-          AND ($5::text IS NULL OR COALESCE(NULLIF(record.raw_fields->'normalized'->>'facility_display_name',''),NULLIF(f.canonical_name,''),'') ILIKE '%' || $5 || '%' ESCAPE '\' OR COALESCE(f.city,'') ILIKE '%' || $5 || '%' ESCAPE '\' OR COALESCE(record.raw_fields->'normalized'->>'alternate_names','') ILIKE '%' || $5 || '%' ESCAPE '\' OR record.source_id ILIKE '%' || $5 || '%' ESCAPE '\' OR o.classification_category ILIKE '%' || $5 || '%' ESCAPE '\')
-          AND ($6::uuid IS NULL OR f.facility_id > $6)
-        ORDER BY f.facility_id LIMIT $7"#, &[&release_id,&params.country_code,&params.category,&params.source_id,&search_text,&cursor,&query_limit]).await {
+          AND ($2::text IS NULL OR f.country_code=ANY(string_to_array($2,','))) AND ($3::text IS NULL OR o.classification_category=ANY(string_to_array($3,',')))
+          AND ($4::text IS NULL OR record.source_id=ANY(string_to_array($4,',')))
+          AND ($5::text IS NULL OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(record.raw_fields->'source_activity_codes','[]'::jsonb)) code WHERE record.source_id || ':' || code = ANY(string_to_array($5,','))))
+          AND ($6::text IS NULL OR COALESCE(NULLIF(record.raw_fields->'normalized'->>'facility_display_name',''),NULLIF(f.canonical_name,''),'') ILIKE '%' || $6 || '%' ESCAPE '\' OR COALESCE(f.city,'') ILIKE '%' || $6 || '%' ESCAPE '\' OR COALESCE(record.raw_fields->'normalized'->>'alternate_names','') ILIKE '%' || $6 || '%' ESCAPE '\' OR record.source_id ILIKE '%' || $6 || '%' ESCAPE '\' OR o.classification_category ILIKE '%' || $6 || '%' ESCAPE '\')
+          AND ($7::uuid IS NULL OR f.facility_id > $7)
+        ORDER BY f.facility_id LIMIT $8"#, &[&release_id,&params.country_code,&params.category,&params.source_id,&params.activity,&search_text,&cursor,&query_limit]).await {
         Ok(rows)=>rows, Err(_)=>return v2_error(StatusCode::SERVICE_UNAVAILABLE,"test_release_query_failed","test release unavailable")
     };
     let has_next = rows.len() > limit as usize;
     if has_next {
         rows.truncate(limit as usize);
     }
-    let data = rows.into_iter().map(|row| json!({"facility_id":row.get::<_,uuid::Uuid>(0),"canonical_name":row.get::<_,Option<String>>(1),"country_code":row.get::<_,String>(2),"city":row.get::<_,Option<String>>(3),"category":row.get::<_,String>(4),"publication_profile":profile,"factual_review_status":row.get::<_,Option<String>>(8).unwrap_or("unreviewed".into()),"privacy_screening_status":row.get::<_,Option<String>>(9).unwrap_or("pending".into()),"project_approval":"not-approved","reviewer_role":row.get::<_,Option<String>>(11),"publication_warning":"Private corrected candidate — not project-approved or published","display_precision":row.get::<_,String>(5),"latitude":row.get::<_,Option<f64>>(6),"longitude":row.get::<_,Option<f64>>(7),"first_observed_at":null,"last_observed_at":null,"observation_count":null,"lifecycle_status":"status_unknown","source_type":row.get::<_,String>(12),"release_id":release_id,"release_ruleset_version":row.get::<_,String>(16),"provenance_source_id":row.get::<_,String>(13),"provenance_source_name":row.get::<_,String>(14),"provenance_source_url":row.get::<_,String>(15),"provenance_retrieved_at":row.get::<_,chrono::DateTime<chrono::Utc>>(17)})).collect::<Vec<_>>();
+    let data = rows.into_iter().map(|row| {
+        let category: String = row.get(4);
+        let source_id: String = row.get(13);
+        let normalized: String = row.get(18);
+        let activity_codes: String = row.get(19);
+        json!({"facility_id":row.get::<_,uuid::Uuid>(0),"canonical_name":row.get::<_,Option<String>>(1),"country_code":row.get::<_,String>(2),"city":row.get::<_,Option<String>>(3),"category":category,"category_keys":test_release_category_keys(&category, &normalized),"activity_keys":test_release_activity_keys(&source_id, &activity_codes),"publication_profile":profile,"factual_review_status":row.get::<_,Option<String>>(8).unwrap_or("unreviewed".into()),"privacy_screening_status":row.get::<_,Option<String>>(9).unwrap_or("pending".into()),"project_approval":"not-approved","reviewer_role":row.get::<_,Option<String>>(11),"publication_warning":"Private corrected candidate — not project-approved or published","display_precision":row.get::<_,String>(5),"latitude":row.get::<_,Option<f64>>(6),"longitude":row.get::<_,Option<f64>>(7),"first_observed_at":null,"last_observed_at":null,"observation_count":null,"lifecycle_status":"status_unknown","source_type":row.get::<_,String>(12),"release_id":release_id,"release_ruleset_version":row.get::<_,String>(16),"provenance_source_id":source_id,"provenance_source_name":row.get::<_,String>(14),"provenance_source_url":row.get::<_,String>(15),"provenance_retrieved_at":row.get::<_,chrono::DateTime<chrono::Utc>>(17)})
+    }).collect::<Vec<_>>();
     let mut meta = test_release_meta(release_id, profile, test_only, candidate_only);
     meta["result_count"] = json!(data.len());
     meta["total_count"] = json!(total_count);
@@ -2963,7 +3104,11 @@ pub async fn get_dev_test_release_location_detail_handler(
         }
     };
     let Some((test_only, candidate_only)) = test_release_flags(&client, release_id).await else {
-        return v2_error(StatusCode::NOT_FOUND, "test_release_unavailable", "test release unavailable");
+        return v2_error(
+            StatusCode::NOT_FOUND,
+            "test_release_unavailable",
+            "test release unavailable",
+        );
     };
     let row=match client.query_opt("SELECT f.facility_id,COALESCE(NULLIF(sr.raw_fields->'normalized'->>'facility_display_name',''),NULLIF(f.canonical_name,'')),f.country_code,f.city,o.classification_category,COALESCE(review.factual_review_status,'unreviewed'),COALESCE(review.privacy_screening_status,'pending'),o.coordinate_review_status,source.origin_type,source.source_id,source.name,source.official_url,artifact.retrieved_at,r.ruleset_version,CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN 'exact' ELSE 'unmapped' END,CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN ST_Y(g.result::geometry) ELSE NULL END,CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN ST_X(g.result::geometry) ELSE NULL END,COALESCE(sr.raw_fields->'normalized','{}'::jsonb)::text,COALESCE(sr.raw_fields->'source_activity_codes','[]'::jsonb)::text,COALESCE(sr.raw_fields->'source_activity_labels','[]'::jsonb)::text FROM uec.release_members m JOIN uec.releases r ON r.release_id=m.release_id JOIN uec.observations o ON o.observation_id=m.observation_id JOIN uec.facilities f ON f.facility_id=m.facility_id JOIN uec.source_records sr ON sr.source_record_id=o.source_record_id JOIN uec.sources source ON source.source_id=sr.source_id JOIN uec.raw_artifacts artifact ON artifact.artifact_id=sr.artifact_id LEFT JOIN uec.publication_review_release_current review ON review.source_record_id=o.source_record_id AND review.release_id=m.release_id LEFT JOIN LATERAL (SELECT result FROM uec.geocode_results WHERE source_record_id=o.source_record_id AND status='accepted' AND result IS NOT NULL ORDER BY queried_at DESC LIMIT 1) g ON true WHERE r.release_id=$1 AND r.status='candidate' AND (r.test_only=true OR r.summary->>'candidate_only'='true') AND f.facility_id=$2 AND sr.source_state NOT IN ('rejected','superseded') AND COALESCE(review.privacy_screening_status,'pending') <> 'failed' AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted x WHERE x.source_record_id=o.source_record_id)", &[&release_id,&facility_id]).await {Ok(r)=>r,Err(_)=>return v2_error(StatusCode::SERVICE_UNAVAILABLE,"test_release_query_failed","test release unavailable")};
     let Some(row) = row else {
@@ -2973,11 +3118,24 @@ pub async fn get_dev_test_release_location_detail_handler(
             "test release location not found",
         );
     };
-    let mut item = json!({"facility_id":row.get::<_,uuid::Uuid>(0),"canonical_name":row.get::<_,Option<String>>(1),"country_code":row.get::<_,String>(2),"city":row.get::<_,Option<String>>(3),"category":row.get::<_,String>(4),"publication_profile":profile,"factual_review_status":row.get::<_,String>(5),"privacy_screening_status":row.get::<_,String>(6),"project_approval":"not-approved","publication_warning":"Private corrected candidate — not project-approved or published","display_precision":row.get::<_,String>(14),"latitude":row.get::<_,Option<f64>>(15),"longitude":row.get::<_,Option<f64>>(16),"release_id":release_id,"release_ruleset_version":row.get::<_,String>(13),"provenance_source_id":row.get::<_,String>(9),"provenance_source_name":row.get::<_,String>(10),"provenance_source_url":row.get::<_,String>(11),"provenance_retrieved_at":row.get::<_,chrono::DateTime<chrono::Utc>>(12)});
-    if let (Some(item_fields), Value::Object(detail)) = (item.as_object_mut(), test_release_allowlisted_detail(row.get::<_, String>(17).as_str())) {
+    let category: String = row.get(4);
+    let source_id: String = row.get(9);
+    let normalized: String = row.get(17);
+    let activity_codes: String = row.get(18);
+    let mut item = json!({"facility_id":row.get::<_,uuid::Uuid>(0),"canonical_name":row.get::<_,Option<String>>(1),"country_code":row.get::<_,String>(2),"city":row.get::<_,Option<String>>(3),"category":category,"category_keys":test_release_category_keys(&category, &normalized),"activity_keys":test_release_activity_keys(&source_id, &activity_codes),"publication_profile":profile,"factual_review_status":row.get::<_,String>(5),"privacy_screening_status":row.get::<_,String>(6),"project_approval":"not-approved","publication_warning":"Private corrected candidate — not project-approved or published","display_precision":row.get::<_,String>(14),"latitude":row.get::<_,Option<f64>>(15),"longitude":row.get::<_,Option<f64>>(16),"release_id":release_id,"release_ruleset_version":row.get::<_,String>(13),"provenance_source_id":source_id,"provenance_source_name":row.get::<_,String>(10),"provenance_source_url":row.get::<_,String>(11),"provenance_retrieved_at":row.get::<_,chrono::DateTime<chrono::Utc>>(12)});
+    if let (Some(item_fields), Value::Object(detail)) = (
+        item.as_object_mut(),
+        test_release_allowlisted_detail(row.get::<_, String>(17).as_str()),
+    ) {
         item_fields.extend(detail);
     }
-    if let (Some(item_fields), Value::Object(detail)) = (item.as_object_mut(), test_release_native_activity_detail(row.get::<_, String>(18).as_str(), row.get::<_, String>(19).as_str())) {
+    if let (Some(item_fields), Value::Object(detail)) = (
+        item.as_object_mut(),
+        test_release_native_activity_detail(
+            row.get::<_, String>(18).as_str(),
+            row.get::<_, String>(19).as_str(),
+        ),
+    ) {
         item_fields.extend(detail);
     }
     let mut meta = test_release_meta(release_id, profile, test_only, candidate_only);
@@ -2993,12 +3151,19 @@ pub async fn get_dev_test_release_map_feed_handler(
     headers: HeaderMap,
 ) -> impl IntoResponse {
     if !test_release_auth(&headers, &state) {
-        return v2_error(StatusCode::NOT_FOUND, "test_release_unavailable", "test release unavailable");
+        return v2_error(
+            StatusCode::NOT_FOUND,
+            "test_release_unavailable",
+            "test release unavailable",
+        );
     }
-    let (Some(pool), Some(release_id)) = (state.database, state.dev_test_release_id.as_deref()) else {
+    let (Some(pool), Some(release_id)) = (state.database, state.dev_test_release_id.as_deref())
+    else {
         return real_preview_unavailable();
     };
-    let Ok(client) = pool.get().await else { return real_preview_unavailable(); };
+    let Ok(client) = pool.get().await else {
+        return real_preview_unavailable();
+    };
     let release = match client.query_opt(
         "SELECT md5(COALESCE(summary::text,'') || ':' || ruleset_version), test_only, COALESCE(summary->>'candidate_only'='true',false) FROM uec.releases WHERE release_id=$1 AND status='candidate' AND (test_only=true OR summary->>'candidate_only'='true')",
         &[&release_id],
@@ -3007,7 +3172,11 @@ pub async fn get_dev_test_release_map_feed_handler(
         Err(_) => return real_preview_unavailable(),
     };
     let Some(release) = release else {
-        return v2_error(StatusCode::NOT_FOUND, "test_release_unavailable", "test release unavailable");
+        return v2_error(
+            StatusCode::NOT_FOUND,
+            "test_release_unavailable",
+            "test release unavailable",
+        );
     };
     let snapshot_id: String = release.get(0);
     let test_only: bool = release.get(1);
@@ -3040,7 +3209,9 @@ pub async fn get_dev_test_release_map_feed_handler(
                   CASE WHEN o.coordinate IS NOT NULL THEN COALESCE(o.coordinate_precision, 'source_reported')
                        WHEN city.reference_location IS NOT NULL THEN 'city' END AS precision,
                   ST_Y(COALESCE(o.coordinate, city.reference_location)::geometry) AS latitude,
-                  ST_X(COALESCE(o.coordinate, city.reference_location)::geometry) AS longitude
+                  ST_X(COALESCE(o.coordinate, city.reference_location)::geometry) AS longitude,
+                  f.country_code, COALESCE(sr.raw_fields->'normalized','{}'::jsonb)::text,
+                  COALESCE(sr.raw_fields->'source_activity_codes','[]'::jsonb)::text
              FROM uec.release_members m
              JOIN uec.releases r ON r.release_id=m.release_id
              JOIN uec.observations o ON o.observation_id=m.observation_id
@@ -3072,22 +3243,33 @@ pub async fn get_dev_test_release_map_feed_handler(
         Err(_) => return real_preview_unavailable(),
     };
     if rows.len() > 250_000 {
-        return v2_error(StatusCode::PAYLOAD_TOO_LARGE, "candidate_map_too_large", "candidate map exceeds its feature limit");
+        return v2_error(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "candidate_map_too_large",
+            "candidate map exceeds its feature limit",
+        );
     }
-    let points = rows.into_iter().map(|row| {
-        let category_key: String = row.get(2);
-        json!({
-            "key": row.get::<_, uuid::Uuid>(0),
-            "source_id": row.get::<_, String>(1),
-            "kind": row.get::<_, String>(3),
-            "precision": row.get::<_, String>(4),
-            "latitude": row.get::<_, f64>(5),
-            "longitude": row.get::<_, f64>(6),
-            "weight": 1,
-            "category_key": category_key,
-            "category_keys": [category_key]
+    let points = rows
+        .into_iter()
+        .map(|row| {
+            let category_key: String = row.get(2);
+            let normalized: String = row.get(8);
+            let source_id: String = row.get(1);
+            json!({
+                "key": row.get::<_, uuid::Uuid>(0),
+                "source_id": source_id,
+                "kind": row.get::<_, String>(3),
+                "precision": row.get::<_, String>(4),
+                "latitude": row.get::<_, f64>(5),
+                "longitude": row.get::<_, f64>(6),
+                "weight": 1,
+                "category_key": category_key,
+                "category_keys": test_release_category_keys(&category_key, &normalized),
+                "country_code": row.get::<_, Option<String>>(7),
+                "activity_keys": test_release_activity_keys(&source_id, &row.get::<_, String>(9))
+            })
         })
-    }).collect::<Vec<_>>();
+        .collect::<Vec<_>>();
     let body = Json(json!({
         "api_version":"dev-test-v1",
         "data":{"points":points},
@@ -3098,7 +3280,8 @@ pub async fn get_dev_test_release_map_feed_handler(
     }))
     .to_string();
     public_map_feed_cache_put(cache_key.clone(), body, "application/json");
-    let entry = public_map_feed_cache_get(&cache_key).expect("inserted candidate map cache entry is available");
+    let entry = public_map_feed_cache_get(&cache_key)
+        .expect("inserted candidate map cache entry is available");
     private_candidate_map_feed_response(entry, &etag)
 }
 
@@ -3139,9 +3322,13 @@ pub async fn get_dev_test_release_facets_handler(
         }
     };
     let Some((test_only, candidate_only)) = test_release_flags(&client, release_id).await else {
-        return v2_error(StatusCode::NOT_FOUND, "test_release_unavailable", "test release unavailable");
+        return v2_error(
+            StatusCode::NOT_FOUND,
+            "test_release_unavailable",
+            "test release unavailable",
+        );
     };
-    let rows=match client.query("SELECT f.country_code,o.classification_category,CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN 'exact' ELSE 'unmapped' END,source.origin_type,source.source_id FROM uec.release_members m JOIN uec.releases r ON r.release_id=m.release_id JOIN uec.observations o ON o.observation_id=m.observation_id JOIN uec.facilities f ON f.facility_id=m.facility_id JOIN uec.source_records sr ON sr.source_record_id=o.source_record_id JOIN uec.sources source ON source.source_id=sr.source_id LEFT JOIN LATERAL (SELECT result FROM uec.geocode_results WHERE source_record_id=o.source_record_id AND status='accepted' AND result IS NOT NULL ORDER BY queried_at DESC LIMIT 1) g ON true LEFT JOIN uec.publication_review_release_current review ON review.source_record_id=o.source_record_id AND review.release_id=m.release_id WHERE r.release_id=$1 AND r.status='candidate' AND (r.test_only=true OR r.summary->>'candidate_only'='true') AND sr.source_state NOT IN ('rejected','superseded') AND COALESCE(review.privacy_screening_status,'pending')<>'failed' AND COALESCE(review.factual_review_status,'unreviewed')<>'rejected' AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted x WHERE x.source_record_id=o.source_record_id)", &[&release_id]).await {Ok(r)=>r,Err(_)=>return v2_error(StatusCode::SERVICE_UNAVAILABLE,"test_release_query_failed","test release unavailable")};
+    let rows=match client.query("SELECT f.country_code,o.classification_category,CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN 'exact' ELSE 'unmapped' END,source.origin_type,source.source_id,COALESCE(sr.raw_fields->'source_activity_codes','[]'::jsonb)::text FROM uec.release_members m JOIN uec.releases r ON r.release_id=m.release_id JOIN uec.observations o ON o.observation_id=m.observation_id JOIN uec.facilities f ON f.facility_id=m.facility_id JOIN uec.source_records sr ON sr.source_record_id=o.source_record_id JOIN uec.sources source ON source.source_id=sr.source_id LEFT JOIN LATERAL (SELECT result FROM uec.geocode_results WHERE source_record_id=o.source_record_id AND status='accepted' AND result IS NOT NULL ORDER BY queried_at DESC LIMIT 1) g ON true LEFT JOIN uec.publication_review_release_current review ON review.source_record_id=o.source_record_id AND review.release_id=m.release_id WHERE r.release_id=$1 AND r.status='candidate' AND (r.test_only=true OR r.summary->>'candidate_only'='true') AND sr.source_state NOT IN ('rejected','superseded') AND COALESCE(review.privacy_screening_status,'pending')<>'failed' AND COALESCE(review.factual_review_status,'unreviewed')<>'rejected' AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted x WHERE x.source_record_id=o.source_record_id) AND ($2::text IS NULL OR f.country_code=ANY(string_to_array($2,','))) AND ($3::text IS NULL OR o.classification_category=ANY(string_to_array($3,','))) AND ($4::text IS NULL OR source.source_id=ANY(string_to_array($4,','))) AND ($5::text IS NULL OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(sr.raw_fields->'source_activity_codes','[]'::jsonb)) code WHERE source.source_id || ':' || code = ANY(string_to_array($5,','))))", &[&release_id,&params.country_code,&params.category,&params.source_id,&params.activity]).await {Ok(r)=>r,Err(_)=>return v2_error(StatusCode::SERVICE_UNAVAILABLE,"test_release_query_failed","test release unavailable")};
     let mut dims = serde_json::Map::new();
     for (name, values) in [
         (
@@ -3176,11 +3363,26 @@ pub async fn get_dev_test_release_facets_handler(
             json!(
                 counts
                     .into_iter()
-                    .map(|(value, count)| json!({"value":value,"count":count}))
+                    .map(|(value, count)| json!({"value":value,"label":value,"count":count}))
                     .collect::<Vec<_>>()
             ),
         );
     }
+    let mut activity_counts = std::collections::BTreeMap::new();
+    for row in &rows {
+        for key in test_release_activity_keys(&row.get::<_, String>(4), &row.get::<_, String>(5)) {
+            *activity_counts.entry(key).or_insert(0usize) += 1;
+        }
+    }
+    dims.insert(
+        "activity".into(),
+        json!(
+            activity_counts
+                .into_iter()
+                .map(|(value, count)| json!({"value":value,"label":value,"count":count}))
+                .collect::<Vec<_>>()
+        ),
+    );
     let mut meta = test_release_meta(
         release_id,
         params.profile.as_deref().unwrap_or("official"),
@@ -3729,6 +3931,7 @@ pub struct DevTestReleaseLocationParams {
     profile: Option<String>,
     q: Option<String>,
     source_id: Option<String>,
+    activity: Option<String>,
     limit: Option<String>,
     offset: Option<String>,
     cursor: Option<String>,
