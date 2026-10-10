@@ -14,8 +14,23 @@ IMPORTER = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader
 SPEC.loader.exec_module(IMPORTER)
 
+FSIS_CORRECTION_MODULE_PATH = Path(__file__).parents[1] / "scripts" / "maintenance" / "import-fsis-correction-preview.py"
+FSIS_CORRECTION_SPEC = importlib.util.spec_from_file_location("import_fsis_correction_preview", FSIS_CORRECTION_MODULE_PATH)
+FSIS_CORRECTION_IMPORTER = importlib.util.module_from_spec(FSIS_CORRECTION_SPEC)
+assert FSIS_CORRECTION_SPEC.loader
+FSIS_CORRECTION_SPEC.loader.exec_module(FSIS_CORRECTION_IMPORTER)
+
 
 class RealPreviewImporterTests(unittest.TestCase):
+    def test_fsis_correction_run_ledger_bindings_match_sql(self):
+        params = FSIS_CORRECTION_IMPORTER.run_ledger_params(
+            "run", "snapshot", "url", "retrieved", "artifact", "normalized",
+            "code", "config", 10, 9, 8, 7, 6, 5,
+        )
+        self.assertEqual(FSIS_CORRECTION_IMPORTER.RUN_LEDGER_INSERT_SQL.count("%s"), 18)
+        self.assertEqual(len(params), 18)
+        self.assertEqual(params[16], 3)
+
     def test_preview_activity_projection_bounds_only_display_arrays(self):
         """A source can retain more than 64 native flags without breaking preview."""
         source = MODULE_PATH.read_text(encoding="utf-8")

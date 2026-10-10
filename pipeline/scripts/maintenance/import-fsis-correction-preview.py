@@ -23,6 +23,23 @@ assert SPEC and SPEC.loader
 IMPORTER = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(IMPORTER)
 
+RUN_LEDGER_INSERT_SQL = """INSERT INTO real_preview.source_preview_runs(run_id,source_id,snapshot_sha256,source_url,retrieved_at,source_artifact_sha256,normalized_sha256,adapter_version,schema_version,input_count,accepted_count,quarantined_count,out_of_scope_count,imported_observation_count,facility_count,numeric_coordinate_count,coarse_placeable_count,unmapped_count,api_listable_count,map_visible_count,idempotent_replay,public_rows,runtime_details)
+                      VALUES (%s,'us.fsis',%s,%s,%s,%s,%s,%s,%s,%s,%s,0,0,%s,%s,%s,%s,%s,%s,%s,false,0,%s) ON CONFLICT (run_id) DO NOTHING"""
+
+
+def run_ledger_params(
+    run_id: str, snapshot: str, url: str, retrieved: str, source_hash: str,
+    normalized_hash: str, code: str, config: str, rows: int, observations: int,
+    candidates: int, numeric: int, placeable: int, unplaceable: int,
+) -> tuple[object, ...]:
+    """Keep the correction-run ledger bindings in lockstep with its SQL."""
+    return (
+        run_id, snapshot, url, retrieved, source_hash, normalized_hash, code, config,
+        rows, rows, observations, candidates, numeric, placeable, unplaceable,
+        candidates, candidates - unplaceable,
+        json.dumps({"fsis_correction_handoff": True, "fresh_live_run": False, "private_candidate": True}),
+    )
+
 
 def run(database_url: str, handoff: Path) -> dict[str, int | str]:
     manifest_path = handoff / "manifest.json"
@@ -46,9 +63,13 @@ def run(database_url: str, handoff: Path) -> dict[str, int | str]:
                       VALUES (%s,'us.fsis',%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""", (snapshot, source_hash, normalized_hash, rows, url, retrieved, code, config))
         metrics = IMPORTER.import_rows(db, "us.fsis", normalized, rows, snapshot)
         observations, numeric, coarse, candidates, unmapped, _mapped, _groups, _x, _zero, _unknown, _provided, _keys, placeable, unplaceable = metrics
-        db.execute("""INSERT INTO real_preview.source_preview_runs(run_id,source_id,snapshot_sha256,source_url,retrieved_at,source_artifact_sha256,normalized_sha256,adapter_version,schema_version,input_count,accepted_count,quarantined_count,out_of_scope_count,imported_observation_count,facility_count,numeric_coordinate_count,coarse_placeable_count,unmapped_count,api_listable_count,map_visible_count,idempotent_replay,public_rows,runtime_details)
-                      VALUES (%s,'us.fsis',%s,%s,%s,%s,%s,%s,%s,%s,%s,0,0,%s,%s,%s,%s,%s,%s,false,0,%s) ON CONFLICT (run_id) DO NOTHING""",
-                   (run_id, snapshot, url, retrieved, source_hash, normalized_hash, code, config, rows, rows, observations, candidates, numeric, placeable, unplaceable, candidates, candidates-unplaceable, json.dumps({"fsis_correction_handoff": True, "fresh_live_run": False, "private_candidate": True})))
+        db.execute(
+            RUN_LEDGER_INSERT_SQL,
+            run_ledger_params(
+                run_id, snapshot, url, retrieved, source_hash, normalized_hash, code,
+                config, rows, observations, candidates, numeric, placeable, unplaceable,
+            ),
+        )
         if db.execute("SELECT count(*) FROM uec.release_members").fetchone()[0] != before:
             raise ValueError("release_members_changed")
     return {"snapshot": snapshot, "rows": rows, "candidates": candidates, "numeric": numeric, "unmapped": unplaceable}
