@@ -96,7 +96,7 @@ test('candidate map retains native overlays and V1 selection across route and ba
     };
   });
   expect(first.sourceCount).toBeGreaterThan(0);
-  expect(first.referencePaint).toBe('#e06b5b');
+  expect(first.referencePaint).toBe('#ff695c');
   expect(first.coordinateColor).toBeTruthy();
 
   await page.getByRole('button', { name: 'Tools' }).click();
@@ -135,4 +135,40 @@ test('candidate map retains native overlays and V1 selection across route and ba
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return map?.isSourceLoaded('locations') && ['clusters', 'aggregate-outer', 'source-coordinate-points', 'v1-source-pins'].every(id => map.getLayer(id));
   }, undefined, { timeout: 30_000 });
+});
+
+test('candidate map keeps mobile controls clear and uses category and reference paints', async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/v2-preview/#/map?f1a=field');
+  await page.waitForFunction(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return Boolean(map?.isStyleLoaded() && map.isSourceLoaded('locations') && map.getLayer('aggregate-outer'));
+  }, undefined, { timeout: 60_000 });
+  const paints = await page.evaluate(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return {
+      coordinate: JSON.stringify(map.getPaintProperty('source-coordinate-points', 'circle-color')),
+      reference: map.getPaintProperty('aggregate-outer', 'circle-color'),
+      opacity: JSON.stringify(map.getPaintProperty('aggregate-outer', 'circle-opacity')),
+      stroke: map.getPaintProperty('aggregate-outer', 'circle-stroke-color'),
+    };
+  });
+  expect(paints.coordinate).toContain('#009E73');
+  expect(paints.coordinate).toContain('#0072B2');
+  expect(paints.reference).toBe('#d8473f');
+  expect(paints.opacity).toContain('0.22');
+  expect(paints.stroke).toBe('#ff695c');
+
+  await page.getByRole('button', { name: 'Search map' }).click();
+  await page.locator('details.filters > summary').click();
+  await expect(page.getByRole('group', { name: 'Country' })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('group', { name: 'Source' })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Activity category' })).toBeVisible();
+  const controlsDoNotOverlap = await page.evaluate(() => {
+    const picker = document.querySelector('.basemap-picker')?.getBoundingClientRect();
+    const attribution = document.querySelector('.maplibregl-ctrl-attrib')?.getBoundingClientRect();
+    return !picker || !attribution || picker.bottom <= attribution.top || attribution.bottom <= picker.top || picker.right <= attribution.left || attribution.right <= picker.left;
+  });
+  expect(controlsDoNotOverlap).toBe(true);
 });
