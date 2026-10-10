@@ -83,6 +83,8 @@ class ReprojectTaxonomyTests(unittest.TestCase):
         REPROJECT._validate_preview_database_url(
             "postgresql://user:pass@127.0.0.1:55433/uec", "uec")
         REPROJECT._validate_preview_database_url(
+            "postgresql://user:pass@127.0.0.1:55433/uec_v0_api_repair", "uec_v0_api_repair")
+        REPROJECT._validate_preview_database_url(
             "postgresql://user:pass@localhost:55433/uec?sslmode=disable", "uec")
         for url, database in (("postgresql://u:p@example.test/db", "uec"),
                               ("postgresql://u:p@localhost/db", "uec"),

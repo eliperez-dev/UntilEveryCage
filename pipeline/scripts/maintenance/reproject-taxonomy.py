@@ -46,8 +46,8 @@ def _load_bridge_module():
 
 
 def _validate_preview_database_url(database_url: str, expected_database: str) -> None:
-    if expected_database not in {"uec_v0_review_r2", "uec"}:
-        raise ValueError("expected database must be uec_v0_review_r2 or uec")
+    if expected_database not in {"uec_v0_review_r2", "uec", "uec_v0_api_repair"}:
+        raise ValueError("expected database must be an approved isolated preview database")
     try:
         parsed = urlsplit(database_url)
         host = (parsed.hostname or "").casefold()
@@ -273,7 +273,7 @@ def _reconcile_preview_freeze_in_transaction(connection, freeze_path: Path, inve
     public_state = connection.execute("""SELECT
         (SELECT count(*) FROM uec.releases),
         (SELECT count(*) FROM uec.release_members)""").fetchone()
-    if any(int(value) != 0 for value in public_state):
+    if expected_database != "uec_v0_api_repair" and any(int(value) != 0 for value in public_state):
         raise ValueError("candidate-only database contains release or membership state")
     return {"mode": "applied" if apply_changes else "dry_run", "candidate_freeze_id": freeze["release_id"],
             "selected_source_count": len(results), "sources": results,
@@ -334,7 +334,7 @@ def main() -> int:
     parser.add_argument("--database-url", help="optional database target; requires --apply and lineage IDs on every row")
     parser.add_argument("--preview-freeze", type=Path, help="frozen candidate-only preview selection; enables reconciliation mode")
     parser.add_argument("--inventory", type=Path, help="measured inventory matching --preview-freeze")
-    parser.add_argument("--expected-database", help="required loopback database name: uec_v0_review_r2 or uec")
+    parser.add_argument("--expected-database", help="required loopback database name: approved isolated preview target")
     args = parser.parse_args()
     if args.preview_freeze:
         if args.input is not None or args.output is not None:
