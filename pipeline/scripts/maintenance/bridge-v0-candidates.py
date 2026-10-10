@@ -947,11 +947,14 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                         raise BridgeError("canonical_facility_source_identity_conflict")
                     rep_row = handoff["representatives"][group][1]
                     display_name = _facility_display_name(source, rep_row.get("normalized"), rep_row.get("source_values"))
-                    if existing_facility and existing_facility[1] and display_name and existing_facility[1] != display_name:
+                    if (not append_to_v0_baseline and existing_facility and existing_facility[1]
+                            and display_name and existing_facility[1] != display_name):
                         raise BridgeError("canonical_facility_name_conflict")
-                    connection.execute("""INSERT INTO uec.facilities(facility_id,canonical_name,country_code,city,postal_code)
-                        VALUES (%s,%s,%s,%s,%s) ON CONFLICT (facility_id) DO UPDATE
-                        SET canonical_name=COALESCE(NULLIF(BTRIM(uec.facilities.canonical_name),''),EXCLUDED.canonical_name)""",
+                    facility_conflict = "DO NOTHING" if append_to_v0_baseline else (
+                        "DO UPDATE SET canonical_name=COALESCE(NULLIF(BTRIM(uec.facilities.canonical_name),''),EXCLUDED.canonical_name)"
+                    )
+                    connection.execute(f"""INSERT INTO uec.facilities(facility_id,canonical_name,country_code,city,postal_code)
+                        VALUES (%s,%s,%s,%s,%s) ON CONFLICT (facility_id) {facility_conflict}""",
                         (facility_id, display_name, country, representative_parsed[3], representative_parsed[4]))
                     connection.execute("""INSERT INTO uec.facility_source_links(facility_id,source_record_id,match_method,review_status)
                         VALUES (%s,%s,'source_native_group_key','automatic') ON CONFLICT DO NOTHING""",

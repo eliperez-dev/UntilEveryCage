@@ -26,6 +26,11 @@ class CandidateBridgeTests(unittest.TestCase):
         self.assertEqual(key, "v0-correction-v4:" + "a" * 64 + ":native-id")
         self.assertNotEqual(key, "v0:" + "a" * 64 + ":native-id")
 
+    def test_append_candidate_keeps_shared_facility_name_and_uses_safe_status_label(self):
+        source = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn('facility_conflict = "DO NOTHING" if append_to_v0_baseline', source)
+        self.assertIn('"facility_display_name"', source)
+
     def test_safe_status_adds_only_source_typed_facility_display_name(self):
         safe = bridge._safe_normalized(
             {"facility_name": "Synthetic Facility", "operator_name": "Synthetic Person"},
