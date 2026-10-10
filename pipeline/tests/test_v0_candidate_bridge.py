@@ -21,6 +21,15 @@ def _canonical(value):
 
 
 class CandidateBridgeTests(unittest.TestCase):
+    def test_safe_status_adds_only_source_typed_facility_display_name(self):
+        safe = bridge._safe_normalized(
+            {"facility_name": "Synthetic Facility", "operator_name": "Synthetic Person"},
+            "au.npi.facilities", {"telephone": "not-safe"},
+        )
+        self.assertEqual(safe["facility_display_name"], "Synthetic Facility")
+        self.assertNotIn("operator_name", safe)
+        self.assertNotIn("telephone", safe)
+
     def test_baseline_snapshot_orders_access_events_by_the_real_primary_key(self):
         source = SCRIPT.read_text(encoding="utf-8")
         self.assertIn("record_access_events event ORDER BY event.access_event_id", source)

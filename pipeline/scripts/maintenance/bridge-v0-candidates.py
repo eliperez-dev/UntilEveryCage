@@ -574,7 +574,7 @@ def _uuid(namespace: str, *parts: str) -> str:
     return str(uuid.uuid5(uuid.NAMESPACE_URL, ":".join(("uec-v0", namespace, *parts))))
 
 
-def _safe_normalized(normalized: Any) -> dict[str, Any]:
+def _safe_normalized(normalized: Any, source: str | None = None, source_values: Any = None) -> dict[str, Any]:
     if not isinstance(normalized, dict):
         return {}
     safe = {key: value for key, value in normalized.items()
@@ -586,6 +586,10 @@ def _safe_normalized(normalized: Any) -> dict[str, Any]:
         aliases.append(dba.strip())
     if aliases:
         safe["alternate_names"] = aliases
+    if source:
+        label = _facility_display_name(source, normalized, source_values)
+        if isinstance(label, str) and 0 < len(label) <= 200:
+            safe["facility_display_name"] = label
     safe.pop("dba_names", None)
     volumes = safe.get("activity_volume_codes")
     if isinstance(volumes, dict):
@@ -910,7 +914,7 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                     raw_fields = {"evidence_kind": "authenticated_normalized_handoff",
                                   "snapshot_sha256": entry["snapshot_sha256"],
                                   "source_identifier": identifier,
-                                  "normalized": _safe_normalized(normalized),
+                                  "normalized": _safe_normalized(normalized, source, raw.get("source_values")),
                                   "source_activity_codes": contract.get("source_activity_codes", []),
                                   "source_activity_labels": contract.get("source_activity_labels", []),
                                   "handoff_normalized_sha256": handoff["normalized_sha256"]}
@@ -1006,7 +1010,7 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                         "activity": {key: contract.get(key) for key in (
                             "category", "activity_categories", "source_activity_codes", "source_activity_labels",
                             "activity_mapping_status", "classification_ruleset_version", "taxonomy_mapping_method")},
-                        "source_status": _safe_normalized(normalized),
+                        "source_status": _safe_normalized(normalized, source, raw.get("source_values")),
                         "review_state": "review_required", "publication_state": "not_eligible",
                     }
                     category = contract.get("category") or "unclassified"
