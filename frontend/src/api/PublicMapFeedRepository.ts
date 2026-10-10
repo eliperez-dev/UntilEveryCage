@@ -119,6 +119,7 @@ export function parsePublicMapFeed(payload: unknown, profile: LocalProfile, rele
 
 const PUBLIC_CACHE_NAME = 'uec-public-map-projection-v1';
 const PUBLIC_CACHE_MAX_ENTRIES = 3;
+const inFlight = new Map<string, Promise<PublicMapFeed>>();
 const cacheKey = (identity: PublicReleaseIdentity, profile: LocalProfile) => {
   const path = `/__uec_public_map_cache__/${encodeURIComponent(profile)}/${encodeURIComponent(identity.releaseId)}/${identity.manifestSha256}/${identity.suppressionGeneration}`;
   return new Request(new URL(path, globalThis.location?.origin ?? 'https://uec.invalid').href, { method: 'GET' });
@@ -139,6 +140,16 @@ async function trimPublicMapCache(cache: Cache, keep: Request): Promise<void> {
   for (const key of keys.slice(0, Math.max(0, keys.length - PUBLIC_CACHE_MAX_ENTRIES))) if (key.url !== keep.url) await cache.delete(key);
 }
 
+function abortIsolated<T>(shared: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return shared;
+  if (signal.aborted) return Promise.reject(new DOMException('Aborted', 'AbortError'));
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(new DOMException('Aborted', 'AbortError'));
+    signal.addEventListener('abort', abort, { once: true });
+    shared.then(value => { signal.removeEventListener('abort', abort); resolve(value); }, error => { signal.removeEventListener('abort', abort); reject(error); });
+  });
+}
+
 export function createPublicMapFeedRepository(fetcher: typeof fetch = globalThis.fetch) {
   return {
     async load(profile: LocalProfile, releaseId: string, signal?: AbortSignal, identity?: PublicReleaseIdentity): Promise<PublicMapFeed> {
@@ -147,6 +158,10 @@ export function createPublicMapFeedRepository(fetcher: typeof fetch = globalThis
       const current = identity ?? await new PublicReleaseRepository(fetcher).current(profile, signal);
       if (!current || current.releaseId !== releaseId) throw new PublicMapFeedError('The selected public map release is no longer available.');
       const key = cacheKey(current, profile);
+      const flightKey = `${profile}|${current.releaseId}|${current.manifestSha256}|${current.suppressionGeneration}`;
+      const existing = inFlight.get(flightKey);
+      if (existing) return abortIsolated(existing, signal);
+      const work = (async (): Promise<PublicMapFeed> => {
       let projectionCache: Cache | undefined;
       if (globalThis.caches) {
         projectionCache = await caches.open(PUBLIC_CACHE_NAME);
@@ -160,8 +175,8 @@ export function createPublicMapFeedRepository(fetcher: typeof fetch = globalThis
       }
       const params = new URLSearchParams({ profile, release_id: releaseId, format: 'compact' });
       let response: Response;
-      try { response = await fetcher.call(globalThis, `/api/v2/map/feed?${params}`, { method: 'GET', cache: 'no-store', credentials: 'omit', headers: { Accept: 'application/json' }, ...(signal ? { signal } : {}) }); }
-      catch (error) { if (signal?.aborted) throw error; throw new PublicMapFeedError(); }
+      try { response = await fetcher.call(globalThis, `/api/v2/map/feed?${params}`, { method: 'GET', cache: 'no-store', credentials: 'omit', headers: { Accept: 'application/json' } }); }
+      catch { throw new PublicMapFeedError(); }
       if (!response.ok) throw new PublicMapFeedError(response.status === 404 || response.status === 410 ? 'The selected public map release is no longer available.' : undefined);
       try {
         const payload = await response.json();
@@ -174,6 +189,10 @@ export function createPublicMapFeedRepository(fetcher: typeof fetch = globalThis
         return { ...parsed, meta: { ...parsed.meta, cacheStatus: projectionCache ? 'miss' : 'unavailable', decodedBytes: new TextEncoder().encode(JSON.stringify(parsed.collection)).byteLength } };
       }
       catch (error) { if (error instanceof PublicMapFeedError) throw error; throw new PublicMapFeedError('The public map feed returned invalid JSON.'); }
+      })();
+      inFlight.set(flightKey, work);
+      void work.finally(() => { if (inFlight.get(flightKey) === work) inFlight.delete(flightKey); });
+      return abortIsolated(work, signal);
     },
   };
 }
