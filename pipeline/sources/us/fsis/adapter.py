@@ -13,6 +13,7 @@ import io
 import json
 import re
 from collections import Counter
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -38,6 +39,7 @@ def _clean(value: Any) -> str | None:
     return value or None
 
 
+@lru_cache(maxsize=1024)
 def _header_key(value: str) -> str:
     """Make header matching tolerant of punctuation/case, not row identity."""
     return re.sub(r"[^a-z0-9]+", "_", value.strip().lower()).strip("_")
@@ -104,6 +106,22 @@ def _identity_values(row: dict[str, Any]) -> dict[str, str | None]:
 def _identity_key(row: dict[str, Any]) -> str | None:
     candidates = _key_candidates(row)
     return candidates[0] if candidates else None
+
+
+def _identity_aliases(values: dict[str, str | None]) -> tuple[str, ...]:
+    return tuple(value for value in values.values() if value)
+
+
+def _identities_match(left: dict[str, str | None], right: dict[str, str | None]) -> bool:
+    shared = any(left[key] and right[key] and left[key] == right[key] for key in left)
+    conflicting = any(left[key] and right[key] and left[key] != right[key] for key in left)
+    return shared and not conflicting
+
+
+def _identities_conflict(left: dict[str, str | None], right: dict[str, str | None]) -> bool:
+    shared = any(left[key] and right[key] and left[key] == right[key] for key in left)
+    conflicting = any(left[key] and right[key] and left[key] != right[key] for key in left)
+    return shared and conflicting
 
 
 def _source_metrics(
@@ -334,29 +352,13 @@ def _quarantine(record: dict[str, Any], reasons: Iterable[str]) -> dict[str, Any
 def _demo_matches(row: dict[str, Any], directory: dict[str, Any]) -> bool:
     demo_values = _identity_values(row)
     directory_values = _identity_values(directory)
-    shared = any(
-        demo_values[k] and directory_values[k] and demo_values[k] == directory_values[k]
-        for k in demo_values
-    )
-    conflicting = any(
-        demo_values[k] and directory_values[k] and demo_values[k] != directory_values[k]
-        for k in demo_values
-    )
-    return shared and not conflicting
+    return _identities_match(demo_values, directory_values)
 
 
 def _demo_identity_conflict(row: dict[str, Any], directory: dict[str, Any]) -> bool:
     demo_values = _identity_values(row)
     directory_values = _identity_values(directory)
-    shared = any(
-        demo_values[k] and directory_values[k] and demo_values[k] == directory_values[k]
-        for k in demo_values
-    )
-    conflicting = any(
-        demo_values[k] and directory_values[k] and demo_values[k] != directory_values[k]
-        for k in demo_values
-    )
-    return shared and conflicting
+    return _identities_conflict(demo_values, directory_values)
 
 
 class FsisMpiAdapter:
@@ -377,13 +379,15 @@ class FsisMpiAdapter:
         demographics_has_supported_activity_headers = any(
             _is_activity_flag_column(_header_key(header)) for header in demographic_headers
         )
-        directory_alias_counts = Counter(alias for row in directory_rows for alias in _key_candidates(row))
+        directory_identities = [_identity_values(row) for row in directory_rows]
+        demographic_identities = [_identity_values(row) for row in demographic_rows]
+        directory_alias_counts = Counter(alias for values in directory_identities for alias in _identity_aliases(values))
         duplicate_directory_aliases = {alias for alias, count in directory_alias_counts.items() if count > 1}
-        demographic_alias_counts = Counter(alias for row in demographic_rows for alias in _key_candidates(row))
+        demographic_alias_counts = Counter(alias for values in demographic_identities for alias in _identity_aliases(values))
         duplicate_demographic_aliases = {alias for alias, count in demographic_alias_counts.items() if count > 1}
         demographic_indices_by_alias: dict[str, set[int]] = {}
-        for demographic_index, demographic in enumerate(demographic_rows):
-            for alias in _key_candidates(demographic):
+        for demographic_index, identity_values in enumerate(demographic_identities):
+            for alias in _identity_aliases(identity_values):
                 demographic_indices_by_alias.setdefault(alias, set()).add(demographic_index)
 
         accepted: list[dict[str, Any]] = []
@@ -392,7 +396,8 @@ class FsisMpiAdapter:
         identity_conflicts = 0
         for index, row in enumerate(directory_rows):
             line = index + 2
-            aliases = set(_key_candidates(row))
+            identities = directory_identities[index]
+            aliases = set(_identity_aliases(identities))
             reasons: list[str] = []
             if not aliases:
                 reasons.append("missing_establishment_id")
@@ -411,12 +416,12 @@ class FsisMpiAdapter:
             }
             matching_demo = [
                 demo_index for demo_index in candidate_demo_indices
-                if _demo_matches(demographic_rows[demo_index], row)
+                if _identities_match(demographic_identities[demo_index], identities)
             ]
             demographic: dict[str, Any] | None = None
             demographic_line: int | None = None
             if any(
-                _demo_identity_conflict(demographic_rows[demo_index], row)
+                _identities_conflict(demographic_identities[demo_index], identities)
                 for demo_index in candidate_demo_indices
             ):
                 reasons.append("conflicting_demographic_identity")
