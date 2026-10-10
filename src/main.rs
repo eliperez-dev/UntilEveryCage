@@ -154,6 +154,10 @@ pub fn app(state: uec_api::ApiState, proxy: private_environment::ProxyConfig) ->
             get(uec_api::get_dev_test_release_location_detail_handler),
         )
         .route(
+            "/api/dev/preview/test-release/map/feed",
+            get(uec_api::get_dev_test_release_map_feed_handler),
+        )
+        .route(
             "/api/dev/preview/test-release/discovery/facets",
             get(uec_api::get_dev_test_release_facets_handler),
         )

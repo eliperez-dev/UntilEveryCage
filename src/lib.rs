@@ -2860,6 +2860,89 @@ pub async fn get_dev_test_release_location_detail_handler(
     Json(json!({"data":item,"meta":meta})).into_response()
 }
 
+/// A bounded, authenticated private map projection for the configured
+/// candidate release.  It is intentionally independent of public V2 map
+/// caches and never carries a name, address, or raw source payload.
+pub async fn get_dev_test_release_map_feed_handler(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    if !test_release_auth(&headers, &state) {
+        return v2_error(StatusCode::NOT_FOUND, "test_release_unavailable", "test release unavailable");
+    }
+    let (Some(pool), Some(release_id)) = (state.database, state.dev_test_release_id.as_deref()) else {
+        return real_preview_unavailable();
+    };
+    let Ok(client) = pool.get().await else { return real_preview_unavailable(); };
+    let release = match client.query_opt(
+        "SELECT summary->>'freeze_sha256' FROM uec.releases WHERE release_id=$1 AND status='candidate' AND (test_only=true OR summary->>'candidate_only'='true')",
+        &[&release_id],
+    ).await {
+        Ok(row) => row,
+        Err(_) => return real_preview_unavailable(),
+    };
+    let Some(release) = release else {
+        return v2_error(StatusCode::NOT_FOUND, "test_release_unavailable", "test release unavailable");
+    };
+    let snapshot_id: Option<String> = release.get(0);
+    let rows = match client.query(
+        r#"SELECT m.facility_id, source.source_id, o.classification_category,
+                  CASE WHEN o.coordinate IS NOT NULL THEN 'source_coordinate'
+                       WHEN city.reference_location IS NOT NULL THEN 'city_reference' END AS kind,
+                  CASE WHEN o.coordinate IS NOT NULL THEN COALESCE(o.coordinate_precision, 'source_reported')
+                       WHEN city.reference_location IS NOT NULL THEN 'city' END AS precision,
+                  ST_Y(COALESCE(o.coordinate, city.reference_location)::geometry) AS latitude,
+                  ST_X(COALESCE(o.coordinate, city.reference_location)::geometry) AS longitude
+             FROM uec.release_members m
+             JOIN uec.releases r ON r.release_id=m.release_id
+             JOIN uec.observations o ON o.observation_id=m.observation_id
+             JOIN uec.facilities f ON f.facility_id=m.facility_id
+             JOIN uec.source_records sr ON sr.source_record_id=o.source_record_id
+             JOIN uec.sources source ON source.source_id=sr.source_id
+             LEFT JOIN LATERAL (
+                 SELECT reference_location FROM uec.city_reference_points
+                  WHERE country_code=f.country_code AND lower(city_name)=lower(f.city)
+                    AND (postal_code IS NULL OR postal_code=f.postal_code)
+                  ORDER BY postal_code NULLS LAST LIMIT 1
+             ) city ON true
+            WHERE m.release_id=$1 AND r.status='candidate'
+              AND (r.test_only=true OR r.summary->>'candidate_only'='true')
+              AND sr.source_state NOT IN ('rejected','superseded')
+              AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted x WHERE x.source_record_id=o.source_record_id)
+              AND COALESCE(o.coordinate, city.reference_location) IS NOT NULL
+            ORDER BY m.facility_id LIMIT 10001"#,
+        &[&release_id],
+    ).await {
+        Ok(rows) => rows,
+        Err(_) => return real_preview_unavailable(),
+    };
+    if rows.len() > 10_000 {
+        return v2_error(StatusCode::PAYLOAD_TOO_LARGE, "candidate_map_too_large", "candidate map exceeds its feature limit");
+    }
+    let points = rows.into_iter().map(|row| {
+        let category_key: String = row.get(2);
+        json!({
+            "key": row.get::<_, uuid::Uuid>(0),
+            "source_id": row.get::<_, String>(1),
+            "kind": row.get::<_, String>(3),
+            "precision": row.get::<_, String>(4),
+            "latitude": row.get::<_, f64>(5),
+            "longitude": row.get::<_, f64>(6),
+            "weight": 1,
+            "category_key": category_key,
+            "category_keys": [category_key]
+        })
+    }).collect::<Vec<_>>();
+    Json(json!({
+        "api_version":"dev-test-v1",
+        "data":{"points":points},
+        "meta":{"private_preview":true,"candidate_only":true,"test_only":false,
+                 "release_id":release_id,"snapshot_id":snapshot_id,"bounded":true,
+                 "scope":"candidate_map","zoom_max":14,
+                 "preview_label":"Private corrected candidate — not project-approved or published"}
+    })).into_response()
+}
+
 pub async fn get_dev_test_release_facets_handler(
     State(state): State<ApiState>,
     headers: HeaderMap,
