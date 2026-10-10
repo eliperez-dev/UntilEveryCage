@@ -73,15 +73,22 @@ export function addRealPreviewMapLayers(
     // Above the configured cutoff, reveal every coordinate record. Approximate references
     // remain weighted aggregates rather than turning into facility pins.
     clusterMaxZoom: nativeClusterMaxZoom(settings.maxZoom),
-    clusterProperties: { representedCount: ['+', ['get', 'weight']] },
+    clusterProperties: {
+      representedCount: ['+', ['get', 'weight']],
+      approximateCount: ['+', ['case', ['any', ['==', ['get', 'precision'], 'approximate'], ['==', ['get', 'precision'], 'city']], ['get', 'weight'], 0]],
+    },
   } as any);
 
   const unclustered = ['!', ['has', 'cluster']];
   const representedCount = ['get', 'representedCount'];
+  const approximateCount = ['get', 'approximateCount'];
+  const countPalette = (prefix: string) => ['step', representedCount, `${prefix}-low`, 10, `${prefix}-mid`, 100, `${prefix}-high`, 1001, `${prefix}-very-high`];
   map.addLayer({
     id: 'clusters', type: 'symbol', source: 'locations', filter: ['has', 'cluster'],
     layout: {
-      'icon-image': ['step', representedCount, 'cluster-low', 10, 'cluster-mid', 100, 'cluster-high', 1001, 'cluster-very-high'],
+      // A blue body identifies an all-approximate cluster; mixed clusters keep
+      // the count palette with a blue outline. Neither implies a category.
+      'icon-image': ['case', ['==', approximateCount, representedCount], 'cluster-approx', ['>', approximateCount, 0], countPalette('cluster-mixed'), countPalette('cluster')],
       'icon-size': 1, 'icon-allow-overlap': true, 'icon-ignore-placement': true,
       'text-field': ['to-string', representedCount], 'text-font': ['Open Sans Bold'], 'text-size': 12,
       'text-allow-overlap': true, 'text-ignore-placement': true,

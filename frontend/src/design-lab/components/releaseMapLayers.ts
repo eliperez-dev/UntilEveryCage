@@ -119,9 +119,8 @@ export function addReleaseMapLayers(
     filter: kind('cluster'),
     paint: {
       'circle-radius': ['step', count, 13, 10, 17, 100, 22],
-      // A cluster can mix activities; its count and exact/coarse text describe
-      // composition without assigning it an unsupported category color.
-      'circle-color': '#667168',
+      // This is the count/precision palette, not a category assignment.
+      'circle-color': ['case', ['>', coarseCount, 0], ['case', ['>', exactCount, 0], '#b89c70', '#98784b'], '#c3b17b'],
       'circle-opacity': 0.92 * opacity,
       'circle-stroke-color': '#171a18', 'circle-stroke-width': 2,
       'circle-stroke-opacity': opacity,
