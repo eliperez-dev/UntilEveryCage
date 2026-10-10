@@ -8,17 +8,18 @@ const metaSchema = z.object({ api_version: z.literal(TEST_RELEASE_API_VERSION), 
 const envelope = z.object({ data: z.array(testReleaseLocationSchema), meta: metaSchema }).strict();
 const facetMetaSchema = z.object({ api_version: z.literal(TEST_RELEASE_API_VERSION), private_preview: z.literal(true), candidate_only: z.literal(true), test_only: z.literal(false), release_id: z.string().min(1), preview_label: z.string().min(1), result_count: z.number().int().nonnegative() }).passthrough();
 const facetValue = z.object({ value: z.string().min(1), count: z.number().int().nonnegative() }).strict();
-const facetsEnvelope = z.object({ data: z.null(), meta: facetMetaSchema, dimensions: z.object({ country_code: z.array(facetValue), category: z.array(facetValue), display_precision: z.array(facetValue), source_type: z.array(facetValue) }).strict() }).strict();
-export type CandidateListOptions = Readonly<{ q?: string; countryCode?: string; category?: string; cursor?: string | null; limit?: number; signal?: AbortSignal }>;
+const facetsEnvelope = z.object({ data: z.null(), meta: facetMetaSchema, dimensions: z.object({ country_code: z.array(facetValue), category: z.array(facetValue), display_precision: z.array(facetValue), source_type: z.array(facetValue), source_id: z.array(facetValue) }).strict() }).strict();
+export type CandidateListOptions = Readonly<{ q?: string; sourceId?: string; countryCode?: string; category?: string; cursor?: string | null; limit?: number; signal?: AbortSignal }>;
 export type CandidateListResult = Readonly<{ locations: readonly Location[]; releaseId: string; snapshotId: string; previewLabel: string; totalCount: number; nextCursor: string | null }>;
-export type CandidateFacets = Readonly<{ countries: readonly Readonly<{ value: string; count: number }>[]; categories: readonly Readonly<{ value: string; count: number }>[] }>;
+export type CandidateFacets = Readonly<{ sources: readonly Readonly<{ value: string; count: number }>[]; countries: readonly Readonly<{ value: string; count: number }>[]; categories: readonly Readonly<{ value: string; count: number }>[] }>;
 
 /** Configured private correction candidate. Credentials are injected by Vite's loopback proxy. */
 export class TestReleaseRepository {
   constructor(private readonly fetcher: FetchLike = globalThis.fetch, private readonly baseUrl = '') {}
-  async list({ q, countryCode, category, cursor, limit = 100, signal }: CandidateListOptions = {}): Promise<CandidateListResult> {
+  async list({ q, sourceId, countryCode, category, cursor, limit = 100, signal }: CandidateListOptions = {}): Promise<CandidateListResult> {
     const params = new URLSearchParams({ profile: 'official', limit: String(Math.max(1, Math.min(1000, limit))) });
     if (q?.trim()) params.set('q', q.trim());
+    if (sourceId?.trim()) params.set('source_id', sourceId.trim());
     if (countryCode && /^[A-Za-z]{2}$/.test(countryCode)) params.set('country_code', countryCode.toUpperCase());
     if (category) params.set('category', category);
     if (cursor) params.set('cursor', cursor);
@@ -35,6 +36,6 @@ export class TestReleaseRepository {
     if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? 'The configured candidate session is not authorized.' : 'The configured candidate facets could not be loaded.');
     const parsed = facetsEnvelope.safeParse(await response.json());
     if (!parsed.success) throw new Error('The configured candidate facets were rejected safely.');
-    return { countries: parsed.data.dimensions.country_code, categories: parsed.data.dimensions.category };
+    return { sources: parsed.data.dimensions.source_id, countries: parsed.data.dimensions.country_code, categories: parsed.data.dimensions.category };
   }
 }

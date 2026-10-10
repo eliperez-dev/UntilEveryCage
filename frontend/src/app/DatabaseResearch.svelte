@@ -29,6 +29,7 @@
   let totalCount = $state<number | null>(null);
   let candidateLabel = $state<string | null>(null);
   let candidateCountries = $state<readonly Readonly<{ value: string; count: number }>[]>([]);
+  let candidateSources = $state<readonly Readonly<{ value: string; count: number }>[]>([]);
   let candidateCategories = $state<readonly Readonly<{ value: string; count: number }>[]>([]);
   let candidateCountry = $state('');
   let candidateCategory = $state('');
@@ -155,7 +156,7 @@
     } else loadingMore = true;
     try {
       if (candidateMode) {
-        const page = await candidateRepository.list({ q: query, ...(candidateCountry ? { countryCode: candidateCountry } : {}), ...(candidateCategory ? { category: candidateCategory } : {}), cursor: reset ? null : nextCursor, limit: 100, signal: controller.signal });
+        const page = await candidateRepository.list({ q: query, ...(sourceId ? { sourceId } : {}), ...(candidateCountry ? { countryCode: candidateCountry } : {}), ...(candidateCategory ? { category: candidateCategory } : {}), cursor: reset ? null : nextCursor, limit: 100, signal: controller.signal });
         if (controller.signal.aborted) return;
         const incoming = page.locations.map(candidateRecord);
         records = [...new Map((reset ? incoming : [...records, ...incoming]).map(record => [record.id, record])).values()];
@@ -233,7 +234,7 @@
     const controller = new AbortController();
     addEventListener("hashchange", syncHash);
     if (candidateMode) {
-      void candidateRepository.facets(controller.signal).then(value => { candidateCountries = value.countries; candidateCategories = value.categories; facetsStatus = 'ready'; }).catch(cause => { facetsStatus = classify(cause); });
+      void candidateRepository.facets(controller.signal).then(value => { candidateSources = value.sources; candidateCountries = value.countries; candidateCategories = value.categories; facetsStatus = 'ready'; }).catch(cause => { facetsStatus = classify(cause); });
       return () => { controller.abort(); request?.abort(); if (searchTimer) clearTimeout(searchTimer); removeEventListener("hashchange", syncHash); };
     }
     void repository
@@ -289,7 +290,8 @@
           value={query}
           oninput={(event) => onSearch(event.currentTarget.value)}
         />
-        {#if candidateMode}<fieldset><legend>Country</legend><select value={candidateCountry} onchange={(event) => { candidateCountry = event.currentTarget.value; void load(true); }}><option value="">All countries</option>{#each candidateCountries as facet (facet.value)}<option value={facet.value}>{facet.value} ({facet.count})</option>{/each}</select></fieldset>
+        {#if candidateMode}<fieldset><legend>Source</legend><select value={sourceId ?? ''} onchange={(event) => write({ sourceId: event.currentTarget.value || null, selectedId: null })}><option value="">All sources</option>{#each candidateSources as facet (facet.value)}<option value={facet.value}>{facet.value} ({facet.count})</option>{/each}</select></fieldset>
+        <fieldset><legend>Country</legend><select value={candidateCountry} onchange={(event) => { candidateCountry = event.currentTarget.value; void load(true); }}><option value="">All countries</option>{#each candidateCountries as facet (facet.value)}<option value={facet.value}>{facet.value} ({facet.count})</option>{/each}</select></fieldset>
         <fieldset><legend>Activity category</legend><select value={candidateCategory} onchange={(event) => { candidateCategory = event.currentTarget.value; void load(true); }}><option value="">All categories</option>{#each candidateCategories as facet (facet.value)}<option value={facet.value}>{facet.value.replaceAll('_', ' ')} ({facet.count})</option>{/each}</select></fieldset>
         {:else}<fieldset>
           <legend>Source feed</legend>{#if facetsStatus === "loading"}<p

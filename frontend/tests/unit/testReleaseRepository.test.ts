@@ -7,8 +7,8 @@ const envelope = { data: [row], meta: { api_version: 'dev-test-v1', private_prev
 describe('configured candidate list', () => {
   it('uses only configured candidate metadata and carries the filtered total plus cursor', async () => {
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(envelope), { status: 200 }));
-    const page = await new TestReleaseRepository(fetcher).list({ q: 'north facility', countryCode: 'dk', category: 'dairy', cursor: '550e8400-e29b-41d4-a716-446655440002', limit: 500 });
-    expect(fetcher).toHaveBeenCalledWith('/api/dev/preview/test-release/locations?profile=official&limit=500&q=north+facility&country_code=DK&category=dairy&cursor=550e8400-e29b-41d4-a716-446655440002', expect.objectContaining({ credentials: 'same-origin', cache: 'no-store' }));
+    const page = await new TestReleaseRepository(fetcher).list({ q: 'north facility', sourceId: 'us.fsis', countryCode: 'dk', category: 'dairy', cursor: '550e8400-e29b-41d4-a716-446655440002', limit: 500 });
+    expect(fetcher).toHaveBeenCalledWith('/api/dev/preview/test-release/locations?profile=official&limit=500&q=north+facility&source_id=us.fsis&country_code=DK&category=dairy&cursor=550e8400-e29b-41d4-a716-446655440002', expect.objectContaining({ credentials: 'same-origin', cache: 'no-store' }));
     expect(page).toMatchObject({ totalCount: 313, nextCursor: envelope.meta.next_cursor, previewLabel: envelope.meta.preview_label });
   });
 
@@ -18,9 +18,9 @@ describe('configured candidate list', () => {
   });
 
   it('accepts only candidate-scoped discovery facets', async () => {
-    const facets = { data: null, meta: { api_version: 'dev-test-v1', private_preview: true, candidate_only: true, test_only: false, release_id: 'candidate-1', preview_label: 'Configured candidate correction', result_count: 2 }, dimensions: { country_code: [{ value: 'DK', count: 1 }], category: [{ value: 'dairy', count: 1 }], display_precision: [], source_type: [] } };
+    const facets = { data: null, meta: { api_version: 'dev-test-v1', private_preview: true, candidate_only: true, test_only: false, release_id: 'candidate-1', preview_label: 'Configured candidate correction', result_count: 2 }, dimensions: { source_id: [{ value: 'us.fsis', count: 1 }], country_code: [{ value: 'DK', count: 1 }], category: [{ value: 'dairy', count: 1 }], display_precision: [], source_type: [] } };
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(facets), { status: 200 }));
-    await expect(new TestReleaseRepository(fetcher).facets()).resolves.toEqual({ countries: facets.dimensions.country_code, categories: facets.dimensions.category });
+    await expect(new TestReleaseRepository(fetcher).facets()).resolves.toEqual({ sources: facets.dimensions.source_id, countries: facets.dimensions.country_code, categories: facets.dimensions.category });
     expect(fetcher).toHaveBeenCalledWith('/api/dev/preview/test-release/discovery/facets', expect.objectContaining({ credentials: 'same-origin', cache: 'no-store' }));
   });
 });
