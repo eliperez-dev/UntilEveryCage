@@ -3,7 +3,7 @@
   import type { LabRecord } from '../design-lab/contract';
   import { categoryPresentation } from '../features/locations/categoryPresentation';
   import type { TaxonomyClassification } from '../domain/taxonomy';
-  import type { LocationSourceFacts, SourceVolumeCategory } from '../domain/location';
+  import type { DerivedSourceVolumeRange, LocationSourceFacts, SourceVolumeCategory } from '../domain/location';
 
   /** Safe fields returned by the local private-preview detail projection. */
   export type RecordDetailRecord = Partial<Omit<LabRecord, 'name' | 'category'>> & {
@@ -245,6 +245,18 @@
     const pieces = [value.sourceField, value.method].filter((piece): piece is string => typeof piece === 'string' && piece.trim().length > 0);
     return pieces.length ? pieces.map(piece => humanizeValue(piece) ?? piece).join(' · ') : null;
   }
+  function volumeCategoryKey(category: SourceVolumeCategory, index: number): string {
+    return `${category.code}:${typeof category.provenance === 'string' ? category.provenance : category.provenance?.sourceField ?? ''}:${index}`;
+  }
+  function formattedRange(range: DerivedSourceVolumeRange): string | null {
+    const number = (value: number) => new Intl.NumberFormat('en-US').format(value);
+    if (range.bounds === 'exclusive_upper' && range.upper !== null) return `Less than ${number(range.upper)}`;
+    if (range.bounds === 'inclusive_lower_unbounded' && range.lower !== null) return `${number(range.lower)} or more`;
+    if (range.bounds === 'inclusive_lower_exclusive_upper' && range.lower !== null && range.upper !== null) return `${number(range.lower)} to less than ${number(range.upper)}`;
+    return null;
+  }
+  const slaughterRanges = $derived(sourceFacts?.derivedSourceVolumeRanges?.filter(range => range.unit === 'head' && range.period === 'trailing_360_days') ?? []);
+  const processingRanges = $derived(sourceFacts?.derivedSourceVolumeRanges?.filter(range => range.unit === 'pounds' && range.period === 'month') ?? []);
 
   function safeHttps(raw: string | null): string | null {
     if (!raw) return null;
@@ -450,7 +462,9 @@
         {#if sourceFacts.nativeActivityLabel}<div><dt>Native activity</dt><dd>{sourceFacts.nativeActivityLabel}</dd></div>{/if}
         {#if sourceFactEntries(sourceFacts, 'speciesSlaughtered').length}<div><dt>Species slaughtered</dt><dd><ul>{#each sourceFactEntries(sourceFacts, 'speciesSlaughtered') as [name, value] (name)}<li>{sourceFactLabel(name)}{#if sourceFactValue(value)}: {sourceFactValue(value)}{/if}</li>{/each}</ul></dd></div>{/if}
         {#if sourceFactEntries(sourceFacts, 'processingActivities').length}<div><dt>Processing activities</dt><dd><ul>{#each sourceFactEntries(sourceFacts, 'processingActivities') as [name, value] (name)}<li>{sourceFactLabel(name)}{#if sourceFactValue(value)}: {sourceFactValue(value)}{/if}</li>{/each}</ul></dd></div>{/if}
-        {#if sourceFacts.sourceVolumeCategories?.length}<div><dt>Source volume categories</dt><dd><ul>{#each sourceFacts.sourceVolumeCategories as category (category.code)}<li>{sourceFactLabel(category.code)}{#if volumeProvenance(category.provenance)} · {volumeProvenance(category.provenance)}{/if}</li>{/each}</ul></dd></div>{/if}
+        {#if slaughterRanges.length}<div><dt>Estimated animals slaughtered (last 360 days)</dt><dd><ul>{#each slaughterRanges as range, index (`${range.ordinalCode}:${range.unit}:${range.period}:${index}`)}{#if formattedRange(range)}<li>{formattedRange(range)} head</li>{/if}{/each}</ul></dd></div>{/if}
+        {#if processingRanges.length}<div><dt>Estimated product volume (pounds/month)</dt><dd><ul>{#each processingRanges as range, index (`${range.ordinalCode}:${range.unit}:${range.period}:${index}`)}{#if formattedRange(range)}<li>{formattedRange(range)} pounds/month</li>{/if}{/each}</ul></dd></div>{/if}
+        {#if sourceFacts.sourceVolumeCategories?.length}<div><dt>Source volume categories</dt><dd><ul>{#each sourceFacts.sourceVolumeCategories as category, index (volumeCategoryKey(category, index))}<li>{sourceFactLabel(category.code)}{#if volumeProvenance(category.provenance)} · {volumeProvenance(category.provenance)}{/if}</li>{/each}</ul></dd></div>{/if}
       </dl>
     </section>
   {/if}

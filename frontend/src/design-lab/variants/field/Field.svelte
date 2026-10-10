@@ -972,7 +972,7 @@
     .map-stage:has(.results):has(.reading-sheet) .results { display:none; }
     .map-stage:has(.results):has(.reading-sheet) .reading-sheet { width:auto; }
     .map-stage:has(.reading-sheet) .search-toggle { display: none; }
-    .basemap-picker { top:auto; right:.4rem; bottom:2.6rem; }
+    .basemap-picker { top:.45rem; right:.4rem; bottom:auto; }
     .rail-resize { display:none; }
     .search-tools { grid-template-columns:1fr; }
     .filters { width:100%; }

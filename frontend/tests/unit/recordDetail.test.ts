@@ -57,5 +57,8 @@ describe('private preview record detail surface', () => {
     expect(component).toContain('sourceFacts.alternateNames?.length');
     expect(component).toContain("sourceFactEntries(sourceFacts, 'processingActivities').length");
     expect(component).toContain('sourceFacts.sourceVolumeCategories?.length');
+    expect(component).toContain('Estimated animals slaughtered (last 360 days)');
+    expect(component).toContain('Estimated product volume (pounds/month)');
+    expect(component).toContain('derivedSourceVolumeRanges');
   });
 });

@@ -35,14 +35,18 @@ describe('real-preview native clustering layers', () => {
       'all', ['!', ['has', 'cluster']], ['in', ['get', 'kind'], ['literal', ['reference', 'provider_locality_approximate']]],
       ['!', ['any', ['==', ['get', 'precision'], 'city'], ['==', ['get', 'precision'], 'city_reference_approximate'], ['==', ['get', 'precision'], 'provider_locality_approximate']]],
     ]);
-    expect(layers.find(layer => layer.id === 'aggregate-outer')?.paint['circle-color']).toBe('#c84a4a');
+    expect(layers.find(layer => layer.id === 'aggregate-outer')?.paint).toMatchObject({
+      'circle-color': '#d8473f', 'circle-opacity': 0.22, 'circle-stroke-color': '#ff695c', 'circle-stroke-width': 2.5,
+    });
     expect(layers.find(layer => layer.id === 'aggregate-outer')?.filter).toEqual(['all', ['!', ['has', 'cluster']], ['in', ['get', 'kind'], ['literal', ['reference', 'provider_locality_approximate']]]]);
     expect(layers.find(layer => layer.id === 'source-coordinate-points')?.filter).toEqual(['all', ['!', ['has', 'cluster']], ['in', ['get', 'kind'], ['literal', ['source-coordinate', 'provider_address_point_private']]]]);
     expect(layers.find(layer => layer.id === 'source-coordinate-points')?.filter).toContainEqual(['in', ['get', 'kind'], ['literal', ['source-coordinate', 'provider_address_point_private']]]);
-    expect(layers.find(layer => layer.id === 'source-coordinate-points')?.paint?.['circle-color'])
-      .toContain('fish_processing');
-    expect(layers.find(layer => layer.id === 'v1-source-pins')?.layout['icon-image'])
-      .toContain('fish_processing');
+    expect(JSON.stringify(layers.find(layer => layer.id === 'source-coordinate-points')?.paint?.['circle-color']))
+      .toContain('category_keys');
+    expect(JSON.stringify(layers.find(layer => layer.id === 'v1-source-pins')?.layout['icon-image']))
+      .toContain('v1-pin-green');
+    expect(JSON.stringify(layers.find(layer => layer.id === 'v1-source-pins')?.layout['icon-image']))
+      .toContain('category_keys');
     expect(hasRealPreviewMapLayers({
       getSource: (id: string) => sources[id],
       getLayer: (id: string) => layers.find(layer => layer.id === id),
