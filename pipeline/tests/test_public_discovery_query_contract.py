@@ -72,6 +72,13 @@ class PublicDiscoveryQueryContractTests(unittest.TestCase):
         self.assertIn("observation_taxonomy_assignment_sets sets", locations)
         self.assertNotIn("websearch_to_tsquery", locations)
 
+    def test_taxonomy_filter_count_uses_assignment_existence_not_json_aggregation(self):
+        source = _source()
+        locations = source[source.index("pub async fn get_v2_locations_handler"):source.index("let rows = if !taxonomy_filters_requested")]
+        self.assertIn("assignment.primary_key = ANY($16::text[])", locations)
+        self.assertNotIn("taxonomy.primary_categories && $16", locations)
+        self.assertNotIn("jsonb_agg(DISTINCT jsonb_build_object", locations)
+
     def test_public_discovery_transactions_disable_jit_locally(self):
         source = _source()
         endpoints = (
