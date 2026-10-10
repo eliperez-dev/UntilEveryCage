@@ -2740,6 +2740,60 @@ fn test_release_activity_keys(source_id: &str, codes: &str) -> Vec<String> {
     result
 }
 
+fn test_release_activity_labels(source_id: &str, codes: &str, labels: &str) -> Vec<(String, String)> {
+    let Ok(Value::Array(codes)) = serde_json::from_str::<Value>(codes) else { return vec![]; };
+    let labels = serde_json::from_str::<Value>(labels).ok().and_then(|v| v.as_array().cloned()).unwrap_or_default();
+    codes.iter().enumerate().filter_map(|(index, value)| {
+        let code = value.as_str()?;
+        if code.trim().is_empty() || code.len() > 160 || code.chars().any(char::is_control) { return None; }
+        let label = labels.get(index).and_then(Value::as_str).filter(|label| !label.trim().is_empty() && label.len() <= 500).unwrap_or(code);
+        Some((format!("{source_id}:{}", test_release_percent_encode(code)), label.to_owned()))
+    }).collect()
+}
+
+/// Candidate selectors are deliberately stricter than their public-V2
+/// counterparts: each comma-separated value is a canonical key, not a free
+/// text fragment.  This keeps list, facet, and client-side map filtering on
+/// the same key space.
+fn test_release_filter_error(params: &DevTestReleaseLocationParams) -> Option<&'static str> {
+    let valid_csv = |value: &str, valid: &dyn Fn(&str) -> bool| {
+        !value.is_empty() && value.len() <= 500 && value.split(',').all(valid)
+    };
+    if params.q.as_deref().is_some_and(|value| value.trim().is_empty() || value.len() > 120) {
+        return Some("q must be non-empty and at most 120 characters");
+    }
+    if params.country_code.as_deref().is_some_and(|value| !valid_csv(value, &|part| part.len() == 2 && part.bytes().all(|byte| byte.is_ascii_uppercase()))) {
+        return Some("country_code is invalid");
+    }
+    if params.category.as_deref().is_some_and(|value| !valid_csv(value, &|part| TEST_RELEASE_TAXONOMY_KEYS.contains(&part))) {
+        return Some("category is invalid");
+    }
+    if params.source_id.as_deref().is_some_and(|value| !valid_csv(value, &|part| !part.is_empty() && part.len() <= 120 && part.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'.' | b'_' | b'-')))) {
+        return Some("source_id is invalid");
+    }
+    if params.activity.as_deref().is_some_and(|value| !valid_csv(value, &test_release_activity_key_is_canonical)) {
+        return Some("activity is invalid");
+    }
+    None
+}
+
+fn test_release_activity_key_is_canonical(value: &str) -> bool {
+    let Some((source_id, encoded)) = value.split_once(':') else { return false; };
+    if source_id.is_empty() || source_id.len() > 120 || !source_id.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'.' | b'_' | b'-')) || encoded.is_empty() || encoded.len() > 480 {
+        return false;
+    }
+    let bytes = encoded.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => index += 1,
+            b'%' if index + 2 < bytes.len() && bytes[index + 1].is_ascii_hexdigit() && bytes[index + 2].is_ascii_hexdigit() && !bytes[index + 1].is_ascii_lowercase() && !bytes[index + 2].is_ascii_lowercase() => index += 3,
+            _ => return false,
+        }
+    }
+    true
+}
+
 fn test_release_volume_ranges(normalized: &str) -> Vec<Value> {
     let Ok(Value::Object(source)) = serde_json::from_str::<Value>(normalized) else {
         return vec![];
@@ -2976,6 +3030,9 @@ pub async fn get_dev_test_release_locations_handler(
             "q must be non-empty and at most 120 characters",
         );
     }
+    if let Some(message) = test_release_filter_error(&params) {
+        return v2_error(StatusCode::BAD_REQUEST, "invalid_filter", message);
+    }
     if params.source_id.as_deref().is_some_and(|value| {
         value.is_empty()
             || value.len() > 120
@@ -3013,7 +3070,7 @@ pub async fn get_dev_test_release_locations_handler(
     }
     let query_limit = limit + 1;
     let total_count: i64 = match client.query_one(
-        "SELECT count(DISTINCT f.facility_id)::bigint FROM uec.release_members member JOIN uec.releases r ON r.release_id=member.release_id JOIN uec.observations o ON o.observation_id=member.observation_id JOIN uec.facilities f ON f.facility_id=member.facility_id JOIN uec.source_records record ON record.source_record_id=o.source_record_id LEFT JOIN uec.publication_review_release_current review ON review.source_record_id=o.source_record_id AND review.release_id=member.release_id WHERE r.release_id=$1 AND r.status='candidate' AND (r.test_only=true OR r.summary->>'candidate_only'='true') AND record.source_state NOT IN ('rejected','superseded') AND COALESCE(review.privacy_screening_status,'pending') <> 'failed' AND COALESCE(review.factual_review_status,'unreviewed') <> 'rejected' AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted restricted WHERE restricted.source_record_id=o.source_record_id) AND ($2::text IS NULL OR f.country_code=ANY(string_to_array($2,','))) AND ($3::text IS NULL OR o.classification_category=ANY(string_to_array($3,','))) AND ($4::text IS NULL OR record.source_id=ANY(string_to_array($4,','))) AND ($5::text IS NULL OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(record.raw_fields->'source_activity_codes','[]'::jsonb)) code WHERE record.source_id || ':' || code = ANY(string_to_array($5,',')))) AND ($6::text IS NULL OR COALESCE(NULLIF(record.raw_fields->'normalized'->>'facility_display_name',''),NULLIF(f.canonical_name,''),'') ILIKE '%' || $6 || '%' ESCAPE '\\' OR COALESCE(f.city,'') ILIKE '%' || $6 || '%' ESCAPE '\\' OR COALESCE(record.raw_fields->'normalized'->>'alternate_names','') ILIKE '%' || $6 || '%' ESCAPE '\\' OR record.source_id ILIKE '%' || $6 || '%' ESCAPE '\\' OR o.classification_category ILIKE '%' || $6 || '%' ESCAPE '\\')",
+        "SELECT count(DISTINCT f.facility_id)::bigint FROM uec.release_members member JOIN uec.releases r ON r.release_id=member.release_id JOIN uec.observations o ON o.observation_id=member.observation_id JOIN uec.facilities f ON f.facility_id=member.facility_id JOIN uec.source_records record ON record.source_record_id=o.source_record_id LEFT JOIN uec.publication_review_release_current review ON review.source_record_id=o.source_record_id AND review.release_id=member.release_id WHERE r.release_id=$1 AND r.status='candidate' AND (r.test_only=true OR r.summary->>'candidate_only'='true') AND record.source_state NOT IN ('rejected','superseded') AND COALESCE(review.privacy_screening_status,'pending') <> 'failed' AND COALESCE(review.factual_review_status,'unreviewed') <> 'rejected' AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted restricted WHERE restricted.source_record_id=o.source_record_id) AND ($2::text IS NULL OR f.country_code=ANY(string_to_array($2,','))) AND ($3::text IS NULL OR (ARRAY[o.classification_category] || COALESCE(ARRAY(SELECT CASE value WHEN 'processing' THEN 'processing_and_preparation' ELSE value END FROM jsonb_array_elements_text(COALESCE(record.raw_fields->'normalized'->'activity_categories','[]'::jsonb)) value WHERE value='processing' OR value=ANY(ARRAY['animal_keeping_and_production','slaughter','processing_and_preparation','research_and_animal_use','other_regulated_premises','unclassified'])),ARRAY[]::text[])) && string_to_array($3,',')) AND ($4::text IS NULL OR record.source_id=ANY(string_to_array($4,','))) AND ($5::text IS NULL OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(record.raw_fields->'source_activity_codes','[]'::jsonb)) code WHERE record.source_id || ':' || replace(replace(replace(replace(replace(code,'%','%25'),' ','%20'),'/','%2F'),':','%3A'),',','%2C') = ANY(string_to_array($5,',')))) AND ($6::text IS NULL OR COALESCE(NULLIF(record.raw_fields->'normalized'->>'facility_display_name',''),NULLIF(f.canonical_name,''),'') ILIKE '%' || $6 || '%' ESCAPE '\\' OR COALESCE(f.city,'') ILIKE '%' || $6 || '%' ESCAPE '\\' OR COALESCE(record.raw_fields->'normalized'->>'alternate_names','') ILIKE '%' || $6 || '%' ESCAPE '\\' OR record.source_id ILIKE '%' || $6 || '%' ESCAPE '\\' OR o.classification_category ILIKE '%' || $6 || '%' ESCAPE '\\')",
         &[&release_id, &params.country_code, &params.category, &params.source_id, &params.activity, &search_text],
     ).await {
         Ok(row) => row.get(0),
@@ -3035,9 +3092,9 @@ pub async fn get_dev_test_release_locations_handler(
         WHERE r.release_id=$1 AND r.status='candidate' AND (r.test_only=true OR r.summary->>'candidate_only'='true') AND record.source_state NOT IN ('rejected','superseded')
           AND COALESCE(review.privacy_screening_status,'pending') <> 'failed' AND COALESCE(review.factual_review_status,'unreviewed') <> 'rejected'
           AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted restricted WHERE restricted.source_record_id=o.source_record_id)
-          AND ($2::text IS NULL OR f.country_code=ANY(string_to_array($2,','))) AND ($3::text IS NULL OR o.classification_category=ANY(string_to_array($3,',')))
+          AND ($2::text IS NULL OR f.country_code=ANY(string_to_array($2,','))) AND ($3::text IS NULL OR (ARRAY[o.classification_category] || COALESCE(ARRAY(SELECT CASE value WHEN 'processing' THEN 'processing_and_preparation' ELSE value END FROM jsonb_array_elements_text(COALESCE(record.raw_fields->'normalized'->'activity_categories','[]'::jsonb)) value WHERE value='processing' OR value=ANY(ARRAY['animal_keeping_and_production','slaughter','processing_and_preparation','research_and_animal_use','other_regulated_premises','unclassified'])),ARRAY[]::text[])) && string_to_array($3,','))
           AND ($4::text IS NULL OR record.source_id=ANY(string_to_array($4,',')))
-          AND ($5::text IS NULL OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(record.raw_fields->'source_activity_codes','[]'::jsonb)) code WHERE record.source_id || ':' || code = ANY(string_to_array($5,','))))
+          AND ($5::text IS NULL OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(record.raw_fields->'source_activity_codes','[]'::jsonb)) code WHERE record.source_id || ':' || replace(replace(replace(replace(replace(code,'%','%25'),' ','%20'),'/','%2F'),':','%3A'),',','%2C') = ANY(string_to_array($5,','))))
           AND ($6::text IS NULL OR COALESCE(NULLIF(record.raw_fields->'normalized'->>'facility_display_name',''),NULLIF(f.canonical_name,''),'') ILIKE '%' || $6 || '%' ESCAPE '\' OR COALESCE(f.city,'') ILIKE '%' || $6 || '%' ESCAPE '\' OR COALESCE(record.raw_fields->'normalized'->>'alternate_names','') ILIKE '%' || $6 || '%' ESCAPE '\' OR record.source_id ILIKE '%' || $6 || '%' ESCAPE '\' OR o.classification_category ILIKE '%' || $6 || '%' ESCAPE '\')
           AND ($7::uuid IS NULL OR f.facility_id > $7)
         ORDER BY f.facility_id LIMIT $8"#, &[&release_id,&params.country_code,&params.category,&params.source_id,&params.activity,&search_text,&cursor,&query_limit]).await {
@@ -3328,7 +3385,11 @@ pub async fn get_dev_test_release_facets_handler(
             "test release unavailable",
         );
     };
-    let rows=match client.query("SELECT f.country_code,o.classification_category,CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN 'exact' ELSE 'unmapped' END,source.origin_type,source.source_id,COALESCE(sr.raw_fields->'source_activity_codes','[]'::jsonb)::text FROM uec.release_members m JOIN uec.releases r ON r.release_id=m.release_id JOIN uec.observations o ON o.observation_id=m.observation_id JOIN uec.facilities f ON f.facility_id=m.facility_id JOIN uec.source_records sr ON sr.source_record_id=o.source_record_id JOIN uec.sources source ON source.source_id=sr.source_id LEFT JOIN LATERAL (SELECT result FROM uec.geocode_results WHERE source_record_id=o.source_record_id AND status='accepted' AND result IS NOT NULL ORDER BY queried_at DESC LIMIT 1) g ON true LEFT JOIN uec.publication_review_release_current review ON review.source_record_id=o.source_record_id AND review.release_id=m.release_id WHERE r.release_id=$1 AND r.status='candidate' AND (r.test_only=true OR r.summary->>'candidate_only'='true') AND sr.source_state NOT IN ('rejected','superseded') AND COALESCE(review.privacy_screening_status,'pending')<>'failed' AND COALESCE(review.factual_review_status,'unreviewed')<>'rejected' AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted x WHERE x.source_record_id=o.source_record_id) AND ($2::text IS NULL OR f.country_code=ANY(string_to_array($2,','))) AND ($3::text IS NULL OR o.classification_category=ANY(string_to_array($3,','))) AND ($4::text IS NULL OR source.source_id=ANY(string_to_array($4,','))) AND ($5::text IS NULL OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(sr.raw_fields->'source_activity_codes','[]'::jsonb)) code WHERE source.source_id || ':' || code = ANY(string_to_array($5,','))))", &[&release_id,&params.country_code,&params.category,&params.source_id,&params.activity]).await {Ok(r)=>r,Err(_)=>return v2_error(StatusCode::SERVICE_UNAVAILABLE,"test_release_query_failed","test release unavailable")};
+    if let Some(message) = test_release_filter_error(&params) {
+        return v2_error(StatusCode::BAD_REQUEST, "invalid_filter", message);
+    }
+    let search_text = params.q.as_deref().map(|value| value.trim().replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_"));
+    let rows=match client.query("SELECT f.country_code,o.classification_category,CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN 'exact' ELSE 'unmapped' END,source.origin_type,source.source_id,COALESCE(sr.raw_fields->'source_activity_codes','[]'::jsonb)::text,COALESCE(sr.raw_fields->'source_activity_labels','[]'::jsonb)::text FROM uec.release_members m JOIN uec.releases r ON r.release_id=m.release_id JOIN uec.observations o ON o.observation_id=m.observation_id JOIN uec.facilities f ON f.facility_id=m.facility_id JOIN uec.source_records sr ON sr.source_record_id=o.source_record_id JOIN uec.sources source ON source.source_id=sr.source_id LEFT JOIN LATERAL (SELECT result FROM uec.geocode_results WHERE source_record_id=o.source_record_id AND status='accepted' AND result IS NOT NULL ORDER BY queried_at DESC LIMIT 1) g ON true LEFT JOIN uec.publication_review_release_current review ON review.source_record_id=o.source_record_id AND review.release_id=m.release_id WHERE r.release_id=$1 AND r.status='candidate' AND (r.test_only=true OR r.summary->>'candidate_only'='true') AND sr.source_state NOT IN ('rejected','superseded') AND COALESCE(review.privacy_screening_status,'pending')<>'failed' AND COALESCE(review.factual_review_status,'unreviewed')<>'rejected' AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted x WHERE x.source_record_id=o.source_record_id) AND ($2::text IS NULL OR f.country_code=ANY(string_to_array($2,','))) AND ($3::text IS NULL OR (ARRAY[o.classification_category] || COALESCE(ARRAY(SELECT CASE value WHEN 'processing' THEN 'processing_and_preparation' ELSE value END FROM jsonb_array_elements_text(COALESCE(sr.raw_fields->'normalized'->'activity_categories','[]'::jsonb)) value WHERE value='processing' OR value=ANY(ARRAY['animal_keeping_and_production','slaughter','processing_and_preparation','research_and_animal_use','other_regulated_premises','unclassified'])),ARRAY[]::text[])) && string_to_array($3,',')) AND ($4::text IS NULL OR source.source_id=ANY(string_to_array($4,','))) AND ($5::text IS NULL OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(sr.raw_fields->'source_activity_codes','[]'::jsonb)) code WHERE source.source_id || ':' || replace(replace(replace(replace(replace(code,'%','%25'),' ','%20'),'/','%2F'),':','%3A'),',','%2C') = ANY(string_to_array($5,',')))) AND ($6::text IS NULL OR COALESCE(NULLIF(sr.raw_fields->'normalized'->>'facility_display_name',''),NULLIF(f.canonical_name,''),'') ILIKE '%' || $6 || '%' ESCAPE '\\' OR COALESCE(f.city,'') ILIKE '%' || $6 || '%' ESCAPE '\\' OR COALESCE(sr.raw_fields->'normalized'->>'alternate_names','') ILIKE '%' || $6 || '%' ESCAPE '\\' OR source.source_id ILIKE '%' || $6 || '%' ESCAPE '\\' OR o.classification_category ILIKE '%' || $6 || '%' ESCAPE '\\')", &[&release_id,&params.country_code,&params.category,&params.source_id,&params.activity,&search_text]).await {Ok(r)=>r,Err(_)=>return v2_error(StatusCode::SERVICE_UNAVAILABLE,"test_release_query_failed","test release unavailable")};
     let mut dims = serde_json::Map::new();
     for (name, values) in [
         (
@@ -3370,8 +3431,13 @@ pub async fn get_dev_test_release_facets_handler(
     }
     let mut activity_counts = std::collections::BTreeMap::new();
     for row in &rows {
-        for key in test_release_activity_keys(&row.get::<_, String>(4), &row.get::<_, String>(5)) {
-            *activity_counts.entry(key).or_insert(0usize) += 1;
+        for (key, label) in test_release_activity_labels(
+            &row.get::<_, String>(4),
+            &row.get::<_, String>(5),
+            &row.get::<_, String>(6),
+        ) {
+            let entry = activity_counts.entry(key).or_insert((label, 0usize));
+            entry.1 += 1;
         }
     }
     dims.insert(
@@ -3379,7 +3445,7 @@ pub async fn get_dev_test_release_facets_handler(
         json!(
             activity_counts
                 .into_iter()
-                .map(|(value, count)| json!({"value":value,"label":value,"count":count}))
+                .map(|(value, (label, count))| json!({"value":value,"label":label,"count":count}))
                 .collect::<Vec<_>>()
         ),
     );
@@ -5607,8 +5673,8 @@ mod v2_api_tests {
     #[test]
     fn private_candidate_map_identity_versions_projection_bytes() {
         let (etag, cache_key) = private_candidate_map_identity("candidate", "snapshot");
-        assert_eq!(etag, "\"candidate-map-v2-snapshot\"");
-        assert_eq!(cache_key, "dev-test-candidate-map-v2|candidate|snapshot");
+        assert_eq!(etag, "\"candidate-map-v3-snapshot\"");
+        assert_eq!(cache_key, "dev-test-candidate-map-v3|candidate|snapshot");
     }
 
     #[test]
@@ -5632,6 +5698,46 @@ mod v2_api_tests {
         assert_eq!(params.q.as_deref(), Some("100%_literal"));
         assert_eq!(params.source_id.as_deref(), Some("us.fsis"));
         assert!(params.cursor.is_some());
+    }
+
+    #[test]
+    fn candidate_filter_keys_reject_empty_or_noncanonical_values() {
+        let valid: DevTestReleaseLocationParams = serde_json::from_value(json!({
+            "country_code":"US,CA",
+            "category":"slaughter,processing_and_preparation",
+            "source_id":"us.fsis,ca.cfian",
+            "activity":"us.fsis:FSIS%20A%2FB%3AC%2CD%25",
+            "q":"needle"
+        })).unwrap();
+        assert_eq!(test_release_filter_error(&valid), None);
+
+        for invalid in [
+            json!({"country_code":"US,"}),
+            json!({"category":""}),
+            json!({"source_id":"Us.fsis"}),
+            json!({"activity":"us.fsis:space here"}),
+            json!({"activity":"us.fsis:%2f"}),
+            json!({"q":"   "}),
+        ] {
+            let params: DevTestReleaseLocationParams = serde_json::from_value(invalid).unwrap();
+            assert!(test_release_filter_error(&params).is_some());
+        }
+    }
+
+    #[test]
+    fn candidate_taxonomy_and_activity_facets_preserve_full_native_keys() {
+        let categories = test_release_category_keys(
+            "slaughter",
+            r#"{"activity_categories":["processing","slaughter"]}"#,
+        );
+        assert_eq!(categories, vec!["processing_and_preparation", "slaughter"]);
+
+        let labels = test_release_activity_labels(
+            "us.fsis",
+            r#"["A B/C:D,E%F"]"#,
+            r#"["Native processing and slaughter label"]"#,
+        );
+        assert_eq!(labels, vec![("us.fsis:A%20B%2FC%3AD%2CE%25F".into(), "Native processing and slaughter label".into())]);
     }
 
     #[tokio::test]
