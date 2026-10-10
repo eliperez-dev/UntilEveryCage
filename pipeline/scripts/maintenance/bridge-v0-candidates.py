@@ -760,7 +760,7 @@ def _baseline_snapshot(connection: Any, contract: dict[str, Any]) -> dict[str, A
         "facilities": _digest_query(connection, "SELECT to_jsonb(facility) FROM uec.facilities facility JOIN uec.release_members member USING(facility_id) WHERE member.release_id=%s ORDER BY facility.facility_id", (release_id,)),
         "observations": _digest_query(connection, "SELECT to_jsonb(observation) FROM uec.observations observation JOIN uec.release_members member ON member.observation_id=observation.observation_id WHERE member.release_id=%s ORDER BY observation.observation_id", (release_id,)),
         "source_records": _digest_query(connection, "SELECT to_jsonb(record) FROM uec.source_records record JOIN uec.observations observation USING(source_record_id) JOIN uec.release_members member ON member.observation_id=observation.observation_id WHERE member.release_id=%s ORDER BY record.source_record_id", (release_id,)),
-        "restrictions": _digest_query(connection, "SELECT to_jsonb(event) FROM uec.record_access_events event ORDER BY event.event_id"),
+        "restrictions": _digest_query(connection, "SELECT to_jsonb(event) FROM uec.record_access_events event ORDER BY event.access_event_id"),
     }
     # Public relations may legitimately contain the V0 projection.  Their exact
     # row hashes must remain unchanged while candidate-only rows are appended.
@@ -1112,6 +1112,8 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
         # disposable integration tests; CLI output remains the generic code.
         failure.database_error_class = type(error).__name__
         failure.database_sqlstate = getattr(error, "sqlstate", None)
+        failure.database_column = getattr(getattr(error, "diag", None), "column_name", None)
+        failure.database_message = getattr(getattr(error, "diag", None), "message_primary", None)
         raise failure from None
     return {"status": "candidate_only_staged", "release_id": freeze["release_id"],
             "freeze_sha256": freeze_hash, "counts": counts, "public_authorized": False,

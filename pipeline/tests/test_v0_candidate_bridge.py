@@ -21,6 +21,11 @@ def _canonical(value):
 
 
 class CandidateBridgeTests(unittest.TestCase):
+    def test_baseline_snapshot_orders_access_events_by_the_real_primary_key(self):
+        source = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn("record_access_events event ORDER BY event.access_event_id", source)
+        self.assertNotIn("record_access_events event ORDER BY event.event_id", source)
+
     def test_facility_display_names_are_source_typed_and_never_use_operator_fallback(self):
         self.assertEqual(bridge._facility_display_name("au.npi.facilities", {
             "facility_name": "  Synthetic   Works ", "operator_name": "Synthetic Person"}), "Synthetic Works")
