@@ -3742,7 +3742,7 @@ pub async fn get_v2_locations_handler(
           AND ($2::text IS NULL OR history.country_code = $2) AND ($3::text IS NULL OR history.city = $3)
           AND ($4::text IS NULL OR history.classification_category = $4) AND ($5::text IS NULL OR history.display_precision = $5)
           AND ($6::text IS NULL OR history.lifecycle_status = $6) AND ($7::text IS NULL OR history.provenance_origin_type = $7)
-          AND ($8::text IS NULL OR lower(coalesce(history.canonical_name, '') || ' ' || coalesce(history.city, '') || ' ' || history.country_code || ' ' || history.classification_category || ' ' || coalesce(history.provenance_source_name, '') || ' ' || coalesce(taxonomy.leaf_activities::text, '') || ' ' || coalesce(taxonomy.assignments::text, '')) LIKE '%' || lower($8) || '%' ESCAPE '\\')
+          AND ($8::text IS NULL OR lower(coalesce(history.canonical_name, '') || ' ' || coalesce(history.city, '') || ' ' || history.country_code || ' ' || history.classification_category || ' ' || coalesce(history.provenance_source_name, '') || ' ' || coalesce(taxonomy.leaf_activities::text, '') || ' ' || coalesce(taxonomy.assignments::text, '')) LIKE '%' || lower($8) || '%' ESCAPE '\')
           AND ($9::double precision IS NULL OR (history.display_location && ST_MakeEnvelope($9, $10, $11, $12, 4326)::geography AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($9, $10, $11, $12, 4326))))
           AND ($13::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($14, $15), 4326)::geography, $13 * 1000))
           AND ($16::text[] IS NULL OR taxonomy.primary_categories && $16)
