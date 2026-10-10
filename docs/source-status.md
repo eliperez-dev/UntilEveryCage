@@ -28,10 +28,17 @@ with 1,229 selected for the default map by the versioned animal-relevance rules.
 The fifteen-source successor serves 41,936 map locations; it is not a new
 public release. Frozen approved v0 remains unchanged.
 
-APHIS has a separate 100-row FY2025 Class R private registration import, not
-national coverage. It has no coordinates and is excluded from generic strict
-live acquisition until a repeatable acquisition route is implemented. Do not
-count this sample as public map markers or a complete APHIS pipeline.
+APHIS has a private active-register candidate cohort from the official workbook:
+12,473 rows across all nine source-native license classes. It is candidate-only,
+has no operating-site coordinates, and is not a public release or a claim of
+recurring health. A separate retained visible-browser FY2025 annual-report
+replay stored 994 events and 1,988 exact source-identifier evidence links; it
+has exact aliases to 927 candidate facilities, with valid species counts on
+730 reports. It does not make annual reports a facility master or inspection
+evidence.
+The private r3 successor now assembles the unchanged r2 parent (124,419
+members across 15 sources) with the APHIS cohort, for 136,892 private members
+across 16 sources. It remains candidate-only and unpromoted.
 
 The older source checkpoints below describe their stated capture dates; their
 blanket approval wording does not supersede the recorded 2026-10-06 v0 approval
@@ -301,7 +308,8 @@ rows remain zero and publication is not authorized.
 | `es.locations` | partial | blocked | not_run | blocked | AESAN RGSEAA and MAPA sector routes are documented, but direct acquisition was refused; rights, export/schema, effective dates, sector coverage, privacy, and legacy/source boundaries remain unresolved |
 | `us.fsis` | verified | verified | not_run | blocked | Strict live private E2E verified: 7,240 observations and 7,240 candidates from official current CSVs acquired through an authorized bounded browser download; one-time run only, with no recurring monitor configured. Public release is not authorized; source terms, identity, location/privacy, reconciliation, project review, and release gates remain open; see `docs/country-recon-us.md` and `docs/countries/us/README.md` |
 | `us.state-mpi` | verified | not_run | not_run | blocked | FSIS identifies 29 state MPI programs and 10 CIS states; state roster routes are documented in `docs/countries/us/state-mpi-source-recon.md`, but no state roster/CIS workbook was acquired. Keep official, CIS, custom-exempt, retail/handler, and inactive/expired populations separate; obtain authorized current exports and review terms/schema/privacy before any test-only handoff |
-| `us.aphis` | verified | not_run | not_run | blocked | Profile-explicit private adapter and assisted-capture contract cover registrations, annual reports, and inspections; capture current exports and review terms/schema/privacy |
+| `us.aphis` | verified | verified | not_run | blocked | One strict private E2E acquired the official active-register workbook and staged 12,473 candidate-only rows across all nine native license classes; the private r3 successor assembles 136,892 members across 16 sources with its unchanged r2 parent. Mailing city/state are non-site evidence; no coordinates, facility merge, public release, or recurring-health claim follows |
+| `us.aphis.annual-reports` | verified | artifact_private_only | not_run | blocked | Retained visible-browser FY2025 pages were replayed as 994 private annual-report events with 1,988 exact source-identifier evidence links; 927 aliases match candidate facilities and 730 reports have valid species counts. This is not a recurring live acquisition, inspection evidence, a facility master, or public output |
 | `us.inspections` | verified | not_run | not_run | blocked | APHIS inspections profile is implemented as observation evidence; capture current export and use explicit reviewable identity links only |
 | `us.nih.reporter` | verified | not_run | not_run | blocked | NIH RePORTER API/ExPORTER is documented as the first funding/project integration; exact award and organization keys remain separate from animal-use counts |
 | `us.nih.olaw-assurances` | verified | not_run | not_run | blocked | OLAW assured-institutions lookup is current institutional assurance evidence; validate assisted capture and branch/affiliate scope without inferring protocols or counts |

@@ -11,8 +11,17 @@ V1’s “USDA” layer is the FSIS Meat, Poultry and Egg Product Inspection (MP
 | V1 component | Primary route | Evidence / readiness | Caveats and blocker |
 |---|---|---|---|
 | FSIS establishments/demographics | [FSIS MPI Directory](https://www.fsis.usda.gov/inspection/establishments) and [inspected establishments](https://www.fsis.usda.gov/inspection/fsis-inspected-establishments) | Direct requests to the official CSV routes returned HTTP 403 during 2026-09-17 reconnaissance; an authorized bounded browser download of current official CSVs completed strict live private E2E on 2026-09-24 with 7,240 observations and 7,240 candidates | Weekly replacement; FSIS coverage is not all slaughter/processing sites and state programs are separate; this one-time private result does not authorize publication or imply recurring health |
-| APHIS research annual use | [Annual Usage Summary](https://www.aphis.usda.gov/awa/research-facility-report/annual-summary), [Public Search Tool](https://direct.aphis.usda.gov/animal-care/awa-services/usda-animal-care-public-search-tool), [annual reports](https://efile.aphis.usda.gov/PublicSearchTool/s/annual-reports) | Official fiscal-year/search routes identified; not privately fetched | Interactive/UI-mediated, no documented bulk API/rate contract; amended annual reports may differ; use sanctioned route only |
-| APHIS inspections/registrants | [AWA inspections and annual reports](https://www.aphis.usda.gov/awa/annual-inspection-reports) | Separate public-search/inspection population identified; not reproduced | Redactions/changes and FOIA boundary; absence/presence does not prove operation or violation |
+| APHIS active registrations/licensees | [Animal Care Public Search Tool](https://www.aphis.usda.gov/animal-care/awa-services/usda-animal-care-public-search-tool) | Official active-register workbook acquired through the documented visible route and privately staged as 12,473 candidate-only records across all nine native license classes | Mailing city/state are not operating-site coordinates; no facility merge, public release, or recurring-health claim |
+| APHIS research annual use | [Annual Usage Summary](https://www.aphis.usda.gov/awa/research-facility-report/annual-summary), [annual reports](https://efile.aphis.usda.gov/PublicSearchTool/s/annual-reports) | Retained visible-browser FY2025 pages replayed as 994 private annual-report events with 1,988 exact source-identifier evidence links; 927 aliases match candidate facilities and 730 reports have valid species counts | Artifact replay, not recurring live acquisition or national completeness; amended reports may differ; annual events are not a facility master or inspection evidence |
+| APHIS inspections | [AWA inspections and annual reports](https://www.aphis.usda.gov/awa/annual-inspection-reports) | Separate public-search/inspection population identified; no verified inspection-event capture | Redactions/changes and FOIA boundary; a registry/status-shaped export is not inspection evidence; absence/presence does not prove operation or violation |
+
+The private candidate successor now contains the unchanged 124,419-member r2
+parent cohort plus 12,473 APHIS active-register members: 136,892 members across
+16 sources. This is not promotion, a public map, a complete operating-site
+directory, or evidence that annual reports or inspections apply to every
+registration. Of the retained annual evidence, 927 aliases match candidate
+facilities and 730 reports have valid species counts; this remains private
+evidence, not an operating-site or inspection assertion.
 
 ## V1 aggregate crosswalk
 
@@ -58,7 +67,7 @@ The private implementation is in `pipeline/sources/us/`. FSIS now has a bundle a
 
 The row-free V1 inventory and field/category crosswalk is [`docs/countries/us/v1-field-crosswalk.json`](countries/us/v1-field-crosswalk.json). It records 7,101 rows and 269 columns, maps identity/location/contact/administrative/slaughter/processing/inspection-system/derived fields, and records overlapping legacy field-presence counts. Since no authorized current FSIS artifact was available, current-versus-V1 reconciliation remains blocked; the existing exact-key crosswalk reports `not_observed`, never closure.
 
-Focused adapter, lifecycle, registry, status, and contract tests pass. No raw artifact, current source hash, or publication candidate from a real US source was created. Publication remains blocked pending authorized capture, terms, schema, privacy, coverage, review, and test-only import checks.
+Focused adapter, lifecycle, registry, status, and contract tests pass. The official APHIS active-register workbook has a strict private candidate-only import; retained FY2025 annual pages have private evidence ingestion only. Neither result creates a public release, operating-site coordinates, an APHIS/FSIS facility merge, inspection evidence, or a recurring-health claim. Publication remains blocked pending all applicable rights, privacy, coverage, review, and release gates.
 
 ## 2026-09-18 US real-data proof boundary
 
