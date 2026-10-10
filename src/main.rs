@@ -204,7 +204,9 @@ pub fn app(state: uec_api::ApiState, proxy: private_environment::ProxyConfig) ->
             get(uec_api::get_private_graph_traverse_handler),
         )
         .fallback_service(ServeDir::new("static"))
-        .layer(CompressionLayer::new().br(true))
+        // Keep cached map bytes unmodified. Tower negotiates a standard
+        // transport encoding per request and adds Vary: Accept-Encoding.
+        .layer(CompressionLayer::new().gzip(true).br(true))
         .layer(axum::middleware::from_fn_with_state(
             RateLimitState {
                 limiter: Limiter::default(),
@@ -959,18 +961,51 @@ async fn main() {
 
 #[cfg(test)]
 mod config_tests {
+    use axum::body::Body;
     use axum::http::{Method, StatusCode};
     use std::time::Duration;
+    use tower::ServiceExt;
 
     use super::{
         parse_cors_origins, preview_config, request_log_payload, request_route_class,
         validate_bind_host, validate_runtime,
-        API_STATEMENT_TIMEOUT,
+        API_STATEMENT_TIMEOUT, CompressionLayer,
     };
 
     #[test]
     fn api_database_statements_have_a_bounded_timeout() {
         assert_eq!(API_STATEMENT_TIMEOUT, "30s");
+    }
+
+    #[tokio::test]
+    async fn api_compression_negotiates_gzip_and_varies_by_encoding() {
+        let router = axum::Router::new()
+            .route(
+                "/map",
+                axum::routing::get(|| async {
+                    (
+                        [(axum::http::header::CONTENT_TYPE, "application/json")],
+                        "x".repeat(1024),
+                    )
+                }),
+            )
+            .layer(CompressionLayer::new().gzip(true).br(true));
+        let response = router
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/map")
+                    .header(axum::http::header::ACCEPT_ENCODING, "gzip, br")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()[axum::http::header::CONTENT_ENCODING], "br");
+        assert!(response.headers()[axum::http::header::VARY]
+            .to_str()
+            .unwrap()
+            .contains("accept-encoding"));
     }
 
     #[test]
