@@ -66,13 +66,17 @@ fn test_release_query_error_class(error: &tokio_postgres::Error) -> &'static str
 
 fn log_test_release_query_error(error: &tokio_postgres::Error) {
     // This private-route diagnostic intentionally records only a bounded error
-    // class: never SQL, bind values, source data, or database details.
+    // class and SQLSTATE: never SQL, bind values, source data, or messages.
+    let sqlstate = error
+        .as_db_error()
+        .map(|database_error| database_error.code().code());
     println!(
         "{}",
         json!({
             "event": "test_release_query_error",
             "route": "candidate_locations",
             "database_error_class": test_release_query_error_class(error),
+            "database_sqlstate": sqlstate,
         })
     );
 }
