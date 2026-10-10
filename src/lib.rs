@@ -54,6 +54,7 @@ pub fn v2_error(
 fn test_release_query_error_class(error: &tokio_postgres::Error) -> &'static str {
     match error.as_db_error().map(|database_error| database_error.code().code()) {
         Some("57014") => "statement_timeout_or_query_canceled",
+        Some("53100") => "database_capacity",
         Some("53300") => "database_capacity",
         Some("55P03") => "lock_not_available",
         Some("40P01") => "deadlock",
@@ -3188,7 +3189,7 @@ pub async fn get_dev_test_release_locations_handler(
             "test release unavailable",
         );
     };
-    let client = match pool.get().await {
+    let mut client = match pool.get().await {
         Ok(c) => c,
         Err(_) => {
             return v2_error(
@@ -3301,7 +3302,29 @@ pub async fn get_dev_test_release_locations_handler(
     // eligibility predicate in one materialized, release-scoped snapshot, then
     // count that snapshot before applying the cursor. The previous count query
     // and page query repeated this expensive policy path independently.
-    let mut rows = match client.query(r#"WITH matched AS MATERIALIZED (
+    let transaction = match client.build_transaction().read_only(true).start().await {
+        Ok(transaction) => transaction,
+        Err(error) => {
+            log_test_release_query_error(&error);
+            return v2_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "test_release_query_failed",
+                "test release unavailable",
+            );
+        }
+    };
+    if let Err(error) = transaction
+        .batch_execute("SET LOCAL max_parallel_workers_per_gather = 0")
+        .await
+    {
+        log_test_release_query_error(&error);
+        return v2_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "test_release_query_failed",
+            "test release unavailable",
+        );
+    }
+    let mut rows = match transaction.query(r#"WITH matched AS MATERIALIZED (
         SELECT member.facility_id, member.observation_id
         FROM uec.release_members member JOIN uec.releases r ON r.release_id=member.release_id
         JOIN uec.observations o ON o.observation_id=member.observation_id JOIN uec.facilities f ON f.facility_id=member.facility_id
@@ -3349,6 +3372,14 @@ pub async fn get_dev_test_release_locations_handler(
     let total_count = rows.first().map(|row| row.get::<_, i64>(20)).unwrap_or(0);
     if rows.first().is_some_and(|row| row.get::<_, Option<uuid::Uuid>>(0).is_none()) {
         rows.clear();
+    }
+    if let Err(error) = transaction.commit().await {
+        log_test_release_query_error(&error);
+        return v2_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "test_release_query_failed",
+            "test release unavailable",
+        );
     }
     let has_next = rows.len() > limit as usize;
     if has_next {
@@ -6087,6 +6118,8 @@ mod v2_api_tests {
         assert!(handler.contains("COALESCE(review.privacy_screening_status,'pending') <> 'failed'"));
         assert!(handler.contains("COALESCE(review.factual_review_status,'unreviewed') <> 'rejected'"));
         assert!(handler.contains("NOT EXISTS (SELECT 1 FROM uec.public_access_restricted"));
+        assert!(handler.contains("SET LOCAL max_parallel_workers_per_gather = 0"));
+        assert!(handler.contains(".read_only(true)"));
         assert!(!handler.contains("count(DISTINCT f.facility_id)::bigint"));
     }
 
