@@ -35,6 +35,11 @@ export const mapWireLocation = (r: WireLocation | WireDetailLocation): Location 
         ? category.provenance
         : { ...(category.provenance.source_field ? { sourceField: category.provenance.source_field } : {}), ...(category.provenance.method ? { method: category.provenance.method } : {}) } }),
     })) } : {}),
+    ...(r.derived_source_volume_ranges ? { derivedSourceVolumeRanges: r.derived_source_volume_ranges.map(range => ({
+      ordinalCode: range.ordinal_code, lower: range.lower, upper: range.upper, bounds: range.bounds,
+      unit: range.unit, period: range.period, methodVersion: range.method_version,
+      sourceCodebookUrl: range.source_codebook_url, verificationState: range.verification_state,
+    })) } : {}),
     ...(r.establishment_id ? { establishmentId: r.establishment_id } : {}),
     ...(r.establishment_number ? { establishmentNumber: r.establishment_number } : {}),
     ...(r.grant_date ? { grantDate: r.grant_date } : {}),

@@ -200,7 +200,7 @@
   let clusterMaxZoom = $state(DEFAULT_CLUSTER_MAX_ZOOM);
   let clusterEnabled = $state(true);
   let referenceRadiusKm = $state<number>(DEFAULT_REFERENCE_RADIUS_KM);
-  let referenceOpacity = $state(0.14);
+  let referenceOpacity = $state(0.22);
   let visibleApproximateCount = $state(0);
   let coordinateRadius = $state(6.5);
   let showReferenceLabels = $state(false);
@@ -437,7 +437,7 @@
     if (!map.hasImage("cluster-very-high"))
       map.addImage("cluster-very-high", clusterImage("#ed8b7599", "#de6d3fb8"));
     if (!map.hasImage("reference-marker"))
-      map.addImage("reference-marker", clusterImage("#e06b5bcc", "#c84a4acc"));
+      map.addImage("reference-marker", clusterImage("#ff695ce6", "#d8473fe6"));
   }
   function scheduleClusterSettings() {
     if (clusterUpdateTimer) clearTimeout(clusterUpdateTimer);
@@ -1772,7 +1772,7 @@
   @media (max-width: 40rem) {
     .map-surface :global(.precision-legend) { bottom: 9.4rem; width: auto; max-width: min(15rem, calc(100vw - 1.3rem)); }
     .map-surface :global(.precision-legend.expanded) { top: 3.5rem; bottom: auto; width: min(15rem, calc(100vw - 1.3rem)); }
-    .map-surface :global(.maplibregl-ctrl-bottom-right) { right: 0.4rem; bottom: 2.9rem; left: 0.4rem; }
+    .map-surface :global(.maplibregl-ctrl-bottom-right) { right: 0.4rem; bottom: 0.4rem; left: auto; }
     .map-surface :global(.maplibregl-ctrl-attrib) { max-width: 100%; padding: 0.16rem 0.35rem; }
     .map-status {
       top: 3.2rem;

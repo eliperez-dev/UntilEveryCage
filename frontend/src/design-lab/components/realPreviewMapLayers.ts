@@ -47,7 +47,7 @@ export type RealPreviewVisualSettings = Readonly<{
 
 const cityReference = ['any', ['==', ['get', 'precision'], 'city'], ['==', ['get', 'precision'], 'city_reference_approximate'], ['==', ['get', 'precision'], 'provider_locality_approximate']];
 const categoryPairs = Object.entries(CATEGORY_PRIMARY_BY_SOURCE_KEY);
-const categoryColor = ['match', ['get', 'category_key'], ...categoryPairs.flatMap(([sourceKey, primaryKey]) => [sourceKey, CATEGORY_PRESENTATIONS[primaryKey].color]), CATEGORY_PRESENTATIONS.unclassified.color];
+const categoryColorBySourceKey = ['match', ['get', 'category_key'], ...categoryPairs.flatMap(([sourceKey, primaryKey]) => [sourceKey, CATEGORY_PRESENTATIONS[primaryKey].color]), CATEGORY_PRESENTATIONS.unclassified.color];
 const v1PinByPrimary = {
   animal_keeping_and_production: 'v1-pin-green',
   slaughter: 'v1-pin-red',
@@ -56,7 +56,26 @@ const v1PinByPrimary = {
   other_regulated_premises: 'v1-pin-orange',
   unclassified: 'v1-pin-grey',
 } as const;
-const v1CategoryPin = ['match', ['get', 'category_key'], ...categoryPairs.flatMap(([sourceKey, primaryKey]) => [sourceKey, v1PinByPrimary[primaryKey]]), 'v1-pin-grey'];
+const v1PinBySourceKey = ['match', ['get', 'category_key'], ...categoryPairs.flatMap(([sourceKey, primaryKey]) => [sourceKey, v1PinByPrimary[primaryKey]]), 'v1-pin-grey'];
+// Corrected feeds provide complete taxonomy keys. Prefer those over a legacy
+// scalar category so normal circles and V1 assets always share one palette.
+const categoryFromKeys = (fallback: unknown): unknown[] => ['case',
+  ['in', 'slaughter', ['get', 'category_keys']], CATEGORY_PRESENTATIONS.slaughter.color,
+  ['in', 'research_and_animal_use', ['get', 'category_keys']], CATEGORY_PRESENTATIONS.research_and_animal_use.color,
+  ['in', 'processing_and_preparation', ['get', 'category_keys']], CATEGORY_PRESENTATIONS.processing_and_preparation.color,
+  ['in', 'animal_keeping_and_production', ['get', 'category_keys']], CATEGORY_PRESENTATIONS.animal_keeping_and_production.color,
+  ['in', 'other_regulated_premises', ['get', 'category_keys']], CATEGORY_PRESENTATIONS.other_regulated_premises.color,
+  fallback,
+];
+const categoryColor = categoryFromKeys(categoryColorBySourceKey);
+const v1CategoryPin = ['case',
+  ['in', 'slaughter', ['get', 'category_keys']], v1PinByPrimary.slaughter,
+  ['in', 'research_and_animal_use', ['get', 'category_keys']], v1PinByPrimary.research_and_animal_use,
+  ['in', 'processing_and_preparation', ['get', 'category_keys']], v1PinByPrimary.processing_and_preparation,
+  ['in', 'animal_keeping_and_production', ['get', 'category_keys']], v1PinByPrimary.animal_keeping_and_production,
+  ['in', 'other_regulated_premises', ['get', 'category_keys']], v1PinByPrimary.other_regulated_premises,
+  v1PinBySourceKey,
+];
 export const REAL_PREVIEW_LAYER_IDS = [
   'clusters', 'aggregate-outer', 'approx-reference-points', 'aggregate-count',
   'aggregate-kind', 'source-coordinate-points', 'v1-source-shadows', 'v1-source-pins',
@@ -120,14 +139,14 @@ export function addRealPreviewMapLayers(
   map.addLayer({
     id: 'aggregate-outer', type: 'circle', source: 'locations', filter: reference,
     paint: {
-      'circle-color': '#c84a4a',
+      'circle-color': '#d8473f',
       'circle-radius': referenceRadiusExpression(DEFAULT_REFERENCE_RADIUS_KM),
       // The full 3 km geometry remains visible and clickable, but a very light
       // wash prevents dense city references from obscuring the basemap.
-      'circle-opacity': 0.14,
-      'circle-stroke-color': '#e06b5b',
-      'circle-stroke-width': 2,
-      'circle-stroke-opacity': 0.8,
+      'circle-opacity': 0.22,
+      'circle-stroke-color': '#ff695c',
+      'circle-stroke-width': 2.5,
+      'circle-stroke-opacity': 0.96,
     },
   } as any);
   setClusterTileRounding(map, settings.maxZoom);
@@ -153,7 +172,7 @@ export function addRealPreviewMapLayers(
   map.addLayer({
     id: 'aggregate-kind', type: 'symbol', source: 'locations', filter: reference,
     layout: { 'visibility': 'none', 'text-field': ['case', cityReference, 'APPROX', 'AREA REF'], 'text-font': ['Open Sans Bold'], 'text-size': 9, 'text-offset': [0, 2.8], 'text-allow-overlap': true, 'text-ignore-placement': true },
-    paint: { 'text-color': '#86aeca', 'text-halo-color': '#171a18', 'text-halo-width': 1.5 },
+    paint: { 'text-color': '#ff9c93', 'text-halo-color': '#171a18', 'text-halo-width': 1.5 },
   } as any);
 
   const coordinate = ['all', unclustered, ['in', ['get', 'kind'], ['literal', ['source-coordinate', 'provider_address_point_private']]]];
@@ -201,7 +220,7 @@ export function applyRealPreviewVisualSettings(map: MapLibreMap, settings: RealP
     ? ['==', ['get', 'key'], settings.selectedKey]
     : false;
   map.setPaintProperty('aggregate-outer', 'circle-opacity', ['case', selected, Math.min(0.42, settings.referenceOpacity + 0.16), settings.referenceOpacity] as any);
-  map.setPaintProperty('aggregate-outer', 'circle-stroke-opacity', Math.min(1, settings.referenceOpacity * 4 + 0.32) as any);
+  map.setPaintProperty('aggregate-outer', 'circle-stroke-opacity', Math.min(1, Math.max(0.55, settings.referenceOpacity * 2 + 0.52)) as any);
   map.setPaintProperty('source-coordinate-points', 'circle-radius', settings.coordinateRadius);
   map.setLayoutProperty('aggregate-kind', 'visibility', settings.showReferenceLabels ? 'visible' : 'none');
 }

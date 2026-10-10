@@ -42,6 +42,7 @@ describe('allowlisted source-native detail facts', () => {
     species_slaughtered: { beef_cow_slaughter: 'No', poultry: true },
     processing_activities: { raw_intact_beef_processing: 'Yes' },
     source_volume_categories: [{ code: '2.0', provenance: { source_field: 'activity_volume_codes', method: 'source_native' } }],
+    derived_source_volume_ranges: [{ ordinal_code: '2', lower: 10000, upper: 100000, bounds: 'inclusive_lower_exclusive_upper', unit: 'pounds', period: 'month', method_version: 'fsis-mpi-volume-codebook-2026-03-24-v1', source_codebook_url: 'https://example.test/codebook', verification_state: 'source_codebook_verified' }],
     establishment_id: 'EST-42', establishment_number: 'P-42', grant_date: '2026-01-01',
     native_activity_code: 'SH', native_activity_label: 'Slaughterhouse',
   };
@@ -51,6 +52,7 @@ describe('allowlisted source-native detail facts', () => {
       alternateNames: ['Detail DBA'], speciesSlaughtered: { beef_cow_slaughter: 'No', poultry: true },
       processingActivities: { raw_intact_beef_processing: 'Yes' }, establishmentId: 'EST-42',
       sourceVolumeCategories: [{ code: '2.0', provenance: { sourceField: 'activity_volume_codes', method: 'source_native' } }],
+      derivedSourceVolumeRanges: [{ ordinalCode: '2', lower: 10000, upper: 100000, unit: 'pounds', period: 'month' }],
     });
   });
   it('keeps list payloads minimal and rejects non-allowlisted detail fields', async () => {
