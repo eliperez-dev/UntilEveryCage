@@ -102,7 +102,7 @@ def import_prepared(database_url: str, handoff: Path, projection_dir: Path) -> d
             (f"aphis-active-register-{snapshot[:20]}", snapshot, manifest["source_url"], manifest["retrieved_at_utc"], manifest["checksum_sha256"], result["normalized_sha256"], manifest["code_version"], manifest["config_version"], rows, rows, observations, candidates, numeric, placeable, unmapped, candidates, candidates - unmapped, json.dumps({"all_native_registration_classes": True, "geocoder_called": False, "private_candidate": True})))
         if db.execute("SELECT count(*) FROM uec.release_members").fetchone()[0] != before:
             raise ValueError("release_members_changed")
-    return {"snapshot": snapshot, "rows": rows, "candidates": candidates, "numeric": numeric, "coarse": coarse, "public_rows": 0}
+    return {"snapshot": snapshot, "imported_count": rows, "candidates": candidates, "numeric": numeric, "coarse": coarse, "public_rows": 0}
 
 
 def main() -> int:
@@ -116,7 +116,7 @@ def main() -> int:
     except (AphisPreviewError, OSError, ValueError) as error:
         print(json.dumps({"status": "failed", "error": str(error)}, sort_keys=True))
         return 2
-    print(json.dumps({"status": "imported" if args.database_url else "prepared", "normalized_rows": result.get("normalized_rows", result.get("rows"))}, sort_keys=True))
+    print(json.dumps({"status": "imported" if args.database_url else "prepared", "normalized_rows": result.get("normalized_rows", result.get("imported_count"))}, sort_keys=True))
     return 0
 
 
