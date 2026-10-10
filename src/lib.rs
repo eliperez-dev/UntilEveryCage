@@ -2794,6 +2794,16 @@ fn test_release_activity_key_is_canonical(value: &str) -> bool {
     true
 }
 
+fn test_release_category_facet_counts(rows: impl Iterator<Item = (String, String)>) -> std::collections::BTreeMap<String, usize> {
+    let mut counts = std::collections::BTreeMap::new();
+    for (category, normalized) in rows {
+        for key in test_release_category_keys(&category, &normalized) {
+            *counts.entry(key).or_insert(0) += 1;
+        }
+    }
+    counts
+}
+
 fn test_release_volume_ranges(normalized: &str) -> Vec<Value> {
     let Ok(Value::Object(source)) = serde_json::from_str::<Value>(normalized) else {
         return vec![];
@@ -3396,7 +3406,7 @@ pub async fn get_dev_test_release_facets_handler(
         return v2_error(StatusCode::BAD_REQUEST, "invalid_filter", message);
     }
     let search_text = params.q.as_deref().map(|value| value.trim().replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_"));
-    let rows=match client.query("SELECT f.country_code,o.classification_category,CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN 'exact' ELSE 'unmapped' END,source.origin_type,source.source_id,COALESCE(sr.raw_fields->'source_activity_codes','[]'::jsonb)::text,COALESCE(sr.raw_fields->'source_activity_labels','[]'::jsonb)::text FROM uec.release_members m JOIN uec.releases r ON r.release_id=m.release_id JOIN uec.observations o ON o.observation_id=m.observation_id JOIN uec.facilities f ON f.facility_id=m.facility_id JOIN uec.source_records sr ON sr.source_record_id=o.source_record_id JOIN uec.sources source ON source.source_id=sr.source_id LEFT JOIN LATERAL (SELECT result FROM uec.geocode_results WHERE source_record_id=o.source_record_id AND status='accepted' AND result IS NOT NULL ORDER BY queried_at DESC LIMIT 1) g ON true LEFT JOIN uec.publication_review_release_current review ON review.source_record_id=o.source_record_id AND review.release_id=m.release_id WHERE r.release_id=$1 AND r.status='candidate' AND (r.test_only=true OR r.summary->>'candidate_only'='true') AND sr.source_state NOT IN ('rejected','superseded') AND COALESCE(review.privacy_screening_status,'pending')<>'failed' AND COALESCE(review.factual_review_status,'unreviewed')<>'rejected' AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted x WHERE x.source_record_id=o.source_record_id) AND ($2::text IS NULL OR f.country_code=ANY(string_to_array($2,','))) AND ($3::text IS NULL OR (ARRAY[o.classification_category] || COALESCE(ARRAY(SELECT CASE value WHEN 'processing' THEN 'processing_and_preparation' ELSE value END FROM jsonb_array_elements_text(COALESCE(sr.raw_fields->'normalized'->'activity_categories','[]'::jsonb)) value WHERE value='processing' OR value=ANY(ARRAY['animal_keeping_and_production','slaughter','processing_and_preparation','research_and_animal_use','other_regulated_premises','unclassified'])),ARRAY[]::text[])) && string_to_array($3,',')) AND ($4::text IS NULL OR source.source_id=ANY(string_to_array($4,','))) AND ($5::text IS NULL OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(sr.raw_fields->'source_activity_codes','[]'::jsonb)) code WHERE source.source_id || ':' || replace(replace(replace(replace(replace(code,'%','%25'),' ','%20'),'/','%2F'),':','%3A'),',','%2C') = ANY(string_to_array($5,',')))) AND ($6::text IS NULL OR COALESCE(NULLIF(sr.raw_fields->'normalized'->>'facility_display_name',''),NULLIF(f.canonical_name,''),'') ILIKE '%' || $6 || '%' ESCAPE '\\' OR COALESCE(f.city,'') ILIKE '%' || $6 || '%' ESCAPE '\\' OR COALESCE(sr.raw_fields->'normalized'->>'alternate_names','') ILIKE '%' || $6 || '%' ESCAPE '\\' OR source.source_id ILIKE '%' || $6 || '%' ESCAPE '\\' OR o.classification_category ILIKE '%' || $6 || '%' ESCAPE '\\')", &[&release_id,&params.country_code,&params.category,&params.source_id,&params.activity,&search_text]).await {Ok(r)=>r,Err(_)=>return v2_error(StatusCode::SERVICE_UNAVAILABLE,"test_release_query_failed","test release unavailable")};
+    let rows=match client.query("SELECT f.country_code,o.classification_category,CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN 'exact' ELSE 'unmapped' END,source.origin_type,source.source_id,COALESCE(sr.raw_fields->'source_activity_codes','[]'::jsonb)::text,COALESCE(sr.raw_fields->'source_activity_labels','[]'::jsonb)::text,COALESCE(sr.raw_fields->'normalized','{}'::jsonb)::text FROM uec.release_members m JOIN uec.releases r ON r.release_id=m.release_id JOIN uec.observations o ON o.observation_id=m.observation_id JOIN uec.facilities f ON f.facility_id=m.facility_id JOIN uec.source_records sr ON sr.source_record_id=o.source_record_id JOIN uec.sources source ON source.source_id=sr.source_id LEFT JOIN LATERAL (SELECT result FROM uec.geocode_results WHERE source_record_id=o.source_record_id AND status='accepted' AND result IS NOT NULL ORDER BY queried_at DESC LIMIT 1) g ON true LEFT JOIN uec.publication_review_release_current review ON review.source_record_id=o.source_record_id AND review.release_id=m.release_id WHERE r.release_id=$1 AND r.status='candidate' AND (r.test_only=true OR r.summary->>'candidate_only'='true') AND sr.source_state NOT IN ('rejected','superseded') AND COALESCE(review.privacy_screening_status,'pending')<>'failed' AND COALESCE(review.factual_review_status,'unreviewed')<>'rejected' AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted x WHERE x.source_record_id=o.source_record_id) AND ($2::text IS NULL OR f.country_code=ANY(string_to_array($2,','))) AND ($3::text IS NULL OR (ARRAY[o.classification_category] || COALESCE(ARRAY(SELECT CASE value WHEN 'processing' THEN 'processing_and_preparation' ELSE value END FROM jsonb_array_elements_text(COALESCE(sr.raw_fields->'normalized'->'activity_categories','[]'::jsonb)) value WHERE value='processing' OR value=ANY(ARRAY['animal_keeping_and_production','slaughter','processing_and_preparation','research_and_animal_use','other_regulated_premises','unclassified'])),ARRAY[]::text[])) && string_to_array($3,',')) AND ($4::text IS NULL OR source.source_id=ANY(string_to_array($4,','))) AND ($5::text IS NULL OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(sr.raw_fields->'source_activity_codes','[]'::jsonb)) code WHERE source.source_id || ':' || replace(replace(replace(replace(replace(code,'%','%25'),' ','%20'),'/','%2F'),':','%3A'),',','%2C') = ANY(string_to_array($5,',')))) AND ($6::text IS NULL OR COALESCE(NULLIF(sr.raw_fields->'normalized'->>'facility_display_name',''),NULLIF(f.canonical_name,''),'') ILIKE '%' || $6 || '%' ESCAPE '\\' OR COALESCE(f.city,'') ILIKE '%' || $6 || '%' ESCAPE '\\' OR COALESCE(sr.raw_fields->'normalized'->>'alternate_names','') ILIKE '%' || $6 || '%' ESCAPE '\\' OR source.source_id ILIKE '%' || $6 || '%' ESCAPE '\\' OR o.classification_category ILIKE '%' || $6 || '%' ESCAPE '\\')", &[&release_id,&params.country_code,&params.category,&params.source_id,&params.activity,&search_text]).await {Ok(r)=>r,Err(_)=>return v2_error(StatusCode::SERVICE_UNAVAILABLE,"test_release_query_failed","test release unavailable")};
     let mut dims = serde_json::Map::new();
     for (name, values) in [
         (
@@ -3404,10 +3414,6 @@ pub async fn get_dev_test_release_facets_handler(
             rows.iter()
                 .map(|r| r.get::<_, String>(0))
                 .collect::<Vec<_>>(),
-        ),
-        (
-            "category",
-            rows.iter().map(|r| r.get::<_, String>(1)).collect(),
         ),
         (
             "display_precision",
@@ -3436,6 +3442,13 @@ pub async fn get_dev_test_release_facets_handler(
             ),
         );
     }
+    let category_counts = test_release_category_facet_counts(rows.iter().map(|row| (
+        row.get::<_, String>(1),
+        row.get::<_, String>(7),
+    )));
+    dims.insert("category".into(), json!(category_counts.into_iter().map(|(value, count)| {
+        json!({"value":value,"label":value,"count":count})
+    }).collect::<Vec<_>>()));
     let mut activity_counts = std::collections::BTreeMap::new();
     for row in &rows {
         for (key, label) in test_release_activity_labels(
@@ -5774,6 +5787,11 @@ mod v2_api_tests {
             r#"["Native processing and slaughter label"]"#,
         );
         assert_eq!(labels, vec![("us.fsis:A%20B%2FC%3AD%2CE%25F".into(), "Native processing and slaughter label".into())]);
+        let counts = test_release_category_facet_counts(vec![
+            ("slaughter".into(), r#"{"activity_categories":["processing","slaughter"]}"#.into()),
+        ].into_iter());
+        assert_eq!(counts.get("slaughter"), Some(&1));
+        assert_eq!(counts.get("processing_and_preparation"), Some(&1));
     }
 
     #[tokio::test]
