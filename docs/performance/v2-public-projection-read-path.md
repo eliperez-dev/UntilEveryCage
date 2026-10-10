@@ -1,6 +1,45 @@
 # V2 public projection read-path decision
 
-## Decision
+## Current implementation (2026-10-09)
+
+The approved v0 repair supersedes the earlier no-request-cache decision below.
+Public map reads use the manifest-bound discovery read model and a prepared,
+serialized projection. Rust keeps at most eight projection identities in memory
+and coalesces concurrent builds. Startup warms the current official compact
+projection in the background; readiness and other requests are not blocked.
+The first request can still wait if warming has not finished.
+
+Every server lookup, including conditional `304` responses, first verifies the
+current eligible release, manifest checksum and suppression generation. The
+cache key also includes profile and format. Migration 067 advances that
+generation for taxonomy assignment changes. An identity change causes a new
+build rather than serving stale rows; a restart loses the in-memory cache.
+
+`/api/v2/map/feed?format=compact` returns `compact-v1`: one UUID and coordinate
+pair per point, with dictionaries for repeated source/category/precision values.
+The existing GeoJSON response remains available. Both formats have the same
+release metadata, counts and point semantics. The browser expands the compact
+response for native MapLibre clustering, whose default radius remains 30px.
+
+The public map repository uses Cache Storage, bounded to three identities,
+keyed by profile/release/manifest/generation. It validates release identity
+before reuse, shares simultaneous loads, and isolates subscriber cancellation.
+The debug menu can clear that cache. Private previews, searches, credentials
+and contribution input are not persisted by this cache. Cache Storage is a
+browser capability, not a guarantee of permanent retention or offline access.
+
+Ordinary list queries select a bounded candidate page before taxonomy
+enrichment. `meta.total_count` describes the full eligible filtered result,
+independent of cursor/page size. Taxonomy-dependent searches retain their
+matching semantics; they are not claimed to have the same cost as plain browse.
+
+Real-v0 acceptance verifies compact/GeoJSON parity, 63,601 searchable records,
+48,756 points, filtered count unions, conditional responses and bounded exports.
+Unit tests separately cover persistent reuse, identity changes, clearing,
+concurrent loads and cancellation. These are local functional checks, not a
+production capacity or tail-latency claim.
+
+## Earlier decision and evidence (historical)
 
 Keep the public projection live and release-scoped, with the flattened view in
 migration 032. It evaluates publication review, current suppression, profile

@@ -64,8 +64,13 @@ default data-backed product development environment.
 The ordinary `/v2-preview/#/map` and `#/database` routes use the approved
 official release, including in development. Set `VITE_API_ORIGIN` to your
 local API origin; do not add private-preview credentials for this workflow.
-The map fetches the release-scoped `/api/v2/map/feed` point projection once
-per release identity and clusters it locally. Search and record pages fetch
+The map fetches the release-scoped compact `/api/v2/map/feed?format=compact`
+point projection and clusters it locally. Rust warms and retains the prepared
+projection in memory; the browser reuses a bounded persistent public cache
+keyed by profile, release, manifest checksum and current generation. A new
+identity requires fresh data. Debug tools include a map-cache clear control.
+See [the current read path](performance/v2-public-projection-read-path.md)
+for validation, cancellation and cache limits. Search and record pages fetch
 their data separately. CSV downloads explicitly contain at most 1,000 rows
 and report whether the export is truncated; JSON remains paginated.
 

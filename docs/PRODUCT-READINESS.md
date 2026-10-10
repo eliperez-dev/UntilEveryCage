@@ -72,6 +72,18 @@ The isolated test database and sprint worktree were cleaned up; the frozen
 reference remains unchanged. This is local integration, not website deployment,
 historical-release selection, public account setup or public contribution launch.
 
+**Local repair verification, 2026-10-09:** real-v0 acceptance also passes compact
+map/GeoJSON parity, exact filtered totals and conditional cache responses.
+The integrated frontend passed 180 unit tests, type/lint/boundary/build gates,
+and the UI lane passed 48 cross-browser plus 10 community-pilot checks.
+The public-data audit found all 63,601 records primary-classified and carrying
+source names and URLs; missing labels in the UI were presentation defects.
+Current cache and query behavior is owned by
+[the read-path decision](performance/v2-public-projection-read-path.md).
+These checks do not change v0 membership, approve new sources or establish
+public deployment. Final visual verification, exact-commit CI and sprint cleanup
+remain required before the repair handoff.
+
 **Maintainer decision: 2026-10-03.** Dataset release names are independent of
 the V2 website and the legacy V1 application. `v0` is the first public dataset
 release; `v1` is a later dataset release, potentially adding countries and
