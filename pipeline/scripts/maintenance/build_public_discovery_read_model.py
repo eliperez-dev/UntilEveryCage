@@ -405,7 +405,7 @@ def build_in_transaction(connection: Any, release_id: str, fail_after_rows: int 
              classification_category,observed_at,first_observed_at,
              provenance_origin_type,provenance_source_id,provenance_source_name,
              provenance_source_url,provenance_retrieved_at,source_rights_status,geometry_provenance,public_detail,public_search_text)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,ST_GeogFromText(%s),%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s::jsonb,lower(concat_ws(' ',%s,%s,%s,%s,%s,%s::jsonb::text)))
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,ST_GeogFromText(%s),%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s::jsonb,lower(concat_ws(' ',%s::text,%s::text,%s::text,%s::text,%s::text,%s::jsonb::text)))
         """
         with connection.cursor() as cursor:
             for index, row in enumerate(rows, start=1):

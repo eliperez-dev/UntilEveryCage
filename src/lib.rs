@@ -2700,7 +2700,7 @@ fn test_release_allowlisted_detail(source_status: &str) -> Value {
 pub async fn get_dev_test_release_locations_handler(
     State(state): State<ApiState>,
     headers: HeaderMap,
-    Query(params): Query<V2LocationParams>,
+    Query(params): Query<DevTestReleaseLocationParams>,
 ) -> impl IntoResponse {
     if !test_release_auth(&headers, &state) {
         return v2_error(
@@ -2986,7 +2986,7 @@ pub async fn get_dev_test_release_map_feed_handler(
 pub async fn get_dev_test_release_facets_handler(
     State(state): State<ApiState>,
     headers: HeaderMap,
-    Query(params): Query<V2LocationParams>,
+    Query(params): Query<DevTestReleaseLocationParams>,
 ) -> impl IntoResponse {
     if !test_release_auth(&headers, &state) {
         return v2_error(
@@ -3574,8 +3574,6 @@ pub struct V2LocationParams {
     /// Comma-separated taxonomy primaries; multiple values use OR semantics.
     pub category_keys: Option<String>,
     pub source_type: Option<String>,
-    /// Exact source identifier for private candidate discovery only.
-    pub source_id: Option<String>,
     pub profile: Option<String>,
     /// Pin every page of a discovery query to the manifest release currently displayed.
     pub release_id: Option<String>,
@@ -3592,6 +3590,21 @@ pub struct V2LocationParams {
     pub limit: Option<String>,
     pub offset: Option<String>,
     pub cursor: Option<String>,
+}
+
+/// Query shape for the authenticated, configured candidate release only.
+/// Keeping this distinct prevents private source selectors from becoming an
+/// undocumented public V2 parameter.
+#[derive(Deserialize)]
+pub struct DevTestReleaseLocationParams {
+    country_code: Option<String>,
+    category: Option<String>,
+    profile: Option<String>,
+    q: Option<String>,
+    source_id: Option<String>,
+    limit: Option<String>,
+    offset: Option<String>,
+    cursor: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -5236,7 +5249,7 @@ mod v2_api_tests {
         assert_eq!(meta["test_only"], json!(false));
         assert_eq!(meta["release_id"], json!("candidate-release"));
 
-        let params: V2LocationParams = serde_json::from_value(json!({
+        let params: DevTestReleaseLocationParams = serde_json::from_value(json!({
             "q": "100%_literal",
             "source_id": "us.fsis",
             "cursor": "00000000-0000-0000-0000-000000000001"
