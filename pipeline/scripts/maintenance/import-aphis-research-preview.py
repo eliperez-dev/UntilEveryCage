@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from pipeline.contracts.adapter_contract import SourceArtifact
+from pipeline.contracts.candidate_handoff import write_handoff
 from pipeline.contracts.source_lifecycle import atomic_json, atomic_jsonl
 from pipeline.geocoding.source_queue import build_geocode_queue
 from pipeline.sources.us.aphis.preview import AphisPreviewError, project_registrations
@@ -69,9 +70,14 @@ def prepare(handoff: Path, projection_dir: Path) -> dict[str, Any]:
     IMPORTER.validate_preview_fields(normalized_path, set(allowed))
     artifact = SourceArtifact(manifest["source_url"], manifest["retrieved_at_utc"], manifest["checksum_sha256"],
                               manifest["byte_size"], code_version=manifest["code_version"], config_version=manifest["config_version"])
+    bridge_handoff = write_handoff(
+        projection_dir / "bridge-handoff", rows, artifact,
+        source_id="us.aphis", profile="registrations",
+    )
     queue = build_geocode_queue(rows, artifact, projection_dir / "geocode-queue", country_name="United States")
     output = {"source_id": "us.aphis", "profile": "registrations", "source_artifact_sha256": manifest["checksum_sha256"],
               "normalized_sha256": normalized_sha256, "normalized_rows": len(rows),
+              "bridge_handoff": {"manifest": "bridge-handoff/manifest.json", "graph_candidates": "bridge-handoff/graph-candidates/manifest.json"},
               "geocode_queue": {key: queue[key] for key in ("records_seen", "records_queued", "geocoder_status_policy")},
               "public_release": False, "database_import": "requires_explicit_authorization"}
     atomic_json(projection_dir / "manifest.json", output)

@@ -71,6 +71,8 @@ class AphisPreviewTests(unittest.TestCase):
             output = Path(directory) / "projection"
             result = PREVIEW.prepare(handoff, output)
             self.assertEqual(result["normalized_rows"], 1)
+            self.assertEqual(result["bridge_handoff"]["manifest"], "bridge-handoff/manifest.json")
+            self.assertTrue((output / "bridge-handoff/graph-candidates/manifest.json").is_file())
             self.assertEqual(result["geocode_queue"]["records_queued"], 1)
             self.assertEqual(result["geocode_queue"]["geocoder_status_policy"], "pending; no external geocoder has been called")
             manifest_text = (output / "manifest.json").read_text(encoding="utf-8")

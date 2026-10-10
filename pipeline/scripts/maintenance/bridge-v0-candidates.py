@@ -93,6 +93,7 @@ _FACILITY_NAME_FIELDS = {
     "it.853-2004": ("trading_name", "name"),
     "it.1069-2009": ("trading_name", "name"),
     "us.fsis": ("canonical_name",),
+    "us.aphis": ("canonical_name",),
     "fss_approved_establishments": ("trading_name",),
 }
 
