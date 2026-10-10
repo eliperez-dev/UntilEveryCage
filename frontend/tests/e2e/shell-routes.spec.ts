@@ -45,14 +45,14 @@ test('the shell keeps route context in the URL through back and forward navigati
   expect(routePath(page).searchParams.get('lat')).toBe('44.5');
   expect(routePath(page).searchParams.get('lon')).toBe('8.1');
   expect(routePath(page).searchParams.get('z')).toBe('5');
-  expect(routePath(page).searchParams.get('list')).toBeNull();
+  expect(routePath(page).searchParams.get('list')).toBe('closed');
   expect(routePath(page).searchParams.get('basemap')).toBe('satellite');
   await page.goBack();
   await expect.poll(() => routePath(page).pathname).toBe('/map');
   expect(routePath(page).searchParams.get('lat')).toBe('44.5');
   expect(routePath(page).searchParams.get('lon')).toBe('8.1');
   expect(routePath(page).searchParams.get('z')).toBe('5');
-  expect(routePath(page).searchParams.get('list')).toBeNull();
+  expect(routePath(page).searchParams.get('list')).toBe('closed');
   expect(routePath(page).searchParams.get('basemap')).toBe('satellite');
   await page.goForward();
   await expectRoute(page, '/database');
