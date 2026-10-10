@@ -3267,26 +3267,16 @@ pub async fn get_dev_test_release_locations_handler(
         );
     }
     let query_limit = limit + 1;
-    let total_count: i64 = match client.query_one(
-        "SELECT count(DISTINCT f.facility_id)::bigint FROM uec.release_members member JOIN uec.releases r ON r.release_id=member.release_id JOIN uec.observations o ON o.observation_id=member.observation_id JOIN uec.facilities f ON f.facility_id=member.facility_id JOIN uec.source_records record ON record.source_record_id=o.source_record_id LEFT JOIN uec.publication_review_release_current review ON review.source_record_id=o.source_record_id AND review.release_id=member.release_id WHERE r.release_id=$1 AND r.status='candidate' AND (r.test_only=true OR r.summary->>'candidate_only'='true') AND record.source_state NOT IN ('rejected','superseded') AND COALESCE(review.privacy_screening_status,'pending') <> 'failed' AND COALESCE(review.factual_review_status,'unreviewed') <> 'rejected' AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted restricted WHERE restricted.source_record_id=o.source_record_id) AND ($2::text IS NULL OR f.country_code=ANY(string_to_array($2,','))) AND ($3::text IS NULL OR (ARRAY[o.classification_category] || COALESCE(ARRAY(SELECT CASE value WHEN 'processing' THEN 'processing_and_preparation' ELSE value END FROM jsonb_array_elements_text(COALESCE(record.raw_fields->'normalized'->'activity_categories','[]'::jsonb)) value WHERE value='processing' OR value=ANY(ARRAY['animal_keeping_and_production','slaughter','processing_and_preparation','research_and_animal_use','other_regulated_premises','unclassified'])),ARRAY[]::text[])) && string_to_array($3,',')) AND ($4::text IS NULL OR record.source_id=ANY(string_to_array($4,','))) AND ($5::text IS NULL OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(record.raw_fields->'source_activity_codes','[]'::jsonb)) code WHERE record.source_id || ':' || replace(replace(replace(replace(replace(code,'%','%25'),' ','%20'),'/','%2F'),':','%3A'),',','%2C') = ANY(string_to_array($5,',')))) AND ($6::text IS NULL OR COALESCE(NULLIF(record.raw_fields->'normalized'->>'facility_display_name',''),NULLIF(f.canonical_name,''),'') ILIKE '%' || $6 || '%' ESCAPE '\\' OR COALESCE(f.city,'') ILIKE '%' || $6 || '%' ESCAPE '\\' OR COALESCE(record.raw_fields->'normalized'->>'alternate_names','') ILIKE '%' || $6 || '%' ESCAPE '\\' OR record.source_id ILIKE '%' || $6 || '%' ESCAPE '\\' OR o.classification_category ILIKE '%' || $6 || '%' ESCAPE '\\')",
-        &[&release_id, &params.country_code, &params.category, &params.source_id, &params.activity, &search_text],
-    ).await {
-        Ok(row) => row.get(0),
-        Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "test_release_query_failed", "test release unavailable"),
-    };
-    let mut rows = match client.query(r#"SELECT f.facility_id,COALESCE(NULLIF(record.raw_fields->'normalized'->>'facility_display_name',''),NULLIF(f.canonical_name,'')),f.country_code,f.city,o.classification_category,
-        CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN 'exact' ELSE 'unmapped' END,
-        CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN ST_Y(g.result::geometry) ELSE NULL END,
-        CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN ST_X(g.result::geometry) ELSE NULL END,
-        review.factual_review_status,review.privacy_screening_status,review.maintainer_approval,review.reviewer_role,
-        source.origin_type, source.source_id, source.name, source.official_url, r.ruleset_version, artifact.retrieved_at,
-        COALESCE(record.raw_fields->'normalized','{}'::jsonb)::text, COALESCE(record.raw_fields->'source_activity_codes','[]'::jsonb)::text
+    // release_members is unique by (release_id, facility_id). Keep the full
+    // eligibility predicate in one materialized, release-scoped snapshot, then
+    // count that snapshot before applying the cursor. The previous count query
+    // and page query repeated this expensive policy path independently.
+    let mut rows = match client.query(r#"WITH matched AS MATERIALIZED (
+        SELECT member.facility_id, member.observation_id
         FROM uec.release_members member JOIN uec.releases r ON r.release_id=member.release_id
         JOIN uec.observations o ON o.observation_id=member.observation_id JOIN uec.facilities f ON f.facility_id=member.facility_id
-        JOIN uec.source_records record ON record.source_record_id=o.source_record_id JOIN uec.sources source ON source.source_id=record.source_id
-        JOIN uec.raw_artifacts artifact ON artifact.artifact_id=record.artifact_id
+        JOIN uec.source_records record ON record.source_record_id=o.source_record_id
         LEFT JOIN uec.publication_review_release_current review ON review.source_record_id=o.source_record_id AND review.release_id=member.release_id
-        LEFT JOIN LATERAL (SELECT result FROM uec.geocode_results WHERE source_record_id=o.source_record_id AND status='accepted' AND result IS NOT NULL ORDER BY queried_at DESC,geocode_result_id DESC LIMIT 1) g ON true
         WHERE r.release_id=$1 AND r.status='candidate' AND (r.test_only=true OR r.summary->>'candidate_only'='true') AND record.source_state NOT IN ('rejected','superseded')
           AND COALESCE(review.privacy_screening_status,'pending') <> 'failed' AND COALESCE(review.factual_review_status,'unreviewed') <> 'rejected'
           AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted restricted WHERE restricted.source_record_id=o.source_record_id)
@@ -3294,10 +3284,34 @@ pub async fn get_dev_test_release_locations_handler(
           AND ($4::text IS NULL OR record.source_id=ANY(string_to_array($4,',')))
           AND ($5::text IS NULL OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(record.raw_fields->'source_activity_codes','[]'::jsonb)) code WHERE record.source_id || ':' || replace(replace(replace(replace(replace(code,'%','%25'),' ','%20'),'/','%2F'),':','%3A'),',','%2C') = ANY(string_to_array($5,','))))
           AND ($6::text IS NULL OR COALESCE(NULLIF(record.raw_fields->'normalized'->>'facility_display_name',''),NULLIF(f.canonical_name,''),'') ILIKE '%' || $6 || '%' ESCAPE '\' OR COALESCE(f.city,'') ILIKE '%' || $6 || '%' ESCAPE '\' OR COALESCE(record.raw_fields->'normalized'->>'alternate_names','') ILIKE '%' || $6 || '%' ESCAPE '\' OR record.source_id ILIKE '%' || $6 || '%' ESCAPE '\' OR o.classification_category ILIKE '%' || $6 || '%' ESCAPE '\')
-          AND ($7::uuid IS NULL OR f.facility_id > $7)
-        ORDER BY f.facility_id LIMIT $8"#, &[&release_id,&params.country_code,&params.category,&params.source_id,&params.activity,&search_text,&cursor,&query_limit]).await {
+    ), total AS (
+        SELECT count(*)::bigint AS total_count FROM matched
+    ), page AS (
+        SELECT * FROM matched
+        WHERE ($7::uuid IS NULL OR facility_id > $7)
+        ORDER BY facility_id LIMIT $8
+    )
+    SELECT page.facility_id,COALESCE(NULLIF(record.raw_fields->'normalized'->>'facility_display_name',''),NULLIF(f.canonical_name,'')),f.country_code,f.city,o.classification_category,
+        CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN 'exact' ELSE 'unmapped' END,
+        CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN ST_Y(g.result::geometry) ELSE NULL END,
+        CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN ST_X(g.result::geometry) ELSE NULL END,
+        review.factual_review_status,review.privacy_screening_status,review.maintainer_approval,review.reviewer_role,
+        source.origin_type, source.source_id, source.name, source.official_url, r.ruleset_version, artifact.retrieved_at,
+        COALESCE(record.raw_fields->'normalized','{}'::jsonb)::text, COALESCE(record.raw_fields->'source_activity_codes','[]'::jsonb)::text,
+        total.total_count
+        FROM total LEFT JOIN page ON true
+        LEFT JOIN uec.observations o ON o.observation_id=page.observation_id LEFT JOIN uec.facilities f ON f.facility_id=page.facility_id
+        LEFT JOIN uec.source_records record ON record.source_record_id=o.source_record_id LEFT JOIN uec.sources source ON source.source_id=record.source_id
+        LEFT JOIN uec.raw_artifacts artifact ON artifact.artifact_id=record.artifact_id LEFT JOIN uec.releases r ON r.release_id=$1
+        LEFT JOIN uec.publication_review_release_current review ON review.source_record_id=o.source_record_id AND review.release_id=$1
+        LEFT JOIN LATERAL (SELECT result FROM uec.geocode_results WHERE source_record_id=o.source_record_id AND status='accepted' AND result IS NOT NULL ORDER BY queried_at DESC,geocode_result_id DESC LIMIT 1) g ON true
+        ORDER BY page.facility_id"#, &[&release_id,&params.country_code,&params.category,&params.source_id,&params.activity,&search_text,&cursor,&query_limit]).await {
         Ok(rows)=>rows, Err(_)=>return v2_error(StatusCode::SERVICE_UNAVAILABLE,"test_release_query_failed","test release unavailable")
     };
+    let total_count = rows.first().map(|row| row.get::<_, i64>(20)).unwrap_or(0);
+    if rows.first().is_some_and(|row| row.get::<_, Option<uuid::Uuid>>(0).is_none()) {
+        rows.clear();
+    }
     let has_next = rows.len() > limit as usize;
     if has_next {
         rows.truncate(limit as usize);
