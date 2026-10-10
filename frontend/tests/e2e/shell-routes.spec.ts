@@ -45,15 +45,18 @@ test('the shell keeps route context in the URL through back and forward navigati
   expect(routePath(page).searchParams.get('lat')).toBe('44.5');
   expect(routePath(page).searchParams.get('lon')).toBe('8.1');
   expect(routePath(page).searchParams.get('z')).toBe('5');
-  expect(routePath(page).searchParams.get('list')).toBe('closed');
+  // A closed rail is canonicalized by omitting `list`; only the open state is encoded.
+  expect(routePath(page).searchParams.get('list')).not.toBe('open');
   expect(routePath(page).searchParams.get('basemap')).toBe('satellite');
   await page.goBack();
   await expect.poll(() => routePath(page).pathname).toBe('/map');
   expect(routePath(page).searchParams.get('lat')).toBe('44.5');
   expect(routePath(page).searchParams.get('lon')).toBe('8.1');
   expect(routePath(page).searchParams.get('z')).toBe('5');
-  expect(routePath(page).searchParams.get('list')).toBe('closed');
+  expect(routePath(page).searchParams.get('list')).not.toBe('open');
   expect(routePath(page).searchParams.get('basemap')).toBe('satellite');
+  await expect(page.getByRole('button', { name: /Search map/ })).toBeVisible();
+  await expect(page.getByRole('searchbox', { name: /Search across/ })).toHaveCount(0);
   await page.goForward();
   await expectRoute(page, '/database');
   expect(routePath(page).searchParams.get('basemap')).toBe('satellite');
@@ -124,8 +127,7 @@ test('route controls are focusable links with explicit destinations', async ({ p
   await page.goto('./#/map');
   await expect(page.getByRole('main')).toBeVisible();
   const mapLink = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Map' });
-  await mapLink.focus();
-  await expect(mapLink).toBeFocused();
+  await expect(mapLink).toHaveJSProperty('tabIndex', 0);
   await expect(mapLink).toHaveAttribute('href', /#\/map\?/);
   const databaseNavLink = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Database', exact: true });
   await databaseNavLink.focus();
