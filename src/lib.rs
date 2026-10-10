@@ -2615,6 +2615,88 @@ fn csv_safe_value(value: String) -> String {
     }
 }
 
+/// The test-release route may read only the bridge's normalized, allowlisted
+/// source-status object.  It never returns the surrounding source-record JSON.
+fn test_release_allowlisted_detail(source_status: &str) -> Value {
+    let Ok(Value::Object(source)) = serde_json::from_str::<Value>(source_status) else {
+        return json!({});
+    };
+    let mut detail = serde_json::Map::new();
+    let names = source
+        .get("alternate_names")
+        .and_then(Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(Value::as_str)
+                .filter(|value| !value.trim().is_empty() && value.len() <= 200)
+                .take(32)
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    if !names.is_empty() {
+        detail.insert("alternate_names".into(), json!(names));
+    }
+    for field in ["species_slaughtered", "processing_activities"] {
+        let Some(Value::Object(flags)) = source.get(field) else {
+            continue;
+        };
+        let safe = flags
+            .iter()
+            .filter(|(key, value)| {
+                !key.is_empty()
+                    && key.len() <= 120
+                    && match value {
+                        Value::Bool(_) => true,
+                        Value::String(text) => text.len() <= 80,
+                        _ => false,
+                    }
+            })
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect::<serde_json::Map<_, _>>();
+        if !safe.is_empty() {
+            detail.insert(field.into(), Value::Object(safe));
+        }
+    }
+    if let Some(Value::Array(categories)) = source.get("source_volume_categories") {
+        let safe = categories
+            .iter()
+            .filter_map(Value::as_object)
+            .filter_map(|category| {
+                let code = category.get("code")?.as_str()?;
+                let provenance = category.get("provenance")?.as_str()?;
+                (!code.is_empty() && code.len() <= 80 && !provenance.is_empty() && provenance.len() <= 120)
+                    .then(|| json!({"code": code, "provenance": provenance}))
+            })
+            .take(32)
+            .collect::<Vec<_>>();
+        if !safe.is_empty() {
+            detail.insert("source_volume_categories".into(), json!(safe));
+        }
+    }
+    for field in [
+        "establishment_id",
+        "establishment_number",
+        "grant_date",
+        "activity_code",
+        "activity_label",
+    ] {
+        if let Some(value) = source.get(field).and_then(Value::as_str)
+            && !value.trim().is_empty()
+            && value.len() <= 200
+        {
+            let output = match field {
+                "activity_code" => "native_activity_code",
+                "activity_label" => "native_activity_label",
+                _ => field,
+            };
+            detail.insert(output.into(), json!(value));
+        }
+    }
+    Value::Object(detail)
+}
+
 pub async fn get_dev_test_release_locations_handler(
     State(state): State<ApiState>,
     headers: HeaderMap,
@@ -2700,7 +2782,7 @@ pub async fn get_dev_test_release_locations_handler(
         JOIN uec.raw_artifacts artifact ON artifact.artifact_id=record.artifact_id
         LEFT JOIN uec.publication_review_release_current review ON review.source_record_id=o.source_record_id AND review.release_id=member.release_id
         LEFT JOIN LATERAL (SELECT result FROM uec.geocode_results WHERE source_record_id=o.source_record_id AND status='accepted' AND result IS NOT NULL ORDER BY queried_at DESC,geocode_result_id DESC LIMIT 1) g ON true
-        WHERE r.release_id=$1 AND r.status='candidate' AND r.test_only=true AND record.source_state NOT IN ('rejected','superseded')
+        WHERE r.release_id=$1 AND r.status='candidate' AND (r.test_only=true OR r.summary->>'candidate_only'='true') AND record.source_state NOT IN ('rejected','superseded')
           AND COALESCE(review.privacy_screening_status,'pending') <> 'failed' AND COALESCE(review.factual_review_status,'unreviewed') <> 'rejected'
           AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted restricted WHERE restricted.source_record_id=o.source_record_id)
           AND ($2::text IS NULL OR f.country_code=$2) AND ($3::text IS NULL OR o.classification_category=$3)
@@ -2761,7 +2843,7 @@ pub async fn get_dev_test_release_location_detail_handler(
             );
         }
     };
-    let row=match client.query_opt("SELECT f.facility_id,f.canonical_name,f.country_code,f.city,o.classification_category,COALESCE(review.factual_review_status,'unreviewed'),COALESCE(review.privacy_screening_status,'pending'),o.coordinate_review_status,source.origin_type,source.source_id,source.name,source.official_url,artifact.retrieved_at,r.ruleset_version,CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN 'exact' ELSE 'unmapped' END,CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN ST_Y(g.result::geometry) ELSE NULL END,CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN ST_X(g.result::geometry) ELSE NULL END FROM uec.release_members m JOIN uec.releases r ON r.release_id=m.release_id JOIN uec.observations o ON o.observation_id=m.observation_id JOIN uec.facilities f ON f.facility_id=m.facility_id JOIN uec.source_records sr ON sr.source_record_id=o.source_record_id JOIN uec.sources source ON source.source_id=sr.source_id JOIN uec.raw_artifacts artifact ON artifact.artifact_id=sr.artifact_id LEFT JOIN uec.publication_review_release_current review ON review.source_record_id=o.source_record_id AND review.release_id=m.release_id LEFT JOIN LATERAL (SELECT result FROM uec.geocode_results WHERE source_record_id=o.source_record_id AND status='accepted' AND result IS NOT NULL ORDER BY queried_at DESC LIMIT 1) g ON true WHERE r.release_id=$1 AND r.status='candidate' AND r.test_only=true AND f.facility_id=$2 AND sr.source_state NOT IN ('rejected','superseded') AND COALESCE(review.privacy_screening_status,'pending') <> 'failed' AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted x WHERE x.source_record_id=o.source_record_id)", &[&release_id,&facility_id]).await {Ok(r)=>r,Err(_)=>return v2_error(StatusCode::SERVICE_UNAVAILABLE,"test_release_query_failed","test release unavailable")};
+    let row=match client.query_opt("SELECT f.facility_id,f.canonical_name,f.country_code,f.city,o.classification_category,COALESCE(review.factual_review_status,'unreviewed'),COALESCE(review.privacy_screening_status,'pending'),o.coordinate_review_status,source.origin_type,source.source_id,source.name,source.official_url,artifact.retrieved_at,r.ruleset_version,CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN 'exact' ELSE 'unmapped' END,CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN ST_Y(g.result::geometry) ELSE NULL END,CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN ST_X(g.result::geometry) ELSE NULL END,COALESCE(sr.raw_fields->'source_status','{}'::jsonb)::text FROM uec.release_members m JOIN uec.releases r ON r.release_id=m.release_id JOIN uec.observations o ON o.observation_id=m.observation_id JOIN uec.facilities f ON f.facility_id=m.facility_id JOIN uec.source_records sr ON sr.source_record_id=o.source_record_id JOIN uec.sources source ON source.source_id=sr.source_id JOIN uec.raw_artifacts artifact ON artifact.artifact_id=sr.artifact_id LEFT JOIN uec.publication_review_release_current review ON review.source_record_id=o.source_record_id AND review.release_id=m.release_id LEFT JOIN LATERAL (SELECT result FROM uec.geocode_results WHERE source_record_id=o.source_record_id AND status='accepted' AND result IS NOT NULL ORDER BY queried_at DESC LIMIT 1) g ON true WHERE r.release_id=$1 AND r.status='candidate' AND (r.test_only=true OR r.summary->>'candidate_only'='true') AND f.facility_id=$2 AND sr.source_state NOT IN ('rejected','superseded') AND COALESCE(review.privacy_screening_status,'pending') <> 'failed' AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted x WHERE x.source_record_id=o.source_record_id)", &[&release_id,&facility_id]).await {Ok(r)=>r,Err(_)=>return v2_error(StatusCode::SERVICE_UNAVAILABLE,"test_release_query_failed","test release unavailable")};
     let Some(row) = row else {
         return v2_error(
             StatusCode::NOT_FOUND,
@@ -2769,7 +2851,10 @@ pub async fn get_dev_test_release_location_detail_handler(
             "test release location not found",
         );
     };
-    let item = json!({"facility_id":row.get::<_,uuid::Uuid>(0),"canonical_name":row.get::<_,Option<String>>(1),"country_code":row.get::<_,String>(2),"city":row.get::<_,Option<String>>(3),"category":row.get::<_,String>(4),"publication_profile":profile,"factual_review_status":row.get::<_,String>(5),"privacy_screening_status":row.get::<_,String>(6),"project_approval":"not-approved","publication_warning":"Disposable test release — not project-approved or published","display_precision":row.get::<_,String>(14),"latitude":row.get::<_,Option<f64>>(15),"longitude":row.get::<_,Option<f64>>(16),"release_id":release_id,"release_ruleset_version":row.get::<_,String>(13),"provenance_source_id":row.get::<_,String>(9),"provenance_source_name":row.get::<_,String>(10),"provenance_source_url":row.get::<_,String>(11),"provenance_retrieved_at":row.get::<_,chrono::DateTime<chrono::Utc>>(12)});
+    let mut item = json!({"facility_id":row.get::<_,uuid::Uuid>(0),"canonical_name":row.get::<_,Option<String>>(1),"country_code":row.get::<_,String>(2),"city":row.get::<_,Option<String>>(3),"category":row.get::<_,String>(4),"publication_profile":profile,"factual_review_status":row.get::<_,String>(5),"privacy_screening_status":row.get::<_,String>(6),"project_approval":"not-approved","publication_warning":"Disposable test release — not project-approved or published","display_precision":row.get::<_,String>(14),"latitude":row.get::<_,Option<f64>>(15),"longitude":row.get::<_,Option<f64>>(16),"release_id":release_id,"release_ruleset_version":row.get::<_,String>(13),"provenance_source_id":row.get::<_,String>(9),"provenance_source_name":row.get::<_,String>(10),"provenance_source_url":row.get::<_,String>(11),"provenance_retrieved_at":row.get::<_,chrono::DateTime<chrono::Utc>>(12)});
+    if let (Some(item_fields), Value::Object(detail)) = (item.as_object_mut(), test_release_allowlisted_detail(row.get::<_, String>(17).as_str())) {
+        item_fields.extend(detail);
+    }
     let mut meta = test_release_meta(release_id, profile);
     meta["result_count"] = json!(1);
     Json(json!({"data":item,"meta":meta})).into_response()
@@ -2811,7 +2896,7 @@ pub async fn get_dev_test_release_facets_handler(
             );
         }
     };
-    let rows=match client.query("SELECT f.country_code,o.classification_category,CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN 'exact' ELSE 'unmapped' END,source.origin_type FROM uec.release_members m JOIN uec.releases r ON r.release_id=m.release_id JOIN uec.observations o ON o.observation_id=m.observation_id JOIN uec.facilities f ON f.facility_id=m.facility_id JOIN uec.source_records sr ON sr.source_record_id=o.source_record_id JOIN uec.sources source ON source.source_id=sr.source_id LEFT JOIN LATERAL (SELECT result FROM uec.geocode_results WHERE source_record_id=o.source_record_id AND status='accepted' AND result IS NOT NULL ORDER BY queried_at DESC LIMIT 1) g ON true LEFT JOIN uec.publication_review_release_current review ON review.source_record_id=o.source_record_id AND review.release_id=m.release_id WHERE r.release_id=$1 AND r.status='candidate' AND r.test_only=true AND sr.source_state NOT IN ('rejected','superseded') AND COALESCE(review.privacy_screening_status,'pending')<>'failed' AND COALESCE(review.factual_review_status,'unreviewed')<>'rejected' AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted x WHERE x.source_record_id=o.source_record_id)", &[&release_id]).await {Ok(r)=>r,Err(_)=>return v2_error(StatusCode::SERVICE_UNAVAILABLE,"test_release_query_failed","test release unavailable")};
+    let rows=match client.query("SELECT f.country_code,o.classification_category,CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN 'exact' ELSE 'unmapped' END,source.origin_type FROM uec.release_members m JOIN uec.releases r ON r.release_id=m.release_id JOIN uec.observations o ON o.observation_id=m.observation_id JOIN uec.facilities f ON f.facility_id=m.facility_id JOIN uec.source_records sr ON sr.source_record_id=o.source_record_id JOIN uec.sources source ON source.source_id=sr.source_id LEFT JOIN LATERAL (SELECT result FROM uec.geocode_results WHERE source_record_id=o.source_record_id AND status='accepted' AND result IS NOT NULL ORDER BY queried_at DESC LIMIT 1) g ON true LEFT JOIN uec.publication_review_release_current review ON review.source_record_id=o.source_record_id AND review.release_id=m.release_id WHERE r.release_id=$1 AND r.status='candidate' AND (r.test_only=true OR r.summary->>'candidate_only'='true') AND sr.source_state NOT IN ('rejected','superseded') AND COALESCE(review.privacy_screening_status,'pending')<>'failed' AND COALESCE(review.factual_review_status,'unreviewed')<>'rejected' AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted x WHERE x.source_record_id=o.source_record_id)", &[&release_id]).await {Ok(r)=>r,Err(_)=>return v2_error(StatusCode::SERVICE_UNAVAILABLE,"test_release_query_failed","test release unavailable")};
     let mut dims = serde_json::Map::new();
     for (name, values) in [
         (
@@ -2889,7 +2974,7 @@ pub async fn get_dev_test_release_export_handler(
             );
         }
     };
-    let rows=match client.query("SELECT f.facility_id,f.canonical_name,f.country_code,f.city,o.classification_category,source.origin_type,source.source_id,source.name,source.official_url,artifact.retrieved_at FROM uec.release_members m JOIN uec.releases r ON r.release_id=m.release_id JOIN uec.observations o ON o.observation_id=m.observation_id JOIN uec.facilities f ON f.facility_id=m.facility_id JOIN uec.source_records sr ON sr.source_record_id=o.source_record_id JOIN uec.sources source ON source.source_id=sr.source_id JOIN uec.raw_artifacts artifact ON artifact.artifact_id=sr.artifact_id LEFT JOIN uec.publication_review_release_current review ON review.source_record_id=o.source_record_id AND review.release_id=m.release_id WHERE r.release_id=$1 AND r.status='candidate' AND r.test_only=true AND sr.source_state NOT IN ('rejected','superseded') AND COALESCE(review.privacy_screening_status,'pending')<>'failed' AND COALESCE(review.factual_review_status,'unreviewed')<>'rejected' AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted x WHERE x.source_record_id=o.source_record_id) ORDER BY f.facility_id LIMIT 1001", &[&release_id]).await {Ok(r)=>r,Err(_)=>return v2_error(StatusCode::SERVICE_UNAVAILABLE,"test_release_query_failed","test release unavailable")};
+    let rows=match client.query("SELECT f.facility_id,f.canonical_name,f.country_code,f.city,o.classification_category,source.origin_type,source.source_id,source.name,source.official_url,artifact.retrieved_at FROM uec.release_members m JOIN uec.releases r ON r.release_id=m.release_id JOIN uec.observations o ON o.observation_id=m.observation_id JOIN uec.facilities f ON f.facility_id=m.facility_id JOIN uec.source_records sr ON sr.source_record_id=o.source_record_id JOIN uec.sources source ON source.source_id=sr.source_id JOIN uec.raw_artifacts artifact ON artifact.artifact_id=sr.artifact_id LEFT JOIN uec.publication_review_release_current review ON review.source_record_id=o.source_record_id AND review.release_id=m.release_id WHERE r.release_id=$1 AND r.status='candidate' AND (r.test_only=true OR r.summary->>'candidate_only'='true') AND sr.source_state NOT IN ('rejected','superseded') AND COALESCE(review.privacy_screening_status,'pending')<>'failed' AND COALESCE(review.factual_review_status,'unreviewed')<>'rejected' AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted x WHERE x.source_record_id=o.source_record_id) ORDER BY f.facility_id LIMIT 1001", &[&release_id]).await {Ok(r)=>r,Err(_)=>return v2_error(StatusCode::SERVICE_UNAVAILABLE,"test_release_query_failed","test release unavailable")};
     if rows.len() > 1000 {
         return v2_error(
             StatusCode::BAD_REQUEST,
@@ -4999,6 +5084,19 @@ mod v2_api_tests {
             assert_eq!(json["api_version"], "v2");
             assert!(json["data"].as_array().unwrap().is_empty());
         }
+    }
+
+    #[test]
+    fn test_release_detail_allowlists_safe_normalized_fields_only() {
+        let detail = test_release_allowlisted_detail(
+            r#"{"alternate_names":["Approved DBA"],"species_slaughtered":{"cattle":true,"poultry":"no"},"processing_activities":{"cutting":false},"source_volume_categories":[{"code":"2.0","provenance":"processing_volume_category"}],"establishment_id":"E-1","grant_date":"2026-01-01","activity_code":"A","activity_label":"Native","street_address":"not allowed","source_values":{"contact":"not allowed"}}"#,
+        );
+        assert_eq!(detail["alternate_names"], json!(["Approved DBA"]));
+        assert_eq!(detail["species_slaughtered"]["cattle"], json!(true));
+        assert_eq!(detail["source_volume_categories"][0]["code"], json!("2.0"));
+        assert_eq!(detail["native_activity_code"], json!("A"));
+        assert!(detail.get("street_address").is_none());
+        assert!(detail.get("source_values").is_none());
     }
 
     #[tokio::test]

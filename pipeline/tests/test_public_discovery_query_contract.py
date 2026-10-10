@@ -38,6 +38,7 @@ class PublicDiscoveryQueryContractTests(unittest.TestCase):
         self.assertIn("record_access_current", optimized)
         self.assertIn("suppression_case_current", optimized)
         self.assertIn("release_manifests", optimized)
+        self.assertIn("base AS NOT MATERIALIZED", optimized)
 
     def test_legacy_component_view_remains_documented_but_is_not_the_api_read_path(self):
         migration = (ROOT / "migrations" / "036_public_facility_discovery_view.sql").read_text(encoding="utf-8").lower()

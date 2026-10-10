@@ -67,7 +67,7 @@ COMMENT ON COLUMN uec.public_discovery_read_model_rows.public_search_text IS
 -- retains the live release, manifest, event-review, access and suppression
 -- predicates; it is not a cache and never changes model rows.
 CREATE OR REPLACE VIEW uec.public_discovery_api_read_model AS
-WITH base AS MATERIALIZED (
+WITH base AS NOT MATERIALIZED (
   SELECT model.*, release.ruleset_version AS release_ruleset_version,
          release.created_at AS release_created_at, release.profile, release.summary
     FROM uec.public_discovery_read_model_rows model
