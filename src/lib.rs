@@ -292,6 +292,10 @@ pub struct PublicMapFeedParams {
 
 const PUBLIC_MAP_FEED_MAX_FEATURES: i64 = 75_000;
 const PUBLIC_MAP_FEED_CACHE_MAX_ENTRIES: usize = 8;
+// Increment whenever the private candidate map projection changes while its
+// immutable candidate snapshot may remain the same. This keeps both the
+// in-process cache and browser validators from reusing an older projection.
+const PRIVATE_CANDIDATE_MAP_PROJECTION_VERSION: &str = "v2";
 
 #[derive(Clone)]
 struct PublicMapFeedCacheEntry { body: Arc<str>, content_type: &'static str, last_used: u64 }
@@ -336,6 +340,13 @@ fn private_candidate_map_feed_response(
         .header(axum::http::header::CONTENT_TYPE, entry.content_type)
         .body(axum::body::Body::from(entry.body.to_string()))
         .expect("private candidate map feed response is valid")
+}
+
+fn private_candidate_map_identity(release_id: &str, snapshot_id: &str) -> (String, String) {
+    (
+        format!("\"candidate-map-{}-{snapshot_id}\"", PRIVATE_CANDIDATE_MAP_PROJECTION_VERSION),
+        format!("dev-test-candidate-map-{}|{release_id}|{snapshot_id}", PRIVATE_CANDIDATE_MAP_PROJECTION_VERSION),
+    )
 }
 
 /// Return the small, public, release-pinned point projection used by the
@@ -3001,7 +3012,7 @@ pub async fn get_dev_test_release_map_feed_handler(
     let snapshot_id: String = release.get(0);
     let test_only: bool = release.get(1);
     let candidate_only: bool = release.get(2);
-    let etag = format!("\"candidate-map-{snapshot_id}\"");
+    let (etag, cache_key) = private_candidate_map_identity(release_id, &snapshot_id);
     if headers
         .get("if-none-match")
         .and_then(|value| value.to_str().ok())
@@ -3013,7 +3024,6 @@ pub async fn get_dev_test_release_map_feed_handler(
         }
         return response;
     }
-    let cache_key = format!("dev-test-candidate-map-v1|{release_id}|{snapshot_id}");
     if let Some(entry) = public_map_feed_cache_get(&cache_key) {
         return private_candidate_map_feed_response(entry, &etag);
     }
@@ -5369,6 +5379,13 @@ mod v2_api_tests {
         assert!(test_release_native_activity_detail(r#"[""]"#, "not-json")
             .as_object()
             .is_some_and(serde_json::Map::is_empty));
+    }
+
+    #[test]
+    fn private_candidate_map_identity_versions_projection_bytes() {
+        let (etag, cache_key) = private_candidate_map_identity("candidate", "snapshot");
+        assert_eq!(etag, "\"candidate-map-v2-snapshot\"");
+        assert_eq!(cache_key, "dev-test-candidate-map-v2|candidate|snapshot");
     }
 
     #[test]
