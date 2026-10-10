@@ -15,8 +15,8 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 // Contact the developer directly at untileverycageproject@protonmail.com
-use axum::extract::{ConnectInfo, State};
-use axum::http::{HeaderValue, Method};
+use axum::extract::{ConnectInfo, Query, State};
+use axum::http::{HeaderMap, HeaderValue, Method};
 use axum::http::{Request, Response, header};
 use axum::{Extension, Json, http::StatusCode, response::IntoResponse};
 use axum::{Router, routing::get};
@@ -878,18 +878,42 @@ async fn main() {
             std::process::exit(1);
         }
     };
+    let state = uec_api::ApiState {
+        database,
+        dev_preview_token,
+        dev_test_release_id,
+        dev_test_release_token,
+    };
+    let warm_state = state.clone();
+    tokio::spawn(async move {
+        let Some(pool) = warm_state.database.clone() else {
+            return;
+        };
+        let Ok(client) = pool.get().await else {
+            return;
+        };
+        let Ok(Some(release)) = client.query_opt(
+            "SELECT r.release_id FROM uec.releases r JOIN uec.public_discovery_read_models model ON model.release_id=r.release_id JOIN uec.release_manifests manifest ON manifest.release_id=r.release_id AND manifest.manifest_sha256=model.manifest_sha256 WHERE r.status='promoted' AND r.test_only IS NOT TRUE AND r.profile='official' ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1",
+            &[],
+        ).await else {
+            return;
+        };
+        let release_id: String = release.get(0);
+        drop(client);
+        let _ = uec_api::get_v2_public_map_feed_handler(
+            State(warm_state),
+            HeaderMap::new(),
+            Query(uec_api::PublicMapFeedParams {
+                profile: Some("official".into()),
+                release_id: Some(release_id),
+                format: Some("compact".into()),
+            }),
+        )
+        .await;
+    });
     let result = axum::serve(
         listener,
-        app(
-            uec_api::ApiState {
-                database,
-                dev_preview_token,
-                dev_test_release_id,
-                dev_test_release_token,
-            },
-            proxy,
-        )
-        .into_make_service_with_connect_info::<SocketAddr>(),
+        app(state, proxy).into_make_service_with_connect_info::<SocketAddr>(),
     )
     .with_graceful_shutdown(shutdown_signal())
     .await;

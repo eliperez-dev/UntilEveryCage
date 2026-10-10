@@ -3710,7 +3710,23 @@ pub async fn get_v2_locations_handler(
     // Keep the total scoped to exactly the same eligible release and filters
     // as the page. It is deliberately not the size of a client-loaded page.
     let query_limit = limit + 1;
-    let total_count: i64 = match transaction.query_one(r#"
+    let taxonomy_filters_requested = search_text.is_some() || category_keys.is_some();
+    let total_count: i64 = if !taxonomy_filters_requested {
+        // Ordinary browsing never examines taxonomy to decide eligibility. Keep
+        // the exact facility total, but avoid expanding every assignment set.
+        match transaction.query_one(r#"
+        SELECT count(DISTINCT history.facility_id)::bigint
+        FROM uec.map_facilities_public_discovery_read_model AS history
+        WHERE history.release_id = $1
+          AND ($2::text IS NULL OR history.country_code = $2) AND ($3::text IS NULL OR history.city = $3)
+          AND ($4::text IS NULL OR history.classification_category = $4) AND ($5::text IS NULL OR history.display_precision = $5)
+          AND ($6::text IS NULL OR history.lifecycle_status = $6) AND ($7::text IS NULL OR history.provenance_origin_type = $7)
+          AND ($8::double precision IS NULL OR (history.display_location && ST_MakeEnvelope($8, $9, $10, $11, 4326)::geography AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($8, $9, $10, $11, 4326))))
+          AND ($12::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($13, $14), 4326)::geography, $12 * 1000))
+    "#, &[&promoted_release_id, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude]).await {
+            Ok(row) => row.get(0), Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
+        }
+    } else { match transaction.query_one(r#"
         SELECT count(DISTINCT history.facility_id)::bigint
         FROM uec.map_facilities_public_discovery_read_model AS history
         LEFT JOIN LATERAL (
@@ -3732,8 +3748,63 @@ pub async fn get_v2_locations_handler(
           AND ($16::text[] IS NULL OR taxonomy.primary_categories && $16)
     "#, &[&promoted_release_id, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &category_keys]).await {
         Ok(row) => row.get(0), Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
-    };
-    let rows = match transaction.query(r#"
+    }};
+    let rows = if !taxonomy_filters_requested {
+        // Pick the stable page before calculating DTO-only taxonomy. The
+        // taxonomy is still returned for each record, but no longer expanded
+        // for every eligible facility on an ordinary browse request.
+        match transaction.query(r#"
+        WITH candidates AS MATERIALIZED (
+          SELECT DISTINCT ON (history.facility_id) history.facility_id, history.observation_id
+          FROM uec.map_facilities_public_discovery_read_model AS history
+          WHERE history.release_id = $1
+            AND ($2::uuid IS NULL OR history.facility_id > $2)
+            AND ($3::text IS NULL OR history.country_code = $3)
+            AND ($4::text IS NULL OR history.city = $4)
+            AND ($5::text IS NULL OR history.classification_category = $5)
+            AND ($6::text IS NULL OR history.display_precision = $6)
+            AND ($7::text IS NULL OR history.lifecycle_status = $7)
+            AND ($8::text IS NULL OR history.provenance_origin_type = $8)
+            AND ($9::double precision IS NULL OR (history.display_location && ST_MakeEnvelope($9, $10, $11, $12, 4326)::geography AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($9, $10, $11, $12, 4326))))
+            AND ($13::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($14, $15), 4326)::geography, $13 * 1000))
+          ORDER BY history.facility_id, history.observation_id
+        ), page AS (
+          SELECT facility_id, observation_id FROM candidates
+          ORDER BY facility_id LIMIT $16 OFFSET $17
+        )
+        SELECT history.facility_id, history.canonical_name, history.country_code, history.city, history.classification_category, history.display_precision,
+               history.factual_review_status, history.privacy_screening_status, history.maintainer_approval, history.reviewer_role,
+               ST_Y(history.display_location::geometry), ST_X(history.display_location::geometry),
+               history.first_observed_at, history.last_observed_at, history.observation_count, history.lifecycle_status,
+               history.provenance_origin_type, history.release_id, history.release_ruleset_version,
+               history.provenance_source_id, history.provenance_source_name, history.provenance_source_url, history.provenance_retrieved_at,
+               history.source_rights_status,
+               COALESCE(taxonomy.display_category, 'unclassified'),
+               COALESCE(taxonomy.primary_categories, ARRAY['unclassified']::text[]),
+               COALESCE(taxonomy.leaf_activities, '[]'::jsonb)::text,
+               COALESCE(taxonomy.assignments, '[]'::jsonb)::text,
+               history.geometry_provenance::text
+        FROM page
+        JOIN uec.map_facilities_public_discovery_read_model AS history
+          ON history.release_id = $1
+         AND history.facility_id = page.facility_id
+         AND history.observation_id = page.observation_id
+        LEFT JOIN LATERAL (
+          SELECT min(s.display_category) AS display_category,
+                 array_agg(DISTINCT a.primary_key ORDER BY a.primary_key) FILTER (WHERE a.primary_key IS NOT NULL) AS primary_categories,
+                 COALESCE(jsonb_agg(DISTINCT jsonb_build_object('key', a.leaf_key, 'label', a.leaf_label)) FILTER (WHERE a.leaf_key IS NOT NULL AND a.leaf_label IS NOT NULL AND a.mapping_method IN ('direct','derived') AND a.mapping_status IN ('mapped','partial')), '[]'::jsonb) AS leaf_activities,
+                 COALESCE(jsonb_agg(DISTINCT jsonb_build_object('primary_key',a.primary_key,'leaf_key',a.leaf_key,'leaf_label',a.leaf_label,'source_code_reference',a.source_code_reference,'source_label_reference',a.source_label_reference,'source_code',a.source_code,'source_label',a.source_label,'method',a.mapping_method,'status',a.mapping_status,'taxonomy_version',s.taxonomy_version,'crosswalk_version',s.crosswalk_version,'ruleset_version',s.ruleset_version)) FILTER (WHERE a.assignment_set_id IS NOT NULL), '[]'::jsonb) AS assignments
+          FROM uec.observation_taxonomy_assignment_sets s
+          LEFT JOIN uec.observation_taxonomy_assignments a ON a.assignment_set_id=s.assignment_set_id
+          WHERE s.observation_id=history.observation_id AND s.taxonomy_version='uec-taxonomy-v1'
+            AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=s.observation_id AND newer.taxonomy_version=s.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(s.created_at,s.assignment_set_id))
+        ) taxonomy ON TRUE
+        ORDER BY history.facility_id, history.observation_id
+    "#, &[&promoted_release_id, &cursor, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &query_limit, &effective_offset]).await {
+            Ok(rows) => rows,
+            Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
+        }
+    } else { match transaction.query(r#"
         SELECT DISTINCT ON (history.facility_id) history.facility_id, history.canonical_name, history.country_code, history.city, history.classification_category, history.display_precision,
                history.factual_review_status, history.privacy_screening_status, history.maintainer_approval, history.reviewer_role,
                ST_Y(history.display_location::geometry), ST_X(history.display_location::geometry),
@@ -3774,7 +3845,7 @@ pub async fn get_v2_locations_handler(
     "#, &[&promoted_release_id, &cursor, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &query_limit, &effective_offset, &category_keys]).await {
         Ok(rows) => rows,
         Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
-    };
+    }};
     let has_next = rows.len() as i64 > limit;
     let data = rows
         .into_iter()
