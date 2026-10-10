@@ -866,10 +866,14 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
             # Validate every frozen source while the transaction is still
             # read-only. A late source mismatch must not follow hours of
             # canonical inserts only to force a rollback.
-            preview_checks = {
-                source: _verify_preview_source(connection, source, entry, handoffs[source])
-                for source, entry in entries.items()
-            }
+            preview_checks = {}
+            for source, entry in entries.items():
+                try:
+                    preview_checks[source] = _verify_preview_source(connection, source, entry, handoffs[source])
+                except BridgeError as error:
+                    # Source IDs and stable guard codes are safe operational
+                    # diagnostics; do not surface row data or SQL payloads.
+                    raise BridgeError(f"preview_validation_failed:{source}:{error}") from None
             if not existing:
                 connection.execute("""INSERT INTO uec.releases(release_id,status,ruleset_version,summary,profile,test_only)
                     VALUES (%s,'candidate',%s,%s,%s,false)""",
