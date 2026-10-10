@@ -1341,9 +1341,7 @@
   aria-label="Map showing records"
 >
   <div class="map-host" bind:this={host}></div>
-  {#if isNativeMap() && visibleApproximateCount > 0}<small class="approximation-cue"
-      ><i aria-hidden="true"></i>Approximate references · source precision varies</small
-  >{/if}{#if basemapSwitching && pendingBasemap}<small
+  {#if basemapSwitching && pendingBasemap}<small
       class="map-status"
       role="status"
       aria-live="polite"
@@ -1488,7 +1486,7 @@
             <label class="cluster-checkbox" for="v1-pin-mode"><input id="v1-pin-mode" type="checkbox" checked={useV1Pins}
               onchange={(event) => { useV1Pins = event.currentTarget.checked; void updatePinMode(); }} /> Use V1 facility pin PNG + shadow</label>
             {#if pinModeError}<small role="alert">{pinModeError}</small>{/if}
-            <small>The blue area is an approximate display aid, not a measured accuracy boundary.</small>
+            <small>The red area is an approximate display aid, not a measured accuracy boundary.</small>
           </fieldset>
           <fieldset class="cluster-settings">
             <legend>Interaction & performance</legend>
@@ -1529,7 +1527,7 @@
             <label class="cluster-checkbox" for="v1-pin-mode"><input id="v1-pin-mode" type="checkbox" checked={useV1Pins}
               onchange={(event) => { useV1Pins = event.currentTarget.checked; void updatePinMode(); }} /> Use V1 facility pin PNG + shadow</label>
             {#if pinModeError}<small role="alert">{pinModeError}</small>{/if}
-            <small>The blue radius is a display aid, not a measured accuracy boundary.</small>
+            <small>The red radius is a display aid, not a measured accuracy boundary.</small>
           </fieldset>
           <fieldset class="cluster-settings">
             <legend>Interaction & performance</legend>
@@ -1740,29 +1738,6 @@
     width: auto;
     margin: 0;
   }
-  .approximation-cue {
-    position: absolute;
-    z-index: 3;
-    top: 0.75rem;
-    right: 0.75rem;
-    display: flex;
-    align-items: center;
-    gap: 0.38rem;
-    padding: 0.3rem 0.45rem;
-    border: 1px solid #53656c;
-    background: #171a18e8;
-    color: #c4dbe4;
-    font: 0.59rem system-ui;
-    letter-spacing: 0.02em;
-    pointer-events: none;
-  }
-  .approximation-cue i {
-    width: 0.55rem;
-    height: 0.55rem;
-    border: 1px solid #79b9da;
-    border-radius: 50%;
-    background: #79b9da14;
-  }
   .map-status {
     position: absolute;
     z-index: 3;
@@ -1795,7 +1770,6 @@
   .map-surface :global(.maplibregl-ctrl-attrib a) { color: #c1d4cf; }
   .map-surface :global(.maplibregl-ctrl-attrib-button) { filter: invert(1); }
   @media (max-width: 40rem) {
-    .approximation-cue { top: 4rem; right: 0.65rem; max-width: 9.8rem; }
     .map-surface :global(.precision-legend) { bottom: 9.4rem; width: auto; max-width: min(15rem, calc(100vw - 1.3rem)); }
     .map-surface :global(.precision-legend.expanded) { top: 3.5rem; bottom: auto; width: min(15rem, calc(100vw - 1.3rem)); }
     .map-surface :global(.maplibregl-ctrl-bottom-right) { right: 0.4rem; bottom: 2.9rem; left: 0.4rem; }
