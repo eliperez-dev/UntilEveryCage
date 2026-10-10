@@ -416,14 +416,16 @@
     if (!map) return;
     // Cluster body and count deliberately live in one symbol layer. This prevents the
     // old circle-layer/symbol-layer race that left count text visible for a frame.
+    // Native clusters can contain multiple activities, so their count is the
+    // distinction. Category accents belong only to individual facility marks.
     if (!map.hasImage("cluster-low"))
-      map.addImage("cluster-low", clusterImage("#b5e28c99", "#6ecc39b8"));
+      map.addImage("cluster-low", clusterImage("#bdc6bd99", "#667168d9"));
     if (!map.hasImage("cluster-mid"))
-      map.addImage("cluster-mid", clusterImage("#f1d35799", "#f0c20cb8"));
+      map.addImage("cluster-mid", clusterImage("#bdc6bd99", "#667168d9"));
     if (!map.hasImage("cluster-high"))
-      map.addImage("cluster-high", clusterImage("#fd9c7399", "#f18017b8"));
+      map.addImage("cluster-high", clusterImage("#bdc6bd99", "#667168d9"));
     if (!map.hasImage("cluster-very-high"))
-      map.addImage("cluster-very-high", clusterImage("#ed8b7599", "#de6d3fb8"));
+      map.addImage("cluster-very-high", clusterImage("#bdc6bd99", "#667168d9"));
     if (!map.hasImage("cluster-approx"))
       map.addImage("cluster-approx", clusterImage("#79b9da99", "#79b9dad9"));
   }
