@@ -31,6 +31,13 @@ class CandidateBridgeTests(unittest.TestCase):
         self.assertIn('facility_conflict = "DO NOTHING" if append_to_v0_baseline', source)
         self.assertIn('"facility_display_name"', source)
 
+    def test_r3_append_allows_only_the_verified_candidate_predecessors(self):
+        source = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn('family + "-r2"', source)
+        self.assertIn("candidate_append_prior_candidate_identity_mismatch", source)
+        self.assertIn("permitted_manifest_ids", source)
+        self.assertIn("candidate_release_id in manifest_ids", source)
+
     def test_safe_status_adds_only_source_typed_facility_display_name(self):
         safe = bridge._safe_normalized(
             {"facility_name": "Synthetic Facility", "operator_name": "Synthetic Person"},

@@ -784,11 +784,30 @@ def _baseline_snapshot(connection: Any, contract: dict[str, Any]) -> dict[str, A
 
 
 def _append_scope_is_valid(connection: Any, baseline_release_id: str, candidate_release_id: str) -> None:
-    releases = connection.execute("SELECT release_id FROM uec.releases ORDER BY release_id").fetchall()
-    if {str(row[0]) for row in releases} - {baseline_release_id, candidate_release_id}:
+    releases = connection.execute("SELECT release_id,status,test_only,summary FROM uec.releases ORDER BY release_id").fetchall()
+    prior_ids: set[str] = set()
+    if candidate_release_id.endswith("-r3"):
+        family = candidate_release_id[:-3]
+        prior_ids = {family, family + "-r2"}
+    permitted = {baseline_release_id, candidate_release_id}
+    permitted.update(prior_ids)
+    if {str(row[0]) for row in releases} - permitted:
         raise BridgeError("candidate_append_has_unexpected_release")
+    for release_id, status, test_only, summary in releases:
+        if str(release_id) in prior_ids and (status != "candidate" or test_only is not False
+                                             or not isinstance(summary, dict)
+                                             or summary.get("candidate_only") is not True):
+            raise BridgeError("candidate_append_prior_candidate_identity_mismatch")
     manifests = connection.execute("SELECT release_id FROM uec.release_manifests ORDER BY release_id").fetchall()
-    if {str(row[0]) for row in manifests} != {baseline_release_id}:
+    manifest_ids = {str(row[0]) for row in manifests}
+    # A successor may coexist with the verified candidate lineage.  Preserve
+    # the baseline manifest requirement, allow manifests only for the exact
+    # predecessor releases, and reject a pre-created target manifest.
+    permitted_manifest_ids = {baseline_release_id}
+    permitted_manifest_ids.update(prior_ids)
+    if (baseline_release_id not in manifest_ids
+            or manifest_ids - permitted_manifest_ids
+            or candidate_release_id in manifest_ids):
         raise BridgeError("candidate_append_manifest_scope_mismatch")
 
 
