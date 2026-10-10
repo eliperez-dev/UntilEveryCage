@@ -53,6 +53,8 @@ export function parseRealPreviewMapFeed(payload: unknown, candidateOnly = false)
     }
     if (row.category_key !== undefined && typeof row.category_key !== 'string') throw new RealPreviewMapFeedError('The private map feed returned an invalid category key.');
     if (row.category_keys !== undefined && (!Array.isArray(row.category_keys) || row.category_keys.length > 16 || !row.category_keys.every(item => typeof item === 'string'))) throw new RealPreviewMapFeedError('The private map feed returned invalid category keys.');
+    if (candidateOnly && row.country_code !== undefined && row.country_code !== null && (typeof row.country_code !== 'string' || !/^[A-Z]{2}$/.test(row.country_code))) throw new RealPreviewMapFeedError('The corrected candidate map feed returned an invalid country code.');
+    if (candidateOnly && row.activity_keys !== undefined && (!Array.isArray(row.activity_keys) || row.activity_keys.length > 64 || !row.activity_keys.every(item => typeof item === 'string' && item.length > 0 && item.length <= 240))) throw new RealPreviewMapFeedError('The corrected candidate map feed returned invalid activity keys.');
     const categoryKeys = [...new Set(((row.category_keys as string[] | undefined) ?? []).map(item => isTaxonomyPrimaryKey(item) ? item : 'unclassified'))];
     if (categoryKeys.length === 0) categoryKeys.push(isTaxonomyPrimaryKey(row.category_key) ? row.category_key : 'unclassified');
     const categoryKey = typeof row.category_key === 'string' ? row.category_key : categoryKeys[0]!;
@@ -69,6 +71,8 @@ export function parseRealPreviewMapFeed(payload: unknown, candidateOnly = false)
         weight,
         category_key: categoryKey,
         category_keys: categoryKeys,
+        ...(candidateOnly && (typeof row.country_code === 'string' || row.country_code === null) ? { country_code: row.country_code } : {}),
+        ...(candidateOnly && Array.isArray(row.activity_keys) ? { activity_keys: [...new Set(row.activity_keys as string[])] } : {}),
         // Only references need a latitude correction for the map-scale disc.
         ...(kind === 'city_reference' ? { cosLatitude: Math.max(0.087, Math.cos(row.latitude * Math.PI / 180)) } : {}),
       },

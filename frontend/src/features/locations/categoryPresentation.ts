@@ -21,6 +21,28 @@ const LEGACY_CATEGORY_KEYS: Readonly<Record<string, CategoryPresentationKey>> = 
   other_regulated: 'other_regulated_premises',
   dealer: 'other_regulated_premises',
   exhibitor: 'other_regulated_premises',
+  meat_processing: 'processing_and_preparation',
+  fish_processing: 'processing_and_preparation',
+  dairy_processing: 'processing_and_preparation',
+  egg_processing: 'processing_and_preparation',
+  mixed_food_processing: 'processing_and_preparation',
+  cutting: 'processing_and_preparation',
+  logistics_and_storage: 'other_regulated_premises',
+  animal_products_adjacent: 'other_regulated_premises',
+  general_food_business: 'other_regulated_premises',
+  butcher_retail: 'other_regulated_premises',
+  fish_retail: 'other_regulated_premises',
+  retail_and_prepared_food: 'other_regulated_premises',
+  commercial_food_business: 'other_regulated_premises',
+  catering_and_institutional_kitchens: 'other_regulated_premises',
+  food_contact_and_packaging: 'other_regulated_premises',
+  animal_keeping: 'animal_keeping_and_production',
+});
+
+/** Explicit, source-backed compatibility keys for map paint expressions. */
+export const CATEGORY_PRIMARY_BY_SOURCE_KEY: Readonly<Record<string, CategoryPresentationKey>> = Object.freeze({
+  ...Object.fromEntries(Object.keys(CATEGORY_PRESENTATIONS).map((key) => [key, key as CategoryPresentationKey])),
+  ...LEGACY_CATEGORY_KEYS,
 });
 
 export function categoryPresentation(key: string | null | undefined) {

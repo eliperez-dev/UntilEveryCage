@@ -1,8 +1,26 @@
 import { parseRealPreviewMapFeed, RealPreviewMapFeedError, type RealPreviewMapFeed } from './RealPreviewMapFeedRepository';
 import { TEST_RELEASE_PATH } from '../features/devPreview/devPreviewContract';
+import type { JsonMapCollection } from '../design-lab/components/jsonMapFallback';
 
-const CACHE_NAME = 'uec-candidate-map-projection-v1';
+// v2 adds country/category/activity projection fields. Keep older candidate
+// entries out of this stricter filterable projection.
+const CACHE_NAME = 'uec-candidate-map-projection-v2';
 let cacheGeneration = 0;
+
+export type CandidateMapFilters = Readonly<{ sourceIds?: readonly string[]; countryCodes?: readonly string[]; categoryKeys?: readonly string[]; activityKeys?: readonly string[] }>;
+
+/** Filter the complete configured projection before MapLibre rebuilds clusters. */
+export function filterTestReleaseMapCollection(collection: JsonMapCollection, filters: CandidateMapFilters): JsonMapCollection {
+  const sources = new Set(filters.sourceIds ?? []), countries = new Set(filters.countryCodes ?? []), categories = new Set(filters.categoryKeys ?? []), activities = new Set(filters.activityKeys ?? []);
+  return { ...collection, features: collection.features.filter(({ properties }) => {
+    const strings = (key: string) => Array.isArray(properties[key]) ? properties[key].filter((value): value is string => typeof value === 'string') : [];
+    if (sources.size && (typeof properties.source_id !== 'string' || !sources.has(properties.source_id))) return false;
+    if (countries.size && (typeof properties.country_code !== 'string' || !countries.has(properties.country_code))) return false;
+    if (categories.size && !strings('category_keys').some(value => categories.has(value))) return false;
+    if (activities.size && !strings('activity_keys').some(value => activities.has(value))) return false;
+    return true;
+  }) };
+}
 
 function cacheKey(releaseId: string, snapshotId: string): Request {
   return new Request(new URL(`/__uec_candidate_map_cache__/${encodeURIComponent(releaseId)}/${snapshotId}`, globalThis.location?.origin ?? 'https://uec.invalid').href, { method: 'GET' });

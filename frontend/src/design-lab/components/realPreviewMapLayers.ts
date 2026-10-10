@@ -1,5 +1,6 @@
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import type { JsonMapCollection } from './jsonMapFallback';
+import { CATEGORY_PRESENTATIONS, CATEGORY_PRIMARY_BY_SOURCE_KEY } from '../../features/locations/categoryPresentation';
 
 export const DEFAULT_CLUSTER_RADIUS = 30;
 /** Requested camera zoom. Native GeoJSON tile zooms are whole numbers. */
@@ -45,7 +46,25 @@ export type RealPreviewVisualSettings = Readonly<{
 }>;
 
 const cityReference = ['any', ['==', ['get', 'precision'], 'city'], ['==', ['get', 'precision'], 'city_reference_approximate'], ['==', ['get', 'precision'], 'provider_locality_approximate']];
-const categoryColor = ['match', ['get', 'category_key'], 'animal_keeping_and_production', '#009E73', 'slaughter', '#D55E00', 'processing_and_preparation', '#0072B2', 'research_and_animal_use', '#CC79A7', 'other_regulated_premises', '#E69F00', '#B8B8B8'];
+const categoryPairs = Object.entries(CATEGORY_PRIMARY_BY_SOURCE_KEY);
+const categoryColor = ['match', ['get', 'category_key'], ...categoryPairs.flatMap(([sourceKey, primaryKey]) => [sourceKey, CATEGORY_PRESENTATIONS[primaryKey].color]), CATEGORY_PRESENTATIONS.unclassified.color];
+const v1PinByPrimary = {
+  animal_keeping_and_production: 'v1-pin-green',
+  slaughter: 'v1-pin-red',
+  processing_and_preparation: 'v1-pin-yellow',
+  research_and_animal_use: 'v1-pin-violet',
+  other_regulated_premises: 'v1-pin-orange',
+  unclassified: 'v1-pin-grey',
+} as const;
+const v1CategoryPin = ['match', ['get', 'category_key'], ...categoryPairs.flatMap(([sourceKey, primaryKey]) => [sourceKey, v1PinByPrimary[primaryKey]]), 'v1-pin-grey'];
+export const REAL_PREVIEW_LAYER_IDS = [
+  'clusters', 'aggregate-outer', 'approx-reference-points', 'aggregate-count',
+  'aggregate-kind', 'source-coordinate-points', 'v1-source-shadows', 'v1-source-pins',
+] as const;
+
+export function hasRealPreviewMapLayers(map: Pick<MapLibreMap, 'getSource' | 'getLayer'>): boolean {
+  return Boolean(map.getSource('locations')) && REAL_PREVIEW_LAYER_IDS.every((id) => Boolean(map.getLayer(id)));
+}
 
 /** Pixel radius of a map-scale distance at each feature's latitude. */
 export function referenceRadiusExpression(radiusKm: number): unknown[] {
@@ -86,9 +105,9 @@ export function addRealPreviewMapLayers(
   map.addLayer({
     id: 'clusters', type: 'symbol', source: 'locations', filter: ['has', 'cluster'],
     layout: {
-      // A blue body identifies an all-approximate cluster; mixed clusters keep
-      // the count palette with a blue outline. Neither implies a category.
-      'icon-image': ['case', ['==', approximateCount, representedCount], 'cluster-approx', ['>', approximateCount, 0], countPalette('cluster-mixed'), countPalette('cluster')],
+      // Cluster colour expresses record count only. Precision remains visible
+      // through the red reference ring, not a competing cluster palette.
+      'icon-image': countPalette('cluster'),
       'icon-size': 1, 'icon-allow-overlap': true, 'icon-ignore-placement': true,
       'text-field': ['to-string', representedCount], 'text-font': ['Open Sans Bold'], 'text-size': 12,
       'text-allow-overlap': true, 'text-ignore-placement': true,
@@ -101,14 +120,14 @@ export function addRealPreviewMapLayers(
   map.addLayer({
     id: 'aggregate-outer', type: 'circle', source: 'locations', filter: reference,
     paint: {
-      'circle-color': ['case', cityReference, '#79b9da', '#15252c'],
+      'circle-color': '#c84a4a',
       'circle-radius': referenceRadiusExpression(DEFAULT_REFERENCE_RADIUS_KM),
       // The full 3 km geometry remains visible and clickable, but a very light
       // wash prevents dense city references from obscuring the basemap.
-      'circle-opacity': ['case', cityReference, 0.08, 0.96],
-      'circle-stroke-color': ['case', cityReference, '#79b9da', '#86aeca'],
-      'circle-stroke-width': ['case', cityReference, 1, 3],
-      'circle-stroke-opacity': ['case', cityReference, 0.42, 1],
+      'circle-opacity': 0.14,
+      'circle-stroke-color': '#e06b5b',
+      'circle-stroke-width': 2,
+      'circle-stroke-opacity': 0.8,
     },
   } as any);
   setClusterTileRounding(map, settings.maxZoom);
@@ -118,7 +137,7 @@ export function addRealPreviewMapLayers(
     id: 'approx-reference-points', type: 'symbol', source: 'locations',
     filter: ['all', ...reference.slice(1), cityReference],
     layout: {
-      'icon-image': 'cluster-approx', 'icon-size': APPROX_MARKER_SCALE,
+      'icon-image': 'reference-marker', 'icon-size': APPROX_MARKER_SCALE,
       'icon-allow-overlap': true, 'icon-ignore-placement': true,
       'text-field': ['to-string', weight], 'text-font': ['Open Sans Bold'], 'text-size': 11,
       'text-allow-overlap': true, 'text-ignore-placement': true,
@@ -151,7 +170,7 @@ export function addRealPreviewMapLayers(
   } as any);
   map.addLayer({
     id: 'v1-source-pins', type: 'symbol', source: 'locations', filter: coordinate,
-    layout: { 'visibility': 'none', 'icon-image': ['match', ['get', 'category_key'], 'animal_keeping_and_production', 'v1-pin-green', 'slaughter', 'v1-pin-red', 'processing_and_preparation', 'v1-pin-yellow', 'research_and_animal_use', 'v1-pin-violet', 'other_regulated_premises', 'v1-pin-orange', 'v1-pin-grey'], 'icon-anchor': 'bottom',
+    layout: { 'visibility': 'none', 'icon-image': v1CategoryPin, 'icon-anchor': 'bottom',
       'icon-size': 0.5, 'icon-allow-overlap': true, 'icon-ignore-placement': true },
   } as any);
 }
@@ -181,8 +200,8 @@ export function applyRealPreviewVisualSettings(map: MapLibreMap, settings: RealP
   const selected = settings.selectedKey
     ? ['==', ['get', 'key'], settings.selectedKey]
     : false;
-  map.setPaintProperty('aggregate-outer', 'circle-opacity', ['case', cityReference, ['case', selected, 0.3, settings.referenceOpacity], 0.96] as any);
-  map.setPaintProperty('aggregate-outer', 'circle-stroke-opacity', ['case', cityReference, Math.min(0.7, settings.referenceOpacity * 5 + 0.17), 1] as any);
+  map.setPaintProperty('aggregate-outer', 'circle-opacity', ['case', selected, Math.min(0.42, settings.referenceOpacity + 0.16), settings.referenceOpacity] as any);
+  map.setPaintProperty('aggregate-outer', 'circle-stroke-opacity', Math.min(1, settings.referenceOpacity * 4 + 0.32) as any);
   map.setPaintProperty('source-coordinate-points', 'circle-radius', settings.coordinateRadius);
   map.setLayoutProperty('aggregate-kind', 'visibility', settings.showReferenceLabels ? 'visible' : 'none');
 }

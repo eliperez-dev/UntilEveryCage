@@ -8,6 +8,7 @@
     Precision,
   } from "../../contract";
   import type { RealPreviewFacet } from "../../../api/RealPreviewRepository";
+  import type { CandidateFacets } from "../../../api/TestReleaseRepository";
   import MapSurface from "../../components/MapSurface.svelte";
   import RecordList from "../../components/RecordList.svelte";
   import RecordDetail from "../../../app/RecordDetail.svelte";
@@ -46,12 +47,14 @@
     onViewportBounds,
     facets = [],
     facetsStatus = "loading",
+    candidateFacets = null,
     dispatch,
   }: DirectionViewProps & {
     coverageOpen?: boolean;
     mapDiagnostics?: MapDiagnostics;
     facets?: readonly RealPreviewFacet[];
     facetsStatus?: "loading" | "ready" | "error" | "unauthorized";
+    candidateFacets?: CandidateFacets | null;
   } = $props();
   const candidatePreviewLabel = writable<string | null>(null);
   const categories = [
@@ -115,11 +118,13 @@
       event.preventDefault(); railWidth.update(width => Math.max(300, Math.min(Math.floor(window.innerWidth * 0.55), width + (event.key === 'ArrowRight' ? 24 : -24))));
     }
   }
-  const active = $derived(
-    mode === "synthetic"
-      ? state.filters.categories.length + state.filters.precisions.length
-      : 0,
-  );
+  const active = $derived(mode === "candidate-preview"
+    ? state.filters.countries.length + state.filters.sources.length + state.filters.categories.length + state.filters.activities.length
+    : mode === "synthetic" ? state.filters.categories.length + state.filters.precisions.length : 0);
+  function toggleCandidateFilter(field: 'countries' | 'sources' | 'categories' | 'activities', value: string, checked: boolean) {
+    const current = state.filters[field];
+    dispatch({ type: 'filters', value: { ...state.filters, [field]: checked ? [...new Set([...current, value])] : current.filter(item => item !== value) } });
+  }
   const precisionLabel = (record: LabRecord) =>
     mode === "real-preview"
       ? record.sourceId === 'us.fsis' && record.coordinatePrecision === 'source-provided'
@@ -459,7 +464,16 @@
           <details class="filters">
             <summary>Filters {#if state.sourceId}<b>1</b>{:else if active}<b>{active}</b>{/if}</summary>
             <div class="filter-sheet">
-              {#if mode === "real-preview"}
+              {#if mode === "candidate-preview"}
+                {#if facetsStatus === "loading"}<small>Loading filters…</small>
+                {:else if facetsStatus === "error" || facetsStatus === "unauthorized"}<small role="alert">Filters are unavailable. Search remains available.</small>
+                {:else if candidateFacets}
+                  <fieldset><legend>Country</legend>{#each candidateFacets.countries as facet (facet.value)}<label><input type="checkbox" checked={state.filters.countries.includes(facet.value)} onchange={(event) => toggleCandidateFilter('countries', facet.value, event.currentTarget.checked)} />{facet.label ?? facet.value} ({facet.count})</label>{/each}</fieldset>
+                  <fieldset><legend>Source</legend>{#each candidateFacets.sources as facet (facet.value)}<label><input type="checkbox" checked={state.filters.sources.includes(facet.value)} onchange={(event) => toggleCandidateFilter('sources', facet.value, event.currentTarget.checked)} />{facet.label ?? facet.value} ({facet.count})</label>{/each}</fieldset>
+                  <fieldset><legend>Activity category</legend>{#each candidateFacets.categories as facet (facet.value)}<label><input type="checkbox" checked={state.filters.categories.includes(facet.value)} onchange={(event) => toggleCandidateFilter('categories', facet.value, event.currentTarget.checked)} />{facet.label ?? facet.value} ({facet.count})</label>{/each}</fieldset>
+                  {#if candidateFacets.activities.length}<fieldset><legend>Activity</legend>{#each candidateFacets.activities as facet (facet.value)}<label><input type="checkbox" checked={state.filters.activities.includes(facet.value)} onchange={(event) => toggleCandidateFilter('activities', facet.value, event.currentTarget.checked)} />{facet.label ?? facet.value} ({facet.count})</label>{/each}</fieldset>{/if}
+                {/if}
+              {:else if mode === "real-preview"}
                 <fieldset class="source-filter">
                   <legend>Source</legend>
                   {#if facetsStatus === "loading"}<small>Loading sources…</small>

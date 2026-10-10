@@ -33,7 +33,7 @@ describe('F1A shared design lab', () => {
     expect(reduceLabState(state, { type: 'select', value: 'syn-099' })).toMatchObject({
       direction: 'field', scenario: 'dense', query: 'pig', selectedId: 'syn-099',
       expandedCluster: 'aarhus',
-      viewport: { centerLat: 40, centerLon: -12, zoom: 5 }, filters: { categories: ['Pig'], precisions: ['coarse'] },
+      viewport: { centerLat: 40, centerLon: -12, zoom: 5 }, filters: { categories: ['Pig'], precisions: ['coarse'], countries: [], sources: [], activities: [] },
     });
   });
 
@@ -52,7 +52,7 @@ describe('F1A shared design lab', () => {
   });
 
   it('applies OR within category and precision groups, then AND across groups and search', () => {
-    const state = reduceLabState(decodeLabHash('#/map?q=synthetic'), { type: 'filters', value: { categories: ['Poultry', 'Pig'], precisions: ['exact'] } });
+    const state = reduceLabState(decodeLabHash('#/map?q=synthetic'), { type: 'filters', value: { categories: ['Poultry', 'Pig'], precisions: ['exact'], countries: [], sources: [], activities: [] } });
     const model = createLabViewModel(labRecords, state);
     expect(model.listRecords.length).toBeGreaterThan(0);
     expect(model.listRecords.every(record => ['Poultry', 'Pig'].includes(record.category) && record.precision === 'exact')).toBe(true);

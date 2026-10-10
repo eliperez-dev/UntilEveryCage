@@ -132,6 +132,10 @@ const testReleaseLocationShape = {
   project_approval: z.union([z.enum(['pending', 'approved']), z.literal(false), z.literal('not-approved')]),
   source_rights_status: z.string().default('unknown'),
   release_ruleset_version: z.string().nullable(),
+  // Filterable candidate projection fields are additive and remain distinct
+  // from detail-only native facts.
+  category_keys: z.array(z.string().min(1).max(120)).max(16).optional(),
+  activity_keys: z.array(z.string().min(1).max(240)).max(64).optional(),
 };
 export const testReleaseLocationSchema = z.object(testReleaseLocationShape).strict().superRefine(coordinateRules);
 // The configured candidate detail retains its private test-release core and
@@ -158,6 +162,8 @@ const testReleaseDetailLocationShape = {
   provenance_retrieved_at: z.string().datetime({ offset: true }),
   release_id: z.string(),
   release_ruleset_version: z.string().nullable(),
+  category_keys: z.array(z.string().min(1).max(120)).max(16).optional(),
+  activity_keys: z.array(z.string().min(1).max(240)).max(64).optional(),
 };
 export const testReleaseDetailLocationSchema = z.object({
   ...testReleaseDetailLocationShape,

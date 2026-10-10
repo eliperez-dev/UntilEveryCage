@@ -19,8 +19,6 @@
     Viewport,
     ViewportBounds,
   } from "../contract";
-  import PrecisionLegend from "./PrecisionLegend.svelte";
-  const SHOW_PRECISION_LEGEND = false;
   import { MvtMotionController } from "./mvtMotionController";
   import { JsonClusterMotionController } from "./jsonClusterMotionController";
   import {
@@ -50,9 +48,10 @@
     setRealPreviewMapData,
     setRealPreviewCategoryFilter,
     setRealPreviewPinMode,
+    hasRealPreviewMapLayers,
   } from "./realPreviewMapLayers";
   import { clearRealPreviewMapCache, createRealPreviewMapFeedRepository, RealPreviewMapFeedError, realPreviewMapCacheEntryCount } from "../../api/RealPreviewMapFeedRepository";
-  import { clearTestReleaseMapCache, createTestReleaseMapFeedRepository, testReleaseMapCacheEntryCount } from "../../api/TestReleaseMapFeedRepository";
+  import { clearTestReleaseMapCache, createTestReleaseMapFeedRepository, filterTestReleaseMapCollection, testReleaseMapCacheEntryCount } from "../../api/TestReleaseMapFeedRepository";
   import { canReusePublicMapFeed, clearPublicMapCache, createPublicMapFeedRepository, publicMapCacheEntryCount } from "../../api/PublicMapFeedRepository";
 
   let {
@@ -115,6 +114,7 @@
   let host: HTMLDivElement;
   let map: MapLibreMap | undefined;
   let nativeStyleReady = $state(false);
+  let nativeStyleGeneration = 0;
   let appliedBasemap = $state<Basemap | undefined>();
   let basemapSwitching = $state(false);
   let pendingBasemap = $state<Basemap | undefined>();
@@ -141,6 +141,7 @@
   // Viewport updates replace `state`; only a changed source filter may rebuild
   // the native Supercluster index from the already-loaded map projection.
   let appliedNativeSourceId: string | null | undefined;
+  let appliedNativeFilterSignature: string | undefined;
   let appliedMvtTileSignature: string | undefined;
   let feedStatus = $state<"loading" | "ready" | "error">("loading");
   // These are milestones, not a guessed byte or worker percentage.
@@ -199,7 +200,7 @@
   let clusterMaxZoom = $state(DEFAULT_CLUSTER_MAX_ZOOM);
   let clusterEnabled = $state(true);
   let referenceRadiusKm = $state<number>(DEFAULT_REFERENCE_RADIUS_KM);
-  let referenceOpacity = $state(0.08);
+  let referenceOpacity = $state(0.14);
   let visibleApproximateCount = $state(0);
   let coordinateRadius = $state(6.5);
   let showReferenceLabels = $state(false);
@@ -435,16 +436,8 @@
       map.addImage("cluster-high", clusterImage("#fd9c7399", "#f18017b8"));
     if (!map.hasImage("cluster-very-high"))
       map.addImage("cluster-very-high", clusterImage("#ed8b7599", "#de6d3fb8"));
-    if (!map.hasImage("cluster-mixed-low"))
-      map.addImage("cluster-mixed-low", clusterImage("#79b9da99", "#6ecc39b8"));
-    if (!map.hasImage("cluster-mixed-mid"))
-      map.addImage("cluster-mixed-mid", clusterImage("#79b9da99", "#f0c20cb8"));
-    if (!map.hasImage("cluster-mixed-high"))
-      map.addImage("cluster-mixed-high", clusterImage("#79b9da99", "#f18017b8"));
-    if (!map.hasImage("cluster-mixed-very-high"))
-      map.addImage("cluster-mixed-very-high", clusterImage("#79b9da99", "#de6d3fb8"));
-    if (!map.hasImage("cluster-approx"))
-      map.addImage("cluster-approx", clusterImage("#79b9da99", "#79b9dad9"));
+    if (!map.hasImage("reference-marker"))
+      map.addImage("reference-marker", clusterImage("#e06b5bcc", "#c84a4acc"));
   }
   function scheduleClusterSettings() {
     if (clusterUpdateTimer) clearTimeout(clusterUpdateTimer);
@@ -528,15 +521,27 @@
       pinModeError = "The V1 pin images could not be loaded.";
     }
   }
+  function restoreNativeProjection(instance: MapLibreMap, data: JsonMapCollection): void {
+    if (hasRealPreviewMapLayers(instance)) {
+      setRealPreviewMapData(instance, data);
+    } else {
+      // A style reload may retain a source while losing one of its overlays.
+      // Rebuild only this incomplete projection, never for paint-only updates.
+      removeLocationLayers(instance);
+      addRealPreviewMapLayers(instance, data, { enabled: clusterEnabled, radius: clusterRadius, maxZoom: clusterMaxZoom });
+    }
+    updateVisualSettings();
+    if (useV1Pins) void updatePinMode();
+  }
   async function addLayers() {
-    if (!map || map.getSource("locations")) return;
+    if (!map) return;
     loadClusterImages();
     if (mode === "public-release" && !publicReleaseId) return;
     if (mode !== "synthetic") {
       if (mode === "public-release" && nativeFullCollection
         && requestedPublicReleaseId === publicReleaseId
         && requestedPublicReleaseIdentity === publicReleaseIdentity) {
-        addRealPreviewMapLayers(map, filteredNativeCollection(nativeFullCollection, mapState.sourceId), { enabled: clusterEnabled, radius: clusterRadius, maxZoom: clusterMaxZoom });
+        restoreNativeProjection(map, filteredNativeCollection(nativeFullCollection));
         setRealPreviewCategoryFilter(map, publicCategoryFilterKeys());
         roundedClusterTilesAvailable = setClusterTileRounding(map, clusterMaxZoom);
         updateVisualSettings();
@@ -573,6 +578,7 @@
     const controller = new AbortController();
     feedAbort = controller;
     const generation = ++feedGeneration;
+    const styleGeneration = nativeStyleGeneration;
     feedStatus = "loading";
     startupStage = "fetching";
     nativeFeedRequests++;
@@ -587,7 +593,7 @@
         : mode === "candidate-preview"
           ? await candidateMapFeedRepository.load(controller.signal)
           : await mapFeedRepository.load(sourceId, controller.signal);
-      if (controller.signal.aborted || map !== instance || generation !== feedGeneration) return;
+      if (controller.signal.aborted || map !== instance || generation !== feedGeneration || styleGeneration !== nativeStyleGeneration) return;
       onMapFeedMeta?.("meta" in result ? result.meta : null);
       onCandidatePreviewLabel?.("previewLabel" in result ? result.previewLabel ?? null : null);
       nativeSnapshotId = "snapshotId" in result ? result.snapshotId : result.meta.manifestSha256;
@@ -604,9 +610,8 @@
       nativeFullCollection = result.collection;
       nativeIndexStartedAt = performance.now();
       startupStage = "indexing";
-      const visible = filteredNativeCollection(result.collection, mapState.sourceId);
-      if (instance.getSource("locations")) setRealPreviewMapData(instance, visible);
-      else addRealPreviewMapLayers(instance, visible, { enabled: clusterEnabled, radius: clusterRadius, maxZoom: clusterMaxZoom });
+      const visible = filteredNativeCollection(result.collection);
+      restoreNativeProjection(instance, visible);
       appliedNativeSourceId = mapState.sourceId;
       roundedClusterTilesAvailable = setClusterTileRounding(instance, clusterMaxZoom);
       if (useRoundedClusterTiles(clusterMaxZoom) && !roundedClusterTilesAvailable)
@@ -636,18 +641,22 @@
     };
     return [...new Set(mapState.filters.categories.map(value => keys[value]).filter((value): value is string => !!value))];
   }
-  function filteredNativeCollection(collection: JsonMapCollection, sourceId: string | null): JsonMapCollection {
-    return sourceId
-      ? { ...collection, features: collection.features.filter((feature) => feature.properties.source_id === sourceId) }
+  function filteredNativeCollection(collection: JsonMapCollection): JsonMapCollection {
+    const sourceIds = [...new Set([...(mapState.sourceId ? [mapState.sourceId] : []), ...mapState.filters.sources])];
+    if (mode !== 'candidate-preview') return sourceIds.length
+      ? { ...collection, features: collection.features.filter(feature => feature.properties.source_id === sourceIds[0]) }
       : collection;
+    return filterTestReleaseMapCollection(collection, { sourceIds, countryCodes: mapState.filters.countries, categoryKeys: mapState.filters.categories, activityKeys: mapState.filters.activities });
   }
   function applyLocalSourceFilter(sourceId: string | null) {
     if (!map || !nativeFullCollection || !map.getSource("locations")) return;
-    if (appliedNativeSourceId === sourceId) return;
+    const signature = JSON.stringify([sourceId, mapState.filters.countries, mapState.filters.sources, mapState.filters.categories, mapState.filters.activities]);
+    if (appliedNativeFilterSignature === signature) return;
     nativeIndexStartedAt = performance.now();
     startupStage = "indexing";
-    setRealPreviewMapData(map, filteredNativeCollection(nativeFullCollection, sourceId));
+    setRealPreviewMapData(map, filteredNativeCollection(nativeFullCollection));
     appliedNativeSourceId = sourceId;
+    appliedNativeFilterSignature = signature;
   }
   function ensureNativeFeedWhenStyleReady(): () => void {
     const instance = map;
@@ -1036,7 +1045,7 @@
         });
     });
     for (const layer of isNativeMap()
-      ? ["source-coordinate-points"]
+      ? ["source-coordinate-points", "v1-source-pins"]
       : ["exact-pins", "approximate-points", "source-coordinate-points"])
       map.on("click", layer, (event: any) => {
         if (activeFlight) return;
@@ -1084,7 +1093,7 @@
     if (isNativeMap())
       map.on("click", "approx-reference-points", (event: any) => handleReferenceClick(event, "approx-reference-points"));
     for (const layer of isNativeMap()
-      ? ["clusters", "source-coordinate-points", "aggregate-outer", "approx-reference-points"]
+      ? ["clusters", "source-coordinate-points", "v1-source-pins", "aggregate-outer", "approx-reference-points"]
       : ["clusters", "exact-pins", "approximate-points", "source-coordinate-points", "aggregate-outer"]) {
       map.on("mouseenter", layer, () => {
         if (map) map.getCanvas().style.cursor = "pointer";
@@ -1146,6 +1155,7 @@
         "Record map. Select a cluster, source coordinate, or approximate area reference.",
       );
     instance.on("style.load", () => {
+      nativeStyleGeneration++;
       nativeStyleReady = true;
       if (usingMvt) {
         loadClusterImages();
@@ -1256,6 +1266,7 @@
   });
   $effect(() => {
     const source = mapState.sourceId;
+    mapState.filters;
     const releaseId = publicReleaseId;
     const releaseIdentity = publicReleaseIdentity;
     if (usingMvt && map?.isStyleLoaded()) {
@@ -1589,7 +1600,6 @@
             onclick={() => feature.kind === "reference" ? onreference?.(feature.key) : onselect(feature.key)}>{feature.label}</button
           >{/each}
       </nav>{/if}{/if}
-  {#if SHOW_PRECISION_LEGEND}<PrecisionLegend {mode} />{/if}
 </section>
 
 <style>

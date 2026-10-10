@@ -15,6 +15,9 @@ export function decodeLabHash(hash: string): LabState {
   const filters: LabFilters = {
     categories: unique(q.getAll('category').filter(value => ['Poultry', 'Pig', 'Dairy', 'Processing', 'Laboratory', 'Aquaculture'].includes(value))),
     precisions: unique(q.getAll('precision').filter((value): value is (typeof precisionOptions)[number] => precisionOptions.some(option => option === value))),
+    countries: unique(q.getAll('country').filter(value => /^[A-Za-z]{2}$/.test(value)).map(value => value.toUpperCase())),
+    sources: unique(q.getAll('source_filter').filter(value => value.length <= 160)),
+    activities: unique(q.getAll('activity').filter(value => value.length <= 240)),
   };
   const source = q.get('source');
   const sourceId = source && /^[A-Za-z0-9.-]{1,80}$/.test(source) ? source : null;
@@ -36,6 +39,9 @@ export function encodeLabHash(state: LabState, privatePreview = true): string {
   if (state.viewport.zoom !== 2) q.set('z', String(state.viewport.zoom));
   for (const category of state.filters.categories) q.append('category', category);
   for (const precision of state.filters.precisions) q.append('precision', precision);
+  for (const country of state.filters.countries) q.append('country', country);
+  for (const source of state.filters.sources) q.append('source_filter', source);
+  for (const activity of state.filters.activities) q.append('activity', activity);
   return `#/map?${q.toString()}`;
 }
 export function reduceLabState(state: LabState, action: LabAction): LabState {
@@ -50,7 +56,7 @@ export function reduceLabState(state: LabState, action: LabAction): LabState {
     case 'basemap': return { ...state, basemap: action.value };
     case 'list': return { ...state, listOpen: action.value };
     case 'viewport': return { ...state, viewport: action.value };
-    case 'filters': return { ...state, filters: { categories: unique(action.value.categories), precisions: unique(action.value.precisions) } };
+    case 'filters': return { ...state, filters: { categories: unique(action.value.categories), precisions: unique(action.value.precisions), countries: unique(action.value.countries), sources: unique(action.value.sources), activities: unique(action.value.activities) } };
     case 'reset-filters': return { ...state, query: '', filters: DEFAULT_LAB_STATE.filters, selectedId: null };
   }
 }

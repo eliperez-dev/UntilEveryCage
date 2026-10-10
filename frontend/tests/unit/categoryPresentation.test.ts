@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CATEGORY_PRESENTATIONS, CATEGORY_VISUAL_CHANNELS, categoryPresentation } from '../../src/features/locations/categoryPresentation';
+import { CATEGORY_PRESENTATIONS, CATEGORY_PRIMARY_BY_SOURCE_KEY, CATEGORY_VISUAL_CHANNELS, categoryPresentation } from '../../src/features/locations/categoryPresentation';
 
 describe('category presentation seam', () => {
   it('exposes the audited compact vocabulary and neutral fallback', () => {
@@ -8,6 +8,8 @@ describe('category presentation seam', () => {
     ]);
     expect(categoryPresentation('not-yet-mapped')).toBe(CATEGORY_PRESENTATIONS.unclassified);
     expect(categoryPresentation('animal_production')).toBe(CATEGORY_PRESENTATIONS.animal_keeping_and_production);
+    expect(categoryPresentation('fish_processing')).toBe(CATEGORY_PRESENTATIONS.processing_and_preparation);
+    expect(CATEGORY_PRIMARY_BY_SOURCE_KEY.fish_processing).toBe('processing_and_preparation');
   });
 
   it('keeps category separate from density, precision, selection, and confidence', () => {

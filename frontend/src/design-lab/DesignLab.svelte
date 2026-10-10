@@ -6,7 +6,7 @@
   import { createRealPreviewRepository, mapRealPreviewCandidate, RealPreviewError, type RealPreviewCounts, type RealPreviewFacet } from '../api/RealPreviewRepository';
   import { LocalLocationRepository } from '../api/LocalLocationRepository';
   import { PublicReleaseRepository, type PublicReleaseIdentity } from '../api/PublicReleaseRepository';
-  import { TestReleaseRepository } from '../api/TestReleaseRepository';
+  import { TestReleaseRepository, type CandidateFacets } from '../api/TestReleaseRepository';
   import { TestReleaseDetailRepository } from '../api/TestReleaseDetailRepository';
   import type { Location } from '../domain/location';
   import { CATEGORY_PRESENTATIONS } from '../features/locations/categoryPresentation';
@@ -67,6 +67,7 @@
   $: if (state.listOpen && coverageOpen) coverageOpen = false;
   let facets: readonly RealPreviewFacet[] = [];
   let facetsStatus: 'loading' | 'ready' | 'error' | 'unauthorized' = 'loading';
+  let candidateFacets: CandidateFacets | null = null;
   let detailRecord: LabRecord | null = null;
   let detailStatus: 'loading' | 'ready' | 'error' | 'unauthorized' = 'ready';
   let detailError = '';
@@ -131,7 +132,13 @@
         return;
       }
       if (mode === 'candidate-preview') {
-        const page = await testReleaseRepository.list({ cursor: reset ? null : nextCursor, limit: 100, signal: controller.signal });
+        const page = await testReleaseRepository.list({
+          sourceIds: [...new Set([...(state.sourceId ? [state.sourceId] : []), ...state.filters.sources])],
+          countryCodes: state.filters.countries,
+          categories: state.filters.categories,
+          activities: state.filters.activities,
+          cursor: reset ? null : nextCursor, limit: 100, signal: controller.signal,
+        });
         if (controller.signal.aborted) return;
         const mapped = page.locations.map(mapPublicLocation);
         apiRecords = reset ? mapped : [...new Map([...apiRecords, ...mapped].map(record => [record.id, record])).values()];
@@ -186,7 +193,7 @@
   let observedListKey: string | undefined;
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
   $: {
-    const listKey = `${state.query}\u0000${sourceId ?? ''}\u0000${state.filters.categories.join(',')}\u0000${state.filters.precisions.join(',')}\u0000${mode === 'public-release' ? publicReleaseIdentity ?? '' : ''}`;
+    const listKey = `${state.query}\u0000${sourceId ?? ''}\u0000${state.filters.categories.join(',')}\u0000${state.filters.precisions.join(',')}\u0000${state.filters.countries.join(',')}\u0000${state.filters.sources.join(',')}\u0000${state.filters.activities.join(',')}\u0000${mode === 'public-release' ? publicReleaseIdentity ?? '' : ''}`;
     if (shouldScheduleListLoad(mode, publicReleaseId, observedListKey, listKey)) {
       observedListKey = listKey;
       if (searchTimer) clearTimeout(searchTimer);
@@ -265,6 +272,9 @@
       document.addEventListener('visibilitychange', () => { if (!document.hidden) void checkRelease(); }, { signal: summaryAbort.signal });
       // The abort signal removes the listener; the local timer is cleared below.
       (summaryAbort as AbortController & { releaseTimer?: ReturnType<typeof setInterval> }).releaseTimer = timer;
+    } else if (mode === 'candidate-preview') {
+      summaryAbort = new AbortController();
+      void testReleaseRepository.facets(summaryAbort.signal).then(value => { if (!summaryAbort?.signal.aborted) { candidateFacets = value; facetsStatus = 'ready'; } }).catch(error => { if (!summaryAbort?.signal.aborted) facetsStatus = errorState(error); });
     } else if (mode === 'real-preview') {
       summaryAbort = new AbortController();
       void repository.counts(summaryAbort.signal).then(value => { if (!summaryAbort?.signal.aborted) counts = value; }).catch(() => { /* The primary list surface reports request failures. */ });
@@ -287,7 +297,7 @@
     <Field {state} {coverageOpen} records={mode !== 'synthetic' ? apiRecords : model.listRecords} mapRecords={mode !== 'synthetic' ? [] : model.mapRecords} {mode} {publicReleaseId} {publicReleaseIdentity} {publicReleaseManifestIdentity} {publicMapMeta} onMapFeedMeta={(meta) => { publicMapMeta = meta; }}
       dataStatus={dataStatus} {dataError}
       {detailRecord} {detailStatus} {detailError} {nextCursor} {pageLoading}
-      {facets} {facetsStatus} {mapDiagnostics} {aggregateMemberRecords} {aggregateNextCursor} {aggregateLoading} {aggregateError} onMapTiming={timing=>{sourceMaterializeMs=timing.sourceMaterializeMs;clusterReadyMs=timing.clusterReadyMs;if(timing.zoomSettleMs!==undefined)zoomSettleMs=timing.zoomSettleMs;}} onLoadMore={() => void loadPage(state.query, false)} onMapReference={(key, refSourceId) => void loadReference(key, true, refSourceId)} onLoadMoreAggregate={() => { if (aggregateReferenceKey) void loadReference(aggregateReferenceKey, false); }} {dispatch}/>
+      {facets} {facetsStatus} {candidateFacets} {mapDiagnostics} {aggregateMemberRecords} {aggregateNextCursor} {aggregateLoading} {aggregateError} onMapTiming={timing=>{sourceMaterializeMs=timing.sourceMaterializeMs;clusterReadyMs=timing.clusterReadyMs;if(timing.zoomSettleMs!==undefined)zoomSettleMs=timing.zoomSettleMs;}} onLoadMore={() => void loadPage(state.query, false)} onMapReference={(key, refSourceId) => void loadReference(key, true, refSourceId)} onLoadMoreAggregate={() => { if (aggregateReferenceKey) void loadReference(aggregateReferenceKey, false); }} {dispatch}/>
     {#if mode === 'real-preview' && counts}
       <aside class:expanded={coverageOpen} class="private-counts" aria-label="Map information">
         <button type="button" aria-expanded={coverageOpen} aria-controls="coverage-details" disabled={state.listOpen} title={state.listOpen ? 'Close Search to inspect map information' : undefined} onclick={() => coverageOpen = !coverageOpen}>

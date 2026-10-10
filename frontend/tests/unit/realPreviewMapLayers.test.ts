@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addRealPreviewMapLayers, nativeClusterMaxZoom, setClusterTileRounding, useRoundedClusterTiles } from '../../src/design-lab/components/realPreviewMapLayers';
+import { addRealPreviewMapLayers, hasRealPreviewMapLayers, nativeClusterMaxZoom, setClusterTileRounding, useRoundedClusterTiles } from '../../src/design-lab/components/realPreviewMapLayers';
 
 describe('real-preview native clustering layers', () => {
   it('puts facility coordinates and weighted references in one source and filters clusters first', () => {
@@ -21,12 +21,12 @@ describe('real-preview native clustering layers', () => {
     expect(sources.locations).toMatchObject({ cluster: true, clusterRadius: 30, clusterMaxZoom: 7, roundZoom: true, clusterProperties: { representedCount: ['+', ['get', 'weight']], approximateCount: ['+', ['case', ['any', ['==', ['get', 'precision'], 'approximate'], ['==', ['get', 'precision'], 'city']], ['get', 'weight'], 0]] } });
     expect(layers.find(layer => layer.id === 'clusters')?.filter).toEqual(['has', 'cluster']);
     expect(layers.find(layer => layer.id === 'clusters')?.layout['icon-image'])
-      .toEqual(['case', ['==', ['get', 'approximateCount'], ['get', 'representedCount']], 'cluster-approx', ['>', ['get', 'approximateCount'], 0], ['step', ['get', 'representedCount'], 'cluster-mixed-low', 10, 'cluster-mixed-mid', 100, 'cluster-mixed-high', 1001, 'cluster-mixed-very-high'], ['step', ['get', 'representedCount'], 'cluster-low', 10, 'cluster-mid', 100, 'cluster-high', 1001, 'cluster-very-high']]);
+      .toEqual(['step', ['get', 'representedCount'], 'cluster-low', 10, 'cluster-mid', 100, 'cluster-high', 1001, 'cluster-very-high']);
     expect(layers.find(layer => layer.id === 'approx-reference-points')?.maxzoom).toBeUndefined();
     expect(layers.find(layer => layer.id === 'approx-reference-points')).toMatchObject({
       type: 'symbol',
       layout: {
-        'icon-image': 'cluster-approx', 'icon-size': 0.8,
+        'icon-image': 'reference-marker', 'icon-size': 0.8,
         'text-field': ['to-string', ['get', 'weight']],
       },
       paint: { 'text-color': '#172019' },
@@ -35,16 +35,22 @@ describe('real-preview native clustering layers', () => {
       'all', ['!', ['has', 'cluster']], ['in', ['get', 'kind'], ['literal', ['reference', 'provider_locality_approximate']]],
       ['!', ['any', ['==', ['get', 'precision'], 'city'], ['==', ['get', 'precision'], 'city_reference_approximate'], ['==', ['get', 'precision'], 'provider_locality_approximate']]],
     ]);
-    expect(layers.find(layer => layer.id === 'aggregate-outer')?.paint['circle-color']).toEqual([
-      'case', ['any', ['==', ['get', 'precision'], 'city'], ['==', ['get', 'precision'], 'city_reference_approximate'], ['==', ['get', 'precision'], 'provider_locality_approximate']],
-      '#79b9da', '#15252c',
-    ]);
+    expect(layers.find(layer => layer.id === 'aggregate-outer')?.paint['circle-color']).toBe('#c84a4a');
     expect(layers.find(layer => layer.id === 'aggregate-outer')?.filter).toEqual(['all', ['!', ['has', 'cluster']], ['in', ['get', 'kind'], ['literal', ['reference', 'provider_locality_approximate']]]]);
     expect(layers.find(layer => layer.id === 'source-coordinate-points')?.filter).toEqual(['all', ['!', ['has', 'cluster']], ['in', ['get', 'kind'], ['literal', ['source-coordinate', 'provider_address_point_private']]]]);
     expect(layers.find(layer => layer.id === 'source-coordinate-points')?.filter).toContainEqual(['in', ['get', 'kind'], ['literal', ['source-coordinate', 'provider_address_point_private']]]);
-    expect(layers.find(layer => layer.id === 'source-coordinate-points')?.paint?.['circle-color']).toEqual(
-      ['match', ['get', 'category_key'], 'animal_keeping_and_production', '#009E73', 'slaughter', '#D55E00', 'processing_and_preparation', '#0072B2', 'research_and_animal_use', '#CC79A7', 'other_regulated_premises', '#E69F00', '#B8B8B8'],
-    );
+    expect(layers.find(layer => layer.id === 'source-coordinate-points')?.paint?.['circle-color'])
+      .toContain('fish_processing');
+    expect(layers.find(layer => layer.id === 'v1-source-pins')?.layout['icon-image'])
+      .toContain('fish_processing');
+    expect(hasRealPreviewMapLayers({
+      getSource: (id: string) => sources[id],
+      getLayer: (id: string) => layers.find(layer => layer.id === id),
+    } as any)).toBe(true);
+  });
+
+  it('detects an incomplete native projection so callers can restore every overlay', () => {
+    expect(hasRealPreviewMapLayers({ getSource: () => ({}), getLayer: (id: string) => id === 'clusters' ? {} : undefined } as any)).toBe(false);
   });
 
   it('uses the tile zoom transition matching whole and half camera zoom cutoffs', () => {

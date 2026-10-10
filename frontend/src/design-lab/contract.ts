@@ -4,7 +4,7 @@ export type Direction = (typeof DIRECTIONS)[number];
 export type Scenario = (typeof SCENARIOS)[number];
 export type Precision = 'exact' | 'source_reported' | 'approximate' | 'city' | 'coarse' | 'unmapped';
 export type Basemap = 'vector' | 'muted' | 'satellite';
-export type LabFilters = Readonly<{ categories: readonly string[]; precisions: readonly Precision[] }>;
+export type LabFilters = Readonly<{ categories: readonly string[]; precisions: readonly Precision[]; countries: readonly string[]; sources: readonly string[]; activities: readonly string[] }>;
 
 export type LabRecord = Readonly<{
   id: string; name: string; category: string; country: string; locality: string;
@@ -55,6 +55,7 @@ export interface DirectionViewProps {
   publicMapMeta?: import('../api/PublicMapFeedRepository').PublicMapFeed['meta'] | null;
   onMapFeedMeta?: ((meta: import('../api/PublicMapFeedRepository').PublicMapFeed['meta'] | null) => void) | undefined;
   onCandidatePreviewLabel?: ((label: string | null) => void) | undefined;
+  candidateFacets?: import('../api/TestReleaseRepository').CandidateFacets | null;
   dataStatus?: 'loading' | 'ready' | 'empty' | 'error' | 'unauthorized';
   dataError?: string;
   mapStatus?: 'idle' | 'loading' | 'ready' | 'empty' | 'error' | 'unauthorized';
@@ -83,5 +84,5 @@ export const DEFAULT_LAB_STATE: LabState = Object.freeze({
   direction: 'field', scenario: 'default', query: '', selectedId: null, sourceId: null,
   expandedCluster: null, aggregateMemberIds: null, basemap: 'vector', listOpen: false,
   viewport: Object.freeze({ centerLat: 45, centerLon: 5, zoom: 2 }),
-  filters: Object.freeze({ categories: Object.freeze([]), precisions: Object.freeze([]) }),
+  filters: Object.freeze({ categories: Object.freeze([]), precisions: Object.freeze([]), countries: Object.freeze([]), sources: Object.freeze([]), activities: Object.freeze([]) }),
 });

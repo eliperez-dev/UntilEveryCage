@@ -3,7 +3,7 @@
   import type { LabRecord } from '../design-lab/contract';
   import { categoryPresentation } from '../features/locations/categoryPresentation';
   import type { TaxonomyClassification } from '../domain/taxonomy';
-  import type { LocationSourceFacts } from '../domain/location';
+  import type { LocationSourceFacts, SourceVolumeCategory } from '../domain/location';
 
   /** Safe fields returned by the local private-preview detail projection. */
   export type RecordDetailRecord = Partial<Omit<LabRecord, 'name' | 'category'>> & {
@@ -220,7 +220,9 @@
   );
   const sourceFacts = $derived('sourceFacts' in record ? record.sourceFacts : undefined);
   const sourceFactEntries = $derived((facts: LocationSourceFacts | undefined, field: 'speciesSlaughtered' | 'processingActivities') =>
-    facts?.[field] ? Object.entries(facts[field]!).filter(([, included]) => included !== false) : []);
+    facts?.[field]
+      ? Object.entries(facts[field]!).filter(([, included]) => included !== false).sort(([left], [right]) => left.localeCompare(right))
+      : []);
 
   function humanizeValue(raw: string | null): string | null {
     if (!raw) return null;
@@ -228,6 +230,20 @@
     // These are display labels only; keep the repository's canonical enum untouched.
     const words = raw.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
     return words ? words[0]!.toLocaleUpperCase() + words.slice(1) : null;
+  }
+  function sourceFactLabel(raw: string): string {
+    return humanizeValue(raw) ?? raw;
+  }
+  function sourceFactValue(value: string | boolean): string | null {
+    if (value === true) return 'Yes';
+    if (value === false) return null;
+    return humanizeValue(value) ?? value;
+  }
+  function volumeProvenance(value: SourceVolumeCategory['provenance']): string | null {
+    if (!value) return null;
+    if (typeof value === 'string') return humanizeValue(value) ?? value;
+    const pieces = [value.sourceField, value.method].filter((piece): piece is string => typeof piece === 'string' && piece.trim().length > 0);
+    return pieces.length ? pieces.map(piece => humanizeValue(piece) ?? piece).join(' · ') : null;
   }
 
   function safeHttps(raw: string | null): string | null {
@@ -432,9 +448,9 @@
         {#if sourceFacts.grantDate}<div><dt>Grant date</dt><dd>{sourceFacts.grantDate}</dd></div>{/if}
         {#if sourceFacts.nativeActivityCode}<div><dt>Native activity code</dt><dd>{sourceFacts.nativeActivityCode}</dd></div>{/if}
         {#if sourceFacts.nativeActivityLabel}<div><dt>Native activity</dt><dd>{sourceFacts.nativeActivityLabel}</dd></div>{/if}
-        {#if sourceFactEntries(sourceFacts, 'speciesSlaughtered').length}<div><dt>Species slaughtered</dt><dd>{sourceFactEntries(sourceFacts, 'speciesSlaughtered').map(([name, value]) => value === true ? name : `${name}: ${value}`).join(' · ')}</dd></div>{/if}
-        {#if sourceFactEntries(sourceFacts, 'processingActivities').length}<div><dt>Processing activities</dt><dd>{sourceFactEntries(sourceFacts, 'processingActivities').map(([name, value]) => value === true ? name : `${name}: ${value}`).join(' · ')}</dd></div>{/if}
-        {#if sourceFacts.sourceVolumeCategories?.length}<div><dt>Source volume categories</dt><dd>{sourceFacts.sourceVolumeCategories.map(category => category.code).join(' · ')}</dd></div>{/if}
+        {#if sourceFactEntries(sourceFacts, 'speciesSlaughtered').length}<div><dt>Species slaughtered</dt><dd><ul>{#each sourceFactEntries(sourceFacts, 'speciesSlaughtered') as [name, value] (name)}<li>{sourceFactLabel(name)}{#if sourceFactValue(value)}: {sourceFactValue(value)}{/if}</li>{/each}</ul></dd></div>{/if}
+        {#if sourceFactEntries(sourceFacts, 'processingActivities').length}<div><dt>Processing activities</dt><dd><ul>{#each sourceFactEntries(sourceFacts, 'processingActivities') as [name, value] (name)}<li>{sourceFactLabel(name)}{#if sourceFactValue(value)}: {sourceFactValue(value)}{/if}</li>{/each}</ul></dd></div>{/if}
+        {#if sourceFacts.sourceVolumeCategories?.length}<div><dt>Source volume categories</dt><dd><ul>{#each sourceFacts.sourceVolumeCategories as category (category.code)}<li>{sourceFactLabel(category.code)}{#if volumeProvenance(category.provenance)} · {volumeProvenance(category.provenance)}{/if}</li>{/each}</ul></dd></div>{/if}
       </dl>
     </section>
   {/if}

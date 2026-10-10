@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { parseRealPreviewMapFeed, RealPreviewMapFeedError } from '../../src/api/RealPreviewMapFeedRepository';
-import { createTestReleaseMapFeedRepository } from '../../src/api/TestReleaseMapFeedRepository';
+import { createTestReleaseMapFeedRepository, filterTestReleaseMapCollection } from '../../src/api/TestReleaseMapFeedRepository';
 
 const envelope = {
   api_version: 'dev-test-v1',
-  data: { points: [{ key: '550e8400-e29b-41d4-a716-446655440000', source_id: 'us.fsis', kind: 'source_coordinate', precision: 'source_provided_unverified', latitude: 38.9, longitude: -77.1, weight: 1, category_key: 'slaughter', category_keys: ['slaughter'] }] },
+  data: { points: [{ key: '550e8400-e29b-41d4-a716-446655440000', source_id: 'us.fsis', country_code: 'US', activity_keys: ['us.fsis:slaughter'], kind: 'source_coordinate', precision: 'source_provided_unverified', latitude: 38.9, longitude: -77.1, weight: 1, category_key: 'slaughter', category_keys: ['slaughter'] }] },
   meta: { private_preview: true, candidate_only: true, test_only: false, release_id: 'candidate-2026', snapshot_id: 'b'.repeat(64), bounded: true, scope: 'candidate_map', zoom_max: 14, preview_label: 'Configured candidate correction' },
 };
 
@@ -12,11 +12,22 @@ describe('configured candidate map feed', () => {
   it('accepts only its points envelope and preserves source-native precision', () => {
     const result = parseRealPreviewMapFeed(envelope, true);
     expect(result.collection.features[0]?.properties).toMatchObject({ key: envelope.data.points[0].key, precision: 'source_provided_unverified', kind: 'source-coordinate' });
+    expect(result.collection.features[0]?.properties).toMatchObject({ country_code: 'US', activity_keys: ['us.fsis:slaughter'] });
     expect(JSON.stringify(result.collection)).not.toMatch(/name|address|detail/i);
   });
 
   it('accepts the configured candidate’s opaque 32-hex snapshot identity', () => {
     expect(() => parseRealPreviewMapFeed({ ...envelope, meta: { ...envelope.meta, snapshot_id: 'a'.repeat(32) } }, true)).not.toThrow();
+  });
+
+  it('applies all selected full-projection dimensions before clustering', () => {
+    const collection = parseRealPreviewMapFeed({ ...envelope, data: { points: [
+      envelope.data.points[0],
+      { ...envelope.data.points[0], key: '660e8400-e29b-41d4-a716-446655440000', source_id: 'au.example', country_code: 'AU', category_key: 'animal_keeping_and_production', category_keys: ['animal_keeping_and_production'], activity_keys: ['au.example:keeping'] },
+    ] } }, true).collection;
+    const filtered = filterTestReleaseMapCollection(collection, { countryCodes: ['AU'], categoryKeys: ['animal_keeping_and_production'], activityKeys: ['au.example:keeping'] });
+    expect(filtered.features).toHaveLength(1);
+    expect(filtered.features[0]?.properties.country_code).toBe('AU');
   });
 
   it('rejects fixtures and non-candidate boundaries', () => {
