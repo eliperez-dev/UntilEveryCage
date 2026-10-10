@@ -294,3 +294,75 @@ test('plain map entry uses the configured candidate projection and preserves its
   await expect(page.getByText(/^FY\d{4} reported animals$/)).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole('link', { name: 'Source report' })).toBeVisible();
 });
+
+test('plain candidate map loads, filters, paginates, and opens a record without a source prefilter', async ({ page }) => {
+  test.setTimeout(120_000);
+  const listPages: Array<{ url: URL; status: number; resultCount: number; totalCount: number; nextCursor: string | null }> = [];
+  const failedListResponses: Array<{ status: number; params: Record<string, string>; errorCode: string | null }> = [];
+  page.on('response', async response => {
+    const url = new URL(response.url());
+    if (url.pathname !== '/api/dev/preview/test-release/locations') return;
+    if (response.status() !== 200) {
+      const body = await response.json().catch(() => null);
+      const errorCode = typeof body?.error?.code === 'string' ? body.error.code : typeof body?.code === 'string' ? body.code : null;
+      const allowed = new Set(['profile', 'limit', 'source_id', 'country_code', 'category', 'activity']);
+      failedListResponses.push({ status: response.status(), params: Object.fromEntries([...url.searchParams].filter(([key]) => allowed.has(key))), errorCode });
+      return;
+    }
+    const body = await response.json().catch(() => null);
+    if (body?.meta && Array.isArray(body.data)) listPages.push({
+      url,
+      status: response.status(),
+      resultCount: body.meta.result_count,
+      totalCount: body.meta.total_count,
+      nextCursor: body.meta.next_cursor,
+    });
+  });
+  await page.goto('/v2-preview/#/map');
+  await page.evaluate(async () => Promise.all((await caches.keys()).map(name => caches.delete(name))));
+  await page.reload();
+  await page.waitForFunction(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return document.querySelector('.lab')?.getAttribute('data-data-mode') === 'candidate-preview'
+      && Boolean(map?.isStyleLoaded() && map.isSourceLoaded('locations'));
+  }, undefined, { timeout: 90_000 });
+  await page.getByRole('button', { name: 'Search map' }).click();
+  await page.locator('details.filters > summary').click();
+  const country = page.getByRole('group', { name: 'Country' });
+  await expect(country).toBeVisible({ timeout: 60_000 });
+  try {
+    await expect.poll(() => listPages.some(page => !page.url.searchParams.has('source_id') && !page.url.searchParams.has('country_code'))).toBe(true);
+  } catch {
+    throw new Error(`Candidate list failures: ${JSON.stringify(failedListResponses)}`);
+  }
+  const unfiltered = listPages.find(page => !page.url.searchParams.has('source_id') && !page.url.searchParams.has('country_code'))!;
+  expect(unfiltered.status).toBe(200);
+  expect(unfiltered.resultCount).toBeGreaterThan(0);
+  expect(unfiltered.totalCount).toBeGreaterThanOrEqual(unfiltered.resultCount);
+
+  const filteredResponse = page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.pathname === '/api/dev/preview/test-release/locations'
+      && url.searchParams.has('country_code') && response.status() === 200;
+  });
+  await country.locator('input[type="checkbox"]').first().check();
+  await filteredResponse;
+  await expect.poll(() => listPages.some(page => page.url.searchParams.has('country_code'))).toBe(true);
+  const filtered = listPages.find(page => page.url.searchParams.has('country_code'))!;
+  expect(filtered.resultCount).toBeGreaterThan(0);
+  expect(filtered.totalCount).toBeGreaterThanOrEqual(filtered.resultCount);
+
+  const loadMore = page.getByRole('button', { name: 'Load more records' });
+  await expect(loadMore).toBeVisible({ timeout: 30_000 });
+  const pagedResponse = page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.pathname === '/api/dev/preview/test-release/locations'
+      && url.searchParams.has('country_code') && url.searchParams.has('cursor') && response.status() === 200;
+  });
+  await loadMore.click();
+  await pagedResponse;
+  await expect.poll(() => listPages.some(page => page.url.searchParams.has('country_code') && page.url.searchParams.has('cursor'))).toBe(true);
+
+  await page.getByRole('region', { name: /Records/ }).getByRole('button').first().click();
+  await expect(page.locator('.reading-sheet').getByRole('heading', { name: 'Source facts' })).toBeVisible({ timeout: 30_000 });
+});
