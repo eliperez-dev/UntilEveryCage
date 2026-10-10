@@ -16,7 +16,11 @@
 
   let state: LabState = decodeLabHash(typeof location === 'undefined' ? '' : location.hash);
   const serverMode = typeof document === 'undefined' ? null : document.querySelector<HTMLMetaElement>('meta[name="uec-local-data-mode"]')?.content ?? null;
-  const privatePreview = typeof location !== 'undefined' && new URLSearchParams(location.hash.split('?')[1] ?? '').has('f1a');
+  // A configured candidate server is itself the explicit local preview
+  // boundary. Requiring an extra hash flag here accidentally sent the map to
+  // frozen public layers while App routed database and record views to the
+  // candidate workspace.
+  const privatePreview = (typeof location !== 'undefined' && new URLSearchParams(location.hash.split('?')[1] ?? '').has('f1a')) || serverMode === 'candidate-preview';
   const mode = selectDesignLabDataMode(import.meta.env.DEV, serverMode, privatePreview);
   // Fixture projections run only in the synthetic mode.
   let syntheticRecords: readonly LabRecord[] = [];
