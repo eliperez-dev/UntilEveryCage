@@ -191,7 +191,7 @@ class TaxonomyCrosswalkTests(unittest.TestCase):
         first = IMPORTER.activity_contract({"activity_codes": ["SH"]}, "fr.dgal.section-ii", {})
         second = IMPORTER.activity_contract({"activity_codes": ["CP"]}, "fr.dgal.section-ii", {})
         merged = IMPORTER.merge_activity_contracts([first, second], "fr.dgal.section-ii")
-        self.assertEqual(merged["crosswalk_document"]["crosswalk_version"], "uec-source-crosswalk-v4")
+        self.assertEqual(merged["crosswalk_document"]["crosswalk_version"], "uec-source-crosswalk-v5")
         self.assertEqual({row["leaf_key"] for row in merged["taxonomy_assignment_rows"]}, {"slaughter", "cutting"})
         self.assertEqual({row["mapping_method"] for row in merged["taxonomy_assignment_rows"]}, {"direct"})
         self.assertEqual(merged["taxonomy_mapping_method"], "direct")

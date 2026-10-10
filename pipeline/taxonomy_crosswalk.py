@@ -12,9 +12,9 @@ from pathlib import Path
 from typing import Any, Iterable
 
 TAXONOMY_VERSION = "uec-taxonomy-v1"
-# v2 preserves the same source classification rules while versioning the
-# group-union assignment and mapping-method provenance corrections.
-CROSSWALK_VERSION = "uec-source-crosswalk-v4"
+# v5 records the exact-code AU scope repair and the exhaustive non-slaughter
+# FSIS roster projection without mutating earlier derived assignment sets.
+CROSSWALK_VERSION = "uec-source-crosswalk-v5"
 PRIMARY_PRECEDENCE = (
     "slaughter", "research_and_animal_use", "animal_keeping_and_production",
     "processing_and_preparation", "other_regulated_premises", "unclassified",
