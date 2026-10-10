@@ -19,6 +19,7 @@
   let CommunityContributions = $state<typeof import('./CommunityContributions.svelte').default | null>(null);
   let communityModule: Promise<typeof import('./CommunityContributions.svelte')> | null = null;
   let reviewMode = $state(false);
+  let verifiedReleaseLabel = $state<string | null>(null);
 
   let route = $state<RouteState>({ kind: 'map' });
   let loading = $state(true);
@@ -96,7 +97,7 @@
   <main class="review-loading" aria-live="polite"><p role="status">Preparing the private-preview workspace…</p><small>The map module and its local data boundary are loading.</small></main>
 {:else}
 <div class="shell">
-  <PreviewMasthead current={route.kind === 'about' || route.kind === 'help' || route.kind === 'faq' ? 'about' : route.kind === 'contribute' || route.kind === 'bug-report' || route.kind === 'community' ? 'contribute' : route.kind === 'database' || route.kind === 'record' || route.kind === 'api' || route.kind === 'downloads' ? 'database' : 'map'} mapHref={returnMapHref} {databaseHref} />
+  <PreviewMasthead publicReleaseLabel={verifiedReleaseLabel ? `Release ${verifiedReleaseLabel}` : null} current={route.kind === 'about' || route.kind === 'help' || route.kind === 'faq' ? 'about' : route.kind === 'contribute' || route.kind === 'bug-report' || route.kind === 'community' ? 'contribute' : route.kind === 'database' || route.kind === 'record' || route.kind === 'api' || route.kind === 'downloads' ? 'database' : 'map'} mapHref={returnMapHref} {databaseHref} />
 
   <main id="main-content" class="shell-content" tabindex="-1">
     {#if loading}
@@ -130,9 +131,9 @@
     {:else if route.kind === 'map'}
       <p class="state" role="status">Preparing the map…</p>
     {:else if route.kind === 'database'}
-      <PublicDatabase />
+      <PublicDatabase onrelease={label => verifiedReleaseLabel = label} />
     {:else if route.kind === 'record'}
-      <PublicRecord id={route.facilityId} profile={route.profile ?? 'official'} releaseId={route.releaseId} />
+      <PublicRecord id={route.facilityId} profile={route.profile ?? 'official'} releaseId={route.releaseId} onrelease={label => verifiedReleaseLabel = label} />
     {:else if route.kind === 'community'}
       {#if route.page === 'form'}
         <ContributePage formKind={route.formKind ?? 'facility'} targetRecordId={route.targetRecordId ?? ''} returnMapHref={route.returnMapHref ?? '#/map'} />

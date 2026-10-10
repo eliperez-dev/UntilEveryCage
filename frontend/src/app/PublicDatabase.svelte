@@ -8,6 +8,7 @@
   import { serializeRoute } from './routeState';
   import CopyValue from './CopyValue.svelte';
   import { precisionPresentation } from '../features/locations/precisionPresentation';
+  let { onrelease }: { onrelease?: (label: string | null) => void } = $props();
   const repository = new LocalLocationRepository();
   let query = $state('');
   let categories = $state<readonly TaxonomyPrimaryKey[]>([]);
@@ -33,7 +34,7 @@
       const result = await repository.list('official', { q: query, category_keys: categories, limit: pageSize, ...(cursor ? { cursor } : {}) }, current.signal, releaseId);
       if (current.signal.aborted) return;
       records = [...new Map([...(reset ? [] : records), ...result.locations].map(record => [record.id, record])).values()];
-      cursor = result.nextCursor; releaseId = result.releaseId; coverage = result.coverageNote;
+      cursor = result.nextCursor; releaseId = result.releaseId; onrelease?.(result.releaseId); coverage = result.coverageNote;
       const counted = (result as unknown as { totalCount?: unknown }).totalCount;
       totalCount = typeof counted === 'number' ? counted : records.length;
     } catch (cause) {

@@ -294,7 +294,7 @@
   </div>
 </div>
 <style>
-  .lab, main { height: 100dvh; overflow: hidden; }
+  .lab, .map-preview { height: 100dvh; overflow: hidden; }
   .sr-only { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
   .private-counts {
     position: fixed;
