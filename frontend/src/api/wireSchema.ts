@@ -117,6 +117,7 @@ const listMeta = z.object({
   release_created_at: z.string().datetime({ offset: true }).optional(),
   profile,
   next_cursor: z.string().nullable().optional(),
+  total_count: z.number().int().nonnegative().optional(),
   coverage_note: z.string().min(1),
   coverage_scope: z.string().optional(),
   count_semantics: z.string().optional(),
