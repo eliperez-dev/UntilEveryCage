@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import importlib.util
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -16,6 +17,26 @@ from pipeline.common.acquisition import default_run_id
 from pipeline.common.refresh_runner import RefreshCatalog, RefreshRunner, RefreshRunnerError
 from pipeline.contracts.refresh import RefreshRequest
 from pipeline.common.graph_persistence import import_graph_candidates
+
+
+def _import_candidate(source_dir: Path, database_url: str, *, disposable_db: bool) -> Mapping[str, Any]:
+    """Dispatch the APHIS source-scoped directory without facility promotion."""
+    handoff = source_dir / "candidate-handoff"
+    manifest = handoff / "manifest.json"
+    if manifest.is_file():
+        try:
+            payload = json.loads(manifest.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as error:
+            raise ValueError("candidate handoff manifest is invalid") from error
+        if payload.get("source_id") == "us.aphis" and payload.get("profile") == "registrations":
+            script = Path(__file__).parent / "scripts" / "maintenance" / "import-aphis-research-preview.py"
+            spec = importlib.util.spec_from_file_location("aphis_private_preview_import", script)
+            if spec is None or spec.loader is None:
+                raise ValueError("APHIS preview importer unavailable")
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            return module.import_prepared(database_url, handoff, source_dir / "aphis-preview")
+    return import_graph_candidates(database_url, handoff, disposable_db=disposable_db)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -89,8 +110,8 @@ def main(argv: list[str] | None = None) -> int:
                                  mode=args.mode, artifact_paths=_artifacts(args.artifact), output_root=args.output_root,
                                  retries=args.retries, resume=args.resume, import_candidates=args.import_candidates,
                                  database_url=database_url, options=options)
-        importer = lambda source_dir, url: import_graph_candidates(
-            url, source_dir / "candidate-handoff", disposable_db=args.disposable_db)
+        importer = lambda source_dir, url: _import_candidate(
+            source_dir, url, disposable_db=args.disposable_db)
         runner = RefreshRunner(RefreshCatalog(), candidate_importer=importer if args.import_candidates else None)
         result = runner.run(request)
     except (OSError, ValueError, RefreshRunnerError) as error:

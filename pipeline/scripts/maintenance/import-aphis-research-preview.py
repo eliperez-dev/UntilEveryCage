@@ -1,4 +1,4 @@
-"""Prepare one verified, bounded APHIS Class R private-preview handoff.
+"""Prepare one verified, bounded APHIS active-register private preview.
 
 This helper never touches release tables or calls a geocoder. It verifies the
 source-specific APHIS observation handoff, projects only explicit Class R
@@ -23,7 +23,7 @@ if str(ROOT) not in sys.path:
 from pipeline.contracts.adapter_contract import SourceArtifact
 from pipeline.contracts.source_lifecycle import atomic_json, atomic_jsonl
 from pipeline.geocoding.source_queue import build_geocode_queue
-from pipeline.sources.us.aphis.preview import AphisPreviewError, project_class_r_registrations
+from pipeline.sources.us.aphis.preview import AphisPreviewError, project_registrations
 
 IMPORTER_PATH = ROOT / "pipeline/scripts/maintenance/import-real-preview.py"
 SPEC = importlib.util.spec_from_file_location("aphis_preview_importer", IMPORTER_PATH)
@@ -56,12 +56,12 @@ def prepare(handoff: Path, projection_dir: Path) -> dict[str, Any]:
     """Verify, project, and queue address-only work without provider calls."""
     policy = json.loads(POLICY_PATH.read_text(encoding="utf-8"))["sources"].get("us.aphis")
     if (not isinstance(policy, dict)
-            or policy.get("enabled") is not False
-            or policy.get("activation") != "explicit-source-specific-private-import-only"
+            or policy.get("enabled") is not True
+            or policy.get("activation") != "shared-private-registration-import"
             or policy.get("public_release") is not False):
         raise ValueError("aphis_preview_policy_blocked")
     manifest, records = _load_handoff(handoff)
-    rows = project_class_r_registrations(records)
+    rows = project_registrations(records)
     allowed = policy.get("allowed_preview_fields")
     if not isinstance(allowed, list):
         raise ValueError("aphis_preview_policy_invalid")
@@ -83,7 +83,7 @@ def import_prepared(database_url: str, handoff: Path, projection_dir: Path) -> d
     result = prepare(handoff, projection_dir)
     manifest, _ = _load_handoff(handoff)
     normalized = projection_dir / "normalized" / "records.jsonl"
-    snapshot = hashlib.sha256(("us-aphis-class-r-v1:" + result["normalized_sha256"]).encode()).hexdigest()
+    snapshot = hashlib.sha256(("us-aphis-active-register-v1:" + result["normalized_sha256"]).encode()).hexdigest()
     rows = int(result["normalized_rows"])
     with psycopg.connect(database_url) as db, db.transaction():
         if db.execute("SELECT current_database()").fetchone()[0] != "uec_v0_api_repair":
@@ -99,7 +99,7 @@ def import_prepared(database_url: str, handoff: Path, projection_dir: Path) -> d
         observations, numeric, coarse, candidates, unmapped, _mapped, _groups, _seen, _zero, _unknown, _provided, _keys, placeable, _unplaceable = metrics
         db.execute("""INSERT INTO real_preview.source_preview_runs(run_id,source_id,snapshot_sha256,source_url,retrieved_at,source_artifact_sha256,normalized_sha256,adapter_version,schema_version,input_count,accepted_count,quarantined_count,out_of_scope_count,imported_observation_count,facility_count,numeric_coordinate_count,coarse_placeable_count,unmapped_count,api_listable_count,map_visible_count,idempotent_replay,public_rows,runtime_details)
                       VALUES (%s,'us.aphis',%s,%s,%s,%s,%s,%s,%s,%s,%s,0,0,%s,%s,%s,%s,%s,%s,%s,false,0,%s) ON CONFLICT (run_id) DO NOTHING""",
-            (f"aphis-class-r-{snapshot[:20]}", snapshot, manifest["source_url"], manifest["retrieved_at_utc"], manifest["checksum_sha256"], result["normalized_sha256"], manifest["code_version"], manifest["config_version"], rows, rows, observations, candidates, numeric, placeable, unmapped, candidates, candidates - unmapped, json.dumps({"bounded_class_r_registration_preview": True, "geocoder_called": False, "private_candidate": True})))
+            (f"aphis-active-register-{snapshot[:20]}", snapshot, manifest["source_url"], manifest["retrieved_at_utc"], manifest["checksum_sha256"], result["normalized_sha256"], manifest["code_version"], manifest["config_version"], rows, rows, observations, candidates, numeric, placeable, unmapped, candidates, candidates - unmapped, json.dumps({"all_native_registration_classes": True, "geocoder_called": False, "private_candidate": True})))
         if db.execute("SELECT count(*) FROM uec.release_members").fetchone()[0] != before:
             raise ValueError("release_members_changed")
     return {"snapshot": snapshot, "rows": rows, "candidates": candidates, "numeric": numeric, "coarse": coarse, "public_rows": 0}

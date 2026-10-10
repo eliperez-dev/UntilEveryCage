@@ -11,7 +11,7 @@ import tempfile
 from typing import Any, Sequence
 
 
-CAPTURE_SCHEMA_VERSION = "us-aphis-inspection-page-capture-v1"
+CAPTURE_SCHEMA_VERSION = "us-aphis-public-search-page-capture-v2"
 DOCUMENT_INVENTORY_SCHEMA_VERSION = "us-aphis-inspection-document-inventory-v1"
 LINEAGE_COLUMNS = (
     "__capture_page_ordinal",
@@ -129,6 +129,7 @@ def build_capture_manifest(
     query_context: dict[str, Any],
     excluded_files: Sequence[str] = (),
     lineage_output_path: Path | None = None,
+    profile: str = "inspections",
 ) -> dict[str, Any]:
     """Write a row-free manifest for an ordered set of original page exports."""
 
@@ -164,7 +165,7 @@ def build_capture_manifest(
     manifest = {
         "schema_version": CAPTURE_SCHEMA_VERSION,
         "source_id": "us.aphis",
-        "profile": "inspections",
+        "profile": profile,
         "source_url": source_url,
         "retrieved_at_utc": retrieved_at_utc,
         "retrieved_at_scope": "bundle_generation; per-page actual retrieval timestamps unknown",
@@ -235,8 +236,10 @@ def _parse_query_context(value: str) -> dict[str, Any]:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--page-dir", type=Path, required=True)
+    parser.add_argument("--page-glob", default="page-*.csv")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--source-url", required=True)
+    parser.add_argument("--profile", choices=("annual_reports", "inspections"), default="inspections")
     parser.add_argument("--retrieved-at-utc", required=True)
     parser.add_argument("--query-context", required=True, type=_parse_query_context)
     parser.add_argument("--exclude", action="append", default=[])
@@ -248,7 +251,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--document-status")
     parser.add_argument("--document-failure-reason")
     args = parser.parse_args(argv)
-    pages = sorted(args.page_dir.glob("page-*.csv"))
+    pages = sorted(args.page_dir.glob(args.page_glob))
     build_capture_manifest(
         pages,
         output_path=args.output,
@@ -257,6 +260,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         query_context=args.query_context,
         excluded_files=args.exclude,
         lineage_output_path=args.lineage_output,
+        profile=args.profile,
     )
     if args.document_inventory:
         required = {

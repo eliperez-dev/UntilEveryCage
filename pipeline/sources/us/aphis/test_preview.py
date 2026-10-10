@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from pipeline.sources.us.aphis.preview import AphisPreviewError, project_class_r_registration
+from pipeline.sources.us.aphis.preview import AphisPreviewError, project_registration
 from pipeline.taxonomy_crosswalk import project_observation
 
 
@@ -24,30 +24,36 @@ def _record(registration_type="Class R - Research Facility"):
                           "Registration Type": registration_type, "Certificate Status": "Active", "Status Date": "2025-10-01",
                           "Address Line 1": "100 Synthetic Way", "Address Line 2": "Suite 4", "City-State-Zip": "Exampletown TX 78701", "County": "Example"},
         "normalized": {"profile": "registrations", "registration_or_license_type": registration_type, "status": "Active", "status_date": "2025-10-01",
-                       "source_native_ids": {"certificate_number": "87-R-0022", "customer_number": "22"}},
+                       "source_native_ids": {"aphis_license_number": "87-R-0022"},
+                       "canonical_name": "Synthetic Lab", "dba_names": [], "mailing_city": "Exampletown", "mailing_state": "TX"},
     }
 
 
 class AphisPreviewTests(unittest.TestCase):
-    def test_explicit_class_r_is_projected_as_private_research_evidence(self):
-        projected = project_class_r_registration(_record())
+    def test_explicit_native_classes_are_projected_as_private_directory_evidence(self):
+        projected = project_registration(_record())
         normalized = projected["normalized"]
         self.assertEqual(normalized["aphis_registration_class"], "Class R")
-        self.assertEqual(normalized["source_status"], "Active")
-        self.assertEqual(normalized["private_location_evidence"]["address_lines"], ["100 Synthetic Way", "Suite 4"])
+        self.assertEqual(normalized["source_status"], "active_list_membership")
+        self.assertEqual(normalized["private_location_evidence"]["city"], "Exampletown")
         taxonomy = project_observation(projected)
         self.assertEqual(taxonomy["taxonomy_display_category"], "research_and_animal_use")
         self.assertEqual(taxonomy["taxonomy_mapping_method"], "direct")
 
-    def test_non_class_r_fails_closed(self):
-        with self.assertRaisesRegex(AphisPreviewError, "explicit_class_r"):
-            project_class_r_registration(_record("Class B - Dealer"))
+    def test_all_supported_native_classes_are_retained(self):
+        for value in ("Class A - Breeder", "Class B - Dealer", "Class C - Exhibitor", "Class F - Federal Research Facility", "Class G - Agricultural Research Facility", "Class H - Intermediate Handler", "Class R - Research Facility", "Class T - Carrier", "Class V - VA Hospital"):
+            with self.subTest(value=value):
+                self.assertTrue(project_registration(_record(value))["normalized"]["aphis_registration_class"].startswith("Class "))
+
+    def test_unknown_class_fails_closed(self):
+        with self.assertRaisesRegex(AphisPreviewError, "known_native"):
+            project_registration(_record("Class Z - Unknown"))
 
     def test_policy_registers_a_manual_private_lane_not_shared_live_e2e(self):
         policy = json.loads((ROOT / "preview-enabled-sources.json").read_text(encoding="utf-8"))["sources"]["us.aphis"]
-        self.assertFalse(policy["enabled"])
-        self.assertEqual(policy["runtime_classification"], "fixture-only")
-        self.assertEqual(policy["activation"], "explicit-source-specific-private-import-only")
+        self.assertTrue(policy["enabled"])
+        self.assertEqual(policy["runtime_classification"], "production-e2e-private-candidate")
+        self.assertEqual(policy["activation"], "shared-private-registration-import")
         self.assertFalse(policy["public_release"])
 
     def test_prepare_hash_checks_and_writes_only_private_projection(self):

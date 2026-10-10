@@ -2,6 +2,8 @@ import unittest
 import hashlib
 import json
 import tempfile
+import io
+import zipfile
 from pathlib import Path
 
 from pipeline.contracts.adapter_contract import SourceArtifact
@@ -10,6 +12,24 @@ from .adapter import AphisContractError, AphisPublicSearchAdapter
 ROOT=Path(__file__).parent
 
 class AphisAdapterTests(unittest.TestCase):
+    def test_active_register_xlsx_preserves_native_license_and_dba(self):
+        headers = ["License Type", "APHIS License Number", "Account Name", "DBA Name(s)", "Mailing City", "State Abbreviation", "Expiration Date"]
+        values = ["Class B - Dealer", "01-B-0001", "Synthetic Account", "Synthetic DBA", "Example City", "TX", "2027-01-01"]
+        def row(number, cells):
+            return '<row r="%s">%s</row>' % (number, ''.join(
+                '<c r="%s%s" t="inlineStr"><is><t>%s</t></is></c>' % (chr(66 + index), number, value)
+                for index, value in enumerate(cells)))
+        raw = io.BytesIO()
+        with zipfile.ZipFile(raw, "w") as archive:
+            archive.writestr("xl/workbook.xml", '<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Register" sheetId="1" r:id="rId1"/></sheets></workbook>')
+            archive.writestr("xl/_rels/workbook.xml.rels", '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>')
+            archive.writestr("xl/worksheets/sheet1.xml", '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>' + row(11, headers) + row(12, values) + '</sheetData></worksheet>')
+        result = AphisPublicSearchAdapter().parse_bytes(raw.getvalue())
+        normalized = result["accepted"][0]["normalized"]
+        self.assertEqual(result["profile"], "registrations")
+        self.assertEqual(normalized["source_native_ids"]["aphis_license_number"], "01-B-0001")
+        self.assertEqual(normalized["dba_names"], ["Synthetic DBA"])
+        self.assertEqual(normalized["mailing_city"], "Example City")
     def test_public_search_uses_current_official_ui_host(self):
         config = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
         self.assertEqual(config["public_search_url"], "https://aphis.my.site.com/PublicSearchTool/s/")

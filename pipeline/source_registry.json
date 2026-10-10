@@ -269,16 +269,29 @@
     },
     {
       "source_id": "us.aphis",
-      "jurisdiction_scope": "United States; USDA APHIS Animal Care public search and annual-report data",
+      "jurisdiction_scope": "United States; USDA APHIS Animal Care active licensee/registrant directory",
       "legacy_paths": ["static_data/us/aphis_data_final.csv"],
-      "url": "https://aphis.my.site.com/PublicSearchTool/s/annual-reports",
-      "access_method": "operator-assisted public-search export with explicit registrations/annual_reports/inspections profile",
+      "url": "https://www.aphis.usda.gov/animal_welfare/downloads/List-of-Active-Licensees-and-Registrants.xlsx",
+      "access_method": "official active-register XLSX with bounded terms-reviewed acquisition",
       "cadence": "unknown; record selected report/search date",
       "attribution_licensing_notes": "APHIS authority and public-search scope verified; export terms, attribution, and privacy handling remain review gates",
+      "adapter_status": "implemented",
+      "source_kind": "facility_master",
+      "expected_artifact_schema": "Active-register XLSX with native license number, license class, account/DBA and mailing city/state; source-scoped directory identity only",
+      "blockers": ["Mailing city/state are not operating-site evidence; no coordinates, facility merge, or public release until review."]
+    },
+    {
+      "source_id": "us.aphis.annual-reports",
+      "jurisdiction_scope": "United States; USDA APHIS annual animal-use report observations",
+      "legacy_paths": [],
+      "url": "https://aphis.my.site.com/PublicSearchTool/s/annual-reports",
+      "access_method": "visible public-search paginated CSV export with retained page lineage",
+      "cadence": "selected reporting year; completeness is the displayed export scope only",
+      "attribution_licensing_notes": "APHIS annual-report source evidence; terms, attribution, privacy and exact-link review remain required",
       "adapter_status": "implemented_partial",
       "source_kind": "evidence_event",
-      "expected_artifact_schema": "Profile-explicit CSV; registrations, annual reports, inspections, and aggregate summaries are separate evidence types",
-      "blockers": ["Capture and verify the current export schema and terms; no facility/laboratory merge or public release until review."]
+      "expected_artifact_schema": "CSV annual observations keyed by certificate number, customer number and report year; not a facility record",
+      "blockers": ["UI pagination total and amendments must be captured/reconciled; no facility merge or public release."]
     },
     {
       "source_id": "us.inspections",
