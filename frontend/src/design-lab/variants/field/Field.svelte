@@ -957,7 +957,8 @@
     cursor: pointer;
   }
   @media (max-width: 40rem) {
-    .map-stage { inset: 4.8rem 0 0; }
+    /* The compact masthead has a second navigation row at this width. */
+    .map-stage { inset: 7.2rem 0 0; }
     .search-toggle { top: 0.65rem; left: 0.65rem; }
     .results { top:auto; right:0; bottom:0; left:0; width:auto !important; max-height:min(62dvh, 34rem); }
     .reading-sheet {
