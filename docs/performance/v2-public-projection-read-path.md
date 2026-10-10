@@ -24,14 +24,34 @@ response for native MapLibre clustering, whose default radius remains 30px.
 The public map repository uses Cache Storage, bounded to three identities,
 keyed by profile/release/manifest/generation. It validates release identity
 before reuse, shares simultaneous loads, and isolates subscriber cancellation.
-The debug menu can clear that cache. Private previews, searches, credentials
-and contribution input are not persisted by this cache. Cache Storage is a
+The debug menu can clear that cache. Searches, credentials and contribution
+input are not persisted by this public cache. Cache Storage is a
 browser capability, not a guarantee of permanent retention or offline access.
+
+The loopback-only repair preview has a separate Cache Storage namespace,
+`uec-candidate-map-projection-v1`, keyed by the configured release and snapshot.
+It revalidates through ETag/304 and shares concurrent loads. Its debug action
+clears the current preview mode's cache, not every cache namespace. Clearing
+advances a write generation so older background writes cannot restore cleared
+entries. The Rust candidate projection cache likewise shares builds and serves
+conditional requests without rebuilding unchanged bodies. Ordinary HTTP gzip
+and Brotli compression are supported; no custom compression protocol is used.
+The private preview is distinct from the frozen public v0 projection.
 
 Ordinary list queries select a bounded candidate page before taxonomy
 enrichment. `meta.total_count` describes the full eligible filtered result,
 independent of cursor/page size. Taxonomy-dependent searches retain their
 matching semantics; they are not claimed to have the same cost as plain browse.
+
+The 2026-10-10 repair filters taxonomy through the release-bound assignment
+indexes before assembling row detail. Migration 070 separates the candidate
+cohort review path from the event-review path; the API chooses a fixed relation
+using only the already-selected server release, never a client-provided SQL
+identifier. Both paths retain live access, suppression and manifest checks.
+Six real-v0 category/precision pairs returned unchanged totals in 1.7–2.7
+seconds locally, versus 6.9–15.1 seconds before branch isolation. These are
+single-host samples, not a production latency guarantee. The earlier migration
+069 CTE hint alone did not establish a speed improvement.
 
 Real-v0 acceptance verifies compact/GeoJSON parity, 63,601 searchable records,
 48,756 points, filtered count unions, conditional responses and bounded exports.

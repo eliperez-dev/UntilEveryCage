@@ -18,6 +18,25 @@ This is the canonical human-readable view of [`source-status.json`](source-statu
 
 No last-success timestamp is invented. Private artifacts are not proof of a public release. “Government-sourced” does not mean current, complete, project-approved, or safe to expose.
 
+## Current repair checkpoint — 2026-10-10
+
+The [product readiness tracker](PRODUCT-READINESS.md#v0-dataset-release-sequence)
+records the corrected private successor and its measured counts. Fresh FSIS
+directory/demographic captures reconcile 7,246 establishments: 1,755 slaughter
+and 5,491 processing. The Australian NPI correction retains all 8,140 records,
+with 1,229 selected for the default map by the versioned animal-relevance rules.
+The fifteen-source successor serves 41,936 map locations; it is not a new
+public release. Frozen approved v0 remains unchanged.
+
+APHIS has a separate 100-row FY2025 Class R private registration import, not
+national coverage. It has no coordinates and is excluded from generic strict
+live acquisition until a repeatable acquisition route is implemented. Do not
+count this sample as public map markers or a complete APHIS pipeline.
+
+The older source checkpoints below describe their stated capture dates; their
+blanket approval wording does not supersede the recorded 2026-10-06 v0 approval
+in the product tracker.
+
 ## Legacy archive boundary
 
 The checked-in V1-era inventory is maintained by

@@ -99,6 +99,47 @@ These checks do not change v0 membership, approve new sources or establish
 public deployment. Final visual verification, exact-commit CI and sprint cleanup
 remain required before the repair handoff.
 
+**Private repair checkpoint, 2026-10-10:** the corrected successor
+`v0-candidate-2026-10-10-fsis-au-repair-r2` is available in the disposable
+`uec_v0_api_repair` database. It retains 124,419 members across fifteen sources;
+the scoped map serves 41,936 locations. FSIS has 1,755 slaughter and 5,491
+processing records, using its native slaughter flags. The versioned Australian
+NPI scope selects 1,229 animal-relevant records; 6,911 other records remain
+retained and privately searchable but are excluded from the default map.
+Names, alternate names, activity/species fields and source attribution use
+retained normalized evidence. Native volume categories are preserved; current
+category-to-animal-count bands are not verified, so no headcount estimate is
+invented. Original source fields and earlier assignments remain unchanged.
+
+A separate private APHIS import contains 100 FY2025 Class R registrations
+(90 active, ten cancelled), with no map coordinates. This is a bounded research
+registration sample, not national laboratory/breeder/carrier coverage or a
+verified recurring APHIS acquisition pipeline. It is not included in the
+fifteen-source repair candidate.
+
+The frozen approved v0 and its 63,601 public records / 48,756 map locations
+are unchanged. The corrected successor is not promoted. Its smaller map count
+reflects the scope repair, not deleted evidence. Full real-v0 API acceptance
+passed after the filtered-query repair, with no failures or skips. Six real
+category/precision queries retained their exact totals and measured 1.7–2.7
+seconds, down from 6.9–15.1 seconds. Live browser checks passed database detail
+facts, alternate names, precision, cache clearing and map-marker-to-detail
+navigation. The candidate response's 32-character snapshot identity is accepted
+without weakening release or coordinate validation; deterministic validation
+errors no longer trigger repeated fetches. Cache writes and cache diagnostics
+do not block map rendering.
+
+The integrated frontend passed all 202 unit tests, type checking (zero errors
+or warnings), lint, boundary checks and the production build. Owned browser
+and test runners are closed; the stable preview remains running. Four existing
+worktrees remain, including unrelated work owned by other chats; no new sprint
+worktree was retained. The remaining independent handoff gate is all six jobs
+for the exact integrated `eli/v2` commit in the
+[Tests workflow](https://github.com/eliperez-dev/UntilEveryCage/actions/workflows/tests.yml?query=branch%3Aeli%2Fv2),
+not an earlier green checkpoint. Local acceptance is not website deployment or
+promotion of the corrected dataset. Full APHIS coverage and verified headcount
+bands remain gaps; do not describe them as restored.
+
 **Maintainer decision: 2026-10-03.** Dataset release names are independent of
 the V2 website and the legacy V1 application. `v0` is the first public dataset
 release; `v1` is a later dataset release, potentially adding countries and
