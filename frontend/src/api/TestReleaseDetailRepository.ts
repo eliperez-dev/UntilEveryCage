@@ -28,6 +28,11 @@ function sourceFacts(row: WireTestReleaseDetailLocation): LocationSourceFacts | 
         ? category.provenance
         : { ...(category.provenance.source_field ? { sourceField: category.provenance.source_field } : {}), ...(category.provenance.method ? { method: category.provenance.method } : {}) } }),
     })) } : {}),
+    ...(row.derived_source_volume_ranges ? { derivedSourceVolumeRanges: row.derived_source_volume_ranges.map(range => ({
+      ordinalCode: range.ordinal_code, lower: range.lower, upper: range.upper, bounds: range.bounds,
+      unit: range.unit, period: range.period, methodVersion: range.method_version,
+      sourceCodebookUrl: range.source_codebook_url, verificationState: range.verification_state,
+    })) } : {}),
     ...(row.establishment_id ? { establishmentId: row.establishment_id } : {}),
     ...(row.establishment_number ? { establishmentNumber: row.establishment_number } : {}),
     ...(row.grant_date ? { grantDate: row.grant_date } : {}),

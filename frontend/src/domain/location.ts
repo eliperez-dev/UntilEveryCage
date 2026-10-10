@@ -30,6 +30,17 @@ export type SourceVolumeCategory = Readonly<{
   code: string;
   provenance?: string | Readonly<{ sourceField?: string; method?: string }>;
 }>;
+export type DerivedSourceVolumeRange = Readonly<{
+  ordinalCode: string;
+  lower: number | null;
+  upper: number | null;
+  bounds: 'exclusive_upper' | 'inclusive_lower_unbounded' | 'inclusive_lower_exclusive_upper';
+  unit: 'head' | 'pounds';
+  period: 'trailing_360_days' | 'month';
+  methodVersion: 'fsis-mpi-volume-codebook-2026-03-24-v1';
+  sourceCodebookUrl: string;
+  verificationState: 'source_codebook_verified';
+}>;
 // These are source-native, release-built detail facts. They are intentionally
 // absent from list and map projections.
 export type LocationSourceFacts = Readonly<{
@@ -37,6 +48,7 @@ export type LocationSourceFacts = Readonly<{
   speciesSlaughtered?: Readonly<Record<string, SourceFlagValue>>;
   processingActivities?: Readonly<Record<string, SourceFlagValue>>;
   sourceVolumeCategories?: readonly SourceVolumeCategory[];
+  derivedSourceVolumeRanges?: readonly DerivedSourceVolumeRange[];
   establishmentId?: string;
   establishmentNumber?: string;
   grantDate?: string;

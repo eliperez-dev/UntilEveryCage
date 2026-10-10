@@ -53,11 +53,30 @@ const sourceVolumeCategory = z.object({
   code: z.string().min(1).max(120),
   provenance: sourceVolumeProvenance.optional(),
 }).strict();
+const derivedSourceVolumeRange = z.object({
+  ordinal_code: z.string().min(1).max(120),
+  lower: z.number().int().nonnegative().nullable(),
+  upper: z.number().int().positive().nullable(),
+  bounds: z.enum(['exclusive_upper', 'inclusive_lower_unbounded', 'inclusive_lower_exclusive_upper']),
+  unit: z.enum(['head', 'pounds']),
+  period: z.enum(['trailing_360_days', 'month']),
+  method_version: z.literal('fsis-mpi-volume-codebook-2026-03-24-v1'),
+  source_codebook_url: sourceUrl,
+  verification_state: z.literal('source_codebook_verified'),
+}).strict().superRefine((range, ctx) => {
+  const valid = range.bounds === 'exclusive_upper'
+    ? range.lower === null && range.upper !== null
+    : range.bounds === 'inclusive_lower_unbounded'
+      ? range.lower !== null && range.upper === null
+      : range.lower !== null && range.upper !== null && range.lower < range.upper;
+  if (!valid) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'volume range bounds must match its declared shape' });
+});
 const detailFactsShape = {
   alternate_names: z.array(z.string().min(1).max(200)).min(1).max(32).optional(),
   species_slaughtered: sourceFlags.optional(),
   processing_activities: sourceFlags.optional(),
   source_volume_categories: z.array(sourceVolumeCategory).min(1).max(32).optional(),
+  derived_source_volume_ranges: z.array(derivedSourceVolumeRange).min(1).max(32).optional(),
   establishment_id: z.string().min(1).max(160).optional(),
   establishment_number: z.string().min(1).max(160).optional(),
   grant_date: z.string().min(1).max(80).optional(),
