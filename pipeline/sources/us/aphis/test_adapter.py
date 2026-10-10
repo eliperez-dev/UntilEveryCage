@@ -1,5 +1,6 @@
 import unittest
 import hashlib
+import json
 import tempfile
 from pathlib import Path
 
@@ -9,6 +10,12 @@ from .adapter import AphisContractError, AphisPublicSearchAdapter
 ROOT=Path(__file__).parent
 
 class AphisAdapterTests(unittest.TestCase):
+    def test_public_search_uses_current_official_ui_host(self):
+        config = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
+        self.assertEqual(config["public_search_url"], "https://aphis.my.site.com/PublicSearchTool/s/")
+        self.assertEqual(config["annual_reports_url"], "https://aphis.my.site.com/PublicSearchTool/s/annual-reports")
+        self.assertEqual(config["inspection_reports_url"], "https://aphis.my.site.com/PublicSearchTool/s/inspection-reports")
+
     def test_profiles_remain_distinct(self):
         adapter=AphisPublicSearchAdapter()
         for profile in ("registrations","annual_reports","inspections"):
