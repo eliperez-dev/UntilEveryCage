@@ -53,6 +53,7 @@
     facets?: readonly RealPreviewFacet[];
     facetsStatus?: "loading" | "ready" | "error" | "unauthorized";
   } = $props();
+  let candidatePreviewLabel = $state<string | null>(null);
   const categories = [
     "Poultry",
     "Pig",
@@ -374,7 +375,7 @@
 
 <svelte:window onkeydown={onKeydown} />
 <section class="field-view">
-  <PreviewMasthead privateTools={mode === "real-preview" || mode === "candidate-preview"} publicReleaseLabel={publicMapMeta?.releaseLabel ?? null} current="map" {mapHref} {databaseHref} debugEnabled={$debugEnabled} ondebugchange={(enabled) => { debugEnabled.set(enabled); if (!enabled) debugOpen.set(false); }} />
+  <PreviewMasthead privateTools={mode === "real-preview" || mode === "candidate-preview"} publicReleaseLabel={mode === "candidate-preview" ? candidatePreviewLabel : publicMapMeta?.releaseLabel ?? null} releaseDescription={mode === "candidate-preview" && candidatePreviewLabel ? 'Configured private candidate release.' : null} current="map" {mapHref} {databaseHref} debugEnabled={$debugEnabled} ondebugchange={(enabled) => { debugEnabled.set(enabled); if (!enabled) debugOpen.set(false); }} />
   <main class="map-stage" aria-label="Investigative map field">
     {#if mode === "synthetic" && state.scenario === "loading"}<div class="status" role="status">
         Loading records…
@@ -390,7 +391,7 @@
         {publicReleaseId}
         {publicReleaseIdentity}
         {onMapFeedMeta}
-        {onCandidatePreviewLabel}
+        onCandidatePreviewLabel={(label) => { candidatePreviewLabel = label; onCandidatePreviewLabel?.(label); }}
         {mapStatus}
         {mapError}
         {mapTruncated}

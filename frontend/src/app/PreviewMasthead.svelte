@@ -7,6 +7,7 @@
     debugEnabled = false,
     privateTools = false,
     publicReleaseLabel = null,
+    releaseDescription = null,
     ondebugchange,
   }: {
     current: "map" | "database" | "methodology" | "about" | "contribute";
@@ -15,6 +16,7 @@
     debugEnabled?: boolean;
     privateTools?: boolean;
     publicReleaseLabel?: string | null;
+    releaseDescription?: string | null;
     ondebugchange?(enabled: boolean): void;
   } = $props();
 
@@ -115,7 +117,7 @@
     </button>
     {#if releaseOpen}<aside id="shared-release-menu" class="header-menu release-menu" aria-label="Preview release">
       <header><strong>Preview release</strong><button type="button" aria-label="Close Preview release" onclick={() => closeMenus("release")}>×</button></header>
-      <section><label for="release-choice">Current release</label><select id="release-choice" aria-label="Current release"><option>{displayedReleaseLabel}</option></select><small>{publicReleaseLabel ? 'Verified release metadata from the active public map projection.' : 'Open the public map to load verified release metadata.'}</small></section>
+      <section><label for="release-choice">Current release</label><select id="release-choice" aria-label="Current release"><option>{displayedReleaseLabel}</option></select><small>{releaseDescription ?? (publicReleaseLabel ? 'Verified release metadata from the active public map projection.' : 'Open the public map to load verified release metadata.')}</small></section>
       <section><h2>History</h2><p>Release history is available with each record.</p><small>Historical views respect current privacy restrictions.</small></section>
     </aside>{/if}
     {#if toolsOpen}<aside id="shared-tools-menu" class="header-menu tools-menu" aria-label="Tools">

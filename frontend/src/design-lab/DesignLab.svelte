@@ -32,7 +32,6 @@
   let publicReleaseIdentity: string | null = null;
   let publicReleaseManifestIdentity: PublicReleaseIdentity | null = null;
   let publicMapMeta: PublicMapFeed['meta'] | null = null;
-  let candidatePreviewLabel: string | null = null;
   function mapPublicLocation(location: Location): LabRecord {
     const precision = location.evidence?.displayPrecision ?? 'unmapped';
     return {
@@ -285,11 +284,10 @@
 <svelte:head><title>Until Every Cage: Map</title></svelte:head>
 <div class="lab" data-review-sentinel={mode === 'synthetic' ? labSentinel : undefined} data-direction="field" data-scenario={state.scenario} data-data-mode={mode}>
   <div class="map-preview"><h1 class="sr-only">Investigative map</h1>
-    <Field {state} {coverageOpen} records={mode !== 'synthetic' ? apiRecords : model.listRecords} mapRecords={mode !== 'synthetic' ? [] : model.mapRecords} {mode} {publicReleaseId} {publicReleaseIdentity} {publicReleaseManifestIdentity} {publicMapMeta} onMapFeedMeta={(meta) => { publicMapMeta = meta; }} onCandidatePreviewLabel={(label) => { candidatePreviewLabel = label; }}
+    <Field {state} {coverageOpen} records={mode !== 'synthetic' ? apiRecords : model.listRecords} mapRecords={mode !== 'synthetic' ? [] : model.mapRecords} {mode} {publicReleaseId} {publicReleaseIdentity} {publicReleaseManifestIdentity} {publicMapMeta} onMapFeedMeta={(meta) => { publicMapMeta = meta; }}
       dataStatus={dataStatus} {dataError}
       {detailRecord} {detailStatus} {detailError} {nextCursor} {pageLoading}
       {facets} {facetsStatus} {mapDiagnostics} {aggregateMemberRecords} {aggregateNextCursor} {aggregateLoading} {aggregateError} onMapTiming={timing=>{sourceMaterializeMs=timing.sourceMaterializeMs;clusterReadyMs=timing.clusterReadyMs;if(timing.zoomSettleMs!==undefined)zoomSettleMs=timing.zoomSettleMs;}} onLoadMore={() => void loadPage(state.query, false)} onMapReference={(key, refSourceId) => void loadReference(key, true, refSourceId)} onLoadMoreAggregate={() => { if (aggregateReferenceKey) void loadReference(aggregateReferenceKey, false); }} {dispatch}/>
-    {#if mode === 'candidate-preview' && candidatePreviewLabel}<p class="candidate-preview-label">{candidatePreviewLabel}</p>{/if}
     {#if mode === 'real-preview' && counts}
       <aside class:expanded={coverageOpen} class="private-counts" aria-label="Map information">
         <button type="button" aria-expanded={coverageOpen} aria-controls="coverage-details" disabled={state.listOpen} title={state.listOpen ? 'Close Search to inspect map information' : undefined} onclick={() => coverageOpen = !coverageOpen}>
@@ -328,7 +326,6 @@
     font-variant-numeric: tabular-nums;
     transform: translateX(-50%);
   }
-  .candidate-preview-label { position:fixed; z-index:6; top:.45rem; left:50%; max-width:calc(100vw - 1rem); margin:0; padding:.25rem .5rem; border:1px solid #48504b; background:#171a18f2; color:#d9ded5; font:500 .7rem/1.3 system-ui; transform:translateX(-50%); }
   .private-counts > button { display:flex; align-items:center; gap:.45rem; min-height:1.6rem; padding:.2rem .45rem; border:0; background:none; color:#d9ded5; cursor:pointer; font:inherit; }
   .private-counts > button:disabled { cursor:default; }
   .private-counts > button:focus-visible { outline:2px solid #f1efe8; outline-offset:2px; }
