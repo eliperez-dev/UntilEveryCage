@@ -95,8 +95,8 @@
     ('displayName' in record || 'display_name' in record) && !safeDisplayName,
   );
   const name = $derived(nameWithheld
-    ? 'Facility candidate'
-    : safeDisplayName ?? value(record.name) ?? 'Facility candidate');
+    ? 'Name not shown'
+    : safeDisplayName ?? value(record.name) ?? 'Name not provided');
   const activity = $derived(
     value(
       'activityLabel' in record ? record.activityLabel : null,
@@ -206,19 +206,14 @@
       'source_record_id' in record ? record.source_record_id : null,
     ),
   );
-  const previewLabel = $derived(
-    publicRelease
-      ? 'Official public release record · inclusion does not establish current operation or wrongdoing'
-      : value('previewLabel' in record ? record.previewLabel : null) ??
-        'Private development preview · not publication-approved',
-  );
   const locationText = $derived(
     [value(record.locality), value(record.country)].filter(Boolean).join(', ') ||
       'Location unavailable',
   );
+  const recordNotice = $derived(publicRelease ? 'Published record with source and date below.' : 'Record source and date are shown below.');
   const precisionLabel = $derived(
     (record.sourceId === 'us.fsis' || record.previewLabel?.startsWith('FSIS source-provided')) && record.coordinatePrecision === 'source-provided'
-      ? 'Source-provided coordinate · precision unverified (not exact; private rehearsal only)'
+      ? 'Source-provided coordinate, precision unverified'
       : precisionLabelFor(precision),
   );
 
@@ -246,7 +241,7 @@
       return 'Approximate location · not an exact facility point';
     }
     if (raw === 'source_provided_unverified') {
-      return 'Source-provided coordinate · precision unverified (not exact; private rehearsal only)';
+      return 'Source-provided coordinate, precision unverified';
     }
     if (raw === 'exact' || raw.includes('source_numeric')) {
       return 'Source coordinate · review status shown below';
@@ -277,8 +272,6 @@
       onclick={onclose}
     >Close</button>
   {/if}
-  <p class="context">PRIVATE DEVELOPMENT PREVIEW · NOT PUBLICATION-APPROVED</p>
-  <p class="kind">Facility candidate</p>
   <h1 id="record-title">{name}</h1>
   {#if presentation === 'page' && import.meta.env.VITE_COMMUNITY_PILOT === 'true' && id}
     <p class="contribution-actions">{#each [['evidence','Add evidence'],['correction','Suggest a correction'],['privacy-removal','Privacy or removal']] as [type, label]}<a class="evidence-link" href={`#/contribute/${type}?target=${encodeURIComponent(id)}&map=${encodeURIComponent('#/map?f1a=field')}`}>{label}</a>{/each}</p>
@@ -426,8 +419,7 @@
 
   <section aria-labelledby="limitations-heading">
     <h2 id="limitations-heading">Limitations</h2>
-    <p>{previewLabel}</p>
-    <p>Source origin does not establish accuracy, current operation, project approval, or publication.</p>
+    <p>{recordNotice}</p>
   </section>
 
   <footer>
@@ -455,19 +447,6 @@
 
   .detail * {
     box-sizing: border-box;
-  }
-
-  .context {
-    margin: 0;
-    color: #c8d0c5;
-    font: 0.6rem/1.4 ui-monospace, monospace;
-    letter-spacing: 0.08em;
-  }
-
-  .kind {
-    margin: .8rem 0 0.15rem;
-    color: var(--muted);
-    font-size: 0.72rem;
   }
 
   .detail h1 {

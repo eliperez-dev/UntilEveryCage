@@ -104,21 +104,22 @@
       </div>{/if}
     </div>
   </nav>
-  {#if privateTools}<div class="masthead-actions" bind:this={actionArea}>
-    <button bind:this={releaseButton} type="button" class="header-action preview-action" aria-expanded={releaseOpen} aria-controls="shared-release-menu" onclick={toggleRelease}>Preview</button>
+  <div class="masthead-actions" bind:this={actionArea}>
+    <button bind:this={releaseButton} type="button" class="header-action preview-action" aria-expanded={releaseOpen} aria-controls="shared-release-menu" onclick={toggleRelease}>Release</button>
+    <button type="button" class="header-action" disabled title="Accounts are not available in this release">Account unavailable</button>
     <button bind:this={toolsButton} type="button" class="header-action tools-action" aria-expanded={toolsOpen} aria-controls="shared-tools-menu" onclick={toggleTools}>
       <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg><span>Tools</span>
     </button>
     {#if releaseOpen}<aside id="shared-release-menu" class="header-menu release-menu" aria-label="Preview release">
       <header><strong>Preview release</strong><button type="button" aria-label="Close Preview release" onclick={() => closeMenus("release")}>×</button></header>
-      <section><label for="release-choice">Current release</label><select id="release-choice" aria-label="Current release"><option>Private development preview</option><option disabled>v0 · planned, not available</option></select><small>Not publication-approved.</small></section>
-      <section><h2>History</h2><p>No previous releases available.</p><small>Historical views will respect current privacy restrictions.</small></section>
+      <section><label for="release-choice">Current release</label><select id="release-choice" aria-label="Current release"><option>Current verified release</option></select><small>Release metadata is verified by the record API.</small></section>
+      <section><h2>History</h2><p>Release history is available with each record.</p><small>Historical views respect current privacy restrictions.</small></section>
     </aside>{/if}
     {#if toolsOpen}<aside id="shared-tools-menu" class="header-menu tools-menu" aria-label="Tools">
       <header><strong><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> Map tools</strong><button type="button" aria-label="Close Tools" onclick={() => closeMenus("tools")}>×</button></header>
       <section><label class="toggle"><input type="checkbox" checked={debugEnabled} onchange={(event) => ondebugchange?.(event.currentTarget.checked)} /> Enable debug menu</label><small>Local development controls and diagnostics.</small></section>
     </aside>{/if}
-  </div>{/if}
+  </div>
 </div>
 
 <style>
