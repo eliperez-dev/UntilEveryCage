@@ -180,6 +180,11 @@ test('candidate map keeps mobile controls clear and uses category and reference 
 
 test('plain map entry uses the configured candidate projection and preserves its map controls', async ({ page }) => {
   test.setTimeout(120_000);
+  const candidateRequests: string[] = [];
+  page.on('request', request => {
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith('/api/dev/preview/test-release/')) candidateRequests.push(path);
+  });
   await page.goto('/v2-preview/#/map');
   await page.evaluate(async () => Promise.all((await caches.keys()).map(name => caches.delete(name))));
   await page.reload();
@@ -191,8 +196,10 @@ test('plain map entry uses the configured candidate projection and preserves its
   const mapState = await page.evaluate(async () => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     const reference = map.querySourceFeatures('locations').find((feature: any) => feature.properties?.kind === 'reference');
-    if (reference) {
-      map.jumpTo({ center: reference.geometry.coordinates, zoom: 9 });
+    const approximate = map.querySourceFeatures('locations').find((feature: any) => feature.properties?.kind === 'source-coordinate' && ['approximate', 'city', 'source_reported', 'source_provided_unverified', 'city_reference_approximate', 'provider_locality_approximate', 'locality_reference_coarse'].includes(feature.properties?.precision));
+    const target = reference ?? approximate;
+    if (target) {
+      map.jumpTo({ center: target.geometry.coordinates, zoom: 9 });
       await new Promise<void>(resolve => map.once('idle', resolve));
     }
     return {
@@ -201,6 +208,7 @@ test('plain map entry uses the configured candidate projection and preserves its
       referenceStroke: map.getPaintProperty('aggregate-outer', 'circle-stroke-color'),
       referenceOpacity: JSON.stringify(map.getPaintProperty('aggregate-outer', 'circle-opacity')),
       renderedReferences: map.queryRenderedFeatures({ layers: ['aggregate-outer'] }).length,
+      hasApproximatePoint: Boolean(approximate),
     };
   });
   expect(mapState.color).toContain('#009E73');
@@ -208,14 +216,17 @@ test('plain map entry uses the configured candidate projection and preserves its
   expect(mapState.referenceColor).toBe('#d8473f');
   expect(mapState.referenceStroke).toBe('#ff695c');
   expect(mapState.referenceOpacity).toContain('0.22');
+  expect(mapState.hasApproximatePoint).toBe(true);
   expect(mapState.renderedReferences).toBeGreaterThan(0);
 
   await page.getByRole('button', { name: 'Search map' }).click();
   await page.locator('details.filters > summary').click();
-  await expect(page.getByRole('group', { name: 'Country' })).toBeVisible();
-  await expect(page.getByRole('group', { name: 'Source' })).toBeVisible();
-  await expect(page.getByRole('group', { name: 'Activity category' })).toBeVisible();
-  await expect(page.getByRole('group', { name: 'Activity' })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Country' })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole('group', { name: 'Source' })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole('group', { name: 'Activity category' })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole('group', { name: 'Activity', exact: true })).toBeVisible({ timeout: 60_000 });
+  expect(candidateRequests).toContain('/api/dev/preview/test-release/map/feed');
+  expect(candidateRequests).toContain('/api/dev/preview/test-release/discovery/facets');
   await page.goto('/v2-preview/#/database');
   await page.goto('/v2-preview/#/map');
   await page.waitForFunction(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.isSourceLoaded('locations'), undefined, { timeout: 60_000 });
