@@ -28,11 +28,16 @@ class PublicDiscoveryQueryContractTests(unittest.TestCase):
     def test_public_queries_use_the_manifest_bound_live_gated_read_model(self):
         source = _source()
         locations = source[source.index("pub async fn get_v2_locations_handler"):source.index("pub async fn get_v2_location_detail_handler")]
-        self.assertIn("FROM uec.map_facilities_public_discovery_read_model AS history", locations)
+        self.assertIn("FROM uec.public_discovery_api_read_model AS history", locations)
         self.assertIn("public_discovery_read_models", locations)
         self.assertIn("manifest.manifest_sha256=model.manifest_sha256", locations)
         self.assertNotIn("JOIN uec.publication_review_release_current AS review", locations)
         self.assertIn("history.release_id = $1", locations)
+        optimized = (ROOT / "migrations" / "068_public_discovery_detail_search.sql").read_text(encoding="utf-8")
+        self.assertIn("public_discovery_api_read_model", optimized)
+        self.assertIn("record_access_current", optimized)
+        self.assertIn("suppression_case_current", optimized)
+        self.assertIn("release_manifests", optimized)
 
     def test_legacy_component_view_remains_documented_but_is_not_the_api_read_path(self):
         migration = (ROOT / "migrations" / "036_public_facility_discovery_view.sql").read_text(encoding="utf-8").lower()

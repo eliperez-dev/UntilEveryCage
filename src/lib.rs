@@ -3712,7 +3712,7 @@ pub async fn get_v2_locations_handler(
         // the exact facility total, but avoid expanding every assignment set.
         match transaction.query_one(r#"
         SELECT count(DISTINCT history.facility_id)::bigint
-        FROM uec.map_facilities_public_discovery_read_model AS history
+        FROM uec.public_discovery_api_read_model AS history
         LEFT JOIN uec.public_discovery_read_model_rows indexed
           ON indexed.release_id=history.release_id AND indexed.facility_id=history.facility_id AND indexed.observation_id=history.observation_id
         WHERE history.release_id = $1
@@ -3734,7 +3734,7 @@ pub async fn get_v2_locations_handler(
         }
     } else { match transaction.query_one(r#"
         SELECT count(DISTINCT history.facility_id)::bigint
-        FROM uec.map_facilities_public_discovery_read_model AS history
+        FROM uec.public_discovery_api_read_model AS history
         JOIN uec.public_discovery_read_model_rows stored
           ON stored.release_id=history.release_id AND stored.facility_id=history.facility_id AND stored.observation_id=history.observation_id
         LEFT JOIN LATERAL (
@@ -3765,7 +3765,7 @@ pub async fn get_v2_locations_handler(
         match transaction.query(r#"
         WITH candidates AS MATERIALIZED (
           SELECT DISTINCT ON (history.facility_id) history.facility_id, history.observation_id
-          FROM uec.map_facilities_public_discovery_read_model AS history
+          FROM uec.public_discovery_api_read_model AS history
           LEFT JOIN uec.public_discovery_read_model_rows indexed
             ON indexed.release_id=history.release_id AND indexed.facility_id=history.facility_id AND indexed.observation_id=history.observation_id
           WHERE history.release_id = $1
@@ -3804,7 +3804,7 @@ pub async fn get_v2_locations_handler(
                COALESCE(taxonomy.assignments, '[]'::jsonb)::text,
                history.geometry_provenance::text
         FROM page
-        JOIN uec.map_facilities_public_discovery_read_model AS history
+        JOIN uec.public_discovery_api_read_model AS history
           ON history.release_id = $1
          AND history.facility_id = page.facility_id
          AND history.observation_id = page.observation_id
@@ -3837,7 +3837,7 @@ pub async fn get_v2_locations_handler(
                COALESCE(taxonomy.assignments, '[]'::jsonb)::text,
                history.geometry_provenance::text,
                stored.public_detail::text
-        FROM uec.map_facilities_public_discovery_read_model AS history
+        FROM uec.public_discovery_api_read_model AS history
         JOIN uec.public_discovery_read_model_rows stored
           ON stored.release_id=history.release_id AND stored.facility_id=history.facility_id AND stored.observation_id=history.observation_id
         LEFT JOIN LATERAL (
@@ -3845,7 +3845,7 @@ pub async fn get_v2_locations_handler(
                  array_agg(DISTINCT a.primary_key ORDER BY a.primary_key) FILTER (WHERE a.primary_key IS NOT NULL) AS primary_categories,
                  COALESCE(jsonb_agg(DISTINCT jsonb_build_object('key', a.leaf_key, 'label', a.leaf_label)) FILTER (WHERE a.leaf_key IS NOT NULL AND a.leaf_label IS NOT NULL AND a.mapping_method IN ('direct','derived') AND a.mapping_status IN ('mapped','partial')), '[]'::jsonb) AS leaf_activities,
                  COALESCE(jsonb_agg(DISTINCT jsonb_build_object('primary_key',a.primary_key,'leaf_key',a.leaf_key,'leaf_label',a.leaf_label,'source_code_reference',a.source_code_reference,'source_label_reference',a.source_label_reference,'source_code',a.source_code,'source_label',a.source_label,'method',a.mapping_method,'status',a.mapping_status,'taxonomy_version',s.taxonomy_version,'crosswalk_version',s.crosswalk_version,'ruleset_version',s.ruleset_version)) FILTER (WHERE a.assignment_set_id IS NOT NULL), '[]'::jsonb) AS assignments
-          FROM uec.map_facilities_public_discovery_read_model eligible
+          FROM uec.public_discovery_api_read_model eligible
           JOIN uec.observation_taxonomy_assignment_sets s ON s.observation_id=eligible.observation_id AND s.taxonomy_version='uec-taxonomy-v1'
             AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=s.observation_id AND newer.taxonomy_version=s.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(s.created_at,s.assignment_set_id))
           LEFT JOIN uec.observation_taxonomy_assignments a ON a.assignment_set_id=s.assignment_set_id
@@ -4031,7 +4031,7 @@ pub async fn get_v2_location_detail_handler(
                COALESCE(taxonomy.assignments, '[]'::jsonb)::text,
                history.geometry_provenance::text,
                stored.public_detail::text
-        FROM uec.map_facilities_public_discovery_read_model AS history
+        FROM uec.public_discovery_api_read_model AS history
         JOIN uec.public_discovery_read_model_rows stored
           ON stored.release_id=history.release_id AND stored.facility_id=history.facility_id AND stored.observation_id=history.observation_id
         LEFT JOIN LATERAL (
@@ -4039,7 +4039,7 @@ pub async fn get_v2_location_detail_handler(
                  array_agg(DISTINCT a.primary_key ORDER BY a.primary_key) FILTER (WHERE a.primary_key IS NOT NULL) AS primary_categories,
                  COALESCE(jsonb_agg(DISTINCT jsonb_build_object('key', a.leaf_key, 'label', a.leaf_label)) FILTER (WHERE a.leaf_key IS NOT NULL AND a.leaf_label IS NOT NULL AND a.mapping_method IN ('direct','derived') AND a.mapping_status IN ('mapped','partial')), '[]'::jsonb) AS leaf_activities,
                  COALESCE(jsonb_agg(DISTINCT jsonb_build_object('primary_key',a.primary_key,'leaf_key',a.leaf_key,'leaf_label',a.leaf_label,'source_code_reference',a.source_code_reference,'source_label_reference',a.source_label_reference,'source_code',a.source_code,'source_label',a.source_label,'method',a.mapping_method,'status',a.mapping_status,'taxonomy_version',s.taxonomy_version,'crosswalk_version',s.crosswalk_version,'ruleset_version',s.ruleset_version)) FILTER (WHERE a.assignment_set_id IS NOT NULL), '[]'::jsonb) AS assignments
-          FROM uec.map_facilities_public_discovery_read_model eligible
+          FROM uec.public_discovery_api_read_model eligible
           JOIN uec.observation_taxonomy_assignment_sets s ON s.observation_id=eligible.observation_id AND s.taxonomy_version='uec-taxonomy-v1'
             AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=s.observation_id AND newer.taxonomy_version=s.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(s.created_at,s.assignment_set_id))
           LEFT JOIN uec.observation_taxonomy_assignments a ON a.assignment_set_id=s.assignment_set_id
