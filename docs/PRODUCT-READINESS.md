@@ -76,8 +76,14 @@ historical-release selection, public account setup or public contribution launch
 map/GeoJSON parity, exact filtered totals and conditional cache responses.
 The integrated frontend passed 180 unit tests, type/lint/boundary/build gates,
 and the UI lane passed 48 cross-browser plus 10 community-pilot checks.
-The public-data audit found all 63,601 records primary-classified and carrying
-source names and URLs; missing labels in the UI were presentation defects.
+All 63,601 records carry source names and URLs, but the earlier claim that all
+were primary-classified was incorrect: a populated `unclassified` key is not a
+positive classification. The source-specific audit found all 7,241 public FSIS
+records unclassified with no leaf, and no APHIS records in v0. Australian NPI
+also has a scope defect: valid source coordinates alone set default map scope,
+without requiring animal relevance. Source inclusion and taxonomy coverage are
+release-content blockers, not presentation defects. Preserve the frozen v0
+evidence; do not silently relabel records or overwrite its approved membership.
 Current cache and query behavior is owned by
 [the read-path decision](performance/v2-public-projection-read-path.md).
 These checks do not change v0 membership, approve new sources or establish
