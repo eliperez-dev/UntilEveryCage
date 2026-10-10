@@ -2952,6 +2952,8 @@ fn test_release_native_activity_detail(codes: &str, labels: &str) -> Value {
 
 const APHIS_ANNUAL_REPORT_SOURCE_URL: &str =
     "https://direct.aphis.usda.gov/awa/research-facility-report/annual-summary";
+const APHIS_REGISTRATION_CERTIFICATE_ALIAS_VERSION: &str =
+    "aphis-registration-number-is-certificate-v1";
 const APHIS_ANNUAL_REPORT_SPECIES: [(&str, &str); 10] = [
     ("Dogs", "Dogs"),
     ("Cats", "Cats"),
@@ -2977,6 +2979,8 @@ struct AphisAnnualSafeProvenance {
     evidence_type: String,
     match_method: String,
     matched_identifier_types: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    identifier_alias_mapping: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
@@ -2999,6 +3003,7 @@ fn aphis_annual_report_detail(
     fiscal_year: &str,
     source_values: &Value,
     matched_identifier_types: Vec<String>,
+    certificate_from_registration_alias: bool,
 ) -> Option<AphisAnnualReportDetail> {
     if fiscal_year.len() != 4 || !fiscal_year.bytes().all(|byte| byte.is_ascii_digit()) {
         return None;
@@ -3024,8 +3029,54 @@ fn aphis_annual_report_detail(
             evidence_type: "annual_reports".into(),
             match_method: "exact_source_identifier".into(),
             matched_identifier_types,
+            identifier_alias_mapping: certificate_from_registration_alias
+                .then(|| APHIS_REGISTRATION_CERTIFICATE_ALIAS_VERSION.into()),
         },
     })
+}
+
+fn aphis_registration_certificate_alias(value: &str) -> Option<String> {
+    let bytes = value.as_bytes();
+    if bytes.len() == 9
+        && bytes[2] == b'-'
+        && bytes[4] == b'-'
+        && bytes[..2].iter().all(u8::is_ascii_digit)
+        && bytes[5..].iter().all(u8::is_ascii_digit)
+        && matches!(bytes[3], b'R' | b'F' | b'V' | b'G')
+    {
+        Some(value.into())
+    } else {
+        None
+    }
+}
+
+fn aphis_candidate_native_identifiers(normalized: &str) -> (Option<String>, Option<String>, bool) {
+    let Ok(normalized) = serde_json::from_str::<Value>(normalized) else {
+        return (None, None, false);
+    };
+    let native = normalized.get("source_native_ids").and_then(Value::as_object);
+    let identifier = |key: &str| {
+        native
+            .and_then(|values| values.get(key))
+            .or_else(|| normalized.get(key))
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned)
+    };
+    let certificate = identifier("certificate_number");
+    if certificate.is_some() {
+        return (certificate, identifier("customer_number"), false);
+    }
+    // APHIS's FY24 Form 7023 instructions identify a research facility's
+    // registration number as its certificate number. The annual-summary scope
+    // is R/F/V/G certificates; retain this versioned, format-bound alias
+    // without changing the native value or inferring a customer number.
+    let certificate = native
+        .and_then(|values| values.get("aphis_license_number"))
+        .and_then(Value::as_str)
+        .and_then(aphis_registration_certificate_alias);
+    let certificate_from_registration_alias = certificate.is_some();
+    (certificate, identifier("customer_number"), certificate_from_registration_alias)
 }
 
 async fn aphis_annual_reports_for_candidate(
@@ -3033,11 +3084,13 @@ async fn aphis_annual_reports_for_candidate(
     facility_source_id: &str,
     facility_normalized: &str,
 ) -> Result<Vec<AphisAnnualReportDetail>, tokio_postgres::Error> {
+    let (certificate_number, customer_number, certificate_from_registration_alias) = aphis_candidate_native_identifiers(facility_normalized);
+    if certificate_number.is_none() && customer_number.is_none() {
+        return Ok(Vec::new());
+    }
     let rows = client.query(
         r#"WITH candidate_identifiers AS (
-                SELECT $1::text AS source_id,
-                    COALESCE(NULLIF(($2::jsonb)->'source_native_ids'->>'certificate_number',''),NULLIF(($2::jsonb)->>'certificate_number','')) AS certificate_number,
-                    COALESCE(NULLIF(($2::jsonb)->'source_native_ids'->>'customer_number',''),NULLIF(($2::jsonb)->>'customer_number','')) AS customer_number
+                SELECT $1::text AS source_id,$2::text AS certificate_number,$3::text AS customer_number
             ), exact_reports AS (
                 SELECT DISTINCT ON (event.event_period)
                     event.event_period, annual_record.raw_fields->'source_values' AS source_values,
@@ -3060,13 +3113,13 @@ async fn aphis_annual_reports_for_candidate(
             FROM exact_reports
             ORDER BY event_period DESC NULLS LAST,observed_at DESC
             LIMIT 5"#,
-        &[&facility_source_id, &facility_normalized],
+        &[&facility_source_id, &certificate_number, &customer_number],
     ).await?;
     Ok(rows.into_iter().filter_map(|row| {
         let fiscal_year = row.get::<_, Option<String>>(0)?;
         let source_values = serde_json::from_str::<Value>(row.get::<_, String>(1).as_str()).ok()?;
         let matched_identifier_types = row.get::<_, Vec<String>>(2);
-        aphis_annual_report_detail(&fiscal_year, &source_values, matched_identifier_types)
+        aphis_annual_report_detail(&fiscal_year, &source_values, matched_identifier_types, certificate_from_registration_alias)
     }).collect())
 }
 
@@ -5863,6 +5916,7 @@ mod v2_api_tests {
             "2025",
             &json!({"Dogs":"12","Cats":3,"Guinea Pigs":"0","Account Name":"not exposed"}),
             vec!["certificate_number".into(), "customer_number".into()],
+            false,
         ).unwrap();
         assert_eq!(report.fiscal_year, "2025");
         assert_eq!(report.species_counts, vec![
@@ -5882,17 +5936,40 @@ mod v2_api_tests {
             "2025",
             &json!({"Dogs":"-1","Cats":"not-a-number","Account Name":"never used"}),
             vec!["certificate_number".into()],
+            false,
         ).is_none());
         assert!(aphis_annual_report_detail(
             "2025",
             &json!({"Dogs":1,"Account Name":"never used"}),
             Vec::new(),
+            false,
         ).is_none());
         assert!(aphis_annual_report_detail(
             "25",
             &json!({"Dogs":1}),
             vec!["certificate_number".into()],
+            false,
         ).is_none());
+    }
+
+    #[test]
+    fn aphis_annual_matching_uses_only_the_versioned_research_registration_certificate_alias() {
+        assert_eq!(
+            aphis_candidate_native_identifiers(
+                r#"{"source_native_ids":{"aphis_license_number":"87-R-0022"},"establishment_id":"aphis-registration:87-R-0022"}"#,
+            ),
+            (Some("87-R-0022".into()), None, true),
+        );
+        assert_eq!(
+            aphis_candidate_native_identifiers(
+                r#"{"source_native_ids":{"certificate_number":"87-R-0022","customer_number":"2","aphis_license_number":"different-license"}}"#,
+            ),
+            (Some("87-R-0022".into()), Some("2".into()), false),
+        );
+        assert_eq!(
+            aphis_candidate_native_identifiers(r#"{"source_native_ids":{"aphis_license_number":"87-A-0022"}}"#),
+            (None, None, false),
+        );
     }
 
     #[test]
