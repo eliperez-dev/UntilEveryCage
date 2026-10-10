@@ -16,7 +16,7 @@ from typing import Any, Mapping
 from pipeline.common.acquisition import default_run_id
 from pipeline.common.refresh_runner import RefreshCatalog, RefreshRunner, RefreshRunnerError
 from pipeline.contracts.refresh import RefreshRequest
-from pipeline.common.graph_persistence import import_graph_candidates
+from pipeline.common.graph_persistence import import_evidence_events, import_graph_candidates
 
 
 def _import_candidate(source_dir: Path, database_url: str, *, disposable_db: bool) -> Mapping[str, Any]:
@@ -112,7 +112,13 @@ def main(argv: list[str] | None = None) -> int:
                                  database_url=database_url, options=options)
         importer = lambda source_dir, url: _import_candidate(
             source_dir, url, disposable_db=args.disposable_db)
-        runner = RefreshRunner(RefreshCatalog(), candidate_importer=importer if args.import_candidates else None)
+        runner = RefreshRunner(
+            RefreshCatalog(),
+            candidate_importer=importer if args.import_candidates else None,
+            evidence_importer=(lambda handoff, url: import_evidence_events(
+                url, handoff, disposable_db=args.disposable_db
+            )) if args.import_candidates else None,
+        )
         result = runner.run(request)
     except (OSError, ValueError, RefreshRunnerError) as error:
         print(json.dumps({"status": "failed", "error": str(error)}, sort_keys=True))
