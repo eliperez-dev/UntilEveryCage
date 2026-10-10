@@ -3,8 +3,18 @@ import { TEST_RELEASE_PATH } from '../features/devPreview/devPreviewContract';
 
 const CACHE_NAME = 'uec-candidate-map-projection-v1';
 
-function cacheKey(releaseId: string, snapshotId: string): string {
-  return `${location.origin}/__uec_candidate_map_cache__/${encodeURIComponent(releaseId)}/${snapshotId}`;
+function cacheKey(releaseId: string, snapshotId: string): Request {
+  return new Request(new URL(`/__uec_candidate_map_cache__/${encodeURIComponent(releaseId)}/${snapshotId}`, globalThis.location?.origin ?? 'https://uec.invalid').href, { method: 'GET' });
+}
+
+function abortIsolated<T>(shared: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return shared;
+  if (signal.aborted) return Promise.reject(new DOMException('Aborted', 'AbortError'));
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(new DOMException('Aborted', 'AbortError'));
+    signal.addEventListener('abort', abort, { once: true });
+    shared.then(value => { signal.removeEventListener('abort', abort); resolve(value); }, error => { signal.removeEventListener('abort', abort); reject(error); });
+  });
 }
 
 /**
@@ -13,13 +23,44 @@ function cacheKey(releaseId: string, snapshotId: string): string {
  * cache namespace and its stricter authenticated DTO boundary.
  */
 export function createTestReleaseMapFeedRepository(fetcher: typeof fetch = fetch) {
+  const mapFlights = new Map<string, Promise<RealPreviewMapFeed>>();
   return {
     async load(signal?: AbortSignal): Promise<RealPreviewMapFeed> {
+      const canCache = typeof caches !== 'undefined' && typeof location !== 'undefined' && /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+      if (!canCache) return loadCandidateFeed(fetcher, undefined, signal);
+      const cache = await caches.open(CACHE_NAME);
+      // There is one configured candidate at a time. Its cached response keeps
+      // the server ETag, allowing a 304 before the full projection is queried.
+      const cachedRequest = (await cache.keys())[0];
+      const cached = cachedRequest ? await cache.match(cachedRequest) : undefined;
+      const etag = cached?.headers.get('etag') ?? null;
+      const flightKey = etag ?? 'candidate-map-without-etag';
+      const existing = mapFlights.get(flightKey);
+      if (existing) return abortIsolated(existing, signal);
+      const work = (async () => {
+        return loadCandidateFeed(fetcher, cache, undefined, cached, etag);
+      })();
+      mapFlights.set(flightKey, work);
+      void work.finally(() => { if (mapFlights.get(flightKey) === work) mapFlights.delete(flightKey); });
+      return abortIsolated(work, signal);
+    },
+  };
+}
+
+async function loadCandidateFeed(fetcher: typeof fetch, projectionCache?: Cache, signal?: AbortSignal, cached?: Response, etag?: string | null): Promise<RealPreviewMapFeed> {
       let response: Response;
       try {
-        response = await fetcher(`${TEST_RELEASE_PATH}/map/feed`, { credentials: 'same-origin', cache: 'no-store', ...(signal ? { signal } : {}) });
+        response = await fetcher(`${TEST_RELEASE_PATH}/map/feed`, { credentials: 'same-origin', cache: 'no-store', ...(etag ? { headers: { 'If-None-Match': etag } } : {}), ...(signal ? { signal } : {}) });
       } catch {
         throw new RealPreviewMapFeedError('The corrected candidate map feed could not be reached.');
+      }
+      if (response.status === 304 && cached) {
+        try {
+          const parsed = parseRealPreviewMapFeed(await cached.json(), true);
+          return { ...parsed, cacheStatus: 'hit', decodedBytes: new TextEncoder().encode(JSON.stringify(parsed.collection)).byteLength };
+        } catch {
+          throw new RealPreviewMapFeedError('The corrected candidate map cache was invalid.');
+        }
       }
       if (!response.ok) {
         throw new RealPreviewMapFeedError(response.status === 401 || response.status === 403
@@ -29,17 +70,16 @@ export function createTestReleaseMapFeedRepository(fetcher: typeof fetch = fetch
       const payload = await response.json();
       const parsed = parseRealPreviewMapFeed(payload, true);
       const meta = payload as { meta: { release_id: string; snapshot_id: string } };
-      if (typeof caches === 'undefined' || typeof location === 'undefined' || !/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {
+      if (!projectionCache) {
         return { ...parsed, cacheStatus: 'unavailable', decodedBytes: new TextEncoder().encode(JSON.stringify(parsed.collection)).byteLength };
       }
-      const cache = await caches.open(CACHE_NAME);
-      await cache.put(cacheKey(meta.meta.release_id, meta.meta.snapshot_id), new Response(JSON.stringify(payload), { headers: { 'content-type': 'application/json' } }));
-      for (const request of await cache.keys()) {
-        if (!request.url.includes(`/__uec_candidate_map_cache__/${encodeURIComponent(meta.meta.release_id)}/`)) await cache.delete(request);
+      const key = cacheKey(meta.meta.release_id, meta.meta.snapshot_id);
+      const responseEtag = response.headers.get('etag');
+      await projectionCache.put(key, new Response(JSON.stringify(payload), { headers: { 'content-type': 'application/json', ...(responseEtag ? { etag: responseEtag } : {}) } }));
+      for (const request of await projectionCache.keys()) {
+        if (request.url !== key.url) await projectionCache.delete(request);
       }
       return { ...parsed, cacheStatus: 'miss', decodedBytes: new TextEncoder().encode(JSON.stringify(parsed.collection)).byteLength };
-    },
-  };
 }
 
 export async function clearTestReleaseMapCache(): Promise<number> {

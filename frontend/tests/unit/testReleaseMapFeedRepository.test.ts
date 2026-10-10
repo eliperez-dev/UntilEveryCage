@@ -25,4 +25,42 @@ describe('configured candidate map feed', () => {
     await createTestReleaseMapFeedRepository(fetcher as typeof fetch).load();
     expect(fetcher).toHaveBeenCalledWith('/api/dev/preview/test-release/map/feed', expect.objectContaining({ credentials: 'same-origin', cache: 'no-store' }));
   });
+
+  it('revalidates one cached candidate projection by ETag and shares a concurrent load', async () => {
+    const entries = new Map<string, Response>();
+    const cache = {
+      keys: vi.fn(async () => [...entries.keys()].map(url => new Request(url))),
+      match: vi.fn(async (request: Request) => entries.get(request.url)),
+      put: vi.fn(async (request: Request, response: Response) => { entries.set(request.url, response); }),
+      delete: vi.fn(async (request: Request) => entries.delete(request.url)),
+    };
+    vi.stubGlobal('location', new URL('http://127.0.0.1:34206/'));
+    vi.stubGlobal('caches', { open: vi.fn(async () => cache) });
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(envelope), { status: 200, headers: { etag: '"candidate-map-' + 'b'.repeat(64) + '"' } }))
+      .mockResolvedValueOnce(new Response(null, { status: 304 }));
+    const repository = createTestReleaseMapFeedRepository(fetcher as typeof fetch);
+    const [first, duplicate] = await Promise.all([repository.load(), repository.load()]);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(first.cacheStatus).toBe('miss');
+    expect(duplicate.cacheStatus).toBe('miss');
+    const hit = await repository.load();
+    expect(hit.cacheStatus).toBe('hit');
+    expect(fetcher.mock.calls[1]?.[1]).toMatchObject({ headers: { 'If-None-Match': '"candidate-map-' + 'b'.repeat(64) + '"' } });
+    vi.unstubAllGlobals();
+  });
+
+  it('replaces a stale release snapshot after a 200 and removes the older cache entry', async () => {
+    const oldKey = 'http://127.0.0.1:34206/__uec_candidate_map_cache__/candidate-2026/' + 'a'.repeat(64);
+    const entries = new Map<string, Response>([[oldKey, new Response(JSON.stringify({ ...envelope, meta: { ...envelope.meta, snapshot_id: 'a'.repeat(64) } }), { headers: { etag: '"candidate-map-' + 'a'.repeat(64) + '"' } })]]);
+    const cache = { keys: vi.fn(async () => [...entries.keys()].map(url => new Request(url))), match: vi.fn(async (request: Request) => entries.get(request.url)), put: vi.fn(async (request: Request, response: Response) => { entries.set(request.url, response); }), delete: vi.fn(async (request: Request) => entries.delete(request.url)) };
+    vi.stubGlobal('location', new URL('http://127.0.0.1:34206/'));
+    vi.stubGlobal('caches', { open: vi.fn(async () => cache) });
+    const next = { ...envelope, meta: { ...envelope.meta, snapshot_id: 'c'.repeat(64) } };
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(next), { status: 200, headers: { etag: '"candidate-map-' + 'c'.repeat(64) + '"' } }));
+    await expect(createTestReleaseMapFeedRepository(fetcher as typeof fetch).load()).resolves.toMatchObject({ cacheStatus: 'miss', snapshotId: 'c'.repeat(64) });
+    expect(entries.has(oldKey)).toBe(false);
+    expect(entries.size).toBe(1);
+    vi.unstubAllGlobals();
+  });
 });
