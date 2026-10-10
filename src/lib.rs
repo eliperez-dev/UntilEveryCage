@@ -2805,22 +2805,22 @@ fn test_release_volume_ranges(normalized: &str) -> Vec<Value> {
         let ordinal = category.get("code")?.as_str()?;
         let canonical_ordinal = ordinal.strip_suffix(".0").unwrap_or(ordinal);
         let provenance = category.get("provenance")?.as_str()?;
-        let (lower, upper, period) = match (provenance, canonical_ordinal) {
-            ("processing_volume_category", "1") => (None, Some(10_000), "month"),
-            ("processing_volume_category", "2") => (Some(10_000), Some(100_000), "month"),
-            ("processing_volume_category", "3") => (Some(100_000), Some(1_000_000), "month"),
-            ("processing_volume_category", "4") => (Some(1_000_000), Some(10_000_000), "month"),
-            ("processing_volume_category", "5") => (Some(10_000_000), None, "month"),
-            ("slaughter_volume_category", "1") => (None, Some(1_000), "trailing_360_days"),
-            ("slaughter_volume_category", "2") => (Some(1_000), Some(10_000), "trailing_360_days"),
-            ("slaughter_volume_category", "3") => (Some(10_000), Some(100_000), "trailing_360_days"),
-            ("slaughter_volume_category", "4") => (Some(100_000), Some(10_000_000), "trailing_360_days"),
-            ("slaughter_volume_category", "5") => (Some(10_000_000), None, "trailing_360_days"),
+        let (lower, upper, period, unit) = match (provenance, canonical_ordinal) {
+            ("processing_volume_category", "1") => (None, Some(10_000), "month", "pounds"),
+            ("processing_volume_category", "2") => (Some(10_000), Some(100_000), "month", "pounds"),
+            ("processing_volume_category", "3") => (Some(100_000), Some(1_000_000), "month", "pounds"),
+            ("processing_volume_category", "4") => (Some(1_000_000), Some(10_000_000), "month", "pounds"),
+            ("processing_volume_category", "5") => (Some(10_000_000), None, "month", "pounds"),
+            ("slaughter_volume_category", "1") => (None, Some(1_000), "trailing_360_days", "head"),
+            ("slaughter_volume_category", "2") => (Some(1_000), Some(10_000), "trailing_360_days", "head"),
+            ("slaughter_volume_category", "3") => (Some(10_000), Some(100_000), "trailing_360_days", "head"),
+            ("slaughter_volume_category", "4") => (Some(100_000), Some(10_000_000), "trailing_360_days", "head"),
+            ("slaughter_volume_category", "5") => (Some(10_000_000), None, "trailing_360_days", "head"),
             _ => return None,
         };
         Some(json!({"ordinal_code":ordinal,"lower":lower,"upper":upper,
           "bounds": if lower.is_none() { "exclusive_upper" } else if upper.is_none() { "inclusive_lower_unbounded" } else { "inclusive_lower_exclusive_upper" },
-          "unit":"pounds","period":period,"method_version":"fsis-mpi-volume-codebook-2026-03-24-v1",
+          "unit":unit,"period":period,"method_version":"fsis-mpi-volume-codebook-2026-03-24-v1",
           "source_codebook_url":"https://www.govinfo.gov/content/pkg/FR-2026-03-24/pdf/FR-2026-03-24.pdf",
           "verification_state":"source_codebook_verified"}))
     }).collect()
@@ -2885,6 +2885,13 @@ fn test_release_allowlisted_detail(normalized: &str) -> Value {
         if !safe.is_empty() {
             detail.insert("source_volume_categories".into(), json!(safe));
         }
+    }
+    let ranges = test_release_volume_ranges(normalized);
+    if !ranges.is_empty() {
+        detail.insert(
+            "derived_source_volume_ranges".into(),
+            json!(ranges.into_iter().take(32).collect::<Vec<_>>()),
+        );
     }
     for field in [
         "establishment_id",
@@ -5655,6 +5662,35 @@ mod v2_api_tests {
         assert_eq!(detail["native_activity_code"], json!("A"));
         assert!(detail.get("street_address").is_none());
         assert!(detail.get("source_values").is_none());
+    }
+
+    #[test]
+    fn test_release_volume_ranges_use_verified_units_bounds_and_safe_detail() {
+        let normalized = r#"{
+          "species_slaughtered":{"cattle":false,"poultry":true},
+          "source_volume_categories":[
+            {"code":"1.0","provenance":"processing_volume_category"}, {"code":"2","provenance":"processing_volume_category"}, {"code":"3","provenance":"processing_volume_category"}, {"code":"4","provenance":"processing_volume_category"}, {"code":"5","provenance":"processing_volume_category"},
+            {"code":"1","provenance":"slaughter_volume_category"}, {"code":"2","provenance":"slaughter_volume_category"}, {"code":"3","provenance":"slaughter_volume_category"}, {"code":"4","provenance":"slaughter_volume_category"}, {"code":"5","provenance":"slaughter_volume_category"}, {"code":"6","provenance":"slaughter_volume_category"}
+          ]
+        }"#;
+        let ranges = test_release_volume_ranges(normalized);
+        assert_eq!(ranges.len(), 10);
+        assert_eq!(
+            ranges.iter().take(5).map(|range| (range["lower"].as_i64(), range["upper"].as_i64())).collect::<Vec<_>>(),
+            vec![(None, Some(10_000)), (Some(10_000), Some(100_000)), (Some(100_000), Some(1_000_000)), (Some(1_000_000), Some(10_000_000)), (Some(10_000_000), None)],
+        );
+        assert_eq!(
+            ranges.iter().skip(5).map(|range| (range["lower"].as_i64(), range["upper"].as_i64())).collect::<Vec<_>>(),
+            vec![(None, Some(1_000)), (Some(1_000), Some(10_000)), (Some(10_000), Some(100_000)), (Some(100_000), Some(10_000_000)), (Some(10_000_000), None)],
+        );
+        assert!(ranges.iter().take(5).all(|range| range["unit"] == "pounds" && range["period"] == "month"));
+        assert!(ranges.iter().skip(5).all(|range| range["unit"] == "head" && range["period"] == "trailing_360_days"));
+        assert!(ranges.iter().all(|range| range["method_version"] == "fsis-mpi-volume-codebook-2026-03-24-v1"));
+        assert!(ranges.iter().all(|range| range["source_codebook_url"] == "https://www.govinfo.gov/content/pkg/FR-2026-03-24/pdf/FR-2026-03-24.pdf"));
+
+        let detail = test_release_allowlisted_detail(normalized);
+        assert_eq!(detail["species_slaughtered"]["cattle"], json!(false));
+        assert_eq!(detail["derived_source_volume_ranges"], json!(ranges));
     }
 
     #[test]
