@@ -1,8 +1,8 @@
 """Prepare one verified, bounded APHIS active-register private preview.
 
 This helper never touches release tables or calls a geocoder. It verifies the
-source-specific APHIS observation handoff, projects only explicit Class R
-registrations, and writes a private preview packet for a later authorized DB
+source-specific APHIS observation handoff, projects all supported explicit
+native registration classes, and writes a private preview packet for a later authorized DB
 import.
 """
 from __future__ import annotations
@@ -89,6 +89,9 @@ def import_prepared(database_url: str, handoff: Path, projection_dir: Path) -> d
         if db.execute("SELECT current_database()").fetchone()[0] != "uec_v0_api_repair":
             raise ValueError("database_identity_invalid")
         before = db.execute("SELECT count(*) FROM uec.release_members").fetchone()[0]
+        db.execute("""INSERT INTO uec.sources(source_id,country_code,name,official_url,access_method)
+                      VALUES ('us.aphis','US','USDA APHIS Animal Care active directory',%s,'private-preview-registration-import')
+                      ON CONFLICT (source_id) DO NOTHING""", (manifest["source_url"],))
         db.execute("INSERT INTO real_preview.imports(snapshot_sha256,observation_count) VALUES (%s,%s) ON CONFLICT DO NOTHING", (snapshot, rows))
         db.execute("""INSERT INTO real_preview.source_manifests(snapshot_sha256,source_id,source_artifact_sha256,normalized_sha256,normalized_rows,source_url,retrieved_at,code_version,config_version)
                       VALUES (%s,'us.aphis',%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""",

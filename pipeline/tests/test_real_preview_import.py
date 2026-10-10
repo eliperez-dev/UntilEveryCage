@@ -976,7 +976,7 @@ class RealPreviewImporterTests(unittest.TestCase):
                 IMPORTER.find_manifests(root)
             self.assertEqual(failure.exception.code, "duplicate_handoff")
 
-    def test_aphis_is_not_imported_or_a_reason_to_fail(self):
+    def test_enabled_aphis_sibling_does_not_expand_legacy_import_selection(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             selected = root / "d6-graph-mvp" / "handoffs"
@@ -986,11 +986,11 @@ class RealPreviewImporterTests(unittest.TestCase):
                 (p / "normalized" / "records.jsonl").write_text("{}\n", encoding="utf-8")
                 (p / "manifest.json").write_text(json.dumps({"source_id": source, "normalized_sha256": "a" * 64}), encoding="utf-8")
             apis = selected / "us.aphis" / "manifest.json"
-            apis.parent.mkdir()
+            apis.parent.mkdir(exist_ok=True)
             apis.write_text(json.dumps({"source_id": "us.aphis"}), encoding="utf-8")
             found = IMPORTER.find_manifests(root)
             self.assertEqual(set(found), IMPORTER.LEGACY_ALLOWED)
-            self.assertEqual(IMPORTER.excluded_sibling_sources(root), ["us.aphis"])
+            self.assertEqual(IMPORTER.excluded_sibling_sources(root), [])
 
     def test_public_zero_gate_fails_closed_if_any_public_projection_exists(self):
         class EmptyDatabase:
