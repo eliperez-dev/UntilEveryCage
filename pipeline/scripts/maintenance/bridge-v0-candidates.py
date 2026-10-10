@@ -40,6 +40,7 @@ SPEC.loader.exec_module(IMPORTER)
 
 SCHEMA = "v0-candidate-freeze-v1"
 PROFILE = "official"
+CORRECTION_PROJECTION_VERSION = "v0-correction-v4"
 PUBLIC_PROJECTION_RELATIONS = (
     "uec.map_facilities_public_discovery",
     "uec.map_facilities_public_discovery_read_model",
@@ -574,6 +575,11 @@ def _uuid(namespace: str, *parts: str) -> str:
     return str(uuid.uuid5(uuid.NAMESPACE_URL, ":".join(("uec-v0", namespace, *parts))))
 
 
+def _correction_source_record_key(snapshot_sha256: str, source_identifier: str) -> str:
+    """Append correction-derived evidence without colliding with frozen V0 rows."""
+    return f"{CORRECTION_PROJECTION_VERSION}:{snapshot_sha256}:{source_identifier}"
+
+
 def _safe_normalized(normalized: Any, source: str | None = None, source_values: Any = None) -> dict[str, Any]:
     if not isinstance(normalized, dict):
         return {}
@@ -908,7 +914,7 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                     identifier = str(parsed[0])
                     group = str(parsed[IMPORTER.SOURCE_GROUP_KEY_INDEX])
                     parsed_at = retrieved
-                    source_record_key = f"v0:{entry['snapshot_sha256']}:{identifier}"
+                    source_record_key = _correction_source_record_key(entry["snapshot_sha256"], identifier)
                     normalized = raw.get("normalized") if isinstance(raw.get("normalized"), dict) else {}
                     contract = preview_check["taxonomy"][identifier]
                     raw_fields = {"evidence_kind": "authenticated_normalized_handoff",
@@ -1072,7 +1078,7 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                     if source != str(rep and raw.get("source_id") or source):
                         raise BridgeError("representative_source_mismatch")
                     identifier = str(rep[0])
-                    source_record_key = f"v0:{entry['snapshot_sha256']}:{identifier}"
+                    source_record_key = _correction_source_record_key(entry["snapshot_sha256"], identifier)
                     record_row = connection.execute("SELECT source_record_id,artifact_id FROM uec.source_records WHERE source_id=%s AND source_record_key=%s",
                                                     (source, source_record_key)).fetchone()
                     if record_row is None:
