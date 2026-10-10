@@ -255,6 +255,7 @@
     if (range.bounds === 'inclusive_lower_exclusive_upper' && range.lower !== null && range.upper !== null) return `${number(range.lower)} to less than ${number(range.upper)}`;
     return null;
   }
+  function annualSpeciesCount(count: number): string { return new Intl.NumberFormat('en-US').format(count); }
   const slaughterRanges = $derived(sourceFacts?.derivedSourceVolumeRanges?.filter(range => range.unit === 'head' && range.period === 'trailing_360_days') ?? []);
   const processingRanges = $derived(sourceFacts?.derivedSourceVolumeRanges?.filter(range => range.unit === 'pounds' && range.period === 'month') ?? []);
 
@@ -464,6 +465,7 @@
         {#if sourceFactEntries(sourceFacts, 'processingActivities').length}<div><dt>Processing activities</dt><dd><ul>{#each sourceFactEntries(sourceFacts, 'processingActivities') as [name, value] (name)}<li>{sourceFactLabel(name)}{#if sourceFactValue(value)}: {sourceFactValue(value)}{/if}</li>{/each}</ul></dd></div>{/if}
         {#if slaughterRanges.length}<div><dt>Estimated animals slaughtered (last 360 days)</dt><dd><ul>{#each slaughterRanges as range, index (`${range.ordinalCode}:${range.unit}:${range.period}:${index}`)}{#if formattedRange(range)}<li>{formattedRange(range)} head</li>{/if}{/each}</ul></dd></div>{/if}
         {#if processingRanges.length}<div><dt>Estimated product volume (pounds/month)</dt><dd><ul>{#each processingRanges as range, index (`${range.ordinalCode}:${range.unit}:${range.period}:${index}`)}{#if formattedRange(range)}<li>{formattedRange(range)} pounds/month</li>{/if}{/each}</ul></dd></div>{/if}
+        {#if sourceFacts.aphisAnnualReports?.length}{#each sourceFacts.aphisAnnualReports as report (report.fiscalYear)}<div><dt>FY{report.fiscalYear} reported animals</dt><dd><ul>{#each report.speciesCounts as species (species.species)}<li>{sourceFactLabel(species.species)}: {annualSpeciesCount(species.count)}</li>{/each}</ul>{#if safeHttps(report.sourceUrl)}<a href={safeHttps(report.sourceUrl) ?? ''} target="_blank" rel="noopener noreferrer">Source report</a>{/if}</dd></div>{/each}{/if}
         {#if sourceFacts.sourceVolumeCategories?.length}<div><dt>Source volume categories</dt><dd><ul>{#each sourceFacts.sourceVolumeCategories as category, index (volumeCategoryKey(category, index))}<li>{sourceFactLabel(category.code)}{#if volumeProvenance(category.provenance)} · {volumeProvenance(category.provenance)}{/if}</li>{/each}</ul></dd></div>{/if}
       </dl>
     </section>

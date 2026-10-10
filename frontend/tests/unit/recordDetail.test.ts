@@ -60,5 +60,6 @@ describe('private preview record detail surface', () => {
     expect(component).toContain('Estimated animals slaughtered (last 360 days)');
     expect(component).toContain('Estimated product volume (pounds/month)');
     expect(component).toContain('derivedSourceVolumeRanges');
+    expect(component).toContain('FY{report.fiscalYear} reported animals');
   });
 });

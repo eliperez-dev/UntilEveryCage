@@ -41,6 +41,17 @@ export type DerivedSourceVolumeRange = Readonly<{
   sourceCodebookUrl: string;
   verificationState: 'source_codebook_verified';
 }>;
+export type AphisAnnualReport = Readonly<{
+  fiscalYear: string;
+  speciesCounts: readonly Readonly<{ species: string; count: number }>[];
+  sourceUrl: string;
+  safeProvenance: Readonly<{
+    sourceId: 'us.aphis.annual-reports';
+    evidenceType: 'annual_reports';
+    matchMethod: 'exact_source_identifier';
+    matchedIdentifierTypes: readonly ('certificate_number' | 'customer_number')[];
+  }>;
+}>;
 // These are source-native, release-built detail facts. They are intentionally
 // absent from list and map projections.
 export type LocationSourceFacts = Readonly<{
@@ -49,6 +60,7 @@ export type LocationSourceFacts = Readonly<{
   processingActivities?: Readonly<Record<string, SourceFlagValue>>;
   sourceVolumeCategories?: readonly SourceVolumeCategory[];
   derivedSourceVolumeRanges?: readonly DerivedSourceVolumeRange[];
+  aphisAnnualReports?: readonly AphisAnnualReport[];
   establishmentId?: string;
   establishmentNumber?: string;
   grantDate?: string;
