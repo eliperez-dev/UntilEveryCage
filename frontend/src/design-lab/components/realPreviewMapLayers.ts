@@ -45,8 +45,8 @@ export type RealPreviewVisualSettings = Readonly<{
   selectedKey?: string | null;
 }>;
 
-const cityReference = ['any', ['==', ['get', 'precision'], 'city'], ['==', ['get', 'precision'], 'city_reference_approximate'], ['==', ['get', 'precision'], 'provider_locality_approximate']];
-const approximateCoordinate = ['all', ['==', ['get', 'kind'], 'source-coordinate'], ['in', ['get', 'precision'], ['literal', ['approximate', 'city', 'source_reported', 'source_provided_unverified', 'city_reference_approximate', 'provider_locality_approximate']]]];
+const cityReference = ['any', ['==', ['get', 'precision'], 'city'], ['==', ['get', 'precision'], 'city_reference_approximate'], ['==', ['get', 'precision'], 'provider_locality_approximate'], ['==', ['get', 'precision'], 'locality_reference_coarse']];
+const approximateCoordinate = ['all', ['==', ['get', 'kind'], 'source-coordinate'], ['in', ['get', 'precision'], ['literal', ['approximate', 'city', 'source_reported', 'source_provided_unverified', 'city_reference_approximate', 'provider_locality_approximate', 'locality_reference_coarse']]]];
 const categoryPairs = Object.entries(CATEGORY_PRIMARY_BY_SOURCE_KEY);
 const categoryColorBySourceKey = ['match', ['get', 'category_key'], ...categoryPairs.flatMap(([sourceKey, primaryKey]) => [sourceKey, CATEGORY_PRESENTATIONS[primaryKey].color]), CATEGORY_PRESENTATIONS.unclassified.color];
 const v1PinByPrimary = {
@@ -114,7 +114,7 @@ export function addRealPreviewMapLayers(
     clusterMaxZoom: nativeClusterMaxZoom(settings.maxZoom),
     clusterProperties: {
       representedCount: ['+', ['get', 'weight']],
-      approximateCount: ['+', ['case', ['any', ['==', ['get', 'precision'], 'approximate'], ['==', ['get', 'precision'], 'city']], ['get', 'weight'], 0]],
+      approximateCount: ['+', ['case', ['any', ['==', ['get', 'precision'], 'approximate'], ['==', ['get', 'precision'], 'city'], ['==', ['get', 'precision'], 'locality_reference_coarse']], ['get', 'weight'], 0]],
     },
   } as any);
 
