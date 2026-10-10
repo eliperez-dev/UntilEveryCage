@@ -214,7 +214,7 @@
     },
     "us.aphis": {
       "enabled": true,
-      "runtime_classification": "production-e2e-private-candidate",
+      "runtime_classification": "production-e2e",
       "activation": "shared-private-registration-import",
       "public_release": false,
       "runner": "pipeline.refresh_private:us.aphis",

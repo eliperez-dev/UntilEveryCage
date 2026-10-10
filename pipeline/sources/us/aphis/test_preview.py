@@ -49,10 +49,10 @@ class AphisPreviewTests(unittest.TestCase):
         with self.assertRaisesRegex(AphisPreviewError, "known_native"):
             project_registration(_record("Class Z - Unknown"))
 
-    def test_policy_registers_a_manual_private_lane_not_shared_live_e2e(self):
+    def test_policy_registers_verified_private_e2e_without_public_release(self):
         policy = json.loads((ROOT / "preview-enabled-sources.json").read_text(encoding="utf-8"))["sources"]["us.aphis"]
         self.assertTrue(policy["enabled"])
-        self.assertEqual(policy["runtime_classification"], "production-e2e-private-candidate")
+        self.assertEqual(policy["runtime_classification"], "production-e2e")
         self.assertEqual(policy["activation"], "shared-private-registration-import")
         self.assertFalse(policy["public_release"])
 

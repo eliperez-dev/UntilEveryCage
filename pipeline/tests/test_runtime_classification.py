@@ -23,6 +23,7 @@ VERIFIED_PRIVATE_E2E = {
     "it.853-2004",
     "it.1069-2009",
     "nl.nvwa.approved-food",
+    "us.aphis",
     "us.fsis",
 }
 
