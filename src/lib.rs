@@ -6029,6 +6029,30 @@ mod v2_api_tests {
     }
 
     #[test]
+    fn candidate_list_counts_one_gated_snapshot_before_cursor_pagination() {
+        let source = include_str!("lib.rs");
+        let handler = source
+            .split("pub async fn get_dev_test_release_locations_handler")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn get_dev_test_release_location_detail_handler").next())
+            .expect("candidate list handler");
+        let matched = handler
+            .find("WITH matched AS MATERIALIZED")
+            .expect("one release-scoped eligibility snapshot");
+        let count = handler
+            .find("SELECT count(*)::bigint AS total_count FROM matched")
+            .expect("total count from snapshot");
+        let cursor = handler
+            .find("WHERE ($7::uuid IS NULL OR facility_id > $7)")
+            .expect("cursor is applied after the snapshot");
+        assert!(matched < count && count < cursor);
+        assert!(handler.contains("COALESCE(review.privacy_screening_status,'pending') <> 'failed'"));
+        assert!(handler.contains("COALESCE(review.factual_review_status,'unreviewed') <> 'rejected'"));
+        assert!(handler.contains("NOT EXISTS (SELECT 1 FROM uec.public_access_restricted"));
+        assert!(!handler.contains("count(DISTINCT f.facility_id)::bigint"));
+    }
+
+    #[test]
     fn candidate_filter_keys_reject_empty_or_noncanonical_values() {
         let valid: DevTestReleaseLocationParams = serde_json::from_value(json!({
             "country_code":"US,CA",
