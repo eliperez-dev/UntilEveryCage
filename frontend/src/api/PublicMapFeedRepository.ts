@@ -119,16 +119,18 @@ export function parsePublicMapFeed(payload: unknown, profile: LocalProfile, rele
 
 const PUBLIC_CACHE_NAME = 'uec-public-map-projection-v1';
 const PUBLIC_CACHE_MAX_ENTRIES = 3;
-const cacheKey = (identity: PublicReleaseIdentity, profile: LocalProfile) =>
-  new Request(`/__uec_public_map_cache__/${encodeURIComponent(profile)}/${encodeURIComponent(identity.releaseId)}/${identity.manifestSha256}/${identity.suppressionGeneration}`, { method: 'GET' });
+const cacheKey = (identity: PublicReleaseIdentity, profile: LocalProfile) => {
+  const path = `/__uec_public_map_cache__/${encodeURIComponent(profile)}/${encodeURIComponent(identity.releaseId)}/${identity.manifestSha256}/${identity.suppressionGeneration}`;
+  return new Request(new URL(path, globalThis.location?.origin ?? 'https://uec.invalid').href, { method: 'GET' });
+};
 
 export async function clearPublicMapCache(): Promise<void> {
-  if (!('caches' in globalThis)) return;
+  if (!globalThis.caches) return;
   await caches.delete(PUBLIC_CACHE_NAME);
 }
 
 export async function publicMapCacheEntryCount(): Promise<number> {
-  if (!('caches' in globalThis)) return 0;
+  if (!globalThis.caches) return 0;
   return (await (await caches.open(PUBLIC_CACHE_NAME)).keys()).length;
 }
 
@@ -146,7 +148,7 @@ export function createPublicMapFeedRepository(fetcher: typeof fetch = globalThis
       if (!current || current.releaseId !== releaseId) throw new PublicMapFeedError('The selected public map release is no longer available.');
       const key = cacheKey(current, profile);
       let projectionCache: Cache | undefined;
-      if ('caches' in globalThis) {
+      if (globalThis.caches) {
         projectionCache = await caches.open(PUBLIC_CACHE_NAME);
         const cached = await projectionCache.match(key);
         if (cached) {
