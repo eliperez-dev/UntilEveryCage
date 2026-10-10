@@ -290,6 +290,7 @@
         "parameters": [
           {"$ref": "#/components/parameters/profile"},
           {"name": "release_id", "in": "query", "required": true, "description": "Promoted release ID currently displayed by the client.", "schema": {"type": "string", "maxLength": 160}},
+          {"name": "format", "in": "query", "required": false, "description": "Optional dictionary-compressed point tuples; omitted returns GeoJSON.", "schema": {"type": "string", "enum": ["compact"]}},
           {"$ref": "#/components/parameters/ifNoneMatch"}
         ],
         "responses": {
@@ -306,6 +307,9 @@
             "content": {
               "application/geo+json": {
                 "schema": {"$ref": "#/components/schemas/PublicMapFeed"}
+              },
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/CompactPublicMapFeed"}
               }
             }
           },
@@ -779,6 +783,51 @@
       "Location": {
         "$ref": "./v2-location.schema.json"
       },
+      "CompactPublicMapFeed": {
+        "type": "object",
+        "required": ["api_version", "data", "meta"],
+        "properties": {
+          "api_version": {"const": "v2"},
+          "meta": {"$ref": "#/components/schemas/PublicMapFeed/properties/meta"},
+          "data": {
+            "type": "object",
+            "required": ["format", "dictionaries", "features"],
+            "properties": {
+              "format": {"const": "compact-v1"},
+              "dictionaries": {
+                "type": "object",
+                "required": ["source_ids", "category_keys", "precisions"],
+                "properties": {
+                  "source_ids": {"type": "array", "items": {"type": "string"}},
+                  "category_keys": {"type": "array", "items": {"type": "string"}},
+                  "precisions": {"type": "array", "items": {"enum": ["exact", "city", "source_reported", "approximate"]}}
+                },
+                "additionalProperties": false
+              },
+              "features": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "description": "UUID, longitude, latitude, source index, display-category index, category-index array, precision index. Weight is always one.",
+                  "prefixItems": [
+                    {"type": "string", "format": "uuid"},
+                    {"type": "number", "minimum": -180, "maximum": 180},
+                    {"type": "number", "minimum": -90, "maximum": 90},
+                    {"type": "integer", "minimum": 0},
+                    {"type": "integer", "minimum": 0},
+                    {"type": "array", "items": {"type": "integer", "minimum": 0}},
+                    {"type": "integer", "minimum": 0}
+                  ],
+                  "minItems": 7,
+                  "maxItems": 7
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
       "PublicMapFeed": {
         "type": "object",
         "required": ["api_version", "data", "meta"],
@@ -953,6 +1002,7 @@
               "query"
             ],
             "properties": {
+              "total_count": {"type": "integer", "minimum": 0, "description": "All eligible facilities matching the filters, before cursor and page size."},
               "next_cursor": {
                 "type": [
                   "string",

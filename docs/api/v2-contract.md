@@ -39,6 +39,18 @@ Clients can discover the current controlled vocabularies at `GET /api/v2/discove
 
 `GET /api/v2/discovery/facets` returns deterministic value/count pairs for the same controlled dimensions, scoped to the selected promoted profile and current public projection. Its metadata includes the selected release, ruleset, release creation time, and an explicit coverage scope. Counts are eligible public facility-projection rows after current suppression; they are not story-wide totals or animal counts. Effective filters are profile, country, region, legacy category, source type, precision and lifecycle status. It currently ignores `q`, `category_keys`, spatial filters, `release_id` and pagination; do not present those as supported facet inputs. Each dimension is capped at 20 values. It returns no addresses, queries, raw payloads, inactive releases, or restricted records.
 
+Adding `format=compact` to the map-feed request returns `application/json`
+with `data.format=compact-v1`, repeated-value dictionaries and seven-element
+point tuples. The tuple is `[UUID, longitude, latitude, source index,
+display-category index, category-index array, precision index]`; weight is one.
+Metadata and eligible point membership match the default GeoJSON format.
+See [the read-path decision](../performance/v2-public-projection-read-path.md)
+for startup warming, identity checks and cache limits.
+
+Location-list `meta.total_count` reports all eligible facilities matching the
+request filters before pagination. The frontend offers 25/50/100-row pages;
+those UI choices do not narrow the API's existing page-size contract.
+
 Pagination is deterministic and bounded (`limit` defaults to 100 and is capped at
 1,000). `cursor` is the preferred continuation mechanism and contains the last
 returned `facility_id`. `offset` remains supported for compatibility (default 0,
