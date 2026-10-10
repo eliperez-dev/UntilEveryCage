@@ -59,8 +59,8 @@
       }
       const query = new URLSearchParams(window.location.hash.split('?')[1] ?? '');
       const serverDataMode = document.querySelector<HTMLMetaElement>('meta[name="uec-local-data-mode"]')?.content ?? null;
-      const explicitPublicRecord = route.kind === 'record' && (query.has('profile') || query.has('release_id'));
-      reviewMode = import.meta.env.DEV && !explicitPublicRecord && (query.has('f1a') || ((serverDataMode === 'real-preview' || serverDataMode === 'candidate-preview') && route.kind === 'map'));
+      const explicitPublicRoute = (route.kind === 'record' || route.kind === 'database') && (query.has('profile') || query.has('release_id'));
+      reviewMode = import.meta.env.DEV && !explicitPublicRoute && (query.has('f1a') || (serverDataMode === 'candidate-preview' && (route.kind === 'map' || route.kind === 'database' || route.kind === 'record')) || (serverDataMode === 'real-preview' && route.kind === 'map'));
       loading = false;
       loadError = '';
     } catch {

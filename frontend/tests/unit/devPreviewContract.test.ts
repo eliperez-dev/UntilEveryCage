@@ -44,17 +44,17 @@ describe('dev preview boundary', () => {
     expect(nextLocalReviewState('inspected', 'follow_up')).toBe('follow_up');
     expect(nextLocalReviewState('follow_up', 'inspect')).toBe('follow_up');
   });
-  it('maps test-release rows without requiring approval or coordinates and never falls back', async () => {
+  it('maps configured candidate rows without requiring approval or coordinates and never falls back', async () => {
     const row = { facility_id: '550e8400-e29b-41d4-a716-446655440000', canonical_name: 'Pending test row', city: null, country_code: 'GB', category: 'dairy', source_type: 'official', publication_profile: 'official', factual_review_status: 'unreviewed', privacy_screening_status: 'passed', project_approval: 'pending', reviewer_role: null, publication_warning: null, display_precision: 'unmapped', latitude: null, longitude: null, first_observed_at: null, last_observed_at: null, observation_count: null, lifecycle_status: 'status_unknown', provenance_source_id: 's1', provenance_source: null, provenance_source_name: 'Test source', provenance_source_url: 'https://example.test/source', provenance_retrieved_at: '2026-01-01T00:00:00Z', source_rights_status: 'unknown', release_id: 'test-release', release_ruleset_version: 'rules-1' };
-    const body = { data: [row], meta: { api_version: 'dev-test-v1', environment: 'test-only', test_only: true, private_preview: true, release_status: 'candidate', release_id: 'test-release', profile: 'official', coverage_scope: 'test_release_public_shaped_rows', count_semantics: 'Rows only', preview_label: TEST_RELEASE_LABEL, result_count: 1, next_cursor: null } };
+    const body = { data: [row], meta: { api_version: 'dev-test-v1', test_only: false, candidate_only: true, private_preview: true, release_id: 'test-release', snapshot_id: 'a'.repeat(64), preview_label: 'Configured candidate correction', result_count: 1, total_count: 1, next_cursor: null } };
     const candidateVariant = { ...row, canonical_name: null, privacy_screening_status: 'pending', project_approval: 'not-approved', release_ruleset_version: null };
     expect(testReleaseLocationSchema.safeParse(candidateVariant).success).toBe(true);
     expect(locationSchema.safeParse(candidateVariant).success).toBe(false);
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(body)));
-    const result = await new TestReleaseRepository(fetcher).list('official', 'test-token');
+    const result = await new TestReleaseRepository(fetcher).list();
     expect(result.locations[0]).toMatchObject({ name: 'Pending test row', lat: null, evidence: { projectApproval: 'pending' } });
-    expect(result.coverageNote).toContain('not project-approved');
-    await expect(new TestReleaseRepository(vi.fn().mockResolvedValue(new Response('unavailable', { status: 401 }))).list('official', 'wrong')).rejects.toThrow('unavailable');
+    expect(result.totalCount).toBe(1);
+    await expect(new TestReleaseRepository(vi.fn().mockResolvedValue(new Response('unavailable', { status: 401 }))).list()).rejects.toThrow('not authorized');
   });
   it('requires explicit test-release CSV markers and validates facets metadata', async () => {
     const csvFetcher = vi.fn().mockResolvedValue(new Response('facility_id,project_approval\n1,pending\n', { headers: { 'x-uec-test-release': 'true', 'x-uec-release-id': 'test-release' } }));

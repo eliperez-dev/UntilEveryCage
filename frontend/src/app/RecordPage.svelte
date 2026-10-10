@@ -1,5 +1,6 @@
 <script lang="ts">
   import { createRealPreviewRepository, mapRealPreviewCandidate, RealPreviewError } from '../api/RealPreviewRepository';
+  import { TestReleaseDetailRepository } from '../api/TestReleaseDetailRepository';
   import type { LabRecord } from '../design-lab/contract';
   import ProjectFooter from './ProjectFooter.svelte';
   import RecordDetail from './RecordDetail.svelte';
@@ -8,6 +9,8 @@
 
   let { id }: { id: string } = $props();
   const repository = createRealPreviewRepository();
+  const candidateRepository = new TestReleaseDetailRepository();
+  const candidateMode = typeof document !== 'undefined' && document.querySelector<HTMLMetaElement>('meta[name="uec-local-data-mode"]')?.content === 'candidate-preview';
   let record = $state<LabRecord | null>(null);
   let status = $state<'loading' | 'ready' | 'error' | 'unauthorized'>('loading');
   let error = $state('');
@@ -19,9 +22,12 @@
     record = null;
     status = 'loading';
     error = '';
-    void repository.detail(id, controller.signal).then(candidate => {
+    const request = candidateMode
+      ? candidateRepository.detail(id, controller.signal)
+      : repository.detail(id, controller.signal).then(mapRealPreviewCandidate);
+    void request.then(candidate => {
       if (!controller.signal.aborted) {
-        record = mapRealPreviewCandidate(candidate);
+        record = candidate;
         status = 'ready';
       }
     }).catch(cause => {

@@ -356,7 +356,7 @@
   const databaseHref = $derived(
     (() => {
       const q = new URLSearchParams();
-      if (mode === "real-preview") q.set("f1a", "field");
+      if (mode === "real-preview" || mode === "candidate-preview") q.set("f1a", "field");
       if (state.sourceId) q.set("source", state.sourceId);
       if (state.selectedId) q.set("selected", state.selectedId);
       q.set("lat", String(state.viewport.centerLat));
@@ -368,13 +368,13 @@
     })(),
   );
   const mapHref = $derived(
-    `#/map?${new URLSearchParams({ ...(mode === "real-preview" ? { f1a: "field" } : {}), scenario: state.scenario, ...Object.fromEntries(new URLSearchParams(databaseHref.split("?")[1] ?? "")) })}`,
+    `#/map?${new URLSearchParams({ ...((mode === "real-preview" || mode === "candidate-preview") ? { f1a: "field" } : {}), scenario: state.scenario, ...Object.fromEntries(new URLSearchParams(databaseHref.split("?")[1] ?? "")) })}`,
   );
 </script>
 
 <svelte:window onkeydown={onKeydown} />
 <section class="field-view">
-  <PreviewMasthead privateTools={mode === "real-preview"} publicReleaseLabel={publicMapMeta?.releaseLabel ?? null} current="map" {mapHref} {databaseHref} debugEnabled={$debugEnabled} ondebugchange={(enabled) => { debugEnabled.set(enabled); if (!enabled) debugOpen.set(false); }} />
+  <PreviewMasthead privateTools={mode === "real-preview" || mode === "candidate-preview"} publicReleaseLabel={publicMapMeta?.releaseLabel ?? null} current="map" {mapHref} {databaseHref} debugEnabled={$debugEnabled} ondebugchange={(enabled) => { debugEnabled.set(enabled); if (!enabled) debugOpen.set(false); }} />
   <main class="map-stage" aria-label="Investigative map field">
     {#if mode === "synthetic" && state.scenario === "loading"}<div class="status" role="status">
         Loading records…

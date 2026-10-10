@@ -132,7 +132,7 @@
         return;
       }
       if (mode === 'candidate-preview') {
-        const page = await testReleaseRepository.list('official', '', controller.signal);
+        const page = await testReleaseRepository.list({ cursor: reset ? null : nextCursor, limit: 100, signal: controller.signal });
         if (controller.signal.aborted) return;
         const mapped = page.locations.map(mapPublicLocation);
         apiRecords = reset ? mapped : [...new Map([...apiRecords, ...mapped].map(record => [record.id, record])).values()];

@@ -7,6 +7,7 @@
     type RealPreviewCandidate,
     type RealPreviewFacet,
   } from "../api/RealPreviewRepository";
+  import { TestReleaseRepository } from '../api/TestReleaseRepository';
   import type { LabRecord } from "../design-lab/contract";
   import { TAXONOMY_PRIMARY_KEYS, type TaxonomyPrimaryKey } from "../domain/taxonomy";
   import { CATEGORY_PRESENTATIONS } from "../features/locations/categoryPresentation";
@@ -14,15 +15,23 @@
   import ProjectFooter from './ProjectFooter.svelte';
   import PreviewMasthead from "./PreviewMasthead.svelte";
   const repository = createRealPreviewRepository();
+  const candidateRepository = new TestReleaseRepository();
+  const candidateMode = typeof document !== 'undefined' && document.querySelector<HTMLMetaElement>('meta[name="uec-local-data-mode"]')?.content === 'candidate-preview';
   type Status = "loading" | "ready" | "empty" | "error" | "unauthorized";
   // Continue using the API cursor until it is exhausted; the UI stays paginated.
   let query = $state("");
   let sourceId = $state<string | null>(null);
   let selectedCategories = $state<readonly TaxonomyPrimaryKey[]>([]);
   let selectedId = $state<string | null>(null);
-  type DatabaseRecord = LabRecord & Pick<RealPreviewCandidate, 'displayName' | 'activityLabel' | 'activitySource' | 'sourceName' | 'sourceRecordId' | 'sourceUrl' | 'sourceRecordUrl' | 'retrievedAt' | 'observedAt' | 'evidenceSummary'>;
+  type DatabaseRecord = LabRecord & Partial<Pick<RealPreviewCandidate, 'displayName' | 'activityLabel' | 'activitySource' | 'sourceName' | 'sourceRecordId' | 'sourceUrl' | 'sourceRecordUrl' | 'retrievedAt' | 'observedAt' | 'evidenceSummary'>>;
   let records = $state<readonly DatabaseRecord[]>([]);
   let nextCursor = $state<string | null>(null);
+  let totalCount = $state<number | null>(null);
+  let candidateLabel = $state<string | null>(null);
+  let candidateCountries = $state<readonly Readonly<{ value: string; count: number }>[]>([]);
+  let candidateCategories = $state<readonly Readonly<{ value: string; count: number }>[]>([]);
+  let candidateCountry = $state('');
+  let candidateCategory = $state('');
   let status = $state<Status>("loading");
   let error = $state("");
   let loadingMore = $state(false);
@@ -34,6 +43,17 @@
   let request: AbortController | undefined;
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
   const sourceLabel = (value: string | null) => value ?? "All source feeds";
+  const candidateRecord = (location: import('../domain/location').Location): DatabaseRecord => ({
+    id: location.id, name: location.name, category: location.category, country: location.region, locality: location.region,
+    precision: location.evidence?.displayPrecision ?? 'unmapped', latitude: location.lat, longitude: location.lon,
+    ...(location.sourceId ? { sourceId: location.sourceId } : {}), sourceName: location.source,
+    ...(location.evidence?.sourceUrl ? { sourceUrl: location.evidence.sourceUrl } : {}),
+    ...(location.evidence?.retrievedAt ? { retrievedAt: location.evidence.retrievedAt } : {}),
+    ...(location.evidence?.factualReviewStatus ? { factualReviewStatus: location.evidence.factualReviewStatus } : {}),
+    ...(location.evidence?.privacyScreeningStatus ? { privacyScreeningStatus: location.evidence.privacyScreeningStatus } : {}),
+    ...(location.evidence ? { projectApproval: location.evidence.projectApproval === 'approved' } : {}),
+    ...(location.taxonomy ? { taxonomy: location.taxonomy } : {}),
+  });
   const treatment = (record: LabRecord) =>
     record.sourceId === 'us.fsis' && record.coordinatePrecision === 'source-provided'
       ? 'Source-provided · precision unverified'
@@ -134,6 +154,17 @@
       nextCursor = null;
     } else loadingMore = true;
     try {
+      if (candidateMode) {
+        const page = await candidateRepository.list({ q: query, ...(candidateCountry ? { countryCode: candidateCountry } : {}), ...(candidateCategory ? { category: candidateCategory } : {}), cursor: reset ? null : nextCursor, limit: 100, signal: controller.signal });
+        if (controller.signal.aborted) return;
+        const incoming = page.locations.map(candidateRecord);
+        records = [...new Map((reset ? incoming : [...records, ...incoming]).map(record => [record.id, record])).values()];
+        nextCursor = page.nextCursor;
+        totalCount = page.totalCount;
+        candidateLabel = page.previewLabel;
+        status = records.length ? 'ready' : 'empty';
+        return;
+      }
       const page = await repository.list({
         query,
         sourceId,
@@ -200,6 +231,11 @@
     syncHash();
     if (!records.length) void load(true);
     const controller = new AbortController();
+    addEventListener("hashchange", syncHash);
+    if (candidateMode) {
+      void candidateRepository.facets(controller.signal).then(value => { candidateCountries = value.countries; candidateCategories = value.categories; facetsStatus = 'ready'; }).catch(cause => { facetsStatus = classify(cause); });
+      return () => { controller.abort(); request?.abort(); if (searchTimer) clearTimeout(searchTimer); removeEventListener("hashchange", syncHash); };
+    }
     void repository
       .facets(controller.signal)
       .then((value) => {
@@ -209,7 +245,6 @@
       .catch((cause) => {
         facetsStatus = classify(cause);
       });
-    addEventListener("hashchange", syncHash);
     return () => {
       controller.abort();
       request?.abort();
@@ -226,7 +261,7 @@
     <section class="intro">
       <div>
         <h1 id="database-title">Browse records</h1>
-        <p>Search private preview records by name, activity, source, or place. This data is not publication-approved.</p>
+        <p>{candidateMode && candidateLabel ? candidateLabel : 'Search private preview records by name, activity, source, or place. This data is not publication-approved.'}</p>
       </div>
       <dl class="index-context">
         <div>
@@ -235,7 +270,7 @@
         </div>
         <div>
           <dt>Loaded records</dt>
-          <dd>{records.length} {records.length === 1 ? 'record' : 'records'}</dd>
+          <dd>{candidateMode && totalCount !== null ? `${totalCount} total` : `${records.length} ${records.length === 1 ? 'record' : 'records'}`}</dd>
         </div>
         <div>
           <dt>No-map in loaded records</dt>
@@ -254,7 +289,9 @@
           value={query}
           oninput={(event) => onSearch(event.currentTarget.value)}
         />
-        <fieldset>
+        {#if candidateMode}<fieldset><legend>Country</legend><select value={candidateCountry} onchange={(event) => { candidateCountry = event.currentTarget.value; void load(true); }}><option value="">All countries</option>{#each candidateCountries as facet (facet.value)}<option value={facet.value}>{facet.value} ({facet.count})</option>{/each}</select></fieldset>
+        <fieldset><legend>Activity category</legend><select value={candidateCategory} onchange={(event) => { candidateCategory = event.currentTarget.value; void load(true); }}><option value="">All categories</option>{#each candidateCategories as facet (facet.value)}<option value={facet.value}>{facet.value.replaceAll('_', ' ')} ({facet.count})</option>{/each}</select></fieldset>
+        {:else}<fieldset>
           <legend>Source feed</legend>{#if facetsStatus === "loading"}<p
               class="quiet"
             >
@@ -287,8 +324,8 @@
             <label><input type="checkbox" checked={selectedCategories.includes(key)} onchange={(event) => toggleCategory(key, event.currentTarget.checked)} />{CATEGORY_PRESENTATIONS[key].label}</label>
           {/each}
 
-        </fieldset>
-        {#if query || sourceId || selectedCategories.length}<div class="active-filters" aria-label="Selected filters">{#if query}<button type="button" onclick={() => write({ query: '', selectedId: null })}>Search: {query} ×</button>{/if}{#if sourceId}<button type="button" onclick={() => write({ sourceId: null, selectedId: null })}>{sourceId} ×</button>{/if}{#each selectedCategories as key}<button type="button" onclick={() => toggleCategory(key, false)}>{CATEGORY_PRESENTATIONS[key].label} ×</button>{/each}<button type="button" onclick={clearFilters}>Clear filters</button></div>{/if}
+        </fieldset>{/if}
+        {#if !candidateMode && (query || sourceId || selectedCategories.length)}<div class="active-filters" aria-label="Selected filters">{#if query}<button type="button" onclick={() => write({ query: '', selectedId: null })}>Search: {query} ×</button>{/if}{#if sourceId}<button type="button" onclick={() => write({ sourceId: null, selectedId: null })}>{sourceId} ×</button>{/if}{#each selectedCategories as key}<button type="button" onclick={() => toggleCategory(key, false)}>{CATEGORY_PRESENTATIONS[key].label} ×</button>{/each}<button type="button" onclick={clearFilters}>Clear filters</button></div>{/if}
       </aside>
       <section class="records" aria-live="polite">
         <header>
@@ -298,8 +335,8 @@
                 ? "Loading index"
                 : status === "empty"
                   ? "No matching records"
-                  : `${records.length} ${records.length === 1 ? 'record' : 'records'} loaded`}</strong
-            ><span>{query ? `Query: “${query}”` : "All accessible candidates"}</span>
+                  : candidateMode && totalCount !== null ? `${totalCount} candidate ${totalCount === 1 ? 'record' : 'records'}` : `${records.length} ${records.length === 1 ? 'record' : 'records'} loaded`}</strong
+            ><span>{candidateMode ? 'Configured candidate release' : query ? `Query: “${query}”` : "All accessible candidates"}</span>
           </p>
           <p class="quiet">
             {nextCursor ? "More records available." : "End of results."}
