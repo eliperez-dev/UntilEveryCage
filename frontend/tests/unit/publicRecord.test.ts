@@ -9,8 +9,8 @@ describe('public record detail facts', () => {
     expect(component).toContain('Source facts');
     expect(component).toContain('Also known as');
     expect(component).toContain('Establishment ID');
-    expect(component).toContain('Source volume categories');
-    expect(component).toContain('sourceFlag(value)');
+    expect(component).not.toContain('Source volume categories');
+    expect(component).toContain(".join(', ')");
     expect(component).toContain('record.sourceFacts.speciesSlaughtered');
     expect(component).toContain('record.sourceFacts.processingActivities');
   });

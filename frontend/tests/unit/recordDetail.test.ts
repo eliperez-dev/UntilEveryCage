@@ -49,17 +49,19 @@ describe('private preview record detail surface', () => {
   it('does not invent a graph or render unavailable API fields as placeholders', () => {
     expect(component).not.toContain('Connections');
     expect(component).not.toContain('Not available in this release');
-    expect(component).toContain('recordNotice');
+    expect(component).not.toContain('Record source and date are shown below.');
   });
 
-  it('renders only present, allowlisted source facts for configured candidate details', () => {
+  it('renders compact, allowlisted source facts ahead of the source dates and omits raw volume categories', () => {
     expect(component).toContain('id="source-facts-heading"');
     expect(component).toContain('sourceFacts.alternateNames?.length');
-    expect(component).toContain("sourceFactEntries(sourceFacts, 'processingActivities').length");
-    expect(component).toContain('sourceFacts.sourceVolumeCategories?.length');
+    expect(component).toContain('compactSourceFacts');
+    expect(component).toContain('nativeActivity');
+    expect(component).not.toContain('Source volume categories');
     expect(component).toContain('Estimated animals slaughtered (last 360 days)');
     expect(component).toContain('Estimated product volume (pounds/month)');
     expect(component).toContain('derivedSourceVolumeRanges');
     expect(component).toContain('FY{report.fiscalYear} reported animals');
+    expect(component.indexOf('id="source-facts-heading"')).toBeLessThan(component.indexOf('id="evidence-heading"'));
   });
 });
