@@ -56,6 +56,8 @@ export function mapTestReleaseDetail(row: WireTestReleaseDetailLocation): LabRec
     country: row.country_code,
     locality: row.city ?? row.country_code,
     precision: precision(row.display_precision),
+    ...(row.geometry_provenance?.precision ? { coordinatePrecision: row.geometry_provenance.precision } : {}),
+    ...(row.geometry_provenance?.method ?? row.coordinate_method ? { coordinateProvenance: row.geometry_provenance?.method ?? row.coordinate_method ?? null } : {}),
     latitude: row.latitude,
     longitude: row.longitude,
     sourceId: row.provenance_source_id,

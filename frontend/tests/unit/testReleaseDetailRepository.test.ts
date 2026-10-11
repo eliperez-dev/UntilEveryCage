@@ -21,4 +21,25 @@ describe('configured candidate detail', () => {
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: row, meta: { ...meta, candidate_only: false, test_only: true } }), { status: 200 }));
     await expect(new TestReleaseDetailRepository(fetcher).detail(id)).rejects.toThrow('rejected safely');
   });
+
+  it.each([
+    ['source_reported', 'source_reported', 55, 10],
+    ['exact', 'exact', 55, 10],
+    ['approximate', 'approximate', 55, 10],
+    ['unmapped', 'unmapped', null, null],
+  ])('preserves the API placement state for %s details', async (displayPrecision, expected, latitude, longitude) => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      data: { ...row, display_precision: displayPrecision, latitude, longitude }, meta,
+    }), { status: 200 }));
+    const result = await new TestReleaseDetailRepository(fetcher).detail(id);
+    expect(result.precision).toBe(expected);
+  });
+
+  it('keeps the bounded candidate geometry method and source precision for the detail renderer', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      data: { ...row, coordinate_method: 'source_coordinate', geometry_provenance: { kind: 'source', method: 'source_coordinate', precision: 'source-provided' } }, meta,
+    }), { status: 200 }));
+    const result = await new TestReleaseDetailRepository(fetcher).detail(id);
+    expect(result).toMatchObject({ coordinatePrecision: 'source-provided', coordinateProvenance: 'source_coordinate' });
+  });
 });

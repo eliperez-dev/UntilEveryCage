@@ -3,7 +3,7 @@
   import type { LabRecord } from '../design-lab/contract';
   import { categoryPresentation } from '../features/locations/categoryPresentation';
   import type { TaxonomyClassification } from '../domain/taxonomy';
-  import type { DerivedSourceVolumeRange, LocationSourceFacts, SourceVolumeCategory } from '../domain/location';
+  import type { DerivedSourceVolumeRange, LocationSourceFacts } from '../domain/location';
 
   /** Safe fields returned by the local private-preview detail projection. */
   export type RecordDetailRecord = Partial<Omit<LabRecord, 'name' | 'category'>> & {
@@ -212,7 +212,6 @@
     [value(record.locality), value(record.country)].filter(Boolean).join(', ') ||
       'Location unavailable',
   );
-  const recordNotice = $derived(publicRelease ? 'Published record with source and date below.' : 'Record source and date are shown below.');
   const precisionLabel = $derived(
     (record.sourceId === 'us.fsis' || record.previewLabel?.startsWith('FSIS source-provided')) && record.coordinatePrecision === 'source-provided'
       ? 'Source-provided coordinate, precision unverified'
@@ -223,6 +222,11 @@
     facts?.[field]
       ? Object.entries(facts[field]!).filter(([, included]) => included !== false).sort(([left], [right]) => left.localeCompare(right))
       : []);
+  const nativeActivity = $derived(
+    sourceFacts ? humanizeValue(sourceFacts.nativeActivityLabel ?? sourceFacts.nativeActivityCode ?? null) : null,
+  );
+  const speciesSlaughtered = $derived(compactSourceFacts(sourceFacts, 'speciesSlaughtered'));
+  const processingActivities = $derived(compactSourceFacts(sourceFacts, 'processingActivities'));
 
   function humanizeValue(raw: string | null): string | null {
     if (!raw) return null;
@@ -234,19 +238,15 @@
   function sourceFactLabel(raw: string): string {
     return humanizeValue(raw) ?? raw;
   }
-  function sourceFactValue(value: string | boolean): string | null {
-    if (value === true) return 'Yes';
-    if (value === false) return null;
-    return humanizeValue(value) ?? value;
-  }
-  function volumeProvenance(value: SourceVolumeCategory['provenance']): string | null {
-    if (!value) return null;
-    if (typeof value === 'string') return humanizeValue(value) ?? value;
-    const pieces = [value.sourceField, value.method].filter((piece): piece is string => typeof piece === 'string' && piece.trim().length > 0);
-    return pieces.length ? pieces.map(piece => humanizeValue(piece) ?? piece).join(' · ') : null;
-  }
-  function volumeCategoryKey(category: SourceVolumeCategory, index: number): string {
-    return `${category.code}:${typeof category.provenance === 'string' ? category.provenance : category.provenance?.sourceField ?? ''}:${index}`;
+  function compactSourceFacts(facts: LocationSourceFacts | undefined, field: 'speciesSlaughtered' | 'processingActivities'): string | null {
+    const entries = facts?.[field]
+      ? Object.entries(facts[field]!).filter(([, included]) => included !== false).sort(([left], [right]) => left.localeCompare(right))
+      : [];
+    if (!entries.length) return null;
+    return entries.map(([name, included]) => {
+      const label = sourceFactLabel(name);
+      return typeof included === 'string' && included.trim() ? `${label}: ${humanizeValue(included) ?? included}` : label;
+    }).join(', ');
   }
   function formattedRange(range: DerivedSourceVolumeRange): string | null {
     const number = (value: number) => new Intl.NumberFormat('en-US').format(value);
@@ -258,6 +258,8 @@
   function annualSpeciesCount(count: number): string { return new Intl.NumberFormat('en-US').format(count); }
   const slaughterRanges = $derived(sourceFacts?.derivedSourceVolumeRanges?.filter(range => range.unit === 'head' && range.period === 'trailing_360_days') ?? []);
   const processingRanges = $derived(sourceFacts?.derivedSourceVolumeRanges?.filter(range => range.unit === 'pounds' && range.period === 'month') ?? []);
+  const slaughterRangeText = $derived(slaughterRanges.map(formattedRange).filter((range): range is string => Boolean(range)).map(range => `${range} head`).join(', '));
+  const processingRangeText = $derived(processingRanges.map(formattedRange).filter((range): range is string => Boolean(range)).map(range => `${range} pounds/month`).join(', '));
 
   function safeHttps(raw: string | null): string | null {
     if (!raw) return null;
@@ -339,141 +341,50 @@
   {/if}
   <p class="place">{locationText}</p>
 
+  {#if sourceFacts}
+    <section aria-labelledby="source-facts-heading">
+      <h2 id="source-facts-heading">Source facts</h2>
+      <dl>
+        {#if nativeActivity}<div><dt>Native activity</dt><dd>{nativeActivity}</dd></div>{/if}
+        {#if speciesSlaughtered}<div><dt>Species slaughtered</dt><dd>{speciesSlaughtered}</dd></div>{/if}
+        {#if processingActivities}<div><dt>Processing activities</dt><dd>{processingActivities}</dd></div>{/if}
+        {#if slaughterRangeText}<div><dt>Estimated animals slaughtered (last 360 days)</dt><dd>{slaughterRangeText}</dd></div>{/if}
+        {#if processingRangeText}<div><dt>Estimated product volume (pounds/month)</dt><dd>{processingRangeText}</dd></div>{/if}
+        {#if sourceFacts.alternateNames?.length}<div><dt>Also known as</dt><dd>{sourceFacts.alternateNames.join(' · ')}</dd></div>{/if}
+        {#if sourceFacts.establishmentId}<div><dt>Establishment ID</dt><dd>{sourceFacts.establishmentId}</dd></div>{/if}
+        {#if sourceFacts.establishmentNumber}<div><dt>Establishment number</dt><dd>{sourceFacts.establishmentNumber}</dd></div>{/if}
+        {#if sourceFacts.grantDate}<div><dt>Grant date</dt><dd>{sourceFacts.grantDate}</dd></div>{/if}
+        {#if sourceFacts.aphisAnnualReports?.length}{#each sourceFacts.aphisAnnualReports as report (report.fiscalYear)}<div><dt>FY{report.fiscalYear} reported animals</dt><dd><ul>{#each report.speciesCounts as species (species.species)}<li>{sourceFactLabel(species.species)}: {annualSpeciesCount(species.count)}</li>{/each}</ul>{#if safeHttps(report.sourceUrl)}<a href={safeHttps(report.sourceUrl) ?? ''} target="_blank" rel="noopener noreferrer">Source report</a>{/if}</dd></div>{/each}{/if}
+      </dl>
+    </section>
+  {/if}
+
   <section aria-labelledby="location-heading">
-    <h2 id="location-heading">Location</h2>
+    <h2 id="location-heading">Location accuracy</h2>
     <dl>
-      <div>
-        <dt>Location precision</dt>
-        <dd>{precisionLabel}</dd>
-      </div>
-      {#if 'coordinatePrecision' in record && record.coordinatePrecision}
-        <div>
-          <dt>Source precision</dt>
-          <dd>{humanizeValue(record.coordinatePrecision)}</dd>
-        </div>
-      {/if}
-      {#if coordinateStatus}
-        <div>
-          <dt>Coordinate review</dt>
-          <dd>{humanizeValue(coordinateStatus)}</dd>
-        </div>
-      {/if}
-      {#if coordinateProvenance}
-        <div>
-          <dt>Map reference origin</dt>
-          <dd>{humanizeValue(coordinateProvenance)}</dd>
-        </div>
-      {/if}
-      {#if defaultMapScope === false}
-        <div>
-          <dt>Map scope</dt>
-          <dd>Outside the default map{#if mapScopeReason} · {humanizeValue(mapScopeReason)}{/if}</dd>
-        </div>
-      {/if}
+      <div><dt>Location precision</dt><dd>{precisionLabel}</dd></div>
+      {#if 'coordinatePrecision' in record && record.coordinatePrecision}<div><dt>Source precision</dt><dd>{humanizeValue(record.coordinatePrecision)}</dd></div>{/if}
+      {#if coordinateStatus}<div><dt>Coordinate review</dt><dd>{humanizeValue(coordinateStatus)}</dd></div>{/if}
+      {#if coordinateProvenance}<div><dt>Map reference origin</dt><dd>{humanizeValue(coordinateProvenance)}</dd></div>{/if}
+      {#if defaultMapScope === false}<div><dt>Map scope</dt><dd>Outside the default map{#if mapScopeReason} · {humanizeValue(mapScopeReason)}{/if}</dd></div>{/if}
     </dl>
   </section>
 
   <section aria-labelledby="evidence-heading">
     <h2 id="evidence-heading">Source and review</h2>
     <dl>
-      {#if sourceName}
-        <div>
-          <dt>Source</dt>
-          <dd>
-            {#if sourceUrl}
-              <a href={sourceUrl} target="_blank" rel="noopener noreferrer">
-                {sourceName}<span class="sr-only"> (opens in a new tab)</span>
-              </a>
-            {:else}
-              {sourceName}
-            {/if}
-          </dd>
-        </div>
-      {:else if sourceId}
-        <div>
-          <dt>Source ID</dt>
-          <dd>{sourceId}</dd>
-        </div>
-      {/if}
-      {#if sourceRecordId}
-        <div>
-          <dt>Source record</dt>
-          <dd>{sourceRecordId}</dd>
-        </div>
-      {/if}
-      {#if sourceRecordUrl}
-        <div>
-          <dt>Source record link</dt>
-          <dd>
-            <a href={sourceRecordUrl} target="_blank" rel="noopener noreferrer">
-              Open source record<span class="sr-only"> (opens in a new tab)</span>
-            </a>
-          </dd>
-        </div>
-      {/if}
-      {#if retrieved}
-        <div>
-          <dt>Retrieved</dt>
-          <dd><time datetime={retrieved}>{retrieved}</time></dd>
-        </div>
-      {/if}
-      {#if observed}
-        <div>
-          <dt>Observed</dt>
-          <dd><time datetime={observed}>{observed}</time></dd>
-        </div>
-      {/if}
-      {#if factualStatus}
-        <div>
-          <dt>Factual review</dt>
-          <dd>{humanizeValue(factualStatus)}</dd>
-        </div>
-      {/if}
-      {#if privacyStatus}
-        <div>
-          <dt>Privacy screening</dt>
-          <dd>{humanizeValue(privacyStatus)}</dd>
-        </div>
-      {/if}
-      {#if 'projectApproval' in record && record.projectApproval !== undefined && record.projectApproval !== null}
-        <div>
-          <dt>Project approval</dt>
-          <dd>{humanizeValue(String(record.projectApproval))}</dd>
-        </div>
-      {/if}
-      {#if publicationStatus}
-        <div>
-          <dt>Publication</dt>
-          <dd>{humanizeValue(publicationStatus)}</dd>
-        </div>
-      {/if}
+      {#if sourceName}<div><dt>Source</dt><dd>{#if sourceUrl}<a href={sourceUrl} target="_blank" rel="noopener noreferrer">{sourceName}<span class="sr-only"> (opens in a new tab)</span></a>{:else}{sourceName}{/if}</dd></div>
+      {:else if sourceId}<div><dt>Source ID</dt><dd>{sourceId}</dd></div>{/if}
+      {#if sourceRecordId}<div><dt>Source record</dt><dd>{sourceRecordId}</dd></div>{/if}
+      {#if sourceRecordUrl}<div><dt>Source record link</dt><dd><a href={sourceRecordUrl} target="_blank" rel="noopener noreferrer">Open source record<span class="sr-only"> (opens in a new tab)</span></a></dd></div>{/if}
+      {#if observed}<div><dt>Observed</dt><dd><time datetime={observed}>{observed}</time></dd></div>{/if}
+      {#if retrieved}<div><dt>Retrieved</dt><dd><time datetime={retrieved}>{retrieved}</time></dd></div>{/if}
+      {#if factualStatus}<div><dt>Factual review</dt><dd>{humanizeValue(factualStatus)}</dd></div>{/if}
+      {#if privacyStatus}<div><dt>Privacy screening</dt><dd>{humanizeValue(privacyStatus)}</dd></div>{/if}
+      {#if 'projectApproval' in record && record.projectApproval !== undefined && record.projectApproval !== null}<div><dt>Project approval</dt><dd>{humanizeValue(String(record.projectApproval))}</dd></div>{/if}
+      {#if publicationStatus}<div><dt>Publication</dt><dd>{humanizeValue(publicationStatus)}</dd></div>{/if}
     </dl>
     {#if evidence}<p class="evidence">{evidence}</p>{/if}
-  </section>
-
-  {#if sourceFacts}
-    <section aria-labelledby="source-facts-heading">
-      <h2 id="source-facts-heading">Source facts</h2>
-      <dl>
-        {#if sourceFacts.alternateNames?.length}<div><dt>Also known as</dt><dd>{sourceFacts.alternateNames.join(' · ')}</dd></div>{/if}
-        {#if sourceFacts.establishmentId}<div><dt>Establishment ID</dt><dd>{sourceFacts.establishmentId}</dd></div>{/if}
-        {#if sourceFacts.establishmentNumber}<div><dt>Establishment number</dt><dd>{sourceFacts.establishmentNumber}</dd></div>{/if}
-        {#if sourceFacts.grantDate}<div><dt>Grant date</dt><dd>{sourceFacts.grantDate}</dd></div>{/if}
-        {#if sourceFacts.nativeActivityCode}<div><dt>Native activity code</dt><dd>{sourceFacts.nativeActivityCode}</dd></div>{/if}
-        {#if sourceFacts.nativeActivityLabel}<div><dt>Native activity</dt><dd>{sourceFacts.nativeActivityLabel}</dd></div>{/if}
-        {#if sourceFactEntries(sourceFacts, 'speciesSlaughtered').length}<div><dt>Species slaughtered</dt><dd><ul>{#each sourceFactEntries(sourceFacts, 'speciesSlaughtered') as [name, value] (name)}<li>{sourceFactLabel(name)}{#if sourceFactValue(value)}: {sourceFactValue(value)}{/if}</li>{/each}</ul></dd></div>{/if}
-        {#if sourceFactEntries(sourceFacts, 'processingActivities').length}<div><dt>Processing activities</dt><dd><ul>{#each sourceFactEntries(sourceFacts, 'processingActivities') as [name, value] (name)}<li>{sourceFactLabel(name)}{#if sourceFactValue(value)}: {sourceFactValue(value)}{/if}</li>{/each}</ul></dd></div>{/if}
-        {#if slaughterRanges.length}<div><dt>Estimated animals slaughtered (last 360 days)</dt><dd><ul>{#each slaughterRanges as range, index (`${range.ordinalCode}:${range.unit}:${range.period}:${index}`)}{#if formattedRange(range)}<li>{formattedRange(range)} head</li>{/if}{/each}</ul></dd></div>{/if}
-        {#if processingRanges.length}<div><dt>Estimated product volume (pounds/month)</dt><dd><ul>{#each processingRanges as range, index (`${range.ordinalCode}:${range.unit}:${range.period}:${index}`)}{#if formattedRange(range)}<li>{formattedRange(range)} pounds/month</li>{/if}{/each}</ul></dd></div>{/if}
-        {#if sourceFacts.aphisAnnualReports?.length}{#each sourceFacts.aphisAnnualReports as report (report.fiscalYear)}<div><dt>FY{report.fiscalYear} reported animals</dt><dd><ul>{#each report.speciesCounts as species (species.species)}<li>{sourceFactLabel(species.species)}: {annualSpeciesCount(species.count)}</li>{/each}</ul>{#if safeHttps(report.sourceUrl)}<a href={safeHttps(report.sourceUrl) ?? ''} target="_blank" rel="noopener noreferrer">Source report</a>{/if}</dd></div>{/each}{/if}
-        {#if sourceFacts.sourceVolumeCategories?.length}<div><dt>Source volume categories</dt><dd><ul>{#each sourceFacts.sourceVolumeCategories as category, index (volumeCategoryKey(category, index))}<li>{sourceFactLabel(category.code)}{#if volumeProvenance(category.provenance)} · {volumeProvenance(category.provenance)}{/if}</li>{/each}</ul></dd></div>{/if}
-      </dl>
-    </section>
-  {/if}
-
-  <section aria-labelledby="limitations-heading">
-    <h2 id="limitations-heading">Limitations</h2>
-    <p>{recordNotice}</p>
   </section>
 
   <footer>

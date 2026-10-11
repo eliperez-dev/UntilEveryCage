@@ -185,6 +185,14 @@ const testReleaseDetailLocationShape = {
   project_approval: z.union([z.enum(['pending', 'approved']), z.literal(false), z.literal('not-approved')]),
   publication_warning: textOrNull,
   display_precision: z.enum(['exact', 'city', 'source_reported', 'approximate', 'unmapped']),
+  // Candidate detail geometry is deliberately smaller than the public
+  // provenance projection. Keep it closed to the API's safe detail contract.
+  coordinate_method: z.enum(['source_coordinate', 'city_reference']).nullable().optional(),
+  geometry_provenance: z.object({
+    kind: z.string().min(1).max(80),
+    method: z.string().min(1).max(120).optional(),
+    precision: z.string().min(1).max(120).optional(),
+  }).strict().optional(),
   latitude: z.number().finite().nullable(),
   longitude: z.number().finite().nullable(),
   provenance_source_id: z.string(),
