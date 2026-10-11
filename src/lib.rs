@@ -3403,6 +3403,105 @@ pub async fn get_dev_test_release_locations_handler(
     Json(json!({"data":data,"meta":meta})).into_response()
 }
 
+async fn test_release_detail_display_geometry(
+    client: &tokio_postgres::Client,
+    release_id: &str,
+    facility_id: uuid::Uuid,
+) -> Value {
+    let fallback = || {
+        json!({
+            "display_precision": "unmapped",
+            "latitude": Value::Null,
+            "longitude": Value::Null,
+            "geometry_provenance": {"kind":"unmapped"},
+            "coordinate_method": Value::Null,
+        })
+    };
+    let row = match client.query_opt(
+        r#"SELECT
+              CASE
+                WHEN o.coordinate IS NOT NULL
+                 AND o.coordinate_review_status IS DISTINCT FROM 'country-coordinate-mismatch'
+                 AND ST_Y(o.coordinate::geometry) BETWEEN -90 AND 90
+                 AND ST_X(o.coordinate::geometry) BETWEEN -180 AND 180
+                 AND (ST_X(o.coordinate::geometry) <> 0 OR ST_Y(o.coordinate::geometry) <> 0)
+                  THEN COALESCE(o.coordinate_precision, 'source_reported')
+                WHEN o.coordinate IS NULL AND city.reference_location IS NOT NULL
+                 AND ST_Y(city.reference_location::geometry) BETWEEN -90 AND 90
+                 AND ST_X(city.reference_location::geometry) BETWEEN -180 AND 180
+                 AND (ST_X(city.reference_location::geometry) <> 0 OR ST_Y(city.reference_location::geometry) <> 0)
+                  THEN 'city'
+                ELSE 'unmapped'
+              END AS display_precision,
+              CASE WHEN o.coordinate IS NOT NULL
+                 AND o.coordinate_review_status IS DISTINCT FROM 'country-coordinate-mismatch'
+                 AND ST_Y(o.coordinate::geometry) BETWEEN -90 AND 90 AND ST_X(o.coordinate::geometry) BETWEEN -180 AND 180
+                 AND (ST_X(o.coordinate::geometry) <> 0 OR ST_Y(o.coordinate::geometry) <> 0)
+                   THEN ST_Y(o.coordinate::geometry)
+                   WHEN o.coordinate IS NULL AND city.reference_location IS NOT NULL
+                 AND ST_Y(city.reference_location::geometry) BETWEEN -90 AND 90 AND ST_X(city.reference_location::geometry) BETWEEN -180 AND 180
+                 AND (ST_X(city.reference_location::geometry) <> 0 OR ST_Y(city.reference_location::geometry) <> 0)
+                   THEN ST_Y(city.reference_location::geometry) END AS latitude,
+              CASE WHEN o.coordinate IS NOT NULL
+                 AND o.coordinate_review_status IS DISTINCT FROM 'country-coordinate-mismatch'
+                 AND ST_Y(o.coordinate::geometry) BETWEEN -90 AND 90 AND ST_X(o.coordinate::geometry) BETWEEN -180 AND 180
+                 AND (ST_X(o.coordinate::geometry) <> 0 OR ST_Y(o.coordinate::geometry) <> 0)
+                   THEN ST_X(o.coordinate::geometry)
+                   WHEN o.coordinate IS NULL AND city.reference_location IS NOT NULL
+                 AND ST_Y(city.reference_location::geometry) BETWEEN -90 AND 90 AND ST_X(city.reference_location::geometry) BETWEEN -180 AND 180
+                 AND (ST_X(city.reference_location::geometry) <> 0 OR ST_Y(city.reference_location::geometry) <> 0)
+                   THEN ST_X(city.reference_location::geometry) END AS longitude,
+              CASE WHEN o.coordinate IS NOT NULL
+                 AND o.coordinate_review_status IS DISTINCT FROM 'country-coordinate-mismatch'
+                 AND ST_Y(o.coordinate::geometry) BETWEEN -90 AND 90 AND ST_X(o.coordinate::geometry) BETWEEN -180 AND 180
+                 AND (ST_X(o.coordinate::geometry) <> 0 OR ST_Y(o.coordinate::geometry) <> 0)
+                   THEN jsonb_build_object('kind','source_coordinate','method','source_coordinate','precision',COALESCE(o.coordinate_precision, 'source_reported'))
+                   WHEN o.coordinate IS NULL AND city.reference_location IS NOT NULL
+                 AND ST_Y(city.reference_location::geometry) BETWEEN -90 AND 90 AND ST_X(city.reference_location::geometry) BETWEEN -180 AND 180
+                 AND (ST_X(city.reference_location::geometry) <> 0 OR ST_Y(city.reference_location::geometry) <> 0)
+                   THEN jsonb_build_object('kind','city_reference','method','city_reference','precision','city')
+                   ELSE jsonb_build_object('kind','unmapped') END::text AS geometry_provenance,
+              CASE WHEN o.coordinate IS NOT NULL
+                 AND o.coordinate_review_status IS DISTINCT FROM 'country-coordinate-mismatch'
+                 AND ST_Y(o.coordinate::geometry) BETWEEN -90 AND 90 AND ST_X(o.coordinate::geometry) BETWEEN -180 AND 180
+                 AND (ST_X(o.coordinate::geometry) <> 0 OR ST_Y(o.coordinate::geometry) <> 0)
+                   THEN 'source_coordinate'
+                   WHEN o.coordinate IS NULL AND city.reference_location IS NOT NULL
+                 AND ST_Y(city.reference_location::geometry) BETWEEN -90 AND 90 AND ST_X(city.reference_location::geometry) BETWEEN -180 AND 180
+                 AND (ST_X(city.reference_location::geometry) <> 0 OR ST_Y(city.reference_location::geometry) <> 0)
+                   THEN 'city_reference' END AS coordinate_method
+           FROM uec.release_members m
+           JOIN uec.releases r ON r.release_id=m.release_id
+           JOIN uec.observations o ON o.observation_id=m.observation_id
+           JOIN uec.facilities f ON f.facility_id=m.facility_id
+           JOIN uec.source_records sr ON sr.source_record_id=o.source_record_id
+           LEFT JOIN uec.publication_review_release_current review ON review.source_record_id=o.source_record_id AND review.release_id=m.release_id
+           LEFT JOIN LATERAL (
+             SELECT reference_location FROM uec.city_reference_points
+             WHERE country_code=f.country_code AND lower(city_name)=lower(f.city)
+               AND (postal_code IS NULL OR postal_code=f.postal_code)
+             ORDER BY postal_code NULLS LAST LIMIT 1
+           ) city ON true
+          WHERE m.release_id=$1 AND r.status='candidate'
+            AND (r.test_only=true OR r.summary->>'candidate_only'='true')
+            AND m.facility_id=$2 AND sr.source_state NOT IN ('rejected','superseded')
+            AND COALESCE(review.privacy_screening_status,'pending') <> 'failed'
+            AND COALESCE(review.factual_review_status,'unreviewed') <> 'rejected'
+            AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted x WHERE x.source_record_id=o.source_record_id)"#,
+        &[&release_id, &facility_id],
+    ).await {
+        Ok(Some(row)) => row,
+        _ => return fallback(),
+    };
+    json!({
+        "display_precision": row.get::<_, String>(0),
+        "latitude": row.get::<_, Option<f64>>(1),
+        "longitude": row.get::<_, Option<f64>>(2),
+        "geometry_provenance": serde_json::from_str::<Value>(&row.get::<_, String>(3)).unwrap_or_else(|_| json!({"kind":"unmapped"})),
+        "coordinate_method": row.get::<_, Option<String>>(4),
+    })
+}
+
 pub async fn get_dev_test_release_location_detail_handler(
     State(state): State<ApiState>,
     headers: HeaderMap,
@@ -3456,11 +3555,12 @@ pub async fn get_dev_test_release_location_detail_handler(
             "test release location not found",
         );
     };
+    let display_geometry = test_release_detail_display_geometry(&client, release_id, facility_id).await;
     let category: String = row.get(4);
     let source_id: String = row.get(9);
     let normalized: String = row.get(17);
     let activity_codes: String = row.get(18);
-    let mut item = json!({"facility_id":row.get::<_,uuid::Uuid>(0),"canonical_name":row.get::<_,Option<String>>(1),"country_code":row.get::<_,String>(2),"city":row.get::<_,Option<String>>(3),"category":category,"category_keys":test_release_category_keys(&category, &normalized),"activity_keys":test_release_activity_keys(&source_id, &activity_codes),"publication_profile":profile,"factual_review_status":row.get::<_,String>(5),"privacy_screening_status":row.get::<_,String>(6),"project_approval":"not-approved","publication_warning":"Private corrected candidate — not project-approved or published","display_precision":row.get::<_,String>(14),"latitude":row.get::<_,Option<f64>>(15),"longitude":row.get::<_,Option<f64>>(16),"release_id":release_id,"release_ruleset_version":row.get::<_,String>(13),"provenance_source_id":source_id,"provenance_source_name":row.get::<_,String>(10),"provenance_source_url":row.get::<_,String>(11),"provenance_retrieved_at":row.get::<_,chrono::DateTime<chrono::Utc>>(12)});
+    let mut item = json!({"facility_id":row.get::<_,uuid::Uuid>(0),"canonical_name":row.get::<_,Option<String>>(1),"country_code":row.get::<_,String>(2),"city":row.get::<_,Option<String>>(3),"category":category,"category_keys":test_release_category_keys(&category, &normalized),"activity_keys":test_release_activity_keys(&source_id, &activity_codes),"publication_profile":profile,"factual_review_status":row.get::<_,String>(5),"privacy_screening_status":row.get::<_,String>(6),"project_approval":"not-approved","publication_warning":"Private corrected candidate — not project-approved or published","display_precision":display_geometry["display_precision"].clone(),"latitude":display_geometry["latitude"].clone(),"longitude":display_geometry["longitude"].clone(),"geometry_provenance":display_geometry["geometry_provenance"].clone(),"coordinate_method":display_geometry["coordinate_method"].clone(),"release_id":release_id,"release_ruleset_version":row.get::<_,String>(13),"provenance_source_id":source_id,"provenance_source_name":row.get::<_,String>(10),"provenance_source_url":row.get::<_,String>(11),"provenance_retrieved_at":row.get::<_,chrono::DateTime<chrono::Utc>>(12)});
     if let (Some(item_fields), Value::Object(detail)) = (
         item.as_object_mut(),
         test_release_allowlisted_detail(row.get::<_, String>(17).as_str()),
@@ -6148,6 +6248,22 @@ mod v2_api_tests {
         assert!(handler.contains(".read_only(true)"));
         assert!(handler.contains("SET LOCAL max_parallel_workers_per_gather = 0"));
         assert!(handler.contains("log_test_release_query_error(\"candidate_facets\", &error)"));
+    }
+
+    #[test]
+    fn candidate_detail_geometry_uses_map_precision_without_upgrading_coordinates() {
+        let source = include_str!("lib.rs");
+        let helper = source
+            .split("async fn test_release_detail_display_geometry")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn get_dev_test_release_location_detail_handler").next())
+            .expect("candidate detail geometry helper");
+        assert!(helper.contains("o.coordinate_review_status IS DISTINCT FROM 'country-coordinate-mismatch'"));
+        assert!(helper.contains("COALESCE(o.coordinate_precision, 'source_reported')"));
+        assert!(helper.contains("BETWEEN -90 AND 90"));
+        assert!(helper.contains("BETWEEN -180 AND 180"));
+        assert!(helper.contains("jsonb_build_object('kind','source_coordinate','method','source_coordinate'"));
+        assert!(helper.contains("jsonb_build_object('kind','unmapped')"));
     }
 
     #[test]
