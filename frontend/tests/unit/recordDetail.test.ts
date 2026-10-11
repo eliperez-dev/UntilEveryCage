@@ -64,4 +64,8 @@ describe('private preview record detail surface', () => {
     expect(component).toContain('FY{report.fiscalYear} reported animals');
     expect(component.indexOf('id="source-facts-heading"')).toBeLessThan(component.indexOf('id="evidence-heading"'));
   });
+
+  it('keeps the mobile copy controls after the complete evidence flow instead of pinning them over it', () => {
+    expect(component).not.toContain('.page footer {\n      position: sticky;');
+  });
 });

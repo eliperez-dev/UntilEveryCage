@@ -555,10 +555,6 @@
       min-height: 100dvh;
     }
 
-    .page footer {
-      position: sticky;
-      bottom: 0;
-      background: #171a18;
-    }
+    .page footer { background: #171a18; }
   }
 </style>

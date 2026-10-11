@@ -15,9 +15,11 @@ const detailMetaSchema = z.object({
 const detailEnvelopeSchema = z.object({ data: testReleaseDetailLocationSchema, meta: detailMetaSchema }).strict();
 
 const precision = (value: WireTestReleaseDetailLocation['display_precision']): Precision =>
-  value === 'source_reported' || value === 'source-provided'
+  value === 'locality_reference_coarse'
+    ? 'city'
+    : value === 'provider_address_point_high_confidence' || value === 'source-precision-unknown' || value === 'source-provided'
     ? 'source_reported'
-    : value === 'exact' || value === 'city' || value === 'approximate' || value === 'unmapped' ? value : 'unmapped';
+    : 'unmapped';
 
 function sourceFacts(row: WireTestReleaseDetailLocation): LocationSourceFacts | undefined {
   const facts: LocationSourceFacts = {

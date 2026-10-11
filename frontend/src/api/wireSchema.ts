@@ -184,10 +184,16 @@ const testReleaseDetailLocationShape = {
   privacy_screening_status: z.enum(['pending', 'passed', 'failed']),
   project_approval: z.union([z.enum(['pending', 'approved']), z.literal(false), z.literal('not-approved')]),
   publication_warning: textOrNull,
-  // Candidate geometry preserves the source's native precision label. The
-  // renderer maps this additive source-provided value to its existing
-  // source-reported presentation while retaining the provenance precision.
-  display_precision: z.enum(['exact', 'city', 'source_reported', 'source-provided', 'approximate', 'unmapped']),
+  // Current candidate details retain the resolver's bounded native precision
+  // labels. Do not accept a generic string: the renderer must keep coarse,
+  // unknown, and source-provided coordinates visibly distinct from exact.
+  display_precision: z.enum([
+    'locality_reference_coarse',
+    'provider_address_point_high_confidence',
+    'source-precision-unknown',
+    'source-provided',
+    'unmapped',
+  ]),
   // Candidate detail geometry is deliberately smaller than the public
   // provenance projection. Keep it closed to the API's safe detail contract.
   coordinate_method: z.enum(['source_coordinate', 'city_reference']).nullable().optional(),
