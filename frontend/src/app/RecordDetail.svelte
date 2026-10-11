@@ -201,6 +201,8 @@
       'activity_source' in record ? record.activity_source : null,
     ),
   );
+  const activityDisplay = $derived(humanizeValue(activity) ?? activity);
+  const activitySourceDisplay = $derived(humanizeValue(activitySource) ?? activitySource);
   const sourceRecordId = $derived(
     value(
       'safeSourceRecordId' in record ? record.safeSourceRecordId : null,
@@ -245,7 +247,8 @@
     if (!entries.length) return null;
     return entries.map(([name, included]) => {
       const label = sourceFactLabel(name);
-      return typeof included === 'string' && included.trim() ? `${label}: ${humanizeValue(included) ?? included}` : label;
+      if (typeof included !== 'string' || !included.trim() || /^(?:yes|true|1)$/i.test(included.trim())) return label;
+      return `${label}: ${humanizeValue(included) ?? included}`;
     }).join(', ');
   }
   function formattedRange(range: DerivedSourceVolumeRange): string | null {
@@ -317,7 +320,7 @@
   {/if}
   {#if activity}
     <p class="activity">
-      {activity}{#if activitySource}<span> · {activitySource}</span>{/if}
+      {activityDisplay}{#if activitySourceDisplay}<span> · {activitySourceDisplay}</span>{/if}
     </p>
   {/if}
   {#if taxonomy}
