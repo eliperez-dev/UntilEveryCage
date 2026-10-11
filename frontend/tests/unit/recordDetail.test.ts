@@ -65,6 +65,12 @@ describe('private preview record detail surface', () => {
     expect(component.indexOf('id="source-facts-heading"')).toBeLessThan(component.indexOf('id="evidence-heading"'));
   });
 
+  it('humanizes the top activity and suppresses repeated affirmative suffixes in compact source-fact lists', () => {
+    expect(component).toContain('const activityDisplay = $derived(humanizeValue(activity) ?? activity);');
+    expect(component).toContain('{activityDisplay}');
+    expect(component).toContain('/^(?:yes|true|1)$/i.test(included.trim())');
+  });
+
   it('keeps the mobile copy controls after the complete evidence flow instead of pinning them over it', () => {
     expect(component).not.toContain('.page footer {\n      position: sticky;');
   });
