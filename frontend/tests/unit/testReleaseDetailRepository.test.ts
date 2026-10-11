@@ -24,6 +24,7 @@ describe('configured candidate detail', () => {
 
   it.each([
     ['source_reported', 'source_reported', 55, 10],
+    ['source-provided', 'source_reported', 55, 10],
     ['exact', 'exact', 55, 10],
     ['approximate', 'approximate', 55, 10],
     ['unmapped', 'unmapped', null, null],
