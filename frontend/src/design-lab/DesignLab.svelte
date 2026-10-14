@@ -57,6 +57,7 @@
       ...(location.evidence?.factualReviewStatus ? { factualReviewStatus: location.evidence.factualReviewStatus } : {}),
       ...(location.evidence?.privacyScreeningStatus ? { privacyScreeningStatus: location.evidence.privacyScreeningStatus } : {}),
       projectApproval: location.evidence?.projectApproval === 'approved',
+      ...(location.sourceFacts ? { sourceFacts: location.sourceFacts } : {}),
     };
   }
   let sourceId: string | null = state.sourceId;

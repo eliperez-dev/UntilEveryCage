@@ -2835,8 +2835,14 @@ fn test_release_category_facet_counts(rows: impl Iterator<Item = (String, String
     counts
 }
 
-fn test_release_volume_ranges(normalized: &str) -> Vec<Value> {
-    let Ok(Value::Object(source)) = serde_json::from_str::<Value>(normalized) else {
+/// Derive only the verified FSIS MPI codebook ranges from an already-safe
+/// detail object.  Both candidate and public detail call this after their
+/// respective release projections have applied their allowlists.
+fn fsis_source_volume_ranges(source_id: &str, detail: &Value) -> Vec<Value> {
+    if source_id != "us.fsis" {
+        return vec![];
+    }
+    let Value::Object(source) = detail else {
         return vec![];
     };
     let Some(Value::Array(categories)) = source.get("source_volume_categories") else {
@@ -2869,7 +2875,7 @@ fn test_release_volume_ranges(normalized: &str) -> Vec<Value> {
 
 /// The test-release route may read only the bridge's normalized, allowlisted
 /// object. It never returns the surrounding source-record JSON.
-fn test_release_allowlisted_detail(normalized: &str) -> Value {
+fn test_release_allowlisted_detail(source_id: &str, normalized: &str) -> Value {
     let Ok(Value::Object(source)) = serde_json::from_str::<Value>(normalized) else {
         return json!({});
     };
@@ -2927,7 +2933,7 @@ fn test_release_allowlisted_detail(normalized: &str) -> Value {
             detail.insert("source_volume_categories".into(), json!(safe));
         }
     }
-    let ranges = test_release_volume_ranges(normalized);
+    let ranges = fsis_source_volume_ranges(source_id, &Value::Object(detail.clone()));
     if !ranges.is_empty() {
         detail.insert(
             "derived_source_volume_ranges".into(),
@@ -3563,7 +3569,7 @@ pub async fn get_dev_test_release_location_detail_handler(
     let mut item = json!({"facility_id":row.get::<_,uuid::Uuid>(0),"canonical_name":row.get::<_,Option<String>>(1),"country_code":row.get::<_,String>(2),"city":row.get::<_,Option<String>>(3),"category":category,"category_keys":test_release_category_keys(&category, &normalized),"activity_keys":test_release_activity_keys(&source_id, &activity_codes),"publication_profile":profile,"factual_review_status":row.get::<_,String>(5),"privacy_screening_status":row.get::<_,String>(6),"project_approval":"not-approved","publication_warning":"Private corrected candidate — not project-approved or published","display_precision":display_geometry["display_precision"].clone(),"latitude":display_geometry["latitude"].clone(),"longitude":display_geometry["longitude"].clone(),"geometry_provenance":display_geometry["geometry_provenance"].clone(),"coordinate_method":display_geometry["coordinate_method"].clone(),"release_id":release_id,"release_ruleset_version":row.get::<_,String>(13),"provenance_source_id":source_id,"provenance_source_name":row.get::<_,String>(10),"provenance_source_url":row.get::<_,String>(11),"provenance_retrieved_at":row.get::<_,chrono::DateTime<chrono::Utc>>(12)});
     if let (Some(item_fields), Value::Object(detail)) = (
         item.as_object_mut(),
-        test_release_allowlisted_detail(row.get::<_, String>(17).as_str()),
+        test_release_allowlisted_detail(source_id.as_str(), row.get::<_, String>(17).as_str()),
     ) {
         item_fields.extend(detail);
     }
@@ -5197,8 +5203,12 @@ pub async fn get_v2_location_detail_handler(
             .into_response();
     }
     let mut data = serde_json::to_value(item).unwrap_or_else(|_| json!({}));
-    if let (Some(target), Ok(detail)) = (data.as_object_mut(), serde_json::from_str::<serde_json::Map<String, Value>>(row.get::<_, String>(29).as_str())) {
+    if let (Some(target), Ok(mut detail)) = (data.as_object_mut(), serde_json::from_str::<serde_json::Map<String, Value>>(row.get::<_, String>(29).as_str())) {
         // Detail is a release-built allowlist.  Do not add raw/source fields here.
+        let ranges = fsis_source_volume_ranges(row.get::<_, String>(19).as_str(), &Value::Object(detail.clone()));
+        if !ranges.is_empty() {
+            detail.insert("derived_source_volume_ranges".into(), json!(ranges));
+        }
         target.extend(detail);
     }
     Json(serde_json::json!({"data": data, "api_version": "v2", "meta": {"release_id": release_id, "ruleset_version": ruleset, "data_product_version": "uec-public-data-product-v1", "schema_version": "uec-location-projection-v1", "release_created_at": created_at, "profile": profile, "coverage_scope": "selected_promoted_release_public_facilities", "count_semantics": "This record is a public facility projection, not an animal count."}})).into_response()
@@ -6063,7 +6073,7 @@ mod v2_api_tests {
 
     #[test]
     fn test_release_detail_allowlists_safe_normalized_fields_only() {
-        let detail = test_release_allowlisted_detail(
+        let detail = test_release_allowlisted_detail("us.fsis",
             r#"{"alternate_names":["Approved DBA"],"species_slaughtered":{"cattle":true,"poultry":"no"},"processing_activities":{"cutting":false},"source_volume_categories":[{"code":"2.0","provenance":"processing_volume_category"}],"establishment_id":"E-1","grant_date":"2026-01-01","activity_code":"A","activity_label":"Native","street_address":"not allowed","source_values":{"contact":"not allowed"}}"#,
         );
         assert_eq!(detail["alternate_names"], json!(["Approved DBA"]));
@@ -6083,7 +6093,8 @@ mod v2_api_tests {
             {"code":"1","provenance":"slaughter_volume_category"}, {"code":"2","provenance":"slaughter_volume_category"}, {"code":"3","provenance":"slaughter_volume_category"}, {"code":"4","provenance":"slaughter_volume_category"}, {"code":"5","provenance":"slaughter_volume_category"}, {"code":"6","provenance":"slaughter_volume_category"}
           ]
         }"#;
-        let ranges = test_release_volume_ranges(normalized);
+        let normalized_detail: Value = serde_json::from_str(normalized).unwrap();
+        let ranges = fsis_source_volume_ranges("us.fsis", &normalized_detail);
         assert_eq!(ranges.len(), 10);
         assert_eq!(
             ranges.iter().take(5).map(|range| (range["lower"].as_i64(), range["upper"].as_i64())).collect::<Vec<_>>(),
@@ -6098,9 +6109,13 @@ mod v2_api_tests {
         assert!(ranges.iter().all(|range| range["method_version"] == "fsis-mpi-volume-codebook-2026-03-24-v1"));
         assert!(ranges.iter().all(|range| range["source_codebook_url"] == "https://www.govinfo.gov/content/pkg/FR-2026-03-24/pdf/FR-2026-03-24.pdf"));
 
-        let detail = test_release_allowlisted_detail(normalized);
+        let detail = test_release_allowlisted_detail("us.fsis", normalized);
         assert_eq!(detail["species_slaughtered"]["cattle"], json!(false));
         assert_eq!(detail["derived_source_volume_ranges"], json!(ranges));
+        assert!(fsis_source_volume_ranges("example.other", &normalized_detail).is_empty());
+        assert!(test_release_allowlisted_detail("example.other", normalized)
+            .get("derived_source_volume_ranges")
+            .is_none());
     }
 
     #[test]

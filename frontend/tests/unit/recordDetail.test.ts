@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 // The current Vitest config intentionally does not compile Svelte components;
 // these checks pin the safety and disclosure contract of this shared surface.
 const component = readFileSync(resolve(process.cwd(), 'src/app/RecordDetail.svelte'), 'utf8');
+const designLab = readFileSync(resolve(process.cwd(), 'src/design-lab/DesignLab.svelte'), 'utf8');
 
 describe('private preview record detail surface', () => {
   it('renders a gated identity as not shown and keeps optional fields conditional', () => {
@@ -63,6 +64,10 @@ describe('private preview record detail surface', () => {
     expect(component).toContain('derivedSourceVolumeRanges');
     expect(component).toContain('FY{report.fiscalYear} reported animals');
     expect(component.indexOf('id="source-facts-heading"')).toBeLessThan(component.indexOf('id="evidence-heading"'));
+  });
+
+  it('keeps public selected-map source facts for the shared detail surface', () => {
+    expect(designLab).toContain("...(location.sourceFacts ? { sourceFacts: location.sourceFacts } : {}),");
   });
 
   it('humanizes the top activity and suppresses repeated affirmative suffixes in compact source-fact lists', () => {
