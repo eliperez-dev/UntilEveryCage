@@ -12,9 +12,9 @@ from pathlib import Path
 from typing import Any, Iterable
 
 TAXONOMY_VERSION = "uec-taxonomy-v1"
-# v5 records the exact-code AU scope repair and the exhaustive non-slaughter
-# FSIS roster projection without mutating earlier derived assignment sets.
-CROSSWALK_VERSION = "uec-source-crosswalk-v5"
+# v6 adds the exact native APHIS registration-class projection without
+# mutating earlier derived assignment sets.
+CROSSWALK_VERSION = "uec-source-crosswalk-v6"
 PRIMARY_PRECEDENCE = (
     "slaughter", "research_and_animal_use", "animal_keeping_and_production",
     "processing_and_preparation", "other_regulated_premises", "unclassified",

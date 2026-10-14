@@ -18,6 +18,13 @@ class AphisMailingLocalityActivationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             MODULE.locality_query("Exampletown", "ZZ")
 
+    def test_migration_fanout_trigger_precedes_the_legacy_single_target_trigger(self):
+        migration = (Path(__file__).parents[1] / "migrations" / "071_aphis_mailing_locality_geocoding.sql").read_text(encoding="utf-8")
+        self.assertIn("FOR target_row IN", migration)
+        self.assertIn("aaa_aphis_mailing_locality_geoapify_display", migration)
+        self.assertIn("target_row.state <> selected_state", migration)
+        self.assertIn("not operating-site or facility coordinates", migration)
+
 
 if __name__ == "__main__":
     unittest.main()

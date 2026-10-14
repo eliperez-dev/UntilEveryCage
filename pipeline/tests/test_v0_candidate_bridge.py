@@ -31,9 +31,10 @@ class CandidateBridgeTests(unittest.TestCase):
         self.assertIn('facility_conflict = "DO NOTHING" if append_to_v0_baseline', source)
         self.assertIn('"facility_display_name"', source)
 
-    def test_r3_append_allows_only_the_verified_candidate_predecessors(self):
+    def test_successor_append_allows_only_verified_candidate_predecessors(self):
         source = SCRIPT.read_text(encoding="utf-8")
-        self.assertIn('family + "-r2"', source)
+        self.assertIn('re.fullmatch(r"(.+)-r([2-9][0-9]*)", candidate_release_id)', source)
+        self.assertIn('range(2, revision)', source)
         self.assertIn("candidate_append_prior_candidate_identity_mismatch", source)
         self.assertIn("permitted_manifest_ids", source)
         self.assertIn("candidate_release_id in manifest_ids", source)
@@ -46,6 +47,11 @@ class CandidateBridgeTests(unittest.TestCase):
         self.assertEqual(safe["facility_display_name"], "Synthetic Facility")
         self.assertNotIn("operator_name", safe)
         self.assertNotIn("telephone", safe)
+
+    def test_display_evidence_revision_is_retained_in_successor_observation_provenance(self):
+        source = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn('"display_evidence_revision": preview_check["display_evidence_revision"]', source)
+        self.assertIn('provenance["display_evidence_revision"]', source)
 
     def test_baseline_snapshot_orders_access_events_by_the_real_primary_key(self):
         source = SCRIPT.read_text(encoding="utf-8")
