@@ -68,6 +68,10 @@ class GeoapifyAdapterTests(unittest.TestCase):
     def gb_private_adapter(**kwargs):
         return geoapify.GeoapifyAdapter(country_code="gb", private_source_profile=True, **kwargs)
 
+    @staticmethod
+    def us_aphis_adapter(**kwargs):
+        return geoapify.GeoapifyAdapter(country_code="us", private_source_profile=True, locality_only=True, **kwargs)
+
     def test_key_is_required(self):
         with patch.dict("os.environ", {}, clear=True):
             with self.assertRaisesRegex(ValueError, "GEOAPIFY_API_KEY"):
@@ -189,6 +193,20 @@ class GeoapifyAdapterTests(unittest.TestCase):
         ).geocode("10 Example Road, Melbourne, Australia")
         self.assertEqual(mismatch.status, "review_required")
         self.assertIsNone(mismatch.latitude)
+
+    def test_aphis_locality_profile_requires_exact_city_state_country_and_rejects_buildings(self):
+        query = "Exampletown, TX, United States"
+        city = {"geometry": {"coordinates": [-97.7, 30.3]}, "properties": {
+            "result_type": "city", "country_code": "us", "city": "Exampletown", "state_code": "TX",
+            "rank": {"confidence": 0.95}}}
+        accepted = self.us_aphis_adapter(api_key="test-secret", opener=unittest.mock.Mock(return_value=FakeResponse({"features": [city]}))).geocode(query)
+        self.assertEqual(accepted.acceptance, "approximate_locality_match")
+        building = json.loads(json.dumps(city)); building["properties"]["result_type"] = "building"; building["properties"]["address_line1"] = "Exampletown"
+        rejected = self.us_aphis_adapter(api_key="test-secret", opener=unittest.mock.Mock(return_value=FakeResponse({"features": [building]}))).geocode(query)
+        self.assertEqual(rejected.status, "review_required")
+        wrong_state = json.loads(json.dumps(city)); wrong_state["properties"]["state_code"] = "CA"
+        rejected = self.us_aphis_adapter(api_key="test-secret", opener=unittest.mock.Mock(return_value=FakeResponse({"features": [wrong_state]}))).geocode(query)
+        self.assertEqual(rejected.status, "review_required")
 
     def test_invalid_coordinates_fail_closed(self):
         payload = {"features": [{"geometry": {"coordinates": [999, 55]}, "properties": {}}]}

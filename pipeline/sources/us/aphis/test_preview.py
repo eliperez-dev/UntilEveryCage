@@ -36,6 +36,7 @@ class AphisPreviewTests(unittest.TestCase):
         self.assertEqual(normalized["aphis_registration_class"], "Class R")
         self.assertEqual(normalized["source_status"], "active_list_membership")
         self.assertEqual(normalized["private_location_evidence"]["city"], "Exampletown")
+        self.assertEqual(normalized["location_evidence_role"], "mailing_locality_only_not_operating_site")
         taxonomy = project_observation(projected)
         self.assertEqual(taxonomy["taxonomy_display_category"], "research_and_animal_use")
         self.assertEqual(taxonomy["taxonomy_mapping_method"], "direct")
@@ -44,6 +45,18 @@ class AphisPreviewTests(unittest.TestCase):
         for value in ("Class A - Breeder", "Class B - Dealer", "Class C - Exhibitor", "Class F - Federal Research Facility", "Class G - Agricultural Research Facility", "Class H - Intermediate Handler", "Class R - Research Facility", "Class T - Carrier", "Class V - VA Hospital"):
             with self.subTest(value=value):
                 self.assertTrue(project_registration(_record(value))["normalized"]["aphis_registration_class"].startswith("Class "))
+
+    def test_all_native_classes_have_direct_taxonomy_assignments(self):
+        expected = {
+            "A": "animal_keeping_and_production", "R": "research_and_animal_use",
+            "F": "research_and_animal_use", "G": "research_and_animal_use", "V": "research_and_animal_use",
+            "B": "other_regulated_premises", "C": "other_regulated_premises",
+            "H": "other_regulated_premises", "T": "other_regulated_premises",
+        }
+        for code, primary in expected.items():
+            with self.subTest(code=code):
+                value = project_registration(_record(f"Class {code} - source label"))
+                self.assertEqual(project_observation(value)["taxonomy_display_category"], primary)
 
     def test_unknown_class_fails_closed(self):
         with self.assertRaisesRegex(AphisPreviewError, "known_native"):

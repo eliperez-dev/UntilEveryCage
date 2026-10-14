@@ -31,6 +31,7 @@ class GeoapifyAdapter:
         country_code: str | None = None,
         pilot_auto_display: bool = False,
         private_source_profile: bool = False,
+        locality_only: bool = False,
     ):
         self.api_key = (api_key or os.environ.get("GEOAPIFY_API_KEY", "")).strip()
         if not self.api_key:
@@ -39,13 +40,16 @@ class GeoapifyAdapter:
             raise ValueError("country_code must be a lowercase ISO alpha-2 code")
         if pilot_auto_display and country_code != "au":
             raise ValueError("automatic preview display is only configured for the AU pilot")
-        if private_source_profile and country_code not in {"gb", "dk", "nl"}:
+        if private_source_profile and country_code not in {"gb", "dk", "nl", "us"}:
             raise ValueError("private source profiles are not enabled for this country")
         if pilot_auto_display and private_source_profile:
             raise ValueError("AU pilot and source profile modes are mutually exclusive")
+        if locality_only and not private_source_profile:
+            raise ValueError("locality-only matching requires a private source profile")
         self.country_code = country_code
         self.pilot_auto_display = pilot_auto_display
         self.private_source_profile = private_source_profile
+        self.locality_only = locality_only
         self.strict_matching = pilot_auto_display or private_source_profile
         self.timeout = timeout
         self.opener = opener
@@ -134,12 +138,17 @@ class GeoapifyAdapter:
             normalized_address = self._normalize(candidate_address) if isinstance(candidate_address, str) else ""
             if not normalized_address and isinstance(candidate_street, str) and isinstance(candidate_house, (str, int)):
                 normalized_address = self._normalize(f"{candidate_house} {candidate_street}")
-            if candidate_type in {"building", "amenity"} and parts and normalized_address == parts[0]:
+            if (not self.locality_only and candidate_type in {"building", "amenity"}
+                    and parts and normalized_address == parts[0]):
                 viable.append((candidate, "high_confidence_address_match"))
             elif candidate_type == "city":
                 locality = candidate_props.get("city")
                 locality = self._normalize(locality) if isinstance(locality, str) else ""
-                if locality and locality in parts[1:]:
+                locality_parts = parts if self.locality_only else parts[1:]
+                state = candidate_props.get("state_code") or candidate_props.get("state")
+                state = self._normalize(state) if isinstance(state, str) else ""
+                state_matches = (not self.locality_only or (len(parts) > 1 and state == parts[1]))
+                if locality and locality in locality_parts and state_matches:
                     viable.append((candidate, "approximate_locality_match"))
         if self.strict_matching:
             if len(viable) != 1:
@@ -203,7 +212,8 @@ class GeoapifyAdapter:
         if not normalized_address and isinstance(street, str) and isinstance(house_number, (str, int)):
             normalized_address = self._normalize(f"{house_number} {street}")
         if (
-            result_type in {"building", "amenity"}
+            not self.locality_only
+            and result_type in {"building", "amenity"}
             and confidence is not None
             and confidence >= self.minimum_rank_confidence
             and query_parts
@@ -216,12 +226,15 @@ class GeoapifyAdapter:
 
         locality = properties.get("city")
         locality = self._normalize(locality) if isinstance(locality, str) else ""
+        state = properties.get("state_code") or properties.get("state")
+        state = self._normalize(state) if isinstance(state, str) else ""
         if (
             result_type == "city"
             and confidence is not None
             and confidence >= self.minimum_rank_confidence
             and locality
-            and locality in query_parts[1:]
+            and locality in (query_parts if self.locality_only else query_parts[1:])
+            and (not self.locality_only or (len(query_parts) > 1 and state == query_parts[1]))
         ):
             return GeocodeOutcome(
                 "accepted", "approximate_locality_match", float(latitude), float(longitude),

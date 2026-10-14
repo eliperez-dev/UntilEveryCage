@@ -58,6 +58,14 @@
       "country_code": "NL",
       "status": "enabled-private-only",
       "source_scope": "Only explicitly eligible, privacy-screened source address evidence; this profile grants no public approval"
+    },
+    {
+      "profile_id": "geoapify-us-aphis-mailing-locality",
+      "source_id": "us.aphis",
+      "country_code": "US",
+      "status": "enabled-private-only",
+      "query_kind": "mailing_locality_only",
+      "source_scope": "Active APHIS registration rows with explicit mailing city and state only; city points are approximate mailing-locality references, never operating-site or facility coordinates"
     }
   ]
 }

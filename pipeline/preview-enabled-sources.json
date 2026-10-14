@@ -222,7 +222,7 @@
       "terms_decision": "approved",
       "freshness_max_days": 14,
       "expected_artifacts": ["APHIS active licensees and registrants XLSX"],
-      "allowed_preview_fields": ["establishment_id", "facility_identity_state", "country_code", "city", "state", "canonical_name", "dba_names", "source_classification_code", "source_classification_label", "source_activity", "aphis_registration_class", "source_status", "source_native_ids", "expiration_date", "address_state", "coordinates", "coordinate_state", "privacy_gate", "coordinate_gate", "publication_gate", "source_scope_eligibility"],
+      "allowed_preview_fields": ["establishment_id", "facility_identity_state", "country_code", "city", "state", "canonical_name", "dba_names", "source_classification_code", "source_classification_label", "source_activity", "aphis_registration_class", "source_status", "source_native_ids", "expiration_date", "address_state", "location_evidence_role", "coordinates", "coordinate_state", "privacy_gate", "coordinate_gate", "publication_gate", "source_scope_eligibility"],
       "display_policy": {"kind": "unmapped_private_observation", "precision": "no-source-coordinates", "disclosure": "APHIS active registration directory evidence across source-native license classes. Mailing city/state are not operating-site evidence; no source coordinates, public release, or project approval."},
       "adapter_version": "us-aphis-active-register-v1",
       "schema_version": "us-aphis-active-register-xlsx-v1"

@@ -723,7 +723,14 @@ def private_geocode_queue_eligible(source: str, normalized: dict[str, Any],
     country = normalized.get("country_code") or location.get("country_code")
     if not isinstance(country, str) or country.upper() != profile.get("country_code"):
         return False
-    if not (location.get("address") or location.get("address_lines")):
+    locality_only = source == "us.aphis" and profile.get("query_kind") == "mailing_locality_only"
+    if locality_only:
+        us_states = {"AL","AK","AS","AZ","AR","CA","CO","CT","DE","DC","FL","FM","GA","GU","HI","IA","ID","IL","IN","KS","KY","LA","MA","MD","ME","MH","MI","MN","MO","MP","MS","MT","NC","ND","NE","NH","NJ","NM","NV","NY","OH","OK","OR","PA","PR","PW","RI","SC","SD","TN","TX","UT","VA","VI","VT","WA","WI","WV","WY"}
+        if (normalized.get("location_evidence_role") != "mailing_locality_only_not_operating_site"
+                or not isinstance(location.get("city"), str) or not location["city"].strip()
+                or not isinstance(location.get("region"), str) or location["region"].strip().upper() not in us_states):
+            return False
+    elif not (location.get("address") or location.get("address_lines")):
         return False
     if normalized.get("privacy_gate") in {"restricted", "restricted-withheld-address", "blocked"}:
         return False
@@ -909,8 +916,11 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
         # Catalonia is intentionally resolved only through its approved local
         # municipality reference; address presence must not shadow that path.
         private_profile = profile_for_source(source)
-        private_location_available = (isinstance(location_evidence, dict)
-                                       and (location_evidence.get("address") or location_evidence.get("address_lines")))
+        private_location_available = (isinstance(location_evidence, dict) and (
+            location_evidence.get("address") or location_evidence.get("address_lines") or
+            (source == "us.aphis" and private_profile is not None
+             and private_profile.get("query_kind") == "mailing_locality_only"
+             and location_evidence.get("city") and location_evidence.get("region"))))
         representative_normalized = normalized_by_identifier.get(str(identifier), {})
         profile_queue_eligible = private_geocode_queue_eligible(
             source, representative_normalized, location_evidence or {}, klass, private_profile)

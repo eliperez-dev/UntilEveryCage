@@ -144,11 +144,22 @@ def _decision(source: str, normalized: dict[str, Any], original: dict[str, Any])
         elif normalized.get("establishment_id") or normalized.get("establishment_number"):
             assignments.append({"leaf_activity": "processing", "primary": "processing_and_preparation", "method": "direct"})
     elif source == "us.aphis":
-        # This bounded lane accepts only the explicit APHIS Class R
-        # registrant label.  It is a source classification, not an inference
-        # from a name, address, or associated inspection/annual-report row.
-        if normalized.get("aphis_registration_class") == "Class R":
-            assignments.append({"leaf_activity": "research", "primary": "research_and_animal_use", "method": "direct"})
+        # Exact APHIS classes are source classifications, not inferences from
+        # names, mailing locations, or associated evidence rows.
+        aphis_classes = {
+            "Class A": ("animal_keeping", "animal_keeping_and_production"),
+            "Class R": ("research", "research_and_animal_use"),
+            "Class F": ("research", "research_and_animal_use"),
+            "Class G": ("research", "research_and_animal_use"),
+            "Class V": ("research", "research_and_animal_use"),
+            "Class B": ("general_food_business", "other_regulated_premises"),
+            "Class C": ("general_food_business", "other_regulated_premises"),
+            "Class H": ("general_food_business", "other_regulated_premises"),
+            "Class T": ("general_food_business", "other_regulated_premises"),
+        }
+        mapped = aphis_classes.get(normalized.get("aphis_registration_class"))
+        if mapped:
+            assignments.append({"leaf_activity": mapped[0], "primary": mapped[1], "method": "direct"})
     elif source in {"it.853-2004", "es.cat.feed-sandach"}:
         rules = _NATIVE_V3[source]
         unknown = False
@@ -359,8 +370,11 @@ def crosswalk_document(source_id: str) -> dict[str, Any]:
         rules = [{"source_field": "species_slaughtered", "leaf_key": "slaughter", "primary_key": "slaughter", "mapping_method": "direct"},
                  {"source_field": "processing_activities", "leaf_key": "processing", "primary_key": "processing_and_preparation", "mapping_method": "direct"}]
     elif source_id == "us.aphis":
-        rules = [{"source_field": "registration_or_license_type", "source_label": "Class R - Research Facility",
-                  "leaf_key": "research", "primary_key": "research_and_animal_use", "mapping_method": "direct"}]
+        rules = [
+            {"source_field": "aphis_registration_class", "source_label": "Class A", "leaf_key": "animal_keeping", "primary_key": "animal_keeping_and_production", "mapping_method": "direct"},
+            *[{"source_field": "aphis_registration_class", "source_label": f"Class {code}", "leaf_key": "research", "primary_key": "research_and_animal_use", "mapping_method": "direct"} for code in ("R", "F", "G", "V")],
+            *[{"source_field": "aphis_registration_class", "source_label": f"Class {code}", "leaf_key": "general_food_business", "primary_key": "other_regulated_premises", "mapping_method": "direct"} for code in ("B", "C", "H", "T")],
+        ]
     elif source_id in {"fr.dgal.section-i", "fr.dgal.section-ii"}:
         rules = [{"source_code": "SH", "leaf_key": "slaughter", "primary_key": "slaughter", "mapping_method": "direct"},
                  {"source_code": "CP", "leaf_key": "cutting", "primary_key": "processing_and_preparation", "mapping_method": "direct"},
