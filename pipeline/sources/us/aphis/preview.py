@@ -74,6 +74,7 @@ def project_registration(record: dict[str, Any]) -> dict[str, Any]:
         "source_native_ids": native_ids,
         "expiration_date": _text(normalized.get("expiration_date")),
         "address_state": "mailing_city_state_only_not_operating_site",
+        "location_evidence_role": "mailing_locality_only_not_operating_site",
         "private_location_evidence": private_location,
         "coordinates": None,
         "coordinate_state": "no_source_coordinate",
