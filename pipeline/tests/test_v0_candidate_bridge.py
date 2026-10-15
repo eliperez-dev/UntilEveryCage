@@ -39,6 +39,13 @@ class CandidateBridgeTests(unittest.TestCase):
         self.assertIn("permitted_manifest_ids", source)
         self.assertIn("candidate_release_id in manifest_ids", source)
 
+    def test_parent_candidate_copy_is_immediate_same_family_and_excludes_selected_sources(self):
+        source = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn("parent_candidate_must_be_immediate_same_family_predecessor", source)
+        self.assertIn("NOT (record.source_id = ANY(%s))", source)
+        self.assertIn("successor.observation_id=parent.observation_id", source)
+        self.assertIn("parent_candidate_copy_integrity_mismatch", source)
+
     def test_safe_status_adds_only_source_typed_facility_display_name(self):
         safe = bridge._safe_normalized(
             {"facility_name": "Synthetic Facility", "operator_name": "Synthetic Person"},

@@ -818,7 +818,8 @@ def _append_scope_is_valid(connection: Any, baseline_release_id: str, candidate_
 
 
 def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], inventory: dict[str, Any],
-            *, candidate_only_ack: bool, append_to_v0_baseline: bool = False) -> dict[str, Any]:
+            *, candidate_only_ack: bool, append_to_v0_baseline: bool = False,
+            parent_candidate_release_id: str | None = None) -> dict[str, Any]:
     parsed_url = urlsplit(database_url)
     if parsed_url.hostname not in {"127.0.0.1", "localhost", "::1"}:
         raise BridgeError("database_must_be_loopback")
@@ -830,6 +831,10 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
         baseline_contract = _baseline_contract()
         if freeze["release_id"] == baseline_contract["release_id"]:
             raise BridgeError("append_candidate_release_id_must_be_distinct")
+        if parent_candidate_release_id is not None:
+            successor = re.fullmatch(r"(.+)-r([2-9][0-9]*)", freeze["release_id"])
+            if (successor is None or parent_candidate_release_id != f"{successor.group(1)}-r{int(successor.group(2)) - 1}"):
+                raise BridgeError("parent_candidate_must_be_immediate_same_family_predecessor")
     elif not re.fullmatch(r"uec_v0_review(?:_[a-z0-9]+)?", expected_database):
         raise BridgeError("expected_database_name_must_be_isolated_v0_review")
     if parsed_url.path.lstrip("/") != expected_database:
@@ -866,7 +871,8 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                "graph_claims_imported": False, "graph_projection_verified": False,
                "graph_readiness": "not_imported",
                "source_observation_count": sum(len(item["rows"]) for item in handoffs.values()),
-               "facility_candidate_count": sum(len(item["representatives"]) for item in handoffs.values())}
+               "facility_candidate_count": sum(len(item["representatives"]) for item in handoffs.values()),
+               "parent_candidate_release_id": parent_candidate_release_id}
     counts = {"sources": len(entries), "source_observations": 0, "facility_candidates": 0,
               "source_coordinates": 0, "provider_derived_coordinates": 0, "coarse_references": 0,
               "unmapped": 0, "release_members": 0}
@@ -889,6 +895,16 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                 raise BridgeError("candidate_database_has_public_release_state")
             if append_to_v0_baseline:
                 _append_scope_is_valid(connection, baseline_contract["release_id"], freeze["release_id"])
+            inherited_members = 0
+            if parent_candidate_release_id is not None:
+                parent = connection.execute("SELECT status,profile,test_only,summary FROM uec.releases WHERE release_id=%s",
+                                            (parent_candidate_release_id,)).fetchone()
+                if (parent is None or parent[0] != "candidate" or parent[1] != PROFILE or parent[2] is not False
+                        or not isinstance(parent[3], dict) or parent[3].get("candidate_only") is not True):
+                    raise BridgeError("parent_candidate_identity_mismatch")
+                if connection.execute("SELECT count(*) FROM uec.release_manifests WHERE release_id=%s",
+                                      (parent_candidate_release_id,)).fetchone()[0] != 0:
+                    raise BridgeError("parent_candidate_manifest_exists")
             # The exact freeze key is immutable: same key is a safe no-op; a
             # reused release ID with a different selection stops before writes.
             existing = _release_existing(connection, freeze["release_id"], freeze_hash)
@@ -1136,8 +1152,46 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                     counts["release_members"] += 1
                 print(json.dumps({"phase": "source_write_verified", "source_id": source,
                                   "observation_count": len(handoff["rows"])}, sort_keys=True), file=sys.stderr)
+            if parent_candidate_release_id is not None:
+                inherited_members = connection.execute("""INSERT INTO uec.release_members
+                    (release_id,facility_id,observation_id,default_visible)
+                    SELECT %s,parent.facility_id,parent.observation_id,false
+                      FROM uec.release_members parent
+                      JOIN uec.observations observation ON observation.observation_id=parent.observation_id
+                      JOIN uec.source_records record ON record.source_record_id=observation.source_record_id
+                     WHERE parent.release_id=%s AND NOT (record.source_id = ANY(%s))
+                    ON CONFLICT (release_id,facility_id) DO NOTHING
+                    RETURNING facility_id""", (freeze["release_id"], parent_candidate_release_id, sorted(entries))).fetchall()
+                expected_inherited = connection.execute("""SELECT count(*)
+                      FROM uec.release_members parent
+                      JOIN uec.observations observation ON observation.observation_id=parent.observation_id
+                      JOIN uec.source_records record ON record.source_record_id=observation.source_record_id
+                     WHERE parent.release_id=%s AND NOT (record.source_id = ANY(%s))""",
+                    (parent_candidate_release_id, sorted(entries))).fetchone()[0]
+                inherited_members = int(expected_inherited)
+                preserved = connection.execute("""SELECT count(*)
+                      FROM uec.release_members parent
+                      JOIN uec.observations observation ON observation.observation_id=parent.observation_id
+                      JOIN uec.source_records record ON record.source_record_id=observation.source_record_id
+                      JOIN uec.release_members successor ON successor.release_id=%s AND successor.facility_id=parent.facility_id
+                     WHERE parent.release_id=%s AND NOT (record.source_id = ANY(%s))
+                       AND successor.observation_id=parent.observation_id AND successor.default_visible=false""",
+                    (freeze["release_id"], parent_candidate_release_id, sorted(entries))).fetchone()[0]
+                stale_selected = connection.execute("""SELECT count(*) FROM uec.release_members member
+                      JOIN uec.observations observation ON observation.observation_id=member.observation_id
+                      JOIN uec.source_records record ON record.source_record_id=observation.source_record_id
+                     WHERE member.release_id=%s AND record.source_id = ANY(%s)
+                       AND observation.observation->>'source_preview_candidate_id' IS NULL""",
+                    (freeze["release_id"], sorted(entries))).fetchone()[0]
+                if int(preserved) != inherited_members or int(stale_selected) != 0:
+                    raise BridgeError("parent_candidate_copy_integrity_mismatch")
+                summary["inherited_member_count"] = inherited_members
+                connection.execute("UPDATE uec.releases SET summary=summary || %s::jsonb WHERE release_id=%s",
+                                   (Jsonb({"parent_candidate_release_id": parent_candidate_release_id,
+                                           "inherited_member_count": inherited_members}), freeze["release_id"]))
             counts["facility_candidates"] = counts["release_members"]
-            if counts["source_observations"] != summary["source_observation_count"] or counts["facility_candidates"] != summary["facility_candidate_count"]:
+            counts["facility_candidates"] += inherited_members
+            if counts["source_observations"] != summary["source_observation_count"] or counts["facility_candidates"] != summary["facility_candidate_count"] + inherited_members:
                 raise BridgeError("bridge_total_reconciliation_failed")
             actual_members, visible_members = connection.execute(
                 "SELECT count(*),count(*) FILTER (WHERE default_visible) FROM uec.release_members WHERE release_id=%s",
@@ -1316,6 +1370,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="append a non-visible candidate beside the exact approved local V0 clone")
     parser.add_argument("--candidate-release-id",
                         help="required with --append-to-v0-baseline; distinct local candidate identity")
+    parser.add_argument("--parent-candidate-release-id",
+                        help="immediate same-family candidate predecessor; copies only its non-selected source memberships")
     parser.add_argument("--repair-names", action="store_true", help="dry-run a bounded facility-name projection repair")
     parser.add_argument("--apply-names", action="store_true", help="apply the verified name repair; requires --repair-names")
     args = parser.parse_args(argv)
@@ -1331,6 +1387,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--append-to-v0-baseline requires a v0-candidate-* --candidate-release-id")
     if not args.append_to_v0_baseline and args.candidate_release_id:
         parser.error("--candidate-release-id requires --append-to-v0-baseline")
+    if args.parent_candidate_release_id and not args.append_to_v0_baseline:
+        parser.error("--parent-candidate-release-id requires --append-to-v0-baseline")
     try:
         freeze, inventory = load_freeze(args.freeze, args.inventory)
         if args.repair_names:
@@ -1344,7 +1402,8 @@ def main(argv: list[str] | None = None) -> int:
                 freeze = {**freeze, "release_id": args.candidate_release_id}
             report = bridge(args.database_url, args.expected_database, freeze, inventory,
                             candidate_only_ack=args.candidate_only_ack,
-                            append_to_v0_baseline=args.append_to_v0_baseline)
+                            append_to_v0_baseline=args.append_to_v0_baseline,
+                            parent_candidate_release_id=args.parent_candidate_release_id)
     except (BridgeError, OSError, ValueError) as error:
         reason = str(error) if isinstance(error, BridgeError) and re.fullmatch(r"[a-z0-9_.:-]{1,160}", str(error)) else "candidate_bridge_validation_failed"
         print(json.dumps({"status": "blocked", "reason": reason}, sort_keys=True))
