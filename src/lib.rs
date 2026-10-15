@@ -3245,7 +3245,7 @@ async fn aphis_dated_inspections_for_candidate(
                 JOIN uec.source_records annual_record ON annual_record.source_record_id=event.source_record_id
                 JOIN uec.graph_evidence_links link ON link.evidence_event_id=event.evidence_event_id
                 JOIN candidate_identifiers candidate ON candidate.source_id=link.target_source_id
-                WHERE event.source_id='us.aphis.inspections'
+                WHERE event.source_id='us.inspections'
                   AND event.event_type='inspections'
                   AND event.event_date IS NOT NULL
                   AND link.match_method='exact_source_identifier'
@@ -3272,7 +3272,7 @@ async fn aphis_dated_inspections_for_candidate(
                 inspection_date,
                 source_url,
                 safe_provenance: AphisAnnualSafeProvenance {
-                    source_id: "us.aphis.inspections".into(),
+                    source_id: "us.inspections".into(),
                     evidence_type: "inspections".into(),
                     match_method: "exact_source_identifier".into(),
                     matched_identifier_types,
@@ -6314,6 +6314,17 @@ mod v2_api_tests {
             Some("https://direct.aphis.usda.gov/awa/search/inspection-reports".into()));
         assert_eq!(aphis_safe_source_url(Some("file:///private-export.csv".into())), None);
         assert_eq!(aphis_safe_source_url(Some("not a url".into())), None);
+    }
+
+    #[test]
+    fn aphis_inspection_detail_uses_the_registered_evidence_source_id() {
+        let registry: Value = serde_json::from_str(include_str!("../pipeline/source_registry.json")).unwrap();
+        assert!(registry.to_string().contains("\"source_id\":\"us.inspections\""));
+        assert_eq!(AphisDatedInspectionDetail {
+            inspection_date: "2026-02-01".into(), source_url: "https://example.test/inspection".into(),
+            safe_provenance: AphisAnnualSafeProvenance { source_id: "us.inspections".into(), evidence_type: "inspections".into(),
+                match_method: "exact_source_identifier".into(), matched_identifier_types: vec!["certificate_number".into()], identifier_alias_mapping: None },
+        }.safe_provenance.source_id, "us.inspections");
     }
 
     #[test]

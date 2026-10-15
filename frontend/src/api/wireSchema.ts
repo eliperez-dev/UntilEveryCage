@@ -87,7 +87,7 @@ const aphisDatedInspection = z.object({
   inspection_date: z.string().date(),
   source_url: sourceUrl,
   safe_provenance: z.object({
-    source_id: z.literal('us.aphis.inspections'),
+    source_id: z.literal('us.inspections'),
     evidence_type: z.literal('inspections'),
     match_method: z.literal('exact_source_identifier'),
     matched_identifier_types: z.array(z.enum(['certificate_number', 'customer_number'])).min(1).max(2),

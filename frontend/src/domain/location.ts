@@ -57,7 +57,7 @@ export type AphisDatedInspection = Readonly<{
   inspectionDate: string;
   sourceUrl: string;
   safeProvenance: Readonly<{
-    sourceId: 'us.aphis.inspections';
+    sourceId: 'us.inspections';
     evidenceType: 'inspections';
     matchMethod: 'exact_source_identifier';
     matchedIdentifierTypes: readonly ('certificate_number' | 'customer_number')[];

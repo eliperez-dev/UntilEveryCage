@@ -55,13 +55,13 @@ describe('configured candidate detail', () => {
   it('maps only dated, exact-identifier APHIS inspection evidence into source facts', async () => {
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: {
       ...row, aphis_dated_inspections: [{ inspection_date: '2026-02-01', source_url: 'https://example.test/inspection',
-        safe_provenance: { source_id: 'us.aphis.inspections', evidence_type: 'inspections', match_method: 'exact_source_identifier',
+        safe_provenance: { source_id: 'us.inspections', evidence_type: 'inspections', match_method: 'exact_source_identifier',
           matched_identifier_types: ['certificate_number'], identifier_alias_mapping: 'aphis-registration-number-is-certificate-v1' } }],
     }, meta }), { status: 200 }));
     const result = await new TestReleaseDetailRepository(fetcher).detail(id);
     expect(result.sourceFacts?.aphisDatedInspections).toEqual([expect.objectContaining({
       inspectionDate: '2026-02-01', sourceUrl: 'https://example.test/inspection',
-      safeProvenance: expect.objectContaining({ sourceId: 'us.aphis.inspections', identifierAliasMapping: 'aphis-registration-number-is-certificate-v1' }),
+      safeProvenance: expect.objectContaining({ sourceId: 'us.inspections', identifierAliasMapping: 'aphis-registration-number-is-certificate-v1' }),
     })]);
   });
 });
