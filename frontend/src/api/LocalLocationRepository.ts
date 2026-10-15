@@ -43,12 +43,14 @@ export const mapWireLocation = (r: WireLocation | WireDetailLocation): Location 
     ...(r.aphis_annual_reports ? { aphisAnnualReports: r.aphis_annual_reports.map(report => ({
       fiscalYear: report.fiscal_year, speciesCounts: report.species_counts.map(species => ({ species: species.species, count: species.count })),
       sourceUrl: report.source_url, safeProvenance: { sourceId: report.safe_provenance.source_id, evidenceType: report.safe_provenance.evidence_type,
-        matchMethod: report.safe_provenance.match_method, matchedIdentifierTypes: report.safe_provenance.matched_identifier_types },
+        matchMethod: report.safe_provenance.match_method, matchedIdentifierTypes: report.safe_provenance.matched_identifier_types,
+        ...(report.safe_provenance.identifier_alias_mapping ? { identifierAliasMapping: report.safe_provenance.identifier_alias_mapping } : {}) },
     })) } : {}),
     ...(r.aphis_dated_inspections ? { aphisDatedInspections: r.aphis_dated_inspections.map(inspection => ({
       inspectionDate: inspection.inspection_date, sourceUrl: inspection.source_url,
       safeProvenance: { sourceId: inspection.safe_provenance.source_id, evidenceType: inspection.safe_provenance.evidence_type,
-        matchMethod: inspection.safe_provenance.match_method, matchedIdentifierTypes: inspection.safe_provenance.matched_identifier_types },
+        matchMethod: inspection.safe_provenance.match_method, matchedIdentifierTypes: inspection.safe_provenance.matched_identifier_types,
+        ...(inspection.safe_provenance.identifier_alias_mapping ? { identifierAliasMapping: inspection.safe_provenance.identifier_alias_mapping } : {}) },
     })) } : {}),
     ...(r.establishment_id ? { establishmentId: r.establishment_id } : {}),
     ...(r.establishment_number ? { establishmentNumber: r.establishment_number } : {}),

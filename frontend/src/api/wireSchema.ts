@@ -80,6 +80,7 @@ const aphisAnnualReport = z.object({
     evidence_type: z.literal('annual_reports'),
     match_method: z.literal('exact_source_identifier'),
     matched_identifier_types: z.array(z.enum(['certificate_number', 'customer_number'])).min(1).max(2),
+    identifier_alias_mapping: z.literal('aphis-registration-number-is-certificate-v1').optional(),
   }).strict(),
 }).strict();
 const aphisDatedInspection = z.object({
@@ -90,6 +91,7 @@ const aphisDatedInspection = z.object({
     evidence_type: z.literal('inspections'),
     match_method: z.literal('exact_source_identifier'),
     matched_identifier_types: z.array(z.enum(['certificate_number', 'customer_number'])).min(1).max(2),
+    identifier_alias_mapping: z.literal('aphis-registration-number-is-certificate-v1').optional(),
   }).strict(),
 }).strict();
 const detailFactsShape = {

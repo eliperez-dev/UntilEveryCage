@@ -50,6 +50,7 @@ export type AphisAnnualReport = Readonly<{
     evidenceType: 'annual_reports';
     matchMethod: 'exact_source_identifier';
     matchedIdentifierTypes: readonly ('certificate_number' | 'customer_number')[];
+    identifierAliasMapping?: 'aphis-registration-number-is-certificate-v1';
   }>;
 }>;
 export type AphisDatedInspection = Readonly<{
@@ -60,6 +61,7 @@ export type AphisDatedInspection = Readonly<{
     evidenceType: 'inspections';
     matchMethod: 'exact_source_identifier';
     matchedIdentifierTypes: readonly ('certificate_number' | 'customer_number')[];
+    identifierAliasMapping?: 'aphis-registration-number-is-certificate-v1';
   }>;
 }>;
 // These are source-native, release-built detail facts. They are intentionally
