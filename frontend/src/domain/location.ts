@@ -52,6 +52,16 @@ export type AphisAnnualReport = Readonly<{
     matchedIdentifierTypes: readonly ('certificate_number' | 'customer_number')[];
   }>;
 }>;
+export type AphisDatedInspection = Readonly<{
+  inspectionDate: string;
+  sourceUrl: string;
+  safeProvenance: Readonly<{
+    sourceId: 'us.aphis.inspections';
+    evidenceType: 'inspections';
+    matchMethod: 'exact_source_identifier';
+    matchedIdentifierTypes: readonly ('certificate_number' | 'customer_number')[];
+  }>;
+}>;
 // These are source-native, release-built detail facts. They are intentionally
 // absent from list and map projections.
 export type LocationSourceFacts = Readonly<{
@@ -61,6 +71,7 @@ export type LocationSourceFacts = Readonly<{
   sourceVolumeCategories?: readonly SourceVolumeCategory[];
   derivedSourceVolumeRanges?: readonly DerivedSourceVolumeRange[];
   aphisAnnualReports?: readonly AphisAnnualReport[];
+  aphisDatedInspections?: readonly AphisDatedInspection[];
   establishmentId?: string;
   establishmentNumber?: string;
   grantDate?: string;

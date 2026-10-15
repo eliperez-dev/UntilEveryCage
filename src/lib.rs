@@ -3071,6 +3071,19 @@ struct AphisAnnualReportDetail {
     safe_provenance: AphisAnnualSafeProvenance,
 }
 
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
+struct AphisDatedInspectionDetail {
+    inspection_date: String,
+    source_url: String,
+    safe_provenance: AphisAnnualSafeProvenance,
+}
+
+fn aphis_safe_source_url(value: Option<String>) -> Option<String> {
+    let value = value?;
+    let parsed = reqwest::Url::parse(&value).ok()?;
+    matches!(parsed.scheme(), "https" | "http").then_some(value)
+}
+
 fn aphis_nonnegative_count(value: &Value) -> Option<i64> {
     match value {
         Value::Number(number) => number.as_i64().filter(|count| *count >= 0),
@@ -3207,6 +3220,66 @@ async fn aphis_annual_reports_for_candidate(
         let source_values = serde_json::from_str::<Value>(row.get::<_, String>(1).as_str()).ok()?;
         let matched_identifier_types = row.get::<_, Vec<String>>(2);
         aphis_annual_report_detail(&fiscal_year, &source_values, matched_identifier_types, certificate_from_registration_alias)
+    }).collect())
+}
+
+async fn aphis_dated_inspections_for_candidate(
+    client: &tokio_postgres::Client,
+    facility_source_id: &str,
+    facility_normalized: &str,
+) -> Result<Vec<AphisDatedInspectionDetail>, tokio_postgres::Error> {
+    let (certificate_number, customer_number, certificate_from_registration_alias) = aphis_candidate_native_identifiers(facility_normalized);
+    if certificate_number.is_none() && customer_number.is_none() {
+        return Ok(Vec::new());
+    }
+    let rows = client.query(
+        r#"WITH candidate_identifiers AS (
+                SELECT $1::text AS source_id,$2::text AS certificate_number,$3::text AS customer_number
+            ), exact_inspections AS (
+                SELECT DISTINCT ON (event.event_date)
+                    event.event_date::text AS inspection_date,
+                    annual_record.raw_fields->'source_values'->>'__capture_source_url' AS source_url,
+                    ARRAY_AGG(DISTINCT link.target_identifier_type ORDER BY link.target_identifier_type) AS matched_identifier_types,
+                    event.observed_at,event.evidence_event_id
+                FROM uec.graph_evidence_events event
+                JOIN uec.source_records annual_record ON annual_record.source_record_id=event.source_record_id
+                JOIN uec.graph_evidence_links link ON link.evidence_event_id=event.evidence_event_id
+                JOIN candidate_identifiers candidate ON candidate.source_id=link.target_source_id
+                WHERE event.source_id='us.aphis.inspections'
+                  AND event.event_type='inspections'
+                  AND event.event_date IS NOT NULL
+                  AND link.match_method='exact_source_identifier'
+                  AND ((link.target_identifier_type='certificate_number' AND link.target_source_identifier=candidate.certificate_number)
+                    OR (link.target_identifier_type='customer_number' AND link.target_source_identifier=candidate.customer_number))
+                GROUP BY event.evidence_event_id,event.event_date,annual_record.raw_fields,event.observed_at
+                ORDER BY event.event_date DESC,event.observed_at DESC,event.evidence_event_id DESC
+            )
+            SELECT inspection_date,source_url,matched_identifier_types
+            FROM exact_inspections
+            ORDER BY inspection_date DESC
+            LIMIT 5"#,
+        &[&facility_source_id, &certificate_number, &customer_number],
+    ).await?;
+    Ok(rows.into_iter().filter_map(|row| {
+        let inspection_date = row.get::<_, Option<String>>(0)?;
+        let source_url = aphis_safe_source_url(row.get(1))?;
+        let matched_identifier_types = row.get::<_, Vec<String>>(2);
+        (inspection_date.len() == 10
+            && inspection_date.as_bytes().get(4) == Some(&b'-')
+            && inspection_date.as_bytes().get(7) == Some(&b'-')
+            && !matched_identifier_types.is_empty())
+            .then(|| AphisDatedInspectionDetail {
+                inspection_date,
+                source_url,
+                safe_provenance: AphisAnnualSafeProvenance {
+                    source_id: "us.aphis.inspections".into(),
+                    evidence_type: "inspections".into(),
+                    match_method: "exact_source_identifier".into(),
+                    matched_identifier_types,
+                    identifier_alias_mapping: certificate_from_registration_alias
+                        .then(|| APHIS_REGISTRATION_CERTIFICATE_ALIAS_VERSION.into()),
+                },
+            })
     }).collect())
 }
 
@@ -3635,6 +3708,17 @@ pub async fn get_dev_test_release_location_detail_handler(
         if !reports.is_empty() {
             if let Some(item_fields) = item.as_object_mut() {
                 item_fields.insert("aphis_annual_reports".into(), json!(reports));
+            }
+        }
+    }
+    if let Ok(inspections) = aphis_dated_inspections_for_candidate(
+        &client,
+        row.get::<_, String>(9).as_str(),
+        row.get::<_, String>(17).as_str(),
+    ).await {
+        if !inspections.is_empty() {
+            if let Some(item_fields) = item.as_object_mut() {
+                item_fields.insert("aphis_dated_inspections".into(), json!(inspections));
             }
         }
     }
@@ -6222,6 +6306,14 @@ mod v2_api_tests {
             vec!["certificate_number".into()],
             false,
         ).is_none());
+    }
+
+    #[test]
+    fn aphis_dated_inspection_source_url_requires_http_and_keeps_only_safe_urls() {
+        assert_eq!(aphis_safe_source_url(Some("https://direct.aphis.usda.gov/awa/search/inspection-reports".into())),
+            Some("https://direct.aphis.usda.gov/awa/search/inspection-reports".into()));
+        assert_eq!(aphis_safe_source_url(Some("file:///private-export.csv".into())), None);
+        assert_eq!(aphis_safe_source_url(Some("not a url".into())), None);
     }
 
     #[test]

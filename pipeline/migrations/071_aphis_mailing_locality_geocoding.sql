@@ -1,3 +1,12 @@
+-- A leased locality job can serve several APHIS candidates.  Earlier profiles
+-- remain one-to-one by their queued data, while this changes only the target
+-- association cardinality; job identity, leases, and all existing target rows
+-- are preserved.
+ALTER TABLE real_preview.geocode_targets
+    DROP CONSTRAINT IF EXISTS geocode_targets_pkey;
+ALTER TABLE real_preview.geocode_targets
+    ADD CONSTRAINT geocode_targets_pkey PRIMARY KEY (job_id, candidate_id);
+
 -- Add a narrowly scoped private APHIS mailing-locality Geoapify profile.
 -- This grants neither an operating-site assertion nor publication eligibility.
 ALTER TABLE real_preview.private_geocoding_source_profiles

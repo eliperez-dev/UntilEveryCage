@@ -82,6 +82,16 @@ const aphisAnnualReport = z.object({
     matched_identifier_types: z.array(z.enum(['certificate_number', 'customer_number'])).min(1).max(2),
   }).strict(),
 }).strict();
+const aphisDatedInspection = z.object({
+  inspection_date: z.string().date(),
+  source_url: sourceUrl,
+  safe_provenance: z.object({
+    source_id: z.literal('us.aphis.inspections'),
+    evidence_type: z.literal('inspections'),
+    match_method: z.literal('exact_source_identifier'),
+    matched_identifier_types: z.array(z.enum(['certificate_number', 'customer_number'])).min(1).max(2),
+  }).strict(),
+}).strict();
 const detailFactsShape = {
   alternate_names: z.array(z.string().min(1).max(200)).min(1).max(32).optional(),
   species_slaughtered: sourceFlags.optional(),
@@ -89,6 +99,7 @@ const detailFactsShape = {
   source_volume_categories: z.array(sourceVolumeCategory).min(1).max(32).optional(),
   derived_source_volume_ranges: z.array(derivedSourceVolumeRange).min(1).max(32).optional(),
   aphis_annual_reports: z.array(aphisAnnualReport).min(1).max(16).optional(),
+  aphis_dated_inspections: z.array(aphisDatedInspection).min(1).max(16).optional(),
   establishment_id: z.string().min(1).max(160).optional(),
   establishment_number: z.string().min(1).max(160).optional(),
   grant_date: z.string().min(1).max(80).optional(),
