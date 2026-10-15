@@ -87,6 +87,9 @@ class EvidenceEventAdapter:
         # authorized normal UI automation, not a substitute for terms review.
         require_terms_review(Path(str(review)))
         context = dict(options.get("aphis_query_context") or {})
+        page_bound = context.get("max_pages")
+        if not isinstance(page_bound, int) or not 1 <= page_bound <= 200:
+            raise RuntimeError("APHIS live acquisition requires --aphis-max-pages 1..200")
         if profile == "annual_reports":
             year = context.get("selected_year")
             if not isinstance(year, str) or not year.isdigit() or len(year) != 4:

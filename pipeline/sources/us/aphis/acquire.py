@@ -58,18 +58,6 @@ def _csv_download_is_valid(path: Path) -> None:
             failure_class="challenge-response",
             action="use the documented browser export workflow; do not bypass the challenge",
         )
-
-
-def _active_register_xlsx_is_valid(path: Path) -> None:
-    raw = path.read_bytes()
-    if not raw.startswith(b"PK\x03\x04"):
-        raise AcquisitionError("APHIS active register is not an XLSX container", failure_class="invalid-document")
-    try:
-        headers, rows = _read_active_register_xlsx(raw)
-    except ValueError as error:
-        raise AcquisitionError("APHIS active-register XLSX schema is unsupported", failure_class="schema-drift") from error
-    if headers != ACTIVE_REGISTER_HEADERS or not rows:
-        raise AcquisitionError("APHIS active-register XLSX schema is unsupported", failure_class="schema-drift")
     try:
         rows = list(csv.reader(io.StringIO(raw.decode("utf-8-sig"), newline=""), strict=True))
     except (UnicodeDecodeError, csv.Error) as error:
@@ -91,6 +79,18 @@ def _active_register_xlsx_is_valid(path: Path) -> None:
             failure_class="truncated-response",
             action="repeat the documented export and retain the prior validated artifact",
         )
+
+
+def _active_register_xlsx_is_valid(path: Path) -> None:
+    raw = path.read_bytes()
+    if not raw.startswith(b"PK\x03\x04"):
+        raise AcquisitionError("APHIS active register is not an XLSX container", failure_class="invalid-document")
+    try:
+        headers, rows = _read_active_register_xlsx(raw)
+    except ValueError as error:
+        raise AcquisitionError("APHIS active-register XLSX schema is unsupported", failure_class="schema-drift") from error
+    if headers != ACTIVE_REGISTER_HEADERS or not rows:
+        raise AcquisitionError("APHIS active-register XLSX schema is unsupported", failure_class="schema-drift")
 
 
 def _document_is_valid(path: Path) -> None:
