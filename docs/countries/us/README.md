@@ -44,12 +44,52 @@ APHIS is UI-mediated. `pipeline.sources.us.aphis.refresh` records the selected p
 
 ### APHIS renewable capture
 
-The supported operator workflow is:
+The renewable live workflow uses a fresh private Firefox session with only the
+official visible search, results, CSV-export, and paginator controls. It selects
+exactly one APHIS profile and preserves the selected year or scope, amendment
+state, per-page lineage, retrieval time, hashes, and source identifiers. It does
+not use hidden endpoints or bypass access controls. Live annual and inspection
+refreshes require an explicit page cap; a cap is bounded coverage, never a
+claim that the profile's full history was acquired.
 
-1. Open the official APHIS Animal Care search/report page in an authorized browser session.
-2. Select exactly one profile: `registrations`, `annual_reports`, or `inspections`. Preserve the selected year/date, amendment indicator, filters, displayed result count, final URL, and any linked report/document identifier. Do not combine profiles or edit the saved export.
-3. Save the CSV export, or save a linked document/amendment separately. Documents are source evidence only and are not automatically merged into annual-report or inspection rows.
-4. Run a private refresh. For a saved CSV:
+For an FY2025 annual capture with amendments included:
+
+```powershell
+python -m pipeline.refresh_private `
+  --source us.aphis.annual-reports `
+  --mode live-acquisition `
+  --authorize-live-source us.aphis.annual-reports `
+  --terms-review data/terms-reviews/us.aphis.json `
+  --aphis-year 2025 `
+  --aphis-amendments-included `
+  --aphis-max-pages 10 `
+  --output-root data/staging/private-refresh `
+  --run-id <unique-run-id>
+```
+
+For a bounded inspection capture, provide the exact official visible scope and
+an explicit page cap:
+
+```powershell
+python -m pipeline.refresh_private `
+  --source us.inspections `
+  --mode live-acquisition `
+  --authorize-live-source us.inspections `
+  --terms-review data/terms-reviews/us.aphis.json `
+  --aphis-inspection-scope "Research Facility" `
+  --aphis-max-pages 1 `
+  --output-root data/staging/private-refresh `
+  --run-id <unique-run-id>
+```
+
+`--aphis-max-pages` supports complete requested pagination when set to the
+necessary number of visible pages; it is not hard-coded to the first page.
+The retained one-page Research Facility inspection capture contains 98 accepted
+dated events and is bounded research-facility coverage, not a full inspection
+history. The runner fails before acquisition when the terms review, profile
+scope, or page cap is missing.
+
+For a previously authorized saved CSV, use the lower-level private refresh:
 
 ```powershell
 python -m pipeline.sources.us.aphis.refresh `
