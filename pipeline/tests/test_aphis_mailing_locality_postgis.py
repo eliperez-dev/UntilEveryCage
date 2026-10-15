@@ -108,6 +108,11 @@ class AphisMailingLocalityPostgisTests(unittest.TestCase):
             self.assertEqual(record({**accepted, "city": "wrong locality"}), 0)
             self.assertEqual(record({**accepted, "state_code": "ZZ"}), 0)
             self.assertEqual(record({**accepted, "country_code": "CA"}), 0)
+            self.connection.execute("""INSERT INTO uec.record_access_events
+                (source_record_id,action,reason_category,policy_version,maintainer,note)
+                VALUES (%s,'public_access_revoked','privacy','aphis-gate-test','test','synthetic gate')""",
+                (source_record_id,))
+            self.assertEqual(record(accepted), 0)
 
 
 if __name__ == "__main__":

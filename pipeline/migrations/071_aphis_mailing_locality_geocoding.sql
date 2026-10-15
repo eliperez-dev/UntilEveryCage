@@ -29,6 +29,30 @@ ON CONFLICT (profile_id) DO UPDATE SET
 COMMENT ON TABLE real_preview.private_geocoding_source_profiles IS
     'Explicit source/country allowlist for private Geoapify processing; APHIS US is mailing-locality-only and never establishes an operating site, project approval, or publication.';
 
+-- Keep the historical single-target trigger for every earlier profile, but do
+-- not let it re-interpret an APHIS locality job after the fan-out trigger has
+-- rejected it or created its exact-target evidence.
+CREATE OR REPLACE FUNCTION real_preview.is_aphis_mailing_locality_job(
+    input_source_record_id UUID, input_provider_id TEXT, input_query TEXT
+) RETURNS BOOLEAN LANGUAGE sql STABLE AS $$
+    SELECT EXISTS (
+        SELECT 1 FROM uec.geocode_jobs job
+        JOIN uec.geocode_job_events queued ON queued.job_id=job.job_id
+        WHERE job.source_record_id=input_source_record_id
+          AND job.provider_id=input_provider_id AND job.query=input_query
+          AND queued.event_type='queued'
+          AND queued.details->>'processing_mode'='private_geoapify_source_profile'
+          AND queued.details->>'profile_id'='geoapify-us-aphis-mailing-locality'
+    )
+$$;
+
+DROP TRIGGER IF EXISTS geocode_results_geoapify_preview_display ON uec.geocode_results;
+CREATE TRIGGER geocode_results_geoapify_preview_display
+    AFTER INSERT ON uec.geocode_results
+    FOR EACH ROW WHEN (NOT real_preview.is_aphis_mailing_locality_job(
+        NEW.source_record_id, NEW.provider_id, NEW.query
+    )) EXECUTE FUNCTION real_preview.capture_geoapify_private_display();
+
 -- The historical shared trigger deliberately selects one target.  APHIS jobs
 -- are locality-deduplicated and can have many targets, so insert an explicit
 -- APHIS evidence row for every current eligible target first.  The existing
@@ -108,6 +132,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS aaa_aphis_mailing_locality_geoapify_display ON uec.geocode_results;
 CREATE TRIGGER aaa_aphis_mailing_locality_geoapify_display
     AFTER INSERT ON uec.geocode_results
     FOR EACH ROW EXECUTE FUNCTION real_preview.capture_aphis_mailing_locality_display();
