@@ -73,19 +73,37 @@ class EvidenceEventAdapter:
         )
 
     def acquire(self, *, run_dir: Path, options: Mapping[str, Any]) -> Mapping[str, Any]:
-        """Use the existing bounded APHIS documented-download callable."""
+        """Acquire a documented APHIS event profile through its normal public UI."""
         review_paths = options.get("terms_review_paths")
         review = review_paths.get(self.source_id) if isinstance(review_paths, Mapping) else None
         review = review or options.get("terms_review_path")
         if not review:
             raise RuntimeError("terms review is required for live acquisition")
-        from .aphis.acquire import fetch_profile
+        from pipeline.common.acquisition import require_terms_review
+        from .aphis.acquire import validate_download
+        from .aphis.browser_acquisition import acquire_public_search_export
         profile = self.config["profile"]
-        metadata = fetch_profile(
-            profile=profile, output_root=run_dir / "acquisition",
-            terms_review_path=Path(str(review)), run_id=run_dir.name,
-            timeout_seconds=float(options.get("timeout_seconds", 60.0)),
+        # Read the approval before launching a browser; the browser route is
+        # authorized normal UI automation, not a substitute for terms review.
+        require_terms_review(Path(str(review)))
+        context = dict(options.get("aphis_query_context") or {})
+        if profile == "annual_reports":
+            year = context.get("selected_year")
+            if not isinstance(year, str) or not year.isdigit() or len(year) != 4:
+                raise RuntimeError("annual_reports live acquisition requires --aphis-year YYYY")
+        else:
+            scope = context.get("selected_scope")
+            if not isinstance(scope, str) or not scope.strip():
+                raise RuntimeError("inspections live acquisition requires --aphis-inspection-scope")
+        metadata = acquire_public_search_export(
+            profile=profile, profile_url=str(self.config["source_url"]),
+            output_root=run_dir / "acquisition", run_id=str(options.get("acquisition_run_id") or run_dir.name),
+            query_context=context,
+            artifact_validator=lambda path, headers: validate_download(profile, path, headers),
+            max_attempts=min(3, max(1, int(options.get("browser_max_attempts", 2)))),
             max_bytes=int(options.get("max_bytes", 128 * 1024 * 1024)),
+            navigation_timeout_seconds=float(options.get("timeout_seconds", 60.0)),
+            download_timeout_seconds=min(120.0, float(options.get("timeout_seconds", 60.0))),
         )
         return metadata
 
@@ -103,8 +121,10 @@ class EvidenceEventAdapter:
             raise ValueError(f"APHIS artifact profile {parsed_result['profile']} does not match {self.config['profile']}")
 
         accepted = [self._reidentify(record) for record in parsed_result["accepted"]]
-        quarantined = [self._reidentify(item["record"]) | {"reasons": item["reasons"]}
-                       for item in parsed_result["quarantined"]]
+        quarantined = [
+            {"reasons": item["reasons"], "record": self._reidentify(item["record"])}
+            for item in parsed_result["quarantined"]
+        ]
         parsed = accepted + [item["record"] for item in quarantined]
         parsed_path, parsed_sha, _ = atomic_jsonl(run_dir / "parsed" / "records.jsonl", parsed)
         normalized_path, normalized_sha, _ = atomic_jsonl(run_dir / "normalized" / "records.jsonl", accepted)
@@ -175,11 +195,10 @@ def register_evidence_sources(catalog: Any) -> None:
             AdapterCapabilities(
                 source_id=source_id, adapter_version=config["adapter_version"],
                 schema_version=EvidenceEventAdapter.schema_version,
-                acquisition="bounded_private_fetch" if source_id == "us.aphis" else "assisted_only", geocoding="disabled",
+                acquisition="bounded_private_fetch", geocoding="disabled",
                 publication="human_gate_required", adapter_path="pipeline/sources/us/evidence.py",
                 country_code="us", source_kind=str(config["source_kind"]),
-                operational_classification="live" if source_id == "us.aphis" else "assisted",
-                live_callable=source_id == "us.aphis",
+                operational_classification="live", live_callable=True,
             ),
         )
 

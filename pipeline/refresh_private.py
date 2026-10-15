@@ -58,6 +58,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout-seconds", type=float, default=180)
     parser.add_argument("--max-bytes", type=int, default=128 * 1024 * 1024)
     parser.add_argument("--run-id", help="unique acquisition run ID; generated when omitted")
+    parser.add_argument("--aphis-year", help="required fiscal year for live us.aphis.annual-reports acquisition")
+    parser.add_argument("--aphis-amendments-included", action="store_true", help="record that the selected annual-report UI view includes amendments")
+    parser.add_argument("--aphis-inspection-scope", help="required visible filter/scope description for live us.inspections acquisition")
+    parser.add_argument("--aphis-max-pages", type=int, help="explicit bounded number of visible APHIS result pages to export")
     return parser
 
 
@@ -105,6 +109,12 @@ def main(argv: list[str] | None = None) -> int:
             "timeout_seconds": args.timeout_seconds,
             "max_bytes": args.max_bytes,
             "acquisition_run_id": args.run_id or default_run_id(),
+            "aphis_query_context": {
+                **({"selected_year": args.aphis_year} if args.aphis_year else {}),
+                **({"amended_reports_included": True} if args.aphis_amendments_included else {}),
+                **({"selected_scope": args.aphis_inspection_scope} if args.aphis_inspection_scope else {}),
+                **({"max_pages": args.aphis_max_pages} if args.aphis_max_pages else {}),
+            },
         }
         request = RefreshRequest(source_ids=tuple(args.sources or ()), all_eligible=args.all_eligible,
                                  mode=args.mode, artifact_paths=_artifacts(args.artifact), output_root=args.output_root,
