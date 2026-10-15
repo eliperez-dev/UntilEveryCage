@@ -52,13 +52,16 @@ not use hidden endpoints or bypass access controls. Live annual and inspection
 refreshes require an explicit page cap; a cap is bounded coverage, never a
 claim that the profile's full history was acquired.
 
-For an FY2025 annual capture with amendments included:
+On the configured Firefox/Selenium capture host, set `UEC_DATABASE_URL`
+privately to the writable local development copy. For an FY2025 annual capture
+and private evidence import with amendments included:
 
 ```powershell
 python -m pipeline.refresh_private `
   --source us.aphis.annual-reports `
   --mode live-acquisition `
   --authorize-live-source us.aphis.annual-reports `
+  --import-candidates --disposable-db `
   --terms-review data/terms-reviews/us.aphis.json `
   --aphis-year 2025 `
   --aphis-amendments-included `
@@ -75,6 +78,7 @@ python -m pipeline.refresh_private `
   --source us.inspections `
   --mode live-acquisition `
   --authorize-live-source us.inspections `
+  --import-candidates --disposable-db `
   --terms-review data/terms-reviews/us.aphis.json `
   --aphis-inspection-scope "Research Facility" `
   --aphis-max-pages 1 `

@@ -122,15 +122,32 @@ certify coastlines or every remaining Italian coordinate.
 APHIS now contains **12,473 active registrations across all nine source
 classes**, acquired through the shared source runner and imported into this
 successor. No site coordinates are invented from mailing-city hints; these
-entries are currently unmapped. The FY2025 retained-artifact replay persisted
-994 annual-report events and 1,988 identifier links. Source-documented exact
+entries are currently unmapped. A fresh visible-browser FY2025 capture on
+2026-10-14 acquired ten pages and reconciled the same 994 retained annual-report
+events and 1,988 identifier links; it did not add 994 new reports. Source-documented exact
 registration/certificate matching connects 927 reports to 927 candidate
 records; 730 reports contain usable species counts. Existing record detail
 supports bounded, year-labelled animal counts and the official citation.
-Annual replay is not a live annual acquisition claim. The inspected registry
-export lacks native inspection event identifiers/dates and was not imported
-as inspection evidence. See [US source evidence](country-recon-us.md) and
+The separate one-page Research Facility inspection capture accepted 98 dated
+events and quarantined two rows. Exact certificate matching links 97 events
+to 93 registrations. Candidate record detail now carries bounded dated
+inspection evidence separately from annual animal counts. This is not full
+inspection history. See [US source evidence](country-recon-us.md) and
 [source status](source-status.md) for these distinct capabilities.
+
+**US parity verification, 2026-10-15:** the APHIS mailing-city/state profile
+and multi-record locality fan-out pass the disposable PostGIS gate, including
+wrong-state/city/country, building and restricted-record rejection. Migration
+071 is applied to the working copy. Live APHIS provider processing and the r4
+successor remain pending explicit transfer approval; no new APHIS map locations
+are claimed. The existing r3 and approved v0 remain unchanged. FSIS range
+transport is wired through released detail and map selection, but frozen v0
+contains no retained volume codes, so it is not retroactively given estimates.
+The final local standard gate passes 598 pipeline tests (32 declared opt-in
+skips) and 75 adapter tests. Frontend gates pass 215 unit tests plus focused
+inspection DTO coverage, types, lint, boundaries and build. Real-v0 API
+acceptance and fifteen actual candidate map/list/facet checks pass. Exact-head
+hosted CI and the remaining real-data operations are still handoff gates.
 
 Local gates passed: 138 Rust tests, 592 pipeline tests (31 explicitly gated
 E2E skips), 75 adapter tests, 204 frontend unit tests, frontend type/lint/boundary/

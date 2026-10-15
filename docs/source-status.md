@@ -25,20 +25,30 @@ records the corrected private successor and its measured counts. Fresh FSIS
 directory/demographic captures reconcile 7,246 establishments: 1,755 slaughter
 and 5,491 processing. The Australian NPI correction retains all 8,140 records,
 with 1,229 selected for the default map by the versioned animal-relevance rules.
-The fifteen-source successor serves 41,936 map locations; it is not a new
+The sixteen-source r3 successor serves 41,756 map locations; it is not a new
 public release. Frozen approved v0 remains unchanged.
 
 APHIS has a private active-register candidate cohort from the official workbook:
 12,473 rows across all nine source-native license classes. It is candidate-only,
 has no operating-site coordinates, and is not a public release or a claim of
-recurring health. A separate retained visible-browser FY2025 annual-report
-replay stored 994 events and 1,988 exact source-identifier evidence links; it
+recurring health. A fresh ten-page visible-browser FY2025 acquisition on
+2026-10-14 reconciled 994 retained events and 1,988 exact source-identifier links; it
 has exact aliases to 927 candidate facilities, with valid species counts on
 730 reports. It does not make annual reports a facility master or inspection
 evidence.
 The private r3 successor now assembles the unchanged r2 parent (124,419
 members across 15 sources) with the APHIS cohort, for 136,892 private members
 across 16 sources. It remains candidate-only and unpromoted.
+
+A separate one-page Research Facility inspection acquisition accepted 98 dated
+events and quarantined two rows. Of those events, 97 match 93 current
+registrations by the versioned research-certificate alias. This is bounded
+coverage, not full inspection history. Annual counts and dated inspections
+remain separate detail fields. The APHIS mailing-city/state geocoding profile
+passes the disposable database fan-out/rejection gate; live provider processing
+and r4 assembly are pending explicit transfer approval. No new APHIS map count
+is claimed. The frozen v0 membership and its approved public projection are
+unchanged.
 
 The older source checkpoints below describe their stated capture dates; their
 blanket approval wording does not supersede the recorded 2026-10-06 v0 approval
