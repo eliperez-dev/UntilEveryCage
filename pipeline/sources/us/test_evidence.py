@@ -38,16 +38,25 @@ class EvidenceEventTests(unittest.TestCase):
         catalog.capabilities[facility.source_id] = facility_caps
         catalog.adapters[facility.source_id] = RegisteredAdapter(facility_caps, facility)
         result = RefreshRunner(catalog).run(RefreshRequest(
-            source_ids=("fixture.facility", "us.aphis", "us.inspections"),
+            source_ids=("fixture.facility", "us.aphis", "us.aphis.annual-reports", "us.inspections"),
             mode="fixture", output_root=root,
         ))
         self.assertEqual(result["exit_status"], "ok")
         self.assertEqual(
             [(item["source_id"], item["source_kind"]) for item in result["results"]],
-            [("fixture.facility", "facility_master"), ("us.aphis", "evidence_event"), ("us.inspections", "evidence_event")],
+            [
+                ("fixture.facility", "facility_master"),
+                ("us.aphis", "facility_master"),
+                ("us.aphis.annual-reports", "evidence_event"),
+                ("us.inspections", "evidence_event"),
+            ],
         )
+        # The active register is a source-local candidate register; annual
+        # reports and inspections are dated evidence events, never facilities.
         self.assertEqual(result["results"][1]["summary"]["facility_identity_state"], "not_asserted")
         self.assertFalse(result["results"][1]["summary"]["public_surfaces"]["api"])
+        self.assertEqual(result["results"][2]["summary"]["source_profile"], "annual_reports")
+        self.assertEqual(result["results"][3]["summary"]["source_profile"], "inspections")
 
     def test_evidence_sink_is_idempotent_and_private(self):
         root = self._root("sink")
