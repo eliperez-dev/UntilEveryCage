@@ -2835,6 +2835,48 @@ fn test_release_category_facet_counts(rows: impl Iterator<Item = (String, String
     counts
 }
 
+fn test_release_display_geometry(
+    source_id: &str,
+    country_code: &str,
+    normalized: &str,
+    source_latitude: Option<f64>,
+    source_longitude: Option<f64>,
+    coordinate_precision: Option<&str>,
+    coordinate_review_status: Option<&str>,
+    city_latitude: Option<f64>,
+    city_longitude: Option<f64>,
+) -> Value {
+    let valid = |latitude: Option<f64>, longitude: Option<f64>| {
+        latitude.zip(longitude).filter(|(lat, lon)| {
+            lat.is_finite() && lon.is_finite() && (-90.0..=90.0).contains(lat)
+                && (-180.0..=180.0).contains(lon) && (*lat != 0.0 || *lon != 0.0)
+        })
+    };
+    let unmapped = || json!({"display_precision":"unmapped","latitude":Value::Null,"longitude":Value::Null,"geometry_provenance":{"kind":"unmapped"},"coordinate_method":Value::Null,"source_location_role":Value::Null});
+    if coordinate_review_status != Some("country-coordinate-mismatch") {
+        if let Some((latitude, longitude)) = valid(source_latitude, source_longitude) {
+            let precision = coordinate_precision.unwrap_or("source_reported");
+            return json!({"display_precision":precision,"latitude":latitude,"longitude":longitude,"geometry_provenance":{"kind":"source_coordinate","method":"source_coordinate","precision":precision},"coordinate_method":"source_coordinate","source_location_role":Value::Null});
+        }
+        if source_id == "us.aphis.annual-reports" {
+            let parsed = serde_json::from_str::<Value>(normalized).ok();
+            let location = parsed.as_ref().and_then(|value| value.get("display_location"));
+            let number = |keys: &[&str]| keys.iter().find_map(|key| location.and_then(|value| value.get(*key)).and_then(|value| value.as_f64().or_else(|| value.as_str()?.parse().ok())));
+            let text = |key: &str| location.and_then(|value| value.get(key)).and_then(Value::as_str);
+            let same_country = text("country_code").map(|value| value.eq_ignore_ascii_case(country_code)).unwrap_or(true);
+            if same_country && text("method") == Some("geoapify_forward") && text("precision") == Some("provider_locality_approximate") && text("provider_status") == Some("accepted") && text("evidence_kind") == Some("provider_derived") {
+                if let Some((latitude, longitude)) = valid(number(&["lat", "latitude"]), number(&["long", "longitude", "lon"])) {
+                    return json!({"display_precision":"provider_locality_approximate","latitude":latitude,"longitude":longitude,"geometry_provenance":{"kind":"provider_locality","method":"geoapify_forward","precision":"provider_locality_approximate","provider":"geoapify","provider_status":"accepted","evidence_kind":"provider_derived","evidence_id":text("evidence_id"),"queried_at":text("queried_at"),"review_status":text("review_status"),"source_location_role":"aphis_mailing_locality"},"coordinate_method":"geoapify_forward","source_location_role":"aphis_mailing_locality"});
+                }
+            }
+        }
+        if let Some((latitude, longitude)) = valid(city_latitude, city_longitude) {
+            return json!({"display_precision":"locality_reference_coarse","latitude":latitude,"longitude":longitude,"geometry_provenance":{"kind":"city_reference","method":"city_reference","precision":"locality_reference_coarse"},"coordinate_method":"city_reference","source_location_role":Value::Null});
+        }
+    }
+    unmapped()
+}
+
 /// Derive only the verified FSIS MPI codebook ranges from an already-safe
 /// detail object.  Both candidate and public detail call this after their
 /// respective release projections have applied their allowlists.
@@ -3357,13 +3399,15 @@ pub async fn get_dev_test_release_locations_handler(
         review.factual_review_status,review.privacy_screening_status,review.maintainer_approval,review.reviewer_role,
         source.origin_type, source.source_id, source.name, source.official_url, r.ruleset_version, artifact.retrieved_at,
         COALESCE(record.raw_fields->'normalized','{}'::jsonb)::text, COALESCE(record.raw_fields->'source_activity_codes','[]'::jsonb)::text,
-        total.total_count
+        total.total_count, ST_Y(o.coordinate::geometry), ST_X(o.coordinate::geometry), o.coordinate_precision, o.coordinate_review_status,
+        ST_Y(city.reference_location::geometry), ST_X(city.reference_location::geometry)
         FROM total LEFT JOIN page ON true
         LEFT JOIN uec.observations o ON o.observation_id=page.observation_id LEFT JOIN uec.facilities f ON f.facility_id=page.facility_id
         LEFT JOIN uec.source_records record ON record.source_record_id=o.source_record_id LEFT JOIN uec.sources source ON source.source_id=record.source_id
         LEFT JOIN uec.raw_artifacts artifact ON artifact.artifact_id=record.artifact_id LEFT JOIN uec.releases r ON r.release_id=$1
         LEFT JOIN uec.publication_review_release_current review ON review.source_record_id=o.source_record_id AND review.release_id=$1
         LEFT JOIN LATERAL (SELECT result FROM uec.geocode_results WHERE source_record_id=o.source_record_id AND status='accepted' AND result IS NOT NULL ORDER BY queried_at DESC,geocode_result_id DESC LIMIT 1) g ON true
+        LEFT JOIN LATERAL (SELECT reference_location FROM uec.city_reference_points WHERE country_code=f.country_code AND lower(city_name)=lower(f.city) AND (postal_code IS NULL OR postal_code=f.postal_code) ORDER BY postal_code NULLS LAST LIMIT 1) city ON true
         ORDER BY page.facility_id"#, &[&release_id,&params.country_code,&params.category,&params.source_id,&params.activity,&search_text,&cursor,&query_limit]).await {
         Ok(rows) => rows,
         Err(error) => {
@@ -3396,7 +3440,8 @@ pub async fn get_dev_test_release_locations_handler(
         let source_id: String = row.get(13);
         let normalized: String = row.get(18);
         let activity_codes: String = row.get(19);
-        json!({"facility_id":row.get::<_,uuid::Uuid>(0),"canonical_name":row.get::<_,Option<String>>(1),"country_code":row.get::<_,String>(2),"city":row.get::<_,Option<String>>(3),"category":category,"category_keys":test_release_category_keys(&category, &normalized),"activity_keys":test_release_activity_keys(&source_id, &activity_codes),"publication_profile":profile,"factual_review_status":row.get::<_,Option<String>>(8).unwrap_or("unreviewed".into()),"privacy_screening_status":row.get::<_,Option<String>>(9).unwrap_or("pending".into()),"project_approval":"not-approved","reviewer_role":row.get::<_,Option<String>>(11),"publication_warning":"Private corrected candidate — not project-approved or published","display_precision":row.get::<_,String>(5),"latitude":row.get::<_,Option<f64>>(6),"longitude":row.get::<_,Option<f64>>(7),"first_observed_at":null,"last_observed_at":null,"observation_count":null,"lifecycle_status":"status_unknown","source_type":row.get::<_,String>(12),"release_id":release_id,"release_ruleset_version":row.get::<_,String>(16),"provenance_source_id":source_id,"provenance_source_name":row.get::<_,String>(14),"provenance_source_url":row.get::<_,String>(15),"provenance_retrieved_at":row.get::<_,chrono::DateTime<chrono::Utc>>(17)})
+        let geometry = test_release_display_geometry(&source_id, row.get::<_, String>(2).as_str(), &normalized, row.get(21), row.get(22), row.get::<_, Option<String>>(23).as_deref(), row.get::<_, Option<String>>(24).as_deref(), row.get(25), row.get(26));
+        json!({"facility_id":row.get::<_,uuid::Uuid>(0),"canonical_name":row.get::<_,Option<String>>(1),"country_code":row.get::<_,String>(2),"city":row.get::<_,Option<String>>(3),"category":category,"category_keys":test_release_category_keys(&category, &normalized),"activity_keys":test_release_activity_keys(&source_id, &activity_codes),"publication_profile":profile,"factual_review_status":row.get::<_,Option<String>>(8).unwrap_or("unreviewed".into()),"privacy_screening_status":row.get::<_,Option<String>>(9).unwrap_or("pending".into()),"project_approval":"not-approved","reviewer_role":row.get::<_,Option<String>>(11),"publication_warning":"Private corrected candidate — not project-approved or published","display_precision":geometry["display_precision"].clone(),"latitude":geometry["latitude"].clone(),"longitude":geometry["longitude"].clone(),"geometry_provenance":geometry["geometry_provenance"].clone(),"source_location_role":geometry["source_location_role"].clone(),"first_observed_at":null,"last_observed_at":null,"observation_count":null,"lifecycle_status":"status_unknown","source_type":row.get::<_,String>(12),"release_id":release_id,"release_ruleset_version":row.get::<_,String>(16),"provenance_source_id":source_id,"provenance_source_name":row.get::<_,String>(14),"provenance_source_url":row.get::<_,String>(15),"provenance_retrieved_at":row.get::<_,chrono::DateTime<chrono::Utc>>(17)})
     }).collect::<Vec<_>>();
     let mut meta = test_release_meta(release_id, profile, test_only, candidate_only);
     meta["result_count"] = json!(data.len());
@@ -3475,7 +3520,10 @@ async fn test_release_detail_display_geometry(
                    WHEN o.coordinate IS NULL AND city.reference_location IS NOT NULL
                  AND ST_Y(city.reference_location::geometry) BETWEEN -90 AND 90 AND ST_X(city.reference_location::geometry) BETWEEN -180 AND 180
                  AND (ST_X(city.reference_location::geometry) <> 0 OR ST_Y(city.reference_location::geometry) <> 0)
-                   THEN 'city_reference' END AS coordinate_method
+                   THEN 'city_reference' END AS coordinate_method,
+              source.source_id, f.country_code, COALESCE(sr.raw_fields->'normalized','{}'::jsonb)::text,
+              ST_Y(o.coordinate::geometry), ST_X(o.coordinate::geometry), o.coordinate_precision, o.coordinate_review_status,
+              ST_Y(city.reference_location::geometry), ST_X(city.reference_location::geometry)
            FROM uec.release_members m
            JOIN uec.releases r ON r.release_id=m.release_id
            JOIN uec.observations o ON o.observation_id=m.observation_id
@@ -3499,13 +3547,10 @@ async fn test_release_detail_display_geometry(
         Ok(Some(row)) => row,
         _ => return fallback(),
     };
-    json!({
-        "display_precision": row.get::<_, String>(0),
-        "latitude": row.get::<_, Option<f64>>(1),
-        "longitude": row.get::<_, Option<f64>>(2),
-        "geometry_provenance": serde_json::from_str::<Value>(&row.get::<_, String>(3)).unwrap_or_else(|_| json!({"kind":"unmapped"})),
-        "coordinate_method": row.get::<_, Option<String>>(4),
-    })
+    test_release_display_geometry(
+        row.get::<_, String>(5).as_str(), row.get::<_, String>(6).as_str(), row.get::<_, String>(7).as_str(),
+        row.get(8), row.get(9), row.get::<_, Option<String>>(10).as_deref(), row.get::<_, Option<String>>(11).as_deref(), row.get(12), row.get(13),
+    )
 }
 
 pub async fn get_dev_test_release_location_detail_handler(
@@ -3566,7 +3611,7 @@ pub async fn get_dev_test_release_location_detail_handler(
     let source_id: String = row.get(9);
     let normalized: String = row.get(17);
     let activity_codes: String = row.get(18);
-    let mut item = json!({"facility_id":row.get::<_,uuid::Uuid>(0),"canonical_name":row.get::<_,Option<String>>(1),"country_code":row.get::<_,String>(2),"city":row.get::<_,Option<String>>(3),"category":category,"category_keys":test_release_category_keys(&category, &normalized),"activity_keys":test_release_activity_keys(&source_id, &activity_codes),"publication_profile":profile,"factual_review_status":row.get::<_,String>(5),"privacy_screening_status":row.get::<_,String>(6),"project_approval":"not-approved","publication_warning":"Private corrected candidate — not project-approved or published","display_precision":display_geometry["display_precision"].clone(),"latitude":display_geometry["latitude"].clone(),"longitude":display_geometry["longitude"].clone(),"geometry_provenance":display_geometry["geometry_provenance"].clone(),"coordinate_method":display_geometry["coordinate_method"].clone(),"release_id":release_id,"release_ruleset_version":row.get::<_,String>(13),"provenance_source_id":source_id,"provenance_source_name":row.get::<_,String>(10),"provenance_source_url":row.get::<_,String>(11),"provenance_retrieved_at":row.get::<_,chrono::DateTime<chrono::Utc>>(12)});
+    let mut item = json!({"facility_id":row.get::<_,uuid::Uuid>(0),"canonical_name":row.get::<_,Option<String>>(1),"country_code":row.get::<_,String>(2),"city":row.get::<_,Option<String>>(3),"category":category,"category_keys":test_release_category_keys(&category, &normalized),"activity_keys":test_release_activity_keys(&source_id, &activity_codes),"publication_profile":profile,"factual_review_status":row.get::<_,String>(5),"privacy_screening_status":row.get::<_,String>(6),"project_approval":"not-approved","publication_warning":"Private corrected candidate — not project-approved or published","display_precision":display_geometry["display_precision"].clone(),"latitude":display_geometry["latitude"].clone(),"longitude":display_geometry["longitude"].clone(),"geometry_provenance":display_geometry["geometry_provenance"].clone(),"coordinate_method":display_geometry["coordinate_method"].clone(),"source_location_role":display_geometry["source_location_role"].clone(),"release_id":release_id,"release_ruleset_version":row.get::<_,String>(13),"provenance_source_id":source_id,"provenance_source_name":row.get::<_,String>(10),"provenance_source_url":row.get::<_,String>(11),"provenance_retrieved_at":row.get::<_,chrono::DateTime<chrono::Utc>>(12)});
     if let (Some(item_fields), Value::Object(detail)) = (
         item.as_object_mut(),
         test_release_allowlisted_detail(source_id.as_str(), row.get::<_, String>(17).as_str()),
@@ -3672,7 +3717,9 @@ pub async fn get_dev_test_release_map_feed_handler(
                   ST_Y(COALESCE(o.coordinate, city.reference_location)::geometry) AS latitude,
                   ST_X(COALESCE(o.coordinate, city.reference_location)::geometry) AS longitude,
                   f.country_code, COALESCE(sr.raw_fields->'normalized','{}'::jsonb)::text,
-                  COALESCE(sr.raw_fields->'source_activity_codes','[]'::jsonb)::text
+                  COALESCE(sr.raw_fields->'source_activity_codes','[]'::jsonb)::text,
+                  ST_Y(o.coordinate::geometry), ST_X(o.coordinate::geometry), o.coordinate_precision, o.coordinate_review_status,
+                  ST_Y(city.reference_location::geometry), ST_X(city.reference_location::geometry)
              FROM uec.release_members m
              JOIN uec.releases r ON r.release_id=m.release_id
              JOIN uec.observations o ON o.observation_id=m.observation_id
@@ -3697,7 +3744,8 @@ pub async fn get_dev_test_release_map_feed_handler(
              AND COALESCE(sr.raw_fields->'normalized'->>'in_default_map_scope', '') <> 'false'
               AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted x WHERE x.source_record_id=o.source_record_id)
               AND o.coordinate_review_status IS DISTINCT FROM 'country-coordinate-mismatch'
-              AND COALESCE(o.coordinate, city.reference_location) IS NOT NULL
+              AND (o.coordinate IS NOT NULL OR city.reference_location IS NOT NULL
+                   OR (source.source_id='us.aphis.annual-reports' AND sr.raw_fields->'normalized' ? 'display_location'))
             ORDER BY m.facility_id LIMIT 250001"#,
         &[&release_id],
     ).await {
@@ -3713,23 +3761,26 @@ pub async fn get_dev_test_release_map_feed_handler(
     }
     let points = rows
         .into_iter()
-        .map(|row| {
+        .filter_map(|row| {
             let category_key: String = row.get(2);
             let normalized: String = row.get(8);
             let source_id: String = row.get(1);
-            json!({
+            let geometry = test_release_display_geometry(&source_id, row.get::<_, String>(7).as_str(), &normalized, row.get(10), row.get(11), row.get::<_, Option<String>>(12).as_deref(), row.get::<_, Option<String>>(13).as_deref(), row.get(14), row.get(15));
+            let latitude = geometry["latitude"].as_f64()?;
+            let longitude = geometry["longitude"].as_f64()?;
+            Some(json!({
                 "key": row.get::<_, uuid::Uuid>(0),
                 "source_id": source_id,
-                "kind": row.get::<_, String>(3),
-                "precision": row.get::<_, String>(4),
-                "latitude": row.get::<_, f64>(5),
-                "longitude": row.get::<_, f64>(6),
+                "kind": geometry["geometry_provenance"]["kind"].clone(),
+                "precision": geometry["display_precision"].clone(),
+                "latitude": latitude,
+                "longitude": longitude,
                 "weight": 1,
                 "category_key": category_key,
                 "category_keys": test_release_category_keys(&category_key, &normalized),
                 "country_code": row.get::<_, Option<String>>(7),
                 "activity_keys": test_release_activity_keys(&source_id, &row.get::<_, String>(9))
-            })
+            }))
         })
         .collect::<Vec<_>>();
     let body = Json(json!({
@@ -6202,6 +6253,18 @@ mod v2_api_tests {
         let (etag, cache_key) = private_candidate_map_identity("candidate", "snapshot");
         assert_eq!(etag, "\"candidate-map-v3-snapshot\"");
         assert_eq!(cache_key, "dev-test-candidate-map-v3|candidate|snapshot");
+    }
+
+    #[test]
+    fn candidate_geometry_keeps_source_points_and_labels_accepted_aphis_mailing_localities() {
+        let source = test_release_display_geometry("example.source", "US", "{}", Some(41.0), Some(-72.0), Some("source-provided"), None, None, None);
+        assert_eq!(source["geometry_provenance"]["kind"], "source_coordinate");
+        let provider = test_release_display_geometry("us.aphis.annual-reports", "US", r#"{"display_location":{"lat":41.0,"long":-72.0,"method":"geoapify_forward","precision":"provider_locality_approximate","provider_status":"accepted","evidence_kind":"provider_derived"}}"#, None, None, None, None, None, None);
+        assert_eq!(provider["display_precision"], "provider_locality_approximate");
+        assert_eq!(provider["source_location_role"], "aphis_mailing_locality");
+        assert_eq!(provider["geometry_provenance"]["kind"], "provider_locality");
+        assert_eq!(test_release_display_geometry("us.aphis.annual-reports", "US", r#"{"display_location":{"lat":91,"long":-72,"method":"geoapify_forward","precision":"provider_locality_approximate","provider_status":"accepted","evidence_kind":"provider_derived"}}"#, None, None, None, None, None, None)["display_precision"], "unmapped");
+        assert_eq!(test_release_display_geometry("us.aphis.annual-reports", "US", r#"{"display_location":{"lat":41,"long":-72,"method":"geoapify_forward","precision":"provider_locality_approximate","provider_status":"accepted","evidence_kind":"provider_derived"}}"#, None, None, None, Some("country-coordinate-mismatch"), None, None)["display_precision"], "unmapped");
     }
 
     #[test]

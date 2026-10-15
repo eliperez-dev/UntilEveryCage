@@ -25,6 +25,7 @@ describe('configured candidate detail', () => {
   it.each([
     ['locality_reference_coarse', 'city', 55, 10],
     ['provider_address_point_high_confidence', 'source_reported', 55, 10],
+    ['provider_locality_approximate', 'city', 55, 10],
     ['source-precision-unknown', 'source_reported', 55, 10],
     ['source-provided', 'source_reported', 55, 10],
     ['unmapped', 'unmapped', null, null],
@@ -42,5 +43,12 @@ describe('configured candidate detail', () => {
     }), { status: 200 }));
     const result = await new TestReleaseDetailRepository(fetcher).detail(id);
     expect(result).toMatchObject({ coordinatePrecision: 'source-provided', coordinateProvenance: 'source_coordinate' });
+  });
+
+  it('preserves the APHIS mailing-locality role without presenting an operating site', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      data: { ...row, provenance_source_id: 'us.aphis.annual-reports', display_precision: 'provider_locality_approximate', coordinate_method: 'geoapify_forward', source_location_role: 'aphis_mailing_locality', geometry_provenance: { kind: 'provider_locality', method: 'geoapify_forward', precision: 'provider_locality_approximate', provider: 'geoapify', provider_status: 'accepted', evidence_kind: 'provider_derived', source_location_role: 'aphis_mailing_locality' } }, meta,
+    }), { status: 200 }));
+    await expect(new TestReleaseDetailRepository(fetcher).detail(id)).resolves.toMatchObject({ sourceLocationRole: 'aphis_mailing_locality', coordinatePrecision: 'provider_locality_approximate' });
   });
 });

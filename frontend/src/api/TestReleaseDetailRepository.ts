@@ -15,7 +15,7 @@ const detailMetaSchema = z.object({
 const detailEnvelopeSchema = z.object({ data: testReleaseDetailLocationSchema, meta: detailMetaSchema }).strict();
 
 const precision = (value: WireTestReleaseDetailLocation['display_precision']): Precision =>
-  value === 'locality_reference_coarse'
+  value === 'locality_reference_coarse' || value === 'provider_locality_approximate'
     ? 'city'
     : value === 'provider_address_point_high_confidence' || value === 'source-precision-unknown' || value === 'source-provided'
     ? 'source_reported'
@@ -67,6 +67,7 @@ export function mapTestReleaseDetail(row: WireTestReleaseDetailLocation): LabRec
     sourceId: row.provenance_source_id,
     sourceName: row.provenance_source_name,
     sourceUrl: row.provenance_source_url,
+    ...(row.source_location_role ? { sourceLocationRole: row.source_location_role } : {}),
     retrievedAt: row.provenance_retrieved_at,
     factualReviewStatus: row.factual_review_status,
     privacyScreeningStatus: row.privacy_screening_status,

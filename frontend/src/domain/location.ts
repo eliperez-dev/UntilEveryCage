@@ -20,7 +20,7 @@ export type LocationEvidence = Readonly<{
   provenanceSource: string | null;
   sourceRightsStatus: string;
   retrievedAt: string;
-  displayPrecision: 'exact' | 'city' | 'source_reported' | 'approximate' | 'unmapped';
+  displayPrecision: 'exact' | 'city' | 'source_reported' | 'approximate' | 'provider_locality_approximate' | 'unmapped';
   geometryProvenance?: GeometryProvenance;
   lifecycleStatus: 'active_observed' | 'explicitly_closed' | 'not_seen_recently' | 'status_unknown';
   observationCount: number | null;

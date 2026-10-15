@@ -26,6 +26,8 @@
     sourceRecordId?: string | null;
     source_record_id?: string | null;
     sourceUrl?: string | null;
+    sourceLocationRole?: 'aphis_mailing_locality' | null;
+    source_location_role?: 'aphis_mailing_locality' | null;
     source_url?: string | null;
     sourceRecordUrl?: string | null;
     source_record_url?: string | null;
@@ -210,6 +212,7 @@
       'source_record_id' in record ? record.source_record_id : null,
     ),
   );
+  const sourceLocationRole = $derived(value('sourceLocationRole' in record ? record.sourceLocationRole : null, 'source_location_role' in record ? record.source_location_role : null));
   const locationText = $derived(
     [value(record.locality), value(record.country)].filter(Boolean).join(', ') ||
       'Location unavailable',
@@ -353,6 +356,7 @@
         {#if processingActivities}<div><dt>Processing activities</dt><dd>{processingActivities}</dd></div>{/if}
         {#if slaughterRangeText}<div><dt>Estimated animals slaughtered (last 360 days)</dt><dd>{slaughterRangeText}</dd></div>{/if}
         {#if processingRangeText}<div><dt>Estimated product volume (pounds/month)</dt><dd>{processingRangeText}</dd></div>{/if}
+        {#if sourceLocationRole === 'aphis_mailing_locality'}<div><dt>Location role</dt><dd>APHIS mailing locality — approximate locality, not an operating-site location</dd></div>{/if}
         {#if sourceFacts.alternateNames?.length}<div><dt>Also known as</dt><dd>{sourceFacts.alternateNames.join(' · ')}</dd></div>{/if}
         {#if sourceFacts.establishmentId}<div><dt>Establishment ID</dt><dd>{sourceFacts.establishmentId}</dd></div>{/if}
         {#if sourceFacts.establishmentNumber}<div><dt>Establishment number</dt><dd>{sourceFacts.establishmentNumber}</dd></div>{/if}

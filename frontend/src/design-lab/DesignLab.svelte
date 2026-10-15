@@ -37,7 +37,7 @@
   let publicReleaseManifestIdentity: PublicReleaseIdentity | null = null;
   let publicMapMeta: PublicMapFeed['meta'] | null = null;
   function mapPublicLocation(location: Location): LabRecord {
-    const precision = location.evidence?.displayPrecision ?? 'unmapped';
+    const precision = location.evidence?.displayPrecision === 'provider_locality_approximate' ? 'city' : location.evidence?.displayPrecision ?? 'unmapped';
     return {
       id: location.id,
       name: location.name,

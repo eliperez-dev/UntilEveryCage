@@ -53,7 +53,7 @@
   const sourceLabel = (value: string | null) => value ?? "All source feeds";
   const candidateRecord = (location: import('../domain/location').Location): DatabaseRecord => ({
     id: location.id, name: location.name, category: location.category, country: location.region, locality: location.region,
-    precision: location.evidence?.displayPrecision ?? 'unmapped', latitude: location.lat, longitude: location.lon,
+    precision: location.evidence?.displayPrecision === 'provider_locality_approximate' ? 'city' : location.evidence?.displayPrecision ?? 'unmapped', latitude: location.lat, longitude: location.lon,
     ...(location.sourceId ? { sourceId: location.sourceId } : {}), sourceName: location.source,
     ...(location.evidence?.sourceUrl ? { sourceUrl: location.evidence.sourceUrl } : {}),
     ...(location.evidence?.retrievedAt ? { retrievedAt: location.evidence.retrievedAt } : {}),

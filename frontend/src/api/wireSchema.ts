@@ -117,7 +117,8 @@ const locationShape = {
   project_approval: z.string(),
   reviewer_role: textOrNull,
   publication_warning: textOrNull,
-  display_precision: z.enum(['exact', 'city', 'source_reported', 'approximate', 'unmapped']),
+  display_precision: z.enum(['exact', 'city', 'source_reported', 'approximate', 'provider_locality_approximate', 'unmapped']),
+  source_location_role: z.enum(['aphis_mailing_locality']).nullable().optional(),
   geometry_provenance: geometryProvenanceSchema.optional(),
   latitude: z.number().finite().nullable(),
   longitude: z.number().finite().nullable(),
@@ -184,23 +185,32 @@ const testReleaseDetailLocationShape = {
   privacy_screening_status: z.enum(['pending', 'passed', 'failed']),
   project_approval: z.union([z.enum(['pending', 'approved']), z.literal(false), z.literal('not-approved')]),
   publication_warning: textOrNull,
+  source_location_role: z.enum(['aphis_mailing_locality']).nullable().optional(),
   // Current candidate details retain the resolver's bounded native precision
   // labels. Do not accept a generic string: the renderer must keep coarse,
   // unknown, and source-provided coordinates visibly distinct from exact.
   display_precision: z.enum([
     'locality_reference_coarse',
     'provider_address_point_high_confidence',
+    'provider_locality_approximate',
     'source-precision-unknown',
     'source-provided',
     'unmapped',
   ]),
   // Candidate detail geometry is deliberately smaller than the public
   // provenance projection. Keep it closed to the API's safe detail contract.
-  coordinate_method: z.enum(['source_coordinate', 'city_reference']).nullable().optional(),
+  coordinate_method: z.enum(['source_coordinate', 'city_reference', 'geoapify_forward']).nullable().optional(),
   geometry_provenance: z.object({
     kind: z.string().min(1).max(80),
     method: z.string().min(1).max(120).optional(),
     precision: z.string().min(1).max(120).optional(),
+    provider: z.string().min(1).max(80).optional(),
+    provider_status: z.string().min(1).max(80).optional(),
+    evidence_kind: z.string().min(1).max(80).optional(),
+    evidence_id: z.string().min(1).max(160).nullable().optional(),
+    queried_at: z.string().datetime({ offset: true }).nullable().optional(),
+    review_status: z.string().min(1).max(80).nullable().optional(),
+    source_location_role: z.enum(['aphis_mailing_locality']).optional(),
   }).strict().optional(),
   latitude: z.number().finite().nullable(),
   longitude: z.number().finite().nullable(),

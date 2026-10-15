@@ -18,6 +18,7 @@ export type LabRecord = Readonly<{
   taxonomy?: import('../domain/taxonomy').TaxonomyClassification;
   sourceName?: string | null;
   sourceUrl?: string | null;
+  sourceLocationRole?: 'aphis_mailing_locality' | null;
   retrievedAt?: string | null;
   observedAt?: string | null;
   sourceFacts?: import('../domain/location').LocationSourceFacts | undefined;
