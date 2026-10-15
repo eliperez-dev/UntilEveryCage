@@ -566,10 +566,15 @@ def _verify_preview_source(connection: Any, source: str, entry: dict[str, Any], 
         group = str(parsed[IMPORTER.SOURCE_GROUP_KEY_INDEX])
         if bool(is_candidate) != (rep_by_id.get(group) == identifier):
             raise BridgeError("preview_representative_flag_mismatch")
+    display_evidence_revision = hashlib.sha256(json.dumps(
+        [(str(row[0]), row[27], row[29], row[30].isoformat() if row[30] else None,
+          row[32], row[33]) for row in sorted(candidate_rows, key=lambda value: str(value[0]))],
+        sort_keys=True, separators=(",", ":"), default=str).encode()).hexdigest()
     return {"run": run, "manifest": manifest, "observations": preview_observations,
             "preview_ids": preview_id_by_identifier,
             "candidates": by_group, "representatives": rep_by_id,
-            "taxonomy": taxonomy_by_identifier}
+            "taxonomy": taxonomy_by_identifier,
+            "display_evidence_revision": display_evidence_revision}
 
 
 def _uuid(namespace: str, *parts: str) -> str:
@@ -786,9 +791,10 @@ def _baseline_snapshot(connection: Any, contract: dict[str, Any]) -> dict[str, A
 def _append_scope_is_valid(connection: Any, baseline_release_id: str, candidate_release_id: str) -> None:
     releases = connection.execute("SELECT release_id,status,test_only,summary FROM uec.releases ORDER BY release_id").fetchall()
     prior_ids: set[str] = set()
-    if candidate_release_id.endswith("-r3"):
-        family = candidate_release_id[:-3]
-        prior_ids = {family, family + "-r2"}
+    successor = re.fullmatch(r"(.+)-r([2-9][0-9]*)", candidate_release_id)
+    if successor:
+        family, revision = successor.group(1), int(successor.group(2))
+        prior_ids = {family, *(f"{family}-r{value}" for value in range(2, revision))}
     permitted = {baseline_release_id, candidate_release_id}
     permitted.update(prior_ids)
     if {str(row[0]) for row in releases} - permitted:
@@ -854,7 +860,7 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                    "handoff_code_version": handoffs[source]["manifest"].get("code_version"),
                    "handoff_config_version": handoffs[source]["manifest"].get("config_version"),
                    "source_observations": len(handoffs[source]["rows"]),
-                   "facility_candidates": len(handoffs[source]["representatives"]),
+                    "facility_candidates": len(handoffs[source]["representatives"]),
                } for source in sorted(entries)],
                "public_authorized": False, "review_approval_created": False,
                "graph_claims_imported": False, "graph_projection_verified": False,
@@ -905,6 +911,8 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                     # Source IDs and stable guard codes are safe operational
                     # diagnostics; do not surface row data or SQL payloads.
                     raise BridgeError(f"preview_validation_failed:{source}:{error}") from None
+            for provenance in summary["source_provenance"]:
+                provenance["display_evidence_revision"] = preview_checks[provenance["source_id"]]["display_evidence_revision"]
             if not existing:
                 connection.execute("""INSERT INTO uec.releases(release_id,status,ruleset_version,summary,profile,test_only)
                     VALUES (%s,'candidate',%s,%s,%s,false)""",
@@ -1041,6 +1049,7 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                             if key in _PRIVATE_LOCATION_KEYS} if isinstance(normalized.get("private_location_evidence"), dict) else None),
                         "source_preview_observation_id": preview_check["preview_ids"].get(identifier),
                         "source_preview_candidate_id": candidate[0],
+                        "display_evidence_revision": preview_check["display_evidence_revision"],
                         "source_group_key": group,
                         "activity": {key: contract.get(key) for key in (
                             "category", "activity_categories", "source_activity_codes", "source_activity_labels",
