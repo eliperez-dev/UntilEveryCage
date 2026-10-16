@@ -67,32 +67,33 @@ class DatabaseContractTests(unittest.TestCase):
         source_id = f"test.claim-race.{uuid.uuid4().hex}"
         artifact_id, source_record_id = uuid.uuid4(), uuid.uuid4()
         query = f"synthetic claim {uuid.uuid4().hex}"
-        with self.connection.transaction():
-            self.connection.execute(
+        with psycopg.connect(DATABASE_URL) as fixture_connection:
+            with fixture_connection.transaction():
+                fixture_connection.execute(
                 "INSERT INTO uec.sources (source_id,country_code,name,official_url,access_method) "
                 "VALUES (%s,'US','Claim race test','https://example.invalid/claim-race','fixture')",
                 (source_id,),
-            )
-            self.connection.execute(
+                )
+                fixture_connection.execute(
                 "INSERT INTO uec.raw_artifacts (artifact_id,storage_key,sha256,byte_size,retrieved_at) "
                 "VALUES (%s,%s,%s,1,now())",
                 (artifact_id, f"test/claim-race/{artifact_id}", uuid.uuid4().hex + uuid.uuid4().hex),
-            )
-            self.connection.execute(
+                )
+                fixture_connection.execute(
                 "INSERT INTO uec.source_records (source_record_id,source_id,source_record_key,artifact_id,raw_fields,parsed_at) "
                 "VALUES (%s,%s,'claim-race',%s,'{}'::jsonb,now())",
                 (source_record_id, source_id, artifact_id),
-            )
-            job_id = self.connection.execute(
+                )
+                job_id = fixture_connection.execute(
                 "INSERT INTO uec.geocode_jobs (source_record_id,provider_id,query) "
                 "VALUES (%s,'claim-race-provider',%s) RETURNING job_id",
                 (source_record_id, query),
-            ).fetchone()[0]
-            self.connection.execute(
+                ).fetchone()[0]
+                fixture_connection.execute(
                 "INSERT INTO uec.geocode_job_events (job_id,event_type,attempt_number,occurred_at) "
                 "VALUES (%s,'queued',1,now())",
                 (job_id,),
-            )
+                )
 
         barrier = threading.Barrier(2)
         results = []

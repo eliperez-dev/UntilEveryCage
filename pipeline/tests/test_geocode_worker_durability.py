@@ -84,6 +84,16 @@ class GeocodeWorkerDurabilityTests(unittest.TestCase):
                 0,
             )
 
+    def test_worker_connection_uses_explicit_transaction_boundaries(self):
+        connection = Mock()
+        connection.__enter__ = Mock(return_value=connection)
+        connection.__exit__ = Mock(return_value=False)
+        with patch.object(WORKER.psycopg, "connect", return_value=connection) as connect, \
+             patch.object(WORKER, "get_adapter", return_value=Mock()), \
+             patch.object(WORKER, "_claim_job", return_value=None):
+            self.assertEqual(WORKER.run("postgresql://synthetic", "fixture", 1, 0, 1), 0)
+        connect.assert_called_once_with("postgresql://synthetic", autocommit=True)
+
     def test_au_auth_recovery_claims_only_marked_current_snapshot_attempt_two(self):
         job_id = uuid.uuid4()
         source_record_id = uuid.uuid4()

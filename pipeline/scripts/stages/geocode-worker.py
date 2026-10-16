@@ -386,7 +386,10 @@ def run(
                           private_source_profile_id=private_source_profile_id)
     worker_id = worker_id or f"geocoder-{uuid.uuid4().hex[:12]}"
     processed = 0
-    with psycopg.connect(database_url) as connection:
+    # Every state transition below has an explicit transaction block.  Keep
+    # the connection itself in autocommit mode so read checks cannot retain an
+    # implicit transaction (and a provider-budget row lock) across HTTP work.
+    with psycopg.connect(database_url, autocommit=True) as connection:
         while limit is None or processed < limit:
             job = _claim_job(
                 connection, provider_id, worker_id, max_attempts, lease_timeout,
