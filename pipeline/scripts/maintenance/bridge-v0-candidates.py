@@ -977,8 +977,6 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                     identifier = str(parsed[0])
                     group = str(parsed[IMPORTER.SOURCE_GROUP_KEY_INDEX])
                     parsed_at = retrieved
-                    source_record_key = _correction_source_record_key(
-                        entry["snapshot_sha256"], identifier, projection_revisions[identifier])
                     normalized = raw.get("normalized") if isinstance(raw.get("normalized"), dict) else {}
                     contract = preview_check["taxonomy"][identifier]
                     projection_revision = _projection_revision(preview_check["display_evidence_revision"], contract)
@@ -1153,6 +1151,8 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                     if source != str(rep and raw.get("source_id") or source):
                         raise BridgeError("representative_source_mismatch")
                     identifier = str(rep[0])
+                    source_record_key = _correction_source_record_key(
+                        entry["snapshot_sha256"], identifier, projection_revisions[identifier])
                     record_row = connection.execute("SELECT source_record_id,artifact_id FROM uec.source_records WHERE source_id=%s AND source_record_key=%s",
                                                     (source, source_record_key)).fetchone()
                     if record_row is None:

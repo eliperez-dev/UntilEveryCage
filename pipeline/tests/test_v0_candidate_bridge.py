@@ -42,6 +42,16 @@ class CandidateBridgeTests(unittest.TestCase):
             bridge._correction_source_record_key("a" * 64, "native-id", changed),
         )
 
+    def test_representative_uses_its_own_projection_key_after_multi_row_write_loop(self):
+        source = SCRIPT.read_text(encoding="utf-8")
+        representative = source.index("for group, (rep, raw) in handoff[\"representatives\"].items()")
+        lookup = source.index("SELECT source_record_id,artifact_id", representative)
+        key = source.index("projection_revisions[identifier]", representative)
+        self.assertLess(key, lookup)
+        first_contract = source.index("contract = preview_check[\"taxonomy\"][identifier]")
+        first_key = source.index("projection_revisions[identifier]", first_contract)
+        self.assertLess(first_contract, first_key)
+
     def test_append_candidate_keeps_shared_facility_name_and_uses_safe_status_label(self):
         source = SCRIPT.read_text(encoding="utf-8")
         self.assertIn('facility_conflict = "DO NOTHING" if append_to_v0_baseline', source)
