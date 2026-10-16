@@ -2854,6 +2854,9 @@ fn test_release_display_geometry(
     };
     let unmapped = || json!({"display_precision":"unmapped","latitude":Value::Null,"longitude":Value::Null,"geometry_provenance":{"kind":"unmapped"},"coordinate_method":Value::Null,"source_location_role":Value::Null});
     if coordinate_review_status != Some("country-coordinate-mismatch") {
+        // Mailing-locality evidence belongs to APHIS registrations, whose
+        // registry source is `us.aphis`. It is preferred to a derived source
+        // coordinate so its deliberately coarse role is never mislabeled.
         if source_id == "us.aphis" {
             let parsed = serde_json::from_str::<Value>(normalized).ok();
             let location = parsed.as_ref().and_then(|value| value.get("display_location"));
@@ -2869,18 +2872,6 @@ fn test_release_display_geometry(
         if let Some((latitude, longitude)) = valid(source_latitude, source_longitude) {
             let precision = coordinate_precision.unwrap_or("source_reported");
             return json!({"display_precision":precision,"latitude":latitude,"longitude":longitude,"geometry_provenance":{"kind":"source_coordinate","method":"source_coordinate","precision":precision},"coordinate_method":"source_coordinate","source_location_role":Value::Null});
-        }
-        if source_id == "us.aphis" {
-            let parsed = serde_json::from_str::<Value>(normalized).ok();
-            let location = parsed.as_ref().and_then(|value| value.get("display_location"));
-            let number = |keys: &[&str]| keys.iter().find_map(|key| location.and_then(|value| value.get(*key)).and_then(|value| value.as_f64().or_else(|| value.as_str()?.parse().ok())));
-            let text = |key: &str| location.and_then(|value| value.get(key)).and_then(Value::as_str);
-            let same_country = text("country_code").map(|value| value.eq_ignore_ascii_case(country_code)).unwrap_or(true);
-            if same_country && text("method") == Some("geoapify_forward") && text("precision") == Some("provider_locality_approximate") && text("provider_status") == Some("accepted") && text("evidence_kind") == Some("provider_derived") {
-                if let Some((latitude, longitude)) = valid(number(&["lat", "latitude"]), number(&["long", "longitude", "lon"])) {
-                    return json!({"display_precision":"provider_locality_approximate","latitude":latitude,"longitude":longitude,"geometry_provenance":{"kind":"provider_locality","method":"geoapify_forward","precision":"provider_locality_approximate","provider":"geoapify","provider_status":"accepted","evidence_kind":"provider_derived","evidence_id":text("evidence_id"),"queried_at":text("queried_at"),"review_status":text("review_status"),"source_location_role":"aphis_mailing_locality"},"coordinate_method":"geoapify_forward","source_location_role":"aphis_mailing_locality"});
-                }
-            }
         }
         if let Some((latitude, longitude)) = valid(city_latitude, city_longitude) {
             return json!({"display_precision":"locality_reference_coarse","latitude":latitude,"longitude":longitude,"geometry_provenance":{"kind":"city_reference","method":"city_reference","precision":"locality_reference_coarse"},"coordinate_method":"city_reference","source_location_role":Value::Null});
@@ -3130,7 +3121,7 @@ fn aphis_annual_report_detail(
         species_counts,
         source_url: APHIS_ANNUAL_REPORT_SOURCE_URL.into(),
         safe_provenance: AphisAnnualSafeProvenance {
-            source_id: "us.aphis".into(),
+            source_id: "us.aphis.annual-reports".into(),
             evidence_type: "annual_reports".into(),
             match_method: "exact_source_identifier".into(),
             matched_identifier_types,
@@ -3212,7 +3203,7 @@ async fn aphis_annual_reports_for_candidate(
                 JOIN uec.source_records annual_record ON annual_record.source_record_id=event.source_record_id
                 JOIN uec.graph_evidence_links link ON link.evidence_event_id=event.evidence_event_id
                 JOIN candidate_identifiers candidate ON candidate.source_id=link.target_source_id
-                WHERE event.source_id='us.aphis'
+                WHERE event.source_id='us.aphis.annual-reports'
                   AND event.event_type='annual_reports'
                   AND event.event_period ~ '^[0-9]{4}$'
                   AND link.match_method='exact_source_identifier'
@@ -3483,7 +3474,7 @@ pub async fn get_dev_test_release_locations_handler(
         CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN ST_X(g.result::geometry) ELSE NULL END,
         review.factual_review_status,review.privacy_screening_status,review.maintainer_approval,review.reviewer_role,
         source.origin_type, source.source_id, source.name, source.official_url, r.ruleset_version, artifact.retrieved_at,
-        COALESCE(record.raw_fields->'normalized','{}'::jsonb)::text, COALESCE(record.raw_fields->'source_activity_codes','[]'::jsonb)::text,
+        (COALESCE(record.raw_fields->'normalized','{}'::jsonb) || CASE WHEN o.observation->'display_location' IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('display_location', o.observation->'display_location') END)::text, COALESCE(record.raw_fields->'source_activity_codes','[]'::jsonb)::text,
         total.total_count, ST_Y(o.coordinate::geometry), ST_X(o.coordinate::geometry), o.coordinate_precision, o.coordinate_review_status,
         ST_Y(city.reference_location::geometry), ST_X(city.reference_location::geometry)
         FROM total LEFT JOIN page ON true
@@ -3606,7 +3597,7 @@ async fn test_release_detail_display_geometry(
                  AND ST_Y(city.reference_location::geometry) BETWEEN -90 AND 90 AND ST_X(city.reference_location::geometry) BETWEEN -180 AND 180
                  AND (ST_X(city.reference_location::geometry) <> 0 OR ST_Y(city.reference_location::geometry) <> 0)
                    THEN 'city_reference' END AS coordinate_method,
-              source.source_id, f.country_code, COALESCE(sr.raw_fields->'normalized','{}'::jsonb)::text,
+              source.source_id, f.country_code, (COALESCE(sr.raw_fields->'normalized','{}'::jsonb) || CASE WHEN o.observation->'display_location' IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('display_location', o.observation->'display_location') END)::text,
               ST_Y(o.coordinate::geometry), ST_X(o.coordinate::geometry), o.coordinate_precision, o.coordinate_review_status,
               ST_Y(city.reference_location::geometry), ST_X(city.reference_location::geometry)
            FROM uec.release_members m
@@ -3812,7 +3803,7 @@ pub async fn get_dev_test_release_map_feed_handler(
                             AND city.reference_location IS NOT NULL THEN 'city' END AS precision,
                   ST_Y(COALESCE(o.coordinate, city.reference_location)::geometry) AS latitude,
                   ST_X(COALESCE(o.coordinate, city.reference_location)::geometry) AS longitude,
-                  f.country_code, COALESCE(sr.raw_fields->'normalized','{}'::jsonb)::text,
+                  f.country_code, (COALESCE(sr.raw_fields->'normalized','{}'::jsonb) || CASE WHEN o.observation->'display_location' IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('display_location', o.observation->'display_location') END)::text,
                   COALESCE(sr.raw_fields->'source_activity_codes','[]'::jsonb)::text,
                   ST_Y(o.coordinate::geometry), ST_X(o.coordinate::geometry), o.coordinate_precision, o.coordinate_review_status,
                   ST_Y(city.reference_location::geometry), ST_X(city.reference_location::geometry)
@@ -3841,7 +3832,7 @@ pub async fn get_dev_test_release_map_feed_handler(
               AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted x WHERE x.source_record_id=o.source_record_id)
               AND o.coordinate_review_status IS DISTINCT FROM 'country-coordinate-mismatch'
               AND (o.coordinate IS NOT NULL OR city.reference_location IS NOT NULL
-                   OR (source.source_id='us.aphis' AND sr.raw_fields->'normalized' ? 'display_location'))
+                   OR (source.source_id='us.aphis' AND (sr.raw_fields->'normalized' ? 'display_location' OR o.observation ? 'display_location')))
             ORDER BY m.facility_id LIMIT 250001"#,
         &[&release_id],
     ).await {
@@ -6294,7 +6285,7 @@ mod v2_api_tests {
         ]);
         assert_eq!(report.source_url, APHIS_ANNUAL_REPORT_SOURCE_URL);
         let parsed: AphisAnnualReportDetail = serde_json::from_value(json!(report)).unwrap();
-        assert_eq!(parsed.safe_provenance.source_id, "us.aphis");
+        assert_eq!(parsed.safe_provenance.source_id, "us.aphis.annual-reports");
         assert_eq!(parsed.safe_provenance.match_method, "exact_source_identifier");
     }
 
@@ -6378,8 +6369,30 @@ mod v2_api_tests {
         assert_eq!(provider["display_precision"], "provider_locality_approximate");
         assert_eq!(provider["source_location_role"], "aphis_mailing_locality");
         assert_eq!(provider["geometry_provenance"]["kind"], "provider_locality");
+        let provider_over_source_coordinate = test_release_display_geometry(
+            "us.aphis",
+            "US",
+            r#"{"display_location":{"lat":41.0,"long":-72.0,"method":"geoapify_forward","precision":"provider_locality_approximate","provider_status":"accepted","evidence_kind":"provider_derived"}}"#,
+            Some(40.0),
+            Some(-71.0),
+            Some("source_reported"),
+            None,
+            None,
+            None,
+        );
+        assert_eq!(provider_over_source_coordinate["geometry_provenance"]["kind"], "provider_locality");
+        assert_eq!(provider_over_source_coordinate["source_location_role"], "aphis_mailing_locality");
         assert_eq!(test_release_display_geometry("us.aphis", "US", r#"{"display_location":{"lat":91,"long":-72,"method":"geoapify_forward","precision":"provider_locality_approximate","provider_status":"accepted","evidence_kind":"provider_derived"}}"#, None, None, None, None, None, None)["display_precision"], "unmapped");
         assert_eq!(test_release_display_geometry("us.aphis", "US", r#"{"display_location":{"lat":41,"long":-72,"method":"geoapify_forward","precision":"provider_locality_approximate","provider_status":"accepted","evidence_kind":"provider_derived"}}"#, None, None, None, Some("country-coordinate-mismatch"), None, None)["display_precision"], "unmapped");
+    }
+
+    #[test]
+    fn candidate_handlers_merge_accepted_aphis_display_location_consistently() {
+        let source = include_str!("lib.rs");
+        let merge = "jsonb_build_object('display_location', o.observation->'display_location')";
+        let production = source.split("mod v2_api_tests").next().expect("production source");
+        assert_eq!(production.matches(merge).count(), 3);
+        assert!(source.contains("source.source_id='us.aphis' AND (sr.raw_fields->'normalized' ? 'display_location' OR o.observation ? 'display_location')"));
     }
 
     #[test]
