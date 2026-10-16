@@ -52,6 +52,14 @@ class CandidateBridgeTests(unittest.TestCase):
         first_key = source.index("projection_revisions[identifier]", first_contract)
         self.assertLess(first_contract, first_key)
 
+    def test_candidate_display_revision_does_not_fan_out_other_candidate_lineage(self):
+        candidate_a = ["a"] + [None] * 33
+        candidate_b = ["b"] + [None] * 33
+        revision_a = bridge._candidate_display_evidence_revision(candidate_a)
+        candidate_b[27] = "changed-evidence"
+        self.assertEqual(revision_a, bridge._candidate_display_evidence_revision(candidate_a))
+        self.assertNotEqual(revision_a, bridge._candidate_display_evidence_revision(candidate_b))
+
     def test_append_candidate_keeps_shared_facility_name_and_uses_safe_status_label(self):
         source = SCRIPT.read_text(encoding="utf-8")
         self.assertIn('facility_conflict = "DO NOTHING" if append_to_v0_baseline', source)
@@ -83,7 +91,7 @@ class CandidateBridgeTests(unittest.TestCase):
 
     def test_display_evidence_revision_is_retained_in_successor_observation_provenance(self):
         source = SCRIPT.read_text(encoding="utf-8")
-        self.assertIn('"display_evidence_revision": preview_check["display_evidence_revision"]', source)
+        self.assertIn('"display_evidence_revision": candidate_display_revision', source)
         self.assertIn('provenance["display_evidence_revision"]', source)
 
     def test_baseline_snapshot_orders_access_events_by_the_real_primary_key(self):

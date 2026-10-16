@@ -601,6 +601,14 @@ def _projection_revision(display_evidence_revision: str, contract: Mapping[str, 
     return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode()).hexdigest()
 
 
+def _candidate_display_evidence_revision(candidate: Sequence[Any]) -> str:
+    """Scope successor lineage to one candidate's display evidence only."""
+    return hashlib.sha256(json.dumps(
+        [str(candidate[0]), candidate[27], candidate[29],
+         candidate[30].isoformat() if candidate[30] else None, candidate[32], candidate[33]],
+        sort_keys=True, separators=(",", ":"), default=str).encode()).hexdigest()
+
+
 def _safe_normalized(normalized: Any, source: str | None = None, source_values: Any = None) -> dict[str, Any]:
     if not isinstance(normalized, dict):
         return {}
@@ -979,7 +987,9 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                     parsed_at = retrieved
                     normalized = raw.get("normalized") if isinstance(raw.get("normalized"), dict) else {}
                     contract = preview_check["taxonomy"][identifier]
-                    projection_revision = _projection_revision(preview_check["display_evidence_revision"], contract)
+                    candidate = candidate_rows[group]
+                    candidate_display_revision = _candidate_display_evidence_revision(candidate)
+                    projection_revision = _projection_revision(candidate_display_revision, contract)
                     projection_revisions[identifier] = projection_revision
                     source_record_key = _correction_source_record_key(
                         entry["snapshot_sha256"], identifier, projection_revision)
@@ -1028,7 +1038,6 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                     connection.execute("""INSERT INTO uec.facility_source_links(facility_id,source_record_id,match_method,review_status)
                         VALUES (%s,%s,'source_native_group_key','automatic') ON CONFLICT DO NOTHING""",
                         (facility_id, source_record_id))
-                    candidate = candidate_rows[group]
                     source_observed = parsed[8]
                     observed_at = source_observed or retrieved
                     observed_basis = "source_asserted_at" if source_observed else "project_retrieved_at"
@@ -1084,7 +1093,7 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                             if key in _PRIVATE_LOCATION_KEYS} if isinstance(normalized.get("private_location_evidence"), dict) else None),
                         "source_preview_observation_id": preview_check["preview_ids"].get(identifier),
                         "source_preview_candidate_id": candidate[0],
-                        "display_evidence_revision": preview_check["display_evidence_revision"],
+                        "display_evidence_revision": candidate_display_revision,
                         "source_group_key": group,
                         "activity": {key: contract.get(key) for key in (
                             "category", "activity_categories", "source_activity_codes", "source_activity_labels",
