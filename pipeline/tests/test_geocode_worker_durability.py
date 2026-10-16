@@ -293,28 +293,33 @@ class GeocodeWorkerDurabilityTests(unittest.TestCase):
         self.assertEqual(adapter.geocode.call_count, 1)
         persist.assert_called_once()
 
-    def test_rate_contention_is_deferred_without_provider_retry_or_busy_wait(self):
+    def test_rate_contention_waits_for_shared_slot_without_provider_call_or_attempt_change(self):
         connection = Mock()
         connection.__enter__ = Mock(return_value=connection)
         connection.__exit__ = Mock(return_value=False)
         job = (uuid.uuid4(), uuid.uuid4(), "private synthetic query", 1, uuid.uuid4(), "queued")
         adapter = Mock()
+        adapter.geocode.return_value = GeocodeOutcome(
+            "unresolved", "unresolved", None, None, None, None,
+            "fixture", False, {},
+        )
         with patch.object(WORKER.psycopg, "connect", return_value=connection), \
              patch.object(WORKER, "get_adapter", return_value=adapter), \
              patch.object(WORKER, "_claim_job", side_effect=[job, None]), \
              patch.object(WORKER, "_is_restricted", return_value=False), \
-             patch.object(WORKER, "_reserve_request", return_value=(None, "rate_limited")) as reserve, \
-             patch.object(WORKER, "_defer_job", return_value="deferred") as defer:
+             patch.object(WORKER, "_reserve_request", side_effect=[(None, "rate_limited"), (uuid.uuid4(), None)]) as reserve, \
+             patch.object(WORKER.time, "sleep") as sleep, \
+             patch.object(WORKER, "_persist_outcome", return_value="accepted") as persist:
             processed = WORKER.run(
                 "postgresql://synthetic", "fixture", 1, 0, 3,
                 daily_budget=2, provider_interval=2, worker_id="synthetic-worker",
             )
         self.assertEqual(processed, 1)
-        adapter.geocode.assert_not_called()
-        reserve.assert_called_once()
-        self.assertEqual(reserve.call_args.args[4], 1)
-        defer.assert_called_once()
-        self.assertEqual(defer.call_args.args[5], "provider_rate_limited")
+        adapter.geocode.assert_called_once_with("private synthetic query")
+        self.assertEqual(reserve.call_count, 2)
+        self.assertTrue(all(call.args[4] == 1 for call in reserve.call_args_list))
+        sleep.assert_any_call(2)
+        persist.assert_called_once()
 
     def test_worker_output_and_provider_errors_are_redacted(self):
         source = (ROOT / "scripts/stages/geocode-worker.py").read_text()

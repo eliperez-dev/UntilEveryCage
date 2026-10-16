@@ -391,18 +391,30 @@ def run(
                     connection, provider_id, job_id, attempt, retry_number,
                     daily_budget, provider_interval, au_npi_pilot,
                 )
+                # Contending workers retain their lease and wait for the
+                # shared admission slot.  Rate-slot waiting is neither a
+                # provider call nor an attempt/retry, so it must not strand a
+                # job by recording a retryable terminal event.
+                while reservation_id is None and reservation_reason == "rate_limited":
+                    time.sleep(max(provider_interval, 0.1))
+                    if _is_restricted(connection, source_record_id):
+                        status = _finish_restricted(connection, job_id, attempt, worker_id, lease_token)
+                        break
+                    reservation_id, reservation_reason = _reserve_request(
+                        connection, provider_id, job_id, attempt, retry_number,
+                        daily_budget, provider_interval, au_npi_pilot,
+                    )
+                if status == "cancelled_restricted":
+                    break
                 if reservation_id is None:
-                    if reservation_reason == "rate_limited":
-                        status = _defer_job(
-                            connection, job_id, attempt, worker_id, lease_token,
-                            "provider_rate_limited", max(provider_interval, 0.1),
-                        )
-                    else:
+                    if reservation_reason == "budget":
                         status = _defer_job(
                             connection, job_id, attempt, worker_id, lease_token,
                             "request_budget_exhausted", 86400,
                         )
                         budget_blocked = True
+                    else:
+                        raise RuntimeError("provider_reservation_state_invalid")
                     break
                 # Restrictions can be added while the reservation transaction is
                 # committing; recheck immediately before the external call.
