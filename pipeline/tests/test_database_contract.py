@@ -123,6 +123,28 @@ class DatabaseContractTests(unittest.TestCase):
         ).fetchone()[0]
         self.assertEqual(started, 1)
 
+    def test_candidate_detail_geometry_sql_parses_and_executes_against_postgis(self):
+        source = (ROOT.parent / "src" / "lib.rs").read_text(encoding="utf-8")
+        helper = source.split("async fn test_release_detail_display_geometry", 1)[1]
+        sql_start = helper.index('r#"') + len('r#"')
+        sql_end = helper.index('"#', sql_start)
+        sql = helper[sql_start:sql_end]
+        statement = f"candidate_detail_geometry_{uuid.uuid4().hex}"
+        release_id = "candidate-detail-geometry-no-row"
+        facility_id = uuid.uuid4()
+        with self.connection.transaction():
+            self.connection.execute(f"PREPARE {statement}(text,uuid) AS {sql}")
+            self.connection.execute(
+                f"EXPLAIN EXECUTE {statement}('{release_id}','{facility_id}'::uuid)",
+            ).fetchall()
+            self.assertEqual(
+                self.connection.execute(
+                    f"EXECUTE {statement}('{release_id}','{facility_id}'::uuid)",
+                ).fetchall(),
+                [],
+            )
+            self.connection.execute(f"DEALLOCATE {statement}")
+
     def test_taxonomy_assignment_writer_persists_replayable_uec_lineage(self):
         class RollbackFixture(Exception):
             pass

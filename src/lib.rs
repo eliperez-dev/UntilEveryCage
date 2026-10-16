@@ -326,7 +326,7 @@ const PUBLIC_MAP_FEED_CACHE_MAX_ENTRIES: usize = 8;
 // Increment whenever the private candidate map projection changes while its
 // immutable candidate snapshot may remain the same. This keeps both the
 // in-process cache and browser validators from reusing an older projection.
-const PRIVATE_CANDIDATE_MAP_PROJECTION_VERSION: &str = "v3";
+const PRIVATE_CANDIDATE_MAP_PROJECTION_VERSION: &str = "v4";
 
 #[derive(Clone)]
 struct PublicMapFeedCacheEntry { body: Arc<str>, content_type: &'static str, last_used: u64 }
@@ -2865,7 +2865,7 @@ fn test_release_display_geometry(
             let same_country = text("country_code").map(|value| value.eq_ignore_ascii_case(country_code)).unwrap_or(true);
             if same_country && text("method") == Some("geoapify_forward") && text("precision") == Some("provider_locality_approximate") && text("provider_status") == Some("accepted") && text("evidence_kind") == Some("provider_derived") {
                 if let Some((latitude, longitude)) = valid(number(&["lat", "latitude"]), number(&["long", "longitude", "lon"])) {
-                    return json!({"display_precision":"provider_locality_approximate","latitude":latitude,"longitude":longitude,"geometry_provenance":{"kind":"provider_locality","method":"geoapify_forward","precision":"provider_locality_approximate","provider":"geoapify","provider_status":"accepted","evidence_kind":"provider_derived","evidence_id":text("evidence_id"),"queried_at":text("queried_at"),"review_status":text("review_status"),"source_location_role":"aphis_mailing_locality"},"coordinate_method":"geoapify_forward","source_location_role":"aphis_mailing_locality"});
+                    return json!({"display_precision":"provider_locality_approximate","latitude":latitude,"longitude":longitude,"geometry_provenance":{"kind":"provider_locality","method":"geoapify_forward","precision":"provider_locality_approximate","provider":"geoapify","provider_status":"accepted","evidence_kind":"provider_derived","evidence_id":text("evidence_id"),"queried_at":text("queried_at").or_else(|| text("provider_queried_at")),"review_status":text("review_status").or_else(|| text("coordinate_review_status")),"source_location_role":"aphis_mailing_locality"},"coordinate_method":"geoapify_forward","source_location_role":"aphis_mailing_locality"});
                 }
             }
         }
@@ -3534,7 +3534,7 @@ async fn test_release_detail_display_geometry(
     client: &tokio_postgres::Client,
     release_id: &str,
     facility_id: uuid::Uuid,
-) -> Value {
+) -> Result<Value, ()> {
     let fallback = || {
         json!({
             "display_precision": "unmapped",
@@ -3605,6 +3605,7 @@ async fn test_release_detail_display_geometry(
            JOIN uec.observations o ON o.observation_id=m.observation_id
            JOIN uec.facilities f ON f.facility_id=m.facility_id
            JOIN uec.source_records sr ON sr.source_record_id=o.source_record_id
+           JOIN uec.sources source ON source.source_id=sr.source_id
            LEFT JOIN uec.publication_review_release_current review ON review.source_record_id=o.source_record_id AND review.release_id=m.release_id
            LEFT JOIN LATERAL (
              SELECT reference_location FROM uec.city_reference_points
@@ -3621,12 +3622,16 @@ async fn test_release_detail_display_geometry(
         &[&release_id, &facility_id],
     ).await {
         Ok(Some(row)) => row,
-        _ => return fallback(),
+        Ok(None) => return Ok(fallback()),
+        Err(error) => {
+            log_test_release_query_error("candidate_location_detail_geometry", &error);
+            return Err(());
+        }
     };
-    test_release_display_geometry(
+    Ok(test_release_display_geometry(
         row.get::<_, String>(5).as_str(), row.get::<_, String>(6).as_str(), row.get::<_, String>(7).as_str(),
         row.get(8), row.get(9), row.get::<_, Option<String>>(10).as_deref(), row.get::<_, Option<String>>(11).as_deref(), row.get(12), row.get(13),
-    )
+    ))
 }
 
 pub async fn get_dev_test_release_location_detail_handler(
@@ -3682,7 +3687,10 @@ pub async fn get_dev_test_release_location_detail_handler(
             "test release location not found",
         );
     };
-    let display_geometry = test_release_detail_display_geometry(&client, release_id, facility_id).await;
+    let display_geometry = match test_release_detail_display_geometry(&client, release_id, facility_id).await {
+        Ok(geometry) => geometry,
+        Err(()) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "test_release_query_failed", "test release unavailable"),
+    };
     let category: String = row.get(4);
     let source_id: String = row.get(9);
     let normalized: String = row.get(17);
@@ -6357,18 +6365,20 @@ mod v2_api_tests {
     #[test]
     fn private_candidate_map_identity_versions_projection_bytes() {
         let (etag, cache_key) = private_candidate_map_identity("candidate", "snapshot");
-        assert_eq!(etag, "\"candidate-map-v3-snapshot\"");
-        assert_eq!(cache_key, "dev-test-candidate-map-v3|candidate|snapshot");
+        assert_eq!(etag, "\"candidate-map-v4-snapshot\"");
+        assert_eq!(cache_key, "dev-test-candidate-map-v4|candidate|snapshot");
     }
 
     #[test]
     fn candidate_geometry_keeps_source_points_and_labels_accepted_aphis_mailing_localities() {
         let source = test_release_display_geometry("example.source", "US", "{}", Some(41.0), Some(-72.0), Some("source-provided"), None, None, None);
         assert_eq!(source["geometry_provenance"]["kind"], "source_coordinate");
-        let provider = test_release_display_geometry("us.aphis", "US", r#"{"display_location":{"lat":41.0,"long":-72.0,"method":"geoapify_forward","precision":"provider_locality_approximate","provider_status":"accepted","evidence_kind":"provider_derived"}}"#, None, None, None, None, None, None);
+        let provider = test_release_display_geometry("us.aphis", "US", r#"{"display_location":{"lat":41.0,"long":-72.0,"method":"geoapify_forward","precision":"provider_locality_approximate","provider_status":"accepted","evidence_kind":"provider_derived","provider_queried_at":"2026-10-16T00:00:00Z","coordinate_review_status":"accepted"}}"#, None, None, None, None, None, None);
         assert_eq!(provider["display_precision"], "provider_locality_approximate");
         assert_eq!(provider["source_location_role"], "aphis_mailing_locality");
         assert_eq!(provider["geometry_provenance"]["kind"], "provider_locality");
+        assert_eq!(provider["geometry_provenance"]["queried_at"], "2026-10-16T00:00:00Z");
+        assert_eq!(provider["geometry_provenance"]["review_status"], "accepted");
         let provider_over_source_coordinate = test_release_display_geometry(
             "us.aphis",
             "US",
@@ -6470,6 +6480,8 @@ mod v2_api_tests {
         assert!(helper.contains("BETWEEN -180 AND 180"));
         assert!(helper.contains("jsonb_build_object('kind','source_coordinate','method','source_coordinate'"));
         assert!(helper.contains("jsonb_build_object('kind','unmapped')"));
+        assert!(helper.contains("JOIN uec.sources source ON source.source_id=sr.source_id"));
+        assert!(helper.contains("log_test_release_query_error(\"candidate_location_detail_geometry\", &error)"));
     }
 
     #[test]
