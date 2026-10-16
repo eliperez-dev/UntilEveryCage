@@ -121,8 +121,9 @@ certify coastlines or every remaining Italian coordinate.
 
 APHIS now contains **12,473 active registrations across all nine source
 classes**, acquired through the shared source runner and imported into this
-successor. No site coordinates are invented from mailing-city hints; these
-entries are currently unmapped. A fresh visible-browser FY2025 capture on
+successor. The r4 successor maps **1,550 registrations at approximate mailing
+localities**; **10,923 remain unmapped**. These are not operating-site coordinates
+or 1,550 independently verified physical sites. A fresh visible-browser FY2025 capture on
 2026-10-14 acquired ten pages and reconciled the same 994 retained annual-report
 events and 1,988 identifier links; it did not add 994 new reports. Source-documented exact
 registration/certificate matching connects 927 reports to 927 candidate
@@ -135,19 +136,34 @@ inspection evidence separately from annual animal counts. This is not full
 inspection history. See [US source evidence](country-recon-us.md) and
 [source status](source-status.md) for these distinct capabilities.
 
-**US parity verification, 2026-10-15:** the APHIS mailing-city/state profile
+**US parity verification, 2026-10-16:** the APHIS mailing-city/state profile
 and multi-record locality fan-out pass the disposable PostGIS gate, including
 wrong-state/city/country, building and restricted-record rejection. Migration
-071 is applied to the working copy. Live APHIS provider processing and the r4
-successor remain pending explicit transfer approval; no new APHIS map locations
-are claimed. The existing r3 and approved v0 remain unchanged. FSIS range
+071 is applied to the working copy. The authorized city/state/country-only
+Geoapify run produced 667 currently accepted locality jobs covering 1,550
+registrations. The private r4 successor contains **136,892 members, 16 sources
+and 43,306 mapped records**. Every inherited non-APHIS facility/observation
+membership is identical to r3; frozen approved v0 and r3 remain unchanged.
+Its source inventory records one rebuilt source and fifteen inherited sources.
+The provider ledger counts 768 reservations, not a verified total of external
+requests: interrupted pre-fix workers could roll reservations back after a call.
+External processing stopped at this checkpoint rather than assume an unused
+allowance. The repaired worker commits reservations before HTTP, shares the
+daily allowance and request interval, and passes a real concurrent-claim test.
+Current locality jobs: 667 accepted, 93 requiring review, 3 unresolved,
+12 interrupted and 5,443 queued. No daily-quota exhaustion is claimed.
+FSIS range
 transport is wired through released detail and map selection, but frozen v0
 contains no retained volume codes, so it is not retroactively given estimates.
-The final local standard gate passes 598 pipeline tests (32 declared opt-in
-skips) and 75 adapter tests. Frontend gates pass 215 unit tests plus focused
-inspection DTO coverage, types, lint, boundaries and build. Real-v0 API
-acceptance and fifteen actual candidate map/list/facet checks pass. Exact-head
-hosted CI and the remaining real-data operations are still handoff gates.
+The final standard gate passes 604 pipeline tests (32 declared opt-in skips)
+and 75 adapter tests, including real PostgreSQL claim-race and detail-query
+regressions. Real-v0 acceptance, fifteen r4 map/list/facet checks and twenty-one
+APHIS map/list/detail/provenance checks pass. An actual browser renders a real
+APHIS record, its locality role and source link, and the map with zero page
+errors. Candidate projection v4 invalidates pre-fix cached map bytes.
+Handoff requires all six exact-head hosted CI jobs to pass; the
+[branch's Actions runs](https://github.com/eliperez-dev/UntilEveryCage/actions/workflows/tests.yml?query=branch%3Aeli%2Fv2)
+are the live CI authority.
 
 Local gates passed: 138 Rust tests, 592 pipeline tests (31 explicitly gated
 E2E skips), 75 adapter tests, 204 frontend unit tests, frontend type/lint/boundary/

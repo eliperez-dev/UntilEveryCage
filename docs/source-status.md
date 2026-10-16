@@ -18,15 +18,16 @@ This is the canonical human-readable view of [`source-status.json`](source-statu
 
 No last-success timestamp is invented. Private artifacts are not proof of a public release. “Government-sourced” does not mean current, complete, project-approved, or safe to expose.
 
-## Current repair checkpoint — 2026-10-10
+## Current repair checkpoint — 2026-10-16
 
 The [product readiness tracker](PRODUCT-READINESS.md#v0-dataset-release-sequence)
 records the corrected private successor and its measured counts. Fresh FSIS
 directory/demographic captures reconcile 7,246 establishments: 1,755 slaughter
 and 5,491 processing. The Australian NPI correction retains all 8,140 records,
 with 1,229 selected for the default map by the versioned animal-relevance rules.
-The sixteen-source r3 successor serves 41,756 map locations; it is not a new
-public release. Frozen approved v0 remains unchanged.
+The sixteen-source r4 successor serves 43,306 map locations, including 1,550
+APHIS registrations at approximate mailing localities. It is not a new public
+release. Frozen approved v0 and r3 remain unchanged.
 
 APHIS has a private active-register candidate cohort from the official workbook:
 12,473 rows across all nine source-native license classes. It is candidate-only,
@@ -45,10 +46,18 @@ events and quarantined two rows. Of those events, 97 match 93 current
 registrations by the versioned research-certificate alias. This is bounded
 coverage, not full inspection history. Annual counts and dated inspections
 remain separate detail fields. The APHIS mailing-city/state geocoding profile
-passes the disposable database fan-out/rejection gate; live provider processing
-and r4 assembly are pending explicit transfer approval. No new APHIS map count
-is claimed. The frozen v0 membership and its approved public projection are
-unchanged.
+passes the disposable database fan-out/rejection gate. The maintainer authorized
+Geoapify submission of mailing city, state and country only within the remaining
+shared 3,000-request daily allowance. The assembled r4 contains 136,892 members
+across 16 sources, including 1,550 mapped APHIS registrations; 10,923 APHIS
+registrations remain unmapped. All inherited non-APHIS memberships are identical
+to r3. Its inventory links fifteen inherited sources and one rebuilt source.
+External requests stopped because earlier interrupted worker accounting could
+not establish the remaining allowance, not because 3,000 requests were reached.
+The ledger counts 768 reservations; current locality jobs are 667 accepted,
+93 requiring review, 3 unresolved, 12 interrupted and 5,443 queued. Worker
+claim/rate/transaction fixes are tested. The frozen v0 membership and its
+approved public projection are unchanged.
 
 The older source checkpoints below describe their stated capture dates; their
 blanket approval wording does not supersede the recorded 2026-10-06 v0 approval
