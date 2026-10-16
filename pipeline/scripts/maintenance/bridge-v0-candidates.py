@@ -581,9 +581,24 @@ def _uuid(namespace: str, *parts: str) -> str:
     return str(uuid.uuid5(uuid.NAMESPACE_URL, ":".join(("uec-v0", namespace, *parts))))
 
 
-def _correction_source_record_key(snapshot_sha256: str, source_identifier: str) -> str:
+def _correction_source_record_key(snapshot_sha256: str, source_identifier: str,
+                                  projection_revision: str | None = None) -> str:
     """Append correction-derived evidence without colliding with frozen V0 rows."""
+    if projection_revision:
+        if not re.fullmatch(r"[0-9a-f]{64}", projection_revision):
+            raise BridgeError("projection_revision_invalid")
+        return f"v0-correction-v5:{snapshot_sha256}:{source_identifier}:{projection_revision}"
     return f"{CORRECTION_PROJECTION_VERSION}:{snapshot_sha256}:{source_identifier}"
+
+
+def _projection_revision(display_evidence_revision: str, contract: Mapping[str, Any]) -> str:
+    """Version only derived display/taxonomy projection, never source evidence."""
+    payload = {
+        "display_evidence_revision": display_evidence_revision,
+        "crosswalk_document": contract.get("crosswalk_document"),
+        "classification_ruleset_version": contract.get("classification_ruleset_version"),
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode()).hexdigest()
 
 
 def _safe_normalized(normalized: Any, source: str | None = None, source_values: Any = None) -> dict[str, Any]:
@@ -954,6 +969,7 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                 _insert_source(connection, source, country, source_name, source_url)
                 artifact_id = _ensure_artifact(connection, entry, retrieved)
                 candidate_rows = preview_check["candidates"]
+                projection_revisions: dict[str, str] = {}
                 facility_checks: dict[str, tuple[Any, list[Any]]] = {}
                 # Source-native group identity remains stable across snapshots;
                 # no name/address-based cross-source matching is attempted.
@@ -961,9 +977,14 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                     identifier = str(parsed[0])
                     group = str(parsed[IMPORTER.SOURCE_GROUP_KEY_INDEX])
                     parsed_at = retrieved
-                    source_record_key = _correction_source_record_key(entry["snapshot_sha256"], identifier)
+                    source_record_key = _correction_source_record_key(
+                        entry["snapshot_sha256"], identifier, projection_revisions[identifier])
                     normalized = raw.get("normalized") if isinstance(raw.get("normalized"), dict) else {}
                     contract = preview_check["taxonomy"][identifier]
+                    projection_revision = _projection_revision(preview_check["display_evidence_revision"], contract)
+                    projection_revisions[identifier] = projection_revision
+                    source_record_key = _correction_source_record_key(
+                        entry["snapshot_sha256"], identifier, projection_revision)
                     raw_fields = {"evidence_kind": "authenticated_normalized_handoff",
                                   "snapshot_sha256": entry["snapshot_sha256"],
                                   "source_identifier": identifier,
@@ -1132,7 +1153,6 @@ def bridge(database_url: str, expected_database: str, freeze: dict[str, Any], in
                     if source != str(rep and raw.get("source_id") or source):
                         raise BridgeError("representative_source_mismatch")
                     identifier = str(rep[0])
-                    source_record_key = _correction_source_record_key(entry["snapshot_sha256"], identifier)
                     record_row = connection.execute("SELECT source_record_id,artifact_id FROM uec.source_records WHERE source_id=%s AND source_record_key=%s",
                                                     (source, source_record_key)).fetchone()
                     if record_row is None:

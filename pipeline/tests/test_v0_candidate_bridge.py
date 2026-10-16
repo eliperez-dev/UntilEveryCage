@@ -26,6 +26,22 @@ class CandidateBridgeTests(unittest.TestCase):
         self.assertEqual(key, "v0-correction-v4:" + "a" * 64 + ":native-id")
         self.assertNotEqual(key, "v0:" + "a" * 64 + ":native-id")
 
+    def test_projection_revision_creates_successor_lineage_only_when_derived_projection_changes(self):
+        contract = {"crosswalk_document": {"crosswalk_version": "fixture-v1"},
+                    "classification_ruleset_version": "fixture-rules"}
+        unchanged = bridge._projection_revision("b" * 64, contract)
+        changed = bridge._projection_revision("c" * 64, contract)
+        self.assertEqual(unchanged, bridge._projection_revision("b" * 64, contract))
+        self.assertNotEqual(unchanged, changed)
+        self.assertEqual(
+            bridge._correction_source_record_key("a" * 64, "native-id", unchanged),
+            bridge._correction_source_record_key("a" * 64, "native-id", unchanged),
+        )
+        self.assertNotEqual(
+            bridge._correction_source_record_key("a" * 64, "native-id", unchanged),
+            bridge._correction_source_record_key("a" * 64, "native-id", changed),
+        )
+
     def test_append_candidate_keeps_shared_facility_name_and_uses_safe_status_label(self):
         source = SCRIPT.read_text(encoding="utf-8")
         self.assertIn('facility_conflict = "DO NOTHING" if append_to_v0_baseline', source)
