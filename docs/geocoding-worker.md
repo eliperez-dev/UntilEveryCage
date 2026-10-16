@@ -20,12 +20,13 @@ Previous result rows are append-only and remain available when a worker is
 interrupted. A restarted worker can reclaim a `started` event after
 `--lease-timeout`; an external request is not claimed to be exactly once.
 
-If the shared provider interval is occupied, the worker does not spin or spend
-one of the provider retry slots. It appends a retryable `failed` event with a
-`provider_rate_limited` reason and a future `next_attempt_at`, then moves on.
-Daily allowance exhaustion is recorded the same way with a next-day retry time.
-The latest event is therefore always an inspectable deferred outcome rather
-than an unbounded `started` lease.
+If the shared provider interval is occupied, the worker sleeps outside a
+transaction and retries admission without spending a provider retry or another
+job attempt. Concurrent workers can overlap slow responses while sharing the
+same request interval and daily allowance. Restrictions are rechecked while
+waiting and before sending. Daily allowance exhaustion immediately appends a
+retryable `failed` event with `request_budget_exhausted` and a next-day retry
+time, then exits the worker; it does not wait for the allowance to reset.
 
 ## Bounded private run
 
