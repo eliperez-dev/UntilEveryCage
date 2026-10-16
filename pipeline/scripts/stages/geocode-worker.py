@@ -42,7 +42,14 @@ def _claim_job(
             SELECT job.job_id, job.source_record_id, job.query,
                    COALESCE(current.attempt_number, 0), current.event_type
             FROM uec.geocode_jobs AS job
-            LEFT JOIN uec.geocode_job_current AS current ON current.job_id = job.job_id
+            JOIN LATERAL (
+                SELECT event.event_type, event.attempt_number, event.retryable,
+                       event.details, event.occurred_at, event.next_attempt_at
+                  FROM uec.geocode_job_events AS event
+                 WHERE event.job_id = job.job_id
+                 ORDER BY event.occurred_at DESC, event.event_id DESC
+                 LIMIT 1
+            ) AS current ON TRUE
             WHERE job.provider_id = %s
               AND (
                     COALESCE(current.attempt_number, 0) < %s

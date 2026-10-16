@@ -48,6 +48,9 @@ class GeocodeWorkerDurabilityTests(unittest.TestCase):
         self.assertIn("target.source_id=%s AND candidate.source_id=%s", query)
         self.assertIn("candidate.country_code=%s", query)
         self.assertIn("candidate.snapshot_sha256=COALESCE(", query)
+        self.assertIn("JOIN LATERAL", query)
+        self.assertIn("ORDER BY event.occurred_at DESC, event.event_id DESC", query)
+        self.assertNotIn("geocode_job_current AS current", query)
         self.assertIn("fss_approved_establishments", params)
         self.assertIn("GB", params)
 
