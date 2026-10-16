@@ -34,7 +34,9 @@ def _claim_job(
     au_npi_pilot: bool = False,
     au_npi_auth_recovery: bool = False,
     private_source_profile_id: str | None = None,
+    _claim_retries: int = 8,
 ):
+    stale_claim = False
     with connection.transaction():
         job = connection.execute("""
             SELECT job.job_id, job.source_record_id, job.query,
@@ -130,21 +132,43 @@ def _claim_job(
         if not job:
             return None
         job_id, source_record_id, query, prior_attempt, prior_event_type = job
-        # Queue events use attempt_number=1 in the existing event contract.
-        # Queue attempt 1 is the initial pilot state. The opt-in recovery event
-        # is explicitly queued at attempt 2 and consumes a distinct reservation.
-        attempt = prior_attempt if au_npi_pilot and prior_event_type == "queued" else prior_attempt + 1
-        lease_token = uuid.uuid4()
-        connection.execute("""
-            INSERT INTO uec.geocode_job_events
-                (job_id, event_type, attempt_number, worker_id, lease_token, details, occurred_at)
-            VALUES (%s, 'started', %s, %s, %s, %s, %s)
-        """, (
-            job_id, attempt, worker_id, lease_token,
-            json.dumps({"lease_timeout_seconds": lease_timeout}),
-            datetime.now(timezone.utc),
-        ))
-        return job_id, source_record_id, query, attempt, lease_token, prior_event_type
+        # The candidate query joins a view whose snapshot can predate another
+        # worker's just-committed started event.  The job row is now locked, so
+        # a direct current-event read is both fresh and stable through our
+        # started-event insert.  Never let a stale candidate reserve the same
+        # job/attempt twice.
+        current = connection.execute("""
+            SELECT event_type, attempt_number
+              FROM uec.geocode_job_events
+             WHERE job_id = %s
+             ORDER BY occurred_at DESC, event_id DESC
+             LIMIT 1
+        """, (job_id,)).fetchone()
+        if current != (prior_event_type, prior_attempt):
+            stale_claim = True
+        else:
+            # Queue events use attempt_number=1 in the existing event contract.
+            # Queue attempt 1 is the initial pilot state. The opt-in recovery event
+            # is explicitly queued at attempt 2 and consumes a distinct reservation.
+            attempt = prior_attempt if au_npi_pilot and prior_event_type == "queued" else prior_attempt + 1
+            lease_token = uuid.uuid4()
+            connection.execute("""
+                INSERT INTO uec.geocode_job_events
+                    (job_id, event_type, attempt_number, worker_id, lease_token, details, occurred_at)
+                VALUES (%s, 'started', %s, %s, %s, %s, %s)
+            """, (
+                job_id, attempt, worker_id, lease_token,
+                json.dumps({"lease_timeout_seconds": lease_timeout}),
+                datetime.now(timezone.utc),
+            ))
+            return job_id, source_record_id, query, attempt, lease_token, prior_event_type
+    if stale_claim and _claim_retries > 1:
+        return _claim_job(
+            connection, provider_id, worker_id, max_attempts, lease_timeout,
+            au_npi_pilot, au_npi_auth_recovery, private_source_profile_id,
+            _claim_retries - 1,
+        )
+    return None
 
 
 def _is_restricted(connection, source_record_id) -> bool:

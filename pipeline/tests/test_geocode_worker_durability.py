@@ -89,10 +89,6 @@ class GeocodeWorkerDurabilityTests(unittest.TestCase):
         source_record_id = uuid.uuid4()
         lease_token = uuid.uuid4()
 
-        class Cursor:
-            def fetchone(self):
-                return (job_id, source_record_id, "synthetic query", 2, "queued")
-
         class Transaction:
             def __enter__(self):
                 return self
@@ -110,8 +106,12 @@ class GeocodeWorkerDurabilityTests(unittest.TestCase):
             def execute(self, query, params=None):
                 self.executed.append((query, params))
                 if query.lstrip().startswith("SELECT job.job_id"):
-                    return Cursor()
-                return Cursor()
+                    return Mock(fetchone=Mock(return_value=(
+                        job_id, source_record_id, "synthetic query", 2, "queued"
+                    )))
+                if "SELECT event_type, attempt_number" in query:
+                    return Mock(fetchone=Mock(return_value=("queued", 2)))
+                return Mock(fetchone=Mock(return_value=None))
 
         connection = Connection()
         claimed = WORKER._claim_job(
@@ -119,7 +119,7 @@ class GeocodeWorkerDurabilityTests(unittest.TestCase):
             au_npi_pilot=True, au_npi_auth_recovery=True,
         )
         self.assertEqual(claimed[3], 2)
-        self.assertEqual(connection.executed[1][1][1], 2)
+        self.assertEqual(connection.executed[2][1][1], 2)
         claim_sql, claim_params = connection.executed[0]
         self.assertIn("current.attempt_number = 2", claim_sql)
         self.assertIn("current.details->>'recovery_reason' = 'operator_authorized_geoapify_key_recovery'", claim_sql)

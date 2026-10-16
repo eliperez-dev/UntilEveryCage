@@ -1,6 +1,9 @@
+import importlib.util
 import os
+import threading
 import unittest
 import uuid
+from pathlib import Path
 
 import psycopg
 from pipeline.taxonomy.persistence import persist_uec_assignment_set
@@ -11,6 +14,12 @@ DATABASE_URL = os.environ.get(
     "UEC_DATABASE_URL",
     "postgresql://uec:uec-local-development-only@localhost:5433/uec",
 )
+ROOT = Path(__file__).parents[1]
+WORKER_SPEC = importlib.util.spec_from_file_location(
+    "database_contract_geocode_worker", ROOT / "scripts/stages/geocode-worker.py"
+)
+WORKER = importlib.util.module_from_spec(WORKER_SPEC)
+WORKER_SPEC.loader.exec_module(WORKER)
 
 
 class DatabaseContractTests(unittest.TestCase):
@@ -53,6 +62,65 @@ class DatabaseContractTests(unittest.TestCase):
                 (record_id,),
             ).fetchone()[0]
             self.assertEqual(count, 2)
+
+    def test_two_connections_claim_only_one_geocode_attempt(self):
+        source_id = f"test.claim-race.{uuid.uuid4().hex}"
+        artifact_id, source_record_id = uuid.uuid4(), uuid.uuid4()
+        query = f"synthetic claim {uuid.uuid4().hex}"
+        with self.connection.transaction():
+            self.connection.execute(
+                "INSERT INTO uec.sources (source_id,country_code,name,official_url,access_method) "
+                "VALUES (%s,'US','Claim race test','https://example.invalid/claim-race','fixture')",
+                (source_id,),
+            )
+            self.connection.execute(
+                "INSERT INTO uec.raw_artifacts (artifact_id,storage_key,sha256,byte_size,retrieved_at) "
+                "VALUES (%s,%s,%s,1,now())",
+                (artifact_id, f"test/claim-race/{artifact_id}", uuid.uuid4().hex + uuid.uuid4().hex),
+            )
+            self.connection.execute(
+                "INSERT INTO uec.source_records (source_record_id,source_id,source_record_key,artifact_id,raw_fields,parsed_at) "
+                "VALUES (%s,%s,'claim-race',%s,'{}'::jsonb,now())",
+                (source_record_id, source_id, artifact_id),
+            )
+            job_id = self.connection.execute(
+                "INSERT INTO uec.geocode_jobs (source_record_id,provider_id,query) "
+                "VALUES (%s,'claim-race-provider',%s) RETURNING job_id",
+                (source_record_id, query),
+            ).fetchone()[0]
+            self.connection.execute(
+                "INSERT INTO uec.geocode_job_events (job_id,event_type,attempt_number,occurred_at) "
+                "VALUES (%s,'queued',1,now())",
+                (job_id,),
+            )
+
+        barrier = threading.Barrier(2)
+        results = []
+        errors = []
+
+        def claim(worker_id):
+            try:
+                with psycopg.connect(DATABASE_URL) as connection:
+                    barrier.wait(timeout=10)
+                    results.append(WORKER._claim_job(
+                        connection, "claim-race-provider", worker_id, 3, 900,
+                    ))
+            except Exception as error:
+                errors.append(error)
+
+        workers = [threading.Thread(target=claim, args=(f"claim-race-{index}",)) for index in range(2)]
+        for worker in workers:
+            worker.start()
+        for worker in workers:
+            worker.join(timeout=15)
+        self.assertFalse(any(worker.is_alive() for worker in workers))
+        self.assertEqual(errors, [])
+        self.assertEqual(sum(result is not None for result in results), 1)
+        started = self.connection.execute(
+            "SELECT count(*) FROM uec.geocode_job_events WHERE job_id=%s AND event_type='started'",
+            (job_id,),
+        ).fetchone()[0]
+        self.assertEqual(started, 1)
 
     def test_taxonomy_assignment_writer_persists_replayable_uec_lineage(self):
         class RollbackFixture(Exception):
