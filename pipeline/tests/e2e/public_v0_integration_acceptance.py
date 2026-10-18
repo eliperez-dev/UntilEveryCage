@@ -78,7 +78,10 @@ class PublicV0IntegrationAcceptance(unittest.TestCase):
         return features
 
     def test_public_v0_surfaces_and_bounded_csv(self):
-        release_path = "/api/v2/releases/manifest?profile=official"
+        # The frozen baseline remains V0 even after a newer dataset is active.
+        release_path = "/api/v2/releases/manifest?" + urllib.parse.urlencode({
+            "profile": "official", "release_id": self.release_id,
+        })
         status, _, body = self.request(release_path)
         self.assertEqual(status, 200)
         manifest_response = json.loads(body)
@@ -216,16 +219,21 @@ class PublicV0IntegrationAcceptance(unittest.TestCase):
         self.assertEqual(self.request("/api/v2/locations?profile=official&limit=1")[0], 200)
         self.assertEqual(self.request("/api/v2/discovery/facets?profile=official")[0], 200)
 
-        csv_query = urllib.parse.urlencode({"profile": "official", "limit": "1000"})
+        csv_query = urllib.parse.urlencode({
+            "profile": "official", "release_id": self.release_id, "limit": "1000",
+        })
         status, headers, csv_body = self.request("/api/v2/locations.csv?" + csv_query)
         self.assertEqual(status, 200)
+        self.assertEqual(headers["X-Uec-Release-Id"], self.release_id)
         self.assertEqual(headers["X-Uec-Export-Total-Count"], str(expected["public_rows"]))
         self.assertEqual(headers["X-Uec-Export-Returned-Count"], "1000")
         self.assertEqual(headers["X-Uec-Export-Truncated"], "true")
         self.assertEqual(sum(1 for _ in csv.reader(io.StringIO(csv_body.decode("utf-8")))) - 1, 1000)
 
         with self.assertRaises(urllib.error.HTTPError) as oversize:
-            self.request("/api/v2/locations.csv?profile=official")
+            self.request("/api/v2/locations.csv?" + urllib.parse.urlencode({
+                "profile": "official", "release_id": self.release_id,
+            }))
         self.assertEqual(oversize.exception.code, 400)
         self.assertEqual(json.loads(oversize.exception.read())["error"]["code"], "export_too_large")
         for invalid_query, expected_code in (("profile=invalid&release_id=" + self.release_id, "invalid_profile"),

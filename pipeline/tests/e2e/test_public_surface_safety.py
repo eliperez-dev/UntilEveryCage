@@ -107,8 +107,8 @@ class ReleaseScopedReviewE2ETests(unittest.TestCase):
             raise unittest.SkipTest("set UEC_RUN_E2E=1 to run Docker-backed E2E tests")
         cls.env = E2EEnvironment().start()
         cls.seed_shared_record()
-        cls.env.build_public_read_model("e2e-release-a")
-        cls.env.build_public_read_model("e2e-release-b")
+        for release_id in ("e2e-release-a", "e2e-release-b", "e2e-never-published"):
+            cls.env.build_public_read_model(release_id)
 
     @classmethod
     def tearDownClass(cls):
@@ -126,11 +126,15 @@ class ReleaseScopedReviewE2ETests(unittest.TestCase):
                 "INSERT INTO uec.sources (source_id,country_code,name,official_url,access_method) "
                 "VALUES ('e2e.shared','DK','Synthetic shared source','https://example.invalid/shared','fixture')"
             )
-            for release_id, profile in (("e2e-release-a", "official"), ("e2e-release-b", "secondary")):
+            for release_id, profile, status in (
+                ("e2e-release-a", "official", "promoted"),
+                ("e2e-release-b", "secondary", "promoted"),
+                ("e2e-never-published", "official", "validated"),
+            ):
                 db.execute(
                     "INSERT INTO uec.releases (release_id,status,ruleset_version,profile,summary) "
-                    "VALUES (%s,'promoted','e2e-v1',%s,'{}')",
-                    (release_id, profile),
+                    "VALUES (%s,%s,'e2e-v1',%s,'{}')",
+                    (release_id, status, profile),
                 )
                 manifest = {
                     "eligible_record_count": 1,
@@ -170,7 +174,7 @@ class ReleaseScopedReviewE2ETests(unittest.TestCase):
                 "VALUES (%s,%s,%s,%s,'{}','{}','e2e-v1','e2e','slaughter','approved',true,%s)",
                 (observation_id, cls.facility_id, cls.record_id, now, now),
             )
-            for release_id in ("e2e-release-a", "e2e-release-b"):
+            for release_id in ("e2e-release-a", "e2e-release-b", "e2e-never-published"):
                 db.execute(
                     "INSERT INTO uec.release_members "
                     "(release_id,facility_id,observation_id,default_visible) VALUES (%s,%s,%s,true)",
@@ -188,9 +192,10 @@ class ReleaseScopedReviewE2ETests(unittest.TestCase):
         with urllib.request.urlopen(f"http://localhost:{self.env.api_port}{path}", timeout=10) as response:
             return json.loads(response.read())
 
-    def get_csv(self, profile):
+    def get_csv(self, profile, release_id=None):
+        release_query = f"&release_id={release_id}" if release_id else ""
         with urllib.request.urlopen(
-            f"http://localhost:{self.env.api_port}/api/v2/locations.csv?profile={profile}",
+            f"http://localhost:{self.env.api_port}/api/v2/locations.csv?profile={profile}{release_query}",
             timeout=10,
         ) as response:
             return list(csv.DictReader(io.StringIO(response.read().decode("utf-8"))))
@@ -230,6 +235,30 @@ class ReleaseScopedReviewE2ETests(unittest.TestCase):
         self.assertEqual(official_csv[0]["project_approval"], "approved")
         self.assertEqual(self.get_json("/api/v2/locations?profile=secondary")["data"], [])
         self.assertEqual(self.get_csv("secondary"), [])
+
+        # After a successor demotes the former current release, its public
+        # history receipt keeps an explicitly pinned read available.  A
+        # validated candidate with a complete read model but no receipt stays
+        # fail-closed.
+        with psycopg.connect(self.env.database_url) as db:
+            db.execute("UPDATE uec.releases SET status='validated' WHERE release_id='e2e-release-a'")
+            db.execute(
+                "INSERT INTO uec.public_release_history (release_id,profile) VALUES ('e2e-release-a','official')"
+            )
+            db.commit()
+        historical = self.get_json(
+            "/api/v2/locations?profile=official&release_id=e2e-release-a&limit=100"
+        )["data"]
+        self.assertEqual([row["facility_id"] for row in historical], [str(self.facility_id)])
+        self.assertEqual(
+            [row["facility_id"] for row in self.get_csv("official", "e2e-release-a")],
+            [str(self.facility_id)],
+        )
+        with self.assertRaises(urllib.error.HTTPError) as unavailable:
+            self.get_json(
+                "/api/v2/locations?profile=official&release_id=e2e-never-published&limit=100"
+            )
+        self.assertEqual(unavailable.exception.code, 410)
 
 
 if __name__ == "__main__":

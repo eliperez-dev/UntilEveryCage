@@ -424,7 +424,7 @@ pub async fn get_v2_public_map_feed_handler(
         return v2_error(StatusCode::SERVICE_UNAVAILABLE, "database_transaction_unavailable", "V2 database transaction unavailable");
     }
     let release = match transaction.query_opt(
-        "SELECT manifest.manifest::text, manifest.manifest_sha256, model.manifest_sha256 FROM uec.releases release JOIN uec.public_discovery_read_models model ON model.release_id=release.release_id JOIN uec.release_manifests manifest ON manifest.release_id=release.release_id AND manifest.manifest_sha256=model.manifest_sha256 LEFT JOIN uec.public_release_history history ON history.release_id=release.release_id AND history.profile=release.profile WHERE release.release_id=$1 AND release.profile=$2 AND (release.status='promoted' OR (history.release_id IS NOT NULL AND release.status='validated')) AND release.test_only IS NOT TRUE",
+        "SELECT manifest.manifest::text, manifest.manifest_sha256, model.manifest_sha256, COALESCE(release.summary->>'candidate_only'='true',false) FROM uec.releases release JOIN uec.public_discovery_read_models model ON model.release_id=release.release_id JOIN uec.release_manifests manifest ON manifest.release_id=release.release_id AND manifest.manifest_sha256=model.manifest_sha256 LEFT JOIN uec.public_release_history history ON history.release_id=release.release_id AND history.profile=release.profile WHERE release.release_id=$1 AND release.profile=$2 AND (release.status='promoted' OR (history.release_id IS NOT NULL AND release.status='validated')) AND release.test_only IS NOT TRUE",
         &[&release_id, &profile],
     ).await {
         Ok(row) => row,
@@ -440,6 +440,11 @@ pub async fn get_v2_public_map_feed_handler(
     };
     let manifest_sha256: String = release.get(1);
     let model_sha256: String = release.get(2);
+    let public_read_model = if release.get::<_, bool>(3) {
+        "uec.public_discovery_api_candidate_read_model"
+    } else {
+        "uec.public_discovery_api_read_model"
+    };
     if manifest_sha256 != model_sha256
         || format!("{:x}", Sha256::digest(canonical_json(&manifest).as_bytes())) != manifest_sha256
     {
@@ -465,12 +470,12 @@ pub async fn get_v2_public_map_feed_handler(
         return public_map_feed_response(&headers, entry, release_id, profile, &manifest_sha256, suppression_generation);
     }
     let rows = match transaction.query(
-        r#"
+        &format!(r#"
         WITH current_facilities AS MATERIALIZED (
           SELECT DISTINCT ON (facility_id)
                  facility_id, observation_id, display_location, display_precision,
                  provenance_source_id
-          FROM uec.map_facilities_public_discovery_read_model
+          FROM {public_read_model}
           WHERE release_id=$1
           ORDER BY facility_id,
                    (display_location IS NOT NULL AND display_precision <> 'unmapped') DESC,
@@ -514,7 +519,7 @@ pub async fn get_v2_public_map_feed_handler(
                bounded_feed.category_keys
         FROM counts LEFT JOIN bounded_feed ON TRUE
         ORDER BY bounded_feed.facility_id
-        "#,
+        "#),
         &[&release_id, &(PUBLIC_MAP_FEED_MAX_FEATURES + 1)],
     ).await {
         Ok(rows) => rows,
@@ -4475,7 +4480,7 @@ pub async fn get_v2_facets_handler(
             "V2 database transaction unavailable",
         );
     }
-    let release = match transaction.query_opt("SELECT r.release_id, r.ruleset_version, r.created_at, (model.release_id IS NOT NULL AND manifest.release_id IS NOT NULL) FROM uec.releases r LEFT JOIN uec.public_discovery_read_models model ON model.release_id=r.release_id LEFT JOIN uec.release_manifests manifest ON manifest.release_id=r.release_id AND manifest.manifest_sha256=model.manifest_sha256 LEFT JOIN uec.public_release_history history ON history.release_id=r.release_id AND history.profile=r.profile WHERE r.test_only IS NOT TRUE AND r.profile=$1 AND ($2::text IS NULL OR r.release_id=$2) AND (r.status='promoted' OR ($2::text IS NOT NULL AND history.release_id IS NOT NULL AND r.status='validated')) ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1", &[&profile, &params.release_id]).await { Ok(row) => row, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "release_query_failed", "release query failed") };
+    let release = match transaction.query_opt("SELECT r.release_id, r.ruleset_version, r.created_at, (model.release_id IS NOT NULL AND manifest.release_id IS NOT NULL), COALESCE(r.summary->>'candidate_only'='true',false) FROM uec.releases r LEFT JOIN uec.public_discovery_read_models model ON model.release_id=r.release_id LEFT JOIN uec.release_manifests manifest ON manifest.release_id=r.release_id AND manifest.manifest_sha256=model.manifest_sha256 LEFT JOIN uec.public_release_history history ON history.release_id=r.release_id AND history.profile=r.profile WHERE r.test_only IS NOT TRUE AND r.profile=$1 AND ($2::text IS NULL OR r.release_id=$2) AND (r.status='promoted' OR ($2::text IS NOT NULL AND history.release_id IS NOT NULL AND r.status='validated')) ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1", &[&profile, &params.release_id]).await { Ok(row) => row, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "release_query_failed", "release query failed") };
     let Some(release) = release else {
         return v2_error(
             StatusCode::NOT_FOUND,
@@ -4493,7 +4498,12 @@ pub async fn get_v2_facets_handler(
             "public discovery read model is missing or stale",
         );
     }
-    let rows = match transaction.query("SELECT country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city, count(*)::bigint FROM (SELECT DISTINCT ON (facility_id) facility_id, country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city FROM uec.map_facilities_public_discovery_read_model WHERE release_id=$1 AND ($2::text IS NULL OR country_code=$2) AND ($3::text IS NULL OR classification_category=$3) AND ($4::text IS NULL OR provenance_origin_type=$4) AND ($5::text IS NULL OR display_precision=$5) AND ($6::text IS NULL OR lifecycle_status=$6) AND ($7::text IS NULL OR city=$7) ORDER BY facility_id, observation_id) public_facilities GROUP BY country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city", &[&release_id, &params.country_code, &params.category, &params.source_type, &params.display_precision, &params.lifecycle_status, &params.region]).await { Ok(rows) => rows, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "facets_query_failed", "public facets unavailable") };
+    let public_read_model = if release.get::<_, bool>(4) {
+        "uec.public_discovery_api_candidate_read_model"
+    } else {
+        "uec.public_discovery_api_read_model"
+    };
+    let rows = match transaction.query(&format!("SELECT country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city, count(*)::bigint FROM (SELECT DISTINCT ON (facility_id) facility_id, country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city FROM {public_read_model} WHERE release_id=$1 AND ($2::text IS NULL OR country_code=$2) AND ($3::text IS NULL OR classification_category=$3) AND ($4::text IS NULL OR provenance_origin_type=$4) AND ($5::text IS NULL OR display_precision=$5) AND ($6::text IS NULL OR lifecycle_status=$6) AND ($7::text IS NULL OR city=$7) ORDER BY facility_id, observation_id) public_facilities GROUP BY country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city"), &[&release_id, &params.country_code, &params.category, &params.source_type, &params.display_precision, &params.lifecycle_status, &params.region]).await { Ok(rows) => rows, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "facets_query_failed", "public facets unavailable") };
     let mut dimensions = serde_json::Map::new();
     for (name, column) in [
         ("country_code", 0),

@@ -32,6 +32,15 @@ DNS cutover. Integration, real-data historical-release acceptance, exact-head
 CI, the dataset v1 scope decision and deployment verification remain open.
 New countries and four-mode 2D/3D map work are deferred until after launch.
 
+**Germany sequencing (maintainer approval, 2026-10-18):** defer Germany from
+dataset v1 and make it the first source-expansion target for the next dataset
+release. Legacy website coverage does not establish V2 pipeline readiness.
+Complete activity-code mappings, repeatable acquisition/import, source reuse
+review, geocoding and real-map acceptance before proposing inclusion. Source
+evidence remains in [the Germany assessment](germany-source-assessment.md) and
+[the source status ledger](source-status.md). Review at next-release planning;
+this work must not delay the current launch.
+
 **Future dataset release rule (maintainer clarification, 2026-10-18):** each
 subsequent dataset release must freshly acquire the latest available data from
 every included source and preserve all relevant source fields needed for
