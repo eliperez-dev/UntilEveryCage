@@ -26,6 +26,8 @@
   let loadError = $state('');
   let returnMapHref = $derived.by(() => {
     if (route.kind === 'about' || route.kind === 'contribute' || route.kind === 'bug-report' || route.kind === 'community' || route.kind === 'methodology' || route.kind === 'help' || route.kind === 'api' || route.kind === 'faq' || route.kind === 'downloads') return route.returnMapHref ?? '#/map';
+    if ((route.kind === 'database' || route.kind === 'record') && route.releaseId) return `#/map?release_id=${encodeURIComponent(route.releaseId)}`;
+    if (route.kind === 'map' && route.releaseId) return `#/map?release_id=${encodeURIComponent(route.releaseId)}`;
     const currentQuery = new URLSearchParams(window.location.hash.split('?')[1] ?? '');
     return import.meta.env.DEV && currentQuery.get('f1a') === 'field' ? '#/map?f1a=field' : '#/map';
   });

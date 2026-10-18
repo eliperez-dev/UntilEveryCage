@@ -3,7 +3,7 @@
   import * as maplibregl from 'maplibre-gl';
   import type { Map as MapLibreMap, Marker as MapLibreMarker } from 'maplibre-gl';
   import 'maplibre-gl/dist/maplibre-gl.css';
-  import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
+  import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
   import { createBaseStyle } from '../map/baseMapStyle';
   import { normalizeClaimedPoint } from '../map/claimedPoint';
 

@@ -21,7 +21,9 @@
     coverageOpen = false,
     mode = "synthetic",
     publicReleaseId = null,
+    selectedPublicReleaseId = null,
     publicReleaseIdentity = null,
+    publicReleaseManifestIdentity = null,
     publicMapMeta = null,
     onMapFeedMeta,
     onCandidatePreviewLabel,
@@ -52,6 +54,7 @@
     onreleasechange,
     dispatch,
   }: DirectionViewProps & {
+    selectedPublicReleaseId?: string | null;
     coverageOpen?: boolean;
     mapDiagnostics?: MapDiagnostics;
     facets?: readonly RealPreviewFacet[];
@@ -385,7 +388,7 @@
 
 <svelte:window onkeydown={onKeydown} />
 <section class="field-view">
-  <PreviewMasthead privateTools={mode === "real-preview" || mode === "candidate-preview"} publicReleaseLabel={mode === "candidate-preview" ? $candidatePreviewLabel : publicMapMeta?.releaseLabel ?? null} releaseDescription={mode === "candidate-preview" && $candidatePreviewLabel ? 'Configured private candidate release.' : null} {releaseOptions} {...(onreleasechange ? { onreleasechange } : {})} current="map" {mapHref} {databaseHref} debugEnabled={$debugEnabled} ondebugchange={(enabled) => { debugEnabled.set(enabled); if (!enabled) debugOpen.set(false); }} />
+  <PreviewMasthead privateTools={mode === "real-preview" || mode === "candidate-preview"} publicReleaseLabel={mode === "candidate-preview" ? $candidatePreviewLabel : publicMapMeta?.releaseLabel ?? null} releaseDescription={mode === "candidate-preview" && $candidatePreviewLabel ? 'Configured private candidate release.' : null} {releaseOptions} selectedReleaseId={mode === "public-release" ? selectedPublicReleaseId : null} {...(onreleasechange ? { onreleasechange } : {})} current="map" {mapHref} {databaseHref} debugEnabled={$debugEnabled} ondebugchange={(enabled) => { debugEnabled.set(enabled); if (!enabled) debugOpen.set(false); }} />
   <main class="map-stage" aria-label="Investigative map field">
     {#if mode === "synthetic" && state.scenario === "loading"}<div class="status" role="status">
         Loading records…
@@ -394,12 +397,13 @@
         role="alert"
       >
         Records unavailable. No live fallback was attempted.
-      </div>{:else}<MapSurface
+      </div>{:else if mode === "public-release" && dataStatus === "error"}<div class="status" role="alert">{dataError}</div>{:else}<MapSurface
         records={mapped}
         {state}
         {mode}
         {publicReleaseId}
         {publicReleaseIdentity}
+        {publicReleaseManifestIdentity}
         {onMapFeedMeta}
         onCandidatePreviewLabel={(label) => { candidatePreviewLabel.set(label); onCandidatePreviewLabel?.(label); }}
         {mapStatus}
@@ -425,7 +429,7 @@
       >
         No records match this search and these filters.
       </div>{/if}
-    {#if mode !== "synthetic" && dataStatus === "error"}<div
+    {#if mode !== "synthetic" && dataStatus === "error" && mode !== "public-release"}<div
         class="status"
         role="alert"
       >

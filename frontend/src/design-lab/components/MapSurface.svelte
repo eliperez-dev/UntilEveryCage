@@ -7,7 +7,7 @@
    */
   import { onMount } from "svelte";
   import * as maplibregl from "maplibre-gl";
-  import mapLibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
+  import mapLibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
   import type { GeoJSONSource, Map as MapLibreMap } from "maplibre-gl";
   import "maplibre-gl/dist/maplibre-gl.css";
   import type {

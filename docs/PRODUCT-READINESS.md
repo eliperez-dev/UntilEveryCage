@@ -28,8 +28,9 @@ The maintainer approved launch convergence for the **V2 website with dataset
 v1**, retaining historical dataset v0 access. Use Render for deployment
 preparation: one Docker web service and managed PostgreSQL/PostGIS. Provider
 selection does not authorize paid provisioning, data transfer, deployment or
-DNS cutover. Integration, real-data historical-release acceptance, exact-head
-CI, the dataset v1 scope decision and deployment verification remain open.
+DNS cutover. Real-data historical API and browser acceptance are recorded
+below; exact-head CI gates integration. The dataset v1 scope decision and
+deployment verification remain open.
 New countries and four-mode 2D/3D map work are deferred until after launch.
 
 **Germany sequencing (maintainer approval, 2026-10-18):** defer Germany from
@@ -64,9 +65,25 @@ display check. Frozen v0 is unchanged. Its 553 specific cohort exclusions have
 been traced to successor members through stable facility identity, with zero
 overlap in the frozen v0 public read model; they must remain excluded from
 the successor public projection. These exclusions are not all privacy holds.
-The complete successor map count remains unverified until the actual display
-contract is exercised; neither retained membership nor stored coordinates is
-a substitute.
+The read-only private candidate display query now resolves to 136,892 list
+members and 53,117 map locations, including the 11,361 APHIS mailing-locality
+locations. This uses the candidate handlers' display contract, not a count of
+stored coordinates or accepted geocoding jobs. It includes retained material
+outside the proposed curated public scope and is not the dataset v1 public
+release total.
+
+Historical-release API acceptance passed against a disposable frozen-v0 copy
+after activating a bounded real-data successor: explicit v0 still returns
+63,601 searchable records, 48,756 map locations and 14,845 unmapped records,
+with the original manifest digest and bounded CSV export. Never-published and
+withdrawn releases remain unavailable; a current restriction invalidates the
+previous cached response. The public frontend build also passed live-browser
+checks for map startup, real record loading, zero-result search and panel
+closure; historical Map/Database/Record/Downloads links retain the release ID.
+The picker keeps both verified current and v0 choices, and an unavailable pin
+shows an error with explicit recovery rather than silently loading current
+data. Focused frontend regressions passed 40/40. These checks do not establish
+that the full r5 candidate is approved or that Render has been deployed.
 
 ## v0 dataset release sequence
 
@@ -89,8 +106,9 @@ is binding; fixture-only success does not establish real-data readiness.
 provide persistent v0 historical access. Historical views must serve the
 frozen release rather than silently switching to new data, while honoring
 current corrections, privacy restrictions and source-rights changes. The
-current active-release-only API must not make v0 disappear when v1 activates;
-historical selection is a launch requirement, not a claim it already works.
+API must not make v0 disappear when v1 activates. Explicit historical API
+selection now passes the real-v0 acceptance above; browser release selection,
+navigation and deployment verification remain launch requirements.
 
 The [actual publication assessment](v0-release-review.md#final-publication-assessment-2026-10-05)
 preserves the approved fifteen-source candidate scope; no second scope approval

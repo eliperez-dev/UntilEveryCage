@@ -21,7 +21,7 @@ const geometryProvenanceSchema = z.object({
   confidence_band: z.string().max(40).optional(),
   coordinate_review_status: z.string().max(80).optional(),
   reference_source_id: z.string().max(160).optional(),
-  reference_source: z.string().max(200).optional(),
+  reference_source: z.string().max(500).optional(),
   evidence_kind: z.string().max(80).optional(),
   evidence_id: z.string().max(160).optional(),
 }).strict();

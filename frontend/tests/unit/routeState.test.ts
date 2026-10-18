@@ -6,6 +6,8 @@ describe('routeState', () => {
     expect(parseRoute('')).toEqual({ kind: 'map' });
     expect(parseRoute('#/')).toEqual({ kind: 'map' });
     expect(parseRoute('#/map')).toEqual({ kind: 'map' });
+    expect(parseRoute('#/map?release_id=release-2026-10')).toEqual({ kind: 'map', releaseId: 'release-2026-10' });
+    expect(serializeRoute({ kind: 'map', releaseId: 'release-2026-10' })).toBe('#/map?release_id=release-2026-10');
   });
 
   it('parses the database route independently', () => {

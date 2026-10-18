@@ -1,6 +1,6 @@
 export type ContributionType = 'facility' | 'evidence' | 'correction' | 'duplicate' | 'privacy_removal' | 'bug';
 export type RouteState =
-  | Readonly<{ kind: 'map' }>
+  | Readonly<{ kind: 'map'; releaseId?: string }>
   | Readonly<{ kind: 'database'; releaseId?: string }>
   | Readonly<{ kind: 'methodology'; returnMapHref?: string }>
   | Readonly<{ kind: 'about'; section: 'overview'; returnMapHref?: string }>
@@ -23,7 +23,7 @@ export function parseRoute(hash: string): RouteState {
   const requestedMapHref = params.get('map');
   const returnMapHref = requestedMapHref && /^#\/map(?:\?.*)?$/.test(requestedMapHref) ? requestedMapHref : undefined;
 
-  if (path === '/' || path === '/map') return { kind: 'map' };
+  if (path === '/' || path === '/map') { const releaseId = params.get('release_id'); return { kind: 'map', ...(releaseId && /^[A-Za-z0-9._-]{1,160}$/.test(releaseId) ? { releaseId } : {}) }; }
   if (path === '/database') { const releaseId = params.get('release_id'); return { kind: 'database', ...(releaseId && /^[A-Za-z0-9._-]{1,160}$/.test(releaseId) ? { releaseId } : {}) }; }
   if (path === '/methodology' || path === '/about/sources') return { kind: 'methodology', ...(returnMapHref ? { returnMapHref } : {}) };
   if (path === '/about' || path === '/about/manifesto') return { kind: 'about', section: 'overview', ...(returnMapHref ? { returnMapHref } : {}) };
@@ -63,7 +63,7 @@ export function parseRoute(hash: string): RouteState {
 }
 
 export function serializeRoute(route: RoutableState): string {
-  if (route.kind === 'map') return '#/map';
+  if (route.kind === 'map') return `#/map${route.releaseId ? `?release_id=${encodeURIComponent(route.releaseId)}` : ''}`;
   if (route.kind === 'database') return `#/database${route.releaseId ? `?release_id=${encodeURIComponent(route.releaseId)}` : ''}`;
   if (route.kind === 'methodology') return `#/methodology${route.returnMapHref ? `?map=${encodeURIComponent(route.returnMapHref)}` : ''}`;
   if (route.kind === 'about') return `#/about${route.returnMapHref ? `?map=${encodeURIComponent(route.returnMapHref)}` : ''}`;
