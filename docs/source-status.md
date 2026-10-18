@@ -18,16 +18,15 @@ This is the canonical human-readable view of [`source-status.json`](source-statu
 
 No last-success timestamp is invented. Private artifacts are not proof of a public release. “Government-sourced” does not mean current, complete, project-approved, or safe to expose.
 
-## Current repair checkpoint — 2026-10-16
+## Current repair checkpoint — 2026-10-18
 
 The [product readiness tracker](PRODUCT-READINESS.md#v0-dataset-release-sequence)
 records the corrected private successor and its measured counts. Fresh FSIS
 directory/demographic captures reconcile 7,246 establishments: 1,755 slaughter
 and 5,491 processing. The Australian NPI correction retains all 8,140 records,
 with 1,229 selected for the default map by the versioned animal-relevance rules.
-The sixteen-source r4 successor serves 43,306 map locations, including 1,550
-APHIS registrations at approximate mailing localities. It is not a new public
-release. Frozen approved v0 and r3 remain unchanged.
+The sixteen-source private r5 successor is staged candidate-only; it is not a
+new public release. Frozen approved v0 and r3 remain unchanged.
 
 APHIS has a private active-register candidate cohort from the official workbook:
 12,473 rows across all nine source-native license classes. It is candidate-only,
@@ -37,9 +36,9 @@ recurring health. A fresh ten-page visible-browser FY2025 acquisition on
 has exact aliases to 927 candidate facilities, with valid species counts on
 730 reports. It does not make annual reports a facility master or inspection
 evidence.
-The private r3 successor now assembles the unchanged r2 parent (124,419
-members across 15 sources) with the APHIS cohort, for 136,892 private members
-across 16 sources. It remains candidate-only and unpromoted.
+The private r5 successor rebuilds APHIS while preserving the unchanged
+fifteen-source parent memberships: 136,892 private members across 16 sources.
+It remains candidate-only and unpromoted.
 
 A separate one-page Research Facility inspection acquisition accepted 98 dated
 events and quarantined two rows. Of those events, 97 match 93 current
@@ -47,17 +46,16 @@ registrations by the versioned research-certificate alias. This is bounded
 coverage, not full inspection history. Annual counts and dated inspections
 remain separate detail fields. The APHIS mailing-city/state geocoding profile
 passes the disposable database fan-out/rejection gate. The maintainer authorized
-Geoapify submission of mailing city, state and country only within the remaining
-shared 3,000-request daily allowance. The assembled r4 contains 136,892 members
-across 16 sources, including 1,550 mapped APHIS registrations; 10,923 APHIS
-registrations remain unmapped. All inherited non-APHIS memberships are identical
-to r3. Its inventory links fifteen inherited sources and one rebuilt source.
-External requests stopped because earlier interrupted worker accounting could
-not establish the remaining allowance, not because 3,000 requests were reached.
-The ledger counts 768 reservations; current locality jobs are 667 accepted,
-93 requiring review, 3 unresolved, 12 interrupted and 5,443 queued. Worker
-claim/rate/transaction fixes are tested. The frozen v0 membership and its
-approved public projection are unchanged.
+Geoapify received mailing city, state and country only. The 2026-10-18 bounded
+run drained the APHIS queue: 11,421 distinct registrations have accepted-job
+coverage, but the stricter display-evidence contract yields 11,361 approximate
+mailing-locality displays and 1,112 unmapped registrations. Accepted-job
+coverage is not a map count: 60 accepted jobs fail the exact mailing city/state
+display gate. Review-required and unresolved outcomes remain non-display.
+These are non-operating-site localities, not facility coordinates. All inherited
+non-APHIS memberships remain identical to r3; r5 has one rebuilt source and
+fifteen inherited sources. This does not change source eligibility distinctions,
+publication eligibility, or recurring-health status.
 
 The older source checkpoints below describe their stated capture dates; their
 blanket approval wording does not supersede the recorded 2026-10-06 v0 approval
@@ -327,7 +325,7 @@ rows remain zero and publication is not authorized.
 | `es.locations` | partial | blocked | not_run | blocked | AESAN RGSEAA and MAPA sector routes are documented, but direct acquisition was refused; rights, export/schema, effective dates, sector coverage, privacy, and legacy/source boundaries remain unresolved |
 | `us.fsis` | verified | verified | not_run | blocked | Strict live private E2E verified: 7,240 observations and 7,240 candidates from official current CSVs acquired through an authorized bounded browser download; one-time run only, with no recurring monitor configured. Public release is not authorized; source terms, identity, location/privacy, reconciliation, project review, and release gates remain open; see `docs/country-recon-us.md` and `docs/countries/us/README.md` |
 | `us.state-mpi` | verified | not_run | not_run | blocked | FSIS identifies 29 state MPI programs and 10 CIS states; state roster routes are documented in `docs/countries/us/state-mpi-source-recon.md`, but no state roster/CIS workbook was acquired. Keep official, CIS, custom-exempt, retail/handler, and inactive/expired populations separate; obtain authorized current exports and review terms/schema/privacy before any test-only handoff |
-| `us.aphis` | verified | verified | not_run | blocked | One strict private E2E acquired the official active-register workbook and staged 12,473 candidate-only rows across all nine native license classes; the private r3 successor assembles 136,892 members across 16 sources with its unchanged r2 parent. Mailing city/state are non-site evidence; no coordinates, facility merge, public release, or recurring-health claim follows |
+| `us.aphis` | verified | verified | not_run | blocked | The official active-register workbook stages 12,473 candidate-only rows across all nine native license classes. Private r5 has 136,892 members across 16 sources, with fifteen inherited sources and rebuilt APHIS evidence. The 2026-10-18 queue is drained: 11,361 approximate mailing-locality displays and 1,112 unmapped registrations; 11,421 accepted-job coverage is not a map count. Mailing city/state are non-site evidence; no operating-site coordinate, facility merge, public release, or recurring-health claim follows |
 | `us.aphis.annual-reports` | verified | artifact_private_only | not_run | blocked | Retained visible-browser FY2025 pages were replayed as 994 private annual-report events with 1,988 exact source-identifier evidence links; 927 aliases match candidate facilities and 730 reports have valid species counts. This is not a recurring live acquisition, inspection evidence, a facility master, or public output |
 | `us.inspections` | verified | not_run | not_run | blocked | APHIS inspections profile is implemented as observation evidence; capture current export and use explicit reviewable identity links only |
 | `us.nih.reporter` | verified | not_run | not_run | blocked | NIH RePORTER API/ExPORTER is documented as the first funding/project integration; exact award and organization keys remain separate from animal-use counts |

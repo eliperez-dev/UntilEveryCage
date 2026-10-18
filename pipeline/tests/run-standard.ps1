@@ -1,6 +1,14 @@
 param()
 
 $ErrorActionPreference = 'Stop'
+$phase = 'initialization'
+trap {
+  # GitHub's anonymous job view suppresses raw step output.  Keep a bounded,
+  # non-sensitive annotation so a failed canonical gate identifies its phase
+  # without exposing connection strings, fixture rows, or process output.
+  Write-Output "::error title=standard gate failed::$phase"
+  throw $_
+}
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $compose = Join-Path $root 'docker-compose.pipeline.yml'
 $project = 'uec-standard'
@@ -11,20 +19,25 @@ Push-Location $root
 try {
   # Always begin from the same clean database state locally and in CI.
   $env:UEC_PIPELINE_DB_PORT = $port
+  $phase = 'PostGIS startup'
   & docker compose -p $project -f $compose down -v --remove-orphans *> $null
   & docker compose -p $project -f $compose up -d --wait
   if ($LASTEXITCODE -ne 0) { throw "PostGIS startup failed (exit $LASTEXITCODE)." }
 
   $env:UEC_DATABASE_URL = "${databaseUrl}?sslmode=disable"
+  $phase = 'migration application'
   python pipeline/scripts/maintenance/apply-migrations.py
   if ($LASTEXITCODE -ne 0) { throw "Migration application failed (exit $LASTEXITCODE)." }
+  $phase = 'schema preflight'
   python pipeline/tests/db_schema_preflight.py
   if ($LASTEXITCODE -ne 0) { throw "Database/schema preflight failed (exit $LASTEXITCODE)." }
 
   Remove-Item Env:UEC_RUN_E2E -ErrorAction SilentlyContinue
+  $phase = 'Rust tests'
   cargo test --locked
   if ($LASTEXITCODE -ne 0) { throw "Rust tests failed (exit $LASTEXITCODE)." }
 
+  $phase = 'synthetic fixture seeding'
   Get-Content (Join-Path $root 'pipeline\tests\standard_contract_seed.sql') -Raw |
     & docker compose -p $project -f $compose exec -T postgres psql -v ON_ERROR_STOP=1 -U uec -d uec
   if ($LASTEXITCODE -ne 0) { throw "Synthetic fixture seeding failed (exit $LASTEXITCODE)." }
@@ -35,6 +48,7 @@ try {
   # The isolated real-preview migration contract also requires PostGIS, but
   # must not run against the standard contract-seed database. Give it a
   # dedicated disposable database inside this already-isolated Compose stack.
+  $phase = 'real-preview disposable database setup'
   $previewTestDatabase = 'uec_real_preview_test_standard'
   & docker compose -p $project -f $compose exec -T postgres createdb -U uec $previewTestDatabase
   if ($LASTEXITCODE -ne 0) { throw "Real-preview test database creation failed (exit $LASTEXITCODE)." }
@@ -44,6 +58,7 @@ try {
   # Candidate-bridge integration coverage owns a different empty database in
   # this same disposable Compose stack. It never reuses the contract seed DB
   # or the retained private preview database.
+  $phase = 'candidate bridge disposable database setup'
   $bridgeTestDatabase = 'uec_v0_review_bridgetest20261004'
   & docker compose -p $project -f $compose exec -T postgres createdb -U uec $bridgeTestDatabase
   if ($LASTEXITCODE -ne 0) { throw "V0 bridge test database creation failed (exit $LASTEXITCODE)." }
@@ -56,6 +71,7 @@ try {
   $env:UEC_V0_BRIDGE_TEST_DATABASE_URL = $bridgeTestDatabaseUrl
   # Cohort publication controls must have an actual PostGIS proof in CI, not
   # silently pass because their explicit disposable-database guard was absent.
+  $phase = 'cohort-review disposable database setup'
   $cohortTestDatabase = 'uec_v0_cohort_review_test20261005'
   & docker compose -p $project -f $compose exec -T postgres createdb -U uec $cohortTestDatabase
   if ($LASTEXITCODE -ne 0) { throw "Cohort review test database creation failed (exit $LASTEXITCODE)." }
@@ -65,11 +81,14 @@ try {
   $env:UEC_COHORT_REVIEW_TEST_DATABASE_URL = "postgresql://uec:uec-local-development-only@localhost:$port/${cohortTestDatabase}?sslmode=disable"
   python pipeline/scripts/maintenance/apply-migrations.py --database-url $env:UEC_COHORT_REVIEW_TEST_DATABASE_URL
   if ($LASTEXITCODE -ne 0) { throw "Cohort review test database migration failed (exit $LASTEXITCODE)." }
+  $phase = 'repository hygiene'
   python pipeline/scripts/maintenance/repository_hygiene.py
   if ($LASTEXITCODE -ne 0) { throw "Repository hygiene checks failed (exit $LASTEXITCODE)." }
+  $phase = 'pipeline Python tests'
   python pipeline/tests/run_unittest.py --start-directory pipeline/tests
   if ($LASTEXITCODE -ne 0) { throw "Python tests failed (exit $LASTEXITCODE)." }
 
+  $phase = 'country adapter tests'
   python -m unittest -q pipeline.germany.test_adapter pipeline.germany.test_orchestrator pipeline.common.test_delta pipeline.common.test_orchestrator pipeline.common.test_registry pipeline.contracts.test_adapter_contract pipeline.contracts.test_candidate_handoff pipeline.sources.denmark.test_adapter pipeline.sources.uk.fsa_approved.test_adapter pipeline.sources.uk.fsa_approved.test_handoff pipeline.sources.uk.fss_approved.test_adapter pipeline.sources.uk.fss_approved.test_handoff pipeline.sources.uk.approved.test_compose
   if ($LASTEXITCODE -ne 0) { throw "Country adapter tests failed (exit $LASTEXITCODE)." }
 }

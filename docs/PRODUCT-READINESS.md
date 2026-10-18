@@ -9,7 +9,9 @@ not replace this page or make an overall completeness claim.
 ## Authority and scope
 
 This page covers product completeness for the V2 platform and the controlled
-replacement of the current V1 public application. It does not grant publication
+replacement of the legacy website. **V2 names the product; v0 and v1 name
+dataset releases, not application updates.** References to the legacy V1
+application below describe the old website, not dataset v1. It does not grant publication
 approval, source permission, privacy clearance, or maintainer authority. The
 governing policy is [ETHICS.md](ETHICS.md); its implementation checklist is
 [governance/policy-implementation-todo.md](governance/policy-implementation-todo.md).
@@ -19,6 +21,30 @@ Use [source-status.json](source-status.json) for source-level status and
 for implementation claims. A count in this document is an aggregate candidate
 or evidence count, never a count of approved, accurate, operating, or
 publishable facilities unless explicitly labelled that way.
+
+## Current launch decision (2026-10-18)
+
+The maintainer approved launch convergence for the **V2 website with dataset
+v1**, retaining historical dataset v0 access. Use Render for deployment
+preparation: one Docker web service and managed PostgreSQL/PostGIS. Provider
+selection does not authorize paid provisioning, data transfer, deployment or
+DNS cutover. Integration, real-data historical-release acceptance, exact-head
+CI, the dataset v1 scope decision and deployment verification remain open.
+New countries and four-mode 2D/3D map work are deferred until after launch.
+
+The private r5 candidate is assembled with 136,892 retained members across
+sixteen sources; it is not promoted. APHIS has 11,361 registrations with
+approximate mailing-locality display evidence and 1,112 without display
+evidence. The completed October 18 enrichment used 2,455 provider requests:
+2,181 accepted, 265 requiring review and nine unresolved. Accepted-job coverage
+is not a marker count: sixty accepted matches fail the mailing city/state
+display check. Frozen v0 is unchanged. Its 553 specific cohort exclusions have
+been traced to successor members through stable facility identity, with zero
+overlap in the frozen v0 public read model; they must remain excluded from
+the successor public projection. These exclusions are not all privacy holds.
+The complete successor map count remains unverified until the actual display
+contract is exercised; neither retained membership nor stored coordinates is
+a substitute.
 
 ## v0 dataset release sequence
 

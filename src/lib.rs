@@ -6825,7 +6825,10 @@ fn parse_all_locations() -> Result<Vec<LocationResponse>, Box<dyn Error>> {
 }
 
 fn parse_aphis_reports() -> Result<Vec<AphisReport>, Box<dyn Error>> {
-    let csv_data = include_str!("../static_data/us/aphis_data_final.csv");
+    // Legacy development-only data must never become a compile-time input to
+    // the production image.  The production router excludes this handler;
+    // local legacy preview still loads the checked-out fixture at runtime.
+    let csv_data = std::fs::read_to_string("static_data/us/aphis_data_final.csv")?;
     let mut reader = csv::Reader::from_reader(csv_data.as_bytes());
 
     let mut reports = Vec::new();
@@ -6837,7 +6840,7 @@ fn parse_aphis_reports() -> Result<Vec<AphisReport>, Box<dyn Error>> {
 }
 
 fn parse_inspection_reports() -> Result<Vec<InspectionReport>, Box<dyn Error>> {
-    let csv_data = include_str!("../static_data/us/inspection_reports.csv");
+    let csv_data = std::fs::read_to_string("static_data/us/inspection_reports.csv")?;
     let mut reader = csv::Reader::from_reader(csv_data.as_bytes());
 
     let mut reports = Vec::new();
