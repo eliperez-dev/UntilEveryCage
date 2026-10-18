@@ -131,7 +131,7 @@
     {:else if route.kind === 'map'}
       <p class="state" role="status">Preparing the map…</p>
     {:else if route.kind === 'database'}
-      <PublicDatabase releaseId={route.releaseId} onrelease={label => verifiedReleaseLabel = label} />
+      <PublicDatabase {...(route.releaseId ? { releaseId: route.releaseId } : {})} onrelease={label => verifiedReleaseLabel = label} />
     {:else if route.kind === 'record'}
       <PublicRecord id={route.facilityId} profile={route.profile ?? 'official'} releaseId={route.releaseId} onrelease={label => verifiedReleaseLabel = label} />
     {:else if route.kind === 'community'}

@@ -25,8 +25,7 @@
   // Fixture projections run only in the synthetic mode.
   let syntheticRecords: readonly LabRecord[] = [];
   let labSentinel: string | undefined;
-  let model = createLabViewModel([], state);
-  $: if (mode === 'synthetic') model = createLabViewModel(syntheticRecords, state);
+  const model = $derived(createLabViewModel(mode === 'synthetic' ? syntheticRecords : [], state));
   const repository = createRealPreviewRepository();
   const publicLocationRepository = new LocalLocationRepository();
   const publicReleaseRepository = new PublicReleaseRepository();
@@ -44,7 +43,7 @@
   const V0_ARCHIVE_RELEASE_ID = 'v0-candidate-2026-10-04-r3';
   let v0ArchiveVerified = false;
   const publicReleaseOptions = $derived([
-    ...(publicReleaseId ? [{ id: publicReleaseId, label: publicMapMeta?.releaseLabel ?? `Current release ${publicReleaseId}` }] : []),
+    ...(publicReleaseId ? [{ id: publicReleaseId, label: `Current release ${publicReleaseId}` }] : []),
     ...(v0ArchiveVerified && publicReleaseId !== V0_ARCHIVE_RELEASE_ID ? [{ id: V0_ARCHIVE_RELEASE_ID, label: 'v0 — Early Access archive' }] : []),
   ]);
   function selectPublicRelease(releaseId: string) {
@@ -77,8 +76,7 @@
       ...(location.sourceFacts ? { sourceFacts: location.sourceFacts } : {}),
     };
   }
-  let sourceId: string | null = state.sourceId;
-  $: sourceId = state.sourceId;
+  const sourceId = $derived(state.sourceId);
   let apiRecords: LabRecord[] = [];
   let dataStatus: 'loading' | 'ready' | 'empty' | 'error' | 'unauthorized' = 'loading';
   let dataError = '';
@@ -86,7 +84,7 @@
   let pageLoading = false;
   let counts: RealPreviewCounts | null = null;
   let coverageOpen = false;
-  $: if (state.listOpen && coverageOpen) coverageOpen = false;
+  $effect(() => { if (state.listOpen && coverageOpen) coverageOpen = false; });
   let facets: readonly RealPreviewFacet[] = [];
   let facetsStatus: 'loading' | 'ready' | 'error' | 'unauthorized' = 'loading';
   let candidateFacets: CandidateFacets | null = null;
@@ -210,11 +208,11 @@
       if (referenceAbort === controller) aggregateLoading = false;
     }
   }
-  $: mapDiagnostics = { ...mapDiagnostics, zoom: state.viewport.zoom, sourceId, sourceMaterializeMs, clusterReadyMs, zoomSettleMs };
+  $effect(() => { mapDiagnostics = { ...mapDiagnostics, zoom: state.viewport.zoom, sourceId, sourceMaterializeMs, clusterReadyMs, zoomSettleMs }; });
 
   let observedListKey: string | undefined;
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
-  $: {
+  $effect(() => {
     const listKey = `${state.query}\u0000${sourceId ?? ''}\u0000${state.filters.categories.join(',')}\u0000${state.filters.precisions.join(',')}\u0000${state.filters.countries.join(',')}\u0000${state.filters.sources.join(',')}\u0000${state.filters.activities.join(',')}\u0000${mode === 'public-release' ? publicReleaseIdentity ?? '' : ''}`;
     if (shouldScheduleListLoad(mode, publicReleaseId, observedListKey, listKey)) {
       observedListKey = listKey;
@@ -223,11 +221,11 @@
       const query = state.query;
       searchTimer = setTimeout(() => void loadPage(query, true), 180);
     }
-  }
+  });
 
 
   let observedSelection: string | null | undefined;
-  $: if (mode !== 'synthetic' && observedSelection !== state.selectedId) {
+  $effect(() => { if (mode !== 'synthetic' && observedSelection !== state.selectedId) {
     observedSelection = state.selectedId;
     detailAbort?.abort();
     if (!state.selectedId) { detailRecord = null; detailStatus = 'ready'; detailError = ''; }
@@ -250,7 +248,7 @@
         }
       });
     }
-  }
+  } });
 
   onMount(() => {
     if (import.meta.env.DEV && mode === 'synthetic') {
