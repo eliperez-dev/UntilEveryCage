@@ -20,6 +20,12 @@ describe('configured candidate map feed', () => {
     expect(() => parseRealPreviewMapFeed({ ...envelope, meta: { ...envelope.meta, snapshot_id: 'a'.repeat(32) } }, true)).not.toThrow();
   });
 
+  it('accepts the configured candidate’s private provider-locality map kind', () => {
+    const provider = { ...envelope, data: { points: [{ ...envelope.data.points[0], kind: 'provider_locality', precision: 'provider_locality_approximate' }] } };
+    expect(() => parseRealPreviewMapFeed(provider, true)).not.toThrow();
+    expect(() => parseRealPreviewMapFeed(provider)).toThrow(RealPreviewMapFeedError);
+  });
+
   it('applies all selected full-projection dimensions before clustering', () => {
     const collection = parseRealPreviewMapFeed({ ...envelope, data: { points: [
       envelope.data.points[0],

@@ -65,9 +65,10 @@ display check. Frozen v0 is unchanged. Its 553 specific cohort exclusions have
 been traced to successor members through stable facility identity, with zero
 overlap in the frozen v0 public read model; they must remain excluded from
 the successor public projection. These exclusions are not all privacy holds.
-The read-only private candidate display query now resolves to 136,892 list
+The restored authenticated private preview API now returns 136,892 list
 members and 53,117 map locations, including the 11,361 APHIS mailing-locality
-locations. This uses the candidate handlers' display contract, not a count of
+locations; the browser renders the map and loads the candidate record list.
+This uses the candidate handlers' display contract, not a count of
 stored coordinates or accepted geocoding jobs. It includes retained material
 outside the proposed curated public scope and is not the dataset v1 public
 release total.

@@ -45,7 +45,10 @@ export function parseRealPreviewMapFeed(payload: unknown, candidateOnly = false)
     const kind = row.kind;
     const key = row.key;
     const weight = row.weight;
-    if (!['source_coordinate', 'city_reference', 'provider_address_point_private', 'provider_locality_approximate'].includes(String(kind)) || typeof key !== 'string' || !key || key.length > 160
+    const allowedKinds = candidateOnly
+      ? ['source_coordinate', 'city_reference', 'provider_locality']
+      : ['source_coordinate', 'city_reference', 'provider_address_point_private', 'provider_locality_approximate'];
+    if (!allowedKinds.includes(String(kind)) || typeof key !== 'string' || !key || key.length > 160
       || typeof row.source_id !== 'string' || typeof row.precision !== 'string'
       || !finiteCoordinate(row.latitude, -90, 90) || !finiteCoordinate(row.longitude, -180, 180)
       || typeof weight !== 'number' || !Number.isSafeInteger(weight) || weight < 1) {

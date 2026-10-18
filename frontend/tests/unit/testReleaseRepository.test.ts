@@ -23,6 +23,19 @@ describe('configured candidate list', () => {
     await expect(new TestReleaseRepository(fetcher).list()).rejects.toThrow('rejected safely');
   });
 
+  it('accepts the bounded private geometry disclosure and source-native precision labels', async () => {
+    const privateGeometry = {
+      kind: 'provider_locality', method: 'geoapify_forward', precision: 'provider_locality_approximate',
+      provider: 'geoapify', provider_status: 'accepted', evidence_kind: 'provider_derived',
+      evidence_id: null, queried_at: null, review_status: null, source_location_role: 'aphis_mailing_locality',
+    };
+    const payload = {
+      ...envelope,
+      data: [{ ...row, display_precision: 'source-native-private-precision', geometry_provenance: privateGeometry }],
+    };
+    await expect(new TestReleaseRepository(vi.fn().mockResolvedValue(new Response(JSON.stringify(payload)))).list()).resolves.toMatchObject({ locations: [{ evidence: { displayPrecision: 'source-native-private-precision' } }] });
+  });
+
   it('accepts only candidate-scoped discovery facets', async () => {
     const facets = { data: null, meta: { ...candidateMeta, result_count: 2 }, dimensions: { source_id: [{ value: 'us.fsis', label: 'FSIS', count: 1 }], country_code: [{ value: 'DK', label: 'Denmark', count: 1 }], category: [{ value: 'dairy', label: 'Dairy', count: 1 }], activity: [{ value: 'us.fsis:slaughter', label: 'Slaughter', count: 1 }], display_precision: [], source_type: [] } };
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(facets), { status: 200 }));

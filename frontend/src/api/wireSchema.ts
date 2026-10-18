@@ -177,6 +177,22 @@ const testReleaseLocationShape = {
   project_approval: z.union([z.enum(['pending', 'approved']), z.literal(false), z.literal('not-approved')]),
   source_rights_status: z.string().default('unknown'),
   release_ruleset_version: z.string().nullable(),
+  // Candidate projections retain their source-native display labels and a
+  // deliberately small private geometry disclosure. They are not public
+  // geometry provenance and must not be parsed as such.
+  display_precision: z.string().min(1).max(120),
+  geometry_provenance: z.object({
+    kind: z.enum(['source_coordinate', 'city_reference', 'provider_locality', 'unmapped']),
+    method: z.string().min(1).max(120).optional(),
+    precision: z.string().min(1).max(120).optional(),
+    provider: z.string().min(1).max(80).optional(),
+    provider_status: z.string().min(1).max(80).optional(),
+    evidence_kind: z.string().min(1).max(80).optional(),
+    evidence_id: z.string().min(1).max(160).nullable().optional(),
+    queried_at: z.string().datetime({ offset: true }).nullable().optional(),
+    review_status: z.string().min(1).max(80).nullable().optional(),
+    source_location_role: z.enum(['aphis_mailing_locality']).optional(),
+  }).strict().optional(),
   // Filterable candidate projection fields are additive and remain distinct
   // from detail-only native facts.
   category_keys: z.array(z.string().min(1).max(120)).max(16).optional(),
