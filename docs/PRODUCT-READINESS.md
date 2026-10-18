@@ -32,6 +32,19 @@ DNS cutover. Integration, real-data historical-release acceptance, exact-head
 CI, the dataset v1 scope decision and deployment verification remain open.
 New countries and four-mode 2D/3D map work are deferred until after launch.
 
+**Future dataset release rule (maintainer clarification, 2026-10-18):** each
+subsequent dataset release must freshly acquire the latest available data from
+every included source and preserve all relevant source fields needed for
+mapping and geocoding. Record retrieval evidence even when the upstream
+artifact is unchanged; a new retrieval does not imply a new government
+publication. Source-native fields and their provenance must not be silently
+discarded during normalization. Missing upstream values and documented
+restrictions must be distinguished from adapter omissions. Account for
+geocoding eligibility and outcomes when freezing the release. This is a future
+release requirement, not a claim that it is already enforced across every
+adapter. The maintainer explicitly kept the current launch scope unchanged:
+no additional whole-source reacquisition sweep is required by this clarification.
+
 The private r5 candidate is assembled with 136,892 retained members across
 sixteen sources; it is not promoted. APHIS has 11,361 registrations with
 approximate mailing-locality display evidence and 1,112 without display

@@ -886,7 +886,7 @@ pub async fn get_v2_locations_export_handler(
             "V2 database transaction unavailable",
         );
     }
-    let release = match transaction.query_opt("SELECT r.release_id, m.manifest_sha256, (model.release_id IS NOT NULL AND manifest.release_id IS NOT NULL) FROM uec.releases r LEFT JOIN uec.public_discovery_read_models model ON model.release_id=r.release_id LEFT JOIN uec.release_manifests manifest ON manifest.release_id=r.release_id AND manifest.manifest_sha256=model.manifest_sha256 LEFT JOIN uec.release_manifests m ON m.release_id=r.release_id LEFT JOIN uec.public_release_history history ON history.release_id=r.release_id AND history.profile=r.profile WHERE r.test_only IS NOT TRUE AND r.profile=$1 AND ($2::text IS NULL OR r.release_id=$2) AND (r.status='promoted' OR ($2::text IS NOT NULL AND history.release_id IS NOT NULL AND r.status='validated')) ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1", &[&profile, &params.release_id]).await {
+    let release = match transaction.query_opt("SELECT r.release_id, m.manifest_sha256, (model.release_id IS NOT NULL AND manifest.release_id IS NOT NULL), COALESCE(r.summary->>'candidate_only'='true',false) FROM uec.releases r LEFT JOIN uec.public_discovery_read_models model ON model.release_id=r.release_id LEFT JOIN uec.release_manifests manifest ON manifest.release_id=r.release_id AND manifest.manifest_sha256=model.manifest_sha256 LEFT JOIN uec.release_manifests m ON m.release_id=r.release_id LEFT JOIN uec.public_release_history history ON history.release_id=r.release_id AND history.profile=r.profile WHERE r.test_only IS NOT TRUE AND r.profile=$1 AND ($2::text IS NULL OR r.release_id=$2) AND (r.status='promoted' OR ($2::text IS NOT NULL AND history.release_id IS NOT NULL AND r.status='validated')) ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1", &[&profile, &params.release_id]).await {
         Ok(row) => row, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "release_query_failed", "release query failed")
     };
     let Some(release) = release else {
@@ -905,6 +905,11 @@ pub async fn get_v2_locations_export_handler(
             "public discovery read model is missing or stale",
         );
     }
+    let public_read_model = if release.get::<_, bool>(3) {
+        "uec.public_discovery_api_candidate_read_model"
+    } else {
+        "uec.public_discovery_api_read_model"
+    };
     let requested_limit = match params.limit.as_deref().map(str::parse::<i64>).transpose() {
         Ok(Some(value)) if (1..=1000).contains(&value) => Some(value),
         Ok(None) => None,
@@ -912,7 +917,7 @@ pub async fn get_v2_locations_export_handler(
     };
     let limit = requested_limit.unwrap_or(1000);
     let total_count: i64 = match transaction.query_one(
-        "SELECT count(*)::bigint FROM uec.map_facilities_public_discovery_read_model WHERE release_id=$1",
+        &format!("SELECT count(DISTINCT facility_id)::bigint FROM {public_read_model} WHERE release_id=$1"),
         &[&release_id],
     ).await {
         Ok(row) => row.get(0),
@@ -925,7 +930,7 @@ pub async fn get_v2_locations_export_handler(
             "export exceeds the bounded limit; specify an explicit limit to download a bounded first page",
         );
     }
-    let rows = match transaction.query("SELECT h.facility_id, h.canonical_name, h.country_code, h.city, h.classification_category, h.display_precision, h.factual_review_status, h.privacy_screening_status, h.maintainer_approval, h.reviewer_role, h.provenance_origin_type, h.provenance_source_id, h.provenance_source_name, h.provenance_source_url, h.provenance_retrieved_at, h.source_rights_status, h.release_id, h.geometry_provenance::text FROM uec.map_facilities_public_discovery_read_model h WHERE h.release_id=$1 ORDER BY h.facility_id LIMIT $2", &[&release_id, &(limit + 1)]).await {
+    let rows = match transaction.query(&format!("SELECT h.facility_id, h.canonical_name, h.country_code, h.city, h.classification_category, h.display_precision, h.factual_review_status, h.privacy_screening_status, h.maintainer_approval, h.reviewer_role, h.provenance_origin_type, h.provenance_source_id, h.provenance_source_name, h.provenance_source_url, h.provenance_retrieved_at, h.source_rights_status, h.release_id, h.geometry_provenance::text FROM {public_read_model} h WHERE h.release_id=$1 ORDER BY h.facility_id LIMIT $2"), &[&release_id, &(limit + 1)]).await {
         Ok(rows) => rows, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "export_query_failed", "public export unavailable")
     };
     let mut writer = csv::Writer::from_writer(Vec::new());
