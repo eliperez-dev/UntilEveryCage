@@ -107,8 +107,21 @@ class ReleaseScopedReviewE2ETests(unittest.TestCase):
             raise unittest.SkipTest("set UEC_RUN_E2E=1 to run Docker-backed E2E tests")
         cls.env = E2EEnvironment().start()
         cls.seed_shared_record()
-        for release_id in ("e2e-release-a", "e2e-release-b", "e2e-never-published"):
+        for release_id in ("e2e-release-a", "e2e-release-b"):
             cls.env.build_public_read_model(release_id)
+        # The builder correctly accepts only a currently promoted release.
+        # Build the otherwise complete candidate projection in a temporary
+        # exclusive promotion slot, then return it to validated without a
+        # history receipt for the fail-closed assertion below.
+        with psycopg.connect(cls.env.database_url) as db:
+            db.execute("UPDATE uec.releases SET status='validated' WHERE release_id='e2e-release-a'")
+            db.execute("UPDATE uec.releases SET status='promoted' WHERE release_id='e2e-never-published'")
+            db.commit()
+        cls.env.build_public_read_model("e2e-never-published")
+        with psycopg.connect(cls.env.database_url) as db:
+            db.execute("UPDATE uec.releases SET status='validated' WHERE release_id='e2e-never-published'")
+            db.execute("UPDATE uec.releases SET status='promoted' WHERE release_id='e2e-release-a'")
+            db.commit()
 
     @classmethod
     def tearDownClass(cls):
@@ -129,7 +142,7 @@ class ReleaseScopedReviewE2ETests(unittest.TestCase):
             for release_id, profile, status in (
                 ("e2e-release-a", "official", "promoted"),
                 ("e2e-release-b", "secondary", "promoted"),
-                ("e2e-never-published", "official", "validated"),
+                ("e2e-never-published", "official", "candidate"),
             ):
                 db.execute(
                     "INSERT INTO uec.releases (release_id,status,ruleset_version,profile,summary) "
