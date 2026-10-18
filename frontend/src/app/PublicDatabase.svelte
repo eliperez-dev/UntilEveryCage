@@ -8,7 +8,7 @@
   import { serializeRoute } from './routeState';
   import CopyValue from './CopyValue.svelte';
   import { precisionPresentation } from '../features/locations/precisionPresentation';
-  let { onrelease }: { onrelease?: (label: string | null) => void } = $props();
+  let { releaseId: requestedReleaseId, onrelease }: { releaseId?: string; onrelease?: (label: string | null) => void } = $props();
   const repository = new LocalLocationRepository();
   let query = $state('');
   let categories = $state<readonly TaxonomyPrimaryKey[]>([]);
@@ -17,7 +17,7 @@
   let cursor = $state<string | null>(null);
   let totalCount = $state<number | null>(null);
   let pageSize = $state<25 | 50 | 100>(50);
-  let releaseId = $state<string | undefined>();
+  let releaseId = $state<string | undefined>(requestedReleaseId);
   let coverage = $state('');
   let busy = $state(false);
   let error = $state('');
@@ -31,7 +31,7 @@
   async function load(reset = true) {
     controller?.abort(); controller = new AbortController(); const current = controller;
     busy = true; error = ''; unavailable = false;
-    if (reset) { records = []; cursor = null; totalCount = null; releaseId = undefined; selectedId = null; }
+    if (reset) { records = []; cursor = null; totalCount = null; releaseId = requestedReleaseId; selectedId = null; }
     try {
       const result = await repository.list('official', { q: query, category_keys: categories, limit: pageSize, ...(cursor ? { cursor } : {}) }, current.signal, releaseId);
       if (current.signal.aborted) return;

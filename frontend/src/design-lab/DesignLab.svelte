@@ -30,12 +30,29 @@
   const repository = createRealPreviewRepository();
   const publicLocationRepository = new LocalLocationRepository();
   const publicReleaseRepository = new PublicReleaseRepository();
+  const releaseFromHash = () => {
+    const value = new URLSearchParams(location.hash.split('?')[1] ?? '').get('release_id');
+    return value && /^[A-Za-z0-9._-]{1,160}$/.test(value) ? value : undefined;
+  };
+  let pinnedPublicReleaseId: string | undefined = typeof location === 'undefined' ? undefined : releaseFromHash();
   const testReleaseRepository = new TestReleaseRepository();
   const testReleaseDetailRepository = new TestReleaseDetailRepository();
   let publicReleaseId: string | null = null;
   let publicReleaseIdentity: string | null = null;
   let publicReleaseManifestIdentity: PublicReleaseIdentity | null = null;
   let publicMapMeta: PublicMapFeed['meta'] | null = null;
+  const V0_ARCHIVE_RELEASE_ID = 'v0-candidate-2026-10-04-r3';
+  let v0ArchiveVerified = false;
+  const publicReleaseOptions = $derived([
+    ...(publicReleaseId ? [{ id: publicReleaseId, label: publicMapMeta?.releaseLabel ?? `Current release ${publicReleaseId}` }] : []),
+    ...(v0ArchiveVerified && publicReleaseId !== V0_ARCHIVE_RELEASE_ID ? [{ id: V0_ARCHIVE_RELEASE_ID, label: 'v0 — Early Access archive' }] : []),
+  ]);
+  function selectPublicRelease(releaseId: string) {
+    const hash = new URL(location.href).hash;
+    const [path, rawQuery = ''] = hash.split('?');
+    const query = new URLSearchParams(rawQuery); query.set('release_id', releaseId);
+    location.hash = `${path}?${query}`;
+  }
   function mapPublicLocation(location: Location): LabRecord {
     const precision = location.evidence?.displayPrecision === 'provider_locality_approximate' ? 'city' : location.evidence?.displayPrecision ?? 'unmapped';
     return {
@@ -96,7 +113,7 @@
     if (!location.hash.startsWith('#/map')) return;
     const wasSelected = state.selectedId !== null;
     state = reduceLabState(state, action);
-    const nextHash = encodeLabHash(state, mode === 'real-preview');
+    const nextHash = `${encodeLabHash(state, mode === 'real-preview')}${pinnedPublicReleaseId ? `&release_id=${encodeURIComponent(pinnedPublicReleaseId)}` : ''}`;
     if (action.type === 'select' && action.value && !wasSelected) {
       // Selection is a navigable map state: Back dismisses the dossier. Other
       // frequent map updates (especially viewport movement) stay replace-only.
@@ -243,14 +260,14 @@
       });
     }
     const sync = () => {
-      if (location.hash.startsWith('#/map')) state = decodeLabHash(location.hash);
+      if (location.hash.startsWith('#/map')) { state = decodeLabHash(location.hash); pinnedPublicReleaseId = releaseFromHash(); }
     };
     addEventListener('hashchange', sync);
     addEventListener('popstate', sync);
     let summaryAbort: AbortController | undefined;
     if (mode === 'public-release') {
       summaryAbort = new AbortController();
-      void publicReleaseRepository.current('official', summaryAbort.signal).then(current => {
+      void publicReleaseRepository.current('official', summaryAbort.signal, pinnedPublicReleaseId).then(current => {
         if (!summaryAbort?.signal.aborted) {
           publicReleaseId = current?.releaseId ?? null;
           publicReleaseManifestIdentity = current;
@@ -258,9 +275,12 @@
           dataStatus = current ? 'loading' : 'empty';
         }
       }).catch(() => { if (!summaryAbort?.signal.aborted) { dataStatus = 'error'; dataError = 'The public release could not be checked.'; } });
+      void publicReleaseRepository.current('official', summaryAbort.signal, V0_ARCHIVE_RELEASE_ID).then(archive => {
+        if (!summaryAbort?.signal.aborted) v0ArchiveVerified = archive?.releaseId === V0_ARCHIVE_RELEASE_ID;
+      }).catch(() => { if (!summaryAbort?.signal.aborted) v0ArchiveVerified = false; });
       const checkRelease = async () => {
         try {
-          const current = await publicReleaseRepository.current('official', summaryAbort?.signal);
+          const current = await publicReleaseRepository.current('official', summaryAbort?.signal, pinnedPublicReleaseId);
           if (summaryAbort?.signal.aborted) return;
           const identity = current ? `${current.releaseId}:${current.manifestSha256}:${current.suppressionGeneration}` : null;
           if (identity !== publicReleaseIdentity) {
@@ -299,7 +319,7 @@
 <svelte:head><title>Until Every Cage: Map</title></svelte:head>
 <div class="lab" data-review-sentinel={mode === 'synthetic' ? labSentinel : undefined} data-direction="field" data-scenario={state.scenario} data-data-mode={mode}>
   <div class="map-preview"><h1 class="sr-only">Investigative map</h1>
-    <Field {state} {coverageOpen} records={mode !== 'synthetic' ? apiRecords : model.listRecords} mapRecords={mode !== 'synthetic' ? [] : model.mapRecords} {mode} {publicReleaseId} {publicReleaseIdentity} {publicReleaseManifestIdentity} {publicMapMeta} onMapFeedMeta={(meta) => { publicMapMeta = meta; }}
+    <Field {state} {coverageOpen} records={mode !== 'synthetic' ? apiRecords : model.listRecords} mapRecords={mode !== 'synthetic' ? [] : model.mapRecords} {mode} {publicReleaseId} {publicReleaseIdentity} {publicReleaseManifestIdentity} {publicMapMeta} releaseOptions={publicReleaseOptions} onreleasechange={selectPublicRelease} onMapFeedMeta={(meta) => { publicMapMeta = meta; }}
       dataStatus={dataStatus} {dataError}
       {detailRecord} {detailStatus} {detailError} {nextCursor} {pageLoading}
       {facets} {facetsStatus} {candidateFacets} {mapDiagnostics} {aggregateMemberRecords} {aggregateNextCursor} {aggregateLoading} {aggregateError} onMapTiming={timing=>{sourceMaterializeMs=timing.sourceMaterializeMs;clusterReadyMs=timing.clusterReadyMs;if(timing.zoomSettleMs!==undefined)zoomSettleMs=timing.zoomSettleMs;}} onLoadMore={() => void loadPage(state.query, false)} onMapReference={(key, refSourceId) => void loadReference(key, true, refSourceId)} onLoadMoreAggregate={() => { if (aggregateReferenceKey) void loadReference(aggregateReferenceKey, false); }} {dispatch}/>

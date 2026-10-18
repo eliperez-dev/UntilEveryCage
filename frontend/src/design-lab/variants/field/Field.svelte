@@ -48,6 +48,8 @@
     facets = [],
     facetsStatus = "loading",
     candidateFacets = null,
+    releaseOptions = [],
+    onreleasechange,
     dispatch,
   }: DirectionViewProps & {
     coverageOpen?: boolean;
@@ -55,6 +57,8 @@
     facets?: readonly RealPreviewFacet[];
     facetsStatus?: "loading" | "ready" | "error" | "unauthorized";
     candidateFacets?: CandidateFacets | null;
+    releaseOptions?: readonly { id: string; label: string }[];
+    onreleasechange?(releaseId: string): void;
   } = $props();
   const candidatePreviewLabel = writable<string | null>(null);
   const categories = [
@@ -363,6 +367,7 @@
     (() => {
       const q = new URLSearchParams();
       if (mode === "real-preview" || mode === "candidate-preview") q.set("f1a", "field");
+      if (mode === "public-release" && publicReleaseId) q.set("release_id", publicReleaseId);
       if (state.sourceId) q.set("source", state.sourceId);
       if (state.selectedId) q.set("selected", state.selectedId);
       q.set("lat", String(state.viewport.centerLat));
@@ -380,7 +385,7 @@
 
 <svelte:window onkeydown={onKeydown} />
 <section class="field-view">
-  <PreviewMasthead privateTools={mode === "real-preview" || mode === "candidate-preview"} publicReleaseLabel={mode === "candidate-preview" ? $candidatePreviewLabel : publicMapMeta?.releaseLabel ?? null} releaseDescription={mode === "candidate-preview" && $candidatePreviewLabel ? 'Configured private candidate release.' : null} current="map" {mapHref} {databaseHref} debugEnabled={$debugEnabled} ondebugchange={(enabled) => { debugEnabled.set(enabled); if (!enabled) debugOpen.set(false); }} />
+  <PreviewMasthead privateTools={mode === "real-preview" || mode === "candidate-preview"} publicReleaseLabel={mode === "candidate-preview" ? $candidatePreviewLabel : publicMapMeta?.releaseLabel ?? null} releaseDescription={mode === "candidate-preview" && $candidatePreviewLabel ? 'Configured private candidate release.' : null} {releaseOptions} {onreleasechange} current="map" {mapHref} {databaseHref} debugEnabled={$debugEnabled} ondebugchange={(enabled) => { debugEnabled.set(enabled); if (!enabled) debugOpen.set(false); }} />
   <main class="map-stage" aria-label="Investigative map field">
     {#if mode === "synthetic" && state.scenario === "loading"}<div class="status" role="status">
         Loading records…

@@ -1,26 +1,29 @@
-# Build stage
-FROM rust:1-bookworm AS builder
+# Exact version tags plus the committed Cargo/npm lockfiles make the build
+# inputs reviewable. The deploy operator records the resulting image digest;
+# do not use Docker build arguments for any runtime secret.
+FROM node:22.20.0-bookworm-slim AS frontend-builder
+WORKDIR /app/frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN UEC_PUBLIC_BUILD=true npm run build:public
 
+FROM rust:1.90.0-bookworm AS api-builder
 WORKDIR /app
-COPY . .
-RUN cargo build --release
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
+RUN cargo build --release --locked
 
-# Runtime stage
-FROM debian:bookworm-slim
-
+FROM debian:bookworm-20261005-slim
 WORKDIR /app
-
-# Install necessary runtime dependencies (e.g. ca-certificates for HTTPS)
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
-
-# Copy the binary from the builder stage
-COPY --from=builder /app/target/release/uec-api .
-
-# Copy the static assets folder for frontend serving
-COPY static static
-
-# Environment configuration
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && groupadd --gid 1000 render-secrets \
+    && useradd --uid 65532 --gid nogroup --groups render-secrets --no-create-home --shell /usr/sbin/nologin uec \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=api-builder /app/target/release/uec-api /usr/local/bin/uec-api
+COPY --from=frontend-builder /app/frontend/dist ./static
 ENV PORT=8000
 EXPOSE 8000
-
-CMD ["./uec-api"]
+USER uec
+CMD ["/usr/local/bin/uec-api"]

@@ -1,7 +1,7 @@
 export type ContributionType = 'facility' | 'evidence' | 'correction' | 'duplicate' | 'privacy_removal' | 'bug';
 export type RouteState =
   | Readonly<{ kind: 'map' }>
-  | Readonly<{ kind: 'database' }>
+  | Readonly<{ kind: 'database'; releaseId?: string }>
   | Readonly<{ kind: 'methodology'; returnMapHref?: string }>
   | Readonly<{ kind: 'about'; section: 'overview'; returnMapHref?: string }>
   | Readonly<{ kind: 'help'; returnMapHref?: string }>
@@ -24,7 +24,7 @@ export function parseRoute(hash: string): RouteState {
   const returnMapHref = requestedMapHref && /^#\/map(?:\?.*)?$/.test(requestedMapHref) ? requestedMapHref : undefined;
 
   if (path === '/' || path === '/map') return { kind: 'map' };
-  if (path === '/database') return { kind: 'database' };
+  if (path === '/database') { const releaseId = params.get('release_id'); return { kind: 'database', ...(releaseId && /^[A-Za-z0-9._-]{1,160}$/.test(releaseId) ? { releaseId } : {}) }; }
   if (path === '/methodology' || path === '/about/sources') return { kind: 'methodology', ...(returnMapHref ? { returnMapHref } : {}) };
   if (path === '/about' || path === '/about/manifesto') return { kind: 'about', section: 'overview', ...(returnMapHref ? { returnMapHref } : {}) };
   if (path === '/database/downloads' || path === '/about/faq') return { kind: path === '/about/faq' ? 'faq' : 'downloads', ...(returnMapHref ? { returnMapHref } : {}) };
@@ -64,7 +64,7 @@ export function parseRoute(hash: string): RouteState {
 
 export function serializeRoute(route: RoutableState): string {
   if (route.kind === 'map') return '#/map';
-  if (route.kind === 'database') return '#/database';
+  if (route.kind === 'database') return `#/database${route.releaseId ? `?release_id=${encodeURIComponent(route.releaseId)}` : ''}`;
   if (route.kind === 'methodology') return `#/methodology${route.returnMapHref ? `?map=${encodeURIComponent(route.returnMapHref)}` : ''}`;
   if (route.kind === 'about') return `#/about${route.returnMapHref ? `?map=${encodeURIComponent(route.returnMapHref)}` : ''}`;
   if (route.kind === 'downloads') return `#/database/downloads${route.returnMapHref ? `?map=${encodeURIComponent(route.returnMapHref)}` : ''}`;

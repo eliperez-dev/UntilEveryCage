@@ -299,6 +299,22 @@ def promote(database_url: str, release_id: str, artifacts: list[dict], map_artif
                     (release_id, canonical, digest),
                 )
             previous_rows = [previous[0]] if previous else []
+            # Keep a durable, append-only record of a release that actually
+            # crossed the public promotion gate.  The status column continues
+            # to identify the one current release; history is deliberately not
+            # inferred from `validated`, which includes unpublished candidates.
+            # Backfill the active predecessor in the same serialized
+            # activation transaction.  This preserves a frozen V0 that was
+            # promoted before the history table existed, without treating any
+            # merely validated release as historical-public.
+            connection.execute(
+                "INSERT INTO uec.public_release_history (release_id, profile) SELECT release_id, profile FROM uec.releases WHERE status='promoted' AND profile=%s AND test_only IS NOT TRUE ON CONFLICT (release_id) DO NOTHING",
+                (target[1],),
+            )
+            connection.execute(
+                "INSERT INTO uec.public_release_history (release_id, profile) VALUES (%s, %s) ON CONFLICT (release_id) DO NOTHING",
+                (release_id, target[1]),
+            )
             connection.execute("UPDATE uec.releases SET status = 'validated' WHERE status = 'promoted' AND profile = %s AND release_id <> %s", (target[1], release_id))
             connection.execute("UPDATE uec.releases SET status = 'promoted' WHERE release_id = %s", (release_id,))
             read_model = discovery.build_in_transaction(

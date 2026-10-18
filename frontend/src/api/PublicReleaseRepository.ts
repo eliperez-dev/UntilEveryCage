@@ -6,8 +6,9 @@ export class PublicReleaseError extends Error {}
 export type PublicReleaseIdentity = Readonly<{ releaseId: string; manifestSha256: string; suppressionGeneration: number }>;
 export class PublicReleaseRepository {
   constructor(private readonly fetcher: typeof fetch = globalThis.fetch) {}
-  async current(profile: LocalProfile, signal?: AbortSignal): Promise<PublicReleaseIdentity | null> {
-    const response = await this.fetcher.call(globalThis, `/api/v2/releases/manifest?profile=${profile}`, { method:'GET', cache:'no-store', credentials:'omit', headers:{Accept:'application/json'}, ...(signal ? {signal} : {}) });
+  async current(profile: LocalProfile, signal?: AbortSignal, releaseId?: string): Promise<PublicReleaseIdentity | null> {
+    const params = new URLSearchParams({ profile }); if (releaseId) params.set('release_id', releaseId);
+    const response = await this.fetcher.call(globalThis, `/api/v2/releases/manifest?${params}`, { method:'GET', cache:'no-store', credentials:'omit', headers:{Accept:'application/json'}, ...(signal ? {signal} : {}) });
     if (response.status === 404) return null;
     if (!response.ok) throw new PublicReleaseError('Release availability could not be checked. Try again.');
     const parsed = manifestEnvelope.safeParse(await response.json());

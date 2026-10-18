@@ -19,7 +19,7 @@ use axum::extract::{ConnectInfo, Query, State};
 use axum::http::{HeaderMap, HeaderValue, Method};
 use axum::http::{Request, Response, header};
 use axum::{Extension, Json, http::StatusCode, response::IntoResponse};
-use axum::{Router, routing::get};
+use axum::{Router, routing::{any, get}};
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -31,7 +31,7 @@ use tower_http::cors::{AllowOrigin, CorsLayer};
 use deadpool_postgres::{Config, Hook, HookError, ManagerConfig, RecyclingMethod, Runtime};
 use tokio_postgres::NoTls;
 use tokio_postgres_rustls::MakeRustlsConnect;
-use tower_http::services::ServeDir;
+use tower_http::services::{ServeDir, ServeFile};
 
 mod private_environment;
 
@@ -68,6 +68,23 @@ async fn private_preview_no_store(
     response
 }
 
+async fn public_not_found() -> StatusCode {
+    StatusCode::NOT_FOUND
+}
+
+/// Reserve non-public namespaces before the SPA fallback. Static V2 routes
+/// still win route matching; every other API or development path is a 404.
+fn production_route_boundary<S>(router: Router<S>) -> Router<S>
+where
+    S: Clone + Send + Sync + 'static,
+{
+    router
+        .route("/api", any(public_not_found))
+        .route("/api/{*path}", any(public_not_found))
+        .route("/dev", any(public_not_found))
+        .route("/dev/{*path}", any(public_not_found))
+}
+
 pub fn app(state: uec_api::ApiState, proxy: private_environment::ProxyConfig) -> Router {
     let cors = cors_layer().expect("CORS configuration must be validated before app startup");
     let runtime_mode = std::env::var("UEC_RUNTIME_MODE").unwrap_or_else(|_| "development".into());
@@ -77,35 +94,14 @@ pub fn app(state: uec_api::ApiState, proxy: private_environment::ProxyConfig) ->
     validate_community_bind(community.enabled, &runtime_mode, &bind_host)
         .expect("community pilot requires development mode and a loopback bind");
     let metrics = Arc::new(OperationalMetrics::default());
-    Router::new()
-        .merge(uec_api::community::routes(community))
+    // Production is intentionally a smaller router, not the development
+    // router guarded only by tokens. This keeps private evidence, developer
+    // previews, legacy V1 data, and community intake out of the public host.
+    let public_router = Router::new()
         .route("/health/live", get(liveness))
         .route("/health/ready", get(readiness))
         .route("/health/diagnostics", get(diagnostics))
-        .route("/api/locations", get(uec_api::get_locations_handler))
         .route("/api/v2/locations", get(uec_api::get_v2_locations_handler))
-        .nest(
-            "/dev/real-preview",
-            Router::new()
-                .route("/locations", get(uec_api::get_real_preview_list_handler))
-                .route("/viewport", get(uec_api::get_real_preview_viewport_handler))
-                .route("/map/feed", get(uec_api::get_real_preview_map_feed_handler))
-                .route(
-                    "/map/tiles/{z}/{x}/{y}",
-                    get(uec_api::get_real_preview_map_tile_handler),
-                )
-                .route(
-                    "/map/references/{reference_key}",
-                    get(uec_api::get_real_preview_reference_handler),
-                )
-                .route(
-                    "/locations/{id}",
-                    get(uec_api::get_real_preview_detail_handler),
-                )
-                .route("/facets", get(uec_api::get_real_preview_facets_handler))
-                .route("/counts", get(uec_api::get_real_preview_counts_handler))
-                .layer(axum::middleware::from_fn(private_preview_no_store)),
-        )
         .route(
             "/api/v2/releases/manifest",
             get(uec_api::get_v2_release_manifest_handler),
@@ -145,6 +141,25 @@ pub fn app(state: uec_api::ApiState, proxy: private_environment::ProxyConfig) ->
         .route(
             "/api/v2/graph/entities/{entity_id}/neighborhood",
             get(uec_api::graph_public::neighborhood),
+        );
+    let router = if runtime_mode == "production" {
+        production_route_boundary(public_router)
+    } else {
+        public_router
+        .merge(uec_api::community::routes(community))
+        .route("/api/locations", get(uec_api::get_locations_handler))
+        .nest(
+            "/dev/real-preview",
+            Router::new()
+                .route("/locations", get(uec_api::get_real_preview_list_handler))
+                .route("/viewport", get(uec_api::get_real_preview_viewport_handler))
+                .route("/map/feed", get(uec_api::get_real_preview_map_feed_handler))
+                .route("/map/tiles/{z}/{x}/{y}", get(uec_api::get_real_preview_map_tile_handler))
+                .route("/map/references/{reference_key}", get(uec_api::get_real_preview_reference_handler))
+                .route("/locations/{id}", get(uec_api::get_real_preview_detail_handler))
+                .route("/facets", get(uec_api::get_real_preview_facets_handler))
+                .route("/counts", get(uec_api::get_real_preview_counts_handler))
+                .layer(axum::middleware::from_fn(private_preview_no_store)),
         )
         .route(
             "/api/dev/preview/candidates",
@@ -203,7 +218,13 @@ pub fn app(state: uec_api::ApiState, proxy: private_environment::ProxyConfig) ->
             "/api/private/graph/traverse",
             get(uec_api::get_private_graph_traverse_handler),
         )
-        .fallback_service(ServeDir::new("static"))
+    };
+    router
+        // A public client-side route may use the Svelte history fallback, but
+        // unregistered API/private paths still resolve before it and return 404.
+        .fallback_service(
+            ServeDir::new("static").not_found_service(ServeFile::new("static/index.html")),
+        )
         // Keep cached map bytes unmodified. Tower negotiates a standard
         // transport encoding per request and adds Vary: Accept-Encoding.
         .layer(CompressionLayer::new().gzip(true).br(true))
@@ -968,7 +989,7 @@ mod config_tests {
 
     use super::{
         parse_cors_origins, preview_config, request_log_payload, request_route_class,
-        validate_bind_host, validate_runtime,
+        production_route_boundary, validate_bind_host, validate_runtime,
         API_STATEMENT_TIMEOUT, CompressionLayer,
     };
 
@@ -1006,6 +1027,24 @@ mod config_tests {
             .to_str()
             .unwrap()
             .contains("accept-encoding"));
+    }
+
+    #[tokio::test]
+    async fn production_boundary_keeps_public_v2_and_rejects_private_legacy_and_preview_paths() {
+        let router = production_route_boundary(
+            axum::Router::new().route("/api/v2/locations", axum::routing::get(|| async { StatusCode::OK })),
+        )
+        .fallback(axum::routing::get(|| async { StatusCode::OK }));
+        for path in ["/api/private/graph/entities", "/api/locations", "/api/dev/preview/candidates", "/dev/real-preview/locations"] {
+            let response = router.clone().oneshot(
+                axum::http::Request::builder().uri(path).body(Body::empty()).unwrap(),
+            ).await.unwrap();
+            assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
+        }
+        let response = router.oneshot(
+            axum::http::Request::builder().uri("/api/v2/locations").body(Body::empty()).unwrap(),
+        ).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
     }
 
     #[test]

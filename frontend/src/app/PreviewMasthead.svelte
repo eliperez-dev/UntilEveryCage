@@ -8,6 +8,8 @@
     privateTools = false,
     publicReleaseLabel = null,
     releaseDescription = null,
+    releaseOptions = [],
+    onreleasechange,
     ondebugchange,
   }: {
     current: "map" | "database" | "methodology" | "about" | "contribute";
@@ -17,6 +19,8 @@
     privateTools?: boolean;
     publicReleaseLabel?: string | null;
     releaseDescription?: string | null;
+    releaseOptions?: readonly { id: string; label: string }[];
+    onreleasechange?(releaseId: string): void;
     ondebugchange?(enabled: boolean): void;
   } = $props();
 
@@ -117,7 +121,7 @@
     </button>
     {#if releaseOpen}<aside id="shared-release-menu" class="header-menu release-menu" aria-label="Preview release">
       <header><strong>Preview release</strong><button type="button" aria-label="Close Preview release" onclick={() => closeMenus("release")}>×</button></header>
-      <section><label for="release-choice">Current release</label><select id="release-choice" aria-label="Current release"><option>{displayedReleaseLabel}</option></select><small>{releaseDescription ?? (publicReleaseLabel ? 'Verified release metadata from the active public map projection.' : 'Open the public map to load verified release metadata.')}</small></section>
+      <section><label for="release-choice">Current release</label><select id="release-choice" aria-label="Current release" onchange={event => onreleasechange?.(event.currentTarget.value)}>{#if releaseOptions.length}{#each releaseOptions as release}<option value={release.id}>{release.label}</option>{/each}{:else}<option>{displayedReleaseLabel}</option>{/if}</select><small>{releaseDescription ?? (publicReleaseLabel ? 'Verified release metadata from the active public map projection.' : 'Open the public map to load verified release metadata.')}</small></section>
       <section><h2>History</h2><p>Release history is available with each record.</p><small>Historical views respect current privacy restrictions.</small></section>
     </aside>{/if}
     {#if toolsOpen}<aside id="shared-tools-menu" class="header-menu tools-menu" aria-label="Tools">

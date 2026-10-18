@@ -24,6 +24,7 @@ const DISCLAIMER: &str = "Confidence is a deterministic ruleset estimate, not a 
 #[derive(Debug, Deserialize, Clone)]
 pub struct PublicGraphQuery {
     pub profile: Option<String>,
+    pub release_id: Option<String>,
     pub q: Option<String>,
     pub entity_type: Option<String>,
     pub entity_id: Option<Uuid>,
@@ -74,6 +75,7 @@ fn validate_common(query: &PublicGraphQuery) -> Result<(String, i64, String), &'
     let profile = profile(query.profile.as_deref())?.to_string();
     let limit = limit(query.limit)?;
     let q = clean_query(query.q.clone())?;
+    if query.release_id.as_deref().is_some_and(|value| value.is_empty() || value.len() > 160 || !value.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))) { return Err("release_id is invalid"); }
     if query.min_confidence.is_some_and(|v| !v.is_finite() || !(0.0..=1.0).contains(&v))
         || query.max_confidence.is_some_and(|v| !v.is_finite() || !(0.0..=1.0).contains(&v))
     {
@@ -172,7 +174,7 @@ pub async fn connections(State(state): State<ApiState>, Query(query): Query<Publ
     let Some(pool) = state.database else { return v2_error(StatusCode::SERVICE_UNAVAILABLE, "database_not_configured", "public graph unavailable"); };
     let Ok(mut client) = pool.get().await else { return v2_error(StatusCode::SERVICE_UNAVAILABLE, "database_pool_unavailable", "public graph unavailable"); };
     let Ok(transaction) = client.build_transaction().isolation_level(tokio_postgres::IsolationLevel::RepeatableRead).read_only(true).start().await else { return v2_error(StatusCode::SERVICE_UNAVAILABLE, "database_transaction_unavailable", "public graph unavailable"); };
-    let release_row = transaction.query_opt("SELECT r.release_id, r.ruleset_version FROM uec.releases r JOIN uec.public_discovery_read_models model ON model.release_id = r.release_id JOIN uec.release_manifests manifest ON manifest.release_id = r.release_id AND manifest.manifest_sha256 = model.manifest_sha256 WHERE r.status = 'promoted' AND r.test_only IS NOT TRUE AND r.profile = $1 ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1", &[&profile]).await;
+    let release_row = transaction.query_opt("SELECT r.release_id, r.ruleset_version FROM uec.releases r JOIN uec.public_discovery_read_models model ON model.release_id = r.release_id JOIN uec.release_manifests manifest ON manifest.release_id = r.release_id AND manifest.manifest_sha256 = model.manifest_sha256 LEFT JOIN uec.public_release_history history ON history.release_id=r.release_id AND history.profile=r.profile WHERE r.test_only IS NOT TRUE AND r.profile=$1 AND ($2::text IS NULL OR r.release_id=$2) AND (r.status='promoted' OR ($2::text IS NOT NULL AND history.release_id IS NOT NULL AND r.status='validated')) ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1", &[&profile, &query.release_id]).await;
     let Ok(Some(release_row)) = release_row else { return v2_error(StatusCode::NOT_FOUND, "release_not_found", "no promoted eligible public graph release"); };
     let release_id: String = release_row.get(0);
     let ruleset: String = release_row.get(1);
@@ -189,7 +191,7 @@ pub async fn entities(State(state): State<ApiState>, Query(query): Query<PublicG
     let (profile, limit, q) = match validate_common(&query) { Ok(value) => value, Err(message) => return bad(message) };
     let Some(pool) = state.database else { return v2_error(StatusCode::SERVICE_UNAVAILABLE, "database_not_configured", "public graph unavailable"); };
     let Ok(client) = pool.get().await else { return v2_error(StatusCode::SERVICE_UNAVAILABLE, "database_pool_unavailable", "public graph unavailable"); };
-    let release_row = client.query_opt("SELECT r.release_id, r.ruleset_version FROM uec.releases r JOIN uec.public_discovery_read_models model ON model.release_id = r.release_id JOIN uec.release_manifests manifest ON manifest.release_id = r.release_id AND manifest.manifest_sha256 = model.manifest_sha256 WHERE r.status = 'promoted' AND r.test_only IS NOT TRUE AND r.profile = $1 ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1", &[&profile]).await;
+    let release_row = client.query_opt("SELECT r.release_id, r.ruleset_version FROM uec.releases r JOIN uec.public_discovery_read_models model ON model.release_id = r.release_id JOIN uec.release_manifests manifest ON manifest.release_id = r.release_id AND manifest.manifest_sha256 = model.manifest_sha256 LEFT JOIN uec.public_release_history history ON history.release_id=r.release_id AND history.profile=r.profile WHERE r.test_only IS NOT TRUE AND r.profile=$1 AND ($2::text IS NULL OR r.release_id=$2) AND (r.status='promoted' OR ($2::text IS NOT NULL AND history.release_id IS NOT NULL AND r.status='validated')) ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1", &[&profile, &query.release_id]).await;
     let Ok(Some(release_row)) = release_row else { return v2_error(StatusCode::NOT_FOUND, "release_not_found", "no promoted eligible public graph release"); };
     let release_id: String = release_row.get(0);
     let ruleset: String = release_row.get(1);
@@ -218,6 +220,6 @@ mod tests {
     }
 
     impl Default for PublicGraphQuery {
-        fn default() -> Self { Self { profile: None, q: None, entity_type: None, entity_id: None, connection_type: None, min_confidence: None, max_confidence: None, confidence_band: None, include_conflicting: None, source_id: None, cursor: None, limit: None, direction: None, depth: None } }
+        fn default() -> Self { Self { profile: None, release_id: None, q: None, entity_type: None, entity_id: None, connection_type: None, min_confidence: None, max_confidence: None, confidence_band: None, include_conflicting: None, source_id: None, cursor: None, limit: None, direction: None, depth: None } }
     }
 }

@@ -20,6 +20,11 @@ describe('LocalCsvExportRepository', () => {
     expect(String(fetcher.mock.calls[0]?.[0])).toContain('profile=secondary');
     await expect(new LocalCsvExportRepository(vi.fn().mockResolvedValue(new Response('{}', { status: 200, headers: { 'x-uec-release-id': 'release-1', 'content-type': 'application/json' } }))).download('official')).rejects.toMatchObject({ kind: 'invalid-contract' });
   });
+  it('pins an export to the requested historical release', async () => {
+    const fetcher = vi.fn().mockResolvedValue(response());
+    await new LocalCsvExportRepository(fetcher).download('official', undefined, 'release-a');
+    expect(String(fetcher.mock.calls[0]?.[0])).toContain('release_id=release-a');
+  });
   it('rejects a non-loopback API origin before sending an export request', () => {
     expect(() => new LocalCsvExportRepository(vi.fn(), 'https://external.example')).toThrow('Local API origin must be loopback HTTP.');
   });

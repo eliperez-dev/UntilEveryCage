@@ -3,6 +3,7 @@
   import type { LocalProfile } from '../api/LocalLocationRepository';
   let { returnMapHref = '#/map' }: { returnMapHref?: string } = $props();
   const href = (path: string) => `#/${path}${returnMapHref !== '#/map' ? `?map=${encodeURIComponent(returnMapHref)}` : ''}`;
+  const requestedReleaseId = $derived(new URLSearchParams(returnMapHref.split('?')[1] ?? '').get('release_id') ?? undefined);
   let profile = $state<LocalProfile>('official');
   const repository = new PublicReleaseRepository();
   let releaseId = $state<string | null>(null);
@@ -12,10 +13,10 @@
   $effect(() => {
     void retry;
     const controller = new AbortController(); loading = true; error = ''; releaseId = null;
-    void repository.current(profile, controller.signal).then(result => { if (!controller.signal.aborted) releaseId = result?.releaseId ?? null; }).catch(() => { if (!controller.signal.aborted) error = 'Release availability could not be checked. Try again.'; }).finally(() => { if (!controller.signal.aborted) loading = false; });
+    void repository.current(profile, controller.signal, requestedReleaseId).then(result => { if (!controller.signal.aborted) releaseId = result?.releaseId ?? null; }).catch(() => { if (!controller.signal.aborted) error = 'Release availability could not be checked. Try again.'; }).finally(() => { if (!controller.signal.aborted) loading = false; });
     return () => controller.abort();
   });
-  const query = $derived(`profile=${profile}`);
+  const query = $derived(new URLSearchParams({ profile, ...(releaseId ? { release_id: releaseId } : {}) }).toString());
 </script>
 <svelte:head><title>Downloads · Until Every Cage</title></svelte:head>
 <section class="downloads-page" aria-labelledby="downloads-title">

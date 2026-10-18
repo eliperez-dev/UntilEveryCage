@@ -4,6 +4,10 @@ import type { ProxyOptions } from 'vite';
 import { publicReferenceAssets } from './scripts/publicReferenceAssets';
 
 export default defineConfig(({ command }) => {
+  // The public container serves this build from the Rust service's origin.
+  // Keep preview/dev under their existing /v2-preview/ contract unless the
+  // explicit production build marker is present.
+  const publicBuild = process.env.UEC_PUBLIC_BUILD === 'true';
   // The secret exists only in this local dev-server process. It is never placed
   // in import.meta.env, the generated bundle, browser storage, URLs, or logs.
   const previewToken = command === 'serve' ? process.env.UEC_DEV_PREVIEW_TOKEN : undefined;
@@ -45,7 +49,9 @@ export default defineConfig(({ command }) => {
   };
 
   return {
-    base: process.env.UEC_COMBINED_PREVIEW === 'true' ? '/v2-preview/' : (localRealPreview || localCandidatePreview) ? '/' : '/v2-preview/',
+    base: publicBuild || (localRealPreview || localCandidatePreview)
+      ? '/'
+      : '/v2-preview/',
     publicDir: 'public',
     plugins: [svelte(), previewModeMeta, publicReferenceAssets()],
     define: realPreviewMapSource

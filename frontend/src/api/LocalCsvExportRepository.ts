@@ -12,9 +12,10 @@ export class LocalCsvExportRepository {
   readonly #base: string | undefined;
   constructor(private readonly fetcher: FetchLike = globalThis.fetch, baseUrl = '') { this.#base = baseUrl ? localOrigin(baseUrl) : undefined; }
 
-  async download(profile: LocalProfile = 'official', signal?: AbortSignal): Promise<CsvExport> {
+  async download(profile: LocalProfile = 'official', signal?: AbortSignal, requestedReleaseId?: string): Promise<CsvExport> {
     const init: RequestInit = { cache: 'no-store' }; if (signal) init.signal = signal;
-    const response = await this.fetcher.call(globalThis, `${this.#base ?? ''}/api/v2/locations.csv?profile=${profile}`, init);
+    const params = new URLSearchParams({ profile }); if (requestedReleaseId) params.set('release_id', requestedReleaseId);
+    const response = await this.fetcher.call(globalThis, `${this.#base ?? ''}/api/v2/locations.csv?${params}`, init);
     if (!response.ok) {
       let message = `Local V2 export request failed with status ${response.status}.`;
       let code: string | undefined;

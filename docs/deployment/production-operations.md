@@ -239,3 +239,93 @@ prove that a hosting provider, proxy, CDN, or error service retains nothing.
 There is no configured backup reviewer, legal service, publication guarantee,
 response SLA, anonymity guarantee, or production capacity claim in this
 runbook. Those remain explicit deployment decisions and policy obligations.
+
+## Render preparation (not a deployment instruction)
+
+This is the bounded hosting shape approved for later operator use: one paid
+Render Docker web service running this binary and the approved Svelte build on
+the same origin, plus one paid Render Postgres database with PostGIS. It does
+not authorize creating a Render account, database, service, custom domain,
+backup job, disk, scheduled job, or external storage bucket. Acquisition,
+source refresh, raw evidence, geocoding queries/responses, and private preview
+remain outside the public host. Do not add Redis, a worker, Kubernetes, or a
+second public framework to this deployment.
+
+The repository Dockerfile has three locked-input stages: `npm ci` against
+`frontend/package-lock.json`, `cargo build --release --locked` against
+`Cargo.lock`, and a minimal runtime containing only `uec-api` and the public
+Svelte `dist/` output. The operator must record the immutable pushed-image
+digest with the exact repository revision before a deploy; exact image tags do
+not replace recording that digest. Render builds Docker images with BuildKit;
+do not declare or consume a build argument for any secret.
+
+Render web-service settings to enter after an authorized account exists:
+
+| Setting | Required value / decision |
+| --- | --- |
+| Service type | Docker web service; use the repository Dockerfile and its `CMD`. |
+| Health check | `/health/ready` (not liveness): Render accepts HTTP 2xx/3xx, and this endpoint refuses traffic until the database schema is present. |
+| Port | Leave `PORT` supplied by Render; the application binds `0.0.0.0` in production. |
+| Region | Select the approved hosting/backup region and place the database in the same region; no region has been approved here. |
+| Public origin / CORS | Set `UEC_CORS_ORIGINS` to the final exact `https://` public origin(s), no wildcard and no path. Same-origin browser API use needs no extra origin. |
+| Proxy trust | Start with `UEC_TRUST_PROXY=false` and omit `UEC_TRUSTED_PROXY_CIDRS`. Enable it only after Render supplies a stable, verified proxy CIDR boundary that is recorded in the restricted change record; never use a wildcard or guessed range. |
+| Filesystem | Treat it as ephemeral. Do not attach a persistent disk for release artifacts or the ledger; it is not an independent backup. |
+| Auto-deploy / previews | Keep disabled until an authorized maintainer accepts the explicit release procedure. No preview environment receives production controls or data. |
+
+Required runtime variables are the values in the configuration preflight above,
+including `UEC_RUNTIME_MODE=production`, the private internal Render Postgres
+connection string in `UEC_DATABASE_URL`, exact `UEC_CORS_ORIGINS`, and the
+explicit proxy setting. Do not set `UEC_DEV_PREVIEW`,
+`UEC_DEV_PREVIEW_TOKEN`, `UEC_TEST_RELEASE_ID`, `UEC_TEST_RELEASE_TOKEN`,
+community-pilot settings, acquisition credentials, or geocoder credentials on
+the web service.
+
+Supply these control-plane files as Render secret files, never in the image,
+repository, Docker build arguments, or browser bundle. At runtime Render
+mounts secret files under `/etc/secrets/`; use exactly these variable/path
+pairs:
+
+| Secret-file name | Runtime variable | Purpose |
+| --- | --- | --- |
+| `uec-current-restriction-ledger.json` | `UEC_RESTRICTION_LEDGER_PATH=/etc/secrets/uec-current-restriction-ledger.json` | Current independent opaque restriction ledger. |
+| `uec-restored-restriction-snapshot.json` | `UEC_RESTORED_RESTRICTION_SNAPSHOT_PATH=/etc/secrets/uec-restored-restriction-snapshot.json` | Fresh, row-free post-replay snapshot. |
+| `uec-release-manifest.json` | `UEC_RELEASE_MANIFEST_PATH=/etc/secrets/uec-release-manifest.json` | Trusted serving-release manifest. |
+
+Set `UEC_RELEASE_MANIFEST_SHA256` from the separately verified lowercase
+SHA-256 digest. The startup gate requires the ledger and snapshot to be
+different files and fails closed on mismatch. Render's secret-file limits and
+permissions must be checked by the operator before use. The Docker runtime
+user is deliberately a member of group ID 1000, which is the documented
+Render Docker secret-file access group; if a supplied file is still unreadable,
+stop rather than copying it into an image or a world-readable directory.
+
+Create PostGIS with the selected Render Postgres major version and exercise
+the repository migrations on an isolated target first. Render supports
+`postgis` on supported PostgreSQL versions, but support does not prove this
+schema or its extensions can migrate. There is currently no committed
+least-privilege production grant inventory: public handlers read several base
+and projection relations, including restriction/review state, so a generic
+`GRANT SELECT ON ALL TABLES` is not an accepted substitute. The rehearsal must
+document the exact API role's successful `CONNECT`, schema `USAGE`, and
+relation/function privileges; migrations and release operations use separate
+credentials and are not supplied to the web service.
+
+For recovery, Render paid Postgres PITR is supplementary only (Hobby: three
+days; Pro or higher: seven days) and restores to a new database. Do not create
+the optional Render backup cron job without separate authorization. The
+existing synthetic restore/replay drill remains the required local rehearsal:
+restore into an isolated target, replay the current independent ledger, write
+a new snapshot, pass the private-environment gate, then run cold and warm
+browser checks plus the negative public-route checks. Rollback selects the
+previous Render deployment/image only after the same current-ledger replay and
+readiness checks; it never reenables a legacy V1 route.
+
+Current primary references: [Render Docker services](https://render.com/docs/docker),
+[web-service health checks](https://render.com/docs/health-checks),
+[environment variables and secret files](https://render.com/docs/configure-environment-variables),
+[Render Postgres extensions](https://render.com/docs/postgresql-extensions),
+[Render Postgres recovery](https://render.com/docs/postgresql-backups),
+[persistent disks](https://render.com/docs/disks), and
+[Render pricing](https://render.com/pricing). These describe platform
+capabilities and prices that an operator must recheck at purchase time; they
+do not constitute an account configuration or cost approval.

@@ -253,7 +253,7 @@ pub async fn get_v2_release_manifest_handler(
             );
         }
     };
-    let row = match client.query_opt("SELECT r.release_id, r.profile, m.manifest::text, m.manifest_sha256 FROM uec.releases r JOIN uec.release_manifests m ON m.release_id=r.release_id WHERE r.status='promoted' AND r.test_only IS NOT TRUE AND r.profile=$1 ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1", &[&profile]).await {
+    let row = match client.query_opt("SELECT r.release_id, r.profile, m.manifest::text, m.manifest_sha256 FROM uec.releases r JOIN uec.release_manifests m ON m.release_id=r.release_id LEFT JOIN uec.public_release_history history ON history.release_id=r.release_id AND history.profile=r.profile WHERE r.test_only IS NOT TRUE AND r.profile=$1 AND ($2::text IS NULL OR r.release_id=$2) AND (r.status='promoted' OR ($2::text IS NOT NULL AND history.release_id IS NOT NULL AND r.status='validated')) ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1", &[&profile, &params.release_id]).await {
         Ok(row) => row, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "release_manifest_unavailable", "release manifest unavailable")
     };
     let Some(row) = row else {
@@ -424,7 +424,7 @@ pub async fn get_v2_public_map_feed_handler(
         return v2_error(StatusCode::SERVICE_UNAVAILABLE, "database_transaction_unavailable", "V2 database transaction unavailable");
     }
     let release = match transaction.query_opt(
-        "SELECT manifest.manifest::text, manifest.manifest_sha256, model.manifest_sha256 FROM uec.releases release JOIN uec.public_discovery_read_models model ON model.release_id=release.release_id JOIN uec.release_manifests manifest ON manifest.release_id=release.release_id AND manifest.manifest_sha256=model.manifest_sha256 WHERE release.release_id=$1 AND release.profile=$2 AND release.status='promoted' AND release.test_only IS NOT TRUE",
+        "SELECT manifest.manifest::text, manifest.manifest_sha256, model.manifest_sha256 FROM uec.releases release JOIN uec.public_discovery_read_models model ON model.release_id=release.release_id JOIN uec.release_manifests manifest ON manifest.release_id=release.release_id AND manifest.manifest_sha256=model.manifest_sha256 LEFT JOIN uec.public_release_history history ON history.release_id=release.release_id AND history.profile=release.profile WHERE release.release_id=$1 AND release.profile=$2 AND (release.status='promoted' OR (history.release_id IS NOT NULL AND release.status='validated')) AND release.test_only IS NOT TRUE",
         &[&release_id, &profile],
     ).await {
         Ok(row) => row,
@@ -700,7 +700,7 @@ pub async fn get_v2_map_tile_handler(
         Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "database_pool_unavailable", "database pool unavailable"),
     };
     let release_row = match client.query_opt(
-        "SELECT manifest.manifest::text,manifest.manifest_sha256 FROM uec.releases release JOIN uec.release_manifests manifest ON manifest.release_id=release.release_id WHERE release.release_id=$1 AND release.profile=$2 AND release.status='promoted' AND release.test_only IS NOT TRUE",
+        "SELECT manifest.manifest::text,manifest.manifest_sha256 FROM uec.releases release JOIN uec.release_manifests manifest ON manifest.release_id=release.release_id LEFT JOIN uec.public_release_history history ON history.release_id=release.release_id AND history.profile=release.profile WHERE release.release_id=$1 AND release.profile=$2 AND (release.status='promoted' OR (history.release_id IS NOT NULL AND release.status='validated')) AND release.test_only IS NOT TRUE",
         &[&path.release_id, &profile],
     ).await {
         Ok(row) => row,
@@ -886,7 +886,7 @@ pub async fn get_v2_locations_export_handler(
             "V2 database transaction unavailable",
         );
     }
-    let release = match transaction.query_opt("SELECT r.release_id, m.manifest_sha256, (model.release_id IS NOT NULL AND manifest.release_id IS NOT NULL) FROM uec.releases r LEFT JOIN uec.public_discovery_read_models model ON model.release_id=r.release_id LEFT JOIN uec.release_manifests manifest ON manifest.release_id=r.release_id AND manifest.manifest_sha256=model.manifest_sha256 LEFT JOIN uec.release_manifests m ON m.release_id=r.release_id WHERE r.status='promoted' AND r.test_only IS NOT TRUE AND r.profile=$1 ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1", &[&profile]).await {
+    let release = match transaction.query_opt("SELECT r.release_id, m.manifest_sha256, (model.release_id IS NOT NULL AND manifest.release_id IS NOT NULL) FROM uec.releases r LEFT JOIN uec.public_discovery_read_models model ON model.release_id=r.release_id LEFT JOIN uec.release_manifests manifest ON manifest.release_id=r.release_id AND manifest.manifest_sha256=model.manifest_sha256 LEFT JOIN uec.release_manifests m ON m.release_id=r.release_id LEFT JOIN uec.public_release_history history ON history.release_id=r.release_id AND history.profile=r.profile WHERE r.test_only IS NOT TRUE AND r.profile=$1 AND ($2::text IS NULL OR r.release_id=$2) AND (r.status='promoted' OR ($2::text IS NOT NULL AND history.release_id IS NOT NULL AND r.status='validated')) ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1", &[&profile, &params.release_id]).await {
         Ok(row) => row, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "release_query_failed", "release query failed")
     };
     let Some(release) = release else {
@@ -4470,7 +4470,7 @@ pub async fn get_v2_facets_handler(
             "V2 database transaction unavailable",
         );
     }
-    let release = match transaction.query_opt("SELECT r.release_id, r.ruleset_version, r.created_at, (model.release_id IS NOT NULL AND manifest.release_id IS NOT NULL) FROM uec.releases r LEFT JOIN uec.public_discovery_read_models model ON model.release_id=r.release_id LEFT JOIN uec.release_manifests manifest ON manifest.release_id=r.release_id AND manifest.manifest_sha256=model.manifest_sha256 WHERE r.status='promoted' AND r.test_only IS NOT TRUE AND r.profile=$1 ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1", &[&profile]).await { Ok(row) => row, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "release_query_failed", "release query failed") };
+    let release = match transaction.query_opt("SELECT r.release_id, r.ruleset_version, r.created_at, (model.release_id IS NOT NULL AND manifest.release_id IS NOT NULL) FROM uec.releases r LEFT JOIN uec.public_discovery_read_models model ON model.release_id=r.release_id LEFT JOIN uec.release_manifests manifest ON manifest.release_id=r.release_id AND manifest.manifest_sha256=model.manifest_sha256 LEFT JOIN uec.public_release_history history ON history.release_id=r.release_id AND history.profile=r.profile WHERE r.test_only IS NOT TRUE AND r.profile=$1 AND ($2::text IS NULL OR r.release_id=$2) AND (r.status='promoted' OR ($2::text IS NOT NULL AND history.release_id IS NOT NULL AND r.status='validated')) ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1", &[&profile, &params.release_id]).await { Ok(row) => row, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "release_query_failed", "release query failed") };
     let Some(release) = release else {
         return v2_error(
             StatusCode::NOT_FOUND,
@@ -4890,7 +4890,7 @@ pub async fn get_v2_locations_handler(
         );
     }
     let requested_profile = params.profile.as_deref().unwrap_or("official");
-    let release = transaction.query_opt("SELECT r.release_id, r.ruleset_version, r.created_at, r.profile, (model.release_id IS NOT NULL AND manifest.release_id IS NOT NULL), COALESCE(r.summary->>'candidate_only'='true',false) FROM uec.releases r LEFT JOIN uec.public_discovery_read_models model ON model.release_id=r.release_id LEFT JOIN uec.release_manifests manifest ON manifest.release_id=r.release_id AND manifest.manifest_sha256=model.manifest_sha256 WHERE r.status = 'promoted' AND r.test_only IS NOT TRUE AND r.profile = $1 AND ($2::text IS NULL OR r.release_id = $2) ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1", &[&requested_profile, &params.release_id]).await;
+    let release = transaction.query_opt("SELECT r.release_id, r.ruleset_version, r.created_at, r.profile, (model.release_id IS NOT NULL AND manifest.release_id IS NOT NULL), COALESCE(r.summary->>'candidate_only'='true',false) FROM uec.releases r LEFT JOIN uec.public_discovery_read_models model ON model.release_id=r.release_id LEFT JOIN uec.release_manifests manifest ON manifest.release_id=r.release_id AND manifest.manifest_sha256=model.manifest_sha256 LEFT JOIN uec.public_release_history history ON history.release_id=r.release_id AND history.profile=r.profile WHERE r.test_only IS NOT TRUE AND r.profile = $1 AND ($2::text IS NULL OR r.release_id = $2) AND (r.status='promoted' OR ($2::text IS NOT NULL AND history.release_id IS NOT NULL AND r.status='validated')) ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1", &[&requested_profile, &params.release_id]).await;
     let release = match release {
         Ok(release) => release,
         Err(_) => {
@@ -5234,7 +5234,7 @@ pub async fn get_v2_location_detail_handler(
             "profile is unsupported",
         );
     }
-    let release = match transaction.query_opt("SELECT r.release_id, r.ruleset_version, r.created_at, r.profile, (model.release_id IS NOT NULL AND manifest.release_id IS NOT NULL) FROM uec.releases r LEFT JOIN uec.public_discovery_read_models model ON model.release_id=r.release_id LEFT JOIN uec.release_manifests manifest ON manifest.release_id=r.release_id AND manifest.manifest_sha256=model.manifest_sha256 WHERE r.status = 'promoted' AND r.test_only IS NOT TRUE AND r.profile = $1 AND ($2::text IS NULL OR r.release_id=$2) ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1", &[&requested_profile, &params.release_id]).await {
+    let release = match transaction.query_opt("SELECT r.release_id, r.ruleset_version, r.created_at, r.profile, (model.release_id IS NOT NULL AND manifest.release_id IS NOT NULL) FROM uec.releases r LEFT JOIN uec.public_discovery_read_models model ON model.release_id=r.release_id LEFT JOIN uec.release_manifests manifest ON manifest.release_id=r.release_id AND manifest.manifest_sha256=model.manifest_sha256 LEFT JOIN uec.public_release_history history ON history.release_id=r.release_id AND history.profile=r.profile WHERE r.test_only IS NOT TRUE AND r.profile = $1 AND ($2::text IS NULL OR r.release_id=$2) AND (r.status='promoted' OR ($2::text IS NOT NULL AND history.release_id IS NOT NULL AND r.status='validated')) ORDER BY r.created_at DESC, r.release_id DESC LIMIT 1", &[&requested_profile, &params.release_id]).await {
         Ok(release) => release,
         Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "release_query_failed", "V2 release query failed"),
     };
@@ -5369,6 +5369,8 @@ pub struct ProfileParams {
 #[derive(Deserialize)]
 pub struct V2ExportParams {
     pub profile: Option<String>,
+    /// Pin a historical download to a release that actually crossed promotion.
+    pub release_id: Option<String>,
     /// Supplying a limit opts into a deterministic first page, including when
     /// the selected release has more rows than the legacy export cap.
     pub limit: Option<String>,
