@@ -33,6 +33,20 @@ below; exact-head CI gates integration. The dataset v1 scope decision and
 deployment verification remain open.
 New countries and four-mode 2D/3D map work are deferred until after launch.
 
+**Hosting choice and budget (maintainer decision, 2026-10-18):** consolidate
+the V2 frontend/API and serving database on Render rather than retaining the
+Railway/Netlify split. The accepted starting configuration is one 1-CPU/2-GB
+Docker web service ($25/month) and one 1-GB managed PostgreSQL/PostGIS service
+($19/month), on a Hobby workspace: $44/month base compute, with storage,
+bandwidth, taxes and external map-provider charges separate. Keep the earlier
+roughly $50/month total target in view; this is not a guaranteed all-in bill or
+authorization for automatic scaling. Recheck pricing and projected storage
+before provisioning. Retire the old hosting only after the Render deployment,
+custom domain, recovery and rollback checks pass and other account dependencies
+are understood; the maintainer intends to handle cancellation. Next decisions:
+account/billing access, region, exact dataset v1 publication approval and
+deployment/cutover authorization.
+
 **Germany sequencing (maintainer approval, 2026-10-18):** defer Germany from
 dataset v1 and make it the first source-expansion target for the next dataset
 release. Legacy website coverage does not establish V2 pipeline readiness.
