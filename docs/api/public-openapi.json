@@ -209,6 +209,9 @@
             "$ref": "#/components/parameters/profile"
           },
           {
+            "$ref": "#/components/parameters/release_id"
+          },
+          {
             "$ref": "#/components/parameters/exportLimit"
           }
         ],
@@ -335,6 +338,9 @@
             "$ref": "#/components/parameters/profile"
           },
           {
+            "$ref": "#/components/parameters/release_id"
+          },
+          {
             "$ref": "#/components/parameters/ifNoneMatch"
           }
         ],
@@ -426,6 +432,9 @@
             "$ref": "#/components/parameters/profile"
           },
           {
+            "$ref": "#/components/parameters/release_id"
+          },
+          {
             "$ref": "#/components/parameters/country_code"
           },
           {
@@ -474,13 +483,16 @@
       "get": {
         "operationId": "listGraphConnections",
         "summary": "Read public connections",
-        "description": "Latest promoted release-scoped public projection; no release_id pin is implemented. Check response release/ruleset before combining pages. Inferred confidence is a deterministic ruleset estimate, not a measured probability or proof of ownership, identity or supply-chain control. Preserve publication warnings.",
+        "description": "Selected eligible public release-scoped projection. Inferred confidence is a deterministic ruleset estimate, not a measured probability or proof of ownership, identity or supply-chain control. Preserve publication warnings.",
         "tags": [
           "Graph"
         ],
         "parameters": [
           {
             "$ref": "#/components/parameters/profile"
+          },
+          {
+            "$ref": "#/components/parameters/release_id"
           },
           {
             "$ref": "#/components/parameters/connection_type"
@@ -540,13 +552,16 @@
       "get": {
         "operationId": "listGraphEntities",
         "summary": "Find public graph entities",
-        "description": "Public facilities and eligible organizations from the latest promoted profile. No release_id pin is implemented; check release/ruleset across cursor pages.",
+        "description": "Public facilities and eligible organizations from the selected eligible profile release.",
         "tags": [
           "Graph"
         ],
         "parameters": [
           {
             "$ref": "#/components/parameters/profile"
+          },
+          {
+            "$ref": "#/components/parameters/release_id"
           },
           {
             "$ref": "#/components/parameters/graphQ"
@@ -591,7 +606,7 @@
       "get": {
         "operationId": "getGraphNeighborhood",
         "summary": "Read adjacent public connections",
-        "description": "Latest promoted release-scoped public projection; no release_id pin is implemented. Check response release/ruleset before combining pages. Inferred confidence is a deterministic ruleset estimate, not a measured probability or proof of ownership, identity or supply-chain control. Preserve publication warnings. Returns connections adjacent to the path entity. Direction/depth are not effective traversal controls and are omitted; no multi-hop behavior is promised.",
+        "description": "Selected eligible public release-scoped projection. Inferred confidence is a deterministic ruleset estimate, not a measured probability or proof of ownership, identity or supply-chain control. Preserve publication warnings. Returns connections adjacent to the path entity. Direction/depth are not effective traversal controls and are omitted; no multi-hop behavior is promised.",
         "tags": [
           "Graph"
         ],
@@ -601,6 +616,9 @@
           },
           {
             "$ref": "#/components/parameters/profile"
+          },
+          {
+            "$ref": "#/components/parameters/release_id"
           },
           {
             "$ref": "#/components/parameters/connection_type"

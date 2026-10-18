@@ -6,6 +6,7 @@ WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
+COPY docs/api/public-openapi.json docs/api/v2-location.schema.json /app/docs/api/
 RUN UEC_PUBLIC_BUILD=true npm run build:public
 
 FROM rust:1.90.0-bookworm AS api-builder

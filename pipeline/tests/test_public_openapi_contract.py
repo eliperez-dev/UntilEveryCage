@@ -129,14 +129,14 @@ class PublicOpenApiContractTests(unittest.TestCase):
         facets = self.handler(self.rust, "get_v2_facets_handler")
         applied = set(re.findall(r"params\s*\.\s*(\w+)", facets))
         self.assertEqual(self.query_names("/api/v2/discovery/facets"), applied)
-        self.assertTrue({"q", "category_keys", "release_id", "limit", "radius_km"}.isdisjoint(applied))
+        self.assertTrue({"q", "category_keys", "limit", "radius_km"}.isdisjoint(applied))
         for path, name in [
             ("/api/v2/releases/manifest", "get_v2_release_manifest_handler"),
             ("/api/v2/locations.csv", "get_v2_locations_export_handler"),
         ]:
             used = set(re.findall(r"params\s*\.\s*(\w+)", self.handler(self.rust, name)))
             self.assertEqual(self.query_names(path), used)
-            self.assertEqual(used, {"profile"} if path.endswith("manifest") else {"profile", "limit"})
+            self.assertEqual(used, {"profile", "release_id"} if path.endswith("manifest") else {"profile", "release_id", "limit"})
         map_feed = self.handler(self.rust, "get_v2_public_map_feed_handler")
         self.assertEqual(self.query_names("/api/v2/map/feed"), self.fields(self.rust, "PublicMapFeedParams"))
         self.assertEqual(self.query_names("/api/v2/map/feed"), set(re.findall(r"params\s*\.\s*(\w+)", map_feed)))
@@ -145,7 +145,7 @@ class PublicOpenApiContractTests(unittest.TestCase):
 
     def test_graph_query_surface_follows_used_fields_without_fake_traversal(self):
         fields = self.fields(self.graph, "PublicGraphQuery")
-        common = {"profile", "cursor", "limit"}
+        common = {"profile", "release_id", "cursor", "limit"}
         connection_fields = common | {"connection_type", "min_confidence", "max_confidence", "confidence_band", "include_conflicting", "source_id", "entity_id"}
         self.assertEqual(self.query_names("/api/v2/graph/connections"), connection_fields)
         connections = self.handler(self.graph, "connections")
@@ -160,7 +160,7 @@ class PublicOpenApiContractTests(unittest.TestCase):
         self.assertTrue(connection_fields | entity_fields <= fields)
         neighborhood = self.handler(self.graph, "neighborhood")
         self.assertIn("connections(State(state), Query(query))", neighborhood)
-        self.assertTrue({"release_id", "direction", "depth"}.isdisjoint(adjacent))
+        self.assertTrue({"direction", "depth"}.isdisjoint(adjacent))
 
     def test_caps_profile_defaults_and_error_gates_match_implementation(self):
         params = self.spec["components"]["parameters"]
