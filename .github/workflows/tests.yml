@@ -99,7 +99,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build the locked production container
-        run: docker build --pull=false --tag uec-api-package:${{ github.sha }} .
+        shell: bash
+        run: |
+          set +e
+          docker build --pull=false --tag uec-api-package:${{ github.sha }} . 2>&1 | tee /tmp/uec-container-build.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            summary=$(grep -Ei 'error:|failed to|failed|error \[' /tmp/uec-container-build.log | tail -n 1 | sed -E 's#https?://[^ ]+#<url>#g; s/[^[:print:]]//g' | cut -c1-240)
+            : "${summary:=container build exited nonzero without a classified compiler or build error}"
+            echo "::error title=container package failed::$summary"
+            exit "$status"
+          fi
       - name: Smoke the packaged public boundary
         run: >-
           docker run --rm --entrypoint sh uec-api-package:${{ github.sha }} -c
