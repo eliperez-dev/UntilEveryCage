@@ -3964,91 +3964,113 @@ pub async fn get_dev_test_release_facets_handler(
         log_test_release_query_error("candidate_facets", &error);
         return v2_error(StatusCode::SERVICE_UNAVAILABLE, "test_release_query_failed", "test release unavailable");
     }
-    let rows=match transaction.query("SELECT f.country_code,o.classification_category,CASE WHEN o.coordinate_review_status='approved' AND g.result IS NOT NULL THEN 'exact' ELSE 'unmapped' END,source.origin_type,source.source_id,COALESCE(sr.raw_fields->'source_activity_codes','[]'::jsonb)::text,COALESCE(sr.raw_fields->'source_activity_labels','[]'::jsonb)::text,COALESCE(sr.raw_fields->'normalized','{}'::jsonb)::text FROM uec.release_members m JOIN uec.releases r ON r.release_id=m.release_id JOIN uec.observations o ON o.observation_id=m.observation_id JOIN uec.facilities f ON f.facility_id=m.facility_id JOIN uec.source_records sr ON sr.source_record_id=o.source_record_id JOIN uec.sources source ON source.source_id=sr.source_id LEFT JOIN LATERAL (SELECT result FROM uec.geocode_results WHERE source_record_id=o.source_record_id AND status='accepted' AND result IS NOT NULL ORDER BY queried_at DESC LIMIT 1) g ON true LEFT JOIN uec.publication_review_release_current review ON review.source_record_id=o.source_record_id AND review.release_id=m.release_id WHERE r.release_id=$1 AND r.status='candidate' AND (r.test_only=true OR r.summary->>'candidate_only'='true') AND sr.source_state NOT IN ('rejected','superseded') AND COALESCE(review.privacy_screening_status,'pending')<>'failed' AND COALESCE(review.factual_review_status,'unreviewed')<>'rejected' AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted x WHERE x.source_record_id=o.source_record_id) AND ($2::text IS NULL OR f.country_code=ANY(string_to_array($2,','))) AND ($3::text IS NULL OR (ARRAY[o.classification_category] || COALESCE(ARRAY(SELECT CASE value WHEN 'processing' THEN 'processing_and_preparation' ELSE value END FROM jsonb_array_elements_text(COALESCE(sr.raw_fields->'normalized'->'activity_categories','[]'::jsonb)) value WHERE value='processing' OR value=ANY(ARRAY['animal_keeping_and_production','slaughter','processing_and_preparation','research_and_animal_use','other_regulated_premises','unclassified'])),ARRAY[]::text[])) && string_to_array($3,',')) AND ($4::text IS NULL OR source.source_id=ANY(string_to_array($4,','))) AND ($5::text IS NULL OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(sr.raw_fields->'source_activity_codes','[]'::jsonb)) code WHERE source.source_id || ':' || replace(replace(replace(replace(replace(code,'%','%25'),' ','%20'),'/','%2F'),':','%3A'),',','%2C') = ANY(string_to_array($5,',')))) AND ($6::text IS NULL OR COALESCE(NULLIF(sr.raw_fields->'normalized'->>'facility_display_name',''),NULLIF(f.canonical_name,''),'') ILIKE '%' || $6 || '%' ESCAPE '\\' OR COALESCE(f.city,'') ILIKE '%' || $6 || '%' ESCAPE '\\' OR COALESCE(sr.raw_fields->'normalized'->>'alternate_names','') ILIKE '%' || $6 || '%' ESCAPE '\\' OR source.source_id ILIKE '%' || $6 || '%' ESCAPE '\\' OR o.classification_category ILIKE '%' || $6 || '%' ESCAPE '\\')", &[&release_id,&params.country_code,&params.category,&params.source_id,&params.activity,&search_text]).await {Ok(r)=>r,Err(error)=>{log_test_release_query_error("candidate_facets", &error);return v2_error(StatusCode::SERVICE_UNAVAILABLE,"test_release_query_failed","test release unavailable")}};
-    let rows = rows
-        .into_iter()
-        .filter(|row| {
-            serde_json::from_str::<Value>(&row.get::<_, String>(7))
-                .ok()
-                .and_then(|normalized| normalized.get("in_default_map_scope").and_then(Value::as_str).map(str::to_owned))
-                .as_deref()
-                != Some("false")
-        })
-        .collect::<Vec<_>>();
+    // Facets are a small aggregate result.  Do not transfer every matching record (and its
+    // raw JSON) to Rust only to group it again: candidate releases can contain 100k+ records.
+    let facet_rows = match transaction.query(r#"
+        WITH matched AS MATERIALIZED (
+            SELECT m.facility_id, o.source_record_id, f.country_code,
+                   o.classification_category, o.coordinate_review_status,
+                   source.origin_type, source.source_id,
+                   COALESCE(sr.raw_fields->'source_activity_codes', '[]'::jsonb) AS activity_codes,
+                   COALESCE(sr.raw_fields->'source_activity_labels', '[]'::jsonb) AS activity_labels,
+                   COALESCE(sr.raw_fields->'normalized'->'activity_categories', '[]'::jsonb) AS activity_categories
+            FROM uec.release_members m
+            JOIN uec.releases r ON r.release_id=m.release_id
+            JOIN uec.observations o ON o.observation_id=m.observation_id
+            JOIN uec.facilities f ON f.facility_id=m.facility_id
+            JOIN uec.source_records sr ON sr.source_record_id=o.source_record_id
+            JOIN uec.sources source ON source.source_id=sr.source_id
+            LEFT JOIN uec.publication_review_release_current review ON review.source_record_id=o.source_record_id AND review.release_id=m.release_id
+            WHERE r.release_id=$1 AND r.status='candidate'
+              AND (r.test_only=true OR r.summary->>'candidate_only'='true')
+              AND sr.source_state NOT IN ('rejected','superseded')
+              AND COALESCE(review.privacy_screening_status,'pending')<>'failed'
+              AND COALESCE(review.factual_review_status,'unreviewed')<>'rejected'
+              AND COALESCE(sr.raw_fields->'normalized'->>'in_default_map_scope','') <> 'false'
+              AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted x WHERE x.source_record_id=o.source_record_id)
+              AND ($2::text IS NULL OR f.country_code=ANY(string_to_array($2,',')))
+              AND ($3::text IS NULL OR (ARRAY[o.classification_category] || COALESCE(ARRAY(SELECT CASE value WHEN 'processing' THEN 'processing_and_preparation' ELSE value END FROM jsonb_array_elements_text(COALESCE(sr.raw_fields->'normalized'->'activity_categories','[]'::jsonb)) value WHERE value='processing' OR value=ANY(ARRAY['animal_keeping_and_production','slaughter','processing_and_preparation','research_and_animal_use','other_regulated_premises','unclassified'])),ARRAY[]::text[])) && string_to_array($3,','))
+              AND ($4::text IS NULL OR source.source_id=ANY(string_to_array($4,',')))
+              AND ($5::text IS NULL OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(sr.raw_fields->'source_activity_codes','[]'::jsonb)) code WHERE source.source_id || ':' || replace(replace(replace(replace(replace(code,'%','%25'),' ','%20'),'/','%2F'),':','%3A'),',','%2C') = ANY(string_to_array($5,','))))
+              AND ($6::text IS NULL OR COALESCE(NULLIF(sr.raw_fields->'normalized'->>'facility_display_name',''),NULLIF(f.canonical_name,''),'') ILIKE '%' || $6 || '%' ESCAPE '\\' OR COALESCE(f.city,'') ILIKE '%' || $6 || '%' ESCAPE '\\' OR COALESCE(sr.raw_fields->'normalized'->>'alternate_names','') ILIKE '%' || $6 || '%' ESCAPE '\\' OR source.source_id ILIKE '%' || $6 || '%' ESCAPE '\\' OR o.classification_category ILIKE '%' || $6 || '%' ESCAPE '\\')
+        ),
+        accepted_geocodes AS MATERIALIZED (
+            SELECT DISTINCT ON (g.source_record_id) g.source_record_id
+            FROM uec.geocode_results g
+            JOIN (SELECT DISTINCT source_record_id FROM matched) candidate ON candidate.source_record_id=g.source_record_id
+            WHERE g.status='accepted' AND g.result IS NOT NULL
+            ORDER BY g.source_record_id, g.queried_at DESC, g.geocode_result_id DESC
+        ),
+        resolved AS MATERIALIZED (
+            SELECT matched.*, CASE WHEN coordinate_review_status='approved' AND accepted_geocodes.source_record_id IS NOT NULL THEN 'exact' ELSE 'unmapped' END AS display_precision
+            FROM matched LEFT JOIN accepted_geocodes USING (source_record_id)
+        ),
+        category_values AS (
+            SELECT DISTINCT facility_id, CASE WHEN classification_category=ANY(ARRAY['animal_keeping_and_production','slaughter','processing_and_preparation','research_and_animal_use','other_regulated_premises','unclassified']) THEN classification_category ELSE 'unclassified' END AS value
+            FROM resolved
+            UNION
+            SELECT DISTINCT facility_id, CASE value WHEN 'processing' THEN 'processing_and_preparation' ELSE value END
+            FROM resolved CROSS JOIN LATERAL jsonb_array_elements_text(activity_categories) value
+            WHERE value='processing' OR value=ANY(ARRAY['animal_keeping_and_production','slaughter','processing_and_preparation','research_and_animal_use','other_regulated_premises','unclassified'])
+        ),
+        activity_values AS (
+            SELECT source_id || ':' || replace(replace(replace(replace(replace(code,'%','%25'),' ','%20'),'/','%2F'),':','%3A'),',','%2C') AS value,
+                   COALESCE(NULLIF(btrim(activity_labels ->> ((ordinality - 1)::integer)), ''), code) AS label
+            FROM resolved CROSS JOIN LATERAL jsonb_array_elements_text(activity_codes) WITH ORDINALITY activity(code, ordinality)
+            WHERE btrim(code) <> '' AND length(code) <= 160 AND code !~ '[[:cntrl:]]'
+              AND length(COALESCE(activity_labels ->> ((ordinality - 1)::integer), code)) <= 500
+        ),
+        facet_counts AS (
+            SELECT 'country_code'::text AS dimension, country_code AS value, country_code AS label, count(*)::bigint AS count FROM resolved GROUP BY country_code
+            UNION ALL SELECT 'display_precision', display_precision, display_precision, count(*)::bigint FROM resolved GROUP BY display_precision
+            UNION ALL SELECT 'source_type', origin_type, origin_type, count(*)::bigint FROM resolved GROUP BY origin_type
+            UNION ALL SELECT 'source_id', source_id, source_id, count(*)::bigint FROM resolved GROUP BY source_id
+            UNION ALL SELECT 'category', value, value, count(*)::bigint FROM category_values GROUP BY value
+            UNION ALL SELECT 'activity', value, min(label), count(*)::bigint FROM activity_values GROUP BY value
+        )
+        SELECT dimension, value, label, count FROM facet_counts
+        UNION ALL SELECT '_total', '', '', count(*)::bigint FROM matched
+        ORDER BY 1, 2
+    "#, &[&release_id,&params.country_code,&params.category,&params.source_id,&params.activity,&search_text]).await {
+        Ok(rows) => rows,
+        Err(error) => {
+            log_test_release_query_error("candidate_facets", &error);
+            return v2_error(StatusCode::SERVICE_UNAVAILABLE, "test_release_query_failed", "test release unavailable");
+        }
+    };
     if let Err(error) = transaction.commit().await {
         log_test_release_query_error("candidate_facets", &error);
         return v2_error(StatusCode::SERVICE_UNAVAILABLE, "test_release_query_failed", "test release unavailable");
     }
     let mut dims = serde_json::Map::new();
-    for (name, values) in [
-        (
-            "country_code",
-            rows.iter()
-                .map(|r| r.get::<_, String>(0))
-                .collect::<Vec<_>>(),
-        ),
-        (
-            "display_precision",
-            rows.iter().map(|r| r.get::<_, String>(2)).collect(),
-        ),
-        (
-            "source_type",
-            rows.iter().map(|r| r.get::<_, String>(3)).collect(),
-        ),
-        (
-            "source_id",
-            rows.iter().map(|r| r.get::<_, String>(4)).collect(),
-        ),
-    ] {
-        let mut counts = std::collections::BTreeMap::new();
-        for v in values {
-            *counts.entry(v).or_insert(0usize) += 1;
-        }
-        dims.insert(
-            name.into(),
-            json!(
-                counts
-                    .into_iter()
-                    .map(|(value, count)| json!({"value":value,"label":value,"count":count}))
-                    .collect::<Vec<_>>()
-            ),
-        );
+    for name in ["country_code", "category", "activity", "display_precision", "source_type", "source_id"] {
+        dims.insert(name.into(), json!([]));
     }
-    let category_counts = test_release_category_facet_counts(rows.iter().map(|row| (
-        row.get::<_, String>(1),
-        row.get::<_, String>(7),
-    )));
-    dims.insert("category".into(), json!(category_counts.into_iter().map(|(value, count)| {
-        json!({"value":value,"label":value,"count":count})
-    }).collect::<Vec<_>>()));
-    let mut activity_counts = std::collections::BTreeMap::new();
-    for row in &rows {
-        for (key, label) in test_release_activity_labels(
-            &row.get::<_, String>(4),
-            &row.get::<_, String>(5),
-            &row.get::<_, String>(6),
-        ) {
-            let entry = activity_counts.entry(key).or_insert((label, 0usize));
-            entry.1 += 1;
+    let mut result_count = 0i64;
+    for row in facet_rows {
+        let dimension: String = row.get(0);
+        if dimension == "_total" {
+            result_count = row.get(3);
+            continue;
         }
+        let value: String = row.get(1);
+        let label: String = row.get(2);
+        let count: i64 = row.get(3);
+        dims.get_mut(&dimension)
+            .and_then(Value::as_array_mut)
+            .expect("facet dimension is initialized")
+            .push(json!({"value":value,"label":label,"count":count}));
     }
-    dims.insert(
-        "activity".into(),
-        json!(
-            activity_counts
-                .into_iter()
-                .map(|(value, (label, count))| json!({"value":value,"label":label,"count":count}))
-                .collect::<Vec<_>>()
-        ),
-    );
     let mut meta = test_release_meta(
         release_id,
         params.profile.as_deref().unwrap_or("official"),
         test_only,
         candidate_only,
     );
-    meta["result_count"] = json!(rows.len());
-    Json(json!({"data":null,"meta":meta,"dimensions":dims})).into_response()
+    meta["result_count"] = json!(result_count);
+    return Json(json!({"data":null,"meta":meta,"dimensions":dims})).into_response();
+
+
 }
 
 pub async fn get_dev_test_release_export_handler(
@@ -6495,7 +6517,10 @@ mod v2_api_tests {
         assert!(handler.contains(".read_only(true)"));
         assert!(handler.contains("SET LOCAL max_parallel_workers_per_gather = 0"));
         assert!(handler.contains("log_test_release_query_error(\"candidate_facets\", &error)"));
-        assert!(handler.contains("normalized.get(\"in_default_map_scope\")"));
+        assert!(handler.contains("WITH matched AS MATERIALIZED"));
+        assert!(handler.contains("COALESCE(sr.raw_fields->'normalized'->>'in_default_map_scope','') <> 'false'"));
+        assert!(handler.contains("SELECT dimension, value, label, count FROM facet_counts"));
+        assert!(!handler.contains("let rows=match transaction.query"));
     }
 
     #[test]
