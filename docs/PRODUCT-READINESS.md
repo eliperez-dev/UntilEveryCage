@@ -49,8 +49,11 @@ All five intake types must pass hosted submission, tracking and private
 maintainer-review tests without changing curated release data. The separate
 intake role has been created on the existing Render database and passed TLS
 login and least-privilege checks; its controls are retained encrypted locally.
-Render configuration, integration, exact-head CI, hosted interaction checks
-and cleanup are still pending. The UI scope includes resizable/draggable
+Both lanes are integrated locally. All five forms passed submission and tracking
+against the Render database through the production-mode test server, with
+test submissions removed afterward. Release integrity and pagination checks
+passed without changing the curated dataset. Render configuration, exact-head
+CI, hosted interaction checks and cleanup are still pending. The UI scope includes resizable/draggable
 Facility details, concise copy, a darker header and the selected-only
 500-metre-diameter approximate-location area. See
 [approved frontend decisions](frontend/approval-decisions.md#production-research-workbench-and-contribution-repair).

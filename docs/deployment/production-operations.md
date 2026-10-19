@@ -86,6 +86,12 @@ time passes; a periodic maintenance caller remains required before claiming
 unattended retention enforcement. Record that limitation with the approved
 retention and private-review process.
 
+For a rollback to a binary that does not support production intake, first set
+`UEC_COMMUNITY_ENABLED=false`, then deploy that binary with the matching release
+controls. Keep the intake tables and restricted controls intact; disabling the
+service is not permission to delete submissions. Re-enable intake only after
+the supporting binary and its separate-role checks pass again.
+
 ## Deploy a release
 
 1. Build the exact revision with locked dependencies (`cargo build --release
