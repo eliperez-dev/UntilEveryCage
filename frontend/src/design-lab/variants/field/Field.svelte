@@ -50,6 +50,7 @@
     facets = [],
     facetsStatus = "loading",
     candidateFacets = null,
+    candidateTotalCount = null,
     releaseOptions = [],
     onreleasechange,
     dispatch,
@@ -60,6 +61,7 @@
     facets?: readonly RealPreviewFacet[];
     facetsStatus?: "loading" | "ready" | "error" | "unauthorized";
     candidateFacets?: CandidateFacets | null;
+    candidateTotalCount?: number | null;
     releaseOptions?: readonly { id: string; label: string }[];
     onreleasechange?(releaseId: string): void;
   } = $props();
@@ -126,7 +128,7 @@
     }
   }
   const active = $derived(mode === "candidate-preview"
-    ? state.filters.countries.length + state.filters.sources.length + state.filters.categories.length + state.filters.activities.length
+    ? (state.sourceId ? 1 : 0) + state.filters.countries.length + state.filters.sources.length + state.filters.categories.length + state.filters.activities.length
     : mode === "synthetic" ? state.filters.categories.length + state.filters.precisions.length : 0);
   function toggleCandidateFilter(field: 'countries' | 'sources' | 'categories' | 'activities', value: string, checked: boolean) {
     const current = state.filters[field];
@@ -177,10 +179,6 @@
   const sources = $derived(
     [...new Set(facets.map((facet) => facet.sourceId))].sort(),
   );
-  // No reviewed relationship projection exists in the preview API yet. Keep
-  // the disclosure, without an unreachable loading/empty/error state machine.
-  const relationshipUnavailableReason =
-    "The private-preview relationship projection has not been supplied for this record.";
   let selectionOrigin: HTMLElement | null = null;
   let selectionOriginRecordId: string | null = null;
   // `state` is a prop in this component, so $state is interpreted as a store
@@ -471,7 +469,7 @@
               value={state.query} oninput={(event) => dispatch({ type: "query", value: event.currentTarget.value })} />
           </form>
           <details class="filters">
-            <summary>Filters {#if state.sourceId}<b>1</b>{:else if active}<b>{active}</b>{/if}</summary>
+            <summary>Filters {#if active}<b>{active}</b>{/if}</summary>
             <div class="filter-sheet">
               {#if mode === "candidate-preview"}
                 {#if facetsStatus === "loading"}<small>Loading filters…</small>
@@ -497,7 +495,7 @@
                 <fieldset><legend>Category</legend>{#each categories as value}<label><input type="checkbox" checked={state.filters.categories.includes(value)} onchange={(event) => category(value, event.currentTarget.checked)} />{value}</label>{/each}</fieldset>
                 <fieldset><legend>Location precision</legend>{#each precisions as value}<label><input type="checkbox" checked={state.filters.precisions.includes(value)} onchange={(event) => precision(value, event.currentTarget.checked)} />{value}</label>{/each}</fieldset>
               {/if}
-              <button type="button" onclick={() => mode === "real-preview" ? dispatch({ type: "source", value: null }) : dispatch({ type: "reset-filters" })}>Clear filters</button>
+              {#if active}<button type="button" class="clear-filters" onclick={() => dispatch({ type: "reset-filters" })}>Clear all filters</button>{/if}
             </div>
           </details>
         </div>
@@ -514,7 +512,7 @@
             </ol>
           </section>
         {/if}
-        <div class="results-heading"><strong>{aggregateOpen ? "Members" : "Facility records"}</strong><span>{resultCount} loaded</span></div>
+        <div class="results-heading"><strong>{aggregateOpen ? "Members" : "Facility records"}</strong><span>{aggregateOpen ? `${resultCount} loaded` : mode === "candidate-preview" && candidateTotalCount !== null ? `${candidateTotalCount} matching · ${resultCount} shown` : `${resultCount} loaded`}</span></div>
         {#if aggregateOpen}<div class="member-context">
             <strong>{aggregateContext.place}</strong><span
               >{aggregateContext.treatment}</span
@@ -534,7 +532,7 @@
             disabled={pageLoading}
             style="width:calc(100% - 1rem);min-height:2.2rem;margin:.35rem .5rem .5rem;border:1px solid #69716a;color:#f1efe8;background:#171a18;font:.72rem system-ui;cursor:pointer"
             onclick={() => onLoadMore?.()}
-            >{pageLoading ? "Loading…" : "Load more records"}</button
+            >{pageLoading ? "Loading…" : mode === "candidate-preview" && candidateTotalCount !== null ? `Load more (${resultCount} of ${candidateTotalCount})` : "Load more records"}</button
           >{:else if mode === "real-preview" && aggregateOpen && aggregateNextCursor}<button
             type="button"
             disabled={aggregateLoading}
@@ -572,19 +570,6 @@
         {#if aggregateOpen}<button type="button" class="back" onclick={dismissSelection}>← Members</button>{/if}
         <a class="full-record" href={`#/records/${encodeURIComponent(selected.id)}`}>Open full record <span aria-hidden="true">↗</span></a>
         <RecordDetail record={selected} presentation="rail" publicRelease={mode === "public-release"} />
-        <section
-          class="connections-evidence"
-          aria-labelledby="connections-title"
-        >
-          <p class="eyebrow">EVIDENCE CONNECTIONS</p>
-          <h3 id="connections-title">Connections</h3>
-          <p>{relationshipUnavailableReason}</p>
-          <p class="connection-disclosure">
-            When supplied, this view will show only authorized, mappable
-            endpoints. Relationship type, confidence, uncertainty, and
-            contradictory evidence will remain disclosed per connection.
-          </p>
-        </section>
       </aside>{:else if aggregateOpen}<aside
         class="reading-sheet aggregate-sheet"
         aria-labelledby="aggregate-title"
@@ -756,11 +741,28 @@
     font-size: 0.68rem;
   }
   .filter-sheet label {
-    font-size: 0.7rem;
+    display: flex;
+    align-items: center;
+    gap: 0.42rem;
+    min-height: 2rem;
+    padding: 0.18rem 0.25rem;
+    font-size: 0.78rem;
+    line-height: 1.25;
+    cursor: pointer;
+  }
+  .filter-sheet input[type="checkbox"],
+  .filter-sheet input[type="radio"] {
+    inline-size: 1rem;
+    block-size: 1rem;
+    flex: 0 0 auto;
+  }
+  .filter-sheet .clear-filters {
+    margin-top: 0.35rem;
+    width: 100%;
   }
   .map-stage {
     position: absolute;
-    inset: 4.8rem 0 0;
+    inset: 4rem 0 0;
   }
   .map-stage :global(.map-surface),
   .map-stage :global(.map-host) {
@@ -919,7 +921,6 @@
   .dossier-header button:focus-visible, .full-record:focus-visible { outline:2px solid #eee7d6; outline-offset:2px; }
   .dossier-message { margin:1.1rem; }
   .full-record { display:flex; align-items:center; justify-content:space-between; margin:0; padding:.8rem 1.1rem; border-bottom:1px solid var(--line); color:#eee5ce; font-size:.75rem; text-underline-offset:2px; }
-  .dossier .connections-evidence { margin:1rem 1.1rem 1.2rem; }
   .eyebrow {
     margin: 0 0 0.3rem;
     color: #b9c7b8 !important;
@@ -1103,31 +1104,5 @@
       z-index: 1;
       background: #171a18;
     }
-  }
-  .connections-evidence {
-    margin: 0.95rem 0;
-    padding: 0.8rem;
-    border: 1px solid #3e4740;
-    border-left: 2px solid #9aaa98;
-    background: #1c211e;
-  }
-  .connections-evidence h3 {
-    margin: 0.1rem 0 0.55rem;
-    font:
-      600 0.98rem Georgia,
-      serif;
-  }
-  .connections-evidence p {
-    margin: 0.45rem 0;
-    color: #c7cec5;
-    font-size: 0.7rem;
-    line-height: 1.45;
-  }
-  .connections-evidence .eyebrow {
-    color: #b9c7b8 !important;
-  }
-  .connection-disclosure {
-    color: var(--muted) !important;
-    font-size: 0.65rem !important;
   }
 </style>

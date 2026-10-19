@@ -47,7 +47,7 @@
   let refreshPinnedPublicRelease: (() => void) | undefined;
   const publicReleaseOptions = $derived([
     ...($activePublicReleaseId ? [{ id: $activePublicReleaseId, label: `Current verified release ${$activePublicReleaseId}` }] : []),
-    ...($v0ArchiveVerified && $activePublicReleaseId !== V0_ARCHIVE_RELEASE_ID ? [{ id: V0_ARCHIVE_RELEASE_ID, label: 'v0 — verified archive' }] : []),
+    ...($v0ArchiveVerified && $activePublicReleaseId !== V0_ARCHIVE_RELEASE_ID ? [{ id: V0_ARCHIVE_RELEASE_ID, label: 'v0 verified archive' }] : []),
   ]);
   function selectPublicRelease(releaseId: string) {
     const hash = new URL(location.href).hash;
@@ -91,6 +91,7 @@
   let facets = $state<readonly RealPreviewFacet[]>([]);
   let facetsStatus = $state<'loading' | 'ready' | 'error' | 'unauthorized'>('loading');
   let candidateFacets = $state<CandidateFacets | null>(null);
+  let candidateTotalCount = $state<number | null>(null);
   let detailRecord = $state<LabRecord | null>(null);
   let detailStatus = $state<'loading' | 'ready' | 'error' | 'unauthorized'>('ready');
   let detailError = $state('');
@@ -142,6 +143,7 @@
       $dataError = '';
       apiRecords = [];
       nextCursor = null;
+      candidateTotalCount = null;
     } else pageLoading = true;
     try {
       if (mode === 'public-release') {
@@ -152,6 +154,7 @@
         const mapped = page.locations.map(mapPublicLocation);
         apiRecords = reset ? mapped : [...new Map([...apiRecords, ...mapped].map(record => [record.id, record])).values()];
         nextCursor = page.nextCursor;
+        candidateTotalCount = page.totalCount;
         $dataStatus = apiRecords.length ? 'ready' : 'empty';
         return;
       }
@@ -341,7 +344,7 @@
     <Field state={labState} {coverageOpen} records={mode !== 'synthetic' ? apiRecords : model.listRecords} mapRecords={mode !== 'synthetic' ? [] : model.mapRecords} {mode} publicReleaseId={$publicReleaseId} selectedPublicReleaseId={$publicReleaseId ?? $pinnedPublicReleaseId ?? null} publicReleaseIdentity={$publicReleaseIdentity} publicReleaseManifestIdentity={$publicReleaseManifestIdentity} publicMapMeta={$publicMapMeta} releaseOptions={publicReleaseOptions} onreleasechange={selectPublicRelease} onMapFeedMeta={(meta) => { $publicMapMeta = meta; }}
       dataStatus={$dataStatus} dataError={$dataError}
       {detailRecord} {detailStatus} {detailError} {nextCursor} {pageLoading}
-      {facets} {facetsStatus} {candidateFacets} {mapDiagnostics} {aggregateMemberRecords} {aggregateNextCursor} {aggregateLoading} {aggregateError} onMapTiming={timing=>{sourceMaterializeMs=timing.sourceMaterializeMs;clusterReadyMs=timing.clusterReadyMs;if(timing.zoomSettleMs!==undefined)zoomSettleMs=timing.zoomSettleMs;}} onLoadMore={() => void loadPage(labState.query, false)} onMapReference={(key, refSourceId) => void loadReference(key, true, refSourceId)} onLoadMoreAggregate={() => { if (aggregateReferenceKey) void loadReference(aggregateReferenceKey, false); }} {dispatch}/>
+      {facets} {facetsStatus} {candidateFacets} {candidateTotalCount} {mapDiagnostics} {aggregateMemberRecords} {aggregateNextCursor} {aggregateLoading} {aggregateError} onMapTiming={timing=>{sourceMaterializeMs=timing.sourceMaterializeMs;clusterReadyMs=timing.clusterReadyMs;if(timing.zoomSettleMs!==undefined)zoomSettleMs=timing.zoomSettleMs;}} onLoadMore={() => void loadPage(labState.query, false)} onMapReference={(key, refSourceId) => void loadReference(key, true, refSourceId)} onLoadMoreAggregate={() => { if (aggregateReferenceKey) void loadReference(aggregateReferenceKey, false); }} {dispatch}/>
     {#if mode === 'real-preview' && counts}
       <aside class:expanded={coverageOpen} class="private-counts" aria-label="Map information">
         <button type="button" aria-expanded={coverageOpen} aria-controls="coverage-details" disabled={labState.listOpen} title={labState.listOpen ? 'Close Search to inspect map information' : undefined} onclick={() => coverageOpen = !coverageOpen}>

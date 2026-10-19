@@ -34,7 +34,6 @@
   let candidateDetail = $state<LabRecord | null>(null);
   let candidateDetailStatus = $state<'idle' | 'loading' | 'ready' | 'error'>('idle');
   let candidateDetailError = $state('');
-  let candidateLabel = $state<string | null>(null);
   let candidateCountries = $state<readonly Readonly<{ value: string; count: number }>[]>([]);
   let candidateSources = $state<readonly Readonly<{ value: string; count: number }>[]>([]);
   let candidateCategories = $state<readonly Readonly<{ value: string; count: number }>[]>([]);
@@ -171,7 +170,6 @@
         records = [...new Map((reset ? incoming : [...records, ...incoming]).map(record => [record.id, record])).values()];
         nextCursor = page.nextCursor;
         totalCount = page.totalCount;
-        candidateLabel = page.previewLabel;
         status = records.length ? 'ready' : 'empty';
         return;
       }
@@ -224,16 +222,12 @@
   }
   function clearFilters() {
     selectedCategories = []; selectedId = null;
+    candidateCountry = ''; candidateCategory = '';
     if (searchTimer) clearTimeout(searchTimer);
     const changed = !!query || sourceId !== null;
     write({ query: '', sourceId: null, selectedId: null });
     if (!changed) void load(true);
   }
-  const noMap = $derived(
-    records.filter(
-      (record) => record.defaultMapScope === false || record.latitude === null || record.longitude === null,
-    ).length,
-  );
   const selected = $derived(
     records.find((record) => record.id === selectedId) ?? null,
   );
@@ -293,7 +287,7 @@
     <section class="intro">
       <div>
         <h1 id="database-title">Browse records</h1>
-        <p>{candidateMode && candidateLabel ? candidateLabel : 'Search private preview records by name, activity, source, or place. This data is not publication-approved.'}</p>
+        <p>{candidateMode ? 'Search private preview records by name, activity, source, or place.' : 'Search private preview records by name, activity, source, or place. This data is not publication-approved.'}</p>
       </div>
       <dl class="index-context">
         <div>
@@ -301,12 +295,8 @@
           <dd>{sourceLabel(sourceId)}</dd>
         </div>
         <div>
-          <dt>Loaded records</dt>
+          <dt>Matches</dt>
           <dd>{candidateMode && totalCount !== null ? `${totalCount} total` : `${records.length} ${records.length === 1 ? 'record' : 'records'}`}</dd>
-        </div>
-        <div>
-          <dt>No-map in loaded records</dt>
-          <dd>{noMap}</dd>
         </div>
       </dl>
     </section>
@@ -358,7 +348,7 @@
           {/each}
 
         </fieldset>{/if}
-        {#if !candidateMode && (query || sourceId || selectedCategories.length)}<div class="active-filters" aria-label="Selected filters">{#if query}<button type="button" onclick={() => write({ query: '', selectedId: null })}>Search: {query} ×</button>{/if}{#if sourceId}<button type="button" onclick={() => write({ sourceId: null, selectedId: null })}>{sourceId} ×</button>{/if}{#each selectedCategories as key}<button type="button" onclick={() => toggleCategory(key, false)}>{CATEGORY_PRESENTATIONS[key].label} ×</button>{/each}<button type="button" onclick={clearFilters}>Clear filters</button></div>{/if}
+        {#if query || sourceId || selectedCategories.length || candidateCountry || candidateCategory}<div class="active-filters" aria-label="Selected filters">{#if query}<button type="button" onclick={() => write({ query: '', selectedId: null })}>Search: {query} ×</button>{/if}{#if sourceId}<button type="button" onclick={() => write({ sourceId: null, selectedId: null })}>{sourceId} ×</button>{/if}{#each selectedCategories as key}<button type="button" onclick={() => toggleCategory(key, false)}>{CATEGORY_PRESENTATIONS[key].label} ×</button>{/each}<button type="button" onclick={clearFilters}>Clear filters</button></div>{/if}
       </aside>
       <section class="records" aria-live="polite">
         <header>
@@ -368,8 +358,8 @@
                 ? "Loading index"
                 : status === "empty"
                   ? "No matching records"
-                  : candidateMode && totalCount !== null ? `${totalCount} candidate ${totalCount === 1 ? 'record' : 'records'}` : `${records.length} ${records.length === 1 ? 'record' : 'records'} loaded`}</strong
-            ><span>{candidateMode ? 'Configured candidate release' : query ? `Query: “${query}”` : "All accessible candidates"}</span>
+                  : candidateMode && totalCount !== null ? `${totalCount} matching ${totalCount === 1 ? 'record' : 'records'}` : `${records.length} ${records.length === 1 ? 'record' : 'records'} loaded`}</strong
+            ><span>{candidateMode ? 'Private preview' : query ? `Query: “${query}”` : "All accessible candidates"}</span>
           </p>
           <p class="quiet">
             {nextCursor ? "More records available." : "End of results."}
@@ -405,7 +395,7 @@
             type="button"
             disabled={loadingMore}
             onclick={() => void load(false)}
-          >{loadingMore ? "Loading next page…" : "Load more"}</button
+          >{loadingMore ? "Loading next page…" : `Load more (${records.length} of ${totalCount ?? records.length})`}</button
           >{/if}
       </section>
       {#if candidateMode && selectedId}<aside class="selection" aria-label="Selected record">
