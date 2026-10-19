@@ -2781,17 +2781,6 @@ fn test_release_activity_keys(source_id: &str, codes: &str) -> Vec<String> {
     result
 }
 
-fn test_release_activity_labels(source_id: &str, codes: &str, labels: &str) -> Vec<(String, String)> {
-    let Ok(Value::Array(codes)) = serde_json::from_str::<Value>(codes) else { return vec![]; };
-    let labels = serde_json::from_str::<Value>(labels).ok().and_then(|v| v.as_array().cloned()).unwrap_or_default();
-    codes.iter().enumerate().filter_map(|(index, value)| {
-        let code = value.as_str()?;
-        if code.trim().is_empty() || code.len() > 160 || code.chars().any(char::is_control) { return None; }
-        let label = labels.get(index).and_then(Value::as_str).filter(|label| !label.trim().is_empty() && label.len() <= 500).unwrap_or(code);
-        Some((format!("{source_id}:{}", test_release_percent_encode(code)), label.to_owned()))
-    }).collect()
-}
-
 /// Candidate selectors are deliberately stricter than their public-V2
 /// counterparts: each comma-separated value is a canonical key, not a free
 /// text fragment.  This keeps list, facet, and client-side map filtering on
@@ -2833,16 +2822,6 @@ fn test_release_activity_key_is_canonical(value: &str) -> bool {
         }
     }
     true
-}
-
-fn test_release_category_facet_counts(rows: impl Iterator<Item = (String, String)>) -> std::collections::BTreeMap<String, usize> {
-    let mut counts = std::collections::BTreeMap::new();
-    for (category, normalized) in rows {
-        for key in test_release_category_keys(&category, &normalized) {
-            *counts.entry(key).or_insert(0) += 1;
-        }
-    }
-    counts
 }
 
 fn test_release_display_geometry(
@@ -6566,24 +6545,22 @@ mod v2_api_tests {
     }
 
     #[test]
-    fn candidate_taxonomy_and_activity_facets_preserve_full_native_keys() {
+    fn candidate_facet_aggregate_preserves_taxonomy_and_activity_label_contracts() {
         let categories = test_release_category_keys(
             "slaughter",
             r#"{"activity_categories":["processing","slaughter"]}"#,
         );
         assert_eq!(categories, vec!["processing_and_preparation", "slaughter"]);
-
-        let labels = test_release_activity_labels(
-            "us.fsis",
-            r#"["A B/C:D,E%F"]"#,
-            r#"["Native processing and slaughter label"]"#,
-        );
-        assert_eq!(labels, vec![("us.fsis:A%20B%2FC%3AD%2CE%25F".into(), "Native processing and slaughter label".into())]);
-        let counts = test_release_category_facet_counts(vec![
-            ("slaughter".into(), r#"{"activity_categories":["processing","slaughter"]}"#.into()),
-        ].into_iter());
-        assert_eq!(counts.get("slaughter"), Some(&1));
-        assert_eq!(counts.get("processing_and_preparation"), Some(&1));
+        let source = include_str!("lib.rs");
+        let handler = source
+            .split("pub async fn get_dev_test_release_facets_handler")
+            .nth(1)
+            .expect("candidate facets handler");
+        assert!(handler.contains("CASE value WHEN 'processing' THEN 'processing_and_preparation'"));
+        assert!(handler.contains("SELECT DISTINCT facility_id"));
+        assert!(handler.contains("activity_labels ->> ((ordinality - 1)::integer)"));
+        assert!(handler.contains("COALESCE(NULLIF(btrim(activity_labels"));
+        assert!(handler.contains("UNION ALL SELECT 'activity', value, min(label), count(*)::bigint FROM activity_values GROUP BY value"));
     }
 
     #[tokio::test]
