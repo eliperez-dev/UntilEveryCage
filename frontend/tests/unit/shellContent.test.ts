@@ -22,9 +22,10 @@ describe('normal shell content', () => {
     expect(help).not.toContain('contribution-types.webm');
   });
 
-  it('uses a private bearer receipt for status lookup without repeated loss warnings', () => {
-    expect(contributions).toContain('private receipt authorizes the lookup');
-    expect(contributions).toContain('Enter the Submission ID and private receipt');
+  it('uses a private fragment tracking capability for status lookup', () => {
+    expect(contributions).toContain('Track submission');
+    expect(contributions).toContain('receipt_secret');
+    expect(contributions).toContain('Open your private tracking link');
     expect(contributions).not.toContain('Lost receipts cannot be recovered');
   });
 

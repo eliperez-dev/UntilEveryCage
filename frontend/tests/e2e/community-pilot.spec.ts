@@ -6,7 +6,7 @@ const release = 'synthetic-community-release';
 const claimWarning = 'Unreviewed community claim: not verified by Until Every Cage.';
 const secret = 'synthetic-one-time-receipt-secret';
 
-test.skip(process.env.VITE_COMMUNITY_PILOT !== 'true', 'Community pilot E2E requires explicit local pilot enablement.');
+test.skip(process.env.VITE_COMMUNITY_PILOT !== 'true' && process.env.VITE_COMMUNITY_ENABLED !== 'true', 'Community E2E requires explicit local enablement.');
 
 const claimDto = {
   submission_id: id, kind: 'facility', record_id: recordId, release_id: release,
@@ -131,14 +131,14 @@ test('a valid submission displays its receipt once in memory without putting it 
   await page.getByLabel(/I have permission to share/).check();
   await page.getByRole('button', { name: 'Send for review' }).click();
   await expect(page.getByRole('heading', { name: 'Contribution received' })).toBeVisible();
-  await expect(page.getByLabel('Private receipt', { exact: true })).toHaveValue(secret);
+  await expect(page.getByRole('link', { name: 'Track submission', exact: true })).toHaveAttribute('href', `#/contribution-status?submission_id=${id}&receipt_secret=${secret}`);
   expect(submitted).toMatchObject({ kind: 'facility', consent: true, claimed_precision: 'unknown' });
   expect(submitted).not.toHaveProperty('contact_email');
   expect(page.url()).not.toContain(secret);
   await page.getByRole('link', { name: 'Check contribution status', exact: true }).click();
   await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Contribute' }).click();
   await expect(page.getByRole('heading', { name: 'Add a facility' })).toBeVisible();
-  await expect(page.getByLabel('Private receipt', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Track submission', exact: true })).toHaveCount(0);
 });
 
 test('the operator queue shows structured private context but never contact or receipt fields', async ({ page }) => {
@@ -225,9 +225,9 @@ test('six contribution task links switch in place with prefilled records and cle
   await page.getByLabel('Facility name').fill('Synthetic selector submission');
   await page.getByLabel(/I have permission to share/).check();
   await page.getByRole('button', { name: 'Send for review' }).click();
-  await expect(page.getByLabel('Private receipt', { exact: true })).toHaveValue(secret);
+  await expect(page.getByRole('link', { name: 'Track submission', exact: true })).toHaveAttribute('href', `#/contribution-status?submission_id=${id}&receipt_secret=${secret}`);
   await switchTask('Bug report');
-  await expect(page.getByLabel('Private receipt', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Track submission', exact: true })).toHaveCount(0);
   await expect(page.getByLabel('What happened?')).toHaveValue('');
   await expect(page.getByRole('link', { name: 'Open email draft' })).toHaveCount(0);
   expect(communityWrites).toBe(1);

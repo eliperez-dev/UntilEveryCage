@@ -6,7 +6,8 @@ export const DEFAULT_CLUSTER_RADIUS = 30;
 /** Requested camera zoom. Native GeoJSON tile zooms are whole numbers. */
 export const DEFAULT_CLUSTER_MAX_ZOOM = 7.5;
 /** Presentation-only radius when the public projection has no supplied area. */
-export const DEFAULT_REFERENCE_RADIUS_KM = 0.5;
+/** Selected approximate locations receive a 500m-diameter reference area. */
+export const DEFAULT_REFERENCE_RADIUS_KM = 0.25;
 export const APPROX_MARKER_SCALE = 0.8;
 
 export type RealPreviewClusterSettings = Readonly<{
@@ -147,12 +148,12 @@ export function addRealPreviewMapLayers(
     paint: {
       'circle-color': '#d8473f',
       'circle-radius': referenceRadiusExpression(DEFAULT_REFERENCE_RADIUS_KM),
-      // The ground-distance area remains visible and clickable, but a very light
-      // wash prevents dense city references from obscuring the basemap.
-      'circle-opacity': 0.22,
+      // A reference area is shown only for the inspected approximate record.
+      // It is a 250m radius presentation aid, never an accuracy assertion.
+      'circle-opacity': 0,
       'circle-stroke-color': '#ff695c',
       'circle-stroke-width': 2.5,
-      'circle-stroke-opacity': 0.96,
+      'circle-stroke-opacity': 0,
     },
   } as any);
   setClusterTileRounding(map, settings.maxZoom);
@@ -162,9 +163,11 @@ export function addRealPreviewMapLayers(
     id: 'approx-reference-points', type: 'symbol', source: 'locations',
     filter: ['all', ...aggregateReference.slice(1), cityReference],
     layout: {
-      'icon-image': 'reference-marker', 'icon-size': APPROX_MARKER_SCALE,
+      // A singleton remains an ordinary muted pin, not a misleading numeric
+      // cluster badge. The selected-only red area carries the approximation cue.
+      'icon-image': 'v1-pin-grey', 'icon-anchor': 'bottom', 'icon-size': 0.5,
       'icon-allow-overlap': true, 'icon-ignore-placement': true,
-      'text-field': ['to-string', weight], 'text-font': ['Open Sans Bold'], 'text-size': 11,
+      'text-field': ['case', ['>', weight, 1], ['to-string', weight], ''], 'text-font': ['Open Sans Bold'], 'text-size': 11,
       'text-allow-overlap': true, 'text-ignore-placement': true,
     },
     paint: { 'text-color': '#172019' },
@@ -172,7 +175,7 @@ export function addRealPreviewMapLayers(
   map.addLayer({
     id: 'aggregate-count', type: 'symbol', source: 'locations',
     filter: ['all', ...aggregateReference.slice(1), ['!', cityReference]],
-    layout: { 'text-field': ['to-string', weight], 'text-font': ['Open Sans Bold'], 'text-size': 12 },
+    layout: { 'text-field': ['case', ['>', weight, 1], ['to-string', weight], ''], 'text-font': ['Open Sans Bold'], 'text-size': 12 },
     paint: { 'text-color': '#f1efe8', 'text-halo-color': '#15252c', 'text-halo-width': 1 },
   } as any);
   map.addLayer({
@@ -225,8 +228,8 @@ export function applyRealPreviewVisualSettings(map: MapLibreMap, settings: RealP
   const selected = settings.selectedKey
     ? ['==', ['get', 'key'], settings.selectedKey]
     : false;
-  map.setPaintProperty('aggregate-outer', 'circle-opacity', ['case', selected, Math.min(0.42, settings.referenceOpacity + 0.16), settings.referenceOpacity] as any);
-  map.setPaintProperty('aggregate-outer', 'circle-stroke-opacity', Math.min(1, Math.max(0.55, settings.referenceOpacity * 2 + 0.52)) as any);
+  map.setPaintProperty('aggregate-outer', 'circle-opacity', ['case', selected, Math.min(0.34, settings.referenceOpacity + 0.12), 0] as any);
+  map.setPaintProperty('aggregate-outer', 'circle-stroke-opacity', ['case', selected, Math.min(1, Math.max(0.62, settings.referenceOpacity * 2 + 0.52)), 0] as any);
   map.setPaintProperty('source-coordinate-points', 'circle-radius', settings.coordinateRadius);
   map.setLayoutProperty('aggregate-kind', 'visibility', settings.showReferenceLabels ? 'visible' : 'none');
 }

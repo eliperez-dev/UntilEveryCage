@@ -173,6 +173,7 @@
   let nativeOverlayPendingAtMoveend = $state(false);
   let nativeCameraStartedAt: number | null = null;
   let nativeIndexStartedAt: number | null = null;
+  let hadAggregateInspection = false;
   let mvtCameraStartedAt: number | null = null;
   let mvtResourceWindowStart = 0;
   let mvtInitialStartedAt = 0;
@@ -478,8 +479,12 @@
     if (!map || !isNativeMap()) return;
     if (usingMvt) {
       syncMvtReferenceAreas(map);
+      const selected = selectedReferenceKey ?? mapState.selectedId;
+      const selectedArea = selected ? ['==', ['get', 'feature_key'], selected] : false;
       if (map.getLayer("mvt-approx-reference-area"))
-        map.setPaintProperty("mvt-approx-reference-area", "fill-opacity", referenceOpacity * 0.4);
+        map.setPaintProperty("mvt-approx-reference-area", "fill-opacity", ['case', selectedArea, Math.min(0.16, referenceOpacity), 0] as any);
+      if (map.getLayer("mvt-approx-reference-outline"))
+        map.setPaintProperty("mvt-approx-reference-outline", "line-opacity", ['case', selectedArea, 0.92, 0] as any);
       if (map.getLayer("mvt-source-coordinates"))
         map.setPaintProperty("mvt-source-coordinates", "circle-radius", coordinateRadius);
       if (map.getLayer("mvt-reference-kind"))
@@ -509,6 +514,22 @@
   $effect(() => {
     mapState.selectedId;
     if (map?.isStyleLoaded()) updateVisualSettings();
+  });
+  // A reference area belongs to the current inspected aggregate only. Keep it
+  // through the reference request, then clear it as soon as that inspection is
+  // dismissed so a stale red area cannot survive behind an unrelated view.
+  $effect(() => {
+    if (mapState.aggregateMemberIds !== null) {
+      hadAggregateInspection = true;
+      return;
+    }
+    if (hadAggregateInspection) {
+      hadAggregateInspection = false;
+      if (selectedReferenceKey !== null) {
+        selectedReferenceKey = null;
+        if (map?.isStyleLoaded()) updateVisualSettings();
+      }
+    }
   });
   $effect(() => {
     if (suppressDiagnostics && diagnosticsOpen) setDiagnosticsOpen(false, false);
@@ -1055,7 +1076,15 @@
         if (activeFlight) return;
         const properties = event.features?.[0]?.properties;
         const id = isRealPreview() ? properties?.key : properties?.id;
-        if (typeof id === "string") onselect(id);
+        if (typeof id === "string") {
+          // A source coordinate is an ordinary record selection, never an
+          // approximate reference. Clear any prior inspected reference area.
+          if (selectedReferenceKey !== null) {
+            selectedReferenceKey = null;
+            updateVisualSettings();
+          }
+          onselect(id);
+        }
       });
     const handleReferenceClick = (event: any, layer: "aggregate-outer" | "approx-reference-points") => {
       if (activeFlight) return;
