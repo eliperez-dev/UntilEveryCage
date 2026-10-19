@@ -122,7 +122,7 @@ export function addMvtLocationLayers(map: MapLike, sourceId?: string): void {
     id: 'mvt-reference-center', type: 'symbol', source, 'source-layer': sourceLayer,
     filter: kind('city_reference'),
     layout: {
-      'icon-image': 'cluster-approx', 'icon-size': 0.8,
+      'icon-image': 'v1-pin-grey', 'icon-anchor': 'bottom', 'icon-size': 0.5,
       'icon-allow-overlap': true, 'icon-ignore-placement': true,
     },
     paint: { 'icon-opacity': 0.95 },

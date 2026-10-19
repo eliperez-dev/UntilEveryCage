@@ -26,7 +26,7 @@ describe('real-preview native clustering layers', () => {
     expect(layers.find(layer => layer.id === 'approx-reference-points')).toMatchObject({
       type: 'symbol',
       layout: {
-        'icon-image': 'reference-marker', 'icon-size': 0.8,
+        'icon-image': 'v1-pin-grey', 'icon-anchor': 'bottom', 'icon-size': 0.5,
         'text-field': ['case', ['>', ['get', 'weight'], 1], ['to-string', ['get', 'weight']], ''],
       },
       paint: { 'text-color': '#172019' },

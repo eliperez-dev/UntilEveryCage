@@ -163,7 +163,9 @@ export function addRealPreviewMapLayers(
     id: 'approx-reference-points', type: 'symbol', source: 'locations',
     filter: ['all', ...aggregateReference.slice(1), cityReference],
     layout: {
-      'icon-image': 'reference-marker', 'icon-size': APPROX_MARKER_SCALE,
+      // A singleton remains an ordinary muted pin, not a misleading numeric
+      // cluster badge. The selected-only red area carries the approximation cue.
+      'icon-image': 'v1-pin-grey', 'icon-anchor': 'bottom', 'icon-size': 0.5,
       'icon-allow-overlap': true, 'icon-ignore-placement': true,
       'text-field': ['case', ['>', weight, 1], ['to-string', weight], ''], 'text-font': ['Open Sans Bold'], 'text-size': 11,
       'text-allow-overlap': true, 'text-ignore-placement': true,
