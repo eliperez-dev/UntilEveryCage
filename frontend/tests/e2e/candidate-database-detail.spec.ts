@@ -72,7 +72,7 @@ test('candidate map marker opens the configured source-backed detail', async ({ 
         styleLoaded: Boolean(map?.isStyleLoaded()),
         sourcePresent: Boolean(map?.getSource('locations')),
         sourceFeatures: map?.getSource('locations') ? map.querySourceFeatures('locations').length : 0,
-        rendered: map?.queryRenderedFeatures({ layers: ['source-coordinate-points'] }).length ?? 0,
+        rendered: map?.queryRenderedFeatures({ layers: ['v1-source-pins'] }).length ?? 0,
         status: document.querySelector('[role="status"]')?.textContent?.trim().slice(0, 80) ?? '',
       };
     });
@@ -85,11 +85,11 @@ test('candidate map marker opens the configured source-backed detail', async ({ 
   });
   await page.waitForFunction(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
-    return map?.queryRenderedFeatures({ layers: ['source-coordinate-points'] }).length > 0;
+    return map?.queryRenderedFeatures({ layers: ['v1-source-pins'] }).length > 0;
   }, undefined, { timeout: 30_000 });
   const point = await page.evaluate(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
-    const rendered = map.queryRenderedFeatures({ layers: ['source-coordinate-points'] })[0];
+    const rendered = map.queryRenderedFeatures({ layers: ['v1-source-pins'] })[0];
     const projected = map.project(rendered.geometry.coordinates);
     const bounds = map.getContainer().getBoundingClientRect();
     return { x: bounds.left + projected.x, y: bounds.top + projected.y };
@@ -121,10 +121,7 @@ test('candidate map retains native overlays and V1 selection across route and ba
   expect(first.referencePaint).toBe('#ff695c');
   expect(first.coordinateColor).toBeTruthy();
 
-  await page.getByRole('button', { name: 'Tools' }).click();
-  await page.getByLabel('Enable debug menu').check();
-  await page.getByRole('button', { name: 'Debug menu' }).click();
-  await page.getByLabel('Use V1 facility pin PNG + shadow').check();
+  await expect(page.getByLabel('Use V1 facility pin PNG + shadow')).toBeChecked();
   await page.waitForFunction(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getLayoutProperty('v1-source-pins', 'visibility') === 'visible');
   await page.evaluate(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
@@ -145,13 +142,6 @@ test('candidate map retains native overlays and V1 selection across route and ba
   await page.goto('/v2-preview/#/database?f1a=field&source=us.fsis');
   await page.goto('/v2-preview/#/map?f1a=field&source=us.fsis');
   await ready();
-  await page.getByLabel('Map style').selectOption('muted');
-  await page.waitForFunction(() => {
-    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
-    return map?.getPaintProperty('base', 'raster-saturation') === -1 && map.isSourceLoaded('locations') && ['clusters', 'aggregate-outer', 'source-coordinate-points', 'v1-source-pins'].every(id => map.getLayer(id));
-  }, undefined, { timeout: 30_000 });
-  await page.getByLabel('Map style').selectOption('vector');
-  await page.waitForFunction(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getPaintProperty('base', 'raster-saturation') === 0);
   await page.getByLabel('Map style').selectOption('satellite');
   await page.waitForFunction(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
@@ -252,10 +242,7 @@ test('plain map entry uses the configured candidate projection and preserves its
   await page.goto('/v2-preview/#/map');
   await page.waitForFunction(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.isSourceLoaded('locations'), undefined, { timeout: 60_000 });
 
-  await page.getByRole('button', { name: 'Tools' }).click();
-  await page.getByLabel('Enable debug menu').check();
-  await page.getByRole('button', { name: 'Debug menu' }).click();
-  await page.getByLabel('Use V1 facility pin PNG + shadow').check();
+  await expect(page.getByLabel('Use V1 facility pin PNG + shadow')).toBeChecked();
   await page.waitForFunction(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getLayoutProperty('v1-source-pins', 'visibility') === 'visible');
   await page.evaluate(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;

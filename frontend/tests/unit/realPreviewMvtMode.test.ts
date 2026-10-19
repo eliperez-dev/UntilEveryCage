@@ -38,7 +38,7 @@ describe('real private preview map projection', () => {
     expect(designLab).toContain("$dataError = current ? '' : $pinnedPublicReleaseId ? 'Selected release unavailable.'");
     expect(designLab).toContain('...untrack(() => mapDiagnostics)');
     expect(designLab).toContain('Current verified release ${$activePublicReleaseId}');
-    expect(designLab).toContain("'v0 — verified archive'");
+    expect(designLab).toContain("'v0 verified archive'");
     expect(designLab).toContain("'Selected release unavailable.'");
     expect(field).toContain('selectedReleaseId={mode === "public-release" ? selectedPublicReleaseId : null}');
     expect(field).toContain('mode === "public-release" && dataStatus === "error"');

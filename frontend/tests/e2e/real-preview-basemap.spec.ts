@@ -1,19 +1,16 @@
 import { test, expect } from '@playwright/test';
 
-test('map lens exposes Street and Satellite only without refetching the native projection', async ({ page }) => {
+test('map style exposes Street and Satellite only without refetching the native projection', async ({ page }) => {
   test.skip(!process.env.UEC_REAL_PREVIEW_URL, 'Requires a populated local real preview');
   test.setTimeout(90_000);
   let feedRequests = 0;
   page.on('request', request => {
     if (new URL(request.url()).pathname.endsWith('/map/feed')) feedRequests++;
   });
-  await page.goto('/#/map');
-  const lens = page.getByRole('complementary', { name: 'Map lens' });
-  await lens.getByRole('button', { name: /Map lens/ }).click();
-  const street = lens.getByRole('button', { name: 'Street', exact: true });
-  const satellite = lens.getByRole('button', { name: 'Satellite', exact: true });
-  await expect(street).toHaveAttribute('aria-pressed', 'true');
-  await expect(satellite).toHaveAttribute('aria-pressed', 'false');
+  await page.goto('/v2-preview/#/map');
+  const mapStyle = page.getByLabel('Map style');
+  await expect(mapStyle).toHaveValue('vector');
+  await expect(mapStyle.locator('option')).toHaveText(['Street', 'Satellite']);
   await page.waitForFunction(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return map?.isStyleLoaded() && map.getLayer('clusters') && map.isSourceLoaded('locations');
@@ -34,8 +31,10 @@ test('map lens exposes Street and Satellite only without refetching the native p
   expect(before.tiles[0]).toContain('tile.openstreetmap.org');
   expect(before.overlays.every((index: number) => index >= 0)).toBe(true);
   expect(before.sourceLoaded).toBe(true);
-  await expect(lens.getByRole('button', { name: 'Muted', exact: true })).toHaveCount(0);
-  await expect(street).toHaveAttribute('aria-pressed', 'true');
+  await mapStyle.selectOption('satellite');
+  await expect(mapStyle).toHaveValue('satellite');
+  await mapStyle.selectOption('vector');
+  await expect(mapStyle).toHaveValue('vector');
   expect(feedRequests).toBe(1);
 });
 
@@ -43,16 +42,12 @@ test('unavailable satellite imagery leaves Street active', async ({ page }) => {
   test.skip(!process.env.UEC_REAL_PREVIEW_URL, 'Requires a populated local real preview');
   test.setTimeout(45_000);
   await page.route('**/World_Imagery/**', route => route.abort());
-  await page.goto('/#/map');
-  const lens = page.getByRole('complementary', { name: 'Map lens' });
-  await lens.getByRole('button', { name: /Map lens/ }).click();
-  const street = lens.getByRole('button', { name: 'Street', exact: true });
-  const satellite = lens.getByRole('button', { name: 'Satellite', exact: true });
-  await expect(street).toHaveAttribute('aria-pressed', 'true');
-  await satellite.click();
+  await page.goto('/v2-preview/#/map');
+  const mapStyle = page.getByLabel('Map style');
+  await expect(mapStyle).toHaveValue('vector');
+  await mapStyle.selectOption('satellite');
   await expect(page.getByRole('alert').filter({ hasText: 'Satellite imagery is unavailable' })).toBeVisible({ timeout: 30_000 });
-  await expect(street).toHaveAttribute('aria-pressed', 'true');
-  await expect(satellite).toHaveAttribute('aria-pressed', 'false');
+  await expect(mapStyle).toHaveValue('vector');
   const tiles = await page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getStyle().sources.base.tiles);
   expect(tiles[0]).toContain('tile.openstreetmap.org');
 });
