@@ -29,7 +29,7 @@ test('all five contribution types submit and track through the enabled productio
     { path: 'facility', fill: async index => { await page.getByLabel('Facility name').fill(`${tag}-facility-${index}`); } },
     { path: 'evidence', fill: async () => { await page.getByLabel('Record link or ID').fill(firstId); await page.getByLabel('What did you find?').fill(`${tag} evidence`); } },
     { path: 'correction', fill: async () => { await page.getByLabel('Record ID').fill(firstId); await page.getByLabel('What should be corrected?').fill(`${tag} correction`); } },
-    { path: 'duplicate', fill: async () => { await page.getByLabel('Record ID').fill(firstId); await page.getByLabel('Possible duplicate record ID').fill(secondId); } },
+    { path: 'duplicate', fill: async () => { await page.getByLabel('Record ID', { exact: true }).fill(firstId); await page.getByLabel('Possible duplicate record ID').fill(secondId); } },
     { path: 'privacy-removal', fill: async () => { await page.getByLabel('Record ID').fill(firstId); await page.getByLabel('What should we review?').fill(`${tag} privacy review`); } },
   ];
 
@@ -43,8 +43,6 @@ test('all five contribution types submit and track through the enabled productio
     const tracker = page.getByRole('link', { name: 'Track submission', exact: true });
     await expect(tracker).toBeVisible();
     await tracker.click();
-    await expect(page.getByLabel('Submission ID')).not.toHaveValue('');
-    await page.getByRole('button', { name: 'Check status', exact: true }).click();
     await expect(page.locator('.status-result')).toBeVisible();
   }
 });

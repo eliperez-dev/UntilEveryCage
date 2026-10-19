@@ -108,6 +108,13 @@
       receiptSecret = secret;
     }
   }
+  async function loadTrackingStatus(): Promise<void> {
+    if (!statusId || !receiptSecret || statusResult || busy) return;
+    statusMessage = ''; busy = true;
+    try { statusResult = await repository.status(statusId, receiptSecret); }
+    catch (error) { statusMessage = error instanceof CommunityError ? error.message : 'Status could not be checked.'; }
+    finally { busy = false; }
+  }
   async function loadQueue() {
     queueError = ''; queueNotice = ''; busy = true;
     try { queue = await repository.queue(operatorToken, 50, queueFilter); }
@@ -174,7 +181,7 @@
     if (page !== 'claims') claims = null;
     if (page !== 'claim-detail') claim = null;
   });
-  $effect(() => { if (page === 'status') readTrackingFragment(); });
+  $effect(() => { if (page === 'status') { readTrackingFragment(); void loadTrackingStatus(); } });
   onMount(() => { if (!fixtureEnabled) void communityCapabilities().then(value => enabled = value.enabled); });
 </script>
 
