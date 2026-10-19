@@ -27,7 +27,7 @@ test('production bundle opens a real v0 pin on cold and warm loads', async ({ pa
     const mapBox = await page.locator('.map-host').boundingBox();
     expect(mapBox).not.toBeNull();
     await page.mouse.click(mapBox!.x + mapBox!.width / 2, mapBox!.y + mapBox!.height / 2 - 10);
-    await expect(page.locator('.reading-sheet[aria-label="Record evidence"]')).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('.reading-sheet[aria-label="Facility details"]')).toBeVisible({ timeout: 30_000 });
     await page.getByRole('button', { name: 'Close record detail' }).click();
   }
 
