@@ -69,11 +69,13 @@ SERVING_SCHEMA_OMISSIONS = (
 # Handler-facing relations only.  The support tables in the export are read by
 # security-definer views, never directly by the network role.
 API_RELATIONS = (
+    "uec.schema_migrations",
     "uec.releases", "uec.release_manifests", "uec.public_release_history",
     "uec.public_discovery_read_models", "uec.public_discovery_read_model_rows",
     "uec.public_suppression_generation", "uec.observation_taxonomy_assignment_sets",
     "uec.observation_taxonomy_assignments", "uec.public_discovery_api_read_model",
     "uec.public_discovery_api_candidate_read_model", "uec.map_facilities_public_discovery_read_model",
+    "uec.map_facilities_display_history", "uec.publication_review_release_current",
     "uec.record_access_current", "uec.public_access_restricted", "uec.suppression_case_current",
     "uec.facility_lifecycle_current",
 )
