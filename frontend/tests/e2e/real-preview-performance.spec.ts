@@ -42,7 +42,7 @@ for (const profile of profiles) {
       await page.waitForFunction(() => {
         const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
         return map?.isStyleLoaded() && map.isSourceLoaded('preview-mvt') &&
-          map.queryRenderedFeatures({ layers: ['mvt-clusters', 'mvt-source-coordinates', 'mvt-reference-outer'] }).length > 0;
+          map.queryRenderedFeatures({ layers: ['mvt-clusters', 'mvt-source-coordinates', 'mvt-reference-center'] }).length > 0;
       }, undefined, { timeout: 90_000 });
       const firstVisibleMs = Math.round(performance.now() - start);
       const tileTiming = await page.evaluate(() => {
