@@ -1,38 +1,133 @@
 #!/usr/bin/env python3
-"""Write a local serving-package manifest and explicit role-grant SQL.
+"""Export/restore a selected-column local public-serving package.
 
-It writes no database state and never exports source artifacts or private
-payloads.  The resulting files are inputs to a separately reviewed restore
-rehearsal after schema migrations have been applied.
+Targets must already use normal migrations. This tool never exports raw source,
+acquisition, or geocoder payloads, and prints aggregate evidence only.
 """
 from __future__ import annotations
 import argparse
 import json
+import os
 from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path: sys.path.insert(0, str(ROOT))
-from pipeline.common.release_serving import grant_sql, package_manifest  # noqa: E402
+from pipeline.common.release_serving import export_specs, grant_sql, package_manifest  # noqa: E402
+
+OPTIONAL_LEGACY_RELATIONS = {"uec.public_release_history"}
+RESTORE_ORDER = (
+    "uec.sources", "uec.raw_artifacts", "uec.source_records", "uec.facilities", "uec.observations",
+    "uec.facility_source_links", "uec.releases", "uec.release_manifests", "uec.public_release_history",
+    "uec.record_access_events", "uec.publication_review_events", "uec.publication_review_release_scopes",
+    "uec.facility_lifecycle_events", "uec.taxonomy_crosswalks", "uec.release_cohort_review_documents",
+    "uec.release_cohort_review_scopes", "uec.observation_taxonomy_assignment_sets",
+    "uec.observation_taxonomy_assignments", "uec.public_discovery_read_models",
+    "uec.public_discovery_read_model_rows", "uec.public_suppression_generation",
+)
+
+
+def _copy_out(connection, spec, releases: list[str], path: Path) -> int:
+    query = spec.query.replace("$1", "%s")
+    parameters = tuple(releases for _ in range(query.count("%s"))) or None
+    with connection.cursor() as cursor:
+        count = cursor.execute("SELECT count(*) FROM (" + query + ") selected_rows", parameters).fetchone()[0]
+        copy_context = cursor.copy("COPY (" + query + ") TO STDOUT WITH (FORMAT binary)", parameters)
+        with copy_context as copy, path.open("wb") as output:
+            for block in copy: output.write(block)
+    return int(count)
+
+
+def export_package(source_url: str, output: Path, releases: list[str], inventory: str) -> dict[str, object]:
+    import psycopg
+    if output.exists(): raise ValueError("package output must not already exist")
+    output.mkdir(parents=False); data = output / "data"; data.mkdir()
+    counts: dict[str, int] = {}
+    try:
+        with psycopg.connect(source_url, autocommit=False) as connection:
+            connection.execute("SET TRANSACTION READ ONLY")
+            specs = []
+            for spec in export_specs():
+                exists = connection.execute("SELECT to_regclass(%s)", (spec.relation,)).fetchone()[0]
+                if exists is None:
+                    if spec.relation in OPTIONAL_LEGACY_RELATIONS:
+                        continue
+                    raise ValueError("source schema is missing required allowlisted relation")
+                specs.append(spec)
+            for ordinal, spec in enumerate(specs):
+                counts[spec.relation] = _copy_out(connection, spec, releases, data / f"{ordinal:02d}.copy")
+    except Exception:
+        for child in data.glob("*"): child.unlink()
+        data.rmdir(); output.rmdir(); raise
+    manifest = package_manifest(release_ids=releases, migration_inventory_sha256=inventory, table_counts=counts, specs=tuple(specs))
+    (output / "manifest.json").write_text(json.dumps(manifest, sort_keys=True, indent=2) + "\n", encoding="utf-8", newline="\n")
+    (output / "api-grants.sql").write_text(grant_sql(), encoding="utf-8", newline="\n")
+    return {"release_count": len(releases), "relations": len(counts), "rows": sum(counts.values()), "package_sha256": manifest["package_sha256"]}
+
+
+def restore_package(target_url: str, package: Path, apply_grants: bool) -> dict[str, object]:
+    import psycopg
+    manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+    known = {spec.relation: spec for spec in export_specs()}
+    specs = tuple(known[item["relation"]] for item in manifest.get("data_relation_allowlist", []) if item.get("relation") in known)
+    if len(specs) != len(manifest.get("data_relation_allowlist", [])): raise ValueError("package relation allowlist is unsupported")
+    expected = package_manifest(release_ids=manifest["release_ids"], migration_inventory_sha256=manifest["migration_inventory_sha256"], table_counts=manifest.get("table_counts"), specs=specs)
+    if manifest.get("package_sha256") != expected["package_sha256"]: raise ValueError("package manifest digest is invalid")
+    copied = 0
+    relation = "preflight"
+    try:
+      with psycopg.connect(target_url, autocommit=False) as connection:
+        with connection.cursor() as cursor:
+            positions = {spec.relation: ordinal for ordinal, spec in enumerate(specs)}
+            for spec in sorted(specs, key=lambda item: RESTORE_ORDER.index(item.relation)):
+                relation = spec.relation
+                source = package / "data" / f"{positions[spec.relation]:02d}.copy"
+                if not source.is_file(): raise ValueError("package data file is missing")
+                cursor.execute("SELECT to_regclass(%s)", (spec.relation,))
+                if cursor.fetchone()[0] is None: raise ValueError("target schema is missing allowlisted relation")
+                # Migration 054 seeds this singleton. Replace only that empty
+                # bootstrap value with the source's truthful current generation.
+                if spec.relation == "uec.public_suppression_generation":
+                    cursor.execute("DELETE FROM uec.public_suppression_generation")
+                target_relation = spec.relation
+                if spec.relation == "uec.publication_review_release_scopes":
+                    cursor.execute("CREATE TEMP TABLE serving_scope_stage (LIKE uec.publication_review_release_scopes) ON COMMIT DROP")
+                    target_relation = "serving_scope_stage"
+                with cursor.copy("COPY " + target_relation + " (" + ",".join(spec.columns) + ") FROM STDIN WITH (FORMAT binary)") as copy, source.open("rb") as input_file:
+                    while block := input_file.read(1024 * 1024): copy.write(block)
+                if spec.relation == "uec.publication_review_release_scopes":
+                    cursor.execute("INSERT INTO uec.publication_review_release_scopes (publication_review_event_id,release_id) SELECT publication_review_event_id,release_id FROM serving_scope_stage ON CONFLICT DO NOTHING")
+                    expected = cursor.execute("SELECT count(*) FROM serving_scope_stage").fetchone()[0]
+                    actual = cursor.execute("SELECT count(*) FROM uec.publication_review_release_scopes scope JOIN serving_scope_stage stage USING(publication_review_event_id,release_id)").fetchone()[0]
+                    if actual != expected: raise ValueError("selected review scope closure did not restore")
+                copied += int(manifest["table_counts"].get(spec.relation, 0))
+            if apply_grants: cursor.execute((package / "api-grants.sql").read_text(encoding="utf-8"))
+        connection.commit()
+    except Exception as error:
+        constraint = getattr(getattr(error, "diag", None), "constraint_name", None)
+        suffix = (" constraint=" + constraint) if constraint else ""
+        raise ValueError("restore relation failed: " + relation + suffix) from error
+    return {"release_count": len(manifest["release_ids"]), "relations": len(specs), "rows": copied, "package_sha256": manifest["package_sha256"]}
+
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--release-id", action="append", required=True)
-    parser.add_argument("--migration-inventory-sha256", required=True)
-    parser.add_argument("--manifest-output", type=Path, required=True)
-    parser.add_argument("--grants-output", type=Path, required=True)
+    parser = argparse.ArgumentParser(description=__doc__); commands = parser.add_subparsers(dest="command", required=True)
+    export = commands.add_parser("export"); export.add_argument("--source-database-url-env", required=True); export.add_argument("--release-id", action="append", required=True); export.add_argument("--migration-inventory-sha256", required=True); export.add_argument("--output", type=Path, required=True)
+    restore = commands.add_parser("restore"); restore.add_argument("--target-database-url-env", required=True); restore.add_argument("--package", type=Path, required=True); restore.add_argument("--apply-api-grants", action="store_true")
     args = parser.parse_args(argv)
     try:
-        for path in (args.manifest_output, args.grants_output):
-            if path.exists() or path.is_symlink() or not path.parent.is_dir():
-                raise ValueError("outputs must be new files in existing directories")
-        manifest = package_manifest(release_ids=args.release_id, migration_inventory_sha256=args.migration_inventory_sha256)
-        args.manifest_output.write_text(json.dumps(manifest, sort_keys=True, indent=2) + "\n", encoding="utf-8", newline="\n")
-        args.grants_output.write_text(grant_sql(), encoding="utf-8", newline="\n")
-        print(json.dumps({"status": "prepared", "package_sha256": manifest["package_sha256"], "release_count": len(manifest["release_ids"])}))
-        return 0
-    except (OSError, ValueError) as error:
-        print(json.dumps({"status": "blocked", "reason": str(error)[:160]}))
-        return 2
+        if args.command == "export":
+            source_url = os.environ.get(args.source_database_url_env)
+            if not source_url: raise ValueError("source database URL environment variable is unavailable")
+            result = export_package(source_url, args.output, args.release_id, args.migration_inventory_sha256)
+        else:
+            target_url = os.environ.get(args.target_database_url_env)
+            if not target_url: raise ValueError("target database URL environment variable is unavailable")
+            result = restore_package(target_url, args.package, args.apply_api_grants)
+        print(json.dumps({"status": args.command + "ed", **result}, sort_keys=True)); return 0
+    except Exception as error:
+        reason = str(error) if isinstance(error, ValueError) else type(error).__name__
+        print(json.dumps({"status": "blocked", "reason": reason[:160]}, sort_keys=True)); return 2
+
 
 if __name__ == "__main__": raise SystemExit(main())
