@@ -83,7 +83,7 @@ test('renders the guarded disposable test release without public fallback', asyn
   await page.goto('./?preview=test-release#/');
   await page.getByLabel('Operator token (memory only)').fill(token ?? '');
   await page.getByRole('button', { name: 'Load test release' }).click();
-  await expect(page.getByText('Disposable test release — not project-approved or published')).toBeVisible();
+  await expect(page.getByText('Test release: not project-approved or published')).toBeVisible();
   await expect(page.getByRole('button', { name: /Download test-only CSV/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /Preview export/ })).toHaveCount(0);
 });

@@ -9,7 +9,7 @@ export const DEV_PREVIEW_QUERY = 'dev-candidates';
 export const DEV_PREVIEW_TOKEN_HEADER = 'X-UEC-Dev-Preview-Token';
 export const TEST_RELEASE_PATH = '/api/dev/preview/test-release';
 export const TEST_RELEASE_API_VERSION = 'dev-test-v1';
-export const TEST_RELEASE_LABEL = 'Disposable test release — not project-approved or published';
+export const TEST_RELEASE_LABEL = 'Test release: not project-approved or published';
 export const testReleasePath = (resource: 'locations' | 'filters' | 'facets' | 'csv', id?: string): string =>
   `${TEST_RELEASE_PATH}/${resource}${id ? `/${encodeURIComponent(id)}` : ''}`;
 
@@ -18,6 +18,6 @@ export const canOpenDevPreview = (isDevelopment: boolean, requestedMode: string 
   isDevelopment && requestedMode === DEV_PREVIEW_QUERY;
 
 /** Persistent copy used on every private-preview surface. */
-export const DEV_PREVIEW_LABEL = 'PRIVATE TEST DATA — NOT REVIEWED OR PUBLISHED';
-export const devPreviewExportLabel = (isPreview: boolean): string | null => isPreview ? 'Private test preview — export unavailable.' : null;
+export const DEV_PREVIEW_LABEL = 'PRIVATE TEST DATA: NOT REVIEWED OR PUBLISHED';
+export const devPreviewExportLabel = (isPreview: boolean): string | null => isPreview ? 'Private test preview: export unavailable.' : null;
 export const canMountPublicExport = (isPreview: boolean): boolean => !isPreview;

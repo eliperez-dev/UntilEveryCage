@@ -102,7 +102,7 @@ test('Downloads scope and community warning are explicit and FAQ remains compact
   await page.goto('./#/database/downloads');
   await expect(page.getByRole('link',{name:'CSV (up to 1,000 records)'})).toHaveAttribute('href','/api/v2/locations.csv?profile=official');
   await page.getByLabel('Dataset').selectOption('community');
-  await expect(page.getByText('Unreviewed community claim — not verified by Until Every Cage.',{exact:true})).toBeVisible();
+  await expect(page.getByText('Unreviewed community claim: not verified by Until Every Cage.',{exact:true})).toBeVisible();
   await expect(page.getByRole('link',{name:'CSV (up to 1,000 records)'})).toHaveAttribute('href','/api/v2/locations.csv?profile=community');
   await expect(page.getByText(/independent of Browse records filters/)).toBeVisible();
   await page.goto('./#/about/faq'); await page.setViewportSize({width:375,height:844});
