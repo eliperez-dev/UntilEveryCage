@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 const id = '18c6ef3a-28cd-4c8e-a9bb-3951f45f210d';
 const recordId = '27d7ef4b-39de-4d9f-bacc-4062f560321e';
 const release = 'synthetic-community-release';
-const claimWarning = 'Unreviewed community claim — not verified by Until Every Cage.';
+const claimWarning = 'Unreviewed community claim: not verified by Until Every Cage.';
 const secret = 'synthetic-one-time-receipt-secret';
 
 test.skip(process.env.VITE_COMMUNITY_PILOT !== 'true', 'Community pilot E2E requires explicit local pilot enablement.');

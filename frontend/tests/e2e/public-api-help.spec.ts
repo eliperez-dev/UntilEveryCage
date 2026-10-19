@@ -74,7 +74,7 @@ test('a community warning precedes execution and remains with a displayed commun
   await list.getByRole('button', { name: 'Try it out', exact: true }).click();
   const profile = list.locator('tr').filter({ has: page.locator('.parameter__name').filter({ hasText: /^profile/ }) }).locator('select');
   await profile.selectOption('community');
-  const warning = page.getByText('Unreviewed community claim — not verified by Until Every Cage.', { exact: true });
+  const warning = page.getByText('Unreviewed community claim: not verified by Until Every Cage.', { exact: true });
   await expect(warning).toBeVisible();
   await list.getByRole('button', { name: 'Execute', exact: true }).click();
   await expect(list.locator('.responses-inner')).toContainText('"community"');
