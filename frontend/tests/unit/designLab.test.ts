@@ -17,8 +17,8 @@ describe('F1A shared design lab', () => {
     expect(encodeLabHash({ ...state, query: '123 Example Street' })).not.toContain('q=');
     expect(decodeLabHash(encodeLabHash(state))).toEqual({ ...state, query: '' });
     const muted = decodeLabHash('#/map?basemap=muted');
-    expect(muted.basemap).toBe('muted');
-    expect(decodeLabHash(encodeLabHash(muted))).toEqual(muted);
+    expect(muted.basemap).toBe('vector');
+    expect(encodeLabHash(muted)).not.toContain('basemap=');
   });
 
   it('keeps the map rail closed unless a shared URL explicitly opens it', () => {
