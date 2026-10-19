@@ -4982,7 +4982,26 @@ pub async fn get_v2_locations_handler(
     "#), &[&promoted_release_id, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude]).await {
             Ok(row) => row.get(0), Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
         }
-    } else { match transaction.query_one(&format!(r#"
+    } else if search_text.is_none() { match transaction.query_one(&format!(r#"
+        SELECT count(DISTINCT history.facility_id)::bigint
+        FROM {public_read_model} AS history
+        WHERE history.release_id = $1
+          AND ($2::text IS NULL OR history.country_code = $2) AND ($3::text IS NULL OR history.city = $3)
+          AND ($4::text IS NULL OR history.classification_category = $4) AND ($5::text IS NULL OR history.display_precision = $5)
+          AND ($6::text IS NULL OR history.lifecycle_status = $6) AND ($7::text IS NULL OR history.provenance_origin_type = $7)
+          AND $8::text IS NULL
+          AND ($9::double precision IS NULL OR (history.display_location && ST_MakeEnvelope($9, $10, $11, $12, 4326)::geography AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($9, $10, $11, $12, 4326))))
+          AND ($13::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($14, $15), 4326)::geography, $13 * 1000))
+          AND EXISTS (
+                SELECT 1
+                FROM uec.observation_taxonomy_assignment_sets sets
+                JOIN uec.observation_taxonomy_assignments assignment ON assignment.assignment_set_id=sets.assignment_set_id
+                WHERE sets.observation_id=history.observation_id AND sets.taxonomy_version='uec-taxonomy-v1'
+                  AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=sets.observation_id AND newer.taxonomy_version=sets.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(sets.created_at,sets.assignment_set_id))
+                  AND assignment.primary_key = ANY($16::text[]))
+    "#), &[&promoted_release_id, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &category_keys]).await {
+        Ok(row) => row.get(0), Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
+    }} else { match transaction.query_one(&format!(r#"
         SELECT count(DISTINCT history.facility_id)::bigint
         FROM {public_read_model} AS history
         JOIN uec.public_discovery_read_model_rows stored
@@ -6500,6 +6519,23 @@ mod v2_api_tests {
         assert!(handler.contains("COALESCE(sr.raw_fields->'normalized'->>'in_default_map_scope','') <> 'false'"));
         assert!(handler.contains("SELECT dimension, value, label, count FROM facet_counts"));
         assert!(!handler.contains("let rows=match transaction.query"));
+    }
+
+    #[test]
+    fn taxonomy_total_without_search_avoids_the_redundant_search_row_join() {
+        let source = include_str!("lib.rs");
+        let handler = source
+            .split("pub async fn get_v2_locations_handler")
+            .nth(1)
+            .expect("public locations handler");
+        let no_search_total = handler
+            .split("} else if search_text.is_none() { match transaction.query_one")
+            .nth(1)
+            .and_then(|rest| rest.split("} else { match transaction.query_one").next())
+            .expect("taxonomy total without search");
+        assert!(no_search_total.contains("FROM {public_read_model} AS history"));
+        assert!(!no_search_total.contains("public_discovery_read_model_rows stored"));
+        assert!(no_search_total.contains("assignment.primary_key = ANY($16::text[])"));
     }
 
     #[test]
