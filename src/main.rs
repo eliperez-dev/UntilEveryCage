@@ -92,11 +92,12 @@ pub fn app(state: uec_api::ApiState, proxy: private_environment::ProxyConfig) ->
         .expect("community pilot configuration must be valid before app startup");
     let bind_host = std::env::var("UEC_BIND_HOST").unwrap_or_else(|_| "127.0.0.1".into());
     validate_community_bind(community.enabled, &runtime_mode, &bind_host)
-        .expect("community pilot requires development mode and a loopback bind");
+        .expect("community configuration must permit this bind");
     let metrics = Arc::new(OperationalMetrics::default());
     // Production is intentionally a smaller router, not the development
-    // router guarded only by tokens. This keeps private evidence, developer
-    // previews, legacy V1 data, and community intake out of the public host.
+    // router guarded only by tokens. Community intake is the one separately
+    // provisioned exception: it uses the restricted community pool, never the
+    // public serving pool.
     let public_router = Router::new()
         .route("/health/live", get(liveness))
         .route("/health/ready", get(readiness))
@@ -143,7 +144,7 @@ pub fn app(state: uec_api::ApiState, proxy: private_environment::ProxyConfig) ->
             get(uec_api::graph_public::neighborhood),
         );
     let router = if runtime_mode == "production" {
-        production_route_boundary(public_router)
+        production_route_boundary(public_router.merge(uec_api::community::routes(community)))
     } else {
         public_router
         .merge(uec_api::community::routes(community))
@@ -736,10 +737,10 @@ fn validate_bind_host(bind_host: &str) -> Result<IpAddr, &'static str> {
 
 fn validate_community_bind(enabled: bool, mode: &str, bind_host: &str) -> Result<(), &'static str> {
     if enabled
-        && (mode != "development"
-            || !bind_host.parse::<IpAddr>().is_ok_and(|ip| ip.is_loopback()))
+        && mode == "development"
+        && !bind_host.parse::<IpAddr>().is_ok_and(|ip| ip.is_loopback())
     {
-        return Err("community pilot requires development mode and a loopback bind");
+        return Err("development community intake requires a loopback bind");
     }
     Ok(())
 }
@@ -779,6 +780,7 @@ async fn shutdown_signal() {
 async fn main() {
     let mode = std::env::var("UEC_RUNTIME_MODE").unwrap_or_else(|_| "development".to_string());
     let database_url = std::env::var("UEC_DATABASE_URL").ok();
+    let community_database_url = std::env::var("UEC_COMMUNITY_DATABASE_URL").ok();
     let port = std::env::var("PORT").unwrap_or_else(|_| "8000".to_string());
     let bind_host = std::env::var("UEC_BIND_HOST").unwrap_or_else(|_| {
         if mode == "development" {
@@ -801,6 +803,24 @@ async fn main() {
         );
         std::process::exit(2)
     });
+    let community = uec_api::community::CommunityConfig::from_env(&mode).unwrap_or_else(|error| {
+        eprintln!("{{\"event\":\"configuration_error\",\"reason\":\"{}\"}}", error);
+        std::process::exit(2)
+    });
+    if community.enabled
+        && community_database_url.as_deref().is_none_or(|url| {
+            let trimmed = url.trim();
+            trimmed != url
+                || trimmed.chars().any(char::is_whitespace)
+                || !(trimmed.starts_with("postgres://") || trimmed.starts_with("postgresql://"))
+        })
+    {
+        eprintln!(
+            "{}",
+            "{\"event\":\"configuration_error\",\"reason\":\"UEC_COMMUNITY_DATABASE_URL is required for enabled community intake and must be a PostgreSQL URL without whitespace\"}"
+        );
+        std::process::exit(2);
+    }
     if let Err(error) = parse_cors_origins(
         mode.as_str(),
         std::env::var("UEC_CORS_ORIGINS").ok().as_deref(),
@@ -855,7 +875,7 @@ async fn main() {
         );
         std::process::exit(2)
     });
-    let database = database_url.and_then(|url| {
+    let build_pool = |url: String| {
         let mut config = Config::new();
         config.url = Some(url);
         config.manager = Some(ManagerConfig {
@@ -882,13 +902,22 @@ async fn main() {
                     "{}",
                     "{\"event\":\"database_pool_error\",\"reason\":\"pool_creation_failed\"}"
                 );
-                if mode == "production" {
-                    std::process::exit(2);
-                }
                 None
             }
         }
-    });
+    };
+    let database = database_url.and_then(|url| build_pool(url));
+    if mode == "production" && database.is_none() {
+        std::process::exit(2);
+    }
+    let community_database = community_database_url.and_then(|url| build_pool(url));
+    if community.enabled && community_database.is_none() {
+        eprintln!(
+            "{}",
+            "{\"event\":\"database_pool_error\",\"reason\":\"community_pool_creation_failed\"}"
+        );
+        std::process::exit(2);
+    }
     let addr = format!("{}:{}", bind_host, port);
     println!(
         "{{\"event\":\"server_starting\",\"service\":\"uec-api\",\"mode\":\"{}\",\"port\":{},\"restriction_ledger\":\"{}\",\"release_manifest\":\"{}\"}}",
@@ -930,6 +959,7 @@ async fn main() {
     };
     let state = uec_api::ApiState {
         database,
+        community_database,
         dev_preview_token,
         dev_test_release_id,
         dev_test_release_token,
@@ -1223,6 +1253,7 @@ mod config_tests {
         let router = super::app(
             uec_api::ApiState {
                 database: None,
+                community_database: None,
                 dev_preview_token: None,
                 dev_test_release_id: None,
                 dev_test_release_token: None,
@@ -1270,11 +1301,11 @@ mod rate_limit_tests {
     use tower::ServiceExt;
 
     #[test]
-    fn community_pilot_cannot_bind_a_public_interface() {
+    fn development_community_intake_cannot_bind_a_public_interface() {
         assert!(validate_community_bind(true, "development", "127.0.0.1").is_ok());
         assert!(validate_community_bind(true, "development", "::1").is_ok());
         assert!(validate_community_bind(true, "development", "0.0.0.0").is_err());
-        assert!(validate_community_bind(true, "production", "127.0.0.1").is_err());
+        assert!(validate_community_bind(true, "production", "0.0.0.0").is_ok());
         assert!(validate_community_bind(false, "production", "0.0.0.0").is_ok());
     }
 

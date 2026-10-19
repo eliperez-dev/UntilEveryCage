@@ -92,8 +92,9 @@ impl CommunityConfig {
     }
 
     /// Parse configuration once at startup. The disabled default needs no
-    /// secrets. This sprint deliberately fails closed in production.
-    pub fn from_env(mode: &str) -> Result<Self, String> {
+    /// secrets. Production additionally requires a separate restricted pool,
+    /// validated by the binary before it binds.
+    pub fn from_env(_mode: &str) -> Result<Self, String> {
         fn bool_env(name: &str, default: bool) -> Result<bool, String> {
             match std::env::var(name) {
                 Err(std::env::VarError::NotPresent) => Ok(default),
@@ -124,9 +125,6 @@ impl CommunityConfig {
             }
             return Ok(Self::disabled());
         }
-        if mode.eq_ignore_ascii_case("production") {
-            return Err("community intake is disabled in production for this release".into());
-        }
         let retention_days = positive("UEC_COMMUNITY_RETENTION_DAYS")?;
         let contact_retention_days = positive("UEC_COMMUNITY_CONTACT_RETENTION_DAYS")?;
         let receipt_days = positive("UEC_COMMUNITY_RECEIPT_DAYS")?;
@@ -149,6 +147,7 @@ impl CommunityConfig {
 
 pub fn routes(config: CommunityConfig) -> Router<ApiState> {
     Router::new()
+        .route("/api/community/capabilities", get(capabilities))
         .route("/api/community/submissions", post(create_submission))
         .route("/api/community/status", post(submission_status))
         .route("/api/private/community/submissions", get(queue))
@@ -399,12 +398,70 @@ fn operator_ok(config: &CommunityConfig, headers: &HeaderMap) -> bool {
 }
 async fn pool(state: &ApiState) -> Result<deadpool_postgres::Client, Response> {
     state
-        .database
+        .community_database
         .as_ref()
         .ok_or_else(unavailable)?
         .get()
         .await
         .map_err(|_| unavailable())
+}
+
+/// Apply the bounded retention policy inside the same transaction as a write.
+/// This gives an active intake an enforcement opportunity without pretending
+/// that it replaces the separately required idle maintenance caller.
+async fn expire_retained_data(
+    tx: &tokio_postgres::Transaction<'_>,
+    retention_days: i64,
+) -> Result<(u64, u64, u64), ()> {
+    let contacts = tx
+        .execute(
+            "DELETE FROM uec.community_submission_contacts WHERE expires_at <= now()",
+            &[],
+        )
+        .await
+        .map_err(|_| ())?;
+    let old_contacts = tx
+        .execute(
+            "DELETE FROM uec.community_submission_contacts c USING uec.community_submissions s WHERE c.submission_id=s.submission_id AND s.created_at<now()-($1::bigint*interval '1 day')",
+            &[&retention_days],
+        )
+        .await
+        .map_err(|_| ())?;
+    let receipts = tx
+        .execute(
+            "UPDATE uec.community_submissions SET receipt_secret_sha256=NULL WHERE receipt_secret_sha256 IS NOT NULL AND receipt_expires_at<=now()",
+            &[],
+        )
+        .await
+        .map_err(|_| ())?;
+    tx.execute(
+        "INSERT INTO uec.community_submission_events(submission_id,action,reason_code,actor_role) SELECT submission_id,'expire','retention_expired','system' FROM uec.community_submissions WHERE created_at<now()-($1::bigint*interval '1 day') AND claim<>'{}'::jsonb",
+        &[&retention_days],
+    )
+    .await
+    .map_err(|_| ())?;
+    let submissions = tx
+        .execute(
+            "UPDATE uec.community_submissions SET status='removed',claim='{}'::jsonb,receipt_secret_sha256=NULL,linked_source_record_id=NULL,linked_release_id=NULL,updated_at=now() WHERE created_at<now()-($1::bigint*interval '1 day') AND claim<>'{}'::jsonb",
+            &[&retention_days],
+        )
+        .await
+        .map_err(|_| ())?;
+    Ok((contacts + old_contacts, receipts, submissions))
+}
+
+/// A runtime-safe availability signal for the public client. It intentionally
+/// says nothing about queue capacity, operator configuration, or public claim
+/// publication; submission itself remains the authoritative admission check.
+async fn capabilities(Extension(cs): Extension<CommunityState>) -> Response {
+    if !cs.config.enabled {
+        return disabled();
+    }
+    Json(json!({
+        "enabled": true,
+        "types": ["facility", "evidence", "correction", "duplicate", "privacy_removal"]
+    }))
+    .into_response()
 }
 
 async fn create_submission(
@@ -434,12 +491,12 @@ async fn create_submission(
     {
         return unavailable();
     }
-    let _ = tx
-        .execute(
-            "DELETE FROM uec.community_submission_contacts WHERE expires_at <= now()",
-            &[],
-        )
-        .await;
+    if expire_retained_data(&tx, cs.config.retention_days)
+        .await
+        .is_err()
+    {
+        return unavailable();
+    }
     let counts = tx.query_one("SELECT count(*) FILTER (WHERE created_at >= current_date)::bigint, count(*) FILTER (WHERE status IN ('received','held'))::bigint FROM uec.community_submissions", &[]).await;
     let Ok(counts) = counts else {
         return unavailable();
@@ -729,25 +786,15 @@ async fn maintenance(
     let Ok(tx) = client.transaction().await else {
         return unavailable();
     };
-    let contacts = tx
-        .execute(
-            "DELETE FROM uec.community_submission_contacts WHERE expires_at<=now()",
-            &[],
-        )
-        .await;
-    let old_contacts=tx.execute("DELETE FROM uec.community_submission_contacts c USING uec.community_submissions s WHERE c.submission_id=s.submission_id AND s.created_at<now()-($1::bigint*interval '1 day')",&[&cs.config.retention_days]).await;
-    let receipts=tx.execute("UPDATE uec.community_submissions SET receipt_secret_sha256=NULL WHERE receipt_secret_sha256 IS NOT NULL AND receipt_expires_at<=now()",&[]).await;
-    let event_insert=tx.execute("INSERT INTO uec.community_submission_events(submission_id,action,reason_code,actor_role) SELECT submission_id,'expire','retention_expired','system' FROM uec.community_submissions WHERE created_at<now()-($1::bigint*interval '1 day') AND claim<>'{}'::jsonb",&[&cs.config.retention_days]).await;
-    let submissions=tx.execute("UPDATE uec.community_submissions SET status='removed',claim='{}'::jsonb,receipt_secret_sha256=NULL,linked_source_record_id=NULL,linked_release_id=NULL,updated_at=now() WHERE created_at<now()-($1::bigint*interval '1 day') AND claim<>'{}'::jsonb",&[&cs.config.retention_days]).await;
-    let (Ok(contacts), Ok(old_contacts), Ok(receipts), Ok(_), Ok(submissions)) =
-        (contacts, old_contacts, receipts, event_insert, submissions)
+    let Ok((contacts_expired, receipts_expired, submissions_expired)) =
+        expire_retained_data(&tx, cs.config.retention_days).await
     else {
         return unavailable();
     };
     if tx.commit().await.is_err() {
         return unavailable();
     }
-    Json(json!({"contacts_expired":contacts+old_contacts,"receipts_expired":receipts,"submissions_expired":submissions})).into_response()
+    Json(json!({"contacts_expired":contacts_expired,"receipts_expired":receipts_expired,"submissions_expired":submissions_expired})).into_response()
 }
 
 #[derive(Deserialize)]
@@ -1115,5 +1162,34 @@ mod tests {
     #[test]
     fn request_body_is_bounded() {
         assert!(MAX_BODY >= 10 * 1024 && MAX_BODY <= 16 * 1024);
+    }
+
+    #[tokio::test]
+    async fn capabilities_exposes_only_enabled_and_supported_types() {
+        let enabled = CommunityConfig::local_pilot(
+            false,
+            30,
+            7,
+            14,
+            20,
+            100,
+            "a sufficiently long operator token".into(),
+        )
+        .unwrap();
+        let response = capabilities(Extension(CommunityState { config: enabled })).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), MAX_BODY)
+            .await
+            .unwrap();
+        assert_eq!(
+            serde_json::from_slice::<Value>(&bytes).unwrap(),
+            json!({"enabled":true,"types":["facility","evidence","correction","duplicate","privacy_removal"]})
+        );
+
+        let response = capabilities(Extension(CommunityState {
+            config: CommunityConfig::disabled(),
+        }))
+        .await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 }
