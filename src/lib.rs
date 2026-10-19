@@ -6202,11 +6202,8 @@ mod v2_api_tests {
 
     #[tokio::test]
     async fn v2_response_is_json_when_database_is_configured() {
-        let url = std::env::var("UEC_DATABASE_URL").unwrap_or_else(|_| {
-            "postgresql://uec:uec-local-development-only@localhost:5433/uec".into()
-        });
-        unsafe {
-            std::env::set_var("UEC_DATABASE_URL", url);
+        if std::env::var_os("UEC_DATABASE_URL").is_none() {
+            return;
         }
         let response = Router::new()
             .route(
@@ -6247,11 +6244,8 @@ mod v2_api_tests {
 
     #[tokio::test]
     async fn v2_filters_are_accepted_without_bypassing_public_release_gate() {
-        let url = std::env::var("UEC_DATABASE_URL").unwrap_or_else(|_| {
-            "postgresql://uec:uec-local-development-only@localhost:5433/uec".into()
-        });
-        unsafe {
-            std::env::set_var("UEC_DATABASE_URL", url);
+        if std::env::var_os("UEC_DATABASE_URL").is_none() {
+            return;
         }
         for uri in [
             "/api/v2/locations?country_code=DK&category=retail_and_prepared_food",
@@ -6632,11 +6626,8 @@ mod v2_api_tests {
 
     #[tokio::test]
     async fn v2_default_and_opt_in_profiles_remain_empty_until_promotion() {
-        let url = std::env::var("UEC_DATABASE_URL").unwrap_or_else(|_| {
-            "postgresql://uec:uec-local-development-only@localhost:5433/uec".into()
-        });
-        unsafe {
-            std::env::set_var("UEC_DATABASE_URL", url);
+        if std::env::var_os("UEC_DATABASE_URL").is_none() {
+            return;
         }
         for uri in [
             "/api/v2/locations?country_code=ZZ",
@@ -6664,11 +6655,8 @@ mod v2_api_tests {
 
     #[tokio::test]
     async fn v2_response_cannot_contain_raw_evidence_fields() {
-        let url = std::env::var("UEC_DATABASE_URL").unwrap_or_else(|_| {
-            "postgresql://uec:uec-local-development-only@localhost:5433/uec".into()
-        });
-        unsafe {
-            std::env::set_var("UEC_DATABASE_URL", url);
+        if std::env::var_os("UEC_DATABASE_URL").is_none() {
+            return;
         }
         let response = Router::new()
             .route(
@@ -6684,6 +6672,7 @@ mod v2_api_tests {
             )
             .await
             .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
         let body = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
             .unwrap();
@@ -6698,6 +6687,9 @@ mod v2_api_tests {
 
     #[tokio::test]
     async fn v2_handles_concurrent_requests_through_shared_pool() {
+        if std::env::var_os("UEC_DATABASE_URL").is_none() {
+            return;
+        }
         let state = test_state().await;
         let router = Router::new()
             .route(
