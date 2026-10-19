@@ -240,6 +240,53 @@ There is no configured backup reviewer, legal service, publication guarantee,
 response SLA, anonymity guarantee, or production capacity claim in this
 runbook. Those remain explicit deployment decisions and policy obligations.
 
+## Selected public-serving package rehearsal (local only)
+
+`pipeline/scripts/maintenance/prepare-release-serving-package.py` prepares a
+selected-column package for one already-approved public release. It is a local
+restore rehearsal, not a publication command, backup format, or authorization
+to copy a private database to a host. The source database is read-only; use an
+empty isolated target only. The helper refuses a package whose manifest or any
+individual binary `COPY` payload has a different SHA-256 or byte count before
+opening the target connection. It also copies the source migration ledger
+first and checks its canonical inventory digest before any other package data.
+
+The target schema must be derived from the same verified migrated source, in
+the following order: create `postgis` in `public` and `pgcrypto`; restore the
+schema's pre-data archive; create `pg_trgm` in `uec`; run the selected-column
+package restore; then restore the filtered post-data archive. Record SHA-256
+for both schema archives with the package using repeated `--schema-artifact
+NAME=SHA256` arguments. The serving derivative excludes exactly these two
+private acquisition-preview callbacks from post-data restoration:
+
+- `uec.geocode_results.aaa_aphis_mailing_locality_geoapify_display`
+- `uec.geocode_results.geocode_results_geoapify_preview_display`
+
+They depend on the private `real_preview` acquisition/geocoder schema and are
+not public eligibility, restriction, review, or cache-generation gates. Do
+not omit any other constraint, index, trigger, or function without a separate
+review. The package manifest records both exclusions and schema-archive hashes.
+
+For a rehearsal, export and restore with environment-held connection strings
+only; do not put a credential in shell history, a command argument, or a log:
+
+```text
+prepare-release-serving-package.py export --source-database-url-env UEC_SOURCE_URL \
+  --release-id <approved-release> --migration-inventory-sha256 <ledger-sha256> \
+  --schema-artifact pre_data=<sha256> --schema-artifact post_data=<sha256> --output <empty-package-dir>
+prepare-release-serving-package.py restore --target-database-url-env UEC_TARGET_URL \
+  --package <package-dir> --apply-api-grants
+```
+
+After post-data restoration, verify all restored constraints and public gate
+triggers are enabled, the release's manifest/read-model/public-detail aggregate
+hashes match the source, and the runtime role can read only the explicit public
+handler relations. Run the real-V0 API acceptance against the isolated target:
+manifest, list/detail, map (including conditional ETag), CSV, history, graph
+(`200` with the truthful empty V0 graph), and negative private-route checks.
+Reapply the current restriction ledger before any serving decision; never use
+the package as permission to ignore a later suppression.
+
 ## Render preparation (not a deployment instruction)
 
 This is the bounded hosting shape approved for later operator use: one paid
@@ -302,13 +349,14 @@ stop rather than copying it into an image or a world-readable directory.
 Create PostGIS with the selected Render Postgres major version and exercise
 the repository migrations on an isolated target first. Render supports
 `postgis` on supported PostgreSQL versions, but support does not prove this
-schema or its extensions can migrate. There is currently no committed
-least-privilege production grant inventory: public handlers read several base
-and projection relations, including restriction/review state, so a generic
-`GRANT SELECT ON ALL TABLES` is not an accepted substitute. The rehearsal must
-document the exact API role's successful `CONNECT`, schema `USAGE`, and
-relation/function privileges; migrations and release operations use separate
-credentials and are not supplied to the web service.
+schema or its extensions can migrate. The serving-package helper carries the
+committed least-privilege rehearsal inventory: the API role receives schema
+`USAGE` and `SELECT` only on named handler/read-model, restriction/review,
+lifecycle, and taxonomy relations; it has no blanket table, sequence,
+source-record, raw-artifact, or write privilege. Migrations and release
+operations use separate credentials and are not supplied to the web service.
+A successful rehearsal checks that inventory, but it is not production
+deployment approval.
 
 For recovery, Render paid Postgres PITR is supplementary only (Hobby: three
 days; Pro or higher: seven days) and restores to a new database. Do not create
