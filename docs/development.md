@@ -38,6 +38,11 @@ write probe passed on the copy; the reference's verified counts were unchanged.
 
 For later restores, replay the latest restriction ledger using the production
 operations runbook; an old snapshot does not override newer restrictions.
+After a bulk import or restore, refresh PostgreSQL planner statistics before
+timing API requests. Include `uec.observation_taxonomy_assignment_sets`,
+`uec.observation_taxonomy_assignments` and
+`uec.public_discovery_read_model_rows`; missing statistics can distort query
+plans. This is database maintenance, not a change to release membership.
 
 Use a verified disposable v0 copy for normal development, migration trials
 and mutating tests. Never run a reset, seed, truncate, schema experiment or

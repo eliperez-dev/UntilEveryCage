@@ -65,6 +65,31 @@ their default pages (Browse records and Overview). Hover reveals subpages;
 keyboard access and Escape dismissal remain available. Touch uses a separate
 compact pages control, preserving direct title navigation without an arrow.
 
+## Final-review refinements (2026-10-18)
+
+The maintainer requested these launch repairs, not another redesign:
+
+- Use compact, readable filters with an obvious Clear all action. Options and
+  counts must use the same applicable scope as map/search. Show total matches
+  separately from the loaded page; 100 loaded records is not a database total.
+- Remove ordinary-interface governance rows, repeated internal candidate
+  wording and speculative empty connection panels. Preserve real source/date/
+  precision information, real connections and their confidence, backend access
+  controls, and required context for public unreviewed community claims.
+- Remove the disabled account placeholder, Help video, redundant Muted style
+  and extra header strip. Street and Satellite remain available. Constrain the
+  release selector to its menu instead of exposing an overflowing identifier.
+- Use the existing V1 pin artwork by default, preserving clicks and approximate
+  location grammar. Do not replace V2 taxonomy with V1 facility-type categories.
+  The maintainer identifies an explicit V2 mapping specification from the
+  taxonomy work; its separate colour specification has not yet been located.
+  Palette reconciliation remains open. Neither the older visual brief nor
+  current presentation-code hex values should be represented as that approval.
+- Write concise visitor copy without em dashes. This does not authorize
+  rewriting retained source-native evidence. Explain receipt status lookup in
+  ordinary language, without repetitive lost-receipt warnings or a claim that
+  unsupported recovery exists.
+
 ## Remaining implementation decisions
 
 10. **Map engine:** benchmark MapLibre/WebGL against Leaflet; MapLibre is the

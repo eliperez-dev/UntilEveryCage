@@ -165,6 +165,22 @@ shows an error with explicit recovery rather than silently loading current
 data. Focused frontend regressions passed 40/40. These checks do not establish
 that the full r5 candidate is approved or that Render has been deployed.
 
+**Owner-review UI repairs (2026-10-18):** search facets and list results now
+share the existing default map-scope predicate. The private preview exposes
+71,751 scoped records and 141 activity options, with zero mining options;
+these are not dataset v1 approval counts. Retained source rows were not deleted.
+Measured facet requests fell from 14.2–20.5 seconds to 3.5–3.7 seconds.
+Clear filters, total matches, default V1 pin clicks, compact release controls,
+Street/Satellite selection and removal of placeholder panels passed a live
+real-data browser check. All 236 frontend unit tests passed. Full real-v0 API
+acceptance passed without skips after the public filter-total query repair,
+retaining the 63,601-record baseline. PostgreSQL statistics were refreshed in
+the working copy; the frozen reference was not changed.
+The explicit V2 taxonomy colour specification identified by the maintainer
+has not been positively located. Palette reconciliation remains open; V1
+artwork reuse is not approval to replace V2 category colours. Render deployment
+and dataset v1 activation remain outside this repair.
+
 ## v0 dataset release sequence
 
 **Owner approval, 2026-10-06:** the explained 13-source subset is approved as
