@@ -821,11 +821,6 @@ struct V2ExportRow {
 const UNREVIEWED_COMMUNITY_WARNING: &str =
     "Unreviewed community claim — not verified by Until Every Cage";
 const COMMUNITY_EXPORT_NOTICE: &str = "Opt-in community profile: privacy-screened claims may be factually unreviewed and are not necessarily project-approved.";
-// Facets aggregate the current live-gated release before returning at most
-// twenty values per dimension. Keep this bounded to the transaction: it avoids
-// temporary-disk sorts on the current public release without changing the
-// global database setting or weakening a live gate.
-const FACETS_WORK_MEM: &str = "64MB";
 
 fn export_profile_notice(profile: &str) -> &'static str {
     if profile == "community" {
@@ -4497,11 +4492,7 @@ pub async fn get_v2_facets_handler(
             );
         }
     };
-    if transaction
-        .batch_execute(&format!("SET LOCAL jit = off; SET LOCAL work_mem = '{FACETS_WORK_MEM}'"))
-        .await
-        .is_err()
-    {
+    if transaction.batch_execute("SET LOCAL jit = off").await.is_err() {
         return v2_error(
             StatusCode::SERVICE_UNAVAILABLE,
             "database_transaction_unavailable",
