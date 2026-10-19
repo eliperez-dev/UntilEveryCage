@@ -10,14 +10,14 @@ const origin = process.env.UEC_COMMUNITY_ORIGIN;
 const cleanupCredential = process.env.UEC_COMMUNITY_OPERATOR_TOKEN;
 test.skip(!origin || !cleanupCredential, 'Set the isolated community origin and cleanup credential to run production acceptance.');
 
-type LocationEnvelope = { data?: { locations?: Array<{ id?: string }> }; locations?: Array<{ id?: string }> };
+type LocationEnvelope = { data?: Array<{ id?: string; facility_id?: string }> | { locations?: Array<{ id?: string; facility_id?: string }> }; locations?: Array<{ id?: string; facility_id?: string }> };
 
 async function releasedIds(request: import('@playwright/test').APIRequestContext): Promise<[string, string]> {
   const response = await request.get(`${origin}/api/v2/locations?limit=2`);
   expect(response.ok()).toBeTruthy();
   const payload = await response.json() as LocationEnvelope;
-  const rows = payload.data?.locations ?? payload.locations ?? [];
-  const ids = rows.map(row => row.id).filter((id): id is string => typeof id === 'string');
+  const rows = Array.isArray(payload.data) ? payload.data : payload.data?.locations ?? payload.locations ?? [];
+  const ids = rows.map(row => row.id ?? row.facility_id).filter((id): id is string => typeof id === 'string');
   expect(ids).toHaveLength(2);
   return [ids[0]!, ids[1]!];
 }
@@ -35,6 +35,8 @@ test('all five contribution types submit and track through the enabled productio
 
   for (const [index, route] of routes.entries()) {
     await page.goto(`${origin}/#/contribute/${route.path}`);
+    await expect(page.getByRole('heading', { name: route.path === 'facility' ? 'Add a facility' : /.*/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Send for review' })).toBeVisible();
     await route.fill(index);
     await page.getByLabel(/I have permission to share/).check();
     await page.getByRole('button', { name: 'Send for review' }).click();
