@@ -8,6 +8,7 @@ must be consumed by the later reviewed candidate workflow.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -20,6 +21,20 @@ ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from pipeline.common.prospective_release import measure  # noqa: E402
+
+
+def _inventory_digest(inventory: object) -> str:
+    if not isinstance(inventory, dict) or inventory.get("status") != "measured":
+        raise ValueError("inventory must be measured")
+    claimed = inventory.get("inventory_sha256")
+    body = dict(inventory)
+    body.pop("inventory_sha256", None)
+    body.pop("read_at_utc", None)
+    actual = hashlib.sha256((json.dumps(body, ensure_ascii=False, sort_keys=True,
+                                      separators=(",", ":")) + "\n").encode()).hexdigest()
+    if claimed != actual:
+        raise ValueError("inventory digest mismatch")
+    return actual
 
 
 def _safe_output(path: Path) -> Path:
@@ -54,7 +69,7 @@ def _frozen_database_url(value: str | None) -> str:
     return value
 
 
-def _frozen_exclusions(connection) -> tuple[list[str], str]:
+def _frozen_exclusions(connection) -> tuple[list[str], list[str], str]:
     rows = connection.execute("""
         WITH inherited AS (
           SELECT excluded.source_record_id::uuid AS source_record_id
@@ -62,17 +77,19 @@ def _frozen_exclusions(connection) -> tuple[list[str], str]:
             CROSS JOIN LATERAL jsonb_array_elements_text(scope.excluded_source_record_ids) excluded(source_record_id)
            WHERE scope.release_id='v0-candidate-2026-10-04-r3'
         )
-        SELECT DISTINCT observation.facility_id::text
+        SELECT DISTINCT record.source_id, observation.facility_id::text
           FROM inherited
+          JOIN uec.source_records record USING (source_record_id)
           JOIN uec.observations observation USING (source_record_id)
-         ORDER BY observation.facility_id::text
+         ORDER BY record.source_id, observation.facility_id::text
     """).fetchall()
-    identities = [row[0] for row in rows]
+    sources = [row[0] for row in rows]
+    identities = [row[1] for row in rows]
     import hashlib
-    digest = hashlib.sha256(("\n".join(identities) + "\n").encode("utf-8")).hexdigest()
-    if len(identities) != 553:
+    digest = hashlib.sha256(("\n".join(f"{source}:{facility}" for source, facility in rows) + "\n").encode("utf-8")).hexdigest()
+    if len(rows) != 553:
         raise ValueError("frozen inherited exclusion lineage count is not the approved 553")
-    return identities, digest
+    return sources, identities, digest
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -85,16 +102,16 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         inventory = json.loads(args.inventory.read_text(encoding="utf-8"))
-        digest = inventory.get("inventory_sha256") if isinstance(inventory, dict) else None
+        digest = _inventory_digest(inventory)
         output = _safe_output(args.output)
         with psycopg.connect(_frozen_database_url(args.frozen_database_url)) as frozen:
             with frozen.transaction():
                 frozen.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
-                inherited_ids, inherited_digest = _frozen_exclusions(frozen)
+                inherited_sources, inherited_ids, inherited_digest = _frozen_exclusions(frozen)
         with psycopg.connect(_database_url(args.database_url)) as connection:
             with connection.transaction():
                 connection.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
-                snapshot = measure(connection, digest, args.candidate_release_id, inherited_ids, inherited_digest)
+                snapshot = measure(connection, digest, args.candidate_release_id, inherited_ids, inherited_digest, inherited_sources)
         output.write_text(json.dumps(snapshot, sort_keys=True, indent=2) + "\n", encoding="utf-8", newline="\n")
         print(json.dumps({"status": "measured", "freeze_proposal_sha256": snapshot["freeze_proposal_sha256"],
                           "candidate_count": snapshot["cohort"]["candidate_count"],
@@ -103,7 +120,7 @@ def main(argv: list[str] | None = None) -> int:
                           "conditional_geometry_valid_count": snapshot["cohort"]["conditional_geometry_valid_count"],
                           "public_authorized": False}, sort_keys=True))
     except (OSError, ValueError, psycopg.Error) as error:
-        print(json.dumps({"status": "blocked", "reason": str(error)[:160]}, sort_keys=True))
+        print(json.dumps({"status": "blocked", "reason": type(error).__name__}, sort_keys=True))
         return 2
     return 0
 
