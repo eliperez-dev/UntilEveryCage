@@ -64,6 +64,13 @@ class PublicDiscoveryReadModelTests(unittest.TestCase):
         self.assertIn("public_detail", MODULE.INSERT_ROWS.lower())
         self.assertIn("public_search_text", MODULE.INSERT_ROWS.lower())
 
+    def test_detail_uses_bridged_normalized_source_status_before_legacy_observation_fields(self):
+        query = " ".join(MODULE.SOURCE_ROWS.lower().split())
+        self.assertIn("public_discovery_detail_from_observation", query)
+        self.assertIn("jsonb_typeof(observation.observation->'source_status') = 'object'", query)
+        self.assertIn("then observation.observation->'source_status'", query)
+        self.assertIn("else observation.observation end", query)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -251,7 +251,11 @@ SELECT eligible.facility_id, eligible.observation_id, eligible.source_record_id,
        CASE WHEN source.attribution IS NULL OR btrim(source.attribution) = ''
             THEN 'cleared' ELSE 'attribution_required' END AS source_rights_status,
        eligible.geometry_provenance,
-       uec.public_discovery_detail_from_observation(observation.observation) AS public_detail
+       uec.public_discovery_detail_from_observation(
+           CASE WHEN jsonb_typeof(observation.observation->'source_status') = 'object'
+                THEN observation.observation->'source_status'
+                ELSE observation.observation END
+       ) AS public_detail
 FROM eligible_geometry eligible
 JOIN uec.release_members member
   ON member.release_id=eligible.release_id AND member.observation_id=eligible.observation_id
