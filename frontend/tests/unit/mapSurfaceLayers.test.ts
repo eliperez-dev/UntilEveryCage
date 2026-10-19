@@ -3,7 +3,9 @@ import {
   JSON_LOCATION_LAYER_IDS,
   MVT_LOCATION_LAYER_IDS,
   addMvtLocationLayers,
+  createMvtReferenceAreas,
   createBaseStyle,
+  isMvtReferenceKind,
   mvtTileUrl,
   removeLocationLayers,
   setMvtClusterCutoff,
@@ -54,6 +56,34 @@ describe('MapSurface layer contract', () => {
     expect(layers.find((layer) => layer.id === 'mvt-v1-source-pins')?.layout).toMatchObject({
       visibility: 'none', 'icon-image': 'v1-pin-red', 'icon-anchor': 'bottom',
     });
+    expect(layers.find((layer) => layer.id === 'mvt-reference-outer')).toBeUndefined();
+    expect(layers.find((layer) => layer.id === 'mvt-reference-center')).toMatchObject({
+      type: 'symbol',
+      filter: ['any', ['==', ['get', 'kind'], 'city_reference'], ['==', ['get', 'kind'], 'coarse_reference']],
+      layout: { 'icon-image': 'v1-pin-grey' },
+    });
+    expect(layers.find((layer) => layer.id === 'mvt-reference-count')?.layout['text-field'])
+      .toEqual(['case', ['>', ['coalesce', ['get', 'count'], 1], 1], ['to-string', ['coalesce', ['get', 'count'], 1]], '']);
+  });
+
+  it('creates selected-only 250m geographic areas for city and coarse references, never source points', () => {
+    const areas = createMvtReferenceAreas([
+      { properties: { kind: 'city_reference', feature_key: 'city' }, geometry: { type: 'Point', coordinates: [4.35, 50.85] } },
+      { properties: { kind: 'coarse_reference', feature_key: 'coarse' }, geometry: { type: 'Point', coordinates: [151.2, -33.8] } },
+      { properties: { kind: 'source_coordinate', feature_key: 'source' }, geometry: { type: 'Point', coordinates: [0, 0] } },
+    ], 0.25);
+    expect(areas.features).toHaveLength(2);
+    expect(areas.features.map((feature: any) => feature.properties.feature_key)).toEqual(['city', 'coarse']);
+    expect(areas.features.every((feature: any) => feature.geometry.coordinates[0].length === 25)).toBe(true);
+    const ring = (areas.features[1] as any).geometry.coordinates[0];
+    const toRadians = (value: number) => value * Math.PI / 180;
+    const distanceKm = 6371.0088 * Math.acos(Math.sin(toRadians(-33.8)) * Math.sin(toRadians(ring[0][1])) + Math.cos(toRadians(-33.8)) * Math.cos(toRadians(ring[0][1])) * Math.cos(toRadians(ring[0][0] - 151.2)));
+    expect(distanceKm).toBeCloseTo(0.25, 3);
+    expect(isMvtReferenceKind('city_reference')).toBe(true);
+    expect(isMvtReferenceKind('coarse_reference')).toBe(true);
+    expect(isMvtReferenceKind('source_coordinate')).toBe(false);
+    // A cold or deselected source is represented by an empty area collection.
+    expect(createMvtReferenceAreas([], 0.25).features).toEqual([]);
   });
 
   it('tears down both projections before the selected path attaches', () => {
