@@ -57,6 +57,7 @@ export function reduceLabState(state: LabState, action: LabAction): LabState {
     case 'list': return { ...state, listOpen: action.value };
     case 'viewport': return { ...state, viewport: action.value };
     case 'filters': return { ...state, filters: { categories: unique(action.value.categories), precisions: unique(action.value.precisions), countries: unique(action.value.countries), sources: unique(action.value.sources), activities: unique(action.value.activities) } };
-    case 'reset-filters': return { ...state, query: '', filters: DEFAULT_LAB_STATE.filters, selectedId: null };
+    // Retain camera, release, and list state, but clear every active criterion.
+    case 'reset-filters': return { ...state, query: '', sourceId: null, filters: DEFAULT_LAB_STATE.filters, selectedId: null, aggregateMemberIds: null };
   }
 }
