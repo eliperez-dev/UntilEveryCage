@@ -36,6 +36,9 @@ class ReleaseServingPackageTests(unittest.TestCase):
         self.assertNotIn("GRANT ALL", sql)
         self.assertNotIn("DEFAULT PRIVILEGES", sql)
         self.assertNotIn("raw_artifacts", sql)
+        self.assertIn("uec.schema_migrations", sql)
+        self.assertIn("uec.map_facilities_display_history", sql)
+        self.assertIn("uec.publication_review_release_current", sql)
 
     def test_invalid_release_or_digest_fails_closed(self):
         with self.assertRaises(ValueError): serving.package_manifest(release_ids=[], migration_inventory_sha256="a" * 64)
