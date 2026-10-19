@@ -204,7 +204,10 @@
   let visibleApproximateCount = $state(0);
   let coordinateRadius = $state(6.5);
   let showReferenceLabels = $state(false);
-  let useV1Pins = $state(false);
+  // Exact locations default to the retained V1 pin family. The toggle remains
+  // available for focused renderer diagnostics, but dots are not the normal
+  // visitor-facing representation.
+  let useV1Pins = $state(true);
   let pinModeError = $state("");
   let clusterZoomDuration = $state(460);
   let clusterRebuildDebounce = $state(150);

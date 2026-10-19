@@ -56,7 +56,6 @@
     <div class="view-options" role="group" aria-label="Map view">
       <button type="button" aria-pressed={basemap === "vector"} onclick={() => onbasemap("vector")}>Street</button>
       <button type="button" aria-pressed={basemap === "satellite"} onclick={() => onbasemap("satellite")}>Satellite</button>
-      <button type="button" aria-pressed={basemap === "muted"} onclick={() => onbasemap("muted")}>Muted</button>
     </div>
   </div>
 </aside>
@@ -90,7 +89,7 @@
   .lens-options { margin-top:.5rem; padding-top:.5rem; border-top:1px solid #48504b; }
   .lens-options[hidden] { display:none; }
   .option-label { color:#c3c9c5; font-size:.55rem; font-weight:700; letter-spacing:.08em; }
-  .view-options { display:grid; grid-template-columns:repeat(3,1fr); gap:.2rem; margin-top:.35rem; }
+  .view-options { display:grid; grid-template-columns:repeat(2,1fr); gap:.2rem; margin-top:.35rem; }
   .view-options button { min-width:0; padding:.3rem .1rem; border:1px solid #5a625c; background:#202421; color:#e9eee8; cursor:pointer; font:.57rem system-ui; }
   .view-options button[aria-pressed="true"] { background:#e6e8e6; color:#171a18; }
 
