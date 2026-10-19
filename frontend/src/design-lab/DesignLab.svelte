@@ -160,6 +160,7 @@
       }
       if (mode === 'candidate-preview') {
         const page = await testReleaseRepository.list({
+          q: query,
           sourceIds: [...new Set([...(labState.sourceId ? [labState.sourceId] : []), ...labState.filters.sources])],
           countryCodes: labState.filters.countries,
           categories: labState.filters.categories,
@@ -170,6 +171,7 @@
         const mapped = page.locations.map(mapPublicLocation);
         apiRecords = reset ? mapped : [...new Map([...apiRecords, ...mapped].map(record => [record.id, record])).values()];
         nextCursor = page.nextCursor;
+        candidateTotalCount = page.totalCount;
         $dataStatus = apiRecords.length ? 'ready' : 'empty';
         return;
       }

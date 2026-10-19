@@ -127,9 +127,11 @@
       event.preventDefault(); railWidth.update(width => Math.max(300, Math.min(Math.floor(window.innerWidth * 0.55), width + (event.key === 'ArrowRight' ? 24 : -24))));
     }
   }
-  const active = $derived(mode === "candidate-preview"
-    ? (state.sourceId ? 1 : 0) + state.filters.countries.length + state.filters.sources.length + state.filters.categories.length + state.filters.activities.length
-    : mode === "synthetic" ? state.filters.categories.length + state.filters.precisions.length : 0);
+  const active = $derived(
+    (state.query.trim() ? 1 : 0) +
+    (state.sourceId ? 1 : 0) +
+    state.filters.categories.length + state.filters.precisions.length + state.filters.countries.length + state.filters.sources.length + state.filters.activities.length,
+  );
   function toggleCandidateFilter(field: 'countries' | 'sources' | 'categories' | 'activities', value: string, checked: boolean) {
     const current = state.filters[field];
     dispatch({ type: 'filters', value: { ...state.filters, [field]: checked ? [...new Set([...current, value])] : current.filter(item => item !== value) } });
@@ -621,7 +623,7 @@
           >Open member records</button
         >
       </aside>{/if}
-    <label class="basemap-picker">Map style<select aria-label="Map style" value={state.basemap} onchange={(event) => dispatch({ type: 'basemap', value: event.currentTarget.value as typeof state.basemap })}><option value="vector">Street</option><option value="satellite">Satellite</option><option value="muted">Muted</option></select></label>
+    <label class="basemap-picker">Map style<select aria-label="Map style" value={state.basemap} onchange={(event) => dispatch({ type: 'basemap', value: event.currentTarget.value as typeof state.basemap })}><option value="vector">Street</option><option value="satellite">Satellite</option></select></label>
   </main>
 </section>
 
