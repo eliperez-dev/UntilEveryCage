@@ -4962,31 +4962,10 @@ pub async fn get_v2_locations_handler(
     // as the page. It is deliberately not the size of a client-loaded page.
     let query_limit = limit + 1;
     let taxonomy_filters_requested = category_keys.is_some();
-    let total_count: i64 = if !taxonomy_filters_requested {
-        // Ordinary browsing never examines taxonomy to decide eligibility. Keep
-        // the exact facility total, but avoid expanding every assignment set.
-        match transaction.query_one(&format!(r#"
-        SELECT count(DISTINCT history.facility_id)::bigint
-        FROM {public_read_model} AS history
-        LEFT JOIN uec.public_discovery_read_model_rows indexed
-          ON indexed.release_id=history.release_id AND indexed.facility_id=history.facility_id AND indexed.observation_id=history.observation_id
-        WHERE history.release_id = $1
-          AND ($2::text IS NULL OR history.country_code = $2) AND ($3::text IS NULL OR history.city = $3)
-          AND ($4::text IS NULL OR history.classification_category = $4) AND ($5::text IS NULL OR history.display_precision = $5)
-          AND ($6::text IS NULL OR history.lifecycle_status = $6) AND ($7::text IS NULL OR history.provenance_origin_type = $7)
-          AND ($8::text IS NULL OR indexed.public_search_text ILIKE '%' || $8 || '%' ESCAPE '\'
-               OR (indexed.public_search_text = '' AND lower(concat_ws(' ', history.canonical_name, history.city, history.country_code, history.classification_category, history.provenance_source_name)) LIKE '%' || lower($8) || '%' ESCAPE '\')
-               OR (indexed.public_search_text = '' AND EXISTS (
-                    SELECT 1 FROM uec.observation_taxonomy_assignment_sets sets
-                    LEFT JOIN uec.observation_taxonomy_assignments assignment ON assignment.assignment_set_id=sets.assignment_set_id
-                    WHERE sets.observation_id=history.observation_id AND sets.taxonomy_version='uec-taxonomy-v1'
-                      AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=sets.observation_id AND newer.taxonomy_version=sets.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(sets.created_at,sets.assignment_set_id))
-                      AND lower(concat_ws(' ', assignment.leaf_label, assignment.source_code, assignment.source_label, assignment.source_code_reference, assignment.source_label_reference)) LIKE '%' || lower($8) || '%' ESCAPE '\')))
-          AND ($9::double precision IS NULL OR (history.display_location && ST_MakeEnvelope($9, $10, $11, $12, 4326)::geography AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($9, $10, $11, $12, 4326))))
-          AND ($13::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($14, $15), 4326)::geography, $13 * 1000))
-    "#), &[&promoted_release_id, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude]).await {
-            Ok(row) => row.get(0), Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
-        }
+    // Ordinary browsing carries its exact total from the same materialized
+    // eligible-facility set used to choose the page below.
+    let taxonomy_total_count: Option<i64> = if !taxonomy_filters_requested {
+        None
     } else if search_text.is_none() { match transaction.query_one(&format!(r#"
         SELECT count(DISTINCT history.facility_id)::bigint
         FROM {public_read_model} AS history
@@ -5005,7 +4984,7 @@ pub async fn get_v2_locations_handler(
                   AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=sets.observation_id AND newer.taxonomy_version=sets.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(sets.created_at,sets.assignment_set_id))
                   AND assignment.primary_key = ANY($16::text[]))
     "#), &[&promoted_release_id, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &category_keys]).await {
-        Ok(row) => row.get(0), Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
+        Ok(row) => Some(row.get(0)), Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
     }} else { match transaction.query_one(&format!(r#"
         SELECT count(DISTINCT history.facility_id)::bigint
         FROM {public_read_model} AS history
@@ -5033,40 +5012,47 @@ pub async fn get_v2_locations_handler(
                   AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=sets.observation_id AND newer.taxonomy_version=sets.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(sets.created_at,sets.assignment_set_id))
                   AND assignment.primary_key = ANY($16::text[]))
     "#), &[&promoted_release_id, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &category_keys]).await {
-        Ok(row) => row.get(0), Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
+        Ok(row) => Some(row.get(0)), Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
     }};
     let rows = if !taxonomy_filters_requested {
         // Pick the stable page before calculating DTO-only taxonomy. The
         // taxonomy is still returned for each record, but no longer expanded
         // for every eligible facility on an ordinary browse request.
         match transaction.query(&format!(r#"
-        WITH candidates AS MATERIALIZED (
+        WITH filtered AS MATERIALIZED (
           SELECT DISTINCT ON (history.facility_id) history.facility_id, history.observation_id
           FROM {public_read_model} AS history
           LEFT JOIN uec.public_discovery_read_model_rows indexed
             ON indexed.release_id=history.release_id AND indexed.facility_id=history.facility_id AND indexed.observation_id=history.observation_id
           WHERE history.release_id = $1
-            AND ($2::uuid IS NULL OR history.facility_id > $2)
-            AND ($3::text IS NULL OR history.country_code = $3)
-            AND ($4::text IS NULL OR history.city = $4)
-            AND ($5::text IS NULL OR history.classification_category = $5)
-            AND ($6::text IS NULL OR history.display_precision = $6)
-            AND ($7::text IS NULL OR history.lifecycle_status = $7)
-            AND ($8::text IS NULL OR history.provenance_origin_type = $8)
-            AND ($9::text IS NULL OR indexed.public_search_text ILIKE '%' || $9 || '%' ESCAPE '\'
-                 OR (indexed.public_search_text = '' AND lower(concat_ws(' ', history.canonical_name, history.city, history.country_code, history.classification_category, history.provenance_source_name)) LIKE '%' || lower($9) || '%' ESCAPE '\')
+            AND ($2::text IS NULL OR history.country_code = $2)
+            AND ($3::text IS NULL OR history.city = $3)
+            AND ($4::text IS NULL OR history.classification_category = $4)
+            AND ($5::text IS NULL OR history.display_precision = $5)
+            AND ($6::text IS NULL OR history.lifecycle_status = $6)
+            AND ($7::text IS NULL OR history.provenance_origin_type = $7)
+            AND ($8::text IS NULL OR indexed.public_search_text ILIKE '%' || $8 || '%' ESCAPE '\'
+                 OR (indexed.public_search_text = '' AND lower(concat_ws(' ', history.canonical_name, history.city, history.country_code, history.classification_category, history.provenance_source_name)) LIKE '%' || lower($8) || '%' ESCAPE '\')
                  OR (indexed.public_search_text = '' AND EXISTS (
                       SELECT 1 FROM uec.observation_taxonomy_assignment_sets sets
                       LEFT JOIN uec.observation_taxonomy_assignments assignment ON assignment.assignment_set_id=sets.assignment_set_id
                       WHERE sets.observation_id=history.observation_id AND sets.taxonomy_version='uec-taxonomy-v1'
                         AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=sets.observation_id AND newer.taxonomy_version=sets.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(sets.created_at,sets.assignment_set_id))
-                        AND lower(concat_ws(' ', assignment.leaf_label, assignment.source_code, assignment.source_label, assignment.source_code_reference, assignment.source_label_reference)) LIKE '%' || lower($9) || '%' ESCAPE '\')))
-            AND ($10::double precision IS NULL OR (history.display_location && ST_MakeEnvelope($10, $11, $12, $13, 4326)::geography AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($10, $11, $12, $13, 4326))))
-            AND ($14::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($15, $16), 4326)::geography, $14 * 1000))
+                        AND lower(concat_ws(' ', assignment.leaf_label, assignment.source_code, assignment.source_label, assignment.source_code_reference, assignment.source_label_reference)) LIKE '%' || lower($8) || '%' ESCAPE '\')))
+            AND ($9::double precision IS NULL OR (history.display_location && ST_MakeEnvelope($9, $10, $11, $12, 4326)::geography AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($9, $10, $11, $12, 4326))))
+            AND ($13::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($14, $15), 4326)::geography, $13 * 1000))
           ORDER BY history.facility_id, history.observation_id
+        ), eligible_total AS MATERIALIZED (
+          SELECT count(*)::bigint AS total_count FROM filtered
         ), page AS (
-          SELECT facility_id, observation_id FROM candidates
+          SELECT facility_id, observation_id
+          FROM filtered
+          WHERE ($16::uuid IS NULL OR facility_id > $16)
           ORDER BY facility_id LIMIT $17 OFFSET $18
+        ), page_with_total AS (
+          SELECT page.facility_id, page.observation_id, total.total_count
+          FROM eligible_total AS total
+          LEFT JOIN page ON TRUE
         )
         SELECT history.facility_id, history.canonical_name, history.country_code, history.city, history.classification_category, history.display_precision,
                history.factual_review_status, history.privacy_screening_status, history.maintainer_approval, history.reviewer_role,
@@ -5079,9 +5065,10 @@ pub async fn get_v2_locations_handler(
                COALESCE(taxonomy.primary_categories, ARRAY['unclassified']::text[]),
                COALESCE(taxonomy.leaf_activities, '[]'::jsonb)::text,
                COALESCE(taxonomy.assignments, '[]'::jsonb)::text,
-               history.geometry_provenance::text
-        FROM page
-        JOIN {public_read_model} AS history
+               history.geometry_provenance::text,
+               page.total_count
+        FROM page_with_total AS page
+        LEFT JOIN {public_read_model} AS history
           ON history.release_id = $1
          AND history.facility_id = page.facility_id
          AND history.observation_id = page.observation_id
@@ -5096,7 +5083,7 @@ pub async fn get_v2_locations_handler(
             AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=s.observation_id AND newer.taxonomy_version=s.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(s.created_at,s.assignment_set_id))
         ) taxonomy ON TRUE
         ORDER BY history.facility_id, history.observation_id
-    "#), &[&promoted_release_id, &cursor, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &query_limit, &effective_offset]).await {
+    "#), &[&promoted_release_id, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &cursor, &query_limit, &effective_offset]).await {
             Ok(rows) => rows,
             Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
         }
@@ -5158,9 +5145,13 @@ pub async fn get_v2_locations_handler(
         Ok(rows) => rows,
         Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
     }};
+    let total_count = taxonomy_total_count.unwrap_or_else(|| {
+        rows.first().map(|row| row.get::<_, i64>(29)).unwrap_or(0)
+    });
     let has_next = rows.len() as i64 > limit;
     let data = rows
         .into_iter()
+        .filter(|row| row.get::<_, Option<uuid::Uuid>>(0).is_some())
         .take(limit as usize)
         .map(|row| V2Location {
             facility_id: row.get(0),
@@ -6211,11 +6202,8 @@ mod v2_api_tests {
 
     #[tokio::test]
     async fn v2_response_is_json_when_database_is_configured() {
-        let url = std::env::var("UEC_DATABASE_URL").unwrap_or_else(|_| {
-            "postgresql://uec:uec-local-development-only@localhost:5433/uec".into()
-        });
-        unsafe {
-            std::env::set_var("UEC_DATABASE_URL", url);
+        if std::env::var_os("UEC_DATABASE_URL").is_none() {
+            return;
         }
         let response = Router::new()
             .route(
@@ -6256,11 +6244,8 @@ mod v2_api_tests {
 
     #[tokio::test]
     async fn v2_filters_are_accepted_without_bypassing_public_release_gate() {
-        let url = std::env::var("UEC_DATABASE_URL").unwrap_or_else(|_| {
-            "postgresql://uec:uec-local-development-only@localhost:5433/uec".into()
-        });
-        unsafe {
-            std::env::set_var("UEC_DATABASE_URL", url);
+        if std::env::var_os("UEC_DATABASE_URL").is_none() {
+            return;
         }
         for uri in [
             "/api/v2/locations?country_code=DK&category=retail_and_prepared_food",
@@ -6557,6 +6542,28 @@ mod v2_api_tests {
     }
 
     #[test]
+    fn ordinary_public_list_counts_the_eligible_snapshot_before_cursor_pagination() {
+        let source = include_str!("lib.rs");
+        let handler = source
+            .split("pub async fn get_v2_locations_handler")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn get_v2_location_detail_handler").next())
+            .expect("public locations handler");
+        let filtered = handler
+            .find("WITH filtered AS MATERIALIZED")
+            .expect("one eligible public snapshot");
+        let total = handler
+            .find("SELECT count(*)::bigint AS total_count FROM filtered")
+            .expect("exact total from that snapshot");
+        let cursor = handler
+            .find("WHERE ($16::uuid IS NULL OR facility_id > $16)")
+            .expect("cursor applied only to the selected page");
+        assert!(filtered < total && total < cursor);
+        assert!(handler.contains("LEFT JOIN page ON TRUE"));
+        assert!(handler.contains("page.total_count"));
+    }
+
+    #[test]
     fn candidate_detail_geometry_uses_map_precision_without_upgrading_coordinates() {
         let source = include_str!("lib.rs");
         let helper = source
@@ -6619,11 +6626,8 @@ mod v2_api_tests {
 
     #[tokio::test]
     async fn v2_default_and_opt_in_profiles_remain_empty_until_promotion() {
-        let url = std::env::var("UEC_DATABASE_URL").unwrap_or_else(|_| {
-            "postgresql://uec:uec-local-development-only@localhost:5433/uec".into()
-        });
-        unsafe {
-            std::env::set_var("UEC_DATABASE_URL", url);
+        if std::env::var_os("UEC_DATABASE_URL").is_none() {
+            return;
         }
         for uri in [
             "/api/v2/locations?country_code=ZZ",
@@ -6651,11 +6655,8 @@ mod v2_api_tests {
 
     #[tokio::test]
     async fn v2_response_cannot_contain_raw_evidence_fields() {
-        let url = std::env::var("UEC_DATABASE_URL").unwrap_or_else(|_| {
-            "postgresql://uec:uec-local-development-only@localhost:5433/uec".into()
-        });
-        unsafe {
-            std::env::set_var("UEC_DATABASE_URL", url);
+        if std::env::var_os("UEC_DATABASE_URL").is_none() {
+            return;
         }
         let response = Router::new()
             .route(
@@ -6671,6 +6672,7 @@ mod v2_api_tests {
             )
             .await
             .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
         let body = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
             .unwrap();
@@ -6685,6 +6687,9 @@ mod v2_api_tests {
 
     #[tokio::test]
     async fn v2_handles_concurrent_requests_through_shared_pool() {
+        if std::env::var_os("UEC_DATABASE_URL").is_none() {
+            return;
+        }
         let state = test_state().await;
         let router = Router::new()
             .route(
