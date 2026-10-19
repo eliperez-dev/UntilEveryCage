@@ -43,7 +43,7 @@
     </div>
 
     <aside class:closed={!state.listOpen} class="results-sheet" aria-label="Synchronized results and filters">
-      <div class="sheet-topline"><span class="sheet-index">01 — RESULTS</span><button class="icon-control sheet-close" type="button" aria-label="Close results rail" onclick={() => dispatch({ type: 'list', value: false })}>×</button></div>
+      <div class="sheet-topline"><span class="sheet-index">01: RESULTS</span><button class="icon-control sheet-close" type="button" aria-label="Close results rail" onclick={() => dispatch({ type: 'list', value: false })}>×</button></div>
       <div class="results-heading"><h2>In view</h2><span class="results-count">{model.listRecords.length.toString().padStart(2, '0')}</span></div>
       <p class="results-caption">Global search results · synthetic review set</p>
       <details class="filter-disclosure" open={activeFilterCount > 0}>
