@@ -48,6 +48,9 @@ test('production bundle opens a real v0 pin on cold and warm loads', async ({ pa
   await expect(page.getByText('Contribution forms aren’t available here', { exact: true })).toHaveCount(0);
   await expect(page.locator('a[href="mailto:untileverycageproject@protonmail.com"]').first()).toBeVisible();
   await expect(page.locator('form button[type="submit"]')).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Check status', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Community submissions', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Report a bug', exact: true })).toBeVisible();
 
   await page.goto(mapPath);
   await page.reload();

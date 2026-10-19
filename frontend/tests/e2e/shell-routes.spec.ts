@@ -87,8 +87,8 @@ test('the Contribute hub, bug report, and About pages share the primary navigati
   const nav = page.getByRole('navigation', { name: 'Primary' });
   for (const label of ['Map', 'Contribute']) await expect(nav.getByRole('link', { name: label })).toBeVisible();
   await expect(nav.getByRole('link', { name: 'About', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Add a facility', level: 1 })).toBeVisible();
-  await page.getByRole('navigation', { name: 'Contribution tasks' }).getByRole('link', { name: 'Bug report' }).click();
+  await expect(page.getByRole('heading', { name: 'Contribute to the project', level: 1 })).toBeVisible();
+  await page.getByRole('link', { name: 'Report a bug', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Report a bug' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Report a public issue on GitHub' })).toHaveAttribute('href', 'https://github.com/eliperez-dev/UntilEveryCage/issues/new');
   await page.goto('./#/about/manifesto');
@@ -142,16 +142,17 @@ test('route controls are focusable links with explicit destinations', async ({ p
   expect(destination.searchParams.get('lon')).toBe('5');
 });
 
-test('direct Contribute tasks, four About destinations, and code help are easy to find', async ({ page }) => {
+test('public contribution contacts, four About destinations, and code help are easy to find', async ({ page }) => {
   await page.goto('./#/contribute');
-  await expect(page.getByRole('heading', { level: 1, name: 'Add a facility' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Contribute to the project' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Contribute menu' })).toHaveCount(0);
   await expect(page.getByLabel('Contribution type')).toHaveCount(0);
   const tasks = page.getByRole('navigation', { name: 'Contribution tasks' });
-  await expect(tasks.getByRole('link')).toHaveCount(6);
-  await expect(tasks.getByRole('link', { name: 'Facility', exact: true })).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByRole('link', { name: 'Check status', exact: true })).toHaveAttribute('href', '#/contribution-status');
-  await expect(page.getByRole('link', { name: 'Community submissions', exact: true })).toHaveAttribute('href', '#/community');
+  await expect(tasks).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Check status', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Community submissions', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Report a bug', exact: true })).toHaveAttribute('href', /#\/contribute\?type=bug/);
+  await expect(page.locator('.contribute-page a[href="mailto:untileverycageproject@protonmail.com"]')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Contribute code on GitHub' })).toHaveAttribute('href', 'https://github.com/eliperez-dev/UntilEveryCage');
   const about = page.getByRole('link', { name: 'About', exact: true });
   await expect(about).toHaveText('About');

@@ -92,6 +92,11 @@ shows source-coordinate pins without approximate halos; genuine reference
 areas use a latitude/zoom-aware 500-metre presentation default, not a measured
 accuracy guarantee. Hosted deployment of this frontend patch and final owner
 acceptance remain separate checks; these repairs do not fix v0's release content.
+The public shell/safety browser suite subsequently passed 48 checks across
+Chromium, Firefox and WebKit, including absence of disabled pilot links. Known
+incorrect locations must also be corrected or suppressed in historical public
+outputs through the existing correction controls; retaining original evidence
+does not require continuing to display an incorrect point.
 
 **Germany sequencing (maintainer approval, 2026-10-18):** defer Germany from
 dataset v1 and make it the first source-expansion target for the next dataset

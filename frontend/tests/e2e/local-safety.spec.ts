@@ -32,6 +32,6 @@ test('an unavailable new record cannot retain the previous public record identit
  await page.route('**/api/v2/locations/*?**',route=>{reads+=1;return route.fulfill({status:404,contentType:'application/json',body:'{}'});});
  await page.goto('./#/records/first-synthetic-record');await expect(page.getByRole('heading',{name:'Record unavailable'})).toBeVisible();
  await page.goto('./#/records/second-synthetic-record');await expect(page.getByRole('heading',{name:'Record unavailable'})).toBeVisible();
- expect(reads).toBe(2);await expect(page.getByText(/first-synthetic-record|second-synthetic-record/)).toHaveCount(0);
+ await expect.poll(()=>reads).toBe(2);await expect(page.getByText(/first-synthetic-record|second-synthetic-record/)).toHaveCount(0);
  await expect(page.getByRole('button',{name:'Copy record id'})).toHaveCount(0);
 });

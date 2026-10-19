@@ -2,7 +2,8 @@
 
 Status: production operations procedure. Current verified Render deployment
 state and remaining acceptance work live in [product readiness](../PRODUCT-READINESS.md).
-This procedure is not evidence that a reviewer is staffed, or that
+This procedure is not evidence that the service is hosted, that a reviewer is
+staffed, or that
 any retention period, response SLA, backup destination, or provider control has
 been verified.
 
@@ -315,19 +316,24 @@ Render web-service settings to enter after an authorized account exists:
 | Service type | Docker web service; use the repository Dockerfile and its `CMD`. |
 | Health check | `/health/ready` (not liveness): Render accepts HTTP 2xx/3xx, and this endpoint refuses traffic until the database schema is present. |
 | Port | Leave `PORT` supplied by Render; the application binds `0.0.0.0` in production. |
-| Region | Select the approved hosting/backup region and place the database in the same region; no region has been approved here. |
+| Region | Oregon, selected by the maintainer for both the web service and database. |
 | Public origin / CORS | Set `UEC_CORS_ORIGINS` to the final exact `https://` public origin(s), no wildcard and no path. Same-origin browser API use needs no extra origin. |
 | Proxy trust | Start with `UEC_TRUST_PROXY=false` and omit `UEC_TRUSTED_PROXY_CIDRS`. Enable it only after Render supplies a stable, verified proxy CIDR boundary that is recorded in the restricted change record; never use a wildcard or guessed range. |
 | Filesystem | Treat it as ephemeral. Do not attach a persistent disk for release artifacts or the ledger; it is not an independent backup. |
 | Auto-deploy / previews | Keep disabled until an authorized maintainer accepts the explicit release procedure. No preview environment receives production controls or data. |
 
 Required runtime variables are the values in the configuration preflight above,
-including `UEC_RUNTIME_MODE=production`, the private internal Render Postgres
-connection string in `UEC_DATABASE_URL`, exact `UEC_CORS_ORIGINS`, and the
+including `UEC_RUNTIME_MODE=production`, the restricted runtime account's Render
+Postgres connection string in `UEC_DATABASE_URL`, exact `UEC_CORS_ORIGINS`, and the
 explicit proxy setting. Do not set `UEC_DEV_PREVIEW`,
 `UEC_DEV_PREVIEW_TOKEN`, `UEC_TEST_RELEASE_ID`, `UEC_TEST_RELEASE_TOKEN`,
 community-pilot settings, acquisition credentials, or geocoder credentials on
 the web service.
+
+The first verified cloud database connection uses the external endpoint with
+TLS certificate verification. Prefer internal routing once its connection and
+TLS behavior have been tested with the production client; do not silently
+disable certificate checks or substitute the administrative database account.
 
 Supply these control-plane files as Render secret files, never in the image,
 repository, Docker build arguments, or browser bundle. At runtime Render
