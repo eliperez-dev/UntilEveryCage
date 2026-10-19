@@ -24,7 +24,7 @@ test('real-preview map uses bounded cached MVT tiles without fetching the JSON f
   await expect(page.getByText(/Fetching map projection|Building cluster index|Drawing map marks/)).toHaveCount(0, { timeout: 60_000 });
   await page.waitForFunction(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
-    return map?.isStyleLoaded() && map.getSource('preview-mvt') && map.getLayer('mvt-clusters') && map.getLayer('mvt-reference-outer') && map.getLayer('mvt-source-coordinates');
+    return map?.isStyleLoaded() && map.getSource('preview-mvt') && map.getLayer('mvt-clusters') && map.getLayer('mvt-reference-center') && map.getLayer('mvt-approx-reference-area') && map.getLayer('mvt-source-coordinates');
   }, undefined, { timeout: 60_000 });
   expect(requested.some(path => path.includes('/map/tiles/'))).toBe(true);
   expect(requested.some(path => path.includes('/map/feed'))).toBe(false);
