@@ -18,20 +18,25 @@ This is the canonical human-readable view of [`source-status.json`](source-statu
 
 No last-success timestamp is invented. Private artifacts are not proof of a public release. “Government-sourced” does not mean current, complete, project-approved, or safe to expose.
 
-## Current repair checkpoint — 2026-10-18
+## Current release checkpoint: 2026-10-18
 
 The [product readiness tracker](PRODUCT-READINESS.md#v0-dataset-release-sequence)
-records the corrected private successor and its measured counts. Fresh FSIS
+records the approved corrected release and its measured counts. Fresh FSIS
 directory/demographic captures reconcile 7,246 establishments: 1,755 slaughter
 and 5,491 processing. The Australian NPI correction retains all 8,140 records,
-with 1,229 selected for the default map by the versioned animal-relevance rules.
+with 1,226 included in the final curated release after inherited exclusions.
 The sixteen-source private r5 successor is staged candidate-only; it is not a
-new public release. Frozen approved v0 and r3 remain unchanged.
+new public release. Its separately approved curated successor,
+`release-2026-10-18`, is now live on Render with fourteen sources. The frozen
+v0 manifest and retained source evidence are unchanged; 180 known bad Italian
+source versions are revoked from current historical public results.
 
-APHIS has a private active-register candidate cohort from the official workbook:
-12,473 rows across all nine source-native license classes. It is candidate-only,
-has no operating-site coordinates, and is not a public release or a claim of
-recurring health. A fresh ten-page visible-browser FY2025 acquisition on
+The APHIS active-register cohort comes from the retained official workbook:
+12,473 rows across all nine source-native license classes. This active-register
+cohort is now approved and published in `release-2026-10-18`, with 11,361
+approximate mailing-locality map displays and 1,112 unmapped records. These are
+not operating-site coordinates or a recurring-health claim. New captures do not
+inherit this cohort approval. A fresh ten-page visible-browser FY2025 acquisition on
 2026-10-14 reconciled 994 retained events and 1,988 exact source-identifier links; it
 has exact aliases to 927 candidate facilities, with valid species counts on
 730 reports. It does not make annual reports a facility master or inspection
@@ -55,7 +60,8 @@ display gate. Review-required and unresolved outcomes remain non-display.
 These are non-operating-site localities, not facility coordinates. All inherited
 non-APHIS memberships remain identical to r3; r5 has one rebuilt source and
 fifteen inherited sources. This does not change source eligibility distinctions,
-publication eligibility, or recurring-health status.
+the separate candidate boundary or recurring-health status. Public release
+approval applies only to the selected, evidence-bound successor cohort.
 
 The older source checkpoints below describe their stated capture dates; their
 blanket approval wording does not supersede the recorded 2026-10-06 v0 approval

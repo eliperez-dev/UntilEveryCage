@@ -27,10 +27,9 @@ information architecture.
    historical imagery are optional/provider-dependent, with disclosure.
 8. **Community:** future submissions/tips/corrections are isolated untrusted
    intake, never automatic promotion or merge.
-9. **Release identity recommendation:** use CalVer `YYYY.MM.N` as the human
-   display convention, pending explicit maintainer approval; keep the existing
-   `release_id` and `manifest_sha256` separate, and keep software/API versions
-   as SemVer.
+9. **Release identity:** public dataset labels use the release date
+   `YYYY-MM-DD`, as approved on 2026-10-18. Keep immutable `release_id` and
+   `manifest_sha256` separate; V2 names the product, not the dataset.
 
 Navigation revision authorized by the maintainer on 2026-10-04: the shared
 header is **Map, Database | Contribute, About**. The latest refinement makes
@@ -96,6 +95,37 @@ decision does not rename stored releases, change membership or approve a release
   unsupported recovery exists.
 
 ## Remaining implementation decisions
+
+### Owner review queued after corrected-dataset deployment
+
+Do not treat these notes as implemented or begin their repair sprint before
+the corrected dataset is live and the sprint is approved:
+
+- Darken the header to a deeper grey and agree the V2 category palette with
+  the maintainer during the next visual pass.
+- Make research columns and panels resizable. Rename Record Evidence to
+  Facility details; make the detail panel draggable, resizable and collapsible,
+  with viewport limits, reset and usable keyboard/mobile behaviour. The intended
+  feeling is a compact research workbench, not a sparse dashboard.
+- Measure and reduce database, facet and detail latency against the approved
+  real release. Current owner observations were about ten seconds for database
+  opening and three seconds for detail. Show total matches separately from the
+  loaded page; do not introduce unrelated map-transfer optimizations.
+- Restore all five contribution flows in production: facility, evidence,
+  correction, duplicate and privacy/removal. The existing forms were not deleted;
+  the public build does not expose the development-only intake backend. This
+  requires a production intake path with a separate restricted write connection,
+  abuse limits, status lookup and maintainer review, not a pilot-flag flip or
+  automatic publication into the curated dataset. Accounts remain out of scope.
+- Rewrite Overview, Sources & methodology, FAQ and Help in short, accurate
+  visitor language, without internal pipeline terminology or em dashes. Remove
+  misleading submission/status instructions until the corresponding workflow
+  actually works. The maintainer may supply the final editorial copy.
+
+The next sprint must verify all five contribution types end to end on the
+production-shaped setup, retained receipt/status behaviour, read-only release
+access, real-data latency, cold/warm navigation and owner-reviewed panel behaviour.
+Finish with integration, exact-head CI and cleanup before claiming completion.
 
 10. **Map engine:** benchmark MapLibre/WebGL against Leaflet; MapLibre is the
     preferred candidate, but measured transfer, pan, memory, accessibility, and

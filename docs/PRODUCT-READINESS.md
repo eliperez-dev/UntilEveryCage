@@ -9,8 +9,8 @@ not replace this page or make an overall completeness claim.
 ## Authority and scope
 
 This page covers product completeness for the V2 platform and the controlled
-replacement of the legacy website. **V2 names the product; v0 and v1 name
-dataset releases, not application updates.** References to the legacy V1
+replacement of the legacy website. **V2 names the product; public datasets use
+release dates. Older v0/v1 references name datasets, not application updates.** References to the legacy V1
 application below describe the old website, not dataset v1. It does not grant publication
 approval, source permission, privacy clearance, or maintainer authority. The
 governing policy is [ETHICS.md](ETHICS.md); its implementation checklist is
@@ -24,13 +24,23 @@ publishable facilities unless explicitly labelled that way.
 
 ## Current launch decision (2026-10-18)
 
-The maintainer approved launch convergence for the **V2 website with dataset
-v1**, retaining historical dataset v0 access. Use Render for deployment
-preparation: one Docker web service and managed PostgreSQL/PostGIS. Provider
-selection does not authorize paid provisioning, data transfer, deployment or
-DNS cutover. Real-data historical API and browser acceptance are recorded
-below; exact-head CI gates integration. The dataset v1 scope decision and
-deployment verification remain open.
+The maintainer approved the corrected **2026-10-18 dataset** for the V2
+website on Render, retaining historical dataset v0 access. Public dataset
+labels now use dates; V2 remains the product name. The corrected scope is
+69,220 records across fourteen sources, including 53,107 mapped and 16,113
+unmapped records. Its approval, validation and local activation are complete.
+The selected-column package passed an isolated restore and production-mode API
+acceptance on the existing Render instance. Render deploy
+`dep-dbarb9bbc2fs73cgc6r0` is live on commit `dbca4f57`; hosted API acceptance
+passed current/history manifests, map counts and categories, list/detail, facets,
+CSV, ETag revalidation and four private-route exclusions. A real-data hosted
+Chromium test passed cold/warm pin opening, detail closing, navigation, date
+labels and browser caching in sixteen seconds, with no skips or page errors.
+All seven CI jobs passed for the deployed commit. The original serving database
+is retained for rollback; no extra paid Render instance was added. The temporary
+loopback test API and browser were stopped, and the existing preview is preserved.
+The final visual/interaction review and production contribution intake remain
+open; this is not domain-cutover approval.
 New countries and four-mode 2D/3D map work are deferred until after launch.
 
 **Hosting choice and budget (maintainer decision, 2026-10-18):** consolidate
@@ -74,7 +84,7 @@ hosting availability, not final frontend or corrected-dataset acceptance.
 The custom domain remains on the legacy site until final acceptance and
 cutover approval.
 
-**Hosted/local parity finding (2026-10-18):** Render serves frozen approved v0,
+**Initial hosted/local parity finding (before correction, 2026-10-18):** Render served frozen approved v0,
 not the later corrected r5 candidate used by the local preview. Its actual map
 feed has 47,875 unclassified points out of 48,756, versus 6,320 out of 53,117
 in the candidate. Italy 853 has 138 hosted points outside the conservative
@@ -138,11 +148,11 @@ stored coordinates or accepted geocoding jobs. It includes retained material
 outside the proposed curated public scope and is not the dataset v1 public
 release total.
 
-**Prospective dataset v1 measurement (2026-10-18):** read-only measurement of
+**Corrected dataset scope (approved and activated locally, 2026-10-18):** read-only measurement of
 the exact r5 members proposes **69,220 records across fourteen sources**:
 **53,107 with conditionally usable geometry and 16,113 unmapped**. These are
-approval-packet counts, not published totals; r5 remains unapproved and its
-current public geometry count is zero. Keep the two French sources excluded,
+the exact approved successor counts; the complete r5 research candidate remains
+unpromoted. Keep the two French sources excluded,
 apply animal relevance specifically to Australian NPI (not every Australian
 source), keep Denmark's other-regulated category outside the curated default,
 and carry all 553 frozen v0 exclusions by source and stable facility identity.
@@ -158,11 +168,20 @@ research evidence is retained locally rather than deleted.
 The row-free proposal binds inventory, selection policy, member identities,
 inherited exclusions and geometry evidence to digest
 `4b970d11643cf46053cabfedb403413349b3e4b75bb441e98a9abaf9733226de`.
-Approval and activation must recheck this exact proposal; changed membership
-or geometry requires a fresh comparison, not a silent substitution. Frozen v0
-is unchanged.
+Approval and activation rechecked this exact proposal without changing its
+membership or geometry digest. The successor is `release-2026-10-18`, labelled
+`2026-10-18`, with manifest SHA-256
+`f06aa554f2b49aa8e4a285df948b8baa47952f60bfb344251109b9788cc2a661`.
+Source-native FSIS detail is preserved through the bridged `source_status`
+envelope; the read-model builder fix is committed in `231dc43a` with all seven
+CI jobs passing. The frozen v0 manifest and source evidence are unchanged.
+Current access events revoke 180 known bad Italian source versions from public
+history, leaving 63,421 historical searchable records and 48,576 mapped records;
+those events do not revoke corrected successor versions. The independent privacy
+ledger remains separate from these location corrections and the 553 inherited
+release-specific exclusions.
 
-**Local serving-package rehearsal (2026-10-18):** the selected-column v0
+**Initial local serving-package rehearsal (before hosting, 2026-10-18):** the selected-column v0
 package restored into an isolated database with 63,601 public records,
 48,756 mapped and 14,845 unmapped. Its public-detail aggregate hash matches
 the source. The fresh restore validates the source migration ledger, payload
@@ -179,8 +198,9 @@ The authoritative ledger, replay snapshot, trusted v0 manifest and initializatio
 audit are saved outside Git under `D:/UntilEveryCage-Operations/release-controls/`.
 Production startup verified those real controls. The API role has only the
 explicit public-handler and readiness-metadata reads it needs; it still cannot
-read raw source rows or write releases. Render upload, deployment and
-custom-domain cutover have not occurred. This local rehearsal uses approved
+read raw source rows or write releases. At this checkpoint Render upload and
+deployment had not occurred; the current hosted result is recorded above.
+Custom-domain cutover remains pending. This local rehearsal uses approved
 historical v0; it does not approve or activate the proposed dataset v1.
 
 Historical-release API acceptance passed against a disposable frozen-v0 copy
