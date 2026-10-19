@@ -161,18 +161,6 @@
   const mapScopeReason = $derived(
     value('mapScopeReason' in record ? record.mapScopeReason : null, 'map_scope_reason' in record ? record.map_scope_reason : null),
   );
-  const factualStatus = $derived(
-    value(
-      'factualReviewStatus' in record ? record.factualReviewStatus : null,
-      'factual_review_status' in record ? record.factual_review_status : null,
-    ),
-  );
-  const privacyStatus = $derived(
-    value(
-      'privacyScreeningStatus' in record ? record.privacyScreeningStatus : null,
-      'privacy_screening_status' in record ? record.privacy_screening_status : null,
-    ),
-  );
   const publicationStatus = $derived(
     value(
       'publicationStatus' in record ? record.publicationStatus : null,
@@ -387,9 +375,6 @@
       {#if sourceRecordUrl}<div><dt>Source record link</dt><dd><a href={sourceRecordUrl} target="_blank" rel="noopener noreferrer">Open source record<span class="sr-only"> (opens in a new tab)</span></a></dd></div>{/if}
       {#if observed}<div><dt>Observed</dt><dd><time datetime={observed}>{observed}</time></dd></div>{/if}
       {#if retrieved}<div><dt>Retrieved</dt><dd><time datetime={retrieved}>{retrieved}</time></dd></div>{/if}
-      {#if factualStatus}<div><dt>Factual review</dt><dd>{humanizeValue(factualStatus)}</dd></div>{/if}
-      {#if privacyStatus}<div><dt>Privacy screening</dt><dd>{humanizeValue(privacyStatus)}</dd></div>{/if}
-      {#if 'projectApproval' in record && record.projectApproval !== undefined && record.projectApproval !== null}<div><dt>Project approval</dt><dd>{humanizeValue(String(record.projectApproval))}</dd></div>{/if}
       {#if publicationStatus}<div><dt>Publication</dt><dd>{humanizeValue(publicationStatus)}</dd></div>{/if}
     </dl>
     {#if evidence}<p class="evidence">{evidence}</p>{/if}

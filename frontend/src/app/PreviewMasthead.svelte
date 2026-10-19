@@ -74,7 +74,8 @@
   }
   let toolsOpen = $state(false);
   let releaseOpen = $state(false);
-  const displayedReleaseLabel = $derived(publicReleaseLabel?.replaceAll('—', ':') ?? 'No verified public release loaded');
+  const displayReleaseLabel = (label: string) => label.replaceAll('—', ':');
+  const displayedReleaseLabel = $derived(publicReleaseLabel ? displayReleaseLabel(publicReleaseLabel) : 'No verified public release loaded');
   let actionArea = $state<HTMLDivElement>();
   let toolsButton = $state<HTMLButtonElement>();
   let releaseButton = $state<HTMLButtonElement>();
@@ -117,13 +118,12 @@
   </nav>
   <div class="masthead-actions" bind:this={actionArea}>
     <button bind:this={releaseButton} type="button" class="header-action preview-action" aria-expanded={releaseOpen} aria-controls="shared-release-menu" onclick={toggleRelease}>Release</button>
-    <button type="button" class="header-action" disabled title="Accounts are not available in this release">Account unavailable</button>
     <button bind:this={toolsButton} type="button" class="header-action tools-action" aria-label="Tools" aria-expanded={toolsOpen} aria-controls="shared-tools-menu" onclick={toggleTools}>
       <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg><span>Tools</span>
     </button>
-    {#if releaseOpen}<aside id="shared-release-menu" class="header-menu release-menu" aria-label="Preview release">
-      <header><strong>Preview release</strong><button type="button" aria-label="Close Preview release" onclick={() => closeMenus("release")}>×</button></header>
-      <section><label for="release-choice">Current release</label><select id="release-choice" aria-label="Current release" value={selectedReleaseId ?? ''} onchange={event => onreleasechange?.(event.currentTarget.value)}>{#if selectedReleaseId && !releaseOptions.some(release => release.id === selectedReleaseId)}<option value={selectedReleaseId} disabled>Selected release unavailable</option>{/if}{#if releaseOptions.length}{#each releaseOptions as release}<option value={release.id}>{release.label}</option>{/each}{:else}<option>{displayedReleaseLabel}</option>{/if}</select><small>{releaseDescription ?? (publicReleaseLabel ? 'Verified release metadata from the active public map projection.' : 'Open the public map to load verified release metadata.')}</small></section>
+    {#if releaseOpen}<aside id="shared-release-menu" class="header-menu release-menu" aria-label="Release details">
+      <header><strong>Release details</strong><button type="button" aria-label="Close release details" onclick={() => closeMenus("release")}>×</button></header>
+      <section><label for="release-choice">Current release</label><select id="release-choice" aria-label="Current release" title={displayedReleaseLabel} value={selectedReleaseId ?? ''} onchange={event => onreleasechange?.(event.currentTarget.value)}>{#if selectedReleaseId && !releaseOptions.some(release => release.id === selectedReleaseId)}<option value={selectedReleaseId} disabled>Selected release unavailable</option>{/if}{#if releaseOptions.length}{#each releaseOptions as release}<option value={release.id}>{displayReleaseLabel(release.label)}</option>{/each}{:else}<option>{displayedReleaseLabel}</option>{/if}</select><small>{releaseDescription ?? (publicReleaseLabel ? 'Verified release metadata from the active public map projection.' : 'Open the public map to load verified release metadata.')}</small></section>
       <section><h2>History</h2><p>Release history is available with each record.</p><small>Historical views respect current privacy restrictions.</small></section>
     </aside>{/if}
     {#if toolsOpen}<aside id="shared-tools-menu" class="header-menu tools-menu" aria-label="Tools">
@@ -183,6 +183,7 @@
   .header-menu label, .header-menu h2 { margin:0; font-size:.7rem; font-weight:650; }
   .header-menu .toggle { display:flex; align-items:center; gap:.55rem; min-height:2rem; cursor:pointer; }
   .header-menu p, .header-menu small { margin:0; color:#b9c2b9; font-size:.64rem; line-height:1.4; }
+  .release-menu select { width:100%; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   a:focus-visible, button:focus-visible, select:focus-visible { outline:2px solid #eee7d6; outline-offset:2px; }
   @media (any-pointer:coarse) {
     .touch-pages{display:inline-flex;align-items:center;justify-content:center;min-width:2.75rem;min-height:2.75rem;padding:0;border:0;background:transparent;color:#aeb9af;cursor:pointer;font:1.2rem system-ui,sans-serif}
