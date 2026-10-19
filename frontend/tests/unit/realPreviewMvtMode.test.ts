@@ -37,8 +37,8 @@ describe('real private preview map projection', () => {
     expect(designLab).toContain("const dataStatus = writable<'loading' | 'ready' | 'empty' | 'error' | 'unauthorized'>('loading');");
     expect(designLab).toContain("$dataError = current ? '' : $pinnedPublicReleaseId ? 'Selected release unavailable.'");
     expect(designLab).toContain('...untrack(() => mapDiagnostics)');
-    expect(designLab).toContain('Current verified release ${$activePublicReleaseId}');
-    expect(designLab).toContain("'v0 verified archive'");
+    expect(designLab).toContain("'v0: Early Access'");
+    expect(designLab).toContain("'Public release'");
     expect(designLab).toContain("'Selected release unavailable.'");
     expect(field).toContain('selectedReleaseId={mode === "public-release" ? selectedPublicReleaseId : null}');
     expect(field).toContain('mode === "public-release" && dataStatus === "error"');
@@ -46,5 +46,13 @@ describe('real private preview map projection', () => {
     expect(designLab).toContain('refreshPinnedPublicRelease?.();');
     expect(field).toContain('publicReleaseManifestIdentity = null,');
     expect(field).toContain('{publicReleaseManifestIdentity}');
+  });
+
+  it('waits for async layers before registering layer-scoped interactions on a cold load', () => {
+    const load = component.indexOf('await addLayers();');
+    const bind = component.indexOf('bindInteractions();');
+    expect(load).toBeGreaterThan(-1);
+    expect(bind).toBeGreaterThan(load);
+    expect(component).toContain('if (!interactionsBound && map === instance)');
   });
 });

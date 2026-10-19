@@ -41,6 +41,11 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const categories = new Set(['animal_keeping_and_production', 'slaughter', 'processing_and_preparation', 'research_and_animal_use', 'other_regulated_premises', 'unclassified']);
 const precisions = new Set(['source_reported', 'exact', 'approximate', 'city']);
 const isObject = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
+const categoryIcon: Record<string, string> = {
+  animal_keeping_and_production: 'v1-pin-green', slaughter: 'v1-pin-red',
+  processing_and_preparation: 'v1-pin-yellow', research_and_animal_use: 'v1-pin-violet',
+  other_regulated_premises: 'v1-pin-orange', unclassified: 'v1-pin-grey',
+};
 
 type CompactFeed = Readonly<{ format: 'compact-v1'; dictionaries: Record<string, unknown>; features: unknown[] }>;
 const isCompactFeed = (value: unknown): value is CompactFeed => isObject(value) && value.format === 'compact-v1' && isObject(value.dictionaries) && Array.isArray(value.features);
@@ -98,9 +103,9 @@ export function parsePublicMapFeed(payload: unknown, profile: LocalProfile, rele
       throw new PublicMapFeedError('The public map feed returned an invalid feature.');
     }
     const precision = props.precision;
-    // Approximate coordinates are display references, not facility pins. They
-    // retain their source precision while using the existing pixel-scale blue
-    // reference treatment rather than claiming a city-radius geometry.
+    // Approximate coordinates are display references, not facility pins.
+    // Source-reported coordinates remain point features: their source origin
+    // does not make them an independently verified exact location.
     const kind = precision === 'city' || precision === 'approximate' ? 'reference' : 'source-coordinate';
     return {
       type: 'Feature', id: value.id,
@@ -109,7 +114,11 @@ export function parsePublicMapFeed(payload: unknown, profile: LocalProfile, rele
         id: value.id, key: value.id, facility_id: value.id,
         source_id: props.source_id, kind, precision, weight: 1,
         category_key: props.category_key, category_keys: [...new Set(categoryKeys as string[])],
-        ...(precision === 'city' ? { cosLatitude: Math.max(0.087, Math.cos(latitude * Math.PI / 180)) } : {}),
+        icon: categoryIcon[props.category_key],
+        // Reference circles use a ground-distance paint expression. Supply a
+        // latitude factor for every reference, including non-city
+        // approximations, instead of falling back to a fixed screen radius.
+        ...(kind === 'reference' ? { cosLatitude: Math.max(0.087, Math.cos(latitude * Math.PI / 180)) } : {}),
       },
     };
   });

@@ -1164,18 +1164,31 @@
     instance.on("style.load", () => {
       nativeStyleGeneration++;
       nativeStyleReady = true;
-      if (usingMvt) {
-        loadClusterImages();
-        addMvtLayers();
-      } else {
-        void addLayers();
-      }
-      if (!interactionsBound) {
-        bindInteractions();
-        interactionsBound = true;
-      }
-      publishBounds();
-      instance.resize();
+      void (async () => {
+        try {
+          if (usingMvt) {
+            loadClusterImages();
+            addMvtLayers();
+          } else {
+            await addLayers();
+          }
+          // MapLibre rejects layer-scoped handlers before their layers exist.
+          // Bind after the async feed/image setup so a cold load cannot leave
+          // the map without click handlers while a warm cache masks the race.
+          if (!interactionsBound && map === instance) {
+            bindInteractions();
+            interactionsBound = true;
+          }
+          publishBounds();
+          instance.resize();
+        } catch (error) {
+          if (map === instance) {
+            feedStatus = "error";
+            startupStage = "ready";
+            mvtError = error instanceof Error ? error.message : "The map could not be initialized.";
+          }
+        }
+      })();
     });
     instance.on("error", (event: any) => {
       if (usingMvt && event?.sourceId === "preview-mvt")
