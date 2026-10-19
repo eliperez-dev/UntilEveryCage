@@ -25,6 +25,7 @@ async function releasedIds(request: import('@playwright/test').APIRequestContext
 test('all five contribution types submit and track through the enabled production path', async ({ page, request }) => {
   const [firstId, secondId] = await releasedIds(request);
   const tag = `acceptance-${Date.now()}`;
+  const owned: Array<{ id: string; secret: string }> = [];
   const routes: Array<{ path: string; fill: (index: number) => Promise<void> }> = [
     { path: 'facility', fill: async index => { await page.getByLabel('Facility name').fill(`${tag}-facility-${index}`); } },
     { path: 'evidence', fill: async () => { await page.getByLabel('Record link or ID').fill(firstId); await page.getByLabel('What did you find?').fill(`${tag} evidence`); } },
@@ -33,16 +34,32 @@ test('all five contribution types submit and track through the enabled productio
     { path: 'privacy-removal', fill: async () => { await page.getByLabel('Record ID').fill(firstId); await page.getByLabel('What should we review?').fill(`${tag} privacy review`); } },
   ];
 
-  for (const [index, route] of routes.entries()) {
-    await page.goto(`${origin}/#/contribute/${route.path}`);
-    await expect(page.getByRole('heading', { name: route.path === 'facility' ? 'Add a facility' : /.*/ })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Send for review' })).toBeVisible();
-    await route.fill(index);
-    await page.getByLabel(/I have permission to share/).check();
-    await page.getByRole('button', { name: 'Send for review' }).click();
-    const tracker = page.getByRole('link', { name: 'Track submission', exact: true });
-    await expect(tracker).toBeVisible();
-    await tracker.click();
-    await expect(page.locator('.status-result')).toBeVisible();
+  try {
+    for (const [index, route] of routes.entries()) {
+      await page.goto(`${origin}/#/contribute/${route.path}`);
+      await expect(page.getByRole('heading', { name: route.path === 'facility' ? 'Add a facility' : /.*/ })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Send for review' })).toBeVisible();
+      await route.fill(index);
+      await page.getByLabel(/I have permission to share/).check();
+      const submitted = page.waitForResponse(response => response.url().endsWith('/api/community/submissions') && response.request().method() === 'POST');
+      await page.getByRole('button', { name: 'Send for review' }).click();
+      const receipt = await (await submitted).json() as { submission_id: string; receipt_secret: string };
+      owned.push({ id: receipt.submission_id, secret: receipt.receipt_secret });
+      const tracker = page.getByRole('link', { name: 'Track submission', exact: true });
+      await expect(tracker).toBeVisible();
+      await tracker.click();
+      await expect(page.locator('.status-result')).toBeVisible();
+    }
+  } finally {
+    for (const receipt of owned) {
+      const removed = await request.post(`${origin}/api/private/community/submissions/${encodeURIComponent(receipt.id)}/disposition`, {
+        headers: { Authorization: `Bearer ${cleanupCredential}`, 'Content-Type': 'application/json' },
+        data: { action: 'remove', reason_code: 'privacy' },
+      });
+      expect(removed.ok()).toBeTruthy();
+      const revoked = await request.post(`${origin}/api/community/status`, { data: { submission_id: receipt.id, receipt_secret: receipt.secret } });
+      expect(revoked.status()).toBe(404);
+    }
+    expect(owned).toHaveLength(routes.length);
   }
 });
