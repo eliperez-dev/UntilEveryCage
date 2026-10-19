@@ -21,10 +21,12 @@ class ReleaseServingPackageTests(unittest.TestCase):
         self.assertIn("raw_source_payload_excluded", source.query)
 
     def test_manifest_is_reproducible_and_labels_redaction(self):
-        manifest = serving.package_manifest(release_ids=["v0-public"], migration_inventory_sha256="a" * 64, table_counts={"uec.releases": 1})
+        manifest = serving.package_manifest(release_ids=["v0-public"], migration_inventory_sha256="a" * 64, table_counts={"uec.releases": 1}, schema_artifacts={"pre_data": "b" * 64})
         self.assertEqual(manifest["schema_version"], "uec-serving-package-v2")
         self.assertEqual(manifest["package_sha256"], serving.canonical_sha256({key: value for key, value in manifest.items() if key != "package_sha256"}))
         self.assertIn("redacted", manifest["redaction_notice"])
+        self.assertEqual(manifest["serving_schema_derivative"]["artifacts_sha256"]["pre_data"], "b" * 64)
+        self.assertEqual(len(manifest["serving_schema_derivative"]["post_data_omissions"]), 2)
         self.assertNotIn("password", str(manifest).casefold())
 
     def test_api_grants_are_exact_and_read_only(self):
@@ -39,6 +41,7 @@ class ReleaseServingPackageTests(unittest.TestCase):
         with self.assertRaises(ValueError): serving.package_manifest(release_ids=[], migration_inventory_sha256="a" * 64)
         with self.assertRaises(ValueError): serving.package_manifest(release_ids=["v0", "v0"], migration_inventory_sha256="a" * 64)
         with self.assertRaises(ValueError): serving.package_manifest(release_ids=["v0"], migration_inventory_sha256="A" * 64)
+        with self.assertRaises(ValueError): serving.package_manifest(release_ids=["v0"], migration_inventory_sha256="a" * 64, schema_artifacts={"pre": "B" * 64})
 
 
 if __name__ == "__main__": unittest.main()

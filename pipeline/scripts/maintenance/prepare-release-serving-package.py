@@ -55,7 +55,7 @@ def _migration_inventory_digest(connection) -> str:
     return hashlib.sha256(json.dumps(inventory, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
-def export_package(source_url: str, output: Path, releases: list[str], inventory: str) -> dict[str, object]:
+def export_package(source_url: str, output: Path, releases: list[str], inventory: str, schema_artifacts: dict[str, str] | None = None) -> dict[str, object]:
     import psycopg
     if output.exists(): raise ValueError("package output must not already exist")
     output.mkdir(parents=False); data = output / "data"; data.mkdir()
@@ -77,7 +77,7 @@ def export_package(source_url: str, output: Path, releases: list[str], inventory
         for child in data.glob("*"): child.unlink()
         data.rmdir(); output.rmdir(); raise
     payload_files = [_payload_descriptor(data / f"{ordinal:02d}.copy") for ordinal, _ in enumerate(specs)]
-    manifest = package_manifest(release_ids=releases, migration_inventory_sha256=inventory, table_counts=counts, specs=tuple(specs), payload_files=payload_files)
+    manifest = package_manifest(release_ids=releases, migration_inventory_sha256=inventory, table_counts=counts, specs=tuple(specs), payload_files=payload_files, schema_artifacts=schema_artifacts)
     (output / "manifest.json").write_text(json.dumps(manifest, sort_keys=True, indent=2) + "\n", encoding="utf-8", newline="\n")
     return {"release_count": len(releases), "relations": len(counts), "rows": sum(counts.values()), "package_sha256": manifest["package_sha256"]}
 
@@ -90,7 +90,10 @@ def restore_package(target_url: str, package: Path, apply_grants: bool) -> dict[
     if len(specs) != len(manifest.get("data_relation_allowlist", [])): raise ValueError("package relation allowlist is unsupported")
     payload_files = manifest.get("payload_files")
     if not isinstance(payload_files, list): raise ValueError("package payload inventory is missing")
-    expected = package_manifest(release_ids=manifest["release_ids"], migration_inventory_sha256=manifest["migration_inventory_sha256"], table_counts=manifest.get("table_counts"), specs=specs, payload_files=payload_files)
+    schema_derivative = manifest.get("serving_schema_derivative")
+    if not isinstance(schema_derivative, dict) or not isinstance(schema_derivative.get("artifacts_sha256"), dict):
+        raise ValueError("package schema derivative inventory is missing")
+    expected = package_manifest(release_ids=manifest["release_ids"], migration_inventory_sha256=manifest["migration_inventory_sha256"], table_counts=manifest.get("table_counts"), specs=specs, payload_files=payload_files, schema_artifacts=schema_derivative["artifacts_sha256"])
     if manifest.get("package_sha256") != expected["package_sha256"]: raise ValueError("package manifest digest is invalid")
     for item in payload_files:
         if not isinstance(item, dict) or not isinstance(item.get("name"), str) or "/" in item["name"] or "\\" in item["name"]:
@@ -132,20 +135,25 @@ def restore_package(target_url: str, package: Path, apply_grants: bool) -> dict[
     except Exception as error:
         constraint = getattr(getattr(error, "diag", None), "constraint_name", None)
         suffix = (" constraint=" + constraint) if constraint else ""
-        raise ValueError("restore relation failed: " + relation + suffix) from error
+        raise ValueError("restore relation failed: " + relation + suffix + " error=" + type(error).__name__) from error
     return {"release_count": len(manifest["release_ids"]), "relations": len(specs), "rows": copied, "package_sha256": manifest["package_sha256"]}
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__); commands = parser.add_subparsers(dest="command", required=True)
-    export = commands.add_parser("export"); export.add_argument("--source-database-url-env", required=True); export.add_argument("--release-id", action="append", required=True); export.add_argument("--migration-inventory-sha256", required=True); export.add_argument("--output", type=Path, required=True)
+    export = commands.add_parser("export"); export.add_argument("--source-database-url-env", required=True); export.add_argument("--release-id", action="append", required=True); export.add_argument("--migration-inventory-sha256", required=True); export.add_argument("--schema-artifact", action="append", default=[], metavar="NAME=SHA256"); export.add_argument("--output", type=Path, required=True)
     restore = commands.add_parser("restore"); restore.add_argument("--target-database-url-env", required=True); restore.add_argument("--package", type=Path, required=True); restore.add_argument("--apply-api-grants", action="store_true")
     args = parser.parse_args(argv)
     try:
         if args.command == "export":
             source_url = os.environ.get(args.source_database_url_env)
             if not source_url: raise ValueError("source database URL environment variable is unavailable")
-            result = export_package(source_url, args.output, args.release_id, args.migration_inventory_sha256)
+            schema_artifacts = {}
+            for item in args.schema_artifact:
+                name, separator, digest = item.partition("=")
+                if not separator or not name or not name.replace("_", "").isalnum(): raise ValueError("schema artifact must be NAME=SHA256")
+                schema_artifacts[name] = digest
+            result = export_package(source_url, args.output, args.release_id, args.migration_inventory_sha256, schema_artifacts)
         else:
             target_url = os.environ.get(args.target_database_url_env)
             if not target_url: raise ValueError("target database URL environment variable is unavailable")

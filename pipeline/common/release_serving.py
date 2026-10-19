@@ -62,6 +62,10 @@ def export_specs() -> tuple[ExportSpec, ...]:
 
 
 FORBIDDEN_DATA_RELATIONS = ("uec.acquisition_runs", "uec.acquisition_run_artifacts", "uec.geocode_results", "uec.geocode_jobs", "uec.geocode_job_events", "uec.graph_evidence_events", "uec.graph_evidence_links", "uec.claim_support")
+SERVING_SCHEMA_OMISSIONS = (
+    "TRIGGER uec.geocode_results.aaa_aphis_mailing_locality_geoapify_display: private acquisition preview callback",
+    "TRIGGER uec.geocode_results.geocode_results_geoapify_preview_display: private geocoder preview callback",
+)
 # Handler-facing relations only.  The support tables in the export are read by
 # security-definer views, never directly by the network role.
 API_RELATIONS = (
@@ -75,13 +79,16 @@ API_RELATIONS = (
 )
 
 
-def package_manifest(*, release_ids: list[str], migration_inventory_sha256: str, table_counts: dict[str, int] | None = None, specs: tuple[ExportSpec, ...] | None = None, payload_files: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+def package_manifest(*, release_ids: list[str], migration_inventory_sha256: str, table_counts: dict[str, int] | None = None, specs: tuple[ExportSpec, ...] | None = None, payload_files: list[dict[str, Any]] | None = None, schema_artifacts: dict[str, str] | None = None) -> dict[str, Any]:
     if not release_ids or len(release_ids) != len(set(release_ids)):
         raise ValueError("release IDs must be a non-empty unique set")
     if len(migration_inventory_sha256) != 64 or any(c not in "0123456789abcdef" for c in migration_inventory_sha256):
         raise ValueError("migration inventory digest must be lowercase sha256")
     specs = specs or export_specs()
-    value = {"schema_version": "uec-serving-package-v2", "package_state": "local_rehearsal_only", "release_ids": sorted(release_ids), "migration_inventory_sha256": migration_inventory_sha256, "data_relation_allowlist": [{"relation": s.relation, "columns": list(s.columns)} for s in specs], "data_relation_exclusions": list(FORBIDDEN_DATA_RELATIONS), "redaction_notice": "Source/artifact/observation stand-ins retain only join and provenance metadata and are explicitly marked redacted; raw source, acquisition, geocoder, and private graph payloads are absent.", "table_counts": dict(sorted((table_counts or {}).items())), "payload_files": sorted(payload_files or [], key=lambda item: item["name"])}
+    schema_artifacts = dict(sorted((schema_artifacts or {}).items()))
+    if any(len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest) for digest in schema_artifacts.values()):
+        raise ValueError("schema artifact digest must be lowercase sha256")
+    value = {"schema_version": "uec-serving-package-v2", "package_state": "local_rehearsal_only", "release_ids": sorted(release_ids), "migration_inventory_sha256": migration_inventory_sha256, "data_relation_allowlist": [{"relation": s.relation, "columns": list(s.columns)} for s in specs], "data_relation_exclusions": list(FORBIDDEN_DATA_RELATIONS), "redaction_notice": "Source/artifact/observation stand-ins retain only join and provenance metadata and are explicitly marked redacted; raw source, acquisition, geocoder, and private graph payloads are absent.", "table_counts": dict(sorted((table_counts or {}).items())), "payload_files": sorted(payload_files or [], key=lambda item: item["name"]), "serving_schema_derivative": {"artifacts_sha256": schema_artifacts, "post_data_omissions": list(SERVING_SCHEMA_OMISSIONS)}}
     value["package_sha256"] = canonical_sha256(value)
     return value
 
