@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { CommunityError, createCommunityRepository, validateContributionDraft, type ContributionDraft } from '../../src/api/CommunityRepository';
+import { CommunityError, communityCapabilities, createCommunityRepository, validateContributionDraft, type ContributionDraft } from '../../src/api/CommunityRepository';
 import { normalizeClaimedPoint } from '../../src/map/claimedPoint';
 
 const id = '18c6ef3a-28cd-4c8e-a9bb-3951f45f210d';
@@ -10,6 +10,11 @@ function response(body: unknown, status = 200) {
 }
 
 describe('community contribution repository', () => {
+  it('uses the lightweight runtime capability without treating a disabled route as an error', async () => {
+    const enabled = await communityCapabilities(async () => response({ enabled: true, types: ['facility', 'evidence', 'correction', 'duplicate', 'privacy_removal'] }));
+    expect(enabled).toEqual({ enabled: true, types: ['facility', 'evidence', 'correction', 'duplicate', 'privacy_removal'] });
+    await expect(communityCapabilities(async () => response({}, 404))).resolves.toEqual({ enabled: false, types: [] });
+  });
   it('validates required structured claims and accepts an optional paired pin', () => {
     expect(() => validateContributionDraft(accepted)).not.toThrow();
     expect(() => validateContributionDraft({ ...accepted, claimed_latitude: 55.7, claimed_longitude: 12.5, claimed_precision: 'coarse' })).not.toThrow();

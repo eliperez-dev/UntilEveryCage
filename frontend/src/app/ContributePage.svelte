@@ -1,8 +1,11 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
+  import { communityCapabilities } from '../api/CommunityRepository';
   let CommunityContributions = $state<typeof import('./CommunityContributions.svelte').default | null>(null);
   let loadError = $state('');
   let communityModule: Promise<typeof import('./CommunityContributions.svelte')> | null = null;
-  const communityEnabled = import.meta.env.VITE_COMMUNITY_PILOT === 'true';
+  const fixtureEnabled = import.meta.env.VITE_COMMUNITY_ENABLED === 'true' || import.meta.env.VITE_COMMUNITY_PILOT === 'true';
+  let communityEnabled = $state(fixtureEnabled);
   function loadForm() {
     loadError = '';
     communityModule ??= import('./CommunityContributions.svelte');
@@ -16,6 +19,7 @@
   const utilityHref = (path: string) => `#/${path}${returnMapHref !== '#/map' ? `?map=${encodeURIComponent(returnMapHref)}` : ''}`;
   const taskNames: Record<ContributionType, string> = { facility: 'Facility', evidence: 'Evidence', correction: 'Correction', duplicate: 'Duplicate', privacy_removal: 'Privacy/removal', bug: 'Bug report' };
   const labels: Record<ContributionType, string> = { facility: 'Add a facility', evidence: 'Add evidence', correction: 'Suggest a correction', duplicate: 'Report a duplicate', privacy_removal: 'Privacy or removal', bug: 'Report a bug' };
+  onMount(() => { if (!fixtureEnabled) void communityCapabilities().then(value => communityEnabled = value.enabled); });
 </script>
 <svelte:head><title>{labels[formKind]} · Until Every Cage</title></svelte:head>
 <section class="contribute-page" aria-labelledby="contribute-title">

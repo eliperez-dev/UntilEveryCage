@@ -1,12 +1,18 @@
 <script lang="ts">
-  import { CommunityError, createCommunityRepository, type ContributionKind, type ContributionDraft, type Receipt, type StatusResult, type ReviewQueue, type ReviewQueueFilter, type ReviewRow, type CommunityClaims, type CommunityClaim } from '../api/CommunityRepository';
-  import CopyValue from './CopyValue.svelte';
+  import { onMount } from 'svelte';
+  import { CommunityError, communityCapabilities, createCommunityRepository, type ContributionKind, type ContributionDraft, type Receipt, type StatusResult, type ReviewQueue, type ReviewQueueFilter, type ReviewRow, type CommunityClaims, type CommunityClaim } from '../api/CommunityRepository';
   import ContributionPinPicker from './ContributionPinPicker.svelte';
   import { countryName, countryOptions } from './countryOptions';
   import { parseRecordReference } from './recordReference';
 
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
   let { page, targetRecordId = '', claimId = '', releaseId = '', formKind = 'facility', embedded = false, returnMapHref = '#/map' }: { page: 'form' | 'status' | 'claims' | 'claim-detail' | 'review'; targetRecordId?: string; claimId?: string; releaseId?: string; formKind?: ContributionKind; embedded?: boolean; returnMapHref?: string } = $props();
-  const enabled = import.meta.env.VITE_COMMUNITY_PILOT === 'true';
+  // The server decides whether intake is enabled.  The build flag only controls
+  // whether the public entry points are rendered; retain the old flag for local
+  // preview fixtures while production uses the explicit community flag.
+  const fixtureEnabled = import.meta.env.VITE_COMMUNITY_ENABLED === 'true' || import.meta.env.VITE_COMMUNITY_PILOT === 'true';
+  let enabled = $state(fixtureEnabled);
   const repository = createCommunityRepository();
   let kind = $state<ContributionKind>('facility');
   let sourceUrlValue = $state('');
@@ -85,6 +91,23 @@
     catch (error) { statusMessage = error instanceof CommunityError ? error.message : 'Status could not be checked.'; }
     finally { busy = false; }
   }
+  function trackingHref(value: Receipt): string {
+    // This is deliberately a hash-router URL. Credentials never enter the
+    // request URL, referrer, analytics payload, or server logs.
+    const params = new URLSearchParams({ submission_id: value.submission_id, receipt_secret: value.receipt_secret });
+    return `#/contribution-status?${params}`;
+  }
+  function readTrackingFragment(): void {
+    const fragment = location.hash.startsWith('#') ? location.hash.slice(1) : location.hash;
+    const query = fragment.split('?')[1] ?? '';
+    const params = new URLSearchParams(query);
+    const id = params.get('submission_id') ?? '';
+    const secret = params.get('receipt_secret') ?? '';
+    if (UUID.test(id) && secret && secret.length <= 80) {
+      statusId = id;
+      receiptSecret = secret;
+    }
+  }
   async function loadQueue() {
     queueError = ''; queueNotice = ''; busy = true;
     try { queue = await repository.queue(operatorToken, 50, queueFilter); }
@@ -151,6 +174,8 @@
     if (page !== 'claims') claims = null;
     if (page !== 'claim-detail') claim = null;
   });
+  $effect(() => { if (page === 'status') readTrackingFragment(); });
+  onMount(() => { if (!fixtureEnabled) void communityCapabilities().then(value => enabled = value.enabled); });
 </script>
 
 <svelte:head><title>{page === 'form' ? ({ facility: 'Add a facility', evidence: 'Add evidence', correction: 'Suggest a correction', duplicate: 'Possible duplicate', privacy_removal: 'Privacy review' }[kind]) : page === 'status' ? 'Contribution status' : page === 'review' ? 'Contribution review' : 'Community claims'}: Until Every Cage</title></svelte:head>
@@ -162,7 +187,7 @@
     {#if !embedded}<p><a href={`#/contribute${returnMapHref !== '#/map' ? `?map=${encodeURIComponent(returnMapHref)}` : ''}`}>Contribute</a></p><h1 id="community-title">{{ facility: 'Add a facility', evidence: 'Add evidence', correction: 'Suggest a correction', duplicate: 'Report a possible duplicate', privacy_removal: 'Request a privacy review' }[kind]}</h1>{/if}
     <p class="lede">{kind === 'evidence' ? 'Add evidence to an existing record. Your submission will be reviewed.' : 'We review submissions before anything is published.'}</p>
     {#if receipt}
-      <section class="receipt" aria-labelledby="receipt-heading"><h2 id="receipt-heading">Contribution received</h2><p>Save both values to check status. Your Submission ID identifies this contribution, and your private receipt authorizes the lookup.</p><CopyValue label="Submission ID" value={receipt.submission_id} showValue /><CopyValue label="Private receipt" value={receipt.receipt_secret} showValue /><p class="quiet-note">These values are shown once. Keep them safe.</p><a class="button-link" href={`#/contribution-status${returnMapHref !== '#/map' ? `?map=${encodeURIComponent(returnMapHref)}` : ''}`}>Check contribution status</a></section>
+      <section class="receipt" aria-labelledby="receipt-heading"><h2 id="receipt-heading">Contribution received</h2><p>Keep this private link to check the review status. It is shown once and cannot be recovered.</p><a class="button-link" href={trackingHref(receipt)}>Track submission</a></section>
     {:else}
       <form class="contribution-form" onsubmit={submit}>
         {#if ['evidence','correction','duplicate','privacy_removal'].includes(kind)}<label>{kind === 'evidence' ? 'Record link or ID' : 'Record ID'}<input name="target_record_id" value={parseRecordReference(targetRecordId)} maxlength={kind === 'evidence' ? 1000 : 36} autocomplete="off" required aria-describedby={kind === 'evidence' ? 'evidence-record-help' : undefined} /></label>{/if}
@@ -188,7 +213,7 @@
     {/if}
   </section>
 {:else if page === 'status'}
-  <section class="community-page narrow" aria-labelledby="community-title"><h1 id="community-title">Check contribution status</h1><p class="lede">Enter the Submission ID and private receipt you saved after sending your contribution.</p><form class="contribution-form" onsubmit={checkStatus}><label>Submission ID<input bind:value={statusId} autocomplete="off" required /></label><label>Private receipt<input bind:value={receiptSecret} autocomplete="off" required /></label><button class="primary-action" disabled={busy}>{busy ? 'Checking…' : 'Check status'}</button></form>{#if statusMessage}<p role="alert" class="form-error">{statusMessage}</p>{/if}{#if statusResult}<section class="status-result" aria-live="polite"><h2>{statusLabel[statusResult.status]}</h2><p>{statusMeaning[statusResult.status]}</p>{#if statusClaimHref(statusResult)}<a href={statusClaimHref(statusResult)}>Open the claim details</a>{:else if statusResult.status === 'published'}<p>No public link is currently available.</p>{/if}</section>{/if}</section>
+  <section class="community-page narrow" aria-labelledby="community-title"><h1 id="community-title">Check contribution status</h1><p class="lede">Open your private tracking link to check status. If needed, enter the two values it contains.</p><form class="contribution-form" onsubmit={checkStatus}><label>Submission ID<input bind:value={statusId} autocomplete="off" required /></label><label>Private receipt<input bind:value={receiptSecret} autocomplete="off" required /></label><button class="primary-action" disabled={busy}>{busy ? 'Checking…' : 'Check status'}</button></form>{#if statusMessage}<p role="alert" class="form-error">{statusMessage}</p>{/if}{#if statusResult}<section class="status-result" aria-live="polite"><h2>{statusLabel[statusResult.status]}</h2><p>{statusMeaning[statusResult.status]}</p>{#if statusClaimHref(statusResult)}<a href={statusClaimHref(statusResult)}>Open the claim details</a>{:else if statusResult.status === 'published'}<p>No public link is currently available.</p>{/if}</section>{/if}</section>
 {:else if page === 'review'}
   <section class="community-page" aria-labelledby="community-title"><h1 id="community-title">Contribution review</h1><p class="review-warning"><strong>Private intake warning.</strong> Queue items are untrusted and may contain identifying or harmful information. Open claims only to review them. Privacy screening does not verify facts or approve a curated release.</p>{#if !queue}<form class="contribution-form token-form" onsubmit={(event) => { event.preventDefault(); void loadQueue(); }}><label>Local operator token<input type="password" bind:value={operatorToken} autocomplete="off" required /></label><label>Show submissions<select bind:value={queueFilter}><option value="pending">Pending (received and held)</option><option value="screened">Screened</option><option value="published">Published</option><option value="rejected">Rejected</option><option value="restricted">Restricted</option><option value="removed">Removed</option><option value="received">Received</option><option value="held">Held</option></select></label><button class="primary-action" disabled={busy}>{busy ? 'Loading…' : 'Open restricted queue'}</button></form>{:else}<div class="queue-heading"><p>{queue.pending_count} pending · {queue.submissions.length} shown (page cap: 50)</p><label>Status filter<select bind:value={queueFilter}><option value="pending">Pending (received and held)</option><option value="screened">Screened</option><option value="published">Published</option><option value="rejected">Rejected</option><option value="restricted">Restricted</option><option value="removed">Removed</option><option value="received">Received</option><option value="held">Held</option></select></label><button type="button" disabled={busy} onclick={() => void loadQueue()}>Refresh queue</button><button type="button" onclick={() => { queue = null; operatorToken = ''; }}>Close queue</button></div>{#each queue.submissions as row (row.submission_id)}<article class="queue-item"><p class="eyebrow">{row.kind.replace('_',' ')} · {statusLabel[row.status]} · {new Date(row.created_at).toLocaleDateString()}</p><h2>{row.label ?? 'Unlabelled claim'}</h2>{#if row.country_code || row.locality}<p>{row.country_code ? countryName(row.country_code) : 'Country not supplied'}{#if row.locality} · {row.locality}{/if}</p>{/if}{#if row.claimed_activity}<p>Claimed activity: {row.claimed_activity}</p>{/if}{#if row.observed_on}<p>Observed on: {row.observed_on}</p>{/if}{#if row.target_record_id}<p>Target record: <code>{row.target_record_id}</code></p>{/if}{#if row.duplicate_record_id}<p>Possible duplicate record: <code>{row.duplicate_record_id}</code></p>{/if}{#if row.location_text}<p>Contributor location text: {row.location_text}</p>{/if}{#if row.claimed_precision}<p>Location detail: {row.claimed_precision}</p>{/if}{#if row.location_input_method}<p>Location entered using: {row.location_input_method === 'manual_pin' ? 'map pin' : row.location_input_method === 'text' ? 'typed coordinates or text' : 'other'}</p>{/if}{#if row.description}<p>{row.description}</p>{/if}{#if row.source_url}<p><a href={row.source_url} rel="noreferrer" target="_blank">Open submitted source</a></p>{/if}{#if row.claimed_latitude !== undefined}<p>Suggested location · {row.claimed_latitude}, {row.claimed_longitude} (not verified)</p>{/if}<div class="decision-actions"><button disabled={busy} onclick={() => decide(row,'hold')}>Hold</button><button disabled={busy} onclick={() => decide(row,'screen')}>Privacy screen only</button><button disabled={busy} onclick={() => decide(row,'reject')}>Reject submission</button><button disabled={busy} onclick={() => decide(row,'restrict')}>Restrict submission</button><button disabled={busy} onclick={() => decide(row,'remove')}>Remove submission</button></div>{#if row.status === 'screened' && row.kind !== 'privacy_removal'}<details class="link-community"><summary>Link to an existing community release record</summary><p>Only link a source-record ID that already belongs to a screened community release. This does not change the public profile or approve curated publication.</p><form onsubmit={(event) => linkCommunity(event,row)}><label>Existing source-record ID<input name="community_record_id" maxlength="36" required /></label><label>Community release ID<input name="release_id" maxlength="160" required /></label><button disabled={busy}>Record link</button></form></details>{/if}</article>{:else}<p class="quiet-note">No items are currently in this page.</p>{/each}{/if}{#if queueError}<p role="alert" class="form-error">{queueError}</p>{/if}{#if queueNotice}<p role="status">{queueNotice}</p>{/if}<p class="quiet-note">Disposition reasons use a fixed category. Never copy identifying claim text into a public note.</p></section>
 {:else if page === 'claims'}

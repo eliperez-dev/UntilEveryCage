@@ -55,6 +55,24 @@ export class CommunityError extends Error {
   constructor(readonly category: 'unavailable' | 'invalid' | 'network' | 'unauthorized', message: string) { super(message); }
 }
 export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+export type CommunityCapabilities = Readonly<{ enabled: boolean; types: readonly ContributionKind[] }>;
+let capabilitiesRequest: Promise<CommunityCapabilities> | undefined;
+
+/** Public, deliberately small runtime switch for a locked static build. */
+export function communityCapabilities(fetcher: FetchLike = fetch): Promise<CommunityCapabilities> {
+  if (fetcher === fetch && capabilitiesRequest) return capabilitiesRequest;
+  const request = (async () => {
+    try {
+      const response = await fetcher('/api/community/capabilities', { cache: 'no-store', credentials: 'same-origin', headers: { Accept: 'application/json' } });
+      if (!response.ok) return { enabled: false, types: [] };
+      const value = record(await response.json());
+      if (value.enabled !== true || !Array.isArray(value.types) || value.types.length !== KINDS.size || value.types.some(type => typeof type !== 'string' || !KINDS.has(type as ContributionKind))) return { enabled: false, types: [] };
+      return { enabled: true, types: value.types as ContributionKind[] };
+    } catch { return { enabled: false, types: [] }; }
+  })();
+  if (fetcher === fetch) capabilitiesRequest = request;
+  return request;
+}
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new CommunityError('invalid', 'The community service returned an invalid response.');
