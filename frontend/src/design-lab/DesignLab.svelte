@@ -154,7 +154,7 @@
         const mapped = page.locations.map(mapPublicLocation);
         apiRecords = reset ? mapped : [...new Map([...apiRecords, ...mapped].map(record => [record.id, record])).values()];
         nextCursor = page.nextCursor;
-        candidateTotalCount = page.totalCount;
+        candidateTotalCount = page.totalCount ?? null;
         $dataStatus = apiRecords.length ? 'ready' : 'empty';
         return;
       }

@@ -235,7 +235,7 @@ test('MVT cutoff controls preserve coverage and V1 pins render at pin zoom', asy
     return map.isSourceLoaded('preview-mvt') && map.queryRenderedFeatures({ layers: ['mvt-source-coordinates'] }).length;
   })).toBeGreaterThan(0);
   const pins = page.getByLabel('Use V1 facility pin PNG + shadow');
-  await pins.check();
+  await expect(pins).toBeChecked();
   await expect.poll(() => page.evaluate(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return map.getLayoutProperty('mvt-v1-source-pins', 'visibility');

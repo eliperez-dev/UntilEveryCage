@@ -515,7 +515,7 @@
   });
   async function updatePinMode() {
     const instance = map;
-    if (!instance || !isNativeMap()) return;
+    if (!instance) return;
     try {
       await setRealPreviewPinMode(instance, useV1Pins, `${import.meta.env.BASE_URL}v1-pins/`);
       pinModeError = "";
@@ -705,6 +705,7 @@
     addMvtLocationLayers(map, mapState.sourceId ?? undefined);
     appliedMvtTileSignature = `${mapState.sourceId ?? ""}:${clusterMaxZoom}`;
     updateVisualSettings();
+    if (useV1Pins) void updatePinMode();
   }
 
   function replaceMapProjection() {

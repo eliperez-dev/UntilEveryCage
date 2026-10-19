@@ -15,12 +15,11 @@ test('map shell mounts and keeps Search, map modes, and navigation operable', as
   await page.getByRole('button', { name: 'Close search panel' }).click();
   await expect(search).toBeVisible();
 
-  const mapLens = page.getByRole('complementary', { name: 'Map lens' });
-  await mapLens.getByRole('button', { name: /Map lens/ }).click();
-  const muted = mapLens.getByRole('button', { name: 'Muted' });
-  await expect(muted).toBeVisible();
-  await muted.click();
-  await expect(muted).toHaveAttribute('aria-pressed', 'true');
+  const mapStyle = page.getByLabel('Map style');
+  await expect(mapStyle).toHaveValue('vector');
+  await expect(mapStyle.locator('option')).toHaveText(['Street', 'Satellite']);
+  await mapStyle.selectOption('satellite');
+  await expect(mapStyle).toHaveValue('satellite');
 
   await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Database', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Browse records' })).toBeVisible();
