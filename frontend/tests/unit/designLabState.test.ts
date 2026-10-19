@@ -11,6 +11,17 @@ describe('design-lab state repairs', () => {
     expect(encodeLabHash({ ...state, basemap: 'satellite' })).toContain('basemap=satellite');
   });
 
+  it('round trips canonical V2 category filters without dropping them on hash changes', () => {
+    const selected = reduceLabState(DEFAULT_LAB_STATE, {
+      type: 'filters',
+      value: { ...DEFAULT_LAB_STATE.filters, categories: ['slaughter', 'processing_and_preparation'] },
+    });
+
+    const restored = decodeLabHash(encodeLabHash(selected));
+
+    expect(restored.filters.categories).toEqual(['slaughter', 'processing_and_preparation']);
+  });
+
   it('clears every search criterion, selection, and aggregate while retaining the map context', () => {
     const populated = {
       ...DEFAULT_LAB_STATE,
