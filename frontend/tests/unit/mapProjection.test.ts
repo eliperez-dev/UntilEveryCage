@@ -24,4 +24,8 @@ describe('map projection',()=>{
     const features=projectLocations([{...locations[0],id:'one',lat:55,lon:10},{...locations[1],id:'two',lat:56,lon:12}]);
     expect(clusterFeatures(features)).toHaveLength(2);
   });
+  it('uses punctuation rather than an em dash in the visible community warning',()=>{
+    const community={...locations[0]!,id:'community',lat:55,lon:10,evidence:{publicationProfile:'community',factualReviewStatus:'unreviewed',displayPrecision:'exact'} as NonNullable<Location['evidence']>};
+    expect(projectLocations([community])[0]?.label).toBe(`${community.name} · Unreviewed community claim: not verified by Until Every Cage`);
+  });
 });

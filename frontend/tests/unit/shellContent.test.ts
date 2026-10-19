@@ -6,6 +6,7 @@ const masthead = readFileSync(resolve(process.cwd(), 'src/app/PreviewMasthead.sv
 const help = readFileSync(resolve(process.cwd(), 'src/app/HelpPage.svelte'), 'utf8');
 const contributions = readFileSync(resolve(process.cwd(), 'src/app/CommunityContributions.svelte'), 'utf8');
 const field = readFileSync(resolve(process.cwd(), 'src/design-lab/variants/field/Field.svelte'), 'utf8');
+const atlas = readFileSync(resolve(process.cwd(), 'src/design-lab/variants/atlas/Atlas.svelte'), 'utf8');
 
 describe('normal shell content', () => {
   it('keeps release context compact and removes unavailable account controls', () => {
@@ -31,5 +32,10 @@ describe('normal shell content', () => {
     expect(field).not.toContain('private-preview relationship projection');
     expect(field).not.toContain('EVIDENCE CONNECTIONS');
     expect(field).not.toContain('connections-evidence');
+  });
+
+  it('keeps authored atlas labels free of em dashes', () => {
+    expect(atlas).toContain('01: RESULTS');
+    expect(atlas).not.toContain('01 — RESULTS');
   });
 });
