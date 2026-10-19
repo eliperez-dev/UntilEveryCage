@@ -84,7 +84,7 @@
 
 <svelte:head>
   <title>Until Every Cage</title>
-  <meta name="description" content="A structural preview of the Until Every Cage application." />
+  <meta name="description" content="Until Every Cage map and research index." />
 </svelte:head>
 
 {#if route.kind === 'methodology'}
@@ -113,7 +113,7 @@
     {:else if route.kind === 'not-found'}
       <section class="state" aria-labelledby="not-found-heading">
         <h1 id="not-found-heading">Page not found</h1>
-        <p>This address does not match a page in the preview.</p>
+        <p>This address does not match a page in this application.</p>
         <a href="#/map">Return to the map</a>
       </section>
     {:else if route.kind === 'about'}

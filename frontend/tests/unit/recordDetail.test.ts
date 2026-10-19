@@ -22,7 +22,7 @@ describe('private preview record detail surface', () => {
     expect(component).toContain('assignment.taxonomyVersion');
   });
 
-  it('labels exact, approximate, and unmapped placement distinctly and includes review context', () => {
+  it('labels exact, approximate, and unmapped placement distinctly without exposing internal review fields', () => {
     expect(component).toContain('Source coordinate · review status shown below');
     expect(component).toContain('City reference · approximate');
     expect(component).toContain('Coarse city/postal area');
@@ -30,9 +30,9 @@ describe('private preview record detail surface', () => {
     expect(component).toContain('Source-provided coordinate, precision unverified');
     expect(component).toContain('Unmapped · no map location supplied');
     expect(component).toContain('Coordinate review');
-    expect(component).toContain('Factual review');
-    expect(component).toContain('Privacy screening');
-    expect(component).toContain('Project approval');
+    expect(component).not.toContain('Factual review');
+    expect(component).not.toContain('Privacy screening');
+    expect(component).not.toContain('Project approval');
     expect(component).toContain("raw.replace(/[_-]+/g, ' ')");
     expect(component).toContain('{humanizeValue(coordinateStatus)}');
     expect(component).toContain('{humanizeValue(record.coordinatePrecision)}');
