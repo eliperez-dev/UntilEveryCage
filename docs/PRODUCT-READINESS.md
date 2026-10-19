@@ -137,15 +137,20 @@ package restored into an isolated database with 63,601 public records,
 the source. The fresh restore validates the source migration ledger, payload
 checksums, constraints and required public read-model triggers. The read-only
 API role can read public results but cannot write releases or read raw source
-rows. The full real-v0 API acceptance passed with no skips; this exercised the
-public handlers in a loopback **development-mode** process, not production
-startup. The existing public-v0 graph is empty in both source and restored
-copy. Production startup is not verified: no real independent restriction
-ledger/control-file set was found, only explicitly synthetic fixtures. The
-maintainer has been asked to provide an existing ledger or authorize initial
-creation from verified recorded restrictions. Do not use a test fixture or
-silently infer a new publication decision. Render upload, deployment and
-custom-domain cutover have not occurred.
+rows. The full real-v0 API acceptance passed with no skips in both development
+and **production-mode** loopback processes. Production readiness and the public
+manifest returned HTTP 200; private, development and legacy preview routes
+returned 404. The existing public-v0 graph is empty in both source and restored
+copy. With explicit maintainer authorization, the independent restriction
+ledger was initialized from verified existing recorded restrictions: no
+current cases were present. The 553 release-specific exclusions remain separate.
+The authoritative ledger, replay snapshot, trusted v0 manifest and initialization
+audit are saved outside Git under `D:/UntilEveryCage-Operations/release-controls/`.
+Production startup verified those real controls. The API role has only the
+explicit public-handler and readiness-metadata reads it needs; it still cannot
+read raw source rows or write releases. Render upload, deployment and
+custom-domain cutover have not occurred. This local rehearsal uses approved
+historical v0; it does not approve or activate the proposed dataset v1.
 
 Historical-release API acceptance passed against a disposable frozen-v0 copy
 after activating a bounded real-data successor: explicit v0 still returns
