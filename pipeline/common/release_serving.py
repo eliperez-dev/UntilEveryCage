@@ -35,6 +35,7 @@ def export_specs() -> tuple[ExportSpec, ...]:
     """Explicit safe-column closure. $1 is the selected release-id array."""
     records = "SELECT DISTINCT row.source_record_id FROM uec.public_discovery_read_model_rows row WHERE row.release_id=ANY($1)"
     return (
+        ExportSpec("uec.schema_migrations", ("version", "sha256", "applied_at"), "SELECT version,sha256,applied_at FROM uec.schema_migrations"),
         ExportSpec("uec.releases", ("release_id", "created_at", "status", "ruleset_version", "summary", "profile", "test_only"), _selected("SELECT r.release_id,r.created_at,r.status,r.ruleset_version,r.summary,r.profile,r.test_only FROM uec.releases r JOIN selected s USING(release_id)")),
         ExportSpec("uec.release_manifests", ("release_id", "manifest", "manifest_sha256", "created_at"), _selected("SELECT m.release_id,m.manifest,m.manifest_sha256,m.created_at FROM uec.release_manifests m JOIN selected s USING(release_id)")),
         ExportSpec("uec.public_release_history", ("release_id", "profile", "published_at"), _selected("SELECT h.release_id,h.profile,h.published_at FROM uec.public_release_history h JOIN selected s USING(release_id)")),
@@ -74,13 +75,13 @@ API_RELATIONS = (
 )
 
 
-def package_manifest(*, release_ids: list[str], migration_inventory_sha256: str, table_counts: dict[str, int] | None = None, specs: tuple[ExportSpec, ...] | None = None) -> dict[str, Any]:
+def package_manifest(*, release_ids: list[str], migration_inventory_sha256: str, table_counts: dict[str, int] | None = None, specs: tuple[ExportSpec, ...] | None = None, payload_files: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     if not release_ids or len(release_ids) != len(set(release_ids)):
         raise ValueError("release IDs must be a non-empty unique set")
     if len(migration_inventory_sha256) != 64 or any(c not in "0123456789abcdef" for c in migration_inventory_sha256):
         raise ValueError("migration inventory digest must be lowercase sha256")
     specs = specs or export_specs()
-    value = {"schema_version": "uec-serving-package-v2", "package_state": "local_rehearsal_only", "release_ids": sorted(release_ids), "migration_inventory_sha256": migration_inventory_sha256, "data_relation_allowlist": [{"relation": s.relation, "columns": list(s.columns)} for s in specs], "data_relation_exclusions": list(FORBIDDEN_DATA_RELATIONS), "redaction_notice": "Source/artifact/observation stand-ins retain only join and provenance metadata and are explicitly marked redacted; raw source, acquisition, geocoder, and private graph payloads are absent.", "table_counts": dict(sorted((table_counts or {}).items()))}
+    value = {"schema_version": "uec-serving-package-v2", "package_state": "local_rehearsal_only", "release_ids": sorted(release_ids), "migration_inventory_sha256": migration_inventory_sha256, "data_relation_allowlist": [{"relation": s.relation, "columns": list(s.columns)} for s in specs], "data_relation_exclusions": list(FORBIDDEN_DATA_RELATIONS), "redaction_notice": "Source/artifact/observation stand-ins retain only join and provenance metadata and are explicitly marked redacted; raw source, acquisition, geocoder, and private graph payloads are absent.", "table_counts": dict(sorted((table_counts or {}).items())), "payload_files": sorted(payload_files or [], key=lambda item: item["name"])}
     value["package_sha256"] = canonical_sha256(value)
     return value
 

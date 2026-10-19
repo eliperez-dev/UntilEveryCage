@@ -6,6 +6,7 @@ acquisition, or geocoder payloads, and prints aggregate evidence only.
 """
 from __future__ import annotations
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -17,6 +18,7 @@ from pipeline.common.release_serving import export_specs, grant_sql, package_man
 
 OPTIONAL_LEGACY_RELATIONS = {"uec.public_release_history"}
 RESTORE_ORDER = (
+    "uec.schema_migrations",
     "uec.sources", "uec.raw_artifacts", "uec.source_records", "uec.facilities", "uec.observations",
     "uec.facility_source_links", "uec.releases", "uec.release_manifests", "uec.public_release_history",
     "uec.record_access_events", "uec.publication_review_events", "uec.publication_review_release_scopes",
@@ -36,6 +38,21 @@ def _copy_out(connection, spec, releases: list[str], path: Path) -> int:
         with copy_context as copy, path.open("wb") as output:
             for block in copy: output.write(block)
     return int(count)
+
+
+def _payload_descriptor(path: Path) -> dict[str, object]:
+    digest = hashlib.sha256()
+    size = 0
+    with path.open("rb") as input_file:
+        while block := input_file.read(1024 * 1024):
+            digest.update(block); size += len(block)
+    return {"name": path.name, "sha256": digest.hexdigest(), "byte_size": size}
+
+
+def _migration_inventory_digest(connection) -> str:
+    rows = connection.execute("SELECT version,sha256 FROM uec.schema_migrations ORDER BY version").fetchall()
+    inventory = [{"name": f"{version}.sql", "sha256": digest.strip()} for version, digest in rows]
+    return hashlib.sha256(json.dumps(inventory, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
 def export_package(source_url: str, output: Path, releases: list[str], inventory: str) -> dict[str, object]:
@@ -59,9 +76,9 @@ def export_package(source_url: str, output: Path, releases: list[str], inventory
     except Exception:
         for child in data.glob("*"): child.unlink()
         data.rmdir(); output.rmdir(); raise
-    manifest = package_manifest(release_ids=releases, migration_inventory_sha256=inventory, table_counts=counts, specs=tuple(specs))
+    payload_files = [_payload_descriptor(data / f"{ordinal:02d}.copy") for ordinal, _ in enumerate(specs)]
+    manifest = package_manifest(release_ids=releases, migration_inventory_sha256=inventory, table_counts=counts, specs=tuple(specs), payload_files=payload_files)
     (output / "manifest.json").write_text(json.dumps(manifest, sort_keys=True, indent=2) + "\n", encoding="utf-8", newline="\n")
-    (output / "api-grants.sql").write_text(grant_sql(), encoding="utf-8", newline="\n")
     return {"release_count": len(releases), "relations": len(counts), "rows": sum(counts.values()), "package_sha256": manifest["package_sha256"]}
 
 
@@ -71,8 +88,15 @@ def restore_package(target_url: str, package: Path, apply_grants: bool) -> dict[
     known = {spec.relation: spec for spec in export_specs()}
     specs = tuple(known[item["relation"]] for item in manifest.get("data_relation_allowlist", []) if item.get("relation") in known)
     if len(specs) != len(manifest.get("data_relation_allowlist", [])): raise ValueError("package relation allowlist is unsupported")
-    expected = package_manifest(release_ids=manifest["release_ids"], migration_inventory_sha256=manifest["migration_inventory_sha256"], table_counts=manifest.get("table_counts"), specs=specs)
+    payload_files = manifest.get("payload_files")
+    if not isinstance(payload_files, list): raise ValueError("package payload inventory is missing")
+    expected = package_manifest(release_ids=manifest["release_ids"], migration_inventory_sha256=manifest["migration_inventory_sha256"], table_counts=manifest.get("table_counts"), specs=specs, payload_files=payload_files)
     if manifest.get("package_sha256") != expected["package_sha256"]: raise ValueError("package manifest digest is invalid")
+    for item in payload_files:
+        if not isinstance(item, dict) or not isinstance(item.get("name"), str) or "/" in item["name"] or "\\" in item["name"]:
+            raise ValueError("package payload inventory is invalid")
+        actual = _payload_descriptor(package / "data" / item["name"])
+        if actual != item: raise ValueError("package payload digest is invalid")
     copied = 0
     relation = "preflight"
     try:
@@ -95,13 +119,15 @@ def restore_package(target_url: str, package: Path, apply_grants: bool) -> dict[
                     target_relation = "serving_scope_stage"
                 with cursor.copy("COPY " + target_relation + " (" + ",".join(spec.columns) + ") FROM STDIN WITH (FORMAT binary)") as copy, source.open("rb") as input_file:
                     while block := input_file.read(1024 * 1024): copy.write(block)
+                if spec.relation == "uec.schema_migrations" and _migration_inventory_digest(connection) != manifest["migration_inventory_sha256"]:
+                    raise ValueError("target migration inventory does not match package")
                 if spec.relation == "uec.publication_review_release_scopes":
                     cursor.execute("INSERT INTO uec.publication_review_release_scopes (publication_review_event_id,release_id) SELECT publication_review_event_id,release_id FROM serving_scope_stage ON CONFLICT DO NOTHING")
                     expected = cursor.execute("SELECT count(*) FROM serving_scope_stage").fetchone()[0]
                     actual = cursor.execute("SELECT count(*) FROM uec.publication_review_release_scopes scope JOIN serving_scope_stage stage USING(publication_review_event_id,release_id)").fetchone()[0]
                     if actual != expected: raise ValueError("selected review scope closure did not restore")
                 copied += int(manifest["table_counts"].get(spec.relation, 0))
-            if apply_grants: cursor.execute((package / "api-grants.sql").read_text(encoding="utf-8"))
+            if apply_grants: cursor.execute(grant_sql())
         connection.commit()
     except Exception as error:
         constraint = getattr(getattr(error, "diag", None), "constraint_name", None)
