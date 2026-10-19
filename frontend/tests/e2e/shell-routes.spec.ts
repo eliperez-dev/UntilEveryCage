@@ -161,7 +161,8 @@ test('public contribution contacts, four About destinations, and code help are e
   await expect(page.getByRole('link', { name: 'Manifesto', exact: true })).toHaveCount(0);
   await page.locator('#shared-about-nav').getByRole('link', { name: 'Overview' }).click();
   await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible();
-  await expect(page.getByText('Make the hidden visible.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Until Every Cage is an evidence index for animal agriculture facilities and related records.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Until every cage is empty.', { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Contribute code on GitHub' })).toHaveAttribute('href', 'https://github.com/eliperez-dev/UntilEveryCage');
   const overview = await page.locator('.about-page').innerText();
   await page.goto('./#/about/manifesto');
