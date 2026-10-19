@@ -13,6 +13,7 @@
   let ApiPage = $state<typeof import('./ApiPage.svelte').default | null>(null);
   let apiModule: Promise<typeof import('./ApiPage.svelte')> | null = null;
   import PreviewMasthead from './PreviewMasthead.svelte';
+  import { publicReleaseLabel } from '../features/locations/releasePresentation';
   let DesignLab = $state<typeof import('../design-lab/DesignLab.svelte').default | null>(null);
   let DatabaseResearch = $state<typeof import('./DatabaseResearch.svelte').default | null>(null);
   let RecordPage = $state<typeof import('./RecordPage.svelte').default | null>(null);
@@ -99,7 +100,7 @@
   <main class="review-loading" aria-live="polite"><p role="status">Preparing the private-preview workspace…</p><small>The map module and its local data boundary are loading.</small></main>
 {:else}
 <div class="shell">
-  <PreviewMasthead publicReleaseLabel={verifiedReleaseLabel === 'v0-candidate-2026-10-04-r3' ? 'v0: Early Access' : verifiedReleaseLabel ? 'Public release' : null} current={route.kind === 'about' || route.kind === 'help' || route.kind === 'faq' ? 'about' : route.kind === 'contribute' || route.kind === 'bug-report' || route.kind === 'community' ? 'contribute' : route.kind === 'database' || route.kind === 'record' || route.kind === 'api' || route.kind === 'downloads' ? 'database' : 'map'} mapHref={returnMapHref} {databaseHref} />
+  <PreviewMasthead publicReleaseLabel={publicReleaseLabel(verifiedReleaseLabel)} current={route.kind === 'about' || route.kind === 'help' || route.kind === 'faq' ? 'about' : route.kind === 'contribute' || route.kind === 'bug-report' || route.kind === 'community' ? 'contribute' : route.kind === 'database' || route.kind === 'record' || route.kind === 'api' || route.kind === 'downloads' ? 'database' : 'map'} mapHref={returnMapHref} {databaseHref} />
 
   <main id="main-content" class="shell-content" tabindex="-1">
     {#if loading}

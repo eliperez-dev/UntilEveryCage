@@ -37,8 +37,7 @@ describe('real private preview map projection', () => {
     expect(designLab).toContain("const dataStatus = writable<'loading' | 'ready' | 'empty' | 'error' | 'unauthorized'>('loading');");
     expect(designLab).toContain("$dataError = current ? '' : $pinnedPublicReleaseId ? 'Selected release unavailable.'");
     expect(designLab).toContain('...untrack(() => mapDiagnostics)');
-    expect(designLab).toContain("'v0: Early Access'");
-    expect(designLab).toContain("'Public release'");
+    expect(designLab).toContain('publicReleaseLabel($activePublicReleaseId)');
     expect(designLab).toContain("'Selected release unavailable.'");
     expect(field).toContain('selectedReleaseId={mode === "public-release" ? selectedPublicReleaseId : null}');
     expect(field).toContain('mode === "public-release" && dataStatus === "error"');

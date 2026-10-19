@@ -11,6 +11,7 @@
   import { TestReleaseDetailRepository } from '../api/TestReleaseDetailRepository';
   import type { Location } from '../domain/location';
   import { CATEGORY_PRESENTATIONS } from '../features/locations/categoryPresentation';
+  import { publicReleaseLabel } from '../features/locations/releasePresentation';
   import type { PublicMapFeed } from '../api/PublicMapFeedRepository';
   import { selectDesignLabDataMode, shouldScheduleListLoad } from './dataMode';
   import Field from './variants/field/Field.svelte';
@@ -46,8 +47,8 @@
   const v0ArchiveVerified = writable(false);
   let refreshPinnedPublicRelease: (() => void) | undefined;
   const publicReleaseOptions = $derived([
-    ...($activePublicReleaseId ? [{ id: $activePublicReleaseId, label: $activePublicReleaseId === V0_ARCHIVE_RELEASE_ID ? 'v0: Early Access' : 'Public release' }] : []),
-    ...($v0ArchiveVerified && $activePublicReleaseId !== V0_ARCHIVE_RELEASE_ID ? [{ id: V0_ARCHIVE_RELEASE_ID, label: 'v0: Early Access' }] : []),
+    ...($activePublicReleaseId ? [{ id: $activePublicReleaseId, label: publicReleaseLabel($activePublicReleaseId)! }] : []),
+    ...($v0ArchiveVerified && $activePublicReleaseId !== V0_ARCHIVE_RELEASE_ID ? [{ id: V0_ARCHIVE_RELEASE_ID, label: publicReleaseLabel(V0_ARCHIVE_RELEASE_ID)! }] : []),
   ]);
   function selectPublicRelease(releaseId: string) {
     const hash = new URL(location.href).hash;
