@@ -96,10 +96,11 @@ decision does not rename stored releases, change membership or approve a release
 
 ## Remaining implementation decisions
 
-### Owner review queued after corrected-dataset deployment
+### Production research-workbench and contribution repair
 
-Do not treat these notes as implemented or begin their repair sprint before
-the corrected dataset is live and the sprint is approved:
+The corrected dataset is live. The maintainer approved two Terra lanes for
+these repairs on 2026-10-19. They remain pending verification, not completed
+features:
 
 - Darken the header to a deeper grey and agree the V2 category palette with
   the maintainer during the next visual pass.
@@ -121,6 +122,16 @@ the corrected dataset is live and the sprint is approved:
   visitor language, without internal pipeline terminology or em dashes. Remove
   misleading submission/status instructions until the corresponding workflow
   actually works. The maintainer may supply the final editorial copy.
+- Present one **Track submission** link instead of a submission-ID/secret
+  receipt pair. Keep its capability inside the URL fragment and send status
+  credentials only in a POST body. No accounts, email delivery or recovery
+  service is implied.
+- Render a single approximate location with the normal pin family, without a
+  cluster-style `1` badge. On selection or inspection only, show a red area
+  **500 metres across** (250-metre radius) using geographic distance, not a
+  fixed screen size. This is a display convention, not measured accuracy.
+  Keep source precision in record details and retain honest multi-record
+  cluster counts. Do not show a persistent approximate-location legend.
 
 The next sprint must verify all five contribution types end to end on the
 production-shaped setup, retained receipt/status behaviour, read-only release

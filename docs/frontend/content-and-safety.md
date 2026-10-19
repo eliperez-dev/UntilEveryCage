@@ -69,8 +69,12 @@ copying private page context; concise copy does not weaken those behaviors.
 - Do not imply that the public graph proves wrongdoing or a supply chain.
 - Do not show raw matching identifiers where they could expose restricted data;
   show safe source labels and links.
-- Do not turn a city/coarse record into a facility-shaped pin, street-view
-  target, directions link, or exact-looking SEO description.
+- Do not present a city/coarse record as an exact facility point, street-view
+  target, directions link, or exact-looking SEO description. The maintainer's
+  approved ordinary pin artwork may be reused for a singleton, with its
+  approximation disclosed in the accessible label, tooltip and record details.
+  Its selected-only red area is 500 metres across, a display convention rather
+  than a confidence interval or measured location accuracy.
 - Do not allow canonical metadata, sitemap entries, graph node previews, or
   aggregate counts to leak suppressed/restricted/community-intake records.
 

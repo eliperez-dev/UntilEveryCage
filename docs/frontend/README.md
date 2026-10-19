@@ -31,7 +31,7 @@ The product principle is **quiet on first contact, powerful when investigated**.
 The maintainer's 2026-10-04 navigation revision adds **Contribute** and **About**
 beside these two discovery views: `Map, Database | Contribute, About`.
 Contribute opens Add a facility by default, with visible task links to switch
-the form, plus receipt lookup, community browsing and project/support links.
+the form, plus submission tracking, community browsing and project/support links.
 Database groups Browse records, Downloads and API documentation. About groups
 Overview (the project manifesto), Sources & methodology, FAQ and Help.
 FAQ answers common questions; it does not replace the evidence and methods page.

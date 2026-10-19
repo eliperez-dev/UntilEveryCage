@@ -43,6 +43,19 @@ The final visual/interaction review and production contribution intake remain
 open; this is not domain-cutover approval.
 New countries and four-mode 2D/3D map work are deferred until after launch.
 
+**Active repair sprint (maintainer approval, 2026-10-19):** two Terra lanes
+cover production contribution intake and the compact research-workbench UI.
+All five intake types must pass hosted submission, tracking and private
+maintainer-review tests without changing curated release data. The separate
+intake role has been created on the existing Render database and passed TLS
+login and least-privilege checks; its controls are retained encrypted locally.
+Render configuration, integration, exact-head CI, hosted interaction checks
+and cleanup are still pending. The UI scope includes resizable/draggable
+Facility details, concise copy, a darker header and the selected-only
+500-metre-diameter approximate-location area. See
+[approved frontend decisions](frontend/approval-decisions.md#production-research-workbench-and-contribution-repair).
+No custom-domain or legacy-hosting cutover is authorized by this sprint.
+
 **Hosting choice and budget (maintainer decision, 2026-10-18):** consolidate
 the V2 frontend/API and serving database on Render rather than retaining the
 Railway/Netlify split. The accepted starting configuration is one 1-CPU/2-GB
