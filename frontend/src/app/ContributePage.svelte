@@ -22,6 +22,7 @@
   {#if !communityEnabled && formKind !== 'bug'}
     <h1 id="contribute-title">Contribute to the project</h1>
     <p>To share a correction, privacy concern, or source, email <a href="mailto:untileverycageproject@protonmail.com">untileverycageproject@protonmail.com</a>. For code contributions, use <a href="https://github.com/eliperez-dev/UntilEveryCage" target="_blank" rel="noreferrer">GitHub</a>.</p>
+    <p><a href={taskHref('bug')}>Report a bug</a></p>
   {:else}
     <h1 id="contribute-title">{labels[formKind]}</h1>
     <p id="contribution-choice" class="choice-label">Choose a contribution type</p>
@@ -37,10 +38,10 @@
   {/if}
   <footer class="contribute-footer">
     <p class="code-invitation">The code is open source. Help with code, design, tests, or data adapters: <a href="https://github.com/eliperez-dev/UntilEveryCage" target="_blank" rel="noreferrer">Contribute code on GitHub</a>.</p>
-    <div class="project-links" aria-label="Project links">
-    <a href={utilityHref('contribution-status')}>Check status</a>
-    <a href={utilityHref('community')}>Community submissions</a>
-    </div>
+    {#if communityEnabled}<div class="project-links" aria-label="Project links">
+      <a href={utilityHref('contribution-status')}>Check status</a>
+      <a href={utilityHref('community')}>Community submissions</a>
+    </div>{/if}
   </footer>
 </section>
 <style>
