@@ -31,6 +31,7 @@
   import {
     addMvtLocationLayers,
     baseRasterPaint,
+    createMvtReferenceAreas,
     createBaseStyle,
     removeLocationLayers,
     setMvtClusterCutoff,
@@ -807,7 +808,7 @@
     // primary geometry layers so reference label layers cannot double-count.
     const layers = [
       "mvt-clusters",
-      "mvt-reference-outer",
+      "mvt-reference-center",
       "mvt-source-coordinates",
     ].filter((layer) => instance.getLayer(layer));
     mvtRenderedFeatureCount = layers.length
@@ -826,44 +827,18 @@
     }
   }
 
-  function destinationPoint(longitude: number, latitude: number, bearing: number, distanceKm: number): [number, number] {
-    const radiusKm = 6371.0088;
-    const angular = distanceKm / radiusKm;
-    const lat1 = latitude * Math.PI / 180;
-    const lon1 = longitude * Math.PI / 180;
-    const bearingRad = bearing * Math.PI / 180;
-    const lat2 = Math.asin(Math.sin(lat1) * Math.cos(angular) + Math.cos(lat1) * Math.sin(angular) * Math.cos(bearingRad));
-    const lon2 = lon1 + Math.atan2(Math.sin(bearingRad) * Math.sin(angular) * Math.cos(lat1), Math.cos(angular) - Math.sin(lat1) * Math.sin(lat2));
-    return [((lon2 * 180 / Math.PI + 540) % 360) - 180, lat2 * 180 / Math.PI];
-  }
-
   function syncMvtReferenceAreas(instance: MapLibreMap) {
     const areaSource = instance.getSource("mvt-reference-areas") as GeoJSONSource | undefined;
     if (!areaSource || !instance.getSource("preview-mvt") || !instance.isSourceLoaded("preview-mvt")) return;
-    const unique = new Map<string, any>();
-    for (const feature of instance.querySourceFeatures("preview-mvt", { sourceLayer: "uec_preview" }) as any[]) {
-      if (feature.properties?.kind !== "city_reference" || feature.geometry?.type !== "Point") continue;
-      const key = feature.properties?.feature_key;
-      const coordinates = feature.geometry.coordinates;
-      if (typeof key !== "string" || !Array.isArray(coordinates) || coordinates.length < 2) continue;
-      const longitude = Number(coordinates[0]);
-      const latitude = Number(coordinates[1]);
-      if (!Number.isFinite(longitude) || !Number.isFinite(latitude) || unique.has(key)) continue;
-      const ring: [number, number][] = [];
-      for (let bearing = 0; bearing <= 360; bearing += 15)
-        ring.push(destinationPoint(longitude, latitude, bearing, referenceRadiusKm));
-      unique.set(key, {
-        type: "Feature",
-        properties: { feature_key: key },
-        geometry: { type: "Polygon", coordinates: [ring] },
-      });
-    }
-    areaSource.setData({ type: "FeatureCollection", features: [...unique.values()] } as any);
+    areaSource.setData(createMvtReferenceAreas(
+      instance.querySourceFeatures("preview-mvt", { sourceLayer: "uec_preview" }) as any[],
+      referenceRadiusKm,
+    ) as any);
   }
 
   function updateMvtAccessibleFeatures(instance: MapLibreMap) {
     const rendered = instance.queryRenderedFeatures({
-      layers: ["mvt-clusters", "mvt-reference-outer", "mvt-reference-center", "mvt-source-coordinates"],
+      layers: ["mvt-clusters", "mvt-reference-center", "mvt-source-coordinates"],
     }) as any[];
     const unique = new Map<string, { key: string; label: string; kind: "coordinate" | "reference" }>();
     for (const feature of rendered) {
@@ -951,6 +926,12 @@
   function bindInteractions() {
     if (!map) return;
     if (usingMvt) {
+      const inspectMvtReference = (key: string, count: number) => {
+        selectedReferenceKey = key;
+        updateVisualSettings();
+        pendingReference = { key, count: Number.isFinite(count) ? count : 0, observedLoading: false };
+        onreference?.(key);
+      };
       map.on("click", "mvt-clusters", (event: any) => {
         if (activeFlight) return;
         const feature = event.features?.[0],
@@ -989,34 +970,26 @@
       map.on("click", "mvt-source-coordinates", (event: any) => {
         if (activeFlight) return;
         const key = event.features?.[0]?.properties?.feature_key;
-        if (typeof key === "string" && /^[0-9a-f-]{36}$/i.test(key))
+        if (typeof key === "string" && /^[0-9a-f-]{36}$/i.test(key)) {
+          selectedReferenceKey = null;
+          updateVisualSettings();
           onselect(key);
+        }
       });
       map.on("click", "mvt-v1-source-pins", (event: any) => {
         if (activeFlight) return;
         const key = event.features?.[0]?.properties?.feature_key;
-        if (typeof key === "string" && /^[0-9a-f-]{36}$/i.test(key)) onselect(key);
-      });
-      map.on("click", "mvt-reference-outer", (event: any) => {
-        if (activeFlight) return;
-        const feature = event.features?.[0],
-          key = feature?.properties?.feature_key,
-          count = Number(feature?.properties?.count);
-        if (typeof key === "string" && /^[a-f0-9]{32}$/i.test(key)) {
-          pendingReference = {
-            key,
-            count: Number.isFinite(count) ? count : 0,
-            observedLoading: false,
-          };
-          onreference?.(key);
+        if (typeof key === "string" && /^[0-9a-f-]{36}$/i.test(key)) {
+          selectedReferenceKey = null;
+          updateVisualSettings();
+          onselect(key);
         }
       });
       map.on("click", "mvt-approx-reference-area", (event: any) => {
         if (activeFlight) return;
         const key = event.features?.[0]?.properties?.feature_key;
         if (typeof key !== "string" || !/^[a-f0-9]{32}$/i.test(key)) return;
-        pendingReference = { key, count: 0, observedLoading: false };
-        onreference?.(key);
+        inspectMvtReference(key, 0);
       });
       map.on("click", "mvt-reference-center", (event: any) => {
         if (activeFlight) return;
@@ -1024,19 +997,13 @@
           key = feature?.properties?.feature_key,
           count = Number(feature?.properties?.count);
         if (typeof key === "string" && /^[a-f0-9]{32}$/i.test(key)) {
-          pendingReference = {
-            key,
-            count: Number.isFinite(count) ? count : 0,
-            observedLoading: false,
-          };
-          onreference?.(key);
+          inspectMvtReference(key, count);
         }
       });
       for (const layer of [
         "mvt-clusters",
         "mvt-source-coordinates",
         "mvt-v1-source-pins",
-        "mvt-reference-outer",
         "mvt-reference-center",
         "mvt-approx-reference-area",
       ]) {

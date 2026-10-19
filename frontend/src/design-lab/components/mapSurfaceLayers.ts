@@ -28,7 +28,6 @@ export const MVT_LOCATION_LAYER_IDS = [
   'mvt-approx-reference-area',
   'mvt-approx-reference-outline',
   'mvt-reference-center',
-  'mvt-reference-outer',
   'mvt-reference-count',
   'mvt-reference-kind',
   'mvt-source-coordinates',
@@ -54,6 +53,38 @@ export function setMvtClusterCutoff(map: MapLibreMap, sourceId: string | undefin
 
 export function isMvtReferenceKind(kind: unknown): boolean {
   return kind === 'city_reference' || kind === 'coarse_reference';
+}
+
+/**
+ * Build geographic, selected-only reference areas for every point-based
+ * approximate MVT feature. This keeps display geometry in degrees rather than
+ * using a constant pixel halo, including for coarse references.
+ */
+export function createMvtReferenceAreas(features: readonly any[], radiusKm: number) {
+  const earthRadiusKm = 6371.0088;
+  const destination = (longitude: number, latitude: number, bearing: number): [number, number] => {
+    const angular = radiusKm / earthRadiusKm;
+    const lat1 = latitude * Math.PI / 180;
+    const lon1 = longitude * Math.PI / 180;
+    const bearingRad = bearing * Math.PI / 180;
+    const lat2 = Math.asin(Math.sin(lat1) * Math.cos(angular) + Math.cos(lat1) * Math.sin(angular) * Math.cos(bearingRad));
+    const lon2 = lon1 + Math.atan2(Math.sin(bearingRad) * Math.sin(angular) * Math.cos(lat1), Math.cos(angular) - Math.sin(lat1) * Math.sin(lat2));
+    return [((lon2 * 180 / Math.PI + 540) % 360) - 180, lat2 * 180 / Math.PI];
+  };
+  const unique = new Map<string, unknown>();
+  for (const feature of features) {
+    if (!isMvtReferenceKind(feature?.properties?.kind) || feature?.geometry?.type !== 'Point') continue;
+    const key = feature.properties?.feature_key;
+    const coordinates = feature.geometry.coordinates;
+    if (typeof key !== 'string' || !Array.isArray(coordinates) || coordinates.length < 2 || unique.has(key)) continue;
+    const longitude = Number(coordinates[0]);
+    const latitude = Number(coordinates[1]);
+    if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) continue;
+    const ring: [number, number][] = [];
+    for (let bearing = 0; bearing <= 360; bearing += 15) ring.push(destination(longitude, latitude, bearing));
+    unique.set(key, { type: 'Feature', properties: { feature_key: key }, geometry: { type: 'Polygon', coordinates: [ring] } });
+  }
+  return { type: 'FeatureCollection' as const, features: [...unique.values()] };
 }
 
 type MapLike = {
@@ -90,7 +121,6 @@ export function addMvtLocationLayers(map: MapLike, sourceId?: string): void {
   const count = ['coalesce', ['get', 'count'], 1];
   const references = ['any', kind('city_reference'), kind('coarse_reference')];
   const referenceStroke = ['match', ['get', 'kind'], 'city_reference', '#86aeca', '#c9a36e'];
-  const referenceFill = ['match', ['get', 'kind'], 'city_reference', '#15252c', '#292117'];
   const source = MVT_SOURCE_ID;
   const sourceLayer = MVT_SOURCE_LAYER;
 
@@ -114,13 +144,8 @@ export function addMvtLocationLayers(map: MapLike, sourceId?: string): void {
     paint: { 'text-color': '#172019', 'icon-opacity': 1, 'text-opacity': 1 },
   });
   map.addLayer({
-    id: 'mvt-reference-outer', type: 'circle', source, 'source-layer': sourceLayer,
-    filter: kind('coarse_reference'),
-    paint: { 'circle-color': referenceFill, 'circle-radius': 18, 'circle-opacity': 0.96, 'circle-stroke-color': referenceStroke, 'circle-stroke-width': 3 },
-  });
-  map.addLayer({
     id: 'mvt-reference-center', type: 'symbol', source, 'source-layer': sourceLayer,
-    filter: kind('city_reference'),
+    filter: references,
     layout: {
       'icon-image': 'v1-pin-grey', 'icon-anchor': 'bottom', 'icon-size': 0.5,
       'icon-allow-overlap': true, 'icon-ignore-placement': true,
