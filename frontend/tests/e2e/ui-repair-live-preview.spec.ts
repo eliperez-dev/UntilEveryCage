@@ -12,30 +12,29 @@ test('live candidate map keeps the repaired controls and default V1 pins operabl
   const mapStyle = page.getByLabel('Map style');
   await expect(mapStyle).toHaveValue('vector');
   await expect(mapStyle.locator('option')).toHaveText(['Street', 'Satellite']);
-  await expect(page.getByText(/disabled account/i)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Account unavailable' })).toHaveCount(0);
   await expect(page.locator('video')).toHaveCount(0);
 
-  await page.screenshot({ path: testInfo.outputPath('map-list-closed.png') });
-
-  const pinLayer = await page.waitForFunction(() => {
+  const pinTarget = await page.waitForFunction(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     if (!map?.isStyleLoaded()) return null;
     for (const layer of ['v1-source-pins', 'mvt-v1-source-pins']) {
-      if (map.getLayer(layer) && map.getLayoutProperty(layer, 'visibility') === 'visible') return layer;
+      if (!map.getLayer(layer) || map.getLayoutProperty(layer, 'visibility') !== 'visible') continue;
+      const source = layer === 'mvt-v1-source-pins' ? 'preview-mvt' : 'locations';
+      const options = layer === 'mvt-v1-source-pins' ? { sourceLayer: 'uec_preview' } : undefined;
+      const feature = map.querySourceFeatures(source, options).find((item: any) =>
+        item.properties?.kind === 'source-coordinate' || item.properties?.kind === 'source_coordinate');
+      if (feature) return { layer, coordinates: feature.geometry.coordinates };
     }
     return null;
   }, undefined, { timeout: 60_000 });
 
-  const layer = await pinLayer.jsonValue<string>();
-  await page.evaluate((visibleLayer) => {
+  const { layer, coordinates } = await pinTarget.jsonValue<{ layer: string; coordinates: [number, number] }>();
+  await page.screenshot({ path: testInfo.outputPath('map-list-closed.png') });
+  await page.evaluate(({ center }) => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
-    const source = visibleLayer === 'mvt-v1-source-pins' ? 'preview-mvt' : 'locations';
-    const options = visibleLayer === 'mvt-v1-source-pins' ? { sourceLayer: 'uec_preview' } : undefined;
-    const feature = map.querySourceFeatures(source, options).find((item: any) =>
-      item.properties?.kind === 'source-coordinate' || item.properties?.kind === 'source_coordinate');
-    if (!feature) throw new Error('No source-coordinate feature is available for the V1 pin interaction check.');
-    map.jumpTo({ center: feature.geometry.coordinates, zoom: 14 });
-  }, layer);
+    map.jumpTo({ center, zoom: 14 });
+  }, { center: coordinates });
   await page.waitForFunction((visibleLayer) => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return map?.queryRenderedFeatures({ layers: [visibleLayer] }).length > 0;
@@ -69,9 +68,19 @@ test('live candidate map keeps the repaired controls and default V1 pins operabl
   const release = page.getByLabel('Current release');
   await expect(release).toBeVisible();
   await expect(release.locator('option:disabled')).toHaveCount(0);
-  await expect(page.locator('[data-flow]')).toHaveCount(0);
+  const releaseMenu = page.getByRole('complementary', { name: 'Release details' });
+  const [selectBox, menuBox] = await Promise.all([release.boundingBox(), releaseMenu.boundingBox()]);
+  expect(selectBox).not.toBeNull();
+  expect(menuBox).not.toBeNull();
+  for (const box of [selectBox!, menuBox!]) {
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+    expect(box.y + box.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+  }
   await expect(page.getByText('Connections', { exact: true })).toHaveCount(0);
 
-  await page.goto('/v2-preview/#/help');
+  await page.goto('/v2-preview/#/about/help');
+  await expect(page.getByRole('heading', { level: 1, name: 'Help' })).toBeVisible();
   await expect(page.locator('video')).toHaveCount(0);
 });
