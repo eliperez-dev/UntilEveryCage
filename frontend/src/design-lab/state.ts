@@ -1,4 +1,5 @@
 import { DEFAULT_LAB_STATE, DIRECTIONS, SCENARIOS, type LabAction, type LabFilters, type LabState } from './contract';
+import { TAXONOMY_PRIMARY_KEYS } from '../domain/taxonomy';
 
 const safeNumber = (value: string | null, fallback: number, min: number, max: number) => {
   if (value === null || value.trim() === '') return fallback;
@@ -6,6 +7,11 @@ const safeNumber = (value: string | null, fallback: number, min: number, max: nu
   return Number.isFinite(parsed) ? Math.min(max, Math.max(min, parsed)) : fallback;
 };
 const unique = <T extends string>(values: readonly T[]) => [...new Set(values)];
+const categoryOptions = new Set<string>([
+  ...TAXONOMY_PRIMARY_KEYS,
+  // Synthetic fixtures still use the original presentation labels.
+  'Poultry', 'Pig', 'Dairy', 'Processing', 'Laboratory', 'Aquaculture',
+]);
 export function decodeLabHash(hash: string): LabState {
   const queryString = hash.includes('?') ? hash.slice(hash.indexOf('?') + 1) : '';
   const q = new URLSearchParams(queryString);
@@ -13,7 +19,7 @@ export function decodeLabHash(hash: string): LabState {
   const scenario = SCENARIOS.find(value => value === q.get('scenario')) ?? DEFAULT_LAB_STATE.scenario;
   const precisionOptions = ['exact', 'source_reported', 'approximate', 'city', 'coarse', 'unmapped'] as const;
   const filters: LabFilters = {
-    categories: unique(q.getAll('category').filter(value => ['Poultry', 'Pig', 'Dairy', 'Processing', 'Laboratory', 'Aquaculture'].includes(value))),
+    categories: unique(q.getAll('category').filter(value => categoryOptions.has(value))),
     precisions: unique(q.getAll('precision').filter((value): value is (typeof precisionOptions)[number] => precisionOptions.some(option => option === value))),
     countries: unique(q.getAll('country').filter(value => /^[A-Za-z]{2}$/.test(value)).map(value => value.toUpperCase())),
     sources: unique(q.getAll('source_filter').filter(value => value.length <= 160)),
