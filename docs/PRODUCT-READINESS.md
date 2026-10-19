@@ -47,6 +47,25 @@ are understood; the maintainer intends to handle cancellation. Next decisions:
 account/billing access, region, exact dataset v1 publication approval and
 deployment/cutover authorization.
 
+**Final frontend acceptance (maintainer decision, 2026-10-18):** finish local
+release packaging and deployment rehearsal first, then review the integrated
+V2 frontend with the maintainer for one or more final passes. Do not replace
+the legacy V1 website, change DNS, or retire its hosting before those passes
+are accepted and the maintainer explicitly approves cutover. Render account
+setup and repository connection do not themselves authorize deployment.
+
+**Provisioning update (maintainer report, 2026-10-18):** the maintainer has
+purchased the 1-CPU/2-GB Render web service, connected the V2 branch, and
+purchased the 1-GB-RAM managed Postgres plan with 10 GB storage. At the checked
+storage rate of $0.30/GB/month, the selected base is approximately $47/month
+before bandwidth, tax and other usage charges. This is owner-reported account
+progress, not a verified application deployment. Confirm the exact `eli/v2`
+branch, Docker runtime and disabled auto-deploy before loading release data.
+The maintainer confirms both services are in Oregon; the initial web origin
+is `https://untileverycage.onrender.com`. Runtime configuration and successful
+migration/restore are not yet verified. The custom domain remains on the legacy
+site until final acceptance and cutover approval.
+
 **Germany sequencing (maintainer approval, 2026-10-18):** defer Germany from
 dataset v1 and make it the first source-expansion target for the next dataset
 release. Legacy website coverage does not establish V2 pipeline readiness.
@@ -86,6 +105,26 @@ This uses the candidate handlers' display contract, not a count of
 stored coordinates or accepted geocoding jobs. It includes retained material
 outside the proposed curated public scope and is not the dataset v1 public
 release total.
+
+**Prospective dataset v1 measurement (2026-10-18):** read-only measurement of
+the exact r5 members proposes **69,220 records across fourteen sources**:
+**53,107 with conditionally usable geometry and 16,113 unmapped**. These are
+approval-packet counts, not published totals; r5 remains unapproved and its
+current public geometry count is zero. Keep the two French sources excluded,
+apply animal relevance specifically to Australian NPI (not every Australian
+source), keep Denmark's other-regulated category outside the curated default,
+and carry all 553 frozen v0 exclusions by source and stable facility identity.
+APHIS contributes 12,473 proposed records; its 11,361 mapped records represent
+approximate mailing localities, not verified operating sites. Germany remains
+deferred. The previous 68,735 estimate double-subtracted 485 Danish exclusions;
+the first replacement query also omitted 41 South Australian EPA records by
+using a country-wide NPI filter. Both errors are corrected in this measurement.
+The row-free proposal binds inventory, selection policy, member identities,
+inherited exclusions and geometry evidence to digest
+`4b970d11643cf46053cabfedb403413349b3e4b75bb441e98a9abaf9733226de`.
+Approval and activation must recheck this exact proposal; changed membership
+or geometry requires a fresh comparison, not a silent substitution. Frozen v0
+is unchanged. Serving-package restore/API acceptance remains unfinished.
 
 Historical-release API acceptance passed against a disposable frozen-v0 copy
 after activating a bounded real-data successor: explicit v0 still returns
