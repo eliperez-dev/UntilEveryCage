@@ -118,8 +118,10 @@ test('form remains usable with coordinate fallback when map construction fails',
   expect(submitted).toMatchObject({ claimed_latitude: 55.7, claimed_longitude: 12.5, location_input_method: 'text' });
 });
 
-test('a valid submission displays its receipt once in memory without putting it in the URL', async ({ page }) => {
+test('a valid submission tracks through its one private hash link without leaking receipt credentials', async ({ page }) => {
   let submitted: Record<string, unknown> | undefined;
+  const requests: Array<{ url: string; referer: string | undefined }> = [];
+  page.on('request', request => requests.push({ url: request.url(), referer: request.headers().referer }));
   await page.route('**/api/community/submissions', async route => {
     submitted = route.request().postDataJSON() as Record<string, unknown>;
     await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ submission_id: id, receipt_secret: secret, status: 'received' }) });
@@ -131,13 +133,23 @@ test('a valid submission displays its receipt once in memory without putting it 
   await page.getByLabel(/I have permission to share/).check();
   await page.getByRole('button', { name: 'Send for review' }).click();
   await expect(page.getByRole('heading', { name: 'Contribution received' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Track submission', exact: true })).toHaveAttribute('href', `#/contribution-status?submission_id=${id}&receipt_secret=${secret}`);
+  const trackingLink = page.getByRole('link', { name: 'Track submission', exact: true });
+  await expect(trackingLink).toHaveAttribute('href', `#/contribution-status?submission_id=${id}&receipt_secret=${secret}`);
   expect(submitted).toMatchObject({ kind: 'facility', consent: true, claimed_precision: 'unknown' });
   expect(submitted).not.toHaveProperty('contact_email');
   expect(page.url()).not.toContain(secret);
-  await page.getByRole('link', { name: 'Check contribution status', exact: true }).click();
+  await trackingLink.click();
+  await expect(page.getByRole('heading', { name: 'Published to community submissions', exact: true })).toBeVisible();
+  await expect(page.getByLabel('Submission ID', { exact: true })).toHaveValue(id);
+  await expect(page.getByLabel('Private receipt', { exact: true })).toHaveValue(secret);
+  expect(page.url()).toContain(`#\/contribution-status?submission_id=${id}&receipt_secret=${secret}`);
+  const browserLocation = await page.evaluate(() => ({ search: location.search, referrer: document.referrer }));
+  expect(browserLocation.search).not.toContain(secret);
+  expect(browserLocation.referrer).not.toContain(secret);
+  expect(requests.some(request => request.url.includes(secret) || request.referer?.includes(secret))).toBe(false);
   await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Contribute' }).click();
   await expect(page.getByRole('heading', { name: 'Add a facility' })).toBeVisible();
+  expect(page.url()).not.toContain(secret);
   await expect(page.getByRole('link', { name: 'Track submission', exact: true })).toHaveCount(0);
 });
 
