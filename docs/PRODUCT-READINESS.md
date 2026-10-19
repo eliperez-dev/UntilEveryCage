@@ -61,8 +61,9 @@ storage rate of $0.30/GB/month, the selected base is approximately $47/month
 before bandwidth, tax and other usage charges. This is owner-reported account
 progress, not a verified application deployment. Confirm the exact `eli/v2`
 branch, Docker runtime and disabled auto-deploy before loading release data.
-The maintainer confirms both services are in Oregon; the initial web origin
-is `https://untileverycage.onrender.com`. Runtime configuration and successful
+The maintainer confirms both services are in Oregon and web auto-deploy is
+disabled; the initial web origin is `https://untileverycage.onrender.com`.
+Runtime configuration and successful
 migration/restore are not yet verified. The custom domain remains on the legacy
 site until final acceptance and cutover approval.
 
@@ -119,12 +120,32 @@ approximate mailing localities, not verified operating sites. Germany remains
 deferred. The previous 68,735 estimate double-subtracted 485 Danish exclusions;
 the first replacement query also omitted 41 South Australian EPA records by
 using a country-wide NPI filter. Both errors are corrected in this measurement.
+Relative to v0's 63,601 records, the proposed list adds 12,473 APHIS records
+and five FSIS records, and excludes 6,859 previously visible non-animal NPI
+records from the curated set. The net increase is 5,619 records; excluded
+research evidence is retained locally rather than deleted.
 The row-free proposal binds inventory, selection policy, member identities,
 inherited exclusions and geometry evidence to digest
 `4b970d11643cf46053cabfedb403413349b3e4b75bb441e98a9abaf9733226de`.
 Approval and activation must recheck this exact proposal; changed membership
 or geometry requires a fresh comparison, not a silent substitution. Frozen v0
-is unchanged. Serving-package restore/API acceptance remains unfinished.
+is unchanged.
+
+**Local serving-package rehearsal (2026-10-18):** the selected-column v0
+package restored into an isolated database with 63,601 public records,
+48,756 mapped and 14,845 unmapped. Its public-detail aggregate hash matches
+the source. The fresh restore validates the source migration ledger, payload
+checksums, constraints and required public read-model triggers. The read-only
+API role can read public results but cannot write releases or read raw source
+rows. The full real-v0 API acceptance passed with no skips; this exercised the
+public handlers in a loopback **development-mode** process, not production
+startup. The existing public-v0 graph is empty in both source and restored
+copy. Production startup is not verified: no real independent restriction
+ledger/control-file set was found, only explicitly synthetic fixtures. The
+maintainer has been asked to provide an existing ledger or authorize initial
+creation from verified recorded restrictions. Do not use a test fixture or
+silently infer a new publication decision. Render upload, deployment and
+custom-domain cutover have not occurred.
 
 Historical-release API acceptance passed against a disposable frozen-v0 copy
 after activating a bounded real-data successor: explicit v0 still returns
