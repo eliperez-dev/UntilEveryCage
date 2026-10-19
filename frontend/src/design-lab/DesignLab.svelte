@@ -46,8 +46,8 @@
   const v0ArchiveVerified = writable(false);
   let refreshPinnedPublicRelease: (() => void) | undefined;
   const publicReleaseOptions = $derived([
-    ...($activePublicReleaseId ? [{ id: $activePublicReleaseId, label: `Current verified release ${$activePublicReleaseId}` }] : []),
-    ...($v0ArchiveVerified && $activePublicReleaseId !== V0_ARCHIVE_RELEASE_ID ? [{ id: V0_ARCHIVE_RELEASE_ID, label: 'v0 verified archive' }] : []),
+    ...($activePublicReleaseId ? [{ id: $activePublicReleaseId, label: $activePublicReleaseId === V0_ARCHIVE_RELEASE_ID ? 'v0: Early Access' : 'Public release' }] : []),
+    ...($v0ArchiveVerified && $activePublicReleaseId !== V0_ARCHIVE_RELEASE_ID ? [{ id: V0_ARCHIVE_RELEASE_ID, label: 'v0: Early Access' }] : []),
   ]);
   function selectPublicRelease(releaseId: string) {
     const hash = new URL(location.href).hash;

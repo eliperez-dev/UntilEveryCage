@@ -99,7 +99,7 @@
   <main class="review-loading" aria-live="polite"><p role="status">Preparing the private-preview workspace…</p><small>The map module and its local data boundary are loading.</small></main>
 {:else}
 <div class="shell">
-  <PreviewMasthead publicReleaseLabel={verifiedReleaseLabel ? `Release ${verifiedReleaseLabel}` : null} current={route.kind === 'about' || route.kind === 'help' || route.kind === 'faq' ? 'about' : route.kind === 'contribute' || route.kind === 'bug-report' || route.kind === 'community' ? 'contribute' : route.kind === 'database' || route.kind === 'record' || route.kind === 'api' || route.kind === 'downloads' ? 'database' : 'map'} mapHref={returnMapHref} {databaseHref} />
+  <PreviewMasthead publicReleaseLabel={verifiedReleaseLabel === 'v0-candidate-2026-10-04-r3' ? 'v0: Early Access' : verifiedReleaseLabel ? 'Public release' : null} current={route.kind === 'about' || route.kind === 'help' || route.kind === 'faq' ? 'about' : route.kind === 'contribute' || route.kind === 'bug-report' || route.kind === 'community' ? 'contribute' : route.kind === 'database' || route.kind === 'record' || route.kind === 'api' || route.kind === 'downloads' ? 'database' : 'map'} mapHref={returnMapHref} {databaseHref} />
 
   <main id="main-content" class="shell-content" tabindex="-1">
     {#if loading}

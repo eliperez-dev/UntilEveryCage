@@ -5,7 +5,8 @@ import { CATEGORY_PRESENTATIONS, CATEGORY_PRIMARY_BY_SOURCE_KEY } from '../../fe
 export const DEFAULT_CLUSTER_RADIUS = 30;
 /** Requested camera zoom. Native GeoJSON tile zooms are whole numbers. */
 export const DEFAULT_CLUSTER_MAX_ZOOM = 7.5;
-export const DEFAULT_REFERENCE_RADIUS_KM = 3;
+/** Presentation-only radius when the public projection has no supplied area. */
+export const DEFAULT_REFERENCE_RADIUS_KM = 0.5;
 export const APPROX_MARKER_SCALE = 0.8;
 
 export type RealPreviewClusterSettings = Readonly<{
@@ -46,7 +47,6 @@ export type RealPreviewVisualSettings = Readonly<{
 }>;
 
 const cityReference = ['any', ['==', ['get', 'precision'], 'city'], ['==', ['get', 'precision'], 'city_reference_approximate'], ['==', ['get', 'precision'], 'provider_locality_approximate'], ['==', ['get', 'precision'], 'locality_reference_coarse']];
-const approximateCoordinate = ['all', ['==', ['get', 'kind'], 'source-coordinate'], ['in', ['get', 'precision'], ['literal', ['approximate', 'city', 'source_reported', 'source_provided_unverified', 'city_reference_approximate', 'provider_locality_approximate', 'locality_reference_coarse']]]];
 const categoryPairs = Object.entries(CATEGORY_PRIMARY_BY_SOURCE_KEY);
 const categoryColorBySourceKey = ['match', ['get', 'category_key'], ...categoryPairs.flatMap(([sourceKey, primaryKey]) => [sourceKey, CATEGORY_PRESENTATIONS[primaryKey].color]), CATEGORY_PRESENTATIONS.unclassified.color];
 const v1PinByPrimary = {
@@ -136,7 +136,10 @@ export function addRealPreviewMapLayers(
   } as any);
 
   const referenceKind = ['in', ['get', 'kind'], ['literal', ['reference', 'provider_locality_approximate']]];
-  const reference = ['all', unclustered, ['any', referenceKind, approximateCoordinate]];
+  // Only records explicitly projected as references receive the uncertainty
+  // halo. Source-reported coordinates are not coarse merely because their
+  // precision has not been independently verified.
+  const reference = ['all', unclustered, referenceKind];
   const aggregateReference = ['all', unclustered, referenceKind];
   const weight = ['get', 'weight'];
   map.addLayer({

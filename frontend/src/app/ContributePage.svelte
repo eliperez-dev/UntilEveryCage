@@ -2,6 +2,7 @@
   let CommunityContributions = $state<typeof import('./CommunityContributions.svelte').default | null>(null);
   let loadError = $state('');
   let communityModule: Promise<typeof import('./CommunityContributions.svelte')> | null = null;
+  const communityEnabled = import.meta.env.VITE_COMMUNITY_PILOT === 'true';
   function loadForm() {
     loadError = '';
     communityModule ??= import('./CommunityContributions.svelte');
@@ -10,7 +11,7 @@
   import BugReportPage from './BugReportPage.svelte';
   import { serializeRoute, type ContributionType } from './routeState';
   let { formKind = 'facility', targetRecordId = '', returnMapHref = '#/map' }: { formKind?: ContributionType; targetRecordId?: string; returnMapHref?: string } = $props();
-  $effect(() => { if (formKind !== 'bug' && !CommunityContributions && !loadError) loadForm(); });
+  $effect(() => { if (communityEnabled && formKind !== 'bug' && !CommunityContributions && !loadError) loadForm(); });
   const taskHref = (formKind: ContributionType) => serializeRoute({ kind: 'contribute', formKind, ...(targetRecordId ? { targetRecordId } : {}), ...(returnMapHref !== '#/map' ? { returnMapHref } : {}) });
   const utilityHref = (path: string) => `#/${path}${returnMapHref !== '#/map' ? `?map=${encodeURIComponent(returnMapHref)}` : ''}`;
   const taskNames: Record<ContributionType, string> = { facility: 'Facility', evidence: 'Evidence', correction: 'Correction', duplicate: 'Duplicate', privacy_removal: 'Privacy/removal', bug: 'Bug report' };
@@ -18,17 +19,22 @@
 </script>
 <svelte:head><title>{labels[formKind]} · Until Every Cage</title></svelte:head>
 <section class="contribute-page" aria-labelledby="contribute-title">
-  <h1 id="contribute-title">{labels[formKind]}</h1>
-  <p id="contribution-choice" class="choice-label">Choose a contribution type</p>
-  <nav class="task-nav" aria-label="Contribution tasks" aria-describedby="contribution-choice">
-    {#each Object.entries(taskNames) as [type, label]}<a href={taskHref(type as ContributionType)} aria-current={formKind === type ? 'page' : undefined}>{label}</a>{/each}
-  </nav>
-  {#key `${formKind}:${targetRecordId}`}
-    {#if formKind === 'bug'}<BugReportPage embedded {returnMapHref} />
-    {:else if CommunityContributions}<CommunityContributions page="form" embedded {formKind} {targetRecordId} {returnMapHref} />
-    {:else if loadError}<p role="alert">{loadError}</p><button type="button" onclick={loadForm}>Try again</button>
-    {:else}<p role="status">Loading form…</p>{/if}
-  {/key}
+  {#if !communityEnabled && formKind !== 'bug'}
+    <h1 id="contribute-title">Contribute to the project</h1>
+    <p>To share a correction, privacy concern, or source, email <a href="mailto:untileverycageproject@protonmail.com">untileverycageproject@protonmail.com</a>. For code contributions, use <a href="https://github.com/eliperez-dev/UntilEveryCage" target="_blank" rel="noreferrer">GitHub</a>.</p>
+  {:else}
+    <h1 id="contribute-title">{labels[formKind]}</h1>
+    <p id="contribution-choice" class="choice-label">Choose a contribution type</p>
+    <nav class="task-nav" aria-label="Contribution tasks" aria-describedby="contribution-choice">
+      {#each Object.entries(taskNames) as [type, label]}<a href={taskHref(type as ContributionType)} aria-current={formKind === type ? 'page' : undefined}>{label}</a>{/each}
+    </nav>
+    {#key `${formKind}:${targetRecordId}`}
+      {#if formKind === 'bug'}<BugReportPage embedded {returnMapHref} />
+      {:else if CommunityContributions}<CommunityContributions page="form" embedded {formKind} {targetRecordId} {returnMapHref} />
+      {:else if loadError}<p role="alert">{loadError}</p><button type="button" onclick={loadForm}>Try again</button>
+      {:else}<p role="status">Loading form…</p>{/if}
+    {/key}
+  {/if}
   <footer class="contribute-footer">
     <p class="code-invitation">The code is open source. Help with code, design, tests, or data adapters: <a href="https://github.com/eliperez-dev/UntilEveryCage" target="_blank" rel="noreferrer">Contribute code on GitHub</a>.</p>
     <div class="project-links" aria-label="Project links">
