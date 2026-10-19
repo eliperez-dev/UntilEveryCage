@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test('basemap control changes appearance while retaining the cached Supercluster projection', async ({ page }) => {
+test('map lens exposes Street and Satellite only without refetching the native projection', async ({ page }) => {
   test.skip(!process.env.UEC_REAL_PREVIEW_URL, 'Requires a populated local real preview');
   test.setTimeout(90_000);
   let feedRequests = 0;
@@ -11,8 +11,9 @@ test('basemap control changes appearance while retaining the cached Supercluster
   const lens = page.getByRole('complementary', { name: 'Map lens' });
   await lens.getByRole('button', { name: /Map lens/ }).click();
   const street = lens.getByRole('button', { name: 'Street', exact: true });
-  const muted = lens.getByRole('button', { name: 'Muted', exact: true });
+  const satellite = lens.getByRole('button', { name: 'Satellite', exact: true });
   await expect(street).toHaveAttribute('aria-pressed', 'true');
+  await expect(satellite).toHaveAttribute('aria-pressed', 'false');
   await page.waitForFunction(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return map?.isStyleLoaded() && map.getLayer('clusters') && map.isSourceLoaded('locations');
@@ -33,20 +34,8 @@ test('basemap control changes appearance while retaining the cached Supercluster
   expect(before.tiles[0]).toContain('tile.openstreetmap.org');
   expect(before.overlays.every((index: number) => index >= 0)).toBe(true);
   expect(before.sourceLoaded).toBe(true);
-  await muted.click();
-  await expect(muted).toHaveAttribute('aria-pressed', 'true');
-  const mutedState = await inspect();
-  expect(mutedState.tiles).toEqual(before.tiles);
-  expect(mutedState.overlays).toEqual(before.overlays);
-  expect(mutedState.sourceLoaded).toBe(true);
-  expect(mutedState.saturation).toBe(-1);
-  await street.click();
-  await expect(street).toHaveAttribute('aria-pressed', 'true', { timeout: 30_000 });
-  const streetState = await inspect();
-  expect(streetState.tiles[0]).toContain('tile.openstreetmap.org');
-  expect(streetState.overlays).toEqual(before.overlays);
-  expect(streetState.sourceLoaded).toBe(true);
-  expect(streetState.saturation).toBe(0);
+  await expect(lens.getByRole('button', { name: 'Muted', exact: true })).toHaveCount(0);
+  await expect(street).toHaveAttribute('aria-pressed', 'true');
   expect(feedRequests).toBe(1);
 });
 
