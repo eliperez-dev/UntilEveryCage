@@ -1,12 +1,25 @@
 # V2 frontend design authority
 
-Status: design specification for implementation planning, revised after maintainer review, 2026-09-22
+Status: canonical V2 design guidance, with implementation under `frontend/`.
+The V1 behavior inventory remains a migration reference, not a visual constraint.
 
-This folder defines the fresh V2 frontend direction. It is intentionally
-documentation-only: it contains no Svelte, HTML, CSS, JavaScript, image, or
-runtime asset changes. The existing V2 preview is disposable scaffolding. The
-V1 behavior inventory remains the migration baseline; it is not a visual
-constraint.
+## Active implementation routes
+
+The production map follows this chain, including in a public container build:
+
+```text
+frontend/src/app/App.svelte
+  → design-lab/DesignLab.svelte (data mode: public-release)
+    → design-lab/variants/field/Field.svelte
+      → design-lab/components/MapSurface.svelte
+```
+
+The `design-lab` folder name does not make these components preview-only.
+Database and full-page records use `app/PublicDatabase.svelte` and
+`app/PublicRecord.svelte`. Trace imports and the selected data mode before
+changing a renderer; a similarly named layer helper may have no active caller.
+Acceptance must exercise the public built frontend, not only a development
+route or fixture mode.
 
 ## Product decision
 

@@ -12,8 +12,13 @@ source status.
 
 ## Project map and local work
 
-The public application is Rust/Axum in `src/` with a vanilla JavaScript client
-in `static/`. The V2 pipeline is in `pipeline/`; private inputs and generated
+The V2 application is Rust/Axum in `src/` with the Svelte client in
+`frontend/`; the container serves its compiled output from `static/`.
+The legacy vanilla JavaScript client is also retained in `static/`, not the
+V2 implementation target. The public map currently follows `App.svelte` →
+`DesignLab.svelte` → `Field.svelte` → `MapSurface.svelte`, despite the
+`design-lab` folder name. Trace the active route before choosing a renderer.
+The V2 pipeline is in `pipeline/`; private inputs and generated
 artifacts live in ignored/local `data/`. Start at [docs/README.md](docs/README.md)
 for architecture, frontend, source, operations, and governance navigation.
 
