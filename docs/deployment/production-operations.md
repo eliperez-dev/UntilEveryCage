@@ -1,7 +1,8 @@
 # Production operations runbook
 
-Status: production-shaped procedure for a future deployment. This document is
-not evidence that the service is hosted, that a reviewer is staffed, or that
+Status: production operations procedure. Current verified Render deployment
+state and remaining acceptance work live in [product readiness](../PRODUCT-READINESS.md).
+This procedure is not evidence that a reviewer is staffed, or that
 any retention period, response SLA, backup destination, or provider control has
 been verified.
 

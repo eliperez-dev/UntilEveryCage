@@ -69,6 +69,11 @@ compact pages control, preserving direct title navigation without an arrow.
 
 The maintainer requested these launch repairs, not another redesign:
 
+Later naming pass: identify public dataset releases by their release date
+(for example `2026-10-18`), not v0/v1 version names or internal candidate IDs.
+Retain immutable internal identifiers and historical lineage. This presentation
+decision does not rename stored releases, change membership or approve a release.
+
 - Use compact, readable filters with an obvious Clear all action. Options and
   counts must use the same applicable scope as map/search. Show total matches
   separately from the loaded page; 100 loaded records is not a database total.

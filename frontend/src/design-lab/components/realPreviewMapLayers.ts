@@ -147,7 +147,7 @@ export function addRealPreviewMapLayers(
     paint: {
       'circle-color': '#d8473f',
       'circle-radius': referenceRadiusExpression(DEFAULT_REFERENCE_RADIUS_KM),
-      // The full 3 km geometry remains visible and clickable, but a very light
+      // The ground-distance area remains visible and clickable, but a very light
       // wash prevents dense city references from obscuring the basemap.
       'circle-opacity': 0.22,
       'circle-stroke-color': '#ff695c',

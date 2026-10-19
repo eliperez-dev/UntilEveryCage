@@ -63,9 +63,35 @@ progress, not a verified application deployment. Confirm the exact `eli/v2`
 branch, Docker runtime and disabled auto-deploy before loading release data.
 The maintainer confirms both services are in Oregon and web auto-deploy is
 disabled; the initial web origin is `https://untileverycage.onrender.com`.
-Runtime configuration and successful
-migration/restore are not yet verified. The custom domain remains on the legacy
-site until final acceptance and cutover approval.
+The approved v0 serving package has since been imported and verified on Render
+PostgreSQL 18.6 with PostGIS 3.6.2: 63,601 public records, 48,756 mapped and
+14,845 unmapped. A restricted runtime account passed the full real-v0 API
+acceptance through a local production-mode API connected to Render; four
+private/legacy route checks returned 404. External database TLS was verified.
+Private-network database routing remains unverified. The owner deployed the
+web service, and its public readiness endpoint returns HTTP 200. This proves
+hosting availability, not final frontend or corrected-dataset acceptance.
+The custom domain remains on the legacy site until final acceptance and
+cutover approval.
+
+**Hosted/local parity finding (2026-10-18):** Render serves frozen approved v0,
+not the later corrected r5 candidate used by the local preview. Its actual map
+feed has 47,875 unclassified points out of 48,756, versus 6,320 out of 53,117
+in the candidate. Italy 853 has 138 hosted points outside the conservative
+Italy envelope versus zero in that candidate. The bounds check does not prove
+every remaining coordinate is correct. These are release-content differences,
+not a reason to guess classifications or coordinates in the frontend. The
+corrected successor still needs the existing release approval/activation path;
+do not rename v0 as v1 or silently overwrite historical evidence. Public
+renderer precision, cold-start interaction and visitor-copy regressions have
+separate bounded repairs: 238 frontend unit tests, lint and the public build
+passed. A real-v0 production-build browser check against the Render database
+passed cold and cached pin clicks, navigation, readable release labels and
+the production contribution contact path without enabling intake. Its map
+shows source-coordinate pins without approximate halos; genuine reference
+areas use a latitude/zoom-aware 500-metre presentation default, not a measured
+accuracy guarantee. Hosted deployment of this frontend patch and final owner
+acceptance remain separate checks; these repairs do not fix v0's release content.
 
 **Germany sequencing (maintainer approval, 2026-10-18):** defer Germany from
 dataset v1 and make it the first source-expansion target for the next dataset
