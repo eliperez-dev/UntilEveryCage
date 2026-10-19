@@ -96,11 +96,11 @@ export function addMvtLocationLayers(map: MapLike, sourceId?: string): void {
 
   map.addLayer({
     id: 'mvt-approx-reference-area', type: 'fill', source: 'mvt-reference-areas',
-    paint: { 'fill-color': '#79b9da', 'fill-opacity': 0.14 },
+    paint: { 'fill-color': '#d8473f', 'fill-opacity': 0 },
   });
   map.addLayer({
     id: 'mvt-approx-reference-outline', type: 'line', source: 'mvt-reference-areas',
-    paint: { 'line-color': '#79b9da', 'line-opacity': 0.48, 'line-width': 1 },
+    paint: { 'line-color': '#ff695c', 'line-opacity': 0, 'line-width': 2 },
   });
   map.addLayer({
     id: 'mvt-clusters', type: 'symbol', source, 'source-layer': sourceLayer,
@@ -130,7 +130,7 @@ export function addMvtLocationLayers(map: MapLike, sourceId?: string): void {
   map.addLayer({
     id: 'mvt-reference-count', type: 'symbol', source, 'source-layer': sourceLayer,
     filter: references,
-    layout: { 'text-field': ['to-string', count], 'text-font': ['Open Sans Bold'], 'text-size': 12 },
+    layout: { 'text-field': ['case', ['>', count, 1], ['to-string', count], ''], 'text-font': ['Open Sans Bold'], 'text-size': 12 },
     paint: { 'text-color': '#f1efe8' },
   });
   map.addLayer({

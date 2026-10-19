@@ -478,8 +478,12 @@
     if (!map || !isNativeMap()) return;
     if (usingMvt) {
       syncMvtReferenceAreas(map);
+      const selected = selectedReferenceKey ?? mapState.selectedId;
+      const selectedArea = selected ? ['==', ['get', 'feature_key'], selected] : false;
       if (map.getLayer("mvt-approx-reference-area"))
-        map.setPaintProperty("mvt-approx-reference-area", "fill-opacity", referenceOpacity * 0.4);
+        map.setPaintProperty("mvt-approx-reference-area", "fill-opacity", ['case', selectedArea, Math.min(0.16, referenceOpacity), 0] as any);
+      if (map.getLayer("mvt-approx-reference-outline"))
+        map.setPaintProperty("mvt-approx-reference-outline", "line-opacity", ['case', selectedArea, 0.92, 0] as any);
       if (map.getLayer("mvt-source-coordinates"))
         map.setPaintProperty("mvt-source-coordinates", "circle-radius", coordinateRadius);
       if (map.getLayer("mvt-reference-kind"))

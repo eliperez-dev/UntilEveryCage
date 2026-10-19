@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addRealPreviewMapLayers, hasRealPreviewMapLayers, nativeClusterMaxZoom, setClusterTileRounding, useRoundedClusterTiles } from '../../src/design-lab/components/realPreviewMapLayers';
+import { addRealPreviewMapLayers, applyRealPreviewVisualSettings, hasRealPreviewMapLayers, nativeClusterMaxZoom, referenceRadiusExpression, setClusterTileRounding, useRoundedClusterTiles } from '../../src/design-lab/components/realPreviewMapLayers';
 
 describe('real-preview native clustering layers', () => {
   it('puts facility coordinates and weighted references in one source and filters clusters first', () => {
@@ -27,7 +27,7 @@ describe('real-preview native clustering layers', () => {
       type: 'symbol',
       layout: {
         'icon-image': 'reference-marker', 'icon-size': 0.8,
-        'text-field': ['to-string', ['get', 'weight']],
+        'text-field': ['case', ['>', ['get', 'weight'], 1], ['to-string', ['get', 'weight']], ''],
       },
       paint: { 'text-color': '#172019' },
     });
@@ -36,7 +36,7 @@ describe('real-preview native clustering layers', () => {
       ['!', ['any', ['==', ['get', 'precision'], 'city'], ['==', ['get', 'precision'], 'city_reference_approximate'], ['==', ['get', 'precision'], 'provider_locality_approximate'], ['==', ['get', 'precision'], 'locality_reference_coarse']]],
     ]);
     expect(layers.find(layer => layer.id === 'aggregate-outer')?.paint).toMatchObject({
-      'circle-color': '#d8473f', 'circle-opacity': 0.22, 'circle-stroke-color': '#ff695c', 'circle-stroke-width': 2.5,
+      'circle-color': '#d8473f', 'circle-opacity': 0, 'circle-stroke-color': '#ff695c', 'circle-stroke-width': 2.5,
     });
     expect(JSON.stringify(layers.find(layer => layer.id === 'aggregate-outer')?.filter)).toContain('reference');
     expect(JSON.stringify(layers.find(layer => layer.id === 'aggregate-outer')?.filter)).not.toContain('source_provided_unverified');
@@ -52,6 +52,15 @@ describe('real-preview native clustering layers', () => {
       getSource: (id: string) => sources[id],
       getLayer: (id: string) => layers.find(layer => layer.id === id),
     } as any)).toBe(true);
+  });
+
+  it('uses a 250m geographic radius only while an approximate record is selected', () => {
+    expect(JSON.stringify(referenceRadiusExpression(0.25))).toContain('250');
+    const changes: Array<[string, string, unknown]> = [];
+    const map = { getLayer: () => ({}), setPaintProperty: (id: string, property: string, value: unknown) => changes.push([id, property, value]), setLayoutProperty() {} };
+    applyRealPreviewVisualSettings(map as any, { referenceRadiusKm: 0.25, referenceOpacity: 0.22, coordinateRadius: 7, showReferenceLabels: false, selectedKey: 'synthetic-key' });
+    expect(changes.find(change => change[1] === 'circle-opacity')?.[2]).toEqual(['case', ['==', ['get', 'key'], 'synthetic-key'], expect.closeTo(0.34), 0]);
+    expect(changes.find(change => change[1] === 'circle-stroke-opacity')?.[2]).toEqual(['case', ['==', ['get', 'key'], 'synthetic-key'], 0.96, 0]);
   });
 
   it('detects an incomplete native projection so callers can restore every overlay', () => {
