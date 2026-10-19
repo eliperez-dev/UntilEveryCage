@@ -29,7 +29,6 @@ type MapLike = {
   removeSource(id: string): void;
   setFilter?(id: string, filter: unknown): void;
 };
-type GeoJsonSourceLike = { setData?(data: unknown): void };
 
 const exactKindFilter = ['==', ['get', 'kind'], 'exact'];
 const LEGACY_KEY_ALIASES: Readonly<Record<string, readonly string[]>> = Object.freeze({
@@ -74,33 +73,11 @@ function ids(namespace: string) {
   const prefix = `release-${namespace}`;
   return {
     source: `${prefix}-source`,
-    selectedAreaSource: `${prefix}-selected-area-source`,
     layers: [
       `${prefix}-cluster-circle`, `${prefix}-cluster-count`, `${prefix}-coarse-area`, `${prefix}-coarse-count`,
-      `${prefix}-coarse-label`, `${prefix}-exact-pin`, `${prefix}-selected-area-fill`, `${prefix}-selected-area-outline`,
+      `${prefix}-coarse-label`, `${prefix}-exact-pin`,
     ],
   };
-}
-
-export const RELEASE_REFERENCE_RADIUS_METRES = 250;
-const emptyCollection = Object.freeze({ type: 'FeatureCollection', features: [] });
-function destination(lon: number, lat: number, bearing: number): [number, number] {
-  const angular = (RELEASE_REFERENCE_RADIUS_METRES / 1000) / 6371.0088;
-  const φ = lat * Math.PI / 180; const λ = lon * Math.PI / 180; const θ = bearing * Math.PI / 180;
-  const φ2 = Math.asin(Math.sin(φ) * Math.cos(angular) + Math.cos(φ) * Math.sin(angular) * Math.cos(θ));
-  const λ2 = λ + Math.atan2(Math.sin(θ) * Math.sin(angular) * Math.cos(φ), Math.cos(angular) - Math.sin(φ) * Math.sin(φ2));
-  return [((λ2 * 180 / Math.PI + 540) % 360) - 180, φ2 * 180 / Math.PI];
-}
-/** A single selected coarse point only. This is a presentation area, not accuracy metadata. */
-export function releaseReferenceArea(lon: number, lat: number): unknown {
-  if (!Number.isFinite(lon) || !Number.isFinite(lat) || lon < -180 || lon > 180 || lat < -90 || lat > 90) return emptyCollection;
-  const ring: [number, number][] = [];
-  for (let bearing = 0; bearing <= 360; bearing += 15) ring.push(destination(lon, lat, bearing));
-  return { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [ring] } }] };
-}
-export function setReleaseSelectedReferenceArea(map: MapLike, namespace: string, point?: readonly [number, number]): void {
-  const source = map.getSource(ids(namespace).selectedAreaSource) as GeoJsonSourceLike | undefined;
-  source?.setData?.(point ? releaseReferenceArea(point[0], point[1]) : emptyCollection);
 }
 
 /** Add one uniquely namespaced release source and its visual layers. */
@@ -129,7 +106,6 @@ export function addReleaseMapLayers(
     minzoom,
     maxzoom,
   });
-  map.addSource(ids(namespace).selectedAreaSource, { type: 'geojson', data: emptyCollection });
 
   const sourceLayer = RELEASE_MAP_SOURCE_LAYER;
   const kind = (value: string) => ['==', ['get', 'kind'], value];
@@ -150,10 +126,6 @@ export function addReleaseMapLayers(
       'circle-stroke-opacity': opacity,
     },
   });
-  map.addLayer({ id: layers[6], type: 'fill', source: ids(namespace).selectedAreaSource,
-    paint: { 'fill-color': '#d8473f', 'fill-opacity': 0.16 } });
-  map.addLayer({ id: layers[7], type: 'line', source: ids(namespace).selectedAreaSource,
-    paint: { 'line-color': '#ff695c', 'line-opacity': 0.92, 'line-width': 2 } });
   map.addLayer({
     id: layers[1], type: 'symbol', source, 'source-layer': sourceLayer,
     filter: kind('cluster'),
@@ -168,22 +140,22 @@ export function addReleaseMapLayers(
     id: layers[2], type: 'circle', source, 'source-layer': sourceLayer,
     filter: kind('coarse'),
     paint: {
-      'circle-color': '#292117', 'circle-radius': 0, 'circle-opacity': 0,
-      'circle-stroke-color': '#c9a36e', 'circle-stroke-width': 0,
-      'circle-stroke-opacity': 0,
+      'circle-color': '#292117', 'circle-radius': 17, 'circle-opacity': 0.28 * opacity,
+      'circle-stroke-color': '#c9a36e', 'circle-stroke-width': 2,
+      'circle-stroke-opacity': opacity,
     },
   });
   map.addLayer({
     id: layers[3], type: 'symbol', source, 'source-layer': sourceLayer,
     filter: kind('coarse'),
-    layout: { 'text-field': ['case', ['>', count, 1], ['to-string', count], ''], 'text-font': ['Open Sans Bold'], 'text-size': 12 },
+    layout: { 'text-field': ['to-string', count], 'text-font': ['Open Sans Bold'], 'text-size': 12 },
     paint: { 'text-color': '#f1efe8', 'text-opacity': opacity },
   });
   map.addLayer({
     id: layers[4], type: 'symbol', source, 'source-layer': sourceLayer,
     filter: kind('coarse'),
     layout: {
-      'text-field': '', 'text-font': ['Open Sans Bold'], 'text-size': 9,
+      'text-field': 'APPROX.', 'text-font': ['Open Sans Bold'], 'text-size': 9,
       'text-offset': [0, 2.6], 'text-allow-overlap': true, 'text-ignore-placement': true,
     },
     paint: { 'text-color': '#c9a36e', 'text-halo-color': '#171a18', 'text-halo-width': 1.5, 'text-opacity': opacity },
@@ -223,5 +195,4 @@ export function removeReleaseMapLayers(map: MapLike, namespace: string): void {
     if (map.getLayer(id)) map.removeLayer(id);
   }
   if (map.getSource(source)) map.removeSource(source);
-  if (map.getSource(ids(namespace).selectedAreaSource)) map.removeSource(ids(namespace).selectedAreaSource);
 }

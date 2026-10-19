@@ -7,7 +7,6 @@ import {
   setReleaseMapCategoryFilter,
   compactCategoryKeys,
   compactCategoryKeysMatch,
-  releaseReferenceArea,
 } from '../../src/design-lab/components/releaseMapLayers';
 
 function fakeMap() {
@@ -43,8 +42,8 @@ describe('release map layers', () => {
     expect(map.sources.get(attached.sourceId)).toEqual({
       type: 'vector', tiles: ['/api/v2/releases/r1/map/tiles/{z}/{x}/{y}.mvt'], minzoom: 2, maxzoom: 13,
     });
-    expect(attached.layerIds).toHaveLength(8);
-    expect([...map.layers.values()].filter(layer => layer['source-layer']).every(layer => layer['source-layer'] === RELEASE_MAP_SOURCE_LAYER)).toBe(true);
+    expect(attached.layerIds).toHaveLength(6);
+    expect([...map.layers.values()].every(layer => layer['source-layer'] === RELEASE_MAP_SOURCE_LAYER)).toBe(true);
     expect(map.layers.get(attached.layerIds[0])?.paint['circle-opacity']).toBeCloseTo(0.322);
   });
 
@@ -52,7 +51,7 @@ describe('release map layers', () => {
     const map = fakeMap();
     const { layerIds } = addReleaseMapLayers(map, 'release_a', { tileTemplate: '/tiles/{z}/{x}/{y}' });
     const layers = layerIds.map(id => map.layers.get(id));
-    expect(layers.slice(0, 6).map(layer => layer.filter)).toEqual([
+    expect(layers.map(layer => layer.filter)).toEqual([
       ['==', ['get', 'kind'], 'cluster'],
       ['==', ['get', 'kind'], 'cluster'],
       ['==', ['get', 'kind'], 'coarse'],
@@ -63,15 +62,8 @@ describe('release map layers', () => {
     expect(JSON.stringify(layers[1])).toContain('exact_count');
     expect(JSON.stringify(layers[1])).toContain('coarse_count');
     expect(layers[0].paint['circle-color']).toEqual(['case', ['>', ['coalesce', ['get', 'coarse_count'], 0], 0], ['case', ['>', ['coalesce', ['get', 'exact_count'], 0], 0], '#b89c70', '#98784b'], '#c3b17b']);
-    expect(layers[4].layout['text-field']).toBe('');
-    expect(layers[2].paint['circle-radius']).toBe(0);
-  });
-
-  it('makes a geographically scaled 250m-radius selection polygon from a clicked coarse point', () => {
-    const area = releaseReferenceArea(12, 55) as any;
-    expect(area.features).toHaveLength(1);
-    expect(area.features[0].geometry.coordinates[0]).toHaveLength(25);
-    expect(area.features[0].geometry.coordinates[0][0]).toEqual(area.features[0].geometry.coordinates[0][24]);
+    expect(layers[4].layout['text-field']).toBe('APPROX.');
+    expect(layers[2].paint['circle-radius']).toBe(17);
   });
 
   it('keeps the public property contract minimal and layer expressions free of identifying fields', () => {
