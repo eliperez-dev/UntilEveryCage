@@ -278,7 +278,8 @@ prepare-release-serving-package.py restore --target-database-url-env UEC_TARGET_
   --package <package-dir> --apply-api-grants
 ```
 
-After post-data restoration, verify all restored constraints and public gate
+After post-data restoration, run `ANALYZE` in the isolated serving database to
+refresh planner statistics, then verify all restored constraints and public gate
 triggers are enabled, the release's manifest/read-model/public-detail aggregate
 hashes match the source, and the runtime role can read only the explicit public
 handler relations. Run the real-V0 API acceptance against the isolated target:
