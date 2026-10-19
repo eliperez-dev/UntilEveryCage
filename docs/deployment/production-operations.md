@@ -45,6 +45,12 @@ The legacy singular `UEC_CORS_ORIGIN` is accepted only for compatibility and
 must not conflict with `UEC_CORS_ORIGINS`. Candidate/test-release settings are
 development-only and must never be set in production.
 
+For the existing loopback development pilot only, an enabled community service
+may omit `UEC_COMMUNITY_DATABASE_URL` and reuse `UEC_DATABASE_URL`; this keeps
+the disposable pilot harness compatible. Production never uses that fallback:
+it requires the separate URL and performs `current_user` checks at startup to
+reject a community URL authenticated as the serving role.
+
 ### Restricted community runtime role
 
 The serving role configured by `UEC_DATABASE_URL` remains read-only and has no
