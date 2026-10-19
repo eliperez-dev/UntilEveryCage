@@ -1017,7 +1017,12 @@ pub async fn get_v2_locations_export_handler(
 
 #[derive(Clone)]
 pub struct ApiState {
+    /// The public release/read-model pool. In production this role remains
+    /// read-only and has no access to restricted contribution intake tables.
     pub database: Option<Pool>,
+    /// Restricted contribution pool. It is deliberately distinct from the
+    /// serving pool so intake writes cannot use the public release role.
+    pub community_database: Option<Pool>,
     pub dev_preview_token: Option<String>,
     pub dev_test_release_id: Option<String>,
     pub dev_test_release_token: Option<String>,
@@ -5454,6 +5459,7 @@ mod v2_api_tests {
     async fn public_map_feed_requires_a_valid_pinned_release_before_database_access() {
         let state = || ApiState {
             database: None,
+            community_database: None,
             dev_preview_token: None,
             dev_test_release_id: None,
             dev_test_release_token: None,
@@ -5486,6 +5492,7 @@ mod v2_api_tests {
     async fn public_map_tile_rejects_out_of_range_coordinates_before_database_access() {
         let state = ApiState {
             database: None,
+            community_database: None,
             dev_preview_token: None,
             dev_test_release_id: None,
             dev_test_release_token: None,
@@ -5685,6 +5692,7 @@ mod v2_api_tests {
                     .create_pool(Some(deadpool_postgres::Runtime::Tokio1), NoTls)
                     .unwrap(),
             ),
+            community_database: None,
             dev_preview_token: None,
             dev_test_release_id: None,
             dev_test_release_token: None,
@@ -5737,6 +5745,7 @@ mod v2_api_tests {
             )
             .with_state(ApiState {
                 database: None,
+                community_database: None,
                 dev_preview_token: Some("local-test-token-with-at-least-32-characters".into()),
                 dev_test_release_id: None,
                 dev_test_release_token: None,
@@ -5790,6 +5799,7 @@ mod v2_api_tests {
     async fn real_preview_rejects_unbounded_inputs_before_database_access() {
         let state = ApiState {
             database: None,
+            community_database: None,
             dev_preview_token: Some("local-test-token-with-at-least-32-characters".into()),
             dev_test_release_id: None,
             dev_test_release_token: None,
@@ -5822,6 +5832,7 @@ mod v2_api_tests {
     async fn real_preview_rejects_invalid_taxonomy_filter_before_database_access() {
         let state = ApiState {
             database: None,
+            community_database: None,
             dev_preview_token: Some("local-test-token-with-at-least-32-characters".into()),
             dev_test_release_id: None,
             dev_test_release_token: None,
@@ -5841,6 +5852,7 @@ mod v2_api_tests {
     async fn real_preview_map_tiles_reject_invalid_coordinates_and_source_filters() {
         let state = ApiState {
             database: None,
+            community_database: None,
             dev_preview_token: Some("local-test-token-with-at-least-32-characters".into()),
             dev_test_release_id: None,
             dev_test_release_token: None,
@@ -5907,6 +5919,7 @@ mod v2_api_tests {
     async fn real_preview_map_feed_preserves_auth_no_store_and_source_validation() {
         let state = ApiState {
             database: None,
+            community_database: None,
             dev_preview_token: Some("local-test-token-with-at-least-32-characters".into()),
             dev_test_release_id: None,
             dev_test_release_token: None,
@@ -5936,6 +5949,7 @@ mod v2_api_tests {
             .route("/dev/real-preview/map/feed", axum::routing::get(get_real_preview_map_feed_handler))
             .with_state(ApiState {
                 database: None,
+                community_database: None,
                 dev_preview_token: Some("local-test-token-with-at-least-32-characters".into()),
                 dev_test_release_id: None,
                 dev_test_release_token: None,
@@ -6069,6 +6083,7 @@ mod v2_api_tests {
     async fn real_preview_reference_rejects_non_opaque_keys_before_database_access() {
         let state = ApiState {
             database: None,
+            community_database: None,
             dev_preview_token: Some("local-test-token-with-at-least-32-characters".into()),
             dev_test_release_id: None,
             dev_test_release_token: None,
@@ -6109,6 +6124,7 @@ mod v2_api_tests {
     async fn discovery_rejects_incomplete_or_conflicting_spatial_queries() {
         let state = ApiState {
             database: None,
+            community_database: None,
             dev_preview_token: None,
             dev_test_release_id: None,
             dev_test_release_token: None,
@@ -6135,6 +6151,7 @@ mod v2_api_tests {
     async fn list_rejects_an_unsupported_profile_before_database_access() {
         let state = ApiState {
             database: None,
+            community_database: None,
             dev_preview_token: None,
             dev_test_release_id: None,
             dev_test_release_token: None,
@@ -6176,6 +6193,7 @@ mod v2_api_tests {
     async fn taxonomy_category_filters_validate_keys_before_database_access() {
         let state = ApiState {
             database: None,
+            community_database: None,
             dev_preview_token: None,
             dev_test_release_id: None,
             dev_test_release_token: None,

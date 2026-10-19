@@ -25,6 +25,12 @@ URLs, browser bundles, diagnostics, or logs.
 | --- | --- | --- |
 | `UEC_RUNTIME_MODE` | `production` | Startup exits before bind. |
 | `UEC_DATABASE_URL` | Non-empty `postgres://` or `postgresql://` URL without whitespace. | Startup exits before bind. |
+| `UEC_COMMUNITY_ENABLED` | `true` only after the restricted community role, retention decision, staffed private queue, and maintenance caller are ready; otherwise unset or `false`. | Enabled intake without its restricted URL exits before bind. |
+| `UEC_COMMUNITY_DATABASE_URL` | Non-empty `postgres://` or `postgresql://` URL without whitespace for the restricted community runtime role; it must not be the public serving-role credential. | Enabled intake exits before bind. |
+| `UEC_COMMUNITY_OPERATOR_TOKEN` | Independent 32–512 byte secret for the private queue, disposition, and maintenance endpoints. | Enabled intake exits before bind. |
+| `UEC_COMMUNITY_RETENTION_DAYS`, `UEC_COMMUNITY_CONTACT_RETENTION_DAYS`, `UEC_COMMUNITY_RECEIPT_DAYS` | Positive, approved bounded retention values; contact and receipt values cannot exceed claim retention. | Enabled intake exits before bind. |
+| `UEC_COMMUNITY_DAILY_INTAKE_CAP`, `UEC_COMMUNITY_PENDING_CAP` | Positive approved abuse/backlog caps (at most 1,000 daily and 10,000 pending). | Enabled intake exits before bind. |
+| `UEC_COMMUNITY_PUBLIC_ENABLED` | `false`/unset unless separately approving the already-screened linkage-read surface; it never publishes new intake content. | Invalid enabled/disabled combination exits before bind. |
 | `PORT` | Non-zero TCP port; defaults to `8000`. | Startup exits before bind. |
 | `UEC_BIND_HOST` | Valid IP address; defaults to `0.0.0.0` in production. | Startup exits before bind. |
 | `UEC_CORS_ORIGINS` | One or more exact bare `http(s)` origins, comma-separated; no wildcard. | Startup exits before bind. |
@@ -38,6 +44,41 @@ URLs, browser bundles, diagnostics, or logs.
 The legacy singular `UEC_CORS_ORIGIN` is accepted only for compatibility and
 must not conflict with `UEC_CORS_ORIGINS`. Candidate/test-release settings are
 development-only and must never be set in production.
+
+### Restricted community runtime role
+
+The serving role configured by `UEC_DATABASE_URL` remains read-only and has no
+access to contributor intake/contact tables. Create a separate
+`uec_community_runtime` role (or equivalently restricted role) before setting
+`UEC_COMMUNITY_ENABLED=true`. Grant it only `USAGE` on schema `uec`, then:
+
+```sql
+GRANT SELECT, INSERT, UPDATE ON uec.community_submissions TO uec_community_runtime;
+GRANT SELECT, INSERT, DELETE ON uec.community_submission_contacts TO uec_community_runtime;
+GRANT SELECT, INSERT ON uec.community_submission_events TO uec_community_runtime;
+GRANT SELECT ON uec.map_facilities_public_discovery_read_model,
+  uec.releases, uec.public_discovery_read_models, uec.release_manifests
+  TO uec_community_runtime;
+```
+
+Do not grant this role `CREATE`, migration/schema ownership, sequence access,
+or access to source records, observations, raw artifacts, geocoder tables,
+curated release writes, or unrelated tables. It needs the four read-model
+relations only to verify that an operator-linked community claim already
+belongs to a currently promoted, privacy-passed community release. It never
+creates a source record, release member, graph edge, or map pin.
+
+Use independent secret-store values for the community database URL and
+operator token. The operator token authenticates the private maintainer queue;
+it is not a contributor credential and must never be in URLs, logs, browser
+storage, or the serving database credential. Schedule authenticated
+`POST /api/private/community/maintenance` using the operator's restricted
+secret mechanism and record only its aggregate result. The application does
+not install a scheduler. Each accepted intake transaction opportunistically
+applies the same expiry policy, but idle data is not deleted merely because
+time passes; a periodic maintenance caller remains required before claiming
+unattended retention enforcement. Record that limitation with the approved
+retention and private-review process.
 
 ## Deploy a release
 
@@ -323,12 +364,13 @@ Render web-service settings to enter after an authorized account exists:
 | Auto-deploy / previews | Keep disabled until an authorized maintainer accepts the explicit release procedure. No preview environment receives production controls or data. |
 
 Required runtime variables are the values in the configuration preflight above,
-including `UEC_RUNTIME_MODE=production`, the restricted runtime account's Render
+including `UEC_RUNTIME_MODE=production`, the read-only serving-role Render
 Postgres connection string in `UEC_DATABASE_URL`, exact `UEC_CORS_ORIGINS`, and the
-explicit proxy setting. Do not set `UEC_DEV_PREVIEW`,
+explicit proxy setting. If contribution intake is approved, add the independent
+restricted community-role URL and community controls above; do not reuse the
+serving-role credential. Do not set `UEC_DEV_PREVIEW`,
 `UEC_DEV_PREVIEW_TOKEN`, `UEC_TEST_RELEASE_ID`, `UEC_TEST_RELEASE_TOKEN`,
-community-pilot settings, acquisition credentials, or geocoder credentials on
-the web service.
+acquisition credentials, or geocoder credentials on the web service.
 
 The first verified cloud database connection uses the external endpoint with
 TLS certificate verification. Prefer internal routing once its connection and
