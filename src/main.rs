@@ -745,6 +745,48 @@ fn validate_community_bind(enabled: bool, mode: &str, bind_host: &str) -> Result
     Ok(())
 }
 
+fn community_pool_users_are_distinct(serving_user: &str, community_user: &str) -> bool {
+    !serving_user.is_empty() && !community_user.is_empty() && serving_user != community_user
+}
+
+fn effective_community_database_url(
+    configured: Option<String>,
+    serving: Option<String>,
+    enabled: bool,
+    mode: &str,
+) -> Option<String> {
+    configured.or_else(|| (enabled && mode == "development").then_some(serving).flatten())
+}
+
+async fn validate_community_pool_identity(
+    serving: &deadpool_postgres::Pool,
+    community: &deadpool_postgres::Pool,
+) -> Result<(), &'static str> {
+    let serving = serving
+        .get()
+        .await
+        .map_err(|_| "serving database pool unavailable")?;
+    let community = community
+        .get()
+        .await
+        .map_err(|_| "community database pool unavailable")?;
+    let serving_user: String = serving
+        .query_one("SELECT current_user", &[])
+        .await
+        .map_err(|_| "serving database identity query failed")?
+        .get(0);
+    let community_user: String = community
+        .query_one("SELECT current_user", &[])
+        .await
+        .map_err(|_| "community database identity query failed")?
+        .get(0);
+    if community_pool_users_are_distinct(&serving_user, &community_user) {
+        Ok(())
+    } else {
+        Err("UEC_COMMUNITY_DATABASE_URL must authenticate as a distinct restricted database role")
+    }
+}
+
 #[cfg(unix)]
 async fn shutdown_signal() {
     let ctrl_c = async {
@@ -780,7 +822,7 @@ async fn shutdown_signal() {
 async fn main() {
     let mode = std::env::var("UEC_RUNTIME_MODE").unwrap_or_else(|_| "development".to_string());
     let database_url = std::env::var("UEC_DATABASE_URL").ok();
-    let community_database_url = std::env::var("UEC_COMMUNITY_DATABASE_URL").ok();
+    let configured_community_database_url = std::env::var("UEC_COMMUNITY_DATABASE_URL").ok();
     let port = std::env::var("PORT").unwrap_or_else(|_| "8000".to_string());
     let bind_host = std::env::var("UEC_BIND_HOST").unwrap_or_else(|_| {
         if mode == "development" {
@@ -808,7 +850,8 @@ async fn main() {
         std::process::exit(2)
     });
     if community.enabled
-        && community_database_url.as_deref().is_none_or(|url| {
+        && mode == "production"
+        && configured_community_database_url.as_deref().is_none_or(|url| {
             let trimmed = url.trim();
             trimmed != url
                 || trimmed.chars().any(char::is_whitespace)
@@ -821,6 +864,24 @@ async fn main() {
         );
         std::process::exit(2);
     }
+    if configured_community_database_url.as_deref().is_some_and(|url| {
+        let trimmed = url.trim();
+        trimmed != url
+            || trimmed.chars().any(char::is_whitespace)
+            || !(trimmed.starts_with("postgres://") || trimmed.starts_with("postgresql://"))
+    }) {
+        eprintln!(
+            "{}",
+            "{\"event\":\"configuration_error\",\"reason\":\"UEC_COMMUNITY_DATABASE_URL must be a PostgreSQL URL without whitespace\"}"
+        );
+        std::process::exit(2);
+    }
+    let community_database_url = effective_community_database_url(
+        configured_community_database_url,
+        database_url.clone(),
+        community.enabled,
+        &mode,
+    );
     if let Err(error) = parse_cors_origins(
         mode.as_str(),
         std::env::var("UEC_CORS_ORIGINS").ok().as_deref(),
@@ -917,6 +978,18 @@ async fn main() {
             "{\"event\":\"database_pool_error\",\"reason\":\"community_pool_creation_failed\"}"
         );
         std::process::exit(2);
+    }
+    if community.enabled && mode == "production" {
+        let Some(serving) = database.as_ref() else {
+            std::process::exit(2);
+        };
+        let Some(community_pool) = community_database.as_ref() else {
+            std::process::exit(2);
+        };
+        if let Err(error) = validate_community_pool_identity(serving, community_pool).await {
+            eprintln!("{{\"event\":\"configuration_error\",\"reason\":\"{}\"}}", error);
+            std::process::exit(2);
+        }
     }
     let addr = format!("{}:{}", bind_host, port);
     println!(
@@ -1307,6 +1380,47 @@ mod rate_limit_tests {
         assert!(validate_community_bind(true, "development", "0.0.0.0").is_err());
         assert!(validate_community_bind(true, "production", "0.0.0.0").is_ok());
         assert!(validate_community_bind(false, "production", "0.0.0.0").is_ok());
+    }
+
+    #[test]
+    fn production_community_role_must_differ_from_the_serving_role() {
+        assert!(!super::community_pool_users_are_distinct("uec_api_runtime", "uec_api_runtime"));
+        assert!(!super::community_pool_users_are_distinct("", "uec_community_runtime"));
+        assert!(super::community_pool_users_are_distinct(
+            "uec_api_runtime",
+            "uec_community_runtime"
+        ));
+    }
+
+    #[test]
+    fn enabled_development_community_pilot_reuses_only_its_local_serving_url() {
+        assert_eq!(
+            super::effective_community_database_url(
+                None,
+                Some("postgresql://disposable".into()),
+                true,
+                "development",
+            ),
+            Some("postgresql://disposable".into())
+        );
+        assert_eq!(
+            super::effective_community_database_url(
+                None,
+                Some("postgresql://serving".into()),
+                true,
+                "production",
+            ),
+            None
+        );
+        assert_eq!(
+            super::effective_community_database_url(
+                Some("postgresql://writer".into()),
+                Some("postgresql://serving".into()),
+                true,
+                "production",
+            ),
+            Some("postgresql://writer".into())
+        );
     }
 
     #[tokio::test]
