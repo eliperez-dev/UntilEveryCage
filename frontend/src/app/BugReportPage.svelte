@@ -1,18 +1,27 @@
 <script lang="ts">
+  import { createCommunityRepository, type Receipt } from '../api/CommunityRepository';
   let { returnMapHref = '#/map', embedded = false }: { returnMapHref?: string; embedded?: boolean } = $props();
-  let emailHref = $state('');
+  const repository = createCommunityRepository();
+  let receipt = $state<Receipt | null>(null);
+  let busy = $state(false);
+  let error = $state('');
+  const trackingHref = $derived(receipt ? `#/contribution-status?${new URLSearchParams({ submission_id: receipt.submission_id, receipt_secret: receipt.receipt_secret })}` : '');
 
-  function prepareEmail(event: SubmitEvent) {
+  async function submitReport(event: SubmitEvent) {
     event.preventDefault();
+    if (busy || receipt) return;
     const form = event.currentTarget as HTMLFormElement;
     const values = new FormData(form);
-    const report = [
-      `What happened:\n${String(values.get('happened') ?? '').trim()}`,
-      `What did you expect?\n${String(values.get('expected') ?? '').trim() || 'Not provided'}`,
-      `Steps to reproduce:\n${String(values.get('steps') ?? '').trim()}`,
-      `Page link (optional):\n${String(values.get('page_url') ?? '').trim() || 'Not provided'}`,
-    ].join('\n\n');
-    emailHref = `mailto:untileverycageproject@protonmail.com?subject=${encodeURIComponent('Website bug report')}&body=${encodeURIComponent(report)}`;
+    const field = (name: string) => String(values.get(name) ?? '').trim();
+    busy = true; error = '';
+    try {
+      receipt = await repository.submit({ kind: 'bug', consent: true,
+        description: field('happened'), reproduction_steps: field('steps'),
+        ...(field('expected') ? { expected_behavior: field('expected') } : {}),
+        ...(field('page_url') ? { page_url: field('page_url') } : {}),
+      });
+    } catch { error = 'Could not send the report. Try again.'; }
+    finally { busy = false; }
   }
 </script>
 
@@ -20,15 +29,16 @@
 <section class="bug-page" class:embedded aria-label="Report a bug">
   {#if !embedded}<p><a href={`#/contribute${returnMapHref !== '#/map' ? `?map=${encodeURIComponent(returnMapHref)}` : ''}`}>Contribute</a></p>
   <h1>Report a bug</h1>{/if}
-  <p class="intro">Prepare an email draft or report the issue on GitHub.</p>
-  <form class="bug-form" onsubmit={prepareEmail}>
+  <p class="intro">Send a bug report to the project.</p>
+  <form class="bug-form" onsubmit={submitReport}>
     <label>What happened?<textarea name="happened" required maxlength="2000" rows="2"></textarea></label>
     <label>What did you expect?<textarea name="expected" maxlength="1000" rows="2"></textarea></label>
     <label>Steps to reproduce<textarea name="steps" required maxlength="2000" rows="2"></textarea></label>
     <label>Page link (optional)<input name="page_url" type="url" maxlength="1000" placeholder="https://…" /></label>
-    <button type="submit">Prepare email</button>
+    <button type="submit" disabled={busy || receipt !== null}>{busy ? 'Sending…' : receipt ? 'Sent' : 'Send report'}</button>
   </form>
-  {#if emailHref}<p class="draft-link"><a href={emailHref}>Open email draft</a></p>{/if}
+  {#if error}<p role="alert">{error}</p>{/if}
+  {#if receipt}<p class="draft-link" role="status">Report saved. <a href={trackingHref}>Track report</a></p>{/if}
   <p class="issue-link"><a href="https://github.com/eliperez-dev/UntilEveryCage/issues/new" target="_blank" rel="noreferrer">Report a public issue on GitHub ↗</a></p>
 </section>
 

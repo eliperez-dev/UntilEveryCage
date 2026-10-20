@@ -97,17 +97,33 @@ test('the Contribute hub, bug report, and About pages share the primary navigati
   await expect(nav.getByRole('link', { name: 'About', exact: true })).toBeVisible();
 });
 
-test('bug reports prepare a user-controlled email draft without copying URL context', async ({ page }) => {
+test('bug reports submit to the system without copying URL context', async ({ page }) => {
+  let submitted: Record<string, unknown> | undefined;
+  await page.route('**/api/community/submissions', route => {
+    submitted = route.request().postDataJSON();
+    return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ submission_id: '18c6ef3a-28cd-4c8e-a9bb-3951f45f210d', receipt_secret: 'synthetic-private-report-token', status: 'received' }) });
+  });
   await page.goto('./#/contribute/bug?map=%23%2Fmap%3Ff1a%3Dfield');
   await page.getByLabel('What happened?').fill('Synthetic display issue');
   await page.getByLabel('Steps to reproduce').fill('Open a synthetic page.');
-  await page.getByRole('button', { name: 'Prepare email' }).click();
-  const draft = page.getByRole('link', { name: 'Open email draft' });
-  await expect(draft).toHaveAttribute('href', /^mailto:untileverycageproject@protonmail\.com/);
-  const href = await draft.getAttribute('href');
-  expect(decodeURIComponent(href ?? '')).toContain('Synthetic display issue');
-  expect(decodeURIComponent(href ?? '')).not.toContain('f1a=field');
+  await page.getByRole('button', { name: 'Send report', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Report saved.');
+  expect(submitted).toEqual({ kind: 'bug', consent: true, description: 'Synthetic display issue', reproduction_steps: 'Open a synthetic page.' });
+  await expect(page.getByRole('link', { name: 'Track report', exact: true })).toHaveAttribute('href', /^#\/contribution-status\?submission_id=/);
+  await expect(page.getByRole('button', { name: 'Sent', exact: true })).toBeDisabled();
+  await expect(page.getByRole('link', { name: 'Open email draft' })).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Report a public issue on GitHub' })).toHaveAttribute('href', 'https://github.com/eliperez-dev/UntilEveryCage/issues/new');
+});
+
+test('a failed bug submission keeps the form available for retry', async ({ page }) => {
+  await page.route('**/api/community/submissions', route => route.fulfill({ status: 503, contentType: 'application/json', body: '{}' }));
+  await page.goto('./#/contribute/bug');
+  await page.getByLabel('What happened?').fill('Synthetic retry issue');
+  await page.getByLabel('Steps to reproduce').fill('Synthetic steps');
+  await page.getByRole('button', { name: 'Send report', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Could not send the report.');
+  await expect(page.getByLabel('What happened?')).toHaveValue('Synthetic retry issue');
+  await expect(page.getByRole('button', { name: 'Send report', exact: true })).toBeEnabled();
 });
 
 test('a hash route remains a supported entry point for the same shell destinations', async ({ page }) => {

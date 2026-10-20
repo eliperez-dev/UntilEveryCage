@@ -1,9 +1,10 @@
 export type ContributionKind = 'facility' | 'evidence' | 'correction' | 'duplicate' | 'privacy_removal';
+export type SubmissionKind = ContributionKind | 'bug';
 export type ClaimedPrecision = 'unknown' | 'exact' | 'coarse' | 'unmapped';
 export type ContributionStatus = 'received' | 'held' | 'screened' | 'rejected' | 'restricted' | 'removed' | 'published';
 
 export type ContributionDraft = Readonly<{
-  kind: ContributionKind;
+  kind: SubmissionKind;
   target_record_id?: string;
   duplicate_record_id?: string;
   label?: string;
@@ -18,18 +19,22 @@ export type ContributionDraft = Readonly<{
   source_url?: string;
   observed_on?: string;
   description?: string;
+  expected_behavior?: string;
+  reproduction_steps?: string;
+  page_url?: string;
   contact_email?: string;
   consent: true;
 }>;
 export type Receipt = Readonly<{ submission_id: string; receipt_secret: string; status: 'received' }>;
 export type StatusResult = Readonly<{ submission_id: string; status: ContributionStatus; public_record_url?: string }>;
 export type ReviewRow = Readonly<{
-  submission_id: string; kind: ContributionKind; status: ContributionStatus; created_at: string;
+  submission_id: string; kind: SubmissionKind; status: ContributionStatus; created_at: string;
   target_record_id?: string; duplicate_record_id?: string; label?: string; country_code?: string;
   locality?: string; claimed_activity?: string; location_text?: string;
   claimed_latitude?: number; claimed_longitude?: number; claimed_precision?: ClaimedPrecision;
   location_input_method?: 'manual_pin' | 'text' | 'unknown';
   source_url?: string; observed_on?: string; description?: string;
+  expected_behavior?: string; reproduction_steps?: string; page_url?: string;
 }>;
 export type ReviewQueue = Readonly<{ submissions: readonly ReviewRow[]; pending_count: number }>;
 export type ReviewQueueFilter = 'pending' | ContributionStatus;
@@ -144,7 +149,7 @@ function parseReviewRow(value: unknown): ReviewRow {
   const description = string(row, 'description', 2000, true);
   if (targetRecordId && !UUID.test(targetRecordId) || duplicateRecordId && !UUID.test(duplicateRecordId)) throw new CommunityError('invalid', 'The community service returned an invalid response.');
   return {
-    submission_id, kind: kind(row.kind), status: status(row.status), created_at,
+    submission_id, kind: row.kind === 'bug' ? 'bug' : kind(row.kind), status: status(row.status), created_at,
     ...(targetRecordId !== undefined ? { target_record_id: targetRecordId } : {}),
     ...(duplicateRecordId !== undefined ? { duplicate_record_id: duplicateRecordId } : {}),
     ...(label !== undefined ? { label } : {}),
@@ -158,6 +163,9 @@ function parseReviewRow(value: unknown): ReviewRow {
     ...(sourceUrl !== undefined ? { source_url: safeHttpUrl(sourceUrl, 2048) } : {}),
     ...(observedOn !== undefined ? { observed_on: observedOn } : {}),
     ...(description !== undefined ? { description } : {}),
+    ...(row.expected_behavior ? { expected_behavior: string(row, 'expected_behavior', 1000)! } : {}),
+    ...(row.reproduction_steps ? { reproduction_steps: string(row, 'reproduction_steps', 2000)! } : {}),
+    ...(row.page_url ? { page_url: safeHttpUrl(row.page_url, 1000) } : {}),
   };
 }
 async function request<T>(fetcher: FetchLike, path: string, init: RequestInit, parse: (body: unknown) => T): Promise<T> {
@@ -196,7 +204,10 @@ async function request<T>(fetcher: FetchLike, path: string, init: RequestInit, p
   try { return parse(await response.json()); } catch (error) { if (error instanceof CommunityError) throw error; throw new CommunityError('invalid', 'The community service returned an invalid response.'); }
 }
 export function validateContributionDraft(draft: ContributionDraft): void {
-  if (!draft.consent || !KINDS.has(draft.kind)) throw new CommunityError('invalid', 'Consent is required.');
+  if (!draft.consent || (draft.kind !== 'bug' && !KINDS.has(draft.kind))) throw new CommunityError('invalid', 'Consent is required.');
+  if (draft.kind === 'bug' && (!draft.description?.trim() || !draft.reproduction_steps?.trim())) throw new CommunityError('invalid', 'Describe the issue and how to reproduce it.');
+  if (draft.kind !== 'bug' && (draft.expected_behavior !== undefined || draft.reproduction_steps !== undefined || draft.page_url !== undefined)) throw new CommunityError('invalid', 'Bug report fields require a bug report.');
+  if (draft.page_url) safeHttpUrl(draft.page_url, 1000);
   if (draft.contact_email !== undefined && (draft.contact_email.length > 254 || !/^[^\s@]+@[^\s@]+$/.test(draft.contact_email))) throw new CommunityError('invalid', 'Enter a valid email address or leave it blank.');
   if (draft.target_record_id && !UUID.test(draft.target_record_id)) throw new CommunityError('invalid', 'Enter a valid record identifier.');
   if (draft.duplicate_record_id && !UUID.test(draft.duplicate_record_id)) throw new CommunityError('invalid', 'Enter a valid duplicate record identifier.');
@@ -211,7 +222,7 @@ export function validateContributionDraft(draft: ContributionDraft): void {
   if (draft.location_input_method !== undefined && !['manual_pin','text','unknown'].includes(draft.location_input_method)) throw new CommunityError('invalid', 'Choose a supported location input method.');
   if (draft.location_input_method === 'manual_pin' && draft.claimed_latitude === undefined) throw new CommunityError('invalid', 'Place a pin before selecting map input as the location method.');
   if (draft.source_url) safeHttpUrl(draft.source_url, 2048);
-  for (const [field, max] of [['label',160],['locality',160],['claimed_activity',160],['location_text',1000],['description',2000]] as const) {
+  for (const [field, max] of [['label',160],['locality',160],['claimed_activity',160],['location_text',1000],['description',2000],['expected_behavior',1000],['reproduction_steps',2000],['page_url',1000]] as const) {
     const value = draft[field]; if (value !== undefined && value.length > max) throw new CommunityError('invalid', `${field} is too long.`);
   }
   if (draft.country_code && !/^[A-Za-z]{2}$/.test(draft.country_code)) throw new CommunityError('invalid', 'Use a two-letter country code.');

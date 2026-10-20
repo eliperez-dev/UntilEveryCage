@@ -53,6 +53,15 @@ reject a community URL authenticated as the serving role.
 
 ### Restricted community runtime role
 
+Bug reports use the same restricted intake role and retention/capacity settings.
+Apply `075_bug_report_intake.sql` before deploying bug-report support. This adds
+the `bug` submission kind without changing the five record-contribution types;
+`bug_reports_enabled` separately advertises support. Reports retain what happened,
+expected behavior, reproduction steps and an optional manually entered page URL.
+The private operator queue shows these fields. API and database checks prevent
+bug reports from being linked or published as community facility claims. No
+additional secret, role grant, public record, release or map row is needed.
+
 The serving role configured by `UEC_DATABASE_URL` remains read-only and has no
 access to contributor intake/contact tables. Create a separate
 `uec_community_runtime` role (or equivalently restricted role) before setting

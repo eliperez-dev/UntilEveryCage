@@ -52,8 +52,9 @@ API guidance distinguishes published downloads from private preview data.
 
 Keep informational copy short and concrete. Omit decorative eyebrows such as
 “Reading the map” and repeated explanations around a form. A bug-report page
-needs practical fields and an email-draft action, not a separate precautionary
-paragraph. Optional fields use “(optional)” without instructions such as
+keeps its existing four practical fields and saves the report through restricted
+intake, with a confirmation and tracking link rather than an email draft.
+Optional fields use “(optional)” without instructions such as
 “enter it yourself”. The form still avoids collecting credentials or silently
 copying private page context; concise copy does not weaken those behaviors.
 

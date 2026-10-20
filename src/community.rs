@@ -198,6 +198,9 @@ pub struct SubmissionInput {
     pub source_url: Option<String>,
     pub observed_on: Option<String>,
     pub description: Option<String>,
+    pub expected_behavior: Option<String>,
+    pub reproduction_steps: Option<String>,
+    pub page_url: Option<String>,
     pub contact_email: Option<String>,
     pub consent: bool,
 }
@@ -241,6 +244,7 @@ fn validate(input: &SubmissionInput) -> Result<(), &'static str> {
         "correction",
         "duplicate",
         "privacy_removal",
+        "bug",
     ]
     .contains(&input.kind.as_str())
     {
@@ -257,6 +261,15 @@ fn validate(input: &SubmissionInput) -> Result<(), &'static str> {
             .is_some_and(|v| v.len() > 160)
         || input.location_text.as_ref().is_some_and(|v| v.len() > 1000)
         || input.description.as_ref().is_some_and(|v| v.len() > 2000)
+        || input
+            .expected_behavior
+            .as_ref()
+            .is_some_and(|v| v.len() > 1000)
+        || input
+            .reproduction_steps
+            .as_ref()
+            .is_some_and(|v| v.len() > 2000)
+        || input.page_url.as_ref().is_some_and(|v| v.len() > 1000)
     {
         return Err("one or more fields exceed their length limit");
     }
@@ -302,6 +315,16 @@ fn validate(input: &SubmissionInput) -> Result<(), &'static str> {
     if input.source_url.as_ref().is_some_and(|v| !valid_url(v)) {
         return Err("source_url must be an http(s) URL without credentials");
     }
+    if input.page_url.as_ref().is_some_and(|v| !valid_url(v)) {
+        return Err("page_url must be an http(s) URL without credentials");
+    }
+    if input.kind != "bug"
+        && (input.expected_behavior.is_some()
+            || input.reproduction_steps.is_some()
+            || input.page_url.is_some())
+    {
+        return Err("bug report fields require kind bug");
+    }
     if input
         .observed_on
         .as_ref()
@@ -317,6 +340,12 @@ fn validate(input: &SubmissionInput) -> Result<(), &'static str> {
         return Err("contact_email is invalid");
     }
     match input.kind.as_str() {
+        "bug"
+            if !nonblank(&input.description, 2000)
+                || !nonblank(&input.reproduction_steps, 2000) =>
+        {
+            Err("bug requires a description and reproduction steps")
+        }
         "facility" if !nonblank(&input.label, 160) => Err("facility requires a label"),
         "evidence"
             if input.target_record_id.is_none()
@@ -459,6 +488,7 @@ async fn capabilities(Extension(cs): Extension<CommunityState>) -> Response {
     }
     Json(json!({
         "enabled": true,
+        "bug_reports_enabled": true,
         "types": ["facility", "evidence", "correction", "duplicate", "privacy_removal"]
     }))
     .into_response()
@@ -733,9 +763,9 @@ async fn disposition(
     if old == "removed" || (old == "restricted" && d.action != "remove") {
         return bad("restricted submissions cannot be changed through ordinary disposition");
     }
-    if d.action == "link_community" && kind == "privacy_removal" {
+    if d.action == "link_community" && matches!(kind.as_str(), "privacy_removal" | "bug") {
         return bad(
-            "privacy removal requests remain private and cannot be linked to public claims",
+            "privacy removal requests and bug reports remain private and cannot be linked to public claims",
         );
     }
     if d.action == "link_community" && old != "screened" {
@@ -947,6 +977,9 @@ mod tests {
             source_url: None,
             observed_on: None,
             description: None,
+            expected_behavior: None,
+            reproduction_steps: None,
+            page_url: None,
             contact_email: None,
             consent: true,
         }
@@ -960,6 +993,32 @@ mod tests {
         assert!(!valid_url("https://example.org/has space"));
         assert!(valid_url("https://example.org/evidence"));
         assert!(valid_url("https://[2001:db8::1]:443/evidence"));
+    }
+
+    #[test]
+    fn bug_reports_validate_and_keep_their_four_fields_private() {
+        let mut report = sample("bug");
+        assert!(validate(&report).is_err());
+        report.description = Some("Synthetic interface issue".into());
+        report.reproduction_steps = Some("Open the synthetic page".into());
+        report.expected_behavior = Some("Expected synthetic result".into());
+        report.page_url = Some("https://example.test/map".into());
+        assert!(validate(&report).is_ok());
+        let claim = restricted_claim(&report).unwrap();
+        assert_eq!(claim["kind"], "bug");
+        assert_eq!(claim["reproduction_steps"], "Open the synthetic page");
+        assert_eq!(claim["expected_behavior"], "Expected synthetic result");
+        assert_eq!(claim["page_url"], "https://example.test/map");
+        assert!(claim.get("contact_email").is_none());
+        report.page_url = Some("https://user:secret@example.test".into());
+        assert!(validate(&report).is_err());
+        report.page_url = None;
+        report.expected_behavior = Some("x".repeat(1001));
+        assert!(validate(&report).is_err());
+        report.expected_behavior = None;
+        report.kind = "facility".into();
+        report.label = Some("Synthetic facility".into());
+        assert!(validate(&report).is_err());
     }
     #[test]
     fn location_pairs_ranges_and_manual_pin_are_strict() {
@@ -1183,7 +1242,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             serde_json::from_slice::<Value>(&bytes).unwrap(),
-            json!({"enabled":true,"types":["facility","evidence","correction","duplicate","privacy_removal"]})
+            json!({"enabled":true,"bug_reports_enabled":true,"types":["facility","evidence","correction","duplicate","privacy_removal"]})
         );
 
         let response = capabilities(Extension(CommunityState {

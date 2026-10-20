@@ -10,6 +10,17 @@ function response(body: unknown, status = 200) {
 }
 
 describe('community contribution repository', () => {
+  it('submits typed bug fields and reads them back through the private queue', async () => {
+    const draft: ContributionDraft = { kind: 'bug', consent: true, description: 'Synthetic issue', expected_behavior: 'Synthetic expectation', reproduction_steps: 'Synthetic steps', page_url: 'https://example.test/page' };
+    const fetcher = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => String(input).includes('/api/private/') ? response({ pending_count: 1, submissions: [{ ...draft, submission_id: id, status: 'received', created_at: '2026-10-19T00:00:00Z' }] }) : response({ submission_id: id, receipt_secret: 'synthetic-private-token', status: 'received' }, 201));
+    const repository = createCommunityRepository(fetcher);
+    await repository.submit(draft);
+    expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body))).toEqual(draft);
+    const queue = await repository.queue('synthetic-operator-token');
+    expect(queue.submissions[0]).toMatchObject({ kind: 'bug', description: draft.description, expected_behavior: draft.expected_behavior, reproduction_steps: draft.reproduction_steps, page_url: draft.page_url });
+    expect(() => validateContributionDraft({ ...draft, reproduction_steps: '' })).toThrow();
+    expect(() => validateContributionDraft({ ...draft, page_url: 'https://user:secret@example.test' })).toThrow();
+  });
   it('uses the lightweight runtime capability without treating a disabled route as an error', async () => {
     const enabled = await communityCapabilities(async () => response({ enabled: true, types: ['facility', 'evidence', 'correction', 'duplicate', 'privacy_removal'] }));
     expect(enabled).toEqual({ enabled: true, types: ['facility', 'evidence', 'correction', 'duplicate', 'privacy_removal'] });

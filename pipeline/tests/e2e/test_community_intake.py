@@ -129,6 +129,28 @@ class CommunityIntakeProof(unittest.TestCase):
             {"action": action, "reason_code": "privacy" if action == "remove" else "eligible",
              **fields}, token=self.token)
 
+    def test_bug_reports_are_persisted_private_and_trackable(self):
+        report = {"kind": "bug", "consent": True, "description": "Synthetic UI problem",
+                  "expected_behavior": "Synthetic expected result", "reproduction_steps": "Open synthetic page",
+                  "page_url": "https://example.test/map"}
+        receipt = self.submit(report)
+        try:
+            with psycopg.connect(self.dsn) as db:
+                row = db.execute("SELECT kind,claim,status FROM uec.community_submissions WHERE submission_id=%s", (receipt["submission_id"],)).fetchone()
+                self.assertTrue(row[0] == "bug" and row[1] == report and row[2] == "received")
+                with self.assertRaises(psycopg.errors.CheckViolation):
+                    db.execute("UPDATE uec.community_submissions SET status='published' WHERE submission_id=%s", (receipt["submission_id"],))
+                db.rollback()
+            code, status = self.request("/api/community/status", {"submission_id": receipt["submission_id"], "receipt_secret": receipt["receipt_secret"]})
+            self.assertTrue(code == 200 and status["status"] == "received")
+            code, queue = self.request("/api/private/community/submissions", token=self.token)
+            self.assertTrue(code == 200 and any(row["submission_id"] == receipt["submission_id"] and row["reproduction_steps"] == report["reproduction_steps"] for row in queue["submissions"]))
+            self.assertTrue(self.request("/api/private/community/submissions")[0] == 404)
+            self.assertTrue(self.disposition(receipt, "screen")[0] == 200)
+            self.assertTrue(self.disposition(receipt, "link_community", community_record_id=str(uuid.uuid4()), release_id="synthetic-release")[0] == 400)
+        finally:
+            self.assertTrue(self.disposition(receipt, "remove")[0] == 200)
+
     def test_private_intake_live_public_gates_and_retention(self):
         with psycopg.connect(self.dsn) as db:
             baseline = db.execute(

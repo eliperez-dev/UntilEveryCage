@@ -39,7 +39,8 @@
         "evidence",
         "correction",
         "duplicate",
-        "privacy_removal"
+        "privacy_removal",
+        "bug"
       ],
       "required_for_all": [
         "kind",
@@ -64,6 +65,10 @@
         "privacy_removal": [
           "target_record_id",
           "description"
+        ],
+        "bug": [
+          "description",
+          "reproduction_steps"
         ]
       },
       "optional_field_bounds": {
@@ -74,7 +79,10 @@
         "location_text": 1000,
         "description": 2000,
         "source_url": 2048,
-        "contact_email": 254
+        "contact_email": 254,
+        "expected_behavior": 1000,
+        "reproduction_steps": 2000,
+        "page_url": 1000
       },
       "location": {
         "coordinates": "paired finite WGS84; restricted",
