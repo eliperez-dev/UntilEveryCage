@@ -964,6 +964,13 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
             if not isinstance(runner_run_id, str) or not runner_run_id:
                 write_job("failed", "lifecycle", "source_run_id_missing")
                 raise PreviewError("source runner returned no unique run identifier")
+            if source_id in {"no.fiskeridir.aquaculture", "gb.scot.marine.aquaculture",
+                             "us.epa.echo-animal-production"}:
+                # The shared runner binds acquisition sidecars to its
+                # canonical plan ID. Use that same identity for importer
+                # provenance lookup; the source-preview ledger still keeps
+                # its independently generated local preview run ID.
+                run_id = runner_run_id
         if source_id == "be.locations":
             results = refresh_result.get("results") if isinstance(refresh_result, dict) else None
             result = next((item for item in results or []
@@ -1451,6 +1458,52 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                 "source_provided_unspecified": import_result.get("source_provided_coordinate_group_count"),
                 "exact": 0, "city_or_postal_only": import_result.get("city_postal_count"),
                 "unmapped": import_result.get("unmapped_map_candidate_count")},
+        })
+    elif source_id == "no.fiskeridir.aquaculture":
+        acquisition_path = source_root / "acquisition" / source_id / run_id / "acquisition-metadata.json"
+        if not acquisition_path.is_file() or acquisition_path.is_symlink():
+            raise PreviewError("Norway acquisition provenance is unavailable")
+        acquisition_evidence = json.loads(acquisition_path.read_text(encoding="utf-8"))
+        source_results = refresh_result.get("results") if isinstance(refresh_result, dict) else None
+        source_result = next((item for item in source_results or []
+                              if isinstance(item, dict) and item.get("source_id") == source_id), None)
+        source_summary = source_result.get("summary") if isinstance(source_result, dict) else None
+        input_count = source_summary.get("input_rows") if isinstance(source_summary, dict) else None
+        accepted_count = source_summary.get("candidate_observation_rows") if isinstance(source_summary, dict) else None
+        quarantined_count = source_summary.get("quarantined_rows") if isinstance(source_summary, dict) else None
+        if (not isinstance(source_summary, dict) or source_result.get("status") != "succeeded"
+                or any(not isinstance(value, str) or len(value) != 64 for value in (
+                    import_result.get("normalized_sha256"), source_summary.get("candidate_handoff_sha256"),
+                    source_summary.get("schema_fingerprint")))
+                or not all(isinstance(value, int) and value >= 0 for value in (
+                    input_count, accepted_count, quarantined_count))
+                or input_count != acquisition_evidence.get("feature_count")
+                or input_count != accepted_count + quarantined_count
+                or input_count != source_summary.get("source_object_id_count")
+                or input_count != source_summary.get("source_coordinate_count_checked")):
+            raise PreviewError("Norway lifecycle counts or hashes do not reconcile")
+        ledger.update({
+            "acquisition": {key: acquisition_evidence.get(key) for key in (
+                "source_id", "run_id", "canonical_url", "query_url", "requested_at_utc", "retrieved_at_utc",
+                "source_native_crs", "requested_geometry_crs", "feature_count", "object_id_count",
+                "retrieved_unique_object_id_count", "page_count", "coordinates_checked", "artifact_sha256",
+                "artifact_byte_size", "license", "license_version", "license_url", "terms_review")},
+            "normalized_sha256": import_result.get("normalized_sha256"),
+            "candidate_handoff_sha256": source_summary.get("candidate_handoff_sha256"),
+            "schema_fingerprint": source_summary.get("schema_fingerprint"),
+            "quarantine": {"input_rows": input_count, "accepted_rows": accepted_count,
+                           "quarantined_rows": quarantined_count,
+                           "reasons": source_summary.get("quarantine_reasons", {})},
+            "source_counts": {key: import_result.get(key) for key in (
+                "observation_count", "facility_candidate_count", "numeric_coordinate_count",
+                "unmapped_observation_count", "unmapped_facility_count", "map_visible_count",
+                "public_release_count", "public_projection_count")},
+            "coordinate_precision_breakdown": {
+                "source_precision_unknown": import_result.get("source_precision_unknown_group_count"),
+                "exact": 0, "city_or_postal_only": import_result.get("city_postal_count"),
+                "unmapped": import_result.get("unmapped_map_candidate_count")},
+            "location_policy": "Registered aquaculture locality points have unknown positional accuracy; candidates are private-only and not confirmed operating-facility points. No mailing address or geocoding is used.",
+            "attribution": "Source: Fiskeridirektoratet",
         })
     elif source_id == "es.cat.feed-sandach":
         acquisition_path = source_dir / "acquisition" / source_id / run_id / "acquisition-metadata.json"

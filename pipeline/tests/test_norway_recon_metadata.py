@@ -23,7 +23,16 @@ class NorwayReconMetadataTests(unittest.TestCase):
         by_id = {s["source_id"]: s for s in status["sources"]}
         for source_id in NORWAY_IDS:
             self.assertEqual(by_id[source_id]["publication_eligibility"], "blocked")
-            self.assertIn(by_id[source_id]["acquisition"], {"not_run", "blocked"})
+            if source_id == "no.fiskeridir.aquaculture":
+                self.assertEqual(by_id[source_id]["acquisition"], "verified")
+                self.assertEqual(by_id[source_id]["runtime_health"], "not_run")
+                capture = by_id[source_id]["latest_private_capture"]
+                self.assertEqual(capture["input_rows"], 1781)
+                self.assertEqual(capture["normalized_candidates"], 1684)
+                self.assertEqual(capture["quarantined_rows"], 97)
+                self.assertEqual(capture["disposable_database_import"], "pending")
+            else:
+                self.assertIn(by_id[source_id]["acquisition"], {"not_run", "blocked"})
 
 if __name__ == "__main__":
     unittest.main()

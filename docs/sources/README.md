@@ -5,7 +5,8 @@ provenance, terms, and current status to the authoritative source record.
 
 | Need | Start here | Label |
 | --- | --- | --- |
-| Current status across registered sources | [source-status.md](../source-status.md) and [source-status.json](../source-status.json) | **Canonical** |
+| Current readiness and metadata across registered sources | [source-status.json](../source-status.json) | **Canonical** |
+| Human navigation to the current status record | [source-status.md](../source-status.md) | Navigation only |
 | Source IDs and machine descriptors | [`pipeline/source_registry.json`](../../pipeline/source_registry.json) and country descriptors | **Canonical** registry / descriptors |
 | National/country reconnaissance | [`country-recon-<code>.md`](../country-recon-us.md) (replace code with ISO-style country code) | **Canonical** research page |
 | Detailed country field mappings | [`countries/<code>/`](../countries/us/README.md) | **Canonical** or **Reference**, per page |

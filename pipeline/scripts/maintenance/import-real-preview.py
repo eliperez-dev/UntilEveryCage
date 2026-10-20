@@ -52,6 +52,7 @@ CHUNK = 1024 * 1024
 NUMERIC_PRECISIONS = {
     "numeric", "exact", "source_numeric", "source_coordinates", "facility_coordinate",
     "source-provided", "source-provided-unspecified", "source-precision-unknown",
+    "source-reported-unknown",
 }
 SOURCE_LOCATION_SOURCES = {"ca.ontario.meat-plants", "ca.cfia.federal-meat"}
 SOURCE_GROUP_KEY_INDEX = 23
@@ -354,6 +355,9 @@ def safe_https_url(value: Any) -> str | None:
 
 
 SOURCE_NAMES = {
+    "no.fiskeridir.aquaculture": "Norwegian Directorate of Fisheries — Aquaculture Register",
+    "gb.scot.marine.aquaculture": "Scottish Government — Finfish and Shellfish Aquaculture Sites",
+    "us.epa.echo-animal-production": "US Environmental Protection Agency — ECHO CWA/NPDES Facilities",
     "us.aphis": "USDA Animal and Plant Health Inspection Service — Animal Care",
     "au.npi.facilities": "Australian Department of Climate Change, Energy, the Environment and Water — National Pollutant Inventory",
     "au.sa.epa.licensed-activities": "South Australian Environment Protection Authority — Licensed Activities",
@@ -374,6 +378,9 @@ SOURCE_NAMES = {
 }
 
 SOURCE_MEDIA_TYPES = {
+    "no.fiskeridir.aquaculture": "application/geo+json",
+    "gb.scot.marine.aquaculture": "application/geo+json",
+    "us.epa.echo-animal-production": "application/zip",
     "dk.smiley": "application/xml",
     "fsa_approved_establishments": "text/csv",
     "fss_approved_establishments": "text/csv",
@@ -635,6 +642,33 @@ def public_zero_counts(db: psycopg.Connection) -> tuple[int, int]:
     if release_count or projection_count:
         raise ImportFailure("public_rows_present")
     return release_count, projection_count
+
+
+def source_public_counts(db: psycopg.Connection, source_id: str) -> tuple[int, int]:
+    """Count only public rows attributed to one private-preview source.
+
+    A source-scoped import may run beside an already approved frozen release.
+    That unrelated baseline must remain untouched and must not block a private
+    candidate import; the selected source itself must still have no published
+    membership or projection.
+    """
+    release_count = db.execute("""SELECT count(*)
+        FROM uec.release_members member
+        JOIN uec.observations observation ON observation.observation_id=member.observation_id
+        JOIN uec.source_records source_record ON source_record.source_record_id=observation.source_record_id
+        WHERE source_record.source_id=%s""", (source_id,)).fetchone()[0]
+    projection_count = 0
+    for relation, source_column in (
+        ("uec.map_facilities_public_discovery", "provenance_source_id"),
+        ("uec.map_facilities_public_discovery_read_model", "provenance_source_id"),
+        ("uec.graph_public_relationships", "source_id"),
+        ("uec.graph_public_claims", "source_id"),
+    ):
+        if db.execute("SELECT to_regclass(%s)", (relation,)).fetchone()[0] is not None:
+            projection_count += db.execute(
+                f"SELECT count(*) FROM {relation} WHERE {source_column}=%s", (source_id,)
+            ).fetchone()[0]
+    return int(release_count), int(projection_count)
 
 
 def _place_key(value: Any) -> str | None:
@@ -1534,7 +1568,7 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
                     or acquisition_evidence.get("final_url") != manifest.get("source_url")
                     or acquisition_evidence.get("retrieved_at_utc") != manifest.get("retrieved_at_utc")
                     or acquisition_evidence.get("adapter_version") != code_version
-                    or acquisition_evidence.get("config_version") != config_version
+                    or acquisition_evidence.get("config_version", acquisition_evidence.get("schema_version")) != config_version
                     or not isinstance(terms_evidence, dict)
                     or terms_evidence.get("decision") != "approved"
                     or acquired_at.utcoffset() is None
@@ -1570,6 +1604,42 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
                     or acquired_at > datetime.now(timezone.utc) + timedelta(minutes=5)
                     or datetime.now(timezone.utc) - acquired_at > timedelta(days=max_age)):
                 raise ImportFailure("nl_acquisition_provenance_mismatch")
+        elif source_id == "no.fiskeridir.aquaculture":
+            acquisition_path = root / "acquisition" / source_id / run_id / "acquisition-metadata.json"
+            pages_path = acquisition_path.parent / "source-pages"
+            if not acquisition_path.is_file() or acquisition_path.is_symlink() or not pages_path.is_dir() or pages_path.is_symlink():
+                raise ImportFailure("no_acquisition_provenance_missing")
+            acquisition_evidence = json_object(acquisition_path)
+            from pipeline.sources.norway.aquaculture import bundle_digest
+            artifact_hash, artifact_size = bundle_digest(pages_path)
+            try:
+                acquired_at = datetime.fromisoformat(str(acquisition_evidence.get("retrieved_at_utc")).replace("Z", "+00:00"))
+            except ValueError:
+                raise ImportFailure("no_acquisition_timestamp_invalid") from None
+            terms_evidence = acquisition_evidence.get("terms_review")
+            feature_count = acquisition_evidence.get("feature_count")
+            page_count = acquisition_evidence.get("page_count")
+            if (acquisition_evidence.get("source_id") != source_id
+                    or acquisition_evidence.get("run_id") != run_id
+                    or acquisition_evidence.get("canonical_url") != manifest.get("source_url")
+                    or acquisition_evidence.get("artifact_sha256") != source_hash
+                    or acquisition_evidence.get("artifact_byte_size") != artifact_size
+                    or artifact_hash != source_hash
+                    or acquisition_evidence.get("retrieved_unique_object_id_count") != feature_count
+                    or acquisition_evidence.get("object_id_count") != feature_count
+                    or acquisition_evidence.get("coordinates_checked") != feature_count
+                    or not isinstance(feature_count, int) or feature_count != source_summary.get("input_rows")
+                    or not isinstance(page_count, int) or page_count < 1
+                    or acquired_at.utcoffset() is None
+                    or acquired_at > datetime.now(timezone.utc) + timedelta(minutes=5)
+                    or datetime.now(timezone.utc) - acquired_at > timedelta(days=max_age)
+                    or not isinstance(terms_evidence, dict)
+                    or terms_evidence.get("source_id") != source_id
+                    or terms_evidence.get("decision") != "approved"
+                    or terms_evidence.get("private_preview_only") is not True
+                    or terms_evidence.get("license") != "Norwegian Licence for Open Government Data (NLOD)"
+                    or terms_evidence.get("license_version") != "2.0"):
+                raise ImportFailure("no_acquisition_provenance_mismatch")
         if source_id == "be.locations":
             pair_path = root / "acquisition" / source_id / run_id / "pair-metadata.json"
             if not pair_path.is_file() or pair_path.is_symlink():
@@ -1936,7 +2006,7 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
             union_candidates = candidates
             union_numeric = numeric
             union_coarse = coarse
-            public_release_count, public_projection_count = public_zero_counts(db)
+            public_release_count, public_projection_count = source_public_counts(db, source_id)
             if public_release_count + public_projection_count:
                 raise ImportFailure("public_rows_present")
             source_hash, normalized_hash, row_count, source_url, retrieved, adapter_version, schema_version = manifest_provenance(manifests[source_id][1])

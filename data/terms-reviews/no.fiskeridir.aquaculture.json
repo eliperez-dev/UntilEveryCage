@@ -1,0 +1,19 @@
+{
+  "source_id": "no.fiskeridir.aquaculture",
+  "decision": "approved",
+  "license": "Norwegian Licence for Open Government Data (NLOD)",
+  "license_version": "2.0",
+  "license_url": "https://data.norge.no/nlod/en/2.0",
+  "attribution": "Source: Fiskeridirektoratet",
+  "private_preview_only": true,
+  "repeated_private_fetch_authorized": true,
+  "unattended_scheduler_authorized": false,
+  "public_release_approved": false,
+  "scope": "Reusable bounded acquisition, normalization, candidate handoff, and local private-preview validation while the published NLOD 2.0 terms and official endpoint access remain unchanged. No public release, provider geocoding, permit-holder mailing-address use, or claim of operating-facility status is authorized.",
+  "terms_basis": "Project operator authorization for reusable private source refreshes plus the publisher-identified Norwegian Licence for Open Government Data (NLOD) 2.0. Preserve the required attribution and recheck current provider terms/access on refresh; stop for review if they change. This is not a legal guarantee or publication approval. Source point precision and locality semantics remain under separate review.",
+  "reviewed_at": "2026-10-20",
+  "reference_urls": [
+    "https://www.fiskeridir.no/statistikk-tall-og-analyse/lisens-for-bruk-av-fiskeridirektoratets-data",
+    "https://data.norge.no/nlod/en/2.0"
+  ]
+}

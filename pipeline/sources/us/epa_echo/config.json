@@ -1,0 +1,11 @@
+{
+  "source_id": "us.epa.echo-animal-production",
+  "publisher": "U.S. Environmental Protection Agency",
+  "country_code": "US",
+  "source_url": "https://echogeo.epa.gov/arcgis/rest/services/ECHO/Facilities/MapServer/0",
+  "license_url": "https://pasteur.epa.gov/license/sciencehub-license.html",
+  "coverage": "ECHO facility records associated with CWA/NPDES and a selected livestock/poultry NAICS or SIC classification; not a confirmed CAFO inventory",
+  "acquisition": "bounded public ArcGIS REST query, private staging only",
+  "geocoding": "disabled",
+  "publication": "human review required"
+}

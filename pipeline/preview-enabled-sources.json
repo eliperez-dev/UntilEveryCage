@@ -240,6 +240,48 @@
       "display_policy": {"kind": "source_numeric_coordinate", "precision": "source-provided-unspecified", "disclosure": "FSIS source-provided coordinate; precision and address suitability have not been reviewed. Private preview only; not an exact verified facility point."},
       "adapter_version": "us-fsis-candidate-v2",
       "schema_version": "us-fsis-mpi-v1"
+    },
+    "no.fiskeridir.aquaculture": {
+      "enabled": true,
+      "runtime_classification": "production-e2e",
+      "public_release": false,
+      "runner": "pipeline.refresh_private:no.fiskeridir.aquaculture",
+      "terms_review": "data/terms-reviews/no.fiskeridir.aquaculture.json",
+      "terms_decision": "approved",
+      "freshness_max_days": 14,
+      "expected_artifacts": ["ArcGIS Layer 0 paged GeoJSON response bundle"],
+      "allowed_preview_fields": ["establishment_id", "facility_grouping", "country_code", "nation", "region", "municipality", "activity_categories", "source_species_scope", "source_locality_status", "source_observed_at", "source_object_id", "coordinates", "coordinate_state", "coordinate_precision", "privacy_gate", "rights_gate", "publication_gate"],
+      "display_policy": {"kind": "source_numeric_coordinate", "precision": "source-precision-unknown", "disclosure": "Fiskeridirektoratet registered aquaculture localities; animal-species records only. Source point precision is unspecified and locality is not confirmation of an operating facility. No permit-holder mailing address or geocoding is used. Private preview only; no public release or project approval."},
+      "adapter_version": "no-fiskeridir-aquaculture-v1",
+      "schema_version": "no-fiskeridir-mapserver-geojson-v1"
+    },
+    "gb.scot.marine.aquaculture": {
+      "enabled": true,
+      "runtime_classification": "production-e2e",
+      "public_release": false,
+      "runner": "pipeline.refresh_private:gb.scot.marine.aquaculture",
+      "terms_review": "data/staging/source-expansion-20261020/scotland/terms-review.json",
+      "terms_decision": "approved",
+      "freshness_max_days": 14,
+      "expected_artifacts": ["aquaculture-sites.geojson"],
+      "allowed_preview_fields": ["establishment_id", "facility_grouping", "facility_name", "country_code", "nation", "region", "municipality", "activity_categories", "source_site_type", "source_site_category_code", "source_status_code", "source_status", "source_facility_types", "source_species_codes", "source_production_stages", "coordinates", "coordinate_state", "coordinate_precision", "source_projected_coordinates", "source_feature_count", "source_feature_rows", "privacy_gate", "rights_gate", "publication_gate"],
+      "display_policy": {"kind": "source_numeric_coordinate", "precision": "source-reported-unknown", "disclosure": "Scottish Government registered finfish and shellfish aquaculture site points; fishery sites excluded. All active/inactive/deregistered source states remain explicit; site-group counts include non-active statuses. Source precision is unspecified. Private preview only; no public release or project approval."},
+      "adapter_version": "gb-scot-marine-aquaculture-v1",
+      "schema_version": "gb-scot-aquaculture-wfs-geojson-v1"
+    },
+    "us.epa.echo-animal-production": {
+      "enabled": true,
+      "runtime_classification": "production-e2e",
+      "public_release": false,
+      "runner": "pipeline.refresh_private:us.epa.echo-animal-production",
+      "terms_review": "data/terms-reviews/us.epa.echo-animal-production.json",
+      "terms_decision": "approved",
+      "freshness_max_days": 14,
+      "expected_artifacts": ["source-responses.zip"],
+      "allowed_preview_fields": ["establishment_id", "epa_registry_id", "facility_grouping", "facility_identity_state", "name", "address", "city", "state", "postal_code", "country_code", "coordinates", "coordinate_state", "coordinate_gate", "coordinate_provenance_state", "source_active_flag", "source_active_flag_semantics", "regulated_program", "industry_classification_basis", "facility_semantics", "cafo_status", "operating_status", "privacy_gate", "rights_gate", "publication_gate"],
+      "display_policy": {"kind": "source_numeric_coordinate", "precision": "source-precision-unknown", "disclosure": "EPA ECHO facilities associated with CWA/NPDES data and matching selected livestock/poultry NAICS/SIC classifications; not a confirmed CAFO or current-operation list. Source-reported coordinates, facility names, and addresses remain private pending lineage, location, and privacy review. No provider geocoding; no public release or project approval."},
+      "adapter_version": "us-epa-echo-animal-adapter-v1",
+      "schema_version": "us-epa-echo-facilities-cwa-animal-production-v1"
     }
   }
 }

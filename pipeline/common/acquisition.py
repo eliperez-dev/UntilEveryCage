@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import socket
+import ssl
 import tempfile
 import time
 import urllib.error
@@ -139,6 +140,7 @@ def fetch_source(
     sleep_fn: Any = time.sleep,
     query_context: dict[str, Any] | None = None,
     artifact_validator: Callable[[Path, dict[str, str]], None] | None = None,
+    ssl_context: ssl.SSLContext | None = None,
 ) -> dict[str, Any]:
     if not source_id or not url:
         raise AcquisitionError("source_id and url are required")
@@ -148,6 +150,13 @@ def fetch_source(
         raise AcquisitionError("max_attempts must be between 1 and 10", failure_class="configuration")
     if retry_delay_seconds < 0 or max_retry_delay_seconds < 0 or retry_delay_seconds > max_retry_delay_seconds:
         raise AcquisitionError("retry delay values are invalid", failure_class="configuration")
+    if ssl_context is not None and (
+        ssl_context.verify_mode != ssl.CERT_REQUIRED or not ssl_context.check_hostname
+    ):
+        raise AcquisitionError(
+            "ssl_context must require certificate validation and hostname checks",
+            failure_class="configuration",
+        )
     terms_review = require_terms_review(Path(terms_review_path))
     run_id = run_id or default_run_id()
     run_dir = Path(output_root) / source_id / run_id
@@ -164,7 +173,10 @@ def fetch_source(
     for attempt_number in range(1, max_attempts + 1):
         recorder = _RedirectRecorder()
         try:
-            opener = urllib.request.build_opener(recorder)
+            handlers = [recorder]
+            if ssl_context is not None:
+                handlers.append(urllib.request.HTTPSHandler(context=ssl_context))
+            opener = urllib.request.build_opener(*handlers)
             request = urllib.request.Request(url, headers={"User-Agent": user_agent})
             with opener.open(request, timeout=timeout_seconds) as response:
                 if not 200 <= response.status < 300:

@@ -23,6 +23,9 @@ VERIFIED_PRIVATE_E2E = {
     "it.853-2004",
     "it.1069-2009",
     "nl.nvwa.approved-food",
+    "no.fiskeridir.aquaculture",
+    "gb.scot.marine.aquaculture",
+    "us.epa.echo-animal-production",
     "us.aphis",
     "us.fsis",
 }

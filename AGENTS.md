@@ -7,8 +7,9 @@ Before repository work, read in order: `AGENTS.md` (this file) → [docs/ETHICS.
 task-specific documents routed by the hub. The ethics policy governs data,
 privacy, evidence, and publication decisions. The vision is not a readiness
 claim; [docs/PRODUCT-READINESS.md](docs/PRODUCT-READINESS.md) owns current
-product completion and [docs/source-status.md](docs/source-status.md) owns
-source status.
+product completion and [docs/source-status.json](docs/source-status.json) owns
+source readiness and metadata; [docs/source-status.md](docs/source-status.md)
+is navigation only.
 
 ## Project map and local work
 

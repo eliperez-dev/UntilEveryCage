@@ -533,6 +533,30 @@ def register_first_wave(catalog: Any) -> None:
         country_code="nl", source_kind="facility_master",
         operational_classification="live", live_callable=True,
     ))
+    from .norway.refresh import NorwayAquacultureRefreshAdapter
+    catalog.register(NorwayAquacultureRefreshAdapter(), AdapterCapabilities(
+        source_id="no.fiskeridir.aquaculture", adapter_version="no-fiskeridir-aquaculture-v1",
+        schema_version="no-fiskeridir-mapserver-geojson-v1", acquisition="bounded_private_fetch",
+        geocoding="disabled", publication="human_gate_required",
+        adapter_path="pipeline/sources/norway/refresh.py", country_code="no",
+        source_kind="facility_master", operational_classification="live", live_callable=True,
+    ))
+    from .scotland_aquaculture.refresh import ScotlandAquacultureRefreshAdapter
+    catalog.register(ScotlandAquacultureRefreshAdapter(), AdapterCapabilities(
+        source_id="gb.scot.marine.aquaculture", adapter_version="gb-scot-marine-aquaculture-v1",
+        schema_version="gb-scot-aquaculture-wfs-geojson-v1", acquisition="bounded_private_fetch",
+        geocoding="disabled", publication="human_gate_required",
+        adapter_path="pipeline/sources/scotland_aquaculture/refresh.py", country_code="gb",
+        source_kind="facility_master", operational_classification="live", live_callable=True,
+    ))
+    from pipeline.sources.us.epa_echo.refresh import EpaEchoAnimalRefreshAdapter
+    catalog.register(EpaEchoAnimalRefreshAdapter(), AdapterCapabilities(
+        source_id="us.epa.echo-animal-production", adapter_version="us-epa-echo-animal-adapter-v1",
+        schema_version="us-epa-echo-facilities-cwa-animal-production-v1", acquisition="bounded_private_fetch",
+        geocoding="disabled", publication="human_gate_required",
+        adapter_path="pipeline/sources/us/epa_echo/refresh.py", country_code="us",
+        source_kind="facility_master", operational_classification="live", live_callable=True,
+    ))
     catalog.register(FsisRefreshAdapter(), AdapterCapabilities(
         source_id="us.fsis", adapter_version="us-fsis-candidate-v2",
         schema_version="us-fsis-mpi-v1", acquisition="bounded_authorized_browser_download",

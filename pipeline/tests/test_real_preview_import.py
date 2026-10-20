@@ -335,6 +335,40 @@ class RealPreviewImporterTests(unittest.TestCase):
         self.assertEqual(set(enabled), set(IMPORTER.SOURCE_NAMES))
         self.assertTrue(all(IMPORTER.SOURCE_NAMES[source].strip() for source in enabled))
 
+    def test_european_aquaculture_and_epa_source_coordinates_survive_private_import_projection(self):
+        scotland = IMPORTER.parse_row("gb.scot.marine.aquaculture", {
+            "source_id": "gb.scot.marine.aquaculture", "source_record_key": "synthetic-site-id",
+            "source_values": {}, "normalized": {
+                "establishment_id": "synthetic-site-id", "country_code": "GB",
+                "activity_categories": ["animal-aquaculture-finfish"],
+                "source_status_code": "D", "source_status": "deregistered",
+                "facility_name": "Synthetic Site", "privacy_gate": "pending-review",
+                "coordinates": {"latitude": 56.0, "longitude": -5.0,
+                    "precision": "source-reported-unknown",
+                    "source_crs": "EPSG:4326",
+                    "location_semantics": "registered site point; not operator correspondence address"},
+            },
+        })
+        self.assertEqual(scotland[1], "numeric_source_coordinate")
+        self.assertEqual((scotland[2], scotland[5], scotland[6]), ("GB", 56.0, -5.0))
+        self.assertIsNone(scotland[11], "pending-review names remain suppressed in the preview candidate projection")
+
+        epa = IMPORTER.parse_row("us.epa.echo-animal-production", {
+            "source_id": "us.epa.echo-animal-production", "source_record_key": "synthetic-registry-id",
+            "source_values": {}, "normalized": {
+                "establishment_id": "synthetic-registry-id", "country_code": "US",
+                "industry_classification_basis": {"naics_codes": ["112120"], "sic_codes": []},
+                "cafo_status": "not-established", "operating_status": "not-established",
+                "coordinates": {"latitude": 38.0, "longitude": -77.0,
+                    "precision": "source-precision-unknown"},
+            },
+        })
+        self.assertEqual(epa[1], "numeric_source_coordinate")
+        self.assertEqual((epa[2], epa[5], epa[6]), ("US", 38.0, -77.0))
+        self.assertTrue(epa[16], "source animal-production classification and valid coordinates are private map candidates")
+        self.assertEqual(IMPORTER.SOURCE_MEDIA_TYPES["gb.scot.marine.aquaculture"], "application/geo+json")
+        self.assertEqual(IMPORTER.SOURCE_MEDIA_TYPES["us.epa.echo-animal-production"], "application/zip")
+
     def test_generic_source_row_id_provenance_is_allowed(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "records.jsonl"

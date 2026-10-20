@@ -12,7 +12,7 @@ not current readiness.
 | Product purpose and enduring direction | [VISION.md](VISION.md) — **Canonical** |
 | Policy, privacy, provenance, and publication | [ETHICS.md](ETHICS.md) — **Canonical** |
 | Product readiness, launch gates, and roadmap | [PRODUCT-READINESS.md](PRODUCT-READINESS.md) — **Canonical** |
-| Current source-level evidence status | [source-status.md](source-status.md) and [source-status.json](source-status.json) — **Canonical** |
+| Current source-level readiness and metadata | [source-status.json](source-status.json) — **Canonical**; [source-status.md](source-status.md) — navigation only |
 | Source-specific facts, terms, provenance, and scope | Country reconnaissance, source descriptors/crosswalks, terms reviews, manifests, and the relevant canonical source page — **Canonical** or **Generated** as marked in the owning index |
 | Implementation claims | [claim/evidence ledger](governance/v2-mvp-claim-evidence.json) — **Generated** from repository evidence |
 

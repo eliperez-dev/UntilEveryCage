@@ -114,6 +114,35 @@ def _decision(source: str, normalized: dict[str, Any], original: dict[str, Any])
             if code in _DK:
                 leaf, method = _DK[code]
                 assignments.append({"leaf_activity": leaf, "primary": _primary_for_leaf(leaf) or "unclassified", "method": method})
+    elif source == "no.fiskeridir.aquaculture":
+        # A non-empty species scope plus the adapter's animal-only category
+        # confirms aquaculture production. Use the existing animal-production
+        # leaf, not a new display category or a status-derived inference.
+        categories = _values(normalized, ("activity_categories",))
+        species_scope = _values(normalized, ("source_species_scope",))
+        if "animal-aquaculture" in categories and species_scope:
+            assignments.append({"leaf_activity": "animal_production",
+                                "primary": "animal_keeping_and_production", "method": "derived"})
+    elif source == "gb.scot.marine.aquaculture":
+        # The source adapter retains only finfish/shellfish production sites;
+        # fisheries are excluded upstream. This maps activity, not status.
+        categories = _values(normalized, ("activity_categories",))
+        if any(category in {"animal-aquaculture-finfish", "animal-aquaculture-shellfish"}
+               for category in categories):
+            assignments.append({"leaf_activity": "animal_production",
+                                "primary": "animal_keeping_and_production", "method": "derived"})
+    elif source == "us.epa.echo-animal-production":
+        # Native industry classifications scope the records; CWA association
+        # alone does not establish CAFO status or current operation.
+        basis = normalized.get("industry_classification_basis")
+        naics = _values(basis, ("naics_codes",)) if isinstance(basis, dict) else []
+        sics = _values(basis, ("sic_codes",)) if isinstance(basis, dict) else []
+        matched_naics = [code for code in naics if len(code) == 6 and code.startswith("112") and code.isdigit()]
+        from pipeline.sources.us.epa_echo.acquire import SIC_CODES
+        matched_sics = [code for code in sics if code in SIC_CODES]
+        if matched_naics or matched_sics:
+            assignments.append({"leaf_activity": "animal_production",
+                                "primary": "animal_keeping_and_production", "method": "direct"})
     elif source == "be.locations":
         # Adapter output is produced only after the reviewed PAP signature
         # matched the exact place/activity/product tuple in the pinned codebook.
@@ -320,6 +349,13 @@ def project_observation(record: dict[str, Any]) -> dict[str, Any]:
     display = next((value for value in PRIMARY_PRECEDENCE if value in primaries), "unclassified")
     code_reference, source_code = _first_evidence(normalized, record,
         ("activity_codes", "source_function_codes", "source_classification_codes", "source_classification_code", "activity_code", "source_category", "primary_anzsic_class_code"))
+    if source == "us.epa.echo-animal-production" and source_code is None:
+        basis = normalized.get("industry_classification_basis")
+        if isinstance(basis, dict):
+            native_codes = _values(basis, ("naics_codes", "sic_codes"))
+            if native_codes:
+                code_reference = "normalized.industry_classification_basis"
+                source_code = "; ".join(sorted(native_codes))
     if source in {"fsa_approved_establishments", "fss_approved_establishments"} and source_code is None:
         uk_codes = [value for value in _values(normalized, ("activities",))
                     if value.casefold() in {"sh", "cp", "mp", "cs"}]
@@ -350,7 +386,7 @@ def project_observation(record: dict[str, Any]) -> dict[str, Any]:
         "taxonomy_assignments": enriched,
         "taxonomy_primaries": primaries,
         "taxonomy_mapping_method": next(iter(methods)) if len(methods) == 1 else (
-            "direct" if source in {"dk.smiley", "be.locations", "us.fsis"} or source.startswith(("it.", "es.")) else
+            "direct" if source in {"dk.smiley", "be.locations", "us.fsis", "us.epa.echo-animal-production"} or source.startswith(("it.", "es.")) else
             "candidate" if source.startswith("au.") else "derived"),
         "taxonomy_mapping_status": status,
         "taxonomy_display_category": display,
@@ -375,6 +411,16 @@ def crosswalk_document(source_id: str) -> dict[str, Any]:
             *[{"source_field": "aphis_registration_class", "source_label": f"Class {code}", "leaf_key": "research", "primary_key": "research_and_animal_use", "mapping_method": "direct"} for code in ("R", "F", "G", "V")],
             *[{"source_field": "aphis_registration_class", "source_label": f"Class {code}", "leaf_key": "general_food_business", "primary_key": "other_regulated_premises", "mapping_method": "direct"} for code in ("B", "C", "H", "T")],
         ]
+    elif source_id == "gb.scot.marine.aquaculture":
+        rules = [{"source_field": "activity_categories", "source_label": label,
+                  "leaf_key": "animal_production", "primary_key": "animal_keeping_and_production",
+                  "mapping_method": "derived"}
+                 for label in ("animal-aquaculture-finfish", "animal-aquaculture-shellfish")]
+    elif source_id == "us.epa.echo-animal-production":
+        rules = [{"source_field": "industry_classification_basis.naics_codes", "source_code_prefix": "112",
+                  "leaf_key": "animal_production", "primary_key": "animal_keeping_and_production", "mapping_method": "direct"},
+                 {"source_field": "industry_classification_basis.sic_codes", "source_code_set": "EPA selected livestock/poultry SIC codes",
+                  "leaf_key": "animal_production", "primary_key": "animal_keeping_and_production", "mapping_method": "direct"}]
     elif source_id in {"fr.dgal.section-i", "fr.dgal.section-ii"}:
         rules = [{"source_code": "SH", "leaf_key": "slaughter", "primary_key": "slaughter", "mapping_method": "direct"},
                  {"source_code": "CP", "leaf_key": "cutting", "primary_key": "processing_and_preparation", "mapping_method": "direct"},

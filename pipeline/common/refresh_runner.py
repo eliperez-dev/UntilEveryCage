@@ -274,7 +274,12 @@ class RefreshRunner:
                                 classification="terms-blocked",
                                 reason="explicit source authorization and terms review are required before network acquisition",
                             )
-                        acquired = acquire(run_dir=source_dir, options=request.options)
+                        # Bind source-side artifact directories/sidecars to the
+                        # immutable outer plan identity. Caller-supplied values
+                        # must never make acquisition provenance diverge from
+                        # the run manifest and importer path contract.
+                        acquisition_options = {**request.options, "acquisition_run_id": str(plan["run_id"])}
+                        acquired = acquire(run_dir=source_dir, options=acquisition_options)
                         if not isinstance(acquired, Mapping):
                             raise RefreshRunnerError("acquisition hook must return a mapping")
                         acquired = dict(acquired)

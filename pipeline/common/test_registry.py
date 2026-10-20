@@ -8,7 +8,19 @@ from .adapter_registry import load
 class RegistryTests(unittest.TestCase):
     def test_registered_adapters_have_versioned_capabilities(self):
         registry = load(Path(__file__).parents[1] / "adapter-capabilities.json")
-        self.assertEqual({entry["country_code"] for entry in registry["adapters"]}, {"au", "be", "br", "ca", "de", "dk", "es", "fr", "gb", "nl", "us"})
+        self.assertEqual({entry["country_code"] for entry in registry["adapters"]}, {"au", "be", "br", "ca", "de", "dk", "es", "fr", "gb", "nl", "no", "us"})
+        by_source = {entry["source_id"]: entry for entry in registry["adapters"]}
+        expected = {
+            "no.fiskeridir.aquaculture": ("no", "no-fiskeridir-aquaculture-v1", "no-fiskeridir-mapserver-geojson-v1"),
+            "gb.scot.marine.aquaculture": ("gb", "gb-scot-marine-aquaculture-v1", "gb-scot-aquaculture-wfs-geojson-v1"),
+            "us.epa.echo-animal-production": ("us", "us-epa-echo-animal-adapter-v1", "us-epa-echo-facilities-cwa-animal-production-v1"),
+        }
+        for source_id, (country, adapter_version, schema_version) in expected.items():
+            entry = by_source[source_id]
+            self.assertEqual((entry["country_code"], entry["adapter_version"], entry["schema_version"]),
+                             (country, adapter_version, schema_version))
+            self.assertTrue(entry["live_callable"])
+            self.assertEqual(entry["operational_classification"], "live")
         self.assertTrue(
             all(
                 entry["geocoding"] == ("separate-private-profile" if entry["country_code"] == "nl" else "disabled")

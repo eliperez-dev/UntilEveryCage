@@ -23,3 +23,5 @@ __pycache__/
 !/data/raw/**/metadata.json
 !/data/reports/.gitkeep
 /data/graph-rehearsal/
+/data/terms-reviews/us.epa.echo-animal-production.json
+/pipeline/common/.d2-runner/

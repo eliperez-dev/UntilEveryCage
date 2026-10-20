@@ -28,7 +28,10 @@ class SwedenReconMetadataTests(unittest.TestCase):
         by_id = {source["source_id"]: source for source in status["sources"]}
         for source_id in SWEDEN_IDS:
             self.assertEqual(by_id[source_id]["publication_eligibility"], "blocked")
-            self.assertEqual(by_id[source_id]["acquisition"], "not_run")
+            # The attempted slaughterhouse source was found unavailable; keep
+            # that evidence distinct from the untouched Sweden leads.
+            expected = "blocked" if source_id == "se.jordbruksverket.slaughterhouses" else "not_run"
+            self.assertEqual(by_id[source_id]["acquisition"], expected)
 
 
 if __name__ == "__main__":

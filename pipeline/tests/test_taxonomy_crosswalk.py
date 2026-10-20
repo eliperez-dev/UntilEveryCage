@@ -61,6 +61,35 @@ class TaxonomyCrosswalkTests(unittest.TestCase):
         self.assertEqual(cfia["taxonomy_mapping_method"], "direct")
         self.assertEqual(cfia["taxonomy_display_category"], "slaughter")
 
+    def test_norway_aquaculture_uses_existing_animal_production_taxonomy(self):
+        mapped = project_observation({"source_id": "no.fiskeridir.aquaculture", "normalized": {
+            "activity_categories": ["animal-aquaculture"], "source_species_scope": "salmon"}})
+        self.assertEqual(mapped["taxonomy_mapping_status"], "mapped")
+        self.assertEqual(mapped["taxonomy_mapping_method"], "derived")
+        self.assertEqual(mapped["taxonomy_assignments"][0]["leaf_activity"], "animal_production")
+        self.assertEqual(mapped["taxonomy_primaries"], ["animal_keeping_and_production"])
+        self.assertEqual(project_observation({"source_id": "no.fiskeridir.aquaculture", "normalized": {
+            "activity_categories": ["animal-aquaculture"]}})["taxonomy_mapping_status"], "unclassified")
+
+    def test_scotland_aquaculture_and_epa_native_classifications_use_existing_taxonomy(self):
+        scotland = project_observation({"source_id": "gb.scot.marine.aquaculture", "normalized": {
+            "activity_categories": ["animal-aquaculture-finfish"], "source_status_code": "D"}})
+        self.assertEqual(scotland["taxonomy_display_category"], "animal_keeping_and_production")
+        self.assertEqual(scotland["taxonomy_mapping_method"], "derived")
+        self.assertEqual(scotland["taxonomy_assignments"][0]["leaf_activity"], "animal_production")
+        self.assertEqual(project_observation({"source_id": "gb.scot.marine.aquaculture", "normalized": {
+            "activity_categories": ["fishery-site"]}})["taxonomy_mapping_status"], "unclassified")
+        epa = project_observation({"source_id": "us.epa.echo-animal-production", "normalized": {
+            "industry_classification_basis": {"naics_codes": ["112120"], "sic_codes": []},
+            "cafo_status": "not-established", "operating_status": "not-established"}})
+        self.assertEqual(epa["taxonomy_mapping_status"], "mapped")
+        self.assertEqual(epa["taxonomy_mapping_method"], "direct")
+        self.assertEqual(epa["taxonomy_assignments"][0]["source_code_reference"],
+                         "normalized.industry_classification_basis")
+        self.assertEqual(project_observation({"source_id": "us.epa.echo-animal-production", "normalized": {
+            "industry_classification_basis": {"naics_codes": ["311111"], "sic_codes": []}}})[
+                "taxonomy_mapping_status"], "unclassified")
+
     def test_ontario_activity_labels_are_derived_and_source_evidence_is_preserved(self):
         source_values = {"Plant Type": "Abattoir", "Animal Class": "Cattle"}
         record = {"source_id": "ca.ontario.meat-plants", "source_values": source_values,
@@ -164,7 +193,8 @@ class TaxonomyCrosswalkTests(unittest.TestCase):
     def test_crosswalk_documents_match_frozen_persistence_envelope(self):
         for source in ("dk.smiley", "be.locations", "us.fsis", "fr.dgal.section-i",
                        "fsa_approved_establishments", "ca.cfia.federal-meat", "ca.ontario.meat-plants", "it.853-2004",
-                       "es.cat.feed-sandach", "au.npi.facilities"):
+                       "es.cat.feed-sandach", "au.npi.facilities", "no.fiskeridir.aquaculture",
+                       "gb.scot.marine.aquaculture", "us.epa.echo-animal-production"):
             document = crosswalk_document(source)
             self.assertEqual(document["source_id"], source)
             self.assertEqual(document["taxonomy_version"], TAXONOMY_VERSION)
@@ -221,6 +251,14 @@ class TaxonomyCrosswalkTests(unittest.TestCase):
         self.assertEqual(belgium["activity_categories"], ["slaughter"])
         self.assertEqual(belgium["activity_mapping_status"], "mapped")
         self.assertEqual(belgium["taxonomy_assignment_rows"][0]["mapping_status"], "mapped")
+
+        norway = IMPORTER.activity_contract(
+            {"activity_categories": ["animal-aquaculture"], "source_species_scope": "synthetic-animal-species"},
+            "no.fiskeridir.aquaculture", {})
+        self.assertEqual(norway["category"], "animal_keeping_and_production")
+        self.assertEqual(norway["activity_categories"], ["animal_keeping_and_production"])
+        self.assertEqual(norway["taxonomy_assignment_rows"][0]["leaf_key"], "animal_production")
+        self.assertEqual(norway["taxonomy_assignment_rows"][0]["mapping_method"], "derived")
 
 
 if __name__ == "__main__":

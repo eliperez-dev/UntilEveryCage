@@ -42,6 +42,18 @@ class NetworkAdapter(FakeAdapter):
                 "schema_status": "schema-drift" if self.schema_drift else "ok"}
 
 
+class RunIdentityAdapter(NetworkAdapter):
+    source_id = "fixture.run-identity"
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.acquisition_run_id = None
+
+    def acquire(self, *, run_dir, options):
+        self.acquisition_run_id = options.get("acquisition_run_id")
+        return {"artifact_path": str(Path(__file__))}
+
+
 def catalog_for(*adapters: FakeAdapter, statuses=None) -> RefreshCatalog:
     catalog = RefreshCatalog.__new__(RefreshCatalog)
     statuses = statuses or {}
@@ -127,6 +139,20 @@ class RefreshRunnerTests(unittest.TestCase):
         ok = RefreshRunner(catalog, candidate_importer=importer).run(request)
         self.assertEqual(ok["counts"]["succeeded"], 1)
         self.assertEqual(len(seen), 1)
+
+    def test_live_acquisition_run_id_is_bound_to_canonical_plan_not_adapter_directory(self):
+        adapter = RunIdentityAdapter()
+        catalog = catalog_for(adapter)
+        request = RefreshRequest(
+            source_ids=(adapter.source_id,), mode="live-acquisition", output_root=self.output("canonical-acquisition-id"),
+            options={"authorized_live_sources": [adapter.source_id],
+                     "terms_review_paths": {adapter.source_id: "approved-terms.json"},
+                     "acquisition_run_id": "caller-value-must-not-be-used"},
+        )
+        result = RefreshRunner(catalog).run(request)
+        self.assertEqual(result["exit_status"], "ok")
+        self.assertEqual(adapter.acquisition_run_id, result["run_id"])
+        self.assertNotEqual(adapter.acquisition_run_id, "caller-value-must-not-be-used")
 
     def test_operational_metadata_is_row_free_and_tracks_artifact_retry_and_fallback(self):
         adapter = FakeAdapter(failures=1)
