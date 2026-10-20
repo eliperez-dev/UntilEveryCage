@@ -33,7 +33,7 @@ MAX_BYTES = 24 * 1024 * 1024
 MAX_PAGES = 32
 MAX_PAGE_SIZE = 500
 NORWAY_WGS84_BOUNDS = (3.0, 32.0, 57.0, 72.0)  # west, east, south, north; validation only
-REQUIRED_FIELDS = {"objectid", "loknr", "til_arter", "symbol", "status_lokalitet", "kommune", "fylke"}
+REQUIRED_FIELDS = {"objectid", "loknr", "navn", "til_arter", "symbol", "status_lokalitet", "kommune", "fylke"}
 ALGAL_SYMBOLS = {"alger", "algae"}
 ALGAL_ONLY = re.compile(r"^(?:alger|algae|tang|tare)(?:\s*[,;/|]\s*(?:alger|algae|tang|tare))*$", re.I)
 
@@ -176,11 +176,14 @@ class NorwayAquacultureAdapter:
                 status = _text(properties.get("status_lokalitet")) or "unknown"
                 municipality = _text(properties.get("kommune")) or "unknown"
                 region = _text(properties.get("fylke")) or "unknown"
+                locality_name = _text(properties.get("navn"))
                 normalized = {
                     "establishment_id": locality_key,
                     "facility_grouping": "source-aquaculture-locality-number",
                     "country_code": "NO", "nation": "Norway",
                     "region": region, "municipality": municipality,
+                    "facility_name": locality_name,
+                    "source_locality_name": locality_name,
                     "activity_categories": ["animal-aquaculture"],
                     "source_species_scope": species,
                     "source_locality_status": status,
@@ -196,6 +199,7 @@ class NorwayAquacultureAdapter:
                 accepted.append({"source_id": SOURCE_ID, "source_row": row_number,
                                  "source_record_key": f"locality:{locality_key}",
                                  "source_values": {"locality_identifier": locality_key,
+                                                   "navn": locality_name,
                                                    "source_species_scope": species,
                                                    "locality_status": status,
                                                    "municipality": municipality,

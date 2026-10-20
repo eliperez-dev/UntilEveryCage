@@ -31,7 +31,8 @@ def feature(object_id: int, locality_id: int, *, species: str = "Salmon", symbol
     return {"type": "Feature", "properties": {
         "objectid": object_id, "loknr": locality_id, "til_arter": species,
         "symbol": symbol, "status_lokalitet": "Active", "kommune": "Example",
-        "fylke": "Example region", "til_innehavere": "synthetic holder",
+        "fylke": "Example region", "navn": f"Synthetic locality {locality_id}",
+        "til_innehavere": "synthetic holder",
     }, "geometry": {"type": "Point", "coordinates": list(coordinates)}}
 
 
@@ -48,6 +49,9 @@ class NorwayAquacultureParserTests(unittest.TestCase):
         self.assertEqual(parsed["input_rows"], 2)
         self.assertEqual(len(parsed["accepted"]), 1)
         self.assertEqual(parsed["accepted"][0]["normalized"]["country_code"], "NO")
+        self.assertEqual(parsed["accepted"][0]["normalized"]["facility_name"], "Synthetic locality 10")
+        self.assertEqual(parsed["accepted"][0]["normalized"]["source_locality_name"], "Synthetic locality 10")
+        self.assertEqual(parsed["accepted"][0]["source_values"]["navn"], "Synthetic locality 10")
         self.assertEqual(parsed["accepted"][0]["normalized"]["coordinates"]["source_crs"], "EPSG:4326")
         self.assertIn("not permit-holder mailing address", parsed["accepted"][0]["normalized"]["coordinates"]["location_semantics"])
         self.assertEqual(parsed["quarantined"][0]["reasons"], ["out_of_animal_aquaculture_scope"])
@@ -92,7 +96,7 @@ class _PagedOpener:
     def __init__(self):
         self.layer = {"name": "Lokaliteter", "type": "Feature Layer", "geometryType": "esriGeometryPoint",
                       "maxRecordCount": 2000, "spatialReference": {"wkid": 25833},
-                      "fields": [{"name": key} for key in ("objectid", "loknr", "til_arter", "symbol", "status_lokalitet", "kommune", "fylke")]}
+                      "fields": [{"name": key} for key in ("objectid", "loknr", "til_arter", "symbol", "status_lokalitet", "kommune", "fylke", "navn")]}
 
     def urlopen(self, request, timeout=60):
         url = request.full_url
@@ -155,12 +159,16 @@ class NorwayAquacultureAcquisitionTests(unittest.TestCase):
             summary = result["results"][0]["summary"]
             handoff_manifest = next((root / "refresh").rglob("candidate-handoff/manifest.json"))
             handoff_doc = json.loads(handoff_manifest.read_text(encoding="utf-8"))
+            handoff_row = json.loads((handoff_manifest.parent / "normalized" / "records.jsonl").read_text(encoding="utf-8"))
         self.assertEqual(result["exit_status"], "ok")
         self.assertTrue(summary["candidate_handoff"])
         self.assertEqual(summary["normalized_rows"], 1)
         self.assertEqual(handoff_doc["release_state"], "not-created")
         self.assertEqual(handoff_doc["publication_state"], "private-candidate")
         self.assertEqual(handoff_doc["normalized_rows"], 1)
+        self.assertEqual(handoff_row["normalized"]["facility_name"], "Synthetic locality 10")
+        self.assertEqual(handoff_row["normalized"]["source_locality_name"], "Synthetic locality 10")
+        self.assertEqual(handoff_row["source_values"]["navn"], "Synthetic locality 10")
 
 
 if __name__ == "__main__":

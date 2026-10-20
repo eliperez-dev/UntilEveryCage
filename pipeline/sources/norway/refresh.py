@@ -66,7 +66,10 @@ class NorwayAquacultureRefreshAdapter:
         if lifecycle.get("status") == "candidate-ready":
             lifecycle_root = Path(lifecycle["run_dir"])
             rows = read_jsonl(lifecycle_root / "normalized" / "records.jsonl")
-            safe_rows = [{**row, "source_values": {}} for row in rows]
+            safe_rows = [{**row, "source_values": {
+                key: row.get("source_values", {}).get(key)
+                for key in ("navn",) if row.get("source_values", {}).get(key)
+            }} for row in rows]
             handoff = write_handoff(run_dir / "candidate-handoff", safe_rows, source_artifact,
                                     source_id=SOURCE_ID, emit_graph_candidates=False)
             candidate = True

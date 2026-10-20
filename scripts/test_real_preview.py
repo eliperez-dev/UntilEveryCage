@@ -63,6 +63,56 @@ class LifecycleTests(unittest.TestCase):
             self.assertEqual(rp.main(["refresh"]), 2)
             refresh.assert_not_called()
 
+    def test_fresh_source_refresh_binds_evidence_root_before_source_validation(self):
+        source_id = "no.fiskeridir.aquaculture"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output_root = root / "runs"
+            runner_run_id = "canonical-refresh-run"
+            source_root = output_root / runner_run_id / "sources" / source_id
+            acquisition_dir = source_root / "acquisition" / source_id / runner_run_id
+            acquisition_dir.mkdir(parents=True)
+            (acquisition_dir / "acquisition-metadata.json").write_text(json.dumps({
+                "source_id": source_id, "run_id": runner_run_id, "feature_count": 1,
+                "object_id_count": 1, "retrieved_unique_object_id_count": 1,
+                "page_count": 1, "coordinates_checked": 1, "artifact_sha256": "a" * 64,
+                "artifact_byte_size": 1,
+            }), encoding="utf-8")
+            (source_root / "candidate-handoff").mkdir()
+            policy_path = root / "pipeline" / "preview-enabled-sources.json"
+            policy_path.parent.mkdir(parents=True)
+            policy_path.write_text(json.dumps({"contract_version": "test-v1", "sources": {
+                source_id: {"enabled": True, "terms_review": "terms.json",
+                            "allowed_preview_fields": ["facility_name", "coordinates"]}
+            }}), encoding="utf-8")
+            refresh_result = {"exit_status": "ok", "run_id": runner_run_id,
+                              "completed_at_utc": "2026-10-20T00:00:00Z",
+                              "results": [{"source_id": source_id, "status": "succeeded", "summary": {
+                                  "input_rows": 1, "candidate_observation_rows": 1, "quarantined_rows": 0,
+                                  "source_object_id_count": 1, "source_coordinate_count_checked": 1,
+                                  "candidate_handoff_sha256": "b" * 64, "schema_fingerprint": "c" * 64,
+                              }}], "publication": {"release_created": False}}
+            importer_result = {"status": "imported", "normalized_sha256": "d" * 64,
+                               "observation_count": 1, "facility_candidate_count": 1,
+                               "numeric_coordinate_count": 1, "map_visible_count": 1,
+                               "public_release_count": 0, "public_projection_count": 0}
+            completed = rp.subprocess.CompletedProcess(args=[], returncode=0,
+                stdout=json.dumps(refresh_result), stderr="")
+            imported = rp.subprocess.CompletedProcess(args=[], returncode=0,
+                stdout=json.dumps(importer_result), stderr="")
+            with patch.object(rp, "ROOT", root), patch.object(rp, "_local_database_url", return_value="postgresql://localhost/test"), \
+                    patch.dict(rp.os.environ, {"UEC_REAL_PREVIEW_RUNS_ROOT": str(output_root)}, clear=False), \
+                    patch.object(rp.subprocess, "run", side_effect=[completed, imported]) as run:
+                result = rp._refresh_source_locked(source_id)
+
+            self.assertEqual(result["status"], "imported")
+            self.assertEqual(run.call_count, 2)
+            importer_args = run.call_args_list[1].args[0]
+            self.assertEqual(importer_args[importer_args.index("--root") + 1], str(source_root))
+            ledger = json.loads(Path(result["ledger"]).read_text(encoding="utf-8"))
+            self.assertEqual(ledger["acquisition"]["run_id"], runner_run_id)
+            self.assertEqual(ledger["public_rows"], 0)
+
     def test_offline_actions_are_scoped_to_a_dedicated_owned_project(self):
         previous_project, previous_volume = rp.PROJECT, rp.VOLUME
         try:

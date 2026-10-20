@@ -508,7 +508,23 @@ def parse_row(source: str, row: Any) -> tuple[Any, ...]:
     }
     name = None
     if privacy_allows_name:
-        name = safe_preview_text(pick(normalized, "canonical_name", "trading_name", "name"), 200)
+        name = safe_preview_text(pick(normalized, "canonical_name", "trading_name", "facility_name", "name"), 200)
+    elif source in {"no.fiskeridir.aquaculture", "gb.scot.marine.aquaculture",
+                    "us.epa.echo-animal-production"}:
+        # Approved source-provided facility/locality labels may appear in the
+        # private preview without changing privacy or publication status.
+        # Norway additionally requires its native property and both
+        # projections to agree; Scotland and EPA expose their source-provided
+        # names directly. None imply a permit holder or legal entity.
+        if source == "no.fiskeridir.aquaculture":
+            native_name = source_values.get("navn")
+            locality_name = pick(normalized, "source_locality_name")
+            facility_name = pick(normalized, "facility_name")
+            if (isinstance(native_name, str) and native_name.strip()
+                    and native_name == locality_name == facility_name):
+                name = safe_preview_text(native_name, 200)
+        else:
+            name = safe_preview_text(pick(normalized, "facility_name", "name"), 200)
     contract = activity_contract(normalized, source, row.get("source_values") if isinstance(row, dict) else None)
     activity = safe_preview_text(pick(normalized, "source_activity", "activity_description", "activity_label"), 240)
     if activity is None:

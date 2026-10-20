@@ -351,12 +351,13 @@ class RealPreviewImporterTests(unittest.TestCase):
         })
         self.assertEqual(scotland[1], "numeric_source_coordinate")
         self.assertEqual((scotland[2], scotland[5], scotland[6]), ("GB", 56.0, -5.0))
-        self.assertIsNone(scotland[11], "pending-review names remain suppressed in the preview candidate projection")
+        self.assertEqual(scotland[11], "Synthetic Site", "source-provided names are private preview labels, not publication approval")
 
         epa = IMPORTER.parse_row("us.epa.echo-animal-production", {
             "source_id": "us.epa.echo-animal-production", "source_record_key": "synthetic-registry-id",
             "source_values": {}, "normalized": {
                 "establishment_id": "synthetic-registry-id", "country_code": "US",
+                "name": "Synthetic EPA Facility",
                 "industry_classification_basis": {"naics_codes": ["112120"], "sic_codes": []},
                 "cafo_status": "not-established", "operating_status": "not-established",
                 "coordinates": {"latitude": 38.0, "longitude": -77.0,
@@ -365,9 +366,67 @@ class RealPreviewImporterTests(unittest.TestCase):
         })
         self.assertEqual(epa[1], "numeric_source_coordinate")
         self.assertEqual((epa[2], epa[5], epa[6]), ("US", 38.0, -77.0))
+        self.assertEqual(epa[11], "Synthetic EPA Facility")
         self.assertTrue(epa[16], "source animal-production classification and valid coordinates are private map candidates")
         self.assertEqual(IMPORTER.SOURCE_MEDIA_TYPES["gb.scot.marine.aquaculture"], "application/geo+json")
         self.assertEqual(IMPORTER.SOURCE_MEDIA_TYPES["us.epa.echo-animal-production"], "application/zip")
+
+    def test_unapproved_source_pending_name_remains_suppressed(self):
+        row = IMPORTER.parse_row("unapproved.synthetic-source", {
+            "source_id": "unapproved.synthetic-source", "source_record_key": "synthetic-id",
+            "normalized": {"establishment_id": "synthetic-id", "facility_name": "Synthetic Pending Name",
+                           "privacy_gate": "pending-review"},
+        })
+        self.assertIsNone(row[11])
+
+    def test_norway_source_locality_name_survives_private_projection_without_privacy_gate_override(self):
+        record = {
+            "source_id": "no.fiskeridir.aquaculture", "source_record_key": "synthetic-locality-id",
+            "source_values": {"navn": "Synthetic locality name"}, "normalized": {
+                "establishment_id": "synthetic-locality-id", "country_code": "NO",
+                "facility_name": "Synthetic locality name",
+                "source_locality_name": "Synthetic locality name",
+                "privacy_gate": "pending-review",
+                "coordinates": {"latitude": 61.0, "longitude": 8.0,
+                    "precision": "source-precision-unknown"},
+            },
+        }
+        row = IMPORTER.parse_row("no.fiskeridir.aquaculture", record)
+        self.assertEqual(row[11], "Synthetic locality name")
+
+        mismatched = IMPORTER.parse_row("no.fiskeridir.aquaculture", {
+            "source_id": "no.fiskeridir.aquaculture", "source_record_key": "synthetic-locality-id",
+            "source_values": {"navn": "Different source name"}, "normalized": {
+                "establishment_id": "synthetic-locality-id", "country_code": "NO",
+                "facility_name": "Synthetic locality name",
+                "source_locality_name": "Synthetic locality name",
+                "privacy_gate": "pending-review",
+            },
+        })
+        self.assertIsNone(mismatched[11])
+
+        class FakeDatabase:
+            def __init__(self):
+                self.statements = []
+                self.next_id = 0
+
+            def execute(self, statement, parameters=None):
+                self.statements.append((str(statement), parameters))
+                return self
+
+            def fetchone(self):
+                self.next_id += 1
+                return (f"synthetic-id-{self.next_id}",)
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "records.jsonl"
+            path.write_text(json.dumps(record) + "\n", encoding="utf-8")
+            db = FakeDatabase()
+            with patch.object(IMPORTER, "persist_preview_candidate_assignment_set"):
+                IMPORTER.import_rows(db, "no.fiskeridir.aquaculture", path, 1, "b" * 64)
+        candidate = next(parameters for statement, parameters in db.statements
+                         if "INSERT INTO real_preview.candidates" in statement)
+        self.assertEqual(candidate[15], "Synthetic locality name")
 
     def test_generic_source_row_id_provenance_is_allowed(self):
         with tempfile.TemporaryDirectory() as directory:

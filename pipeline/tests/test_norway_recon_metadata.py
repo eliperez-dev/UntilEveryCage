@@ -25,7 +25,8 @@ class NorwayReconMetadataTests(unittest.TestCase):
             self.assertEqual(by_id[source_id]["publication_eligibility"], "blocked")
             if source_id == "no.fiskeridir.aquaculture":
                 self.assertEqual(by_id[source_id]["acquisition"], "verified")
-                self.assertEqual(by_id[source_id]["runtime_health"], "not_run")
+                self.assertEqual(by_id[source_id]["runtime_health"], "healthy")
+                self.assertIn("no recurring reliability", by_id[source_id]["runtime_health_scope"])
                 capture = by_id[source_id]["latest_private_capture"]
                 self.assertEqual(capture["input_rows"], 1781)
                 self.assertEqual(capture["normalized_candidates"], 1684)
@@ -37,6 +38,13 @@ class NorwayReconMetadataTests(unittest.TestCase):
                 self.assertEqual(capture["private_rust_map_feed_candidates"], 1684)
                 self.assertEqual(capture["public_rows"], 0)
                 self.assertTrue(capture["receipt_manifest"].endswith("refresh-ec0cda27754ff947/manifest.json"))
+                snapshot = by_id[source_id]["latest_successful_runtime_snapshot"]
+                self.assertEqual(snapshot["run_id"], "refresh-cfc009483f56e2c9")
+                self.assertEqual(snapshot["source_native_names"], 1781)
+                self.assertEqual(snapshot["normalized_candidates_with_native_name"], 1684)
+                self.assertEqual(snapshot["private_api_display_name_candidates"], 1684)
+                self.assertEqual(snapshot["public_rows"], 0)
+                self.assertTrue(snapshot["approved_public_baseline"]["unchanged"])
             else:
                 self.assertIn(by_id[source_id]["acquisition"], {"not_run", "blocked"})
 

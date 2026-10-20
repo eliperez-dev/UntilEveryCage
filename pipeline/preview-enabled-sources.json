@@ -250,7 +250,7 @@
       "terms_decision": "approved",
       "freshness_max_days": 14,
       "expected_artifacts": ["ArcGIS Layer 0 paged GeoJSON response bundle"],
-      "allowed_preview_fields": ["establishment_id", "facility_grouping", "country_code", "nation", "region", "municipality", "activity_categories", "source_species_scope", "source_locality_status", "source_observed_at", "source_object_id", "coordinates", "coordinate_state", "coordinate_precision", "privacy_gate", "rights_gate", "publication_gate"],
+      "allowed_preview_fields": ["establishment_id", "facility_grouping", "country_code", "nation", "region", "municipality", "facility_name", "source_locality_name", "activity_categories", "source_species_scope", "source_locality_status", "source_observed_at", "source_object_id", "coordinates", "coordinate_state", "coordinate_precision", "privacy_gate", "rights_gate", "publication_gate"],
       "display_policy": {"kind": "source_numeric_coordinate", "precision": "source-precision-unknown", "disclosure": "Fiskeridirektoratet registered aquaculture localities; animal-species records only. Source point precision is unspecified and locality is not confirmation of an operating facility. No permit-holder mailing address or geocoding is used. Private preview only; no public release or project approval."},
       "adapter_version": "no-fiskeridir-aquaculture-v1",
       "schema_version": "no-fiskeridir-mapserver-geojson-v1"

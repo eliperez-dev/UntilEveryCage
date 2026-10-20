@@ -33,13 +33,18 @@ class SourceStatusBaselineTests(unittest.TestCase):
             self.assertTrue(source["next_action"])
             self.assertIsInstance(source["metadata"], str)
             self.assertIsInstance(source["next_action"], str)
-        self.assertTrue(all(source["runtime_health"] != "healthy" for source in payload["sources"]))
+        for source in payload["sources"]:
+            if source["runtime_health"] == "healthy":
+                self.assertTrue(source.get("runtime_health_scope"))
+                self.assertTrue(source.get("runtime_health_evidence"))
         self.assertTrue(all(source["publication_eligibility"] != "eligible" for source in payload["sources"]))
 
     def test_json_is_authority_and_markdown_is_only_a_router(self):
         markdown = (ROOT / "docs" / "source-status.md").read_text(encoding="utf-8")
         self.assertIn("sole authoritative record", markdown)
         self.assertIn("source-status.json", markdown)
+        self.assertIn("runtime_health: healthy", markdown)
+        self.assertIn("freshness SLA", markdown)
         self.assertNotIn("| Source |", markdown)
         self.assertNotIn("## Current baseline", markdown)
 
@@ -63,7 +68,12 @@ class SourceStatusBaselineTests(unittest.TestCase):
                 self.assertTrue(details.get(field), (source_id, field))
             self.assertEqual(source["metadata"], "verified")
             self.assertEqual(source["acquisition"], "verified")
-            self.assertEqual(source["runtime_health"], "not_run")
+            self.assertIn(source["runtime_health"], {"not_run", "healthy"})
+            if source["runtime_health"] == "healthy":
+                self.assertIn("Latest measured successful live refresh", source["runtime_health_scope"])
+                runtime_snapshot = source.get("latest_successful_runtime_snapshot")
+                run_id = runtime_snapshot["run_id"] if runtime_snapshot else source["latest_private_capture"]["private_e2e_run_id"]
+                self.assertIn(run_id, source["runtime_health_evidence"])
             self.assertEqual(source["publication_eligibility"], "blocked")
             self.assertEqual(source["private_e2e"], "strict_private_preview_e2e_passed_once")
             self.assertTrue(source["e2e_verified"])
@@ -90,6 +100,8 @@ class SourceStatusBaselineTests(unittest.TestCase):
 
         scotland = by_id["gb.scot.marine.aquaculture"]
         scotland_capture = scotland["latest_private_capture"]
+        self.assertEqual(scotland["runtime_health"], "healthy")
+        self.assertEqual(scotland["publication_eligibility"], "blocked")
         self.assertEqual(scotland_capture["input_feature_rows"], 8308)
         self.assertEqual(scotland_capture["unique_site_groups"], 3074)
         self.assertEqual(scotland_capture["animal_site_candidates"], 2124)
@@ -98,6 +110,10 @@ class SourceStatusBaselineTests(unittest.TestCase):
         self.assertEqual(scotland_capture["candidate_status_groups"], {"active": 676, "inactive": 489, "deregistered": 959})
         self.assertEqual(scotland_capture["features_with_source_coordinates"], 8308)
         self.assertIn("not current-farm claims", scotland["next_action"])
+
+        epa = by_id["us.epa.echo-animal-production"]
+        self.assertEqual(epa["runtime_health"], "healthy")
+        self.assertEqual(epa["publication_eligibility"], "blocked")
 
     def test_evidence_paths_exist_and_exclude_private_roots(self):
         payload = self.load_status()

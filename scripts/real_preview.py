@@ -991,6 +991,9 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                             json.dumps(components, sort_keys=True, separators=(",", ":")).encode("utf-8")
                         ).hexdigest()
         source_dir = output_root / runner_run_id / "sources" / source_id
+        # Keep the name used by source-specific evidence validators aligned
+        # with the resolved source root for fresh as well as replayed runs.
+        source_root = source_dir
         handoff_manifest = source_dir / "candidate-handoff" / "manifest.json"
         geography = None
         municipality_index = None

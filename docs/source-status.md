@@ -7,9 +7,12 @@ counts, or current-state narrative.
 
 Each source entry records its metadata-evidence state, acquisition state,
 runtime-health state, publication eligibility, supporting evidence, and next
-action. Read the linked country/source record for source facts and the linked
-manifest for row-free run evidence. Those records explain evidence; they do not
-override the readiness fields in the JSON.
+action. `runtime_health: healthy` means the latest measured live refresh,
+private import, and map-feed check succeeded; it is a snapshot only and does
+not imply recurring reliability, a freshness SLA, or a scheduler. Read the
+linked country/source record for source facts and the linked manifest for
+row-free run evidence. Those records explain evidence; they do not override
+the readiness fields in the JSON.
 
 The JSON is not a runtime monitor, release approval, or publication
 authorization. `runtime_health` and `publication_eligibility` remain separate
