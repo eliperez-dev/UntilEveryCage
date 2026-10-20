@@ -229,9 +229,9 @@ test('six contribution task links switch in place with prefilled records and cle
   await switchTask('Bug report');
   await page.getByLabel('What happened?').fill('Synthetic bug draft');
   await page.getByLabel('Steps to reproduce').fill('Switch a synthetic form.');
-  await page.getByRole('button', { name: 'Prepare email' }).click();
-  await expect(page.getByRole('link', { name: 'Open email draft' })).toBeVisible();
-  expect(communityWrites).toBe(0);
+  await page.getByRole('button', { name: 'Send report', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'Track report', exact: true })).toBeVisible();
+  expect(communityWrites).toBe(1);
   await switchTask('Facility');
   await expect(page.getByLabel('Facility name')).toHaveValue('');
   await page.getByLabel('Facility name').fill('Synthetic selector submission');
@@ -241,8 +241,8 @@ test('six contribution task links switch in place with prefilled records and cle
   await switchTask('Bug report');
   await expect(page.getByRole('link', { name: 'Track submission', exact: true })).toHaveCount(0);
   await expect(page.getByLabel('What happened?')).toHaveValue('');
-  await expect(page.getByRole('link', { name: 'Open email draft' })).toHaveCount(0);
-  expect(communityWrites).toBe(1);
+  await expect(page.getByRole('link', { name: 'Track report', exact: true })).toHaveCount(0);
+  expect(communityWrites).toBe(2);
   expect(page.url()).not.toContain(secret);
   const params = new URLSearchParams(new URL(page.url()).hash.split('?')[1]);
   expect(params.get('map')).toBe('#/map?f1a=field');
