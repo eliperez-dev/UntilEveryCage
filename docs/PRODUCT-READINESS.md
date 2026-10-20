@@ -22,7 +22,7 @@ for implementation claims. A count in this document is an aggregate candidate
 or evidence count, never a count of approved, accurate, operating, or
 publishable facilities unless explicitly labelled that way.
 
-## Current launch decision (2026-10-18)
+## Current launch decision (2026-10-19)
 
 The maintainer approved the corrected **2026-10-18 dataset** for the V2
 website on Render, retaining historical dataset v0 access. Public dataset
@@ -31,31 +31,39 @@ labels now use dates; V2 remains the product name. The corrected scope is
 unmapped records. Its approval, validation and local activation are complete.
 The selected-column package passed an isolated restore and production-mode API
 acceptance on the existing Render instance. Render deploy
-`dep-dbarb9bbc2fs73cgc6r0` is live on commit `dbca4f57`; hosted API acceptance
+`dep-dbbdace7bikc7384v4vg` is live on commit `022420aa`; hosted API acceptance
 passed current/history manifests, map counts and categories, list/detail, facets,
 CSV, ETag revalidation and four private-route exclusions. A real-data hosted
 Chromium test passed cold/warm pin opening, detail closing, navigation, date
-labels and browser caching in sixteen seconds, with no skips or page errors.
+labels and browser caching in twenty-one seconds, with no skips or page errors.
 All seven CI jobs passed for the deployed commit. The original serving database
 is retained for rollback; no extra paid Render instance was added. The temporary
 loopback test API and browser were stopped, and the existing preview is preserved.
-The final visual/interaction review and production contribution intake remain
-open; this is not domain-cutover approval.
+The final maintainer visual/interaction review remains open; this is not
+domain-cutover approval.
 New countries and four-mode 2D/3D map work are deferred until after launch.
 
-**Active repair sprint (maintainer approval, 2026-10-19):** two Terra lanes
-cover production contribution intake and the compact research-workbench UI.
-All five intake types must pass hosted submission, tracking and private
-maintainer-review tests without changing curated release data. The separate
-intake role has been created on the existing Render database and passed TLS
-login and least-privilege checks; its controls are retained encrypted locally.
-Both lanes are integrated locally. All five forms passed submission and tracking
-against the Render database through the production-mode test server, with
-test submissions removed afterward. Release integrity and pagination checks
-passed without changing the curated dataset. Render configuration, exact-head
-CI, hosted interaction checks and cleanup are still pending. The UI scope includes resizable/draggable
-Facility details, concise copy, a darker header and the selected-only
-500-metre-diameter approximate-location area. See
+**Completed repair sprint (maintainer approval, 2026-10-19):** both Terra lanes
+are integrated on `eli/v2` and deployed. All seven CI jobs passed for the
+deployed commit. All five hosted forms (facility, evidence, correction,
+duplicate and privacy/removal) passed submission and tracking in Chromium.
+The hosted API separately passed private maintainer review, wrong-secret and
+unauthorized-access checks. Both acceptance runs removed only their own test
+submissions; the curated release remained unchanged. The serving role remains
+read-only; the separate restricted intake role passed TLS and least-privilege
+checks. Runtime capabilities enable the forms without a fixture build flag.
+Contributors receive one private Track submission link instead of two receipt
+fields. This does not add accounts or automatic email updates.
+
+Release integrity, historical corrections, CSV, filters and pagination passed
+on the hosted service. The compact workbench includes resizable/draggable
+Facility details, concise copy, a darker header and a selected-only geographic
+500-metre-diameter approximate-location area, not an accuracy measurement.
+Temporary test services and the managed UI worktree were removed; sprint
+branches were merged and deleted, and the existing local preview was preserved.
+Retention is opportunistic during intake plus an authenticated manual
+maintenance endpoint; no unattended maintenance schedule is installed. The
+optional broad production expiry sweep was not run. See
 [approved frontend decisions](frontend/approval-decisions.md#production-research-workbench-and-contribution-repair).
 No custom-domain or legacy-hosting cutover is authorized by this sprint.
 
