@@ -81,4 +81,4 @@ export type LocationSourceFacts = Readonly<{
   nativeActivityLabel?: string;
 }>;
 import type { TaxonomyClassification } from './taxonomy';
-export type Location = Readonly<{id:LocationId,name:string,region:string,category:string,lat:number|null,lon:number|null,observed:string,source:string,sourceId?:string,taxonomy?:TaxonomyClassification,evidence?:LocationEvidence,sourceFacts?:LocationSourceFacts}>;
+export type Location = Readonly<{id:LocationId,name:string,region:string,countryCode?:string,category:string,lat:number|null,lon:number|null,observed:string,source:string,sourceId?:string,taxonomy?:TaxonomyClassification,evidence?:LocationEvidence,sourceFacts?:LocationSourceFacts}>;

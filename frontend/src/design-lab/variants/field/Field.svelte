@@ -15,6 +15,7 @@
   import PreviewMasthead from "../../../app/PreviewMasthead.svelte";
   import type { PlaceSuggestion } from "../../../features/placeSearch/placeSearch";
   import { publicReleaseLabel } from "../../../features/locations/releasePresentation";
+  import { CATEGORY_PRESENTATIONS } from "../../../features/locations/categoryPresentation";
   let {
     state,
     records,
@@ -474,13 +475,14 @@
           <details class="filters">
             <summary>Filters {#if active}<b>{active}</b>{/if}</summary>
             <div class="filter-sheet">
-              {#if mode === "candidate-preview"}
+              {#if mode === "candidate-preview" || mode === "public-release"}
                 {#if facetsStatus === "loading"}<small>Loading filters…</small>
                 {:else if facetsStatus === "error" || facetsStatus === "unauthorized"}<small role="alert">Filters are unavailable. Search remains available.</small>
                 {:else if candidateFacets}
                   <fieldset><legend>Country</legend>{#each candidateFacets.countries as facet (facet.value)}<label><input type="checkbox" checked={state.filters.countries.includes(facet.value)} onchange={(event) => toggleCandidateFilter('countries', facet.value, event.currentTarget.checked)} />{facet.label ?? facet.value} ({facet.count})</label>{/each}</fieldset>
                   <fieldset><legend>Source</legend>{#each candidateFacets.sources as facet (facet.value)}<label><input type="checkbox" checked={state.filters.sources.includes(facet.value)} onchange={(event) => toggleCandidateFilter('sources', facet.value, event.currentTarget.checked)} />{facet.label ?? facet.value} ({facet.count})</label>{/each}</fieldset>
-                  <fieldset><legend>Activity category</legend>{#each candidateFacets.categories as facet (facet.value)}<label><input type="checkbox" checked={state.filters.categories.includes(facet.value)} onchange={(event) => toggleCandidateFilter('categories', facet.value, event.currentTarget.checked)} />{facet.label ?? facet.value} ({facet.count})</label>{/each}</fieldset>
+                  {#if mode === "public-release"}<fieldset><legend>Activity category</legend>{#each Object.entries(CATEGORY_PRESENTATIONS).filter(([key]) => key !== 'unclassified') as [key, presentation]}<label><input type="checkbox" checked={state.filters.categories.includes(key)} onchange={(event) => toggleCandidateFilter('categories', key, event.currentTarget.checked)} />{presentation.label}</label>{/each}</fieldset>
+                  {:else}<fieldset><legend>Activity category</legend>{#each candidateFacets.categories as facet (facet.value)}<label><input type="checkbox" checked={state.filters.categories.includes(facet.value)} onchange={(event) => toggleCandidateFilter('categories', facet.value, event.currentTarget.checked)} />{facet.label ?? facet.value} ({facet.count})</label>{/each}</fieldset>{/if}
                   {#if candidateFacets.activities.length}<fieldset><legend>Activity</legend>{#each candidateFacets.activities as facet (facet.value)}<label><input type="checkbox" checked={state.filters.activities.includes(facet.value)} onchange={(event) => toggleCandidateFilter('activities', facet.value, event.currentTarget.checked)} />{facet.label ?? facet.value} ({facet.count})</label>{/each}</fieldset>{/if}
                 {/if}
               {:else if mode === "real-preview"}
@@ -515,7 +517,7 @@
             </ol>
           </section>
         {/if}
-        <div class="results-heading"><strong>{aggregateOpen ? "Members" : "Facility records"}</strong><span>{aggregateOpen ? `${resultCount} loaded` : mode === "candidate-preview" && candidateTotalCount !== null ? `${candidateTotalCount} matching · ${resultCount} shown` : `${resultCount} loaded`}</span></div>
+        <div class="results-heading"><strong>{aggregateOpen ? "Members" : "Facility records"}</strong><span>{aggregateOpen ? `${resultCount} loaded` : (mode === "candidate-preview" || mode === "public-release") && candidateTotalCount !== null ? `${candidateTotalCount} matching · ${resultCount} shown` : `${resultCount} loaded`}</span></div>
         {#if aggregateOpen}<div class="member-context">
             <strong>{aggregateContext.place}</strong><span
               >{aggregateContext.treatment}</span
@@ -535,7 +537,7 @@
             disabled={pageLoading}
             style="width:calc(100% - 1rem);min-height:2.2rem;margin:.35rem .5rem .5rem;border:1px solid #69716a;color:#f1efe8;background:#171a18;font:.72rem system-ui;cursor:pointer"
             onclick={() => onLoadMore?.()}
-            >{pageLoading ? "Loading…" : mode === "candidate-preview" && candidateTotalCount !== null ? `Load more (${resultCount} of ${candidateTotalCount})` : "Load more records"}</button
+            >{pageLoading ? "Loading…" : (mode === "candidate-preview" || mode === "public-release") && candidateTotalCount !== null ? `Load more (${resultCount} of ${candidateTotalCount})` : "Load more records"}</button
           >{:else if mode === "real-preview" && aggregateOpen && aggregateNextCursor}<button
             type="button"
             disabled={aggregateLoading}

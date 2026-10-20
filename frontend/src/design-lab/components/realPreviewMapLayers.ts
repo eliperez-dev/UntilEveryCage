@@ -53,7 +53,7 @@ const categoryColorBySourceKey = ['match', ['get', 'category_key'], ...categoryP
 const v1PinByPrimary = {
   animal_keeping_and_production: 'v1-pin-green',
   slaughter: 'v1-pin-red',
-  processing_and_preparation: 'v1-pin-yellow',
+  processing_and_preparation: 'v1-pin-grey',
   research_and_animal_use: 'v1-pin-violet',
   other_regulated_premises: 'v1-pin-orange',
   unclassified: 'v1-pin-grey',

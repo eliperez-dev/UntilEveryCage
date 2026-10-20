@@ -24,6 +24,18 @@ it('returns all additive taxonomy leaf assignments and provenance in authorized 
   });
 });
 
+it('accepts empty source flags and retains facts without an alternate name', async () => {
+  const data = { ...row, species_slaughtered: {}, processing_activities: { meat_processing: true }, establishment_number: 'TEST-1' };
+  const result = await new LocalLocationRepository(vi.fn().mockResolvedValue(new Response(JSON.stringify(body(data))))).detail(row.facility_id);
+  expect(result.location.sourceFacts).toMatchObject({ speciesSlaughtered: {}, processingActivities: { meat_processing: true }, establishmentNumber: 'TEST-1' });
+});
+
+it('retains a large valid source flag set instead of rejecting the entire facility', async () => {
+  const flags = Object.fromEntries(Array.from({ length: 80 }, (_, index) => [`synthetic_species_${index}`, true]));
+  const result = await new LocalLocationRepository(vi.fn().mockResolvedValue(new Response(JSON.stringify(body({ ...row, species_slaughtered: flags }))))).detail(row.facility_id);
+  expect(Object.keys(result.location.sourceFacts?.speciesSlaughtered ?? {})).toHaveLength(80);
+});
+
 describe('community detail safety', () => {
   const community = { ...row, source_type: 'user_submitted', publication_profile: 'community', factual_review_status: 'unreviewed', project_approval: 'pending', publication_warning: 'Unreviewed community claim — not verified by Until Every Cage' };
   it('accepts an eligible unreviewed community direct link with evidence context', async () => {

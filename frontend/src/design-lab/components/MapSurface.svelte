@@ -664,10 +664,14 @@
       Dairy: "animal_keeping_and_production", Aquaculture: "animal_keeping_and_production",
       Processing: "processing_and_preparation", Laboratory: "research_and_animal_use",
     };
-    return [...new Set(mapState.filters.categories.map(value => keys[value]).filter((value): value is string => !!value))];
+    return [...new Set(mapState.filters.categories.map(value => keys[value] ?? value))];
   }
   function filteredNativeCollection(collection: JsonMapCollection): JsonMapCollection {
     const sourceIds = [...new Set([...(mapState.sourceId ? [mapState.sourceId] : []), ...mapState.filters.sources])];
+    if (mode === 'public-release') {
+      const filtered = filterTestReleaseMapCollection(collection, { sourceIds, countryCodes: mapState.filters.countries, categoryKeys: publicCategoryFilterKeys() });
+      return { ...filtered, features: filtered.features.filter(feature => !mapState.filters.precisions.length || mapState.filters.precisions.includes(feature.properties.precision as any)) };
+    }
     if (mode !== 'candidate-preview') return sourceIds.length
       ? { ...collection, features: collection.features.filter(feature => feature.properties.source_id === sourceIds[0]) }
       : collection;

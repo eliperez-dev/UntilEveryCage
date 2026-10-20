@@ -2,9 +2,9 @@ import { z } from 'zod';
 import type { FetchLike, LocalProfile } from './LocalLocationRepository';
 import type { ApiError } from './errors';
 
-const facet = z.object({ value: z.string(), count: z.number().int().nonnegative() });
+const facet = z.object({ value: z.string(), count: z.number().int().nonnegative(), label: z.string().optional() });
 const responseSchema = z.object({ api_version: z.literal('v2'), meta: z.object({ profile: z.enum(['official', 'secondary', 'community']), release_id: z.string(), ruleset_version: z.string(), release_created_at: z.string(), coverage_scope: z.string().min(1), count_semantics: z.string().min(1), filters: z.object({ country_code: z.string().nullable().optional(), region: z.string().nullable().optional(), category: z.string().nullable().optional(), source_type: z.string().nullable().optional(), display_precision: z.string().nullable().optional(), lifecycle_status: z.string().nullable().optional() }) }), dimensions: z.record(z.string(), z.array(facet)) });
-export type Facet = Readonly<{ value: string; count: number }>;
+export type Facet = Readonly<{ value: string; count: number; label?: string | undefined }>;
 export type FacetResponse = Readonly<{ profile: LocalProfile; releaseId: string; ruleset: string; coverageScope: string; countSemantics: string; dimensions: Readonly<Record<string, readonly Facet[]>> }>;
 const fail = (kind: ApiError['kind'], message: string): ApiError => Object.assign(new Error(message), { kind });
 export type FacetFilters = Readonly<{ country_code?: string | undefined; region?: string | undefined; category?: string | undefined; source_type?: string | undefined; display_precision?: string | undefined; lifecycle_status?: string | undefined }>;
@@ -17,7 +17,7 @@ const normalizedFilter = (value: string | null | undefined): string | null => {
 export class FacetsRepository {
   constructor(private readonly fetcher: FetchLike = globalThis.fetch, private readonly baseUrl = '') {}
   async get(profile: LocalProfile, filters: FacetFilters, expected: { releaseId: string; ruleset: string }, signal?: AbortSignal): Promise<FacetResponse> {
-    const params = new URLSearchParams({ profile });
+    const params = new URLSearchParams({ profile, release_id: expected.releaseId });
     for (const [key, value] of Object.entries(filters)) if (value) params.set(key, value);
     let response: Response;
     try { const init: RequestInit = { cache: 'no-store' }; if (signal) init.signal = signal; response = await this.fetcher.call(globalThis, `${this.baseUrl}/api/v2/discovery/facets?${params}`, init); }

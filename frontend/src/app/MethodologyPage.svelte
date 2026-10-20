@@ -8,24 +8,24 @@
 <PreviewMasthead current="about" mapHref={returnMapHref} {databaseHref} />
 <main id="main-content" class="methodology">
   <h1>Sources & Methodology</h1>
-  <p>The map is an evidence index, not a complete census. Coverage depends on the sources and records in the selected release.</p>
+  <p>Coverage depends on the sources and records in the selected release. The map is an evidence index, not a complete census.</p>
   <section aria-labelledby="sources-heading">
     <h2 id="sources-heading">Sources and releases</h2>
-    <p>Each record shows its source, dates, and available evidence. Project classifications and inferred connections are labeled separately from source statements.</p>
-    <p>Community submissions are separate from published records until they are reviewed and approved.</p>
+    <p>Each record starts with a source observation. Record details show its origin, dates, and available evidence. Project classifications and inferred connections remain separate from original source statements.</p>
+    <p>Factual review, privacy screening, project approval, and publication are separate decisions. Community submissions stay outside curated totals and carry their own review labels.</p>
   </section>
   <section aria-labelledby="precision-heading">
     <h2 id="precision-heading">Location precision</h2>
     <dl>
-      <div><dt>Facility point</dt><dd>A published coordinate associated with a record. Its source and precision still matter.</dd></div>
-      <div><dt>Locality reference</dt><dd>A centroid is not a facility point. City, commune, municipality, or postal references are approximate. Map circles are visual aids, not measured boundaries.</dd></div>
+      <div><dt>Facility point</dt><dd>A published coordinate associated with a record; its source and precision still matter.</dd></div>
+      <div><dt>Locality reference</dt><dd>A centroid is not a facility point. City, commune, municipality, or postal references are approximate; map halos are visual aids, not measured boundaries.</dd></div>
       <div><dt>Without a point</dt><dd>Records without publishable coordinates remain searchable. We do not guess a location.</dd></div>
     </dl>
     <p>Maps use OpenStreetMap tiles; viewing a map contacts the tile provider. Placing a pin supplies the chosen location directly.</p>
   </section>
   <section aria-labelledby="limits-heading">
     <h2 id="limits-heading">Limits</h2>
-    <p>Sources differ in scope, age, and quality. Inclusion does not establish current operation, an exact address, ownership, supply-chain activity, or wrongdoing. Absence does not prove that no facility exists.</p>
+    <p>Sources differ in scope, age, and quality. Inclusion does not establish current operation, an exact operating address, ownership, supply-chain activity, or wrongdoing. Absence does not prove that no facility exists.</p>
     <p>Source-supported and inferred connections are labeled separately. An inference is a lead for investigation, not proof of identity or ownership.</p>
   </section>
   <section aria-labelledby="corrections-heading">

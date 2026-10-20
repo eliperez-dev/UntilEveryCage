@@ -56,8 +56,10 @@ class PublicV0IntegrationAcceptance(unittest.TestCase):
 
         features = []
         for row in compact["features"]:
-            self.assertEqual(len(row), 7)
-            facility_id, longitude, latitude, source_index, category_index, category_indexes, precision_index = row
+            self.assertIn(len(row), (7, 8))
+            facility_id, longitude, latitude, source_index, category_index, category_indexes, precision_index = row[:7]
+            if len(row) == 8:
+                self.assertRegex(row[7], r"^[A-Z]{2}$")
             self.assertIsInstance(facility_id, str)
             self.assertIsInstance(category_indexes, list)
             self.assertIsInstance(source_index, int)

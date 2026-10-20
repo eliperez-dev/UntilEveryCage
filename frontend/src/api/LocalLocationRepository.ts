@@ -5,7 +5,7 @@ import { isTaxonomyPrimaryKey, TAXONOMY_PRIMARY_KEYS, TAXONOMY_VERSION, type Tax
 
 export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 export type LocalProfile = 'official' | 'secondary' | 'community';
-export type LocationFilters = Readonly<{ q?: string | undefined; country_code?: string | undefined; region?: string | undefined; category?: string | undefined; category_keys?: readonly TaxonomyPrimaryKey[] | undefined; source_type?: string | undefined; precision?: string | undefined; display_precision?: string | undefined; lifecycle_status?: string | undefined; min_lon?: number | undefined; min_lat?: number | undefined; max_lon?: number | undefined; max_lat?: number | undefined; latitude?: number | undefined; longitude?: number | undefined; radius_km?: number | undefined; cursor?: string | undefined; offset?: number | undefined; limit?: number | undefined }>;
+export type LocationFilters = Readonly<{ q?: string | undefined; country_code?: string | undefined; source_id?: string | undefined; region?: string | undefined; category?: string | undefined; category_keys?: readonly TaxonomyPrimaryKey[] | undefined; source_type?: string | undefined; precision?: string | undefined; display_precision?: string | undefined; lifecycle_status?: string | undefined; min_lon?: number | undefined; min_lat?: number | undefined; max_lon?: number | undefined; max_lat?: number | undefined; latitude?: number | undefined; longitude?: number | undefined; radius_km?: number | undefined; cursor?: string | undefined; offset?: number | undefined; limit?: number | undefined }>;
 export type LocalListResult = Readonly<{ locations: readonly Location[]; releaseId: string; profile: LocalProfile; coverageNote: string; coverageScope?: string; countSemantics?: string; nextCursor: string | null; totalCount?: number; ruleset?: string }>;
 export const localOrigin = (value: string | undefined): string | undefined => { if (!value) return undefined; const url = new URL(value); if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost', '::1'].includes(url.hostname)) throw new Error('Local API origin must be loopback HTTP.'); return url.origin; };
 const fail = (kind: ApiError['kind'], message: string, status?: number, code?: string): ApiError => Object.assign(new Error(message), { kind, ...(status === undefined ? {} : { status }), ...(code ? { code } : {}) });
@@ -25,42 +25,43 @@ export const mapWireLocation = (r: WireLocation | WireDetailLocation): Location 
     ? r.taxonomy_display_category
     : r.taxonomy_display_category !== undefined ? 'unclassified'
       : primaryCategories.length === 1 ? primaryCategories[0]! : 'unclassified';
-  const sourceFacts = 'alternate_names' in r ? {
-    ...(r.alternate_names ? { alternateNames: r.alternate_names } : {}),
-    ...(r.species_slaughtered ? { speciesSlaughtered: r.species_slaughtered } : {}),
-    ...(r.processing_activities ? { processingActivities: r.processing_activities } : {}),
-    ...(r.source_volume_categories ? { sourceVolumeCategories: r.source_volume_categories.map(category => ({
+  const native = r as Partial<WireDetailLocation>;
+  const sourceFacts = {
+    ...(native.alternate_names ? { alternateNames: native.alternate_names } : {}),
+    ...(native.species_slaughtered ? { speciesSlaughtered: native.species_slaughtered } : {}),
+    ...(native.processing_activities ? { processingActivities: native.processing_activities } : {}),
+    ...(native.source_volume_categories ? { sourceVolumeCategories: native.source_volume_categories.map(category => ({
       code: category.code,
       ...(category.provenance === undefined ? {} : { provenance: typeof category.provenance === 'string'
         ? category.provenance
         : { ...(category.provenance.source_field ? { sourceField: category.provenance.source_field } : {}), ...(category.provenance.method ? { method: category.provenance.method } : {}) } }),
     })) } : {}),
-    ...(r.derived_source_volume_ranges ? { derivedSourceVolumeRanges: r.derived_source_volume_ranges.map(range => ({
+    ...(native.derived_source_volume_ranges ? { derivedSourceVolumeRanges: native.derived_source_volume_ranges.map(range => ({
       ordinalCode: range.ordinal_code, lower: range.lower, upper: range.upper, bounds: range.bounds,
       unit: range.unit, period: range.period, methodVersion: range.method_version,
       sourceCodebookUrl: range.source_codebook_url, verificationState: range.verification_state,
     })) } : {}),
-    ...(r.aphis_annual_reports ? { aphisAnnualReports: r.aphis_annual_reports.map(report => ({
+    ...(native.aphis_annual_reports ? { aphisAnnualReports: native.aphis_annual_reports.map(report => ({
       fiscalYear: report.fiscal_year, speciesCounts: report.species_counts.map(species => ({ species: species.species, count: species.count })),
       sourceUrl: report.source_url, safeProvenance: { sourceId: report.safe_provenance.source_id, evidenceType: report.safe_provenance.evidence_type,
         matchMethod: report.safe_provenance.match_method, matchedIdentifierTypes: report.safe_provenance.matched_identifier_types,
         ...(report.safe_provenance.identifier_alias_mapping ? { identifierAliasMapping: report.safe_provenance.identifier_alias_mapping } : {}) },
     })) } : {}),
-    ...(r.aphis_dated_inspections ? { aphisDatedInspections: r.aphis_dated_inspections.map(inspection => ({
+    ...(native.aphis_dated_inspections ? { aphisDatedInspections: native.aphis_dated_inspections.map(inspection => ({
       inspectionDate: inspection.inspection_date, sourceUrl: inspection.source_url,
       safeProvenance: { sourceId: inspection.safe_provenance.source_id, evidenceType: inspection.safe_provenance.evidence_type,
         matchMethod: inspection.safe_provenance.match_method, matchedIdentifierTypes: inspection.safe_provenance.matched_identifier_types,
         ...(inspection.safe_provenance.identifier_alias_mapping ? { identifierAliasMapping: inspection.safe_provenance.identifier_alias_mapping } : {}) },
     })) } : {}),
-    ...(r.establishment_id ? { establishmentId: r.establishment_id } : {}),
-    ...(r.establishment_number ? { establishmentNumber: r.establishment_number } : {}),
-    ...(r.grant_date ? { grantDate: r.grant_date } : {}),
-    ...(r.native_activity_code ? { nativeActivityCode: r.native_activity_code } : {}),
-    ...(r.native_activity_label ? { nativeActivityLabel: r.native_activity_label } : {}),
-  } : undefined;
+    ...(native.establishment_id ? { establishmentId: native.establishment_id } : {}),
+    ...(native.establishment_number ? { establishmentNumber: native.establishment_number } : {}),
+    ...(native.grant_date ? { grantDate: native.grant_date } : {}),
+    ...(native.native_activity_code ? { nativeActivityCode: native.native_activity_code } : {}),
+    ...(native.native_activity_label ? { nativeActivityLabel: native.native_activity_label } : {}),
+  };
   return {
   id: r.facility_id, name: r.canonical_name ?? 'Name not provided', region: r.city ?? r.country_code, category: r.category,
-  sourceId: r.provenance_source_id,
+  sourceId: r.provenance_source_id, countryCode: r.country_code,
   taxonomy: {
     displayCategory: category as TaxonomyPrimaryKey,
     primaryCategories,

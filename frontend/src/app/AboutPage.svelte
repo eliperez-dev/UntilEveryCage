@@ -5,8 +5,8 @@
 <svelte:head><title>Overview · Until Every Cage</title></svelte:head>
 <section class="about-page" aria-label="About Until Every Cage">
   <h1>Overview</h1>
-  <p>Until Every Cage is an evidence index for animal agriculture facilities and related records.</p>
-  <p>Use the map to explore places and the database to compare records. Sources, dates, and location precision remain visible so gaps and uncertainty are clear.</p>
+  <p><strong>Make the hidden visible.</strong> What is hidden is easier to ignore. We expose the places and systems behind animal exploitation so people can investigate, understand, and act.</p>
+  <p>We stand for animal liberation and open research. Our sources remain inspectable, our interpretations stay distinct from their evidence, and gaps stay visible.</p>
   <p>The code is open source. Help with code, design, tests, or data adapters: <a href="https://github.com/eliperez-dev/UntilEveryCage" target="_blank" rel="noreferrer">Contribute code on GitHub</a>.</p>
   <p class="manifesto-close">Until every cage is empty.</p>
   <p><a href={`#/about/sources${context}`}>Sources & methodology</a></p>

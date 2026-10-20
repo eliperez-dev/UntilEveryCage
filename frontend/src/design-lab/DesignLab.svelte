@@ -6,6 +6,8 @@
   import { createLabViewModel } from './viewModel';
   import { createRealPreviewRepository, mapRealPreviewCandidate, RealPreviewError, type RealPreviewCounts, type RealPreviewFacet } from '../api/RealPreviewRepository';
   import { LocalLocationRepository } from '../api/LocalLocationRepository';
+  import { FacetsRepository } from '../api/FacetsRepository';
+  import { isTaxonomyPrimaryKey } from '../domain/taxonomy';
   import { PublicReleaseRepository, type PublicReleaseIdentity } from '../api/PublicReleaseRepository';
   import { TestReleaseRepository, type CandidateFacets } from '../api/TestReleaseRepository';
   import { TestReleaseDetailRepository } from '../api/TestReleaseDetailRepository';
@@ -30,6 +32,7 @@
   const model = $derived(createLabViewModel(mode === 'synthetic' ? syntheticRecords : [], labState));
   const repository = createRealPreviewRepository();
   const publicLocationRepository = new LocalLocationRepository();
+  const publicFacetsRepository = new FacetsRepository();
   const publicReleaseRepository = new PublicReleaseRepository();
   const releaseFromHash = () => {
     const value = new URLSearchParams(location.hash.split('?')[1] ?? '').get('release_id');
@@ -62,7 +65,7 @@
       id: location.id,
       name: location.name,
       category: CATEGORY_PRESENTATIONS[location.taxonomy?.displayCategory ?? 'unclassified'].label,
-      country: location.region,
+      country: location.countryCode ?? location.region,
       locality: location.region,
       precision,
       latitude: location.lat,
@@ -97,6 +100,28 @@
   let detailStatus = $state<'loading' | 'ready' | 'error' | 'unauthorized'>('ready');
   let detailError = $state('');
   let listAbort: AbortController | undefined;
+  let publicFacetAbort: AbortController | undefined;
+  let publicFacetRelease: string | null = null;
+  async function loadPublicFacets(releaseId: string, ruleset: string) {
+    publicFacetAbort?.abort();
+    const controller = new AbortController();
+    publicFacetAbort = controller;
+    publicFacetRelease = releaseId;
+    facetsStatus = 'loading';
+    try {
+      const response = await publicFacetsRepository.get('official', {}, { releaseId, ruleset }, controller.signal);
+      if (controller.signal.aborted || $publicReleaseId !== releaseId) return;
+      const countries = new Intl.DisplayNames(['en'], { type: 'region' });
+      candidateFacets = {
+        countries: (response.dimensions.country_code ?? []).map(facet => ({ ...facet, label: countries.of(facet.value) ?? facet.value })),
+        sources: (response.dimensions.source_id ?? []).map(facet => ({ ...facet, label: facet.label ?? facet.value })),
+        categories: [], activities: [],
+      };
+      facetsStatus = 'ready';
+    } catch {
+      if (!controller.signal.aborted) { facetsStatus = 'error'; publicFacetRelease = null; }
+    }
+  }
   let sourceMaterializeMs = $state<number | null>(null); let clusterReadyMs = $state<number | null>(null); let zoomSettleMs = $state<number | null>(null);
   let detailAbort: AbortController | undefined;
   let referenceAbort: AbortController | undefined;
@@ -149,13 +174,15 @@
     try {
       if (mode === 'public-release') {
         if (!$publicReleaseId) return;
-        const categoryKeys = labState.filters.categories.map(value => ({ Poultry: 'animal_keeping_and_production', Pig: 'animal_keeping_and_production', Dairy: 'animal_keeping_and_production', Processing: 'processing_and_preparation', Laboratory: 'research_and_animal_use', Aquaculture: 'animal_keeping_and_production' } as Record<string, string>)[value]).filter((value): value is import('../domain/taxonomy').TaxonomyPrimaryKey => !!value);
-        const page = await publicLocationRepository.list('official', { q: query, category_keys: [...new Set(categoryKeys)], ...(labState.filters.precisions.length ? { precision: labState.filters.precisions.join(',') } : {}), cursor: reset ? undefined : nextCursor ?? undefined, limit: 100 }, controller.signal, $publicReleaseId);
+        const categoryKeys = labState.filters.categories.filter(isTaxonomyPrimaryKey);
+        const sourceIds = [...new Set([...(labState.sourceId ? [labState.sourceId] : []), ...labState.filters.sources])];
+        const page = await publicLocationRepository.list('official', { ...(query.trim() ? { q: query.trim() } : {}), category_keys: categoryKeys, country_code: labState.filters.countries.join(',') || undefined, source_id: sourceIds.join(',') || undefined, display_precision: labState.filters.precisions.join(',') || undefined, cursor: reset ? undefined : nextCursor ?? undefined, limit: 100 }, controller.signal, $publicReleaseId);
         if (controller.signal.aborted) return;
         const mapped = page.locations.map(mapPublicLocation);
         apiRecords = reset ? mapped : [...new Map([...apiRecords, ...mapped].map(record => [record.id, record])).values()];
         nextCursor = page.nextCursor;
         candidateTotalCount = page.totalCount ?? null;
+        if (page.ruleset && publicFacetRelease !== page.releaseId) void loadPublicFacets(page.releaseId, page.ruleset);
         $dataStatus = apiRecords.length ? 'ready' : 'empty';
         return;
       }
@@ -235,8 +262,8 @@
 
 
   let observedSelection: string | null | undefined;
-  $effect(() => { if (mode !== 'synthetic' && observedSelection !== labState.selectedId) {
-    observedSelection = labState.selectedId;
+  $effect(() => { if (mode !== 'synthetic' && (mode !== 'public-release' || !!$publicReleaseId) && observedSelection !== `${mode === 'public-release' ? $publicReleaseId : mode}:${labState.selectedId ?? ''}`) {
+    observedSelection = `${mode === 'public-release' ? $publicReleaseId : mode}:${labState.selectedId ?? ''}`;
     detailAbort?.abort();
     if (!labState.selectedId) { detailRecord = null; detailStatus = 'ready'; detailError = ''; }
     else {
@@ -254,7 +281,7 @@
       }).catch(error => {
         if (!controller.signal.aborted) {
           detailStatus = errorState(error);
-          detailError = error instanceof Error ? error.message : 'The selected record could not be loaded.';
+          detailError = 'This facility could not be loaded. Please try again.';
         }
       });
     }
@@ -337,7 +364,7 @@
       refreshPinnedPublicRelease = undefined;
       const releaseTimer = (summaryAbort as (AbortController & { releaseTimer?: ReturnType<typeof setInterval> }) | undefined)?.releaseTimer;
       if (releaseTimer) clearInterval(releaseTimer);
-      listAbort?.abort(); referenceAbort?.abort(); detailAbort?.abort();
+      listAbort?.abort(); referenceAbort?.abort(); detailAbort?.abort(); publicFacetAbort?.abort();
     };
   });
 </script>

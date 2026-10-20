@@ -2,7 +2,7 @@
 export const CATEGORY_PRESENTATIONS = Object.freeze({
   animal_keeping_and_production: Object.freeze({ label: 'Animal keeping and production', color: '#009E73', shape: 'circle' }),
   slaughter: Object.freeze({ label: 'Slaughter', color: '#D55E00', shape: 'diamond' }),
-  processing_and_preparation: Object.freeze({ label: 'Processing and preparation', color: '#0072B2', shape: 'square' }),
+  processing_and_preparation: Object.freeze({ label: 'Processing and preparation', color: '#999999', shape: 'square' }),
   research_and_animal_use: Object.freeze({ label: 'Research and animal use', color: '#CC79A7', shape: 'hexagon' }),
   other_regulated_premises: Object.freeze({ label: 'Other regulated premises', color: '#E69F00', shape: 'triangle' }),
   unclassified: Object.freeze({ label: 'Unclassified', color: '#B8B8B8', shape: 'outlined-circle' }),

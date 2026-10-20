@@ -43,7 +43,7 @@ const precisions = new Set(['source_reported', 'exact', 'approximate', 'city']);
 const isObject = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 const categoryIcon: Record<string, string> = {
   animal_keeping_and_production: 'v1-pin-green', slaughter: 'v1-pin-red',
-  processing_and_preparation: 'v1-pin-yellow', research_and_animal_use: 'v1-pin-violet',
+  processing_and_preparation: 'v1-pin-grey', research_and_animal_use: 'v1-pin-violet',
   other_regulated_premises: 'v1-pin-orange', unclassified: 'v1-pin-grey',
 };
 
@@ -58,7 +58,7 @@ function expandCompactFeed(data: CompactFeed): Record<string, unknown> {
   if (!Array.isArray(sources) || !Array.isArray(categories) || !Array.isArray(precisions)) throw new PublicMapFeedError('The public map feed returned an invalid compact response.');
   const from = (values: unknown[], index: unknown) => Number.isInteger(index) && Number(index) >= 0 && Number(index) < values.length ? values[Number(index)] : undefined;
   const features = data.features.map(row => {
-    if (!Array.isArray(row) || row.length !== 7) throw new PublicMapFeedError('The public map feed returned an invalid compact feature.');
+    if (!Array.isArray(row) || (row.length !== 7 && row.length !== 8)) throw new PublicMapFeedError('The public map feed returned an invalid compact feature.');
     const [id, longitude, latitude, source, category, categoryKeys, precision] = row;
     const facilityId = id;
     const sourceId = from(sources, source);
@@ -68,6 +68,7 @@ function expandCompactFeed(data: CompactFeed): Record<string, unknown> {
     return { type: 'Feature', id: facilityId, geometry: { type: 'Point', coordinates: [longitude, latitude] }, properties: {
       facility_id: facilityId, source_id: sourceId, category_key: categoryKey,
       category_keys: categoryKeys.map(index => from(categories, index)), precision: precisionValue, weight: 1,
+      ...(row.length === 8 ? { country_code: row[7] } : {}),
     } };
   });
   return { type: 'FeatureCollection', features };
@@ -113,6 +114,7 @@ export function parsePublicMapFeed(payload: unknown, profile: LocalProfile, rele
       properties: {
         id: value.id, key: value.id, facility_id: value.id,
         source_id: props.source_id, kind, precision, weight: 1,
+        ...(typeof props.country_code === 'string' && /^[A-Z]{2}$/.test(props.country_code) ? { country_code: props.country_code } : {}),
         category_key: props.category_key, category_keys: [...new Set(categoryKeys as string[])],
         icon: categoryIcon[props.category_key],
         // Reference circles use a ground-distance paint expression. Supply a
@@ -129,7 +131,7 @@ export function parsePublicMapFeed(payload: unknown, profile: LocalProfile, rele
   } };
 }
 
-const PUBLIC_CACHE_NAME = 'uec-public-map-projection-v1';
+const PUBLIC_CACHE_NAME = 'uec-public-map-projection-v2';
 const PUBLIC_CACHE_MAX_ENTRIES = 3;
 const inFlight = new Map<string, Promise<PublicMapFeed>>();
 const cacheKey = (identity: PublicReleaseIdentity, profile: LocalProfile) => {

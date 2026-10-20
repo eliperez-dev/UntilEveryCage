@@ -474,7 +474,7 @@ pub async fn get_v2_public_map_feed_handler(
         WITH current_facilities AS MATERIALIZED (
           SELECT DISTINCT ON (facility_id)
                  facility_id, observation_id, display_location, display_precision,
-                 provenance_source_id
+                 provenance_source_id, country_code
           FROM {public_read_model}
           WHERE release_id=$1
           ORDER BY facility_id,
@@ -506,7 +506,8 @@ pub async fn get_v2_public_map_feed_handler(
                  ST_Y(current.display_location::geometry) AS latitude, current.display_precision AS precision,
                  current.provenance_source_id AS source_id,
                  COALESCE(taxonomy.display_category, 'unclassified') AS category_key,
-                 COALESCE(taxonomy.primary_categories, ARRAY['unclassified']::text[]) AS category_keys
+                 COALESCE(taxonomy.primary_categories, ARRAY['unclassified']::text[]) AS category_keys,
+                 current.country_code
           FROM current_facilities current
           LEFT JOIN taxonomy ON taxonomy.observation_id=current.observation_id
           WHERE current.display_location IS NOT NULL AND current.display_precision <> 'unmapped'
@@ -516,7 +517,7 @@ pub async fn get_v2_public_map_feed_handler(
         SELECT counts.public_record_count, counts.feature_count,
                bounded_feed.facility_id, bounded_feed.longitude, bounded_feed.latitude,
                bounded_feed.precision, bounded_feed.source_id, bounded_feed.category_key,
-               bounded_feed.category_keys
+               bounded_feed.category_keys, bounded_feed.country_code
         FROM counts LEFT JOIN bounded_feed ON TRUE
         ORDER BY bounded_feed.facility_id
         "#),
@@ -546,6 +547,7 @@ pub async fn get_v2_public_map_feed_handler(
             "properties": {
                 "facility_id": facility_id,
                 "source_id": row.get::<_, String>(6),
+                "country_code": row.get::<_, String>(9),
                 "category_key": category_key,
                 "category_keys": row.get::<_, Vec<String>>(8),
                 "precision": row.get::<_, String>(5),
@@ -588,7 +590,7 @@ pub async fn get_v2_public_map_feed_handler(
             let category = intern(row.get::<_, String>(7), &mut category_keys, &mut category_index);
             let precision = intern(row.get::<_, String>(5), &mut precisions, &mut precision_index);
             let categories = row.get::<_, Vec<String>>(8).into_iter().map(|value| intern(value, &mut category_keys, &mut category_index)).collect::<Vec<_>>();
-            Some(json!([facility_id, row.get::<_, f64>(3), row.get::<_, f64>(4), source, category, categories, precision]))
+            Some(json!([facility_id, row.get::<_, f64>(3), row.get::<_, f64>(4), source, category, categories, precision, row.get::<_, String>(9)]))
         }).collect::<Vec<_>>();
         json!({"format":"compact-v1", "dictionaries":{"source_ids":source_ids,"category_keys":category_keys,"precisions":precisions}, "features":compact_features})
     } else {
@@ -4522,7 +4524,7 @@ pub async fn get_v2_facets_handler(
     } else {
         "uec.public_discovery_api_read_model"
     };
-    let rows = match transaction.query(&format!("SELECT country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city, count(*)::bigint FROM (SELECT DISTINCT ON (facility_id) facility_id, country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city FROM {public_read_model} WHERE release_id=$1 AND ($2::text IS NULL OR country_code=$2) AND ($3::text IS NULL OR classification_category=$3) AND ($4::text IS NULL OR provenance_origin_type=$4) AND ($5::text IS NULL OR display_precision=$5) AND ($6::text IS NULL OR lifecycle_status=$6) AND ($7::text IS NULL OR city=$7) ORDER BY facility_id, observation_id) public_facilities GROUP BY country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city"), &[&release_id, &params.country_code, &params.category, &params.source_type, &params.display_precision, &params.lifecycle_status, &params.region]).await { Ok(rows) => rows, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "facets_query_failed", "public facets unavailable") };
+    let rows = match transaction.query(&format!("SELECT country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city, count(*)::bigint, provenance_source_id, provenance_source_name FROM (SELECT DISTINCT ON (facility_id) facility_id, country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city, provenance_source_id, provenance_source_name FROM {public_read_model} WHERE release_id=$1 AND ($2::text IS NULL OR country_code=$2) AND ($3::text IS NULL OR classification_category=$3) AND ($4::text IS NULL OR provenance_origin_type=$4) AND ($5::text IS NULL OR display_precision=$5) AND ($6::text IS NULL OR lifecycle_status=$6) AND ($7::text IS NULL OR city=$7) ORDER BY facility_id, observation_id) public_facilities GROUP BY country_code, classification_category, display_precision, lifecycle_status, provenance_origin_type, city, provenance_source_id, provenance_source_name"), &[&release_id, &params.country_code, &params.category, &params.source_type, &params.display_precision, &params.lifecycle_status, &params.region]).await { Ok(rows) => rows, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "facets_query_failed", "public facets unavailable") };
     let mut dimensions = serde_json::Map::new();
     for (name, column) in [
         ("country_code", 0),
@@ -4554,6 +4556,13 @@ pub async fn get_v2_facets_handler(
             ),
         );
     }
+    let mut sources = std::collections::BTreeMap::<String, (String, usize)>::new();
+    for row in &rows {
+        let id = row.get::<_, String>(7);
+        let entry = sources.entry(id).or_insert((row.get::<_, String>(8), 0));
+        entry.1 += row.get::<_, i64>(6) as usize;
+    }
+    dimensions.insert("source_id".into(), json!(sources.into_iter().map(|(value, (label, count))| json!({"value":value,"label":label,"count":count})).collect::<Vec<_>>()));
     if transaction.commit().await.is_err() {
         return v2_error(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -4567,6 +4576,8 @@ pub async fn get_v2_facets_handler(
 #[derive(Deserialize)]
 pub struct V2LocationParams {
     pub country_code: Option<String>,
+    /// Comma-separated public provenance source IDs; OR within this dimension.
+    pub source_id: Option<String>,
     pub region: Option<String>,
     pub category: Option<String>,
     /// Comma-separated taxonomy primaries; multiple values use OR semantics.
@@ -4591,8 +4602,8 @@ pub struct V2LocationParams {
 }
 
 /// Query shape for the authenticated, configured candidate release only.
-/// Keeping this distinct prevents private source selectors from becoming an
-/// undocumented public V2 parameter.
+/// Private acquisition/activity filters remain distinct from public provenance
+/// selectors on V2LocationParams.
 #[derive(Deserialize)]
 pub struct DevTestReleaseLocationParams {
     country_code: Option<String>,
@@ -4660,7 +4671,7 @@ pub async fn get_v2_locations_handler(
     if params
         .display_precision
         .as_deref()
-        .is_some_and(|v| !V2_PRECISIONS.contains(&v))
+        .is_some_and(|v| v.split(',').count() > 6 || v.split(',').any(|value| !V2_PRECISIONS.contains(&value)))
     {
         return v2_error(
             StatusCode::BAD_REQUEST,
@@ -4686,7 +4697,7 @@ pub async fn get_v2_locations_handler(
         || params
             .country_code
             .as_deref()
-            .is_some_and(|v| v.len() != 2 || !v.chars().all(|c| c.is_ascii_uppercase()))
+            .is_some_and(|v| v.split(',').count() > 32 || v.split(',').any(|value| value.len() != 2 || !value.chars().all(|c| c.is_ascii_uppercase())))
     {
         return v2_error(
             StatusCode::BAD_REQUEST,
@@ -4704,6 +4715,9 @@ pub async fn get_v2_locations_handler(
             "invalid_source_type",
             "source_type is unsupported",
         );
+    }
+    if params.source_id.as_deref().is_some_and(|value| value.split(',').count() > 32 || value.split(',').any(|id| id.is_empty() || id.len() > 160 || !id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-')))) {
+        return v2_error(StatusCode::BAD_REQUEST, "invalid_source_id", "source_id is invalid");
     }
     let category_keys = match params.category_keys.as_deref() {
         None => None,
@@ -4970,8 +4984,9 @@ pub async fn get_v2_locations_handler(
         SELECT count(DISTINCT history.facility_id)::bigint
         FROM {public_read_model} AS history
         WHERE history.release_id = $1
-          AND ($2::text IS NULL OR history.country_code = $2) AND ($3::text IS NULL OR history.city = $3)
-          AND ($4::text IS NULL OR history.classification_category = $4) AND ($5::text IS NULL OR history.display_precision = $5)
+          AND ($17::text IS NULL OR history.provenance_source_id = ANY(string_to_array($17, ',')))
+          AND ($2::text IS NULL OR history.country_code = ANY(string_to_array($2, ','))) AND ($3::text IS NULL OR history.city = $3)
+          AND ($4::text IS NULL OR history.classification_category = $4) AND ($5::text IS NULL OR history.display_precision = ANY(string_to_array($5, ',')))
           AND ($6::text IS NULL OR history.lifecycle_status = $6) AND ($7::text IS NULL OR history.provenance_origin_type = $7)
           AND $8::text IS NULL
           AND ($9::double precision IS NULL OR (history.display_location && ST_MakeEnvelope($9, $10, $11, $12, 4326)::geography AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($9, $10, $11, $12, 4326))))
@@ -4983,7 +4998,7 @@ pub async fn get_v2_locations_handler(
                 WHERE sets.observation_id=history.observation_id AND sets.taxonomy_version='uec-taxonomy-v1'
                   AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=sets.observation_id AND newer.taxonomy_version=sets.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(sets.created_at,sets.assignment_set_id))
                   AND assignment.primary_key = ANY($16::text[]))
-    "#), &[&promoted_release_id, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &category_keys]).await {
+    "#), &[&promoted_release_id, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &category_keys, &params.source_id]).await {
         Ok(row) => Some(row.get(0)), Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
     }} else { match transaction.query_one(&format!(r#"
         SELECT count(DISTINCT history.facility_id)::bigint
@@ -4991,8 +5006,9 @@ pub async fn get_v2_locations_handler(
         JOIN uec.public_discovery_read_model_rows stored
           ON stored.release_id=history.release_id AND stored.facility_id=history.facility_id AND stored.observation_id=history.observation_id
         WHERE history.release_id = $1
-          AND ($2::text IS NULL OR history.country_code = $2) AND ($3::text IS NULL OR history.city = $3)
-          AND ($4::text IS NULL OR history.classification_category = $4) AND ($5::text IS NULL OR history.display_precision = $5)
+          AND ($17::text IS NULL OR history.provenance_source_id = ANY(string_to_array($17, ',')))
+          AND ($2::text IS NULL OR history.country_code = ANY(string_to_array($2, ','))) AND ($3::text IS NULL OR history.city = $3)
+          AND ($4::text IS NULL OR history.classification_category = $4) AND ($5::text IS NULL OR history.display_precision = ANY(string_to_array($5, ',')))
           AND ($6::text IS NULL OR history.lifecycle_status = $6) AND ($7::text IS NULL OR history.provenance_origin_type = $7)
           AND ($8::text IS NULL OR stored.public_search_text ILIKE '%' || $8 || '%' ESCAPE '\'
                OR (stored.public_search_text = '' AND lower(concat_ws(' ', history.canonical_name, history.city, history.country_code, history.classification_category, history.provenance_source_name)) LIKE '%' || lower($8) || '%' ESCAPE '\')
@@ -5011,7 +5027,7 @@ pub async fn get_v2_locations_handler(
                 WHERE sets.observation_id=history.observation_id AND sets.taxonomy_version='uec-taxonomy-v1'
                   AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=sets.observation_id AND newer.taxonomy_version=sets.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(sets.created_at,sets.assignment_set_id))
                   AND assignment.primary_key = ANY($16::text[]))
-    "#), &[&promoted_release_id, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &category_keys]).await {
+    "#), &[&promoted_release_id, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &category_keys, &params.source_id]).await {
         Ok(row) => Some(row.get(0)), Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
     }};
     let rows = if !taxonomy_filters_requested {
@@ -5025,10 +5041,11 @@ pub async fn get_v2_locations_handler(
           LEFT JOIN uec.public_discovery_read_model_rows indexed
             ON indexed.release_id=history.release_id AND indexed.facility_id=history.facility_id AND indexed.observation_id=history.observation_id
           WHERE history.release_id = $1
-            AND ($2::text IS NULL OR history.country_code = $2)
+          AND ($19::text IS NULL OR history.provenance_source_id = ANY(string_to_array($19, ',')))
+            AND ($2::text IS NULL OR history.country_code = ANY(string_to_array($2, ',')))
             AND ($3::text IS NULL OR history.city = $3)
             AND ($4::text IS NULL OR history.classification_category = $4)
-            AND ($5::text IS NULL OR history.display_precision = $5)
+            AND ($5::text IS NULL OR history.display_precision = ANY(string_to_array($5, ',')))
             AND ($6::text IS NULL OR history.lifecycle_status = $6)
             AND ($7::text IS NULL OR history.provenance_origin_type = $7)
             AND ($8::text IS NULL OR indexed.public_search_text ILIKE '%' || $8 || '%' ESCAPE '\'
@@ -5083,7 +5100,7 @@ pub async fn get_v2_locations_handler(
             AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=s.observation_id AND newer.taxonomy_version=s.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(s.created_at,s.assignment_set_id))
         ) taxonomy ON TRUE
         ORDER BY history.facility_id, history.observation_id
-    "#), &[&promoted_release_id, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &cursor, &query_limit, &effective_offset]).await {
+    "#), &[&promoted_release_id, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &cursor, &query_limit, &effective_offset, &params.source_id]).await {
             Ok(rows) => rows,
             Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
         }
@@ -5116,11 +5133,12 @@ pub async fn get_v2_locations_handler(
           WHERE eligible.release_id=history.release_id AND eligible.facility_id=history.facility_id AND eligible.observation_id=history.observation_id
         ) taxonomy ON TRUE
         WHERE history.release_id = $1
+          AND ($20::text IS NULL OR history.provenance_source_id = ANY(string_to_array($20, ',')))
           AND ($2::uuid IS NULL OR history.facility_id > $2)
-          AND ($3::text IS NULL OR history.country_code = $3)
+          AND ($3::text IS NULL OR history.country_code = ANY(string_to_array($3, ',')))
           AND ($4::text IS NULL OR history.city = $4)
           AND ($5::text IS NULL OR history.classification_category = $5)
-          AND ($6::text IS NULL OR history.display_precision = $6)
+          AND ($6::text IS NULL OR history.display_precision = ANY(string_to_array($6, ',')))
           AND ($7::text IS NULL OR history.lifecycle_status = $7)
           AND ($8::text IS NULL OR history.provenance_origin_type = $8)
           AND ($9::text IS NULL OR stored.public_search_text ILIKE '%' || $9 || '%' ESCAPE '\'
@@ -5141,7 +5159,7 @@ pub async fn get_v2_locations_handler(
                   AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=sets.observation_id AND newer.taxonomy_version=sets.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(sets.created_at,sets.assignment_set_id))
                   AND assignment.primary_key = ANY($19::text[]))
         ORDER BY history.facility_id, history.observation_id LIMIT $17 OFFSET $18
-    "#), &[&promoted_release_id, &cursor, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &query_limit, &effective_offset, &category_keys]).await {
+    "#), &[&promoted_release_id, &cursor, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &query_limit, &effective_offset, &category_keys, &params.source_id]).await {
         Ok(rows) => rows,
         Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
     }};
@@ -6198,6 +6216,20 @@ mod v2_api_tests {
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["error"]["code"], "invalid_category_keys");
         assert_eq!(V2_TAXONOMY_PRIMARY_CATEGORIES.len(), 6);
+    }
+
+    #[tokio::test]
+    async fn public_country_and_source_filters_validate_before_database_access() {
+        let state = ApiState { database: None, community_database: None, dev_preview_token: None, dev_test_release_id: None, dev_test_release_token: None };
+        let app = Router::new().route("/api/v2/locations", axum::routing::get(get_v2_locations_handler)).with_state(state);
+        for query in ["country_code=US,NL&source_id=us.fsis,nl.test", "display_precision=city,approximate"] {
+            let response = app.clone().oneshot(Request::builder().uri(format!("/api/v2/locations?{query}")).body(Body::empty()).unwrap()).await.unwrap();
+            assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        }
+        for query in ["source_id=us.fsis%27", "source_id=", "country_code=US,invalid"] {
+            let response = app.clone().oneshot(Request::builder().uri(format!("/api/v2/locations?{query}")).body(Body::empty()).unwrap()).await.unwrap();
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        }
     }
 
     #[tokio::test]

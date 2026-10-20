@@ -44,7 +44,7 @@ const taxonomyAssignmentSchema = z.object({
 }).strict();
 const sourceFlagValue = z.union([z.string().min(1).max(200), z.boolean()]);
 const sourceFlags = z.record(z.string().min(1).max(120), sourceFlagValue)
-  .refine(value => Object.keys(value).length > 0 && Object.keys(value).length <= 64);
+  .refine(value => Object.keys(value).length <= 256);
 const sourceVolumeProvenance = z.union([
   z.string().min(1).max(160),
   z.object({ source_field: z.string().min(1).max(120).optional(), method: z.string().min(1).max(80).optional() }).strict(),

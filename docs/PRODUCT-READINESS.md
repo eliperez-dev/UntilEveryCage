@@ -47,10 +47,16 @@ New countries and four-mode 2D/3D map work are deferred until after launch.
 frontend is not accepted. The owner requested rollback of the last sprint's
 workbench controls. The map detail layout, database detail layout and table
 are restored locally to checkpoint `5304ac08`, removing the added sizing and
-dragging controls. This does not revert the dataset, query performance work,
+dragging controls. The pre-sprint header and informational-page styling are
+also restored. This does not revert the dataset, query performance work,
 contribution forms or selected-only approximate reference areas. It has not
-been deployed. Public country/source filters and full detail loading remain
-unresolved; the public route uses a different filter panel from private preview.
+yet received owner acceptance. The follow-up repair wires public country/source
+and taxonomy filters to both the list and cached map, retains source facts
+without requiring an alternate name, accepts empty source-flag objects, waits
+for release identity before direct-link detail requests, restores grey processing
+pins, and removes the internal database coverage footer. The real-release
+browser regression checks loaded detail content, filter requests and totals,
+clear filters, full record pages and database country selection.
 Prior panel-opening browser checks did not establish that detail data loaded.
 
 **Integrated repair sprint (not frontend acceptance, 2026-10-19):** both Terra lanes
@@ -67,8 +73,9 @@ fields. This does not add accounts or automatic email updates.
 
 Release integrity, historical corrections, CSV and API pagination passed
 on the hosted service. These checks did not validate the public filter UX.
-The darker header is retained, along with a selected-only geographic
-500-metre-diameter approximate-location area, not an accuracy measurement.
+The selected-only geographic
+500-metre-diameter approximate-location area is retained as a display aid,
+not an accuracy measurement.
 Temporary test services and the managed UI worktree were removed; sprint
 branches were merged and deleted, and the existing local preview was preserved.
 Retention is opportunistic during intake plus an authenticated manual

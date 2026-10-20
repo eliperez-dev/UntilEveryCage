@@ -144,7 +144,7 @@
     min-height: 4rem;
     padding: 0.5rem clamp(1rem, 3vw, 3.2rem);
     border-bottom: 1px solid #3d4740;
-    background: #101211;
+    background: #141916;
     color: #f1efe8;
   }
   .wordmark {

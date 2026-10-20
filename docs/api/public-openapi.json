@@ -48,7 +48,10 @@
             "$ref": "#/components/parameters/release_id"
           },
           {
-            "$ref": "#/components/parameters/country_code"
+            "name": "country_code", "in": "query", "description": "One or more ISO alpha-2 codes, comma-separated (OR).", "schema": {"type": "string", "pattern": "^[A-Z]{2}(,[A-Z]{2})*$"}
+          },
+          {
+            "name": "source_id", "in": "query", "description": "Public source IDs, comma-separated (OR), combined with other dimensions using AND.", "schema": {"type": "string", "maxLength": 5151, "pattern": "^[A-Za-z0-9_.-]+(,[A-Za-z0-9_.-]+)*$"}
           },
           {
             "$ref": "#/components/parameters/region"
@@ -423,7 +426,7 @@
       "get": {
         "operationId": "getDiscoveryFacets",
         "summary": "Count public filter values",
-        "description": "Counts eligible facility projection rows after suppression, not animals or story-wide totals. Latest promoted profile; each dimension is sorted by value and capped at 20. Only documented parameters are applied: q, category_keys, spatial, release_id and pagination are ignored.",
+        "description": "Counts eligible facility projection rows after suppression, not animals or story-wide totals. Selected eligible release/profile. Country and public source facets are computed from the same suppressed public projection. q, category_keys, spatial and pagination are not applied to facets.",
         "tags": [
           "Discovery"
         ],
@@ -826,7 +829,7 @@
                 "type": "array",
                 "items": {
                   "type": "array",
-                  "description": "UUID, longitude, latitude, source index, display-category index, category-index array, precision index. Weight is always one.",
+                  "description": "UUID, longitude, latitude, source index, display-category index, category-index array, precision index, optional ISO country code. Weight is always one.",
                   "prefixItems": [
                     {"type": "string", "format": "uuid"},
                     {"type": "number", "minimum": -180, "maximum": 180},
@@ -834,10 +837,11 @@
                     {"type": "integer", "minimum": 0},
                     {"type": "integer", "minimum": 0},
                     {"type": "array", "items": {"type": "integer", "minimum": 0}},
-                    {"type": "integer", "minimum": 0}
+                    {"type": "integer", "minimum": 0},
+                    {"type": "string", "pattern": "^[A-Z]{2}$"}
                   ],
                   "minItems": 7,
-                  "maxItems": 7
+                  "maxItems": 8
                 }
               }
             },
@@ -879,6 +883,7 @@
                       "properties": {
                         "facility_id": {"type": "string", "format": "uuid"},
                         "source_id": {"type": "string"},
+                        "country_code": {"type": "string", "pattern": "^[A-Z]{2}$"},
                         "category_key": {"enum": ["animal_keeping_and_production", "slaughter", "processing_and_preparation", "research_and_animal_use", "other_regulated_premises", "unclassified"]},
                         "category_keys": {"type": "array", "items": {"enum": ["animal_keeping_and_production", "slaughter", "processing_and_preparation", "research_and_animal_use", "other_regulated_premises", "unclassified"]}},
                         "precision": {"enum": ["exact", "city", "source_reported", "approximate"]},
