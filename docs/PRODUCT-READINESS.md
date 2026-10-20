@@ -43,7 +43,17 @@ The final maintainer visual/interaction review remains open; this is not
 domain-cutover approval.
 New countries and four-mode 2D/3D map work are deferred until after launch.
 
-**Completed repair sprint (maintainer approval, 2026-10-19):** both Terra lanes
+**Owner review rejected the frontend workbench (2026-10-19):** the hosted
+frontend is not accepted. The owner requested rollback of the last sprint's
+workbench controls. The map detail layout, database detail layout and table
+are restored locally to checkpoint `5304ac08`, removing the added sizing and
+dragging controls. This does not revert the dataset, query performance work,
+contribution forms or selected-only approximate reference areas. It has not
+been deployed. Public country/source filters and full detail loading remain
+unresolved; the public route uses a different filter panel from private preview.
+Prior panel-opening browser checks did not establish that detail data loaded.
+
+**Integrated repair sprint (not frontend acceptance, 2026-10-19):** both Terra lanes
 are integrated on `eli/v2` and deployed. All seven CI jobs passed for the
 deployed commit. All five hosted forms (facility, evidence, correction,
 duplicate and privacy/removal) passed submission and tracking in Chromium.
@@ -55,9 +65,9 @@ checks. Runtime capabilities enable the forms without a fixture build flag.
 Contributors receive one private Track submission link instead of two receipt
 fields. This does not add accounts or automatic email updates.
 
-Release integrity, historical corrections, CSV, filters and pagination passed
-on the hosted service. The compact workbench includes resizable/draggable
-Facility details, concise copy, a darker header and a selected-only geographic
+Release integrity, historical corrections, CSV and API pagination passed
+on the hosted service. These checks did not validate the public filter UX.
+The darker header is retained, along with a selected-only geographic
 500-metre-diameter approximate-location area, not an accuracy measurement.
 Temporary test services and the managed UI worktree were removed; sprint
 branches were merged and deleted, and the existing local preview was preserved.

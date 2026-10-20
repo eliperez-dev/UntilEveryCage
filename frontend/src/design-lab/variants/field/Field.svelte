@@ -116,70 +116,6 @@
   );
   const resultCount = $derived(aggregateRecords.length);
   const railWidth = writable(420);
-  // `state` is a component prop, so these must be stores rather than runes.
-  const dossierWidth = writable(360);
-  const dossierCollapsed = writable(false);
-  const dossierOffset = writable({ x: 0, y: 0 });
-  const maxDossierWidth = () => Math.max(280, Math.floor(window.innerWidth * .72));
-  const dossierBounds = (width = $dossierWidth) => ({
-    // The sheet is anchored 1rem from the right edge. These limits preserve an
-    // 8px grab margin and keep its full-height evidence surface on-screen.
-    minX: Math.min(0, -(window.innerWidth - Math.min(width, window.innerWidth - 16) - 24)),
-    maxX: 8,
-    minY: -8,
-    maxY: 8,
-  });
-  function resetDossier() {
-    dossierWidth.set(360);
-    dossierCollapsed.set(false);
-    dossierOffset.set({ x: 0, y: 0 });
-  }
-  function resizeDossier(delta: number) {
-    dossierWidth.update(width => Math.max(280, Math.min(maxDossierWidth(), width + delta)));
-  }
-  function moveDossier(dx: number, dy: number) {
-    const bounds = dossierBounds();
-    dossierOffset.update(offset => ({ x: Math.max(bounds.minX, Math.min(bounds.maxX, offset.x + dx)), y: Math.max(bounds.minY, Math.min(bounds.maxY, offset.y + dy)) }));
-  }
-  function beginDossierResize(event: PointerEvent) {
-    event.preventDefault();
-    event.stopPropagation();
-    const startX = event.clientX;
-    const startWidth = $dossierWidth;
-    const resize = (move: PointerEvent) => dossierWidth.set(Math.max(280, Math.min(maxDossierWidth(), startWidth + startX - move.clientX)));
-    const stop = () => {
-      window.removeEventListener('pointermove', resize);
-      window.removeEventListener('pointerup', stop);
-    };
-    window.addEventListener('pointermove', resize);
-    window.addEventListener('pointerup', stop, { once: true });
-  }
-  function beginDossierDrag(event: PointerEvent) {
-    event.preventDefault();
-    event.stopPropagation();
-    const startX = event.clientX;
-    const startY = event.clientY;
-    const start = $dossierOffset;
-    const drag = (move: PointerEvent) => {
-      const nextX = start.x + move.clientX - startX;
-      const nextY = start.y + move.clientY - startY;
-      const bounds = dossierBounds();
-      dossierOffset.set({ x: Math.max(bounds.minX, Math.min(bounds.maxX, nextX)), y: Math.max(bounds.minY, Math.min(bounds.maxY, nextY)) });
-    };
-    const stop = () => {
-      window.removeEventListener('pointermove', drag);
-      window.removeEventListener('pointerup', stop);
-    };
-    window.addEventListener('pointermove', drag);
-    window.addEventListener('pointerup', stop, { once: true });
-  }
-  function moveDossierKey(event: KeyboardEvent) {
-    const step = event.shiftKey ? 56 : 24;
-    if (event.key === 'ArrowLeft') { event.preventDefault(); moveDossier(-step, 0); }
-    if (event.key === 'ArrowRight') { event.preventDefault(); moveDossier(step, 0); }
-    if (event.key === 'ArrowUp') { event.preventDefault(); moveDossier(0, -step); }
-    if (event.key === 'ArrowDown') { event.preventDefault(); moveDossier(0, step); }
-  }
   function resizeRail(event: PointerEvent) {
     const startX = event.clientX;
     const startWidth = $railWidth;
@@ -624,20 +560,19 @@
         class="reading-sheet dossier"
         role="status"
       >
-        <header class="dossier-header"><span>Facility details</span><button type="button" aria-label="Close record detail" onclick={dismissSelection}>×</button></header>
+        <header class="dossier-header"><span>Record evidence</span><button type="button" aria-label="Close record detail" onclick={dismissSelection}>×</button></header>
         <p class="dossier-message">Loading record evidence…</p>
       </aside>{:else if state.selectedId && mode !== "synthetic" && (detailStatus === "error" || detailStatus === "unauthorized")}<aside
         class="reading-sheet dossier"
         role="alert"
       >
-        <header class="dossier-header"><span>Facility details</span><button type="button" aria-label="Close record detail" onclick={dismissSelection}>×</button></header>
+        <header class="dossier-header"><span>Record evidence</span><button type="button" aria-label="Close record detail" onclick={dismissSelection}>×</button></header>
         <p class="dossier-message">{detailError}</p>
-      </aside>{:else if selected}<aside class="reading-sheet dossier" class:collapsed={$dossierCollapsed} style={`width:min(${$dossierWidth}px,calc(100vw - 1rem));transform:translate(${$dossierOffset.x}px,${$dossierOffset.y}px)`} aria-label="Facility details">
-        <header class="dossier-header"><button type="button" class="dossier-title" aria-label="Drag Facility details or move with arrow keys" onpointerdown={beginDossierDrag} onkeydown={moveDossierKey}>Facility details</button><span class="dossier-controls"><button type="button" onclick={() => dossierCollapsed.update(collapsed => !collapsed)} aria-expanded={!$dossierCollapsed}>{$dossierCollapsed ? 'Expand' : 'Collapse'}</button><button type="button" onclick={resetDossier}>Reset</button><button type="button" onclick={() => resizeDossier(-48)} aria-label="Make Facility details narrower">−</button><button type="button" onclick={() => resizeDossier(48)} aria-label="Make Facility details wider">+</button><button type="button" onkeydown={moveDossierKey} aria-label="Move Facility details with arrow keys">↔</button><button type="button" aria-label="Close record detail" onclick={dismissSelection}>×</button></span></header>
-        <div class="dossier-resize" role="presentation" onpointerdown={beginDossierResize}></div>
-        {#if !dossierCollapsed}{#if aggregateOpen}<button type="button" class="back" onclick={dismissSelection}>← Members</button>{/if}
+      </aside>{:else if selected}<aside class="reading-sheet dossier" aria-label="Record evidence">
+        <header class="dossier-header"><span>Record evidence</span><button type="button" aria-label="Close record detail" onclick={dismissSelection}>×</button></header>
+        {#if aggregateOpen}<button type="button" class="back" onclick={dismissSelection}>← Members</button>{/if}
         <a class="full-record" href={`#/records/${encodeURIComponent(selected.id)}`}>Open full record <span aria-hidden="true">↗</span></a>
-        <RecordDetail record={selected} presentation="rail" publicRelease={mode === "public-release"} />{/if}
+        <RecordDetail record={selected} presentation="rail" publicRelease={mode === "public-release"} />
       </aside>{:else if aggregateOpen}<aside
         class="reading-sheet aggregate-sheet"
         aria-labelledby="aggregate-title"
@@ -985,11 +920,7 @@
     padding: 0;
   }
   .dossier-header { position:sticky; top:0; z-index:2; display:flex; align-items:center; justify-content:space-between; min-height:2.7rem; padding:.3rem .65rem .3rem 1.1rem; border-bottom:1px solid var(--line); background:#171a18; color:#c6cec4; font-size:.68rem; letter-spacing:.04em; }
-  .dossier-header .dossier-title { min-width:0; min-height:2rem; padding:0; border:0; background:transparent; color:inherit; font:inherit; letter-spacing:inherit; text-align:left; cursor:grab; touch-action:none; user-select:none; }
-  .dossier-title:active { cursor:grabbing; }
   .dossier-header button { min-width:2.2rem; min-height:2.2rem; border:1px solid var(--line); color:var(--ink); background:#202421; font-size:1.25rem; cursor:pointer; }
-  .dossier-controls{display:flex;gap:.25rem}.dossier-controls button{font-size:.65rem;padding:.25rem}.dossier.collapsed{align-self:start}
-  .dossier-resize { position:absolute; z-index:3; top:0; bottom:0; left:-.4rem; width:.8rem; cursor:ew-resize; touch-action:none; }
   .dossier-header button:focus-visible, .full-record:focus-visible { outline:2px solid #eee7d6; outline-offset:2px; }
   .dossier-message { margin:1.1rem; }
   .full-record { display:flex; align-items:center; justify-content:space-between; margin:0; padding:.8rem 1.1rem; border-bottom:1px solid var(--line); color:#eee5ce; font-size:.75rem; text-underline-offset:2px; }
@@ -1155,11 +1086,7 @@
     }
     .reading-sheet.dossier {
       padding: 0;
-      transform: none !important;
-      width: auto !important;
     }
-    .dossier-resize { display:none; }
-    .dossier-title { cursor:default; touch-action:auto; }
     .reading-sheet.dossier .back {
       margin-right: 0.4rem;
     }
