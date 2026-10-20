@@ -30,7 +30,13 @@ class NorwayReconMetadataTests(unittest.TestCase):
                 self.assertEqual(capture["input_rows"], 1781)
                 self.assertEqual(capture["normalized_candidates"], 1684)
                 self.assertEqual(capture["quarantined_rows"], 97)
-                self.assertEqual(capture["disposable_database_import"], "pending")
+                self.assertEqual(capture["disposable_database_import"], "verified_once_in_approved_disposable_clone")
+                self.assertEqual(capture["private_database"], "uec_real_preview_test_sources_20261020")
+                self.assertEqual(capture["preview_import_status"], "imported")
+                self.assertEqual(capture["private_preview_candidates"], 1684)
+                self.assertEqual(capture["private_rust_map_feed_candidates"], 1684)
+                self.assertEqual(capture["public_rows"], 0)
+                self.assertTrue(capture["receipt_manifest"].endswith("refresh-ec0cda27754ff947/manifest.json"))
             else:
                 self.assertIn(by_id[source_id]["acquisition"], {"not_run", "blocked"})
 
