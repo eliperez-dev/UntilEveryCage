@@ -12,7 +12,7 @@ class FirstWaveDescriptorTests(unittest.TestCase):
     def test_expected_sources_are_registered(self):
         self.assertEqual(
             {item.source_id for item in FIRST_WAVE},
-            {"dk.smiley", "be.locations", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "fsa_approved_establishments", "fr.dgal.section-i", "fr.dgal.section-ii", "it.853-2004", "it.1069-2009", "es.cat.feed-sandach", "au.npi.facilities", "au.sa.epa.licensed-activities", "br.sif.registered"},
+            {"dk.smiley", "be.locations", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "fsa_approved_establishments", "fr.dgal.section-i", "fr.dgal.section-ii", "fr.georisques.icpe.animal", "it.853-2004", "it.1069-2009", "es.cat.feed-sandach", "au.npi.facilities", "au.sa.epa.licensed-activities", "br.sif.registered"},
         )
 
     def test_fsa_descriptor_version_matches_the_pinned_adapter_contract(self):
@@ -74,14 +74,17 @@ class FirstWaveDescriptorTests(unittest.TestCase):
 
     def test_readiness_report_keeps_live_state_separate(self):
         report = readiness_report()
-        self.assertEqual(len(report), 13)
+        self.assertEqual(len(report), 14)
         italy = next(item for item in report if item["source_id"] == "it.853-2004")
         self.assertEqual(italy["private_pipeline"], "one_action_preview_import_ready")
         ready = {"it.853-2004", "it.1069-2009", "es.cat.feed-sandach", "au.sa.epa.licensed-activities", "au.npi.facilities", "fsa_approved_establishments", "br.sif.registered", "ca.ontario.meat-plants"}
         self.assertTrue(all(item["private_pipeline"] == "one_action_preview_import_ready" for item in report if item["source_id"] in ready))
         self.assertTrue(all(item["private_pipeline"] == "fixture_contract_ready" for item in report if item["source_id"] not in ready))
         self.assertTrue(all(item["publication"] == "human_gate_required" for item in report))
-        self.assertTrue({item["live_acquisition"] for item in report} <= {"verified", "bounded_private_fetch"})
+        self.assertTrue({item["live_acquisition"] for item in report} <= {"verified", "bounded_private_fetch", "terms-gated-bounded-private-fetch"})
+        icpe = next(item for item in report if item["source_id"] == "fr.georisques.icpe.animal")
+        self.assertEqual(icpe["operational_classification"], "terms-blocked")
+        self.assertTrue(icpe["live_callable"])
 
 
 if __name__ == "__main__":

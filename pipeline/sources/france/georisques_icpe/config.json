@@ -1,0 +1,45 @@
+{
+  "source_id": "fr.georisques.icpe.animal",
+  "source_url": "https://www.georisques.gouv.fr/api/v1/installations_classees",
+  "adapter_version": "fr-georisques-icpe-animal-v1",
+  "schema_version": "georisques-installations-classees-v1-pages-v1",
+  "config_version": "animal-rubric-allowlist-v1",
+  "terms_status": "pending_confirmation",
+  "terms_reference": "https://www.georisques.gouv.fr/cgu",
+  "coverage": "France ICPE observations carrying at least one explicitly allowed animal-agriculture, animal-holding, aquaculture, slaughter, dairy, or animal-origin food rubric; not a complete facility register and not proof of current animal use.",
+  "page_size": 100,
+  "max_pages": 500,
+  "max_records": 50000,
+  "max_page_bytes": 8388608,
+  "minimum_delay_seconds": 1.0,
+  "geocoding": "disabled",
+  "animal_rubrics": [
+    "2101", "2102", "2110", "2111", "2112", "2113", "2120", "2130", "2140", "2150",
+    "2210", "2221", "2230", "3641", "3660"
+  ],
+  "animal_rubric_descriptions": {
+    "2101": "cattle holdings",
+    "2102": "pig holdings",
+    "2110": "rabbit holdings",
+    "2111": "poultry and game-bird holdings",
+    "2112": "hatcheries",
+    "2113": "fur-animal holdings",
+    "2120": "dog holdings",
+    "2130": "fish farms",
+    "2140": "captive wild-animal displays",
+    "2150": "insect farming",
+    "2210": "animal slaughter below/other than 3641 scope",
+    "2221": "preparation or preservation of animal-origin food",
+    "2230": "milk and dairy treatment",
+    "3641": "abattoirs",
+    "3660": "intensive poultry or pig holdings"
+  },
+  "rubric_reference_urls": [
+    "https://aida.ineris.fr/thematiques/21xx-activites-agricoles-animaux",
+    "https://aida.ineris.fr/thematiques/22xx-agroalimentaire",
+    "https://aida.ineris.fr/reglementation/3641-exploitation-dabattoirs",
+    "https://aida.ineris.fr/reglementation/3660-elevage-intensif"
+  ],
+  "coordinate_policy": "Preserve source longitude/latitude only; the API field axes are documented but a CRS is not independently established here. Validate numeric ranges and classify broad France mainland/overseas extents for review; never relocate unmatched points. No geocoding.",
+  "publication_policy": "blocked pending explicit CGU acceptance, Licence Ouverte 2.0 attribution/update-date review, privacy and factual review, and independent release approval."
+}

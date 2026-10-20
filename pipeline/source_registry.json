@@ -37,7 +37,7 @@
       "attribution_licensing_notes": "MAPA government source; public access does not settle API reuse, retention, privacy, or publication terms",
       "adapter_status": "reference_only",
       "expected_artifact_schema": "JSON establishment records keyed by idEstabSisbi with service/person/address references; separate products, capacities, inspection-service, count, and GIS coordinate routes",
-      "blockers": ["Confirm pagination/query contract, code lists, status/effective-date semantics, ID lifecycle, address linkage, update cadence, privacy, terms, and project approval with an authorized operator."]
+      "blockers": ["Bounded public requests returned HTTP 200 for the count endpoint (10,728) and first 10-record page, but standard limit/skip, limit/offset, and JSON filter pagination probes were ignored: subsequent requests repeated the first page. Pagination/count integrity is therefore unproven and no full capture or adapter is authorized. Preserve this source as reference-only until a documented/observable pagination contract exists; do not infer facilities from the count."]
     },
     {
       "source_id": "br.trase.facilities",
@@ -122,6 +122,18 @@
       "adapter_status": "not_started",
       "expected_artifact_schema": "CSV; legacy location rows with authority and date fields; exact upstream schema unknown",
       "blockers": ["Identify the exact competent-authority publication and distinguish source values from legacy transformations."]
+    },
+    {
+      "source_id": "fr.georisques.icpe.animal",
+      "jurisdiction_scope": "France, including separately classified overseas extents; ICPE establishment observations with exact allowlisted animal-related rubriques only",
+      "legacy_paths": [],
+      "url": "https://www.georisques.gouv.fr/api/v1/installations_classees",
+      "access_method": "official unauthenticated v1 JSON API; bounded sequential pagination filtered by exact animal-rubric allowlist; private processing only after CGU acceptance",
+      "cadence": "unknown",
+      "attribution_licensing_notes": "Géorisques CGU states prior acceptance and Licence Ouverte 2.0 conditions; acceptance is not recorded, attribution/update-date obligations require review, and external redistribution/publication remains blocked",
+      "adapter_status": "implemented_partial",
+      "expected_artifact_schema": "Paginated JSON results/page/total_pages/data; AIOT, SIRET, native name/address, status, rubriques, capacity indicators, and source coordinates; source records are regulatory observations, not verified current animal operations",
+      "blockers": ["CGU acceptance is pending; no full capture has run. Coordinate CRS/datum is not independently established, so source points remain private and excluded from default maps. Coverage is only exact allowed animal-related ICPE rubriques, not a complete facility register; identity, status, privacy, attribution, factual and release review remain pending."]
     },
     {
       "source_id": "fr.dgal.section-i",

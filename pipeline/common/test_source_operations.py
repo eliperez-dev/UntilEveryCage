@@ -30,7 +30,9 @@ class SourceOperationsTests(unittest.TestCase):
         self.assertEqual(schedules["dk.smiley"].stale_after_hours, 240)
         self.assertEqual(schedules["fr.dgal.section-i"].interval_hours, 24)
         self.assertEqual(schedules["us.fsis"].interval_hours, 168)
-        self.assertEqual(schedules["us.fsis"].max_attempts, 3)
+        # The current source-owned contract was deliberately tightened to
+        # two bounded attempts when weekly replacement semantics were added.
+        self.assertEqual(schedules["us.fsis"].max_attempts, 2)
         self.assertEqual(schedules["us.aphis"].max_attempts, 3)
 
     def test_schedule_validation_rejects_missing_and_inverted_freshness(self):

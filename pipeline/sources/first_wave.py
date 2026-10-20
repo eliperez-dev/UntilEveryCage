@@ -30,6 +30,8 @@ from .australia.sa_epa import SouthAustraliaEpaAdapter
 from .us.fsis.runner_adapter import FsisRefreshAdapter
 from .uk.fsa_approved.adapter import CONFIG as FSA_CONFIG, FsaApprovedEstablishmentsAdapter
 from .brazil.sif_registered import SifRegisteredAdapter
+from .france.georisques_icpe.adapter import GeorisquesIcpeAnimalAdapter
+from .france.georisques_icpe.config import CONFIG as GEORISQUES_ICPE_CONFIG
 
 
 ROOT = Path(__file__).resolve().parent
@@ -69,8 +71,10 @@ class SourceDescriptor:
 
     def readiness(self) -> dict[str, Any]:
         """Return capability facts without conflating acquisition and approval."""
-        live_callable = self.source_id in {"be.locations", "br.sif.registered", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "fsa_approved_establishments", "fr.dgal.section-i", "fr.dgal.section-ii", "it.853-2004", "it.1069-2009", "es.cat.feed-sandach", "au.sa.epa.licensed-activities", "au.npi.facilities"}
+        live_callable = self.source_id in {"be.locations", "br.sif.registered", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "fsa_approved_establishments", "fr.dgal.section-i", "fr.dgal.section-ii", "fr.georisques.icpe.animal", "it.853-2004", "it.1069-2009", "es.cat.feed-sandach", "au.sa.epa.licensed-activities", "au.npi.facilities"}
         operational = "live" if self.source_id in {"be.locations", "br.sif.registered", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "fsa_approved_establishments", "it.853-2004", "it.1069-2009", "fr.dgal.section-i", "fr.dgal.section-ii", "es.cat.feed-sandach", "au.sa.epa.licensed-activities", "au.npi.facilities"} else ("terms-blocked" if live_callable else "assisted")
+        if self.source_id == "fr.georisques.icpe.animal":
+            operational = "terms-blocked"
         return {
             "source_id": self.source_id,
             "fixture_ready": bool(self.fixture_paths),
@@ -144,6 +148,10 @@ def _br_sif_registered() -> SourceAdapter:
     return SifRegisteredAdapter()
 
 
+def _fr_georisques_icpe_animal() -> SourceAdapter:
+    return GeorisquesIcpeAnimalAdapter()
+
+
 FIRST_WAVE: tuple[SourceDescriptor, ...] = (
     SourceDescriptor("dk.smiley", "DK", "https://pub.fvst.dk/publikationer/Smileydata.xml", _denmark, (ROOT / "denmark" / "fixtures" / "synthetic.xml",), "denmark-smiley-contract-v1", "denmark-smiley-contract-v1", "verified"),
     SourceDescriptor("be.locations", "BE", BELGIUM_CONFIG["operator_url"], _belgium, (ROOT / "belgium" / "fixtures" / "synthetic_operators.csv", ROOT / "belgium" / "fixtures" / "synthetic_activity_codes.csv"), BELGIUM_CONFIG["adapter_version"], BELGIUM_CONFIG["schema_version"], "bounded_private_fetch"),
@@ -152,6 +160,7 @@ FIRST_WAVE: tuple[SourceDescriptor, ...] = (
     SourceDescriptor("fsa_approved_establishments", "GB", FSA_CONFIG["source_url"], _fsa, (ROOT / "uk" / "fsa_approved" / "fixtures" / "valid.csv",), FSA_CONFIG["adapter_version"], FSA_CONFIG["contract_version"], "bounded_private_fetch"),
     SourceDescriptor("fr.dgal.section-i", "FR", "https://fichiers-publics.agriculture.gouv.fr/dgal/ListesOfficielles/SSA1_VIAN_ONG_DOM.txt", _france_i, (ROOT / "france" / "fixtures" / "section_i.csv",), "fr-dgal-853-v3-private-location-evidence", "fr-dgal-853-txt-v2", "verified"),
     SourceDescriptor("fr.dgal.section-ii", "FR", "https://fichiers-publics.agriculture.gouv.fr/dgal/ListesOfficielles/SSA1_VIAN_COL_LAGO.txt", _france_ii, (ROOT / "france" / "fixtures" / "section_ii.csv",), "fr-dgal-853-v3-private-location-evidence", "fr-dgal-853-txt-v2", "verified"),
+    SourceDescriptor(GEORISQUES_ICPE_CONFIG["source_id"], "FR", GEORISQUES_ICPE_CONFIG["source_url"], _fr_georisques_icpe_animal, (ROOT / "france" / "georisques_icpe" / "fixtures" / "synthetic-page.json",), GEORISQUES_ICPE_CONFIG["adapter_version"], GEORISQUES_ICPE_CONFIG["schema_version"], "terms-gated-bounded-private-fetch"),
     SourceDescriptor("it.853-2004", "IT", "https://www.dati.salute.gov.it/", _italy, (ROOT / "italy" / "fixtures" / "synthetic_853.csv",), "it-853-candidate-v3-private-location-evidence", "it-853-csv-v2.0", "verified"),
     SourceDescriptor("it.1069-2009", "IT", "https://www.dati.salute.gov.it/it/dataset/stabilimenti-italiani-i-sottoprodotti-di-origine-animale/", _italy_1069, (), "it-1069-candidate-v3-private-location-evidence", "it-1069-csv-current-2026-09", "bounded_private_fetch"),
     SourceDescriptor("au.npi.facilities", "AU", "https://data.gov.au/data/dataset/043f58e0-a188-4458-b61c-04e5b540aea4", _australia_npi, (ROOT / "australia" / "fixtures" / "npi_facilities.csv",), "au-npi-facilities-v3", "au-npi-csv-v2", "bounded_private_fetch"),
@@ -244,14 +253,22 @@ class FirstWaveRefreshAdapter:
             from .brazil.sif_registered import fetch
             return fetch(output_root=root, run_id=run_id, terms_review_path=Path(str(review)),
                          timeout_seconds=timeout, max_bytes=max_bytes)
+        if self.source_id == "fr.georisques.icpe.animal":
+            from .france.georisques_icpe.acquire import acquire_snapshot
+            return acquire_snapshot(
+                output_root=root, terms_review_path=Path(str(review)), run_id=run_id,
+                timeout_seconds=timeout,
+                page_size=int(options.get("page_size", GEORISQUES_ICPE_CONFIG["page_size"])),
+                max_pages=int(options.get("max_pages", GEORISQUES_ICPE_CONFIG["max_pages"])),
+                max_records=int(options.get("max_records", GEORISQUES_ICPE_CONFIG["max_records"])),
+            )
         raise RuntimeError(f"no approved live callable for {self.source_id}; use assisted local artifact")
 
     def refresh(self, *, mode: str, run_dir: Path, artifact: Path | None,
                 options: Mapping[str, Any]) -> Mapping[str, Any]:
-        if mode == "live-acquisition":
-            raise RuntimeError("live acquisition is not wired into the D2 runner; use a preserved local artifact")
         raw_path = artifact if mode == "local-artifact" else self.descriptor.fixture_paths[0]
-        if raw_path is None or not raw_path.is_file():
+        is_snapshot_source = self.source_id == "fr.georisques.icpe.animal"
+        if raw_path is None or not (raw_path.is_file() or (is_snapshot_source and raw_path.is_dir())):
             raise FileNotFoundError(f"preserved artifact is unavailable for {self.source_id}")
         source_adapter = self.descriptor.adapter()
         if self.source_id == "au.npi.facilities":
@@ -291,11 +308,30 @@ class FirstWaveRefreshAdapter:
         if self.source_id == "fsa_approved_establishments":
             raw_path = artifact
         acquisition = options.get("acquisition") if isinstance(options.get("acquisition"), Mapping) else {}
-        source_artifact = self.descriptor.artifact_for(raw_path)
+        if self.source_id == "fr.georisques.icpe.animal":
+            from .france.georisques_icpe.adapter import GeorisquesIcpeAnimalAdapter
+            if raw_path.is_file():
+                raw_bytes = raw_path.read_bytes()
+                aggregate_sha256, aggregate_size = hashlib.sha256(raw_bytes).hexdigest(), len(raw_bytes)
+                retrieved_at = SYNTHETIC_RETRIEVED_AT
+            else:
+                parsed_snapshot = GeorisquesIcpeAnimalAdapter().parse_pages(raw_path)
+                aggregate_sha256, aggregate_size = parsed_snapshot["sha256"], parsed_snapshot["byte_size"]
+                retrieved_at = str((acquisition or {}).get("retrieved_at_utc") or SYNTHETIC_RETRIEVED_AT)
+            source_artifact = SourceArtifact(
+                source_url=self.descriptor.source_url, retrieved_at_utc=retrieved_at,
+                sha256=aggregate_sha256, byte_size=aggregate_size,
+                code_version=self.adapter_version, config_version=self.descriptor.schema_version,
+                rights_caveat="Géorisques CGU acceptance is required before live acquisition; publication and redistribution review remain separate.",
+                privacy_caveat="Restricted private evidence; native facility names and addresses retained; no personal-contact expansion or geocoding.",
+                coverage=GEORISQUES_ICPE_CONFIG["coverage"],
+            )
+        else:
+            source_artifact = self.descriptor.artifact_for(raw_path)
         acquisition_facts = acquisition
         if self.source_id == "be.locations" and isinstance(acquisition.get("acquisition"), Mapping):
             acquisition_facts = acquisition["acquisition"].get("operator", {})
-        if acquisition_facts:
+        if acquisition_facts and self.source_id != "fr.georisques.icpe.animal":
             source_artifact = SourceArtifact(
                 source_url=str(acquisition_facts.get("provenance_url") or acquisition_facts.get("final_url") or acquisition_facts.get("requested_url") or source_artifact.source_url),
                 retrieved_at_utc=str(acquisition_facts.get("retrieved_at_utc") or source_artifact.retrieved_at_utc),

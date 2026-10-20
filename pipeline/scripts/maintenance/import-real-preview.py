@@ -52,9 +52,9 @@ CHUNK = 1024 * 1024
 NUMERIC_PRECISIONS = {
     "numeric", "exact", "source_numeric", "source_coordinates", "facility_coordinate",
     "source-provided", "source-provided-unspecified", "source-precision-unknown",
-    "source-reported-unknown",
+    "source-reported-unknown", "source-coordinate-crs-unverified",
 }
-SOURCE_LOCATION_SOURCES = {"ca.ontario.meat-plants", "ca.cfia.federal-meat"}
+SOURCE_LOCATION_SOURCES = {"ca.ontario.meat-plants", "ca.cfia.federal-meat", "fr.georisques.icpe.animal"}
 SOURCE_GROUP_KEY_INDEX = 23
 ACTIVITY_DISPLAY_PRECEDENCE = (
     "slaughter", "meat_processing", "poultry_processing", "fish_processing",
@@ -363,6 +363,7 @@ SOURCE_NAMES = {
     "au.sa.epa.licensed-activities": "South Australian Environment Protection Authority — Licensed Activities",
     "be.locations": "Belgian Federal Agency for the Safety of the Food Chain — Operator Register",
     "br.sif.registered": "Brazilian Ministry of Agriculture and Livestock — MAPA/DIPOA SIF Registered Establishments",
+    "fr.georisques.icpe.animal": "French Ministry for Ecological Transition — Géorisques ICPE animal-rubric observations",
     "ca.ontario.meat-plants": "Government of Ontario — Provincially Licensed Meat Plants",
     "ca.cfia.federal-meat": "Canadian Food Inspection Agency — Federal Meat Establishments",
     "fsa_approved_establishments": "Food Standards Agency — Approved Food Establishments (England and Wales)",
@@ -385,6 +386,7 @@ SOURCE_MEDIA_TYPES = {
     "fsa_approved_establishments": "text/csv",
     "fss_approved_establishments": "text/csv",
     "nl.nvwa.approved-food": "application/json",
+    "fr.georisques.icpe.animal": "application/json",
 }
 
 
@@ -510,7 +512,7 @@ def parse_row(source: str, row: Any) -> tuple[Any, ...]:
     if privacy_allows_name:
         name = safe_preview_text(pick(normalized, "canonical_name", "trading_name", "facility_name", "name"), 200)
     elif source in {"no.fiskeridir.aquaculture", "gb.scot.marine.aquaculture",
-                    "us.epa.echo-animal-production"}:
+                    "us.epa.echo-animal-production", "fr.georisques.icpe.animal"}:
         # Approved source-provided facility/locality labels may appear in the
         # private preview without changing privacy or publication status.
         # Norway additionally requires its native property and both
@@ -523,6 +525,10 @@ def parse_row(source: str, row: Any) -> tuple[Any, ...]:
             if (isinstance(native_name, str) and native_name.strip()
                     and native_name == locality_name == facility_name):
                 name = safe_preview_text(native_name, 200)
+        elif source == "fr.georisques.icpe.animal":
+            # The approved private-processing scope retains the source-native
+            # business/facility name; privacy review still blocks publication.
+            name = safe_preview_text(pick(normalized, "trading_name", "name"), 200)
         else:
             name = safe_preview_text(pick(normalized, "facility_name", "name"), 200)
     contract = activity_contract(normalized, source, row.get("source_values") if isinstance(row, dict) else None)

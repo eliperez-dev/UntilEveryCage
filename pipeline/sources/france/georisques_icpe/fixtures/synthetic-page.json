@@ -1,0 +1,57 @@
+{
+  "results": 2,
+  "page": 1,
+  "total_pages": 1,
+  "data": [
+    {
+      "codeAIOT": "SYNTHETIC-FR-001",
+      "siret": "11111111111111",
+      "raisonSociale": "Ferme Étoile — fixture only",
+      "adresse1": "1 Rue Exemple",
+      "adresse2": null,
+      "adresse3": null,
+      "codePostal": "01000",
+      "codeInsee": "01001",
+      "commune": "Commune Synthétique",
+      "codeNaf": "01.41Z",
+      "longitude": 5.0,
+      "latitude": 46.0,
+      "bovins": "120",
+      "porcs": null,
+      "volailles": "0",
+      "etatActivite": "Valeur source synthétique",
+      "date_maj": "2026-10-01",
+      "regime": "Autorisation",
+      "serviceAIOT": "Service fictif",
+      "rubriques": [
+        {"numeroRubrique": "2101", "nature": "synthetic", "alinea": "test", "quantiteTotale": "120", "unite": "têtes"},
+        {"numeroRubrique": "2510", "nature": "excluded synthetic mining", "alinea": "test"}
+      ],
+      "inspections": [{"inspectorName": "excluded synthetic contact"}],
+      "documentsHorsInspection": [{"url": "https://example.invalid/excluded"}]
+    },
+    {
+      "codeAIOT": "SYNTHETIC-FR-002",
+      "siret": "22222222222222",
+      "raisonSociale": "Abattoir Fictif",
+      "adresse1": "2 Avenue Exemple",
+      "codePostal": "97100",
+      "codeInsee": "97101",
+      "commune": "Commune Outre-mer Synthétique",
+      "codeNaf": "10.11Z",
+      "longitude": -61.5,
+      "latitude": 16.2,
+      "bovins": "0",
+      "porcs": "0",
+      "volailles": "0",
+      "etatActivite": "Valeur source synthétique",
+      "date_maj": "2026-10-01",
+      "regime": "Enregistrement",
+      "rubriques": [
+        {"numeroRubrique": "2210", "nature": "synthetic", "alinea": "test", "quantiteTotale": "10", "unite": "têtes"}
+      ]
+    }
+  ],
+  "response_code": 200,
+  "message": "synthetic fixture"
+}

@@ -12,9 +12,9 @@ from pathlib import Path
 from typing import Any, Iterable
 
 TAXONOMY_VERSION = "uec-taxonomy-v1"
-# v6 adds the exact native APHIS registration-class projection without
+# v7 adds the exact Géorisques ICPE animal-rubric projection without
 # mutating earlier derived assignment sets.
-CROSSWALK_VERSION = "uec-source-crosswalk-v6"
+CROSSWALK_VERSION = "uec-source-crosswalk-v7"
 PRIMARY_PRECEDENCE = (
     "slaughter", "research_and_animal_use", "animal_keeping_and_production",
     "processing_and_preparation", "other_regulated_premises", "unclassified",
@@ -189,6 +189,19 @@ def _decision(source: str, normalized: dict[str, Any], original: dict[str, Any])
         mapped = aphis_classes.get(normalized.get("aphis_registration_class"))
         if mapped:
             assignments.append({"leaf_activity": mapped[0], "primary": mapped[1], "method": "direct"})
+    elif source == "fr.georisques.icpe.animal":
+        rubric_rules = {
+            **{code: ("animal_keeping", "animal_keeping_and_production") for code in
+               ("2101", "2102", "2110", "2111", "2112", "2113", "2120", "2130", "2140", "2150", "3660")},
+            "2210": ("slaughter", "slaughter"), "3641": ("slaughter", "slaughter"),
+            "2221": ("processing", "processing_and_preparation"),
+            "2230": ("processing", "processing_and_preparation"),
+        }
+        for code in codes:
+            rule = rubric_rules.get(code)
+            if rule:
+                assignments.append({"leaf_activity": rule[0], "primary": rule[1], "method": "direct"})
+        return assignments, ("mapped" if assignments else "unmapped" if codes else "unclassified")
     elif source in {"it.853-2004", "es.cat.feed-sandach"}:
         rules = _NATIVE_V3[source]
         unknown = False
@@ -386,7 +399,7 @@ def project_observation(record: dict[str, Any]) -> dict[str, Any]:
         "taxonomy_assignments": enriched,
         "taxonomy_primaries": primaries,
         "taxonomy_mapping_method": next(iter(methods)) if len(methods) == 1 else (
-            "direct" if source in {"dk.smiley", "be.locations", "us.fsis", "us.epa.echo-animal-production"} or source.startswith(("it.", "es.")) else
+            "direct" if source in {"dk.smiley", "be.locations", "us.fsis", "us.epa.echo-animal-production", "fr.georisques.icpe.animal"} or source.startswith(("it.", "es.")) else
             "candidate" if source.startswith("au.") else "derived"),
         "taxonomy_mapping_status": status,
         "taxonomy_display_category": display,
@@ -421,6 +434,13 @@ def crosswalk_document(source_id: str) -> dict[str, Any]:
                   "leaf_key": "animal_production", "primary_key": "animal_keeping_and_production", "mapping_method": "direct"},
                  {"source_field": "industry_classification_basis.sic_codes", "source_code_set": "EPA selected livestock/poultry SIC codes",
                   "leaf_key": "animal_production", "primary_key": "animal_keeping_and_production", "mapping_method": "direct"}]
+    elif source_id == "fr.georisques.icpe.animal":
+        rules = [
+            *[{"source_code": code, "leaf_key": "animal_keeping", "primary_key": "animal_keeping_and_production", "mapping_method": "direct"}
+              for code in ("2101", "2102", "2110", "2111", "2112", "2113", "2120", "2130", "2140", "2150", "3660")],
+            *[{"source_code": code, "leaf_key": "slaughter", "primary_key": "slaughter", "mapping_method": "direct"} for code in ("2210", "3641")],
+            *[{"source_code": code, "leaf_key": "processing", "primary_key": "processing_and_preparation", "mapping_method": "direct"} for code in ("2221", "2230")],
+        ]
     elif source_id in {"fr.dgal.section-i", "fr.dgal.section-ii"}:
         rules = [{"source_code": "SH", "leaf_key": "slaughter", "primary_key": "slaughter", "mapping_method": "direct"},
                  {"source_code": "CP", "leaf_key": "cutting", "primary_key": "processing_and_preparation", "mapping_method": "direct"},
