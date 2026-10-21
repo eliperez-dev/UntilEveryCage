@@ -1097,12 +1097,26 @@ reported all 148 repaired endpoints unchanged. The frozen v0 baseline remained
 unchanged (63,601 public, 48,756 mapped, 54,256 named, 14,845 unmapped, 13
 sources; original manifest identity retained). No public release or production
 deployment was performed. A full normal materializer replay, independent raw
-name/address/city comparison (pending explicit approval), live source refresh,
+name/address/city comparison beyond the bounded sample, live source refresh,
 and recurring health are not established by this acceptance.
+
+After explicit local authorization, a bounded source-value consistency audit
+reran the matcher over the complete retained 47,375-row handoff with no DB
+import. It emitted 958 candidate representations, deduplicated to 273 distinct
+shared edge keys, and checked 30 deterministic distinct edges against their
+native business-name, address, and city fields. All 30 had normalized name and
+at least one location-field agreement; 26 had literal address agreement, all
+30 had literal city and name agreement, and no sampled pair had missing source
+values, a reported-signal mismatch, or matcher-reported contradiction. This is
+source-signal consistency only—not proof of common ownership, identity, or
+operational status. The sample came from the full matcher set and is not a
+sample or census of the separate 148 release-qualified (147 default-visible)
+API edges.
 
 Evidence: `pipeline/tests/e2e/test_graph_activation_real_italy.py`,
 `pipeline/migrations/076_graph_record_release_bindings.sql`, the aggregate-only
-local receipt under ignored `data/staging/graph-source-expansion-20261020/`,
+local sample receipt at ignored
+`data/staging/graph-source-expansion-20261020/native-source-sample-aggregate.json`,
 and the focused graph persistence/API tests. The receipt and private input are
 not committed.
 

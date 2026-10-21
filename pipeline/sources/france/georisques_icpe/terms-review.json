@@ -1,0 +1,7 @@
+{
+  "reviewer": "Project maintainer (Agent Orchestrator chat)",
+  "reference": "https://www.georisques.gouv.fr/cgu",
+  "reviewed_at": "2026-10-21T02:10:55Z",
+  "decision": "approved",
+  "notes": "The maintainer explicitly accepted the linked Géorisques CGU in Agent Orchestrator chat. Scope: private acquisition and processing of fr.georisques.icpe.animal. Preserve attribution and source update dates. Public redistribution/release is a separate decision. The timestamp records transcription of the maintainer's decision."
+}

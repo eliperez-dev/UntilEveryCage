@@ -294,17 +294,17 @@ class GeorisquesIcpeAnimalAdapter:
             "country_code": "FR", "scope": CONFIG["coverage"],
             "api_results": result["results"], "api_pages": result["total_pages"],
             "animal_rubrics": sorted(self.allowed_rubrics),
-            "terms_status": "acceptance-required-before-live-acquisition; publication blocked pending review",
-            "data_licence": "Licence Ouverte 2.0 stated in Géorisques CGU; acceptance and attribution/update-date review not recorded",
+            "terms_status": "source-specific acceptance record required for acquisition; see acquisition provenance",
+            "data_licence": "Licence Ouverte 2.0 stated in Géorisques CGU; retain attribution and source update dates",
             "geocoding": "disabled", "release_state": "not-created",
         })
         atomic_json(root / "manifest.json", manifest)
         write_operator_review_packet(
             root, manifest, source_scope=CONFIG["coverage"],
-            checks=("confirm prior acceptance of Géorisques CGU", "review Licence Ouverte 2.0 attribution and update-date obligations",
+            checks=("retain the source-specific Géorisques CGU acceptance reference", "review Licence Ouverte 2.0 attribution and update-date obligations",
                     "review animal rubric allowlist and regulatory meaning", "screen native business names, addresses, identifiers and coordinates",
                     "review source activity status without inferring current animal use"),
-            blockers=("CGU acceptance not recorded; acquisition must remain gated", "publication and external redistribution not approved",
+            blockers=("publication and external redistribution not approved",
                       "privacy, coordinate, factual and release review pending"),
         )
         return manifest

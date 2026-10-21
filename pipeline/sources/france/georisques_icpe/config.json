@@ -4,8 +4,9 @@
   "adapter_version": "fr-georisques-icpe-animal-v1",
   "schema_version": "georisques-installations-classees-v1-pages-v1",
   "config_version": "animal-rubric-allowlist-v1",
-  "terms_status": "pending_confirmation",
+  "terms_status": "accepted_private_acquisition_and_processing_only",
   "terms_reference": "https://www.georisques.gouv.fr/cgu",
+  "terms_review_record": "pipeline/sources/france/georisques_icpe/terms-review.json",
   "coverage": "France ICPE observations carrying at least one explicitly allowed animal-agriculture, animal-holding, aquaculture, slaughter, dairy, or animal-origin food rubric; not a complete facility register and not proof of current animal use.",
   "page_size": 100,
   "max_pages": 500,
@@ -41,5 +42,5 @@
     "https://aida.ineris.fr/reglementation/3660-elevage-intensif"
   ],
   "coordinate_policy": "Preserve source longitude/latitude only; the API field axes are documented but a CRS is not independently established here. Validate numeric ranges and classify broad France mainland/overseas extents for review; never relocate unmatched points. No geocoding.",
-  "publication_policy": "blocked pending explicit CGU acceptance, Licence Ouverte 2.0 attribution/update-date review, privacy and factual review, and independent release approval."
+  "publication_policy": "blocked pending Licence Ouverte 2.0 attribution/update-date review, privacy and factual review, coordinate CRS review, and independent release approval. The recorded CGU acceptance covers private acquisition and processing only."
 }

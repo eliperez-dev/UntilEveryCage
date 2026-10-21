@@ -128,12 +128,12 @@
       "jurisdiction_scope": "France, including separately classified overseas extents; ICPE establishment observations with exact allowlisted animal-related rubriques only",
       "legacy_paths": [],
       "url": "https://www.georisques.gouv.fr/api/v1/installations_classees",
-      "access_method": "official unauthenticated v1 JSON API; bounded sequential pagination filtered by exact animal-rubric allowlist; private processing only after CGU acceptance",
+      "access_method": "official unauthenticated v1 JSON API; bounded sequential pagination filtered by exact animal-rubric allowlist; private acquisition/processing terms acceptance recorded",
       "cadence": "unknown",
-      "attribution_licensing_notes": "Géorisques CGU states prior acceptance and Licence Ouverte 2.0 conditions; acceptance is not recorded, attribution/update-date obligations require review, and external redistribution/publication remains blocked",
+      "attribution_licensing_notes": "Géorisques CGU acceptance recorded for private acquisition and processing only; Licence Ouverte 2.0 attribution/update-date obligations require implementation/review, and external redistribution/publication remains blocked",
       "adapter_status": "implemented_partial",
       "expected_artifact_schema": "Paginated JSON results/page/total_pages/data; AIOT, SIRET, native name/address, status, rubriques, capacity indicators, and source coordinates; source records are regulatory observations, not verified current animal operations",
-      "blockers": ["CGU acceptance is pending; no full capture has run. Coordinate CRS/datum is not independently established, so source points remain private and excluded from default maps. Coverage is only exact allowed animal-related ICPE rubriques, not a complete facility register; identity, status, privacy, attribution, factual and release review remain pending."]
+      "blockers": ["Terms acceptance does not imply that a full capture or E2E/import has run. Coordinate CRS/datum is not independently established, so source points remain private and excluded from default maps. Coverage is only exact allowed animal-related ICPE rubriques, not a complete facility register; identity, status, privacy, attribution, factual and release review remain pending."]
     },
     {
       "source_id": "fr.dgal.section-i",
