@@ -58,13 +58,24 @@ class SourceExpansionIntegrationTests(unittest.TestCase):
         self.assertTrue(policy["enabled"])
         self.assertFalse(policy["public_release"])
         self.assertEqual(policy["runtime_classification"], "production-e2e")
-        self.assertEqual(policy["terms_decision"], "accepted_private_acquisition_processing_only")
+        self.assertEqual(policy["terms_decision"], "approved")
+        self.assertEqual(policy["terms_scope"], "private_acquisition_and_processing_only")
         self.assertEqual(policy["terms_review"], "pipeline/sources/france/georisques_icpe/terms-review.json")
         self.assertEqual(policy["freshness_max_days"], 14,
                          "14 days is the configured maximum age for a private acquired snapshot, not an upstream freshness guarantee")
         self.assertIs(type(policy["freshness_max_days"]), int)
         self.assertTrue({"name", "address", "coordinates", "activity_status_source",
                          "source_classification_codes"}.issubset(policy["allowed_preview_fields"]))
+
+    def test_georisques_terms_policy_passes_shared_certifier_preflight_without_db_or_api(self):
+        from scripts.certify_real_preview import CertificationError, certify
+
+        with tempfile.TemporaryDirectory() as directory:
+            ledger = Path(directory) / "incomplete-ledger.json"
+            ledger.write_text("{}", encoding="utf-8")
+            with self.assertRaisesRegex(CertificationError, "runtime ledger is not an imported run"):
+                certify("fr.georisques.icpe.animal", ledger,
+                        "postgresql://127.0.0.1/unused", "http://127.0.0.1", "x" * 32)
 
     def test_georisques_runs_through_normal_shared_fixture_dispatch(self):
         output = ROOT / ".georisques-shared-refresh-test"
