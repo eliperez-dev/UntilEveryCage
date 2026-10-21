@@ -22,7 +22,19 @@ for implementation claims. A count in this document is an aggregate candidate
 or evidence count, never a count of approved, accurate, operating, or
 publishable facilities unless explicitly labelled that way.
 
-## Current launch decision (2026-10-19)
+## Current launch decision (2026-10-21)
+
+**Latest hosted checkpoint:** the release-scoped graph and facility Connections
+section are live at [the Render website](https://untileverycage.onrender.com)
+on application commit `6b74365e`, deployment `dep-dbci4gui0phs73a5okpg`.
+Hosted API and desktop/mobile browser acceptance passed. The approved
+2026-10-18 dataset and historical v0 remain available; no source intake,
+dataset membership, map styling or contribution workflow changed. See
+[D6.6](#d66---hosted-graph-and-facility-connections-2026-10-21) for counts,
+evidence and the serving/community database split. Final owner frontend
+acceptance and custom-domain cutover remain open. Operator follow-up: rotate
+the runtime API database credential before domain cutover; no credential
+rotation was performed by this sprint.
 
 The maintainer approved the corrected **2026-10-18 dataset** for the V2
 website on Render, retaining historical dataset v0 access. Public dataset
@@ -30,8 +42,8 @@ labels now use dates; V2 remains the product name. The corrected scope is
 69,220 records across fourteen sources, including 53,107 mapped and 16,113
 unmapped records. Its approval, validation and local activation are complete.
 The selected-column package passed an isolated restore and production-mode API
-acceptance on the existing Render instance. Render deploy
-`dep-dbbdace7bikc7384v4vg` is live on commit `022420aa`; hosted API acceptance
+acceptance on the existing Render instance. The earlier corrected-dataset deploy
+`dep-dbbdace7bikc7384v4vg` ran commit `022420aa`; hosted API acceptance
 passed current/history manifests, map counts and categories, list/detail, facets,
 CSV, ETag revalidation and four private-route exclusions. A real-data hosted
 Chromium test passed cold/warm pin opening, detail closing, navigation, date
@@ -1197,8 +1209,7 @@ and does not resolve France's coordinate-reference limitation.
 
 ### D6.6 - Hosted graph and facility Connections (2026-10-21)
 
-**Status: Implemented and integrated on `eli/v2`; hosted deployment is blocked
-on explicit authorization for the isolated Render restore. Render is unchanged.** The approved scope
+**Status: Live on Render; local and hosted acceptance passed.** The approved scope
 adds the existing source-backed graph to the 2026-10-18 dataset and a compact
 Connections section to facility details. No source intake, graph rules, map
 renderer, dataset membership or community submission workflow is changed.
@@ -1216,23 +1227,53 @@ retained Italian corrections. Browser checks cover nonempty and empty details,
 release-pinned links, error/retry, stale-request cancellation and mobile keyboard
 navigation. A misleading terminal Load more button exposed unconditional API
 cursors; `c68862d9` adds lookahead and final/nonfinal/empty-page regressions for
-both graph handlers. These are local checks, not hosted acceptance claims.
+both graph handlers. The corrected production-mode API completed full local
+traversal without empty terminal pages. A disposable-only live restriction
+removed its affected connection while an unrelated control remained visible.
 
 The UI keeps record links pinned to the selected release, exposes connection
 method and confidence, and leaves organization endpoints opaque. Nineteen
 focused frontend tests, eight graph-public Rust tests and the public build
-passed. All seven CI jobs passed for `c68862d9`. The execution reviewer blocked
-creation/upload of the new logical Render database; no alternative write route
-was used. The requested authorization covers only the existing instance's new
-isolated serving derivative and the checked service switch, preserving existing
-databases and the separate community connection. Hosted acceptance and domain
-cutover are not claimed. The final owner frontend review remains separate.
+passed. All seven CI jobs passed for deployed application commit `6b74365e`.
+The maintainer explicitly authorized the isolated Render restore and checked
+service switch after the initial execution-approval stop. Manual deployment
+`dep-dbci4gui0phs73a5okpg` passed production startup with the current manifest
+and restriction ledger verified.
+
+Hosted acceptance passed current/history manifests, map and list counts,
+record details, conditional map ETag revalidation, representative exact pages,
+all 147 default inferred connections, all 148 with conflicts requested,
+confidence/source filters, entities, neighborhoods and terminal cursors.
+The release manifest has fourteen sources; the compact map's feature dictionary
+has twelve because two sources have no mapped features. Desktop/mobile browser
+checks passed real facility details, Connections, same-release related links,
+destination content and overflow/error checks. All five contribution forms
+exposed controls; this graph-only regression did not create submissions or
+repeat the previous sprint's actual submission/tracking acceptance.
+
+The public serving connection now uses `uec_serving_graph_20261021` on the
+existing paid instance. The community connection still uses
+`uec_serving_20261018`; **do not drop that database**, which also retains the
+previous public serving state for rollback. Original `uec` is preserved too.
+The existing API role, credentials and host were unchanged, and the fresh
+restriction snapshot matched the deployed snapshot. The local encrypted API
+connection file was updated to the current database, with its prior encrypted
+value retained for recovery. No additional paid instance or domain change was
+made. Owner frontend acceptance remains separate.
+
+Temporary APIs, Vite/browser processes, disposable QA restores, unique test
+roles and staged binaries were removed. The merged UI worktree was recoverably
+archived and its branch deleted, leaving three worktrees and the two active
+lanes aligned. Retained source data, the pristine graph staging database and
+the verified package are intentionally preserved.
 
 Aggregate package and API/browser receipts are kept locally at ignored
 `data/staging/hosted-release-package-local-20261021/acceptance-aggregate.json`
-and `data/staging/hosted-graph-qa-20261021/qa-progress.json`. Preserve the pristine
-package for continuation; any disposable QA database used for a negative
-restriction test must never become the export source.
+and `data/staging/hosted-graph-qa-20261021/qa-progress.json`. Cloud and hosted
+receipts are `render-cloud-restore-acceptance.json` in the package staging
+folder and `hosted-acceptance-aggregate.json` in the QA folder. Any disposable
+QA database used for a negative restriction test must never become an export
+source.
 
 ### Production V2 frontend
 

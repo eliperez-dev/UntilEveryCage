@@ -138,6 +138,13 @@ rather than adding numeric and coarse location counts. Preserve the working
 database at sprint cleanup; remove only owned temporary API processes, test
 restore databases, credentials and build scratch.
 
+The separate `uec_graph_release_20261021` staging copy combines the approved
+2026-10-18 release with the retained graph for its serving-package build. It is
+not the source-refresh working copy above or the existing frontend preview.
+Keep its pristine package separate from disposable restriction-test restores;
+current hosted database and acceptance details live in
+[product readiness](PRODUCT-READINESS.md#d66---hosted-graph-and-facility-connections-2026-10-21).
+
 ### Local community contribution pilot
 
 This feature is disabled by default and refuses production enablement or a
