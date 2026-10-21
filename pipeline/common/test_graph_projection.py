@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 import uuid
 import hashlib
+import re
 from pathlib import Path
 from unittest.mock import patch
 
@@ -182,6 +183,12 @@ class GraphProjectionTests(unittest.TestCase):
         normalized = (Path(__file__).resolve().parents[1] / "migrations" / "078_normalized_graph_projection_endpoints.sql").read_text(encoding="utf-8")
         self.assertIn("CREATE OR REPLACE VIEW uec.graph_public_connections_current", normalized)
         self.assertNotIn("DROP VIEW uec.graph_public_connections_current", normalized)
+        migration_077 = (Path(__file__).resolve().parents[1] / "migrations" / "077_graph_release_projection.sql").read_text(encoding="utf-8")
+        indexes_077 = set(re.findall(r"(?im)^CREATE\s+(?:UNIQUE\s+)?INDEX\s+([a-z_][a-z0-9_]*)", migration_077))
+        indexes_078 = set(re.findall(r"(?im)^CREATE\s+(?:UNIQUE\s+)?INDEX\s+([a-z_][a-z0-9_]*)", normalized))
+        self.assertTrue(indexes_077)
+        self.assertTrue(indexes_078)
+        self.assertTrue(indexes_077.isdisjoint(indexes_078), indexes_077 & indexes_078)
         for table in ("graph_public_projection_endpoints", "graph_public_projection_anchors"):
             self.assertEqual(validator[table], {"SELECT", "INSERT"})
         self.assertIn(f"GRANT SELECT, INSERT ON uec.{table}", normalized)

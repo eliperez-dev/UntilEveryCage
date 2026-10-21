@@ -20,7 +20,7 @@ CREATE TABLE uec.graph_public_projection_anchors (
     FOREIGN KEY (projection_id, endpoint_id)
         REFERENCES uec.graph_public_projection_endpoints(projection_id, endpoint_id)
 );
-CREATE INDEX graph_public_projection_anchor_current_idx
+CREATE INDEX graph_public_projection_normalized_anchor_current_idx
     ON uec.graph_public_projection_anchors(source_record_id, facility_id, projection_id, endpoint_id);
 
 ALTER TABLE uec.graph_public_projection_edges
