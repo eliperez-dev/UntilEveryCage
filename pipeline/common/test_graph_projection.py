@@ -230,6 +230,59 @@ class GraphProjectionTests(unittest.TestCase):
         self.assertNotIn("source_identifier", query.split("SELECT", 1)[1].split("FROM", 1)[0])
         self.assertEqual(parameters, {"release_id": "selected-release"})
 
+    def test_graph_live_membership_lookup_keeps_live_view_as_eligibility_authority(self):
+        migration = (Path(__file__).resolve().parents[1] / "migrations" / "079_graph_live_membership_lookup.sql").read_text(encoding="utf-8")
+        sql = migration.casefold()
+        self.assertIn(
+            "create index if not exists public_discovery_read_model_graph_membership_idx",
+            sql,
+        )
+        self.assertIn(
+            "on uec.public_discovery_read_model_rows (release_id, source_record_id, facility_id)",
+            sql,
+        )
+        self.assertIn("create or replace view uec.graph_public_connections_current", sql)
+        self.assertNotIn("create or replace view uec.map_facilities_public_discovery_read_model", sql)
+        self.assertNotIn("create view uec.map_facilities_public_discovery_read_model", sql)
+
+        # Raw rows only enumerate facility keys. A candidate row cannot pass a
+        # support or anchor gate without an exact match in the unchanged live map.
+        self.assertEqual(sql.count("from uec.public_discovery_read_model_rows candidate"), 2)
+        self.assertGreaterEqual(
+            sql.count("from uec.map_facilities_public_discovery_read_model current_support"),
+            2,
+        )
+        self.assertEqual(
+            sql.count("from uec.map_facilities_public_discovery_read_model current_anchor"),
+            2,
+        )
+        self.assertEqual(sql.count("offset 0"), 4)
+        self.assertIn("candidate.release_id=e.release_id", sql)
+        self.assertIn("candidate.source_record_id=support.source_record_id", sql)
+        self.assertIn("current_support.facility_id=candidate.facility_id", sql)
+        self.assertIn("current_support.source_record_id=support.source_record_id", sql)
+        self.assertIn("current_anchor.facility_id=anchor.facility_id", sql)
+        self.assertIn("current_anchor.source_record_id=anchor.source_record_id", sql)
+
+        # Preserve all-support source/artifact equality and endpoint-qualified
+        # anchor checks from 078; no endpoint can borrow another endpoint's anchors.
+        self.assertIn("record.source_id=support.source_id", sql)
+        self.assertIn("record.artifact_id=support.artifact_id", sql)
+        self.assertIn("record.source_record_id is null or not exists", sql)
+        self.assertIn("anchor.projection_id=e.projection_id", sql)
+        self.assertIn("anchor.endpoint_id=e.from_endpoint_id", sql)
+        self.assertIn("anchor.endpoint_id=e.to_endpoint_id", sql)
+        for gate in (
+            "b.active and b.status='completed'",
+            "b.projection_version='graph-release-projection-v2'",
+            "b.edge_generation=generation.generation",
+            "b.release_manifest_sha256=manifest.manifest_sha256",
+            "release.test_only is not true",
+            "release.status='promoted' or history.release_id is not null",
+        ):
+            with self.subTest(gate=gate):
+                self.assertIn(gate, sql)
+
     def test_completion_check_skips_staging_only_for_completed_matching_fingerprint(self):
         run_id = uuid.uuid4()
 
