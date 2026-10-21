@@ -15,6 +15,7 @@ from pipeline.common.graph_persistence import (
     _ITALY_CANONICAL_BINDING_CTES,
     _load_approved_facility_map,
     _load_run_source_record_ids_for_edge_batches,
+    _finalize_edge_materialization,
     load_evidence_handoff,
     load_graph_candidate_handoff,
     require_disposable_graph_database,
@@ -55,6 +56,53 @@ def candidate(source_id="synthetic.graph"):
 
 
 class GraphPersistenceContractTests(unittest.TestCase):
+
+    def test_materialization_checkpoint_waits_for_finalization_and_failure_is_retryable(self):
+        events = []
+
+        class Transaction:
+            def __init__(self, connection):
+                self.connection = connection
+
+            def __enter__(self):
+                events.append("transaction_begin")
+
+            def __exit__(self, *_args):
+                events.append("transaction_end")
+
+        class Connection:
+            def transaction(self):
+                return Transaction(self)
+
+        run_id = uuid.uuid4()
+        counts = {"inserted": 2, "updated": 0, "unchanged": 0, "total": 2}
+
+        def failed_finalization():
+            events.append("finalization_failed")
+            raise RuntimeError("synthetic finalization failure")
+
+        with patch("pipeline.common.graph_persistence._complete_edge_materialization",
+                   side_effect=lambda *_args: events.append("completed")), \
+             patch("pipeline.common.graph_persistence._fail_edge_materialization",
+                   side_effect=lambda *_args: events.append("failed")):
+            with self.assertRaisesRegex(RuntimeError, "synthetic finalization failure"):
+                _finalize_edge_materialization(
+                    Connection(), run_id, counts, {}, failed_finalization)
+            self.assertNotIn("completed", events)
+            self.assertIn("failed", events)
+
+            events.clear()
+
+            def successful_retry():
+                events.append("finalization_succeeded")
+                return {"related_facility": 2}
+
+            result = _finalize_edge_materialization(
+                Connection(), run_id, counts, {}, successful_retry)
+
+        self.assertEqual(result, {"related_facility": 2})
+        self.assertLess(events.index("finalization_succeeded"), events.index("completed"))
+
 
     def test_edge_source_record_lookup_closes_implicit_transaction_before_batches(self):
         class FakeConnection:

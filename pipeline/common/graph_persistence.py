@@ -1441,6 +1441,21 @@ def _fail_edge_materialization(connection: Any, materialization_run_id: uuid.UUI
     )
 
 
+def _finalize_edge_materialization(connection: Any, materialization_run_id: uuid.UUID,
+                                   counts: dict[str, int], matcher_summary: dict[str, Any] | None,
+                                   finalize: Callable[[], Any]) -> Any:
+    """Run required post-edge finalization before exposing a completed checkpoint."""
+    try:
+        result = finalize()
+        with connection.transaction():
+            _complete_edge_materialization(connection, materialization_run_id, counts, matcher_summary)
+        return result
+    except Exception as error:
+        with connection.transaction():
+            _fail_edge_materialization(connection, materialization_run_id, error)
+        raise
+
+
 def _mark_failed(connection: Any, run_id: uuid.UUID, error: Exception) -> None:
     # The run envelope is operational state (unlike the evidence rows) so a
     # failed process can be diagnosed and resumed without mutating evidence.
@@ -1566,8 +1581,8 @@ def import_graph_candidates(database_url: str, handoff_dir: str | Path, *,
             raise
         with db.transaction():
             db.execute("UPDATE uec.graph_ingest_runs SET status='completed', inserted_count=%s, already_present_count=%s, rejected_count=%s, error_summary=NULL, completed_at=now() WHERE ingest_run_id=%s", (inserted, already, rejected, run_id))
+        materialization_run_id = None
         if edge_builder is not None or private_target is not None:
-            materialization_run_id = None
             if private_target is not None and materialization_fingerprint is not None:
                 with db.transaction():
                     materialization_run_id = _start_edge_materialization(
@@ -1611,15 +1626,6 @@ def import_graph_candidates(database_url: str, handoff_dir: str | Path, *,
                             edge_updated += counts["updated"]
                             edge_unchanged += counts.get("unchanged", 0)
                             edge_skipped_exact += counts["skipped_exact"]
-                if materialization_run_id is not None:
-                    with db.transaction():
-                        _complete_edge_materialization(
-                            db, materialization_run_id,
-                            {"inserted": edge_inserted, "updated": edge_updated,
-                             "unchanged": edge_unchanged,
-                             "total": edge_inserted + edge_updated + edge_unchanged},
-                            matcher_summary,
-                        )
             except Exception as error:
                 if materialization_run_id is not None:
                     with db.transaction():
@@ -1627,23 +1633,39 @@ def import_graph_candidates(database_url: str, handoff_dir: str | Path, *,
                 raise
         canonical_binding_counts = None
         support_ref_rows_updated = 0
-        if private_target is not None:
+
+        def finalize_post_edge() -> dict[str, int]:
+            nonlocal canonical_binding_counts, support_ref_rows_updated
+            if private_target is not None:
+                with db.transaction():
+                    support_ref_rows_updated = _backfill_graph_edge_support_record_ids(
+                        db, run_id, str(manifest["source_id"]), artifact_id)
+            if private_target is not None and manifest["source_id"] == "it.853-2004":
+                with db.transaction():
+                    binding_summary = _italy_binding_summary(
+                        db, run_id, str(manifest["source_id"]), artifact_id)
+                    binding_inserted = _insert_italy_canonical_identifier_bindings(
+                        db, run_id, str(manifest["source_id"]), artifact_id)
+                canonical_binding_counts = {**binding_summary, **binding_inserted}
+                canonical_binding_counts["support_ref_rows_updated"] = support_ref_rows_updated
             with db.transaction():
-                support_ref_rows_updated = _backfill_graph_edge_support_record_ids(
-                    db, run_id, str(manifest["source_id"]), artifact_id)
-        if private_target is not None and manifest["source_id"] == "it.853-2004":
-            with db.transaction():
-                binding_summary = _italy_binding_summary(db, run_id, str(manifest["source_id"]), artifact_id)
-                binding_inserted = _insert_italy_canonical_identifier_bindings(
-                    db, run_id, str(manifest["source_id"]), artifact_id)
-            canonical_binding_counts = {**binding_summary, **binding_inserted}
-            canonical_binding_counts["support_ref_rows_updated"] = support_ref_rows_updated
-        persisted_edges = db.execute(
-            "SELECT connection_type,count(*) FROM uec.graph_connection_edges "
-            "WHERE from_source_id=%s OR to_source_id=%s GROUP BY connection_type",
-            (manifest["source_id"], manifest["source_id"]),
-        ).fetchall()
-        persisted_by_type = {str(kind): int(count) for kind, count in persisted_edges}
+                persisted_edges = db.execute(
+                    "SELECT connection_type,count(*) FROM uec.graph_connection_edges "
+                    "WHERE from_source_id=%s OR to_source_id=%s GROUP BY connection_type",
+                    (manifest["source_id"], manifest["source_id"]),
+                ).fetchall()
+            return {str(kind): int(count) for kind, count in persisted_edges}
+
+        if materialization_run_id is not None:
+            persisted_by_type = _finalize_edge_materialization(
+                db, materialization_run_id,
+                {"inserted": edge_inserted, "updated": edge_updated,
+                 "unchanged": edge_unchanged,
+                 "total": edge_inserted + edge_updated + edge_unchanged},
+                matcher_summary, finalize_post_edge,
+            )
+        else:
+            persisted_by_type = finalize_post_edge()
         return {"status": "already_present" if completed else "completed", "source_id": manifest["source_id"], "source_kind": "facility_master", "run_id": str(run_id), "item_count": item_count, "inserted_count": inserted, "already_present_count": already, "rejected_count": rejected, "source_assertion_rows": source_assertion_rows, "endpoint_mapping_diagnostics": endpoint_mapping_diagnostics, "canonical_binding_counts": canonical_binding_counts, "edge_inserted_count": edge_inserted, "edge_updated_count": edge_updated, "edge_unchanged_count": edge_unchanged, "edge_skipped_exact_count": edge_skipped_exact, "edge_count": edge_inserted + edge_updated + edge_unchanged, "persisted_edge_counts": persisted_by_type, "resume_offset": resume_offset, "public_rows": 0, "phase_timings_seconds": {"validation_and_staging": round(time.perf_counter() - started_at, 6), "approved_lineage_load": approved_lineage_seconds}, "peak_rss_bytes": _peak_rss_bytes()}
 
 
