@@ -304,16 +304,21 @@ There is no configured backup reviewer, legal service, publication guarantee,
 response SLA, anonymity guarantee, or production capacity claim in this
 runbook. Those remain explicit deployment decisions and policy obligations.
 
-## Selected public-serving package rehearsal (local only)
+## Selected public-serving package and hosted restore
 
 `pipeline/scripts/maintenance/prepare-release-serving-package.py` prepares a
-selected-column package for one already-approved public release. It is a local
-restore rehearsal, not a publication command, backup format, or authorization
-to copy a private database to a host. The source database is read-only; use an
-empty isolated target only. The helper refuses a package whose manifest or any
-individual binary `COPY` payload has a different SHA-256 or byte count before
-opening the target connection. It also copies the source migration ledger
-first and checks its canonical inventory digest before any other package data.
+selected-column serving derivative for named, already-approved public
+releases. It is not a publication command or a full backup. The same package
+format supports local restore rehearsal and an explicitly approved hosted
+restore; package creation alone does not authorize a deployment or change
+release state. The source database is read-only. Restore only to a newly
+created isolated target whose allowlisted relations are empty (apart from the
+two pristine generation singletons seeded by migrations). The helper rejects
+pre-existing serving rows before copying anything. It refuses a package whose
+manifest or any individual binary `COPY` payload has a different SHA-256 or
+byte count before opening the target connection. It also copies the source
+migration ledger first and checks its canonical inventory digest before any
+other package data.
 
 The target schema must be derived from the same verified migrated source, in
 the following order: create `postgis` in `public` and `pgcrypto`; restore the
@@ -350,8 +355,15 @@ raw evidence. Migration 078 makes old v1 projections unavailable until rebuilt.
 The restored API role gets `SELECT` on the safe current graph view only; support,
 endpoint, and endpoint-anchor tables remain outside that role's grants.
 
-For a rehearsal, export and restore with environment-held connection strings
-only; do not put a credential in shell history, a command argument, or a log:
+For a local rehearsal or an approved hosted restore, export and restore with
+environment-held connection strings only; do not put a credential in shell
+history, a command argument, or a log. For hosted use, keep the source in the
+approved private environment, transfer only the verified package and schema
+archives, and restore into a new empty database on the selected provider. Do
+not connect the package exporter to a hosted administrative or source-data URL.
+Record the release IDs, manifest digest(s), migration inventory digest,
+package digest, schema archive digests, and aggregate verification receipt in
+the restricted deployment record:
 
 ```text
 prepare-release-serving-package.py export --source-database-url-env UEC_SOURCE_URL \

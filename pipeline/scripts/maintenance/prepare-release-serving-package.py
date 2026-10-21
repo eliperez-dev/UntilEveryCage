@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export/restore a selected-column local public-serving package.
+"""Export/restore a selected-column public-serving derivative.
 
 Targets must already use normal migrations. This tool never exports raw source,
 acquisition, or geocoder payloads, and prints aggregate evidence only.
@@ -59,6 +59,43 @@ def _migration_inventory_digest(connection) -> str:
     return hashlib.sha256(json.dumps(inventory, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
+def _validate_selected_releases(release_ids: list[str], rows) -> None:
+    """Require exact, non-test releases that are currently or historically public."""
+    selected = set(release_ids)
+    by_id = {row[0]: row[1:] for row in rows}
+    if set(by_id) != selected:
+        raise ValueError("selected release inventory is incomplete")
+    for release_id in selected:
+        test_only, status, history_present, manifest_digest, read_model_digest = by_id[release_id]
+        if test_only is not False or (status != "promoted" and not history_present):
+            raise ValueError("selected release is not publicly eligible")
+        if not manifest_digest or manifest_digest != read_model_digest:
+            raise ValueError("selected release manifest does not match its read model")
+
+
+def _assert_empty_target(cursor, specs) -> None:
+    """Reject reuse of a target that already contains serving data.
+
+    Migrated targets seed two generation singletons. Those may contain only
+    their initial zero value; package restore replaces them with the selected
+    source generation. Every other allowlisted relation must be empty.
+    """
+    seeded = {
+        "uec.public_suppression_generation": ("singleton", "generation"),
+        "uec.graph_projection_generation": ("singleton", "generation"),
+    }
+    for spec in specs:
+        cursor.execute("SELECT count(*) FROM " + spec.relation)
+        count = int(cursor.fetchone()[0])
+        if spec.relation in seeded:
+            cursor.execute("SELECT singleton,generation FROM " + spec.relation)
+            rows = cursor.fetchall()
+            if count != 1 or rows != [(True, 0)]:
+                raise ValueError("target generation singleton is not pristine")
+        elif count:
+            raise ValueError("target serving relation is not empty")
+
+
 def export_package(source_url: str, output: Path, releases: list[str], inventory: str, schema_artifacts: dict[str, str] | None = None) -> dict[str, object]:
     import psycopg
     if output.exists(): raise ValueError("package output must not already exist")
@@ -67,6 +104,17 @@ def export_package(source_url: str, output: Path, releases: list[str], inventory
     try:
         with psycopg.connect(source_url, autocommit=False) as connection:
             connection.execute("SET TRANSACTION READ ONLY")
+            release_rows = connection.execute(
+                "SELECT release.release_id,release.test_only,release.status,"
+                "EXISTS (SELECT 1 FROM uec.public_release_history history "
+                "WHERE history.release_id=release.release_id AND history.profile=release.profile),"
+                "manifest.manifest_sha256,model.manifest_sha256 "
+                "FROM uec.releases release "
+                "LEFT JOIN uec.release_manifests manifest USING(release_id) "
+                "LEFT JOIN uec.public_discovery_read_models model USING(release_id) "
+                "WHERE release.release_id=ANY(%s)", (releases,),
+            ).fetchall()
+            _validate_selected_releases(releases, release_rows)
             specs = []
             for spec in export_specs():
                 exists = connection.execute("SELECT to_regclass(%s)", (spec.relation,)).fetchone()[0]
@@ -110,6 +158,7 @@ def restore_package(target_url: str, package: Path, apply_grants: bool) -> dict[
       with psycopg.connect(target_url, autocommit=False) as connection:
         with connection.cursor() as cursor:
             positions = {spec.relation: ordinal for ordinal, spec in enumerate(specs)}
+            _assert_empty_target(cursor, specs)
             for spec in sorted(specs, key=lambda item: RESTORE_ORDER.index(item.relation)):
                 relation = spec.relation
                 source = package / "data" / f"{positions[spec.relation]:02d}.copy"

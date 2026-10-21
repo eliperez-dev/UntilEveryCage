@@ -1,4 +1,6 @@
 from __future__ import annotations
+import importlib.util
+from pathlib import Path
 import unittest
 
 from pipeline.common import release_serving as serving
@@ -39,12 +41,47 @@ class ReleaseServingPackageTests(unittest.TestCase):
 
     def test_manifest_is_reproducible_and_labels_redaction(self):
         manifest = serving.package_manifest(release_ids=["v0-public"], migration_inventory_sha256="a" * 64, table_counts={"uec.releases": 1}, schema_artifacts={"pre_data": "b" * 64})
-        self.assertEqual(manifest["schema_version"], "uec-serving-package-v4")
+        self.assertEqual(manifest["schema_version"], "uec-serving-package-v5")
+        self.assertEqual(manifest["package_state"], "selected_public_serving_derivative")
         self.assertEqual(manifest["package_sha256"], serving.canonical_sha256({key: value for key, value in manifest.items() if key != "package_sha256"}))
         self.assertIn("redacted", manifest["redaction_notice"])
         self.assertEqual(manifest["serving_schema_derivative"]["artifacts_sha256"]["pre_data"], "b" * 64)
         self.assertEqual(len(manifest["serving_schema_derivative"]["post_data_omissions"]), 2)
         self.assertNotIn("password", str(manifest).casefold())
+
+    def test_restore_target_must_be_empty_except_zero_generation_singletons(self):
+        path = Path(__file__).parents[1] / "scripts" / "maintenance" / "prepare-release-serving-package.py"
+        spec = importlib.util.spec_from_file_location("prepare_release_serving_package_test", path)
+        package = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(package)
+
+        class Cursor:
+            def __init__(self, populated=None, singleton_rows=None):
+                self.populated = populated
+                self.singleton_rows = singleton_rows or [(True, 0)]
+                self.result = None
+
+            def execute(self, query):
+                relation = query.rsplit(" ", 1)[-1]
+                if query.startswith("SELECT count(*)"):
+                    self.result = (1 if relation == self.populated or relation in {
+                        "uec.public_suppression_generation", "uec.graph_projection_generation"
+                    } else 0,)
+                else:
+                    self.result = self.singleton_rows
+
+            def fetchone(self):
+                return self.result
+
+            def fetchall(self):
+                return self.result
+
+        specs = serving.export_specs()
+        package._assert_empty_target(Cursor(), specs)
+        with self.assertRaisesRegex(ValueError, "not empty"):
+            package._assert_empty_target(Cursor(populated="uec.releases"), specs)
+        with self.assertRaisesRegex(ValueError, "singleton"):
+            package._assert_empty_target(Cursor(singleton_rows=[(True, 1)]), specs)
 
     def test_api_grants_are_exact_and_read_only(self):
         sql = serving.grant_sql()
@@ -65,6 +102,22 @@ class ReleaseServingPackageTests(unittest.TestCase):
         with self.assertRaises(ValueError): serving.package_manifest(release_ids=["v0", "v0"], migration_inventory_sha256="a" * 64)
         with self.assertRaises(ValueError): serving.package_manifest(release_ids=["v0"], migration_inventory_sha256="A" * 64)
         with self.assertRaises(ValueError): serving.package_manifest(release_ids=["v0"], migration_inventory_sha256="a" * 64, schema_artifacts={"pre": "B" * 64})
+
+    def test_export_requires_exact_public_release_and_matching_read_model(self):
+        path = Path(__file__).parents[1] / "scripts" / "maintenance" / "prepare-release-serving-package.py"
+        spec = importlib.util.spec_from_file_location("prepare_release_serving_package_gate_test", path)
+        package = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(package)
+        eligible = [("release-x", False, "promoted", False, "a" * 64, "a" * 64)]
+        package._validate_selected_releases(["release-x"], eligible)
+        for rows in (
+            [],
+            [("release-x", True, "promoted", False, "a" * 64, "a" * 64)],
+            [("release-x", False, "candidate", False, "a" * 64, "a" * 64)],
+            [("release-x", False, "promoted", False, "a" * 64, "b" * 64)],
+        ):
+            with self.subTest(rows=rows), self.assertRaises(ValueError):
+                package._validate_selected_releases(["release-x"], rows)
 
 
 if __name__ == "__main__": unittest.main()
