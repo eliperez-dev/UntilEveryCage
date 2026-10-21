@@ -24,17 +24,35 @@ publishable facilities unless explicitly labelled that way.
 
 ## Current launch decision (2026-10-21)
 
-**Latest hosted checkpoint:** the release-scoped graph and facility Connections
-section are live at [the Render website](https://untileverycage.onrender.com)
-on application commit `6b74365e`, deployment `dep-dbci4gui0phs73a5okpg`.
-Hosted API and desktop/mobile browser acceptance passed. The approved
-2026-10-18 dataset and historical v0 remain available; no source intake,
-dataset membership, map styling or contribution workflow changed. See
-[D6.6](#d66---hosted-graph-and-facility-connections-2026-10-21) for counts,
-evidence and the serving/community database split. Final owner frontend
-acceptance and custom-domain cutover remain open. Operator follow-up: rotate
-the runtime API database credential before domain cutover; no credential
-rotation was performed by this sprint.
+**Latest hosted checkpoint:** map interaction repairs are live at
+[the Render website](https://untileverycage.onrender.com) on application commit
+`a7bb5756`, deployment `dep-dbcjiqd9fdbs73a32hd0`. The default empty-hash map
+route now accepts control and selection actions. Approximate singleton records
+have visible markers and open their released facility details; their precision,
+normal cluster membership and selected-only 500-metre-diameter area are retained.
+No source intake, dataset membership, graph or contribution workflow changed.
+
+All seven application CI jobs passed, along with 253 frontend unit tests and
+the cold-root/cached-reload browser regression. Independent real-release checks
+verified source-coordinate and approximate DK/NL/GB markers against matching
+record details. The final hosted smoke passed first-visible search on cold and
+cached loads, basemap canvas changes and a Danish approximate marker/detail,
+with no page errors. Receipts are in ignored
+`data/staging/hosted-graph-qa-20261021/postfix-map-acceptance-receipt.json` and
+`hosted-repair-final-smoke-receipt.json`. A Danish low-zoom expansion probe was
+inconclusive, not evidence of a cluster defect. The feed contains 422 Danish,
+602 Dutch and six UK mapped records; 4,880 other UK records remain unmapped,
+which is a data-enrichment gap, not repaired by changing the renderer.
+
+The release-scoped graph and facility Connections section remain available.
+See [D6.6](#d66---hosted-graph-and-facility-connections-2026-10-21) for their
+counts, evidence and serving/community database split. The approved 2026-10-18
+dataset and historical v0 remain available. Owner frontend acceptance and
+custom-domain cutover remain open. Operator follow-up: rotate the runtime API
+database credential before domain cutover; no credential rotation was performed
+by this repair. Only agent-owned test servers and temporary build output were
+removed; the existing user preview and databases were preserved. No worktree
+was added; the three existing worktrees and two active lanes remain.
 
 The maintainer approved the corrected **2026-10-18 dataset** for the V2
 website on Render, retaining historical dataset v0 access. Public dataset
