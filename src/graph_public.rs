@@ -54,6 +54,20 @@ fn limit(value: Option<i64>) -> Result<i64, &'static str> {
     }
 }
 
+fn page_cursor<T>(
+    items: &mut Vec<T>,
+    requested_limit: usize,
+    cursor: impl Fn(&T) -> Option<Value>,
+) -> Option<Value> {
+    let has_more = items.len() > requested_limit;
+    if has_more {
+        items.truncate(requested_limit);
+        items.last().and_then(cursor)
+    } else {
+        None
+    }
+}
+
 fn profile(value: Option<&str>) -> Result<&str, &'static str> {
     let value = value.unwrap_or("official");
     if matches!(value, "official" | "secondary" | "community") {
@@ -307,7 +321,7 @@ pub async fn connections(
                 &query.source_id,
                 &query.entity_id,
                 &query.cursor,
-                &limit,
+                &(limit + 1),
             ],
         )
         .await
@@ -318,17 +332,16 @@ pub async fn connections(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "public_graph_query_failed",
                 "public graph query failed",
-            )
+            );
         }
     };
-    let data: Vec<Value> = rows
+    let mut data: Vec<Value> = rows
         .iter()
         .map(|row| public_edge(row, &release_id))
         .collect();
-    let next_cursor = data
-        .last()
-        .and_then(|row| row.get("connection_edge_id"))
-        .cloned();
+    let next_cursor = page_cursor(&mut data, limit as usize, |row| {
+        row.get("connection_edge_id").cloned()
+    });
     Json(json!({"api_version": API_VERSION, "data": data, "meta": {"profile": profile, "release_id": release_id, "ruleset_version": ruleset, "limit": limit, "page_max": MAX_LIMIT, "next_cursor": next_cursor, "confidence_kind": "ruleset_estimate_not_probability", "public_projection": true, "suppressed": false, "human_confirmed_state": false, "automatic_merge": false, "claim_transfer": false}})).into_response()
 }
 
@@ -382,9 +395,11 @@ pub async fn entities(
           AND ($3::text IS NULL OR entity_type=$3)
           AND ($4::uuid IS NULL OR entity_id < $4)
         ORDER BY entity_id DESC LIMIT $5
-    "#, &[&release_id, &q, &query.entity_type, &query.cursor, &limit]).await { Ok(rows) => rows, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "public_graph_query_failed", "public graph entity search failed") };
-    let data: Vec<Value> = rows.iter().map(|row| json!({"entity_id": row.get::<_, Uuid>(0), "entity_type": row.get::<_, String>(1), "display_name": row.get::<_, Option<String>>(2), "country_code": row.get::<_, Option<String>>(3)})).collect();
-    let next_cursor = data.last().and_then(|row| row.get("entity_id")).cloned();
+    "#, &[&release_id, &q, &query.entity_type, &query.cursor, &(limit + 1)]).await { Ok(rows) => rows, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "public_graph_query_failed", "public graph entity search failed") };
+    let mut data: Vec<Value> = rows.iter().map(|row| json!({"entity_id": row.get::<_, Uuid>(0), "entity_type": row.get::<_, String>(1), "display_name": row.get::<_, Option<String>>(2), "country_code": row.get::<_, Option<String>>(3)})).collect();
+    let next_cursor = page_cursor(&mut data, limit as usize, |row| {
+        row.get("entity_id").cloned()
+    });
     Json(json!({"api_version": API_VERSION, "data": data, "meta": {"profile": profile, "release_id": release_id, "ruleset_version": ruleset, "limit": limit, "page_max": MAX_LIMIT, "next_cursor": next_cursor, "public_projection": true}})).into_response()
 }
 
@@ -422,6 +437,61 @@ mod tests {
             ..Default::default()
         })
         .is_err());
+    }
+
+    #[test]
+    fn connection_pages_only_expose_cursor_when_lookahead_exists() {
+        for (page, expected_count, expected_cursor) in [
+            (
+                vec![
+                    json!({"connection_edge_id": "a"}),
+                    json!({"connection_edge_id": "b"}),
+                ],
+                2,
+                None,
+            ),
+            (
+                vec![
+                    json!({"connection_edge_id": "a"}),
+                    json!({"connection_edge_id": "b"}),
+                    json!({"connection_edge_id": "c"}),
+                ],
+                2,
+                Some("b"),
+            ),
+            (Vec::new(), 0, None),
+        ] {
+            let mut page = page;
+            let cursor = page_cursor(&mut page, 2, |row| row.get("connection_edge_id").cloned());
+            assert_eq!(page.len(), expected_count);
+            assert_eq!(cursor, expected_cursor.map(|value| json!(value)));
+        }
+    }
+
+    #[test]
+    fn entity_pages_only_expose_cursor_when_lookahead_exists() {
+        for (page, expected_count, expected_cursor) in [
+            (
+                vec![json!({"entity_id": "a"}), json!({"entity_id": "b"})],
+                2,
+                None,
+            ),
+            (
+                vec![
+                    json!({"entity_id": "a"}),
+                    json!({"entity_id": "b"}),
+                    json!({"entity_id": "c"}),
+                ],
+                2,
+                Some("b"),
+            ),
+            (Vec::new(), 0, None),
+        ] {
+            let mut page = page;
+            let cursor = page_cursor(&mut page, 2, |row| row.get("entity_id").cloned());
+            assert_eq!(page.len(), expected_count);
+            assert_eq!(cursor, expected_cursor.map(|value| json!(value)));
+        }
     }
 
     #[test]
