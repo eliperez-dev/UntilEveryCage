@@ -4,6 +4,7 @@ import unittest
 import uuid
 from decimal import Decimal
 from pathlib import Path
+from unittest.mock import patch
 
 from pipeline.common.graph_persistence import (
     GraphPersistenceError,
@@ -13,6 +14,7 @@ from pipeline.common.graph_persistence import (
     _approved_facility_for_source_record,
     _ITALY_CANONICAL_BINDING_CTES,
     _load_approved_facility_map,
+    _load_run_source_record_ids_for_edge_batches,
     load_evidence_handoff,
     load_graph_candidate_handoff,
     require_disposable_graph_database,
@@ -53,6 +55,31 @@ def candidate(source_id="synthetic.graph"):
 
 
 class GraphPersistenceContractTests(unittest.TestCase):
+
+    def test_edge_source_record_lookup_closes_implicit_transaction_before_batches(self):
+        class FakeConnection:
+            def __init__(self):
+                self.transaction_open = False
+                self.commits = 0
+
+            def commit(self):
+                self.commits += 1
+                self.transaction_open = False
+
+        connection = FakeConnection()
+
+        def open_read_transaction(_connection, _run_id, _artifact_id):
+            connection.transaction_open = True
+            return {("synthetic.source", "record-a"): uuid.uuid4()}
+
+        run_id, artifact_id = uuid.uuid4(), uuid.uuid4()
+        with patch("pipeline.common.graph_persistence._load_run_source_record_ids",
+                   side_effect=open_read_transaction):
+            mapping = _load_run_source_record_ids_for_edge_batches(
+                connection, run_id, artifact_id)
+        self.assertEqual(len(mapping), 1)
+        self.assertEqual(connection.commits, 1)
+        self.assertFalse(connection.transaction_open)
 
     def test_italy_canonical_binding_is_same_artifact_release_and_unambiguous_only(self):
         query = _ITALY_CANONICAL_BINDING_CTES

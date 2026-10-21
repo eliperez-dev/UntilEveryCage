@@ -113,6 +113,31 @@ contracts              database and adapter contract tests
 review-packet RUN_DIR  deterministic, row-free private review packet
 ```
 
+### Retained backend integration target
+
+The source/graph lane retains `uec_real_preview_test_graph_20261020` in the
+existing loopback PostgreSQL container on port 55433 as its writable working
+copy. Its historical name is retained because the real Italy acceptance test
+guards that exact target. It was cloned from the verified v0 reference before
+backend migrations and private source imports. It is not the frozen reference,
+the separate `uec_v0_dev` database, a new public release, or the database used by
+the existing frontend preview. Do not silently repoint that preview.
+
+Supply the working target's importer URL through `UEC_DATABASE_URL`. Optional
+graph materialization uses a separate least-privilege graph-writer URL in
+`UEC_GRAPH_DATABASE_URL`, the exact target name in `UEC_GRAPH_DATABASE_NAME`,
+and `UEC_GRAPH_DATABASE_PURPOSE=private-graph-materialization-v1`. Credentials
+and preview tokens are not documentation or repository inputs. Follow the
+[private graph boundary](../pipeline/common/GRAPH-PERSISTENCE.md) and
+[source refresh contract](api/real-preview-contract.md).
+
+Current source/run evidence belongs in [source-status.json](source-status.json),
+not in this operating guide. Native coordinate pairs are retained evidence,
+not automatically eligible map geometry; use the importer's `map_visible_count`
+rather than adding numeric and coarse location counts. Preserve the working
+database at sprint cleanup; remove only owned temporary API processes, test
+restore databases, credentials and build scratch.
+
 ### Local community contribution pilot
 
 This feature is disabled by default and refuses production enablement or a

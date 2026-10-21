@@ -663,6 +663,16 @@ def _load_run_source_record_ids(connection: Any, run_id: uuid.UUID,
     return {(str(source_id), str(key)): record_id for source_id, key, record_id in rows}
 
 
+def _load_run_source_record_ids_for_edge_batches(connection: Any, run_id: uuid.UUID,
+                                                 artifact_id: uuid.UUID) -> dict[tuple[str, str], uuid.UUID]:
+    """Load source IDs and close the implicit read transaction before edge batches."""
+    result = _load_run_source_record_ids(connection, run_id, artifact_id)
+    # The SELECT above opens a psycopg implicit transaction. Without this
+    # boundary, the explicit edge-batch transactions below become savepoints.
+    connection.commit()
+    return result
+
+
 _ITALY_CANONICAL_BINDING_CTES = """
 WITH selected_release AS MATERIALIZED (
     SELECT release_id FROM uec.releases
@@ -1563,7 +1573,8 @@ def import_graph_candidates(database_url: str, handoff_dir: str | Path, *,
                     materialization_run_id = _start_edge_materialization(
                         db, str(manifest["source_id"]), digest, materialization_fingerprint)
             candidate_root, _ = _graph_candidate_root(handoff_dir)
-            run_source_record_ids = _load_run_source_record_ids(db, run_id, artifact_id)
+            run_source_record_ids = _load_run_source_record_ids_for_edge_batches(
+                db, run_id, artifact_id)
             edge_batch: list[dict[str, Any]] = []
             try:
                 for candidate in _iter_candidate_payloads(candidate_root):

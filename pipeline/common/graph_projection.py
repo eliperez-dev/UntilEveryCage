@@ -13,6 +13,7 @@ from pipeline.common.graph_persistence import _validate_private_graph_writer, re
 
 
 PROJECTION_VERSION = "graph-release-projection-v1"
+PROJECTION_PLANNER_GUARD = "SET LOCAL enable_nestloop=off"
 _SQL_PATH = Path(__file__).resolve().parents[1] / "sql" / "graph_public_edge_ctes.sql"
 EDGE_CTES = _SQL_PATH.read_text(encoding="utf-8")
 _PUBLIC_GROUPS = frozenset({"source", "identity", "location", "contact", "temporal", "contradiction"})
@@ -116,7 +117,8 @@ def _insert_batch(connection: Any, projection_id: uuid.UUID, release_id: str,
                            for side, raw in (("from", row[22]), ("to", row[23]))
                            for record_id, facility_id in _anchors(raw))
     if edge_rows:
-        connection.executemany(
+        with connection.cursor() as cursor:
+            cursor.executemany(
             """INSERT INTO uec.graph_public_projection_edges
                (projection_id,release_id,connection_edge_id,from_entity_id,from_entity_type,
                 from_source_id,from_identifier_type,to_entity_id,to_entity_type,to_source_id,
@@ -124,17 +126,17 @@ def _insert_batch(connection: Any, projection_id: uuid.UUID, release_id: str,
                 signal_explanation,match_method,observed_at,computed_at,ruleset_version,conflicting)
                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s)""",
             edge_rows,
-        )
-        connection.executemany(
-            """INSERT INTO uec.graph_public_projection_edge_supports
+            )
+            cursor.executemany(
+                """INSERT INTO uec.graph_public_projection_edge_supports
                (projection_id,connection_edge_id,source_record_id,source_id,artifact_id)
                VALUES (%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""", support_rows,
-        )
-        connection.executemany(
-            """INSERT INTO uec.graph_public_projection_endpoint_anchors
+            )
+            cursor.executemany(
+                """INSERT INTO uec.graph_public_projection_endpoint_anchors
                (projection_id,connection_edge_id,endpoint_side,source_record_id,facility_id)
                VALUES (%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""", anchor_rows,
-        )
+            )
     return len(edge_rows)
 
 
@@ -194,6 +196,10 @@ def build_release_projection(database_url: str, release_id: str, *,
         count = 0
         try:
             with connection.transaction():
+                # The release/support CTEs have a known severe row-count
+                # underestimation under nested loops. Keep the measured hash
+                # join plan override transaction-local to this one build.
+                connection.execute(PROJECTION_PLANNER_GUARD)
                 cursor = connection.cursor(name="uec_graph_projection_source")
                 cursor.execute(f"WITH {EDGE_CTES} SELECT * FROM edges", (release_id,))
                 while batch := cursor.fetchmany(batch_size):

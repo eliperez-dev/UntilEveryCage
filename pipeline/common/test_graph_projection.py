@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 import uuid
 import hashlib
+from pathlib import Path
 from unittest.mock import patch
 
 from pipeline.common import graph_persistence
@@ -10,7 +11,13 @@ from pipeline.common.graph_persistence import (
     _PRIVATE_GRAPH_REQUIRED_PRIVILEGES,
     _PRIVATE_GRAPH_REQUIRED_READ_PRIVILEGES,
 )
-from pipeline.common.graph_projection import EDGE_CTES, PROJECTION_VERSION, sanitize_signal_explanation
+from pipeline.common.graph_projection import (
+    EDGE_CTES,
+    PROJECTION_PLANNER_GUARD,
+    PROJECTION_VERSION,
+    _insert_batch,
+    sanitize_signal_explanation,
+)
 from pipeline.common.real_private_graph import (
     D5_MATCHER_VERSION,
     D6_EDGE_RULESET_VERSION,
@@ -53,6 +60,58 @@ class GraphProjectionTests(unittest.TestCase):
         self.assertNotIn("private token", str(safe))
         self.assertNotIn("residential address", str(safe))
 
+    def test_projection_batch_uses_cursor_executemany_and_never_persists_raw_ids(self):
+        edge_id, from_id, to_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+        support_record, artifact_id = uuid.uuid4(), uuid.uuid4()
+        anchor_from, anchor_to = uuid.uuid4(), uuid.uuid4()
+        private_token = "private-endpoint-token"
+        row = (
+            edge_id, from_id, "facility", "it.synthetic", "permit", private_token,
+            to_id, "facility", "it.synthetic", "permit", private_token,
+            "operator", "inferred", 0.72, "medium", '{"group_contributions":{"identity":0.5}}',
+            "d5-rules", "2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z", "d6-v1", False,
+            [support_record],
+            [{"source_record_id": str(support_record), "facility_id": str(anchor_from)}],
+            [{"source_record_id": str(support_record), "facility_id": str(anchor_to)}],
+            [{"source_record_id": str(support_record), "source_id": "it.synthetic",
+              "artifact_id": str(artifact_id)}],
+        )
+
+        class FakeCursor:
+            def __init__(self):
+                self.calls = []
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def executemany(self, query, values):
+                self.calls.append((query, values))
+
+        class FakeConnection:
+            def __init__(self):
+                self.fake_cursor = FakeCursor()
+
+            def cursor(self):
+                return self.fake_cursor
+
+        connection = FakeConnection()
+        inserted = _insert_batch(connection, uuid.uuid4(), "release-safe", [row])
+        self.assertEqual(inserted, 1)
+        self.assertEqual(len(connection.fake_cursor.calls), 3)
+        sql = "\n".join(query for query, _values in connection.fake_cursor.calls)
+        bound_values = repr([values for _query, values in connection.fake_cursor.calls])
+        self.assertIn("graph_public_projection_edges", sql)
+        self.assertNotIn(private_token, bound_values)
+
+    def test_projection_planner_guard_is_transaction_local(self):
+        self.assertEqual(PROJECTION_PLANNER_GUARD, "SET LOCAL enable_nestloop=off")
+        source = (Path(__file__).resolve().with_name("graph_projection.py")).read_text(encoding="utf-8")
+        self.assertIn("connection.execute(PROJECTION_PLANNER_GUARD)", source)
+        self.assertNotIn('connection.execute("SET enable_nestloop=off")', source)
+
     def test_materialization_fingerprint_is_explicitly_versioned(self):
         self.assertEqual(PROJECTION_VERSION, "graph-release-projection-v1")
         self.assertTrue(all((D5_MATCHER_VERSION, D6_EDGE_RULESET_VERSION,
@@ -71,27 +130,23 @@ class GraphProjectionTests(unittest.TestCase):
             )
 
     def test_projection_migration_grants_match_private_writer_validator(self):
-        migration = (EDGE_CTES_PATH.parents[1] / "migrations" / "077_graph_release_projection.sql").read_text(
+        migration = (Path(__file__).resolve().parents[1] / "migrations" / "077_graph_release_projection.sql").read_text(
             encoding="utf-8",
         )
         grants = {
-            "graph_edge_materialization_runs": {"SELECT", "INSERT", "UPDATE"},
-            "graph_projection_generation": {"SELECT"},
-            "graph_public_projection_builds": {"SELECT", "INSERT", "UPDATE"},
-            "graph_public_projection_edges": {"SELECT", "INSERT"},
-            "graph_public_projection_edge_supports": {"SELECT", "INSERT"},
-            "graph_public_projection_endpoint_anchors": {"SELECT", "INSERT"},
+            "graph_edge_materialization_runs": "SELECT, INSERT, UPDATE",
+            "graph_projection_generation": "SELECT",
+            "graph_public_projection_builds": "SELECT, INSERT, UPDATE",
+            "graph_public_projection_edges": "SELECT, INSERT",
+            "graph_public_projection_edge_supports": "SELECT, INSERT",
+            "graph_public_projection_endpoint_anchors": "SELECT, INSERT",
         }
-        self.assertEqual(grants, {
-            **_PRIVATE_GRAPH_REQUIRED_PRIVILEGES,
-            **_PRIVATE_GRAPH_REQUIRED_READ_PRIVILEGES,
-        } | {
-            table: privileges for table, privileges in grants.items()
-            if table in _PRIVATE_GRAPH_REQUIRED_PRIVILEGES or table in _PRIVATE_GRAPH_REQUIRED_READ_PRIVILEGES
-        })
-        for table, privileges in grants.items():
-            expected = ", ".join(sorted(privileges))
-            self.assertIn(f"{expected} ON uec.{table}", migration)
+        validator = {**_PRIVATE_GRAPH_REQUIRED_PRIVILEGES,
+                     **_PRIVATE_GRAPH_REQUIRED_READ_PRIVILEGES}
+        for table, grant in grants.items():
+            with self.subTest(table=table):
+                self.assertEqual(validator[table], set(grant.split(", ")))
+                self.assertIn(f"GRANT {grant} ON uec.{table}", migration)
 
     def test_completion_check_skips_staging_only_for_completed_matching_fingerprint(self):
         run_id = uuid.uuid4()

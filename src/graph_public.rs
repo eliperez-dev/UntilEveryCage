@@ -238,6 +238,7 @@ fn public_identifier(entity_id: Option<Uuid>) -> String {
         .unwrap_or_else(|| "entity:unavailable".to_string())
 }
 
+#[cfg(test)]
 const EDGE_CTES: &str = include_str!("../pipeline/sql/graph_public_edge_ctes.sql");
 
 pub async fn connections(
