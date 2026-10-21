@@ -2,8 +2,9 @@
 
 Status: additive V2 frontend contract, release-gated and read-only.
 
-The public graph is a projection of `uec.graph_connection_edges`. It is not a
-direct query of private evidence. A request is evaluated against one promoted,
+The public graph is a release-scoped projection built from
+`uec.graph_connection_edges`. It is not a direct query of private evidence.
+A request is evaluated against one promoted,
 non-test release/profile and returns only source-qualified endpoints that
 resolve through that same release's public read model and privacy gates. Private
 graph facility identifiers map to canonical facility UUIDs only through an
@@ -99,9 +100,16 @@ Publication approval, source rights, privacy screening, factual review, and
 release membership remain independent gates. A public graph response does not
 certify the truth or completeness of a relationship.
 
-The graph API and release-qualified projection are validated in the controlled
-private clone for this sprint. The current Render `release_serving` package
-does not export graph data, and its hosted runtime role does not have the graph
-read-model grants. Applying the graph-binding migration alone does not activate
-hosted graph serving; a separate reviewed deployment/export and least-privilege
-grant change is required.
+The indexed graph projection is built explicitly for a release with
+`pipeline/scripts/maintenance/build-public-graph-projection.py`. It reuses the
+same release, endpoint, and support selector as the graph API. Edge generation
+changes invalidate the active projection; read-time release, support, rights,
+and suppression gates remain live. Endpoint/source-assertion changes invalidate
+the projection through a graph-generation counter. A stale projection therefore
+fails closed until rebuilt. Its API role can read the safe current projection
+view but not private edges, identifiers, support references, or anchor records.
+
+The selected-column `release_serving` package now includes this safe projection
+and migration 077 adds its serving view and exact read-only grant. This supports
+a local production-package rehearsal only; no Render deployment or hosted
+graph access is authorized or claimed by this contract update.

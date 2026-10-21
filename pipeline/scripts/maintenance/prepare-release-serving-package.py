@@ -26,6 +26,9 @@ RESTORE_ORDER = (
     "uec.release_cohort_review_scopes", "uec.observation_taxonomy_assignment_sets",
     "uec.observation_taxonomy_assignments", "uec.public_discovery_read_models",
     "uec.public_discovery_read_model_rows", "uec.public_suppression_generation",
+    "uec.graph_public_projection_builds", "uec.graph_public_projection_edges",
+    "uec.graph_public_projection_edge_supports", "uec.graph_public_projection_endpoint_anchors",
+    "uec.graph_projection_generation",
 )
 
 
@@ -116,6 +119,8 @@ def restore_package(target_url: str, package: Path, apply_grants: bool) -> dict[
                 # bootstrap value with the source's truthful current generation.
                 if spec.relation == "uec.public_suppression_generation":
                     cursor.execute("DELETE FROM uec.public_suppression_generation")
+                if spec.relation == "uec.graph_projection_generation":
+                    cursor.execute("DELETE FROM uec.graph_projection_generation")
                 target_relation = spec.relation
                 if spec.relation == "uec.publication_review_release_scopes":
                     cursor.execute("CREATE TEMP TABLE serving_scope_stage (LIKE uec.publication_review_release_scopes) ON COMMIT DROP")

@@ -18,9 +18,10 @@ if str(REPOSITORY_ROOT) not in sys.path:
 
 from pipeline.common.graph_persistence import (
     backfill_approved_graph_identifier_bindings,
+    completed_edge_materialization,
     import_graph_candidates,
 )
-from pipeline.common.real_private_graph import _MatcherStage
+from pipeline.common.real_private_graph import GRAPH_MATERIALIZATION_FINGERPRINT, _MatcherStage
 
 
 def main() -> int:
@@ -49,6 +50,18 @@ def main() -> int:
             return 2
         print(json.dumps(result, sort_keys=True))
         return 0
+    try:
+        completed = completed_edge_materialization(
+            database_url, args.handoff, private_target=(database_name, purpose),
+            fingerprint=GRAPH_MATERIALIZATION_FINGERPRINT,
+        )
+    except Exception as error:
+        print(json.dumps({"status": "blocked", "error_type": type(error).__name__,
+                          "sqlstate": getattr(error, "sqlstate", None)}, sort_keys=True))
+        return 2
+    if completed is not None:
+        print(json.dumps({**completed, "materialization_fingerprint": GRAPH_MATERIALIZATION_FINGERPRINT}, sort_keys=True))
+        return 0
     matcher = None
     try:
         matcher = _MatcherStage()
@@ -58,6 +71,8 @@ def main() -> int:
             database_url, args.handoff, batch_size=args.batch_size,
             private_target=(database_name, purpose),
             edge_builder=matcher.edge_builder,
+            materialization_fingerprint=GRAPH_MATERIALIZATION_FINGERPRINT,
+            matcher_summary=matcher_summary,
         )
     except Exception as error:
         # Driver exceptions and validation messages can include local paths or

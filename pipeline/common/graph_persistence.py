@@ -129,6 +129,14 @@ _PRIVATE_GRAPH_REQUIRED_PRIVILEGES = {
     "graph_ingest_runs": {"SELECT", "INSERT", "UPDATE"},
     "graph_ingest_items": {"SELECT", "INSERT"},
     "graph_connection_edges": {"SELECT", "INSERT", "UPDATE", "DELETE"},
+    "graph_edge_materialization_runs": {"SELECT", "INSERT", "UPDATE"},
+    "graph_public_projection_builds": {"SELECT", "INSERT", "UPDATE"},
+    "graph_public_projection_edges": {"SELECT", "INSERT"},
+    "graph_public_projection_edge_supports": {"SELECT", "INSERT"},
+    "graph_public_projection_endpoint_anchors": {"SELECT", "INSERT"},
+}
+_PRIVATE_GRAPH_REQUIRED_READ_PRIVILEGES = {
+    "graph_projection_generation": {"SELECT"},
 }
 
 
@@ -151,8 +159,10 @@ def _validate_private_graph_writer(connection: Any, expected_database: str) -> N
     for schema_name, table_name, privilege in privileges:
         if schema_name == "uec":
             grants_by_table.setdefault(table_name, set()).add(privilege)
+    required_privileges = {**_PRIVATE_GRAPH_REQUIRED_PRIVILEGES,
+                           **_PRIVATE_GRAPH_REQUIRED_READ_PRIVILEGES}
     if any(not grants_by_table.get(table, set()).issuperset(required)
-           for table, required in _PRIVATE_GRAPH_REQUIRED_PRIVILEGES.items()):
+           for table, required in required_privileges.items()):
         raise GraphPersistenceError("refusing graph materialization: private graph writer grants are incomplete")
     write_tables = {(item[0], item[1]) for item in privileges
                     if item[2] in {"INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER"}}
@@ -1361,6 +1371,66 @@ def _begin_run(connection: Any, manifest: dict[str, Any], source_kind: str, cont
     return run_id, False
 
 
+def completed_edge_materialization(database_url: str, handoff_dir: str | Path, *,
+                                   private_target: tuple[str, str], fingerprint: str) -> dict[str, Any] | None:
+    """Return aggregate completion metadata before expensive matcher staging."""
+    expected_database, purpose = private_target
+    require_private_graph_target(database_url, expected_database=expected_database, purpose=purpose)
+    manifest, _candidates, digest, item_count = iter_graph_candidate_handoff(handoff_dir)
+    with psycopg.connect(database_url) as db:
+        _validate_private_graph_writer(db, expected_database)
+        row = db.execute(
+            """SELECT materialization_run_id,status,edge_inserted_count,edge_updated_count,
+                      edge_unchanged_count,edge_count,matcher_summary
+                 FROM uec.graph_edge_materialization_runs
+                WHERE source_id=%s AND handoff_sha256=%s AND materialization_fingerprint=%s""",
+            (manifest["source_id"], digest, fingerprint),
+        ).fetchone()
+    if not row or row[1] != "completed":
+        return None
+    return {
+        "status": "already_present", "source_id": manifest["source_id"],
+        "item_count": item_count, "materialization_run_id": str(row[0]),
+        "edge_inserted_count": int(row[2]), "edge_updated_count": int(row[3]),
+        "edge_unchanged_count": int(row[4]), "edge_count": int(row[5]),
+        "matcher": row[6] or {}, "staging_skipped": True,
+    }
+
+
+def _start_edge_materialization(connection: Any, source_id: str, handoff_sha256: str,
+                                fingerprint: str) -> uuid.UUID:
+    return connection.execute(
+        """INSERT INTO uec.graph_edge_materialization_runs
+             (source_id,handoff_sha256,materialization_fingerprint,status)
+           VALUES (%s,%s,%s,'in_progress')
+           ON CONFLICT (source_id,handoff_sha256,materialization_fingerprint)
+           DO UPDATE SET status='in_progress',started_at=now(),completed_at=NULL
+           RETURNING materialization_run_id""",
+        (source_id, handoff_sha256, fingerprint),
+    ).fetchone()[0]
+
+
+def _complete_edge_materialization(connection: Any, materialization_run_id: uuid.UUID,
+                                   counts: dict[str, int], matcher_summary: dict[str, Any] | None) -> None:
+    connection.execute(
+        """UPDATE uec.graph_edge_materialization_runs
+              SET status='completed',edge_inserted_count=%s,edge_updated_count=%s,
+                  edge_unchanged_count=%s,edge_count=%s,matcher_summary=%s,
+                  completed_at=now(),error_category=NULL
+            WHERE materialization_run_id=%s""",
+        (counts.get("inserted", 0), counts.get("updated", 0), counts.get("unchanged", 0),
+         counts.get("total", 0), json.dumps(matcher_summary or {}), materialization_run_id),
+    )
+
+
+def _fail_edge_materialization(connection: Any, materialization_run_id: uuid.UUID,
+                               error: Exception) -> None:
+    connection.execute(
+        "UPDATE uec.graph_edge_materialization_runs SET status='failed',error_category=%s WHERE materialization_run_id=%s AND status<>'completed'",
+        (error.__class__.__name__[:100], materialization_run_id),
+    )
+
+
 def _mark_failed(connection: Any, run_id: uuid.UUID, error: Exception) -> None:
     # The run envelope is operational state (unlike the evidence rows) so a
     # failed process can be diagnosed and resumed without mutating evidence.
@@ -1374,7 +1444,9 @@ def import_graph_candidates(database_url: str, handoff_dir: str | Path, *,
                             disposable_db: bool = False, batch_size: int = DEFAULT_BATCH_SIZE,
                             on_batch_committed: BatchCommitObserver | None = None,
                             edge_builder: ConnectionEdgeBuilder | None = None,
-                            private_target: tuple[str, str] | None = None) -> dict[str, Any]:
+                            private_target: tuple[str, str] | None = None,
+                            materialization_fingerprint: str | None = None,
+                            matcher_summary: dict[str, Any] | None = None) -> dict[str, Any]:
     """Persist facility candidates in resumable private batches."""
     if private_target is None:
         require_disposable_graph_database(database_url, disposable_db)
@@ -1404,10 +1476,11 @@ def import_graph_candidates(database_url: str, handoff_dir: str | Path, *,
             "SELECT count(*) FROM uec.graph_ingest_items WHERE ingest_run_id=%s AND status='inserted'",
             (run_id,),
         ).fetchone()[0])
+        base_import_complete = completed and resume_offset == item_count
         lineage_started_at = time.perf_counter()
         approved_facility_map = (
             _load_approved_facility_map(db, str(manifest["source_id"]), artifact_id)
-            if private_target is not None and resume_offset < item_count else None
+            if private_target is not None and not base_import_complete and resume_offset < item_count else None
         )
         approved_lineage_seconds = round(time.perf_counter() - lineage_started_at, 6)
         # End psycopg's implicit transaction opened by the artifact/checkpoint
@@ -1415,8 +1488,9 @@ def import_graph_candidates(database_url: str, handoff_dir: str | Path, *,
         # savepoint and none of its writes become visible until the whole
         # import finishes, defeating resumable checkpoints for large handoffs.
         db.commit()
-        inserted = resume_offset
-        already = rejected = 0
+        inserted = 0 if base_import_complete else resume_offset
+        already = item_count if base_import_complete else 0
+        rejected = 0
         edge_inserted = edge_updated = edge_unchanged = edge_skipped_exact = 0
         source_assertion_rows = 0
         endpoint_mapping_diagnostics: dict[str, int] = {}
@@ -1424,12 +1498,13 @@ def import_graph_candidates(database_url: str, handoff_dir: str | Path, *,
             batch: list[dict[str, Any]] = []
             offset = resume_offset
             batch_number = 0
-            candidate_iterator = iter(candidates)
-            for _ in range(resume_offset):
-                try:
-                    next(candidate_iterator)
-                except StopIteration as exc:
-                    raise GraphPersistenceError("handoff ended before the recorded ingest checkpoint") from exc
+            candidate_iterator = iter(()) if base_import_complete else iter(candidates)
+            if not base_import_complete:
+                for _ in range(resume_offset):
+                    try:
+                        next(candidate_iterator)
+                    except StopIteration as exc:
+                        raise GraphPersistenceError("handoff ended before the recorded ingest checkpoint") from exc
             for candidate in candidate_iterator:
                 batch.append(candidate)
                 if len(batch) < batch_size:
@@ -1482,43 +1557,63 @@ def import_graph_candidates(database_url: str, handoff_dir: str | Path, *,
         with db.transaction():
             db.execute("UPDATE uec.graph_ingest_runs SET status='completed', inserted_count=%s, already_present_count=%s, rejected_count=%s, error_summary=NULL, completed_at=now() WHERE ingest_run_id=%s", (inserted, already, rejected, run_id))
         if edge_builder is not None or private_target is not None:
+            materialization_run_id = None
+            if private_target is not None and materialization_fingerprint is not None:
+                with db.transaction():
+                    materialization_run_id = _start_edge_materialization(
+                        db, str(manifest["source_id"]), digest, materialization_fingerprint)
             candidate_root, _ = _graph_candidate_root(handoff_dir)
             run_source_record_ids = _load_run_source_record_ids(db, run_id, artifact_id)
             edge_batch: list[dict[str, Any]] = []
-            for candidate in _iter_candidate_payloads(candidate_root):
-                edge_batch.append(candidate)
-                if len(edge_batch) < batch_size:
-                    continue
-                with db.transaction():
-                    for row_candidate in edge_batch:
-                        source_assertion_rows += sum(
-                            1 for relationship in row_candidate.get("relationships", [])
-                            if relationship.get("assertion_status", "asserted") == "asserted"
+            try:
+                for candidate in _iter_candidate_payloads(candidate_root):
+                    edge_batch.append(candidate)
+                    if len(edge_batch) < batch_size:
+                        continue
+                    with db.transaction():
+                        for row_candidate in edge_batch:
+                            source_assertion_rows += sum(
+                                1 for relationship in row_candidate.get("relationships", [])
+                                if relationship.get("assertion_status", "asserted") == "asserted"
+                            )
+                            edges = build_candidate_connection_edges(
+                                row_candidate, manifest, edge_builder=edge_builder,
+                                source_record_ids=run_source_record_ids)
+                            counts = persist_connection_edges(db, edges)
+                            edge_inserted += counts["inserted"]
+                            edge_updated += counts["updated"]
+                            edge_unchanged += counts.get("unchanged", 0)
+                            edge_skipped_exact += counts["skipped_exact"]
+                    edge_batch = []
+                if edge_batch:
+                    with db.transaction():
+                        for row_candidate in edge_batch:
+                            source_assertion_rows += sum(
+                                1 for relationship in row_candidate.get("relationships", [])
+                                if relationship.get("assertion_status", "asserted") == "asserted"
+                            )
+                            edges = build_candidate_connection_edges(
+                                row_candidate, manifest, edge_builder=edge_builder,
+                                source_record_ids=run_source_record_ids)
+                            counts = persist_connection_edges(db, edges)
+                            edge_inserted += counts["inserted"]
+                            edge_updated += counts["updated"]
+                            edge_unchanged += counts.get("unchanged", 0)
+                            edge_skipped_exact += counts["skipped_exact"]
+                if materialization_run_id is not None:
+                    with db.transaction():
+                        _complete_edge_materialization(
+                            db, materialization_run_id,
+                            {"inserted": edge_inserted, "updated": edge_updated,
+                             "unchanged": edge_unchanged,
+                             "total": edge_inserted + edge_updated + edge_unchanged},
+                            matcher_summary,
                         )
-                        edges = build_candidate_connection_edges(
-                            row_candidate, manifest, edge_builder=edge_builder,
-                            source_record_ids=run_source_record_ids)
-                        counts = persist_connection_edges(db, edges)
-                        edge_inserted += counts["inserted"]
-                        edge_updated += counts["updated"]
-                        edge_unchanged += counts.get("unchanged", 0)
-                        edge_skipped_exact += counts["skipped_exact"]
-                edge_batch = []
-            if edge_batch:
-                with db.transaction():
-                    for row_candidate in edge_batch:
-                        source_assertion_rows += sum(
-                            1 for relationship in row_candidate.get("relationships", [])
-                            if relationship.get("assertion_status", "asserted") == "asserted"
-                        )
-                        edges = build_candidate_connection_edges(
-                            row_candidate, manifest, edge_builder=edge_builder,
-                            source_record_ids=run_source_record_ids)
-                        counts = persist_connection_edges(db, edges)
-                        edge_inserted += counts["inserted"]
-                        edge_updated += counts["updated"]
-                        edge_unchanged += counts.get("unchanged", 0)
-                        edge_skipped_exact += counts["skipped_exact"]
+            except Exception as error:
+                if materialization_run_id is not None:
+                    with db.transaction():
+                        _fail_edge_materialization(db, materialization_run_id, error)
+                raise
         canonical_binding_counts = None
         support_ref_rows_updated = 0
         if private_target is not None:

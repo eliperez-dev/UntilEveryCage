@@ -331,6 +331,23 @@ not public eligibility, restriction, review, or cache-generation gates. Do
 not omit any other constraint, index, trigger, or function without a separate
 review. The package manifest records both exclusions and schema-archive hashes.
 
+When a safe graph source is available, build its indexed release projection
+before export using the configured private graph target and an explicit
+approved release ID:
+
+```text
+build-public-graph-projection.py --release-id <approved-release>
+```
+
+The builder uses `UEC_GRAPH_DATABASE_URL`, `UEC_GRAPH_DATABASE_NAME`, and
+`UEC_GRAPH_DATABASE_PURPOSE=private-graph-materialization-v1`; keep the URL in
+the environment, not an argument. It does not change release or review state.
+The package contains only the opaque-endpoint graph projection and internal
+canonical support references needed for live eligibility checks. It excludes
+private graph edges, source identifiers, and raw evidence. The restored API role
+gets `SELECT` on the safe current graph view only; support and endpoint-anchor
+tables remain outside that role's grants.
+
 For a rehearsal, export and restore with environment-held connection strings
 only; do not put a credential in shell history, a command argument, or a log:
 
@@ -350,7 +367,11 @@ handler relations. Run the real-V0 API acceptance against the isolated target:
 manifest, list/detail, map (including conditional ETag), CSV, history, graph
 (`200` with the truthful empty V0 graph), and negative private-route checks.
 Reapply the current restriction ledger before any serving decision; never use
-the package as permission to ignore a later suppression.
+the package as permission to ignore a later suppression. A truthful empty graph
+remains valid when the selected release has no projection, but it is not
+acceptance evidence for a release with source-backed graph edges. For that
+case, require nonempty exact and inferred pages, two-page cursor coverage,
+current suppression behavior, and the negative private-table grants check.
 
 ## Render preparation (not a deployment instruction)
 

@@ -20,7 +20,7 @@ const MAX_LIMIT: i64 = 100;
 const DEFAULT_LIMIT: i64 = 50;
 const API_VERSION: &str = "v2-graph-v1";
 const DISCLAIMER: &str = "Confidence is a deterministic ruleset estimate, not a measured probability. An inferred connection is not proof of ownership, identity, or supply-chain control.";
-const GRAPH_CONNECTION_PLANNER_SETTING: &str = "SET LOCAL enable_nestloop=off";
+const GRAPH_CONNECTION_SELECT: &str = "SELECT connection_edge_id,from_entity_id,from_entity_type,from_source_id,from_identifier_type,to_entity_id,to_entity_type,to_source_id,to_identifier_type,relationship_type,connection_type,confidence,confidence_band,signal_explanation,match_method,observed_at,computed_at,ruleset_version,conflicting FROM uec.graph_public_connections_current WHERE release_id=$1 AND ($2::text IS NULL OR connection_type=$2) AND ($3::double precision IS NULL OR confidence >= $3) AND ($4::double precision IS NULL OR confidence <= $4) AND ($5::text[] IS NULL OR confidence_band=ANY($5)) AND ($6 OR conflicting=false) AND ($7::text IS NULL OR from_source_id=$7 OR to_source_id=$7) AND ($8::uuid IS NULL OR from_entity_id=$8 OR to_entity_id=$8) AND ($9::uuid IS NULL OR connection_edge_id<$9) ORDER BY connection_edge_id DESC LIMIT $10";
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct PublicGraphQuery {
@@ -205,28 +205,28 @@ fn explanation(value: &str) -> (Value, Value) {
 }
 
 fn public_edge(row: &tokio_postgres::Row, release_id: &str) -> Value {
-    let (signals, contradictions) = explanation(&row.get::<_, String>(15));
+    let (signals, contradictions) = explanation(&row.get::<_, String>(13));
     let from_identifier_type: String = row.get(4);
-    let to_identifier_type: String = row.get(9);
+    let to_identifier_type: String = row.get(8);
     let from_public_identifier = public_identifier(row.get(1));
-    let to_public_identifier = public_identifier(row.get(6));
+    let to_public_identifier = public_identifier(row.get(5));
     json!({
         "connection_edge_id": row.get::<_, Uuid>(0),
-        "from": {"entity_id": row.get::<_, Option<Uuid>>(1), "entity_type": row.get::<_, String>(2), "source_id": row.get::<_, String>(3), "identifier_type": from_identifier_type, "source_identifier": from_public_identifier},
-        "to": {"entity_id": row.get::<_, Option<Uuid>>(6), "entity_type": row.get::<_, String>(7), "source_id": row.get::<_, String>(8), "identifier_type": to_identifier_type, "source_identifier": to_public_identifier},
-        "relationship_type": row.get::<_, String>(11),
-        "connection_type": row.get::<_, String>(12),
-        "confidence": row.get::<_, f64>(13),
-        "confidence_band": row.get::<_, String>(14),
-        "match_method": row.get::<_, String>(16),
+        "from": {"entity_id": row.get::<_, Uuid>(1), "entity_type": row.get::<_, String>(2), "source_id": row.get::<_, String>(3), "identifier_type": from_identifier_type, "source_identifier": from_public_identifier},
+        "to": {"entity_id": row.get::<_, Uuid>(5), "entity_type": row.get::<_, String>(6), "source_id": row.get::<_, String>(7), "identifier_type": to_identifier_type, "source_identifier": to_public_identifier},
+        "relationship_type": row.get::<_, String>(9),
+        "connection_type": row.get::<_, String>(10),
+        "confidence": row.get::<_, f64>(11),
+        "confidence_band": row.get::<_, String>(12),
+        "match_method": row.get::<_, String>(14),
         "signals": signals,
         "contradictions": contradictions,
-        "provenance": {"source_ids": [row.get::<_, String>(3), row.get::<_, String>(8)], "observed_at": row.get::<_, chrono::DateTime<chrono::Utc>>(17), "release_id": release_id},
-        "source_references": [{"source_id": row.get::<_, String>(3)}, {"source_id": row.get::<_, String>(8)}],
-        "observed_at": row.get::<_, chrono::DateTime<chrono::Utc>>(17),
-        "computed_at": row.get::<_, chrono::DateTime<chrono::Utc>>(18),
-        "ruleset": row.get::<_, String>(19),
-        "conflicting": row.get::<_, bool>(20),
+        "provenance": {"source_ids": [row.get::<_, String>(3), row.get::<_, String>(7)], "observed_at": row.get::<_, chrono::DateTime<chrono::Utc>>(15), "release_id": release_id},
+        "source_references": [{"source_id": row.get::<_, String>(3)}, {"source_id": row.get::<_, String>(7)}],
+        "observed_at": row.get::<_, chrono::DateTime<chrono::Utc>>(15),
+        "computed_at": row.get::<_, chrono::DateTime<chrono::Utc>>(16),
+        "ruleset": row.get::<_, String>(17),
+        "conflicting": row.get::<_, bool>(18),
         "publication_warning": DISCLAIMER,
         "disclaimer": DISCLAIMER,
     })
@@ -238,147 +238,7 @@ fn public_identifier(entity_id: Option<Uuid>) -> String {
         .unwrap_or_else(|| "entity:unavailable".to_string())
 }
 
-const EDGE_CTES: &str = "
-    record_facility_candidates AS MATERIALIZED (
-      SELECT DISTINCT p.source_record_id, p.facility_id
-      FROM uec.map_facilities_public_discovery_read_model p
-      WHERE p.release_id=$1
-    ),
-    ambiguous_record_facilities AS MATERIALIZED (
-      SELECT source_record_id
-      FROM record_facility_candidates
-      GROUP BY source_record_id
-      HAVING count(*)>1
-    ),
-    record_facilities AS MATERIALIZED (
-      SELECT candidate.source_record_id, candidate.facility_id
-      FROM record_facility_candidates candidate
-      LEFT JOIN ambiguous_record_facilities ambiguous USING (source_record_id)
-      WHERE ambiguous.source_record_id IS NULL
-    ),
-    release_support_records AS MATERIALIZED (
-      SELECT DISTINCT record.source_id, record.source_record_id, record.artifact_id
-      FROM record_facilities rf
-      JOIN uec.source_records record ON record.source_record_id=rf.source_record_id
-      UNION
-      SELECT DISTINCT binding.source_id, private_record.source_record_id,
-             private_record.artifact_id
-      FROM uec.graph_record_release_bindings binding
-      JOIN record_facilities rf
-        ON rf.source_record_id=binding.canonical_source_record_id
-       AND rf.facility_id=binding.facility_id
-      JOIN uec.source_records canonical_record
-        ON canonical_record.source_record_id=binding.canonical_source_record_id
-       AND canonical_record.source_id=binding.source_id
-       AND canonical_record.artifact_id=binding.artifact_id
-      JOIN uec.source_records private_record
-        ON private_record.source_record_id=binding.private_source_record_id
-       AND private_record.source_id=binding.source_id
-       AND private_record.artifact_id=binding.artifact_id
-      WHERE binding.release_id=$1
-    ),
-    edge_support_refs AS MATERIALIZED (
-      SELECT edge.connection_edge_id,
-             refs.value->>'source_id' AS source_id,
-             refs.value->>'source_record_id' AS source_record_id
-      FROM uec.graph_connection_edges edge
-      CROSS JOIN LATERAL jsonb_array_elements(edge.supporting_source_refs)
-        AS refs(value)
-      WHERE edge.suppressed=false AND edge.storage_state='private'
-        AND edge.publication_status='not_eligible'
-    ),
-    eligible_edge_supports AS MATERIALIZED (
-      SELECT refs.connection_edge_id
-      FROM edge_support_refs refs
-      LEFT JOIN release_support_records record
-        ON record.source_id=refs.source_id
-       AND record.source_record_id::text=refs.source_record_id
-      GROUP BY refs.connection_edge_id
-      HAVING count(*)=count(record.source_record_id)
-    ),
-    facility_assertions AS MATERIALIZED (
-      SELECT DISTINCT i.source_record_id, i.facility_id
-      FROM uec.source_entity_identifiers i
-      JOIN record_facilities rf ON rf.source_record_id=i.source_record_id
-                               AND rf.facility_id=i.facility_id
-      WHERE i.entity_type='facility'
-    ),
-    endpoint_candidates AS MATERIALIZED (
-      SELECT i.source_id, i.identifier_type, i.source_identifier, i.entity_type,
-             i.facility_id AS public_entity_id
-      FROM uec.source_entity_identifiers i
-      JOIN record_facilities rf ON rf.source_record_id=i.source_record_id
-      WHERE i.entity_type='facility' AND i.facility_id=rf.facility_id
-      UNION ALL
-      SELECT i.source_id, i.identifier_type, i.source_identifier, i.entity_type,
-             i.organization_id AS public_entity_id
-      FROM uec.source_entity_identifiers i
-      JOIN record_facilities rf ON rf.source_record_id=i.source_record_id
-      JOIN facility_assertions asserted_facility
-        ON asserted_facility.source_record_id=i.source_record_id
-       AND asserted_facility.facility_id=rf.facility_id
-      WHERE i.entity_type='organization'
-        AND i.identifier_type IN ('vat','vat_number','italian_vat','p_iva')
-        AND i.organization_id IS NOT NULL
-    ),
-    distinct_endpoint_candidates AS MATERIALIZED (
-      SELECT DISTINCT source_id, identifier_type, source_identifier, entity_type, public_entity_id
-      FROM endpoint_candidates
-    ),
-    ambiguous_source_endpoints AS MATERIALIZED (
-      SELECT source_id, identifier_type, source_identifier, entity_type
-      FROM distinct_endpoint_candidates
-      GROUP BY source_id, identifier_type, source_identifier, entity_type
-      HAVING count(*)>1
-    ),
-    eligible_source_endpoints AS MATERIALIZED (
-      SELECT candidate.source_id, candidate.identifier_type,
-             candidate.source_identifier, candidate.entity_type, candidate.public_entity_id
-      FROM distinct_endpoint_candidates candidate
-      LEFT JOIN ambiguous_source_endpoints ambiguous
-        USING (source_id, identifier_type, source_identifier, entity_type)
-      WHERE ambiguous.source_id IS NULL
-    ),
-    edges AS (
-    SELECT e.connection_edge_id,
-           fi.public_entity_id AS from_entity_id,
-           e.from_entity_type, e.from_source_id, e.from_identifier_type,
-           e.from_source_identifier,
-           ti.public_entity_id AS to_entity_id,
-           e.to_entity_type, e.to_source_id, e.to_identifier_type,
-           e.to_source_identifier, e.relationship_type, e.connection_type,
-           e.confidence::double precision,
-           CASE WHEN e.confidence_band = 'probable' THEN 'high'
-                WHEN e.confidence_band = 'possible' THEN 'medium'
-                ELSE e.confidence_band END AS public_confidence_band,
-           e.signal_explanation::text, e.match_method,
-           e.observed_at, e.computed_at, e.ruleset_version, e.conflicting
-    FROM uec.graph_connection_edges e
-    JOIN eligible_source_endpoints fi
-      ON fi.source_id=e.from_source_id AND fi.identifier_type=e.from_identifier_type
-     AND fi.source_identifier=e.from_source_identifier AND fi.entity_type=e.from_entity_type
-    JOIN eligible_source_endpoints ti
-      ON ti.source_id=e.to_source_id AND ti.identifier_type=e.to_identifier_type
-     AND ti.source_identifier=e.to_source_identifier AND ti.entity_type=e.to_entity_type
-    JOIN eligible_edge_supports support
-      ON support.connection_edge_id=e.connection_edge_id
-    WHERE e.suppressed = false
-      AND e.storage_state = 'private'
-      AND e.publication_status = 'not_eligible'
-      AND (
-        fi.entity_type = 'facility'
-        OR (fi.entity_type = 'organization' AND (
-              e.connection_type='inferred'
-              OR (e.connection_type='exact' AND e.relationship_type='operator')
-           ))
-      )
-      AND (
-        ti.entity_type = 'facility'
-        OR (ti.entity_type = 'organization' AND (
-              e.connection_type='inferred'
-              OR (e.connection_type='exact' AND e.relationship_type='operator')
-           ))
-      ))";
+const EDGE_CTES: &str = include_str!("../pipeline/sql/graph_public_edge_ctes.sql");
 
 pub async fn connections(
     State(state): State<ApiState>,
@@ -425,21 +285,6 @@ pub async fn connections(
     };
     let release_id: String = release_row.get(0);
     let ruleset: String = release_row.get(1);
-    // Planner statistics badly understate the grouped endpoint CTE cardinality
-    // (two estimated endpoints versus tens of thousands in the controlled
-    // release). A bounded clone diagnostic showed the hash-join plan finishing
-    // in 6.3s; keep this setting local to the read-only graph transaction.
-    if transaction
-        .batch_execute(GRAPH_CONNECTION_PLANNER_SETTING)
-        .await
-        .is_err()
-    {
-        return v2_error(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "public_graph_query_failed",
-            "public graph query planning failed",
-        );
-    }
     let bands = match query.confidence_band.as_deref() {
         Some("high") => Some(vec!["high", "probable"]),
         Some("medium") => Some(vec!["medium", "possible"]),
@@ -448,10 +293,9 @@ pub async fn connections(
         _ => None,
     };
     let include_conflicting = query.include_conflicting.unwrap_or(false);
-    let sql = format!("WITH {EDGE_CTES} SELECT * FROM edges WHERE ($2::text IS NULL OR connection_type = $2) AND ($3::double precision IS NULL OR confidence >= $3) AND ($4::double precision IS NULL OR confidence <= $4) AND ($5::text[] IS NULL OR public_confidence_band = ANY($5)) AND ($6 OR conflicting = false) AND ($7::text IS NULL OR from_source_id = $7 OR to_source_id = $7) AND ($8::uuid IS NULL OR from_entity_id = $8 OR to_entity_id = $8) AND ($9::uuid IS NULL OR connection_edge_id < $9) ORDER BY connection_edge_id DESC LIMIT $10");
     let rows = match transaction
         .query(
-            &sql,
+            GRAPH_CONNECTION_SELECT,
             &[
                 &release_id,
                 &query.connection_type,
@@ -520,57 +364,20 @@ pub async fn entities(
     let release_id: String = release_row.get(0);
     let ruleset: String = release_row.get(1);
     let rows = match client.query(r#"
-        SELECT entity_id, entity_type, canonical_name, country_code FROM (
-          SELECT p.facility_id AS entity_id, 'facility'::text AS entity_type,
-                 p.canonical_name, p.country_code
+        SELECT entity_id,entity_type,display_name,country_code FROM (
+          SELECT p.facility_id AS entity_id,'facility'::text AS entity_type,
+                 p.canonical_name AS display_name,p.country_code
           FROM uec.map_facilities_public_discovery_read_model p WHERE p.release_id=$1
           UNION
-          SELECT DISTINCT o.organization_id, 'organization', o.canonical_name, o.country_code
-          FROM uec.organizations o
-          JOIN uec.source_entity_identifiers i ON i.organization_id=o.organization_id AND i.entity_type='organization'
-          WHERE i.identifier_type IN ('vat','vat_number','italian_vat','p_iva')
-            AND o.organization_type IN ('company','cooperative') AND i.release_id=$1
-            AND i.storage_state='released' AND i.publication_status='released' AND i.privacy_status='passed'
+          SELECT edges.from_entity_id,'organization'::text,NULL::text,NULL::text
+          FROM uec.graph_public_connections_current edges
+          WHERE edges.release_id=$1 AND edges.from_entity_type='organization'
           UNION
-          SELECT DISTINCT i.organization_id, 'organization'::text, NULL::text, p.country_code
-          FROM uec.graph_connection_edges e
-          JOIN uec.source_entity_identifiers i
-            ON i.source_id=e.from_source_id AND i.identifier_type=e.from_identifier_type
-           AND i.source_identifier=e.from_source_identifier AND i.entity_type='organization'
-          JOIN uec.map_facilities_public_discovery_read_model p
-            ON p.release_id=$1 AND p.source_record_id=i.source_record_id
-          WHERE e.connection_type='exact' AND e.relationship_type='operator'
-            AND e.suppressed=false AND e.storage_state='private' AND e.publication_status='not_eligible'
-            AND i.identifier_type IN ('vat','vat_number','italian_vat','p_iva')
-            AND EXISTS (SELECT 1 FROM uec.source_entity_identifiers facility
-                        WHERE facility.source_record_id=i.source_record_id
-                          AND facility.entity_type='facility' AND facility.facility_id=p.facility_id)
-            AND (SELECT count(DISTINCT candidate.organization_id)
-                 FROM uec.source_entity_identifiers candidate
-                 WHERE candidate.entity_type='organization' AND candidate.source_id=i.source_id
-                   AND candidate.identifier_type=i.identifier_type
-                   AND candidate.source_identifier=i.source_identifier)=1
-          UNION
-          SELECT DISTINCT i.organization_id, 'organization'::text, NULL::text, p.country_code
-          FROM uec.graph_connection_edges e
-          JOIN uec.source_entity_identifiers i
-            ON i.source_id=e.to_source_id AND i.identifier_type=e.to_identifier_type
-           AND i.source_identifier=e.to_source_identifier AND i.entity_type='organization'
-          JOIN uec.map_facilities_public_discovery_read_model p
-            ON p.release_id=$1 AND p.source_record_id=i.source_record_id
-          WHERE e.connection_type='exact' AND e.relationship_type='operator'
-            AND e.suppressed=false AND e.storage_state='private' AND e.publication_status='not_eligible'
-            AND i.identifier_type IN ('vat','vat_number','italian_vat','p_iva')
-            AND EXISTS (SELECT 1 FROM uec.source_entity_identifiers facility
-                        WHERE facility.source_record_id=i.source_record_id
-                          AND facility.entity_type='facility' AND facility.facility_id=p.facility_id)
-            AND (SELECT count(DISTINCT candidate.organization_id)
-                 FROM uec.source_entity_identifiers candidate
-                 WHERE candidate.entity_type='organization' AND candidate.source_id=i.source_id
-                   AND candidate.identifier_type=i.identifier_type
-                   AND candidate.source_identifier=i.source_identifier)=1
+          SELECT edges.to_entity_id,'organization'::text,NULL::text,NULL::text
+          FROM uec.graph_public_connections_current edges
+          WHERE edges.release_id=$1 AND edges.to_entity_type='organization'
         ) entities
-        WHERE ($2 = '' OR canonical_name ILIKE '%' || $2 || '%')
+        WHERE ($2='' OR display_name ILIKE '%' || $2 || '%')
           AND ($3::text IS NULL OR entity_type=$3)
           AND ($4::uuid IS NULL OR entity_id < $4)
         ORDER BY entity_id DESC LIMIT $5
@@ -661,6 +468,17 @@ mod tests {
         assert!(EDGE_CTES.contains("HAVING count(*)=count(record.source_record_id)"));
         assert!(!EDGE_CTES.contains("fiscal_code"));
         assert!(!EDGE_CTES.contains("codice_fiscale"));
+    }
+
+    #[test]
+    fn api_reads_indexed_projection_and_entities_follow_same_endpoint_policy() {
+        assert!(GRAPH_CONNECTION_SELECT.contains("FROM uec.graph_public_connections_current"));
+        assert!(!GRAPH_CONNECTION_SELECT.contains("graph_connection_edges"));
+        assert!(!GRAPH_CONNECTION_SELECT.contains("source_entity_identifiers"));
+        assert!(GRAPH_CONNECTION_SELECT.contains("ORDER BY connection_edge_id DESC LIMIT $10"));
+        let entity_query = include_str!("../pipeline/migrations/077_graph_release_projection.sql");
+        assert!(entity_query.contains("CREATE VIEW uec.graph_public_connections_current"));
+        assert!(entity_query.contains("graph_public_projection_endpoint_anchors"));
     }
 
     #[test]
