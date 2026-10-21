@@ -138,7 +138,9 @@
   function dispatch(action: LabAction) {
     // The map can emit a final viewport event while a link is navigating away.
     // Never let that event replace the destination record/database route.
-    if (!location.hash.startsWith('#/map')) return;
+    // The empty hash is the app's canonical default map route. Direct website
+    // loads therefore need the same map-state updates as an explicit #/map URL.
+    if (location.hash && !location.hash.startsWith('#/map')) return;
     const wasSelected = labState.selectedId !== null;
     labState = reduceLabState(labState, action);
     const nextHash = `${encodeLabHash(labState, mode === 'real-preview')}${$pinnedPublicReleaseId ? `&release_id=${encodeURIComponent($pinnedPublicReleaseId)}` : ''}`;

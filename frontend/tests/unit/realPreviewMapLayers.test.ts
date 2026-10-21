@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addRealPreviewMapLayers, applyRealPreviewVisualSettings, hasRealPreviewMapLayers, nativeClusterMaxZoom, referenceRadiusExpression, setClusterTileRounding, useRoundedClusterTiles } from '../../src/design-lab/components/realPreviewMapLayers';
+import { addRealPreviewMapLayers, applyRealPreviewVisualSettings, hasRealPreviewMapLayers, nativeClusterMaxZoom, referenceRadiusExpression, setClusterTileRounding, setRealPreviewPinMode, useRoundedClusterTiles, REAL_PREVIEW_LAYER_IDS } from '../../src/design-lab/components/realPreviewMapLayers';
 
 describe('real-preview native clustering layers', () => {
   it('puts facility coordinates and weighted references in one source and filters clusters first', () => {
@@ -35,6 +35,11 @@ describe('real-preview native clustering layers', () => {
       'all', ['!', ['has', 'cluster']], ['in', ['get', 'kind'], ['literal', ['reference', 'provider_locality_approximate']]],
       ['!', ['any', ['==', ['get', 'precision'], 'city'], ['==', ['get', 'precision'], 'city_reference_approximate'], ['==', ['get', 'precision'], 'provider_locality_approximate'], ['==', ['get', 'precision'], 'locality_reference_coarse']]],
     ]);
+    expect(layers.find(layer => layer.id === 'approx-reference-signal')).toMatchObject({
+      type: 'circle',
+      filter: ['all', ['!', ['has', 'cluster']], ['in', ['get', 'kind'], ['literal', ['reference', 'provider_locality_approximate']]], ['==', ['get', 'precision'], 'approximate']],
+      paint: { 'circle-radius': 5, 'circle-opacity': 0.92, 'circle-stroke-width': 1.5 },
+    });
     expect(layers.find(layer => layer.id === 'aggregate-outer')?.paint).toMatchObject({
       'circle-color': '#d8473f', 'circle-opacity': 0, 'circle-stroke-color': '#ff695c', 'circle-stroke-width': 2.5,
     });
@@ -61,6 +66,27 @@ describe('real-preview native clustering layers', () => {
     applyRealPreviewVisualSettings(map as any, { referenceRadiusKm: 0.25, referenceOpacity: 0.22, coordinateRadius: 7, showReferenceLabels: false, selectedKey: 'synthetic-key' });
     expect(changes.find(change => change[1] === 'circle-opacity')?.[2]).toEqual(['case', ['==', ['get', 'key'], 'synthetic-key'], expect.closeTo(0.34), 0]);
     expect(changes.find(change => change[1] === 'circle-stroke-opacity')?.[2]).toEqual(['case', ['==', ['get', 'key'], 'synthetic-key'], 0.96, 0]);
+  });
+
+  it('keeps approximate singleton markers visible in either exact-pin presentation mode', async () => {
+    expect(REAL_PREVIEW_LAYER_IDS).toContain('approx-reference-signal');
+    const changes: Array<[string, string, unknown]> = [];
+    const map = {
+      hasImage: () => true,
+      getLayer: (id: string) => id === 'v1-source-pins' ? {} : undefined,
+      setLayoutProperty: (id: string, property: string, value: unknown) => changes.push([id, property, value]),
+    };
+    await setRealPreviewPinMode(map as any, false, '');
+    await setRealPreviewPinMode(map as any, true, '');
+    expect(changes).toEqual([
+      ['source-coordinate-points', 'visibility', 'visible'],
+      ['v1-source-shadows', 'visibility', 'none'],
+      ['v1-source-pins', 'visibility', 'none'],
+      ['source-coordinate-points', 'visibility', 'none'],
+      ['v1-source-shadows', 'visibility', 'visible'],
+      ['v1-source-pins', 'visibility', 'visible'],
+    ]);
+    expect(changes.some(([id]) => id === 'approx-reference-signal')).toBe(false);
   });
 
   it('detects an incomplete native projection so callers can restore every overlay', () => {

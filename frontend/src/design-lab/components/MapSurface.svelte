@@ -1057,8 +1057,14 @@
           onselect(id);
         }
       });
-    const handleReferenceClick = (event: any, layer: "aggregate-outer" | "approx-reference-points") => {
+    const handleReferenceClick = (event: any, layer: "aggregate-outer" | "approx-reference-points" | "approx-reference-signal") => {
       if (activeFlight) return;
+      // The visible point owns center clicks for approximate records; keep
+      // the reference circle available for inspecting its selected area.
+      if (layer === "aggregate-outer" && event.features?.[0]?.properties?.precision === "approximate" && map && event.point && event.features?.[0]?.geometry?.coordinates) {
+        const center = map.project(event.features[0].geometry.coordinates);
+        if (Math.hypot(event.point.x - center.x, event.point.y - center.y) <= 7) return;
+      }
       if (isRealPreview()) {
         const properties = event.features?.[0]?.properties;
         // Approximate source-coordinate halos are visual context around an
@@ -1082,8 +1088,16 @@
         return;
       }
       if (mode === "public-release") {
-        const id = event.features?.[0]?.properties?.id;
-        if (typeof id === "string") onselect(id);
+        const properties = event.features?.[0]?.properties;
+        const id = properties?.key ?? properties?.id;
+        if (typeof id === "string") {
+          // Public reference features are still individual released records.
+          // Select that record (and its honest reference area) instead of
+          // sending its public UUID to the private aggregate-member API.
+          selectedReferenceKey = id;
+          updateVisualSettings();
+          onselect(id);
+        }
         return;
       }
       try {
@@ -1097,10 +1111,11 @@
       }
     };
     map.on("click", "aggregate-outer", (event: any) => handleReferenceClick(event, "aggregate-outer"));
+    if (isNativeMap()) map.on("click", "approx-reference-signal", (event: any) => handleReferenceClick(event, "approx-reference-signal"));
     if (isNativeMap())
       map.on("click", "approx-reference-points", (event: any) => handleReferenceClick(event, "approx-reference-points"));
     for (const layer of isNativeMap()
-      ? ["clusters", "source-coordinate-points", "v1-source-pins", "aggregate-outer", "approx-reference-points"]
+      ? ["clusters", "source-coordinate-points", "v1-source-pins", "aggregate-outer", "approx-reference-signal", "approx-reference-points"]
       : ["clusters", "exact-pins", "approximate-points", "source-coordinate-points", "aggregate-outer"]) {
       map.on("mouseenter", layer, () => {
         if (map) map.getCanvas().style.cursor = "pointer";
@@ -1172,9 +1187,6 @@
           } else {
             await addLayers();
           }
-          // MapLibre rejects layer-scoped handlers before their layers exist.
-          // Bind after the async feed/image setup so a cold load cannot leave
-          // the map without click handlers while a warm cache masks the race.
           if (!interactionsBound && map === instance) {
             bindInteractions();
             interactionsBound = true;
@@ -1228,7 +1240,7 @@
           nativeCameraStartedAt = null;
         }
         if (diagnosticsOpen && instance.getLayer("clusters"))
-          nativeRenderedCount = instance.queryRenderedFeatures({ layers: ["clusters", "aggregate-outer", "approx-reference-points", "source-coordinate-points", "v1-source-pins"] }).length;
+          nativeRenderedCount = instance.queryRenderedFeatures({ layers: ["clusters", "aggregate-outer", "approx-reference-signal", "approx-reference-points", "source-coordinate-points", "v1-source-pins"] }).length;
       }
       if (usingMvt) {
         updateMvtDiagnostics(instance);
@@ -1342,7 +1354,7 @@
   $effect(() => {
     if (diagnosticsOpen && usingMvt && map) updateMvtDiagnostics(map);
     if (diagnosticsOpen && isNativeMap() && map?.getLayer("clusters"))
-      nativeRenderedCount = map.queryRenderedFeatures({ layers: ["clusters", "aggregate-outer", "approx-reference-points", "source-coordinate-points", "v1-source-pins"] }).length;
+      nativeRenderedCount = map.queryRenderedFeatures({ layers: ["clusters", "aggregate-outer", "approx-reference-signal", "approx-reference-points", "source-coordinate-points", "v1-source-pins"] }).length;
   });
 </script>
 

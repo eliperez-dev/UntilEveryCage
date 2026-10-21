@@ -79,7 +79,7 @@ const v1CategoryPin = ['case',
   v1PinBySourceKey,
 ];
 export const REAL_PREVIEW_LAYER_IDS = [
-  'clusters', 'aggregate-outer', 'approx-reference-points', 'aggregate-count',
+  'clusters', 'aggregate-outer', 'approx-reference-signal', 'approx-reference-points', 'aggregate-count',
   'aggregate-kind', 'source-coordinate-points', 'v1-source-shadows', 'v1-source-pins',
 ] as const;
 
@@ -154,6 +154,21 @@ export function addRealPreviewMapLayers(
       'circle-stroke-color': '#ff695c',
       'circle-stroke-width': 2.5,
       'circle-stroke-opacity': 0,
+    },
+  } as any);
+  // Public approximate facility references have weight 1, so the count layer
+  // has no text to draw. Give those records a quiet, clickable mark while
+  // retaining their reference kind and approximate precision. This is a
+  // location marker, not an accuracy boundary; only selection shows the area.
+  map.addLayer({
+    id: 'approx-reference-signal', type: 'circle', source: 'locations',
+    filter: ['all', ...aggregateReference.slice(1), ['==', ['get', 'precision'], 'approximate']],
+    paint: {
+      'circle-radius': 5,
+      'circle-color': '#d9b36c',
+      'circle-opacity': 0.92,
+      'circle-stroke-color': '#172019',
+      'circle-stroke-width': 1.5,
     },
   } as any);
   setClusterTileRounding(map, settings.maxZoom);
