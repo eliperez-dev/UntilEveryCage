@@ -1195,6 +1195,30 @@ verify a projection/package for the selected hosted release before any separate
 deployment decision. This checkpoint changes neither the frontend nor Render,
 and does not resolve France's coordinate-reference limitation.
 
+### D6.6 - Hosted graph and facility Connections (2026-10-21)
+
+**Status: Integration in progress; Render is unchanged.** The approved scope
+adds the existing source-backed graph to the 2026-10-18 dataset and a compact
+Connections section to facility details. No source intake, graph rules, map
+renderer, dataset membership or community submission workflow is changed.
+
+The isolated v5 serving package retains the current dataset and historical v0.
+The current dataset remains 69,220 records, 53,107 mapped and 16,113 unmapped
+across fourteen sources. Its graph has 14,639 exact and 148 inferred connections;
+one conflicting inferred connection is excluded by default. Historical v0 has
+no graph projection. Package restoration passed constraint, trigger and
+read-only grant checks, current-release manifest/detail/map digest parity and
+production-mode startup. Full restored API pagination, historical map access
+and nonempty browser lifecycle acceptance are still being verified; these are
+not hosted acceptance claims.
+
+The UI keeps record links pinned to the selected release, exposes connection
+method and confidence, and leaves organization endpoints opaque. Nineteen
+focused frontend tests and the public build passed. All seven CI jobs passed
+for `550dbe97`; final integration, hosted checks and cleanup remain pending.
+The aggregate package receipt is kept locally at ignored
+`data/staging/hosted-release-package-local-20261021/acceptance-aggregate.json`.
+
 ### Production V2 frontend
 
 **Status: Launchpad and design specification complete; implementation deferred.**

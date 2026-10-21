@@ -115,7 +115,16 @@ identifier values are not persisted in serving tables or the package. Migration
 the safe current projection view but not private edges, identifiers, support
 references, or anchor records.
 
-The selected-column `release_serving` package now includes this safe projection
-and migration 077 adds its serving view and exact read-only grant. This supports
-a local production-package rehearsal only; no Render deployment or hosted
-graph access is authorized or claimed by this contract update.
+The selected-column `release_serving` v5 package includes this projection for
+explicitly selected current and historical public releases. Migration 077 adds
+its serving view and exact read-only grant. Restore into an isolated empty
+serving database, replay current restrictions and verify the production API
+before switching the service connection. Packaging does not approve another
+dataset or publish private graph evidence. Local and hosted acceptance are
+tracked separately in [product readiness](../PRODUCT-READINESS.md).
+
+The facility detail Connections section uses the selected record's release,
+with exact/inferred and confidence filters, expandable source and method
+details, and same-release facility links. Organization endpoints remain opaque
+and do not receive facility-page links. Empty, failed and paginated responses
+are distinct states; a response for another release is rejected.
