@@ -77,6 +77,29 @@ class SourceExpansionIntegrationTests(unittest.TestCase):
                 certify("fr.georisques.icpe.animal", ledger,
                         "postgresql://127.0.0.1/unused", "http://127.0.0.1", "x" * 32)
 
+    def test_enabled_preview_policies_have_importer_gate_metadata(self):
+        policies = json.loads((ROOT / "pipeline" / "preview-enabled-sources.json").read_text(encoding="utf-8"))["sources"]
+        enabled = {source_id: policy for source_id, policy in policies.items()
+                   if policy.get("enabled") is True}
+        self.assertTrue(enabled)
+        for source_id, policy in enabled.items():
+            with self.subTest(source_id=source_id):
+                self.assertEqual(policy.get("terms_decision"), "approved")
+                self.assertIs(policy.get("public_release"), False)
+                max_age = policy.get("freshness_max_days")
+                self.assertIs(type(max_age), int)
+                self.assertGreaterEqual(max_age, 1)
+                terms_path = policy.get("terms_review")
+                self.assertIsInstance(terms_path, str)
+                terms_file = (ROOT / terms_path).resolve()
+                terms_file.relative_to(ROOT.resolve())
+                self.assertTrue(terms_file.is_file())
+                self.assertEqual(json.loads(terms_file.read_text(encoding="utf-8")).get("decision"), "approved")
+                allowed_fields = policy.get("allowed_preview_fields")
+                self.assertIsInstance(allowed_fields, list)
+                self.assertTrue(allowed_fields)
+                self.assertTrue(all(isinstance(field, str) and field for field in allowed_fields))
+
     def test_georisques_runs_through_normal_shared_fixture_dispatch(self):
         output = ROOT / ".georisques-shared-refresh-test"
         shutil.rmtree(output, ignore_errors=True)
