@@ -1,5 +1,6 @@
 <script lang="ts">
   import CopyValue from './CopyValue.svelte';
+  import RecordConnections from './RecordConnections.svelte';
   import type { LabRecord } from '../design-lab/contract';
   import { categoryPresentation } from '../features/locations/categoryPresentation';
   import type { TaxonomyClassification } from '../domain/taxonomy';
@@ -70,11 +71,13 @@
     record,
     presentation = 'rail',
     publicRelease = false,
+    publicReleaseId,
     onclose,
   }: {
     record: LabRecord | RecordDetailRecord;
     presentation?: 'rail' | 'page';
     publicRelease?: boolean;
+    publicReleaseId?: string | null;
     onclose?: () => void;
   } = $props();
 
@@ -379,6 +382,10 @@
     </dl>
     {#if evidence}<p class="evidence">{evidence}</p>{/if}
   </section>
+
+  {#if publicRelease && publicReleaseId && id}
+    <RecordConnections facilityId={id} releaseId={publicReleaseId} />
+  {/if}
 
   <footer>
     <span class="record-id">Record ID · {id || 'Unavailable'}</span>
