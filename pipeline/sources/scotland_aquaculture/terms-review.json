@@ -1,0 +1,13 @@
+{
+  "source_id": "gb.scot.marine.aquaculture",
+  "reviewer": "Codex source_global delegated source-term reviewer; not a human legal reviewer",
+  "reviewed_at": "2026-10-20T16:41:14Z",
+  "decision": "approved",
+  "license": "Open Government Licence v3.0",
+  "private_preview_only": true,
+  "repeated_private_fetch_authorized": true,
+  "unattended_scheduler_authorized": false,
+  "public_release_approved": false,
+  "reference": "Root task authorization for reusable compliant private acquisition; dataset-specific Open Government Licence v3.0 displayed by the Scottish Government SpatialData.gov.scot catalog record: https://www.data.gov.uk/dataset/28c43af0-ed74-4072-bd5a-446a6da13fad/aquaculture-finfish-and-shellfish-farms-including-fishery-sites; licence: https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+  "notes": "Checked dataset-specific Open Government Licence v3.0 and official catalog route. Repeated, operator-invoked bounded private acquisition and restricted private processing are authorized while the source access route and applicable terms remain unchanged; recheck on any source terms/access change. Required attribution: Contains information from Scottish Government (Marine Scotland) licensed under the Open Government Licence v3.0. This is an operational source-terms record, not legal advice or a fabricated human legal review. No unattended scheduler, public display/export, geocoding, merge, or release is authorized. Data remains in ignored private staging. Privacy, location precision, source coverage, and classification remain separate human gates."
+}

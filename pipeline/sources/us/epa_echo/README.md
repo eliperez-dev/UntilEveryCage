@@ -24,7 +24,7 @@ From the repository root, after source registration and an operator-authored
 terms-review file exist:
 
 ```powershell
-python -m pipeline.sources.us.epa_echo.refresh --fetch --terms-review data/terms-reviews/us.epa.echo-animal-production.json
+python -m pipeline.sources.us.epa_echo.refresh --fetch --terms-review pipeline/sources/us/epa_echo/terms-review.json
 ```
 
 The CLI's default output is under ignored `data/staging/source-expansion-20261020/`.

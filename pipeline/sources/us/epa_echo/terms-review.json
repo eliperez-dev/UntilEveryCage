@@ -1,0 +1,11 @@
+{
+  "source_id": "us.epa.echo-animal-production",
+  "reviewer": "Agent under explicit project operator authorization",
+  "reference": "https://pasteur.epa.gov/license/sciencehub-license.html",
+  "artifact_url": "https://echogeo.epa.gov/arcgis/rest/services/ECHO/Facilities/MapServer/0",
+  "reviewed_at": "2026-10-20T16:36:14Z",
+  "decision": "approved",
+  "scope": "Reusable private acquisition and local candidate processing while the provider terms, endpoint access, and upstream-data conditions remain unchanged and publicly accessible; public redistribution and publication are not approved.",
+  "notes": "Basis: project operator authorization for reusable compliant private source pipelines plus the cited provider notice, reviewed at the recorded timestamp. EPA states that EPA-produced data are by default public domain unless otherwise specified. ECHO uses ICIS-NPDES and FRS data and can include state-reported inputs, so this is not a legal guarantee or an assertion of rights for every upstream value. Recheck provider terms and access on refresh; stop and review if they change. Preserve source attribution/provenance; retain names, addresses, and coordinates in restricted staging pending privacy and location review. Do not claim confirmed CAFO status, current operation, completeness, or publication approval.",
+  "public_release": "blocked"
+}
