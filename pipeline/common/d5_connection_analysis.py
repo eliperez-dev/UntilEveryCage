@@ -130,6 +130,9 @@ class _Observed:
     source_kind: str
     key: str
     facility_ids: dict[str, str]
+    # Exact native values are retained for persisted endpoint identity;
+    # facility_ids above remain normalized for matching only.
+    facility_endpoint_ids: dict[str, str]
     organization_ids: dict[str, str]
     signals: dict[str, str]
     dates: list[str]
@@ -177,6 +180,7 @@ def _observed_from_row(row: Mapping[str, Any], fallback_source: str | None = Non
     kind = _source_kind(source_id, row)
     values = list(_nested_values(row))
     facility_ids: dict[str, str] = {}
+    facility_endpoint_ids: dict[str, str] = {}
     organization_ids: dict[str, str] = {}
     signals: dict[str, str] = {}
     dates: list[str] = []
@@ -185,6 +189,8 @@ def _observed_from_row(row: Mapping[str, Any], fallback_source: str | None = Non
         normalized_value = _norm(value)
         if key in FACILITY_ID_KEYS and normalized_value and kind == "facility_master":
             facility_ids.setdefault(key, normalized_value)
+            if (native_value := _clean(value)):
+                facility_endpoint_ids.setdefault(key, native_value)
         if key in ORG_ID_KEYS and normalized_value:
             organization_ids.setdefault(key, normalized_value)
         if key in NAME_KEYS and (token := _token(value)):
@@ -209,10 +215,14 @@ def _observed_from_row(row: Mapping[str, Any], fallback_source: str | None = Non
             if not isinstance(entity, Mapping) or not isinstance(entity.get("source_identifier"), Mapping):
                 continue
             identifier = entity["source_identifier"]
+            native_type = _clean(identifier.get("identifier_type"))
+            native_value = _clean(identifier.get("value") or identifier.get("source_identifier"))
             identifier_type = _norm(identifier.get("identifier_type"))
             identifier_value = _norm(identifier.get("value") or identifier.get("source_identifier"))
             if identifier_type and identifier_value:
                 target.setdefault(identifier_type, identifier_value)
+                if entity_key == "facilities" and native_type and native_value:
+                    facility_endpoint_ids.setdefault(native_type, native_value)
     key = _clean(row.get("source_record_key")) or _clean(row.get("source_row_id")) or _clean(row.get("source_observation_key")) or "row-unknown"
     relationships = row.get("relationships")
     explicit_relationships = len(relationships) if isinstance(relationships, list) else 0
@@ -224,7 +234,7 @@ def _observed_from_row(row: Mapping[str, Any], fallback_source: str | None = Non
         and (_clean(row.get("source_artifact_sha256")) or _clean(row.get("artifact_sha256")))
     )
     suppressed = bool(row.get("suppressed") or row.get("public_access_revoked"))
-    return _Observed(source_id, kind, key, facility_ids, organization_ids, signals, dates,
+    return _Observed(source_id, kind, key, facility_ids, facility_endpoint_ids, organization_ids, signals, dates,
                      explicit_relationships, typed_entity_edge, provenance_complete,
                      bool(row.get("quarantine_reason")), suppressed)
 
@@ -348,11 +358,15 @@ _SIGNAL_WEIGHTS = {"name": 0.34, "postal": 0.18, "city": 0.10, "address": 0.22}
 _BLOCK_DEFAULT_MAX = 1000
 
 
-def _endpoint_ref(row: _Observed) -> dict[str, str] | None:
+def _endpoint_ref(row: _Observed, *, preserve_native_identifier: bool = False) -> dict[str, str] | None:
     """Return a source-qualified facility endpoint, never a synthetic placeholder."""
     if not row.facility_ids:
         return None
     identifier_type, identifier = sorted(row.facility_ids.items())[0]
+    if preserve_native_identifier:
+        identifier = row.facility_endpoint_ids.get(identifier_type, "")
+        if not identifier:
+            return None
     return {
         "entity_type": "facility",
         "source_id": row.source_id,
@@ -423,7 +437,8 @@ def _score_match(features: list[str], contradictions: list[dict[str, Any]]) -> t
 def _observed_json(row: _Observed) -> str:
     return json.dumps({
         "source_id": row.source_id, "source_kind": row.source_kind, "key": row.key,
-        "facility_ids": row.facility_ids, "organization_ids": row.organization_ids,
+        "facility_ids": row.facility_ids, "facility_endpoint_ids": row.facility_endpoint_ids,
+        "organization_ids": row.organization_ids,
         "signals": row.signals, "dates": row.dates,
         "explicit_relationships": row.explicit_relationships,
         "typed_entity_edge": row.typed_entity_edge,
@@ -437,6 +452,7 @@ def _observed_from_json(value: str) -> _Observed:
     return _Observed(
         str(payload["source_id"]), str(payload["source_kind"]), str(payload["key"]),
         {str(key): str(item) for key, item in (payload.get("facility_ids") or {}).items()},
+        {str(key): str(item) for key, item in (payload.get("facility_endpoint_ids") or {}).items()},
         {str(key): str(item) for key, item in (payload.get("organization_ids") or {}).items()},
         {str(key): str(item) for key, item in (payload.get("signals") or {}).items()},
         [str(item) for item in payload.get("dates") or []],
@@ -446,7 +462,8 @@ def _observed_from_json(value: str) -> _Observed:
 
 
 def _iter_probabilistic_candidates(rows: Iterable[_Observed], *, start_after: str | None = None,
-                                   max_block_size: int = _BLOCK_DEFAULT_MAX) -> tuple[Iterable[dict[str, Any]], dict[str, int]]:
+                                   max_block_size: int = _BLOCK_DEFAULT_MAX,
+                                   preserve_native_endpoints: bool = False) -> tuple[Iterable[dict[str, Any]], dict[str, int]]:
     """Build deterministic indexed blocks in a disk-backed SQLite stage.
 
     Blocks are keyed by name+postal, name+city, or name+address.  A large
@@ -564,8 +581,8 @@ def _iter_probabilistic_candidates(rows: Iterable[_Observed], *, start_after: st
                     score, band, explanation = _score_match(features, contradictions)
                     if not explanation["anchor_present"]:
                         continue
-                    left_endpoint = _endpoint_ref(left)
-                    right_endpoint = _endpoint_ref(right)
+                    left_endpoint = _endpoint_ref(left, preserve_native_identifier=preserve_native_endpoints)
+                    right_endpoint = _endpoint_ref(right, preserve_native_identifier=preserve_native_endpoints)
                     if left_endpoint is None or right_endpoint is None:
                         continue
                     if start_after and digest <= start_after:

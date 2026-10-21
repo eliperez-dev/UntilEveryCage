@@ -78,7 +78,11 @@ class _MatcherStage:
             yield _observed_from_json(payload)
 
     def build_candidates(self) -> dict[str, int]:
-        generated, matcher_counters = _iter_probabilistic_candidates(self.observed())
+        # Matching uses normalized IDs, but persisted endpoint keys must retain
+        # the exact source-native assertion value for release resolution.
+        generated, matcher_counters = _iter_probabilistic_candidates(
+            self.observed(), preserve_native_endpoints=True,
+        )
         for inferred in generated:
             endpoints = inferred.get("endpoints") or []
             if len(endpoints) != 2:

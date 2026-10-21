@@ -31,6 +31,7 @@ WEB_PORT = int(os.environ.get("UEC_REAL_PREVIEW_WEB_PORT", "34174"))
 PRIVATE_ROOT = Path(os.environ.get("UEC_REAL_PREVIEW_ROOT", r"D:\UntilEveryCage-private"))
 SESSION_TOKEN: str | None = None
 IMPORTER = ROOT / "pipeline" / "scripts" / "maintenance" / "import-real-preview.py"
+GRAPH_MATERIALIZER = ROOT / "pipeline" / "scripts" / "maintenance" / "materialize-private-graph.py"
 MIGRATIONS = ROOT / "pipeline" / "scripts" / "maintenance" / "apply-migrations.py"
 ACTIVE_PREVIEW_TOKEN: str | None = None
 # Denmark's live register contains ~59k observations and its source-scoped
@@ -795,8 +796,55 @@ def probe() -> dict[str, object]:
     return {"ok": ready and (not frontend_available or frontend_ready), "api_ready": ready, "frontend_loopback": frontend_ready, "frontend_available": frontend_available}
 
 
+def _graph_handoff_available(handoff_root: Path) -> bool:
+    """Recognize only the graph handoff layouts accepted by the materializer."""
+    return any((handoff_root / relative).is_file() for relative in (
+        Path("graph-candidates/manifest.json"),
+        Path("graph-candidates.jsonl"),
+        Path("graph-candidates-manifest.json"),
+        Path("graph/graph-candidates.jsonl"),
+        Path("graph/graph-candidates-manifest.json"),
+    ))
+
+
+def _materialize_private_graph(handoff_root: Path) -> dict[str, object]:
+    """Run the explicitly configured private graph writer without preview DB credentials."""
+    if not _graph_handoff_available(handoff_root):
+        return {"status": "not_supported", "reason": "validated_graph_handoff_missing"}
+    required = ("UEC_GRAPH_DATABASE_URL", "UEC_GRAPH_DATABASE_NAME", "UEC_GRAPH_DATABASE_PURPOSE")
+    if any(not os.environ.get(name) for name in required):
+        return {"status": "failed", "reason": "graph_database_configuration_missing"}
+    graph_env = os.environ.copy()
+    # Prevent accidental fallback to the separate serving/preview database.
+    graph_env.pop("UEC_DATABASE_URL", None)
+    graph_env["PYTHONPATH"] = os.pathsep.join(filter(None, (str(ROOT), graph_env.get("PYTHONPATH", ""))))
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(GRAPH_MATERIALIZER), "--handoff", str(handoff_root)],
+            cwd=ROOT, env=graph_env, capture_output=True, text=True, timeout=600,
+        )
+    except subprocess.TimeoutExpired:
+        return {"status": "failed", "reason": "graph_materialization_timeout"}
+    try:
+        result = json.loads(completed.stdout)
+    except json.JSONDecodeError:
+        return {"status": "failed", "reason": "graph_materializer_output_invalid"}
+    if (completed.returncode or not isinstance(result, dict)
+            or result.get("status") not in {"completed", "already_present"}):
+        error_type = result.get("error_type") if isinstance(result, dict) else None
+        safe_type = error_type if isinstance(error_type, str) and error_type.replace("_", "").isalnum() else None
+        return {"status": "failed", "reason": "graph_materialization_failed", "error_type": safe_type}
+    # Materializer output is aggregate-only; expose no row-level evidence.
+    allowed = ("source_assertion_rows", "endpoint_mapping_diagnostics", "edge_counts_by_type",
+               "matcher", "edge_inserted_count", "edge_updated_count", "edge_unchanged_count",
+               "edge_skipped_exact_count", "edge_count")
+    summary = {key: result[key] for key in allowed if key in result}
+    return {"status": "materialized", **summary}
+
+
 def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_id: str | None = None,
-                           *, acquire_geography: bool = True) -> dict[str, object]:
+                           *, acquire_geography: bool = True,
+                           materialize_private_graph: bool = False) -> dict[str, object]:
     """Freshly acquire one policy-enabled source and import its exact handoff."""
     import uuid
     from pipeline.source_runtime_classification import (
@@ -1085,6 +1133,8 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
     except subprocess.TimeoutExpired:
         write_job("failed", str(job.get("phase", "acquisition")), "bounded_job_timeout")
         raise PreviewError("source refresh exceeded its bounded runtime") from None
+    graph_result = (_materialize_private_graph(source_dir / "candidate-handoff")
+                    if materialize_private_graph else None)
     ledger = {
         "ledger_version": "source-preview-runtime-v1", "source_id": source_id,
         "run_id": run_id, "status": "imported", "retrieved_at_utc": refresh_result.get("completed_at_utc"),
@@ -1097,6 +1147,8 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                           else ("coarse-city-reference" if geography and import_result.get("coarse_placeable_facility_count", 0)
                                 else ("source-precision-unknown" if import_result.get("numeric_coordinate_count", 0) else "unmapped"))),
     }
+    if graph_result is not None:
+        ledger["graph_materialization"] = graph_result
     if source_id == "dk.smiley":
         acquisition_path = source_dir / "acquisition" / source_id / run_id / "acquisition-metadata.json"
         acquisition = json.loads(acquisition_path.read_text(encoding="utf-8"))
@@ -1687,13 +1739,17 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
             "observations": import_result.get("observation_count"),
             "facility_candidates": import_result.get("facility_candidate_count"),
             "map_visible_count": ledger["map_visible_count"],
+            **({"graph_materialization": graph_result, "ok": graph_result.get("status") == "materialized"}
+               if graph_result is not None else {}),
             "ledger": str(ledger_path)}
 
 
 def refresh_source(source_id: str = "be.locations", existing_runner_run_id: str | None = None,
-                   *, acquire_geography: bool = True) -> dict[str, object]:
+                   *, acquire_geography: bool = True,
+                   materialize_private_graph: bool = False) -> dict[str, object]:
     with source_lock(source_id):
-        return _refresh_source_locked(source_id, existing_runner_run_id, acquire_geography=acquire_geography)
+        return _refresh_source_locked(source_id, existing_runner_run_id, acquire_geography=acquire_geography,
+                                      materialize_private_graph=materialize_private_graph)
 
 
 def strict_live_private_e2e(source_id: str, existing_runner_run_id: str | None = None) -> dict[str, object]:
@@ -2166,6 +2222,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("action", choices=("up", "status", "probe", "down", "reset", "offline-up", "offline-status", "offline-probe", "offline-down", "offline-reset", "offline-resume", "refresh", "strict-live-private-e2e", "strict-refresh", "enrich-locations", "import-location-references", "geospatial-status"))
     parser.add_argument("--source")
     parser.add_argument("--existing-run", help="complete a prior exact live lifecycle run without reacquisition")
+    parser.add_argument("--materialize-private-graph", action="store_true",
+                        help="after successful private import, materialize a validated graph handoff using UEC_GRAPH_DATABASE_* only")
     parser.add_argument("--all", action="store_true", help="enrich all source snapshots")
     parser.add_argument("--limit", type=int, default=100, help="maximum local candidates to inspect")
     parser.add_argument("--database-url", help="loopback database URL; defaults to the owned preview database")
@@ -2175,6 +2233,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--reference-date", help="reference dataset date (YYYY-MM-DD)")
     args = parser.parse_args(argv)
     try:
+        if args.materialize_private_graph and args.action != "refresh":
+            raise PreviewError("--materialize-private-graph is supported only with refresh")
         if args.action.startswith("offline-"):
             # Dedicated ownership namespace for this retained, offline snapshot.
             PROJECT = "uec-offline-fsis-private"
@@ -2209,7 +2269,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                   reset() if args.action == "offline-reset" else
                   strict_live_private_e2e(args.source, args.existing_run) if args.action == "strict-live-private-e2e" else
                   strict_refresh(args.source) if args.action == "strict-refresh" else
-                  refresh_source(args.source, args.existing_run) if args.action == "refresh" else
+                  refresh_source(args.source, args.existing_run,
+                                 materialize_private_graph=args.materialize_private_graph) if args.action == "refresh" else
                   {"up": up, "status": status, "probe": probe, "down": down, "reset": reset}[args.action]())
         if result is None:
             result = {"status": "stopped", "database": "preserved"} if args.action == "down" else {"status": "reset", "database": "removed"}

@@ -1070,6 +1070,42 @@ ledger](../data/manifests/legacy-status.json), the standard suite (361 Python
 tests plus 64 adapter/contract tests), Rust tests (83), and the hosted CI run.
 No private rows or private filesystem paths are committed.
 
+### D6.3 — Version-bound real graph projection acceptance
+
+**Status: Real-source graph and bounded API acceptance on the approved
+disposable clone. Full normal replay is not verified; hosted graph rollout is
+outside this sprint.** The retained Italy 853 input was independently checked
+against the adapter's source-native operator assertions: 47,375 parsed rows,
+40,900 normalized rows, and 6,475 quarantined rows. The matcher/persistence
+path produced source-qualified exact and inferred graph evidence. A repair
+bound 22,077 private records to unique canonical records in the selected
+approved release; ambiguous or absent pairs were not force-mapped. Of the 148
+release-supported inferred facility edges, 147 are non-conflicting and appear
+in the default API projection; the remaining conflicting edge is excluded by
+default and appears only when conflicts are explicitly requested. The bounded
+API acceptance also checked confidence filtering, cursor traversal, endpoint
+eligibility, source-record-version support, suppression, and identifier
+redaction. The inferred traversals used an explicit empty terminal page (the
+endpoint can include a continuation cursor on a short page); default and
+confidence-filtered results each contained 147 rows, and the conflict-inclusive
+result contained 148. The exact-edge API check was a two-page sample, not an
+exhaustive walk. The two-page inferred filter checks took approximately 15.6
+to 15.9 seconds in this local clone, followed by a bounded empty-page check.
+
+The repeat of the bounded binding/endpoint repair inserted zero rows and
+reported all 148 repaired endpoints unchanged. The frozen v0 baseline remained
+unchanged (63,601 public, 48,756 mapped, 54,256 named, 14,845 unmapped, 13
+sources; original manifest identity retained). No public release or production
+deployment was performed. A full normal materializer replay, independent raw
+name/address/city comparison (pending explicit approval), live source refresh,
+and recurring health are not established by this acceptance.
+
+Evidence: `pipeline/tests/e2e/test_graph_activation_real_italy.py`,
+`pipeline/migrations/076_graph_record_release_bindings.sql`, the aggregate-only
+local receipt under ignored `data/staging/graph-source-expansion-20261020/`,
+and the focused graph persistence/API tests. The receipt and private input are
+not committed.
+
 ### Production V2 frontend
 
 **Status: Launchpad and design specification complete; implementation deferred.**

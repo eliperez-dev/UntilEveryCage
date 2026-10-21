@@ -2,6 +2,19 @@
 
 This development-only API reads the isolated `real_preview` schema. It is not a public V2 projection and it does not create release membership, review decisions, or publication approval. It is available only when the API starts in development mode with the preview explicitly enabled, a loopback bind, and a runtime preview token.
 
+The ordinary source refresh remains unchanged by default. Operators may explicitly
+request private graph materialization after a successful source lifecycle and
+private import with `python scripts/real_preview.py refresh --source <source-id>
+--materialize-private-graph`. This stage reads the verified graph handoff under
+that run's `candidate-handoff` directory and requires the separate
+`UEC_GRAPH_DATABASE_URL`, `UEC_GRAPH_DATABASE_NAME`, and
+`UEC_GRAPH_DATABASE_PURPOSE=private-graph-materialization-v1` configuration; it
+does not reuse `UEC_DATABASE_URL`. A missing graph handoff is reported as
+`not_supported`, and a failed graph stage is reported separately from the
+completed source import. The materializer writes graph-owned private tables
+only; it does not alter release membership, rights, privacy, or approval state.
+This command does not publish the graph or change the public API's release gate.
+
 For an offline human-review rehearsal from the retained, hash-verified normalized packets, use `python scripts/dev.py real-preview offline-up`, `offline-status`, and `offline-down`. This mode reads only the selected local FR DGAL I/II, Italy 853, and FSIS handoff files; it performs no acquisition or network requests and imports only into its dedicated `uec-offline-fsis-private` disposable database. `offline-down` stops only that owned stack while preserving its disposable volume; use `python scripts/real_preview.py offline-reset` only when the private rehearsal data should also be discarded. The source artifact bytes are not retained in these handoffs, so the source-bundle hash is provenance metadata; normalized and graph-candidate artifacts are independently verified against their manifests. The FSIS point style is explicitly `source_provided_unverified`; it is neither exact nor coarse, remains pending review, and is never eligible for a public map. No simulated or human approval is created by this importer.
 
 Every request requires `Host` and any `Origin` to use a loopback name or address, plus the `x-uec-dev-preview-token` header. The runtime token must be at least 32 characters. Responses include `Cache-Control: no-store`. The token must stay in process memory and must not be included in URLs or browser storage.

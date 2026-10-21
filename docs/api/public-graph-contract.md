@@ -4,8 +4,11 @@ Status: additive V2 frontend contract, release-gated and read-only.
 
 The public graph is a projection of `uec.graph_connection_edges`. It is not a
 direct query of private evidence. A request is evaluated against one promoted,
-non-test release/profile and returns only source-qualified endpoints whose
-identifiers passed that same release's public and privacy gates. If no eligible
+non-test release/profile and returns only source-qualified endpoints that
+resolve through that same release's public read model and privacy gates. Private
+graph facility identifiers map to canonical facility UUIDs only through an
+unambiguous source-record identity already present in the selected release;
+ingestion does not release those identifiers. If no eligible
 release exists, the API returns `404 release_not_found`; it never falls back to
 private or candidate rows.
 
@@ -31,13 +34,46 @@ Effective entity-search inputs are `profile`, `q`, `entity_type`, `cursor` and
 returns connections adjacent to its path entity using the connection filters.
 Although `direction` and `depth` are validated, they currently do not change
 traversal or provide multi-hop results. Graph routes select the latest eligible
-profile and do not accept an effective `release_id` pin. Refresh pagination when
-response release metadata changes. The [public OpenAPI document](public-openapi.json)
-exposes effective inputs only.
+profile. Supplying `release_id` pins the query to that release when it is an
+eligible promoted release or a validated release already recorded in public
+release history. Refresh pagination when response release metadata changes.
+The [public OpenAPI document](public-openapi.json) exposes effective inputs.
 
 The database retains the historical `probable` and `possible` labels. The
 public contract normalizes those to `high` and `medium`; this is a display band,
 not a new probability model.
+
+Each endpoint resolves unambiguously to a canonical facility or organization
+UUID in the same selected release. Facility endpoints must map by their source
+record lineage to exactly one facility in that release's public discovery
+projection. The Italy 853/2004 adapter additionally binds by exact source
+artifact plus unique native recognition-number/activity-code pair because its
+current row key differs from the approved snapshot's historical row key;
+repeated candidate pairs and ambiguous release mappings are excluded. This
+adds graph identifier metadata only and leaves review/privacy/release states
+unchanged. Inferred facility-to-facility edges require both endpoints to
+resolve independently through that release. A public business-organization
+node is eligible only when a VAT-class identifier and an eligible facility
+assertion occur on the same approved source record. Exact organization edges
+remain limited to source-reported operator relationships; inferred edges may
+connect independently eligible business nodes when their evidence records
+also pass the selected-release support gate. These edges are not ownership
+claims. Organization nodes are returned with an opaque source-scoped ID and no
+name or identifier value.
+Natural-person fiscal-code identifiers are never exposed. The DTO's required
+`source_identifier` string is an opaque `entity:<UUID>` token derived from the
+release-qualified canonical endpoint UUID; raw source identifier values remain
+restricted. Missing, ambiguous, suppressed, or
+cross-release endpoints are excluded.
+
+An edge is selectable only when it has nonempty supporting source references
+that resolve to exact source-record versions in that release. Direct release
+members and append-only rows in `uec.graph_record_release_bindings` are
+accepted; a binding is valid only when its private and canonical records retain
+the same source and artifact and its canonical record is still eligible in the
+selected release. Shared identifiers alone do not qualify edge evidence.
+Missing version IDs, unbound support records, suppressed edges, and support
+from another artifact or release are excluded.
 
 ## Edge semantics
 
@@ -62,3 +98,10 @@ The graph is a public product capability only after a named release is promoted.
 Publication approval, source rights, privacy screening, factual review, and
 release membership remain independent gates. A public graph response does not
 certify the truth or completeness of a relationship.
+
+The graph API and release-qualified projection are validated in the controlled
+private clone for this sprint. The current Render `release_serving` package
+does not export graph data, and its hosted runtime role does not have the graph
+read-model grants. Applying the graph-binding migration alone does not activate
+hosted graph serving; a separate reviewed deployment/export and least-privilege
+grant change is required.

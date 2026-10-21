@@ -32,6 +32,7 @@ from pipeline.common.graph_edges import (
     EntityRef,
     SourceRef,
     build_connection_edge,
+    connection_edge_key,
     persist_connection_edges,
     score_connection,
     validate_connection_edge,
@@ -87,6 +88,79 @@ def require_disposable_graph_database(database_url: str, acknowledged: bool = Fa
         raise GraphPersistenceError("refusing graph import: database name is not a UEC disposable database")
 
 
+def require_private_graph_target(database_url: str, *, expected_database: str, purpose: str) -> None:
+    """Validate an explicitly configured ordinary private graph target.
+
+    This separate gate intentionally does not weaken or bypass the disposable
+    graph importer. The caller must provide the expected database name and a
+    purpose string from its private operator configuration.
+    """
+    if purpose != "private-graph-materialization-v1":
+        raise GraphPersistenceError("refusing graph materialization: purpose is not authorized")
+    normalized_database = expected_database.casefold()
+    forbidden_name_tokens = ("prod", "production", "retained", "frozen", "reference", "v0_")
+    if (not expected_database or not normalized_database.startswith("uec_")
+            or any(token in normalized_database for token in forbidden_name_tokens)):
+        raise GraphPersistenceError("refusing graph materialization: an approved private target name is required")
+    parsed = urlparse(database_url)
+    if (parsed.hostname or "").lower() not in {"localhost", "127.0.0.1", "::1"}:
+        raise GraphPersistenceError("refusing graph materialization: database host is not loopback")
+    database = (parsed.path or "").lstrip("/")
+    if database != expected_database:
+        raise GraphPersistenceError("refusing graph materialization: database does not match configured target")
+    if not database.startswith("uec"):
+        raise GraphPersistenceError("refusing graph materialization: target name is not UEC-scoped")
+
+
+_PRIVATE_GRAPH_REQUIRED_PRIVILEGES = {
+    "sources": {"SELECT", "INSERT"},
+    "raw_artifacts": {"SELECT", "INSERT"},
+    "source_records": {"SELECT", "INSERT"},
+    "releases": {"SELECT"},
+    "map_facilities_public_discovery_read_model": {"SELECT"},
+    "facilities": {"SELECT", "INSERT"},
+    "organizations": {"SELECT", "INSERT"},
+    "source_entity_identifiers": {"SELECT", "INSERT"},
+    "source_entity_crosswalks": {"SELECT", "INSERT"},
+    "organization_relationship_observations": {"SELECT", "INSERT"},
+    "graph_record_release_bindings": {"SELECT", "INSERT"},
+    "claims": {"SELECT", "INSERT"},
+    "claim_support": {"SELECT", "INSERT"},
+    "graph_ingest_runs": {"SELECT", "INSERT", "UPDATE"},
+    "graph_ingest_items": {"SELECT", "INSERT"},
+    "graph_connection_edges": {"SELECT", "INSERT", "UPDATE", "DELETE"},
+}
+
+
+def _validate_private_graph_writer(connection: Any, expected_database: str) -> None:
+    row = connection.execute("SELECT current_database(), current_user").fetchone()
+    if (not row or row[0] != expected_database or not str(row[1]).startswith("uec_graph_writer_")
+            or row[1] in {"uec_api_runtime", "uec_release_operator"}):
+        raise GraphPersistenceError("refusing graph materialization: database role is not a private writer")
+    role_flags = connection.execute(
+        "SELECT rolsuper, rolcreatedb, rolcreaterole, rolbypassrls "
+        "FROM pg_roles WHERE rolname=current_user"
+    ).fetchone()
+    if not role_flags or any(role_flags):
+        raise GraphPersistenceError("refusing graph materialization: privileged database roles are not allowed")
+    privileges = connection.execute(
+        "SELECT table_schema, table_name, privilege_type FROM information_schema.role_table_grants "
+        "WHERE grantee=current_user"
+    ).fetchall()
+    grants_by_table: dict[str, set[str]] = {}
+    for schema_name, table_name, privilege in privileges:
+        if schema_name == "uec":
+            grants_by_table.setdefault(table_name, set()).add(privilege)
+    if any(not grants_by_table.get(table, set()).issuperset(required)
+           for table, required in _PRIVATE_GRAPH_REQUIRED_PRIVILEGES.items()):
+        raise GraphPersistenceError("refusing graph materialization: private graph writer grants are incomplete")
+    write_tables = {(item[0], item[1]) for item in privileges
+                    if item[2] in {"INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER"}}
+    allowed_writes = {("uec", table) for table in _PRIVATE_GRAPH_REQUIRED_PRIVILEGES}
+    if not write_tables.issubset(allowed_writes):
+        raise GraphPersistenceError("refusing graph materialization: role has writes outside graph tables")
+
+
 def _verify_disposable_marker(connection: psycopg.Connection[Any]) -> None:
     row = connection.execute(
         "SELECT marker FROM uec.disposable_import_guard "
@@ -137,6 +211,9 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
 
 def _candidate_paths(root: Path) -> tuple[Path, ...]:
     """Return candidate payload paths in the same deterministic order used by the loader."""
+    adapter_jsonl = root / "graph-candidates.jsonl"
+    if adapter_jsonl.is_file():
+        return (adapter_jsonl,)
     records_path = root / "records.jsonl"
     if records_path.is_file():
         return (records_path,)
@@ -149,7 +226,7 @@ def _candidate_paths(root: Path) -> tuple[Path, ...]:
 def _iter_candidate_payloads(root: Path) -> Iterable[dict[str, Any]]:
     """Decode either the JSONL handoff or the legacy one-file-per-candidate form."""
     for records_path in _candidate_paths(root):
-        if records_path.name == "records.jsonl":
+        if records_path.name in {"records.jsonl", "graph-candidates.jsonl"}:
             try:
                 handle = records_path.open(encoding="utf-8")
             except OSError as exc:
@@ -184,6 +261,26 @@ def _graph_candidate_root(path: str | Path) -> tuple[Path, dict[str, Any]]:
         candidate_root = root / "graph-candidates"
         _, parent_manifest = _manifest_for(root)
         _, graph_manifest = _manifest_for(candidate_root)
+        manifest = {**parent_manifest, **graph_manifest}
+    elif (root / "graph" / "graph-candidates-manifest.json").is_file():
+        candidate_root = root / "graph"
+        try:
+            graph_manifest = json.loads((candidate_root / "graph-candidates-manifest.json").read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise GraphPersistenceError("graph candidate handoff manifest is malformed") from exc
+        parent_manifest = {}
+        if (root / "manifest.json").is_file():
+            _, parent_manifest = _manifest_for(root)
+        manifest = {**parent_manifest, **graph_manifest}
+    elif (root / "graph-candidates-manifest.json").is_file():
+        candidate_root = root
+        try:
+            graph_manifest = json.loads((root / "graph-candidates-manifest.json").read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise GraphPersistenceError("graph candidate handoff manifest is malformed") from exc
+        parent_manifest = {}
+        if (root.parent / "manifest.json").is_file():
+            _, parent_manifest = _manifest_for(root.parent)
         manifest = {**parent_manifest, **graph_manifest}
     elif (root / "manifest.json").is_file():
         candidate_root = root
@@ -226,6 +323,9 @@ def inspect_graph_candidate_handoff(path: str | Path) -> tuple[dict[str, Any], s
     expected = manifest.get("records_sha256") or manifest.get("sha256")
     if expected and expected != value:
         raise GraphPersistenceError("graph candidate handoff checksum mismatch")
+    expected_count = manifest.get("candidate_count")
+    if expected_count is not None and expected_count != count:
+        raise GraphPersistenceError("graph candidate handoff count mismatch")
     return {**manifest, "source_id": source_id, "source_kind": "facility_master"}, value, count
 
 
@@ -378,16 +478,36 @@ def _ensure_record(connection: Any, manifest: dict[str, Any], artifact_id: uuid.
 
 
 def _entity_maps(connection: Any, manifest: dict[str, Any], candidate: dict[str, Any],
-                 record_id: uuid.UUID, artifact_id: uuid.UUID) -> tuple[dict[str, uuid.UUID], dict[str, uuid.UUID]]:
+                 record_id: uuid.UUID, artifact_id: uuid.UUID, *,
+                 require_approved_facility: bool = False,
+                 approved_facility_map: dict[tuple[str, str, uuid.UUID], set[uuid.UUID]] | None = None,
+                 mapping_diagnostics: dict[str, int] | None = None) -> tuple[dict[str, uuid.UUID], dict[str, uuid.UUID]]:
     facilities: dict[str, uuid.UUID] = {}
     organizations: dict[str, uuid.UUID] = {}
     country = _country(manifest)
     source_id = manifest["source_id"]
+    source_record_key = str(candidate.get("source_record_key") or "")
+    if not source_record_key:
+        raise GraphPersistenceError("candidate requires source_record_key")
     source_values = candidate.get("source_values") or {}
     for item in candidate.get("facilities", []):
         ref = item["local_ref"]
         identifier = item["source_identifier"]
-        facility_id = _stable_uuid("facility", source_id, identifier["identifier_type"], identifier["value"])
+        if require_approved_facility:
+            facility_id, mapping_state = _approved_facility_for_source_record(
+                connection, source_id, source_record_key, artifact_id,
+                approved_facility_map=approved_facility_map,
+            )
+            if mapping_state != "mapped":
+                # Preserve only a source-qualified private node when public
+                # release lineage is absent or ambiguous. It cannot resolve
+                # through the release projection and is never treated as a
+                # canonical/public facility.
+                facility_id = _stable_uuid("facility", source_id, identifier["identifier_type"], identifier["value"])
+                if mapping_diagnostics is not None:
+                    mapping_diagnostics[mapping_state] = mapping_diagnostics.get(mapping_state, 0) + 1
+        else:
+            facility_id = _stable_uuid("facility", source_id, identifier["identifier_type"], identifier["value"])
         name = source_values.get("name") or source_values.get("trading_name")
         connection.execute(
             """INSERT INTO uec.facilities(facility_id,canonical_name,country_code)
@@ -411,7 +531,29 @@ def _entity_maps(connection: Any, manifest: dict[str, Any], candidate: dict[str,
     for item in candidate.get("organizations", []):
         ref = item["local_ref"]
         identifier = item["source_identifier"]
-        organization_id = _stable_uuid("organization", source_id, identifier["identifier_type"], identifier["value"])
+        same_record = connection.execute(
+            "SELECT organization_id FROM uec.source_entity_identifiers WHERE source_id=%s "
+            "AND source_record_id=%s AND entity_type='organization' AND identifier_type=%s AND source_identifier=%s",
+            (source_id, record_id, identifier["identifier_type"], identifier["value"]),
+        ).fetchall()
+        if len(same_record) == 1:
+            organization_id = same_record[0][0]
+        else:
+            organization_ids = connection.execute(
+                "SELECT DISTINCT organization_id FROM uec.source_entity_identifiers WHERE source_id=%s "
+                "AND entity_type='organization' AND identifier_type=%s AND source_identifier=%s",
+                (source_id, identifier["identifier_type"], identifier["value"]),
+            ).fetchall()
+            if len(organization_ids) == 1:
+                organization_id = organization_ids[0][0]
+            else:
+                # A persisted random UUID is stable across retries without
+                # being a public-salt hash of a protected source identifier.
+                organization_id = uuid.uuid4()
+                if len(organization_ids) > 1 and mapping_diagnostics is not None:
+                    mapping_diagnostics["ambiguous_private_organization_identifier"] = (
+                        mapping_diagnostics.get("ambiguous_private_organization_identifier", 0) + 1
+                    )
         name = source_values.get("operator_name") or source_values.get("organization_name")
         connection.execute(
             """INSERT INTO uec.organizations(organization_id,canonical_name,country_code)
@@ -443,6 +585,450 @@ def _organization_id_for_identifier(connection: Any, identifier_id: uuid.UUID) -
     return connection.execute("SELECT organization_id FROM uec.source_entity_identifiers WHERE identifier_id=%s", (identifier_id,)).fetchone()[0]
 
 
+def _approved_facility_for_source_record(connection: Any, source_id: str,
+                                         source_record_key: str,
+                                         artifact_id: uuid.UUID,
+                                         approved_facility_map: dict[tuple[str, str, uuid.UUID], set[uuid.UUID]] | None = None
+                                         ) -> tuple[uuid.UUID | None, str]:
+    """Resolve a graph facility to current approved lineage without guessing."""
+    if approved_facility_map is not None:
+        facilities = approved_facility_map.get((source_id, source_record_key, artifact_id), set())
+        if len(facilities) != 1:
+            return None, "ambiguous_approved_release_mapping" if facilities else "no_eligible_public_record"
+        return next(iter(facilities)), "mapped"
+    rows = connection.execute(
+        """SELECT DISTINCT p.facility_id
+           FROM uec.map_facilities_public_discovery_read_model p
+           JOIN (SELECT release_id FROM uec.releases
+                 WHERE status='promoted' AND test_only IS NOT TRUE AND profile='official'
+                 ORDER BY created_at DESC, release_id DESC LIMIT 1) r ON r.release_id=p.release_id
+           JOIN uec.source_records source_record ON source_record.source_record_id=p.source_record_id
+             AND source_record.source_id=%s AND source_record.source_record_key=%s
+             AND source_record.artifact_id=%s
+           ORDER BY p.facility_id""",
+        (source_id, source_record_key, artifact_id),
+    ).fetchall()
+    if len(rows) != 1:
+        return None, "ambiguous_approved_release_mapping" if rows else "no_eligible_public_record"
+    return rows[0][0], "mapped"
+
+
+def _load_approved_facility_map(connection: Any, source_id: str,
+                                artifact_id: uuid.UUID) -> dict[tuple[str, str, uuid.UUID], set[uuid.UUID]]:
+    """Load one promoted release's source-record lineage once for this import."""
+    rows = connection.execute(
+        """SELECT DISTINCT source_record.source_id, source_record.source_record_key,
+                  source_record.artifact_id, p.facility_id
+           FROM uec.map_facilities_public_discovery_read_model p
+           JOIN (SELECT release_id FROM uec.releases
+                 WHERE status='promoted' AND test_only IS NOT TRUE AND profile='official'
+                 ORDER BY created_at DESC, release_id DESC LIMIT 1) r ON r.release_id=p.release_id
+           JOIN uec.source_records source_record ON source_record.source_record_id=p.source_record_id
+           WHERE source_record.source_id=%s AND source_record.artifact_id=%s
+           ORDER BY source_record.source_id, source_record.source_record_key,
+                    source_record.artifact_id, p.facility_id""",
+        (source_id, artifact_id),
+    ).fetchall()
+    mappings: dict[tuple[str, str, uuid.UUID], set[uuid.UUID]] = {}
+    for source_id, source_record_key, artifact_id, facility_id in rows:
+        key = (str(source_id), str(source_record_key), artifact_id)
+        mappings.setdefault(key, set()).add(facility_id)
+    return mappings
+
+
+def _load_run_source_record_ids(connection: Any, run_id: uuid.UUID,
+                                artifact_id: uuid.UUID) -> dict[tuple[str, str], uuid.UUID]:
+    rows = connection.execute(
+        """SELECT DISTINCT record.source_id, record.source_record_key, record.source_record_id
+           FROM uec.graph_ingest_items item
+           JOIN uec.source_records record
+             ON record.source_id=item.source_id
+            AND record.source_record_key=item.source_record_key
+            AND record.artifact_id=%s
+           WHERE item.ingest_run_id=%s AND item.status='inserted'
+             AND item.item_kind='facility_candidate'
+           ORDER BY record.source_id, record.source_record_key""",
+        (artifact_id, run_id),
+    ).fetchall()
+    return {(str(source_id), str(key)): record_id for source_id, key, record_id in rows}
+
+
+_ITALY_CANONICAL_BINDING_CTES = """
+WITH selected_release AS MATERIALIZED (
+    SELECT release_id FROM uec.releases
+    WHERE status='promoted' AND test_only IS NOT TRUE AND profile='official'
+    ORDER BY created_at DESC, release_id DESC LIMIT 1
+),
+candidate_rows AS MATERIALIZED (
+    SELECT DISTINCT item.item_sha256, candidate.source_record_id,
+           NULLIF(btrim(candidate.raw_fields #>> '{source_values,num_identificativo_produzione_commercializzazione}'), '') AS recognition_number,
+           NULLIF(btrim(candidate.raw_fields #>> '{source_values,codice_impianto_attivita}'), '') AS activity_code
+    FROM uec.graph_ingest_items item
+    JOIN uec.source_records candidate
+      ON candidate.source_id=item.source_id
+     AND candidate.source_record_key=item.source_record_key
+     AND candidate.artifact_id=%s
+    WHERE item.ingest_run_id=%s AND item.source_id=%s
+      AND item.status='inserted' AND item.item_kind='facility_candidate'
+),
+candidate_pairs AS MATERIALIZED (
+    SELECT recognition_number, activity_code,
+           count(DISTINCT source_record_id) AS source_record_count,
+           count(DISTINCT item_sha256) AS candidate_count,
+           (array_agg(DISTINCT source_record_id))[1] AS private_record_id
+    FROM candidate_rows
+    WHERE recognition_number IS NOT NULL AND activity_code IS NOT NULL
+    GROUP BY recognition_number, activity_code
+),
+approved_rows AS MATERIALIZED (
+    SELECT record.source_record_id, model.facility_id,
+           NULLIF(btrim(record.raw_fields #>> '{normalized,recognition_number}'), '') AS recognition_number,
+           NULLIF(btrim(record.raw_fields #>> '{normalized,activity_code}'), '') AS activity_code
+    FROM selected_release selected
+    JOIN uec.map_facilities_public_discovery_read_model model
+      ON model.release_id=selected.release_id
+    JOIN uec.source_records record ON record.source_record_id=model.source_record_id
+    WHERE record.source_id=%s AND record.artifact_id=%s
+),
+approved_pairs AS MATERIALIZED (
+    SELECT recognition_number, activity_code,
+           count(DISTINCT source_record_id) AS source_record_count,
+           count(DISTINCT facility_id) AS facility_count,
+           (array_agg(DISTINCT source_record_id))[1] AS canonical_record_id,
+           (array_agg(DISTINCT facility_id))[1] AS facility_id
+    FROM approved_rows
+    WHERE recognition_number IS NOT NULL AND activity_code IS NOT NULL
+    GROUP BY recognition_number, activity_code
+),
+unique_mappings AS MATERIALIZED (
+    SELECT candidate.private_record_id, approved.canonical_record_id, approved.facility_id
+    FROM candidate_pairs candidate
+    JOIN approved_pairs approved USING (recognition_number, activity_code)
+    WHERE candidate.source_record_count=1 AND candidate.candidate_count=1
+      AND approved.source_record_count=1 AND approved.facility_count=1
+)
+"""
+
+
+def _italy_binding_summary(connection: Any, run_id: uuid.UUID, source_id: str,
+                           artifact_id: uuid.UUID) -> dict[str, int]:
+    if source_id != "it.853-2004":
+        raise GraphPersistenceError("canonical native binding is not configured for this source")
+    # Parameter order follows the CTEs: private artifact/run/source, then
+    # approved source/artifact. Only aggregate counts are returned.
+    rows = connection.execute(
+        _ITALY_CANONICAL_BINDING_CTES + """
+        SELECT count(*) AS candidate_pair_groups,
+               count(*) FILTER (WHERE candidate.source_record_count=1 AND candidate.candidate_count=1) AS unique_candidate_pairs,
+               count(*) FILTER (WHERE candidate.source_record_count>1 OR candidate.candidate_count>1) AS ambiguous_candidate_pairs,
+               count(*) FILTER (WHERE candidate.source_record_count=1 AND candidate.candidate_count=1
+                                  AND approved.source_record_count=1 AND approved.facility_count=1) AS mapped_pairs,
+               count(*) FILTER (WHERE candidate.source_record_count=1 AND candidate.candidate_count=1
+                                  AND approved.recognition_number IS NULL) AS no_approved_pair,
+               count(*) FILTER (WHERE candidate.source_record_count=1 AND candidate.candidate_count=1
+                                  AND approved.recognition_number IS NOT NULL
+                                  AND (approved.source_record_count<>1 OR approved.facility_count<>1)) AS ambiguous_approved_pair
+        FROM candidate_pairs candidate
+        LEFT JOIN approved_pairs approved USING (recognition_number, activity_code)
+        """,
+        (artifact_id, run_id, source_id, source_id, artifact_id),
+    ).fetchone()
+    return {str(name): int(value or 0) for name, value in zip(
+        ("candidate_pair_groups", "unique_candidate_pairs", "ambiguous_candidate_pairs",
+         "mapped_pairs", "no_approved_pair", "ambiguous_approved_pair"), rows)}
+
+
+def _insert_italy_canonical_identifier_bindings(connection: Any, run_id: uuid.UUID,
+                                                source_id: str, artifact_id: uuid.UUID) -> dict[str, int]:
+    if source_id != "it.853-2004":
+        raise GraphPersistenceError("canonical native binding is not configured for this source")
+    cursor = connection.execute(
+        _ITALY_CANONICAL_BINDING_CTES + """
+        INSERT INTO uec.source_entity_identifiers
+            (source_id,source_record_id,entity_type,facility_id,organization_id,
+             identifier_type,source_identifier,value_as_observed,observed_at,
+             review_state,storage_state,privacy_status,publication_status,release_id)
+        SELECT private_identifier.source_id, mapping.canonical_record_id,
+               private_identifier.entity_type,
+               CASE WHEN private_identifier.entity_type='facility' THEN mapping.facility_id ELSE NULL END,
+               private_identifier.organization_id,
+               private_identifier.identifier_type, private_identifier.source_identifier,
+               private_identifier.value_as_observed, private_identifier.observed_at,
+               private_identifier.review_state, private_identifier.storage_state,
+               private_identifier.privacy_status, private_identifier.publication_status,
+               private_identifier.release_id
+        FROM unique_mappings mapping
+        JOIN uec.source_entity_identifiers private_identifier
+          ON private_identifier.source_record_id=mapping.private_record_id
+         AND private_identifier.source_id=%s
+        WHERE NOT EXISTS (
+            SELECT 1 FROM uec.source_entity_identifiers existing
+            WHERE existing.source_record_id=mapping.canonical_record_id
+              AND existing.source_id=private_identifier.source_id
+              AND existing.entity_type=private_identifier.entity_type
+              AND existing.identifier_type=private_identifier.identifier_type
+              AND existing.source_identifier=private_identifier.source_identifier
+              AND existing.facility_id IS NOT DISTINCT FROM
+                  CASE WHEN private_identifier.entity_type='facility' THEN mapping.facility_id ELSE NULL END
+              AND existing.organization_id IS NOT DISTINCT FROM private_identifier.organization_id
+        )
+        RETURNING identifier_id
+        """,
+        (artifact_id, run_id, source_id, source_id, artifact_id, source_id),
+    )
+    identifier_rows = int(cursor.rowcount)
+    binding_cursor = connection.execute(
+        _ITALY_CANONICAL_BINDING_CTES + """
+        INSERT INTO uec.graph_record_release_bindings
+            (release_id,private_source_record_id,canonical_source_record_id,
+             facility_id,source_id,artifact_id,binding_method)
+        SELECT selected.release_id, mapping.private_record_id,
+               mapping.canonical_record_id, mapping.facility_id,
+               %s, %s, 'it_recognition_activity_singleton_v1'
+        FROM selected_release selected CROSS JOIN unique_mappings mapping
+        ON CONFLICT DO NOTHING
+        RETURNING private_source_record_id
+        """,
+        (artifact_id, run_id, source_id, source_id, artifact_id, source_id, artifact_id),
+    )
+    return {"identifier_rows": identifier_rows, "release_bindings": int(binding_cursor.rowcount)}
+
+
+def _backfill_graph_edge_support_record_ids(connection: Any, run_id: uuid.UUID,
+                                            source_id: str, artifact_id: uuid.UUID) -> int:
+    """Attach exact source-record IDs to existing graph refs for this run.
+
+    The key is retained for private provenance; the ID resolves its artifact
+    version. Other-source refs are left untouched and must already carry IDs
+    before they can pass the public release support gate.
+    """
+    cursor = connection.execute(
+        """
+        WITH run_records AS MATERIALIZED (
+            SELECT DISTINCT record.source_id, record.source_record_key,
+                   record.source_record_id
+            FROM uec.graph_ingest_items item
+            JOIN uec.source_records record
+              ON record.source_id=item.source_id
+             AND record.source_record_key=item.source_record_key
+             AND record.artifact_id=%s
+            WHERE item.ingest_run_id=%s AND item.source_id=%s
+              AND item.status='inserted' AND item.item_kind='facility_candidate'
+        ),
+        edge_refs AS MATERIALIZED (
+            SELECT edge.connection_edge_id, edge.connection_type,
+                   jsonb_array_length(edge.supporting_source_refs) AS ref_count,
+                   refs.ordinality, refs.value,
+                   record.source_record_id AS resolved_record_id
+            FROM uec.graph_connection_edges edge
+            CROSS JOIN LATERAL jsonb_array_elements(edge.supporting_source_refs)
+                WITH ORDINALITY AS refs(value, ordinality)
+            LEFT JOIN run_records record
+              ON record.source_id=refs.value->>'source_id'
+             AND record.source_record_key=refs.value->>'source_record_key'
+        WHERE (edge.from_source_id=%s OR edge.to_source_id=%s)
+          AND edge.storage_state='private'
+          AND edge.publication_status='not_eligible'
+        ),
+        rebuilt AS MATERIALIZED (
+            SELECT connection_edge_id,
+                   jsonb_agg(
+                       value
+                       || CASE WHEN value->>'source_id'=%s AND resolved_record_id IS NOT NULL
+                               THEN jsonb_build_object('source_record_id',resolved_record_id::text)
+                               ELSE '{}'::jsonb END
+                       || CASE WHEN connection_type='inferred' AND ref_count=2
+                               THEN jsonb_build_object('role', CASE WHEN ordinality=1 THEN 'from' ELSE 'to' END)
+                               ELSE '{}'::jsonb END
+                       ORDER BY ordinality
+                   ) AS supporting_source_refs,
+                   bool_and(CASE WHEN value->>'source_id'=%s
+                                 THEN resolved_record_id IS NOT NULL
+                                 ELSE value ? 'source_record_id' END) AS all_refs_resolved
+            FROM edge_refs
+            GROUP BY connection_edge_id
+        )
+        UPDATE uec.graph_connection_edges edge
+        SET supporting_source_refs=rebuilt.supporting_source_refs
+        FROM rebuilt
+        WHERE edge.connection_edge_id=rebuilt.connection_edge_id
+          AND rebuilt.all_refs_resolved
+          AND edge.supporting_source_refs IS DISTINCT FROM rebuilt.supporting_source_refs
+        RETURNING edge.connection_edge_id
+        """,
+        (artifact_id, run_id, source_id, source_id, source_id, source_id, source_id),
+    )
+    return int(cursor.rowcount)
+
+
+def _repair_inferred_native_endpoints(connection: Any, source_id: str,
+                                     artifact_id: uuid.UUID) -> dict[str, int]:
+    """Append native-key representations of normalized inferred edges.
+
+    A repair is eligible only when both ordered support refs resolve through
+    the exact current release binding and each canonical record has one
+    same-facility native assertion whose documented D6 normalization equals
+    the persisted endpoint. The old private edge is retained as history.
+    """
+    cursor = connection.execute(
+        """
+        WITH selected_release AS MATERIALIZED (
+            SELECT release_id FROM uec.releases
+            WHERE status='promoted' AND test_only IS NOT TRUE AND profile='official'
+            ORDER BY created_at DESC, release_id DESC LIMIT 1
+        ), edge_refs AS MATERIALIZED (
+            SELECT edge.connection_edge_id, edge.edge_key, edge.relationship_type,
+                   edge.connection_type, edge.confidence, edge.confidence_band,
+                   edge.match_method, edge.supporting_source_refs,
+                   edge.signal_explanation, edge.ruleset_version, edge.observed_at,
+                   edge.computed_at, edge.conflicting, edge.suppressed,
+                   edge.from_entity_type, edge.from_source_id, edge.from_identifier_type,
+                   edge.from_source_identifier, edge.to_entity_type, edge.to_source_id,
+                   edge.to_identifier_type, edge.to_source_identifier,
+                   refs.ordinality, refs.value,
+                   CASE WHEN refs.ordinality=1 THEN edge.from_entity_type ELSE edge.to_entity_type END AS entity_type,
+                   CASE WHEN refs.ordinality=1 THEN edge.from_source_id ELSE edge.to_source_id END AS endpoint_source_id,
+                   CASE WHEN refs.ordinality=1 THEN edge.from_identifier_type ELSE edge.to_identifier_type END AS identifier_type,
+                   CASE WHEN refs.ordinality=1 THEN edge.from_source_identifier ELSE edge.to_source_identifier END AS endpoint_value
+            FROM uec.graph_connection_edges edge
+            CROSS JOIN LATERAL jsonb_array_elements(edge.supporting_source_refs)
+                WITH ORDINALITY AS refs(value, ordinality)
+            WHERE edge.connection_type='inferred'
+              AND edge.from_source_id=%s AND edge.to_source_id=%s
+              AND edge.storage_state='private' AND edge.publication_status='not_eligible'
+              AND jsonb_array_length(edge.supporting_source_refs)=2
+              AND refs.value->>'source_id'=%s
+              AND refs.value ? 'source_record_id'
+              AND refs.value->>'role'=CASE WHEN refs.ordinality=1 THEN 'from' ELSE 'to' END
+        ), eligible_assertions AS MATERIALIZED (
+            SELECT refs.*, binding.release_id, identifier.source_identifier AS native_value,
+                   binding.facility_id
+            FROM edge_refs refs
+            JOIN uec.graph_record_release_bindings binding
+              ON binding.private_source_record_id=(refs.value->>'source_record_id')::uuid
+             AND binding.source_id=%s AND binding.artifact_id=%s
+             AND binding.release_id=(SELECT release_id FROM selected_release)
+            JOIN uec.releases release
+              ON release.release_id=binding.release_id AND release.profile='official'
+             AND release.status='promoted' AND release.test_only IS NOT TRUE
+            JOIN uec.source_records private_record
+              ON private_record.source_record_id=binding.private_source_record_id
+             AND private_record.source_id=binding.source_id
+             AND private_record.artifact_id=binding.artifact_id
+            JOIN uec.source_records canonical_record
+              ON canonical_record.source_record_id=binding.canonical_source_record_id
+             AND canonical_record.source_id=binding.source_id
+             AND canonical_record.artifact_id=binding.artifact_id
+            JOIN uec.source_entity_identifiers identifier
+              ON identifier.source_record_id=canonical_record.source_record_id
+             AND identifier.source_id=binding.source_id
+             AND identifier.entity_type='facility'
+             AND identifier.facility_id=binding.facility_id
+             AND identifier.identifier_type=refs.identifier_type
+             AND regexp_replace(lower(btrim(identifier.source_identifier)), '[^a-z0-9]', '', 'g')
+                 = regexp_replace(lower(btrim(refs.endpoint_value)), '[^a-z0-9]', '', 'g')
+            WHERE refs.entity_type='facility' AND refs.endpoint_source_id=binding.source_id
+        ), unique_endpoint AS MATERIALIZED (
+            SELECT connection_edge_id, ordinality, min(native_value) AS native_value
+            FROM eligible_assertions
+            GROUP BY connection_edge_id, ordinality
+            HAVING count(DISTINCT native_value)=1 AND count(DISTINCT facility_id)=1
+        ), fully_mapped AS MATERIALIZED (
+            SELECT refs.*, source.native_value AS native_from, target.native_value AS native_to
+            FROM (SELECT DISTINCT ON (connection_edge_id) * FROM edge_refs
+                  ORDER BY connection_edge_id, ordinality) refs
+            JOIN unique_endpoint source ON source.connection_edge_id=refs.connection_edge_id AND source.ordinality=1
+            JOIN unique_endpoint target ON target.connection_edge_id=refs.connection_edge_id AND target.ordinality=2
+        )
+        SELECT edge_key, relationship_type, connection_type, confidence, confidence_band,
+               match_method, supporting_source_refs, signal_explanation, ruleset_version,
+               observed_at, computed_at, conflicting, suppressed,
+               from_entity_type, from_source_id, from_identifier_type, native_from,
+               to_entity_type, to_source_id, to_identifier_type, native_to
+        FROM fully_mapped
+        WHERE from_source_identifier IS DISTINCT FROM native_from
+           OR to_source_identifier IS DISTINCT FROM native_to
+        """,
+        (source_id, source_id, source_id, source_id, artifact_id),
+    )
+    rows = cursor.fetchall()
+    repaired = []
+    for row in rows:
+        (old_key, relationship, connection_type, confidence, band, method, refs,
+         explanation, ruleset, observed_at, computed_at, conflicting, suppressed,
+         from_type, from_source, from_identifier_type, from_native,
+         to_type, to_source, to_identifier_type, to_native) = row
+        left = EntityRef(str(from_type), str(from_source), str(from_identifier_type), str(from_native))
+        right = EntityRef(str(to_type), str(to_source), str(to_identifier_type), str(to_native))
+        repaired.append({
+            "edge_key": connection_edge_key(from_ref=left, to_ref=right,
+                                             relationship_type=str(relationship),
+                                             connection_type=str(connection_type),
+                                             ruleset_version=str(ruleset)),
+            "from": left.as_dict(), "to": right.as_dict(),
+            "relationship_type": relationship, "connection_type": connection_type,
+            "confidence": float(confidence), "confidence_band": band, "match_method": method,
+            "supporting_source_refs": refs, "signal_explanation": explanation,
+            "ruleset_version": ruleset, "observed_at": observed_at,
+            "computed_at": computed_at, "conflicting": conflicting, "suppressed": suppressed,
+            "storage_state": "private", "publication_status": "not_eligible",
+        })
+    counts = persist_connection_edges(connection, repaired) if repaired else {
+        "inserted": 0, "updated": 0, "unchanged": 0, "total": 0,
+    }
+    return {"repairable_legacy_inferred_edges": len(rows),
+            "native_endpoint_repair_inserted": counts["inserted"],
+            "native_endpoint_repair_updated": counts["updated"],
+            "native_endpoint_repair_unchanged": counts["unchanged"],
+            "native_endpoint_repair_skipped_exact": counts["skipped_exact"]}
+
+
+def backfill_approved_graph_identifier_bindings(database_url: str, handoff_dir: str | Path, *,
+                                                private_target: tuple[str, str]) -> dict[str, Any]:
+    """Attach existing private Italy assertions to exact approved source rows.
+
+    This append-only projection backfill writes only graph identifiers. It
+    requires a completed source import, the identical source artifact, one
+    current promoted official release, and one-to-one native recognition /
+    activity mappings on both the candidate and release sides. It copies
+    private evidence-state columns unchanged and never changes release or
+    review decisions.
+    """
+    expected_database, purpose = private_target
+    require_private_graph_target(database_url, expected_database=expected_database, purpose=purpose)
+    manifest, handoff_digest, _item_count = inspect_graph_candidate_handoff(handoff_dir)
+    source_id = str(manifest["source_id"])
+    if source_id != "it.853-2004":
+        raise GraphPersistenceError("canonical native binding is not configured for this source")
+    artifact_sha = str(manifest.get("checksum_sha256") or manifest.get("source_artifact_sha256") or handoff_digest)
+    if len(artifact_sha) != 64:
+        artifact_sha = handoff_digest
+    with psycopg.connect(database_url) as connection:
+        _validate_private_graph_writer(connection, expected_database)
+        run = connection.execute(
+            "SELECT ingest_run_id,status FROM uec.graph_ingest_runs WHERE source_id=%s AND handoff_sha256=%s",
+            (source_id, handoff_digest),
+        ).fetchone()
+        if not run or run[1] != "completed":
+            raise GraphPersistenceError("canonical binding requires a completed private graph import")
+        artifact = connection.execute("SELECT artifact_id FROM uec.raw_artifacts WHERE sha256=%s", (artifact_sha,)).fetchone()
+        if not artifact:
+            raise GraphPersistenceError("canonical binding source artifact is missing")
+        run_id, artifact_id = run[0], artifact[0]
+        connection.commit()
+        with connection.transaction():
+            summary = _italy_binding_summary(connection, run_id, source_id, artifact_id)
+            inserted_counts = _insert_italy_canonical_identifier_bindings(connection, run_id, source_id, artifact_id)
+            support_ref_rows_updated = _backfill_graph_edge_support_record_ids(
+                connection, run_id, source_id, artifact_id)
+            endpoint_repair_counts = _repair_inferred_native_endpoints(
+                connection, source_id, artifact_id)
+    return {"status": "completed", "source_id": source_id,
+            "canonical_binding_counts": {**summary, **inserted_counts,
+                                          "support_ref_rows_updated": support_ref_rows_updated,
+                                          **endpoint_repair_counts}}
+
+
 def _candidate_entity_maps(candidate: dict[str, Any], source_id: str) -> dict[str, EntityRef]:
     refs: dict[str, EntityRef] = {}
     for entity_type in ("facilities", "organizations"):
@@ -472,15 +1058,19 @@ def _forbidden_evidence_facility_pair(left: EntityRef, right: EntityRef) -> bool
     return bool(sources & _APHIS_FSIS_SOURCES) and bool(sources & _FSIS_SOURCES) and left.source_id != right.source_id
 
 
-def _source_refs(candidate: dict[str, Any], manifest: dict[str, Any]) -> list[SourceRef]:
+def _source_refs(candidate: dict[str, Any], manifest: dict[str, Any], *,
+                 source_record_ids: Mapping[tuple[str, str], uuid.UUID | str] | None = None) -> list[SourceRef]:
     source_id = str(candidate.get("source_id") or manifest["source_id"])
     key = candidate.get("source_record_key") or candidate.get("source_observation_key")
     if not isinstance(key, str) or not key.strip():
         raise GraphPersistenceError("connection candidate requires source_record_key")
-    return [SourceRef(source_id=source_id, source_record_key=key)]
+    record_id = (source_record_ids or {}).get((source_id, key))
+    return [SourceRef(source_id=source_id, source_record_key=key,
+                      source_record_id=str(record_id) if record_id else None)]
 
 
-def _matcher_edge(raw: dict[str, Any], candidate: dict[str, Any], manifest: dict[str, Any]) -> dict[str, Any] | None:
+def _matcher_edge(raw: dict[str, Any], candidate: dict[str, Any], manifest: dict[str, Any], *,
+                  source_record_ids: Mapping[tuple[str, str], uuid.UUID | str] | None = None) -> dict[str, Any] | None:
     """Adapt the matcher lane's result to the shared score/build contract.
 
     The matcher is deliberately not implemented here.  It may hand us an
@@ -491,7 +1081,13 @@ def _matcher_edge(raw: dict[str, Any], candidate: dict[str, Any], manifest: dict
     if not isinstance(raw, dict):
         raise GraphPersistenceError("matcher edge must be an object")
     if {"edge_key", "from", "to", "connection_type"}.issubset(raw):
-        edge = validate_connection_edge(raw)
+        edge = dict(validate_connection_edge(raw))
+        edge["supporting_source_refs"] = [dict(ref) for ref in edge["supporting_source_refs"]]
+        for ref in edge["supporting_source_refs"]:
+            key = ref.get("source_record_key")
+            record_id = (source_record_ids or {}).get((str(ref.get("source_id") or ""), str(key or "")))
+            if record_id and not ref.get("source_record_id"):
+                ref["source_record_id"] = str(record_id)
         if _forbidden_evidence_facility_pair(
             EntityRef(**{key: edge["from"][key] for key in ("entity_type", "source_id", "identifier_type", "source_identifier")}),
             EntityRef(**{key: edge["to"][key] for key in ("entity_type", "source_id", "identifier_type", "source_identifier")}),
@@ -546,11 +1142,15 @@ def _matcher_edge(raw: dict[str, Any], candidate: dict[str, Any], manifest: dict
         provenance = raw.get("provenance")
         refs = []
         if isinstance(provenance, list):
-            for item in provenance:
+            for index, item in enumerate(provenance):
                 if isinstance(item, dict) and item.get("source_id") and item.get("source_record_key"):
-                    refs.append(SourceRef(source_id=str(item["source_id"]), source_record_key=str(item["source_record_key"])))
+                    source_id, source_key = str(item["source_id"]), str(item["source_record_key"])
+                    record_id = (source_record_ids or {}).get((source_id, source_key))
+                    refs.append(SourceRef(source_id=source_id, source_record_key=source_key,
+                                          source_record_id=str(record_id) if record_id else None,
+                                          role="from" if index == 0 else "to"))
         if not refs:
-            refs = _source_refs(candidate, manifest)
+            refs = _source_refs(candidate, manifest, source_record_ids=source_record_ids)
         return build_connection_edge(
             from_ref=left_ref,
             to_ref=right_ref,
@@ -599,7 +1199,7 @@ def _matcher_edge(raw: dict[str, Any], candidate: dict[str, Any], manifest: dict
         to_ref=right_ref,
         relationship_type=str(raw.get("relationship_type") or "related_to"),
         scoring=scoring,
-        supporting_source_refs=_source_refs(candidate, manifest),
+        supporting_source_refs=_source_refs(candidate, manifest, source_record_ids=source_record_ids),
         observed_at=observed_at,
         conflicting=bool(raw.get("conflicting") or raw.get("contradictory_evidence")),
         suppressed=bool(raw.get("suppressed")),
@@ -610,7 +1210,8 @@ def _matcher_edge(raw: dict[str, Any], candidate: dict[str, Any], manifest: dict
 
 
 def build_candidate_connection_edges(candidate: dict[str, Any], manifest: dict[str, Any], *,
-                                     edge_builder: ConnectionEdgeBuilder | None = None) -> list[dict[str, Any]]:
+                                     edge_builder: ConnectionEdgeBuilder | None = None,
+                                     source_record_ids: Mapping[tuple[str, str], uuid.UUID | str] | None = None) -> list[dict[str, Any]]:
     """Build exact and matcher-supplied inferred edges for one facility row.
 
     Exact source assertions come from typed facility/organization references in
@@ -639,7 +1240,7 @@ def build_candidate_connection_edges(candidate: dict[str, Any], manifest: dict[s
         built.append(build_connection_edge(
             from_ref=from_ref, to_ref=target_ref,
             relationship_type=str(relationship.get("relationship_type")), scoring=scoring,
-            supporting_source_refs=_source_refs(candidate, manifest),
+            supporting_source_refs=_source_refs(candidate, manifest, source_record_ids=source_record_ids),
             observed_at=relationship.get("observed_at") or candidate.get("observed_at") or _timestamp(manifest),
             conflicting=relationship.get("assertion_status") in {"disputed", "rejected"},
             computed_at=str(manifest.get("retrieved_at_utc") or _timestamp(manifest)),
@@ -652,7 +1253,7 @@ def build_candidate_connection_edges(candidate: dict[str, Any], manifest: dict[s
     if edge_builder is not None:
         matcher_candidates.extend(edge_builder(candidate, manifest))
     for raw in matcher_candidates:
-        edge = _matcher_edge(raw, candidate, manifest)
+        edge = _matcher_edge(raw, candidate, manifest, source_record_ids=source_record_ids)
         if edge is not None:
             built.append(edge)
     # A matcher may repeat an explicit edge while enriching its explanation;
@@ -662,11 +1263,18 @@ def build_candidate_connection_edges(candidate: dict[str, Any], manifest: dict[s
 
 def _persist_candidate(connection: Any, manifest: dict[str, Any], candidate: dict[str, Any],
                        artifact_id: uuid.UUID, handoff_digest: str,
-                       *, edge_builder: ConnectionEdgeBuilder | None = None) -> dict[str, int]:
+                       *, edge_builder: ConnectionEdgeBuilder | None = None,
+                       materialize_edges: bool = True,
+                       require_approved_facility: bool = False,
+                       approved_facility_map: dict[tuple[str, str, uuid.UUID], set[uuid.UUID]] | None = None,
+                       mapping_diagnostics: dict[str, int] | None = None) -> dict[str, int]:
     source_record_key = candidate["source_record_key"]
     record_id = _ensure_record(connection, manifest, artifact_id, source_record_key,
                                candidate.get("source_values") or {}, handoff_digest)
-    facilities, organizations = _entity_maps(connection, manifest, candidate, record_id, artifact_id)
+    facilities, organizations = _entity_maps(connection, manifest, candidate, record_id, artifact_id,
+                                             require_approved_facility=require_approved_facility,
+                                             approved_facility_map=approved_facility_map,
+                                             mapping_diagnostics=mapping_diagnostics)
     for relationship in candidate.get("relationships", []):
         assertion = relationship.get("assertion_status", "asserted")
         if assertion == "unknown":
@@ -729,7 +1337,10 @@ def _persist_candidate(connection: Any, manifest: dict[str, Any], candidate: dic
             (left_id, right_id, manifest["source_id"], record_id, crosswalk["match_method"], crosswalk.get("confidence"),
              _observed_at(candidate.get("observed_at"), manifest), crosswalk.get("note"), left_id, right_id, record_id, crosswalk["match_method"]),
         )
-    connection_edges = build_candidate_connection_edges(candidate, manifest, edge_builder=edge_builder)
+    connection_edges = build_candidate_connection_edges(
+        candidate, manifest, edge_builder=edge_builder,
+        source_record_ids={(str(manifest["source_id"]), str(source_record_key)): record_id},
+    ) if materialize_edges else []
     edge_counts = persist_connection_edges(connection, connection_edges) if connection_edges else {"inserted": 0, "updated": 0, "total": 0}
     return edge_counts
 
@@ -762,20 +1373,30 @@ def _mark_failed(connection: Any, run_id: uuid.UUID, error: Exception) -> None:
 def import_graph_candidates(database_url: str, handoff_dir: str | Path, *,
                             disposable_db: bool = False, batch_size: int = DEFAULT_BATCH_SIZE,
                             on_batch_committed: BatchCommitObserver | None = None,
-                            edge_builder: ConnectionEdgeBuilder | None = None) -> dict[str, Any]:
+                            edge_builder: ConnectionEdgeBuilder | None = None,
+                            private_target: tuple[str, str] | None = None) -> dict[str, Any]:
     """Persist facility candidates in resumable private batches."""
-    require_disposable_graph_database(database_url, disposable_db)
+    if private_target is None:
+        require_disposable_graph_database(database_url, disposable_db)
+    else:
+        if disposable_db:
+            raise GraphPersistenceError("choose either disposable or configured private target")
+        require_private_graph_target(database_url, expected_database=private_target[0], purpose=private_target[1])
     if batch_size <= 0:
         raise GraphPersistenceError("batch size must be positive")
     manifest, candidates, digest, item_count = iter_graph_candidate_handoff(handoff_dir)
     started_at = time.perf_counter()
     with psycopg.connect(database_url) as db:
-        _verify_disposable_marker(db)
+        if private_target is None:
+            _verify_disposable_marker(db)
+        else:
+            dbname, _purpose = private_target
+            _validate_private_graph_writer(db, dbname)
         db.commit()
         with db.transaction():
             _ensure_source_artifact(db, manifest, digest)
             run_id, completed = _begin_run(db, manifest, "facility_master", GRAPH_CONTRACT_VERSION, digest, item_count)
-        if completed:
+        if completed and edge_builder is None and private_target is None:
             return {"status": "already_present", "source_id": manifest["source_id"], "source_kind": "facility_master", "run_id": str(run_id), "item_count": item_count, "inserted_count": 0, "already_present_count": item_count, "rejected_count": 0, "edge_inserted_count": 0, "edge_updated_count": 0, "edge_count": 0, "public_rows": 0, "phase_timings_seconds": {"validation_and_staging": round(time.perf_counter() - started_at, 6)}, "peak_rss_bytes": _peak_rss_bytes()}
         artifact_sha = str(manifest.get("checksum_sha256") or manifest.get("source_artifact_sha256") or digest)
         artifact_id = db.execute("SELECT artifact_id FROM uec.raw_artifacts WHERE sha256=%s", (artifact_sha if len(artifact_sha) == 64 else digest,)).fetchone()[0]
@@ -783,9 +1404,22 @@ def import_graph_candidates(database_url: str, handoff_dir: str | Path, *,
             "SELECT count(*) FROM uec.graph_ingest_items WHERE ingest_run_id=%s AND status='inserted'",
             (run_id,),
         ).fetchone()[0])
+        lineage_started_at = time.perf_counter()
+        approved_facility_map = (
+            _load_approved_facility_map(db, str(manifest["source_id"]), artifact_id)
+            if private_target is not None and resume_offset < item_count else None
+        )
+        approved_lineage_seconds = round(time.perf_counter() - lineage_started_at, 6)
+        # End psycopg's implicit transaction opened by the artifact/checkpoint
+        # SELECTs above. Otherwise each explicit batch transaction below is a
+        # savepoint and none of its writes become visible until the whole
+        # import finishes, defeating resumable checkpoints for large handoffs.
+        db.commit()
         inserted = resume_offset
         already = rejected = 0
-        edge_inserted = edge_updated = 0
+        edge_inserted = edge_updated = edge_unchanged = edge_skipped_exact = 0
+        source_assertion_rows = 0
+        endpoint_mapping_diagnostics: dict[str, int] = {}
         try:
             batch: list[dict[str, Any]] = []
             offset = resume_offset
@@ -809,9 +1443,11 @@ def import_graph_candidates(database_url: str, handoff_dir: str | Path, *,
                         if existing:
                             already += 1
                             continue
-                        edge_counts = _persist_candidate(db, manifest, candidate, artifact_id, digest, edge_builder=edge_builder)
-                        edge_inserted += edge_counts["inserted"]
-                        edge_updated += edge_counts["updated"]
+                        _persist_candidate(db, manifest, candidate, artifact_id, digest,
+                                           materialize_edges=edge_builder is None,
+                                           require_approved_facility=private_target is not None,
+                                           approved_facility_map=approved_facility_map,
+                                           mapping_diagnostics=endpoint_mapping_diagnostics)
                         db.execute("INSERT INTO uec.graph_ingest_items(ingest_run_id,source_id,source_record_key,item_sha256,item_kind,status) VALUES (%s,%s,%s,%s,'facility_candidate','inserted')", (run_id, manifest["source_id"], candidate["source_record_key"], item_digest))
                         inserted += 1
                         batch_inserted += 1
@@ -829,9 +1465,11 @@ def import_graph_candidates(database_url: str, handoff_dir: str | Path, *,
                         if existing:
                             already += 1
                             continue
-                        edge_counts = _persist_candidate(db, manifest, candidate, artifact_id, digest, edge_builder=edge_builder)
-                        edge_inserted += edge_counts["inserted"]
-                        edge_updated += edge_counts["updated"]
+                        _persist_candidate(db, manifest, candidate, artifact_id, digest,
+                                           materialize_edges=edge_builder is None,
+                                           require_approved_facility=private_target is not None,
+                                           approved_facility_map=approved_facility_map,
+                                           mapping_diagnostics=endpoint_mapping_diagnostics)
                         db.execute("INSERT INTO uec.graph_ingest_items(ingest_run_id,source_id,source_record_key,item_sha256,item_kind,status) VALUES (%s,%s,%s,%s,'facility_candidate','inserted')", (run_id, manifest["source_id"], candidate["source_record_key"], item_digest))
                         inserted += 1
                         batch_inserted += 1
@@ -843,7 +1481,64 @@ def import_graph_candidates(database_url: str, handoff_dir: str | Path, *,
             raise
         with db.transaction():
             db.execute("UPDATE uec.graph_ingest_runs SET status='completed', inserted_count=%s, already_present_count=%s, rejected_count=%s, error_summary=NULL, completed_at=now() WHERE ingest_run_id=%s", (inserted, already, rejected, run_id))
-        return {"status": "completed", "source_id": manifest["source_id"], "source_kind": "facility_master", "run_id": str(run_id), "item_count": item_count, "inserted_count": inserted, "already_present_count": already, "rejected_count": rejected, "edge_inserted_count": edge_inserted, "edge_updated_count": edge_updated, "edge_count": edge_inserted + edge_updated, "resume_offset": resume_offset, "public_rows": 0, "phase_timings_seconds": {"validation_and_staging": round(time.perf_counter() - started_at, 6)}, "peak_rss_bytes": _peak_rss_bytes()}
+        if edge_builder is not None or private_target is not None:
+            candidate_root, _ = _graph_candidate_root(handoff_dir)
+            run_source_record_ids = _load_run_source_record_ids(db, run_id, artifact_id)
+            edge_batch: list[dict[str, Any]] = []
+            for candidate in _iter_candidate_payloads(candidate_root):
+                edge_batch.append(candidate)
+                if len(edge_batch) < batch_size:
+                    continue
+                with db.transaction():
+                    for row_candidate in edge_batch:
+                        source_assertion_rows += sum(
+                            1 for relationship in row_candidate.get("relationships", [])
+                            if relationship.get("assertion_status", "asserted") == "asserted"
+                        )
+                        edges = build_candidate_connection_edges(
+                            row_candidate, manifest, edge_builder=edge_builder,
+                            source_record_ids=run_source_record_ids)
+                        counts = persist_connection_edges(db, edges)
+                        edge_inserted += counts["inserted"]
+                        edge_updated += counts["updated"]
+                        edge_unchanged += counts.get("unchanged", 0)
+                        edge_skipped_exact += counts["skipped_exact"]
+                edge_batch = []
+            if edge_batch:
+                with db.transaction():
+                    for row_candidate in edge_batch:
+                        source_assertion_rows += sum(
+                            1 for relationship in row_candidate.get("relationships", [])
+                            if relationship.get("assertion_status", "asserted") == "asserted"
+                        )
+                        edges = build_candidate_connection_edges(
+                            row_candidate, manifest, edge_builder=edge_builder,
+                            source_record_ids=run_source_record_ids)
+                        counts = persist_connection_edges(db, edges)
+                        edge_inserted += counts["inserted"]
+                        edge_updated += counts["updated"]
+                        edge_unchanged += counts.get("unchanged", 0)
+                        edge_skipped_exact += counts["skipped_exact"]
+        canonical_binding_counts = None
+        support_ref_rows_updated = 0
+        if private_target is not None:
+            with db.transaction():
+                support_ref_rows_updated = _backfill_graph_edge_support_record_ids(
+                    db, run_id, str(manifest["source_id"]), artifact_id)
+        if private_target is not None and manifest["source_id"] == "it.853-2004":
+            with db.transaction():
+                binding_summary = _italy_binding_summary(db, run_id, str(manifest["source_id"]), artifact_id)
+                binding_inserted = _insert_italy_canonical_identifier_bindings(
+                    db, run_id, str(manifest["source_id"]), artifact_id)
+            canonical_binding_counts = {**binding_summary, **binding_inserted}
+            canonical_binding_counts["support_ref_rows_updated"] = support_ref_rows_updated
+        persisted_edges = db.execute(
+            "SELECT connection_type,count(*) FROM uec.graph_connection_edges "
+            "WHERE from_source_id=%s OR to_source_id=%s GROUP BY connection_type",
+            (manifest["source_id"], manifest["source_id"]),
+        ).fetchall()
+        persisted_by_type = {str(kind): int(count) for kind, count in persisted_edges}
+        return {"status": "already_present" if completed else "completed", "source_id": manifest["source_id"], "source_kind": "facility_master", "run_id": str(run_id), "item_count": item_count, "inserted_count": inserted, "already_present_count": already, "rejected_count": rejected, "source_assertion_rows": source_assertion_rows, "endpoint_mapping_diagnostics": endpoint_mapping_diagnostics, "canonical_binding_counts": canonical_binding_counts, "edge_inserted_count": edge_inserted, "edge_updated_count": edge_updated, "edge_unchanged_count": edge_unchanged, "edge_skipped_exact_count": edge_skipped_exact, "edge_count": edge_inserted + edge_updated + edge_unchanged, "persisted_edge_counts": persisted_by_type, "resume_offset": resume_offset, "public_rows": 0, "phase_timings_seconds": {"validation_and_staging": round(time.perf_counter() - started_at, 6), "approved_lineage_load": approved_lineage_seconds}, "peak_rss_bytes": _peak_rss_bytes()}
 
 
 def _persist_evidence_event(connection: Any, manifest: dict[str, Any], row: dict[str, Any],

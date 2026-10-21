@@ -148,6 +148,17 @@ class D5ConnectionAnalysisTests(unittest.TestCase):
         self.assertNotIn(":left", json.dumps(candidate))
         self.assertNotIn(":right", json.dumps(candidate))
 
+    def test_native_endpoint_mode_keeps_source_format_while_d5_match_values_stay_normalized(self):
+        left = self.row("source-a", "left-1", name="Stable Name", city="Town", postal="1000", facility="IT-00 123", org="ORG-A")
+        right = self.row("source-b", "right-1", name="Stable Name", city="Town", postal="1000", facility="B. 7/2", org="ORG-B")
+        observed = [_observed_from_row(left), _observed_from_row(right)]
+        default_candidates = list(iter_probabilistic_candidates(observed))
+        from pipeline.common.d5_connection_analysis import _iter_probabilistic_candidates
+        native_iterator, _ = _iter_probabilistic_candidates(observed, preserve_native_endpoints=True)
+        native_candidates = list(native_iterator)
+        self.assertEqual([item["source_identifier"] for item in default_candidates[0]["endpoints"]], ["it00123", "b72"])
+        self.assertEqual([item["source_identifier"] for item in native_candidates[0]["endpoints"]], ["IT-00 123", "B. 7/2"])
+
     def test_candidate_order_is_deterministic_and_resumable(self):
         rows = []
         for index in range(6):

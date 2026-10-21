@@ -2,6 +2,7 @@ import hashlib
 import json
 import unittest
 import uuid
+from decimal import Decimal
 from pathlib import Path
 
 from pipeline.common.graph_persistence import (
@@ -9,9 +10,13 @@ from pipeline.common.graph_persistence import (
     build_candidate_connection_edges,
     _matcher_edge,
     _observed_at,
+    _approved_facility_for_source_record,
+    _ITALY_CANONICAL_BINDING_CTES,
+    _load_approved_facility_map,
     load_evidence_handoff,
     load_graph_candidate_handoff,
     require_disposable_graph_database,
+    require_private_graph_target,
 )
 from pipeline.contracts.graph_candidate_handoff import canonical_json_bytes
 
@@ -49,6 +54,112 @@ def candidate(source_id="synthetic.graph"):
 
 class GraphPersistenceContractTests(unittest.TestCase):
 
+    def test_italy_canonical_binding_is_same_artifact_release_and_unambiguous_only(self):
+        query = _ITALY_CANONICAL_BINDING_CTES
+        self.assertIn("candidate.artifact_id=%s", query)
+        self.assertIn("record.artifact_id=%s", query)
+        self.assertIn("candidate.source_record_count=1 AND candidate.candidate_count=1", query)
+        self.assertIn("approved.source_record_count=1 AND approved.facility_count=1", query)
+        self.assertIn("profile='official'", query)
+        self.assertIn("status='promoted'", query)
+        self.assertIn("test_only IS NOT TRUE", query)
+        self.assertIn("num_identificativo_produzione_commercializzazione", query)
+        self.assertIn("codice_impianto_attivita", query)
+        self.assertIn("{normalized,recognition_number}", query)
+        self.assertIn("{normalized,activity_code}", query)
+
+    def test_canonical_binding_insert_copies_private_state_without_release_decisions(self):
+        from pipeline.common.graph_persistence import _insert_italy_canonical_identifier_bindings
+
+        class Capture:
+            rowcount = 7
+            calls = []
+
+            def execute(self, query, params):
+                self.calls.append((query, params))
+                return self
+
+        connection = Capture()
+        run_id, artifact_id = uuid.uuid4(), uuid.uuid4()
+        self.assertEqual(_insert_italy_canonical_identifier_bindings(
+            connection, run_id, "it.853-2004", artifact_id),
+            {"identifier_rows": 7, "release_bindings": 7})
+        identifier_query, identifier_params = connection.calls[0]
+        self.assertIn("INSERT INTO uec.source_entity_identifiers", identifier_query)
+        self.assertIn("private_identifier.review_state", identifier_query)
+        self.assertIn("private_identifier.storage_state", identifier_query)
+        self.assertIn("private_identifier.privacy_status", identifier_query)
+        self.assertIn("private_identifier.publication_status", identifier_query)
+        self.assertIn("private_identifier.release_id", identifier_query)
+        self.assertIn("WHERE NOT EXISTS", identifier_query)
+        self.assertNotIn("UPDATE uec.source_entity_identifiers", identifier_query)
+        self.assertNotIn("publication_status='released'", identifier_query)
+        self.assertEqual(identifier_params, (artifact_id, run_id, "it.853-2004", "it.853-2004", artifact_id, "it.853-2004"))
+        binding_query, binding_params = connection.calls[1]
+        self.assertIn("INSERT INTO uec.graph_record_release_bindings", binding_query)
+        self.assertIn("it_recognition_activity_singleton_v1", binding_query)
+        self.assertEqual(binding_params, (artifact_id, run_id, "it.853-2004", "it.853-2004", artifact_id, "it.853-2004", artifact_id))
+        self.assertEqual(len(connection.calls), 2)
+
+    def test_canonical_binding_rejects_other_sources_before_sql(self):
+        from pipeline.common.graph_persistence import _italy_binding_summary
+
+        class UnexpectedQuery:
+            def execute(self, *_args):
+                raise AssertionError("unsupported source must be rejected before SQL")
+
+        with self.assertRaises(GraphPersistenceError):
+            _italy_binding_summary(UnexpectedQuery(), uuid.uuid4(), "synthetic.graph", uuid.uuid4())
+
+    def test_approved_lineage_cache_requires_one_facility_and_skips_database_queries(self):
+        source_record = ("synthetic.graph", "record-1", uuid.uuid4())
+        facility = uuid.uuid4()
+
+        class UnexpectedQuery:
+            def execute(self, *_args):
+                raise AssertionError("cached lineage lookup must not query per source record")
+
+        self.assertEqual(
+            _approved_facility_for_source_record(UnexpectedQuery(), *source_record,
+                                                 {source_record: {facility}}),
+            (facility, "mapped"),
+        )
+        self.assertEqual(
+            _approved_facility_for_source_record(UnexpectedQuery(), *source_record,
+                                                 {source_record: {facility, uuid.uuid4()}})[1],
+            "ambiguous_approved_release_mapping",
+        )
+        self.assertEqual(
+            _approved_facility_for_source_record(UnexpectedQuery(), *source_record, {})[1],
+            "no_eligible_public_record",
+        )
+
+    def test_approved_lineage_map_loads_one_release_qualified_query(self):
+        facility = uuid.uuid4()
+        artifact = uuid.uuid4()
+
+        class OneQuery:
+            calls = 0
+
+            def execute(self, query, params):
+                self.calls += 1
+                self.assert_release_gate(query)
+                assert params == ("synthetic.graph", artifact)
+                return self
+
+            @staticmethod
+            def assert_release_gate(query):
+                assert "status='promoted'" in query and "profile='official'" in query
+
+            @staticmethod
+            def fetchall():
+                return [("synthetic.graph", "record-1", artifact, facility)]
+
+        connection = OneQuery()
+        mapping = _load_approved_facility_map(connection, "synthetic.graph", artifact)
+        self.assertEqual(connection.calls, 1)
+        self.assertEqual(mapping[("synthetic.graph", "record-1", artifact)], {facility})
+
     def test_indexed_matcher_candidate_becomes_private_inferred_edge(self):
         raw = {
             "endpoints": [
@@ -67,6 +178,72 @@ class GraphPersistenceContractTests(unittest.TestCase):
         self.assertEqual(edge["from"]["source_identifier"], "A-1")
         self.assertEqual(edge["publication_status"], "not_eligible")
         self.assertEqual(len(edge["supporting_source_refs"]), 2)
+
+    def test_indexed_matcher_preserves_native_endpoint_format_and_ordered_record_refs(self):
+        left_id, right_id = uuid.uuid4(), uuid.uuid4()
+        raw = {
+            "endpoints": [
+                {"entity_type": "facility", "source_id": "it.853-2004", "identifier_type": "eu_recognition_number", "source_identifier": "IT-00 123", "source_record_key": "row-a"},
+                {"entity_type": "facility", "source_id": "it.853-2004", "identifier_type": "eu_recognition_number", "source_identifier": "B. 7/2", "source_record_key": "row-b"},
+            ],
+            "contributing_features": ["name", "postal"],
+            "provenance": [
+                {"source_id": "it.853-2004", "source_record_key": "row-a"},
+                {"source_id": "it.853-2004", "source_record_key": "row-b"},
+            ],
+        }
+        edge = _matcher_edge(
+            raw, {"source_id": "it.853-2004", "source_record_key": "row-a"},
+            {"source_id": "it.853-2004", "retrieved_at_utc": "2026-09-21T00:00:00Z"},
+            source_record_ids={("it.853-2004", "row-a"): left_id,
+                               ("it.853-2004", "row-b"): right_id},
+        )
+        self.assertEqual(edge["from"]["source_identifier"], "IT-00 123")
+        self.assertEqual(edge["to"]["source_identifier"], "B. 7/2")
+        self.assertEqual([ref["source_record_id"] for ref in edge["supporting_source_refs"]],
+                         [str(left_id), str(right_id)])
+        self.assertEqual([ref["role"] for ref in edge["supporting_source_refs"]], ["from", "to"])
+
+    def test_native_endpoint_repair_requires_release_binding_and_appends_new_edge_key(self):
+        from unittest.mock import patch
+        from pipeline.common import graph_persistence
+
+        class Cursor:
+            def fetchall(self):
+                refs = [
+                    {"source_id": "it.853-2004", "source_record_key": "left", "source_record_id": str(uuid.uuid4()), "role": "from"},
+                    {"source_id": "it.853-2004", "source_record_key": "right", "source_record_id": str(uuid.uuid4()), "role": "to"},
+                ]
+                return [("legacy-key", "related_facility", "inferred", Decimal("0.7"), "probable",
+                         "multi_signal_intersection", refs, {"signals": []}, "d6-signal-rules-v1",
+                         "2026-10-20T00:00:00Z", "2026-10-20T00:00:00Z", False, False,
+                         "facility", "it.853-2004", "eu_recognition_number", "IT-00 123",
+                         "facility", "it.853-2004", "eu_recognition_number", "B. 7/2")]
+
+        class Connection:
+            query = ""
+
+            def execute(self, query, params):
+                self.query = query
+                self.params = params
+                return Cursor()
+
+        connection = Connection()
+        persisted = []
+        def persist(_connection, edges):
+            persisted.extend(edges)
+            return {"inserted": 1, "updated": 0, "unchanged": 0, "skipped_exact": 0, "total": 1}
+
+        with patch.object(graph_persistence, "persist_connection_edges", persist):
+            counts = graph_persistence._repair_inferred_native_endpoints(
+                connection, "it.853-2004", uuid.uuid4())
+        self.assertIn("graph_record_release_bindings", connection.query)
+        self.assertIn("count(DISTINCT native_value)=1", connection.query)
+        self.assertEqual(counts["repairable_legacy_inferred_edges"], 1)
+        self.assertEqual(persisted[0]["from"]["source_identifier"], "IT-00 123")
+        self.assertEqual(persisted[0]["to"]["source_identifier"], "B. 7/2")
+        self.assertNotEqual(persisted[0]["edge_key"], "legacy-key")
+        self.assertIs(type(persisted[0]["confidence"]), float)
     def test_unknown_source_observation_time_uses_handoff_time(self):
         manifest = {"retrieved_at_utc": "2026-09-21T00:00:00Z"}
         self.assertEqual(_observed_at("unknown", manifest), manifest["retrieved_at_utc"])
@@ -77,6 +254,22 @@ class GraphPersistenceContractTests(unittest.TestCase):
         for url in ("postgresql://uec:pw@example.com:5433/uec-test", "postgresql://uec:pw@localhost:5432/uec-test", "postgresql://uec:pw@localhost:5433/app"):
             with self.assertRaises(GraphPersistenceError):
                 require_disposable_graph_database(url, True)
+
+    def test_configured_private_graph_target_is_exact_and_loopback_only(self):
+        require_private_graph_target(
+            "postgresql://uec:pw@127.0.0.1:55433/uec_real_preview_test_graph_20261020",
+            expected_database="uec_real_preview_test_graph_20261020",
+            purpose="private-graph-materialization-v1",
+        )
+        for url, database, purpose in (
+            ("postgresql://uec:pw@127.0.0.1:55433/uec_real_preview_test_graph_20261020", "uec_other", "private-graph-materialization-v1"),
+            ("postgresql://uec:pw@example.com:55433/uec_real_preview_test_graph_20261020", "uec_real_preview_test_graph_20261020", "private-graph-materialization-v1"),
+            ("postgresql://uec:pw@127.0.0.1:55433/uec_v0_dev", "uec_v0_dev", "private-graph-materialization-v1"),
+            ("postgresql://uec:pw@127.0.0.1:55433/uec_production_graph", "uec_production_graph", "private-graph-materialization-v1"),
+            ("postgresql://uec:pw@127.0.0.1:55433/uec_real_preview_test_graph_20261020", "uec_real_preview_test_graph_20261020", "wrong-purpose"),
+        ):
+            with self.assertRaises(GraphPersistenceError):
+                require_private_graph_target(url, expected_database=database, purpose=purpose)
 
     def test_graph_candidate_loader_accepts_private_jsonl_and_is_deterministic(self):
         row = candidate()
@@ -94,6 +287,37 @@ class GraphPersistenceContractTests(unittest.TestCase):
         }), encoding="utf-8")
         manifest, rows, digest = load_graph_candidate_handoff(graph)
         self.assertEqual(manifest["source_kind"], "facility_master")
+        self.assertEqual(rows, [row])
+        self.assertEqual(digest, hashlib.sha256(payload).hexdigest())
+
+    def test_graph_candidate_loader_accepts_adapter_sibling_manifest_format(self):
+        row = candidate(source_id="synthetic.italy")
+        payload = canonical_json_bytes(row)
+        run = test_directory()
+        graph = run / "graph"
+        graph.mkdir()
+        (graph / "graph-candidates.jsonl").write_bytes(payload)
+        (graph / "graph-candidates-manifest.json").write_text(json.dumps({
+            "schema_version": "private-graph-candidate-batch-v1",
+            "contract_version": "graph-candidate-handoff-v1",
+            "candidate_count": 1,
+            "publication_status": "not_eligible",
+            "storage_state": "private",
+            "sha256": hashlib.sha256(payload).hexdigest(),
+        }), encoding="utf-8")
+        (run / "manifest.json").write_text(json.dumps({
+            "source_id": "synthetic.italy",
+            "release_state": "not-created",
+            "publication_state": "private-candidate",
+            "storage_state": "private",
+            "publication_status": "not_eligible",
+        }), encoding="utf-8")
+        manifest, rows, digest = load_graph_candidate_handoff(graph)
+        self.assertEqual(manifest["source_id"], "synthetic.italy")
+        self.assertEqual(rows, [row])
+        self.assertEqual(digest, hashlib.sha256(payload).hexdigest())
+        manifest, rows, digest = load_graph_candidate_handoff(run)
+        self.assertEqual(manifest["source_id"], "synthetic.italy")
         self.assertEqual(rows, [row])
         self.assertEqual(digest, hashlib.sha256(payload).hexdigest())
 
@@ -178,6 +402,23 @@ class GraphPersistenceContractTests(unittest.TestCase):
         edges = build_candidate_connection_edges(row, {"source_id": "synthetic.graph"})
         self.assertEqual(len(edges), 1)
         self.assertEqual(edges[0]["connection_type"], "inferred")
+
+    def test_candidate_edges_include_exact_versioned_source_record_reference_when_resolved(self):
+        row = candidate()
+        row["organizations"] = [{"local_ref": "organization:1", "source_identifier": {
+            "identifier_type": "vat", "value": "IT-1", "identity_scope": "source_scoped"}}]
+        row["relationships"] = [{
+            "relationship_type": "operator", "from_organization_ref": "organization:1",
+            "target_facility_ref": "facility:1", "assertion_status": "asserted",
+        }]
+        record_id = uuid.uuid4()
+        edge = build_candidate_connection_edges(
+            row, {"source_id": "synthetic.graph"},
+            source_record_ids={("synthetic.graph", row["source_record_key"]): record_id},
+        )[0]
+        support = edge["supporting_source_refs"][0]
+        self.assertEqual(support["source_record_id"], str(record_id))
+        self.assertEqual(support["source_record_key"], row["source_record_key"])
 
 
 if __name__ == "__main__":

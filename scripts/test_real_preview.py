@@ -16,6 +16,46 @@ SPEC.loader.exec_module(rp)
 
 
 class LifecycleTests(unittest.TestCase):
+    def test_graph_opt_in_reports_missing_handoff_as_not_supported(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = rp._materialize_private_graph(Path(directory))
+        self.assertEqual(result, {"status": "not_supported", "reason": "validated_graph_handoff_missing"})
+
+    def test_graph_materializer_uses_separate_database_configuration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            handoff = Path(directory)
+            (handoff / "graph-candidates.jsonl").write_text("", encoding="utf-8")
+            (handoff / "graph-candidates-manifest.json").write_text("{}", encoding="utf-8")
+            completed = rp.subprocess.CompletedProcess(args=[], returncode=0, stdout=json.dumps({
+                "status": "completed", "source_assertion_rows": 2, "edge_counts_by_type": {"exact": 1},
+            }), stderr="")
+            env = {"UEC_GRAPH_DATABASE_URL": "postgresql://graph-writer@localhost/private",
+                   "UEC_GRAPH_DATABASE_NAME": "uec_private_graph_test",
+                   "UEC_GRAPH_DATABASE_PURPOSE": "private-graph-materialization-v1",
+                   "UEC_DATABASE_URL": "postgresql://serving@localhost/preview"}
+            with patch.object(rp, "ROOT", Path(directory)), patch.dict(rp.os.environ, env, clear=True), \
+                    patch.object(rp.subprocess, "run", return_value=completed) as run:
+                result = rp._materialize_private_graph(handoff)
+            self.assertEqual(result["status"], "materialized")
+            child_env = run.call_args.kwargs["env"]
+            self.assertNotIn("UEC_DATABASE_URL", child_env)
+            self.assertEqual(child_env["UEC_GRAPH_DATABASE_URL"], env["UEC_GRAPH_DATABASE_URL"])
+
+    def test_graph_materializer_failure_is_separate_from_source_import(self):
+        with tempfile.TemporaryDirectory() as directory:
+            handoff = Path(directory)
+            (handoff / "graph-candidates.jsonl").touch()
+            (handoff / "graph-candidates-manifest.json").touch()
+            env = {"UEC_GRAPH_DATABASE_URL": "postgresql://graph-writer@localhost/private",
+                   "UEC_GRAPH_DATABASE_NAME": "uec_private_graph_test",
+                   "UEC_GRAPH_DATABASE_PURPOSE": "private-graph-materialization-v1"}
+            failed = rp.subprocess.CompletedProcess(args=[], returncode=2,
+                stdout=json.dumps({"status": "blocked", "error_type": "PermissionDenied"}), stderr="")
+            with patch.dict(rp.os.environ, env, clear=True), patch.object(rp.subprocess, "run", return_value=failed):
+                result = rp._materialize_private_graph(handoff)
+            self.assertEqual(result["status"], "failed")
+            self.assertEqual(result["error_type"], "PermissionDenied")
+
     def test_source_lock_is_nonblocking_and_reusable(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(rp, "ROOT", Path(directory)):
             with rp.source_lock("it.853-2004"):
@@ -62,6 +102,12 @@ class LifecycleTests(unittest.TestCase):
         with patch.object(rp, "refresh_source") as refresh:
             self.assertEqual(rp.main(["refresh"]), 2)
             refresh.assert_not_called()
+
+    def test_graph_option_is_opt_in_only_on_refresh(self):
+        with patch.object(rp, "refresh_source", return_value={"status": "imported", "ok": True}) as refresh:
+            self.assertEqual(rp.main(["refresh", "--source", "it.1069-2009", "--materialize-private-graph"]), 0)
+            refresh.assert_called_once_with("it.1069-2009", None, materialize_private_graph=True)
+        self.assertEqual(rp.main(["status", "--materialize-private-graph"]), 2)
 
     def test_fresh_source_refresh_binds_evidence_root_before_source_validation(self):
         source_id = "no.fiskeridir.aquaculture"

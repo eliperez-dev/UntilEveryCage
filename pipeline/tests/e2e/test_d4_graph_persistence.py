@@ -161,6 +161,60 @@ class D4GraphPersistenceE2ETests(unittest.TestCase):
             self.assertEqual(db.execute("SELECT count(*) FROM uec.graph_public_relationships").fetchone()[0], 0)
             self.assertEqual(db.execute("SELECT count(*) FROM uec.graph_public_claims").fetchone()[0], 0)
 
+    def test_committed_batches_are_visible_and_resumable(self):
+        source_id = "synthetic.graph-batch-resume"
+        payloads = []
+        for index in range(2):
+            row = {
+                "contract_version": "graph-candidate-handoff-v1",
+                "source_id": source_id,
+                "source_record_key": f"batch-row-{index}",
+                "source_row": index + 1,
+                "source_values": {"name": f"Synthetic batch facility {index}"},
+                "facilities": [{"local_ref": "facility:1", "source_identifier": {
+                    "identifier_type": "synthetic-permit", "value": f"BATCH-FAC-{index}",
+                    "identity_scope": "source_scoped",
+                }}],
+                "organizations": [], "relationships": [], "claims": [], "crosswalks": [],
+                "publication": {"storage_state": "private", "privacy_status": "pending",
+                                "review_state": "review_required", "publication_status": "not_eligible",
+                                "release_id": None},
+            }
+            payloads.append(canonical_json_bytes(row) + b"\n")
+        payload = b"".join(payloads)
+        digest = hashlib.sha256(payload).hexdigest()
+        handoff = self._write_jsonl_handoff(source_id, "facility", payloads, {
+            "schema_version": "private-graph-candidate-set-v1",
+            "contract_version": "graph-candidate-handoff-v1",
+            "source_kind": "facility_master", "source_id": source_id,
+            "records_sha256": digest, "checksum_sha256": digest,
+            "candidate_count": 2, "byte_size": len(payload), "country_code": "ZZ",
+            "storage_state": "private", "review_state": "review_required",
+            "publication_status": "not_eligible", "release_state": "not-created",
+            "publication_state": "private-candidate",
+        })
+        visible_counts = []
+
+        def fail_after_first_commit(_batch_number, _offset, _batch_inserted):
+            with psycopg.connect(self.env.database_url) as verifier:
+                visible_counts.append(verifier.execute(
+                    "SELECT count(*) FROM uec.graph_ingest_items WHERE source_id=%s", (source_id,)
+                ).fetchone()[0])
+            raise RuntimeError("synthetic interruption after a committed batch")
+
+        with self.assertRaisesRegex(RuntimeError, "synthetic interruption"):
+            import_graph_candidates(self.env.database_url, handoff, disposable_db=True,
+                                    batch_size=1, on_batch_committed=fail_after_first_commit)
+        self.assertEqual(visible_counts, [1])
+        resumed = import_graph_candidates(self.env.database_url, handoff, disposable_db=True,
+                                           batch_size=1)
+        self.assertEqual(resumed["resume_offset"], 1)
+        self.assertEqual(resumed["inserted_count"], 2)
+        with psycopg.connect(self.env.database_url) as verifier:
+            self.assertEqual(verifier.execute(
+                "SELECT count(*) FROM uec.graph_ingest_items WHERE source_id=%s", (source_id,)
+            ).fetchone()[0], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -313,8 +313,10 @@ def build_connection_edge(*, from_ref: EntityRef, to_ref: EntityRef, relationshi
     observed = observed_at.isoformat() if isinstance(observed_at, datetime) else _text(observed_at, "observed_at")
     computed = (computed_at.isoformat() if isinstance(computed_at, datetime) else computed_at) if computed_at is not None else datetime.now(timezone.utc).isoformat()
     refs = [ref.as_dict() for ref in supporting_source_refs]
-    endpoint_payload = {"from": from_ref.as_dict(), "to": to_ref.as_dict(), "relationship_type": relationship_type, "connection_type": scoring.connection_type, "ruleset_version": scoring.ruleset_version}
-    edge_key = hashlib.sha256(_canonical(endpoint_payload).encode("utf-8")).hexdigest()
+    edge_key = connection_edge_key(
+        from_ref=from_ref, to_ref=to_ref, relationship_type=relationship_type,
+        connection_type=scoring.connection_type, ruleset_version=scoring.ruleset_version,
+    )
     row = {
         "edge_key": edge_key,
         "from": from_ref.as_dict(),
@@ -336,6 +338,17 @@ def build_connection_edge(*, from_ref: EntityRef, to_ref: EntityRef, relationshi
     }
     validate_connection_edge(row)
     return row
+
+
+def connection_edge_key(*, from_ref: EntityRef, to_ref: EntityRef, relationship_type: str,
+                        connection_type: str, ruleset_version: str) -> str:
+    """Return the deterministic identity for a source-qualified edge."""
+    endpoint_payload = {
+        "from": from_ref.as_dict(), "to": to_ref.as_dict(),
+        "relationship_type": relationship_type, "connection_type": connection_type,
+        "ruleset_version": ruleset_version,
+    }
+    return hashlib.sha256(_canonical(endpoint_payload).encode("utf-8")).hexdigest()
 
 
 def validate_connection_edge(edge: Mapping[str, Any]) -> dict[str, Any]:
@@ -367,7 +380,7 @@ def validate_connection_edge(edge: Mapping[str, Any]) -> dict[str, Any]:
 
 def persist_connection_edges(connection: Any, edges: Iterable[Mapping[str, Any]]) -> dict[str, int]:
     """Idempotently upsert derived private edges using a DB-API connection."""
-    inserted = updated = skipped_exact = 0
+    inserted = updated = unchanged = skipped_exact = 0
     sql = """INSERT INTO uec.graph_connection_edges
         (edge_key,from_entity_type,from_source_id,from_identifier_type,from_source_identifier,
          to_entity_type,to_source_id,to_identifier_type,to_source_identifier,relationship_type,
@@ -381,6 +394,15 @@ def persist_connection_edges(connection: Any, edges: Iterable[Mapping[str, Any]]
           signal_explanation=EXCLUDED.signal_explanation, ruleset_version=EXCLUDED.ruleset_version,
           observed_at=EXCLUDED.observed_at, computed_at=EXCLUDED.computed_at,
           conflicting=EXCLUDED.conflicting, suppressed=EXCLUDED.suppressed
+        WHERE (uec.graph_connection_edges.confidence, uec.graph_connection_edges.confidence_band,
+               uec.graph_connection_edges.match_method, uec.graph_connection_edges.supporting_source_refs,
+               uec.graph_connection_edges.signal_explanation, uec.graph_connection_edges.ruleset_version,
+               uec.graph_connection_edges.observed_at, uec.graph_connection_edges.conflicting,
+               uec.graph_connection_edges.suppressed)
+          IS DISTINCT FROM
+              (EXCLUDED.confidence, EXCLUDED.confidence_band, EXCLUDED.match_method,
+               EXCLUDED.supporting_source_refs, EXCLUDED.signal_explanation, EXCLUDED.ruleset_version,
+               EXCLUDED.observed_at, EXCLUDED.conflicting, EXCLUDED.suppressed)
         RETURNING (xmax = 0) AS inserted"""
     for raw in edges:
         edge = validate_connection_edge(raw)
@@ -425,11 +447,14 @@ def persist_connection_edges(connection: Any, edges: Iterable[Mapping[str, Any]]
         if callable(fetchone):
             row = fetchone()
             marker = row[0] if row else None
-        if marker is True or (marker is None and getattr(cursor, "rowcount", 1) == 1):
+        if getattr(cursor, "rowcount", 1) == 0:
+            unchanged += 1
+        elif marker is True or (marker is None and getattr(cursor, "rowcount", 1) == 1):
             inserted += 1
         else:
             updated += 1
-    return {"inserted": inserted, "updated": updated, "skipped_exact": skipped_exact, "total": inserted + updated}
+    return {"inserted": inserted, "updated": updated, "unchanged": unchanged,
+            "skipped_exact": skipped_exact, "total": inserted + updated + unchanged}
 
 
 __all__ = [
