@@ -1197,7 +1197,8 @@ and does not resolve France's coordinate-reference limitation.
 
 ### D6.6 - Hosted graph and facility Connections (2026-10-21)
 
-**Status: Integration in progress; Render is unchanged.** The approved scope
+**Status: Implemented and integrated on `eli/v2`; hosted deployment is blocked
+on explicit authorization for the isolated Render restore. Render is unchanged.** The approved scope
 adds the existing source-backed graph to the 2026-10-18 dataset and a compact
 Connections section to facility details. No source intake, graph rules, map
 renderer, dataset membership or community submission workflow is changed.
@@ -1208,16 +1209,30 @@ across fourteen sources. Its graph has 14,639 exact and 148 inferred connections
 one conflicting inferred connection is excluded by default. Historical v0 has
 no graph projection. Package restoration passed constraint, trigger and
 read-only grant checks, current-release manifest/detail/map digest parity and
-production-mode startup. Full restored API pagination, historical map access
-and nonempty browser lifecycle acceptance are still being verified; these are
-not hosted acceptance claims.
+production-mode startup. Full restored API traversal returned 14,639 exact and
+147 default inferred connections without duplicate or cross-release results.
+Historical v0 served 63,421 records and 48,576 mapped locations after its 180
+retained Italian corrections. Browser checks cover nonempty and empty details,
+release-pinned links, error/retry, stale-request cancellation and mobile keyboard
+navigation. A misleading terminal Load more button exposed unconditional API
+cursors; `c68862d9` adds lookahead and final/nonfinal/empty-page regressions for
+both graph handlers. These are local checks, not hosted acceptance claims.
 
 The UI keeps record links pinned to the selected release, exposes connection
 method and confidence, and leaves organization endpoints opaque. Nineteen
-focused frontend tests and the public build passed. All seven CI jobs passed
-for `550dbe97`; final integration, hosted checks and cleanup remain pending.
-The aggregate package receipt is kept locally at ignored
-`data/staging/hosted-release-package-local-20261021/acceptance-aggregate.json`.
+focused frontend tests, eight graph-public Rust tests and the public build
+passed. All seven CI jobs passed for `c68862d9`. The execution reviewer blocked
+creation/upload of the new logical Render database; no alternative write route
+was used. The requested authorization covers only the existing instance's new
+isolated serving derivative and the checked service switch, preserving existing
+databases and the separate community connection. Hosted acceptance and domain
+cutover are not claimed. The final owner frontend review remains separate.
+
+Aggregate package and API/browser receipts are kept locally at ignored
+`data/staging/hosted-release-package-local-20261021/acceptance-aggregate.json`
+and `data/staging/hosted-graph-qa-20261021/qa-progress.json`. Preserve the pristine
+package for continuation; any disposable QA database used for a negative
+restriction test must never become the export source.
 
 ### Production V2 frontend
 
