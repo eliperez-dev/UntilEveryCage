@@ -198,7 +198,9 @@ class PublicOpenApiContractTests(unittest.TestCase):
         self.assertIn("does not announce a public release", self.spec["info"]["description"])
 
     def test_graph_dtos_match_published_fields(self):
-        edge_body = self.graph[self.graph.index("fn public_edge("):self.graph.index("const EDGE_SELECT")]
+        edge_start = self.graph.index("fn public_edge(")
+        edge_end = self.graph.index("\nconst EDGE_CTES", edge_start)
+        edge_body = self.graph[edge_start:edge_end]
         wire_fields = set(re.findall(r'^        "([a-z_]+)":', edge_body, re.M))
         edge_schema = self.spec["components"]["schemas"]["GraphEdge"]
         self.assertEqual(set(edge_schema["properties"]), wire_fields)
