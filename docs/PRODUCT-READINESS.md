@@ -1147,7 +1147,8 @@ The owned build was stopped for rollback and cleanup; no completed projection,
 graph API latency improvement or graph package export/restore acceptance is claimed.
 The next graph change must store each endpoint's anchor set once, preserve the live
 release/restriction checks, then repeat the bounded API and restore acceptance.
-Do not rerun the current projection builder on the full retained graph.
+Do not rerun that v1 projection builder on the full retained graph. The storage
+limitation is superseded by D6.5 below.
 
 Evidence: focused graph/source-readiness regressions, the actual shared refresh and
 materializer commands, and the aggregate-only local receipt at ignored
@@ -1155,6 +1156,44 @@ materializer commands, and the aggregate-only local receipt at ignored
 The [retained backend integration target](development.md#retained-backend-integration-target)
 keeps private inputs and completed graph work for continuation. This checkpoint
 does not deploy to Render, alter the frontend or add a public release.
+
+### D6.5 - Compact graph serving and local restore acceptance (2026-10-20)
+
+**Status: Local production-mode graph and serving-package acceptance passed on
+the approved v0-derived target; no hosted graph deployment.** Migrations 078 and
+079 keep each full source-qualified endpoint's anchors once, behind opaque
+endpoint references, and make graph membership checks facility-keyed. The public
+map view and its eligibility rules are unchanged. The broader shared-map
+refactor and an ineffective extra ordering index were not retained.
+
+The release projection contains 14,639 exact and 148 inferred connections,
+including one conflicting inferred connection excluded by default. Its 38,281
+endpoints have 44,154 anchor pairs; anchors and indexes occupy approximately
+14 MB rather than the aborted build's approximately 2 GB. The complete
+connection-set digest matches the original release-qualified selector. These
+are connections, not additional facilities or independently verified ownership.
+
+The selected-column v4 package restored into an isolated serving database with
+all constraints validated and no disabled user triggers. A nonprivileged API
+role served disjoint exact pages, all 147 default inferred connections and all
+148 when conflicts were requested, plus source and confidence-range filters.
+It could not select private supporting relations. A live restriction and current
+ledger replay removed the affected connection while preserving the unaffected
+control. Only the two already-documented private-preview callbacks were omitted.
+
+First-pass production-mode HTTP measurements on the restored target were 0.598
+and 0.534 seconds for exact pages, 0.508 seconds for a warm exact page, and
+0.120-0.188 seconds for default inferred pages. The working-copy SQL warm-page
+probe was a different measurement at 4.944 seconds; these results must not be
+combined into one latency claim or treated as a hosted benchmark.
+
+Evidence: focused graph/package regressions and the aggregate-only local receipt
+at ignored `data/staging/graph-serving-repair-20261021/acceptance-aggregate.json`.
+The retained working database and source inputs remain available; the temporary
+implementation worktree was recoverably archived after integration. Build and
+verify a projection/package for the selected hosted release before any separate
+deployment decision. This checkpoint changes neither the frontend nor Render,
+and does not resolve France's coordinate-reference limitation.
 
 ### Production V2 frontend
 
