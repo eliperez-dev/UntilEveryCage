@@ -319,6 +319,29 @@ class GraphPersistenceContractTests(unittest.TestCase):
         self.assertEqual(persisted[0]["to"]["source_identifier"], "B. 7/2")
         self.assertNotEqual(persisted[0]["edge_key"], "legacy-key")
         self.assertIs(type(persisted[0]["confidence"]), float)
+
+    def test_native_endpoint_repair_empty_result_is_zero_counts(self):
+        from pipeline.common import graph_persistence
+
+        class Cursor:
+            def fetchall(self):
+                return []
+
+        class Connection:
+            def execute(self, query, params):
+                self.query = query
+                self.params = params
+                return Cursor()
+
+        counts = graph_persistence._repair_inferred_native_endpoints(
+            Connection(), "it.853-2004", uuid.uuid4())
+        self.assertEqual(counts, {
+            "repairable_legacy_inferred_edges": 0,
+            "native_endpoint_repair_inserted": 0,
+            "native_endpoint_repair_updated": 0,
+            "native_endpoint_repair_unchanged": 0,
+            "native_endpoint_repair_skipped_exact": 0,
+        })
     def test_unknown_source_observation_time_uses_handoff_time(self):
         manifest = {"retrieved_at_utc": "2026-09-21T00:00:00Z"}
         self.assertEqual(_observed_at("unknown", manifest), manifest["retrieved_at_utc"])

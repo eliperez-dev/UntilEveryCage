@@ -996,7 +996,8 @@ def _repair_inferred_native_endpoints(connection: Any, source_id: str,
             "storage_state": "private", "publication_status": "not_eligible",
         })
     counts = persist_connection_edges(connection, repaired) if repaired else {
-        "inserted": 0, "updated": 0, "unchanged": 0, "total": 0,
+        "inserted": 0, "updated": 0, "unchanged": 0,
+        "skipped_exact": 0, "total": 0,
     }
     return {"repairable_legacy_inferred_edges": len(rows),
             "native_endpoint_repair_inserted": counts["inserted"],
