@@ -4,12 +4,19 @@ import importlib.util
 import json
 from pathlib import Path
 import shutil
+import tempfile
 import unittest
+import hashlib
+from urllib.parse import parse_qs, urlparse
+from unittest.mock import patch
+
+from pipeline.contracts.source_lifecycle import read_jsonl
 
 from pipeline.common.refresh_runner import RefreshCatalog, RefreshRunner
 from pipeline.contracts.refresh import RefreshRequest
 from pipeline.source_runtime_classification import require_production_preview_source
 from pipeline.taxonomy_crosswalk import crosswalk_document, project_observation
+from pipeline.sources.france.georisques_icpe.config import CONFIG as ICPE_CONFIG
 
 ROOT = Path(__file__).parents[2]
 IMPORTER_PATH = ROOT / "pipeline" / "scripts" / "maintenance" / "import-real-preview.py"
@@ -37,20 +44,22 @@ class SourceExpansionIntegrationTests(unittest.TestCase):
                                  "source-specific-acquisition-hook-registered")
                 self.assertFalse(require_production_preview_source(source_id)["public_release"])
 
-    def test_georisques_registers_as_terms_gated_source_without_enabling_preview(self):
+    def test_georisques_registers_with_private_live_terms_approval_and_publication_gate(self):
         catalog = RefreshCatalog()
         source_id = "fr.georisques.icpe.animal"
         registered = catalog.adapters[source_id]
         self.assertEqual(type(registered.adapter).__name__, "FirstWaveRefreshAdapter")
         self.assertEqual(registered.capabilities.country_code, "fr")
         self.assertTrue(registered.capabilities.live_callable)
-        self.assertEqual(registered.capabilities.operational_classification, "terms-blocked")
+        self.assertEqual(registered.capabilities.operational_classification, "live")
         self.assertEqual(catalog.operation_metadata(source_id)["live_access"],
                          "source-specific-acquisition-hook-registered")
         policy = json.loads((ROOT / "pipeline" / "preview-enabled-sources.json").read_text(encoding="utf-8"))["sources"][source_id]
-        self.assertFalse(policy["enabled"])
+        self.assertTrue(policy["enabled"])
         self.assertFalse(policy["public_release"])
-        self.assertEqual(policy["terms_decision"], "pending")
+        self.assertEqual(policy["runtime_classification"], "production-e2e")
+        self.assertEqual(policy["terms_decision"], "accepted_private_acquisition_processing_only")
+        self.assertEqual(policy["terms_review"], "pipeline/sources/france/georisques_icpe/terms-review.json")
         self.assertTrue({"name", "address", "coordinates", "activity_status_source",
                          "source_classification_codes"}.issubset(policy["allowed_preview_fields"]))
 
@@ -69,6 +78,60 @@ class SourceExpansionIntegrationTests(unittest.TestCase):
             self.assertFalse(source["publication"]["published"])
         finally:
             shutil.rmtree(output, ignore_errors=True)
+
+    def test_georisques_live_hook_builds_filtered_candidate_handoff_without_rows_in_summary(self):
+        source_id = "fr.georisques.icpe.animal"
+        raw_row = {
+            "codeAIOT": "SYNTHETIC-AIOT", "siret": "11111111111111",
+            "raisonSociale": "Nom synthétique privé", "adresse1": "Adresse synthétique",
+            "codePostal": "01000", "codeInsee": "01001", "commune": "Commune synthétique",
+            "longitude": 5.0, "latitude": 46.0, "codeNaf": "01.41Z",
+            "etatActivite": "Synthetic status", "date_maj": "2026-10-20",
+            "bovins": "12", "rubriques": [{"numeroRubrique": "2101", "nature": "synthetic"}],
+            "inspections": [{"contact": "must not propagate"}],
+        }
+
+        def fake_fetch(**kwargs):
+            query = parse_qs(urlparse(kwargs["url"]).query)
+            self.assertEqual(query["nomenclature"], [",".join(ICPE_CONFIG["animal_rubrics"])])
+            self.assertEqual(query["page"], ["1"])
+            self.assertEqual(query["page_size"], ["100"])
+            payload = {"results": 1, "page": 1, "total_pages": 1, "data": [raw_row]}
+            content = (json.dumps(payload, ensure_ascii=False) + "\n").encode("utf-8")
+            path = Path(kwargs["output_root"]) / source_id / kwargs["run_id"] / kwargs["artifact_name"]
+            path.parent.mkdir(parents=True)
+            path.write_bytes(content)
+            kwargs["artifact_validator"](path, {"Content-Type": "application/json"})
+            return {"artifact_path": str(path), "sha256": hashlib.sha256(content).hexdigest(),
+                    "byte_size": len(content), "retrieved_at_utc": "2026-10-20T12:00:00Z",
+                    "requested_url": kwargs["url"]}
+
+        with tempfile.TemporaryDirectory() as temporary, patch(
+                "pipeline.sources.france.georisques_icpe.acquire.fetch_source", fake_fetch):
+            result = RefreshRunner().run(RefreshRequest(
+                source_ids=(source_id,), mode="live-acquisition", output_root=Path(temporary), retries=0,
+                options={"authorized_live_sources": [source_id],
+                         "terms_review_paths": {source_id: str(ROOT / "pipeline/sources/france/georisques_icpe/terms-review.json")},
+                         "timeout_seconds": 30.0},
+            ))
+            self.assertEqual(result["exit_status"], "ok")
+            source = result["results"][0]
+            self.assertEqual(source["status"], "succeeded")
+            summary = source["summary"]
+            self.assertTrue(summary["candidate_handoff"])
+            self.assertEqual(summary["api_result_count"], 1)
+            self.assertTrue(summary["animal_rubric_filter_only"])
+            self.assertEqual(summary["native_name_retained_count"], 1)
+            self.assertEqual(summary["source_address_retained_count"], 1)
+            self.assertEqual(summary["source_coordinate_retained_count"], 1)
+            self.assertNotIn("Nom synthétique privé", json.dumps(summary, ensure_ascii=False))
+            source_root = Path(temporary) / result["run_id"] / "sources" / source_id
+            handoff = read_jsonl(source_root / "candidate-handoff" / "normalized" / "records.jsonl")
+            self.assertEqual(handoff[0]["normalized"]["name"], "Nom synthétique privé")
+            self.assertEqual(handoff[0]["normalized"]["source_classification_codes"], ["2101"])
+            self.assertEqual(handoff[0]["normalized"]["address"], "Adresse synthétique")
+            self.assertFalse(handoff[0]["normalized"]["in_default_map_scope"])
+            self.assertNotIn("inspections", json.dumps(handoff, ensure_ascii=False))
 
     def test_georisques_exact_rubric_taxonomy_has_no_mining_projection(self):
         source_id = "fr.georisques.icpe.animal"

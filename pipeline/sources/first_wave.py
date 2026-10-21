@@ -72,9 +72,7 @@ class SourceDescriptor:
     def readiness(self) -> dict[str, Any]:
         """Return capability facts without conflating acquisition and approval."""
         live_callable = self.source_id in {"be.locations", "br.sif.registered", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "fsa_approved_establishments", "fr.dgal.section-i", "fr.dgal.section-ii", "fr.georisques.icpe.animal", "it.853-2004", "it.1069-2009", "es.cat.feed-sandach", "au.sa.epa.licensed-activities", "au.npi.facilities"}
-        operational = "live" if self.source_id in {"be.locations", "br.sif.registered", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "fsa_approved_establishments", "it.853-2004", "it.1069-2009", "fr.dgal.section-i", "fr.dgal.section-ii", "es.cat.feed-sandach", "au.sa.epa.licensed-activities", "au.npi.facilities"} else ("terms-blocked" if live_callable else "assisted")
-        if self.source_id == "fr.georisques.icpe.animal":
-            operational = "terms-blocked"
+        operational = "live" if self.source_id in {"be.locations", "br.sif.registered", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "fsa_approved_establishments", "it.853-2004", "it.1069-2009", "fr.dgal.section-i", "fr.dgal.section-ii", "fr.georisques.icpe.animal", "es.cat.feed-sandach", "au.sa.epa.licensed-activities", "au.npi.facilities"} else ("terms-blocked" if live_callable else "assisted")
         return {
             "source_id": self.source_id,
             "fixture_ready": bool(self.fixture_paths),
@@ -82,7 +80,7 @@ class SourceDescriptor:
             "live_acquisition": self.live_acquisition,
             "operational_classification": operational,
             "live_callable": live_callable,
-            "private_pipeline": "one_action_preview_import_ready" if self.source_id in {"br.sif.registered", "ca.ontario.meat-plants", "it.853-2004", "it.1069-2009", "es.cat.feed-sandach", "au.sa.epa.licensed-activities", "au.npi.facilities", "fsa_approved_establishments"} else "fixture_contract_ready",
+            "private_pipeline": "one_action_preview_import_ready" if self.source_id in {"br.sif.registered", "ca.ontario.meat-plants", "it.853-2004", "it.1069-2009", "es.cat.feed-sandach", "au.sa.epa.licensed-activities", "au.npi.facilities", "fsa_approved_establishments", "fr.georisques.icpe.animal"} else "fixture_contract_ready",
             "publication": self.publication,
             "geocoding": "disabled",
             "review_required": True,
@@ -322,7 +320,7 @@ class FirstWaveRefreshAdapter:
                 source_url=self.descriptor.source_url, retrieved_at_utc=retrieved_at,
                 sha256=aggregate_sha256, byte_size=aggregate_size,
                 code_version=self.adapter_version, config_version=self.descriptor.schema_version,
-                rights_caveat="Géorisques CGU acceptance is required before live acquisition; publication and redistribution review remain separate.",
+                rights_caveat="Géorisques CGU acceptance is recorded for private acquisition and processing only; attribution/update-date and publication/redistribution review remain separate.",
                 privacy_caveat="Restricted private evidence; native facility names and addresses retained; no personal-contact expansion or geocoding.",
                 coverage=GEORISQUES_ICPE_CONFIG["coverage"],
             )
@@ -450,6 +448,35 @@ class FirstWaveRefreshAdapter:
                     "distinct_source_sif_candidates": manifest.get("distinct_source_sif_candidates"),
                     "repeated_sif_row_count": manifest.get("repeated_sif_row_count"),
                     "municipality_name_count": manifest.get("municipality_name_count"),
+                    "publication_state": "private-only; not public-release-ready",
+                })
+            if self.source_id == "fr.georisques.icpe.animal":
+                records = [row for row in rows if isinstance(row, dict)]
+                coordinate_extents: dict[str, int] = {}
+                native_names = native_addresses = source_coordinates = 0
+                for row in records:
+                    normalized = row.get("normalized") if isinstance(row.get("normalized"), dict) else {}
+                    native_names += bool(normalized.get("name"))
+                    native_addresses += bool(normalized.get("address"))
+                    coordinates = normalized.get("coordinates")
+                    if isinstance(coordinates, dict):
+                        source_coordinates += 1
+                        extent = str(coordinates.get("jurisdiction_extent") or "unclassified")
+                        coordinate_extents[extent] = coordinate_extents.get(extent, 0) + 1
+                summary.update({
+                    "acquisition_classification": "live" if acquisition else "assisted",
+                    "retrieved_at_utc": source_artifact.retrieved_at_utc,
+                    "source_artifact_sha256": source_artifact.sha256,
+                    "source_artifact_byte_size": source_artifact.byte_size,
+                    "api_result_count": acquisition.get("results") if isinstance(acquisition, Mapping) else len(records),
+                    "api_pages": acquisition.get("total_pages") if isinstance(acquisition, Mapping) else None,
+                    "animal_rubric_filter_only": True,
+                    "animal_rubrics": sorted(GEORISQUES_ICPE_CONFIG["animal_rubrics"]),
+                    "native_name_retained_count": native_names,
+                    "source_address_retained_count": native_addresses,
+                    "source_coordinate_retained_count": source_coordinates,
+                    "coordinate_extent_counts": coordinate_extents,
+                    "source_coordinate_crs": "unverified; preserved only in private unmapped observations",
                     "publication_state": "private-only; not public-release-ready",
                 })
         if self.source_id == "fsa_approved_establishments" and status.get("status") == "candidate-ready":

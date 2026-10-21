@@ -113,9 +113,10 @@ class GeorisquesIcpeAnimalAdapter:
         total_pages = payload.get("total_pages")
         total = payload.get("results")
         rows = payload.get("data")
-        if page != expected_page or not isinstance(total_pages, int) or total_pages < 1:
+        if (not isinstance(page, int) or isinstance(page, bool) or page != expected_page
+                or not isinstance(total_pages, int) or isinstance(total_pages, bool) or total_pages < 1):
             raise ValueError("API page number or total_pages is invalid")
-        if not isinstance(total, int) or total < 0 or not isinstance(rows, list):
+        if not isinstance(total, int) or isinstance(total, bool) or total < 0 or not isinstance(rows, list):
             raise ValueError("API results/data fields have an unexpected shape")
         if total > max_records or total_pages > CONFIG["max_pages"]:
             raise ValueError("API result exceeds the checked-in acquisition bound")
@@ -140,6 +141,22 @@ class GeorisquesIcpeAnimalAdapter:
             raise ValueError("snapshot page_size is outside the acquisition bound")
         pages: list[dict[str, Any]] = []
         hashes: list[tuple[str, int]] = []
+        snapshot_manifest = None
+        if root.is_dir() and (root.parent / "snapshot-manifest.json").is_file():
+            try:
+                snapshot_manifest = json.loads((root.parent / "snapshot-manifest.json").read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as error:
+                raise ValueError("snapshot manifest is invalid") from error
+            if snapshot_manifest.get("source_id") != CONFIG["source_id"]:
+                raise ValueError("snapshot manifest source_id does not match this adapter")
+            page_size = int(snapshot_manifest.get("page_size", 0))
+            if not 1 <= page_size <= 100:
+                raise ValueError("snapshot page_size is outside the acquisition bound")
+            manifest_pages = snapshot_manifest.get("pages")
+            if not isinstance(manifest_pages, list) or len(manifest_pages) != len(page_files):
+                raise ValueError("snapshot manifest page list does not match acquired pages")
+        else:
+            manifest_pages = None
         for expected, path in enumerate(page_files, 1):
             raw = path.read_bytes()
             try:
@@ -147,7 +164,14 @@ class GeorisquesIcpeAnimalAdapter:
             except json.JSONDecodeError as error:
                 raise ValueError(f"page {expected} is not valid JSON") from error
             pages.append(self._parse_payload(payload, expected, page_size))
-            hashes.append((hashlib.sha256(raw).hexdigest(), len(raw)))
+            digest = hashlib.sha256(raw).hexdigest()
+            hashes.append((digest, len(raw)))
+            if manifest_pages is not None:
+                fact = manifest_pages[expected - 1]
+                if (not isinstance(fact, dict) or fact.get("page") != expected
+                        or fact.get("sha256") != digest or fact.get("byte_size") != len(raw)
+                        or fact.get("rows") != len(payload["data"])):
+                    raise ValueError(f"page {expected} does not match snapshot-manifest provenance")
         first = pages[0]
         if len(pages) != first["total_pages"]:
             raise ValueError("acquired page count does not equal API total_pages")
@@ -157,6 +181,12 @@ class GeorisquesIcpeAnimalAdapter:
         if len(rows) != first["results"]:
             raise ValueError("acquired row count does not reconcile to API results")
         digest = hashlib.sha256(b"".join(Path(path).read_bytes() for path in page_files)).hexdigest()
+        if snapshot_manifest is not None:
+            if (snapshot_manifest.get("sha256") != digest
+                    or snapshot_manifest.get("byte_size") != sum(size for _, size in hashes)
+                    or snapshot_manifest.get("results") != first["results"]
+                    or snapshot_manifest.get("total_pages") != first["total_pages"]):
+                raise ValueError("snapshot bytes or counts do not match snapshot-manifest provenance")
         return {"pages": pages, "rows": rows, "input_rows": len(rows), "results": first["results"],
                 "total_pages": first["total_pages"], "page_hashes": hashes, "sha256": digest,
                 "byte_size": sum(size for _, size in hashes)}
@@ -164,7 +194,7 @@ class GeorisquesIcpeAnimalAdapter:
     def normalize(self, rows: list[dict[str, Any]]) -> dict[str, Any]:
         accepted: list[dict[str, Any]] = []
         quarantined: list[dict[str, Any]] = []
-        seen_aiot: set[str] = set()
+        seen_observations: set[str] = set()
         for index, raw in enumerate(rows, 1):
             if not isinstance(raw, dict):
                 quarantined.append({"reasons": ("row_not_object",), "source_row": index})
@@ -192,10 +222,12 @@ class GeorisquesIcpeAnimalAdapter:
                 reasons.append("missing_aiot_identifier")
             if not name:
                 reasons.append("missing_native_establishment_name")
-            if aiot and aiot in seen_aiot:
-                reasons.append("duplicate_aiot_observation")
-            if aiot:
-                seen_aiot.add(aiot)
+            observation_digest = hashlib.sha256(json.dumps(
+                raw, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+            ).encode("utf-8")).hexdigest()
+            if observation_digest in seen_observations:
+                reasons.append("duplicate_identical_source_observation")
+            seen_observations.add(observation_digest)
 
             latitude = self._coordinate(raw.get("latitude"))
             longitude = self._coordinate(raw.get("longitude"))
@@ -293,8 +325,17 @@ class GeorisquesIcpeAnimalAdapter:
         manifest.update({
             "country_code": "FR", "scope": CONFIG["coverage"],
             "api_results": result["results"], "api_pages": result["total_pages"],
+            "schema_fingerprint": hashlib.sha256(json.dumps({
+                "schema_version": self.schema_version,
+                "config_version": CONFIG["config_version"],
+                "source_fields": ["codeAIOT", "siret", "raisonSociale", "adresse1", "adresse2",
+                                  "adresse3", "codePostal", "codeInsee", "commune", "codeNaf",
+                                  "longitude", "latitude", "bovins", "porcs", "volailles",
+                                  "etatActivite", "date_maj", "regime", "serviceAIOT", "rubriques"],
+                "animal_rubrics": sorted(self.allowed_rubrics),
+            }, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest(),
             "animal_rubrics": sorted(self.allowed_rubrics),
-            "terms_status": "source-specific acceptance record required for acquisition; see acquisition provenance",
+            "terms_status": "accepted-for-private-acquisition-and-processing; attribution, privacy, factual review, and publication remain separate gates",
             "data_licence": "Licence Ouverte 2.0 stated in Géorisques CGU; retain attribution and source update dates",
             "geocoding": "disabled", "release_state": "not-created",
         })

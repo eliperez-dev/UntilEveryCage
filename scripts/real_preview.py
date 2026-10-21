@@ -898,6 +898,10 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                 evidence_files = list((source_root / "acquisition" / "us.fsis.directory").glob("*/acquisition-metadata.json"))
                 evidence = json.loads(evidence_files[0].read_text(encoding="utf-8")) if len(evidence_files) == 1 else {}
                 run_id = evidence.get("run_id")
+            elif source_id == "fr.georisques.icpe.animal":
+                evidence_files = list((source_root / "acquisition" / source_id / "snapshots").glob("*/snapshot-manifest.json"))
+                evidence = json.loads(evidence_files[0].read_text(encoding="utf-8")) if len(evidence_files) == 1 else {}
+                run_id = evidence.get("run_id")
             else:
                 evidence_files = list((source_root / "acquisition" / source_id).glob("*/acquisition-metadata.json"))
                 evidence = json.loads(evidence_files[0].read_text(encoding="utf-8")) if evidence_files else {}
@@ -1008,12 +1012,24 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                         or not isinstance(summary.get("candidate_handoff_sha256"), str)):
                     write_job("failed", "lifecycle", "source_candidate_handoff_missing")
                     raise PreviewError("source lifecycle did not produce a validated candidate handoff; no preview import was attempted")
+            if source_id == "fr.georisques.icpe.animal":
+                results = refresh_result.get("results")
+                result = next((item for item in results or []
+                               if isinstance(item, dict) and item.get("source_id") == source_id), None)
+                summary = result.get("summary") if isinstance(result, dict) else None
+                if (not isinstance(summary, dict) or result.get("status") != "succeeded"
+                        or summary.get("lifecycle_status") != "candidate-ready"
+                        or summary.get("candidate_handoff") is not True
+                        or summary.get("animal_rubric_filter_only") is not True
+                        or not isinstance(summary.get("candidate_handoff_sha256"), str)):
+                    write_job("failed", "lifecycle", "source_candidate_handoff_missing")
+                    raise PreviewError("filtered ICPE lifecycle did not produce a validated candidate handoff; no preview import was attempted")
             runner_run_id = refresh_result.get("run_id")
             if not isinstance(runner_run_id, str) or not runner_run_id:
                 write_job("failed", "lifecycle", "source_run_id_missing")
                 raise PreviewError("source runner returned no unique run identifier")
             if source_id in {"no.fiskeridir.aquaculture", "gb.scot.marine.aquaculture",
-                             "us.epa.echo-animal-production"}:
+                             "us.epa.echo-animal-production", "fr.georisques.icpe.animal"}:
                 # The shared runner binds acquisition sidecars to its
                 # canonical plan ID. Use that same identity for importer
                 # provenance lookup; the source-preview ledger still keeps
@@ -1593,6 +1609,73 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                                                 "unmapped": 0},
             "location_policy": "Catalonia source supplies municipality/postal fields but no coordinates; no geometry lookup or point inference; all remain unmapped.",
         })
+    elif source_id == "fr.georisques.icpe.animal":
+        from pipeline.sources.france.georisques_icpe.config import CONFIG as GEORISQUES_ICPE_CONFIG
+        snapshot_root = source_dir / "acquisition" / source_id / "snapshots"
+        snapshot_paths = list(snapshot_root.glob("*/snapshot-manifest.json"))
+        if len(snapshot_paths) != 1 or snapshot_paths[0].is_symlink():
+            raise PreviewError("Géorisques snapshot manifest is missing or ambiguous")
+        acquisition_evidence = json.loads(snapshot_paths[0].read_text(encoding="utf-8"))
+        source_results = refresh_result.get("results") if isinstance(refresh_result, dict) else None
+        source_result = next((item for item in source_results or []
+                              if isinstance(item, dict) and item.get("source_id") == source_id), None)
+        source_summary = source_result.get("summary") if isinstance(source_result, dict) else None
+        handoff_path = source_dir / "candidate-handoff" / "manifest.json"
+        if not isinstance(source_summary, dict) or not handoff_path.is_file() or handoff_path.is_symlink():
+            raise PreviewError("Géorisques lifecycle or candidate handoff is unavailable")
+        handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
+        page_facts = acquisition_evidence.get("pages")
+        if (acquisition_evidence.get("source_id") != source_id
+                or acquisition_evidence.get("run_id") != run_id
+                or acquisition_evidence.get("filter", {}).get("nomenclature") != GEORISQUES_ICPE_CONFIG["animal_rubrics"]
+                or source_summary.get("animal_rubrics") != GEORISQUES_ICPE_CONFIG["animal_rubrics"]
+                or not isinstance(page_facts, list)
+                or len(page_facts) != acquisition_evidence.get("total_pages")
+                or acquisition_evidence.get("results") != source_summary.get("api_result_count")
+                or acquisition_evidence.get("total_pages") != source_summary.get("api_pages")
+                or acquisition_evidence.get("sha256") != source_summary.get("source_artifact_sha256")
+                or acquisition_evidence.get("byte_size") != source_summary.get("source_artifact_byte_size")
+                or handoff.get("normalized_sha256") != source_summary.get("candidate_handoff_sha256")
+                or handoff.get("normalized_rows") != source_summary.get("candidate_observation_rows")):
+            raise PreviewError("Géorisques acquisition, filtered scope, and handoff do not reconcile")
+        if any(not isinstance(value, str) or len(value) != 64 for value in (
+                acquisition_evidence.get("sha256"), import_result.get("normalized_sha256"),
+                source_summary.get("candidate_handoff_sha256"), source_summary.get("schema_fingerprint"))):
+            raise PreviewError("Géorisques lifecycle hashes are incomplete")
+        input_count = source_summary.get("input_rows")
+        accepted_count = source_summary.get("candidate_observation_rows")
+        quarantined_count = source_summary.get("quarantined_rows")
+        if (not all(isinstance(value, int) and not isinstance(value, bool) and value >= 0
+                    for value in (input_count, accepted_count, quarantined_count))
+                or input_count != accepted_count + quarantined_count
+                or input_count != acquisition_evidence.get("results")):
+            raise PreviewError("Géorisques observation counts do not reconcile")
+        ledger.update({
+            "acquisition": {key: acquisition_evidence.get(key) for key in (
+                "source_id", "source_url", "run_id", "retrieved_at_utc", "page_size", "results",
+                "total_pages", "sha256", "byte_size", "filter", "rights_caveat", "publication_state")},
+            "normalized_sha256": import_result.get("normalized_sha256"),
+            "candidate_handoff_sha256": source_summary.get("candidate_handoff_sha256"),
+            "schema_fingerprint": source_summary.get("schema_fingerprint"),
+            "quarantine": {"input_rows": input_count, "accepted_rows": accepted_count,
+                           "quarantined_rows": quarantined_count,
+                           "reasons": source_summary.get("quarantine_reasons", {})},
+            "source_counts": {key: import_result.get(key) for key in (
+                "observation_count", "facility_candidate_count", "numeric_coordinate_count",
+                "city_postal_count", "unmapped_map_candidate_count", "public_release_count",
+                "public_projection_count")},
+            "coordinate_extent_counts": source_summary.get("coordinate_extent_counts", {}),
+            "native_name_retained_count": source_summary.get("native_name_retained_count"),
+            "source_address_retained_count": source_summary.get("source_address_retained_count"),
+            "source_coordinate_retained_count": source_summary.get("source_coordinate_retained_count"),
+            "coordinate_precision_breakdown": {"source_precision_unknown": import_result.get("source_precision_unknown_group_count"),
+                                                "source_provided_unspecified": import_result.get("source_provided_coordinate_group_count"),
+                                                "exact": 0, "city_or_postal_only": import_result.get("city_postal_count"),
+                                                "unmapped": import_result.get("unmapped_map_candidate_count")},
+            "location_policy": "Native source longitude/latitude are retained privately as unmapped observations; coordinate CRS is not independently verified. No geocoding or public projection.",
+            "animal_rubric_filter_only": True,
+            "publication_state": "private-only; not public-release-ready",
+        })
     elif source_id in {"fr.dgal.section-i", "fr.dgal.section-ii"}:
         acquisition_path = source_dir / "acquisition" / source_id / run_id / "acquisition-metadata.json"
         if not acquisition_path.is_file() or acquisition_path.is_symlink():
@@ -1758,7 +1841,7 @@ def strict_live_private_e2e(source_id: str, existing_runner_run_id: str | None =
     if source_id not in {"be.locations", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "au.npi.facilities",
                           "au.sa.epa.licensed-activities", "fsa_approved_establishments",
                           "fss_approved_establishments", "es.cat.feed-sandach", "br.sif.registered",
-                          "nl.nvwa.approved-food"}:
+                          "nl.nvwa.approved-food", "fr.georisques.icpe.animal"}:
         raise PreviewError("strict-live-private-e2e supports only assigned source lanes")
     import uuid
     suffix = uuid.uuid4().hex[:10]
@@ -1767,7 +1850,8 @@ def strict_live_private_e2e(source_id: str, existing_runner_run_id: str | None =
                    "au.sa.epa.licensed-activities": "au-sa-epa",
                    "fsa_approved_establishments": "fsa", "fss_approved_establishments": "fss",
                    "es.cat.feed-sandach": "es-cat", "br.sif.registered": "br-sif",
-                   "nl.nvwa.approved-food": "nl-nvwa"}[source_id]
+                   "nl.nvwa.approved-food": "nl-nvwa",
+                   "fr.georisques.icpe.animal": "fr-icpe"}[source_id]
     project = f"uec-preview-{safe_source}-{suffix}"
     private_root = (Path(os.environ["UEC_REAL_PREVIEW_ROOT"]) if source_id == "br.sif.registered"
                     and os.environ.get("UEC_REAL_PREVIEW_ROOT") else
@@ -1808,7 +1892,7 @@ def strict_live_private_e2e(source_id: str, existing_runner_run_id: str | None =
         ledger_path = Path(str(preview.get("ledger", "")))
         if source_id in {"be.locations", "ca.ontario.meat-plants", "au.npi.facilities", "fsa_approved_establishments",
                          "fss_approved_establishments", "es.cat.feed-sandach", "br.sif.registered",
-                         "nl.nvwa.approved-food"}:
+                         "nl.nvwa.approved-food", "fr.georisques.icpe.animal"}:
             # Replay the identical immutable handoff in the same disposable
             # database. This explicitly proves conflict-safe importer
             # idempotency, rather than inferring it from two fresh databases.

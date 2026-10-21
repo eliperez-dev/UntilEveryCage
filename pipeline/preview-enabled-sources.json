@@ -170,16 +170,16 @@
       "schema_version": "it-1069-csv-current-2026-09"
     },
     "fr.georisques.icpe.animal": {
-      "enabled": false,
-      "runtime_classification": "terms-blocked",
+      "enabled": true,
+      "runtime_classification": "production-e2e",
       "public_release": false,
       "runner": "pipeline.refresh_private:fr.georisques.icpe.animal",
-      "terms_review": "data/terms-reviews/fr.georisques.icpe.animal.json",
-      "terms_decision": "pending",
+      "terms_review": "pipeline/sources/france/georisques_icpe/terms-review.json",
+      "terms_decision": "accepted_private_acquisition_processing_only",
       "freshness_max_days": null,
       "expected_artifacts": ["snapshot-manifest.json", "page-*.json"],
       "allowed_preview_fields": ["establishment_id", "facility_grouping", "identity_review", "name", "trading_name", "siret", "address", "postal_code", "municipality", "municipality_code", "country_code", "activity", "activity_code", "source_classification_codes", "source_classification_labels", "activity_categories", "animal_rubrics", "rubriques_source", "regime", "activity_status_source", "activity_status_interpretation", "inspection_service_source", "capacity_indicators_source", "capacity_semantics", "source_updated_at", "coordinates", "coordinate_state", "async_coordinate_enrichment_state", "in_default_map_scope", "map_scope_reason", "geocoding", "observation_state", "disappearance_semantics", "privacy_gate", "coordinate_gate", "publication_gate"],
-      "display_policy": {"kind": "unmapped_source_observations", "precision": "source-coordinates-retained-but-not-map-eligible", "disclosure": "ICPE animal-rubric matches are regulatory observations, not proof of current animal operation or a complete facility count. Retain native names, addresses and coordinates privately for review; no map geometry, geocoding, or publication until terms, coordinate, privacy, factual and release review."},
+      "display_policy": {"kind": "unmapped_source_observations", "precision": "source-coordinates-retained-but-not-map-eligible", "disclosure": "ICPE animal-rubric matches are regulatory observations, not proof of current animal operation or a complete facility count. The accepted CGU permits private processing only; retain native names, addresses and coordinates privately. CRS remains unverified, so no map geometry, geocoding, or publication until coordinate, privacy, factual, attribution and release review."},
       "adapter_version": "fr-georisques-icpe-animal-v1",
       "schema_version": "georisques-installations-classees-v1-pages-v1"
     },

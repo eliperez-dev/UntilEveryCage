@@ -84,12 +84,21 @@ class GeorisquesIcpeAnimalTests(unittest.TestCase):
         self.assertEqual([item["numeroRubrique"] for item in normalized["normalized"]["rubriques_source"]], ["2101"])
         self.assertEqual([item["numeroRubrique"] for item in normalized["source_values"]["rubriques"]], ["2101"])
 
-    def test_duplicate_aiot_is_quarantined_without_erasing_observation(self):
-        parsed = GeorisquesIcpeAnimalAdapter().normalize([row("SAME"), row("SAME", name="Second observation")])
+    def test_distinct_observations_with_same_aiot_preserve_multiplicity(self):
+        parsed = GeorisquesIcpeAnimalAdapter().normalize([
+            row("SAME", rubric="2101"), row("SAME", rubric="2102", name="Second observation")])
+        self.assertEqual(len(parsed["accepted"]), 2)
+        self.assertEqual(len(parsed["quarantined"]), 0)
+        self.assertEqual([item["normalized"]["name"] for item in parsed["accepted"]],
+                         ["Établissement Synthétique", "Second observation"])
+
+    def test_exact_duplicate_source_observation_is_quarantined_without_losing_row(self):
+        source = row("SAME")
+        parsed = GeorisquesIcpeAnimalAdapter().normalize([source, dict(source)])
         self.assertEqual(len(parsed["accepted"]), 1)
         self.assertEqual(len(parsed["quarantined"]), 1)
-        self.assertIn("duplicate_aiot_observation", parsed["quarantined"][0]["reasons"])
-        self.assertEqual(parsed["quarantined"][0]["record"]["normalized"]["name"], "Second observation")
+        self.assertIn("duplicate_identical_source_observation", parsed["quarantined"][0]["reasons"])
+        self.assertEqual(parsed["quarantined"][0]["record"]["normalized"]["name"], "Établissement Synthétique")
 
     def test_private_handoff_allowlist_excludes_inspection_contacts_and_unknown_fields(self):
         source = row("SAFE")
@@ -117,6 +126,7 @@ class GeorisquesIcpeAnimalTests(unittest.TestCase):
             status = run_private_lifecycle(pages, root / "runs", artifact, adapter)
             run_root = Path(status["run_dir"])
             self.assertEqual(status["status"], "candidate-ready")
+            self.assertEqual(len(status["manifest"]["schema_fingerprint"]), 64)
             records = read_jsonl(run_root / "normalized" / "records.jsonl")
             self.assertEqual(records[0]["normalized"]["name"], "Établissement Synthétique")
             handoff = write_handoff(run_root / "candidate-handoff", records, artifact, source_id=adapter.source_id)
@@ -124,6 +134,17 @@ class GeorisquesIcpeAnimalTests(unittest.TestCase):
             self.assertEqual(handoff["release_state"], "not-created")
             location = read_jsonl(run_root / "candidate-handoff" / "normalized" / "records.jsonl")[1]["normalized"]["private_location_evidence"]
             self.assertEqual(location["coordinates"]["longitude"], 55.5)
+
+    def test_snapshot_parser_rejects_modified_page_hash(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            pages = write_snapshot(root / "snapshot", [[row("HASHED")]], 100)
+            manifest_path = pages.parent / "snapshot-manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["pages"][0]["sha256"] = "0" * 64
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "snapshot-manifest provenance"):
+                GeorisquesIcpeAnimalAdapter().parse_pages(pages)
 
     def test_refresh_requires_explicit_terms_decision_and_emits_only_private_candidate(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -185,6 +206,33 @@ class GeorisquesIcpeAnimalTests(unittest.TestCase):
             self.assertEqual(calls[0]["nomenclature"], [",".join(CONFIG["animal_rubrics"])])
             self.assertEqual(calls[1]["page"], ["2"])
             self.assertTrue((Path(result["artifact_path"]) / "page-00002.json").is_file())
+
+    def test_acquisition_rejects_duplicate_rows_and_record_bound_overrides(self):
+        responses = {
+            1: {"results": 2, "page": 1, "total_pages": 2, "data": [row("SAME")]},
+            2: {"results": 2, "page": 2, "total_pages": 2, "data": [row("SAME")]},
+        }
+
+        def fake_fetch(**kwargs):
+            page = int(parse_qs(urlparse(kwargs["url"]).query)["page"][0])
+            content = (json.dumps(responses[page], ensure_ascii=False) + "\n").encode()
+            path = Path(kwargs["output_root"]) / CONFIG["source_id"] / kwargs["run_id"] / kwargs["artifact_name"]
+            path.parent.mkdir(parents=True)
+            path.write_bytes(content)
+            kwargs["artifact_validator"](path, {"Content-Type": "application/json"})
+            return {"artifact_path": str(path), "sha256": hashlib.sha256(content).hexdigest(),
+                    "byte_size": len(content), "retrieved_at_utc": "2026-10-20T12:00:00Z",
+                    "requested_url": kwargs["url"]}
+
+        with tempfile.TemporaryDirectory() as temporary, patch(
+                "pipeline.sources.france.georisques_icpe.acquire.fetch_source", fake_fetch):
+            with self.assertRaisesRegex(ValueError, "repeated an identical"):
+                acquire_snapshot(output_root=temporary, terms_review_path="unused", run_id="dupe-run",
+                                 page_size=1, max_pages=2, max_records=2,
+                                 sleep_fn=lambda _seconds: None)
+            with self.assertRaisesRegex(ValueError, "safety bounds"):
+                acquire_snapshot(output_root=temporary, terms_review_path="unused", run_id="oversized-run",
+                                 max_records=CONFIG["max_records"] + 1)
 
 
 if __name__ == "__main__":

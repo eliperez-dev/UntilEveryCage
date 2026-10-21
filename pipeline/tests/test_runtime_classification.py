@@ -20,6 +20,7 @@ VERIFIED_PRIVATE_E2E = {
     "es.cat.feed-sandach",
     "fr.dgal.section-i",
     "fr.dgal.section-ii",
+    "fr.georisques.icpe.animal",
     "it.853-2004",
     "it.1069-2009",
     "nl.nvwa.approved-food",

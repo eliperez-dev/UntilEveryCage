@@ -37,7 +37,8 @@ def acquire_snapshot(*, output_root: str | Path, terms_review_path: str | Path,
     size = page_size if page_size is not None else CONFIG["page_size"]
     page_cap = max_pages if max_pages is not None else CONFIG["max_pages"]
     row_cap = max_records if max_records is not None else CONFIG["max_records"]
-    if not 1 <= size <= 100 or not 1 <= page_cap <= CONFIG["max_pages"] or row_cap <= 0:
+    if (not 1 <= size <= 100 or not 1 <= page_cap <= CONFIG["max_pages"]
+            or not 1 <= row_cap <= CONFIG["max_records"]):
         raise ValueError("page_size/max_pages/max_records exceed source safety bounds")
     snapshot_id = run_id or default_run_id()
     source_root = Path(output_root) / CONFIG["source_id"]
@@ -48,6 +49,7 @@ def acquire_snapshot(*, output_root: str | Path, terms_review_path: str | Path,
     page_facts: list[dict[str, Any]] = []
     total: int | None = None
     total_pages: int | None = None
+    seen_page_ids: set[str] = set()
     for page in range(1, page_cap + 1):
         if total_pages is not None and page > total_pages:
             break
@@ -86,6 +88,21 @@ def acquire_snapshot(*, output_root: str | Path, terms_review_path: str | Path,
         raw_path = Path(metadata["artifact_path"])
         payload = json.loads(raw_path.read_text(encoding="utf-8"))
         parsed = adapter._parse_payload_for_size(payload, page, size, row_cap)
+        # API result rows are observations. Multiple rubric records may share
+        # an AIOT, so retain their multiplicity but fail closed on an exact
+        # repeated row or a missing stable identity during acquisition.
+        for row in parsed["data"]:
+            if not isinstance(row, dict):
+                raise ValueError("ICPE page contains a non-object observation")
+            aiot = adapter._text(row.get("codeAIOT"))
+            if not aiot:
+                raise ValueError("ICPE observation lacks its stable AIOT identifier")
+            row_digest = hashlib.sha256(json.dumps(
+                row, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+            ).encode("utf-8")).hexdigest()
+            if row_digest in seen_page_ids:
+                raise ValueError("ICPE pagination repeated an identical source observation")
+            seen_page_ids.add(row_digest)
         if total is None:
             total, total_pages = parsed["results"], parsed["total_pages"]
             if total > row_cap or total_pages > page_cap:
@@ -111,7 +128,7 @@ def acquire_snapshot(*, output_root: str | Path, terms_review_path: str | Path,
         "total_pages": total_pages, "sha256": hashlib.sha256(concatenated).hexdigest(),
         "byte_size": len(concatenated), "artifact_path": str(pages_dir),
         "filter": {"nomenclature": list(CONFIG["animal_rubrics"])},
-        "rights_caveat": "CGU acceptance/attribution review required; private acquisition only.",
+        "rights_caveat": "CGU acceptance recorded for private acquisition/processing only; attribution/update-date obligations and publication remain separately gated.",
         "publication_state": "blocked-pending-terms-privacy-factual-release-review",
     }
     atomic_json(snapshot_dir / "snapshot-manifest.json", manifest)
