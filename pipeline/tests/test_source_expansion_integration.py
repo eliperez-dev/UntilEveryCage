@@ -130,6 +130,11 @@ class SourceExpansionIntegrationTests(unittest.TestCase):
             self.assertNotIn("Nom synthétique privé", json.dumps(summary, ensure_ascii=False))
             source_root = Path(temporary) / result["run_id"] / "sources" / source_id
             handoff = read_jsonl(source_root / "candidate-handoff" / "normalized" / "records.jsonl")
+            allowed = set(json.loads((ROOT / "pipeline" / "preview-enabled-sources.json").read_text(encoding="utf-8"))
+                          ["sources"][source_id]["allowed_preview_fields"])
+            unexpected_fields = set().union(*(set(record["normalized"]) for record in handoff)) - allowed
+            self.assertFalse(unexpected_fields,
+                             f"normalized source fields must satisfy the importer allowlist: {sorted(unexpected_fields)}")
             self.assertEqual(handoff[0]["normalized"]["name"], "Nom synthétique privé")
             self.assertEqual(handoff[0]["normalized"]["source_classification_codes"], ["2101"])
             self.assertEqual(handoff[0]["normalized"]["address"], "Adresse synthétique")
