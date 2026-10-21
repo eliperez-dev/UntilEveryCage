@@ -16,6 +16,7 @@ from pipeline.common.graph_projection import (
     PROJECTION_PLANNER_GUARD,
     PROJECTION_VERSION,
     _insert_batch,
+    _python_edge_select,
     sanitize_signal_explanation,
 )
 from pipeline.common.real_private_graph import (
@@ -111,6 +112,12 @@ class GraphProjectionTests(unittest.TestCase):
         source = (Path(__file__).resolve().with_name("graph_projection.py")).read_text(encoding="utf-8")
         self.assertIn("connection.execute(PROJECTION_PLANNER_GUARD)", source)
         self.assertNotIn('connection.execute("SET enable_nestloop=off")', source)
+
+    def test_projection_selector_uses_named_psycopg_release_binding(self):
+        query, parameters = _python_edge_select("selected-release")
+        self.assertNotIn("$1", query)
+        self.assertEqual(query.count("%(release_id)s"), 2)
+        self.assertEqual(parameters, {"release_id": "selected-release"})
 
     def test_materialization_fingerprint_is_explicitly_versioned(self):
         self.assertEqual(PROJECTION_VERSION, "graph-release-projection-v1")

@@ -20,6 +20,12 @@ _PUBLIC_GROUPS = frozenset({"source", "identity", "location", "contact", "tempor
 _PUBLIC_CONTRADICTIONS = frozenset({"conflicting_identifier", "conflicting_address", "temporal_conflict"})
 
 
+def _python_edge_select(release_id: str) -> tuple[str, dict[str, str]]:
+    """Bind the shared Rust `$1` selector using psycopg's named placeholder form."""
+    query = f"WITH {EDGE_CTES.replace('$1', '%(release_id)s')} SELECT * FROM edges"
+    return query, {"release_id": release_id}
+
+
 def _json_value(value: Any) -> Any:
     if isinstance(value, str):
         try:
@@ -201,7 +207,8 @@ def build_release_projection(database_url: str, release_id: str, *,
                 # join plan override transaction-local to this one build.
                 connection.execute(PROJECTION_PLANNER_GUARD)
                 cursor = connection.cursor(name="uec_graph_projection_source")
-                cursor.execute(f"WITH {EDGE_CTES} SELECT * FROM edges", (release_id,))
+                query, parameters = _python_edge_select(release_id)
+                cursor.execute(query, parameters)
                 while batch := cursor.fetchmany(batch_size):
                     count += _insert_batch(connection, projection_id, release_id, batch)
                 cursor.close()

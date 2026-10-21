@@ -424,6 +424,7 @@
       "acquisition": "verified",
       "runtime_health": "healthy",
       "runtime_health_scope": "One live filtered capture, private import, idempotent retained-run replay and authenticated API acceptance on a v0-derived local working clone; not recurring health or public map readiness.",
+      "runtime_health_evidence": "data/staging/france-graph-20261021/refresh-6c87874b9fbd62f1/source-preview-ledger.json",
       "private_e2e_status": "live_capture_private_import_and_list_detail_api_verified",
       "map_readiness": "unmapped_coordinate_crs_unverified",
       "publication_eligibility": "blocked",
