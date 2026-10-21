@@ -139,6 +139,12 @@ _PRIVATE_GRAPH_REQUIRED_PRIVILEGES = {
 }
 _PRIVATE_GRAPH_REQUIRED_READ_PRIVILEGES = {
     "graph_projection_generation": {"SELECT"},
+    # The projection builder must verify the same public-release, manifest,
+    # history, and suppression gates that make its output servable.
+    "public_discovery_read_models": {"SELECT"},
+    "release_manifests": {"SELECT"},
+    "public_release_history": {"SELECT"},
+    "public_suppression_generation": {"SELECT"},
 }
 
 

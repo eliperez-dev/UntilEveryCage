@@ -16,6 +16,9 @@ from pipeline.common.graph_persistence import (
     _load_approved_facility_map,
     _load_run_source_record_ids_for_edge_batches,
     _finalize_edge_materialization,
+    _validate_private_graph_writer,
+    _PRIVATE_GRAPH_REQUIRED_PRIVILEGES,
+    _PRIVATE_GRAPH_REQUIRED_READ_PRIVILEGES,
     load_evidence_handoff,
     load_graph_candidate_handoff,
     require_disposable_graph_database,
@@ -368,6 +371,44 @@ class GraphPersistenceContractTests(unittest.TestCase):
         ):
             with self.assertRaises(GraphPersistenceError):
                 require_private_graph_target(url, expected_database=database, purpose=purpose)
+
+    def test_private_graph_writer_requires_read_only_projection_gate_privileges(self):
+        class Cursor:
+            def __init__(self, rows):
+                self.rows = rows
+
+            def fetchone(self):
+                return self.rows.pop(0)
+
+            def fetchall(self):
+                return self.rows
+
+        class Connection:
+            def __init__(self, privileges):
+                self.privileges = privileges
+
+            def execute(self, query, params=None):
+                if query.startswith("SELECT current_database()"):
+                    return Cursor([("uec_stage", "uec_graph_writer_test")])
+                if query.startswith("SELECT rolsuper"):
+                    return Cursor([(False, False, False, False)])
+                return Cursor(self.privileges)
+
+        privileges = [
+            ("uec", table, privilege)
+            for table, grants in {
+                **_PRIVATE_GRAPH_REQUIRED_PRIVILEGES,
+                **_PRIVATE_GRAPH_REQUIRED_READ_PRIVILEGES,
+            }.items()
+            for privilege in grants
+        ]
+        missing_history_read = [
+            row for row in privileges
+            if row[1:] != ("public_release_history", "SELECT")
+        ]
+        with self.assertRaisesRegex(GraphPersistenceError, "grants are incomplete"):
+            _validate_private_graph_writer(Connection(missing_history_read), "uec_stage")
+        _validate_private_graph_writer(Connection(privileges), "uec_stage")
 
     def test_graph_candidate_loader_accepts_private_jsonl_and_is_deterministic(self):
         row = candidate()
