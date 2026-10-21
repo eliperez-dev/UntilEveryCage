@@ -47,8 +47,9 @@ describe('private preview record detail surface', () => {
     expect(component).toContain("'sourceRecordId' in record ? record.sourceRecordId : null");
   });
 
-  it('does not invent a graph or render unavailable API fields as placeholders', () => {
-    expect(component).not.toContain('Connections');
+  it('keeps connections scoped to an active public release', () => {
+    expect(component).toContain('publicRelease && publicReleaseId && id');
+    expect(component).toContain('<RecordConnections facilityId={id} releaseId={publicReleaseId} />');
     expect(component).not.toContain('Not available in this release');
     expect(component).not.toContain('Record source and date are shown below.');
   });

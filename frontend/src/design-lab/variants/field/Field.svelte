@@ -573,8 +573,8 @@
       </aside>{:else if selected}<aside class="reading-sheet dossier" aria-label="Record evidence">
         <header class="dossier-header"><span>Record evidence</span><button type="button" aria-label="Close record detail" onclick={dismissSelection}>×</button></header>
         {#if aggregateOpen}<button type="button" class="back" onclick={dismissSelection}>← Members</button>{/if}
-        <a class="full-record" href={`#/records/${encodeURIComponent(selected.id)}`}>Open full record <span aria-hidden="true">↗</span></a>
-        <RecordDetail record={selected} presentation="rail" publicRelease={mode === "public-release"} />
+        <a class="full-record" href={`#/records/${encodeURIComponent(selected.id)}${mode === "public-release" && publicReleaseId ? `?release_id=${encodeURIComponent(publicReleaseId)}` : ""}`}>Open full record <span aria-hidden="true">↗</span></a>
+        <RecordDetail record={selected} presentation="rail" publicRelease={mode === "public-release"} publicReleaseId={mode === "public-release" ? publicReleaseId : null} />
       </aside>{:else if aggregateOpen}<aside
         class="reading-sheet aggregate-sheet"
         aria-labelledby="aggregate-title"

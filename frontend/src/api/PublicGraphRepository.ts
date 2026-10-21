@@ -4,6 +4,7 @@ import type { FetchLike, LocalProfile } from './LocalLocationRepository';
 import { graphConnectionsEnvelopeSchema, graphEntitiesEnvelopeSchema, type PublicGraphConnection, type PublicGraphEntity } from './publicGraphSchema';
 
 export type GraphFilters = Readonly<{
+  release_id?: string;
   connection_type?: 'exact' | 'inferred';
   min_confidence?: number;
   max_confidence?: number;
@@ -63,6 +64,8 @@ export class PublicGraphRepository {
 
   async neighborhood(entityId: string, profile: LocalProfile = 'official', filters: Omit<GraphFilters, 'entity_id'> = {}, signal?: AbortSignal): Promise<GraphPage<PublicGraphConnection>> {
     if (!uuid.safeParse(entityId).success) throw fail('invalid-contract', 'Graph entity ID must be a UUID.');
-    return this.connections(profile, { ...filters, entity_id: entityId }, signal);
+    const page = await this.connections(profile, { ...filters, entity_id: entityId }, signal);
+    if (filters.release_id !== undefined && page.releaseId !== filters.release_id) throw fail('invalid-contract', 'Public graph response did not match the selected release.');
+    return page;
   }
 }
