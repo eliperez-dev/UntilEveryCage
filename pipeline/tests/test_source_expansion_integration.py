@@ -60,6 +60,9 @@ class SourceExpansionIntegrationTests(unittest.TestCase):
         self.assertEqual(policy["runtime_classification"], "production-e2e")
         self.assertEqual(policy["terms_decision"], "accepted_private_acquisition_processing_only")
         self.assertEqual(policy["terms_review"], "pipeline/sources/france/georisques_icpe/terms-review.json")
+        self.assertEqual(policy["freshness_max_days"], 14,
+                         "14 days is the configured maximum age for a private acquired snapshot, not an upstream freshness guarantee")
+        self.assertIs(type(policy["freshness_max_days"]), int)
         self.assertTrue({"name", "address", "coordinates", "activity_status_source",
                          "source_classification_codes"}.issubset(policy["allowed_preview_fields"]))
 
