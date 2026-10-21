@@ -49,6 +49,13 @@ class GraphProjectionTests(unittest.TestCase):
         self.assertIn("HAVING count(DISTINCT canonical_source_record_id)=1", support_records)
         self.assertNotIn("min(canonical_source_record_id)", support_records)
 
+    def test_endpoint_ambiguity_join_qualifies_duplicate_left_side_columns(self):
+        endpoint_cte = EDGE_CTES.split("eligible_source_endpoints AS MATERIALIZED (", 1)[1].split(
+            "),\nedges AS", 1)[0]
+        self.assertIn("ON ambiguous.source_id=target.source_id", endpoint_cte)
+        self.assertIn("ambiguous.identifier_type=target.identifier_type", endpoint_cte)
+        self.assertNotIn("USING (source_id, identifier_type, source_identifier, entity_type)", endpoint_cte)
+
     def test_projection_signal_sanitizer_only_keeps_known_codes_and_typed_values(self):
         safe = sanitize_signal_explanation({
             "group_contributions": {

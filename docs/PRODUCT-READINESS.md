@@ -1120,6 +1120,42 @@ local sample receipt at ignored
 and the focused graph persistence/API tests. The receipt and private input are
 not committed.
 
+### D6.4 - Fresh France intake and repeatable private graph (2026-10-20)
+
+**Status: Private source intake and graph repeat verified; graph serving acceptance
+blocked by projection storage growth.** France ICPE completed a fresh shared-command
+acquisition, normalization, private import and authenticated list/detail acceptance.
+Its 12,503 named records remain private and unmapped because the API coordinate
+reference has not been established. Source counts, hashes, API evidence and the
+remaining certificate limitation are recorded in [source-status.json](source-status.json).
+Enabled-source metadata checks now cover all 21 configured source policies.
+
+The complete retained Italy handoff reused 47,375 base records and materialized
+50,925 distinct connections. A subsequent identical CLI run skipped matcher staging
+in 12.1 seconds with the stored edge count unchanged. France also exercised the
+shared refresh command's graph hook without reacquisition; its 12,503 records had
+no eligible selected-release endpoints. Its direct graph repeat skipped staging in
+5.5 seconds with no new edge writes. Checkpoints now complete only after required
+support-reference and canonical-binding finalization, with failure/retry coverage.
+
+The release-scoped indexed serving implementation and selected-column package
+changes are implemented but **not runtime accepted**. Real PostgreSQL parsing
+exposed and corrected UUID aggregation and ambiguous-join defects. The subsequent
+build revealed an edge-by-anchor fan-out: the endpoint-anchor table and indexes
+grew to approximately 2 GB while the edge table and indexes were about 8 MB.
+The owned build was stopped for rollback and cleanup; no completed projection,
+graph API latency improvement or graph package export/restore acceptance is claimed.
+The next graph change must store each endpoint's anchor set once, preserve the live
+release/restriction checks, then repeat the bounded API and restore acceptance.
+Do not rerun the current projection builder on the full retained graph.
+
+Evidence: focused graph/source-readiness regressions, the actual shared refresh and
+materializer commands, and the aggregate-only local receipt at ignored
+`data/staging/france-graph-20261021/graph-integration-aggregate.json`.
+The [retained backend integration target](development.md#retained-backend-integration-target)
+keeps private inputs and completed graph work for continuation. This checkpoint
+does not deploy to Render, alter the frontend or add a public release.
+
 ### Production V2 frontend
 
 **Status: Launchpad and design specification complete; implementation deferred.**

@@ -121,7 +121,10 @@ eligible_source_endpoints AS MATERIALIZED (
    AND candidate.entity_type=target.entity_type
    AND candidate.public_entity_id=target.public_entity_id
   LEFT JOIN ambiguous_source_endpoints ambiguous
-    USING (source_id, identifier_type, source_identifier, entity_type)
+    ON ambiguous.source_id=target.source_id
+   AND ambiguous.identifier_type=target.identifier_type
+   AND ambiguous.source_identifier=target.source_identifier
+   AND ambiguous.entity_type=target.entity_type
   WHERE ambiguous.source_id IS NULL
   GROUP BY target.source_id, target.identifier_type, target.source_identifier,
            target.entity_type, target.public_entity_id
