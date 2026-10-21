@@ -39,7 +39,8 @@ release_support_candidates AS MATERIALIZED (
 ),
 release_support_records AS MATERIALIZED (
   SELECT source_id,source_record_id,artifact_id,
-         min(canonical_source_record_id) AS canonical_source_record_id
+         (array_agg(DISTINCT canonical_source_record_id
+                    ORDER BY canonical_source_record_id))[1] AS canonical_source_record_id
   FROM release_support_candidates
   GROUP BY source_id,source_record_id,artifact_id
   HAVING count(DISTINCT canonical_source_record_id)=1

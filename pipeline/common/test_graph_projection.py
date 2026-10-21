@@ -41,6 +41,14 @@ class GraphProjectionTests(unittest.TestCase):
         self.assertNotIn("fiscal_code", EDGE_CTES)
         self.assertNotIn("codice_fiscale", EDGE_CTES)
 
+    def test_projection_selector_uses_portable_uuid_aggregate_after_uniqueness_gate(self):
+        support_records = EDGE_CTES.split("release_support_records AS MATERIALIZED (", 1)[1].split(
+            "),\nedge_support_refs", 1)[0]
+        self.assertIn("array_agg(DISTINCT canonical_source_record_id", support_records)
+        self.assertIn("ORDER BY canonical_source_record_id", support_records)
+        self.assertIn("HAVING count(DISTINCT canonical_source_record_id)=1", support_records)
+        self.assertNotIn("min(canonical_source_record_id)", support_records)
+
     def test_projection_signal_sanitizer_only_keeps_known_codes_and_typed_values(self):
         safe = sanitize_signal_explanation({
             "group_contributions": {
