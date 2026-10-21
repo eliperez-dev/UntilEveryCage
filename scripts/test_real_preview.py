@@ -16,6 +16,16 @@ SPEC.loader.exec_module(rp)
 
 
 class LifecycleTests(unittest.TestCase):
+    def test_private_map_readiness_uses_scope_aware_importer_count(self):
+        map_visible, readiness = rp._private_map_readiness(
+            "fr.georisques.icpe.animal",
+            {"map_visible_count": 0, "numeric_coordinate_count": 12_478,
+             "coarse_placeable_facility_count": 0},
+            None,
+        )
+        self.assertEqual(map_visible, 0)
+        self.assertEqual(readiness, "unmapped")
+
     def test_graph_opt_in_reports_missing_handoff_as_not_supported(self):
         with tempfile.TemporaryDirectory() as directory:
             result = rp._materialize_private_graph(Path(directory))

@@ -842,6 +842,24 @@ def _materialize_private_graph(handoff_root: Path) -> dict[str, object]:
     return {"status": "materialized", **summary}
 
 
+def _private_map_readiness(source_id: str, import_result: dict[str, object], geography: object) -> tuple[int, str]:
+    """Use the importer's scope-aware map count, not raw coordinate totals."""
+    map_visible = import_result.get("map_visible_count")
+    if not isinstance(map_visible, int) or isinstance(map_visible, bool) or map_visible < 0:
+        raise PreviewError("preview importer did not provide a valid map-visible count")
+    numeric = import_result.get("numeric_coordinate_count", 0)
+    coarse = import_result.get("coarse_placeable_facility_count", 0)
+    if map_visible == 0:
+        return 0, "unmapped"
+    if source_id == "au.npi.facilities" and isinstance(numeric, int) and numeric > 0:
+        return map_visible, "source-coordinates"
+    if geography and isinstance(coarse, int) and coarse > 0:
+        return map_visible, "coarse-city-reference"
+    if isinstance(numeric, int) and numeric > 0:
+        return map_visible, "source-precision-unknown"
+    return map_visible, "unmapped"
+
+
 def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_id: str | None = None,
                            *, acquire_geography: bool = True,
                            materialize_private_graph: bool = False) -> dict[str, object]:
@@ -1151,6 +1169,7 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
         raise PreviewError("source refresh exceeded its bounded runtime") from None
     graph_result = (_materialize_private_graph(source_dir / "candidate-handoff")
                     if materialize_private_graph else None)
+    map_visible_count, map_readiness = _private_map_readiness(source_id, import_result, geography)
     ledger = {
         "ledger_version": "source-preview-runtime-v1", "source_id": source_id,
         "run_id": run_id, "status": "imported", "retrieved_at_utc": refresh_result.get("completed_at_utc"),
@@ -1158,10 +1177,8 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
         "coarse_geometry": geography,
         "preview_policy_version": policy.get("contract_version"),
         "public_rows": import_result.get("public_release_count", 0) + import_result.get("public_projection_count", 0),
-        "map_visible_count": import_result.get("numeric_coordinate_count", 0) + import_result.get("coarse_placeable_facility_count", 0),
-        "map_readiness": ("source-coordinates" if source_id == "au.npi.facilities" and import_result.get("numeric_coordinate_count", 0)
-                          else ("coarse-city-reference" if geography and import_result.get("coarse_placeable_facility_count", 0)
-                                else ("source-precision-unknown" if import_result.get("numeric_coordinate_count", 0) else "unmapped"))),
+        "map_visible_count": map_visible_count,
+        "map_readiness": map_readiness,
     }
     if graph_result is not None:
         ledger["graph_materialization"] = graph_result
