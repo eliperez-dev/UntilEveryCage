@@ -373,6 +373,28 @@ prepare-release-serving-package.py restore --target-database-url-env UEC_TARGET_
   --package <package-dir> --apply-api-grants
 ```
 
+For a database assembled from schema-only pre/post archives, complete the
+following empty-database bootstrap before calling `restore`: the archive has
+DDL but does not carry migration-seeded singleton rows. First compare the
+target `public` schema owner and ACL with the prepared source schema metadata.
+When (and only when) the target already has that matching default schema,
+omit exactly the duplicate `CREATE SCHEMA public;` statement from the decoded
+pre-data SQL; retain and execute every other statement. Record this one-statement
+reconciliation and the compared owner/ACL in the restricted receipt. Do not
+drop or recreate the schema, or omit any additional schema object. The canonical
+schema derivative still omits only the two documented preview callback
+triggers listed in `SERVING_SCHEMA_OMISSIONS`.
+
+After pre-data DDL and before package restore, assert the release tables and
+the suppression inputs (`record_access_events`, `suppression_case_events`,
+and `publication_review_events`) are empty. Seed the two pristine generation
+singletons exactly as their canonical migrations do: suppression generation
+is the sum of those three empty event counts (zero), and graph projection
+generation is `(true, 0)`. This is only the schema-only target bootstrap; keep
+the package restore's empty-target guard unchanged so it replaces these
+singletons with the selected source values. Do not seed ledger entries or
+reconstruct any other package data by hand.
+
 After post-data restoration, run `ANALYZE` in the isolated serving database to
 refresh planner statistics, then verify all restored constraints and public gate
 triggers are enabled, the release's manifest/read-model/public-detail aggregate
