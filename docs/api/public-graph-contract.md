@@ -106,8 +106,14 @@ same release, endpoint, and support selector as the graph API. Edge generation
 changes invalidate the active projection; read-time release, support, rights,
 and suppression gates remain live. Endpoint/source-assertion changes invalidate
 the projection through a graph-generation counter. A stale projection therefore
-fails closed until rebuilt. Its API role can read the safe current projection
-view but not private edges, identifiers, support references, or anchor records.
+fails closed until rebuilt. Projection v2 stores each exact source-qualified
+endpoint and its anchors once, then references that opaque build-local endpoint
+from each edge. The qualification retains source, identifier type, native
+identifier, entity type, and public entity UUID during the private build; native
+identifier values are not persisted in serving tables or the package. Migration
+078 makes prior v1 projections fail closed until rebuilt. Its API role can read
+the safe current projection view but not private edges, identifiers, support
+references, or anchor records.
 
 The selected-column `release_serving` package now includes this safe projection
 and migration 077 adds its serving view and exact read-only grant. This supports

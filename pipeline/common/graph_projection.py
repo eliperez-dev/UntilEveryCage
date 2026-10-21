@@ -12,7 +12,7 @@ import psycopg
 from pipeline.common.graph_persistence import _validate_private_graph_writer, require_private_graph_target
 
 
-PROJECTION_VERSION = "graph-release-projection-v1"
+PROJECTION_VERSION = "graph-release-projection-v2"
 PROJECTION_PLANNER_GUARD = "SET LOCAL enable_nestloop=off"
 _SQL_PATH = Path(__file__).resolve().parents[1] / "sql" / "graph_public_edge_ctes.sql"
 EDGE_CTES = _SQL_PATH.read_text(encoding="utf-8")
@@ -24,6 +24,38 @@ def _python_edge_select(release_id: str) -> tuple[str, dict[str, str]]:
     """Bind the shared Rust `$1` selector using psycopg's named placeholder form."""
     query = f"WITH {EDGE_CTES.replace('$1', '%(release_id)s')} SELECT * FROM edges"
     return query, {"release_id": release_id}
+
+
+def _python_endpoint_select(release_id: str) -> tuple[str, dict[str, str]]:
+    query = (f"WITH {EDGE_CTES.replace('$1', '%(release_id)s')} "
+             "SELECT source_id,identifier_type,source_identifier,entity_type,public_entity_id,anchors "
+             "FROM eligible_source_endpoints")
+    return query, {"release_id": release_id}
+
+
+def _insert_endpoint_batch(connection: Any, projection_id: uuid.UUID,
+                           rows: Iterable[Any], endpoint_ids: dict[tuple[str, str, str, str, uuid.UUID], uuid.UUID]) -> tuple[int, int]:
+    endpoints: list[tuple[Any, ...]] = []
+    anchors: list[tuple[Any, ...]] = []
+    for row in rows:
+        key = (str(row[0]), str(row[1]), str(row[2]), str(row[3]), uuid.UUID(str(row[4])))
+        endpoint_id = endpoint_ids.setdefault(key, uuid.uuid4())
+        endpoints.append((projection_id, endpoint_id, key[4], key[3], key[0], key[1]))
+        anchors.extend((projection_id, endpoint_id, record_id, facility_id)
+                       for record_id, facility_id in _anchors(row[5]))
+    if endpoints:
+        with connection.cursor() as cursor:
+            cursor.executemany(
+                """INSERT INTO uec.graph_public_projection_endpoints
+                   (projection_id,endpoint_id,public_entity_id,entity_type,source_id,identifier_type)
+                   VALUES (%s,%s,%s,%s,%s,%s)""", endpoints,
+            )
+            cursor.executemany(
+                """INSERT INTO uec.graph_public_projection_anchors
+                   (projection_id,endpoint_id,source_record_id,facility_id)
+                   VALUES (%s,%s,%s,%s) ON CONFLICT DO NOTHING""", anchors,
+            )
+    return len(endpoints), len(anchors)
 
 
 def _json_value(value: Any) -> Any:
@@ -105,43 +137,39 @@ def _support_records(value: Any) -> list[tuple[uuid.UUID, str, uuid.UUID]]:
 
 
 def _insert_batch(connection: Any, projection_id: uuid.UUID, release_id: str,
-                  rows: Iterable[Any]) -> int:
+                  rows: Iterable[Any], endpoint_ids: dict[tuple[str, str, str, str, uuid.UUID], uuid.UUID]) -> int:
     edge_rows: list[tuple[Any, ...]] = []
     support_rows: list[tuple[Any, ...]] = []
-    anchor_rows: list[tuple[Any, ...]] = []
     for row in rows:
         edge_id = row[0]
         # Source-native identifier values at columns 5 and 10 are deliberately
         # consumed by the selector but never written to the public read model.
-        edge_rows.append((projection_id, release_id, edge_id, row[1], row[2], row[3], row[4],
-                          row[6], row[7], row[8], row[9], row[11], row[12], row[13], row[14],
+        from_key = (str(row[3]), str(row[4]), str(row[5]), str(row[2]), uuid.UUID(str(row[1])))
+        to_key = (str(row[8]), str(row[9]), str(row[10]), str(row[7]), uuid.UUID(str(row[6])))
+        from_endpoint_id, to_endpoint_id = endpoint_ids.get(from_key), endpoint_ids.get(to_key)
+        if from_endpoint_id is None or to_endpoint_id is None:
+            raise ValueError("graph endpoint selector and edge selector diverged")
+        edge_rows.append((projection_id, release_id, edge_id, from_endpoint_id, row[1], row[2], row[3], row[4],
+                          to_endpoint_id, row[6], row[7], row[8], row[9], row[11], row[12], row[13], row[14],
                           json.dumps(sanitize_signal_explanation(row[15]), sort_keys=True), row[16],
                           row[17], row[18], row[19], row[20]))
         support_rows.extend((projection_id, edge_id, record_id, source_id, artifact_id)
-                            for record_id, source_id, artifact_id in _support_records(row[24]))
-        anchor_rows.extend((projection_id, edge_id, side, record_id, facility_id)
-                           for side, raw in (("from", row[22]), ("to", row[23]))
-                           for record_id, facility_id in _anchors(raw))
+                            for record_id, source_id, artifact_id in _support_records(row[22]))
     if edge_rows:
         with connection.cursor() as cursor:
             cursor.executemany(
             """INSERT INTO uec.graph_public_projection_edges
-               (projection_id,release_id,connection_edge_id,from_entity_id,from_entity_type,
-                from_source_id,from_identifier_type,to_entity_id,to_entity_type,to_source_id,
+               (projection_id,release_id,connection_edge_id,from_endpoint_id,from_entity_id,from_entity_type,
+                from_source_id,from_identifier_type,to_endpoint_id,to_entity_id,to_entity_type,to_source_id,
                 to_identifier_type,relationship_type,connection_type,confidence,confidence_band,
                 signal_explanation,match_method,observed_at,computed_at,ruleset_version,conflicting)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s)""",
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s)""",
             edge_rows,
             )
             cursor.executemany(
                 """INSERT INTO uec.graph_public_projection_edge_supports
                (projection_id,connection_edge_id,source_record_id,source_id,artifact_id)
                VALUES (%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""", support_rows,
-            )
-            cursor.executemany(
-                """INSERT INTO uec.graph_public_projection_endpoint_anchors
-               (projection_id,connection_edge_id,endpoint_side,source_record_id,facility_id)
-               VALUES (%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""", anchor_rows,
             )
     return len(edge_rows)
 
@@ -199,18 +227,29 @@ def build_release_projection(database_url: str, release_id: str, *,
                  manifest_sha256, suppression_generation),
             )
         connection.commit()
-        count = 0
+        count = endpoint_count = anchor_count = 0
+        endpoint_ids: dict[tuple[str, str, str, str, uuid.UUID], uuid.UUID] = {}
         try:
             with connection.transaction():
                 # The release/support CTEs have a known severe row-count
                 # underestimation under nested loops. Keep the measured hash
                 # join plan override transaction-local to this one build.
                 connection.execute(PROJECTION_PLANNER_GUARD)
+                endpoint_cursor = connection.cursor(name="uec_graph_projection_endpoints")
+                endpoint_query, endpoint_parameters = _python_endpoint_select(release_id)
+                endpoint_cursor.execute(endpoint_query, endpoint_parameters)
+                while batch := endpoint_cursor.fetchmany(batch_size):
+                    inserted_endpoints, inserted_anchors = _insert_endpoint_batch(
+                        connection, projection_id, batch, endpoint_ids,
+                    )
+                    endpoint_count += inserted_endpoints
+                    anchor_count += inserted_anchors
+                endpoint_cursor.close()
                 cursor = connection.cursor(name="uec_graph_projection_source")
                 query, parameters = _python_edge_select(release_id)
                 cursor.execute(query, parameters)
                 while batch := cursor.fetchmany(batch_size):
-                    count += _insert_batch(connection, projection_id, release_id, batch)
+                    count += _insert_batch(connection, projection_id, release_id, batch, endpoint_ids)
                 cursor.close()
                 connection.execute(
                     "UPDATE uec.graph_public_projection_builds SET active=false WHERE release_id=%s AND active",
@@ -232,5 +271,6 @@ def build_release_projection(database_url: str, release_id: str, *,
     return {"status": "completed", "release_id": release_id,
             "projection_id": str(projection_id), "edge_count": count,
             "projection_version": PROJECTION_VERSION,
+            "endpoint_count": endpoint_count, "anchor_count": anchor_count,
             "edge_generation": edge_generation,
             "suppression_generation": suppression_generation}

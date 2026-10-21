@@ -26,8 +26,9 @@ RESTORE_ORDER = (
     "uec.release_cohort_review_scopes", "uec.observation_taxonomy_assignment_sets",
     "uec.observation_taxonomy_assignments", "uec.public_discovery_read_models",
     "uec.public_discovery_read_model_rows", "uec.public_suppression_generation",
-    "uec.graph_public_projection_builds", "uec.graph_public_projection_edges",
-    "uec.graph_public_projection_edge_supports", "uec.graph_public_projection_endpoint_anchors",
+    "uec.graph_public_projection_builds", "uec.graph_public_projection_endpoints",
+    "uec.graph_public_projection_edges", "uec.graph_public_projection_edge_supports",
+    "uec.graph_public_projection_anchors",
     "uec.graph_projection_generation",
 )
 

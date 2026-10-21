@@ -15,7 +15,8 @@ class ReleaseServingPackageTests(unittest.TestCase):
         self.assertIn("uec.graph_public_projection_builds", relations)
         self.assertIn("uec.graph_public_projection_edges", relations)
         self.assertIn("uec.graph_public_projection_edge_supports", relations)
-        self.assertIn("uec.graph_public_projection_endpoint_anchors", relations)
+        self.assertIn("uec.graph_public_projection_endpoints", relations)
+        self.assertIn("uec.graph_public_projection_anchors", relations)
         self.assertTrue(relations.isdisjoint(serving.FORBIDDEN_DATA_RELATIONS))
         self.assertTrue({"uec.graph_connection_edges", "uec.graph_record_release_bindings",
                          "uec.source_entity_identifiers"}.issubset(serving.FORBIDDEN_DATA_RELATIONS))
@@ -23,6 +24,12 @@ class ReleaseServingPackageTests(unittest.TestCase):
         self.assertNotIn("source_identifier", graph_edges.columns)
         self.assertNotIn("source_record_id", graph_edges.columns)
         self.assertNotIn("from_source_identifier", graph_edges.query)
+        self.assertIn("from_endpoint_id", graph_edges.columns)
+        endpoints = next(spec for spec in specs if spec.relation == "uec.graph_public_projection_endpoints")
+        self.assertNotIn("source_identifier", endpoints.columns)
+        anchors = next(spec for spec in specs if spec.relation == "uec.graph_public_projection_anchors")
+        self.assertIn("endpoint_id", anchors.columns)
+        self.assertNotIn("connection_edge_id", anchors.columns)
         all_sql = "\n".join(spec.query for spec in specs).casefold()
         self.assertNotIn("geocode_results", all_sql)
         self.assertNotIn("acquisition_runs", all_sql)
@@ -32,7 +39,7 @@ class ReleaseServingPackageTests(unittest.TestCase):
 
     def test_manifest_is_reproducible_and_labels_redaction(self):
         manifest = serving.package_manifest(release_ids=["v0-public"], migration_inventory_sha256="a" * 64, table_counts={"uec.releases": 1}, schema_artifacts={"pre_data": "b" * 64})
-        self.assertEqual(manifest["schema_version"], "uec-serving-package-v3")
+        self.assertEqual(manifest["schema_version"], "uec-serving-package-v4")
         self.assertEqual(manifest["package_sha256"], serving.canonical_sha256({key: value for key, value in manifest.items() if key != "package_sha256"}))
         self.assertIn("redacted", manifest["redaction_notice"])
         self.assertEqual(manifest["serving_schema_derivative"]["artifacts_sha256"]["pre_data"], "b" * 64)

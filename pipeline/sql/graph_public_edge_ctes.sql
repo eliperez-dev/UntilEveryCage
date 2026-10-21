@@ -143,8 +143,7 @@ SELECT e.connection_edge_id,
             ELSE e.confidence_band END AS public_confidence_band,
        e.signal_explanation::text, e.match_method,
        e.observed_at, e.computed_at, e.ruleset_version, e.conflicting,
-       support.support_record_ids, fi.anchors AS from_anchors,
-       ti.anchors AS to_anchors, support.support_records
+       support.support_record_ids, support.support_records
 FROM uec.graph_connection_edges e
 JOIN eligible_source_endpoints fi
   ON fi.source_id=e.from_source_id AND fi.identifier_type=e.from_identifier_type

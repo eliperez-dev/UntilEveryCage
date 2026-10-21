@@ -133,6 +133,8 @@ _PRIVATE_GRAPH_REQUIRED_PRIVILEGES = {
     "graph_public_projection_builds": {"SELECT", "INSERT", "UPDATE"},
     "graph_public_projection_edges": {"SELECT", "INSERT"},
     "graph_public_projection_edge_supports": {"SELECT", "INSERT"},
+    "graph_public_projection_endpoints": {"SELECT", "INSERT"},
+    "graph_public_projection_anchors": {"SELECT", "INSERT"},
     "graph_public_projection_endpoint_anchors": {"SELECT", "INSERT"},
 }
 _PRIVATE_GRAPH_REQUIRED_READ_PRIVILEGES = {

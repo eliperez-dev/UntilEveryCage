@@ -16,6 +16,8 @@ from pipeline.common.graph_projection import (
     PROJECTION_PLANNER_GUARD,
     PROJECTION_VERSION,
     _insert_batch,
+    _insert_endpoint_batch,
+    _python_endpoint_select,
     _python_edge_select,
     sanitize_signal_explanation,
 )
@@ -81,17 +83,18 @@ class GraphProjectionTests(unittest.TestCase):
         support_record, artifact_id = uuid.uuid4(), uuid.uuid4()
         anchor_from, anchor_to = uuid.uuid4(), uuid.uuid4()
         private_token = "private-endpoint-token"
-        row = (
-            edge_id, from_id, "facility", "it.synthetic", "permit", private_token,
-            to_id, "facility", "it.synthetic", "permit", private_token,
-            "operator", "inferred", 0.72, "medium", '{"group_contributions":{"identity":0.5}}',
-            "d5-rules", "2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z", "d6-v1", False,
-            [support_record],
-            [{"source_record_id": str(support_record), "facility_id": str(anchor_from)}],
-            [{"source_record_id": str(support_record), "facility_id": str(anchor_to)}],
-            [{"source_record_id": str(support_record), "source_id": "it.synthetic",
-              "artifact_id": str(artifact_id)}],
-        )
+        endpoint_ids = {
+            ("it.synthetic", "permit", private_token, "facility", from_id): uuid.uuid4(),
+            ("it.synthetic", "permit", private_token, "facility", to_id): uuid.uuid4(),
+        }
+        row = (edge_id, from_id, "facility", "it.synthetic", "permit", private_token,
+               to_id, "facility", "it.synthetic", "permit", private_token,
+               "operator", "inferred", 0.72, "medium", '{"group_contributions":{"identity":0.5}}',
+               "d5-rules", "2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z", "d6-v1", False,
+               [support_record], [
+                   {"source_record_id": str(support_record), "source_id": "it.synthetic",
+                    "artifact_id": str(artifact_id)},
+               ])
 
         class FakeCursor:
             def __init__(self):
@@ -114,13 +117,20 @@ class GraphProjectionTests(unittest.TestCase):
                 return self.fake_cursor
 
         connection = FakeConnection()
-        inserted = _insert_batch(connection, uuid.uuid4(), "release-safe", [row])
+        inserted = _insert_batch(connection, uuid.uuid4(), "release-safe", [row], endpoint_ids)
         self.assertEqual(inserted, 1)
-        self.assertEqual(len(connection.fake_cursor.calls), 3)
+        self.assertEqual(len(connection.fake_cursor.calls), 2)
         sql = "\n".join(query for query, _values in connection.fake_cursor.calls)
         bound_values = repr([values for _query, values in connection.fake_cursor.calls])
         self.assertIn("graph_public_projection_edges", sql)
         self.assertNotIn(private_token, bound_values)
+        edge_query, edge_rows = connection.fake_cursor.calls[0]
+        columns = edge_query.split("VALUES", 1)[0].rsplit("(", 1)[1].rstrip()
+        values_clause = edge_query.split("VALUES", 1)[1].split(")", 1)[0]
+        self.assertEqual(len(edge_rows[0]), 23)
+        self.assertEqual(len(columns.split(",")), 23)
+        self.assertEqual(values_clause.count("%s"), 23)
+        self.assertEqual(values_clause.split(",").index("%s::jsonb"), 17)
 
     def test_projection_planner_guard_is_transaction_local(self):
         self.assertEqual(PROJECTION_PLANNER_GUARD, "SET LOCAL enable_nestloop=off")
@@ -135,7 +145,7 @@ class GraphProjectionTests(unittest.TestCase):
         self.assertEqual(parameters, {"release_id": "selected-release"})
 
     def test_materialization_fingerprint_is_explicitly_versioned(self):
-        self.assertEqual(PROJECTION_VERSION, "graph-release-projection-v1")
+        self.assertEqual(PROJECTION_VERSION, "graph-release-projection-v2")
         self.assertTrue(all((D5_MATCHER_VERSION, D6_EDGE_RULESET_VERSION,
                              GRAPH_EDGE_MATERIALIZATION_VERSION,
                              NATIVE_ENDPOINT_CONTRACT_VERSION)))
@@ -169,6 +179,49 @@ class GraphProjectionTests(unittest.TestCase):
             with self.subTest(table=table):
                 self.assertEqual(validator[table], set(grant.split(", ")))
                 self.assertIn(f"GRANT {grant} ON uec.{table}", migration)
+        normalized = (Path(__file__).resolve().parents[1] / "migrations" / "078_normalized_graph_projection_endpoints.sql").read_text(encoding="utf-8")
+        self.assertIn("CREATE OR REPLACE VIEW uec.graph_public_connections_current", normalized)
+        self.assertNotIn("DROP VIEW uec.graph_public_connections_current", normalized)
+        for table in ("graph_public_projection_endpoints", "graph_public_projection_anchors"):
+            self.assertEqual(validator[table], {"SELECT", "INSERT"})
+        self.assertIn(f"GRANT SELECT, INSERT ON uec.{table}", normalized)
+
+    def test_endpoint_and_anchor_rows_are_inserted_once_per_qualified_selector(self):
+        projection_id = uuid.uuid4()
+        public_id, record_id, facility_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+        private_value = "private-token"
+        rows = [
+            ("source-a", "permit", private_value, "facility", public_id,
+             [{"source_record_id": str(record_id), "facility_id": str(facility_id)}]),
+            ("source-b", "permit", private_value, "facility", public_id,
+             [{"source_record_id": str(record_id), "facility_id": str(facility_id)}]),
+            ("source-a", "vat", private_value, "organization", public_id,
+             [{"source_record_id": str(record_id), "facility_id": str(facility_id)}]),
+        ]
+
+        class Cursor:
+            def __init__(self): self.calls = []
+            def __enter__(self): return self
+            def __exit__(self, *_args): return False
+            def executemany(self, query, values): self.calls.append((query, values))
+        class Connection:
+            def __init__(self): self.cursor_value = Cursor()
+            def cursor(self): return self.cursor_value
+
+        connection = Connection()
+        mapping = {}
+        endpoint_count, anchor_count = _insert_endpoint_batch(connection, projection_id, rows, mapping)
+        self.assertEqual((endpoint_count, anchor_count), (3, 3))
+        self.assertEqual(len(mapping), 3)
+        self.assertEqual(len(connection.cursor_value.calls[0][1]), 3)
+        self.assertEqual(len(connection.cursor_value.calls[1][1]), 3)
+        self.assertNotIn(private_value, repr(connection.cursor_value.calls))
+
+    def test_endpoint_selector_is_separate_and_parameterized(self):
+        query, parameters = _python_endpoint_select("selected-release")
+        self.assertIn("FROM eligible_source_endpoints", query)
+        self.assertNotIn("source_identifier", query.split("SELECT", 1)[1].split("FROM", 1)[0])
+        self.assertEqual(parameters, {"release_id": "selected-release"})
 
     def test_completion_check_skips_staging_only_for_completed_matching_fingerprint(self):
         run_id = uuid.uuid4()

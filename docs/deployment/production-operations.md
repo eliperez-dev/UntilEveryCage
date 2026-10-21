@@ -342,11 +342,13 @@ build-public-graph-projection.py --release-id <approved-release>
 The builder uses `UEC_GRAPH_DATABASE_URL`, `UEC_GRAPH_DATABASE_NAME`, and
 `UEC_GRAPH_DATABASE_PURPOSE=private-graph-materialization-v1`; keep the URL in
 the environment, not an argument. It does not change release or review state.
-The package contains only the opaque-endpoint graph projection and internal
-canonical support references needed for live eligibility checks. It excludes
-private graph edges, source identifiers, and raw evidence. The restored API role
-gets `SELECT` on the safe current graph view only; support and endpoint-anchor
-tables remain outside that role's grants.
+The package contains the v2 opaque-endpoint graph projection and internal
+canonical support references needed for live eligibility checks. Endpoint
+anchor rows are stored once per source-qualified endpoint, independent of edge
+fanout. It excludes private graph edges, native source identifier values, and
+raw evidence. Migration 078 makes old v1 projections unavailable until rebuilt.
+The restored API role gets `SELECT` on the safe current graph view only; support,
+endpoint, and endpoint-anchor tables remain outside that role's grants.
 
 For a rehearsal, export and restore with environment-held connection strings
 only; do not put a credential in shell history, a command argument, or a log:
