@@ -22,9 +22,24 @@ for implementation claims. A count in this document is an aggregate candidate
 or evidence count, never a count of approved, accurate, operating, or
 publishable facilities unless explicitly labelled that way.
 
-## Current launch decision (2026-10-21)
+## Current launch decision (2026-10-22)
 
-**Latest hosted checkpoint:** map interaction repairs are live at
+**Approximate-location display correction:** implementation `7ee9f46c` replaces
+the public map's approximate dots with the existing category/V1 pin artwork and
+its fixed-pixel red disc with a selected-only geographic polygon: **250 m
+radius, 500 m across**. The earlier visibility repair below did not verify
+either pin artwork or ground distance; its 500-metre-area claim was incorrect
+for generic `approximate` records. Precision, clustering and release data remain
+unchanged. Geometry tests measure distance at four latitudes; the 255 frontend
+unit tests, type checks and cold/cached browser regression passed.
+
+Real-release local acceptance and the separate hosted rollout result are kept
+in ignored `data/staging/hosted-graph-qa-20261021/approx-area-local-acceptance.json`
+and `approx-area-hosted-acceptance.json`. Check their recorded status and
+revision before claiming deployment; implementation or CI alone is not hosted
+acceptance evidence.
+
+**Hosted interaction checkpoint (2026-10-21):** map interaction repairs were deployed to
 [the Render website](https://untileverycage.onrender.com) on application commit
 `a7bb5756`, deployment `dep-dbcjiqd9fdbs73a32hd0`. The default empty-hash map
 route now accepts control and selection actions. Approximate singleton records
