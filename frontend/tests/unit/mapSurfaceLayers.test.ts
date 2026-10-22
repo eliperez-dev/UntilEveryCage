@@ -87,7 +87,7 @@ describe('MapSurface layer contract', () => {
     expect(createMvtReferenceAreas([], 0.25).features).toEqual([]);
   });
 
-  it('keeps the selected public approximate area 250m across at multiple latitudes', () => {
+  it('keeps the selected public approximate area 500m across (250m radius) at multiple latitudes', () => {
     const earthRadiusKm = 6371.0088;
     const haversineKm = (from: [number, number], to: [number, number]) => {
       const radians = (value: number) => value * Math.PI / 180;
