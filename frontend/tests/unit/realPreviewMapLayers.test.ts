@@ -17,7 +17,8 @@ describe('real-preview native clustering layers', () => {
       { type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [4.1, 51.1] as [number, number] }, properties: { kind: 'reference', weight: 12 } },
     ] };
     addRealPreviewMapLayers(map as any, data);
-    expect(Object.keys(sources)).toEqual(['locations']);
+    expect(Object.keys(sources)).toEqual(['locations', 'approximate-reference-area']);
+    expect(sources['approximate-reference-area']).toMatchObject({ type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     expect(sources.locations).toMatchObject({ cluster: true, clusterRadius: 30, clusterMaxZoom: 7, roundZoom: true, clusterProperties: { representedCount: ['+', ['get', 'weight']], approximateCount: ['+', ['case', ['any', ['==', ['get', 'precision'], 'approximate'], ['==', ['get', 'precision'], 'city'], ['==', ['get', 'precision'], 'locality_reference_coarse']], ['get', 'weight'], 0]] } });
     expect(layers.find(layer => layer.id === 'clusters')?.filter).toEqual(['has', 'cluster']);
     expect(layers.find(layer => layer.id === 'clusters')?.layout['icon-image'])
@@ -35,10 +36,24 @@ describe('real-preview native clustering layers', () => {
       'all', ['!', ['has', 'cluster']], ['in', ['get', 'kind'], ['literal', ['reference', 'provider_locality_approximate']]],
       ['!', ['any', ['==', ['get', 'precision'], 'city'], ['==', ['get', 'precision'], 'city_reference_approximate'], ['==', ['get', 'precision'], 'provider_locality_approximate'], ['==', ['get', 'precision'], 'locality_reference_coarse']]],
     ]);
-    expect(layers.find(layer => layer.id === 'approx-reference-signal')).toMatchObject({
-      type: 'circle',
+    const approximatePins = layers.find(layer => layer.id === 'approx-reference-pins');
+    expect(approximatePins).toMatchObject({
+      type: 'symbol',
       filter: ['all', ['!', ['has', 'cluster']], ['in', ['get', 'kind'], ['literal', ['reference', 'provider_locality_approximate']]], ['==', ['get', 'precision'], 'approximate']],
-      paint: { 'circle-radius': 5, 'circle-opacity': 0.92, 'circle-stroke-width': 1.5 },
+      layout: { visibility: 'none', 'icon-anchor': 'bottom', 'icon-size': 0.5, 'text-field': ['case', ['>', ['get', 'weight'], 1], ['to-string', ['get', 'weight']], ''] },
+    });
+    expect(JSON.stringify(approximatePins.layout['icon-image'])).toContain('category_keys');
+    expect(JSON.stringify(approximatePins.layout['icon-image'])).toContain('v1-pin-red');
+    expect(layers.find(layer => layer.id === 'approx-reference-circles')).toMatchObject({
+      type: 'circle', layout: { visibility: 'visible' }, paint: { 'circle-radius': 6.5, 'circle-opacity': 0.94 },
+    });
+    expect(JSON.stringify(layers.find(layer => layer.id === 'approx-reference-circles').paint['circle-color']))
+      .toEqual(JSON.stringify(layers.find(layer => layer.id === 'source-coordinate-points').paint['circle-color']));
+    expect(layers.find(layer => layer.id === 'approximate-reference-area-fill')).toMatchObject({
+      type: 'fill', source: 'approximate-reference-area', paint: { 'fill-color': '#d8473f', 'fill-opacity': 0.16 },
+    });
+    expect(layers.find(layer => layer.id === 'approximate-reference-area-outline')).toMatchObject({
+      type: 'line', source: 'approximate-reference-area', paint: { 'line-color': '#ff695c', 'line-opacity': 0.92 },
     });
     expect(layers.find(layer => layer.id === 'aggregate-outer')?.paint).toMatchObject({
       'circle-color': '#d8473f', 'circle-opacity': 0, 'circle-stroke-color': '#ff695c', 'circle-stroke-width': 2.5,
@@ -69,11 +84,11 @@ describe('real-preview native clustering layers', () => {
   });
 
   it('keeps approximate singleton markers visible in either exact-pin presentation mode', async () => {
-    expect(REAL_PREVIEW_LAYER_IDS).toContain('approx-reference-signal');
+    expect(REAL_PREVIEW_LAYER_IDS).toContain('approx-reference-pins');
     const changes: Array<[string, string, unknown]> = [];
     const map = {
       hasImage: () => true,
-      getLayer: (id: string) => id === 'v1-source-pins' ? {} : undefined,
+      getLayer: (id: string) => ['v1-source-pins', 'approx-reference-circles', 'approx-reference-shadows', 'approx-reference-pins'].includes(id) ? {} : undefined,
       setLayoutProperty: (id: string, property: string, value: unknown) => changes.push([id, property, value]),
     };
     await setRealPreviewPinMode(map as any, false, '');
@@ -82,11 +97,16 @@ describe('real-preview native clustering layers', () => {
       ['source-coordinate-points', 'visibility', 'visible'],
       ['v1-source-shadows', 'visibility', 'none'],
       ['v1-source-pins', 'visibility', 'none'],
+      ['approx-reference-circles', 'visibility', 'visible'],
+      ['approx-reference-shadows', 'visibility', 'none'],
+      ['approx-reference-pins', 'visibility', 'none'],
       ['source-coordinate-points', 'visibility', 'none'],
       ['v1-source-shadows', 'visibility', 'visible'],
       ['v1-source-pins', 'visibility', 'visible'],
+      ['approx-reference-circles', 'visibility', 'none'],
+      ['approx-reference-shadows', 'visibility', 'visible'],
+      ['approx-reference-pins', 'visibility', 'visible'],
     ]);
-    expect(changes.some(([id]) => id === 'approx-reference-signal')).toBe(false);
   });
 
   it('detects an incomplete native projection so callers can restore every overlay', () => {

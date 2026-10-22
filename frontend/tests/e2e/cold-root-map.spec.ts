@@ -82,7 +82,7 @@ test('cold root and warmed reload keep map controls and exact/approximate points
 
   await page.getByLabel('Map style').selectOption('satellite');
   await expect.poll(() => new URL(page.url()).hash).toContain('basemap=satellite');
-  await expect.poll(() => page.evaluate(() => Boolean((window as any).__UEC_LOCAL_PREVIEW_MAP__?.getLayer('approx-reference-signal')))).toBe(true);
+  await expect.poll(() => page.evaluate(() => Boolean((window as any).__UEC_LOCAL_PREVIEW_MAP__?.getLayer('approx-reference-pins')))).toBe(true);
   await expect(page.locator('.startup-status')).toHaveCount(0);
 
   // Destroy and recreate the map through the real route lifecycle.
@@ -155,15 +155,38 @@ test('cold root and warmed reload keep map controls and exact/approximate points
 
   await moveAndCheckFeature(exactId, exactPoint, 'v1-source-pins');
   await expect.poll(() => new URL(page.url()).hash).toContain(`selected=${exactId}`);
+  expect(await page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getSource('approximate-reference-area')._data.geojson.features)).toHaveLength(0);
   await page.getByRole('button', { name: 'Close record detail' }).click();
   await expect.poll(() => new URL(page.url()).hash).not.toContain(`selected=${exactId}`);
 
-  await moveAndCheckFeature(approximateId, approximatePoint, 'approx-reference-signal');
+  await moveAndCheckFeature(approximateId, approximatePoint, 'approx-reference-pins');
   await expect.poll(() => new URL(page.url()).hash).toContain(`selected=${approximateId}`);
   await expect.poll(() => page.evaluate((id) => {
-    const expression = (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getPaintProperty('aggregate-outer', 'circle-opacity');
-    const includes = (value: unknown): boolean => value === id || (Array.isArray(value) && value.some(includes));
-    return includes(expression);
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    const area = map.getSource('approximate-reference-area')._data.geojson.features;
+    return area.length === 1 && area[0].properties.key === id
+      && map.queryRenderedFeatures({ layers: ['approximate-reference-area-fill'] }).some((feature: any) => feature.properties.key === id);
   }, approximateId)).toBe(true);
+  const radiusAtZoom = async (zoom: number) => {
+    await page.evaluate(({ zoom, point }) => (window as any).__UEC_LOCAL_PREVIEW_MAP__.jumpTo({ center: point, zoom }), { zoom, point: approximatePoint });
+    return page.evaluate(() => {
+      const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+      const feature = map.getSource('approximate-reference-area')._data.geojson.features[0];
+      const pin = map.queryRenderedFeatures({ layers: ['approx-reference-pins'] })[0];
+      const center = map.project(pin.geometry.coordinates);
+      const edge = map.project(feature.geometry.coordinates[0][0]);
+      return { radius: Math.hypot(edge.x - center.x, edge.y - center.y), ring: feature.geometry.coordinates[0] };
+    });
+  };
+  const radiusAt15 = await radiusAtZoom(15);
+  const radiusAt15_5 = await radiusAtZoom(15.5);
+  const radiusAt17 = await radiusAtZoom(17);
+  expect(radiusAt15.radius).toBeGreaterThan(0);
+  expect(radiusAt15_5.radius / radiusAt15.radius).toBeCloseTo(Math.sqrt(2), 1);
+  expect(radiusAt17.radius / radiusAt15.radius).toBeCloseTo(4, 0);
+  expect(radiusAt15_5.ring).toEqual(radiusAt15.ring);
+  expect(radiusAt17.ring).toEqual(radiusAt15.ring);
+  await page.getByRole('button', { name: 'Close record detail' }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getSource('approximate-reference-area')._data.geojson.features.length)).toBe(0);
   expect(feedRequests).toBe(1);
 });

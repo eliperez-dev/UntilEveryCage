@@ -31,6 +31,7 @@
   import {
     addMvtLocationLayers,
     baseRasterPaint,
+    createSelectedApproximateReferenceArea,
     createMvtReferenceAreas,
     createBaseStyle,
     removeLocationLayers,
@@ -139,6 +140,9 @@
   let requestedPublicReleaseId: string | null | undefined;
   let requestedPublicReleaseIdentity: string | null | undefined;
   let nativeFullCollection: JsonMapCollection | undefined;
+  let syncedApproximateAreaSource: GeoJSONSource | undefined;
+  let syncedApproximateAreaKey: string | null | undefined;
+  let syncedApproximateAreaCollection: JsonMapCollection | undefined;
   // Viewport updates replace `state`; only a changed source filter may rebuild
   // the native Supercluster index from the already-loaded map projection.
   let appliedNativeSourceId: string | null | undefined;
@@ -492,6 +496,7 @@
         map.setLayoutProperty("mvt-reference-kind", "visibility", showReferenceLabels ? "visible" : "none");
       return;
     }
+    if (mode === 'public-release') syncSelectedApproximateArea(map);
     applyRealPreviewVisualSettings(map, {
       referenceRadiusKm,
       referenceOpacity,
@@ -499,6 +504,24 @@
       showReferenceLabels,
       selectedKey: selectedReferenceKey ?? mapState.selectedId,
     });
+  }
+  function syncSelectedApproximateArea(instance: MapLibreMap) {
+    const source = instance.getSource('approximate-reference-area') as GeoJSONSource | undefined;
+    if (!source) {
+      syncedApproximateAreaSource = undefined;
+      syncedApproximateAreaKey = undefined;
+      syncedApproximateAreaCollection = undefined;
+      return;
+    }
+    const key = selectedReferenceKey ?? mapState.selectedId;
+    if (source === syncedApproximateAreaSource && key === syncedApproximateAreaKey
+      && nativeFullCollection === syncedApproximateAreaCollection) return;
+    source.setData(createSelectedApproximateReferenceArea(
+      nativeFullCollection?.features ?? [], key, DEFAULT_REFERENCE_RADIUS_KM,
+    ) as any);
+    syncedApproximateAreaSource = source;
+    syncedApproximateAreaKey = key;
+    syncedApproximateAreaCollection = nativeFullCollection;
   }
   function updateVisibleApproximateCount(instance: MapLibreMap): void {
     if (!isNativeMap() || !instance.getLayer("aggregate-outer")) {
@@ -515,6 +538,13 @@
   $effect(() => {
     mapState.selectedId;
     if (map?.isStyleLoaded()) updateVisualSettings();
+  });
+  $effect(() => {
+    const selectedId = mapState.selectedId;
+    if (mode === 'public-release' && selectedReferenceKey !== null && selectedReferenceKey !== selectedId) {
+      selectedReferenceKey = null;
+      if (map?.isStyleLoaded()) updateVisualSettings();
+    }
   });
   // A reference area belongs to the current inspected aggregate only. Keep it
   // through the reference request, then clear it as soon as that inspection is
@@ -1057,7 +1087,7 @@
           onselect(id);
         }
       });
-    const handleReferenceClick = (event: any, layer: "aggregate-outer" | "approx-reference-points" | "approx-reference-signal") => {
+    const handleReferenceClick = (event: any, layer: "aggregate-outer" | "approx-reference-points" | "approx-reference-pins" | "approx-reference-circles") => {
       if (activeFlight) return;
       // The visible point owns center clicks for approximate records; keep
       // the reference circle available for inspecting its selected area.
@@ -1111,11 +1141,14 @@
       }
     };
     map.on("click", "aggregate-outer", (event: any) => handleReferenceClick(event, "aggregate-outer"));
-    if (isNativeMap()) map.on("click", "approx-reference-signal", (event: any) => handleReferenceClick(event, "approx-reference-signal"));
+    if (isNativeMap()) {
+      map.on("click", "approx-reference-pins", (event: any) => handleReferenceClick(event, "approx-reference-pins"));
+      map.on("click", "approx-reference-circles", (event: any) => handleReferenceClick(event, "approx-reference-circles"));
+    }
     if (isNativeMap())
       map.on("click", "approx-reference-points", (event: any) => handleReferenceClick(event, "approx-reference-points"));
     for (const layer of isNativeMap()
-      ? ["clusters", "source-coordinate-points", "v1-source-pins", "aggregate-outer", "approx-reference-signal", "approx-reference-points"]
+      ? ["clusters", "source-coordinate-points", "v1-source-pins", "aggregate-outer", "approx-reference-pins", "approx-reference-circles", "approx-reference-points"]
       : ["clusters", "exact-pins", "approximate-points", "source-coordinate-points", "aggregate-outer"]) {
       map.on("mouseenter", layer, () => {
         if (map) map.getCanvas().style.cursor = "pointer";
@@ -1240,7 +1273,7 @@
           nativeCameraStartedAt = null;
         }
         if (diagnosticsOpen && instance.getLayer("clusters"))
-          nativeRenderedCount = instance.queryRenderedFeatures({ layers: ["clusters", "aggregate-outer", "approx-reference-signal", "approx-reference-points", "source-coordinate-points", "v1-source-pins"] }).length;
+          nativeRenderedCount = instance.queryRenderedFeatures({ layers: ["clusters", "aggregate-outer", "approx-reference-pins", "approx-reference-circles", "approx-reference-points", "source-coordinate-points", "v1-source-pins"] }).length;
       }
       if (usingMvt) {
         updateMvtDiagnostics(instance);
@@ -1354,7 +1387,7 @@
   $effect(() => {
     if (diagnosticsOpen && usingMvt && map) updateMvtDiagnostics(map);
     if (diagnosticsOpen && isNativeMap() && map?.getLayer("clusters"))
-      nativeRenderedCount = map.queryRenderedFeatures({ layers: ["clusters", "aggregate-outer", "approx-reference-signal", "approx-reference-points", "source-coordinate-points", "v1-source-pins"] }).length;
+      nativeRenderedCount = map.queryRenderedFeatures({ layers: ["clusters", "aggregate-outer", "approx-reference-pins", "approx-reference-circles", "approx-reference-points", "source-coordinate-points", "v1-source-pins"] }).length;
   });
 </script>
 

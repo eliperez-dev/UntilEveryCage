@@ -79,7 +79,8 @@ const v1CategoryPin = ['case',
   v1PinBySourceKey,
 ];
 export const REAL_PREVIEW_LAYER_IDS = [
-  'clusters', 'aggregate-outer', 'approx-reference-signal', 'approx-reference-points', 'aggregate-count',
+  'clusters', 'approximate-reference-area-fill', 'approximate-reference-area-outline',
+  'aggregate-outer', 'approx-reference-pins', 'approx-reference-shadows', 'approx-reference-circles', 'approx-reference-points', 'aggregate-count',
   'aggregate-kind', 'source-coordinate-points', 'v1-source-shadows', 'v1-source-pins',
 ] as const;
 
@@ -118,6 +119,10 @@ export function addRealPreviewMapLayers(
       approximateCount: ['+', ['case', ['any', ['==', ['get', 'precision'], 'approximate'], ['==', ['get', 'precision'], 'city'], ['==', ['get', 'precision'], 'locality_reference_coarse']], ['get', 'weight'], 0]],
     },
   } as any);
+  map.addSource('approximate-reference-area', {
+    type: 'geojson',
+    data: { type: 'FeatureCollection', features: [] },
+  });
 
   const unclustered = ['!', ['has', 'cluster']];
   const representedCount = ['get', 'representedCount'];
@@ -142,9 +147,19 @@ export function addRealPreviewMapLayers(
   // precision has not been independently verified.
   const reference = ['all', unclustered, referenceKind];
   const aggregateReference = ['all', unclustered, referenceKind];
+  const approximateReference = ['all', ...aggregateReference.slice(1), ['==', ['get', 'precision'], 'approximate']];
+  const cityReferenceArea = ['all', ...reference.slice(1), cityReference];
   const weight = ['get', 'weight'];
   map.addLayer({
-    id: 'aggregate-outer', type: 'circle', source: 'locations', filter: reference,
+    id: 'approximate-reference-area-fill', type: 'fill', source: 'approximate-reference-area',
+    paint: { 'fill-color': '#d8473f', 'fill-opacity': 0.16 },
+  } as any);
+  map.addLayer({
+    id: 'approximate-reference-area-outline', type: 'line', source: 'approximate-reference-area',
+    paint: { 'line-color': '#ff695c', 'line-opacity': 0.92, 'line-width': 2 },
+  } as any);
+  map.addLayer({
+    id: 'aggregate-outer', type: 'circle', source: 'locations', filter: cityReferenceArea,
     paint: {
       'circle-color': '#d8473f',
       'circle-radius': referenceRadiusExpression(DEFAULT_REFERENCE_RADIUS_KM),
@@ -156,20 +171,32 @@ export function addRealPreviewMapLayers(
       'circle-stroke-opacity': 0,
     },
   } as any);
-  // Public approximate facility references have weight 1, so the count layer
-  // has no text to draw. Give those records a quiet, clickable mark while
-  // retaining their reference kind and approximate precision. This is a
-  // location marker, not an accuracy boundary; only selection shows the area.
+  // Approximate singleton records use the same category pin family as
+  // source-coordinate facilities. The fallback circles serve debug mode only.
   map.addLayer({
-    id: 'approx-reference-signal', type: 'circle', source: 'locations',
-    filter: ['all', ...aggregateReference.slice(1), ['==', ['get', 'precision'], 'approximate']],
+    id: 'approx-reference-circles', type: 'circle', source: 'locations',
+    filter: approximateReference,
+    layout: { visibility: 'visible' },
     paint: {
-      'circle-radius': 5,
-      'circle-color': '#d9b36c',
-      'circle-opacity': 0.92,
-      'circle-stroke-color': '#172019',
-      'circle-stroke-width': 1.5,
+      'circle-radius': 6.5,
+      'circle-color': categoryColor,
+      'circle-opacity': 0.94,
+      'circle-stroke-color': '#171a18',
+      'circle-stroke-width': 2.5,
     },
+  } as any);
+  map.addLayer({
+    id: 'approx-reference-shadows', type: 'symbol', source: 'locations', filter: approximateReference,
+    layout: { visibility: 'none', 'icon-image': 'v1-pin-shadow', 'icon-anchor': 'bottom',
+      'icon-size': 1, 'icon-offset': [8.5, 0], 'icon-allow-overlap': true, 'icon-ignore-placement': true },
+  } as any);
+  map.addLayer({
+    id: 'approx-reference-pins', type: 'symbol', source: 'locations', filter: approximateReference,
+    layout: { visibility: 'none', 'icon-image': v1CategoryPin, 'icon-anchor': 'bottom', 'icon-size': 0.5,
+      'icon-allow-overlap': true, 'icon-ignore-placement': true,
+      'text-field': ['case', ['>', weight, 1], ['to-string', weight], ''], 'text-font': ['Open Sans Bold'], 'text-size': 11,
+      'text-allow-overlap': true, 'text-ignore-placement': true },
+    paint: { 'text-color': '#172019' },
   } as any);
   setClusterTileRounding(map, settings.maxZoom);
   // The map-scale disc sits behind a permanent center mark. At low zoom the
@@ -234,6 +261,9 @@ export async function setRealPreviewPinMode(map: MapLibreMap, enabled: boolean, 
   map.setLayoutProperty('source-coordinate-points', 'visibility', enabled ? 'none' : 'visible');
   map.setLayoutProperty('v1-source-shadows', 'visibility', enabled ? 'visible' : 'none');
   map.setLayoutProperty('v1-source-pins', 'visibility', enabled ? 'visible' : 'none');
+  if (map.getLayer('approx-reference-circles')) map.setLayoutProperty('approx-reference-circles', 'visibility', enabled ? 'none' : 'visible');
+  if (map.getLayer('approx-reference-shadows')) map.setLayoutProperty('approx-reference-shadows', 'visibility', enabled ? 'visible' : 'none');
+  if (map.getLayer('approx-reference-pins')) map.setLayoutProperty('approx-reference-pins', 'visibility', enabled ? 'visible' : 'none');
 }
 
 /** Paint/layout changes do not rebuild the full 39k-unit cluster index. */
@@ -246,6 +276,7 @@ export function applyRealPreviewVisualSettings(map: MapLibreMap, settings: RealP
   map.setPaintProperty('aggregate-outer', 'circle-opacity', ['case', selected, Math.min(0.34, settings.referenceOpacity + 0.12), 0] as any);
   map.setPaintProperty('aggregate-outer', 'circle-stroke-opacity', ['case', selected, Math.min(1, Math.max(0.62, settings.referenceOpacity * 2 + 0.52)), 0] as any);
   map.setPaintProperty('source-coordinate-points', 'circle-radius', settings.coordinateRadius);
+  if (map.getLayer('approx-reference-circles')) map.setPaintProperty('approx-reference-circles', 'circle-radius', settings.coordinateRadius);
   map.setLayoutProperty('aggregate-kind', 'visibility', settings.showReferenceLabels ? 'visible' : 'none');
 }
 

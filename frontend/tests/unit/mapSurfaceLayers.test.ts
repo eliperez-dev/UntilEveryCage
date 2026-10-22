@@ -4,6 +4,7 @@ import {
   MVT_LOCATION_LAYER_IDS,
   addMvtLocationLayers,
   createMvtReferenceAreas,
+  createSelectedApproximateReferenceArea,
   createBaseStyle,
   isMvtReferenceKind,
   mvtTileUrl,
@@ -66,7 +67,7 @@ describe('MapSurface layer contract', () => {
       .toEqual(['case', ['>', ['coalesce', ['get', 'count'], 1], 1], ['to-string', ['coalesce', ['get', 'count'], 1]], '']);
   });
 
-  it('creates selected-only 250m geographic areas for city and coarse references, never source points', () => {
+  it('creates selected-only 250m geographic areas for city and coarse MVT references, never source points', () => {
     const areas = createMvtReferenceAreas([
       { properties: { kind: 'city_reference', feature_key: 'city' }, geometry: { type: 'Point', coordinates: [4.35, 50.85] } },
       { properties: { kind: 'coarse_reference', feature_key: 'coarse' }, geometry: { type: 'Point', coordinates: [151.2, -33.8] } },
@@ -84,6 +85,44 @@ describe('MapSurface layer contract', () => {
     expect(isMvtReferenceKind('source_coordinate')).toBe(false);
     // A cold or deselected source is represented by an empty area collection.
     expect(createMvtReferenceAreas([], 0.25).features).toEqual([]);
+  });
+
+  it('keeps the selected public approximate area 250m across at multiple latitudes', () => {
+    const earthRadiusKm = 6371.0088;
+    const haversineKm = (from: [number, number], to: [number, number]) => {
+      const radians = (value: number) => value * Math.PI / 180;
+      const dLat = radians(to[1] - from[1]);
+      const dLon = radians(to[0] - from[0]);
+      const lat1 = radians(from[1]);
+      const lat2 = radians(to[1]);
+      const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+      return 2 * earthRadiusKm * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    };
+
+    for (const [longitude, latitude] of [[4.35, 50.85], [151.2, -33.8], [-72.4, 0], [12.5, 78.2]] as [number, number][]) {
+      const point = { type: 'Feature', properties: { key: `approx-${latitude}`, kind: 'reference', precision: 'approximate' }, geometry: { type: 'Point', coordinates: [longitude, latitude] } };
+      const area = createSelectedApproximateReferenceArea([point], `approx-${latitude}`, 0.25);
+      expect(area.features).toHaveLength(1);
+      expect(area.features[0]?.properties).toEqual({ key: `approx-${latitude}` });
+      const ring = area.features[0]!.geometry.coordinates[0]!;
+      expect(ring).toHaveLength(25);
+      expect(ring[0]).toEqual(ring.at(-1));
+      for (const coordinate of ring.slice(0, -1)) {
+        expect(haversineKm([longitude, latitude], coordinate)).toBeCloseTo(0.25, 5);
+      }
+    }
+  });
+
+  it('creates no public reference area for exact or source-coordinate features and clears when deselected', () => {
+    const points = [
+      { type: 'Feature', properties: { key: 'exact', kind: 'source-coordinate', precision: 'exact' }, geometry: { type: 'Point', coordinates: [4, 51] } },
+      { type: 'Feature', properties: { key: 'not-reference', kind: 'source-coordinate', precision: 'approximate' }, geometry: { type: 'Point', coordinates: [4, 51] } },
+      { type: 'Feature', properties: { key: 'city', kind: 'reference', precision: 'city' }, geometry: { type: 'Point', coordinates: [4, 51] } },
+    ];
+    expect(createSelectedApproximateReferenceArea(points, 'exact', 0.25).features).toHaveLength(0);
+    expect(createSelectedApproximateReferenceArea(points, 'not-reference', 0.25).features).toHaveLength(0);
+    expect(createSelectedApproximateReferenceArea(points, 'city', 0.25).features).toHaveLength(0);
+    expect(createSelectedApproximateReferenceArea(points, null, 0.25).features).toHaveLength(0);
   });
 
   it('tears down both projections before the selected path attaches', () => {
@@ -104,6 +143,6 @@ describe('MapSurface layer contract', () => {
       ...JSON_LOCATION_LAYER_IDS,
       ...MVT_LOCATION_LAYER_IDS,
     ]);
-    expect(removedSources).toEqual(['locations', 'mvt-reference-areas', 'preview-mvt']);
+    expect(removedSources).toEqual(['locations', 'approximate-reference-area', 'mvt-reference-areas', 'preview-mvt']);
   });
 });

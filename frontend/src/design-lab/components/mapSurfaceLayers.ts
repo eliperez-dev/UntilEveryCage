@@ -12,6 +12,11 @@ export type { BasemapKind };
 export const JSON_LOCATION_LAYER_IDS = [
   'clusters',
   'aggregate-outer',
+  'approximate-reference-area-fill',
+  'approximate-reference-area-outline',
+  'approx-reference-pins',
+  'approx-reference-shadows',
+  'approx-reference-circles',
   'approx-reference-points',
   'aggregate-count',
   'aggregate-kind',
@@ -55,22 +60,71 @@ export function isMvtReferenceKind(kind: unknown): boolean {
   return kind === 'city_reference' || kind === 'coarse_reference';
 }
 
+type ReferenceAreaFeature = Readonly<{
+  type: 'Feature';
+  properties: Record<string, string>;
+  geometry: Readonly<{ type: 'Polygon'; coordinates: [number, number][][] }>;
+}>;
+
+const emptyReferenceAreas = () => ({ type: 'FeatureCollection' as const, features: [] as ReferenceAreaFeature[] });
+
+/** Construct one great-circle polygon at a fixed surface distance from a point. */
+function geodesicReferenceArea(
+  key: string,
+  keyProperty: string,
+  longitude: number,
+  latitude: number,
+  radiusKm: number,
+): ReferenceAreaFeature | null {
+  if (!key || !Number.isFinite(longitude) || longitude < -180 || longitude > 180
+    || !Number.isFinite(latitude) || latitude < -90 || latitude > 90
+    || !Number.isFinite(radiusKm) || radiusKm <= 0) return null;
+
+  const earthRadiusKm = 6371.0088;
+  const angular = radiusKm / earthRadiusKm;
+  const lat1 = latitude * Math.PI / 180;
+  const lon1 = longitude * Math.PI / 180;
+  const ring: [number, number][] = [];
+  for (let bearing = 0; bearing <= 360; bearing += 15) {
+    const bearingRad = bearing * Math.PI / 180;
+    const lat2 = Math.asin(Math.sin(lat1) * Math.cos(angular)
+      + Math.cos(lat1) * Math.sin(angular) * Math.cos(bearingRad));
+    const lon2 = lon1 + Math.atan2(
+      Math.sin(bearingRad) * Math.sin(angular) * Math.cos(lat1),
+      Math.cos(angular) - Math.sin(lat1) * Math.sin(lat2),
+    );
+    ring.push([((lon2 * 180 / Math.PI + 540) % 360) - 180, lat2 * 180 / Math.PI]);
+  }
+  return {
+    type: 'Feature',
+    properties: { [keyProperty]: key },
+    geometry: { type: 'Polygon', coordinates: [ring] },
+  };
+}
+
+/** Return at most one fixed-radius area, only for the selected public approximate point. */
+export function createSelectedApproximateReferenceArea(
+  features: readonly any[],
+  selectedKey: string | null | undefined,
+  radiusKm: number,
+) {
+  if (!selectedKey) return emptyReferenceAreas();
+  const point = features.find(feature => feature?.properties?.key === selectedKey
+    && feature?.properties?.kind === 'reference'
+    && feature?.properties?.precision === 'approximate'
+    && feature?.geometry?.type === 'Point');
+  const coordinates = point?.geometry?.coordinates;
+  if (!Array.isArray(coordinates) || coordinates.length < 2) return emptyReferenceAreas();
+  const area = geodesicReferenceArea(selectedKey, 'key', Number(coordinates[0]), Number(coordinates[1]), radiusKm);
+  return area ? { type: 'FeatureCollection' as const, features: [area] } : emptyReferenceAreas();
+}
+
 /**
  * Build geographic, selected-only reference areas for every point-based
  * approximate MVT feature. This keeps display geometry in degrees rather than
  * using a constant pixel halo, including for coarse references.
  */
 export function createMvtReferenceAreas(features: readonly any[], radiusKm: number) {
-  const earthRadiusKm = 6371.0088;
-  const destination = (longitude: number, latitude: number, bearing: number): [number, number] => {
-    const angular = radiusKm / earthRadiusKm;
-    const lat1 = latitude * Math.PI / 180;
-    const lon1 = longitude * Math.PI / 180;
-    const bearingRad = bearing * Math.PI / 180;
-    const lat2 = Math.asin(Math.sin(lat1) * Math.cos(angular) + Math.cos(lat1) * Math.sin(angular) * Math.cos(bearingRad));
-    const lon2 = lon1 + Math.atan2(Math.sin(bearingRad) * Math.sin(angular) * Math.cos(lat1), Math.cos(angular) - Math.sin(lat1) * Math.sin(lat2));
-    return [((lon2 * 180 / Math.PI + 540) % 360) - 180, lat2 * 180 / Math.PI];
-  };
   const unique = new Map<string, unknown>();
   for (const feature of features) {
     if (!isMvtReferenceKind(feature?.properties?.kind) || feature?.geometry?.type !== 'Point') continue;
@@ -80,9 +134,8 @@ export function createMvtReferenceAreas(features: readonly any[], radiusKm: numb
     const longitude = Number(coordinates[0]);
     const latitude = Number(coordinates[1]);
     if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) continue;
-    const ring: [number, number][] = [];
-    for (let bearing = 0; bearing <= 360; bearing += 15) ring.push(destination(longitude, latitude, bearing));
-    unique.set(key, { type: 'Feature', properties: { feature_key: key }, geometry: { type: 'Polygon', coordinates: [ring] } });
+    const area = geodesicReferenceArea(key, 'feature_key', longitude, latitude, radiusKm);
+    if (area) unique.set(key, area);
   }
   return { type: 'FeatureCollection' as const, features: [...unique.values()] };
 }
@@ -188,6 +241,7 @@ export function removeLocationLayers(map: MapLike): void {
     if (map.getLayer(id)) map.removeLayer(id);
   }
   if (map.getSource('locations')) map.removeSource('locations');
+  if (map.getSource('approximate-reference-area')) map.removeSource('approximate-reference-area');
   if (map.getSource('mvt-reference-areas')) map.removeSource('mvt-reference-areas');
   if (map.getSource(MVT_SOURCE_ID)) map.removeSource(MVT_SOURCE_ID);
 }
