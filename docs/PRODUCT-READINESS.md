@@ -28,11 +28,20 @@ publishable facilities unless explicitly labelled that way.
 loading while retaining its previous page, approximate singleton PNGs carry an
 `≈` cue, and PNG mode no longer deliberately paints fallback dots during image
 loading. The search query uses indexed candidates before live eligibility
-checks; exact totals and legacy empty-search-text fallback remain. Real staging
-SQL measured 108 ms for the composed filtered Tyson query versus 3,525 ms for
-the earlier matching count; this is not an end-to-end browser timing. Initial
-integrated API measurements were still 1.6–2 seconds and require separate
-verification. Broad unfiltered exact counts remain a known cost.
+checks; exact totals and legacy empty-search-text fallback remain. Keyed page
+hydration additionally avoids expanding the full live view a second time.
+Paired real-copy API requests measured 99–123 ms for Tyson versus 1,311–1,616 ms
+before page hydration, and 1,010–1,094 ms for an unfiltered page versus
+2,256–2,269 ms. Totals and 25-row page sizes matched. Country and slaughter
+filters retained totals of 98 and 44; historical fallback returned 77 matches
+but remained slower. No new cache or index was added.
+
+The standard local gate passed 137 Rust, 663 pipeline and 75 adapter tests
+(37 optional skips); the page change then passed its two focused Rust tests.
+Frontend type checks and 256 unit tests passed. Browser and hosted verdicts
+remain separate: inspect the aggregate receipts under ignored
+`data/staging/hosted-graph-qa-20261021/`, including
+`search-pin-api-comparison.json`, before claiming runtime completion.
 
 The additive FSIS `shared_business_name` rule uses complete retained DBA aliases,
 not substring matches or ownership assertions. Its real-data materialization
