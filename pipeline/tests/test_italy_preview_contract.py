@@ -31,7 +31,9 @@ class ItalyPreviewContractTests(unittest.TestCase):
         descriptor = descriptor_for("it.853-2004")
         adapter = FirstWaveRefreshAdapter(descriptor)
         with tempfile.TemporaryDirectory(dir=ROOT) as temporary:
-            run_root = Path(temporary)
+            # Source operations append the history ledger beside the run root;
+            # keep that side effect inside the temporary tree for cleanup.
+            run_root = Path(temporary) / "source-run"
             result = adapter.refresh(mode="local-artifact", run_dir=run_root,
                                      artifact=descriptor.fixture_paths[0], options={})
             self.assertTrue(result["candidate_handoff"])

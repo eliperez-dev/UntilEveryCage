@@ -61,8 +61,30 @@ class Italy1069PreviewContractTests(unittest.TestCase):
             rows_path = root / "source-run" / "candidate-handoff" / "normalized" / "records.jsonl"
             self.assertEqual(manifest["source_id"], "it.1069-2009")
             self.assertEqual(manifest["normalized_rows"], summary["candidate_observation_rows"])
-            self.assertFalse((root / "source-run" / "candidate-handoff" / "graph-candidates").exists())
             records = [json.loads(line) for line in rows_path.read_text(encoding="utf-8").splitlines()]
+            graph_paths = list((root / "source-run").rglob("graph-candidates.jsonl"))
+            self.assertEqual(len(graph_paths), 1)
+            graph_manifest = json.loads((graph_paths[0].parent / "graph-candidates-manifest.json").read_text(encoding="utf-8"))
+            graph_candidates = [json.loads(line) for line in graph_paths[0].read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(graph_manifest["candidate_count"], len(graph_candidates))
+            self.assertEqual(len(graph_candidates), len(records))
+            candidate = graph_candidates[0]
+            self.assertEqual(candidate["source_id"], "it.1069-2009")
+            self.assertEqual(candidate["source_record_key"], records[0]["source_record_key"])
+            self.assertEqual(candidate["facilities"][0]["source_identifier"], {
+                "identifier_type": "eu_recognition_number", "id_namespace": "it.1069-2009",
+                "value": "ABP 42TEST3", "identity_scope": "source_scoped",
+            })
+            self.assertEqual(candidate["organizations"][0]["source_identifier"], {
+                "identifier_type": "italian_vat", "id_namespace": "it.tax-authority.vat",
+                "value": "00000000000", "identity_scope": "source_scoped",
+            })
+            self.assertEqual(candidate["relationships"][0]["relationship_type"], "operator")
+            self.assertEqual(candidate["name_assertions"][0]["role"], "legal")
+            self.assertEqual(candidate["source_values"]["p_iva"], "00000000000")
+            self.assertEqual(candidate["source_values"]["ragione_sociale"], "Synthetic ABP Test Srl")
+            self.assertEqual(candidate["normalized_values"]["recognition_number"], "ABP 42TEST3")
+            self.assertEqual(candidate["normalized_values"]["country_code"], "IT")
             parsed = [import_real_preview.parse_row("it.1069-2009", record) for record in records]
             self.assertEqual(parsed[0][1], "numeric_source_coordinate")
             self.assertEqual(parsed[0][7], "source-precision-unknown")
