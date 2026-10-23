@@ -189,7 +189,8 @@ test('cold root and warmed reload keep map controls and exact/approximate points
   await expect.poll(() => page.evaluate((id) => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return map.queryRenderedFeatures({ layers: ['approx-reference-cue'] }).some((feature: any) => feature.properties?.key === id)
-      && map.getLayoutProperty('approx-reference-cue', 'text-field') === '≈';
+      && map.getLayoutProperty('approx-reference-cue', 'icon-image') === 'approximation-mark'
+      && map.hasImage('approximation-mark');
   }, approximateId)).toBe(true);
   await moveAndCheckFeature(approximateId, approximatePoint, 'approx-reference-pins');
   await expect.poll(() => page.evaluate((id) => (window as any).__UEC_LOCAL_PREVIEW_MAP__

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { addRealPreviewMapLayers, applyRealPreviewVisualSettings, hasRealPreviewMapLayers, nativeClusterMaxZoom, referenceRadiusExpression, setClusterTileRounding, setRealPreviewPinMode, useRoundedClusterTiles, REAL_PREVIEW_LAYER_IDS } from '../../src/design-lab/components/realPreviewMapLayers';
 
 describe('real-preview native clustering layers', () => {
@@ -49,9 +49,9 @@ describe('real-preview native clustering layers', () => {
     });
     expect(layers.find(layer => layer.id === 'source-coordinate-points')?.layout?.visibility).toBe('none');
     expect(layers.find(layer => layer.id === 'approx-reference-cue')).toMatchObject({
-      type: 'symbol', layout: { 'text-field': '≈', 'text-allow-overlap': true },
-      paint: { 'text-color': '#f1efe8' },
+      type: 'symbol', layout: { visibility: 'none', 'icon-image': 'approximation-mark', 'icon-allow-overlap': true },
     });
+    expect(layers.find(layer => layer.id === 'approx-reference-cue')?.layout).not.toHaveProperty('text-field');
     expect(JSON.stringify(layers.find(layer => layer.id === 'approx-reference-circles').paint['circle-color']))
       .toEqual(JSON.stringify(layers.find(layer => layer.id === 'source-coordinate-points').paint['circle-color']));
     expect(layers.find(layer => layer.id === 'approximate-reference-area-fill')).toMatchObject({
@@ -93,7 +93,7 @@ describe('real-preview native clustering layers', () => {
     const changes: Array<[string, string, unknown]> = [];
     const map = {
       hasImage: () => true,
-      getLayer: (id: string) => ['v1-source-pins', 'source-coordinate-points', 'approx-reference-circles', 'approx-reference-shadows', 'approx-reference-pins'].includes(id) ? {} : undefined,
+      getLayer: (id: string) => ['v1-source-pins', 'source-coordinate-points', 'approx-reference-circles', 'approx-reference-shadows', 'approx-reference-pins', 'approx-reference-cue'].includes(id) ? {} : undefined,
       setLayoutProperty: (id: string, property: string, value: unknown) => changes.push([id, property, value]),
     };
     await setRealPreviewPinMode(map as any, false, '');
@@ -105,6 +105,7 @@ describe('real-preview native clustering layers', () => {
       ['approx-reference-circles', 'visibility', 'visible'],
       ['approx-reference-shadows', 'visibility', 'none'],
       ['approx-reference-pins', 'visibility', 'none'],
+      ['approx-reference-cue', 'visibility', 'none'],
       ['source-coordinate-points', 'visibility', 'none'],
       ['approx-reference-circles', 'visibility', 'none'],
       ['source-coordinate-points', 'visibility', 'none'],
@@ -113,12 +114,20 @@ describe('real-preview native clustering layers', () => {
       ['approx-reference-circles', 'visibility', 'none'],
       ['approx-reference-shadows', 'visibility', 'visible'],
       ['approx-reference-pins', 'visibility', 'visible'],
+      ['approx-reference-cue', 'visibility', 'visible'],
     ]);
   });
 
   it('keeps fallback dots hidden until V1 artwork is ready and ignores stale mode requests', async () => {
     const changes: Array<[string, string, unknown]> = [];
     const images = new Set<string>();
+    const imageData = { data: new Uint8ClampedArray(24 * 24 * 4), width: 24, height: 24 };
+    const context = {
+      beginPath: vi.fn(), arc: vi.fn(), fill: vi.fn(), stroke: vi.fn(), moveTo: vi.fn(), bezierCurveTo: vi.fn(),
+      getImageData: vi.fn(() => imageData),
+      set fillStyle(_value: string) {}, set strokeStyle(_value: string) {}, set lineWidth(_value: number) {}, set lineCap(_value: string) {},
+    };
+    const canvasContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(context as any);
     let releaseFirstImage!: (value: { data: unknown }) => void;
     let firstLoad = true;
     const map = {
@@ -127,7 +136,7 @@ describe('real-preview native clustering layers', () => {
         ? (firstLoad = false, new Promise<{ data: unknown }>(resolve => { releaseFirstImage = resolve; }))
         : Promise.resolve({ data: {} }),
       addImage: (id: string) => images.add(id),
-      getLayer: (id: string) => ['v1-source-pins', 'source-coordinate-points', 'approx-reference-circles', 'approx-reference-shadows', 'approx-reference-pins'].includes(id) ? {} : undefined,
+      getLayer: (id: string) => ['v1-source-pins', 'source-coordinate-points', 'approx-reference-circles', 'approx-reference-shadows', 'approx-reference-pins', 'approx-reference-cue'].includes(id) ? {} : undefined,
       setLayoutProperty: (id: string, property: string, value: unknown) => changes.push([id, property, value]),
     };
     const loading = setRealPreviewPinMode(map as any, true, '/pins/');
@@ -136,14 +145,20 @@ describe('real-preview native clustering layers', () => {
     await setRealPreviewPinMode(map as any, false, '/pins/');
     releaseFirstImage({ data: {} });
     await loading;
-    expect(changes.slice(-6)).toEqual([
+    expect(images.has('approximation-mark')).toBe(true);
+    expect(changes.slice(-7)).toEqual([
       ['source-coordinate-points', 'visibility', 'visible'],
       ['v1-source-shadows', 'visibility', 'none'],
       ['v1-source-pins', 'visibility', 'none'],
       ['approx-reference-circles', 'visibility', 'visible'],
       ['approx-reference-shadows', 'visibility', 'none'],
       ['approx-reference-pins', 'visibility', 'none'],
+      ['approx-reference-cue', 'visibility', 'none'],
     ]);
+    expect(changes).not.toContainEqual(['approx-reference-cue', 'visibility', 'visible']);
+    await setRealPreviewPinMode(map as any, true, '/pins/');
+    expect(changes.at(-1)).toEqual(['approx-reference-cue', 'visibility', 'visible']);
+    canvasContext.mockRestore();
   });
 
   it('detects an incomplete native projection so callers can restore every overlay', () => {

@@ -198,13 +198,6 @@ export function addRealPreviewMapLayers(
       'text-allow-overlap': true, 'text-ignore-placement': true },
     paint: { 'text-color': '#172019' },
   } as any);
-  map.addLayer({
-    id: 'approx-reference-cue', type: 'symbol', source: 'locations',
-    filter: ['all', ...aggregateReference.slice(1), ['any', ['==', ['get', 'precision'], 'approximate'], cityReference]],
-    layout: { 'text-field': '≈', 'text-font': ['Open Sans Bold'], 'text-size': 11, 'text-offset': [1.05, -1.05],
-      'text-allow-overlap': true, 'text-ignore-placement': true },
-    paint: { 'text-color': '#f1efe8', 'text-halo-color': '#171a18', 'text-halo-width': 1.5 },
-  } as any);
   setClusterTileRounding(map, settings.maxZoom);
   // The map-scale disc sits behind a permanent center mark. At low zoom the
   // disc is subpixel, while the center still makes the reference discoverable.
@@ -220,6 +213,12 @@ export function addRealPreviewMapLayers(
       'text-allow-overlap': true, 'text-ignore-placement': true,
     },
     paint: { 'text-color': '#172019' },
+  } as any);
+  map.addLayer({
+    id: 'approx-reference-cue', type: 'symbol', source: 'locations',
+    filter: ['all', ...aggregateReference.slice(1), ['any', ['==', ['get', 'precision'], 'approximate'], cityReference]],
+    layout: { visibility: 'none', 'icon-image': 'approximation-mark', 'icon-size': 1,
+      'icon-offset': [11, -29], 'icon-allow-overlap': true, 'icon-ignore-placement': true },
   } as any);
   map.addLayer({
     id: 'aggregate-count', type: 'symbol', source: 'locations',
@@ -257,6 +256,31 @@ const pinImageLoads = new WeakMap<MapLibreMap, Promise<void>>();
 const pinModeGenerations = new WeakMap<MapLibreMap, number>();
 const V1_PIN_IMAGES = [['v1-pin-red', 'marker-icon-2x-red.png'], ['v1-pin-green', 'marker-icon-2x-green.png'], ['v1-pin-yellow', 'marker-icon-2x-yellow.png'], ['v1-pin-violet', 'marker-icon-2x-violet.png'], ['v1-pin-orange', 'marker-icon-2x-orange.png'], ['v1-pin-grey', 'marker-icon-2x-grey.png'], ['v1-pin-shadow', 'marker-shadow.png']] as const;
 
+function createApproximationMarkImage(): ImageData | null {
+  const canvas = document.createElement('canvas');
+  canvas.width = 24;
+  canvas.height = 24;
+  const context = canvas.getContext('2d');
+  if (!context) return null;
+  context.beginPath();
+  context.arc(12, 12, 10.5, 0, Math.PI * 2);
+  context.fillStyle = '#171a18';
+  context.fill();
+  context.strokeStyle = '#f1efe8';
+  context.lineWidth = 1.5;
+  context.stroke();
+  context.beginPath();
+  context.moveTo(5.5, 9);
+  context.bezierCurveTo(8, 6, 16, 12, 18.5, 9);
+  context.moveTo(5.5, 15);
+  context.bezierCurveTo(8, 12, 16, 18, 18.5, 15);
+  context.strokeStyle = '#f1efe8';
+  context.lineWidth = 1.8;
+  context.lineCap = 'round';
+  context.stroke();
+  return context.getImageData(0, 0, 24, 24);
+}
+
 async function ensureV1PinImages(map: MapLibreMap, baseUrl: string): Promise<void> {
   let loading = pinImageLoads.get(map);
   if (!loading) {
@@ -266,6 +290,10 @@ async function ensureV1PinImages(map: MapLibreMap, baseUrl: string): Promise<voi
           const image = await map.loadImage(`${baseUrl}${file}`);
           if (!map.hasImage(id)) map.addImage(id, image.data);
         }
+      }
+      if (!map.hasImage('approximation-mark')) {
+        const mark = createApproximationMarkImage();
+        if (mark) map.addImage('approximation-mark', mark);
       }
     })();
     pinImageLoads.set(map, loading);
@@ -307,6 +335,7 @@ function applyRealPreviewPinVisibility(map: MapLibreMap, enabled: boolean): void
   if (map.getLayer('approx-reference-circles')) map.setLayoutProperty('approx-reference-circles', 'visibility', enabled ? 'none' : 'visible');
   if (map.getLayer('approx-reference-shadows')) map.setLayoutProperty('approx-reference-shadows', 'visibility', enabled ? 'visible' : 'none');
   if (map.getLayer('approx-reference-pins')) map.setLayoutProperty('approx-reference-pins', 'visibility', enabled ? 'visible' : 'none');
+  if (map.getLayer('approx-reference-cue')) map.setLayoutProperty('approx-reference-cue', 'visibility', enabled ? 'visible' : 'none');
 }
 
 /** Paint/layout changes do not rebuild the full 39k-unit cluster index. */
