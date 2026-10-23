@@ -7,9 +7,6 @@ from pathlib import Path
 from typing import Any, Iterable
 
 
-RELEASE_MANIFEST = Path(r"D:\UntilEveryCage-Operations\deployment\serving-20261018\release-2026-10-18-manifest.json")
-
-
 def _read_object(path: Path) -> dict[str, Any] | None:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -46,7 +43,7 @@ def _candidate_manifests(roots: Iterable[str | Path]) -> dict[str, list[tuple[st
 def build_source_graph_coverage(
     roots: Iterable[str | Path],
     *,
-    release_manifest_path: str | Path = RELEASE_MANIFEST,
+    release_manifest_path: str | Path,
     retained_private_source_ids: Iterable[str] = (),
 ) -> dict[str, Any]:
     """Build release plus retained-private source coverage without reading rows.
@@ -114,4 +111,4 @@ def build_source_graph_coverage(
     }
 
 
-__all__ = ["RELEASE_MANIFEST", "build_source_graph_coverage"]
+__all__ = ["build_source_graph_coverage"]

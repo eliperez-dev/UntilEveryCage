@@ -260,7 +260,7 @@ class Italy853Adapter:
                     for field, role in (("name", "business"), ("trading_name", "trading"))
                     if isinstance(record.get("normalized"), dict) and record["normalized"].get(field)
                 ] or None),
-                location_role=("operating" if isinstance(record.get("normalized"), dict) and record["normalized"].get("location_role") == "recognized-establishment-location" else "unknown"),
+                location_role="unknown",
             ))
         graph_manifest = write_graph_candidates(root / "graph", graph_candidates)
         anomaly_counts = Counter(reason for item in quarantined for reason in item["reasons"])

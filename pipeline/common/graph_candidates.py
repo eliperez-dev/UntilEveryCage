@@ -22,6 +22,14 @@ def _stable_ref(prefix: str, value: str) -> str:
     return f"{prefix}:{digest}"
 
 
+def _identifier_namespace(source_id: str, identifier_type: str) -> str:
+    # Italian VAT is issued under the same national authority namespace in
+    # both retained ministry registers; other native IDs remain source-local.
+    if source_id in {"it.1069-2009", "it.853-2004"} and identifier_type == "italian_vat":
+        return "it.tax-authority.vat"
+    return source_id
+
+
 def build_identifier_graph_candidate(
     *,
     source_id: str,
@@ -64,11 +72,11 @@ def build_identifier_graph_candidate(
     if facility_identifier:
         identifier_type, value = facility_identifier
         facility_ref = _stable_ref("facility", f"{source_id}|{identifier_type}|{value}")
-        facilities.append({"local_ref": facility_ref, "source_identifier": {"identifier_type": identifier_type, "id_namespace": source_id, "value": value, "identity_scope": "source_scoped"}})
+        facilities.append({"local_ref": facility_ref, "source_identifier": {"identifier_type": identifier_type, "id_namespace": _identifier_namespace(source_id, identifier_type), "value": value, "identity_scope": "source_scoped"}})
     for identifier_type, value in organization_pairs:
         organization_ref = _stable_ref("organization", f"{source_id}|{identifier_type}|{value}")
         organization_refs.append(organization_ref)
-        organizations.append({"local_ref": organization_ref, "source_identifier": {"identifier_type": identifier_type, "id_namespace": source_id, "value": value, "identity_scope": "source_scoped"}})
+        organizations.append({"local_ref": organization_ref, "source_identifier": {"identifier_type": identifier_type, "id_namespace": _identifier_namespace(source_id, identifier_type), "value": value, "identity_scope": "source_scoped"}})
     relationships = []
     support = [{"source_record_key": source_record_key}]
     if artifact_sha256:

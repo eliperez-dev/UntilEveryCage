@@ -24,7 +24,7 @@ FACILITY_IDENTIFIERS: dict[str, tuple[str, str]] = {
     "it.1069-2009": ("it_1069_recognition_number", "it.1069-2009"),
     "it.853-2004": ("it_853_recognition_number", "it.853-2004"),
     "nl.nvwa.approved-food": ("nvwa_approval_number", "nl.nvwa.approved-food"),
-    "us.aphis": ("aphis_registration_or_event_id", "us.aphis"),
+    "us.aphis": ("aphis_establishment_id", "us.aphis"),
     "us.fsis": ("fsis_establishment_number", "us.fsis"),
     "fr.dgal.section-i": ("dgal_section_i_approval", "fr.dgal.section-i"),
     "fr.dgal.section-ii": ("dgal_section_ii_approval", "fr.dgal.section-ii"),
@@ -32,26 +32,29 @@ FACILITY_IDENTIFIERS: dict[str, tuple[str, str]] = {
     "gb.scot.marine.aquaculture": ("scottish_aquaculture_site_id", "gb.scot.marine.aquaculture"),
 }
 
-# Only fields whose source adapters already distinguish their business role
-# are eligible.  Deliberately omit generic ``name`` and ambiguous person,
-# account, contact, or government-link fields.
+# Only fields whose source adapters or retained projection explicitly
+# distinguish their facility/business role are eligible. Deliberately omit
+# generic ``name`` and ambiguous person, account, contact, or government-link
+# fields.
 NAME_FIELDS: dict[str, tuple[tuple[str, str], ...]] = {
-    "au.npi.facilities": (("registered_business_name", "legal"), ("facility_name", "business")),
-    "ca.ontario.meat-plants": (("operator_name", "operator"), ("trading_name", "trading")),
-    "dk.smiley": (("trading_name", "trading"),),
-    "fsa_approved_establishments": (("trading_name", "trading"),),
-    "fss_approved_establishments": (("trading_name", "trading"),),
-    "it.1069-2009": (("name", "business"), ("trading_name", "trading")),
-    "it.853-2004": (("name", "business"), ("trading_name", "trading")),
+    "au.npi.facilities": (("registered_business_name", "legal"), ("facility_name", "business"), ("facility_display_name", "business")),
+    "ca.ontario.meat-plants": (("operator_name", "operator"), ("trading_name", "trading"), ("facility_display_name", "business")),
+    "dk.smiley": (("trading_name", "trading"), ("facility_display_name", "business")),
+    "fsa_approved_establishments": (("trading_name", "trading"), ("facility_display_name", "business")),
+    "fss_approved_establishments": (("trading_name", "trading"), ("facility_display_name", "business")),
+    "nl.nvwa.approved-food": (("trading_name", "trading"), ("facility_display_name", "business")),
+    "us.aphis": (("canonical_name", "business"), ("facility_display_name", "business")),
+    "it.1069-2009": (("name", "business"), ("trading_name", "trading"), ("facility_display_name", "business")),
+    "it.853-2004": (("name", "business"), ("trading_name", "trading"), ("facility_display_name", "business")),
     "us.fsis": (("canonical_name", "business"),),
-    "fr.dgal.section-i": (("name", "business"), ("trading_name", "trading")),
-    "fr.dgal.section-ii": (("name", "business"), ("trading_name", "trading")),
+    "fr.dgal.section-i": (("name", "business"), ("trading_name", "trading"), ("facility_display_name", "business")),
+    "fr.dgal.section-ii": (("name", "business"), ("trading_name", "trading"), ("facility_display_name", "business")),
+    "fr.georisques.icpe.animal": (("trading_name", "business"), ("facility_name", "business")),
+    "gb.scot.marine.aquaculture": (("facility_name", "business"),),
 }
 
 LOCATION_ROLES: dict[str, str] = {
     "source-reported-facility-location": "operating",
-    "recognized-1069-establishment-location": "operating",
-    "recognized-establishment-location": "operating",
     "mailing": "mailing",
     "registered": "registered",
     "city_reference": "city_reference",
