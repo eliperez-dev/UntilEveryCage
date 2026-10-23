@@ -45,8 +45,9 @@ remain separate: inspect the aggregate receipts under ignored
 Direct real-feed Chrome acceptance verified the small image-based cue, delayed
 PNG loading, matching physical pin selection, dismissal clearing, style changes
 and reload. Firefox verified search feedback and styles, but its pin-specific
-checks were inconclusive. CI now includes the cold-root map regression in all
-three browsers and uses the official image matching locked Playwright 1.63.0
+checks were inconclusive. CI runs the shell tests in three browsers; the
+cold-root map regression remains Chromium-only (Firefox and WebKit skip it).
+CI uses the official image matching locked Playwright 1.63.0
 instead of repeatedly installing OS dependencies from an Ubuntu mirror.
 
 The additive FSIS `shared_business_name` rule uses complete retained DBA aliases,
