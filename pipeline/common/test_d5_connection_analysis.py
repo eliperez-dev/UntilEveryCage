@@ -236,6 +236,35 @@ class D5ConnectionAnalysisTests(unittest.TestCase):
             {"a" * 64, "b" * 64},
         )
 
+    def test_emitted_icpe_siret_alias_shape_is_consumed_from_containing_facility(self):
+        def row(source_id: str, key: str, aiot: str):
+            return {
+                "source_id": source_id, "source_record_key": key,
+                "source_artifact_sha256": ("a" if source_id == "source-a" else "b") * 64,
+                "observed_at": "2026-10-23T00:00:00Z",
+                "facilities": [{
+                    "local_ref": "facility:1",
+                    "source_identifier": {
+                        "identifier_type": "source_establishment_id", "value": aiot,
+                        "id_namespace": "source_scoped",
+                    },
+                    "additional_source_identifiers": [{
+                        "identifier_type": "french_siret", "value": "12345678901234",
+                        "id_namespace": "fr.insee.siret", "identity_scope": "source_scoped",
+                    }],
+                }],
+            }
+
+        first = _observed_from_row(row("source-a", "row-a", "AIOT-A"))
+        second = _observed_from_row(row("source-b", "row-b", "AIOT-B"))
+        self.assertEqual(first.shared_facility_identifiers, {"fr.insee.siret::frenchsiret": "12345678901234"})
+        iterator, _ = _iter_probabilistic_candidates([first, second], preserve_native_endpoints=True)
+        candidates = list(iterator)
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0]["relationship_type"], "shared_source_identifier")
+        self.assertEqual([endpoint["identifier_type"] for endpoint in candidates[0]["endpoints"]],
+                         ["source_establishment_id", "source_establishment_id"])
+
     def test_additional_identifier_needs_same_namespace_and_never_self_links(self):
         def row(source_id: str, key: str, aiot: str, namespace: str):
             return {

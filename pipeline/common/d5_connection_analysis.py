@@ -30,7 +30,7 @@ from pipeline.common.graph_edges import (EntityRef, SourceRef, build_connection_
 
 
 REPORT_VERSION = "d7-real-graph-analysis-v1"
-RULESET_VERSION = "d7-multi-signal-candidates-v2"
+RULESET_VERSION = "d7-multi-signal-candidates-v3"
 SHARED_BUSINESS_NAME_RULESET_VERSION = "d7-shared-business-name-v3"
 EVIDENCE_SOURCE_IDS = frozenset({"us.aphis", "us.inspections"})
 FACILITY_ID_KEYS = frozenset({
@@ -279,7 +279,20 @@ def _observed_from_row(row: Mapping[str, Any], fallback_source: str | None = Non
     shared_facility_identifiers: dict[str, str] = {}
     facility_entities = row.get("facilities")
     if isinstance(facility_entities, list) and kind == "facility_master" and facility_ids:
-        primary_type, primary_value = sorted(facility_ids.items())[0]
+        # Alias scope is inherited from its containing facility reference. Do
+        # not select the alias owner by sorting a row-wide identifier map: a
+        # candidate can carry other identifiers, and their ordering is not an
+        # ownership assertion. Only consume row-level aliases when all typed
+        # facility refs resolve to one unambiguous native facility endpoint.
+        facility_signatures = {
+            (_norm(entity.get("source_identifier", {}).get("identifier_type")),
+             _norm(entity.get("source_identifier", {}).get("value")
+                   or entity.get("source_identifier", {}).get("source_identifier")))
+            for entity in facility_entities
+            if isinstance(entity, Mapping) and isinstance(entity.get("source_identifier"), Mapping)
+        }
+        facility_signatures.discard((None, None))
+        owner_signature = next(iter(facility_signatures)) if len(facility_signatures) == 1 else None
         for entity in facility_entities:
             if not isinstance(entity, Mapping):
                 continue
@@ -289,9 +302,9 @@ def _observed_from_row(row: Mapping[str, Any], fallback_source: str | None = Non
             entity_type = _norm(primary.get("identifier_type"))
             entity_value = _norm(primary.get("value") or primary.get("source_identifier"))
             # Additions inherit the local_ref of their containing facility.
-            # Match only additions attached to the same primary endpoint that
-            # this row-level observation will actually represent.
-            if (entity_type, entity_value) != (primary_type, primary_value):
+            # Row-wide matching cannot safely carry aliases from ambiguous
+            # multi-facility candidates or from a second endpoint.
+            if not owner_signature or (entity_type, entity_value) != owner_signature:
                 continue
             additional_identifiers = entity.get("additional_source_identifiers")
             if not isinstance(additional_identifiers, list):
