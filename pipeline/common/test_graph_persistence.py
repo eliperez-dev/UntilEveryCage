@@ -60,6 +60,39 @@ def candidate(source_id="synthetic.graph"):
 
 class GraphPersistenceContractTests(unittest.TestCase):
 
+    def test_shared_business_name_candidate_persists_as_inferred_non_operator_relation(self):
+        raw = {
+            "endpoints": [
+                {"entity_type": "facility", "source_id": "us.fsis", "identifier_type": "establishment_id", "source_identifier": "FS-1"},
+                {"entity_type": "facility", "source_id": "us.fsis", "identifier_type": "establishment_id", "source_identifier": "FS-2"},
+            ],
+            "provenance": [
+                {"source_id": "us.fsis", "source_record_key": "record-1"},
+                {"source_id": "us.fsis", "source_record_key": "record-2"},
+            ],
+            "relationship_type": "shared_business_name",
+            "method": "exact_fsis_alternate_name_equality",
+            "ruleset": "d6-shared-business-name-v1",
+            "contributing_features": ["shared_business_name"],
+            "contradictory_evidence": [],
+            "observed_at": "2026-01-01T00:00:00Z",
+            "disclaimer": "Inferred shared business name only; not evidence of ownership, operator status, or facility identity.",
+        }
+        edge = _matcher_edge(raw, {"source_record_key": "record-1"},
+                             {"source_id": "us.fsis", "retrieved_at_utc": "2026-01-02T00:00:00Z"})
+        self.assertIsNotNone(edge)
+        self.assertEqual(edge["relationship_type"], "shared_business_name")
+        self.assertEqual(edge["connection_type"], "inferred")
+        self.assertEqual(edge["confidence_band"], "possible")
+        self.assertEqual(edge["ruleset_version"], "d6-signal-rules-v2")
+        self.assertEqual([item["source_record_key"] for item in edge["supporting_source_refs"]], ["record-1", "record-2"])
+        self.assertNotIn("operator", edge["relationship_type"])
+        self.assertNotIn("Tyson", json.dumps(edge))
+        malformed = json.loads(json.dumps(raw))
+        malformed["provenance"] = malformed["provenance"][:1]
+        self.assertIsNone(_matcher_edge(malformed, {"source_record_key": "record-1"},
+                                        {"source_id": "us.fsis", "retrieved_at_utc": "2026-01-02T00:00:00Z"}))
+
     def test_materialization_checkpoint_waits_for_finalization_and_failure_is_retryable(self):
         events = []
 

@@ -71,6 +71,12 @@ def validate_graph_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("source_row must be a positive integer")
     if not isinstance(candidate.get("source_values"), dict):
         raise ValueError("source_values must be an object")
+    if "shared_business_name_aliases" in candidate:
+        aliases = candidate["shared_business_name_aliases"]
+        if candidate["source_id"] != "us.fsis" or not isinstance(aliases, list) or any(
+            not isinstance(value, str) or not value.strip() for value in aliases
+        ):
+            raise ValueError("shared_business_name_aliases must be non-empty FSIS alias strings")
 
     publication = candidate.get("publication")
     expected_publication = {

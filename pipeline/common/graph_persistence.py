@@ -1111,6 +1111,10 @@ def _matcher_edge(raw: dict[str, Any], candidate: dict[str, Any], manifest: dict
         raise GraphPersistenceError("matcher edge must be an object")
     if {"edge_key", "from", "to", "connection_type"}.issubset(raw):
         edge = dict(validate_connection_edge(raw))
+        # Shared-name edges may only enter via the source-aware private matcher
+        # below, which verifies FSIS endpoints and both source-record supports.
+        if edge.get("relationship_type") == "shared_business_name":
+            return None
         edge["supporting_source_refs"] = [dict(ref) for ref in edge["supporting_source_refs"]]
         for ref in edge["supporting_source_refs"]:
             key = ref.get("source_record_key")
@@ -1148,17 +1152,35 @@ def _matcher_edge(raw: dict[str, Any], candidate: dict[str, Any], manifest: dict
         )
         if _forbidden_evidence_facility_pair(left_ref, right_ref):
             return None
+        if raw.get("relationship_type") == "shared_business_name":
+            provenance = raw.get("provenance")
+            if (
+                left_ref.entity_type != "facility" or right_ref.entity_type != "facility"
+                or left_ref.source_id != "us.fsis" or right_ref.source_id != "us.fsis"
+                or raw.get("ruleset") != "d6-shared-business-name-v1"
+                or raw.get("method") != "exact_fsis_alternate_name_equality"
+                or raw.get("contributing_features") != ["shared_business_name"]
+                or not isinstance(provenance, list) or len(provenance) != 2
+                or any(not isinstance(item, dict) or item.get("source_id") != "us.fsis"
+                       or not item.get("source_record_key") for item in provenance)
+                or provenance[0].get("source_record_key") == provenance[1].get("source_record_key")
+            ):
+                return None
         signal_names = {
             "name": "organization_name_normalized",
             "postal": "postal_match",
             "city": "city_match",
             "address": "address_match",
+            "shared_business_name": "shared_business_name",
         }
-        signals = [
-            {"name": signal_names[name], "details": {"basis": "indexed_normalized_block"}}
-            for name in raw.get("contributing_features", ())
-            if name in signal_names
-        ]
+        signals = []
+        for name in raw.get("contributing_features", ()):
+            if name not in signal_names:
+                continue
+            details = {"basis": "exact_fsis_dba_alternate_name_equality"} if name == "shared_business_name" else {"basis": "indexed_normalized_block"}
+            if name == "shared_business_name":
+                details["scope"] = "shared_business_name_only_not_ownership_operator_or_facility_identity"
+            signals.append({"name": signal_names[name], "details": details})
         for contradiction in raw.get("contradictory_evidence", ()):
             if not isinstance(contradiction, dict):
                 continue

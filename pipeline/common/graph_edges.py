@@ -16,7 +16,7 @@ import math
 from typing import Any, Iterable, Mapping
 
 
-RULESET_VERSION = "d6-signal-rules-v1"
+RULESET_VERSION = "d6-signal-rules-v2"
 ENTITY_TYPES = {"facility", "organization", "evidence_event"}
 CONNECTION_TYPES = {"exact", "inferred"}
 CONFIDENCE_BANDS = {"exact", "high", "probable", "possible", "low"}
@@ -168,6 +168,8 @@ def default_signal_registry(*, version: str = RULESET_VERSION) -> SignalRegistry
         SignalDefinition("source_assertion", "source", 1.0, qualifies=True),
         SignalDefinition("identifier_cooccurrence", "identity", 0.62, qualifies=True),
         SignalDefinition("organization_name_normalized", "identity", 0.34, qualifies=False),
+        # A separate inferred relation, not an operator or identity assertion.
+        SignalDefinition("shared_business_name", "identity", 0.58, qualifies=True),
         SignalDefinition("postal_match", "location", 0.18),
         SignalDefinition("city_match", "location", 0.10),
         SignalDefinition("address_match", "location", 0.22),
