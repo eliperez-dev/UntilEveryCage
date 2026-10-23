@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { ApiError } from './errors';
 import type { FetchLike, LocalProfile } from './LocalLocationRepository';
-import { graphConnectionsEnvelopeSchema, graphEntitiesEnvelopeSchema, type PublicGraphConnection, type PublicGraphEntity } from './publicGraphSchema';
+import { graphConnectionsEnvelopeSchema, graphEntitiesEnvelopeSchema, graphEvidenceReferencesEnvelopeSchema, type PublicGraphConnection, type PublicGraphEntity, type PublicGraphEvidenceReference } from './publicGraphSchema';
 
 export type GraphFilters = Readonly<{
   release_id?: string;
@@ -16,6 +16,7 @@ export type GraphFilters = Readonly<{
   limit?: number;
 }>;
 export type GraphEntityFilters = Readonly<{ q?: string; entity_type?: 'facility' | 'organization'; cursor?: string; limit?: number }>;
+export type GraphEvidenceReferenceFilters = Readonly<{ release_id?: string; cursor?: string; limit?: number }>;
 export type GraphPage<T> = Readonly<{ data: readonly T[]; releaseId: string; ruleset: string; profile: LocalProfile; nextCursor: string | null }>;
 
 const fail = (kind: ApiError['kind'], message: string, status?: number, code?: string): ApiError => Object.assign(new Error(message), { kind, ...(status === undefined ? {} : { status }), ...(code ? { code } : {}) });
@@ -59,6 +60,13 @@ export class PublicGraphRepository {
   async entities(profile: LocalProfile = 'official', filters: GraphEntityFilters = {}, signal?: AbortSignal): Promise<GraphPage<PublicGraphEntity>> {
     const parsed = graphEntitiesEnvelopeSchema.safeParse(await this.json(`/api/v2/graph/entities?${serializeGraphQuery(profile, filters)}`, signal));
     if (!parsed.success) throw fail('invalid-contract', 'Public graph entity response was rejected safely.');
+    return { data: parsed.data.data, profile, releaseId: parsed.data.meta.release_id, ruleset: parsed.data.meta.ruleset_version, nextCursor: parsed.data.meta.next_cursor ?? null };
+  }
+
+  async evidenceReferences(entityId: string, profile: LocalProfile = 'official', filters: GraphEvidenceReferenceFilters = {}, signal?: AbortSignal): Promise<GraphPage<PublicGraphEvidenceReference>> {
+    if (!uuid.safeParse(entityId).success) throw fail('invalid-contract', 'Graph entity ID must be a UUID.');
+    const parsed = graphEvidenceReferencesEnvelopeSchema.safeParse(await this.json(`/api/v2/graph/entities/${encodeURIComponent(entityId)}/evidence?${serializeGraphQuery(profile, filters)}`, signal));
+    if (!parsed.success || (filters.release_id !== undefined && parsed.data.meta.release_id !== filters.release_id)) throw fail('invalid-contract', 'Public evidence reference response was rejected safely.');
     return { data: parsed.data.data, profile, releaseId: parsed.data.meta.release_id, ruleset: parsed.data.meta.ruleset_version, nextCursor: parsed.data.meta.next_cursor ?? null };
   }
 

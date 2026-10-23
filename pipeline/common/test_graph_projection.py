@@ -20,6 +20,8 @@ from pipeline.common.graph_projection import (
     _insert_endpoint_batch,
     _python_endpoint_select,
     _python_edge_select,
+    _python_aphis_reference_select,
+    _insert_aphis_reference_batch,
     sanitize_signal_explanation,
 )
 from pipeline.common.real_private_graph import (
@@ -146,6 +148,60 @@ class GraphProjectionTests(unittest.TestCase):
         self.assertEqual(query.count("%(release_id)s"), 2)
         self.assertEqual(parameters, {"release_id": "selected-release"})
 
+    def test_aphis_reference_selector_is_exact_and_release_gated(self):
+        query, parameters = _python_aphis_reference_select("selected-release")
+        self.assertIn("event.release_id=%(release_id)s", query)
+        self.assertIn("event.storage_state='released'", query)
+        self.assertIn("event.review_state='accepted'", query)
+        self.assertIn("event.privacy_status='passed'", query)
+        self.assertIn("event.publication_status='released'", query)
+        self.assertIn("link.match_method='exact_source_identifier'", query)
+        self.assertIn("review.source_record_id=event.source_record_id", query)
+        self.assertIn("review.maintainer_approval='approved'", query)
+        self.assertIn("rights.redistribution_status='cleared'", query)
+        self.assertIn("rights.artifact_sha256=artifact.sha256", query)
+        self.assertIn("endpoint.source_id='us.aphis'", query)
+        self.assertNotIn("event_payload", query)
+        self.assertNotIn("raw_fields", query)
+        self.assertEqual(parameters, {"release_id": "selected-release"})
+
+    def test_public_aphis_reference_batch_uses_only_typed_allowlisted_metadata(self):
+        endpoint = uuid.uuid4()
+        public_id = uuid.uuid4()
+        private_identifier = "APHIS-private-native-id"
+        key = ("us.aphis", "aphis_certificate_number", private_identifier, "facility", public_id)
+        endpoint_ids = {key: endpoint}
+        annual_record = uuid.uuid4()
+        inspection_record = uuid.uuid4()
+        rows = [
+            (*key[:4], public_id, annual_record, "us.aphis.annual-reports", "annual_reports",
+             None, "2025", "2026-10-01T00:00:00Z"),
+            (*key[:4], public_id, inspection_record, "us.inspections", "inspections",
+             "2026-10-03", None, "2026-10-04T00:00:00Z"),
+            (*key[:4], public_id, uuid.uuid4(), "us.inspections", "annual_reports",
+             None, "2025", "2026-10-04T00:00:00Z"),
+        ]
+
+        class Cursor:
+            def __init__(self): self.calls = []
+            def __enter__(self): return self
+            def __exit__(self, *_args): return False
+            def executemany(self, query, values): self.calls.append((query, values))
+        class Connection:
+            def __init__(self): self.cursor_value = Cursor()
+            def cursor(self): return self.cursor_value
+
+        connection = Connection()
+        count = _insert_aphis_reference_batch(connection, uuid.uuid4(), rows, endpoint_ids)
+        self.assertEqual(count, 2)
+        query, values = connection.cursor_value.calls[0]
+        self.assertIn("graph_public_projection_evidence_refs", query)
+        self.assertEqual(len(values[0]), 10)
+        encoded = repr(values)
+        self.assertNotIn(private_identifier, encoded)
+        self.assertIn("research-facility-report/annual-summary", encoded)
+        self.assertIn("search/inspection-reports", encoded)
+
     def test_materialization_fingerprint_is_explicitly_versioned(self):
         self.assertEqual(PROJECTION_VERSION, "graph-release-projection-v2")
         self.assertTrue(all((D5_MATCHER_VERSION, D6_EDGE_RULESET_VERSION,
@@ -176,13 +232,22 @@ class GraphProjectionTests(unittest.TestCase):
             "graph_public_projection_edges": "SELECT, INSERT",
             "graph_public_projection_edge_supports": "SELECT, INSERT",
             "graph_public_projection_endpoint_anchors": "SELECT, INSERT",
+            "graph_public_projection_evidence_refs": "SELECT, INSERT",
         }
         validator = {**_PRIVATE_GRAPH_REQUIRED_PRIVILEGES,
                      **_PRIVATE_GRAPH_REQUIRED_READ_PRIVILEGES}
         for table, grant in grants.items():
             with self.subTest(table=table):
                 self.assertEqual(validator[table], set(grant.split(", ")))
-                self.assertIn(f"GRANT {grant} ON uec.{table}", migration)
+                grant_migration = migration if table != "graph_public_projection_evidence_refs" else (
+                    Path(__file__).resolve().parents[1] / "migrations" / "080_graph_public_evidence_references.sql"
+                ).read_text(encoding="utf-8")
+                self.assertIn(f"GRANT {grant} ON uec.{table}", grant_migration)
+        evidence_migration = (Path(__file__).resolve().parents[1] / "migrations" / "080_graph_public_evidence_references.sql").read_text(encoding="utf-8")
+        self.assertIn("CREATE OR REPLACE VIEW uec.graph_public_evidence_references_current", evidence_migration)
+        self.assertIn("review.source_record_id=evidence_record.source_record_id", evidence_migration)
+        self.assertIn("rights.redistribution_status='cleared'", evidence_migration)
+        self.assertIn("public_access_restricted", evidence_migration)
         normalized = (Path(__file__).resolve().parents[1] / "migrations" / "078_normalized_graph_projection_endpoints.sql").read_text(encoding="utf-8")
         self.assertIn("CREATE OR REPLACE VIEW uec.graph_public_connections_current", normalized)
         self.assertNotIn("DROP VIEW uec.graph_public_connections_current", normalized)

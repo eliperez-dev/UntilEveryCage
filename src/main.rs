@@ -142,6 +142,10 @@ pub fn app(state: uec_api::ApiState, proxy: private_environment::ProxyConfig) ->
         .route(
             "/api/v2/graph/entities/{entity_id}/neighborhood",
             get(uec_api::graph_public::neighborhood),
+        )
+        .route(
+            "/api/v2/graph/entities/{entity_id}/evidence",
+            get(uec_api::graph_public::evidence_references),
         );
     let router = if runtime_mode == "production" {
         production_route_boundary(public_router.merge(uec_api::community::routes(community)))

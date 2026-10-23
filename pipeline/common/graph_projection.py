@@ -33,6 +33,53 @@ def _python_endpoint_select(release_id: str) -> tuple[str, dict[str, str]]:
     return query, {"release_id": release_id}
 
 
+def _python_aphis_reference_select(release_id: str) -> tuple[str, dict[str, str]]:
+    """Select typed APHIS references only for independently approved event records.
+
+    The event payload and source-native identifiers are used only to establish
+    the exact source-scoped match. Neither is part of the selected output.
+    """
+    query = (f"WITH {EDGE_CTES.replace('$1', '%(release_id)s')} "
+             "SELECT DISTINCT ON (endpoint.public_entity_id,event.source_record_id) "
+             "endpoint.source_id,endpoint.identifier_type,endpoint.source_identifier,"
+             "endpoint.entity_type,endpoint.public_entity_id,event.source_record_id,event.source_id,"
+             "event.event_type,event.event_date,event.event_period,event.observed_at "
+             "FROM eligible_source_endpoints endpoint "
+             "JOIN uec.graph_evidence_links link "
+             "  ON link.target_source_id=endpoint.source_id "
+             " AND link.target_identifier_type=endpoint.identifier_type "
+             " AND link.target_source_identifier=endpoint.source_identifier "
+             " AND link.match_method='exact_source_identifier' "
+             "JOIN uec.graph_evidence_events event ON event.evidence_event_id=link.evidence_event_id "
+             "JOIN uec.source_records evidence_record "
+             "  ON evidence_record.source_record_id=event.source_record_id "
+             " AND evidence_record.source_id=event.source_id "
+             "JOIN uec.publication_review_release_current review "
+             "  ON review.source_record_id=event.source_record_id "
+             " AND review.release_id=%(release_id)s "
+             "JOIN uec.raw_artifacts artifact ON artifact.artifact_id=evidence_record.artifact_id "
+             "JOIN uec.source_rights_decisions rights ON rights.source_id=event.source_id "
+             " AND rights.profile=(SELECT profile FROM uec.releases WHERE release_id=%(release_id)s) "
+             " AND rights.release_id=%(release_id)s AND rights.artifact_id=artifact.artifact_id "
+             " AND rights.artifact_sha256=artifact.sha256 AND rights.redistribution_status='cleared' "
+             "WHERE endpoint.source_id='us.aphis' AND endpoint.entity_type='facility' "
+             "  AND link.identity_scope='source_scoped' "
+             "  AND event.release_id=%(release_id)s AND event.storage_state='released' "
+             "  AND event.review_state='accepted' AND event.privacy_status='passed' "
+             "  AND event.publication_status='released' "
+             "  AND review.publication_eligible=true AND review.privacy_screening_status='passed' "
+             "  AND review.factual_review_status<>'rejected' AND review.maintainer_approval='approved' "
+             "  AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted restricted "
+             "                  WHERE restricted.source_record_id=event.source_record_id) "
+             "  AND ((event.source_id='us.aphis.annual-reports' "
+             "        AND event.event_type='annual_reports' "
+             "        AND event.event_period ~ '^[0-9]{4}$') "
+             "    OR (event.source_id='us.inspections' AND event.event_type='inspections' "
+             "        AND event.event_date IS NOT NULL)) "
+             "ORDER BY endpoint.public_entity_id,event.source_record_id,endpoint.identifier_type")
+    return query, {"release_id": release_id}
+
+
 def _insert_endpoint_batch(connection: Any, projection_id: uuid.UUID,
                            rows: Iterable[Any], endpoint_ids: dict[tuple[str, str, str, str, uuid.UUID], uuid.UUID]) -> tuple[int, int]:
     endpoints: list[tuple[Any, ...]] = []
@@ -174,6 +221,47 @@ def _insert_batch(connection: Any, projection_id: uuid.UUID, release_id: str,
     return len(edge_rows)
 
 
+def _aphis_reference_url(source_id: str, event_type: str) -> str | None:
+    if source_id == "us.aphis.annual-reports" and event_type == "annual_reports":
+        return "https://direct.aphis.usda.gov/awa/research-facility-report/annual-summary"
+    if source_id == "us.inspections" and event_type == "inspections":
+        return "https://direct.aphis.usda.gov/awa/search/inspection-reports"
+    return None
+
+
+def _insert_aphis_reference_batch(connection: Any, projection_id: uuid.UUID,
+                                  rows: Iterable[Any],
+                                  endpoint_ids: dict[tuple[str, str, str, str, uuid.UUID], uuid.UUID]) -> int:
+    values: list[tuple[Any, ...]] = []
+    for row in rows:
+        endpoint_key = (str(row[0]), str(row[1]), str(row[2]), str(row[3]), uuid.UUID(str(row[4])))
+        endpoint_id = endpoint_ids.get(endpoint_key)
+        source_record_id = uuid.UUID(str(row[5]))
+        source_id = str(row[6])
+        event_type = str(row[7])
+        source_url = _aphis_reference_url(source_id, event_type)
+        if endpoint_id is None or source_url is None:
+            continue
+        event_date, event_period = row[8], row[9]
+        if event_type == "annual_reports" and (not event_period or len(str(event_period)) != 4 or not str(event_period).isdigit()):
+            continue
+        if event_type == "inspections" and event_date is None:
+            continue
+        values.append((projection_id, endpoint_id, source_record_id, source_id,
+                       event_type, event_date, event_period, row[10], source_url,
+                       "exact_source_identifier"))
+    if values:
+        with connection.cursor() as cursor:
+            cursor.executemany(
+                """INSERT INTO uec.graph_public_projection_evidence_refs
+                   (projection_id,endpoint_id,evidence_source_record_id,source_id,evidence_type,
+                    event_date,event_period,observed_at,source_url,match_method)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""",
+                values,
+            )
+    return len(values)
+
+
 def build_release_projection(database_url: str, release_id: str, *,
                              private_target: tuple[str, str], batch_size: int = 500) -> dict[str, Any]:
     if batch_size < 1:
@@ -227,7 +315,7 @@ def build_release_projection(database_url: str, release_id: str, *,
                  manifest_sha256, suppression_generation),
             )
         connection.commit()
-        count = endpoint_count = anchor_count = 0
+        count = endpoint_count = anchor_count = evidence_reference_count = 0
         endpoint_ids: dict[tuple[str, str, str, str, uuid.UUID], uuid.UUID] = {}
         try:
             with connection.transaction():
@@ -245,6 +333,14 @@ def build_release_projection(database_url: str, release_id: str, *,
                     endpoint_count += inserted_endpoints
                     anchor_count += inserted_anchors
                 endpoint_cursor.close()
+                evidence_cursor = connection.cursor(name="uec_graph_projection_aphis_references")
+                evidence_query, evidence_parameters = _python_aphis_reference_select(release_id)
+                evidence_cursor.execute(evidence_query, evidence_parameters)
+                while batch := evidence_cursor.fetchmany(batch_size):
+                    evidence_reference_count += _insert_aphis_reference_batch(
+                        connection, projection_id, batch, endpoint_ids,
+                    )
+                evidence_cursor.close()
                 cursor = connection.cursor(name="uec_graph_projection_source")
                 query, parameters = _python_edge_select(release_id)
                 cursor.execute(query, parameters)
@@ -272,5 +368,6 @@ def build_release_projection(database_url: str, release_id: str, *,
             "projection_id": str(projection_id), "edge_count": count,
             "projection_version": PROJECTION_VERSION,
             "endpoint_count": endpoint_count, "anchor_count": anchor_count,
+            "aphis_evidence_reference_count": evidence_reference_count,
             "edge_generation": edge_generation,
             "suppression_generation": suppression_generation}

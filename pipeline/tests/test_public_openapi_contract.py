@@ -19,6 +19,7 @@ PUBLIC_PATHS = {
     "/api/v2/graph/connections",
     "/api/v2/graph/entities",
     "/api/v2/graph/entities/{entity_id}/neighborhood",
+    "/api/v2/graph/entities/{entity_id}/evidence",
     "/api/v2/releases/{release_id}/map/tiles/{z}/{x}/{y}.mvt",
 }
 
@@ -161,6 +162,13 @@ class PublicOpenApiContractTests(unittest.TestCase):
         neighborhood = self.handler(self.graph, "neighborhood")
         self.assertIn("connections(State(state), Query(query))", neighborhood)
         self.assertTrue({"direction", "depth"}.isdisjoint(adjacent))
+        evidence = self.handler(self.graph, "evidence_references")
+        evidence_path = "/api/v2/graph/entities/{entity_id}/evidence"
+        self.assertEqual(self.query_names(evidence_path), common)
+        self.assertIn("GRAPH_APHIS_REFERENCE_SELECT", evidence)
+        self.assertIn("page_cursor", evidence)
+        self.assertNotIn("graph_evidence_events", evidence)
+        self.assertNotIn("graph_evidence_links", evidence)
 
     def test_caps_profile_defaults_and_error_gates_match_implementation(self):
         params = self.spec["components"]["parameters"]
@@ -211,6 +219,14 @@ class PublicOpenApiContractTests(unittest.TestCase):
         entity_schema = self.spec["components"]["schemas"]["GraphEntity"]
         self.assertEqual(set(entity_schema["properties"]), entity_fields)
         self.assertEqual(set(entity_schema["required"]), entity_fields)
+        reference_handler = self.handler(self.graph, "evidence_references")
+        reference_block = re.search(r'let mut data: Vec<Value> = rows\.iter\(\)\.map\(\|row\| json!\(\{(.*?)\}\)\)\.collect\(\);', reference_handler, re.S).group(1)
+        reference_fields = set(re.findall(r'"([a-z_]+)":', reference_block))
+        reference_schema = self.spec["components"]["schemas"]["GraphEvidenceReference"]["oneOf"]
+        self.assertEqual(set(reference_schema[0]["properties"]), reference_fields)
+        self.assertEqual(set(reference_schema[0]["required"]), reference_fields)
+        self.assertEqual(set(reference_schema[1]["properties"]), reference_fields)
+        self.assertEqual(set(reference_schema[1]["required"]), reference_fields)
 
 
 if __name__ == "__main__":

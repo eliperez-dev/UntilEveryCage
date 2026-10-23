@@ -18,6 +18,7 @@ private or candidate rows.
 * `GET /api/v2/graph/connections`
 * `GET /api/v2/graph/entities`
 * `GET /api/v2/graph/entities/{entity_id}/neighborhood`
+* `GET /api/v2/graph/entities/{entity_id}/evidence`
 
 All endpoints are GET-only and bounded; explicit handler errors use the normal
 `{api_version, error}` envelope. Framework extraction failures may differ.
@@ -29,6 +30,14 @@ Connection filters are `profile`, `connection_type` (`exact` or `inferred`),
 `min_confidence`, `max_confidence`, `confidence_band` (`exact`, `high`,
 `medium`, `low`), `include_conflicting`, `source_id`, `entity_id`, `cursor`,
 and `limit`. Entity search additionally accepts `q` and `entity_type`.
+
+The evidence route accepts `profile`, optional `release_id`, `cursor`, and
+`limit`. It returns only typed APHIS annual-report and inspection references
+whose evidence source record is itself present for that facility in the
+selected release. The result contains source ID, event type/date or year,
+observation date, fixed APHIS source URL, and exact source-identifier match
+method. It does not expose event IDs, source identifiers, event payloads, or
+report counts. Private or candidate evidence is never used as a fallback.
 
 Effective entity-search inputs are `profile`, `q`, `entity_type`, `cursor` and
 `limit`; connection-specific filters do not apply to that route. Neighborhood
@@ -125,7 +134,7 @@ identifier values are not persisted in serving tables or the package. Migration
 the safe current projection view but not private edges, identifiers, support
 references, or anchor records.
 
-The selected-column `release_serving` v5 package includes this projection for
+The selected-column `release_serving` v6 package includes this projection for
 explicitly selected current and historical public releases. Migration 077 adds
 its serving view and exact read-only grant. Restore into an isolated empty
 serving database, replay current restrictions and verify the production API

@@ -21,6 +21,7 @@ const DEFAULT_LIMIT: i64 = 50;
 const API_VERSION: &str = "v2-graph-v1";
 const DISCLAIMER: &str = "Confidence is a deterministic ruleset estimate, not a measured probability. An inferred connection is not proof of ownership, identity, or supply-chain control.";
 const GRAPH_CONNECTION_SELECT: &str = "SELECT connection_edge_id,from_entity_id,from_entity_type,from_source_id,from_identifier_type,to_entity_id,to_entity_type,to_source_id,to_identifier_type,relationship_type,connection_type,confidence,confidence_band,signal_explanation,match_method,observed_at,computed_at,ruleset_version,conflicting FROM uec.graph_public_connections_current WHERE release_id=$1 AND ($2::text IS NULL OR connection_type=$2) AND ($3::double precision IS NULL OR confidence >= $3) AND ($4::double precision IS NULL OR confidence <= $4) AND ($5::text[] IS NULL OR confidence_band=ANY($5)) AND ($6 OR conflicting=false) AND ($7::text IS NULL OR from_source_id=$7 OR to_source_id=$7) AND ($8::uuid IS NULL OR from_entity_id=$8 OR to_entity_id=$8) AND ($9::uuid IS NULL OR connection_edge_id<$9) ORDER BY connection_edge_id DESC LIMIT $10";
+const GRAPH_APHIS_REFERENCE_SELECT: &str = "SELECT evidence_ref_id,source_id,evidence_type,event_date,event_period,observed_at,source_url,match_method FROM uec.graph_public_evidence_references_current WHERE release_id=$1 AND public_entity_id=$2 AND endpoint_source_id='us.aphis' AND ($3::uuid IS NULL OR evidence_ref_id<$3) ORDER BY evidence_ref_id DESC LIMIT $4";
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct PublicGraphQuery {
@@ -414,6 +415,63 @@ pub async fn neighborhood(
     connections(State(state), Query(query))
         .await
         .into_response()
+}
+
+/// Return only typed APHIS references that entered a safe selected-release
+/// projection. The view applies current release membership and suppression
+/// gates; this handler never reads private events or identifiers.
+pub async fn evidence_references(
+    State(state): State<ApiState>,
+    Path(entity_id): Path<Uuid>,
+    Query(query): Query<PublicGraphQuery>,
+) -> impl IntoResponse {
+    let (profile, limit, _) = match validate_common(&query) {
+        Ok(value) => value,
+        Err(message) => return bad(message),
+    };
+    let Some(pool) = state.database else {
+        return v2_error(StatusCode::SERVICE_UNAVAILABLE, "database_not_configured", "public graph unavailable");
+    };
+    let Ok(mut client) = pool.get().await else {
+        return v2_error(StatusCode::SERVICE_UNAVAILABLE, "database_pool_unavailable", "public graph unavailable");
+    };
+    let Ok(transaction) = client.build_transaction()
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .read_only(true).start().await else {
+        return v2_error(StatusCode::SERVICE_UNAVAILABLE, "database_transaction_unavailable", "public graph unavailable");
+    };
+    let release_row = transaction.query_opt(
+        "SELECT r.release_id,r.ruleset_version FROM uec.releases r JOIN uec.public_discovery_read_models model ON model.release_id=r.release_id JOIN uec.release_manifests manifest ON manifest.release_id=r.release_id AND manifest.manifest_sha256=model.manifest_sha256 LEFT JOIN uec.public_release_history history ON history.release_id=r.release_id AND history.profile=r.profile WHERE r.test_only IS NOT TRUE AND r.profile=$1 AND ($2::text IS NULL OR r.release_id=$2) AND (r.status='promoted' OR ($2::text IS NOT NULL AND history.release_id IS NOT NULL AND r.status='validated')) ORDER BY r.created_at DESC,r.release_id DESC LIMIT 1",
+        &[&profile, &query.release_id],
+    ).await;
+    let Ok(Some(release_row)) = release_row else {
+        return v2_error(StatusCode::NOT_FOUND, "release_not_found", "no promoted eligible public graph release");
+    };
+    let release_id: String = release_row.get(0);
+    let ruleset: String = release_row.get(1);
+    let rows = match transaction.query(
+        GRAPH_APHIS_REFERENCE_SELECT,
+        &[&release_id, &entity_id, &query.cursor, &(limit + 1)],
+    ).await {
+        Ok(rows) => rows,
+        Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "public_graph_query_failed", "public evidence references unavailable"),
+    };
+    let mut data: Vec<Value> = rows.iter().map(|row| json!({
+        "reference_id": row.get::<_, Uuid>(0),
+        "source_id": row.get::<_, String>(1),
+        "evidence_type": row.get::<_, String>(2),
+        "event_date": row.get::<_, Option<chrono::NaiveDate>>(3).map(|value| value.to_string()),
+        "event_period": row.get::<_, Option<String>>(4),
+        "observed_at": row.get::<_, chrono::DateTime<chrono::Utc>>(5),
+        "source_url": row.get::<_, String>(6),
+        "match_method": row.get::<_, String>(7),
+    })).collect();
+    let next_cursor = page_cursor(&mut data, limit as usize, |row| row.get("reference_id").cloned());
+    Json(json!({"api_version": API_VERSION, "data": data, "meta": {
+        "profile": profile, "release_id": release_id, "ruleset_version": ruleset,
+        "limit": limit, "page_max": MAX_LIMIT, "next_cursor": next_cursor,
+        "public_projection": true,
+    }})).into_response()
 }
 
 #[cfg(test)]

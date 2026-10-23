@@ -1,17 +1,22 @@
 <script lang="ts">
   import { LocalLocationRepository, type LocalProfile } from '../api/LocalLocationRepository';
   import { PublicGraphRepository, type GraphFilters } from '../api/PublicGraphRepository';
-  import type { PublicGraphConnection } from '../api/publicGraphSchema';
+  import type { PublicGraphConnection, PublicGraphEvidenceReference } from '../api/publicGraphSchema';
   import { serializeRoute } from './routeState';
 
   let { facilityId, releaseId, profile = 'official' }: { facilityId: string; releaseId: string; profile?: LocalProfile } = $props();
   const graph = new PublicGraphRepository();
   const locations = new LocalLocationRepository();
   let rows = $state<readonly PublicGraphConnection[]>([]);
+  let evidenceReferences = $state<readonly PublicGraphEvidenceReference[]>([]);
   let names = $state<Readonly<Record<string, string>>>({});
   let nextCursor = $state<string | null>(null);
+  let evidenceCursor = $state<string | null>(null);
   let loading = $state(false);
   let loadingMore = $state(false);
+  let evidenceLoading = $state(false);
+  let evidenceLoadingMore = $state(false);
+  let evidenceError = $state(false);
   let error = $state(false);
   let kind = $state<'all' | 'exact' | 'inferred'>('all');
   let confidence = $state<'all' | 'high' | 'medium' | 'low'>('all');
@@ -35,9 +40,12 @@
       controller?.abort();
       controller = new AbortController();
       rows = [];
+      evidenceReferences = [];
       names = {};
       nextCursor = null;
+      evidenceCursor = null;
       error = false;
+      evidenceError = false;
       loading = true;
     } else {
       loadingMore = true;
@@ -45,6 +53,7 @@
     const active = controller;
     if (!active) return;
     const version = ++requestVersion;
+    if (reset) void loadEvidenceReferences();
     try {
       const page = await graph.neighborhood(facilityId, profile, filters(reset ? undefined : nextCursor ?? undefined), active.signal);
       if (active.signal.aborted || version !== requestVersion) return;
@@ -69,6 +78,30 @@
       if (!active.signal.aborted && version === requestVersion) {
         loading = false;
         loadingMore = false;
+      }
+    }
+  }
+
+  async function loadEvidenceReferences(cursor?: string) {
+    if (!facilityId || !releaseId || !controller) return;
+    const active = controller;
+    const version = requestVersion;
+    if (cursor) evidenceLoadingMore = true;
+    else evidenceLoading = true;
+    evidenceError = false;
+    try {
+      const page = await graph.evidenceReferences(facilityId, profile, {
+        release_id: releaseId, limit: 20, ...(cursor ? { cursor } : {}),
+      }, active.signal);
+      if (active.signal.aborted || version !== requestVersion || page.releaseId !== releaseId) return;
+      evidenceReferences = cursor ? [...evidenceReferences, ...page.data] : page.data;
+      evidenceCursor = page.nextCursor;
+    } catch {
+      if (!active.signal.aborted && version === requestVersion) evidenceError = true;
+    } finally {
+      if (!active.signal.aborted && version === requestVersion) {
+        evidenceLoading = false;
+        evidenceLoadingMore = false;
       }
     }
   }
@@ -134,6 +167,24 @@
   </ul>
   {#if nextCursor}<button class="more" type="button" disabled={loadingMore} onclick={() => void load(false)}>{loadingMore ? 'Loading…' : 'Load more'}</button>{/if}
   {/if}
+  <section class="evidence-references" aria-labelledby="aphis-evidence-heading">
+    <h3 id="aphis-evidence-heading">APHIS evidence references</h3>
+    <p class="explanation">Only typed references that passed this release’s source-record, privacy, and publication gates appear here. Report contents and source identifiers are not included.</p>
+    {#if evidenceLoading}<p role="status">Loading APHIS references…</p>
+    {:else if evidenceError}<p role="alert">APHIS references could not be loaded. <button type="button" onclick={() => void loadEvidenceReferences()}>Retry</button></p>
+    {:else if !evidenceReferences.length}<p class="empty">No APHIS evidence references are approved in this release.</p>
+    {:else}<ul>
+      {#each evidenceReferences as reference (reference.reference_id)}
+        <li>
+          <span>{reference.evidence_type === 'annual_reports' ? `Annual report · FY${reference.event_period}` : `Inspection · ${reference.event_date}`}</span>
+          <a href={reference.source_url} target="_blank" rel="noopener noreferrer">Open APHIS source</a>
+          <span class="meta">Source {humanize(reference.source_id)} · exact source identifier</span>
+        </li>
+      {/each}
+    </ul>
+    {#if evidenceCursor}<button class="more" type="button" disabled={evidenceLoadingMore} onclick={() => void loadEvidenceReferences(evidenceCursor ?? undefined)}>{evidenceLoadingMore ? 'Loading…' : 'Load more APHIS references'}</button>{/if}
+    {/if}
+  </section>
 </section>
 
 <style>
