@@ -484,7 +484,7 @@
     if (!map || !isNativeMap()) return;
     if (usingMvt) {
       syncMvtReferenceAreas(map);
-      const selected = selectedReferenceKey ?? mapState.selectedId;
+      const selected = activeApproximateAreaKey();
       const selectedArea = selected ? ['==', ['get', 'feature_key'], selected] : false;
       if (map.getLayer("mvt-approx-reference-area"))
         map.setPaintProperty("mvt-approx-reference-area", "fill-opacity", ['case', selectedArea, Math.min(0.16, referenceOpacity), 0] as any);
@@ -502,8 +502,16 @@
       referenceOpacity,
       coordinateRadius,
       showReferenceLabels,
-      selectedKey: selectedReferenceKey ?? mapState.selectedId,
+      selectedKey: activeApproximateAreaKey(),
     });
+  }
+  function activeApproximateAreaKey(): string | null {
+    // MVT aggregate references have opaque 32-hex feature keys and are
+    // inspected separately from a record detail. Individual record points
+    // must track the current selected detail ID instead of a stale click key.
+    if (selectedReferenceKey && /^[a-f0-9]{32}$/i.test(selectedReferenceKey))
+      return selectedReferenceKey;
+    return mapState.selectedId;
   }
   function syncSelectedApproximateArea(instance: MapLibreMap) {
     const source = instance.getSource('approximate-reference-area') as GeoJSONSource | undefined;
@@ -513,7 +521,7 @@
       syncedApproximateAreaCollection = undefined;
       return;
     }
-    const key = selectedReferenceKey ?? mapState.selectedId;
+    const key = activeApproximateAreaKey();
     if (source === syncedApproximateAreaSource && key === syncedApproximateAreaKey
       && nativeFullCollection === syncedApproximateAreaCollection) return;
     source.setData(createSelectedApproximateReferenceArea(

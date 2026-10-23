@@ -185,6 +185,12 @@ test('cold root and warmed reload keep map controls and exact/approximate points
   await page.getByRole('button', { name: 'Close record detail' }).click();
   await expect.poll(() => new URL(page.url()).hash).not.toContain(`selected=${exactId}`);
 
+  await page.evaluate((point) => (window as any).__UEC_LOCAL_PREVIEW_MAP__.jumpTo({ center: point, zoom: 16 }), approximatePoint);
+  await expect.poll(() => page.evaluate((id) => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return map.queryRenderedFeatures({ layers: ['approx-reference-cue'] }).some((feature: any) => feature.properties?.key === id)
+      && map.getLayoutProperty('approx-reference-cue', 'text-field') === '≈';
+  }, approximateId)).toBe(true);
   await moveAndCheckFeature(approximateId, approximatePoint, 'approx-reference-pins');
   await expect.poll(() => page.evaluate((id) => (window as any).__UEC_LOCAL_PREVIEW_MAP__
     .queryRenderedFeatures({ layers: ['approx-reference-cue'] })
@@ -217,5 +223,12 @@ test('cold root and warmed reload keep map controls and exact/approximate points
   expect(radiusAt17.ring).toEqual(radiusAt15.ring);
   await page.getByRole('button', { name: 'Close record detail' }).click();
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__.getSource('approximate-reference-area')._data.geojson.features.length)).toBe(0);
+  await page.mouse.move(1, 1);
+  await page.waitForTimeout(2600);
+  await expect.poll(() => page.evaluate((id) => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return map.getSource('approximate-reference-area')._data.geojson.features.length === 0
+      && !map.queryRenderedFeatures({ layers: ['approximate-reference-area-fill'] }).some((feature: any) => feature.properties.key === id);
+  }, approximateId)).toBe(true);
   expect(feedRequests).toBe(1);
 });
