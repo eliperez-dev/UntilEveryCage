@@ -42,6 +42,12 @@ Frontend type checks and 256 unit tests passed. Browser and hosted verdicts
 remain separate: inspect the aggregate receipts under ignored
 `data/staging/hosted-graph-qa-20261021/`, including
 `search-pin-api-comparison.json`, before claiming runtime completion.
+Direct real-feed Chrome acceptance verified the small image-based cue, delayed
+PNG loading, matching physical pin selection, dismissal clearing, style changes
+and reload. Firefox verified search feedback and styles, but its pin-specific
+checks were inconclusive. CI now includes the cold-root map regression in all
+three browsers and uses the official image matching locked Playwright 1.63.0
+instead of repeatedly installing OS dependencies from an Ubuntu mirror.
 
 The additive FSIS `shared_business_name` rule uses complete retained DBA aliases,
 not substring matches or ownership assertions. Its real-data materialization
