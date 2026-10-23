@@ -17,7 +17,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-from pipeline.common.d5_connection_analysis import _iter_probabilistic_candidates, _observed_from_json, _observed_from_row, _observed_json
+from pipeline.common.d5_connection_analysis import (_iter_probabilistic_candidates,
+    iter_shared_business_name_candidates, _observed_from_json, _observed_from_row, _observed_json)
 from pipeline.common.d5_connection_analysis import RULESET_VERSION as D5_MATCHER_VERSION
 from pipeline.common.graph_edges import RULESET_VERSION as D6_EDGE_RULESET_VERSION
 from pipeline.common.graph_persistence import ConnectionEdgeBuilder, import_evidence_events, import_graph_candidates, iter_graph_candidate_handoff
@@ -25,7 +26,7 @@ from pipeline.common.graph_persistence import ConnectionEdgeBuilder, import_evid
 
 REPORT_VERSION = "d5-real-private-graph-v1"
 NATIVE_ENDPOINT_CONTRACT_VERSION = "native-source-identifier-v2"
-GRAPH_EDGE_MATERIALIZATION_VERSION = "private-graph-materialization-v1"
+GRAPH_EDGE_MATERIALIZATION_VERSION = "private-graph-materialization-v2"
 GRAPH_MATERIALIZATION_FINGERPRINT = hashlib.sha256(
     "|".join((GRAPH_EDGE_MATERIALIZATION_VERSION, D5_MATCHER_VERSION,
               D6_EDGE_RULESET_VERSION, NATIVE_ENDPOINT_CONTRACT_VERSION)).encode("utf-8")
@@ -105,8 +106,26 @@ class _MatcherStage:
                 (source_id, key, json.dumps(inferred, ensure_ascii=False, separators=(",", ":"))),
             )
             self.edges_staged += 1
+        shared_name_candidates, shared_name_counters = iter_shared_business_name_candidates(
+            self.observed(), preserve_native_endpoints=True,
+        )
+        for inferred in shared_name_candidates:
+            endpoints = inferred.get("endpoints") or []
+            if len(endpoints) != 2:
+                continue
+            owner = endpoints[0]
+            source_id = str(owner.get("source_id") or "")
+            key = str(owner.get("source_record_key") or "")
+            if not source_id or not key:
+                continue
+            self.db.execute(
+                "INSERT OR IGNORE INTO edges(source_id,source_record_key,candidate) VALUES (?,?,?)",
+                (source_id, key, json.dumps(inferred, ensure_ascii=False, separators=(",", ":"))),
+            )
+            self.edges_staged += 1
         self.db.commit()
-        return {"rows_staged": self.rows_staged, "inferred_candidates_staged": self.edges_staged, **matcher_counters}
+        return {"rows_staged": self.rows_staged, "inferred_candidates_staged": self.edges_staged,
+                **matcher_counters, **{f"shared_business_name_{key}": value for key, value in shared_name_counters.items()}}
 
     def edge_builder(self, candidate: dict[str, Any], manifest: dict[str, Any]) -> Iterable[dict[str, Any]]:
         source_id = str(candidate.get("source_id") or manifest["source_id"])

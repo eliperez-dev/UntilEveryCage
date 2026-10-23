@@ -19,6 +19,7 @@ import os
 import re
 import sqlite3
 import tempfile
+import unicodedata
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from itertools import combinations
@@ -141,6 +142,7 @@ class _Observed:
     provenance_complete: bool = False
     quarantined: bool = False
     suppressed: bool = False
+    shared_business_name_aliases: list[str] | None = None
 
 
 def _source_kind(source_id: str, row: Mapping[str, Any]) -> str:
@@ -234,9 +236,21 @@ def _observed_from_row(row: Mapping[str, Any], fallback_source: str | None = Non
         and (_clean(row.get("source_artifact_sha256")) or _clean(row.get("artifact_sha256")))
     )
     suppressed = bool(row.get("suppressed") or row.get("public_access_revoked"))
+    aliases: list[str] = []
+    if source_id == "us.fsis" and kind == "facility_master":
+        supplied = row.get("shared_business_name_aliases")
+        normalized = row.get("normalized")
+        if isinstance(supplied, (list, tuple)):
+            aliases.extend(value.strip() for value in supplied if isinstance(value, str) and value.strip())
+        if isinstance(normalized, Mapping):
+            for field in ("alternate_names", "dba_names"):
+                raw_aliases = normalized.get(field)
+                raw_aliases = raw_aliases if isinstance(raw_aliases, (list, tuple)) else [raw_aliases]
+                aliases.extend(value.strip() for value in raw_aliases if isinstance(value, str) and value.strip())
+    aliases = list(dict.fromkeys(aliases))
     return _Observed(source_id, kind, key, facility_ids, facility_endpoint_ids, organization_ids, signals, dates,
                      explicit_relationships, typed_entity_edge, provenance_complete,
-                     bool(row.get("quarantine_reason")), suppressed)
+                     bool(row.get("quarantine_reason")), suppressed, aliases)
 
 
 def classify_collision_observations(rows: Iterable[Mapping[str, Any]]) -> dict[str, int]:
@@ -444,6 +458,7 @@ def _observed_json(row: _Observed) -> str:
         "typed_entity_edge": row.typed_entity_edge,
         "provenance_complete": row.provenance_complete,
         "quarantined": row.quarantined, "suppressed": row.suppressed,
+        "shared_business_name_aliases": row.shared_business_name_aliases or [],
     }, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
@@ -458,7 +473,115 @@ def _observed_from_json(value: str) -> _Observed:
         [str(item) for item in payload.get("dates") or []],
         int(payload.get("explicit_relationships") or 0), bool(payload.get("typed_entity_edge")),
         bool(payload.get("provenance_complete")), bool(payload.get("quarantined")), bool(payload.get("suppressed")),
+        [str(item) for item in payload.get("shared_business_name_aliases") or []],
     )
+
+
+_GENERIC_BUSINESS_NAME_TOKENS = frozenset({
+    "and", "co", "company", "companies", "corp", "corporation", "establishment",
+    "establishments", "facility", "facilities", "food", "foods", "group", "inc",
+    "incorporated", "llc", "limited", "ltd", "meat", "meats", "packer", "packers",
+    "packing", "packaging", "plant", "plants", "poultry", "processing", "slaughter",
+    "slaughterhouse",
+})
+
+
+def _shared_business_name_key(value: Any) -> str | None:
+    """Normalize a complete FSIS DBA/alternate name; never use a substring."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    normalized = unicodedata.normalize("NFKC", value).casefold().replace("’", "'")
+    normalized = re.sub(r"(?<=[\w])'s\b", "", normalized)
+    tokens = [token for token in re.findall(r"[^\W_]+", normalized, flags=re.UNICODE) if token]
+    if len(tokens) < 2 or all(token in _GENERIC_BUSINESS_NAME_TOKENS for token in tokens):
+        return None
+    return " ".join(tokens)
+
+
+def iter_shared_business_name_candidates(rows: Iterable[_Observed], *,
+                                         preserve_native_endpoints: bool = True) -> tuple[Iterable[dict[str, Any]], dict[str, int]]:
+    """Yield source-qualified inferred links for exact complete FSIS DBA aliases.
+
+    This is explicitly shared-name evidence, not an operator, ownership, or
+    facility-identity claim.  Alias strings are used only as an in-memory
+    grouping key and never included in candidates or diagnostics.
+    """
+    counters = {"alias_groups": 0, "pairs_considered": 0, "pairs_same_facility": 0,
+                "pairs_emitted": 0, "pairs_deduplicated": 0}
+
+    def generate() -> Iterable[dict[str, Any]]:
+        groups: dict[str, dict[tuple[str, str, str], _Observed]] = defaultdict(dict)
+        for row in rows:
+            if (row.source_id != "us.fsis" or row.source_kind != "facility_master"
+                    or row.quarantined or row.suppressed or not row.facility_ids):
+                continue
+            if preserve_native_endpoints and not row.facility_endpoint_ids:
+                continue
+            for raw_alias in row.shared_business_name_aliases or ():
+                alias = _shared_business_name_key(raw_alias)
+                if alias:
+                    endpoint = _endpoint_ref(row, preserve_native_identifier=preserve_native_endpoints)
+                    if endpoint is None:
+                        continue
+                    identity = (row.source_id, endpoint["identifier_type"],
+                                _norm(endpoint["source_identifier"]) or endpoint["source_identifier"])
+                    previous = groups[alias].get(identity)
+                    if previous is None or row.key < previous.key:
+                        groups[alias][identity] = row
+        counters["alias_groups"] = len(groups)
+        pairs: dict[tuple[tuple[str, str, str], tuple[str, str, str]], tuple[_Observed, _Observed]] = {}
+        for alias in sorted(groups):
+            group = [groups[alias][key] for key in sorted(groups[alias])]
+            for left, right in combinations(group, 2):
+                counters["pairs_considered"] += 1
+                if _exact_equivalent(left, right):
+                    counters["pairs_same_facility"] += 1
+                    continue
+                left_endpoint = _endpoint_ref(left, preserve_native_identifier=preserve_native_endpoints)
+                right_endpoint = _endpoint_ref(right, preserve_native_identifier=preserve_native_endpoints)
+                if left_endpoint is None or right_endpoint is None:
+                    continue
+                left_identity = (left.source_id, left_endpoint["identifier_type"],
+                                 _norm(left_endpoint["source_identifier"]) or left_endpoint["source_identifier"])
+                right_identity = (right.source_id, right_endpoint["identifier_type"],
+                                  _norm(right_endpoint["source_identifier"]) or right_endpoint["source_identifier"])
+                key = tuple(sorted((left_identity, right_identity)))
+                if key in pairs:
+                    counters["pairs_deduplicated"] += 1
+                    continue
+                pairs[key] = (left, right) if left_identity <= right_identity else (right, left)
+        candidates: list[tuple[str, dict[str, Any]]] = []
+        for pair_key, (left, right) in pairs.items():
+            left_endpoint = _endpoint_ref(left, preserve_native_identifier=preserve_native_endpoints)
+            right_endpoint = _endpoint_ref(right, preserve_native_identifier=preserve_native_endpoints)
+            if left_endpoint is None or right_endpoint is None:
+                continue
+            digest = _digest("|".join(("|".join(pair_key[0]), "|".join(pair_key[1]), "shared-business-name-v1")))
+            candidates.append((digest, {
+                "candidate_digest": digest,
+                "source_pair": ["us.fsis"],
+                "endpoints": [left_endpoint, right_endpoint],
+                "provenance": [
+                    {"source_id": left.source_id, "source_record_key": left.key},
+                    {"source_id": right.source_id, "source_record_key": right.key},
+                ],
+                "observed_at": min(left.dates + right.dates) if left.dates or right.dates else "",
+                "method": "exact_fsis_alternate_name_equality",
+                "relationship_type": "shared_business_name",
+                "contributing_features": ["shared_business_name"],
+                "contradictory_evidence": [],
+                "confidence": 0.58,
+                "confidence_band": "possible",
+                "review_state": "review_required",
+                "automatic_merge": False,
+                "transfers_claims": False,
+                "disclaimer": "Inferred shared business name only; not evidence of ownership, operator status, or facility identity.",
+                "ruleset": "d6-shared-business-name-v1",
+            }))
+        for _, candidate in sorted(candidates, key=lambda item: item[0]):
+            counters["pairs_emitted"] += 1
+            yield candidate
+    return generate(), counters
 
 
 def _iter_probabilistic_candidates(rows: Iterable[_Observed], *, start_after: str | None = None,

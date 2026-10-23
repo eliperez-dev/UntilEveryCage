@@ -5,7 +5,9 @@ import shutil
 import unittest
 from pathlib import Path
 
-from pipeline.common.real_private_graph import build_report, discover_manifests, run_rehearsal, write_report
+from pipeline.common.real_private_graph import _MatcherStage, build_report, discover_manifests, run_rehearsal, write_report
+from pipeline.common.graph_candidate import write_graph_candidates
+from pipeline.common.graph_persistence import build_candidate_connection_edges, load_graph_candidate_handoff
 
 
 class RealPrivateGraphTests(unittest.TestCase):
@@ -69,6 +71,30 @@ class RealPrivateGraphTests(unittest.TestCase):
         self.assertFalse(report["publication"]["approval_inferred"])
         digest = write_report(report, root / "report.json")
         self.assertEqual(len(digest), 64)
+
+    def test_fsis_alias_matcher_stage_produces_supported_inferred_edge(self):
+        handoff = self.root / "fsis" / "graph-candidates"
+        write_graph_candidates(handoff, [
+            {"source_id": "us.fsis", "source_row": 1, "source_record_key": "fsis-a",
+             "normalized": {"establishment_id": "FS-001", "dba_names": ["Synthetic Business Name"]}},
+            {"source_id": "us.fsis", "source_row": 2, "source_record_key": "fsis-b",
+             "normalized": {"establishment_id": "FS-002", "alternate_names": ["synthetic business name"]}},
+        ], artifact_sha256="a" * 64, observed_at="2026-01-01T00:00:00Z")
+        stage = _MatcherStage()
+        try:
+            stage.add_handoff(handoff)
+            stats = stage.build_candidates()
+            first = next(row for row in load_graph_candidate_handoff(handoff)[1]
+                         if row["source_record_key"] == "fsis-a")
+            manifest = {"source_id": "us.fsis", "retrieved_at_utc": "2026-01-02T00:00:00Z"}
+            edges = build_candidate_connection_edges(first, manifest, edge_builder=stage.edge_builder)
+            self.assertEqual(stats["shared_business_name_pairs_emitted"], 1)
+            self.assertEqual(len(edges), 1)
+            self.assertEqual(edges[0]["relationship_type"], "shared_business_name")
+            self.assertEqual(edges[0]["connection_type"], "inferred")
+            self.assertEqual({ref["source_record_key"] for ref in edges[0]["supporting_source_refs"]}, {"fsis-a", "fsis-b"})
+        finally:
+            stage.close()
 
 
 if __name__ == "__main__":

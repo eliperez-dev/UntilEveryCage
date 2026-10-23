@@ -13,6 +13,7 @@ from pipeline.common.d5_connection_analysis import (
     analyze,
     iter_candidate_batches,
     iter_probabilistic_candidates,
+    iter_shared_business_name_candidates,
     load_private_rows,
     read_aggregate_manifests,
     write_report,
@@ -205,6 +206,64 @@ class D5ConnectionAnalysisTests(unittest.TestCase):
         iterator, counters = _iter_probabilistic_candidates([first, repeat])
         self.assertEqual(list(iterator), [])
         self.assertEqual(counters["pairs_exact_equivalent"], 1)
+
+    def test_shared_business_name_requires_complete_fsis_alias_equality_and_distinct_facilities(self):
+        def fsis(key: str, facility: str, aliases: list[str], *, canonical: str = "Unrelated Name"):
+            return _observed_from_row({
+                "source_id": "us.fsis", "source_record_key": key,
+                "normalized": {"establishment_id": facility, "canonical_name": canonical,
+                              "alternate_names": aliases, "observed_at": "2026-01-01"},
+            })
+
+        rows = [
+            fsis("fsis-a", "A-01", ["Tyson Foods, Inc.", "Meat Processing", "Tyson"]),
+            fsis("fsis-b", "B-02", ["TYSON FOODS INC"]),
+            # Same alias but repeated source-native facility is not a link.
+            fsis("fsis-a-repeat", "A-01", ["Tyson Foods Inc."]),
+            # Canonical names never participate in this rule.
+            fsis("fsis-c", "C-03", [], canonical="Tyson Foods Inc."),
+            _observed_from_row({
+                "source_id": "us.aphis", "source_record_key": "aphis-a",
+                "normalized": {"establishment_id": "X", "alternate_names": ["Tyson Foods Inc."]},
+            }),
+        ]
+        iterator, counters = iter_shared_business_name_candidates(rows)
+        candidates = list(iterator)
+        self.assertEqual(len(candidates), 1)
+        edge = candidates[0]
+        self.assertEqual(edge["relationship_type"], "shared_business_name")
+        self.assertEqual(edge["contributing_features"], ["shared_business_name"])
+        self.assertEqual({item["source_record_key"] for item in edge["provenance"]}, {"fsis-a", "fsis-b"})
+        self.assertEqual(edge["confidence_band"], "possible")
+        self.assertFalse(edge["automatic_merge"])
+        self.assertFalse(edge["transfers_claims"])
+        self.assertNotIn("Tyson", json.dumps(edge))
+        self.assertEqual(counters["pairs_emitted"], 1)
+        self.assertEqual(counters["pairs_considered"], 1)
+
+    def test_shared_business_name_requires_two_non_generic_tokens(self):
+        rows = [
+            _observed_from_row({"source_id": "us.fsis", "source_record_key": "one",
+                                "normalized": {"establishment_id": "1", "dba_names": ["Meat Processing"]}}),
+            _observed_from_row({"source_id": "us.fsis", "source_record_key": "two",
+                                "normalized": {"establishment_id": "2", "dba_names": ["Poultry"]}}),
+        ]
+        iterator, _ = iter_shared_business_name_candidates(rows)
+        self.assertEqual(list(iterator), [])
+
+
+    def test_graph_candidate_handoff_carries_only_fsis_dba_alias_evidence(self):
+        from pipeline.common.graph_candidate import build_graph_candidate
+        record = {
+            "source_id": "us.fsis", "source_record_key": "fsis-1", "source_row": 1,
+            "normalized": {"establishment_id": "FS-1", "dba_names": ["Synthetic DBA"]},
+        }
+        candidate = build_graph_candidate(record, observed_at="2026-01-01")
+        self.assertEqual(candidate["shared_business_name_aliases"], ["Synthetic DBA"])
+        self.assertNotIn("shared_business_name_aliases", build_graph_candidate({
+            "source_id": "fr.dgal.section-i", "source_record_key": "fr-1", "source_row": 1,
+            "normalized": {"establishment_id": "FR-1", "alternate_names": ["Synthetic DBA"]},
+        }, observed_at="2026-01-01"))
 
 
 if __name__ == "__main__":

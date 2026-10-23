@@ -114,12 +114,17 @@ def build_graph_candidate(
             "support": support,
         })
 
+    business_name_aliases = _fsis_business_name_aliases(record) if source_id == "us.fsis" else []
     candidate = {
         "contract_version": "graph-candidate-handoff-v1",
         "source_id": source_id,
         "source_record_key": source_key,
         "source_row": record.get("source_row"),
         "source_values": record.get("source_values", {}),
+        # Only this source-native, explicitly named alias field is eligible
+        # for the private shared-business-name matcher.  It is not an owner
+        # or operator assertion and is never emitted as public edge text.
+        **({"shared_business_name_aliases": business_name_aliases} if business_name_aliases else {}),
         "facilities": facilities,
         "organizations": [],
         "relationships": [],
@@ -131,6 +136,21 @@ def build_graph_candidate(
     }
     validate_graph_candidate(candidate)
     return candidate
+
+
+def _fsis_business_name_aliases(record: dict[str, Any]) -> list[str]:
+    """Return only retained FSIS DBA/alternate-name evidence for private matching."""
+    normalized = record.get("normalized")
+    if not isinstance(normalized, dict):
+        return []
+    aliases: list[str] = []
+    for field in ("alternate_names", "dba_names"):
+        value = normalized.get(field)
+        values = value if isinstance(value, (list, tuple)) else [value]
+        for item in values:
+            if isinstance(item, str) and item.strip():
+                aliases.append(item.strip())
+    return list(dict.fromkeys(aliases))
 
 
 def write_graph_candidates(
