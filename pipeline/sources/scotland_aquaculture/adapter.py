@@ -254,4 +254,4 @@ class ScotlandAquacultureAdapter:
     def write_candidate_handoff(self, run_dir: str | Path, artifact: SourceArtifact,
                                 accepted: list[dict[str, Any]]) -> dict[str, Any]:
         return write_handoff(run_dir, accepted, artifact, source_id=SOURCE_ID,
-                             emit_graph_candidates=False)
+                             emit_graph_candidates=True)

@@ -379,7 +379,7 @@ class NpiFacilitiesAdapter:
             "address_review_signal_counts": parsed["address_review_signal_counts"],
         })
         atomic_json(root / "manifest.json", manifest)
-        write_handoff(root / "candidate-handoff", accepted, artifact, source_id=SOURCE_ID, emit_graph_candidates=False)
+        write_handoff(root / "candidate-handoff", accepted, artifact, source_id=SOURCE_ID)
         write_operator_review_packet(
             root,
             manifest,

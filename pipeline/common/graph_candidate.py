@@ -9,10 +9,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections import Counter
 from pathlib import Path
 from typing import Any, Iterable
 
 from pipeline.contracts.graph_candidate_handoff import validate_graph_candidate
+from pipeline.common.graph_source_mapping import (
+    location_role as mapped_location_role,
+    name_assertions,
+    source_identifier,
+)
 
 
 PUBLICATION = {
@@ -34,9 +40,10 @@ def _source_key(record: dict[str, Any]) -> str:
         if value:
             return value
     normalized = record.get("normalized") or {}
-    identifier = _text(normalized.get("establishment_id")) or _text(normalized.get("approval_number"))
+    source_id = str(record.get("source_id") or "unknown")
+    identifier = source_identifier(source_id, normalized if isinstance(normalized, dict) else {})
     if identifier:
-        return f"{record.get('source_id')}|{identifier}"
+        return f"{source_id}|{identifier['identifier_type']}|{identifier['value']}"
     return f"{record.get('source_id')}|row-{record.get('source_row')}"
 
 
@@ -59,17 +66,15 @@ def build_graph_candidate(
     normalized = record.get("normalized")
     if not isinstance(normalized, dict):
         raise ValueError("graph candidate requires normalized source evidence")
-    identifier = _text(normalized.get("establishment_id")) or _text(normalized.get("approval_number"))
-    if not identifier:
+    typed_identifier = source_identifier(source_id, normalized)
+    if not typed_identifier:
         raise ValueError("graph candidate requires a source-native establishment identifier")
     observed = _text(observed_at) or _text(normalized.get("observed_at")) or "unknown-observation-date"
     facility_ref = _local_ref("facility", source_id, source_key)
     facilities = [{
         "local_ref": facility_ref,
         "source_identifier": {
-            "identifier_type": "source_establishment_id",
-            "value": identifier,
-            "identity_scope": "source_scoped",
+            **typed_identifier,
         },
     }]
 
@@ -81,7 +86,7 @@ def build_graph_candidate(
         "claim_kind": "source_establishment",
         "facility_ref": facility_ref,
         "value_state": "known",
-        "value": identifier,
+        "value": typed_identifier["value"],
         "observed_at": observed,
         "confidence": None,
         "review_state": "review_required",
@@ -100,14 +105,14 @@ def build_graph_candidate(
             "review_state": "review_required",
             "support": support,
         })
-    source_label = _text(normalized.get("name")) or _text(normalized.get("trading_name"))
-    if source_label:
+    assertions = name_assertions(source_id, normalized)
+    for assertion in assertions:
         claims.append({
             "claim_domain": "identity",
-            "claim_kind": "source_label",
+            "claim_kind": f"source_{assertion['role']}_name",
             "facility_ref": facility_ref,
             "value_state": "known",
-            "value": source_label,
+            "value": assertion["value"],
             "observed_at": observed,
             "confidence": None,
             "review_state": "review_required",
@@ -121,6 +126,11 @@ def build_graph_candidate(
         "source_record_key": source_key,
         "source_row": record.get("source_row"),
         "source_values": record.get("source_values", {}),
+        # Exact private normalized context is retained for the shared matcher
+        # and replay tooling. Eligibility comes only from typed fields below.
+        "normalized_values": normalized,
+        "name_assertions": assertions,
+        "location_role": mapped_location_role(source_id, normalized),
         # Only this source-native, explicitly named alias field is eligible
         # for the private shared-business-name matcher.  It is not an owner
         # or operator assertion and is never emitted as public edge text.
@@ -172,7 +182,13 @@ def write_graph_candidates(
     manifest = {
         "schema_version": "private-graph-candidate-set-v1",
         "contract_version": "graph-candidate-handoff-v1",
+        "source_ids": sorted({candidate["source_id"] for candidate in candidates}),
         "candidate_rows": len(candidates),
+        "facility_identifier_candidates": sum(bool(candidate.get("facilities")) for candidate in candidates),
+        "organization_identifier_candidates": sum(bool(candidate.get("organizations")) for candidate in candidates),
+        "name_assertion_candidates": sum(len(candidate.get("name_assertions", [])) for candidate in candidates),
+        "location_role_counts": dict(sorted(Counter(candidate.get("location_role", "unknown") for candidate in candidates).items())),
+        "business_contact_candidates": sum(len(candidate.get("business_contacts", [])) for candidate in candidates),
         "quarantined_source_rows": quarantined_rows,
         "records_sha256": hashlib.sha256(payload).hexdigest(),
         "storage_state": "private",

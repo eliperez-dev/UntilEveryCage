@@ -377,10 +377,8 @@ class FirstWaveRefreshAdapter:
             elif isinstance(source_adapter, DenmarkSmileyAdapter):
                 source_adapter.write_candidate_handoff(lifecycle_root / "candidate-handoff", source_artifact, rows)
             elif self.source_id == "it.1069-2009":
-                # The current 1069 file does not provide a verified graph
-                # relationship contract; keep this lane observation-only.
                 write_handoff(run_dir / "candidate-handoff", rows, source_artifact,
-                              source_id=self.source_id, emit_graph_candidates=False)
+                              source_id=self.source_id)
             elif isinstance(source_adapter, SouthAustraliaEpaAdapter):
                 source_adapter.write_candidate_handoff(run_dir / "candidate-handoff", source_artifact, rows)
             elif self.source_id == "es.cat.feed-sandach":
@@ -388,11 +386,11 @@ class FirstWaveRefreshAdapter:
                               "source_record_key": row["source_record_key"], "source_values": {},
                               "normalized": row["normalized"]} for row in rows]
                 write_handoff(run_dir / "candidate-handoff", safe_rows, source_artifact,
-                              source_id=self.source_id, emit_graph_candidates=False)
+                              source_id=self.source_id)
             elif self.source_id == "br.sif.registered":
                 safe_rows = source_adapter.minimize_for_handoff(rows)
                 write_handoff(run_dir / "candidate-handoff", safe_rows, source_artifact,
-                              source_id=self.source_id, emit_graph_candidates=False)
+                              source_id=self.source_id)
             else:
                 write_handoff(run_dir / "candidate-handoff", rows, source_artifact, source_id=self.source_id)
             candidate_handoff = True
@@ -487,7 +485,7 @@ class FirstWaveRefreshAdapter:
             # postcode, remarks, or coordinate values.
             handoff_rows = [{**row, "source_values": {}} for row in rows]
             write_handoff(run_dir / "candidate-handoff", handoff_rows, source_artifact,
-                          source_id=self.source_id, emit_graph_candidates=False)
+                          source_id=self.source_id)
             handoff_manifest = json.loads((run_dir / "candidate-handoff" / "manifest.json").read_text(encoding="utf-8"))
             summary.update({
                 "acquisition_classification": "live" if acquisition else "assisted",

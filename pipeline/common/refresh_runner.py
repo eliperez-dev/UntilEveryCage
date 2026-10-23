@@ -21,7 +21,7 @@ from pipeline.contracts.refresh import (
 )
 from pipeline.source_registry import load_registry
 from .adapter_registry import load as load_capabilities
-from .source_operations import load_source_schedules
+from .source_operations import load_source_schedules, run_configured_graph_materialization
 
 
 class RefreshRunnerError(ValueError):
@@ -308,6 +308,12 @@ class RefreshRunner:
                 if schema_status in {"drift", "schema-drift", "changed", "blocked"} or summary.get("drift_alarms"):
                     acquisition_classification = "schema-drift"
                 safe = row_free_summary(summary)
+                graph_materialization = request.options.get("graph_materialization")
+                if graph_materialization is not None:
+                    safe["graph_materialization"] = run_configured_graph_materialization(
+                        graph_materialization, current_run_dir=source_dir,
+                        runtime_database_url=request.database_url,
+                    )
                 if request.import_candidates and acquisition_classification == "schema-drift":
                     safe["candidate_import"] = {"status": "blocked", "reason": "schema-drift"}
                 elif request.import_candidates:

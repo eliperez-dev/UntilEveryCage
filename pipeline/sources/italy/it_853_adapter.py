@@ -254,6 +254,13 @@ class Italy853Adapter:
                 signal_bundle=[
                     {"kind": "source_identifier_cooccurrence", "identifier_types": [kind for kind, _ in organization_identifiers], "connection_type": "exact"},
                 ],
+                normalized_values=record.get("normalized"),
+                name_assertions=([
+                    {"value": record["normalized"][field], "source_field": field, "role": role}
+                    for field, role in (("name", "business"), ("trading_name", "trading"))
+                    if isinstance(record.get("normalized"), dict) and record["normalized"].get(field)
+                ] or None),
+                location_role=("operating" if isinstance(record.get("normalized"), dict) and record["normalized"].get("location_role") == "recognized-establishment-location" else "unknown"),
             ))
         graph_manifest = write_graph_candidates(root / "graph", graph_candidates)
         anomaly_counts = Counter(reason for item in quarantined for reason in item["reasons"])

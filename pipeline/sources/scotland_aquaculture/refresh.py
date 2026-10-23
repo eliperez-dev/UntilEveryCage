@@ -72,7 +72,7 @@ class ScotlandAquacultureRefreshAdapter:
             lifecycle_root = Path(lifecycle["run_dir"])
             rows = read_jsonl(lifecycle_root / "normalized" / "records.jsonl")
             handoff = write_handoff(run_dir / "candidate-handoff", rows, source_artifact,
-                                    source_id=SOURCE_ID, emit_graph_candidates=False)
+                                    source_id=SOURCE_ID, emit_graph_candidates=True)
         return {
             "lifecycle_status": lifecycle.get("status"),
             "publication_state": lifecycle.get("publication_state", "unchanged"),
