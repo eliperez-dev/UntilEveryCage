@@ -138,7 +138,14 @@ class ScotlandAquacultureAdapterTests(unittest.TestCase):
             handoff = self.adapter.write_candidate_handoff(run_root / "handoff", artifact, rows)
             self.assertEqual(handoff["normalized_rows"], 2)
             self.assertEqual(handoff["release_state"], "not-created")
-            self.assertFalse((run_root / "handoff" / "graph-candidates").exists())
+            graph_root = run_root / "handoff" / "graph-candidates"
+            self.assertTrue(graph_root.exists())
+            graph_rows = [json.loads(line) for line in (graph_root / "records.jsonl").read_text().splitlines()]
+            self.assertEqual(len(graph_rows), 2)
+            self.assertTrue(all(row["facilities"] for row in graph_rows))
+            self.assertTrue(all(row["name_assertions"] for row in graph_rows))
+            self.assertTrue(all(row["location_role"] == "city_reference" for row in graph_rows))
+            self.assertTrue(all(row["publication"]["publication_status"] == "not_eligible" for row in graph_rows))
             handed = [json.loads(line) for line in (run_root / "handoff" / "normalized" / "records.jsonl").read_text().splitlines()]
             fish = next(row for row in handed if row["normalized"]["establishment_id"] == "SYN-FISH")
             self.assertEqual(fish["normalized"]["facility_name"], "Synthetic SYN-FISH")

@@ -39,6 +39,16 @@ class Test(unittest.TestCase):
   content=(H+"\n"+row()+row("","10")).encode()
   with tempfile.TemporaryDirectory() as d, tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as f:
    f.write(content); f.flush(); sha=hashlib.sha256(content).hexdigest(); a=Italy853Adapter(); m=a.run(f.name,d,SourceArtifact("u","2026-09-14T00:00:00Z",sha,len(content),code_version="c",config_version="k")); assert_manifest(m,content,a.schema_version); self.assertTrue((__import__('pathlib').Path(d)/"normalized/records.jsonl").exists()); self.assertEqual(m["quarantined_rows"],1); self.assertNotIn("accepted",m); self.assertNotIn("source_values",json.dumps(m))
+
+ def test_graph_candidate_preserves_business_vat_and_registered_operator_role(self):
+  content=(H+"\n"+row()).encode(); sha=hashlib.sha256(content).hexdigest(); a=Italy853Adapter()
+  with tempfile.TemporaryDirectory() as d, tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as f:
+   f.write(content); f.flush(); a.run(f.name,d,SourceArtifact("u","2026-09-14T00:00:00Z",sha,len(content),code_version="c",config_version="k"))
+   candidate=json.loads((__import__('pathlib').Path(d)/"graph/graph-candidates.jsonl").read_text().splitlines()[0])
+  self.assertEqual([item["source_identifier"]["identifier_type"] for item in candidate["organizations"]], ["italian_vat"])
+  self.assertEqual(candidate["organizations"][0]["source_identifier"]["id_namespace"], "it.tax-authority.vat")
+  self.assertEqual(candidate["name_assertions"][0], {"value":"Name","source_field":"ragione_sociale","role":"legal"})
+  self.assertEqual(candidate["relationships"][0]["relationship_type"], "operator")
  def test_candidate_handoff_uses_shared_writer(self):
   content=(H+"\n"+row()).encode(); sha=hashlib.sha256(content).hexdigest(); a=Italy853Adapter()
   with tempfile.TemporaryDirectory() as d, tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as f:

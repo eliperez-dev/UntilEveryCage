@@ -24,7 +24,7 @@ FACILITY_IDENTIFIERS: dict[str, tuple[str, str]] = {
     "it.1069-2009": ("it_1069_recognition_number", "it.1069-2009"),
     "it.853-2004": ("it_853_recognition_number", "it.853-2004"),
     "nl.nvwa.approved-food": ("nvwa_approval_number", "nl.nvwa.approved-food"),
-    "us.aphis": ("aphis_registration_or_event_id", "us.aphis"),
+    "us.aphis": ("aphis_establishment_id", "us.aphis"),
     "us.fsis": ("fsis_establishment_number", "us.fsis"),
     "fr.dgal.section-i": ("dgal_section_i_approval", "fr.dgal.section-i"),
     "fr.dgal.section-ii": ("dgal_section_ii_approval", "fr.dgal.section-ii"),
@@ -32,30 +32,68 @@ FACILITY_IDENTIFIERS: dict[str, tuple[str, str]] = {
     "gb.scot.marine.aquaculture": ("scottish_aquaculture_site_id", "gb.scot.marine.aquaculture"),
 }
 
-# Only fields whose source adapters already distinguish their business role
-# are eligible.  Deliberately omit generic ``name`` and ambiguous person,
-# account, contact, or government-link fields.
+# Only fields whose source adapters or retained projection explicitly
+# distinguish their facility/business role are eligible. Deliberately omit
+# generic ``name`` and ambiguous person, account, contact, or government-link
+# fields.
 NAME_FIELDS: dict[str, tuple[tuple[str, str], ...]] = {
-    "au.npi.facilities": (("registered_business_name", "legal"), ("facility_name", "business")),
-    "ca.ontario.meat-plants": (("operator_name", "operator"), ("trading_name", "trading")),
-    "dk.smiley": (("trading_name", "trading"),),
-    "fsa_approved_establishments": (("trading_name", "trading"),),
-    "fss_approved_establishments": (("trading_name", "trading"),),
-    "it.1069-2009": (("name", "business"), ("trading_name", "trading")),
-    "it.853-2004": (("name", "business"), ("trading_name", "trading")),
+    "au.npi.facilities": (("registered_business_name", "legal"), ("facility_name", "business"), ("facility_display_name", "business")),
+    "ca.ontario.meat-plants": (("operator_name", "operator"), ("trading_name", "trading"), ("facility_display_name", "business")),
+    "dk.smiley": (("trading_name", "trading"), ("facility_display_name", "business")),
+    "fsa_approved_establishments": (("trading_name", "trading"), ("facility_display_name", "business")),
+    "fss_approved_establishments": (("trading_name", "trading"), ("facility_display_name", "business")),
+    "nl.nvwa.approved-food": (("trading_name", "trading"), ("facility_display_name", "business")),
+    "us.aphis": (("canonical_name", "business"), ("facility_display_name", "business")),
+    "it.1069-2009": (("name", "business"), ("trading_name", "trading"), ("facility_display_name", "business")),
+    "it.853-2004": (("name", "business"), ("trading_name", "trading"), ("facility_display_name", "business")),
     "us.fsis": (("canonical_name", "business"),),
-    "fr.dgal.section-i": (("name", "business"), ("trading_name", "trading")),
-    "fr.dgal.section-ii": (("name", "business"), ("trading_name", "trading")),
+    "fr.dgal.section-i": (("name", "business"), ("trading_name", "trading"), ("facility_display_name", "business")),
+    "fr.dgal.section-ii": (("name", "business"), ("trading_name", "trading"), ("facility_display_name", "business")),
+    "fr.georisques.icpe.animal": (("trading_name", "business"), ("facility_name", "business")),
+    "gb.scot.marine.aquaculture": (("facility_name", "business"),),
 }
 
 LOCATION_ROLES: dict[str, str] = {
     "source-reported-facility-location": "operating",
-    "recognized-1069-establishment-location": "operating",
-    "recognized-establishment-location": "operating",
     "mailing": "mailing",
     "registered": "registered",
     "city_reference": "city_reference",
 }
+
+# These registries describe an inspected/approved/regulated animal premises,
+# not merely a postal reference. A role is emitted only when a street-level
+# address is actually present in normalized or source-native evidence.
+PREMISES_ADDRESS_SOURCES = frozenset({
+    "au.npi.facilities", "ca.ontario.meat-plants", "dk.smiley",
+    "es.cat.feed-sandach", "fsa_approved_establishments",
+    "fss_approved_establishments", "nl.nvwa.approved-food", "us.fsis",
+    "fr.georisques.icpe.animal", "gb.scot.marine.aquaculture", "it.853-2004",
+})
+
+
+def _has_address_evidence(value: Any) -> bool:
+    if not isinstance(value, dict):
+        return False
+    for key in ("address", "street", "street_address", "street_address_1", "address_lines",
+                "address_line_1", "address_line_2", "address1", "adresse1", "adre_a",
+                "loc_add1", "Adresse", "Address1", "Address2"):
+        item = value.get(key)
+        if isinstance(item, str) and item.strip():
+            return True
+        if isinstance(item, (list, tuple)) and any(isinstance(part, str) and part.strip() for part in item):
+            return True
+    nested = value.get("private_location_evidence")
+    return _has_address_evidence(nested) if isinstance(nested, dict) else False
+
+
+def _has_city_reference(value: Any) -> bool:
+    if not isinstance(value, dict):
+        return False
+    if any(isinstance(value.get(key), str) and value[key].strip()
+           for key in ("city", "municipality", "locality", "town")):
+        return True
+    nested = value.get("private_location_evidence")
+    return _has_city_reference(nested) if isinstance(nested, dict) else False
 
 
 def _values(value: Any) -> list[str]:
@@ -112,9 +150,15 @@ def source_identifier(source_id: str, normalized: dict[str, Any]) -> dict[str, s
             "value": candidates[0], "identity_scope": "source_scoped"}
 
 
-def name_assertions(source_id: str, normalized: dict[str, Any]) -> list[dict[str, str]]:
+def name_assertions(source_id: str, normalized: dict[str, Any], source_values: dict[str, Any] | None = None) -> list[dict[str, str]]:
     assertions: list[dict[str, str]] = []
     fields = NAME_FIELDS.get(source_id, ())
+    if source_id in {"it.1069-2009", "it.853-2004"}:
+        legal_name = source_values.get("ragione_sociale") if isinstance(source_values, dict) else None
+        legal_name = legal_name if isinstance(legal_name, str) and legal_name.strip() else normalized.get("name")
+        if isinstance(legal_name, str) and legal_name.strip():
+            assertions.append({"value": legal_name.strip(), "source_field": "ragione_sociale" if isinstance(source_values, dict) and source_values.get("ragione_sociale") else "name", "role": "legal"})
+        fields = tuple((field, role) for field, role in fields if field == "facility_display_name")
     for field, role in fields:
         for value in _values(normalized.get(field)):
             assertions.append({"value": value, "source_field": field, "role": role})
@@ -134,13 +178,25 @@ def name_assertions(source_id: str, normalized: dict[str, Any]) -> list[dict[str
     return unique
 
 
-def location_role(source_id: str, normalized: dict[str, Any]) -> str:
+def location_role(source_id: str, normalized: dict[str, Any], source_values: dict[str, Any] | None = None) -> str:
     raw = normalized.get("location_role")
+    address_evidence = _has_address_evidence(normalized) or _has_address_evidence(source_values)
+    address_state = normalized.get("address_state")
+    if source_id == "us.aphis" and (
+        isinstance(address_state, str) and "mailing" in address_state.casefold()
+        or normalized.get("mailing_city") or normalized.get("location_evidence_role") == "mailing_locality_only_not_operating_site"
+    ):
+        return "mailing"
     if isinstance(raw, str) and raw in LOCATION_ROLES:
-        return LOCATION_ROLES[raw]
-    if source_id == "au.npi.facilities" and normalized.get("location_role") == "source-reported-facility-location":
+        role = LOCATION_ROLES[raw]
+        return role if role != "operating" or address_evidence else "unknown"
+    if source_id == "au.npi.facilities" and raw == "source-reported-facility-location":
+        return "operating" if address_evidence else "unknown"
+    if source_id in PREMISES_ADDRESS_SOURCES and address_evidence:
         return "operating"
+    if _has_city_reference(normalized) or _has_city_reference(source_values):
+        return "city_reference"
     return "unknown"
 
 
-__all__ = ["FACILITY_IDENTIFIERS", "LOCATION_ROLES", "NAME_FIELDS", "location_role", "name_assertions", "source_identifier"]
+__all__ = ["FACILITY_IDENTIFIERS", "LOCATION_ROLES", "NAME_FIELDS", "PREMISES_ADDRESS_SOURCES", "location_role", "name_assertions", "source_identifier"]

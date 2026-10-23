@@ -11,6 +11,7 @@ from typing import Any
 from pipeline.contracts.adapter_contract import SourceArtifact
 from pipeline.contracts.candidate_handoff import write_handoff
 from pipeline.contracts.source_lifecycle import atomic_json, atomic_jsonl, private_manifest
+from pipeline.common.graph_candidates import build_identifier_graph_candidate, write_graph_candidates
 
 SOURCE_ID = "it.1069-2009"
 SCHEMA_VERSION = "it-1069-csv-current-2026-09"
@@ -152,6 +153,33 @@ class Italy1069Adapter:
         _, parsed_hash, _ = atomic_jsonl(root / "parsed" / "records.jsonl", all_records)
         _, normalized_hash, _ = atomic_jsonl(root / "normalized" / "records.jsonl", accepted)
         atomic_jsonl(root / "quarantined" / "records.jsonl", quarantined)
+        graph_candidates = []
+        for record in accepted:
+            source_values = record.get("source_values")
+            normalized = record.get("normalized")
+            if not isinstance(source_values, dict) or not isinstance(normalized, dict):
+                continue
+            recognition = _clean(source_values.get("num_identificativo_produzione_commercializzazione"))
+            piva = _clean(source_values.get("p_iva"))
+            legal_name = _clean(source_values.get("ragione_sociale"))
+            graph_candidates.append(build_identifier_graph_candidate(
+                source_id=self.source_id,
+                source_record_key=record["source_record_key"],
+                source_values=source_values,
+                facility_identifier=("eu_recognition_number", recognition) if recognition else None,
+                organization_identifier=None,
+                organization_identifiers=[("italian_vat", piva)] if piva else [],
+                observed_at=artifact.retrieved_at_utc,
+                source_row=record.get("source_row", 1),
+                artifact_sha256=artifact.sha256,
+                signal_bundle=([{"kind": "source_identifier_cooccurrence", "identifier_types": ["italian_vat"], "connection_type": "exact"}] if piva else None),
+                normalized_values=normalized,
+                name_assertions=([{"value": legal_name, "source_field": "ragione_sociale", "role": "legal"}]
+                                 if legal_name else None),
+                location_role="unknown",
+                operator_asserted=bool(piva and legal_name),
+            ))
+        graph_manifest = write_graph_candidates(root / "graph", graph_candidates)
         reasons = Counter(reason for item in quarantined for reason in item["reasons"])
         manifest = private_manifest(source_id=self.source_id, adapter_version=self.adapter_version,
                                     schema_version=self.schema_version, artifact=artifact,
@@ -162,6 +190,10 @@ class Italy1069Adapter:
                          "coverage": "Italy Ministry 1069/2009 animal-by-product establishments; source rows only; not unioned with 853/2004",
                          "geocoding": "disabled", "coordinate_provenance_caveat": "catalog notes some OSM contributor coordinates; row-level provenance is unspecified",
                          "out_of_scope_rows": 0,
-                         "coordinate_rejections": parsed["coordinate_rejections"]})
+                         "coordinate_rejections": parsed["coordinate_rejections"],
+                         "graph_candidate_summary": {key: graph_manifest[key] for key in (
+                             "candidate_count", "facility_identifier_candidates", "organization_identifier_candidates",
+                             "operator_relationship_candidates", "name_assertion_candidates", "location_role_counts",
+                             "business_contact_candidates", "publication_status")}})
         atomic_json(root / "manifest.json", manifest)
         return manifest

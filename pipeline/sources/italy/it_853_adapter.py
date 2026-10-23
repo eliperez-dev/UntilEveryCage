@@ -235,12 +235,10 @@ class Italy853Adapter:
                 continue
             recognition = clean(source_values.get("num_identificativo_produzione_commercializzazione"))
             piva = clean(source_values.get("p_iva"))
-            fiscal = clean(source_values.get("cod_fiscale"))
             organization_identifiers = []
             if piva:
                 organization_identifiers.append(("italian_vat", piva))
-            if fiscal:
-                organization_identifiers.append(("italian_fiscal_code", fiscal))
+            legal_name = clean(source_values.get("ragione_sociale"))
             graph_candidates.append(build_identifier_graph_candidate(
                 source_id=self.source_id,
                 source_record_key=source_key,
@@ -255,12 +253,10 @@ class Italy853Adapter:
                     {"kind": "source_identifier_cooccurrence", "identifier_types": [kind for kind, _ in organization_identifiers], "connection_type": "exact"},
                 ],
                 normalized_values=record.get("normalized"),
-                name_assertions=([
-                    {"value": record["normalized"][field], "source_field": field, "role": role}
-                    for field, role in (("name", "business"), ("trading_name", "trading"))
-                    if isinstance(record.get("normalized"), dict) and record["normalized"].get(field)
-                ] or None),
-                location_role=("operating" if isinstance(record.get("normalized"), dict) and record["normalized"].get("location_role") == "recognized-establishment-location" else "unknown"),
+                name_assertions=([{"value": legal_name, "source_field": "ragione_sociale", "role": "legal"}]
+                                 if legal_name else None),
+                location_role="unknown",
+                operator_asserted=bool(piva and legal_name),
             ))
         graph_manifest = write_graph_candidates(root / "graph", graph_candidates)
         anomaly_counts = Counter(reason for item in quarantined for reason in item["reasons"])
