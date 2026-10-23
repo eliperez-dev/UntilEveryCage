@@ -71,6 +71,10 @@ jobs:
 
   frontend:
     runs-on: ubuntu-latest
+    # Keep this image aligned with the Playwright version in frontend/package-lock.json.
+    # Browsers and OS dependencies are preinstalled; avoid a fresh apt mirror download.
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-noble@sha256:bc6ab0d6d44ff4826e4cb8c1e6d801e185bfc42bb0753f8e2a30efc70db054c7
     defaults:
       run:
         working-directory: frontend
@@ -87,8 +91,7 @@ jobs:
       - run: npm run lint
       - run: npm run boundary
       - run: npm run build
-      - run: npx playwright install --with-deps chromium firefox webkit
-      - run: npx playwright test tests/e2e/shell-routes.spec.ts tests/e2e/local-safety.spec.ts tests/e2e/private-preview.spec.ts --project=chromium --project=firefox --project=webkit --workers=2
+      - run: npx playwright test tests/e2e/shell-routes.spec.ts tests/e2e/local-safety.spec.ts tests/e2e/private-preview.spec.ts tests/e2e/cold-root-map.spec.ts --project=chromium --project=firefox --project=webkit --workers=2
       - name: Community pilot browser proof (synthetic only)
         env:
           VITE_COMMUNITY_PILOT: 'true'
