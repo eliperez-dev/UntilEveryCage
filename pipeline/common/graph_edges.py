@@ -16,7 +16,7 @@ import math
 from typing import Any, Iterable, Mapping
 
 
-RULESET_VERSION = "d6-signal-rules-v2"
+RULESET_VERSION = "d7-signal-rules-v3"
 ENTITY_TYPES = {"facility", "organization", "evidence_event"}
 CONNECTION_TYPES = {"exact", "inferred"}
 CONFIDENCE_BANDS = {"exact", "high", "probable", "possible", "low"}
@@ -174,7 +174,7 @@ def default_signal_registry(*, version: str = RULESET_VERSION) -> SignalRegistry
         SignalDefinition("city_match", "location", 0.10),
         SignalDefinition("address_match", "location", 0.22),
         SignalDefinition("business_phone_match", "contact", 0.11),
-        SignalDefinition("website_domain_match", "contact", 0.11),
+        SignalDefinition("website_domain_match", "contact", 0.11, qualifies=True),
         SignalDefinition("repeated_independent_source", "source", 0.16, qualifies=True),
         SignalDefinition("temporal_compatibility", "temporal", 0.08),
         SignalDefinition("conflicting_identifier", "contradiction", 0.24, contradiction=True),
@@ -262,7 +262,8 @@ def score_connection(signals: Iterable[Signal | Mapping[str, Any]], *, registry:
     name = "organization_name_normalized" in positive_names or "name_only" in positive_names
     postal = "postal_match" in positive_names
     city_address = positive_names.issuperset({"organization_name_normalized", "city_match", "address_match"})
-    anchor = exact or bool(qualifying_names) or (name and postal) or city_address
+    phone_with_name = "business_phone_match" in positive_names and name
+    anchor = exact or bool(qualifying_names) or phone_with_name or (name and postal) or city_address
 
     groups: dict[str, list[Signal]] = {}
     for signal, _ in positive:

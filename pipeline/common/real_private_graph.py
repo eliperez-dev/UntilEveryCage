@@ -25,9 +25,9 @@ from pipeline.common.graph_edges import RULESET_VERSION as D6_EDGE_RULESET_VERSI
 from pipeline.common.graph_persistence import ConnectionEdgeBuilder, import_evidence_events, import_graph_candidates, iter_graph_candidate_handoff
 
 
-REPORT_VERSION = "d5-real-private-graph-v1"
+REPORT_VERSION = "d7-real-private-graph-v1"
 NATIVE_ENDPOINT_CONTRACT_VERSION = "native-source-identifier-v2"
-GRAPH_EDGE_MATERIALIZATION_VERSION = "private-graph-materialization-v3"
+GRAPH_EDGE_MATERIALIZATION_VERSION = "private-graph-materialization-v4"
 GRAPH_MATERIALIZATION_FINGERPRINT = hashlib.sha256(
     "|".join((GRAPH_EDGE_MATERIALIZATION_VERSION, D5_MATCHER_VERSION,
               D6_EDGE_RULESET_VERSION, SHARED_BUSINESS_NAME_RULESET_VERSION,
@@ -47,6 +47,25 @@ def _rss_bytes() -> int | None:
             return value * (1024 if os.name != "nt" else 1)
         except Exception:
             return None
+
+
+def graph_corpus_materialization_fingerprint(handoff_roots: Iterable[str | Path]) -> str:
+    """Bind a materialization to every handoff participating in matching."""
+    inputs: list[dict[str, Any]] = []
+    for root in handoff_roots:
+        manifest, _candidates, digest, count = iter_graph_candidate_handoff(root)
+        metadata_fields = (
+            "contract_version", "source_kind", "checksum_sha256", "source_artifact_sha256",
+            "artifact_sha256", "retrieved_at_utc", "as_of_utc", "adapter_version",
+            "source_revision", "ruleset_version",
+        )
+        inputs.append({"source_id": str(manifest["source_id"]), "handoff_sha256": digest,
+                       "item_count": int(count),
+                       "manifest": {key: manifest[key] for key in metadata_fields if key in manifest}})
+    canonical_inputs = json.dumps(sorted(inputs, key=lambda item: (
+        item["source_id"], item["handoff_sha256"], item["item_count"])),
+        ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256((GRAPH_MATERIALIZATION_FINGERPRINT + "\n" + canonical_inputs).encode("utf-8")).hexdigest()
 
 
 class _MatcherStage:
@@ -142,6 +161,58 @@ class _MatcherStage:
                 self.path.with_name(self.path.name + suffix).unlink()
             except OSError:
                 pass
+
+
+def materialize_graph_corpus(
+    database_url: str,
+    handoff_roots: Iterable[str | Path],
+    *,
+    private_target: tuple[str, str],
+    batch_size: int = 250,
+    on_batch_committed: Any | None = None,
+) -> dict[str, Any]:
+    """Match all supplied source handoffs together and persist serially.
+
+    This is the shared refresh/rebuild entry point. It fingerprints every
+    current input, uses the same disk-backed matcher as the maintenance CLI,
+    and keeps all writes behind the configured private-target guard.
+    """
+    handoffs = [Path(root) for root in handoff_roots]
+    if not handoffs:
+        raise ValueError("at least one graph candidate handoff is required")
+    if batch_size < 1:
+        raise ValueError("batch_size must be positive")
+    fingerprint = graph_corpus_materialization_fingerprint(handoffs)
+    completed = [completed_edge_materialization(
+        database_url, root, private_target=private_target, fingerprint=fingerprint,
+    ) for root in handoffs]
+    if all(item is not None for item in completed):
+        return {"status": "already_present", "materialization_fingerprint": fingerprint,
+                "imports": completed, "matcher": {"skipped": "identical complete corpus"}}
+
+    matcher = _MatcherStage()
+    try:
+        for root in handoffs:
+            matcher.add_handoff(root)
+        matcher_summary = matcher.build_candidates()
+        results = []
+        for root in handoffs:
+            result = import_graph_candidates(
+                database_url, root, batch_size=batch_size,
+                private_target=private_target, edge_builder=matcher.edge_builder,
+                materialization_fingerprint=fingerprint, matcher_summary=matcher_summary,
+                on_batch_committed=on_batch_committed,
+            )
+            results.append({"source_id": result.get("source_id"), "status": result.get("status"),
+                            "item_count": result.get("item_count"),
+                            "edge_inserted_count": result.get("edge_inserted_count"),
+                            "edge_updated_count": result.get("edge_updated_count"),
+                            "edge_unchanged_count": result.get("edge_unchanged_count"),
+                            "persisted_edge_counts": result.get("persisted_edge_counts")})
+        return {"status": "completed", "materialization_fingerprint": fingerprint,
+                "imports": results, "matcher": matcher_summary}
+    finally:
+        matcher.close()
 
 
 @dataclass(frozen=True)
