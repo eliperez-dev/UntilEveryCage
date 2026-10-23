@@ -3,6 +3,8 @@ import releaseManifest from '../fixtures/release-map/manifest.json' with { type:
 
 const exactId = '123e4567-e89b-42d3-a456-426614174000';
 const approximateId = '223e4567-e89b-42d3-a456-426614174000';
+const fastSearchId = '323e4567-e89b-42d3-a456-426614174000';
+const slowSearchId = '423e4567-e89b-42d3-a456-426614174000';
 const releaseId = 'synthetic-release-2026-09';
 const exactPoint: [number, number] = [4.35, 50.85];
 const approximatePoint: [number, number] = [4.45, 50.95];
@@ -39,6 +41,16 @@ test('cold root and warmed reload keep map controls and exact/approximate points
     { facility_id: exactId, canonical_name: 'Exact fixture record', country_code: 'BE', city: 'Fixture A', category: 'slaughter', publication_profile: 'official', factual_review_status: 'reviewed', privacy_screening_status: 'passed', project_approval: 'approved', reviewer_role: null, publication_warning: null, display_precision: 'exact', latitude: exactPoint[1], longitude: exactPoint[0], first_observed_at: null, last_observed_at: '2026-01-01T00:00:00Z', observation_count: 1, lifecycle_status: 'active_observed', source_type: 'official', source_rights_status: 'cleared', provenance_source: null, provenance_source_id: 'fixture.source', provenance_source_name: 'Fixture source', provenance_source_url: 'https://example.test/source', provenance_retrieved_at: '2026-01-01T00:00:00Z', release_id: releaseId, release_ruleset_version: 'rules-v1' },
     { facility_id: approximateId, canonical_name: 'Approximate fixture record', country_code: 'BE', city: 'Fixture B', category: 'slaughter', publication_profile: 'official', factual_review_status: 'reviewed', privacy_screening_status: 'passed', project_approval: 'approved', reviewer_role: null, publication_warning: null, display_precision: 'approximate', latitude: approximatePoint[1], longitude: approximatePoint[0], first_observed_at: null, last_observed_at: '2026-01-01T00:00:00Z', observation_count: 1, lifecycle_status: 'active_observed', source_type: 'official', source_rights_status: 'cleared', provenance_source: null, provenance_source_id: 'fixture.source', provenance_source_name: 'Fixture source', provenance_source_url: 'https://example.test/source', provenance_retrieved_at: '2026-01-01T00:00:00Z', release_id: releaseId, release_ruleset_version: 'rules-v1' },
   ];
+  const listResponse = (data: unknown[], totalCount = data.length) => ({ api_version: 'v2', data, meta: {
+    profile: 'official', release_id: releaseId, ruleset_version: 'rules-v1',
+    coverage_note: 'Synthetic browser fixture.', coverage_scope: 'Fixture only',
+    count_semantics: 'Public locations', next_cursor: null, total_count: totalCount,
+  } });
+  const fastSearchRow = { ...listRows[0], facility_id: fastSearchId, canonical_name: 'Fast fixture record' };
+  const slowSearchRow = { ...listRows[1], facility_id: slowSearchId, canonical_name: 'Slow fixture record' };
+  let releaseSlowList!: () => void;
+  let slowListStarted!: () => void;
+  const slowListEntered = new Promise<void>(resolve => { slowListStarted = resolve; });
   let feedRequests = 0;
   const tile = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/F2sAAAAASUVORK5CYII=', 'base64');
   await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({ status: 200, contentType: 'image/png', body: tile }));
@@ -48,14 +60,18 @@ test('cold root and warmed reload keep map controls and exact/approximate points
     feedRequests++;
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(feed) });
   });
-  await page.route(url => new URL(url.href).pathname === '/api/v2/locations', route => route.fulfill({
-    status: 200, contentType: 'application/json',
-    body: JSON.stringify({ api_version: 'v2', data: listRows, meta: {
-      profile: 'official', release_id: releaseId, ruleset_version: 'rules-v1',
-      coverage_note: 'Synthetic browser fixture.', coverage_scope: 'Fixture only',
-      count_semantics: 'Public locations', next_cursor: null, total_count: 2,
-    } }),
-  }));
+  await page.route(url => new URL(url.href).pathname === '/api/v2/locations', async route => {
+    const q = new URL(route.request().url()).searchParams.get('q');
+    if (q === 'slow') {
+      slowListStarted();
+      await new Promise<void>(resolve => { releaseSlowList = resolve; });
+      try { await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(listResponse([slowSearchRow])) }); }
+      catch { /* The latest query intentionally aborts this stale response. */ }
+      return;
+    }
+    const rows = q === 'fast' ? [fastSearchRow] : listRows;
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(listResponse(rows, rows.length)) });
+  });
   await page.route(url => new URL(url.href).pathname === '/api/v2/discovery/facets', route => route.fulfill({
     status: 200, contentType: 'application/json',
     body: JSON.stringify({ api_version: 'v2', data: { dimensions: {} }, meta: { profile: 'official', release_id: releaseId, ruleset_version: 'rules-v1' } }),
@@ -77,6 +93,16 @@ test('cold root and warmed reload keep map controls and exact/approximate points
   await expect(search).toBeVisible();
   await search.click();
   await expect(page.getByRole('searchbox').first()).toBeVisible();
+  await expect(page.getByText('Exact fixture record')).toBeVisible();
+  const searchBox = page.getByRole('searchbox').first();
+  await searchBox.fill('slow');
+  await expect(page.getByText('Searching · showing previous results')).toBeVisible();
+  await expect(page.getByText('Exact fixture record')).toBeVisible();
+  await slowListEntered;
+  await searchBox.fill('fast');
+  await expect(page.getByText('Fast fixture record')).toBeVisible();
+  releaseSlowList();
+  await expect(page.getByText('Slow fixture record')).toHaveCount(0);
   expect(new URL(page.url()).hash).toContain('list=open');
   await page.getByRole('button', { name: 'Close search panel' }).click();
 
@@ -160,6 +186,9 @@ test('cold root and warmed reload keep map controls and exact/approximate points
   await expect.poll(() => new URL(page.url()).hash).not.toContain(`selected=${exactId}`);
 
   await moveAndCheckFeature(approximateId, approximatePoint, 'approx-reference-pins');
+  await expect.poll(() => page.evaluate((id) => (window as any).__UEC_LOCAL_PREVIEW_MAP__
+    .queryRenderedFeatures({ layers: ['approx-reference-cue'] })
+    .some((feature: any) => feature.properties?.key === id), approximateId)).toBe(true);
   await expect.poll(() => new URL(page.url()).hash).toContain(`selected=${approximateId}`);
   await expect.poll(() => page.evaluate((id) => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;

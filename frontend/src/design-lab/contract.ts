@@ -69,6 +69,7 @@ export interface DirectionViewProps {
   detailError?: string;
   nextCursor?: string | null;
   pageLoading?: boolean;
+  listRefreshing?: boolean;
   onLoadMore?(): void;
   /** Resolves an opaque administrative-reference key emitted by the private map feed. */
   onMapReference?(key: string, sourceId?: string): void;

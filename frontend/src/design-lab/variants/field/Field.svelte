@@ -41,6 +41,7 @@
     detailError = "",
     nextCursor = null,
     pageLoading = false,
+    listRefreshing = false,
     onLoadMore,
     onMapReference,
     aggregateMemberRecords = [],
@@ -64,6 +65,7 @@
     facetsStatus?: "loading" | "ready" | "error" | "unauthorized";
     candidateFacets?: CandidateFacets | null;
     candidateTotalCount?: number | null;
+    listRefreshing?: boolean;
     releaseOptions?: readonly { id: string; label: string }[];
     onreleasechange?(releaseId: string): void;
   } = $props();
@@ -399,7 +401,7 @@
         role="alert"
       >
         Records unavailable. No live fallback was attempted.
-      </div>{:else if mode === "public-release" && dataStatus === "error"}<div class="status" role="alert">{dataError}</div>{:else}<MapSurface
+      </div>{:else if mode === "public-release" && dataStatus === "error" && records.length === 0}<div class="status" role="alert">{dataError}</div>{:else}<MapSurface
         records={mapped}
         {state}
         {mode}
@@ -517,7 +519,7 @@
             </ol>
           </section>
         {/if}
-        <div class="results-heading"><strong>{aggregateOpen ? "Members" : "Facility records"}</strong><span>{aggregateOpen ? `${resultCount} loaded` : (mode === "candidate-preview" || mode === "public-release") && candidateTotalCount !== null ? `${candidateTotalCount} matching · ${resultCount} shown` : `${resultCount} loaded`}</span></div>
+        <div class="results-heading"><strong>{aggregateOpen ? "Members" : "Facility records"}</strong><span role="status" aria-live="polite">{!aggregateOpen && listRefreshing ? (resultCount ? "Searching · showing previous results" : "Searching…") : !aggregateOpen && (dataStatus === "error" || dataStatus === "unauthorized") && resultCount ? "Search unavailable · showing previous results" : aggregateOpen ? `${resultCount} loaded` : (mode === "candidate-preview" || mode === "public-release") && candidateTotalCount !== null ? `${candidateTotalCount} matching · ${resultCount} shown` : `${resultCount} loaded`}</span></div>
         {#if aggregateOpen}<div class="member-context">
             <strong>{aggregateContext.place}</strong><span
               >{aggregateContext.treatment}</span
@@ -534,7 +536,7 @@
           onselect={selectSearchRecord}
         />{#if mode !== "synthetic" && nextCursor && !aggregateOpen}<button
             type="button"
-            disabled={pageLoading}
+            disabled={pageLoading || listRefreshing}
             style="width:calc(100% - 1rem);min-height:2.2rem;margin:.35rem .5rem .5rem;border:1px solid #69716a;color:#f1efe8;background:#171a18;font:.72rem system-ui;cursor:pointer"
             onclick={() => onLoadMore?.()}
             >{pageLoading ? "Loading…" : (mode === "candidate-preview" || mode === "public-release") && candidateTotalCount !== null ? `Load more (${resultCount} of ${candidateTotalCount})` : "Load more records"}</button

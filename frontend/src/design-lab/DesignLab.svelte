@@ -89,6 +89,7 @@
   const dataError = writable('');
   let nextCursor = $state<string | null>(null);
   let pageLoading = $state(false);
+  let listRefreshing = $state(false);
   let counts = $state<RealPreviewCounts | null>(null);
   let coverageOpen = $state(false);
   $effect(() => { if (labState.listOpen && coverageOpen) coverageOpen = false; });
@@ -167,11 +168,9 @@
     const controller = new AbortController();
     listAbort = controller;
     if (reset) {
-      $dataStatus = 'loading';
+      if (!apiRecords.length) $dataStatus = 'loading';
       $dataError = '';
-      apiRecords = [];
       nextCursor = null;
-      candidateTotalCount = null;
     } else pageLoading = true;
     try {
       if (mode === 'public-release') {
@@ -217,7 +216,10 @@
       $dataStatus = errorState(error);
       $dataError = error instanceof Error ? error.message : mode === 'public-release' ? 'Public release records could not be loaded.' : 'The private real-data preview could not be loaded.';
     } finally {
-      if (listAbort === controller) pageLoading = false;
+      if (listAbort === controller) {
+        pageLoading = false;
+        listRefreshing = false;
+      }
     }
   }
 
@@ -257,6 +259,10 @@
       observedListKey = listKey;
       if (searchTimer) clearTimeout(searchTimer);
       listAbort?.abort();
+      listRefreshing = true;
+      nextCursor = null;
+      $dataError = '';
+      if (!apiRecords.length) $dataStatus = 'loading';
       const query = labState.query;
       searchTimer = setTimeout(() => void loadPage(query, true), 180);
     }
@@ -338,7 +344,7 @@
             $publicReleaseId = current?.releaseId ?? null;
             $publicReleaseManifestIdentity = current;
             $publicReleaseIdentity = identity;
-            apiRecords = []; nextCursor = null; $publicMapMeta = null;
+            apiRecords = []; nextCursor = null; candidateTotalCount = null; listRefreshing = false; $publicMapMeta = null;
             observedSelection = undefined;
             $dataStatus = current ? 'loading' : 'error';
             $dataError = current ? '' : $pinnedPublicReleaseId ? 'Selected release unavailable.' : 'No verified public release is available.';
@@ -374,7 +380,7 @@
 <div class="lab" data-review-sentinel={mode === 'synthetic' ? labSentinel : undefined} data-direction="field" data-scenario={labState.scenario} data-data-mode={mode}>
   <div class="map-preview"><h1 class="sr-only">Investigative map</h1>
     <Field state={labState} {coverageOpen} records={mode !== 'synthetic' ? apiRecords : model.listRecords} mapRecords={mode !== 'synthetic' ? [] : model.mapRecords} {mode} publicReleaseId={$publicReleaseId} selectedPublicReleaseId={$publicReleaseId ?? $pinnedPublicReleaseId ?? null} publicReleaseIdentity={$publicReleaseIdentity} publicReleaseManifestIdentity={$publicReleaseManifestIdentity} publicMapMeta={$publicMapMeta} releaseOptions={publicReleaseOptions} onreleasechange={selectPublicRelease} onMapFeedMeta={(meta) => { $publicMapMeta = meta; }}
-      dataStatus={$dataStatus} dataError={$dataError}
+      dataStatus={$dataStatus} dataError={$dataError} {listRefreshing}
       {detailRecord} {detailStatus} {detailError} {nextCursor} {pageLoading}
       {facets} {facetsStatus} {candidateFacets} {candidateTotalCount} {mapDiagnostics} {aggregateMemberRecords} {aggregateNextCursor} {aggregateLoading} {aggregateError} onMapTiming={timing=>{sourceMaterializeMs=timing.sourceMaterializeMs;clusterReadyMs=timing.clusterReadyMs;if(timing.zoomSettleMs!==undefined)zoomSettleMs=timing.zoomSettleMs;}} onLoadMore={() => void loadPage(labState.query, false)} onMapReference={(key, refSourceId) => void loadReference(key, true, refSourceId)} onLoadMoreAggregate={() => { if (aggregateReferenceKey) void loadReference(aggregateReferenceKey, false); }} {dispatch}/>
     {#if mode === 'real-preview' && counts}

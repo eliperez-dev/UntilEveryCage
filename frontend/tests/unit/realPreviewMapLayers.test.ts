@@ -45,7 +45,12 @@ describe('real-preview native clustering layers', () => {
     expect(JSON.stringify(approximatePins.layout['icon-image'])).toContain('category_keys');
     expect(JSON.stringify(approximatePins.layout['icon-image'])).toContain('v1-pin-red');
     expect(layers.find(layer => layer.id === 'approx-reference-circles')).toMatchObject({
-      type: 'circle', layout: { visibility: 'visible' }, paint: { 'circle-radius': 6.5, 'circle-opacity': 0.94 },
+      type: 'circle', layout: { visibility: 'none' }, paint: { 'circle-radius': 6.5, 'circle-opacity': 0.94 },
+    });
+    expect(layers.find(layer => layer.id === 'source-coordinate-points')?.layout?.visibility).toBe('none');
+    expect(layers.find(layer => layer.id === 'approx-reference-cue')).toMatchObject({
+      type: 'symbol', layout: { 'text-field': '≈', 'text-allow-overlap': true },
+      paint: { 'text-color': '#f1efe8' },
     });
     expect(JSON.stringify(layers.find(layer => layer.id === 'approx-reference-circles').paint['circle-color']))
       .toEqual(JSON.stringify(layers.find(layer => layer.id === 'source-coordinate-points').paint['circle-color']));
@@ -88,7 +93,7 @@ describe('real-preview native clustering layers', () => {
     const changes: Array<[string, string, unknown]> = [];
     const map = {
       hasImage: () => true,
-      getLayer: (id: string) => ['v1-source-pins', 'approx-reference-circles', 'approx-reference-shadows', 'approx-reference-pins'].includes(id) ? {} : undefined,
+      getLayer: (id: string) => ['v1-source-pins', 'source-coordinate-points', 'approx-reference-circles', 'approx-reference-shadows', 'approx-reference-pins'].includes(id) ? {} : undefined,
       setLayoutProperty: (id: string, property: string, value: unknown) => changes.push([id, property, value]),
     };
     await setRealPreviewPinMode(map as any, false, '');
@@ -101,11 +106,43 @@ describe('real-preview native clustering layers', () => {
       ['approx-reference-shadows', 'visibility', 'none'],
       ['approx-reference-pins', 'visibility', 'none'],
       ['source-coordinate-points', 'visibility', 'none'],
+      ['approx-reference-circles', 'visibility', 'none'],
+      ['source-coordinate-points', 'visibility', 'none'],
       ['v1-source-shadows', 'visibility', 'visible'],
       ['v1-source-pins', 'visibility', 'visible'],
       ['approx-reference-circles', 'visibility', 'none'],
       ['approx-reference-shadows', 'visibility', 'visible'],
       ['approx-reference-pins', 'visibility', 'visible'],
+    ]);
+  });
+
+  it('keeps fallback dots hidden until V1 artwork is ready and ignores stale mode requests', async () => {
+    const changes: Array<[string, string, unknown]> = [];
+    const images = new Set<string>();
+    let releaseFirstImage!: (value: { data: unknown }) => void;
+    let firstLoad = true;
+    const map = {
+      hasImage: (id: string) => images.has(id),
+      loadImage: () => firstLoad
+        ? (firstLoad = false, new Promise<{ data: unknown }>(resolve => { releaseFirstImage = resolve; }))
+        : Promise.resolve({ data: {} }),
+      addImage: (id: string) => images.add(id),
+      getLayer: (id: string) => ['v1-source-pins', 'source-coordinate-points', 'approx-reference-circles', 'approx-reference-shadows', 'approx-reference-pins'].includes(id) ? {} : undefined,
+      setLayoutProperty: (id: string, property: string, value: unknown) => changes.push([id, property, value]),
+    };
+    const loading = setRealPreviewPinMode(map as any, true, '/pins/');
+    expect(changes).toContainEqual(['source-coordinate-points', 'visibility', 'none']);
+    expect(changes).toContainEqual(['approx-reference-circles', 'visibility', 'none']);
+    await setRealPreviewPinMode(map as any, false, '/pins/');
+    releaseFirstImage({ data: {} });
+    await loading;
+    expect(changes.slice(-6)).toEqual([
+      ['source-coordinate-points', 'visibility', 'visible'],
+      ['v1-source-shadows', 'visibility', 'none'],
+      ['v1-source-pins', 'visibility', 'none'],
+      ['approx-reference-circles', 'visibility', 'visible'],
+      ['approx-reference-shadows', 'visibility', 'none'],
+      ['approx-reference-pins', 'visibility', 'none'],
     ]);
   });
 

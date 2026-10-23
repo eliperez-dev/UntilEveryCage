@@ -81,7 +81,7 @@ const v1CategoryPin = ['case',
 export const REAL_PREVIEW_LAYER_IDS = [
   'clusters', 'approximate-reference-area-fill', 'approximate-reference-area-outline',
   'aggregate-outer', 'approx-reference-pins', 'approx-reference-shadows', 'approx-reference-circles', 'approx-reference-points', 'aggregate-count',
-  'aggregate-kind', 'source-coordinate-points', 'v1-source-shadows', 'v1-source-pins',
+  'aggregate-kind', 'approx-reference-cue', 'source-coordinate-points', 'v1-source-shadows', 'v1-source-pins',
 ] as const;
 
 export function hasRealPreviewMapLayers(map: Pick<MapLibreMap, 'getSource' | 'getLayer'>): boolean {
@@ -176,7 +176,7 @@ export function addRealPreviewMapLayers(
   map.addLayer({
     id: 'approx-reference-circles', type: 'circle', source: 'locations',
     filter: approximateReference,
-    layout: { visibility: 'visible' },
+    layout: { visibility: 'none' },
     paint: {
       'circle-radius': 6.5,
       'circle-color': categoryColor,
@@ -198,6 +198,13 @@ export function addRealPreviewMapLayers(
       'text-allow-overlap': true, 'text-ignore-placement': true },
     paint: { 'text-color': '#172019' },
   } as any);
+  map.addLayer({
+    id: 'approx-reference-cue', type: 'symbol', source: 'locations',
+    filter: ['all', ...aggregateReference.slice(1), ['any', ['==', ['get', 'precision'], 'approximate'], cityReference]],
+    layout: { 'text-field': '≈', 'text-font': ['Open Sans Bold'], 'text-size': 11, 'text-offset': [1.05, -1.05],
+      'text-allow-overlap': true, 'text-ignore-placement': true },
+    paint: { 'text-color': '#f1efe8', 'text-halo-color': '#171a18', 'text-halo-width': 1.5 },
+  } as any);
   setClusterTileRounding(map, settings.maxZoom);
   // The map-scale disc sits behind a permanent center mark. At low zoom the
   // disc is subpixel, while the center still makes the reference discoverable.
@@ -206,7 +213,7 @@ export function addRealPreviewMapLayers(
     filter: ['all', ...aggregateReference.slice(1), cityReference],
     layout: {
       // A singleton remains an ordinary muted pin, not a misleading numeric
-      // cluster badge. The selected-only red area carries the approximation cue.
+      // cluster badge. A small ≈ mark makes its precision legible before selection.
       'icon-image': 'v1-pin-grey', 'icon-anchor': 'bottom', 'icon-size': 0.5,
       'icon-allow-overlap': true, 'icon-ignore-placement': true,
       'text-field': ['case', ['>', weight, 1], ['to-string', weight], ''], 'text-font': ['Open Sans Bold'], 'text-size': 11,
@@ -229,6 +236,7 @@ export function addRealPreviewMapLayers(
   const coordinate = ['all', unclustered, ['in', ['get', 'kind'], ['literal', ['source-coordinate', 'provider_address_point_private']]]];
   map.addLayer({
     id: 'source-coordinate-points', type: 'circle', source: 'locations', filter: coordinate,
+    layout: { visibility: 'none' },
     paint: { 'circle-radius': 7, 'circle-color': categoryColor, 'circle-opacity': 0.94, 'circle-stroke-color': '#171a18', 'circle-stroke-width': 2.5 },
   } as any);
   // Exact V1 raster assets, anchored at the record coordinate as Leaflet did.
@@ -245,12 +253,47 @@ export function addRealPreviewMapLayers(
   } as any);
 }
 
-export async function setRealPreviewPinMode(map: MapLibreMap, enabled: boolean, baseUrl: string): Promise<void> {
-  if (enabled) {
-    for (const [id, file] of [['v1-pin-red', 'marker-icon-2x-red.png'], ['v1-pin-green', 'marker-icon-2x-green.png'], ['v1-pin-yellow', 'marker-icon-2x-yellow.png'], ['v1-pin-violet', 'marker-icon-2x-violet.png'], ['v1-pin-orange', 'marker-icon-2x-orange.png'], ['v1-pin-grey', 'marker-icon-2x-grey.png'], ['v1-pin-shadow', 'marker-shadow.png']] as const) {
-      if (!map.hasImage(id)) map.addImage(id, (await map.loadImage(`${baseUrl}${file}`)).data);
-    }
+const pinImageLoads = new WeakMap<MapLibreMap, Promise<void>>();
+const pinModeGenerations = new WeakMap<MapLibreMap, number>();
+const V1_PIN_IMAGES = [['v1-pin-red', 'marker-icon-2x-red.png'], ['v1-pin-green', 'marker-icon-2x-green.png'], ['v1-pin-yellow', 'marker-icon-2x-yellow.png'], ['v1-pin-violet', 'marker-icon-2x-violet.png'], ['v1-pin-orange', 'marker-icon-2x-orange.png'], ['v1-pin-grey', 'marker-icon-2x-grey.png'], ['v1-pin-shadow', 'marker-shadow.png']] as const;
+
+async function ensureV1PinImages(map: MapLibreMap, baseUrl: string): Promise<void> {
+  let loading = pinImageLoads.get(map);
+  if (!loading) {
+    loading = (async () => {
+      for (const [id, file] of V1_PIN_IMAGES) {
+        if (!map.hasImage(id)) {
+          const image = await map.loadImage(`${baseUrl}${file}`);
+          if (!map.hasImage(id)) map.addImage(id, image.data);
+        }
+      }
+    })();
+    pinImageLoads.set(map, loading);
   }
+  try { await loading; }
+  finally { if (pinImageLoads.get(map) === loading) pinImageLoads.delete(map); }
+}
+
+export async function setRealPreviewPinMode(map: MapLibreMap, enabled: boolean, baseUrl: string): Promise<void> {
+  const generation = (pinModeGenerations.get(map) ?? 0) + 1;
+  pinModeGenerations.set(map, generation);
+  const current = () => pinModeGenerations.get(map) === generation;
+  // Keep debug circles hidden while V1 assets load; otherwise startup/style
+  // restoration flashes the fallback markers before the intended artwork.
+  if (enabled) hideFallbackPinLayers(map);
+  if (enabled) await ensureV1PinImages(map, baseUrl);
+  if (!current()) return;
+  applyRealPreviewPinVisibility(map, enabled);
+}
+
+function hideFallbackPinLayers(map: MapLibreMap): void {
+  if (map.getLayer('mvt-source-coordinates')) map.setLayoutProperty('mvt-source-coordinates', 'visibility', 'none');
+  for (const id of ['source-coordinate-points', 'approx-reference-circles']) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
+  }
+}
+
+function applyRealPreviewPinVisibility(map: MapLibreMap, enabled: boolean): void {
   if (map.getLayer('mvt-v1-source-pins')) {
     map.setLayoutProperty('mvt-source-coordinates', 'visibility', enabled ? 'none' : 'visible');
     map.setLayoutProperty('mvt-v1-source-shadows', 'visibility', enabled ? 'visible' : 'none');

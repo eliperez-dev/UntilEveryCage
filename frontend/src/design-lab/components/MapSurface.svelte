@@ -565,15 +565,20 @@
   $effect(() => {
     if (suppressDiagnostics && diagnosticsOpen) setDiagnosticsOpen(false, false);
   });
+  let pinModeGeneration = 0;
   async function updatePinMode() {
     const instance = map;
     if (!instance) return;
+    const generation = ++pinModeGeneration;
+    const enabled = useV1Pins;
     try {
-      await setRealPreviewPinMode(instance, useV1Pins, `${import.meta.env.BASE_URL}v1-pins/`);
-      pinModeError = "";
+      await setRealPreviewPinMode(instance, enabled, `${import.meta.env.BASE_URL}v1-pins/`);
+      if (generation === pinModeGeneration && map === instance) pinModeError = "";
     } catch {
+      if (generation !== pinModeGeneration || map !== instance) return;
       useV1Pins = false;
       pinModeError = "The V1 pin images could not be loaded.";
+      void setRealPreviewPinMode(instance, false, `${import.meta.env.BASE_URL}v1-pins/`);
     }
   }
   function restoreNativeProjection(instance: MapLibreMap, data: JsonMapCollection): void {
@@ -586,7 +591,7 @@
       addRealPreviewMapLayers(instance, data, { enabled: clusterEnabled, radius: clusterRadius, maxZoom: clusterMaxZoom });
     }
     updateVisualSettings();
-    if (useV1Pins) void updatePinMode();
+    void updatePinMode();
   }
   async function addLayers() {
     if (!map) return;
@@ -672,7 +677,6 @@
       if (useRoundedClusterTiles(clusterMaxZoom) && !roundedClusterTilesAvailable)
         clusterSettingsError = `This MapLibre build cannot apply half-zoom tile selection; effective cutoff is zoom ${nativeClusterMaxZoom(clusterMaxZoom) + 1}.`;
       updateVisualSettings();
-      if (useV1Pins) void updatePinMode();
       feedStatus = "ready";
     } catch (error) {
       if (controller.signal.aborted || generation !== feedGeneration) return;
@@ -761,7 +765,7 @@
     addMvtLocationLayers(map, mapState.sourceId ?? undefined);
     appliedMvtTileSignature = `${mapState.sourceId ?? ""}:${clusterMaxZoom}`;
     updateVisualSettings();
-    if (useV1Pins) void updatePinMode();
+    void updatePinMode();
   }
 
   function replaceMapProjection() {
@@ -1087,7 +1091,7 @@
           onselect(id);
         }
       });
-    const handleReferenceClick = (event: any, layer: "aggregate-outer" | "approx-reference-points" | "approx-reference-pins" | "approx-reference-circles") => {
+    const handleReferenceClick = (event: any, layer: "aggregate-outer" | "approx-reference-points" | "approx-reference-pins" | "approx-reference-circles" | "approx-reference-cue") => {
       if (activeFlight) return;
       // The visible point owns center clicks for approximate records; keep
       // the reference circle available for inspecting its selected area.
@@ -1144,11 +1148,12 @@
     if (isNativeMap()) {
       map.on("click", "approx-reference-pins", (event: any) => handleReferenceClick(event, "approx-reference-pins"));
       map.on("click", "approx-reference-circles", (event: any) => handleReferenceClick(event, "approx-reference-circles"));
+      map.on("click", "approx-reference-cue", (event: any) => handleReferenceClick(event, "approx-reference-cue"));
     }
     if (isNativeMap())
       map.on("click", "approx-reference-points", (event: any) => handleReferenceClick(event, "approx-reference-points"));
     for (const layer of isNativeMap()
-      ? ["clusters", "source-coordinate-points", "v1-source-pins", "aggregate-outer", "approx-reference-pins", "approx-reference-circles", "approx-reference-points"]
+      ? ["clusters", "source-coordinate-points", "v1-source-pins", "aggregate-outer", "approx-reference-pins", "approx-reference-circles", "approx-reference-points", "approx-reference-cue"]
       : ["clusters", "exact-pins", "approximate-points", "source-coordinate-points", "aggregate-outer"]) {
       map.on("mouseenter", layer, () => {
         if (map) map.getCanvas().style.cursor = "pointer";

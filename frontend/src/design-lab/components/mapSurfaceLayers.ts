@@ -17,6 +17,7 @@ export const JSON_LOCATION_LAYER_IDS = [
   'approx-reference-pins',
   'approx-reference-shadows',
   'approx-reference-circles',
+  'approx-reference-cue',
   'approx-reference-points',
   'aggregate-count',
   'aggregate-kind',
