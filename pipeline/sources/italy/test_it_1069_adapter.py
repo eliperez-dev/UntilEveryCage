@@ -9,7 +9,7 @@ from pathlib import Path
 from pipeline.contracts.adapter_contract import SourceArtifact
 from pipeline.common.orchestrator import run_private_lifecycle
 from .acquire_1069 import CATALOG_URL, discover_csv, fetch
-from .it_1069_adapter import ADAPTER_VERSION, HEADERS, Italy1069Adapter
+from .it_1069_adapter import ADAPTER_VERSION, HEADERS, SCHEMA_VERSION, Italy1069Adapter
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -70,6 +70,24 @@ class Italy1069AdapterTests(unittest.TestCase):
     def test_schema_drift_fails_closed(self):
         with self.assertRaisesRegex(ValueError, "schema drift"):
             Italy1069Adapter().parse_bytes(csv_bytes(row()).replace(b"codice_impianto_attivita", b"different_header"))
+
+    def test_graph_candidate_preserves_business_vat_and_registered_operator_role(self):
+        content = csv_bytes(row())
+        artifact = SourceArtifact("https://example.invalid/it1069.csv", "2026-09-24T00:00:00Z",
+                                  hashlib.sha256(content).hexdigest(), len(content),
+                                  code_version=ADAPTER_VERSION, config_version=SCHEMA_VERSION)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            raw_path = root / "source.csv"
+            raw_path.write_bytes(content)
+            adapter = Italy1069Adapter()
+            adapter.run(raw_path, root / "run", artifact)
+            candidate = json.loads((root / "run" / "graph" / "graph-candidates.jsonl").read_text().splitlines()[0])
+        self.assertEqual([item["source_identifier"]["identifier_type"] for item in candidate["organizations"]], ["italian_vat"])
+        self.assertEqual(candidate["name_assertions"][0], {
+            "value": "Synthetic ABP Test Srl", "source_field": "ragione_sociale", "role": "legal",
+        })
+        self.assertEqual(candidate["relationships"][0]["relationship_type"], "operator")
 
     def test_current_dated_catalog_csv_discovery_is_source_scoped(self):
         html = b'''<a href="/sites/default/files/opendata/STAB_SPOA_9_20260922.csv">old</a>

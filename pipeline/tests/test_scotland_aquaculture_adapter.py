@@ -144,7 +144,7 @@ class ScotlandAquacultureAdapterTests(unittest.TestCase):
             self.assertEqual(len(graph_rows), 2)
             self.assertTrue(all(row["facilities"] for row in graph_rows))
             self.assertTrue(all(row["name_assertions"] for row in graph_rows))
-            self.assertTrue(all(row["location_role"] == "unknown" for row in graph_rows))
+            self.assertTrue(all(row["location_role"] == "city_reference" for row in graph_rows))
             self.assertTrue(all(row["publication"]["publication_status"] == "not_eligible" for row in graph_rows))
             handed = [json.loads(line) for line in (run_root / "handoff" / "normalized" / "records.jsonl").read_text().splitlines()]
             fish = next(row for row in handed if row["normalized"]["establishment_id"] == "SYN-FISH")

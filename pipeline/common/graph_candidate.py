@@ -105,7 +105,10 @@ def build_graph_candidate(
             "review_state": "review_required",
             "support": support,
         })
-    assertions = name_assertions(source_id, normalized)
+    assertions = name_assertions(
+        source_id, normalized,
+        record.get("source_values") if isinstance(record.get("source_values"), dict) else None,
+    )
     for assertion in assertions:
         claims.append({
             "claim_domain": "identity",
@@ -130,7 +133,10 @@ def build_graph_candidate(
         # and replay tooling. Eligibility comes only from typed fields below.
         "normalized_values": normalized,
         "name_assertions": assertions,
-        "location_role": mapped_location_role(source_id, normalized),
+        "location_role": mapped_location_role(
+            source_id, normalized,
+            record.get("source_values") if isinstance(record.get("source_values"), dict) else None,
+        ),
         # Only this source-native, explicitly named alias field is eligible
         # for the private shared-business-name matcher.  It is not an owner
         # or operator assertion and is never emitted as public edge text.
