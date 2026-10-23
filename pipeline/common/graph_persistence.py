@@ -478,14 +478,16 @@ def _ensure_source_artifact(connection: Any, manifest: dict[str, Any], digest: s
 
 
 def _ensure_record(connection: Any, manifest: dict[str, Any], artifact_id: uuid.UUID,
-                   source_record_key: str, source_values: dict[str, Any], digest: str) -> uuid.UUID:
+                   source_record_key: str, source_values: dict[str, Any], digest: str,
+                   graph_context: dict[str, Any] | None = None) -> uuid.UUID:
     source_id = manifest["source_id"]
     record_id = _stable_uuid("record", source_id, source_record_key, str(artifact_id))
     connection.execute(
         """INSERT INTO uec.source_records(source_record_id,source_id,source_record_key,artifact_id,raw_fields,parsed_at)
            VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (source_id,source_record_key,artifact_id) DO NOTHING""",
         (record_id, source_id, source_record_key, artifact_id,
-         json.dumps({"source_values": source_values, "handoff_sha256": digest}, ensure_ascii=False), _timestamp(manifest)),
+         json.dumps({"source_values": source_values, **(graph_context or {}),
+                     "handoff_sha256": digest}, ensure_ascii=False), _timestamp(manifest)),
     )
     row = connection.execute(
         "SELECT source_record_id FROM uec.source_records WHERE source_id=%s AND source_record_key=%s AND artifact_id=%s",
@@ -1155,30 +1157,39 @@ def _matcher_edge(raw: dict[str, Any], candidate: dict[str, Any], manifest: dict
             return None
         if raw.get("relationship_type") == "shared_business_name":
             provenance = raw.get("provenance")
-            if (
-                left_ref.entity_type != "facility" or right_ref.entity_type != "facility"
-                or left_ref.source_id != "us.fsis" or right_ref.source_id != "us.fsis"
-                or raw.get("ruleset") != "d6-shared-business-name-v2"
-                or raw.get("method") != "exact_fsis_alternate_name_equality"
-                or raw.get("contributing_features") != ["shared_business_name"]
-                or not isinstance(provenance, list) or len(provenance) != 2
-                or any(not isinstance(item, dict) or item.get("source_id") != "us.fsis"
-                       or not item.get("source_record_key") for item in provenance)
-                or provenance[0].get("source_record_key") == provenance[1].get("source_record_key")
-            ):
+            legacy_fsis = (
+                raw.get("ruleset") == "d6-shared-business-name-v2"
+                and raw.get("method") == "exact_fsis_alternate_name_equality"
+                and left_ref.source_id == right_ref.source_id == "us.fsis"
+            )
+            current_declared_name = (
+                raw.get("ruleset") == "d7-shared-business-name-v3"
+                and raw.get("method") == "exact_declared_business_name_equality"
+            )
+            if (left_ref.entity_type != "facility" or right_ref.entity_type != "facility"
+                    or not (legacy_fsis or current_declared_name)
+                    or raw.get("contributing_features") != ["shared_business_name"]
+                    or not isinstance(provenance, list) or len(provenance) != 2
+                    or any(not isinstance(item, dict) or not item.get("source_id")
+                           or not item.get("source_record_key") for item in provenance)
+                    or provenance[0].get("source_record_key") == provenance[1].get("source_record_key")
+                    or {str(item["source_id"]) for item in provenance}
+                       != {left_ref.source_id, right_ref.source_id}):
                 return None
         signal_names = {
             "name": "organization_name_normalized",
             "postal": "postal_match",
             "city": "city_match",
             "address": "address_match",
+            "business_domain": "website_domain_match",
+            "business_phone": "business_phone_match",
             "shared_business_name": "shared_business_name",
         }
         signals = []
         for name in raw.get("contributing_features", ()):
             if name not in signal_names:
                 continue
-            details = {"basis": "exact_fsis_dba_alternate_name_equality"} if name == "shared_business_name" else {"basis": "indexed_normalized_block"}
+            details = {"basis": "exact_declared_business_name_equality"} if name == "shared_business_name" else {"basis": "indexed_normalized_block"}
             if name == "shared_business_name":
                 details["scope"] = "shared_business_name_only_not_ownership_operator_or_facility_identity"
             signals.append({"name": signal_names[name], "details": details})
@@ -1321,8 +1332,25 @@ def _persist_candidate(connection: Any, manifest: dict[str, Any], candidate: dic
                        approved_facility_map: dict[tuple[str, str, uuid.UUID], set[uuid.UUID]] | None = None,
                        mapping_diagnostics: dict[str, int] | None = None) -> dict[str, int]:
     source_record_key = candidate["source_record_key"]
+    graph_context = {
+        key: candidate[key]
+        for key in ("normalized_values", "name_assertions", "location_role", "business_contacts")
+        if key in candidate
+    }
+    identifier_namespaces = [
+        {"entity_ref": entity.get("local_ref"),
+         "entity_type": "facility" if entity_type == "facilities" else "organization",
+         "identifier_type": (entity.get("source_identifier") or {}).get("identifier_type"),
+         "id_namespace": (entity.get("source_identifier") or {}).get("id_namespace", "source_scoped")}
+        for entity_type in ("facilities", "organizations")
+        for entity in candidate.get(entity_type, ())
+        if isinstance(entity, dict) and isinstance(entity.get("source_identifier"), dict)
+    ]
+    if identifier_namespaces:
+        graph_context["source_identifier_namespaces"] = identifier_namespaces
     record_id = _ensure_record(connection, manifest, artifact_id, source_record_key,
-                               candidate.get("source_values") or {}, handoff_digest)
+                               candidate.get("source_values") or {}, handoff_digest,
+                               graph_context=graph_context)
     facilities, organizations = _entity_maps(connection, manifest, candidate, record_id, artifact_id,
                                              require_approved_facility=require_approved_facility,
                                              approved_facility_map=approved_facility_map,

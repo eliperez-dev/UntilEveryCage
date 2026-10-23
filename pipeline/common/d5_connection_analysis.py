@@ -22,14 +22,13 @@ import tempfile
 import unicodedata
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from itertools import combinations
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 
-REPORT_VERSION = "d5-real-graph-analysis-v1"
-RULESET_VERSION = "d5-multi-signal-candidates-v1"
-SHARED_BUSINESS_NAME_RULESET_VERSION = "d6-shared-business-name-v2"
+REPORT_VERSION = "d7-real-graph-analysis-v1"
+RULESET_VERSION = "d7-multi-signal-candidates-v2"
+SHARED_BUSINESS_NAME_RULESET_VERSION = "d7-shared-business-name-v3"
 EVIDENCE_SOURCE_IDS = frozenset({"us.aphis", "us.inspections"})
 FACILITY_ID_KEYS = frozenset({
     "establishment_id", "establishment_number", "approval_number",
@@ -43,8 +42,14 @@ ORG_ID_KEYS = frozenset({
     "operator_id", "operator_number", "customer_number", "abn", "acn",
 })
 NAME_KEYS = frozenset({
-    "name", "trading_name", "operator_name", "account_name", "legal_name", "site_name",
+    "name", "trading_name", "operator_name", "legal_name", "site_name",
     "establishment_name", "ragione_sociale", "raison_sociale_enseigne_commerciale_name",
+})
+BUSINESS_NAME_KEYS = frozenset({
+    "business_name", "legal_name", "trading_name", "trade_name",
+    "operator_name", "company_name",
+    "alternate_name", "alternate_names", "dba", "dba_name", "dba_names",
+    "raison_sociale", "raison_sociale_enseigne_commerciale_name",
 })
 CITY_KEYS = frozenset({"city", "town", "municipality", "locality", "comune"})
 POSTAL_KEYS = frozenset({"postal_code", "postcode", "zip", "postal", "postnummer", "code_postal_postal_code"})
@@ -144,6 +149,8 @@ class _Observed:
     quarantined: bool = False
     suppressed: bool = False
     shared_business_name_aliases: list[str] | None = None
+    location_role: str = "unknown"
+    business_contacts: dict[str, str] | None = None
 
 
 def _source_kind(source_id: str, row: Mapping[str, Any]) -> str:
@@ -154,7 +161,7 @@ def _source_kind(source_id: str, row: Mapping[str, Any]) -> str:
 
 
 def _nested_values(row: Mapping[str, Any]) -> Iterable[tuple[str, Any]]:
-    for container_name in ("normalized", "source_fields", "source_native_ids", "source_values"):
+    for container_name in ("normalized", "normalized_values", "source_fields", "source_native_ids", "source_values"):
         container = row.get(container_name)
         if isinstance(container, Mapping):
             for key, value in container.items():
@@ -173,7 +180,10 @@ def _nested_values(row: Mapping[str, Any]) -> Iterable[tuple[str, Any]]:
                 if isinstance(identifier, Mapping):
                     identifier_type = identifier.get("identifier_type")
                     if identifier_type:
-                        yield str(identifier_type).casefold(), identifier.get("value")
+                        namespace = _clean(identifier.get("id_namespace"))
+                        key = (f"{namespace}::{identifier_type}" if entity_key == "organizations" and namespace
+                               else str(identifier_type))
+                        yield key.casefold(), identifier.get("value")
 
 
 def _observed_from_row(row: Mapping[str, Any], fallback_source: str | None = None) -> _Observed:
@@ -187,6 +197,22 @@ def _observed_from_row(row: Mapping[str, Any], fallback_source: str | None = Non
     organization_ids: dict[str, str] = {}
     signals: dict[str, str] = {}
     dates: list[str] = []
+    # Pre-contract analysis inputs had no address-role field and historically
+    # treated their facility address as an operating-location signal. Keep
+    # that legacy behavior only for unversioned rows. A v1 handoff's omitted
+    # role follows the contract default (unknown) and is not a site anchor.
+    default_location_role = "unknown" if row.get("contract_version") else "operating"
+    location_role = str(row.get("location_role") or default_location_role).casefold()
+    if location_role not in {"operating", "mailing", "registered", "city_reference", "unknown"}:
+        location_role = "unknown"
+    declared_name_values: set[str] = set()
+    assertions = row.get("name_assertions")
+    if isinstance(assertions, (list, tuple)):
+        for assertion in assertions:
+            if (isinstance(assertion, Mapping)
+                    and assertion.get("role") in {"business", "legal", "trading", "dba", "operator", "brand"}
+                    and isinstance(assertion.get("value"), str)):
+                declared_name_values.add(assertion["value"].strip())
     for raw_key, value in values:
         key = re.sub(r"[^a-z0-9]+", "_", raw_key).strip("_")
         normalized_value = _norm(value)
@@ -196,13 +222,14 @@ def _observed_from_row(row: Mapping[str, Any], fallback_source: str | None = Non
                 facility_endpoint_ids.setdefault(key, native_value)
         if key in ORG_ID_KEYS and normalized_value:
             organization_ids.setdefault(key, normalized_value)
-        if key in NAME_KEYS and (token := _token(value)):
+        if (key in NAME_KEYS and (token := _token(value)) and _shared_business_name_key(value)
+                and (not row.get("contract_version") or _clean(value) in declared_name_values)):
             signals.setdefault("name", token)
-        if key in CITY_KEYS and (token := _token(value)):
+        if key in CITY_KEYS and location_role in {"operating", "city_reference"} and (token := _token(value)):
             signals.setdefault("city", token)
-        if key in POSTAL_KEYS and (token := _norm(value)):
+        if key in POSTAL_KEYS and location_role == "operating" and (token := _norm(value)):
             signals.setdefault("postal", token)
-        if key in ADDRESS_KEYS and (token := _token(value)):
+        if key in ADDRESS_KEYS and location_role == "operating" and (token := _token(value)):
             signals.setdefault("address", token)
         if key in DATE_KEYS and (date := _clean(value)):
             dates.append(date[:32])
@@ -223,7 +250,11 @@ def _observed_from_row(row: Mapping[str, Any], fallback_source: str | None = Non
             identifier_type = _norm(identifier.get("identifier_type"))
             identifier_value = _norm(identifier.get("value") or identifier.get("source_identifier"))
             if identifier_type and identifier_value:
-                target.setdefault(identifier_type, identifier_value)
+                namespace = _clean(identifier.get("id_namespace"))
+                target_key = (f"{namespace}::{native_type}".casefold()
+                              if entity_key == "organizations" and namespace
+                              else identifier_type)
+                target.setdefault(target_key, identifier_value)
                 if entity_key == "facilities" and native_type and native_value:
                     facility_endpoint_ids.setdefault(native_type, native_value)
     key = _clean(row.get("source_record_key")) or _clean(row.get("source_row_id")) or _clean(row.get("source_observation_key")) or "row-unknown"
@@ -238,20 +269,52 @@ def _observed_from_row(row: Mapping[str, Any], fallback_source: str | None = Non
     )
     suppressed = bool(row.get("suppressed") or row.get("public_access_revoked"))
     aliases: list[str] = []
-    if source_id == "us.fsis" and kind == "facility_master":
-        supplied = row.get("shared_business_name_aliases")
-        normalized = row.get("normalized")
+    if kind == "facility_master":
+        supplied = row.get("shared_business_name_aliases")  # legacy FSIS handoffs
         if isinstance(supplied, (list, tuple)):
             aliases.extend(value.strip() for value in supplied if isinstance(value, str) and value.strip())
-        if isinstance(normalized, Mapping):
-            for field in ("alternate_names", "dba_names"):
-                raw_aliases = normalized.get(field)
-                raw_aliases = raw_aliases if isinstance(raw_aliases, (list, tuple)) else [raw_aliases]
-                aliases.extend(value.strip() for value in raw_aliases if isinstance(value, str) and value.strip())
+        # The additive handoff contract carries source-field and semantic role.
+        assertions = row.get("name_assertions")
+        if isinstance(assertions, (list, tuple)):
+            for assertion in assertions:
+                if isinstance(assertion, Mapping) and assertion.get("role") in {
+                    "business", "legal", "trading", "dba", "operator", "brand",
+                } and isinstance(assertion.get("value"), str) and assertion["value"].strip():
+                    aliases.append(assertion["value"].strip())
+        # Read older adapter payloads directly as well. A source-declared
+        # primary business name is eligible; generic/placeholder controls are
+        # rejected later by _shared_business_name_key.
+        for container_name in ("normalized",):
+            container = row.get(container_name)
+            if not isinstance(container, Mapping):
+                continue
+            for field, raw_values in container.items():
+                field_key = re.sub(r"[^a-z0-9]+", "_", str(field).casefold()).strip("_")
+                if field_key not in BUSINESS_NAME_KEYS:
+                    continue
+                values_for_field = raw_values if isinstance(raw_values, (list, tuple)) else [raw_values]
+                aliases.extend(value.strip() for value in values_for_field if isinstance(value, str) and value.strip())
     aliases = list(dict.fromkeys(aliases))
+    contact_values: dict[str, str] = {}
+    contacts = row.get("business_contacts")
+    if isinstance(contacts, (list, tuple)):
+        for contact in contacts:
+            if not isinstance(contact, Mapping) or contact.get("kind") not in {"phone", "website_domain"}:
+                continue
+            raw_value = _clean(contact.get("value"))
+            if not raw_value:
+                continue
+            if contact["kind"] == "website_domain":
+                domain = _business_domain(raw_value)
+                if domain:
+                    contact_values.setdefault("domain", domain)
+            else:
+                phone = re.sub(r"\D+", "", raw_value)
+                if len(phone) >= 7:
+                    contact_values.setdefault("phone", phone)
     return _Observed(source_id, kind, key, facility_ids, facility_endpoint_ids, organization_ids, signals, dates,
                      explicit_relationships, typed_entity_edge, provenance_complete,
-                     bool(row.get("quarantine_reason")), suppressed, aliases)
+                     bool(row.get("quarantine_reason")), suppressed, aliases, location_role, contact_values)
 
 
 def classify_collision_observations(rows: Iterable[Mapping[str, Any]]) -> dict[str, int]:
@@ -369,8 +432,9 @@ def _candidate_key(left: _Observed, right: _Observed, method: str) -> str:
 
 
 _BLOCK_SIGNALS = ("postal", "city", "address")
-_SIGNAL_WEIGHTS = {"name": 0.34, "postal": 0.18, "city": 0.10, "address": 0.22}
-_BLOCK_DEFAULT_MAX = 1000
+_SIGNAL_WEIGHTS = {"name": 0.34, "postal": 0.18, "city": 0.10, "address": 0.22,
+                   "business_domain": 0.42, "business_phone": 0.34}
+_BLOCK_DEFAULT_MAX = None
 
 
 def _endpoint_ref(row: _Observed, *, preserve_native_identifier: bool = False) -> dict[str, str] | None:
@@ -404,16 +468,20 @@ def _exact_equivalent(left: _Observed, right: _Observed) -> bool:
         return False
     if left.key == right.key:
         return True
-    left_ids = set(left.facility_ids.values())
-    right_ids = set(right.facility_ids.values())
+    left_ids = set(left.facility_ids.items())
+    right_ids = set(right.facility_ids.items())
     return bool(left_ids and right_ids and left_ids.intersection(right_ids))
 
 
 def _match_features(left: _Observed, right: _Observed) -> tuple[list[str], list[dict[str, Any]]]:
     common = [signal for signal in ("name", "postal", "city", "address")
               if left.signals.get(signal) and left.signals.get(signal) == right.signals.get(signal)]
+    for kind in ("domain", "phone"):
+        if left.business_contacts and right.business_contacts and left.business_contacts.get(kind) and left.business_contacts.get(kind) == right.business_contacts.get(kind):
+            common.append(f"business_{kind}")
     contradictions: list[dict[str, Any]] = []
-    if left.organization_ids and right.organization_ids and not set(left.organization_ids.values()).intersection(right.organization_ids.values()):
+    if (left.organization_ids and right.organization_ids
+            and not _shared_typed_identifier(left, right)):
         contradictions.append({"signal": "conflicting_identifier", "group": "contradiction", "reason": "organization identifiers disagree"})
     if left.signals.get("address") and right.signals.get("address") and left.signals["address"] != right.signals["address"]:
         contradictions.append({"signal": "conflicting_address", "group": "contradiction", "reason": "normalized addresses disagree"})
@@ -424,8 +492,50 @@ def _match_features(left: _Observed, right: _Observed) -> tuple[list[str], list[
     return common, contradictions
 
 
+def _shared_typed_identifier(left: _Observed, right: _Observed) -> bool:
+    """Compare identifiers only within a compatible declared namespace.
+
+    Native identifiers from different source registries are not interchangeable
+    merely because their digit strings happen to match.
+    """
+    for left_type, left_value in left.organization_ids.items():
+        for right_type, right_value in right.organization_ids.items():
+            if left_value != right_value:
+                continue
+            left_namespace, left_kind = _identifier_namespace_type(left_type)
+            right_namespace, right_kind = _identifier_namespace_type(right_type)
+            if (left.source_id == right.source_id and left_kind == right_kind
+                    and left_namespace == right_namespace):
+                return True
+            if (left_namespace != "source_scoped" and right_namespace != "source_scoped"
+                    and left_namespace == right_namespace and left_kind == right_kind):
+                return True
+    return False
+
+
+def _identifier_namespace_type(identifier_type: str) -> tuple[str | None, str]:
+    if "::" not in identifier_type:
+        return "source_scoped", identifier_type
+    namespace, kind = identifier_type.split("::", 1)
+    return namespace, kind
+
+
+def _business_domain(value: str) -> str | None:
+    """Normalize declared company domains; reject source/government hosts."""
+    candidate = value.strip().casefold()
+    candidate = re.sub(r"^https?://", "", candidate)
+    candidate = candidate.split("/", 1)[0].split(":", 1)[0].strip(".")
+    if not candidate or any(part in candidate for part in ("gov", "government", "govt")):
+        return None
+    if not re.fullmatch(r"(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}", candidate):
+        return None
+    if candidate.endswith((".gov", ".gov.uk", ".gov.au", ".gc.ca", ".gouv.fr", ".europa.eu")):
+        return None
+    return candidate
+
+
 def _score_match(features: list[str], contradictions: list[dict[str, Any]]) -> tuple[float, str, dict[str, Any]]:
-    groups = {"identity": [feature for feature in features if feature == "name"],
+    groups = {"identity": [feature for feature in features if feature in {"name", "business_domain", "business_phone"}],
               "location": [feature for feature in features if feature in {"postal", "city", "address"}]}
     group_contributions: dict[str, float] = {}
     for group, values in sorted(groups.items()):
@@ -446,7 +556,9 @@ def _score_match(features: list[str], contradictions: list[dict[str, Any]]) -> t
         band = "low"
     return score, band, {"group_contributions": {key: round(value, 8) for key, value in sorted(group_contributions.items())},
                          "positive_contribution": round(positive, 8), "contradiction_penalty": round(penalty, 8),
-                         "anchor_present": "name" in features and ("postal" in features or ("city" in features and "address" in features))}
+                         "anchor_present": (("name" in features and ("postal" in features or ("city" in features and "address" in features)))
+                                            or "business_domain" in features
+                                            or ("business_phone" in features and "name" in features))}
 
 
 def _observed_json(row: _Observed) -> str:
@@ -460,6 +572,8 @@ def _observed_json(row: _Observed) -> str:
         "provenance_complete": row.provenance_complete,
         "quarantined": row.quarantined, "suppressed": row.suppressed,
         "shared_business_name_aliases": row.shared_business_name_aliases or [],
+        "location_role": row.location_role,
+        "business_contacts": row.business_contacts or {},
     }, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
@@ -475,6 +589,8 @@ def _observed_from_json(value: str) -> _Observed:
         int(payload.get("explicit_relationships") or 0), bool(payload.get("typed_entity_edge")),
         bool(payload.get("provenance_complete")), bool(payload.get("quarantined")), bool(payload.get("suppressed")),
         [str(item) for item in payload.get("shared_business_name_aliases") or []],
+        str(payload.get("location_role") or "unknown"),
+        {str(key): str(item) for key, item in (payload.get("business_contacts") or {}).items()},
     )
 
 
@@ -497,22 +613,23 @@ _PLACEHOLDER_BUSINESS_NAME_KEYS = frozenset({
 
 
 def _shared_business_name_key(value: Any) -> str | None:
-    """Normalize a complete FSIS DBA/alternate name; reject labels/sentinels."""
+    """Normalize a complete declared business name; reject labels/sentinels."""
     if not isinstance(value, str) or not value.strip():
         return None
     normalized = unicodedata.normalize("NFKC", value).casefold().replace("’", "'")
     normalized = re.sub(r"(?<=[\w])'s\b", "", normalized)
     tokens = [token for token in re.findall(r"[^\W_]+", normalized, flags=re.UNICODE) if token]
     key = " ".join(tokens)
-    if (len(tokens) < 2 or key in _PLACEHOLDER_BUSINESS_NAME_KEYS
-            or all(token in _GENERIC_BUSINESS_NAME_TOKENS for token in tokens)):
+    semantic_tokens = [token for token in tokens if any(character.isalpha() for character in token)]
+    if (not semantic_tokens or key in _PLACEHOLDER_BUSINESS_NAME_KEYS
+            or all(token in _GENERIC_BUSINESS_NAME_TOKENS for token in semantic_tokens)):
         return None
     return key
 
 
 def iter_shared_business_name_candidates(rows: Iterable[_Observed], *,
                                          preserve_native_endpoints: bool = True) -> tuple[Iterable[dict[str, Any]], dict[str, int]]:
-    """Yield source-qualified inferred links for exact complete FSIS DBA aliases.
+    """Yield source-qualified inferred links for exact declared business names.
 
     This is explicitly shared-name evidence, not an operator, ownership, or
     facility-identity claim.  Alias strings are used only as an in-memory
@@ -522,77 +639,86 @@ def iter_shared_business_name_candidates(rows: Iterable[_Observed], *,
                 "pairs_emitted": 0, "pairs_deduplicated": 0}
 
     def generate() -> Iterable[dict[str, Any]]:
-        groups: dict[str, dict[tuple[str, str, str], _Observed]] = defaultdict(dict)
-        for row in rows:
-            if (row.source_id != "us.fsis" or row.source_kind != "facility_master"
-                    or row.quarantined or row.suppressed or not row.facility_ids):
-                continue
-            if preserve_native_endpoints and not row.facility_endpoint_ids:
-                continue
-            for raw_alias in row.shared_business_name_aliases or ():
-                alias = _shared_business_name_key(raw_alias)
-                if alias:
-                    endpoint = _endpoint_ref(row, preserve_native_identifier=preserve_native_endpoints)
-                    if endpoint is None:
+        stage_parent = Path.cwd() / ".tmp"
+        stage_parent.mkdir(parents=True, exist_ok=True)
+        fd, name = tempfile.mkstemp(prefix="uec-d7-name-", suffix=".sqlite3", dir=str(stage_parent))
+        os.close(fd)
+        stage_path = Path(name)
+        db = sqlite3.connect(stage_path)
+        try:
+            db.executescript("""
+                CREATE TABLE names(alias TEXT NOT NULL, identity TEXT NOT NULL, source_id TEXT NOT NULL,
+                    source_record_key TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(alias, identity));
+                CREATE TABLE pairs(digest TEXT PRIMARY KEY, payload TEXT NOT NULL);
+            """)
+            for row in rows:
+                if (row.source_kind != "facility_master" or row.quarantined or row.suppressed
+                        or not row.facility_ids):
+                    continue
+                endpoint = _endpoint_ref(row, preserve_native_identifier=preserve_native_endpoints)
+                if endpoint is None:
+                    continue
+                identity = (row.source_id, endpoint["identifier_type"],
+                            _norm(endpoint["source_identifier"]) or endpoint["source_identifier"])
+                for raw_alias in row.shared_business_name_aliases or ():
+                    alias = _shared_business_name_key(raw_alias)
+                    if not alias:
                         continue
-                    identity = (row.source_id, endpoint["identifier_type"],
-                                _norm(endpoint["source_identifier"]) or endpoint["source_identifier"])
-                    previous = groups[alias].get(identity)
-                    if previous is None or row.key < previous.key:
-                        groups[alias][identity] = row
-        counters["alias_groups"] = len(groups)
-        pairs: dict[tuple[tuple[str, str, str], tuple[str, str, str]], tuple[_Observed, _Observed]] = {}
-        for alias in sorted(groups):
-            group = [groups[alias][key] for key in sorted(groups[alias])]
-            for left, right in combinations(group, 2):
-                counters["pairs_considered"] += 1
-                if _exact_equivalent(left, right):
-                    counters["pairs_same_facility"] += 1
-                    continue
-                left_endpoint = _endpoint_ref(left, preserve_native_identifier=preserve_native_endpoints)
-                right_endpoint = _endpoint_ref(right, preserve_native_identifier=preserve_native_endpoints)
-                if left_endpoint is None or right_endpoint is None:
-                    continue
-                left_identity = (left.source_id, left_endpoint["identifier_type"],
-                                 _norm(left_endpoint["source_identifier"]) or left_endpoint["source_identifier"])
-                right_identity = (right.source_id, right_endpoint["identifier_type"],
-                                  _norm(right_endpoint["source_identifier"]) or right_endpoint["source_identifier"])
-                key = tuple(sorted((left_identity, right_identity)))
-                if key in pairs:
-                    counters["pairs_deduplicated"] += 1
-                    continue
-                pairs[key] = (left, right) if left_identity <= right_identity else (right, left)
-        candidates: list[tuple[str, dict[str, Any]]] = []
-        for pair_key, (left, right) in pairs.items():
-            left_endpoint = _endpoint_ref(left, preserve_native_identifier=preserve_native_endpoints)
-            right_endpoint = _endpoint_ref(right, preserve_native_identifier=preserve_native_endpoints)
-            if left_endpoint is None or right_endpoint is None:
-                continue
-            digest = _digest("|".join(("|".join(pair_key[0]), "|".join(pair_key[1]), SHARED_BUSINESS_NAME_RULESET_VERSION)))
-            candidates.append((digest, {
-                "candidate_digest": digest,
-                "source_pair": ["us.fsis"],
-                "endpoints": [left_endpoint, right_endpoint],
-                "provenance": [
-                    {"source_id": left.source_id, "source_record_key": left.key},
-                    {"source_id": right.source_id, "source_record_key": right.key},
-                ],
-                "observed_at": min(left.dates + right.dates) if left.dates or right.dates else "",
-                "method": "exact_fsis_alternate_name_equality",
-                "relationship_type": "shared_business_name",
-                "contributing_features": ["shared_business_name"],
-                "contradictory_evidence": [],
-                "confidence": 0.58,
-                "confidence_band": "possible",
-                "review_state": "review_required",
-                "automatic_merge": False,
-                "transfers_claims": False,
-                "disclaimer": "Inferred shared business name only; not evidence of ownership, operator status, or facility identity.",
-                "ruleset": SHARED_BUSINESS_NAME_RULESET_VERSION,
-            }))
-        for _, candidate in sorted(candidates, key=lambda item: item[0]):
-            counters["pairs_emitted"] += 1
-            yield candidate
+                    db.execute("""INSERT INTO names(alias,identity,source_id,source_record_key,payload)
+                        VALUES (?,?,?,?,?) ON CONFLICT(alias,identity) DO UPDATE SET
+                        source_record_key=excluded.source_record_key,payload=excluded.payload
+                        WHERE excluded.source_record_key < names.source_record_key""",
+                        (alias, json.dumps(identity, separators=(",", ":")), row.source_id, row.key, _observed_json(row)))
+            counters["alias_groups"] = int(db.execute("SELECT count(DISTINCT alias) FROM names").fetchone()[0])
+            group_names = db.execute("SELECT DISTINCT alias FROM names ORDER BY alias")
+            for (alias,) in group_names:
+                group_pairs = db.execute("""SELECT l.identity,l.payload,r.identity,r.payload
+                    FROM names l JOIN names r ON l.alias=r.alias AND l.identity<r.identity
+                    WHERE l.alias=? ORDER BY l.identity,r.identity""", (alias,))
+                for left_identity_json, left_payload, right_identity_json, right_payload in group_pairs:
+                    counters["pairs_considered"] += 1
+                    left = _observed_from_json(left_payload)
+                    right = _observed_from_json(right_payload)
+                    if _exact_equivalent(left, right):
+                        counters["pairs_same_facility"] += 1
+                        continue
+                    pair_key = (left_identity_json, right_identity_json)
+                    digest = _digest("|".join((pair_key[0], pair_key[1], SHARED_BUSINESS_NAME_RULESET_VERSION)))
+                    left_endpoint = _endpoint_ref(left, preserve_native_identifier=preserve_native_endpoints)
+                    right_endpoint = _endpoint_ref(right, preserve_native_identifier=preserve_native_endpoints)
+                    if left_endpoint is None or right_endpoint is None:
+                        continue
+                    candidate = {
+                        "candidate_digest": digest,
+                        "source_pair": sorted({left.source_id, right.source_id}),
+                        "endpoints": [left_endpoint, right_endpoint],
+                        "provenance": [{"source_id": left.source_id, "source_record_key": left.key},
+                                       {"source_id": right.source_id, "source_record_key": right.key}],
+                        "observed_at": min(left.dates + right.dates) if left.dates or right.dates else "",
+                        "method": "exact_declared_business_name_equality",
+                        "relationship_type": "shared_business_name",
+                        "contributing_features": ["shared_business_name"],
+                        "contradictory_evidence": [], "confidence": 0.58,
+                        "confidence_band": "possible", "review_state": "review_required",
+                        "automatic_merge": False, "transfers_claims": False,
+                        "disclaimer": "Inferred shared business name only; not evidence of ownership, operator status, or facility identity.",
+                        "ruleset": SHARED_BUSINESS_NAME_RULESET_VERSION,
+                    }
+                    inserted = db.execute("INSERT OR IGNORE INTO pairs(digest,payload) VALUES (?,?)",
+                                          (digest, json.dumps(candidate, ensure_ascii=False, separators=(",", ":")))).rowcount
+                    if not inserted:
+                        counters["pairs_deduplicated"] += 1
+            db.commit()
+            for (payload,) in db.execute("SELECT payload FROM pairs ORDER BY digest"):
+                counters["pairs_emitted"] += 1
+                yield json.loads(payload)
+        finally:
+            db.close()
+            for suffix in ("", "-journal", "-wal", "-shm"):
+                try:
+                    stage_path.with_name(stage_path.name + suffix).unlink()
+                except OSError:
+                    pass
     return generate(), counters
 
 
@@ -601,13 +727,14 @@ def _iter_probabilistic_candidates(rows: Iterable[_Observed], *, start_after: st
                                    preserve_native_endpoints: bool = False) -> tuple[Iterable[dict[str, Any]], dict[str, int]]:
     """Build deterministic indexed blocks in a disk-backed SQLite stage.
 
-    Blocks are keyed by name+postal, name+city, or name+address.  A large
-    block is ambiguous rather than truncated and is accounted for explicitly.
-    The stage keeps one bounded block in memory and stores observations and
-    candidate pairs on disk, so neither all rows nor all candidates are
-    materialized in the process. ``start_after`` is a digest cursor.
+    Blocks are keyed by name+postal, name+city, name+address, or an eligible
+    declared business contact. Every pair is enumerated; there is no group or
+    total-result cutoff. Observations and candidate pairs remain disk-backed,
+    so large valid groups do not require an in-memory pair list.
+    ``max_block_size`` is accepted for call compatibility but does not cap
+    candidates. ``start_after`` is a digest cursor.
     """
-    if max_block_size < 2:
+    if max_block_size is not None and max_block_size < 2:
         raise ValueError("max_block_size must be at least 2")
     counters = {"rows_staged": 0, "blocks_indexed": 0, "blocks_ambiguous": 0,
                 "rows_in_ambiguous_blocks": 0, "pairs_considered": 0,
@@ -638,41 +765,39 @@ def _iter_probabilistic_candidates(rows: Iterable[_Observed], *, start_after: st
                     CREATE TABLE excluded (pair_key TEXT PRIMARY KEY);
                 """)
                 for row in rows:
-                    if row.source_kind != "facility_master" or not row.signals.get("name") or not row.facility_ids:
+                    if row.source_kind != "facility_master" or not row.facility_ids:
+                        continue
+                    if not row.signals.get("name") and not row.business_contacts:
                         continue
                     cursor = db.execute("INSERT INTO observed(source_id,source_record_key,payload) VALUES (?,?,?)",
                                         (row.source_id, row.key, _observed_json(row)))
                     row_id = int(cursor.lastrowid)
                     counters["rows_staged"] += 1
-                    name = row.signals["name"]
-                    for signal in _BLOCK_SIGNALS:
-                        value = row.signals.get(signal)
-                        if value:
-                            db.execute("INSERT INTO blocks(signal,block_value,row_id) VALUES (?,?,?)",
-                                       (signal, name + "|" + value, row_id))
+                    name = row.signals.get("name")
+                    if name:
+                        for signal in _BLOCK_SIGNALS:
+                            value = row.signals.get(signal)
+                            if value:
+                                db.execute("INSERT INTO blocks(signal,block_value,row_id) VALUES (?,?,?)",
+                                           (signal, name + "|" + value, row_id))
+                    for contact_kind, contact_value in (row.business_contacts or {}).items():
+                        signal = f"business_{contact_kind}"
+                        db.execute("INSERT INTO blocks(signal,block_value,row_id) VALUES (?,?,?)",
+                                   (signal, contact_value, row_id))
                 db.commit()
                 counters["blocks_indexed"] = int(db.execute("SELECT count(*) FROM (SELECT 1 FROM blocks GROUP BY signal, block_value)").fetchone()[0])
                 block_rows = db.execute("SELECT signal, block_value FROM blocks GROUP BY signal, block_value ORDER BY signal, block_value")
                 for signal, block_value in block_rows:
-                    size = int(db.execute("SELECT count(*) FROM blocks WHERE signal=? AND block_value=?", (signal, block_value)).fetchone()[0])
-                    if size > max_block_size:
-                        counters["blocks_ambiguous"] += 1
-                        counters["rows_in_ambiguous_blocks"] += size
-                        continue
-                    staged_group = list(db.execute(
-                        "SELECT observed.row_id, observed.payload FROM blocks JOIN observed ON observed.row_id=blocks.row_id "
-                        "WHERE blocks.signal=? AND blocks.block_value=? ORDER BY observed.source_id, observed.source_record_key, observed.row_id",
+                    pair_rows = db.execute(
+                        "SELECT l.row_id,l.payload,r.row_id,r.payload "
+                        "FROM blocks AS lb JOIN blocks AS rb ON rb.signal=lb.signal AND rb.block_value=lb.block_value AND lb.row_id<rb.row_id "
+                        "JOIN observed AS l ON l.row_id=lb.row_id JOIN observed AS r ON r.row_id=rb.row_id "
+                        "WHERE lb.signal=? AND lb.block_value=? ORDER BY lb.row_id,rb.row_id",
                         (signal, block_value),
-                    ))
-                    group = [
-                        _observed_from_json(payload)
-                        for _, payload in staged_group
-                    ]
-                    row_ids = {
-                        (row.source_id, row.key): int(row_id)
-                        for (row_id, _), row in zip(staged_group, group)
-                    }
-                    for left, right in combinations(group, 2):
+                    )
+                    for left_row_id, left_payload, right_row_id, right_payload in pair_rows:
+                        left = _observed_from_json(left_payload)
+                        right = _observed_from_json(right_payload)
                         counters["pairs_considered"] += 1
                         pair_key = _pair_identity(left, right)
                         if _exact_equivalent(left, right):
@@ -681,9 +806,15 @@ def _iter_probabilistic_candidates(rows: Iterable[_Observed], *, start_after: st
                             db.execute("DELETE FROM pairs WHERE pair_key=?", ("|".join(pair_key),))
                             continue
                         features, _ = _match_features(left, right)
-                        if "name" not in features or not ("postal" in features or "city" in features or "address" in features):
+                        has_site_anchor = "name" in features and bool({"postal", "city", "address"}.intersection(features))
+                        has_contact_anchor = ("business_domain" in features
+                                              or ("business_phone" in features and "name" in features))
+                        if not (has_site_anchor or has_contact_anchor):
                             continue
-                        key = "|".join(pair_key)
+                        _, contradictions = _match_features(left, right)
+                        if any(item.get("signal") == "conflicting_address" for item in contradictions):
+                            continue
+                        key = json.dumps(pair_key, ensure_ascii=False, separators=(",", ":"))
                         if db.execute("SELECT 1 FROM excluded WHERE pair_key=?", (key,)).fetchone():
                             continue
                         existing = db.execute("SELECT methods FROM pairs WHERE pair_key=?", (key,)).fetchone()
@@ -695,11 +826,9 @@ def _iter_probabilistic_candidates(rows: Iterable[_Observed], *, start_after: st
                                 db.execute("UPDATE pairs SET methods=? WHERE pair_key=?", (json.dumps(sorted(methods)), key))
                             counters["pairs_deduplicated"] += 1
                         else:
-                            digest = _digest(pair_key[0] + "|" + pair_key[1] + "|" + RULESET_VERSION)
-                            left_id = row_ids[(left.source_id, left.key)]
-                            right_id = row_ids[(right.source_id, right.key)]
+                            digest = _digest(json.dumps([pair_key, RULESET_VERSION], separators=(",", ":")))
                             db.execute("INSERT INTO pairs(pair_key,left_row_id,right_row_id,methods,candidate_digest) VALUES (?,?,?,?,?)",
-                                       (key, left_id, right_id, json.dumps([method]), digest))
+                                       (key, int(left_row_id), int(right_row_id), json.dumps([method]), digest))
                             counters["pair_rows_staged"] += 1
                 db.commit()
                 final_rows = db.execute(
