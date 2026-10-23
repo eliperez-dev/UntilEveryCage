@@ -22,7 +22,8 @@
     "GET /api/v2/discovery/facets",
     "GET /api/v2/graph/connections",
     "GET /api/v2/graph/entities",
-    "GET /api/v2/graph/entities/{entity_id}/neighborhood"
+    "GET /api/v2/graph/entities/{entity_id}/neighborhood",
+    "GET /api/v2/graph/entities/{entity_id}/evidence"
   ],
   "development_only_endpoints": [
     "GET /api/dev/preview/candidates"
