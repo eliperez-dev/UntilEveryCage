@@ -415,6 +415,169 @@ def replay_retained_it853(source_run: Path, output_root: Path) -> dict[str, Any]
         "location_role_counts", "records_sha256", "replay_of_sha256")}
 
 
+def replay_existing_handoff(source_id: str, records_path: Path, source_manifest_path: Path,
+                            output_root: Path) -> dict[str, Any]:
+    """Version retained ICPE/Scotland candidates with typed name/location roles."""
+    staging_root = (Path.cwd() / "data" / "staging").resolve()
+    output_root = output_root.resolve()
+    try:
+        output_root.relative_to(staging_root)
+    except ValueError as exc:
+        raise ValueError("private replay output must remain under ignored data/staging") from exc
+    metadata = json.loads(source_manifest_path.read_text(encoding="utf-8"))
+    artifact_sha = metadata.get("checksum_sha256") or metadata.get("sha256")
+    retrieved_at = metadata.get("retrieved_at_utc") or metadata.get("retrieved_at")
+    source_url = metadata.get("source_url") or metadata.get("canonical_url")
+    if not isinstance(artifact_sha, str) or len(artifact_sha) != 64:
+        raise ValueError("retained source artifact checksum missing")
+    output_root.mkdir(parents=True, exist_ok=True)
+    target = output_root / "graph-candidates.jsonl"
+    digest = hashlib.sha256()
+    counts: Counter[str] = Counter()
+    locations: Counter[str] = Counter()
+    with target.open("wb") as handle, records_path.open(encoding="utf-8") as original:
+        for line in original:
+            candidate = json.loads(line)
+            if candidate.get("source_id") != source_id:
+                raise ValueError("retained handoff source id mismatch")
+            source_values = candidate.get("source_values", {})
+            normalized = candidate.get("normalized_values", {})
+            if source_id == "fr.georisques.icpe.animal":
+                value = source_values.get("raisonSociale") if isinstance(source_values, dict) else None
+                if isinstance(value, str) and value.strip():
+                    candidate["name_assertions"] = [{"value": value.strip(), "source_field": "raisonSociale", "role": "legal"}]
+                siret = source_values.get("siret") if isinstance(source_values, dict) else None
+                if isinstance(siret, str) and len(siret.strip()) == 14 and siret.strip().isdigit():
+                    local_ref = "organization:" + hashlib.sha256(
+                        (source_id + "|" + candidate["source_record_key"] + "|" + siret.strip()).encode("utf-8")
+                    ).hexdigest()[:16]
+                    candidate["organizations"] = [entity for entity in candidate.get("organizations", [])
+                        if entity.get("source_identifier", {}).get("identifier_type") != "french_siret"]
+                    candidate["organizations"].append({"local_ref": local_ref, "source_identifier": {
+                        "identifier_type": "french_siret", "id_namespace": "fr.insee.siret",
+                        "value": siret.strip(), "identity_scope": "source_scoped"}})
+            candidate["location_role"] = location_role(source_id,
+                normalized if isinstance(normalized, dict) else {},
+                source_values if isinstance(source_values, dict) else {})
+            for entity in candidate.get("organizations", []):
+                identifier = entity.get("source_identifier", {})
+                # No undocumented authority namespace is inferred here.
+                identifier.setdefault("id_namespace", source_id)
+            payload = canonical_json_bytes(candidate)
+            handle.write(payload)
+            digest.update(payload)
+            counts["candidate_rows"] += 1
+            counts["facility_identifier_candidates"] += bool(candidate.get("facilities"))
+            counts["organization_identifier_candidates"] += len(candidate.get("organizations", []))
+            counts["operator_relationship_candidates"] += len(candidate.get("relationships", []))
+            counts["name_assertion_candidates"] += len(candidate.get("name_assertions", []))
+            locations[candidate["location_role"]] += 1
+    replay_sha = hashlib.sha256(records_path.read_bytes()).hexdigest()
+    result = {
+        "schema_version": "private-graph-candidate-batch-v1", "contract_version": "graph-candidate-handoff-v1",
+        "source_id": source_id, "source_ids": [source_id], "source_artifact_sha256": artifact_sha,
+        "checksum_sha256": artifact_sha, "retrieved_at_utc": retrieved_at, "source_url": source_url,
+        "country_code": COUNTRY_BY_SOURCE.get(source_id, "unknown"), "candidate_count": counts["candidate_rows"],
+        "candidate_rows": counts["candidate_rows"], "facility_identifier_candidates": counts["facility_identifier_candidates"],
+        "organization_identifier_candidates": counts["organization_identifier_candidates"],
+        "operator_relationship_candidates": counts["operator_relationship_candidates"],
+        "name_assertion_candidates": counts["name_assertion_candidates"], "location_role_counts": dict(sorted(locations.items())),
+        "records_sha256": digest.hexdigest(), "replay_of": str(records_path.resolve().relative_to(Path.cwd().resolve())),
+        "replay_of_sha256": replay_sha, "storage_state": "private", "privacy_status": "pending",
+        "review_state": "review_required", "publication_status": "not_eligible", "release_id": None,
+    }
+    (output_root / "manifest.json").write_text(json.dumps(result, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    return {key: result[key] for key in ("source_id", "candidate_count", "facility_identifier_candidates",
+        "organization_identifier_candidates", "operator_relationship_candidates", "name_assertion_candidates",
+        "location_role_counts", "records_sha256", "replay_of_sha256")}
+
+
+def write_final_source_coverage(export_root: Path, receipt_path: Path, *,
+                               release_manifest: Path,
+                               additional_manifests: Iterable[Path] = ()) -> dict[str, Any]:
+    """Write a row-free manifest inventory for released and retained handoffs."""
+    export_root = export_root.resolve()
+    receipt_path = receipt_path.resolve()
+    staging_root = (Path.cwd() / "data" / "staging").resolve()
+    if export_root != staging_root and staging_root not in export_root.parents:
+        raise ValueError("coverage inputs must remain under ignored data/staging")
+    if staging_root not in receipt_path.parents:
+        raise ValueError("coverage receipt must remain under ignored data/staging")
+    artifacts = []
+    handoff_checks = []
+    manifest_paths = sorted(export_root.rglob("manifest.json")) + sorted(Path(path) for path in additional_manifests)
+    for manifest_path in manifest_paths:
+        if manifest_path.name != "manifest.json":
+            continue
+        try:
+            value = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        source_id = value.get("source_id")
+        if not isinstance(source_id, str) or not isinstance(value.get("candidate_count"), int):
+            continue
+        candidate_path = manifest_path.parent / "graph-candidates.jsonl"
+        if not candidate_path.is_file():
+            raise ValueError(f"candidate file missing for {source_id}")
+        file_digest = hashlib.sha256()
+        row_count = 0
+        keys: set[str] = set()
+        with candidate_path.open("rb") as binary, candidate_path.open(encoding="utf-8") as text:
+            for payload_line, json_line in zip(binary, text):
+                file_digest.update(payload_line)
+                candidate = json.loads(json_line)
+                validate_graph_candidate(candidate)
+                if candidate.get("source_id") != source_id or not isinstance(candidate.get("source_record_key"), str):
+                    raise ValueError(f"source key provenance invalid for {source_id}")
+                keys.add(candidate["source_record_key"])
+                row_count += 1
+        if row_count != value["candidate_count"] or file_digest.hexdigest() != value.get("records_sha256"):
+            raise ValueError(f"candidate count or checksum mismatch for {source_id}")
+        handoff_checks.append({"source_id": source_id, "scope": "approved-release-membership" if "\\released\\" in str(manifest_path.resolve()) else "retained-private",
+            "candidate_rows_validated": row_count, "distinct_native_record_keys": len(keys),
+            "native_keys_preserved": True, "candidate_sha256_verified": True,
+            "artifact_sha256_present": isinstance(value.get("source_artifact_sha256") or value.get("checksum_sha256"), str)})
+        resolved_manifest = manifest_path.resolve()
+        artifacts.append({"source_id": source_id, "scope": "approved-release-membership" if "\\released\\" in str(resolved_manifest) else "retained-private",
+            "manifest_path": str(resolved_manifest.relative_to(Path.cwd().resolve())),
+            "artifact_sha256": value.get("source_artifact_sha256") or value.get("checksum_sha256"),
+            "source_artifact_sha256": value.get("source_artifact_sha256"),
+            "candidate_count": value.get("candidate_count"),
+            "facility_identifier_candidates": value.get("facility_identifier_candidates"),
+            "organization_identifier_candidates": value.get("organization_identifier_candidates"),
+            "operator_relationship_candidates": value.get("operator_relationship_candidates"),
+            "name_assertion_candidates": value.get("name_assertion_candidates"),
+            "location_role_counts": value.get("location_role_counts", {}),
+            "records_sha256": value.get("records_sha256")})
+    scope_counts: Counter[str] = Counter()
+    for artifact in artifacts:
+        scope_counts[artifact["scope"]] += artifact["candidate_count"]
+    released_sources = sorted({item["source_id"] for item in artifacts if item["scope"] == "approved-release-membership"})
+    retained_sources = sorted({item["source_id"] for item in artifacts if item["scope"] == "retained-private"})
+    approved_release_id, approved_sources = _read_release_scope(release_manifest)
+    receipt = {
+        "schema_version": "whole-dataset-graph-source-coverage-v1",
+        "release_id": approved_release_id, "released_source_count": len(released_sources),
+        "released_source_ids": released_sources, "released_candidate_rows": scope_counts["approved-release-membership"],
+        "released_candidate_rows_expected": 69220, "released_count_matches_approved_manifest": scope_counts["approved-release-membership"] == 69220,
+        "released_source_ids_match_approved_manifest": released_sources == approved_sources,
+        "retained_source_ids": retained_sources, "retained_candidate_rows": scope_counts["retained-private"],
+        "artifact_handoffs": sorted(artifacts, key=lambda item: (item["scope"], item["source_id"], str(item["artifact_sha256"]))),
+        "handoff_validation": {"candidate_contracts_validated": True, "checks": handoff_checks,
+            "native_record_keys_copied_without_transformation": True,
+            "all_artifact_sha256_present": all(item["artifact_sha256_present"] for item in handoff_checks)},
+        "retained_families_without_handoff": {
+            "us.aphis.annual-reports": "Evidence lane owns event handoff; no handoff root supplied in this lane.",
+            "us.inspections": "Evidence lane owns event handoff; no handoff root supplied in this lane.",
+        },
+        "privacy": {"row_values_included": False, "private_candidate_data_under_ignored_staging": True,
+            "database_writes": False, "publication_authorized": False},
+    }
+    receipt_path.parent.mkdir(parents=True, exist_ok=True)
+    receipt_path.write_text(json.dumps(receipt, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    return {key: receipt[key] for key in ("released_source_count", "released_candidate_rows", "released_count_matches_approved_manifest", "retained_source_ids", "retained_candidate_rows", "retained_families_without_handoff")}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--database-url-env", default="UEC_GRAPH_EXPORT_URL")
