@@ -20,6 +20,9 @@ GRAPH_DOMAINS = {
 }
 RELATIONSHIP_TYPES = {"operator", "regulator", "owner", "parent", "brand", "supplier", "customer"}
 REVIEW_STATES = {"unreviewed", "review_required", "reviewed", "accepted", "rejected"}
+NAME_ASSERTION_ROLES = {"legal", "business", "trading", "dba", "operator", "brand"}
+LOCATION_ROLES = {"operating", "mailing", "registered", "city_reference", "unknown"}
+BUSINESS_CONTACT_KINDS = {"phone", "website_domain"}
 
 
 def _required_text(value: Any, field: str) -> None:
@@ -54,6 +57,8 @@ def _refs(items: Any, field: str) -> set[str]:
             raise ValueError(f"{field}.source_identifier is required")
         _required_text(identifier.get("identifier_type"), f"{field}.source_identifier.identifier_type")
         _required_text(identifier.get("value"), f"{field}.source_identifier.value")
+        if "id_namespace" in identifier:
+            _required_text(identifier["id_namespace"], f"{field}.source_identifier.id_namespace")
         if identifier.get("identity_scope", "source_scoped") != "source_scoped":
             raise ValueError("source identifiers must use source_scoped identity_scope")
     return refs
@@ -71,6 +76,32 @@ def validate_graph_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("source_row must be a positive integer")
     if not isinstance(candidate.get("source_values"), dict):
         raise ValueError("source_values must be an object")
+    if "name_assertions" in candidate:
+        assertions = candidate["name_assertions"]
+        if not isinstance(assertions, list):
+            raise ValueError("name_assertions must be a list")
+        for assertion in assertions:
+            if not isinstance(assertion, dict):
+                raise ValueError("name_assertions entries must be objects")
+            _required_text(assertion.get("value"), "name_assertions.value")
+            _required_text(assertion.get("source_field"), "name_assertions.source_field")
+            if assertion.get("role") not in NAME_ASSERTION_ROLES:
+                raise ValueError("name_assertions.role is invalid")
+    if "location_role" in candidate and candidate["location_role"] not in LOCATION_ROLES:
+        raise ValueError("location_role is invalid")
+    if "business_contacts" in candidate:
+        contacts = candidate["business_contacts"]
+        if not isinstance(contacts, list):
+            raise ValueError("business_contacts must be a list")
+        for contact in contacts:
+            if not isinstance(contact, dict):
+                raise ValueError("business_contacts entries must be objects")
+            if contact.get("kind") not in BUSINESS_CONTACT_KINDS:
+                raise ValueError("business_contacts.kind is invalid")
+            _required_text(contact.get("value"), "business_contacts.value")
+            _required_text(contact.get("source_field"), "business_contacts.source_field")
+    if "normalized_values" in candidate and not isinstance(candidate["normalized_values"], dict):
+        raise ValueError("normalized_values must be an object")
     if "shared_business_name_aliases" in candidate:
         aliases = candidate["shared_business_name_aliases"]
         if candidate["source_id"] != "us.fsis" or not isinstance(aliases, list) or any(
