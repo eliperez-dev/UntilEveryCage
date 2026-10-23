@@ -2,7 +2,8 @@
 //!
 //! The graph edge table is private evidence. These handlers only return rows
 //! whose source-qualified endpoints are themselves present in the selected
-//! promoted public release. No raw evidence, source-record identifiers,
+//! promoted public release. Organization labels are joined from the current
+//! safe-label view. No raw evidence, source-record identifiers,
 //! suppression metadata, or private queue state crosses this boundary.
 
 use crate::{v2_error, ApiState};
@@ -20,7 +21,8 @@ const MAX_LIMIT: i64 = 100;
 const DEFAULT_LIMIT: i64 = 50;
 const API_VERSION: &str = "v2-graph-v1";
 const DISCLAIMER: &str = "Confidence is a deterministic ruleset estimate, not a measured probability. An inferred connection is not proof of ownership, identity, or supply-chain control.";
-const GRAPH_CONNECTION_SELECT: &str = "SELECT connection_edge_id,from_entity_id,from_entity_type,from_source_id,from_identifier_type,to_entity_id,to_entity_type,to_source_id,to_identifier_type,relationship_type,connection_type,confidence,confidence_band,signal_explanation,match_method,observed_at,computed_at,ruleset_version,conflicting FROM uec.graph_public_connections_current WHERE release_id=$1 AND ($2::text IS NULL OR connection_type=$2) AND ($3::double precision IS NULL OR confidence >= $3) AND ($4::double precision IS NULL OR confidence <= $4) AND ($5::text[] IS NULL OR confidence_band=ANY($5)) AND ($6 OR conflicting=false) AND ($7::text IS NULL OR from_source_id=$7 OR to_source_id=$7) AND ($8::uuid IS NULL OR from_entity_id=$8 OR to_entity_id=$8) AND ($9::uuid IS NULL OR connection_edge_id<$9) ORDER BY connection_edge_id DESC LIMIT $10";
+const GRAPH_CONNECTION_SELECT: &str = "SELECT edge.connection_edge_id,edge.from_entity_id,edge.from_entity_type,edge.from_source_id,edge.from_identifier_type,edge.to_entity_id,edge.to_entity_type,edge.to_source_id,edge.to_identifier_type,edge.relationship_type,edge.connection_type,edge.confidence,edge.confidence_band,edge.signal_explanation,edge.match_method,edge.observed_at,edge.computed_at,edge.ruleset_version,edge.conflicting,from_label.display_name,to_label.display_name FROM uec.graph_public_connections_current edge LEFT JOIN uec.graph_public_organization_labels_current from_label ON from_label.release_id=edge.release_id AND from_label.organization_id=edge.from_entity_id AND edge.from_entity_type='organization' LEFT JOIN uec.graph_public_organization_labels_current to_label ON to_label.release_id=edge.release_id AND to_label.organization_id=edge.to_entity_id AND edge.to_entity_type='organization' WHERE edge.release_id=$1 AND ($2::text IS NULL OR edge.connection_type=$2) AND ($3::double precision IS NULL OR edge.confidence >= $3) AND ($4::double precision IS NULL OR edge.confidence <= $4) AND ($5::text[] IS NULL OR edge.confidence_band=ANY($5)) AND ($6 OR edge.conflicting=false) AND ($7::text IS NULL OR edge.from_source_id=$7 OR edge.to_source_id=$7) AND ($8::uuid IS NULL OR edge.from_entity_id=$8 OR edge.to_entity_id=$8) AND ($9::uuid IS NULL OR edge.connection_edge_id<$9) ORDER BY edge.connection_edge_id DESC LIMIT $10";
+const GRAPH_APHIS_REFERENCE_SELECT: &str = "SELECT evidence_ref_id,source_id,evidence_type,event_date,event_period,observed_at,source_url,match_method FROM uec.graph_public_evidence_references_current WHERE release_id=$1 AND public_entity_id=$2 AND endpoint_source_id='us.aphis' AND ($3::uuid IS NULL OR evidence_ref_id<$3) ORDER BY evidence_ref_id DESC LIMIT $4";
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct PublicGraphQuery {
@@ -226,8 +228,8 @@ fn public_edge(row: &tokio_postgres::Row, release_id: &str) -> Value {
     let to_public_identifier = public_identifier(row.get(5));
     json!({
         "connection_edge_id": row.get::<_, Uuid>(0),
-        "from": {"entity_id": row.get::<_, Uuid>(1), "entity_type": row.get::<_, String>(2), "source_id": row.get::<_, String>(3), "identifier_type": from_identifier_type, "source_identifier": from_public_identifier},
-        "to": {"entity_id": row.get::<_, Uuid>(5), "entity_type": row.get::<_, String>(6), "source_id": row.get::<_, String>(7), "identifier_type": to_identifier_type, "source_identifier": to_public_identifier},
+        "from": {"entity_id": row.get::<_, Uuid>(1), "entity_type": row.get::<_, String>(2), "source_id": row.get::<_, String>(3), "identifier_type": from_identifier_type, "source_identifier": from_public_identifier, "display_name": row.get::<_, Option<String>>(19)},
+        "to": {"entity_id": row.get::<_, Uuid>(5), "entity_type": row.get::<_, String>(6), "source_id": row.get::<_, String>(7), "identifier_type": to_identifier_type, "source_identifier": to_public_identifier, "display_name": row.get::<_, Option<String>>(20)},
         "relationship_type": row.get::<_, String>(9),
         "connection_type": row.get::<_, String>(10),
         "confidence": row.get::<_, f64>(11),
@@ -383,13 +385,8 @@ pub async fn entities(
                  p.canonical_name AS display_name,p.country_code
           FROM uec.map_facilities_public_discovery_read_model p WHERE p.release_id=$1
           UNION
-          SELECT edges.from_entity_id,'organization'::text,NULL::text,NULL::text
-          FROM uec.graph_public_connections_current edges
-          WHERE edges.release_id=$1 AND edges.from_entity_type='organization'
-          UNION
-          SELECT edges.to_entity_id,'organization'::text,NULL::text,NULL::text
-          FROM uec.graph_public_connections_current edges
-          WHERE edges.release_id=$1 AND edges.to_entity_type='organization'
+          SELECT labels.organization_id,'organization'::text,labels.display_name,NULL::text
+          FROM uec.graph_public_organization_labels_current labels WHERE labels.release_id=$1
         ) entities
         WHERE ($2='' OR display_name ILIKE '%' || $2 || '%')
           AND ($3::text IS NULL OR entity_type=$3)
@@ -414,6 +411,63 @@ pub async fn neighborhood(
     connections(State(state), Query(query))
         .await
         .into_response()
+}
+
+/// Return only typed APHIS references that entered a safe selected-release
+/// projection. The view applies selected-release review, rights, membership,
+/// and restriction gates; this handler never reads private event payloads.
+pub async fn evidence_references(
+    State(state): State<ApiState>,
+    Path(entity_id): Path<Uuid>,
+    Query(query): Query<PublicGraphQuery>,
+) -> impl IntoResponse {
+    let (profile, limit, _) = match validate_common(&query) {
+        Ok(value) => value,
+        Err(message) => return bad(message),
+    };
+    let Some(pool) = state.database else {
+        return v2_error(StatusCode::SERVICE_UNAVAILABLE, "database_not_configured", "public graph unavailable");
+    };
+    let Ok(mut client) = pool.get().await else {
+        return v2_error(StatusCode::SERVICE_UNAVAILABLE, "database_pool_unavailable", "public graph unavailable");
+    };
+    let Ok(transaction) = client.build_transaction()
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .read_only(true).start().await else {
+        return v2_error(StatusCode::SERVICE_UNAVAILABLE, "database_transaction_unavailable", "public graph unavailable");
+    };
+    let release_row = transaction.query_opt(
+        "SELECT r.release_id,r.ruleset_version FROM uec.releases r JOIN uec.public_discovery_read_models model ON model.release_id=r.release_id JOIN uec.release_manifests manifest ON manifest.release_id=r.release_id AND manifest.manifest_sha256=model.manifest_sha256 LEFT JOIN uec.public_release_history history ON history.release_id=r.release_id AND history.profile=r.profile WHERE r.test_only IS NOT TRUE AND r.profile=$1 AND ($2::text IS NULL OR r.release_id=$2) AND (r.status='promoted' OR ($2::text IS NOT NULL AND history.release_id IS NOT NULL AND r.status='validated')) ORDER BY r.created_at DESC,r.release_id DESC LIMIT 1",
+        &[&profile, &query.release_id],
+    ).await;
+    let Ok(Some(release_row)) = release_row else {
+        return v2_error(StatusCode::NOT_FOUND, "release_not_found", "no promoted eligible public graph release");
+    };
+    let release_id: String = release_row.get(0);
+    let ruleset: String = release_row.get(1);
+    let rows = match transaction.query(
+        GRAPH_APHIS_REFERENCE_SELECT,
+        &[&release_id, &entity_id, &query.cursor, &(limit + 1)],
+    ).await {
+        Ok(rows) => rows,
+        Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "public_graph_query_failed", "public evidence references unavailable"),
+    };
+    let mut data: Vec<Value> = rows.iter().map(|row| json!({
+        "reference_id": row.get::<_, Uuid>(0),
+        "source_id": row.get::<_, String>(1),
+        "evidence_type": row.get::<_, String>(2),
+        "event_date": row.get::<_, Option<chrono::NaiveDate>>(3).map(|value| value.to_string()),
+        "event_period": row.get::<_, Option<String>>(4),
+        "observed_at": row.get::<_, chrono::DateTime<chrono::Utc>>(5),
+        "source_url": row.get::<_, String>(6),
+        "match_method": row.get::<_, String>(7),
+    })).collect();
+    let next_cursor = page_cursor(&mut data, limit as usize, |row| row.get("reference_id").cloned());
+    Json(json!({"api_version": API_VERSION, "data": data, "meta": {
+        "profile": profile, "release_id": release_id, "ruleset_version": ruleset,
+        "limit": limit, "page_max": MAX_LIMIT, "next_cursor": next_cursor,
+        "public_projection": true,
+    }})).into_response()
 }
 
 #[cfg(test)]
@@ -517,9 +571,9 @@ mod tests {
         assert!(EDGE_CTES.contains("LEFT JOIN ambiguous_source_endpoints"));
         assert!(EDGE_CTES.contains("LEFT JOIN ambiguous_record_facilities"));
         assert!(EDGE_CTES.contains("AND asserted_facility.facility_id=rf.facility_id"));
-        assert!(
-            EDGE_CTES.contains("i.identifier_type IN ('vat','vat_number','italian_vat','p_iva')")
-        );
+        assert!(EDGE_CTES.contains("graph_source_name_assertions"));
+        assert!(EDGE_CTES.contains("business_registration"));
+        assert!(!EDGE_CTES.contains("operator-name'"));
         assert!(EDGE_CTES.contains("e.connection_type='inferred'"));
         assert!(EDGE_CTES.contains("e.connection_type='exact' AND e.relationship_type='operator'"));
         assert!(!EDGE_CTES.contains("SELECT DISTINCT e.connection_edge_id"));
@@ -528,9 +582,8 @@ mod tests {
 
     #[test]
     fn inferred_business_links_require_eligible_nodes_and_versioned_support() {
-        assert!(
-            EDGE_CTES.contains("i.identifier_type IN ('vat','vat_number','italian_vat','p_iva')")
-        );
+        assert!(EDGE_CTES.contains("graph_source_name_assertions"));
+        assert!(EDGE_CTES.contains("business_id"));
         assert!(EDGE_CTES.contains("asserted_facility.source_record_id=i.source_record_id"));
         assert!(EDGE_CTES.contains("asserted_facility.facility_id=rf.facility_id"));
         assert!(EDGE_CTES.contains("e.connection_type='inferred'"));
@@ -544,9 +597,11 @@ mod tests {
     #[test]
     fn api_reads_indexed_projection_and_entities_follow_same_endpoint_policy() {
         assert!(GRAPH_CONNECTION_SELECT.contains("FROM uec.graph_public_connections_current"));
+        assert!(GRAPH_CONNECTION_SELECT.contains("graph_public_organization_labels_current"));
         assert!(!GRAPH_CONNECTION_SELECT.contains("graph_connection_edges"));
         assert!(!GRAPH_CONNECTION_SELECT.contains("source_entity_identifiers"));
-        assert!(GRAPH_CONNECTION_SELECT.contains("ORDER BY connection_edge_id DESC LIMIT $10"));
+        assert!(GRAPH_CONNECTION_SELECT.contains("from_label.display_name,to_label.display_name"));
+        assert!(GRAPH_CONNECTION_SELECT.contains("ORDER BY edge.connection_edge_id DESC LIMIT $10"));
         let entity_query = include_str!("../pipeline/migrations/077_graph_release_projection.sql");
         assert!(entity_query.contains("CREATE VIEW uec.graph_public_connections_current"));
         assert!(entity_query.contains("graph_public_projection_endpoint_anchors"));

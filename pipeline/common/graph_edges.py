@@ -78,8 +78,10 @@ class SourceRef:
         _text(self.role, "role")
         if self.artifact_sha256 is not None:
             digest = _text(self.artifact_sha256, "artifact_sha256")
-            if len(digest) != 64 or any(char not in "0123456789abcdefABCDEF" for char in digest):
+            digest = digest.lower()
+            if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
                 raise ValueError("artifact_sha256 must be a 64-character hexadecimal SHA-256")
+            object.__setattr__(self, "artifact_sha256", digest)
 
     def as_dict(self) -> dict[str, str]:
         value = {"source_id": self.source_id, "role": self.role}

@@ -555,7 +555,7 @@
       "get": {
         "operationId": "listGraphEntities",
         "summary": "Find public graph entities",
-        "description": "Public facilities and eligible organizations from the selected eligible profile release.",
+        "description": "Public facilities and eligible organizations from the selected eligible profile release. Organization display names are returned only when an exact source-qualified business identifier and same-record organization-name assertion pass selected-release publication, privacy, rights and restriction gates.",
         "tags": [
           "Graph"
         ],
@@ -671,6 +671,28 @@
           "503": {
             "$ref": "#/components/responses/Unavailable"
           }
+        }
+      }
+    },
+    "/api/v2/graph/entities/{entity_id}/evidence": {
+      "get": {
+        "operationId": "getGraphEvidenceReferences",
+        "summary": "Read approved APHIS evidence references for a facility",
+        "description": "Returns typed annual-report and inspection references only when the evidence source record passes selected-release publication review, privacy screening, exact artifact-rights, and restriction checks, and the linked APHIS facility is eligible in that release. Event and link rows remain private and are not facility release members. No event payload, native source identifier, event identifier, or animal count is returned. Private or unapproved evidence is never a fallback result.",
+        "tags": ["Graph"],
+        "parameters": [
+          { "$ref": "#/components/parameters/entity_idPath" },
+          { "$ref": "#/components/parameters/profile" },
+          { "$ref": "#/components/parameters/release_id" },
+          { "$ref": "#/components/parameters/graphCursor" },
+          { "$ref": "#/components/parameters/graphLimit" }
+        ],
+        "responses": {
+          "200": { "description": "Eligible public evidence references.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GraphEvidenceReferences" } } } },
+          "400": { "$ref": "#/components/responses/Invalid" },
+          "404": { "$ref": "#/components/responses/NoRelease" },
+          "429": { "$ref": "#/components/responses/Limited" },
+          "503": { "$ref": "#/components/responses/Unavailable" }
         }
       }
     },
@@ -1452,6 +1474,10 @@
           },
           "source_identifier": {
             "type": "string"
+          },
+          "display_name": {
+            "type": ["string", "null"],
+            "description": "Optional organization name from the selected-release safe label projection; null or absent for facilities and unlabeled organizations."
           }
         },
         "additionalProperties": false
@@ -1748,6 +1774,50 @@
           }
         },
         "additionalProperties": false
+      },
+      "GraphEvidenceReferences": {
+        "type": "object",
+        "required": ["api_version", "data", "meta"],
+        "properties": {
+          "api_version": { "const": "v2-graph-v1" },
+          "data": { "type": "array", "items": { "$ref": "#/components/schemas/GraphEvidenceReference" } },
+          "meta": { "$ref": "#/components/schemas/GraphMetadata" }
+        },
+        "additionalProperties": false
+      },
+      "GraphEvidenceReference": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["reference_id", "source_id", "evidence_type", "event_date", "event_period", "observed_at", "source_url", "match_method"],
+            "properties": {
+              "reference_id": { "type": "string", "format": "uuid" },
+              "source_id": { "const": "us.aphis.annual-reports" },
+              "evidence_type": { "const": "annual_reports" },
+              "event_date": { "type": "null" },
+              "event_period": { "type": "string", "pattern": "^[0-9]{4}$" },
+              "observed_at": { "type": "string", "format": "date-time" },
+              "source_url": { "const": "https://direct.aphis.usda.gov/awa/research-facility-report/annual-summary" },
+              "match_method": { "const": "exact_source_identifier" }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": ["reference_id", "source_id", "evidence_type", "event_date", "event_period", "observed_at", "source_url", "match_method"],
+            "properties": {
+              "reference_id": { "type": "string", "format": "uuid" },
+              "source_id": { "const": "us.inspections" },
+              "evidence_type": { "const": "inspections" },
+              "event_date": { "type": "string", "format": "date" },
+              "event_period": { "type": "null" },
+              "observed_at": { "type": "string", "format": "date-time" },
+              "source_url": { "const": "https://direct.aphis.usda.gov/awa/search/inspection-reports" },
+              "match_method": { "const": "exact_source_identifier" }
+            },
+            "additionalProperties": false
+          }
+        ]
       }
     },
     "parameters": {

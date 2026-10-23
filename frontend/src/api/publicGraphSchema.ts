@@ -10,6 +10,7 @@ export const graphEndpointSchema = z.object({
   source_id: z.string().min(1),
   identifier_type: z.string().min(1),
   source_identifier: z.string().min(1),
+  display_name: z.string().nullable().optional(),
 }).strict();
 
 export const graphConnectionSchema = z.object({
@@ -44,6 +45,30 @@ export const graphEntitySchema = z.object({
   country_code: z.string().regex(/^[A-Z]{2}$/).nullable(),
 }).strict();
 
+export const graphEvidenceReferenceSchema = z.object({
+  reference_id: uuid,
+  source_id: z.enum(['us.aphis.annual-reports', 'us.inspections']),
+  evidence_type: z.enum(['annual_reports', 'inspections']),
+  event_date: z.string().date().nullable(),
+  event_period: z.string().regex(/^\d{4}$/).nullable(),
+  observed_at: z.string().datetime({ offset: true }),
+  source_url: z.enum([
+    'https://direct.aphis.usda.gov/awa/research-facility-report/annual-summary',
+    'https://direct.aphis.usda.gov/awa/search/inspection-reports',
+  ]),
+  match_method: z.literal('exact_source_identifier'),
+}).strict().superRefine((reference, ctx) => {
+  const annual = reference.evidence_type === 'annual_reports'
+    && reference.source_id === 'us.aphis.annual-reports'
+    && reference.event_date === null && reference.event_period !== null
+    && reference.source_url.endsWith('/annual-summary');
+  const inspection = reference.evidence_type === 'inspections'
+    && reference.source_id === 'us.inspections'
+    && reference.event_date !== null && reference.event_period === null
+    && reference.source_url.endsWith('/inspection-reports');
+  if (!annual && !inspection) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'APHIS reference fields must describe one supported event type.' });
+});
+
 const pageMeta = z.object({
   profile,
   release_id: z.string().min(1),
@@ -66,8 +91,16 @@ export const graphEntitiesEnvelopeSchema = z.object({
   meta: pageMeta,
 }).strict();
 
+export const graphEvidenceReferencesEnvelopeSchema = z.object({
+  api_version: z.literal('v2-graph-v1'),
+  data: z.array(graphEvidenceReferenceSchema),
+  meta: pageMeta,
+}).strict();
+
 export type PublicGraphConnection = z.infer<typeof graphConnectionSchema>;
 export type PublicGraphEntity = z.infer<typeof graphEntitySchema>;
+export type PublicGraphEvidenceReference = z.infer<typeof graphEvidenceReferenceSchema>;
 export type PublicGraphProfile = z.infer<typeof profile>;
 export type PublicGraphConnectionsEnvelope = z.infer<typeof graphConnectionsEnvelopeSchema>;
 export type PublicGraphEntitiesEnvelope = z.infer<typeof graphEntitiesEnvelopeSchema>;
+export type PublicGraphEvidenceReferencesEnvelope = z.infer<typeof graphEvidenceReferencesEnvelopeSchema>;

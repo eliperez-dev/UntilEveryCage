@@ -12,8 +12,8 @@ describe('public record connections', () => {
     expect(component).toContain("kind: 'record', facilityId: id, profile, releaseId");
   });
 
-  it('keeps organizations opaque and never resolves organization identifiers as facility records', () => {
-    expect(component).toContain("if (endpoint.entity_type === 'organization') return 'Organization'");
+  it('uses only the API-approved organization display name and never resolves its identifier as a facility', () => {
+    expect(component).toContain("if (endpoint.entity_type === 'organization') return endpoint.display_name ?? 'Organization'");
     expect(component).toContain("other.entity_type === 'facility' && other.entity_id");
     expect(component).not.toContain('source_identifier');
   });

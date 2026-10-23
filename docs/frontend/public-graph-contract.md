@@ -12,6 +12,7 @@ The frontend must call these routes exactly as implemented:
 * `GET /api/v2/graph/connections`
 * `GET /api/v2/graph/entities`
 * `GET /api/v2/graph/entities/{entity_id}/neighborhood`
+* `GET /api/v2/graph/entities/{entity_id}/evidence`
 
 All are GET-only, bounded, and use the `v2-graph-v1` envelope. The page maximum
 is 100. Cursors are opaque UUID continuation tokens for the selected promoted
@@ -27,6 +28,14 @@ Implemented query controls are `profile`, `connection_type` (`exact` or
 `entity_type`. The frontend may offer multi-band filters by issuing separate
 requests or composing already loaded pages; it must not claim that the current
 endpoint accepts a repeated/comma-separated `confidence_band` parameter.
+
+The evidence route accepts `profile`, `release_id`, `cursor`, and `limit`. Its
+strict DTO contains only an opaque reference cursor, APHIS source ID and event
+type, a year or date, observation time, fixed APHIS source URL, and the
+`exact_source_identifier` method. References appear only when the evidence
+source record and linked APHIS registration record are both eligible in the
+selected release. Empty output means no references passed those gates; it does
+not describe private or unreleased evidence.
 
 ## Implemented edge fields
 
@@ -53,9 +62,13 @@ allowed internally, but must be explicit and tested:
 
 Endpoint fields currently include `entity_id`, `entity_type` (`facility` or
 `organization`), `source_id`, `identifier_type`, and `source_identifier`. Entity
-summaries currently include `entity_id`, `entity_type`, `display_name`, and
-`country_code`. They do not currently carry canonical URLs, map precision, or a
-record-type union beyond facility/organization.
+summaries include `entity_id`, `entity_type`, `display_name`, and
+`country_code`. Connection endpoints may also carry an optional
+selected-release `display_name`. Organization labels appear only when a source-qualified
+business identifier and organization-specific legal/business/operator name
+assertion pass the selected-release gates; Connections uses a generic
+organization label otherwise. They do not currently carry canonical URLs, map precision,
+or a record-type union beyond facility/organization.
 
 ## Proposed shared-record extensions
 
@@ -64,7 +77,6 @@ contract work, not current API promises:
 
 - `GET /api/v2/records/{record_id}` and record-wide global search;
 - canonical URLs on graph entity summaries;
-- public evidence, inspection/event, and source-record DTOs;
 - graph endpoints that return richer non-facility record summaries;
 - historical release selection by explicit release ID;
 - a repeated/multi-value confidence-band query.

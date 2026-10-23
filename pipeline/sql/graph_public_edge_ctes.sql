@@ -92,8 +92,25 @@ endpoint_candidates AS MATERIALIZED (
   JOIN facility_assertions asserted_facility
     ON asserted_facility.source_record_id=i.source_record_id
    AND asserted_facility.facility_id=rf.facility_id
+  JOIN uec.graph_source_name_assertions business_name
+    ON business_name.source_id=i.source_id
+   AND business_name.source_record_id=i.source_record_id
+   AND business_name.organization_id=i.organization_id
+   AND business_name.identifier_id=i.identifier_id
+   AND business_name.assertion_role IN ('legal','business','operator')
+   AND lower(regexp_replace(business_name.source_field,'^.*[.]','')) IN (
+      'legal_name','business_name','registered_business_name','company_name',
+      'organization_name','organisation_name','operator_name','operator_company_name',
+      'raison_sociale','registered_name'
+   )
   WHERE i.entity_type='organization'
-    AND i.identifier_type IN ('vat','vat_number','italian_vat','p_iva')
+    AND i.identifier_type IN (
+      'business_id','business_number','business_registration','business_registration_number',
+      'company_number','company_registration_number','company_registry_number',
+      'registered_business_id','legal_entity_id','legal_entity_identifier',
+      'siret','siren','abn','acn','nzbn','lei',
+      'vat','vat_number','italian_vat','p_iva'
+    )
     AND i.organization_id IS NOT NULL
 ),
 distinct_endpoint_targets AS MATERIALIZED (
