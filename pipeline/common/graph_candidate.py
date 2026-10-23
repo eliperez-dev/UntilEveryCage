@@ -15,8 +15,11 @@ from typing import Any, Iterable
 
 from pipeline.contracts.graph_candidate_handoff import validate_graph_candidate
 from pipeline.common.graph_source_mapping import (
+    additional_source_identifiers,
     location_role as mapped_location_role,
     name_assertions,
+    operator_asserted,
+    organization_identifiers,
     source_identifier,
 )
 
@@ -69,6 +72,8 @@ def build_graph_candidate(
     typed_identifier = source_identifier(source_id, normalized)
     if not typed_identifier:
         raise ValueError("graph candidate requires a source-native establishment identifier")
+    source_values = record.get("source_values") if isinstance(record.get("source_values"), dict) else {}
+    facility_aliases = additional_source_identifiers(source_id, normalized, source_values)
     observed = _text(observed_at) or _text(normalized.get("observed_at")) or "unknown-observation-date"
     facility_ref = _local_ref("facility", source_id, source_key)
     facilities = [{
@@ -76,11 +81,46 @@ def build_graph_candidate(
         "source_identifier": {
             **typed_identifier,
         },
+        **({"additional_source_identifiers": facility_aliases} if facility_aliases else {}),
     }]
+
+    mapped_organizations = organization_identifiers(source_id, normalized, source_values)
+    organizations: list[dict[str, Any]] = []
+    organization_refs: list[str] = []
+    if mapped_organizations:
+        primary, *aliases = mapped_organizations
+        organization_ref = _local_ref(
+            "organization", source_id,
+            f"{source_key}|{primary['identifier_type']}|{primary['value']}",
+        )
+        organization_refs.append(organization_ref)
+        organization_entity: dict[str, Any] = {
+            "local_ref": organization_ref,
+            "source_identifier": {key: primary[key] for key in (
+                "identifier_type", "value", "id_namespace", "identity_scope")},
+        }
+        if aliases:
+            organization_entity["additional_source_identifiers"] = aliases
+        organizations.append(organization_entity)
 
     support: list[dict[str, str]] = [{"source_record_key": source_key}]
     if artifact_sha256:
         support.append({"artifact_sha256": artifact_sha256})
+    relationships: list[dict[str, Any]] = []
+    if operator_asserted(source_id, source_values):
+        for organization_ref in organization_refs:
+            relationships.append({
+                "relationship_type": "operator", "from_organization_ref": organization_ref,
+                "target_facility_ref": facility_ref, "assertion_status": "asserted",
+                "observed_at": observed, "valid_from": None, "valid_to": None,
+                "confidence": None, "confidence_basis": "source_asserted_identifier_cooccurrence",
+                "connection_type": "exact",
+                "signal_bundle": [{"kind": "source_identifier_cooccurrence",
+                                   "identifier_types": [item["identifier_type"] for item in mapped_organizations],
+                                   "connection_type": "exact"}],
+                "review_state": "review_required", "support": support,
+                "evidence_method": "explicit source-native identifiers in one source observation",
+            })
     claims: list[dict[str, Any]] = [{
         "claim_domain": "identity",
         "claim_kind": "source_establishment",
@@ -142,8 +182,8 @@ def build_graph_candidate(
         # or operator assertion and is never emitted as public edge text.
         **({"shared_business_name_aliases": business_name_aliases} if business_name_aliases else {}),
         "facilities": facilities,
-        "organizations": [],
-        "relationships": [],
+        "organizations": organizations,
+        "relationships": relationships,
         "claims": claims,
         "crosswalks": [],
         "contradiction_state": "none-observed",

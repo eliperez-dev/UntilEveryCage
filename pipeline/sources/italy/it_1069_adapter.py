@@ -12,6 +12,7 @@ from pipeline.contracts.adapter_contract import SourceArtifact
 from pipeline.contracts.candidate_handoff import write_handoff
 from pipeline.contracts.source_lifecycle import atomic_json, atomic_jsonl, private_manifest
 from pipeline.common.graph_candidates import build_identifier_graph_candidate, write_graph_candidates
+from pipeline.common.graph_source_mapping import organization_identifiers
 
 SOURCE_ID = "it.1069-2009"
 SCHEMA_VERSION = "it-1069-csv-current-2026-09"
@@ -160,24 +161,19 @@ class Italy1069Adapter:
             if not isinstance(source_values, dict) or not isinstance(normalized, dict):
                 continue
             recognition = _clean(source_values.get("num_identificativo_produzione_commercializzazione"))
-            piva = _clean(source_values.get("p_iva"))
-            legal_name = _clean(source_values.get("ragione_sociale"))
+            mapped_organizations = organization_identifiers(self.source_id, normalized, source_values)
             graph_candidates.append(build_identifier_graph_candidate(
                 source_id=self.source_id,
                 source_record_key=record["source_record_key"],
                 source_values=source_values,
                 facility_identifier=("eu_recognition_number", recognition) if recognition else None,
                 organization_identifier=None,
-                organization_identifiers=[("italian_vat", piva)] if piva else [],
+                organization_identifiers=[(item["identifier_type"], item["value"]) for item in mapped_organizations],
                 observed_at=artifact.retrieved_at_utc,
                 source_row=record.get("source_row", 1),
                 artifact_sha256=artifact.sha256,
-                signal_bundle=([{"kind": "source_identifier_cooccurrence", "identifier_types": ["italian_vat"], "connection_type": "exact"}] if piva else None),
+                signal_bundle=([{"kind": "source_identifier_cooccurrence", "identifier_types": [item["identifier_type"] for item in mapped_organizations], "connection_type": "exact"}] if mapped_organizations else None),
                 normalized_values=normalized,
-                name_assertions=([{"value": legal_name, "source_field": "ragione_sociale", "role": "legal"}]
-                                 if legal_name else None),
-                location_role="unknown",
-                operator_asserted=bool(piva and legal_name),
             ))
         graph_manifest = write_graph_candidates(root / "graph", graph_candidates)
         reasons = Counter(reason for item in quarantined for reason in item["reasons"])

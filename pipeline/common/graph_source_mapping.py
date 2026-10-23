@@ -74,7 +74,7 @@ PREMISES_ADDRESS_SOURCES = frozenset({
 def _has_address_evidence(value: Any) -> bool:
     if not isinstance(value, dict):
         return False
-    for key in ("address", "street", "street_address", "street_address_1", "address_lines",
+    for key in ("address", "street", "street_address", "street_address_1", "address_lines", "indirizzo",
                 "address_line_1", "address_line_2", "address1", "adresse1", "adre_a",
                 "loc_add1", "Adresse", "Address1", "Address2"):
         item = value.get(key)
@@ -150,6 +150,68 @@ def source_identifier(source_id: str, normalized: dict[str, Any]) -> dict[str, s
             "value": candidates[0], "identity_scope": "source_scoped"}
 
 
+def additional_source_identifiers(source_id: str, normalized: dict[str, Any],
+                                  source_values: dict[str, Any] | None = None) -> list[dict[str, str]]:
+    """Return source-documented facility-ID aliases without creating entities."""
+    values = source_values if isinstance(source_values, dict) else {}
+    fields = {
+        "fr.georisques.icpe.animal": (("siret", "french_siret", "fr.insee.siret"),),
+        "fr.dgal.section-i": (("SIRET", "french_siret", "fr.insee.siret"), ("siret", "french_siret", "fr.insee.siret")),
+        "fr.dgal.section-ii": (("SIRET", "french_siret", "fr.insee.siret"), ("siret", "french_siret", "fr.insee.siret")),
+    }.get(source_id, ())
+    result: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for field, identifier_type, namespace in fields:
+        value = values.get(field)
+        if isinstance(value, str):
+            compact = "".join(character for character in value if character.isdigit())
+            if len(compact) == 14 and compact == value.strip().replace(" ", ""):
+                pair = (identifier_type, compact)
+                if pair not in seen:
+                    seen.add(pair)
+                    result.append({"identifier_type": identifier_type, "value": value.strip(),
+                                   "id_namespace": namespace, "identity_scope": "source_scoped"})
+    return result
+
+
+def organization_identifiers(source_id: str, normalized: dict[str, Any],
+                             source_values: dict[str, Any] | None = None) -> list[dict[str, str]]:
+    """Allowlist declared business-ID fields and exclude mixed personal IDs."""
+    values = source_values if isinstance(source_values, dict) else {}
+    result: list[dict[str, str]] = []
+
+    def add(field: str, identifier_type: str, namespace: str, length: int) -> None:
+        value = values.get(field)
+        if isinstance(value, str):
+            compact = "".join(character for character in value if character.isdigit())
+            if len(compact) == length and compact == value.strip().replace(" ", ""):
+                result.append({"identifier_type": identifier_type, "value": value.strip(),
+                               "id_namespace": namespace, "identity_scope": "source_scoped"})
+
+    if source_id in {"it.853-2004", "it.1069-2009"}:
+        add("p_iva", "italian_vat", "it.tax-authority.vat", 11)
+    elif source_id == "au.npi.facilities":
+        add("abn", "australian_business_number", "au.abr.abn", 11)
+        add("acn", "australian_company_number", "au.asic.acn", 9)
+    elif source_id == "br.sif.registered":
+        # CPF_CNPJ is mixed; only 14-digit CNPJ shape is emitted, never CPF.
+        add("CPF_CNPJ", "brazil_cnpj", "br.receita.cnpj", 14)
+    elif source_id == "dk.smiley":
+        for field in ("CVR_nummer", "cvrnr"):
+            add(field, "cvr", "dk.virk.cvr", 8)
+    return result
+
+
+def operator_asserted(source_id: str, source_values: dict[str, Any] | None = None) -> bool:
+    """Use only the 853 register's documented VAT plus legal-name assertion."""
+    values = source_values if isinstance(source_values, dict) else {}
+    return bool(source_id in {"it.853-2004", "it.1069-2009"}
+                and any(item["identifier_type"] == "italian_vat"
+                        for item in organization_identifiers(source_id, {}, values))
+                and isinstance(values.get("ragione_sociale"), str)
+                and values["ragione_sociale"].strip())
+
+
 def name_assertions(source_id: str, normalized: dict[str, Any], source_values: dict[str, Any] | None = None) -> list[dict[str, str]]:
     assertions: list[dict[str, str]] = []
     fields = NAME_FIELDS.get(source_id, ())
@@ -159,6 +221,10 @@ def name_assertions(source_id: str, normalized: dict[str, Any], source_values: d
         if isinstance(legal_name, str) and legal_name.strip():
             assertions.append({"value": legal_name.strip(), "source_field": "ragione_sociale" if isinstance(source_values, dict) and source_values.get("ragione_sociale") else "name", "role": "legal"})
         fields = tuple((field, role) for field, role in fields if field == "facility_display_name")
+    if source_id == "fr.georisques.icpe.animal":
+        legal_name = source_values.get("raisonSociale") if isinstance(source_values, dict) else None
+        if isinstance(legal_name, str) and legal_name.strip():
+            assertions.append({"value": legal_name.strip(), "source_field": "raisonSociale", "role": "legal"})
     for field, role in fields:
         for value in _values(normalized.get(field)):
             assertions.append({"value": value, "source_field": field, "role": role})
@@ -199,4 +265,6 @@ def location_role(source_id: str, normalized: dict[str, Any], source_values: dic
     return "unknown"
 
 
-__all__ = ["FACILITY_IDENTIFIERS", "LOCATION_ROLES", "NAME_FIELDS", "PREMISES_ADDRESS_SOURCES", "location_role", "name_assertions", "source_identifier"]
+__all__ = ["FACILITY_IDENTIFIERS", "LOCATION_ROLES", "NAME_FIELDS", "PREMISES_ADDRESS_SOURCES",
+           "additional_source_identifiers", "location_role", "name_assertions",
+           "operator_asserted", "organization_identifiers", "source_identifier"]

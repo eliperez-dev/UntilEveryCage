@@ -4,7 +4,7 @@ from .it_853_adapter import Italy853Adapter
 from pipeline.contracts.adapter_contract import SourceArtifact
 from pipeline.common.orchestrator import run_private_lifecycle
 H="precedente_bollo_cee;num_identificativo_produzione_commercializzazione;ragione_sociale;indirizzo;comune;provincia;codice_regione;regione;classificazione_stabilimento;codice_impianto_attivita;descrizione_impianto_attivita;prodotti_abilitati;specifica_prodotti;paesi_export_autorizzato;longitudine;latitudine;stato_localizzazione;cod_fiscale;p_iva;codice_comune;data_inizio_attivita;data_fine_attivita;stato_attivita;data_ultimo_aggiornamento;num_identificativo_produzione_commercializzazione_2"
-def row(n="A",a="10",s="Autorizzata"): return f";{n};Name;;Town;;010;Piemonte;X;{a};Activity;P;S;IT;12;45;1;tax;vat;001001;;;{s};2026-09-13;\n"
+def row(n="A",a="10",s="Autorizzata"): return f";{n};Name;;Town;;010;Piemonte;X;{a};Activity;P;S;IT;12;45;1;tax;12345678901;001001;;;{s};2026-09-13;\n"
 class Test(unittest.TestCase):
  def test_safe_mapping(self):
         r=Italy853Adapter().parse_bytes((H+"\n"+row()).encode())["accepted"][0]; self.assertEqual(r["normalized"]["coordinates"], {"latitude":45.0,"longitude":12.0,"precision":"source-precision-unknown"}); self.assertIsNone(r["normalized"]["address"]); self.assertIn("p_iva",r["source_values"]); self.assertEqual(r["normalized"]["location_role"],"recognized-establishment-location"); self.assertEqual(r["normalized"]["registered_location_state"],"not-supplied-by-source"); self.assertEqual(r["normalized"]["operating_location_state"],"source-location-not-operating-proof"); self.assertEqual(r["normalized"]["rights_gate"],"review_required")

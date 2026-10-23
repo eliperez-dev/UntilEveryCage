@@ -19,7 +19,10 @@ import psycopg
 
 from pipeline.common.graph_candidate import build_graph_candidate
 from pipeline.common.graph_candidates import build_identifier_graph_candidate
-from pipeline.common.graph_source_mapping import location_role, name_assertions, source_identifier
+from pipeline.common.graph_source_mapping import (
+    additional_source_identifiers, location_role, name_assertions,
+    operator_asserted, organization_identifiers, source_identifier,
+)
 from pipeline.contracts.graph_candidate_handoff import canonical_json_bytes
 from pipeline.contracts.graph_candidate_handoff import validate_graph_candidate
 
@@ -189,21 +192,18 @@ def _write_source(rows: Iterable[tuple[Any, ...]], output_root: Path, *, scope: 
         if source_id in {"it.853-2004", "it.1069-2009"}:
             typed_id = source_identifier(str(source_id), normalized)
             raw_source_values = source_record["source_values"]
-            vat = raw_source_values.get("p_iva") if isinstance(raw_source_values, dict) else None
-            legal_name = raw_source_values.get("ragione_sociale") if isinstance(raw_source_values, dict) else None
-            if not isinstance(legal_name, str) or not legal_name.strip():
-                legal_name = normalized.get("name")
+            business_ids = organization_identifiers(str(source_id), normalized, raw_source_values)
             candidate = build_identifier_graph_candidate(
                 source_id=str(source_id), source_record_key=str(key), source_values=raw_source_values,
                 facility_identifier=(typed_id["identifier_type"], typed_id["value"]) if typed_id else None,
                 organization_identifier=None,
-                organization_identifiers=[("italian_vat", vat)] if isinstance(vat, str) and vat.strip() else [],
+                organization_identifiers=[(item["identifier_type"], item["value"]) for item in business_ids],
                 observed_at=effective_time, source_row=source_row,
                 artifact_sha256=str(artifact_sha).strip() if artifact_sha else None,
-                signal_bundle=([{"kind": "source_identifier_cooccurrence", "identifier_types": ["italian_vat"], "connection_type": "exact"}] if isinstance(vat, str) and vat.strip() else None),
+                signal_bundle=([{"kind": "source_identifier_cooccurrence", "identifier_types": [item["identifier_type"] for item in business_ids], "connection_type": "exact"}] if business_ids else None),
                 normalized_values=normalized, name_assertions=name_assertions(str(source_id), normalized, raw_source_values),
                 location_role=location_role(str(source_id), normalized, raw_source_values),
-                operator_asserted=bool(isinstance(vat, str) and vat.strip() and isinstance(legal_name, str) and legal_name.strip()),
+                operator_asserted=operator_asserted(str(source_id), raw_source_values),
             )
         else:
             candidate = build_graph_candidate(
@@ -363,8 +363,9 @@ def replay_retained_it853(source_run: Path, output_root: Path) -> dict[str, Any]
                     # VAT/operator assertions. Exclude personal fiscal codes.
                     candidate["organizations"] = [entity for entity in candidate.get("organizations", [])
                         if entity.get("source_identifier", {}).get("identifier_type") == "italian_vat"]
-                    for entity in candidate["organizations"]:
-                        entity["source_identifier"]["id_namespace"] = "it.tax-authority.vat"
+                    mapped_ids = organization_identifiers("it.853-2004", {}, values)
+                    if candidate["organizations"] and mapped_ids:
+                        candidate["organizations"][0]["source_identifier"].update(mapped_ids[0])
                     candidate["relationships"] = [edge for edge in candidate.get("relationships", [])
                         if edge.get("relationship_type") == "operator"
                         and edge.get("from_organization_ref") in {e["local_ref"] for e in candidate["organizations"]}]
@@ -373,15 +374,13 @@ def replay_retained_it853(source_run: Path, output_root: Path) -> dict[str, Any]
                             "identifier_types": ["italian_vat"], "connection_type": "exact"}]
                     candidate["signal_bundle"] = [{"kind": "source_identifier_cooccurrence",
                         "identifier_types": ["italian_vat"], "connection_type": "exact"}] if candidate["organizations"] else []
-                    legal = values.get("ragione_sociale") if isinstance(values, dict) else None
-                    if isinstance(legal, str) and legal.strip():
-                        candidate["name_assertions"] = [{"value": legal.strip(), "source_field": "ragione_sociale", "role": "legal"}]
-                    else:
-                        candidate.pop("name_assertions", None)
                     normalized = normalized_by_key.get(key)
                     if normalized is not None:
                         candidate["normalized_values"] = normalized
-                    candidate["location_role"] = "operating" if isinstance(values, dict) and isinstance(values.get("indirizzo"), str) and values["indirizzo"].strip() else "unknown"
+                    candidate["name_assertions"] = name_assertions("it.853-2004", normalized or {}, values)
+                    if not candidate["name_assertions"]:
+                        candidate.pop("name_assertions", None)
+                    candidate["location_role"] = location_role("it.853-2004", normalized or {}, values)
                     payload = canonical_json_bytes(candidate)
                     handle.write(payload)
                     digest.update(payload)
@@ -443,19 +442,19 @@ def replay_existing_handoff(source_id: str, records_path: Path, source_manifest_
             source_values = candidate.get("source_values", {})
             normalized = candidate.get("normalized_values", {})
             if source_id == "fr.georisques.icpe.animal":
-                value = source_values.get("raisonSociale") if isinstance(source_values, dict) else None
-                if isinstance(value, str) and value.strip():
-                    candidate["name_assertions"] = [{"value": value.strip(), "source_field": "raisonSociale", "role": "legal"}]
-                siret = source_values.get("siret") if isinstance(source_values, dict) else None
-                if isinstance(siret, str) and len(siret.strip()) == 14 and siret.strip().isdigit():
-                    local_ref = "organization:" + hashlib.sha256(
-                        (source_id + "|" + candidate["source_record_key"] + "|" + siret.strip()).encode("utf-8")
-                    ).hexdigest()[:16]
-                    candidate["organizations"] = [entity for entity in candidate.get("organizations", [])
-                        if entity.get("source_identifier", {}).get("identifier_type") != "french_siret"]
-                    candidate["organizations"].append({"local_ref": local_ref, "source_identifier": {
-                        "identifier_type": "french_siret", "id_namespace": "fr.insee.siret",
-                        "value": siret.strip(), "identity_scope": "source_scoped"}})
+                candidate["name_assertions"] = name_assertions(source_id,
+                    normalized if isinstance(normalized, dict) else {},
+                    source_values if isinstance(source_values, dict) else {})
+                facility = (candidate.get("facilities") or [None])[0]
+                aliases = additional_source_identifiers(source_id,
+                    normalized if isinstance(normalized, dict) else {},
+                    source_values if isinstance(source_values, dict) else {})
+                if facility is not None and aliases:
+                    facility["additional_source_identifiers"] = aliases
+                candidate["organizations"] = [entity for entity in candidate.get("organizations", [])
+                    if entity.get("source_identifier", {}).get("identifier_type") != "french_siret"]
+                candidate["relationships"] = [edge for edge in candidate.get("relationships", [])
+                    if edge.get("relationship_type") != "operator"]
             candidate["location_role"] = location_role(source_id,
                 normalized if isinstance(normalized, dict) else {},
                 source_values if isinstance(source_values, dict) else {})

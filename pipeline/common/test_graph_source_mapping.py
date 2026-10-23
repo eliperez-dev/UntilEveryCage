@@ -1,7 +1,8 @@
 import unittest
 
 from pipeline.common.graph_candidate import build_graph_candidate
-from pipeline.common.graph_source_mapping import FACILITY_IDENTIFIERS, name_assertions, source_identifier
+from pipeline.common.graph_source_mapping import (FACILITY_IDENTIFIERS, name_assertions,
+    organization_identifiers, source_identifier)
 from pipeline.contracts.graph_candidate_handoff import validate_graph_candidate
 
 
@@ -93,6 +94,31 @@ class GraphSourceMappingTests(unittest.TestCase):
         from pipeline.common.graph_source_mapping import location_role
         source_values = {"street": "Synthetic Street 2", "postal_code": "0000"}
         self.assertEqual(location_role("us.fsis", {}, source_values), "operating")
+
+    def test_icpe_siret_is_a_facility_alias_not_an_organization(self):
+        record = {"source_id": "fr.georisques.icpe.animal", "source_record_key": "icpe-fixture", "source_row": 1,
+            "source_values": {"siret": "12345678901234", "raisonSociale": "Synthetic Operator"},
+            "normalized": {"establishment_id": "AIOT-1", "address": "Synthetic Road"}}
+        candidate = build_graph_candidate(record)
+        validate_graph_candidate(candidate)
+        self.assertEqual(candidate["facilities"][0]["source_identifier"]["value"], "AIOT-1")
+        self.assertEqual(candidate["facilities"][0]["additional_source_identifiers"], [{
+            "identifier_type": "french_siret", "value": "12345678901234",
+            "id_namespace": "fr.insee.siret", "identity_scope": "source_scoped"}])
+        self.assertEqual(candidate["organizations"], [])
+        self.assertEqual(candidate["relationships"], [])
+        self.assertEqual(candidate["name_assertions"], [{"value": "Synthetic Operator",
+            "source_field": "raisonSociale", "role": "legal"}])
+
+    def test_business_identifier_allowlist_excludes_personal_cpf(self):
+        self.assertEqual(organization_identifiers("it.853-2004", {}, {
+            "p_iva": "12345678901", "cod_fiscale": "RSSMRA80A01H501U"})[0]["identifier_type"], "italian_vat")
+        self.assertEqual([item["id_namespace"] for item in organization_identifiers(
+            "au.npi.facilities", {}, {"abn": "12345678901", "acn": "123456789"})],
+            ["au.abr.abn", "au.asic.acn"])
+        self.assertEqual(organization_identifiers("br.sif.registered", {}, {"CPF_CNPJ": "12345678901"}), [])
+        self.assertEqual(organization_identifiers("br.sif.registered", {}, {"CPF_CNPJ": "12345678000199"})[0]["identifier_type"], "brazil_cnpj")
+        self.assertEqual(organization_identifiers("dk.smiley", {}, {"CVR_nummer": "12345678"})[0]["id_namespace"], "dk.virk.cvr")
 
 
 if __name__ == "__main__":

@@ -11,6 +11,13 @@ from pipeline.contracts.graph_candidate_handoff import (
     canonical_json_bytes,
 )
 from pipeline.contracts.source_lifecycle import atomic_bytes, atomic_json
+from pipeline.common.graph_source_mapping import (
+    additional_source_identifiers,
+    location_role as mapped_location_role,
+    name_assertions as mapped_name_assertions,
+    operator_asserted as mapped_operator_asserted,
+    organization_identifiers as mapped_organization_identifiers,
+)
 
 
 def _text(value: Any) -> str | None:
@@ -27,6 +34,14 @@ def _identifier_namespace(source_id: str, identifier_type: str) -> str:
     # both retained ministry registers; other native IDs remain source-local.
     if source_id in {"it.1069-2009", "it.853-2004"} and identifier_type == "italian_vat":
         return "it.tax-authority.vat"
+    if identifier_type == "australian_business_number":
+        return "au.abr.abn"
+    if identifier_type == "australian_company_number":
+        return "au.asic.acn"
+    if identifier_type == "brazil_cnpj":
+        return "br.receita.cnpj"
+    if identifier_type == "cvr":
+        return "dk.virk.cvr"
     return source_id
 
 
@@ -44,20 +59,22 @@ def build_identifier_graph_candidate(
     signal_bundle: list[dict[str, Any]] | None = None,
     normalized_values: dict[str, Any] | None = None,
     name_assertions: list[dict[str, str]] | None = None,
-    location_role: str = "unknown",
+    location_role: str | None = None,
     business_contacts: list[dict[str, str]] | None = None,
-    operator_asserted: bool = False,
+    operator_asserted: bool | None = None,
 ) -> dict[str, Any]:
     """Build a private candidate without fuzzy matching or canonical IDs."""
     if not _text(source_record_key):
         raise ValueError("source_record_key is required for graph candidate")
     organization_pairs = list(organization_identifiers or ())
+    normalized_context = normalized_values if isinstance(normalized_values, dict) else {}
+    mapped_ids = mapped_organization_identifiers(source_id, normalized_context, source_values)
+    organization_pairs.extend((item["identifier_type"], item["value"]) for item in mapped_ids)
     if organization_identifier:
         organization_pairs.insert(0, organization_identifier)
-    # Keep a stable, source-local organization list when a row carries more
-    # than one authoritative identifier (for example an Italian VAT and
-    # fiscal-code value).  Duplicate pairs are harmless input noise and must
-    # not create duplicate nodes or edges.
+    # A source row can carry multiple authoritative IDs for one registered
+    # business. Preserve the first as primary and attach the others as typed
+    # aliases on that same entity; never mint extra entities from co-location.
     organization_pairs = list(dict.fromkeys(
         (identifier_type, value)
         for identifier_type, value in organization_pairs
@@ -72,11 +89,38 @@ def build_identifier_graph_candidate(
     if facility_identifier:
         identifier_type, value = facility_identifier
         facility_ref = _stable_ref("facility", f"{source_id}|{identifier_type}|{value}")
-        facilities.append({"local_ref": facility_ref, "source_identifier": {"identifier_type": identifier_type, "id_namespace": _identifier_namespace(source_id, identifier_type), "value": value, "identity_scope": "source_scoped"}})
-    for identifier_type, value in organization_pairs:
+        facility_entity = {"local_ref": facility_ref, "source_identifier": {"identifier_type": identifier_type, "id_namespace": _identifier_namespace(source_id, identifier_type), "value": value, "identity_scope": "source_scoped"}}
+        aliases = additional_source_identifiers(source_id, normalized_context, source_values)
+        if aliases:
+            facility_entity["additional_source_identifiers"] = aliases
+        facilities.append(facility_entity)
+    if organization_pairs:
+        identifier_type, value = organization_pairs[0]
         organization_ref = _stable_ref("organization", f"{source_id}|{identifier_type}|{value}")
         organization_refs.append(organization_ref)
-        organizations.append({"local_ref": organization_ref, "source_identifier": {"identifier_type": identifier_type, "id_namespace": _identifier_namespace(source_id, identifier_type), "value": value, "identity_scope": "source_scoped"}})
+        namespace = next((item["id_namespace"] for item in mapped_ids
+                          if item["identifier_type"] == identifier_type and item["value"] == value),
+                         _identifier_namespace(source_id, identifier_type))
+        organization = {"local_ref": organization_ref, "source_identifier": {
+            "identifier_type": identifier_type, "id_namespace": namespace,
+            "value": value, "identity_scope": "source_scoped"}}
+        aliases = []
+        for alias_type, alias_value in organization_pairs[1:]:
+            alias_namespace = next((item["id_namespace"] for item in mapped_ids
+                                    if item["identifier_type"] == alias_type and item["value"] == alias_value),
+                                   _identifier_namespace(source_id, alias_type))
+            if alias_type != identifier_type or alias_value != value:
+                aliases.append({"identifier_type": alias_type, "value": alias_value,
+                                "id_namespace": alias_namespace, "identity_scope": "source_scoped"})
+        if aliases:
+            organization["additional_source_identifiers"] = aliases
+        organizations.append(organization)
+    if operator_asserted is None:
+        operator_asserted = mapped_operator_asserted(source_id, source_values)
+    if name_assertions is None:
+        name_assertions = mapped_name_assertions(source_id, normalized_context, source_values)
+    if location_role is None:
+        location_role = mapped_location_role(source_id, normalized_context, source_values)
     relationships = []
     support = [{"source_record_key": source_record_key}]
     if artifact_sha256:
