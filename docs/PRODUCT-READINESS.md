@@ -24,6 +24,23 @@ publishable facilities unless explicitly labelled that way.
 
 ## Current launch decision (2026-10-22)
 
+**Search/pin/connection repair candidate:** the map search now exposes inline
+loading while retaining its previous page, approximate singleton PNGs carry an
+`≈` cue, and PNG mode no longer deliberately paints fallback dots during image
+loading. The search query uses indexed candidates before live eligibility
+checks; exact totals and legacy empty-search-text fallback remain. Real staging
+SQL measured 108 ms for the composed filtered Tyson query versus 3,525 ms for
+the earlier matching count; this is not an end-to-end browser timing. Initial
+integrated API measurements were still 1.6–2 seconds and require separate
+verification. Broad unfiltered exact counts remain a known cost.
+
+The additive FSIS `shared_business_name` rule uses complete retained DBA aliases,
+not substring matches or ownership assertions. Its real-data materialization
+and hosted activation are pending verification; code and synthetic tests alone
+do not establish published connections. The retained baseline verifier also
+reports a pre-existing checksum mismatch for `066_community_contributions`;
+neither its ledger nor the frozen reference was changed to suppress that error.
+
 **Approximate-location display correction:** implementation `7ee9f46c` replaces
 the public map's approximate dots with the existing category/V1 pin artwork and
 its fixed-pixel red disc with a selected-only geographic polygon: **250 m

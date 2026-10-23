@@ -127,9 +127,14 @@ features:
   credentials only in a POST body. No accounts, email delivery or recovery
   service is implied.
 - Render a single approximate location with the normal pin family, without a
-  cluster-style `1` badge. On selection or inspection only, show a red area
+  cluster-style `1` badge. Show a small `≈` cue beside unclustered approximate
+  pins before selection, preserving the category colour. Do not flash fallback
+  dots while PNG assets load. On selection or inspection only, show a red area
   **500 metres across** (250-metre radius) using geographic distance, not a
-  fixed screen size. This is a display convention, not measured accuracy.
+  fixed screen size. This is a display convention, not measured accuracy;
+  a confidence score must not be converted into an invented distance. Use
+  source-supported extent when available rather than implying all approximate
+  positions have the same measured uncertainty.
   Keep source precision in record details and retain honest multi-record
   cluster counts. Do not show a persistent approximate-location legend.
 
