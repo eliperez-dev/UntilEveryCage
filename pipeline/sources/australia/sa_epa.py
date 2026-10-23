@@ -292,7 +292,7 @@ class SouthAustraliaEpaAdapter:
     def write_candidate_handoff(self, run_dir: str | Path, artifact: SourceArtifact,
                                 accepted: list[dict[str, Any]]) -> dict[str, Any]:
         return write_handoff(run_dir, accepted, artifact, source_id=SOURCE_ID,
-                             emit_graph_candidates=False)
+                             emit_graph_candidates=True)
 
     def run(self, raw_path: str | Path, run_dir: str | Path, artifact: SourceArtifact) -> dict[str, Any]:
         raw = Path(raw_path).read_bytes()

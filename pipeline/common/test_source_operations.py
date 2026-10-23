@@ -16,11 +16,41 @@ from .source_operations import (
     load_source_schedules,
     read_run_history,
     register_deduplicated_artifact,
+    run_configured_graph_materialization,
     run_with_bounded_retries,
 )
 
 
 class SourceOperationsTests(unittest.TestCase):
+    def test_configured_graph_refresh_invokes_shared_materializer_without_persisting_secrets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "candidate-handoff" / "graph-candidates").mkdir(parents=True)
+            (root / "candidate-handoff" / "graph-candidates" / "records.jsonl").write_text("synthetic\n", encoding="utf-8")
+            calls = []
+
+            def materializer(database_url, handoff_roots, *, private_target, batch_size):
+                calls.append((database_url, handoff_roots, private_target, batch_size))
+                return {"status": "completed", "source_count": 2, "edge_count": 3,
+                        "database_url": database_url, "private_path": "private"}
+
+            summary = run_configured_graph_materialization({
+                "enabled": True, "database_url": "credential-bearing-runtime-value",
+                "private_graph_target": ("uec_graph_test", "private-graph-materialization-v1"),
+                "handoff_roots": [root / "prior-handoffs"], "batch_size": 40,
+            }, current_run_dir=root, materializer=materializer)
+            self.assertEqual(calls[0][0], "credential-bearing-runtime-value")
+            self.assertEqual(calls[0][1], [root / "prior-handoffs", root / "candidate-handoff"])
+            self.assertEqual(calls[0][2], ("uec_graph_test", "private-graph-materialization-v1"))
+            self.assertEqual(summary, {"status": "completed", "source_count": 2,
+                                      "edge_count": 3, "private_target_authorized": True})
+            self.assertNotIn("credential", json.dumps(summary))
+
+    def test_graph_refresh_requires_explicit_target_and_complete_roots(self):
+        with self.assertRaisesRegex(SourceOperationsError, "private_graph_target"):
+            run_configured_graph_materialization({"enabled": True, "database_url": "runtime", "handoff_roots": ["x"]})
+        self.assertIsNone(run_configured_graph_materialization(None))
+
     def test_checked_in_schedule_inventory_matches_registry(self):
         root = Path(__file__).parents[1]
         schedules = load_source_schedules(registry_path=root / "source_registry.json")

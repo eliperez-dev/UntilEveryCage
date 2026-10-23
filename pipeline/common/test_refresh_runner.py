@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import shutil
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from pipeline.common.refresh_runner import RefreshCatalog, RefreshRunner, RefreshRunnerError
@@ -87,6 +89,37 @@ class RefreshRunnerTests(unittest.TestCase):
         second = canonical_plan(request, catalog.select(request), catalog.capabilities)
         self.assertEqual(first, second)
         self.assertEqual(first["run_id"], "refresh-" + first["plan_hash"][:16])
+
+    def test_private_graph_refresh_credentials_and_paths_do_not_enter_plan(self):
+        adapter = FakeAdapter(); catalog = catalog_for(adapter)
+        request = RefreshRequest(
+            source_ids=(adapter.source_id,), mode="fixture",
+            options={"graph_materialization": {
+                "enabled": True, "database_url": "secret-runtime-url",
+                "private_graph_target": ["private-db", "private-graph-materialization-v1"],
+                "handoff_roots": ["C:/private/corpus"],
+            }},
+        )
+        plan = canonical_plan(request, catalog.select(request), catalog.capabilities)
+        encoded = json.dumps(plan)
+        self.assertTrue(plan["graph_materialization_requested"])
+        self.assertNotIn("secret-runtime-url", encoded)
+        self.assertNotIn("C:/private/corpus", encoded)
+        self.assertNotIn("private-db", encoded)
+
+    def test_normal_refresh_invokes_configured_shared_graph_step(self):
+        adapter = FakeAdapter(); catalog = catalog_for(adapter)
+        graph_step = {"enabled": True, "private_graph_target": ["private", "private-graph-materialization-v1"], "handoff_roots": ["retained-handoffs"]}
+        request = RefreshRequest(
+            source_ids=(adapter.source_id,), mode="fixture", output_root=self.output("graph-step"),
+            database_url="runtime-database-url", options={"graph_materialization": graph_step},
+        )
+        with patch("pipeline.common.refresh_runner.run_configured_graph_materialization",
+                   return_value={"status": "completed", "source_count": 5, "private_target_authorized": True}) as invoke:
+            result = RefreshRunner(catalog).run(request)
+        invoke.assert_called_once()
+        self.assertEqual(result["counts"]["succeeded"], 1)
+        self.assertEqual(result["results"][0]["summary"]["graph_materialization"]["source_count"], 5)
 
     def test_failure_isolated_and_retry_is_bounded(self):
         good, bad = FakeAdapter(), FakeAdapter(failures=5)

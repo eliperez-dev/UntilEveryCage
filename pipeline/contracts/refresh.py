@@ -136,13 +136,17 @@ def canonical_plan(request: RefreshRequest, selected: tuple[str, ...], capabilit
         else:
             artifacts[source] = {"available": False, "sha256": None, "byte_size": None}
     versions = {source: capabilities[source].adapter_version for source in selected if source in capabilities}
+    plan_options = dict(request.options)
+    graph_settings = plan_options.pop("graph_materialization", None)
+    graph_requested = isinstance(graph_settings, Mapping) and graph_settings.get("enabled") is True
     payload = {
         "contract_version": REFRESH_CONTRACT_VERSION,
         "sources": list(selected), "mode": request.mode,
         "artifacts": artifacts, "adapter_versions": versions,
         "source_kinds": {source: capabilities[source].source_kind for source in selected if source in capabilities},
         "retries": request.retries, "import_candidates": request.import_candidates,
-        "options": row_free_summary(request.options),
+        "options": row_free_summary(plan_options),
+        "graph_materialization_requested": graph_requested,
         "source_operations": row_free_summary(source_operations or {}),
     }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()

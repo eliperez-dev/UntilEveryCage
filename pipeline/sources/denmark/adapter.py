@@ -217,6 +217,9 @@ class DenmarkSmileyAdapter:
                     {"kind": "source_identifier_cooccurrence", "identifier_types": ["findsmiley_id"], "connection_type": "exact"},
                     *([{"kind": "source_identifier_cooccurrence", "identifier_types": ["cvr"], "connection_type": "exact"}] if valid_cvr else []),
                 ],
+                normalized_values=record.get("normalized"),
+                name_assertions=([{"value": record["normalized"]["name"], "source_field": "Virksomhed", "role": "trading"}]
+                                 if isinstance(record.get("normalized"), dict) and record["normalized"].get("name") else None),
             ))
         graph_manifest = write_graph_candidates(root / "graph", graph_candidates)
         # This state is deliberately private: validation cannot authorize release.

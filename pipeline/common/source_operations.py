@@ -45,6 +45,65 @@ class RetryExhaustedError(RuntimeError):
         self.cause = cause
 
 
+def run_configured_graph_materialization(
+    settings: Any,
+    *,
+    current_run_dir: str | Path | None = None,
+    materializer: Callable[..., dict[str, Any]] | None = None,
+    runtime_database_url: str | None = None,
+) -> dict[str, Any] | None:
+    """Invoke the shared corpus materializer only for an explicit private target.
+
+    Database connection details and private paths are accepted at runtime and
+    are never copied into the returned aggregate receipt.
+    """
+    if settings is None:
+        return None
+    if not isinstance(settings, dict) or settings.get("enabled") is not True:
+        raise SourceOperationsError("graph_materialization must be an enabled runtime configuration")
+    target = settings.get("private_graph_target")
+    if not isinstance(target, (list, tuple)) or len(target) != 2 or any(not isinstance(item, str) or not item for item in target):
+        raise SourceOperationsError("graph_materialization requires an explicit private_graph_target")
+    database_url = settings.get("database_url") or runtime_database_url
+    if not isinstance(database_url, str) or not database_url:
+        raise SourceOperationsError("graph_materialization requires a runtime database connection")
+    roots = settings.get("handoff_roots")
+    if not isinstance(roots, (list, tuple)) or not roots or any(not isinstance(item, (str, Path)) for item in roots):
+        raise SourceOperationsError("graph_materialization requires complete current handoff_roots")
+    handoff_roots = [Path(item) for item in roots]
+    if current_run_dir is not None:
+        current = Path(current_run_dir)
+        if (current / "candidate-handoff" / "graph-candidates" / "records.jsonl").is_file():
+            handoff_roots.append(current / "candidate-handoff")
+        elif (current / "graph-candidates" / "records.jsonl").is_file():
+            handoff_roots.append(current)
+    if materializer is None:
+        from pipeline.common.real_private_graph import materialize_graph_corpus
+
+        materializer = materialize_graph_corpus
+    result = materializer(
+        database_url,
+        handoff_roots,
+        private_target=tuple(target),
+        batch_size=settings.get("batch_size", 250),
+    )
+    if not isinstance(result, dict):
+        raise SourceOperationsError("shared graph materializer must return an aggregate object")
+    # Keep only aggregate operational facts; never persist arbitrary return
+    # payloads, connection details, or private filesystem paths.
+    allowed = {
+        "status", "source_count", "candidate_count", "edge_count", "exact_edge_count",
+        "inferred_edge_count", "unresolved_count", "excluded_count", "edge_set_sha256",
+        "ruleset_fingerprint", "materialization_id", "batch_count", "idempotent",
+    }
+    summary = {key: result[key] for key in sorted(allowed & result.keys())
+               if isinstance(result[key], (str, int, float, bool)) or result[key] is None}
+    summary["status"] = str(summary.get("status") or "completed")
+    summary["private_target_authorized"] = True
+    _assert_row_free(summary)
+    return summary
+
+
 @dataclass(frozen=True)
 class SourceSchedule:
     """Operational expectations for one source, separate from publication."""
@@ -396,6 +455,7 @@ def build_review_packet(
     }
     qa_counts = {key: qa.get(key) for key in counts}
     blockers = status.get("review_blockers", {})
+    graph_step = status.get("graph_materialization")
     graph_manifest = None
     for graph_path in (
         Path(run_dir) / "graph-candidates" / "manifest.json",
@@ -445,6 +505,7 @@ def build_review_packet(
             "status": "not-emitted", "storage_state": "private",
             "review_state": "review_required", "publication_status": "not_eligible",
         },
+        "graph_materialization": graph_step,
         "gates": {
             "release_state": manifest.get("release_state", "not-created"),
             "publication_state": status.get("publication_state"),
@@ -478,11 +539,25 @@ def finalize_run_operations(
     previous_run_dir: str | Path | None = None,
     previous_normalized_path: str | Path | None = None,
     prior_eligible_release: dict[str, Any] | None = None,
+    graph_materializer: Callable[..., dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Persist the shared run ledger and deterministic operator artifacts."""
     config = config or {}
     manifest = manifest or {}
     source_id = str(manifest.get("source_id") or status.get("source_id") or config.get("source_id") or "unknown")
+    graph_settings = config.get("graph_materialization")
+    if graph_settings is not None:
+        try:
+            status["graph_materialization"] = run_configured_graph_materialization(
+                graph_settings, current_run_dir=run_dir, materializer=graph_materializer,
+                runtime_database_url=config.get("database_url"),
+            )
+        except Exception as error:
+            # Exception text can contain connection details or private paths.
+            status["graph_materialization"] = {
+                "status": "failed", "error_type": type(error).__name__,
+                "private_target_authorized": False,
+            }
     history = read_run_history(operations_root, source_id)
     previous = history[-1] if history else None
     if previous_run_dir is None and previous and previous.get("run_dir"):
@@ -494,7 +569,8 @@ def finalize_run_operations(
     artifact_sha256 = manifest.get("sha256") or manifest.get("checksum_sha256") or config.get("checksum_sha256")
     normalized_sha256 = _file_sha256(normalized_path)
     failed = status.get("status") == "failed"
-    review_required = bool(status.get("review_required") or manifest.get("review_required") or manifest.get("quarantined_rows", 0) or (run_path / "qa.json").exists() and json.loads((run_path / "qa.json").read_text(encoding="utf-8")).get("drift_alarms"))
+    graph_failed = isinstance(status.get("graph_materialization"), dict) and status["graph_materialization"].get("status") == "failed"
+    review_required = bool(status.get("review_required") or graph_failed or manifest.get("review_required") or manifest.get("quarantined_rows", 0) or (run_path / "qa.json").exists() and json.loads((run_path / "qa.json").read_text(encoding="utf-8")).get("drift_alarms"))
     classification = classify_run(failed=failed, review_required=review_required, artifact_sha256=artifact_sha256, normalized_sha256=normalized_sha256, previous=previous)
     status.update({
         "source_id": source_id,
@@ -530,6 +606,7 @@ def finalize_run_operations(
         # stays in the restricted run-status/failure report instead.
         "error": "run failed; see restricted failure-report.json" if failed else None,
         "failure_class": status.get("failure_class") if failed else None,
+        "graph_materialization": status.get("graph_materialization"),
     }
     history_path = append_run_history(operations_root, source_id, entry)
     status.update({"history_path": str(history_path), "review_packet_path": str(packet_path), "release_diff_path": str(diff_path)})
@@ -626,5 +703,6 @@ __all__ = [
     "OPERATIONS_SCHEMA_VERSION", "RetryExhaustedError", "RetryPolicy", "SourceOperationsError", "SourceSchedule",
     "append_run_history", "build_release_diff", "build_review_packet", "build_source_health_index", "classify_failure",
     "classify_run", "failure_report", "finalize_run_operations", "freshness_for", "load_source_schedules",
-    "read_run_history", "register_deduplicated_artifact", "run_with_bounded_retries", "write_failure_notification",
+    "read_run_history", "register_deduplicated_artifact", "run_configured_graph_materialization",
+    "run_with_bounded_retries", "write_failure_notification",
 ]

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections import Counter
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -33,6 +34,11 @@ def build_identifier_graph_candidate(
     source_row: int = 1,
     artifact_sha256: str | None = None,
     signal_bundle: list[dict[str, Any]] | None = None,
+    normalized_values: dict[str, Any] | None = None,
+    name_assertions: list[dict[str, str]] | None = None,
+    location_role: str = "unknown",
+    business_contacts: list[dict[str, str]] | None = None,
+    operator_asserted: bool = False,
 ) -> dict[str, Any]:
     """Build a private candidate without fuzzy matching or canonical IDs."""
     if not _text(source_record_key):
@@ -58,17 +64,17 @@ def build_identifier_graph_candidate(
     if facility_identifier:
         identifier_type, value = facility_identifier
         facility_ref = _stable_ref("facility", f"{source_id}|{identifier_type}|{value}")
-        facilities.append({"local_ref": facility_ref, "source_identifier": {"identifier_type": identifier_type, "value": value, "identity_scope": "source_scoped"}})
+        facilities.append({"local_ref": facility_ref, "source_identifier": {"identifier_type": identifier_type, "id_namespace": source_id, "value": value, "identity_scope": "source_scoped"}})
     for identifier_type, value in organization_pairs:
         organization_ref = _stable_ref("organization", f"{source_id}|{identifier_type}|{value}")
         organization_refs.append(organization_ref)
-        organizations.append({"local_ref": organization_ref, "source_identifier": {"identifier_type": identifier_type, "value": value, "identity_scope": "source_scoped"}})
+        organizations.append({"local_ref": organization_ref, "source_identifier": {"identifier_type": identifier_type, "id_namespace": source_id, "value": value, "identity_scope": "source_scoped"}})
     relationships = []
     support = [{"source_record_key": source_record_key}]
     if artifact_sha256:
         support.append({"artifact_sha256": artifact_sha256})
     for organization_ref in organization_refs:
-        if facility_ref:
+        if facility_ref and operator_asserted:
             relationships.append({
                 "relationship_type": "operator",
                 "from_organization_ref": organization_ref,
@@ -93,6 +99,10 @@ def build_identifier_graph_candidate(
         "source_record_key": source_record_key,
         "source_row": source_row if isinstance(source_row, int) and source_row > 0 else 1,
         "source_values": source_values,
+        **({"normalized_values": normalized_values} if normalized_values is not None else {}),
+        **({"name_assertions": name_assertions} if name_assertions else {}),
+        "location_role": location_role,
+        **({"business_contacts": business_contacts} if business_contacts else {}),
         "facilities": facilities,
         "organizations": organizations,
         "relationships": relationships,
@@ -120,10 +130,14 @@ def write_graph_candidates(run_dir: str | Path, candidates: Iterable[dict[str, A
     manifest = {
         "schema_version": "private-graph-candidate-batch-v1",
         "contract_version": CONTRACT_VERSION,
+        "source_ids": sorted({candidate["source_id"] for candidate in ordered}),
         "candidate_count": len(ordered),
         "facility_identifier_candidates": sum(bool(candidate.get("facilities")) for candidate in ordered),
         "organization_identifier_candidates": sum(bool(candidate.get("organizations")) for candidate in ordered),
         "operator_relationship_candidates": relationship_count,
+        "name_assertion_candidates": sum(len(candidate.get("name_assertions", [])) for candidate in ordered),
+        "location_role_counts": dict(sorted(Counter(candidate.get("location_role", "unknown") for candidate in ordered).items())),
+        "business_contact_candidates": sum(len(candidate.get("business_contacts", [])) for candidate in ordered),
         "review_required_count": len(ordered),
         "publication_status": "not_eligible",
         "storage_state": "private",

@@ -77,13 +77,13 @@ class FirstWaveDescriptorTests(unittest.TestCase):
         self.assertEqual(len(report), 14)
         italy = next(item for item in report if item["source_id"] == "it.853-2004")
         self.assertEqual(italy["private_pipeline"], "one_action_preview_import_ready")
-        ready = {"it.853-2004", "it.1069-2009", "es.cat.feed-sandach", "au.sa.epa.licensed-activities", "au.npi.facilities", "fsa_approved_establishments", "br.sif.registered", "ca.ontario.meat-plants"}
+        ready = {"it.853-2004", "it.1069-2009", "es.cat.feed-sandach", "au.sa.epa.licensed-activities", "au.npi.facilities", "fsa_approved_establishments", "br.sif.registered", "ca.ontario.meat-plants", "fr.georisques.icpe.animal"}
         self.assertTrue(all(item["private_pipeline"] == "one_action_preview_import_ready" for item in report if item["source_id"] in ready))
         self.assertTrue(all(item["private_pipeline"] == "fixture_contract_ready" for item in report if item["source_id"] not in ready))
         self.assertTrue(all(item["publication"] == "human_gate_required" for item in report))
         self.assertTrue({item["live_acquisition"] for item in report} <= {"verified", "bounded_private_fetch", "terms-gated-bounded-private-fetch"})
         icpe = next(item for item in report if item["source_id"] == "fr.georisques.icpe.animal")
-        self.assertEqual(icpe["operational_classification"], "terms-blocked")
+        self.assertEqual(icpe["operational_classification"], "live")
         self.assertTrue(icpe["live_callable"])
 
 

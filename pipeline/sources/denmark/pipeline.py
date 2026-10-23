@@ -237,6 +237,9 @@ def _canonical_evidence(run_dir: Path, input_path: Path, metadata: dict,
                 organization_identifier=("cvr", str(cvr).strip()) if cvr and str(cvr).strip() else None,
                 observed_at=str(retrieved),
                 source_row=row.get("source_row", 1),
+                normalized_values=row.get("normalized"),
+                name_assertions=([{"value": row["normalized"]["trading_name"], "source_field": "Virksomhed", "role": "trading"}]
+                                 if isinstance(row.get("normalized"), dict) and row["normalized"].get("trading_name") else None),
             ))
         graph_summary = write_graph_candidates(run_dir / "graph", graph_candidates)
         manifest["graph_candidate_summary"] = {key: graph_summary[key] for key in (
