@@ -91,6 +91,9 @@ jobs:
       - run: npm run lint
       - run: npm run boundary
       - run: npm run build
+      - name: Align container home ownership for Firefox
+        shell: bash
+        run: chown "$(id -u):$(id -g)" /github/home
       - run: npx playwright test tests/e2e/shell-routes.spec.ts tests/e2e/local-safety.spec.ts tests/e2e/private-preview.spec.ts tests/e2e/cold-root-map.spec.ts --project=chromium --project=firefox --project=webkit --workers=2
       - name: Community pilot browser proof (synthetic only)
         env:
