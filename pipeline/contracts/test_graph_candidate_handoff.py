@@ -74,6 +74,42 @@ class GraphCandidateHandoffTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unknown_reason"):
             validate_graph_candidate(value)
 
+    def test_validates_additive_matcher_fields(self):
+        value = candidate()
+        value["name_assertions"] = [{"value": "Synthetic Works", "source_field": "Legal Name", "role": "legal"}]
+        value["location_role"] = "operating"
+        value["business_contacts"] = [{"kind": "phone", "value": "+1 555 0100", "source_field": "Business Phone"}]
+        value["normalized_values"] = {"postal_code": "00000", "city": "Example"}
+        value["facilities"][0]["source_identifier"]["id_namespace"] = "synthetic-permits"
+        validate_graph_candidate(value)
+
+    def test_rejects_invalid_additive_matcher_fields(self):
+        cases = [
+            ("name_assertions", [{"value": "Synthetic", "source_field": "Name", "role": "account"}], "name_assertions.role"),
+            ("name_assertions", [{"value": "Synthetic", "role": "legal"}], "name_assertions.source_field"),
+            ("location_role", "postal", "location_role"),
+            ("business_contacts", [{"kind": "email", "value": "a@example.test", "source_field": "Email"}], "business_contacts.kind"),
+            ("business_contacts", [{"kind": "phone", "value": "555", "source_field": " "}], "business_contacts.source_field"),
+            ("normalized_values", [], "normalized_values"),
+        ]
+        for field, invalid, message in cases:
+            with self.subTest(field=field, invalid=invalid):
+                value = candidate()
+                value[field] = invalid
+                with self.assertRaisesRegex(ValueError, message):
+                    validate_graph_candidate(value)
+
+        value = candidate()
+        value["facilities"][0]["source_identifier"]["id_namespace"] = " "
+        with self.assertRaisesRegex(ValueError, "source_identifier.id_namespace"):
+            validate_graph_candidate(value)
+
+    def test_preserves_legacy_fsis_alias_input(self):
+        value = candidate()
+        value["source_id"] = "us.fsis"
+        value["shared_business_name_aliases"] = ["Synthetic Works"]
+        validate_graph_candidate(value)
+
     def test_shared_builder_preserves_source_identity_and_blocks_publication(self):
         row = {
             "source_id": "fr.dgal.section-i", "source_row": 4,
