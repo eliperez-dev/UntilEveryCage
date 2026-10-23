@@ -1108,6 +1108,7 @@ def _repair_inferred_native_endpoints(connection: Any, source_id: str,
             "computed_at": computed_at, "conflicting": conflicting, "suppressed": suppressed,
             "storage_state": "private", "publication_status": "not_eligible",
         })
+    _resolve_edge_support_ids(connection, repaired)
     counts = persist_connection_edges(connection, repaired) if repaired else {
         "inserted": 0, "updated": 0, "unchanged": 0,
         "skipped_exact": 0, "total": 0,
@@ -1211,6 +1212,49 @@ def _lookup_source_record_id(source_record_ids: Mapping[Any, uuid.UUID | str] | 
             return exact
         return None
     return source_record_ids.get((source_id, key))
+
+
+def _resolve_edge_support_ids(connection: Any, edges: list[dict[str, Any]]) -> None:
+    """Resolve missing support IDs in one exact, batched source/key/SHA lookup."""
+    refs = {
+        (str(ref.get("source_id") or ""), str(ref.get("source_record_key") or ""),
+         str(ref.get("artifact_sha256") or "").lower())
+        for edge in edges for ref in edge.get("supporting_source_refs", [])
+        if not ref.get("source_record_id") and ref.get("source_record_key")
+        and isinstance(ref.get("artifact_sha256"), str)
+        and len(ref["artifact_sha256"]) == 64
+    }
+    if not refs:
+        return
+    payload = json.dumps([
+        {"source_id": source_id, "source_record_key": key, "artifact_sha256": sha}
+        for source_id, key, sha in sorted(refs)
+    ], separators=(",", ":"))
+    rows = connection.execute(
+        """SELECT requested.source_id, requested.source_record_key,
+                  requested.artifact_sha256, record.source_record_id
+             FROM jsonb_to_recordset(%s::jsonb) AS requested(
+                 source_id text, source_record_key text, artifact_sha256 text)
+             JOIN uec.raw_artifacts artifact
+               ON lower(artifact.sha256)=requested.artifact_sha256
+             JOIN uec.source_records record
+               ON record.source_id=requested.source_id
+              AND record.source_record_key=requested.source_record_key
+              AND record.artifact_id=artifact.artifact_id""",
+        (payload,),
+    ).fetchall()
+    resolved = {(str(source_id), str(key), str(sha).lower()): record_id
+                for source_id, key, sha, record_id in rows}
+    for edge in edges:
+        for ref in edge.get("supporting_source_refs", []):
+            if ref.get("source_record_id"):
+                continue
+            identity = (str(ref.get("source_id") or ""),
+                        str(ref.get("source_record_key") or ""),
+                        str(ref.get("artifact_sha256") or "").lower())
+            record_id = resolved.get(identity)
+            if record_id:
+                ref["source_record_id"] = str(record_id)
 
 
 def _source_refs(candidate: dict[str, Any], manifest: dict[str, Any], *,
@@ -1569,6 +1613,7 @@ def _persist_candidate(connection: Any, manifest: dict[str, Any], candidate: dic
             (str(manifest["source_id"]), str(source_record_key)): record_id
         },
     ) if materialize_edges else []
+    _resolve_edge_support_ids(connection, connection_edges)
     edge_counts = persist_connection_edges(connection, connection_edges) if connection_edges else {"inserted": 0, "updated": 0, "total": 0}
     return edge_counts
 
@@ -1813,6 +1858,7 @@ def import_graph_candidates(database_url: str, handoff_dir: str | Path, *,
                             edges = build_candidate_connection_edges(
                                 row_candidate, manifest, edge_builder=edge_builder,
                                 source_record_ids=run_source_record_ids)
+                            _resolve_edge_support_ids(db, edges)
                             counts = persist_connection_edges(db, edges)
                             edge_inserted += counts["inserted"]
                             edge_updated += counts["updated"]
@@ -1829,6 +1875,7 @@ def import_graph_candidates(database_url: str, handoff_dir: str | Path, *,
                             edges = build_candidate_connection_edges(
                                 row_candidate, manifest, edge_builder=edge_builder,
                                 source_record_ids=run_source_record_ids)
+                            _resolve_edge_support_ids(db, edges)
                             counts = persist_connection_edges(db, edges)
                             edge_inserted += counts["inserted"]
                             edge_updated += counts["updated"]
