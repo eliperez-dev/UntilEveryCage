@@ -49,7 +49,10 @@ describe('real-preview native clustering layers', () => {
     });
     expect(layers.find(layer => layer.id === 'source-coordinate-points')?.layout?.visibility).toBe('none');
     expect(layers.find(layer => layer.id === 'approx-reference-cue')).toMatchObject({
-      type: 'symbol', layout: { visibility: 'none', 'icon-image': 'approximation-mark', 'icon-allow-overlap': true },
+      type: 'symbol', layout: {
+        visibility: 'none', 'icon-image': 'approximation-mark', 'icon-size': 0.5,
+        'icon-offset': [17, -21], 'icon-allow-overlap': true,
+      },
     });
     expect(layers.find(layer => layer.id === 'approx-reference-cue')?.layout).not.toHaveProperty('text-field');
     expect(JSON.stringify(layers.find(layer => layer.id === 'approx-reference-circles').paint['circle-color']))

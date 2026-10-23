@@ -217,8 +217,8 @@ export function addRealPreviewMapLayers(
   map.addLayer({
     id: 'approx-reference-cue', type: 'symbol', source: 'locations',
     filter: ['all', ...aggregateReference.slice(1), ['any', ['==', ['get', 'precision'], 'approximate'], cityReference]],
-    layout: { visibility: 'none', 'icon-image': 'approximation-mark', 'icon-size': 1,
-      'icon-offset': [11, -29], 'icon-allow-overlap': true, 'icon-ignore-placement': true },
+    layout: { visibility: 'none', 'icon-image': 'approximation-mark', 'icon-size': 0.5,
+      'icon-offset': [17, -21], 'icon-allow-overlap': true, 'icon-ignore-placement': true },
   } as any);
   map.addLayer({
     id: 'aggregate-count', type: 'symbol', source: 'locations',
