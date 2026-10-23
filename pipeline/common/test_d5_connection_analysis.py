@@ -200,6 +200,99 @@ class D5ConnectionAnalysisTests(unittest.TestCase):
         self.assertLess(conflict["confidence"], clean["confidence"])
         self.assertFalse(conflict["automatic_merge"])
 
+    def test_namespaced_additional_facility_identifier_emits_exact_nonmerging_association(self):
+        def row(source_id: str, key: str, aiot: str, namespace: str = "fr.insee.siret"):
+            return {
+                "source_id": source_id, "source_record_key": key,
+                "source_artifact_sha256": ("a" if source_id == "source-a" else "b") * 64,
+                "observed_at": "2026-10-23T00:00:00Z",
+                "facilities": [{
+                    "local_ref": "facility:1",
+                    "source_identifier": {"identifier_type": "aiot", "value": aiot},
+                    "additional_source_identifiers": [{
+                        "identifier_type": "siret", "value": "12345678901234",
+                        "id_namespace": namespace, "identity_scope": "source_scoped",
+                    }],
+                }],
+            }
+
+        first = _observed_from_row(row("source-a", "row-a", "AIOT-A"))
+        second = _observed_from_row(row("source-b", "row-b", "AIOT-B"))
+        from pipeline.common.d5_connection_analysis import _iter_probabilistic_candidates
+        candidate_iterator, _ = _iter_probabilistic_candidates(
+            [first, second], preserve_native_endpoints=True,
+        )
+        candidates = list(candidate_iterator)
+        self.assertEqual(len(candidates), 1)
+        edge = candidates[0]
+        self.assertEqual(edge["relationship_type"], "shared_source_identifier")
+        self.assertEqual(edge["connection_type"], "exact")
+        self.assertFalse(edge["automatic_merge"])
+        self.assertFalse(edge["transfers_claims"])
+        self.assertEqual([endpoint["identifier_type"] for endpoint in edge["endpoints"]], ["aiot", "aiot"])
+        self.assertEqual([endpoint["source_identifier"] for endpoint in edge["endpoints"]], ["AIOT-A", "AIOT-B"])
+        self.assertEqual(
+            {ref["artifact_sha256"] for ref in edge["supporting_source_refs"]},
+            {"a" * 64, "b" * 64},
+        )
+
+    def test_additional_identifier_needs_same_namespace_and_never_self_links(self):
+        def row(source_id: str, key: str, aiot: str, namespace: str):
+            return {
+                "source_id": source_id, "source_record_key": key,
+                "observed_at": "2026-10-23T00:00:00Z",
+                "facilities": [{
+                    "local_ref": "facility:1",
+                    "source_identifier": {"identifier_type": "aiot", "value": aiot},
+                    "additional_source_identifiers": [{
+                        "identifier_type": "siret", "value": "same-value",
+                        "id_namespace": namespace, "identity_scope": "source_scoped",
+                    }],
+                }],
+            }
+
+        fr = _observed_from_row(row("source-a", "a", "AIOT-A", "fr.insee.siret"))
+        unrelated = _observed_from_row(row("source-b", "b", "AIOT-B", "unrelated.registry"))
+        self.assertEqual(list(iter_probabilistic_candidates([fr, unrelated])), [])
+
+        repeated = _observed_from_row(row("source-a", "a-repeat", "AIOT-A", "fr.insee.siret"))
+        iterator, counters = _iter_probabilistic_candidates([fr, repeated])
+        self.assertEqual(list(iterator), [])
+        self.assertEqual(counters["pairs_exact_equivalent"], 1)
+
+    def test_exact_identifier_edges_keep_distinct_artifact_version_support(self):
+        def row(source_id: str, key: str, aiot: str, artifact: str):
+            return {
+                "source_id": source_id, "source_record_key": key,
+                "source_artifact_sha256": artifact * 64,
+                "observed_at": "2026-10-23T00:00:00Z",
+                "facilities": [{
+                    "local_ref": "facility:1",
+                    "source_identifier": {"identifier_type": "aiot", "value": aiot},
+                    "additional_source_identifiers": [{
+                        "identifier_type": "siret", "value": "12345678901234",
+                        "id_namespace": "fr.insee.siret", "identity_scope": "source_scoped",
+                    }],
+                }],
+            }
+
+        source_a_v1 = _observed_from_row(row("source-a", "same-native-key", "AIOT-A", "a"))
+        source_a_v2 = _observed_from_row(row("source-a", "same-native-key", "AIOT-A", "c"))
+        source_b = _observed_from_row(row("source-b", "other-native-key", "AIOT-B", "b"))
+        from pipeline.common.d5_connection_analysis import _iter_probabilistic_candidates
+        iterator, _ = _iter_probabilistic_candidates(
+            [source_a_v1, source_a_v2, source_b], preserve_native_endpoints=True,
+        )
+        candidates = list(iterator)
+        self.assertEqual(len(candidates), 2)
+        self.assertEqual(len({candidate["candidate_digest"] for candidate in candidates}), 2)
+        self.assertEqual(len({candidate["edge_key"] for candidate in candidates}), 2)
+        self.assertEqual(
+            {tuple(sorted(ref["artifact_sha256"] for ref in candidate["supporting_source_refs"]))
+             for candidate in candidates},
+            {tuple(sorted(("a" * 64, "b" * 64))), tuple(sorted(("b" * 64, "c" * 64)))},
+        )
+
     def test_repeated_source_native_identifier_is_not_inferred_as_a_pair(self):
         first = _observed_from_row(self.row("source-a", "row-1", name="Stable Name", city="Town", postal="1000", facility="A-1", org="ORG-A"))
         repeat = _observed_from_row(self.row("source-a", "row-2", name="Stable Name", city="Town", postal="1000", facility="A-1", org="ORG-A"))

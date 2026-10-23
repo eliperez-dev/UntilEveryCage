@@ -61,6 +61,25 @@ def _refs(items: Any, field: str) -> set[str]:
             _required_text(identifier["id_namespace"], f"{field}.source_identifier.id_namespace")
         if identifier.get("identity_scope", "source_scoped") != "source_scoped":
             raise ValueError("source identifiers must use source_scoped identity_scope")
+        additional = item.get("additional_source_identifiers", [])
+        if not isinstance(additional, list):
+            raise ValueError(f"{field}.additional_source_identifiers must be a list")
+        seen_additional: set[tuple[str, str, str]] = set()
+        for extra in additional:
+            if not isinstance(extra, dict):
+                raise ValueError(f"{field}.additional_source_identifiers entries must be objects")
+            extra_type = extra.get("identifier_type")
+            extra_value = extra.get("value")
+            namespace = extra.get("id_namespace")
+            _required_text(extra_type, f"{field}.additional_source_identifiers.identifier_type")
+            _required_text(extra_value, f"{field}.additional_source_identifiers.value")
+            _required_text(namespace, f"{field}.additional_source_identifiers.id_namespace")
+            if extra.get("identity_scope") != "source_scoped":
+                raise ValueError("additional source identifiers must use source_scoped identity_scope")
+            identity = (namespace.casefold(), extra_type.casefold(), extra_value)
+            if identity in seen_additional:
+                raise ValueError("duplicate additional source identifier")
+            seen_additional.add(identity)
     return refs
 
 

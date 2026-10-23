@@ -81,7 +81,33 @@ class GraphCandidateHandoffTests(unittest.TestCase):
         value["business_contacts"] = [{"kind": "phone", "value": "+1 555 0100", "source_field": "Business Phone"}]
         value["normalized_values"] = {"postal_code": "00000", "city": "Example"}
         value["facilities"][0]["source_identifier"]["id_namespace"] = "synthetic-permits"
+        value["facilities"][0]["additional_source_identifiers"] = [{
+            "identifier_type": "siret", "value": "12345678901234",
+            "id_namespace": "fr.insee.siret", "identity_scope": "source_scoped",
+        }]
         validate_graph_candidate(value)
+
+    def test_validates_nested_additional_source_identifiers(self):
+        value = candidate()
+        value["facilities"][0]["additional_source_identifiers"] = [{
+            "identifier_type": "siret", "value": "12345678901234",
+            "id_namespace": "fr.insee.siret", "identity_scope": "source_scoped",
+        }]
+        validate_graph_candidate(value)
+
+        invalid_aliases = [
+            "not-a-list",
+            [{"identifier_type": "siret", "value": "123", "identity_scope": "source_scoped"}],
+            [{"identifier_type": "siret", "value": "123", "id_namespace": "fr.insee.siret"}],
+            [{"identifier_type": "siret", "value": "123", "id_namespace": " ", "identity_scope": "source_scoped"}],
+            [{"identifier_type": "siret", "value": "123", "id_namespace": "fr.insee.siret", "identity_scope": "universal"}],
+        ]
+        for aliases in invalid_aliases:
+            with self.subTest(aliases=aliases):
+                value = candidate()
+                value["facilities"][0]["additional_source_identifiers"] = aliases
+                with self.assertRaises(ValueError):
+                    validate_graph_candidate(value)
 
     def test_rejects_invalid_additive_matcher_fields(self):
         cases = [

@@ -25,6 +25,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+from pipeline.common.graph_edges import (EntityRef, SourceRef, build_connection_edge,
+    default_signal_registry, score_connection)
+
 
 REPORT_VERSION = "d7-real-graph-analysis-v1"
 RULESET_VERSION = "d7-multi-signal-candidates-v2"
@@ -152,6 +155,8 @@ class _Observed:
     location_role: str = "unknown"
     business_contacts: dict[str, str] | None = None
     artifact_sha256: str = ""
+    shared_facility_identifiers: dict[str, str] | None = None
+    observed_at: str = ""
 
 
 def _source_kind(source_id: str, row: Mapping[str, Any]) -> str:
@@ -188,7 +193,8 @@ def _nested_values(row: Mapping[str, Any]) -> Iterable[tuple[str, Any]]:
 
 
 def _observed_from_row(row: Mapping[str, Any], fallback_source: str | None = None,
-                       fallback_artifact_sha256: str | None = None) -> _Observed:
+                       fallback_artifact_sha256: str | None = None,
+                       fallback_observed_at: str | None = None) -> _Observed:
     source_id = _clean(row.get("source_id")) or fallback_source
     if not source_id:
         raise ValueError("row requires source_id or an explicit source mapping")
@@ -270,6 +276,43 @@ def _observed_from_row(row: Mapping[str, Any], fallback_source: str | None = Non
                 target.setdefault(target_key, identifier_value)
                 if entity_key == "facilities" and native_type and native_value:
                     facility_endpoint_ids.setdefault(native_type, native_value)
+    shared_facility_identifiers: dict[str, str] = {}
+    facility_entities = row.get("facilities")
+    if isinstance(facility_entities, list) and kind == "facility_master" and facility_ids:
+        primary_type, primary_value = sorted(facility_ids.items())[0]
+        for entity in facility_entities:
+            if not isinstance(entity, Mapping):
+                continue
+            primary = entity.get("source_identifier")
+            if not isinstance(primary, Mapping):
+                continue
+            entity_type = _norm(primary.get("identifier_type"))
+            entity_value = _norm(primary.get("value") or primary.get("source_identifier"))
+            # Additions inherit the local_ref of their containing facility.
+            # Match only additions attached to the same primary endpoint that
+            # this row-level observation will actually represent.
+            if (entity_type, entity_value) != (primary_type, primary_value):
+                continue
+            additional_identifiers = entity.get("additional_source_identifiers")
+            if not isinstance(additional_identifiers, list):
+                continue
+            for identifier in additional_identifiers:
+                if not isinstance(identifier, Mapping):
+                    continue
+                if identifier.get("identity_scope") != "source_scoped":
+                    continue
+                native_type = _clean(identifier.get("identifier_type"))
+                namespace = _clean(identifier.get("id_namespace"))
+                native_value = _clean(identifier.get("value"))
+                normalized_type = _norm(native_type)
+                normalized_value = _norm(native_value)
+                if not namespace or not normalized_type or not normalized_value:
+                    continue
+                # These row-bound additions are explicit, authority-qualified
+                # facility identifiers; never promote source-local/account
+                # fields to cross-source identity signals.
+                identity_key = f"{namespace.casefold()}::{normalized_type}"
+                shared_facility_identifiers.setdefault(identity_key, normalized_value)
     key = _clean(row.get("source_record_key")) or _clean(row.get("source_row_id")) or _clean(row.get("source_observation_key")) or "row-unknown"
     relationships = row.get("relationships")
     explicit_relationships = len(relationships) if isinstance(relationships, list) else 0
@@ -325,11 +368,15 @@ def _observed_from_row(row: Mapping[str, Any], fallback_source: str | None = Non
                 phone = re.sub(r"\D+", "", raw_value)
                 if len(phone) >= 7:
                     contact_values.setdefault("phone", phone)
+    observed_at = _clean(row.get("observed_at"))
+    if not observed_at or observed_at == "unknown-observation-date":
+        observed_at = _clean(fallback_observed_at)
     return _Observed(source_id, kind, key, facility_ids, facility_endpoint_ids, organization_ids, signals, dates,
                      explicit_relationships, typed_entity_edge, provenance_complete,
                      bool(row.get("quarantine_reason")), suppressed, aliases, location_role, contact_values,
                      _clean(fallback_artifact_sha256 or row.get("source_artifact_sha256")
-                            or row.get("artifact_sha256")) or "")
+                            or row.get("artifact_sha256")) or "", shared_facility_identifiers,
+                     observed_at)
 
 
 def classify_collision_observations(rows: Iterable[Mapping[str, Any]]) -> dict[str, int]:
@@ -503,7 +550,27 @@ def _exact_equivalent(left: _Observed, right: _Observed) -> bool:
         return True
     left_ids = set(left.facility_ids.items())
     right_ids = set(right.facility_ids.items())
-    return bool(left_ids and right_ids and left_ids.intersection(right_ids))
+    if left_ids and right_ids and left_ids.intersection(right_ids):
+        return True
+    left_extra = set((left.shared_facility_identifiers or {}).items())
+    right_extra = set((right.shared_facility_identifiers or {}).items())
+    return bool(left_extra and right_extra and left_extra.intersection(right_extra))
+
+
+def _shared_authoritative_facility_identifier(left: _Observed, right: _Observed) -> tuple[str, str] | None:
+    """Return a shared explicit authority/type pair, never a source-local ID."""
+    if left.source_id == right.source_id:
+        return None
+    left_ids = left.shared_facility_identifiers or {}
+    right_ids = right.shared_facility_identifiers or {}
+    for identity_type in sorted(set(left_ids) & set(right_ids)):
+        if identity_type.count("::") != 1:
+            continue
+        namespace, identifier_type = identity_type.split("::", 1)
+        if (namespace and identifier_type and left_ids[identity_type]
+                and left_ids[identity_type] == right_ids[identity_type]):
+            return namespace, identifier_type
+    return None
 
 
 def _match_features(left: _Observed, right: _Observed) -> tuple[list[str], list[dict[str, Any]]]:
@@ -608,6 +675,8 @@ def _observed_json(row: _Observed) -> str:
         "location_role": row.location_role,
         "business_contacts": row.business_contacts or {},
         "artifact_sha256": row.artifact_sha256,
+        "shared_facility_identifiers": row.shared_facility_identifiers or {},
+        "observed_at": row.observed_at,
     }, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
@@ -626,6 +695,8 @@ def _observed_from_json(value: str) -> _Observed:
         str(payload.get("location_role") or "unknown"),
         {str(key): str(item) for key, item in (payload.get("business_contacts") or {}).items()},
         str(payload.get("artifact_sha256") or ""),
+        {str(key): str(item) for key, item in (payload.get("shared_facility_identifiers") or {}).items()},
+        str(payload.get("observed_at") or ""),
     )
 
 
@@ -802,7 +873,8 @@ def _iter_probabilistic_candidates(rows: Iterable[_Observed], *, start_after: st
                 for row in rows:
                     if row.source_kind != "facility_master" or not row.facility_ids:
                         continue
-                    if not row.signals.get("name") and not row.business_contacts:
+                    if (not row.signals.get("name") and not row.business_contacts
+                            and not row.shared_facility_identifiers):
                         continue
                     cursor = db.execute("INSERT INTO observed(source_id,source_record_key,payload) VALUES (?,?,?)",
                                         (row.source_id, row.key, _observed_json(row)))
@@ -819,6 +891,9 @@ def _iter_probabilistic_candidates(rows: Iterable[_Observed], *, start_after: st
                         signal = f"business_{contact_kind}"
                         db.execute("INSERT INTO blocks(signal,block_value,row_id) VALUES (?,?,?)",
                                    (signal, contact_value, row_id))
+                    for identity_type, identity_value in (row.shared_facility_identifiers or {}).items():
+                        db.execute("INSERT INTO blocks(signal,block_value,row_id) VALUES (?,?,?)",
+                                   ("shared_authoritative_identifier", identity_type + "|" + identity_value, row_id))
                 db.commit()
                 counters["blocks_indexed"] = int(db.execute("SELECT count(*) FROM (SELECT 1 FROM blocks GROUP BY signal, block_value)").fetchone()[0])
                 block_rows = db.execute("SELECT signal, block_value FROM blocks GROUP BY signal, block_value ORDER BY signal, block_value")
@@ -839,6 +914,21 @@ def _iter_probabilistic_candidates(rows: Iterable[_Observed], *, start_after: st
                             if db.execute("INSERT OR IGNORE INTO excluded(pair_key) VALUES (?)", ("|".join(pair_key),)).rowcount:
                                 counters["pairs_exact_equivalent"] += 1
                             db.execute("DELETE FROM pairs WHERE pair_key=?", ("|".join(pair_key),))
+                            continue
+                        if signal == "shared_authoritative_identifier":
+                            shared_identifier = _shared_authoritative_facility_identifier(left, right)
+                            if not shared_identifier:
+                                continue
+                            key = json.dumps([pair_key, "exact_shared_source_identifier"],
+                                             ensure_ascii=False, separators=(",", ":"))
+                            digest = _digest(json.dumps(
+                                [pair_key, "exact_shared_source_identifier", RULESET_VERSION],
+                                separators=(",", ":"),
+                            ))
+                            if db.execute("INSERT OR IGNORE INTO pairs(pair_key,left_row_id,right_row_id,methods,candidate_digest) VALUES (?,?,?,?,?)",
+                                          (key, int(left_row_id), int(right_row_id),
+                                           json.dumps(["exact_shared_source_identifier"]), digest)).rowcount:
+                                counters["pair_rows_staged"] += 1
                             continue
                         features, _ = _match_features(left, right)
                         has_site_anchor = "name" in features and bool({"postal", "city", "address"}.intersection(features))
@@ -876,6 +966,66 @@ def _iter_probabilistic_candidates(rows: Iterable[_Observed], *, start_after: st
                             left.source_id, left.key, left.artifact_sha256):
                         left, right = right, left
                     methods = set(json.loads(raw_methods))
+                    if "exact_shared_source_identifier" in methods:
+                        shared_identifier = _shared_authoritative_facility_identifier(left, right)
+                        if not shared_identifier:
+                            continue
+                        namespace, identifier_type = shared_identifier
+                        left_endpoint = _endpoint_ref(left, preserve_native_identifier=preserve_native_endpoints)
+                        right_endpoint = _endpoint_ref(right, preserve_native_identifier=preserve_native_endpoints)
+                        observed_at = max(left.observed_at, right.observed_at)
+                        if (left_endpoint is None or right_endpoint is None or not observed_at
+                                or (start_after and digest <= start_after)):
+                            continue
+                        left_ref = EntityRef(
+                            "facility", left.source_id, left_endpoint["identifier_type"],
+                            left_endpoint["source_identifier"],
+                        )
+                        right_ref = EntityRef(
+                            "facility", right.source_id, right_endpoint["identifier_type"],
+                            right_endpoint["source_identifier"],
+                        )
+                        registry = default_signal_registry()
+                        scoring = score_connection([registry.signal("authoritative_identifier", details={
+                            "basis": "same_declared_identifier_namespace_and_type",
+                            "namespace": namespace, "identifier_type": identifier_type,
+                        })], registry=registry)
+                        source_refs = [
+                            SourceRef(left.source_id, source_record_key=left.key,
+                                      role="from", artifact_sha256=left.artifact_sha256 or None),
+                            SourceRef(right.source_id, source_record_key=right.key,
+                                      role="to", artifact_sha256=right.artifact_sha256 or None),
+                        ]
+                        edge = build_connection_edge(
+                            from_ref=left_ref, to_ref=right_ref,
+                            relationship_type="shared_source_identifier",
+                            scoring=scoring, supporting_source_refs=source_refs,
+                            observed_at=observed_at, computed_at=observed_at,
+                        )
+                        version_refs = [
+                            (ref.source_id, ref.source_record_key or "", (ref.artifact_sha256 or "").lower())
+                            for ref in source_refs
+                        ]
+                        if version_refs and all(len(item[2]) == 64 for item in version_refs):
+                            version_digest = hashlib.sha256(json.dumps(
+                                version_refs, ensure_ascii=False, separators=(",", ":")
+                            ).encode("utf-8")).hexdigest()
+                            edge["edge_key"] = f"{edge['edge_key']}:support-v1:{version_digest}"
+                        edge.update({
+                            "candidate_digest": digest,
+                            "source_pair": sorted({left.source_id, right.source_id}),
+                            "endpoints": [left_endpoint, right_endpoint],
+                            "left_endpoint": left_endpoint, "right_endpoint": right_endpoint,
+                            "provenance": [_provenance_ref(left), _provenance_ref(right)],
+                            "method": "exact_shared_source_identifier",
+                            "contributing_features": ["authoritative_identifier"],
+                            "ruleset": RULESET_VERSION,
+                            "automatic_merge": False, "transfers_claims": False,
+                            "disclaimer": "Exact shared authority-qualified source identifier association; not a universal identity merge.",
+                        })
+                        counters["pairs_emitted"] += 1
+                        yield edge
+                        continue
                     features, contradictions = _match_features(left, right)
                     score, band, explanation = _score_match(features, contradictions)
                     if not explanation["anchor_present"]:
