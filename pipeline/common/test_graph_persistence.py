@@ -12,6 +12,8 @@ from pipeline.common.graph_persistence import (
     build_candidate_connection_edges,
     _matcher_edge,
     _aphis_facility_identifier_aliases,
+    _additional_facility_identifier_aliases,
+    _persist_facility_identifier_aliases,
     _observed_at,
     _approved_facility_for_source_record,
     _ITALY_CANONICAL_BINDING_CTES,
@@ -108,6 +110,42 @@ class GraphPersistenceContractTests(unittest.TestCase):
             _aphis_facility_identifier_aliases({"source_native_ids": {"aphis_license_number": "12-F-3456"}}),
             [("aphis_certificate_number", "12-F-3456")],
         )
+
+    def test_source_declared_facility_aliases_are_validated_and_append_to_same_facility(self):
+        aliases = _additional_facility_identifier_aliases({"additional_source_identifiers": [
+            {"identifier_type": "siret", "value": "opaque-id", "id_namespace": "fr.insee.siret",
+             "identity_scope": "source_scoped"},
+        ]})
+        self.assertEqual(aliases, [("siret", "opaque-id", "fr.insee.siret")])
+        for bad in (
+            {"additional_source_identifiers": [{"identifier_type": "siret", "value": "x",
+                                                   "identity_scope": "global"}]},
+            {"additional_source_identifiers": "not-a-list"},
+        ):
+            with self.assertRaises(GraphPersistenceError):
+                _additional_facility_identifier_aliases(bad)
+
+        class Capture:
+            def __init__(self):
+                self.calls = []
+            def execute(self, query, params):
+                self.calls.append((query, params))
+                return self
+            def fetchone(self):
+                return None
+
+        connection = Capture()
+        record_id, facility_id = uuid.uuid4(), uuid.uuid4()
+        inserted = _persist_facility_identifier_aliases(
+            connection, source_id="fr.icpe", source_record_id=record_id,
+            facility_id=facility_id, observed_at="2026-01-01T00:00:00Z", aliases=aliases,
+        )
+        self.assertEqual(inserted, 1)
+        self.assertEqual(len(connection.calls), 2)
+        insert_sql, insert_params = connection.calls[1]
+        self.assertIn("INSERT INTO uec.source_entity_identifiers", insert_sql)
+        self.assertEqual(insert_params[2], facility_id)
+        self.assertEqual(insert_params[3:6], ("siret", "opaque-id", "opaque-id"))
 
 
     def test_shared_business_name_candidate_persists_as_inferred_non_operator_relation(self):

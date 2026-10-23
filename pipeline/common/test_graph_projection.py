@@ -4,8 +4,11 @@ import unittest
 import uuid
 import hashlib
 import re
+import os
 from pathlib import Path
 from unittest.mock import patch
+
+import psycopg
 
 from pipeline.common import graph_persistence
 from pipeline.common.graph_persistence import (
@@ -37,6 +40,94 @@ from pipeline.common.real_private_graph import (
 
 
 class GraphProjectionTests(unittest.TestCase):
+    def test_080_runtime_connection_view_matches_v3_business_qualification(self):
+        migration = (Path(__file__).resolve().parents[1] / "migrations" /
+                     "080_graph_public_evidence_references.sql").read_text(encoding="utf-8")
+        connection_view = re.search(
+            r"CREATE OR REPLACE VIEW uec\.graph_public_connections_current AS(.*?)"
+            r"COMMENT ON VIEW uec\.graph_public_connections_current",
+            migration, flags=re.IGNORECASE | re.DOTALL,
+        )
+        self.assertIsNotNone(connection_view)
+        view_sql = connection_view.group(1)
+        self.assertIn(f"b.projection_version='{PROJECTION_VERSION}'", view_sql)
+        self.assertIn("graph_public_organization_endpoints_current eligible", view_sql)
+        self.assertIn("eligible.endpoint_id=e.from_endpoint_id", view_sql)
+        self.assertIn("eligible.endpoint_id=e.to_endpoint_id", view_sql)
+        self.assertIn("b.suppression_generation=suppression.generation", view_sql)
+        label_query, _ = _python_organization_label_select("selected-release")
+        self.assertIn("business_id.source_identifier=endpoint.source_identifier", label_query)
+        self.assertIn("business_name.assertion_role IN ('legal','business','operator')", EDGE_CTES)
+        organization_ids = EDGE_CTES.split("AND i.identifier_type IN (", 1)[1].split(
+            ")\n    AND i.organization_id", 1)[0]
+        self.assertNotIn("'siret'", organization_ids)
+        self.assertIn("DISTINCT ON (eligible.release_id,eligible.organization_id)", migration)
+        self.assertIn("build.suppression_generation=suppression.generation", migration)
+        endpoint_select, _ = _python_endpoint_select("selected-release")
+        self.assertIn("FROM eligible_source_endpoints", endpoint_select)
+        self.assertNotIn("graph_public_projection_edges", endpoint_select)
+
+    @unittest.skipUnless(
+        os.environ.get("UEC_GRAPH_ACCEPTANCE_DATABASE_URL"),
+        "set UEC_GRAPH_ACCEPTANCE_DATABASE_URL after 080 and v3 projection are applied",
+    )
+    def test_post_migration_database_projection_acceptance_is_read_only(self):
+        expected_database = os.environ.get("UEC_GRAPH_DATABASE_NAME", "")
+        self.assertTrue(expected_database)
+        with psycopg.connect(os.environ["UEC_GRAPH_ACCEPTANCE_DATABASE_URL"]) as connection:
+            connection.execute("SET TRANSACTION READ ONLY")
+            self.assertEqual(connection.execute("SELECT current_database()").fetchone()[0],
+                             expected_database)
+            view_definition = connection.execute(
+                "SELECT pg_get_viewdef('uec.graph_public_connections_current'::regclass,true)"
+            ).fetchone()[0]
+            self.assertIn(PROJECTION_VERSION, view_definition)
+            active_projection_count = connection.execute(
+                """SELECT count(*) FROM uec.graph_public_projection_builds
+                   WHERE active AND status='completed' AND projection_version=%s""",
+                (PROJECTION_VERSION,),
+            ).fetchone()[0]
+            self.assertGreater(active_projection_count, 0)
+            duplicate_org_labels = connection.execute(
+                """SELECT count(*) FROM (
+                     SELECT release_id,organization_id
+                     FROM uec.graph_public_organization_labels_current
+                     GROUP BY release_id,organization_id HAVING count(*)>1
+                   ) duplicates"""
+            ).fetchone()[0]
+            duplicate_org_endpoints = connection.execute(
+                """SELECT count(*) FROM (
+                     SELECT release_id,endpoint_id
+                     FROM uec.graph_public_organization_endpoints_current
+                     GROUP BY release_id,endpoint_id HAVING count(*)>1
+                   ) duplicates"""
+            ).fetchone()[0]
+            duplicate_connection_rows = connection.execute(
+                """SELECT count(*) FROM (
+                     SELECT release_id,connection_edge_id
+                     FROM uec.graph_public_connections_current
+                     GROUP BY release_id,connection_edge_id HAVING count(*)>1
+                   ) duplicates"""
+            ).fetchone()[0]
+            evidence_counts = connection.execute(
+                """SELECT count(*),
+                          count(*) FILTER (WHERE NOT EXISTS (
+                            SELECT 1 FROM uec.graph_public_projection_edges edge
+                            WHERE edge.projection_id=reference.projection_id
+                              AND (edge.from_endpoint_id=reference.endpoint_id
+                                   OR edge.to_endpoint_id=reference.endpoint_id)
+                          ))
+                   FROM uec.graph_public_evidence_references_current current_ref
+                   JOIN uec.graph_public_projection_evidence_refs reference
+                     USING (evidence_ref_id)"""
+            ).fetchone()
+        self.assertEqual(duplicate_org_labels, 0)
+        self.assertEqual(duplicate_org_endpoints, 0)
+        self.assertEqual(duplicate_connection_rows, 0)
+        if os.environ.get("UEC_GRAPH_ACCEPTANCE_REQUIRE_APHIS_EVIDENCE") == "1":
+            self.assertGreater(evidence_counts[0], 0)
+            self.assertGreater(evidence_counts[1], 0)
+
     def test_projection_selector_preserves_release_and_all_support_gates(self):
         self.assertIn("binding.release_id=$1", EDGE_CTES)
         self.assertIn("canonical_record.artifact_id=binding.artifact_id", EDGE_CTES)
@@ -258,6 +349,12 @@ class GraphProjectionTests(unittest.TestCase):
         self.assertIn("decided_at DESC,source_rights_decision_id DESC", evidence_migration)
         self.assertIn("public_access_restricted", evidence_migration)
         self.assertIn("CREATE OR REPLACE VIEW uec.graph_public_organization_labels_current", evidence_migration)
+        self.assertIn("CREATE OR REPLACE VIEW uec.graph_public_organization_endpoints_current", evidence_migration)
+        self.assertIn("GRANT SELECT ON uec.graph_public_organization_endpoints_current TO uec_api_runtime", evidence_migration)
+        self.assertNotIn("GRANT SELECT ON uec.graph_source_name_assertions TO uec_api_runtime", evidence_migration)
+        self.assertIn("build.suppression_generation=suppression.generation", evidence_migration)
+        self.assertIn("DISTINCT ON (eligible.release_id,eligible.organization_id)", evidence_migration)
+        self.assertIn("projection_version='graph-release-projection-v3'", evidence_migration)
         for table in ("publication_review_release_current", "source_rights_decisions", "public_access_restricted"):
             with self.subTest(review_gate=table):
                 self.assertEqual(_PRIVATE_GRAPH_REQUIRED_READ_PRIVILEGES[table], {"SELECT"})

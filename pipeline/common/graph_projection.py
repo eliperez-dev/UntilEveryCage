@@ -35,7 +35,8 @@ def _python_endpoint_select(release_id: str) -> tuple[str, dict[str, str]]:
 
 def _python_organization_label_select(release_id: str) -> tuple[str, dict[str, str]]:
     query = (f"WITH {EDGE_CTES.replace('$1', '%(release_id)s')} "
-             "SELECT DISTINCT ON (endpoint.public_entity_id) endpoint.source_id,endpoint.identifier_type,"
+             "SELECT DISTINCT ON (endpoint.source_id,endpoint.identifier_type,endpoint.source_identifier,"
+             "endpoint.entity_type,endpoint.public_entity_id) endpoint.source_id,endpoint.identifier_type,"
              "endpoint.source_identifier,endpoint.entity_type,endpoint.public_entity_id,"
              "assertion.source_record_id,assertion.assertion_value,assertion.assertion_role "
              "FROM eligible_source_endpoints endpoint "
@@ -60,7 +61,8 @@ def _python_organization_label_select(release_id: str) -> tuple[str, dict[str, s
              " AND approved.source_record_id=assertion.source_record_id "
              " AND approved.facility_id=facility_assertion.facility_id "
              "WHERE endpoint.entity_type='organization' AND btrim(assertion.assertion_value)<>'' "
-             "ORDER BY endpoint.public_entity_id,CASE assertion.assertion_role "
+             "ORDER BY endpoint.source_id,endpoint.identifier_type,endpoint.source_identifier,"
+             "endpoint.entity_type,endpoint.public_entity_id,CASE assertion.assertion_role "
              "  WHEN 'legal' THEN 0 WHEN 'business' THEN 1 ELSE 2 END,assertion.assertion_value")
     return query, {"release_id": release_id}
 

@@ -506,6 +506,55 @@ def _aphis_facility_identifier_aliases(normalized_values: Any) -> list[tuple[str
     return list(dict.fromkeys(aliases))
 
 
+def _additional_facility_identifier_aliases(candidate: dict[str, Any]) -> list[tuple[str, str, str]]:
+    """Validate source-declared same-facility aliases without deriving IDs."""
+    values = candidate.get("additional_source_identifiers", [])
+    if values is None:
+        return []
+    if not isinstance(values, list):
+        raise GraphPersistenceError("additional_source_identifiers must be a list")
+    aliases: list[tuple[str, str, str]] = []
+    for item in values:
+        if not isinstance(item, dict):
+            raise GraphPersistenceError("additional source identifier must be an object")
+        identifier_type, value = item.get("identifier_type"), item.get("value")
+        namespace = item.get("id_namespace", "source_scoped")
+        identity_scope = item.get("identity_scope", "source_scoped")
+        if (not isinstance(identifier_type, str) or not identifier_type.strip()
+                or not isinstance(value, str) or not value.strip()
+                or not isinstance(namespace, str) or not namespace.strip()
+                or identity_scope != "source_scoped"):
+            raise GraphPersistenceError("additional source identifiers must be non-empty and source-scoped")
+        aliases.append((identifier_type, value, namespace))
+    return list(dict.fromkeys(aliases))
+
+
+def _persist_facility_identifier_aliases(connection: Any, *, source_id: str,
+                                         source_record_id: uuid.UUID, facility_id: uuid.UUID,
+                                         observed_at: Any,
+                                         aliases: Iterable[tuple[str, str, str]]) -> int:
+    """Append exact alias identifiers to the existing facility; never create a node."""
+    inserted = 0
+    for identifier_type, value, _namespace in dict.fromkeys(aliases):
+        existing = connection.execute(
+            """SELECT identifier_id FROM uec.source_entity_identifiers
+               WHERE source_id=%s AND source_record_id=%s AND entity_type='facility'
+                 AND facility_id=%s AND identifier_type=%s AND source_identifier=%s""",
+            (source_id, source_record_id, facility_id, identifier_type, value),
+        ).fetchone()
+        if existing:
+            continue
+        connection.execute(
+            """INSERT INTO uec.source_entity_identifiers
+               (source_id,source_record_id,entity_type,facility_id,identifier_type,
+                source_identifier,value_as_observed,observed_at)
+               VALUES (%s,%s,'facility',%s,%s,%s,%s,%s)""",
+            (source_id, source_record_id, facility_id, identifier_type, value, value, observed_at),
+        )
+        inserted += 1
+    return inserted
+
+
 def _ensure_source_artifact(connection: Any, manifest: dict[str, Any], digest: str) -> tuple[uuid.UUID, uuid.UUID]:
     source_id = manifest["source_id"]
     connection.execute(
@@ -598,32 +647,30 @@ def _entity_maps(connection: Any, manifest: dict[str, Any], candidate: dict[str,
              identifier["value"], _timestamp(manifest)),
         ).fetchone()[0]
         facilities[ref] = identifier_id
-    # APHIS event links use source-native certificate/customer identifiers in
-    # addition to the registration's primary establishment ID. Persist those
-    # exact retained aliases against the same approved facility record so an
-    # event can match the registration without equating identifier namespaces.
-    if source_id == "us.aphis" and len(facilities) == 1:
-        normalized_values = candidate.get("normalized_values")
-        identifier_aliases = _aphis_facility_identifier_aliases(normalized_values)
-        if identifier_aliases:
-            _, primary_identifier_id = next(iter(facilities.items()))
-            facility_id = _facility_id_for_identifier(connection, primary_identifier_id)
-            for identifier_type, native_value in identifier_aliases:
-                exists = connection.execute(
-                    """SELECT identifier_id FROM uec.source_entity_identifiers
-                       WHERE source_id=%s AND source_record_id=%s AND entity_type='facility'
-                         AND facility_id=%s AND identifier_type=%s AND source_identifier=%s""",
-                    (source_id, record_id, facility_id, identifier_type, native_value),
-                ).fetchone()
-                if exists:
-                    continue
-                connection.execute(
-                    """INSERT INTO uec.source_entity_identifiers
-                       (source_id,source_record_id,entity_type,facility_id,identifier_type,source_identifier,value_as_observed,observed_at)
-                       VALUES (%s,%s,'facility',%s,%s,%s,%s,%s)""",
-                    (source_id, record_id, facility_id, identifier_type,
-                     native_value, native_value, _timestamp(manifest)),
-                )
+    # Additional aliases are source assertions about this same facility. The
+    # only adapter-derived aliases retained here remain APHIS's documented
+    # certificate/customer identifier mappings; no facility node is created
+    # from an alias and no namespace is equated with another.
+    facility_aliases = _additional_facility_identifier_aliases(candidate)
+    if source_id == "us.aphis":
+        facility_aliases.extend(
+            (identifier_type, value, "us.aphis")
+            for identifier_type, value in
+            _aphis_facility_identifier_aliases(candidate.get("normalized_values"))
+        )
+    facility_aliases = list(dict.fromkeys(facility_aliases))
+    if facility_aliases:
+        if len(facilities) != 1:
+            raise GraphPersistenceError(
+                "additional source identifiers require exactly one primary facility in the candidate"
+            )
+        _, primary_identifier_id = next(iter(facilities.items()))
+        facility_id = _facility_id_for_identifier(connection, primary_identifier_id)
+        _persist_facility_identifier_aliases(
+            connection, source_id=source_id, source_record_id=record_id,
+            facility_id=facility_id, observed_at=_timestamp(manifest),
+            aliases=facility_aliases,
+        )
     for item in candidate.get("organizations", []):
         ref = item["local_ref"]
         identifier = item["source_identifier"]
@@ -1534,6 +1581,13 @@ def _persist_candidate(connection: Any, manifest: dict[str, Any], candidate: dic
         for entity in candidate.get(entity_type, ())
         if isinstance(entity, dict) and isinstance(entity.get("source_identifier"), dict)
     ]
+    identifier_namespaces.extend(
+        {"entity_type": "facility", "identifier_type": item.get("identifier_type"),
+         "id_namespace": item.get("id_namespace", "source_scoped"),
+         "identity_scope": item.get("identity_scope", "source_scoped")}
+        for item in candidate.get("additional_source_identifiers", ())
+        if isinstance(item, dict)
+    )
     if identifier_namespaces:
         graph_context["source_identifier_namespaces"] = identifier_namespaces
     record_id = _ensure_record(connection, manifest, artifact_id, source_record_key,

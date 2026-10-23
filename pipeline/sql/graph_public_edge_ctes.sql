@@ -108,7 +108,7 @@ endpoint_candidates AS MATERIALIZED (
       'business_id','business_number','business_registration','business_registration_number',
       'company_number','company_registration_number','company_registry_number',
       'registered_business_id','legal_entity_id','legal_entity_identifier',
-      'siret','siren','abn','acn','nzbn','lei',
+      'siren','abn','acn','nzbn','lei',
       'vat','vat_number','italian_vat','p_iva'
     )
     AND i.organization_id IS NOT NULL

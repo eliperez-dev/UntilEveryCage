@@ -386,7 +386,15 @@ pub async fn entities(
           FROM uec.map_facilities_public_discovery_read_model p WHERE p.release_id=$1
           UNION
           SELECT labels.organization_id,'organization'::text,labels.display_name,NULL::text
-          FROM uec.graph_public_organization_labels_current labels WHERE labels.release_id=$1
+          FROM (
+            SELECT DISTINCT ON (release_id,organization_id)
+                   release_id,organization_id,display_name
+            FROM uec.graph_public_organization_labels_current
+            WHERE release_id=$1
+            ORDER BY release_id,organization_id,
+                     CASE assertion_role WHEN 'legal' THEN 0 WHEN 'business' THEN 1 ELSE 2 END,
+                     display_name
+          ) labels
         ) entities
         WHERE ($2='' OR display_name ILIKE '%' || $2 || '%')
           AND ($3::text IS NULL OR entity_type=$3)
@@ -605,6 +613,13 @@ mod tests {
         let entity_query = include_str!("../pipeline/migrations/077_graph_release_projection.sql");
         assert!(entity_query.contains("CREATE VIEW uec.graph_public_connections_current"));
         assert!(entity_query.contains("graph_public_projection_endpoint_anchors"));
+        let evidence_migration = include_str!("../pipeline/migrations/080_graph_public_evidence_references.sql");
+        assert!(evidence_migration.contains("graph_public_organization_endpoints_current"));
+        assert!(evidence_migration.contains("DISTINCT ON (eligible.release_id,eligible.organization_id)"));
+        assert!(evidence_migration.contains("b.projection_version='graph-release-projection-v3'"));
+        assert!(evidence_migration.contains("b.suppression_generation=suppression.generation"));
+        let api_entity_query = include_str!("../src/graph_public.rs");
+        assert!(api_entity_query.contains("SELECT DISTINCT ON (release_id,organization_id)"));
     }
 
     #[test]
