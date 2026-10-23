@@ -24,6 +24,41 @@ publishable facilities unless explicitly labelled that way.
 
 ## Current launch decision (2026-10-23)
 
+**Whole-dataset graph convergence, not yet deployed:** the shared source
+builders, configured refresh path and version-aware corpus matcher now cover
+all 14 released sources (69,220 records), plus retained private DGAL I/II,
+ICPE, Scotland aquaculture and Italy business evidence. The validated input
+is 136,256 source/artifact record versions across 19 handoffs and 18 facility
+source IDs, not that many distinct facilities. Unmapped records participate.
+The corrected disk-only run generated 25,441 shared-business-name and 958
+multi-signal candidates. These are not persisted or published connection
+counts. All 12,409 retained ICPE SIRET aliases reached matching; no real
+cross-source alias overlap was observed. SIRET remains an establishment
+identifier, not an organization or ownership assertion.
+
+The additive 080 migration and v3 serving projection support source-qualified
+business labels and bounded APHIS report/inspection references. Retained APHIS
+evidence comprises 994 annual events and 98 inspections; 1,024 have unique
+registration matches, while 68 remain unmatched. This is private linkage
+evidence, not publication or successful hosted acceptance. The local graph
+database credential request and the evidence-reference publication decision
+remain pending. No migration, whole-corpus database replay, serving-package
+restore or Render rollout has been completed for this change.
+
+Local code gates passed: 137 Rust tests, 24 Rust documentation tests, 669
+pipeline tests (37 optional skips), 75 adapter tests, 257 frontend tests,
+frontend type checks, and 37 static tests. A further 105 focused graph/source/
+package tests passed with one explicitly env-gated real-database check skipped.
+The prior 066 checksum concern was diagnosed as line-ending representation:
+the clone's stored hash matches current checkout bytes and the migration
+runner accepts equivalent LF/CRLF bytes. No ledger or historical migration
+was edited. Whole-corpus database idempotence, preserved-edge fingerprints,
+complete public API traversal, CI and hosted acceptance remain separate gates.
+Aggregate input evidence is in ignored
+`data/staging/whole-dataset-graph-export-20261023/source-coverage-3ed34ffa.json`
+in the backend source lane; integration gate logs are under ignored
+`data/staging/whole-dataset-graph-20261023/`.
+
 **Hosted search/pin repair:** revision `c3a0a350` is live on Render with all
 seven required CI jobs passing. Hosted Chrome acceptance passed search loading
 with retained results, delayed PNG loading, matching physical pin selection,
