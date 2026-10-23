@@ -22,9 +22,17 @@ for implementation claims. A count in this document is an aggregate candidate
 or evidence count, never a count of approved, accurate, operating, or
 publishable facilities unless explicitly labelled that way.
 
-## Current launch decision (2026-10-22)
+## Current launch decision (2026-10-23)
 
-**Search/pin/connection repair candidate:** the map search now exposes inline
+**Hosted search/pin repair:** revision `c3a0a350` is live on Render with all
+seven required CI jobs passing. Hosted Chrome acceptance passed search loading
+with retained results, delayed PNG loading, matching physical pin selection,
+selection dismissal, style switching and warm reload, with no page errors.
+The hosted 25-record requests measured 644 ms for Tyson and 1,585 ms unfiltered;
+counts remained 69,220 records and 53,107 mapped locations. Row-free receipts
+and map-only proof are under ignored
+`data/staging/hosted-graph-qa-20261021/search-pin-repair-proof/`.
+The map search now exposes inline
 loading while retaining its previous page, approximate singleton PNGs carry an
 `≈` cue, and PNG mode no longer deliberately paints fallback dots during image
 loading. The search query uses indexed candidates before live eligibility
@@ -51,9 +59,19 @@ CI uses the official image matching locked Playwright 1.63.0
 instead of repeatedly installing OS dependencies from an Ubuntu mirror.
 
 The additive FSIS `shared_business_name` rule uses complete retained DBA aliases,
-not substring matches or ownership assertions. Its real-data materialization
-and hosted activation are pending verification; code and synthetic tests alone
-do not establish published connections. The retained baseline verifier also
+not substring matches or ownership assertions. Corrected retained-data replay
+in a disposable copy verified **463 new inferred links, including 69
+Tyson-associated pairs**. Placeholder filtering removed 4,950 invalid candidate
+pairs; a regression preserves all pairs in a legitimate 100-member name group.
+The second replay was idempotent, all 926 support references resolved to FSIS
+records in the selected release, and 59 focused tests passed. Independent
+checks confirmed the pre-existing 50,925 private graph edges were unchanged
+by aggregate fingerprint and current release membership stayed at 69,220.
+The local release-gated projection contains 14,639 exact and 611 inferred
+links, including one existing conflicting link excluded by default. Receipts:
+ignored `data/staging/tyson-shared-business-name-20261023/acceptance-final.json`.
+**These new links are verified locally, not published on Render.**
+The retained baseline verifier also
 reports a pre-existing checksum mismatch for `066_community_contributions`;
 neither its ledger nor the frozen reference was changed to suppress that error.
 

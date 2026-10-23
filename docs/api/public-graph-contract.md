@@ -79,8 +79,9 @@ from another artifact or release are excluded.
 ## Edge semantics
 
 `shared_business_name` is an inferred facility-to-facility relation from exact
-equality of complete normalized FSIS alternate/DBA names. Empty, one-token and
-generic activity-only aliases do not qualify. Both facilities and both source
+equality of complete normalized FSIS alternate/DBA names. Empty, one-token,
+placeholder/boilerplate and generic activity-only aliases do not qualify.
+Both facilities and both source
 record versions must independently pass the selected-release support gates.
 This records name sharing, not ownership, an operator assertion or a facility
 merge. Substring matches, canonical-name-only matches and APHIS mailing/account
