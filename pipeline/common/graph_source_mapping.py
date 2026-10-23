@@ -183,8 +183,11 @@ def organization_identifiers(source_id: str, normalized: dict[str, Any],
     def add(field: str, identifier_type: str, namespace: str, length: int) -> None:
         value = values.get(field)
         if isinstance(value, str):
-            compact = "".join(character for character in value if character.isdigit())
-            if len(compact) == length and compact == value.strip().replace(" ", ""):
+            native = value.strip().replace(" ", "")
+            if identifier_type == "italian_vat" and native.upper().startswith("IT"):
+                native = native[2:]
+            compact = "".join(character for character in native if character.isdigit())
+            if len(compact) == length and compact == native:
                 result.append({"identifier_type": identifier_type, "value": value.strip(),
                                "id_namespace": namespace, "identity_scope": "source_scoped"})
 

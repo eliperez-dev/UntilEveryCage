@@ -113,6 +113,8 @@ class GraphSourceMappingTests(unittest.TestCase):
     def test_business_identifier_allowlist_excludes_personal_cpf(self):
         self.assertEqual(organization_identifiers("it.853-2004", {}, {
             "p_iva": "12345678901", "cod_fiscale": "RSSMRA80A01H501U"})[0]["identifier_type"], "italian_vat")
+        self.assertEqual(organization_identifiers("it.853-2004", {}, {
+            "p_iva": "IT00000000001"})[0]["value"], "IT00000000001")
         self.assertEqual([item["id_namespace"] for item in organization_identifiers(
             "au.npi.facilities", {}, {"abn": "12345678901", "acn": "123456789"})],
             ["au.abr.abn", "au.asic.acn"])
