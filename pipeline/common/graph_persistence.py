@@ -1157,7 +1157,7 @@ def _matcher_edge(raw: dict[str, Any], candidate: dict[str, Any], manifest: dict
             if (
                 left_ref.entity_type != "facility" or right_ref.entity_type != "facility"
                 or left_ref.source_id != "us.fsis" or right_ref.source_id != "us.fsis"
-                or raw.get("ruleset") != "d6-shared-business-name-v1"
+                or raw.get("ruleset") != "d6-shared-business-name-v2"
                 or raw.get("method") != "exact_fsis_alternate_name_equality"
                 or raw.get("contributing_features") != ["shared_business_name"]
                 or not isinstance(provenance, list) or len(provenance) != 2

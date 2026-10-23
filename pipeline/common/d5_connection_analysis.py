@@ -29,6 +29,7 @@ from typing import Any, Iterable, Mapping
 
 REPORT_VERSION = "d5-real-graph-analysis-v1"
 RULESET_VERSION = "d5-multi-signal-candidates-v1"
+SHARED_BUSINESS_NAME_RULESET_VERSION = "d6-shared-business-name-v2"
 EVIDENCE_SOURCE_IDS = frozenset({"us.aphis", "us.inspections"})
 FACILITY_ID_KEYS = frozenset({
     "establishment_id", "establishment_number", "approval_number",
@@ -482,20 +483,31 @@ _GENERIC_BUSINESS_NAME_TOKENS = frozenset({
     "establishments", "facility", "facilities", "food", "foods", "group", "inc",
     "incorporated", "llc", "limited", "ltd", "meat", "meats", "packer", "packers",
     "packing", "packaging", "plant", "plants", "poultry", "processing", "slaughter",
-    "slaughterhouse",
+    "slaughterhouse", "beef", "chicken", "dairy", "fish", "lamb", "pork", "seafood",
+    "turkey", "veal", "inspection", "inspected", "retail", "wholesale", "import",
+    "export", "custom", "exempt",
+})
+_PLACEHOLDER_BUSINESS_NAME_KEYS = frozenset({
+    "n a", "not applicable", "not available", "not known", "not listed", "not on file",
+    "not provided", "not specified", "none", "none listed", "unknown", "see attached",
+    "see above", "no dba", "no dba name", "no dba names", "no alternate name",
+    "no alternate names", "dba name", "dba names", "dba name s", "doing business as",
+    "alternate name", "alternate names", "alternate name s", "custom exempt",
 })
 
 
 def _shared_business_name_key(value: Any) -> str | None:
-    """Normalize a complete FSIS DBA/alternate name; never use a substring."""
+    """Normalize a complete FSIS DBA/alternate name; reject labels/sentinels."""
     if not isinstance(value, str) or not value.strip():
         return None
     normalized = unicodedata.normalize("NFKC", value).casefold().replace("’", "'")
     normalized = re.sub(r"(?<=[\w])'s\b", "", normalized)
     tokens = [token for token in re.findall(r"[^\W_]+", normalized, flags=re.UNICODE) if token]
-    if len(tokens) < 2 or all(token in _GENERIC_BUSINESS_NAME_TOKENS for token in tokens):
+    key = " ".join(tokens)
+    if (len(tokens) < 2 or key in _PLACEHOLDER_BUSINESS_NAME_KEYS
+            or all(token in _GENERIC_BUSINESS_NAME_TOKENS for token in tokens)):
         return None
-    return " ".join(tokens)
+    return key
 
 
 def iter_shared_business_name_candidates(rows: Iterable[_Observed], *,
@@ -556,7 +568,7 @@ def iter_shared_business_name_candidates(rows: Iterable[_Observed], *,
             right_endpoint = _endpoint_ref(right, preserve_native_identifier=preserve_native_endpoints)
             if left_endpoint is None or right_endpoint is None:
                 continue
-            digest = _digest("|".join(("|".join(pair_key[0]), "|".join(pair_key[1]), "shared-business-name-v1")))
+            digest = _digest("|".join(("|".join(pair_key[0]), "|".join(pair_key[1]), SHARED_BUSINESS_NAME_RULESET_VERSION)))
             candidates.append((digest, {
                 "candidate_digest": digest,
                 "source_pair": ["us.fsis"],
@@ -576,7 +588,7 @@ def iter_shared_business_name_candidates(rows: Iterable[_Observed], *,
                 "automatic_merge": False,
                 "transfers_claims": False,
                 "disclaimer": "Inferred shared business name only; not evidence of ownership, operator status, or facility identity.",
-                "ruleset": "d6-shared-business-name-v1",
+                "ruleset": SHARED_BUSINESS_NAME_RULESET_VERSION,
             }))
         for _, candidate in sorted(candidates, key=lambda item: item[0]):
             counters["pairs_emitted"] += 1

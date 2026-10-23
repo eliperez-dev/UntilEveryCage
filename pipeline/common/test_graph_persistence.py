@@ -72,7 +72,7 @@ class GraphPersistenceContractTests(unittest.TestCase):
             ],
             "relationship_type": "shared_business_name",
             "method": "exact_fsis_alternate_name_equality",
-            "ruleset": "d6-shared-business-name-v1",
+            "ruleset": "d6-shared-business-name-v2",
             "contributing_features": ["shared_business_name"],
             "contradictory_evidence": [],
             "observed_at": "2026-01-01T00:00:00Z",

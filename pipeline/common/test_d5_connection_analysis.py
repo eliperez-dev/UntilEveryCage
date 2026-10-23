@@ -251,6 +251,55 @@ class D5ConnectionAnalysisTests(unittest.TestCase):
         iterator, _ = iter_shared_business_name_candidates(rows)
         self.assertEqual(list(iterator), [])
 
+    def test_shared_business_name_rejects_normalized_placeholders_and_activity_labels(self):
+        def fsis(key: str, facility: str, alias: str):
+            return _observed_from_row({
+                "source_id": "us.fsis", "source_record_key": key,
+                "normalized": {"establishment_id": facility, "alternate_names": [alias]},
+            })
+
+        placeholder_pairs = [
+            ("N/A", "n.a."),
+            ("Not-Applicable", "NOT APPLICABLE!"),
+            ("See—Attached", "see attached."),
+            ("No DBA", "NO DBA!"),
+            ("DBA: Name(s)", "dba name s"),
+            ("Custom-Exempt", "CUSTOM EXEMPT."),
+            ("Beef Processing", "BEEF/PROCESSING"),
+        ]
+        rows = []
+        for index, (left, right) in enumerate(placeholder_pairs):
+            rows.extend((
+                fsis(f"sentinel-left-{index}", f"SENTINEL-L-{index}", left),
+                fsis(f"sentinel-right-{index}", f"SENTINEL-R-{index}", right),
+            ))
+
+        iterator, counters = iter_shared_business_name_candidates(rows)
+        self.assertEqual(list(iterator), [])
+        self.assertEqual(counters["alias_groups"], 0)
+        self.assertEqual(counters["pairs_emitted"], 0)
+
+    def test_shared_business_name_does_not_cap_legitimate_large_groups(self):
+        rows = [
+            _observed_from_row({
+                "source_id": "us.fsis", "source_record_key": f"brand-{index}",
+                "normalized": {
+                    "establishment_id": f"BRAND-{index}",
+                    "alternate_names": ["Synthetic Shared Brand"],
+                },
+            })
+            for index in range(100)
+        ]
+        iterator, counters = iter_shared_business_name_candidates(rows)
+        candidates = list(iterator)
+        self.assertEqual(len(candidates), 4_950)
+        self.assertEqual(counters["alias_groups"], 1)
+        self.assertEqual(counters["pairs_considered"], 4_950)
+        self.assertEqual(counters["pairs_emitted"], 4_950)
+        self.assertEqual(counters["pairs_deduplicated"], 0)
+        self.assertTrue(all(candidate["ruleset"] == "d6-shared-business-name-v2"
+                            for candidate in candidates))
+
 
     def test_graph_candidate_handoff_carries_only_fsis_dba_alias_evidence(self):
         from pipeline.common.graph_candidate import build_graph_candidate
