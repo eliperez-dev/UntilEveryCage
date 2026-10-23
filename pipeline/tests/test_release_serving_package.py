@@ -24,7 +24,9 @@ class ReleaseServingPackageTests(unittest.TestCase):
         self.assertIn("uec.graph_public_projection_evidence_refs", relations)
         self.assertTrue(relations.isdisjoint(serving.FORBIDDEN_DATA_RELATIONS))
         self.assertTrue({"uec.graph_connection_edges", "uec.graph_record_release_bindings",
-                         "uec.source_entity_identifiers"}.issubset(serving.FORBIDDEN_DATA_RELATIONS))
+                         "uec.source_entity_identifiers", "uec.graph_evidence_events",
+                         "uec.graph_evidence_links", "uec.graph_source_name_assertions"}.issubset(
+                             serving.FORBIDDEN_DATA_RELATIONS))
         graph_edges = next(spec for spec in specs if spec.relation == "uec.graph_public_projection_edges")
         self.assertNotIn("source_identifier", graph_edges.columns)
         self.assertNotIn("source_record_id", graph_edges.columns)
@@ -38,6 +40,12 @@ class ReleaseServingPackageTests(unittest.TestCase):
         evidence_refs = next(spec for spec in specs if spec.relation == "uec.graph_public_projection_evidence_refs")
         self.assertIn("evidence_source_record_id", evidence_refs.columns)
         self.assertNotIn("event_payload", evidence_refs.columns)
+        self.assertNotIn("raw_payload", evidence_refs.columns)
+        self.assertEqual(evidence_refs.columns, (
+            "evidence_ref_id", "projection_id", "endpoint_id", "evidence_source_record_id",
+            "source_id", "evidence_type", "event_date", "event_period", "observed_at",
+            "source_url", "match_method",
+        ))
         self.assertIn("uec.graph_public_evidence_references_current", serving.API_RELATIONS)
         self.assertIn("uec.graph_public_organization_labels_current", serving.API_RELATIONS)
         self.assertIn("uec.graph_public_organization_endpoints_current", serving.API_RELATIONS)
