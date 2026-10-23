@@ -846,9 +846,6 @@ def _iter_probabilistic_candidates(rows: Iterable[_Observed], *, start_after: st
                                               or ("business_phone" in features and "name" in features))
                         if not (has_site_anchor or has_contact_anchor):
                             continue
-                        _, contradictions = _match_features(left, right)
-                        if any(item.get("signal") == "conflicting_address" for item in contradictions):
-                            continue
                         key = json.dumps(pair_key, ensure_ascii=False, separators=(",", ":"))
                         if db.execute("SELECT 1 FROM excluded WHERE pair_key=?", (key,)).fetchone():
                             continue
@@ -875,6 +872,9 @@ def _iter_probabilistic_candidates(rows: Iterable[_Observed], *, start_after: st
                 for pair_key, raw_methods, digest, left_payload, right_payload in final_rows:
                     left = _observed_from_json(left_payload)
                     right = _observed_from_json(right_payload)
+                    if (right.source_id, right.key, right.artifact_sha256) < (
+                            left.source_id, left.key, left.artifact_sha256):
+                        left, right = right, left
                     methods = set(json.loads(raw_methods))
                     features, contradictions = _match_features(left, right)
                     score, band, explanation = _score_match(features, contradictions)

@@ -171,18 +171,18 @@ class D5ConnectionAnalysisTests(unittest.TestCase):
         self.assertEqual([item["candidate_digest"] for item in resumed], [item["candidate_digest"] for item in first[2:]])
         self.assertEqual(sum(len(batch) for batch in iter_candidate_batches(rows, batch_size=2)), len(first))
 
-    def test_ambiguous_block_is_counted_instead_of_global_truncation(self):
+    def test_large_valid_blocks_are_not_cut_off_by_legacy_max_block_argument(self):
         rows = [_observed_from_row(self.row(f"source-{index}", f"row-{index}", name="Crowded", city="Town", postal="1000", facility=f"F-{index}", org=f"O-{index}")) for index in range(4)]
         report = analyze(manifests={}, rows=rows, max_block_size=3)
         generation = report["probabilistic_candidates"]["candidate_generation"]
-        self.assertGreater(generation["blocks_ambiguous"], 0)
-        self.assertEqual(report["probabilistic_candidates"]["count"], 0)
+        self.assertEqual(generation["blocks_ambiguous"], 0)
+        self.assertEqual(report["probabilistic_candidates"]["count"], 6)
         self.assertFalse(report["probabilistic_candidates"]["candidate_generation_capped"])
 
     def test_iterator_has_no_global_five_thousand_candidate_cap(self):
         rows = []
         for index in range(5001):
-            name = f"Facility {index}"
+            name = f"Fixture Foods {index}"
             rows.extend((
                 _observed_from_row(self.row("source-a", f"a-{index}", name=name, city="Town", postal=str(index), facility=f"A-{index}", org=f"OA-{index}")),
                 _observed_from_row(self.row("source-b", f"b-{index}", name=name, city="Town", postal=str(index), facility=f"B-{index}", org=f"OB-{index}")),
@@ -297,7 +297,7 @@ class D5ConnectionAnalysisTests(unittest.TestCase):
         self.assertEqual(counters["pairs_considered"], 4_950)
         self.assertEqual(counters["pairs_emitted"], 4_950)
         self.assertEqual(counters["pairs_deduplicated"], 0)
-        self.assertTrue(all(candidate["ruleset"] == "d6-shared-business-name-v2"
+        self.assertTrue(all(candidate["ruleset"] == "d7-shared-business-name-v3"
                             for candidate in candidates))
 
 
