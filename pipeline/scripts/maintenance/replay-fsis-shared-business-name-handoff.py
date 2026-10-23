@@ -103,7 +103,16 @@ def replay(database_url: str, database_name: str, release_id: str, output: Path)
 
     manifest = write_graph_candidates(
         output, records, artifact_sha256=next(iter(artifact_ids)),
-        observed_at=_timestamp(datetime.now(timezone.utc)),
+        observed_at=_timestamp(raw_rows[0]["observed_at"]),
+    )
+    # Preserve the original selected-release artifact identity. This makes
+    # graph persistence resolve the existing source_record_id/artifact_id
+    # pairs rather than minting duplicate, unbound source observations.
+    manifest["source_artifact_sha256"] = next(iter(artifact_ids))
+    manifest["retrieved_at_utc"] = _timestamp(raw_rows[0]["observed_at"])
+    (output / "manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
     )
     return {
         "status": "ready",
