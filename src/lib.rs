@@ -4653,6 +4653,56 @@ pub struct V2Location {
     pub provenance_retrieved_at: chrono::DateTime<chrono::Utc>,
 }
 
+fn v2_public_search_matches_cte(public_read_model: &str, search_parameter: &str) -> String {
+    format!(r#"
+        search_matches AS MATERIALIZED (
+          SELECT stored.facility_id, stored.observation_id
+          FROM uec.public_discovery_read_model_rows stored
+          WHERE stored.release_id = $1
+            AND stored.public_search_text <> ''
+            AND stored.public_search_text ILIKE '%' || {search_parameter} || '%' ESCAPE '\'
+          UNION ALL
+          SELECT legacy.facility_id, legacy.observation_id
+          FROM uec.public_discovery_read_model_rows legacy
+          JOIN LATERAL (
+            SELECT history.canonical_name, history.city, history.country_code,
+                   history.classification_category, history.provenance_source_name,
+                   history.observation_id
+            FROM {public_read_model} AS history
+            WHERE history.release_id = legacy.release_id
+              AND history.facility_id = legacy.facility_id
+              AND history.observation_id = legacy.observation_id
+            LIMIT 1
+          ) AS history ON TRUE
+          WHERE legacy.release_id = $1
+            AND legacy.public_search_text = ''
+            AND (
+              lower(concat_ws(' ', history.canonical_name, history.city, history.country_code,
+                              history.classification_category, history.provenance_source_name))
+                LIKE '%' || lower({search_parameter}) || '%' ESCAPE '\'
+              OR EXISTS (
+                SELECT 1
+                FROM uec.observation_taxonomy_assignment_sets sets
+                LEFT JOIN uec.observation_taxonomy_assignments assignment
+                  ON assignment.assignment_set_id = sets.assignment_set_id
+                WHERE sets.observation_id = history.observation_id
+                  AND sets.taxonomy_version = 'uec-taxonomy-v1'
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM uec.observation_taxonomy_assignment_sets newer
+                    WHERE newer.observation_id = sets.observation_id
+                      AND newer.taxonomy_version = sets.taxonomy_version
+                      AND (newer.created_at, newer.assignment_set_id) > (sets.created_at, sets.assignment_set_id)
+                  )
+                  AND lower(concat_ws(' ', assignment.leaf_label, assignment.source_code,
+                                      assignment.source_label, assignment.source_code_reference,
+                                      assignment.source_label_reference))
+                      LIKE '%' || lower({search_parameter}) || '%' ESCAPE '\'
+              )
+            )
+        )"#)
+}
+
 pub async fn get_v2_locations_handler(
     State(state): State<ApiState>,
     Query(params): Query<V2LocationParams>,
@@ -4976,6 +5026,67 @@ pub async fn get_v2_locations_handler(
     // as the page. It is deliberately not the size of a client-loaded page.
     let query_limit = limit + 1;
     let taxonomy_filters_requested = category_keys.is_some();
+    let search_matches_cte = if search_text.is_some() {
+        v2_public_search_matches_cte(public_read_model, "$8")
+    } else {
+        String::new()
+    };
+    let ordinary_filtered_ctes = if search_text.is_some() {
+        format!(r#"
+        {search_matches_cte}, filtered AS MATERIALIZED (
+          SELECT DISTINCT ON (history.facility_id) history.facility_id, history.observation_id
+          FROM search_matches matches
+          JOIN LATERAL (
+            SELECT candidate.facility_id, candidate.observation_id, candidate.provenance_source_id,
+                   candidate.country_code, candidate.city, candidate.classification_category,
+                   candidate.display_precision, candidate.lifecycle_status,
+                   candidate.provenance_origin_type, candidate.display_location
+            FROM {public_read_model} AS candidate
+            WHERE candidate.release_id = $1
+              AND candidate.facility_id = matches.facility_id
+              AND candidate.observation_id = matches.observation_id
+            LIMIT 1
+          ) AS history ON TRUE
+          WHERE ($19::text IS NULL OR history.provenance_source_id = ANY(string_to_array($19, ',')))
+            AND ($2::text IS NULL OR history.country_code = ANY(string_to_array($2, ',')))
+            AND ($3::text IS NULL OR history.city = $3)
+            AND ($4::text IS NULL OR history.classification_category = $4)
+            AND ($5::text IS NULL OR history.display_precision = ANY(string_to_array($5, ',')))
+            AND ($6::text IS NULL OR history.lifecycle_status = $6)
+            AND ($7::text IS NULL OR history.provenance_origin_type = $7)
+            AND ($9::double precision IS NULL OR (history.display_location && ST_MakeEnvelope($9, $10, $11, $12, 4326)::geography AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($9, $10, $11, $12, 4326))))
+            AND ($13::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($14, $15), 4326)::geography, $13 * 1000))
+          ORDER BY history.facility_id, history.observation_id
+        )"#)
+    } else {
+        format!(r#"filtered AS MATERIALIZED (
+          SELECT DISTINCT ON (history.facility_id) history.facility_id, history.observation_id
+          FROM {public_read_model} AS history
+          LEFT JOIN uec.public_discovery_read_model_rows indexed
+            ON indexed.release_id = history.release_id
+           AND indexed.facility_id = history.facility_id
+           AND indexed.observation_id = history.observation_id
+          WHERE history.release_id = $1
+          AND ($19::text IS NULL OR history.provenance_source_id = ANY(string_to_array($19, ',')))
+            AND ($2::text IS NULL OR history.country_code = ANY(string_to_array($2, ',')))
+            AND ($3::text IS NULL OR history.city = $3)
+            AND ($4::text IS NULL OR history.classification_category = $4)
+            AND ($5::text IS NULL OR history.display_precision = ANY(string_to_array($5, ',')))
+            AND ($6::text IS NULL OR history.lifecycle_status = $6)
+            AND ($7::text IS NULL OR history.provenance_origin_type = $7)
+            AND ($8::text IS NULL OR indexed.public_search_text ILIKE '%' || $8 || '%' ESCAPE '\'
+                 OR (indexed.public_search_text = '' AND lower(concat_ws(' ', history.canonical_name, history.city, history.country_code, history.classification_category, history.provenance_source_name)) LIKE '%' || lower($8) || '%' ESCAPE '\')
+                 OR (indexed.public_search_text = '' AND EXISTS (
+                      SELECT 1 FROM uec.observation_taxonomy_assignment_sets sets
+                      LEFT JOIN uec.observation_taxonomy_assignments assignment ON assignment.assignment_set_id=sets.assignment_set_id
+                      WHERE sets.observation_id=history.observation_id AND sets.taxonomy_version='uec-taxonomy-v1'
+                        AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=sets.observation_id AND newer.taxonomy_version=sets.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(sets.created_at,sets.assignment_set_id))
+                        AND lower(concat_ws(' ', assignment.leaf_label, assignment.source_code, assignment.source_label, assignment.source_code_reference, assignment.source_label_reference)) LIKE '%' || lower($8) || '%' ESCAPE '\')))
+            AND ($9::double precision IS NULL OR (history.display_location && ST_MakeEnvelope($9, $10, $11, $12, 4326)::geography AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($9, $10, $11, $12, 4326))))
+            AND ($13::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($14, $15), 4326)::geography, $13 * 1000))
+          ORDER BY history.facility_id, history.observation_id
+        )"#)
+    };
     // Ordinary browsing carries its exact total from the same materialized
     // eligible-facility set used to choose the page below.
     let taxonomy_total_count: Option<i64> = if !taxonomy_filters_requested {
@@ -5001,23 +5112,27 @@ pub async fn get_v2_locations_handler(
     "#), &[&promoted_release_id, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &category_keys, &params.source_id]).await {
         Ok(row) => Some(row.get(0)), Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
     }} else { match transaction.query_one(&format!(r#"
+        WITH {search_matches_cte}
         SELECT count(DISTINCT history.facility_id)::bigint
-        FROM {public_read_model} AS history
-        JOIN uec.public_discovery_read_model_rows stored
-          ON stored.release_id=history.release_id AND stored.facility_id=history.facility_id AND stored.observation_id=history.observation_id
-        WHERE history.release_id = $1
-          AND ($17::text IS NULL OR history.provenance_source_id = ANY(string_to_array($17, ',')))
-          AND ($2::text IS NULL OR history.country_code = ANY(string_to_array($2, ','))) AND ($3::text IS NULL OR history.city = $3)
-          AND ($4::text IS NULL OR history.classification_category = $4) AND ($5::text IS NULL OR history.display_precision = ANY(string_to_array($5, ',')))
-          AND ($6::text IS NULL OR history.lifecycle_status = $6) AND ($7::text IS NULL OR history.provenance_origin_type = $7)
-          AND ($8::text IS NULL OR stored.public_search_text ILIKE '%' || $8 || '%' ESCAPE '\'
-               OR (stored.public_search_text = '' AND lower(concat_ws(' ', history.canonical_name, history.city, history.country_code, history.classification_category, history.provenance_source_name)) LIKE '%' || lower($8) || '%' ESCAPE '\')
-               OR (stored.public_search_text = '' AND EXISTS (
-                    SELECT 1 FROM uec.observation_taxonomy_assignment_sets sets
-                    LEFT JOIN uec.observation_taxonomy_assignments assignment ON assignment.assignment_set_id=sets.assignment_set_id
-                    WHERE sets.observation_id=history.observation_id AND sets.taxonomy_version='uec-taxonomy-v1'
-                      AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=sets.observation_id AND newer.taxonomy_version=sets.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(sets.created_at,sets.assignment_set_id))
-                      AND lower(concat_ws(' ', assignment.leaf_label, assignment.source_code, assignment.source_label, assignment.source_code_reference, assignment.source_label_reference)) LIKE '%' || lower($8) || '%' ESCAPE '\')))
+        FROM search_matches matches
+        JOIN LATERAL (
+          SELECT candidate.facility_id, candidate.observation_id, candidate.provenance_source_id,
+                 candidate.country_code, candidate.city, candidate.classification_category,
+                 candidate.display_precision, candidate.lifecycle_status,
+                 candidate.provenance_origin_type, candidate.display_location
+          FROM {public_read_model} AS candidate
+          WHERE candidate.release_id = $1
+            AND candidate.facility_id = matches.facility_id
+            AND candidate.observation_id = matches.observation_id
+          LIMIT 1
+        ) AS history ON TRUE
+        WHERE ($17::text IS NULL OR history.provenance_source_id = ANY(string_to_array($17, ',')))
+          AND ($2::text IS NULL OR history.country_code = ANY(string_to_array($2, ',')))
+          AND ($3::text IS NULL OR history.city = $3)
+          AND ($4::text IS NULL OR history.classification_category = $4)
+          AND ($5::text IS NULL OR history.display_precision = ANY(string_to_array($5, ',')))
+          AND ($6::text IS NULL OR history.lifecycle_status = $6)
+          AND ($7::text IS NULL OR history.provenance_origin_type = $7)
           AND ($9::double precision IS NULL OR (history.display_location && ST_MakeEnvelope($9, $10, $11, $12, 4326)::geography AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($9, $10, $11, $12, 4326))))
           AND ($13::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($14, $15), 4326)::geography, $13 * 1000))
           AND EXISTS (
@@ -5030,36 +5145,48 @@ pub async fn get_v2_locations_handler(
     "#), &[&promoted_release_id, &params.country_code, &params.region, &params.category, &params.display_precision, &params.lifecycle_status, &params.source_type, &search_text, &min_lon, &min_lat, &max_lon, &max_lat, &radius_km, &longitude, &latitude, &category_keys, &params.source_id]).await {
         Ok(row) => Some(row.get(0)), Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
     }};
+    let taxonomy_search_matches_cte = if search_text.is_some() {
+        format!("WITH {}", v2_public_search_matches_cte(public_read_model, "$9"))
+    } else {
+        String::new()
+    };
+    let taxonomy_search_from = if search_text.is_some() {
+        format!(r#"
+        FROM search_matches matches
+        JOIN LATERAL (
+          SELECT candidate.*
+          FROM {public_read_model} AS candidate
+          WHERE candidate.release_id = $1
+            AND candidate.facility_id = matches.facility_id
+            AND candidate.observation_id = matches.observation_id
+          LIMIT 1
+        ) AS history ON TRUE
+        JOIN uec.public_discovery_read_model_rows stored
+          ON stored.release_id=history.release_id AND stored.facility_id=history.facility_id AND stored.observation_id=history.observation_id"#)
+    } else {
+        format!(r#"
+        FROM {public_read_model} AS history
+        JOIN uec.public_discovery_read_model_rows stored
+          ON stored.release_id=history.release_id AND stored.facility_id=history.facility_id AND stored.observation_id=history.observation_id"#)
+    };
+    let taxonomy_search_filter = if search_text.is_some() {
+        String::new()
+    } else {
+        r#"AND ($9::text IS NULL OR stored.public_search_text ILIKE '%' || $9 || '%' ESCAPE '\'
+               OR (stored.public_search_text = '' AND lower(concat_ws(' ', history.canonical_name, history.city, history.country_code, history.classification_category, history.provenance_source_name)) LIKE '%' || lower($9) || '%' ESCAPE '\')
+               OR (stored.public_search_text = '' AND EXISTS (
+                    SELECT 1 FROM uec.observation_taxonomy_assignment_sets sets
+                    LEFT JOIN uec.observation_taxonomy_assignments assignment ON assignment.assignment_set_id=sets.assignment_set_id
+                    WHERE sets.observation_id=history.observation_id AND sets.taxonomy_version='uec-taxonomy-v1'
+                      AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=sets.observation_id AND newer.taxonomy_version=sets.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(sets.created_at,sets.assignment_set_id))
+                      AND lower(concat_ws(' ', assignment.leaf_label, assignment.source_code, assignment.source_label, assignment.source_code_reference, assignment.source_label_reference)) LIKE '%' || lower($9) || '%' ESCAPE '\')))"#.to_owned()
+    };
     let rows = if !taxonomy_filters_requested {
         // Pick the stable page before calculating DTO-only taxonomy. The
         // taxonomy is still returned for each record, but no longer expanded
         // for every eligible facility on an ordinary browse request.
         match transaction.query(&format!(r#"
-        WITH filtered AS MATERIALIZED (
-          SELECT DISTINCT ON (history.facility_id) history.facility_id, history.observation_id
-          FROM {public_read_model} AS history
-          LEFT JOIN uec.public_discovery_read_model_rows indexed
-            ON indexed.release_id=history.release_id AND indexed.facility_id=history.facility_id AND indexed.observation_id=history.observation_id
-          WHERE history.release_id = $1
-          AND ($19::text IS NULL OR history.provenance_source_id = ANY(string_to_array($19, ',')))
-            AND ($2::text IS NULL OR history.country_code = ANY(string_to_array($2, ',')))
-            AND ($3::text IS NULL OR history.city = $3)
-            AND ($4::text IS NULL OR history.classification_category = $4)
-            AND ($5::text IS NULL OR history.display_precision = ANY(string_to_array($5, ',')))
-            AND ($6::text IS NULL OR history.lifecycle_status = $6)
-            AND ($7::text IS NULL OR history.provenance_origin_type = $7)
-            AND ($8::text IS NULL OR indexed.public_search_text ILIKE '%' || $8 || '%' ESCAPE '\'
-                 OR (indexed.public_search_text = '' AND lower(concat_ws(' ', history.canonical_name, history.city, history.country_code, history.classification_category, history.provenance_source_name)) LIKE '%' || lower($8) || '%' ESCAPE '\')
-                 OR (indexed.public_search_text = '' AND EXISTS (
-                      SELECT 1 FROM uec.observation_taxonomy_assignment_sets sets
-                      LEFT JOIN uec.observation_taxonomy_assignments assignment ON assignment.assignment_set_id=sets.assignment_set_id
-                      WHERE sets.observation_id=history.observation_id AND sets.taxonomy_version='uec-taxonomy-v1'
-                        AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=sets.observation_id AND newer.taxonomy_version=sets.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(sets.created_at,sets.assignment_set_id))
-                        AND lower(concat_ws(' ', assignment.leaf_label, assignment.source_code, assignment.source_label, assignment.source_code_reference, assignment.source_label_reference)) LIKE '%' || lower($8) || '%' ESCAPE '\')))
-            AND ($9::double precision IS NULL OR (history.display_location && ST_MakeEnvelope($9, $10, $11, $12, 4326)::geography AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($9, $10, $11, $12, 4326))))
-            AND ($13::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($14, $15), 4326)::geography, $13 * 1000))
-          ORDER BY history.facility_id, history.observation_id
-        ), eligible_total AS MATERIALIZED (
+        WITH {ordinary_filtered_ctes}, eligible_total AS MATERIALIZED (
           SELECT count(*)::bigint AS total_count FROM filtered
         ), page AS (
           SELECT facility_id, observation_id
@@ -5105,6 +5232,7 @@ pub async fn get_v2_locations_handler(
             Err(_) => return v2_error(StatusCode::INTERNAL_SERVER_ERROR, "location_query_failed", "V2 location query failed"),
         }
     } else { match transaction.query(&format!(r#"
+        {taxonomy_search_matches_cte}
         SELECT DISTINCT ON (history.facility_id) history.facility_id, history.canonical_name, history.country_code, history.city, history.classification_category, history.display_precision,
                history.factual_review_status, history.privacy_screening_status, history.maintainer_approval, history.reviewer_role,
                ST_Y(history.display_location::geometry), ST_X(history.display_location::geometry),
@@ -5118,9 +5246,7 @@ pub async fn get_v2_locations_handler(
                COALESCE(taxonomy.assignments, '[]'::jsonb)::text,
                history.geometry_provenance::text,
                stored.public_detail::text
-        FROM {public_read_model} AS history
-        JOIN uec.public_discovery_read_model_rows stored
-          ON stored.release_id=history.release_id AND stored.facility_id=history.facility_id AND stored.observation_id=history.observation_id
+        {taxonomy_search_from}
         LEFT JOIN LATERAL (
           SELECT min(s.display_category) AS display_category,
                  array_agg(DISTINCT a.primary_key ORDER BY a.primary_key) FILTER (WHERE a.primary_key IS NOT NULL) AS primary_categories,
@@ -5141,14 +5267,7 @@ pub async fn get_v2_locations_handler(
           AND ($6::text IS NULL OR history.display_precision = ANY(string_to_array($6, ',')))
           AND ($7::text IS NULL OR history.lifecycle_status = $7)
           AND ($8::text IS NULL OR history.provenance_origin_type = $8)
-          AND ($9::text IS NULL OR stored.public_search_text ILIKE '%' || $9 || '%' ESCAPE '\'
-               OR (stored.public_search_text = '' AND lower(concat_ws(' ', history.canonical_name, history.city, history.country_code, history.classification_category, history.provenance_source_name)) LIKE '%' || lower($9) || '%' ESCAPE '\')
-               OR (stored.public_search_text = '' AND EXISTS (
-                    SELECT 1 FROM uec.observation_taxonomy_assignment_sets sets
-                    LEFT JOIN uec.observation_taxonomy_assignments assignment ON assignment.assignment_set_id=sets.assignment_set_id
-                    WHERE sets.observation_id=history.observation_id AND sets.taxonomy_version='uec-taxonomy-v1'
-                      AND NOT EXISTS (SELECT 1 FROM uec.observation_taxonomy_assignment_sets newer WHERE newer.observation_id=sets.observation_id AND newer.taxonomy_version=sets.taxonomy_version AND (newer.created_at,newer.assignment_set_id)>(sets.created_at,sets.assignment_set_id))
-                      AND lower(concat_ws(' ', assignment.leaf_label, assignment.source_code, assignment.source_label, assignment.source_code_reference, assignment.source_label_reference)) LIKE '%' || lower($9) || '%' ESCAPE '\')))
+          {taxonomy_search_filter}
           AND ($10::double precision IS NULL OR (history.display_location && ST_MakeEnvelope($10, $11, $12, $13, 4326)::geography AND ST_Intersects(history.display_location::geometry, ST_MakeEnvelope($10, $11, $12, $13, 4326))))
           AND ($14::double precision IS NULL OR ST_DWithin(history.display_location, ST_SetSRID(ST_Point($15, $16), 4326)::geography, $14 * 1000))
           AND EXISTS (
@@ -6582,7 +6701,7 @@ mod v2_api_tests {
             .and_then(|rest| rest.split("pub async fn get_v2_location_detail_handler").next())
             .expect("public locations handler");
         let filtered = handler
-            .find("WITH filtered AS MATERIALIZED")
+            .find("filtered AS MATERIALIZED")
             .expect("one eligible public snapshot");
         let total = handler
             .find("SELECT count(*)::bigint AS total_count FROM filtered")
@@ -6593,6 +6712,36 @@ mod v2_api_tests {
         assert!(filtered < total && total < cursor);
         assert!(handler.contains("LEFT JOIN page ON TRUE"));
         assert!(handler.contains("page.total_count"));
+    }
+
+    #[test]
+    fn ordinary_search_uses_trigram_candidates_and_keeps_legacy_fallback() {
+        let source = include_str!("lib.rs");
+        let handler = source
+            .split("pub async fn get_v2_locations_handler")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn get_v2_location_detail_handler").next())
+            .expect("public locations handler");
+        let search_match_builder = source
+            .split("fn v2_public_search_matches_cte")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn get_v2_locations_handler").next())
+            .expect("public search candidate CTE builder");
+
+        assert!(handler.contains("if search_text.is_some()"));
+        assert!(handler.contains("v2_public_search_matches_cte(public_read_model, \"$9\")"));
+        assert!(handler.contains("FROM search_matches matches"));
+        assert!(handler.contains("assignment.primary_key = ANY($16::text[])"));
+        assert!(search_match_builder.contains("search_matches AS MATERIALIZED"));
+        assert!(search_match_builder.contains("stored.public_search_text <> ''"));
+        assert!(search_match_builder.contains("stored.public_search_text ILIKE '%' || {search_parameter} || '%'"));
+        assert!(search_match_builder.contains("legacy.public_search_text = ''"));
+        assert!(search_match_builder.contains("lower(concat_ws(' ', history.canonical_name"));
+        assert!(search_match_builder.contains("assignment.leaf_label, assignment.source_code"));
+        assert!(handler.contains("AND candidate.observation_id = matches.observation_id"));
+        assert!(handler.contains("LIMIT 1"));
+        assert!(handler.contains("SELECT count(*)::bigint AS total_count FROM filtered"));
+        assert!(handler.contains("WHERE ($16::uuid IS NULL OR facility_id > $16)"));
     }
 
     #[test]
