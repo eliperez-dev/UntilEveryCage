@@ -22,18 +22,29 @@ from pipeline.common.d5_connection_analysis import (_iter_probabilistic_candidat
 from pipeline.common.d5_connection_analysis import RULESET_VERSION as D5_MATCHER_VERSION
 from pipeline.common.d5_connection_analysis import SHARED_BUSINESS_NAME_RULESET_VERSION
 from pipeline.common.graph_edges import RULESET_VERSION as D6_EDGE_RULESET_VERSION
-from pipeline.common.graph_persistence import ConnectionEdgeBuilder, import_evidence_events, import_graph_candidates, iter_graph_candidate_handoff
+from pipeline.common.graph_persistence import (ConnectionEdgeBuilder, import_evidence_events,
+    completed_edge_materialization, import_graph_candidates, iter_graph_candidate_handoff,
+    load_evidence_handoff)
 
 
 REPORT_VERSION = "d7-real-private-graph-v1"
 NATIVE_ENDPOINT_CONTRACT_VERSION = "native-source-identifier-v2"
-GRAPH_EDGE_MATERIALIZATION_VERSION = "private-graph-materialization-v4"
+GRAPH_EDGE_MATERIALIZATION_VERSION = "private-graph-materialization-v5"
 GRAPH_MATERIALIZATION_FINGERPRINT = hashlib.sha256(
     "|".join((GRAPH_EDGE_MATERIALIZATION_VERSION, D5_MATCHER_VERSION,
               D6_EDGE_RULESET_VERSION, SHARED_BUSINESS_NAME_RULESET_VERSION,
               NATIVE_ENDPOINT_CONTRACT_VERSION)).encode("utf-8")
 ).hexdigest()
 EVIDENCE_CONTRACTS = {"us-aphis-observation-handoff-v1"}
+
+
+def _source_artifact_sha256(manifest: dict[str, Any]) -> str:
+    return str(manifest.get("checksum_sha256") or manifest.get("source_artifact_sha256") or "").strip()
+
+
+def _has_actual_artifact_sha256(manifest: dict[str, Any]) -> bool:
+    value = _source_artifact_sha256(manifest)
+    return len(value) == 64 and all(character in "0123456789abcdefABCDEF" for character in value)
 
 
 def _rss_bytes() -> int | None:
@@ -53,19 +64,39 @@ def graph_corpus_materialization_fingerprint(handoff_roots: Iterable[str | Path]
     """Bind a materialization to every handoff participating in matching."""
     inputs: list[dict[str, Any]] = []
     for root in handoff_roots:
-        manifest, _candidates, digest, count = iter_graph_candidate_handoff(root)
+        kind, manifest, digest, count = _describe_handoff(root)
         metadata_fields = (
             "contract_version", "source_kind", "checksum_sha256", "source_artifact_sha256",
             "artifact_sha256", "retrieved_at_utc", "as_of_utc", "adapter_version",
-            "source_revision", "ruleset_version",
+            "source_revision", "ruleset_version", "entity_scope", "normalized_sha256",
         )
-        inputs.append({"source_id": str(manifest["source_id"]), "handoff_sha256": digest,
+        inputs.append({"kind": kind, "source_id": str(manifest["source_id"]), "handoff_sha256": digest,
                        "item_count": int(count),
                        "manifest": {key: manifest[key] for key in metadata_fields if key in manifest}})
     canonical_inputs = json.dumps(sorted(inputs, key=lambda item: (
-        item["source_id"], item["handoff_sha256"], item["item_count"])),
+        item["source_id"], item["kind"], item["handoff_sha256"], item["item_count"])),
         ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256((GRAPH_MATERIALIZATION_FINGERPRINT + "\n" + canonical_inputs).encode("utf-8")).hexdigest()
+
+
+def _describe_handoff(root: str | Path) -> tuple[str, dict[str, Any], str, int]:
+    """Validate a handoff and identify its family without treating events as facilities."""
+    path = Path(root)
+    manifest_path = path / "manifest.json" if path.is_dir() else path.with_name("manifest.json")
+    try:
+        declared = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError("graph handoff manifest is unavailable") from exc
+    evidence = (
+        declared.get("entity_scope") == "evidence_event"
+        or declared.get("source_kind") == "evidence_event"
+        or declared.get("contract_version") in EVIDENCE_CONTRACTS
+    )
+    if evidence:
+        manifest, rows, digest = load_evidence_handoff(root)
+        return "evidence", manifest, digest, len(rows)
+    manifest, _rows, digest, count = iter_graph_candidate_handoff(root)
+    return "facility", manifest, digest, count
 
 
 class _MatcherStage:
@@ -82,10 +113,12 @@ class _MatcherStage:
         self.db.execute("PRAGMA synchronous=OFF")
         self.db.executescript("""
             CREATE TABLE observations(source_id TEXT NOT NULL, source_record_key TEXT NOT NULL,
-                payload TEXT NOT NULL, PRIMARY KEY(source_id, source_record_key));
+                artifact_sha256 TEXT NOT NULL, payload TEXT NOT NULL,
+                PRIMARY KEY(source_id, source_record_key, artifact_sha256));
             CREATE TABLE edges(source_id TEXT NOT NULL, source_record_key TEXT NOT NULL,
-                candidate TEXT NOT NULL, PRIMARY KEY(source_id, source_record_key, candidate));
-            CREATE INDEX edges_lookup ON edges(source_id, source_record_key);
+                artifact_sha256 TEXT NOT NULL, candidate TEXT NOT NULL,
+                PRIMARY KEY(source_id, source_record_key, artifact_sha256, candidate));
+            CREATE INDEX edges_lookup ON edges(source_id, source_record_key, artifact_sha256);
         """)
         self.rows_staged = 0
         self.edges_staged = 0
@@ -93,18 +126,30 @@ class _MatcherStage:
     def add_handoff(self, handoff_root: Path) -> None:
         manifest, candidates, _, _ = iter_graph_candidate_handoff(handoff_root)
         source_id = str(manifest["source_id"])
+        artifact_sha256 = _source_artifact_sha256(manifest)
         for item in candidates:
             key = str(item["source_record_key"])
-            observed = _observed_from_row({**item, "source_id": item.get("source_id") or source_id}, source_id)
-            self.db.execute(
-                "INSERT OR REPLACE INTO observations(source_id,source_record_key,payload) VALUES (?,?,?)",
-                (source_id, key, _observed_json(observed)),
+            observed = _observed_from_row(
+                {**item, "source_id": item.get("source_id") or source_id}, source_id,
+                fallback_artifact_sha256=artifact_sha256,
             )
-            self.rows_staged += 1
+            payload = _observed_json(observed)
+            inserted = self.db.execute(
+                "INSERT OR IGNORE INTO observations(source_id,source_record_key,artifact_sha256,payload) VALUES (?,?,?,?)",
+                (source_id, key, artifact_sha256, payload),
+            ).rowcount
+            if not inserted:
+                existing = self.db.execute(
+                    "SELECT payload FROM observations WHERE source_id=? AND source_record_key=? AND artifact_sha256=?",
+                    (source_id, key, artifact_sha256),
+                ).fetchone()
+                if existing and existing[0] != payload:
+                    raise ValueError("conflicting candidate for one source artifact record")
+            self.rows_staged += int(inserted)
         self.db.commit()
 
     def observed(self) -> Iterable[Any]:
-        for (payload,) in self.db.execute("SELECT payload FROM observations ORDER BY source_id, source_record_key"):
+        for (payload,) in self.db.execute("SELECT payload FROM observations ORDER BY source_id, source_record_key, artifact_sha256"):
             yield _observed_from_json(payload)
 
     def build_candidates(self) -> dict[str, int]:
@@ -120,13 +165,14 @@ class _MatcherStage:
             owner = endpoints[0]
             source_id = str(owner.get("source_id") or "")
             key = str(owner.get("source_record_key") or "")
+            artifact_sha256 = str(owner.get("artifact_sha256") or "")
             if not source_id or not key:
                 continue
-            self.db.execute(
-                "INSERT OR IGNORE INTO edges(source_id,source_record_key,candidate) VALUES (?,?,?)",
-                (source_id, key, json.dumps(inferred, ensure_ascii=False, separators=(",", ":"))),
-            )
-            self.edges_staged += 1
+            inserted = self.db.execute(
+                "INSERT OR IGNORE INTO edges(source_id,source_record_key,artifact_sha256,candidate) VALUES (?,?,?,?)",
+                (source_id, key, artifact_sha256, json.dumps(inferred, ensure_ascii=False, separators=(",", ":"))),
+            ).rowcount
+            self.edges_staged += inserted
         shared_name_candidates, shared_name_counters = iter_shared_business_name_candidates(
             self.observed(), preserve_native_endpoints=True,
         )
@@ -137,13 +183,14 @@ class _MatcherStage:
             owner = endpoints[0]
             source_id = str(owner.get("source_id") or "")
             key = str(owner.get("source_record_key") or "")
+            artifact_sha256 = str(owner.get("artifact_sha256") or "")
             if not source_id or not key:
                 continue
-            self.db.execute(
-                "INSERT OR IGNORE INTO edges(source_id,source_record_key,candidate) VALUES (?,?,?)",
-                (source_id, key, json.dumps(inferred, ensure_ascii=False, separators=(",", ":"))),
-            )
-            self.edges_staged += 1
+            inserted = self.db.execute(
+                "INSERT OR IGNORE INTO edges(source_id,source_record_key,artifact_sha256,candidate) VALUES (?,?,?,?)",
+                (source_id, key, artifact_sha256, json.dumps(inferred, ensure_ascii=False, separators=(",", ":"))),
+            ).rowcount
+            self.edges_staged += inserted
         self.db.commit()
         return {"rows_staged": self.rows_staged, "inferred_candidates_staged": self.edges_staged,
                 **matcher_counters, **{f"shared_business_name_{key}": value for key, value in shared_name_counters.items()}}
@@ -151,7 +198,8 @@ class _MatcherStage:
     def edge_builder(self, candidate: dict[str, Any], manifest: dict[str, Any]) -> Iterable[dict[str, Any]]:
         source_id = str(candidate.get("source_id") or manifest["source_id"])
         key = str(candidate.get("source_record_key") or "")
-        for (payload,) in self.db.execute("SELECT candidate FROM edges WHERE source_id=? AND source_record_key=? ORDER BY candidate", (source_id, key)):
+        artifact_sha256 = _source_artifact_sha256(manifest)
+        for (payload,) in self.db.execute("SELECT candidate FROM edges WHERE source_id=? AND source_record_key=? AND artifact_sha256=? ORDER BY candidate", (source_id, key, artifact_sha256)):
             yield json.loads(payload)
 
     def close(self) -> None:
@@ -182,21 +230,42 @@ def materialize_graph_corpus(
         raise ValueError("at least one graph candidate handoff is required")
     if batch_size < 1:
         raise ValueError("batch_size must be positive")
+    described = [(root, *_describe_handoff(root)) for root in handoffs]
+    if private_target and any(not _has_actual_artifact_sha256(manifest)
+                              for _, _kind, manifest, _digest, _count in described):
+        raise ValueError("private graph corpus requires source artifact sha256 provenance")
+    facility_roots = [root for root, kind, _manifest, _digest, _count in described if kind == "facility"]
+    evidence_roots = [root for root, kind, _manifest, _digest, _count in described if kind == "evidence"]
+    if len({(str(manifest["source_id"]), kind, digest)
+            for _, kind, manifest, digest, _ in described}) != len(described):
+        raise ValueError("duplicate handoff in graph corpus")
     fingerprint = graph_corpus_materialization_fingerprint(handoffs)
     completed = [completed_edge_materialization(
         database_url, root, private_target=private_target, fingerprint=fingerprint,
-    ) for root in handoffs]
+    ) for root in facility_roots]
+
+    # Evidence events remain their own typed family, are never staged as
+    # facilities, and are ingested through the private-target guarded importer.
+    evidence_results = [import_evidence_events(
+        database_url, root, private_target=private_target, batch_size=batch_size,
+        on_batch_committed=on_batch_committed,
+    ) for root in evidence_roots]
     if all(item is not None for item in completed):
-        return {"status": "already_present", "materialization_fingerprint": fingerprint,
-                "imports": completed, "matcher": {"skipped": "identical complete corpus"}}
+        status = "already_present" if all(item.get("status") == "already_present" for item in evidence_results) else "completed"
+        imports = [*completed, *[{
+            "source_id": result.get("source_id"), "status": result.get("status"),
+            "item_count": result.get("item_count"), "kind": "evidence",
+        } for result in evidence_results]]
+        return {"status": status, "materialization_fingerprint": fingerprint,
+                "imports": imports, "matcher": {"skipped": "identical complete facility corpus"}}
 
     matcher = _MatcherStage()
     try:
-        for root in handoffs:
+        for root in facility_roots:
             matcher.add_handoff(root)
         matcher_summary = matcher.build_candidates()
         results = []
-        for root in handoffs:
+        for root in facility_roots:
             result = import_graph_candidates(
                 database_url, root, batch_size=batch_size,
                 private_target=private_target, edge_builder=matcher.edge_builder,
@@ -208,7 +277,10 @@ def materialize_graph_corpus(
                             "edge_inserted_count": result.get("edge_inserted_count"),
                             "edge_updated_count": result.get("edge_updated_count"),
                             "edge_unchanged_count": result.get("edge_unchanged_count"),
-                            "persisted_edge_counts": result.get("persisted_edge_counts")})
+                            "persisted_edge_counts": result.get("persisted_edge_counts"), "kind": "facility"})
+        results.extend({"source_id": result.get("source_id"), "status": result.get("status"),
+                        "item_count": result.get("item_count"), "kind": "evidence"}
+                       for result in evidence_results)
         return {"status": "completed", "materialization_fingerprint": fingerprint,
                 "imports": results, "matcher": matcher_summary}
     finally:
@@ -383,7 +455,7 @@ def _private_state(payload: dict[str, Any]) -> bool:
 
 def _handoffs(roots: Iterable[str | Path], source_ids: set[str]) -> list[tuple[str, str, Path]]:
     """Find explicit graph/evidence handoff roots without reading rows."""
-    found: dict[tuple[str, str], tuple[str, str, Path]] = {}
+    found: dict[tuple[str, str, str], tuple[str, str, Path]] = {}
     for value in roots:
         root = Path(value)
         if not root.exists():
@@ -400,11 +472,22 @@ def _handoffs(roots: Iterable[str | Path], source_ids: set[str]) -> list[tuple[s
                 continue
             handoff_root = manifest_path.parent
             has_records = (handoff_root / "records.jsonl").is_file()
-            has_graph_records = (handoff_root / "graph-candidates" / "records.jsonl").is_file()
+            has_graph_records = (
+                (handoff_root / "graph-candidates" / "records.jsonl").is_file()
+                or (handoff_root / "graph-candidates.jsonl").is_file()
+                or (handoff_root / "graph-candidates" / "graph-candidates.jsonl").is_file()
+            )
             if not (has_records or has_graph_records):
                 continue
-            kind = "evidence" if payload.get("entity_scope") == "evidence_event" or payload.get("contract_version") in EVIDENCE_CONTRACTS else "facility"
-            key = (source_id, kind)
+            kind = "evidence" if (
+                payload.get("entity_scope") == "evidence_event"
+                or payload.get("source_kind") == "evidence_event"
+                or payload.get("contract_version") in EVIDENCE_CONTRACTS
+            ) else "facility"
+            artifact_key = _source_artifact_sha256(payload)
+            if not artifact_key:
+                artifact_key = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+            key = (source_id, kind, artifact_key)
             # Prefer the most recently declared artifact without exposing its
             # path in reports.  Stable lexical ordering breaks ties.
             existing = found.get(key)
@@ -472,12 +555,37 @@ def build_report(roots: Iterable[str | Path], *, selected_sources: Iterable[str]
     }
 
 
+def discover_graph_handoffs(roots: Iterable[str | Path], *,
+                           selected_sources: Iterable[str] | None = None) -> list[tuple[str, str, Path]]:
+    """Discover the latest private facility/evidence handoff for each source family."""
+    report = build_report(roots, selected_sources=selected_sources)
+    source_ids = {item["source_id"] for item in report["sources"]}
+    return _handoffs(roots, source_ids)
+
+
+def materialize_discovered_graph_corpus(
+    roots: Iterable[str | Path], *, database_url: str,
+    private_target: tuple[str, str], selected_sources: Iterable[str] | None = None,
+    batch_size: int = 250,
+) -> dict[str, Any]:
+    """Production refresh entry point: discover all source families, then match/import."""
+    handoffs = discover_graph_handoffs(roots, selected_sources=selected_sources)
+    if not handoffs:
+        raise ValueError("no private graph candidate or evidence handoffs were discovered")
+    return materialize_graph_corpus(
+        database_url, [path for _, _, path in handoffs],
+        private_target=private_target, batch_size=batch_size,
+    )
+
+
 def run_rehearsal(
     roots: Iterable[str | Path],
     *,
     selected_sources: Iterable[str] | None = None,
     database_url: str = "",
     disposable_db: bool = False,
+    private_target: tuple[str, str] | None = None,
+    batch_size: int = 250,
     edge_builder: ConnectionEdgeBuilder | None = None,
 ) -> dict[str, Any]:
     report = build_report(roots, selected_sources=selected_sources)
@@ -491,6 +599,25 @@ def run_rehearsal(
     }
     report["database"] = {"attempted": bool(database_url), "imports": [], "public_rows": 0}
     if database_url:
+        if private_target is not None:
+            if disposable_db:
+                raise ValueError("choose either disposable or configured private target")
+            result = materialize_graph_corpus(
+                database_url, [path for _, _, path in handoffs],
+                private_target=private_target, batch_size=batch_size,
+            )
+            report["database"].update({
+                "status": result.get("status"),
+                "materialization_fingerprint": result.get("materialization_fingerprint"),
+                "imports": result.get("imports", []),
+                "matcher": result.get("matcher", {}),
+                "public_rows": 0,
+            })
+            report["database"]["completed"] = sum(
+                item.get("status") in {"completed", "already_present"}
+                for item in report["database"]["imports"])
+            report["database"]["blocked"] = 0
+            return report
         if not disposable_db:
             raise ValueError("database rehearsal requires disposable_db=True")
         phases: dict[str, float] = {}

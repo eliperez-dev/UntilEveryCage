@@ -33,6 +33,22 @@ class D6GraphEdgeScoringTests(unittest.TestCase):
         self.assertEqual(edge["from"]["identity_scope"], "source_scoped")
         self.assertEqual(edge["publication_status"], "not_eligible")
 
+    def test_source_ref_preserves_optional_artifact_version(self):
+        result = score_connection([self.registry.signal("source_assertion", details={"assertion": "operator"})], registry=self.registry)
+        ref = SourceRef("it.registry", source_record_key="native-key", artifact_sha256="A" * 64)
+        edge = build_connection_edge(
+            from_ref=EntityRef("organization", "it.registry", "vat", "org-native"),
+            to_ref=EntityRef("facility", "it.registry", "facility_id", "facility-native"),
+            relationship_type="operator", scoring=result,
+            supporting_source_refs=[ref], observed_at="2026-10-23T00:00:00Z",
+        )
+        self.assertEqual(edge["supporting_source_refs"][0], {
+            "source_id": "it.registry", "role": "supporting",
+            "source_record_key": "native-key", "artifact_sha256": "a" * 64,
+        })
+        with self.assertRaises(ValueError):
+            SourceRef("it.registry", source_record_key="native-key", artifact_sha256="not-a-sha")
+
     def test_name_postal_anchor_compounds_with_independent_groups(self):
         anchored = score_connection([
             self.registry.signal("organization_name_normalized"),

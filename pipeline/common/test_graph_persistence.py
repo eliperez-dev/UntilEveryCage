@@ -84,7 +84,7 @@ class GraphPersistenceContractTests(unittest.TestCase):
         self.assertEqual(edge["relationship_type"], "shared_business_name")
         self.assertEqual(edge["connection_type"], "inferred")
         self.assertEqual(edge["confidence_band"], "possible")
-        self.assertEqual(edge["ruleset_version"], "d6-signal-rules-v2")
+        self.assertEqual(edge["ruleset_version"], "d7-signal-rules-v3")
         self.assertEqual([item["source_record_key"] for item in edge["supporting_source_refs"]], ["record-1", "record-2"])
         self.assertNotIn("operator", edge["relationship_type"])
         self.assertNotIn("Tyson", json.dumps(edge))
