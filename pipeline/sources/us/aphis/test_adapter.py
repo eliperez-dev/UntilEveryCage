@@ -172,6 +172,18 @@ class AphisAdapterTests(unittest.TestCase):
         self.assertIn("Cats", normalized["animal_use_fields_present"])
         self.assertEqual(normalized["awa_coverage_state"], "source_profile_only_unknown_completeness")
 
+    def test_event_linkage_targets_source_qualified_registration_aliases(self):
+        record = AphisPublicSearchAdapter().parse_bytes((ROOT / "fixtures/annual_reports.csv").read_bytes())["accepted"][0]
+        links = record["normalized"]["linkage_candidates"]
+        self.assertTrue(links)
+        self.assertTrue(all(link["target_source_id"] == "us.aphis" for link in links))
+        link_types = {link["identifier_type"] for link in links}
+        self.assertTrue(link_types.issubset({
+            "aphis_establishment_id", "aphis_certificate_number", "aphis_customer_number",
+            "aphis_customer_number_x", "aphis_customer_number_y",
+        }))
+        self.assertNotIn("inspection_report_id", link_types)
+
     def test_amendment_versions_are_distinct_evidence(self):
         lines = (ROOT / "fixtures/annual_reports.csv").read_text(encoding="utf-8").splitlines()
         lines[0] += ",Amendment Number"

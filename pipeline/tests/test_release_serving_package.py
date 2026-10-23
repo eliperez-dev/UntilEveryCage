@@ -20,6 +20,7 @@ class ReleaseServingPackageTests(unittest.TestCase):
         self.assertIn("uec.graph_public_projection_endpoints", relations)
         self.assertIn("uec.graph_public_projection_anchors", relations)
         self.assertIn("uec.graph_public_projection_evidence_refs", relations)
+        self.assertIn("uec.graph_public_projection_org_labels", relations)
         self.assertIn("uec.graph_public_projection_evidence_refs", relations)
         self.assertTrue(relations.isdisjoint(serving.FORBIDDEN_DATA_RELATIONS))
         self.assertTrue({"uec.graph_connection_edges", "uec.graph_record_release_bindings",
@@ -38,6 +39,8 @@ class ReleaseServingPackageTests(unittest.TestCase):
         self.assertIn("evidence_source_record_id", evidence_refs.columns)
         self.assertNotIn("event_payload", evidence_refs.columns)
         self.assertIn("uec.graph_public_evidence_references_current", serving.API_RELATIONS)
+        self.assertIn("uec.graph_public_organization_labels_current", serving.API_RELATIONS)
+        self.assertIn("uec.graph_source_name_assertions", serving.FORBIDDEN_DATA_RELATIONS)
         self.assertIn("uec.source_rights_decisions", relations)
         source_records = next(spec for spec in specs if spec.relation == "uec.source_records")
         self.assertIn("NULL::text", source_records.query)
@@ -49,6 +52,9 @@ class ReleaseServingPackageTests(unittest.TestCase):
         prepare = importlib.util.module_from_spec(prepare_spec)
         prepare_spec.loader.exec_module(prepare)
         self.assertIn("uec.source_rights_decisions", prepare.RESTORE_ORDER)
+        labels = next(spec for spec in specs if spec.relation == "uec.graph_public_projection_org_labels")
+        self.assertEqual(labels.columns, ("projection_id", "endpoint_id", "label_source_record_id", "display_name", "assertion_role"))
+        self.assertIn("uec.graph_public_projection_org_labels", prepare.RESTORE_ORDER)
         evidence_refs = next(spec for spec in specs if spec.relation == "uec.graph_public_projection_evidence_refs")
         self.assertIn("evidence_source_record_id", evidence_refs.columns)
         self.assertNotIn("event_payload", evidence_refs.columns)
@@ -62,7 +68,7 @@ class ReleaseServingPackageTests(unittest.TestCase):
 
     def test_manifest_is_reproducible_and_labels_redaction(self):
         manifest = serving.package_manifest(release_ids=["v0-public"], migration_inventory_sha256="a" * 64, table_counts={"uec.releases": 1}, schema_artifacts={"pre_data": "b" * 64})
-        self.assertEqual(manifest["schema_version"], "uec-serving-package-v6")
+        self.assertEqual(manifest["schema_version"], "uec-serving-package-v7")
         self.assertEqual(manifest["package_state"], "selected_public_serving_derivative")
         self.assertEqual(manifest["package_sha256"], serving.canonical_sha256({key: value for key, value in manifest.items() if key != "package_sha256"}))
         self.assertIn("redacted", manifest["redaction_notice"])

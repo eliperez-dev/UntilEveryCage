@@ -12,7 +12,7 @@ import psycopg
 from pipeline.common.graph_persistence import _validate_private_graph_writer, require_private_graph_target
 
 
-PROJECTION_VERSION = "graph-release-projection-v2"
+PROJECTION_VERSION = "graph-release-projection-v3"
 PROJECTION_PLANNER_GUARD = "SET LOCAL enable_nestloop=off"
 _SQL_PATH = Path(__file__).resolve().parents[1] / "sql" / "graph_public_edge_ctes.sql"
 EDGE_CTES = _SQL_PATH.read_text(encoding="utf-8")
@@ -33,13 +33,50 @@ def _python_endpoint_select(release_id: str) -> tuple[str, dict[str, str]]:
     return query, {"release_id": release_id}
 
 
+def _python_organization_label_select(release_id: str) -> tuple[str, dict[str, str]]:
+    query = (f"WITH {EDGE_CTES.replace('$1', '%(release_id)s')} "
+             "SELECT DISTINCT ON (endpoint.public_entity_id) endpoint.source_id,endpoint.identifier_type,"
+             "endpoint.source_identifier,endpoint.entity_type,endpoint.public_entity_id,"
+             "assertion.source_record_id,assertion.assertion_value,assertion.assertion_role "
+             "FROM eligible_source_endpoints endpoint "
+             "JOIN uec.graph_source_name_assertions assertion "
+             "  ON assertion.source_id=endpoint.source_id AND assertion.organization_id=endpoint.public_entity_id "
+             " AND assertion.assertion_role IN ('legal','business','operator') "
+             " AND lower(regexp_replace(assertion.source_field,'^.*[.]','')) IN "
+             "  ('legal_name','business_name','registered_business_name','company_name','organization_name',"
+             "   'organisation_name','operator_name','operator_company_name','raison_sociale','registered_name') "
+             "JOIN uec.source_entity_identifiers business_id "
+             "  ON business_id.identifier_id=assertion.identifier_id "
+             " AND business_id.source_id=endpoint.source_id AND business_id.entity_type='organization' "
+             " AND business_id.organization_id=endpoint.public_entity_id "
+             " AND business_id.identifier_type=endpoint.identifier_type "
+             " AND business_id.source_identifier=endpoint.source_identifier "
+             "JOIN uec.source_entity_identifiers facility_assertion "
+             "  ON facility_assertion.source_record_id=assertion.source_record_id "
+             " AND facility_assertion.source_id=assertion.source_id "
+             " AND facility_assertion.entity_type='facility' "
+             "JOIN uec.map_facilities_public_discovery_read_model approved "
+             "  ON approved.release_id=%(release_id)s "
+             " AND approved.source_record_id=assertion.source_record_id "
+             " AND approved.facility_id=facility_assertion.facility_id "
+             "WHERE endpoint.entity_type='organization' AND btrim(assertion.assertion_value)<>'' "
+             "ORDER BY endpoint.public_entity_id,CASE assertion.assertion_role "
+             "  WHEN 'legal' THEN 0 WHEN 'business' THEN 1 ELSE 2 END,assertion.assertion_value")
+    return query, {"release_id": release_id}
+
+
 def _python_aphis_reference_select(release_id: str) -> tuple[str, dict[str, str]]:
-    """Select typed APHIS references only for independently approved event records.
+    """Select typed APHIS refs through selected-release review and artifact-rights gates.
 
     The event payload and source-native identifiers are used only to establish
     the exact source-scoped match. Neither is part of the selected output.
     """
-    query = (f"WITH {EDGE_CTES.replace('$1', '%(release_id)s')} "
+    query = (f"WITH {EDGE_CTES.replace('$1', '%(release_id)s')}, "
+             "latest_source_rights AS MATERIALIZED ("
+             "  SELECT DISTINCT ON (source_id,profile,release_id,artifact_id) * "
+             "  FROM uec.source_rights_decisions "
+             "  ORDER BY source_id,profile,release_id,artifact_id,decided_at DESC,source_rights_decision_id DESC"
+             ") "
              "SELECT DISTINCT ON (endpoint.public_entity_id,event.source_record_id) "
              "endpoint.source_id,endpoint.identifier_type,endpoint.source_identifier,"
              "endpoint.entity_type,endpoint.public_entity_id,event.source_record_id,event.source_id,"
@@ -58,15 +95,12 @@ def _python_aphis_reference_select(release_id: str) -> tuple[str, dict[str, str]
              "  ON review.source_record_id=event.source_record_id "
              " AND review.release_id=%(release_id)s "
              "JOIN uec.raw_artifacts artifact ON artifact.artifact_id=evidence_record.artifact_id "
-             "JOIN uec.source_rights_decisions rights ON rights.source_id=event.source_id "
+             "JOIN latest_source_rights rights ON rights.source_id=event.source_id "
              " AND rights.profile=(SELECT profile FROM uec.releases WHERE release_id=%(release_id)s) "
              " AND rights.release_id=%(release_id)s AND rights.artifact_id=artifact.artifact_id "
              " AND rights.artifact_sha256=artifact.sha256 AND rights.redistribution_status='cleared' "
              "WHERE endpoint.source_id='us.aphis' AND endpoint.entity_type='facility' "
              "  AND link.identity_scope='source_scoped' "
-             "  AND event.release_id=%(release_id)s AND event.storage_state='released' "
-             "  AND event.review_state='accepted' AND event.privacy_status='passed' "
-             "  AND event.publication_status='released' "
              "  AND review.publication_eligible=true AND review.privacy_screening_status='passed' "
              "  AND review.factual_review_status<>'rejected' AND review.maintainer_approval='approved' "
              "  AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted restricted "
@@ -103,6 +137,28 @@ def _insert_endpoint_batch(connection: Any, projection_id: uuid.UUID,
                    VALUES (%s,%s,%s,%s) ON CONFLICT DO NOTHING""", anchors,
             )
     return len(endpoints), len(anchors)
+
+
+def _insert_organization_label_batch(connection: Any, projection_id: uuid.UUID,
+                                      rows: Iterable[Any],
+                                      endpoint_ids: dict[tuple[str, str, str, str, uuid.UUID], uuid.UUID]) -> int:
+    labels: list[tuple[Any, ...]] = []
+    for row in rows:
+        key = (str(row[0]), str(row[1]), str(row[2]), str(row[3]), uuid.UUID(str(row[4])))
+        endpoint_id = endpoint_ids.get(key)
+        source_record_id, display_name, role = uuid.UUID(str(row[5])), row[6], row[7]
+        if endpoint_id is None or not isinstance(display_name, str) or not display_name.strip():
+            continue
+        labels.append((projection_id, endpoint_id, source_record_id, display_name.strip(), str(role)))
+    if labels:
+        with connection.cursor() as cursor:
+            cursor.executemany(
+                """INSERT INTO uec.graph_public_projection_org_labels
+                   (projection_id,endpoint_id,label_source_record_id,display_name,assertion_role)
+                   VALUES (%s,%s,%s,%s,%s) ON CONFLICT (projection_id,endpoint_id) DO NOTHING""",
+                labels,
+            )
+    return len(labels)
 
 
 def _json_value(value: Any) -> Any:
@@ -315,7 +371,7 @@ def build_release_projection(database_url: str, release_id: str, *,
                  manifest_sha256, suppression_generation),
             )
         connection.commit()
-        count = endpoint_count = anchor_count = evidence_reference_count = 0
+        count = endpoint_count = anchor_count = evidence_reference_count = organization_label_count = 0
         endpoint_ids: dict[tuple[str, str, str, str, uuid.UUID], uuid.UUID] = {}
         try:
             with connection.transaction():
@@ -333,6 +389,14 @@ def build_release_projection(database_url: str, release_id: str, *,
                     endpoint_count += inserted_endpoints
                     anchor_count += inserted_anchors
                 endpoint_cursor.close()
+                label_cursor = connection.cursor(name="uec_graph_projection_organization_labels")
+                label_query, label_parameters = _python_organization_label_select(release_id)
+                label_cursor.execute(label_query, label_parameters)
+                while batch := label_cursor.fetchmany(batch_size):
+                    organization_label_count += _insert_organization_label_batch(
+                        connection, projection_id, batch, endpoint_ids,
+                    )
+                label_cursor.close()
                 evidence_cursor = connection.cursor(name="uec_graph_projection_aphis_references")
                 evidence_query, evidence_parameters = _python_aphis_reference_select(release_id)
                 evidence_cursor.execute(evidence_query, evidence_parameters)
@@ -369,5 +433,6 @@ def build_release_projection(database_url: str, release_id: str, *,
             "projection_version": PROJECTION_VERSION,
             "endpoint_count": endpoint_count, "anchor_count": anchor_count,
             "aphis_evidence_reference_count": evidence_reference_count,
+            "organization_label_count": organization_label_count,
             "edge_generation": edge_generation,
             "suppression_generation": suppression_generation}

@@ -7,4 +7,13 @@ describe('public graph fixture contract', () => {
     expect(publicGraphConnections.map(row => row.confidence_band)).toEqual(['exact', 'high', 'medium', 'low']);
     for (const row of publicGraphConnections) expect(graphConnectionSchema.safeParse(row).success).toBe(true);
   });
+
+  it('accepts a selected-release safe endpoint label while keeping it optional for older responses', () => {
+    const edge = publicGraphConnections[0];
+    expect(graphConnectionSchema.safeParse(edge).success).toBe(true);
+    expect(graphConnectionSchema.safeParse({
+      ...edge,
+      to: { ...edge.to, display_name: 'Source-supported organization name' },
+    }).success).toBe(true);
+  });
 });

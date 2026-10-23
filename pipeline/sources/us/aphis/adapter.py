@@ -380,16 +380,23 @@ def _record(profile: str, row: dict[str, Any], line: int) -> dict[str, Any]:
         "event_type": evidence_type,
         "linkage_candidates": [
             {
-                "identifier_type": key,
+                "identifier_type": target_type,
                 "value": value,
                 "identity_scope": "source_scoped",
                 "target_source_id": "us.aphis",
                 "match_method": "exact_source_identifier",
                 "connection_type": "exact",
                 "confidence": None,
-                "signal_bundle": [{"kind": "source_identifier", "identifier_type": key}],
+                "signal_bundle": [{"kind": "source_identifier", "identifier_type": target_type}],
             }
-            for key, value in source_native_ids.items() if key != "inspection_report_id"
+            for key, value in source_native_ids.items()
+            if (target_type := {
+                "aphis_license_number": "aphis_establishment_id",
+                "certificate_number": "aphis_certificate_number",
+                "customer_number": "aphis_customer_number",
+                "customer_number_x": "aphis_customer_number_x",
+                "customer_number_y": "aphis_customer_number_y",
+            }.get(key))
         ],
         "facility_identity_state": "not_asserted",
         "event_identity_unresolved": profile == "inspections" and native_inspection_id is None,

@@ -10,6 +10,7 @@ export const graphEndpointSchema = z.object({
   source_id: z.string().min(1),
   identifier_type: z.string().min(1),
   source_identifier: z.string().min(1),
+  display_name: z.string().nullable().optional(),
 }).strict();
 
 export const graphConnectionSchema = z.object({

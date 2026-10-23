@@ -116,7 +116,7 @@
 
   function endpointLabel(edge: PublicGraphConnection): string {
     const endpoint = otherEndpoint(edge);
-    if (endpoint.entity_type === 'organization') return 'Organization';
+    if (endpoint.entity_type === 'organization') return endpoint.display_name ?? 'Organization';
     if (!endpoint.entity_id) return 'Facility record';
     return names[endpoint.entity_id] ?? 'Facility record';
   }

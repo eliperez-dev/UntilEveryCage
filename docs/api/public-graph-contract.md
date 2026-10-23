@@ -33,11 +33,14 @@ and `limit`. Entity search additionally accepts `q` and `entity_type`.
 
 The evidence route accepts `profile`, optional `release_id`, `cursor`, and
 `limit`. It returns only typed APHIS annual-report and inspection references
-whose evidence source record is itself present for that facility in the
-selected release. The result contains source ID, event type/date or year,
-observation date, fixed APHIS source URL, and exact source-identifier match
-method. It does not expose event IDs, source identifiers, event payloads, or
-report counts. Private or candidate evidence is never used as a fallback.
+whose evidence source record has release-scoped publication approval, passed
+privacy screening, and exact artifact-rights clearance, and whose matched
+facility is eligible in the same release. The underlying event and link rows
+remain private and are not facility release members; they do not change
+facility release membership. The result contains source ID, event type/date or
+year, observation date, fixed APHIS source URL, and exact source-identifier
+match method. It does not expose event IDs, source identifiers, event payloads,
+or report counts. Private or candidate evidence is never used as a fallback.
 
 Effective entity-search inputs are `profile`, `q`, `entity_type`, `cursor` and
 `limit`; connection-specific filters do not apply to that route. Neighborhood
@@ -63,13 +66,21 @@ repeated candidate pairs and ambiguous release mappings are excluded. This
 adds graph identifier metadata only and leaves review/privacy/release states
 unchanged. Inferred facility-to-facility edges require both endpoints to
 resolve independently through that release. A public business-organization
-node is eligible only when a VAT-class identifier and an eligible facility
-assertion occur on the same approved source record. Exact organization edges
-remain limited to source-reported operator relationships; inferred edges may
-connect independently eligible business nodes when their evidence records
-also pass the selected-release support gate. These edges are not ownership
-claims. Organization nodes are returned with an opaque source-scoped ID and no
-name or identifier value.
+node requires an explicitly typed business identifier and an explicit legal,
+business, or operator name assertion from an organization-specific source field
+bound to that exact source-record organization identifier. Generic facility,
+trading-name, DBA, and brand fields do not label an organization. A same-record
+facility assertion must also be eligible in the selected release; VAT alone
+(including Italian VAT) never qualifies an organization. Natural-person
+identifiers and name-only operator identifiers do not qualify. Exact organization edges remain limited
+to source-reported operator relationships; inferred edges may connect
+independently eligible business nodes when their evidence records also pass
+the selected-release support gate. These edges are not ownership claims.
+Organization nodes expose only a selected-release label from an asserted name
+and an opaque source-scoped ID; native identifiers and source-field names
+remain private.
+Connection endpoints may include that same safe label when available; the
+entity summary search returns the same release-qualified label.
 Natural-person fiscal-code identifiers are never exposed. The DTO's required
 `source_identifier` string is an opaque `entity:<UUID>` token derived from the
 release-qualified canonical endpoint UUID; raw source identifier values remain

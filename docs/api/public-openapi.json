@@ -555,7 +555,7 @@
       "get": {
         "operationId": "listGraphEntities",
         "summary": "Find public graph entities",
-        "description": "Public facilities and eligible organizations from the selected eligible profile release.",
+        "description": "Public facilities and eligible organizations from the selected eligible profile release. Organization display names are returned only when an exact source-qualified business identifier and same-record organization-name assertion pass selected-release publication, privacy, rights and restriction gates.",
         "tags": [
           "Graph"
         ],
@@ -678,7 +678,7 @@
       "get": {
         "operationId": "getGraphEvidenceReferences",
         "summary": "Read approved APHIS evidence references for a facility",
-        "description": "Returns typed annual-report and inspection references only when the evidence source record and linked APHIS registration record are both present in the selected release and pass current privacy and suppression checks. No event payload, native source identifier, event identifier, or animal count is returned. Private and unreleased events are not fallback results.",
+        "description": "Returns typed annual-report and inspection references only when the evidence source record passes selected-release publication review, privacy screening, exact artifact-rights, and restriction checks, and the linked APHIS facility is eligible in that release. Event and link rows remain private and are not facility release members. No event payload, native source identifier, event identifier, or animal count is returned. Private or unapproved evidence is never a fallback result.",
         "tags": ["Graph"],
         "parameters": [
           { "$ref": "#/components/parameters/entity_idPath" },
@@ -1474,6 +1474,10 @@
           },
           "source_identifier": {
             "type": "string"
+          },
+          "display_name": {
+            "type": ["string", "null"],
+            "description": "Optional organization name from the selected-release safe label projection; null or absent for facilities and unlabeled organizations."
           }
         },
         "additionalProperties": false

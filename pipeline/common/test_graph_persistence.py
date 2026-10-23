@@ -6,10 +6,12 @@ from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
 
+from pipeline.common import graph_persistence as graph_module
 from pipeline.common.graph_persistence import (
     GraphPersistenceError,
     build_candidate_connection_edges,
     _matcher_edge,
+    _aphis_facility_identifier_aliases,
     _observed_at,
     _approved_facility_for_source_record,
     _ITALY_CANONICAL_BINDING_CTES,
@@ -59,6 +61,54 @@ def candidate(source_id="synthetic.graph"):
 
 
 class GraphPersistenceContractTests(unittest.TestCase):
+    def test_evidence_import_supports_private_writer_target_without_disposable_bypass(self):
+        with patch.object(graph_module, "require_private_graph_target") as private_gate, \
+             patch.object(graph_module, "require_disposable_graph_database") as disposable_gate:
+            with self.assertRaisesRegex(GraphPersistenceError, "batch size must be positive"):
+                graph_module.import_evidence_events(
+                    "postgresql://127.0.0.1:55433/uec_test_graph",
+                    ".", private_target=("uec_test_graph", "private-graph-materialization-v1"),
+                    batch_size=0,
+                )
+        private_gate.assert_called_once()
+        disposable_gate.assert_not_called()
+        with self.assertRaisesRegex(GraphPersistenceError, "choose either"):
+            graph_module.import_evidence_events(
+                "postgresql://127.0.0.1:55433/uec_test_graph", ".",
+                disposable_db=True, private_target=("uec_test_graph", "private-graph-materialization-v1"),
+                batch_size=0,
+            )
+
+    def test_aphis_event_identifiers_map_to_distinct_registration_aliases(self):
+        normalized = {"source_native_ids": {
+            "aphis_license_number": "license-private",
+            "certificate_number": "certificate-private",
+            "customer_number": "customer-private",
+            "customer_number_x": "customer-x-private",
+            "customer_number_y": "customer-y-private",
+            "inspection_report_id": "report-private",
+        }}
+        aliases = _aphis_facility_identifier_aliases(normalized)
+        self.assertEqual(aliases, [
+            ("aphis_certificate_number", "certificate-private"),
+            ("aphis_customer_number", "customer-private"),
+            ("aphis_customer_number_x", "customer-x-private"),
+            ("aphis_customer_number_y", "customer-y-private"),
+        ])
+        self.assertEqual(_aphis_facility_identifier_aliases({"source_native_ids": {"customer_number": " "}}), [])
+        self.assertEqual(
+            _aphis_facility_identifier_aliases({"establishment_id": "aphis-registration:12-R-3456"}),
+            [("aphis_certificate_number", "12-R-3456")],
+        )
+        self.assertEqual(
+            _aphis_facility_identifier_aliases({"establishment_id": "aphis-registration:12-A-3456"}),
+            [],
+        )
+        self.assertEqual(
+            _aphis_facility_identifier_aliases({"source_native_ids": {"aphis_license_number": "12-F-3456"}}),
+            [("aphis_certificate_number", "12-F-3456")],
+        )
+
 
     def test_shared_business_name_candidate_persists_as_inferred_non_operator_relation(self):
         raw = {
@@ -84,7 +134,7 @@ class GraphPersistenceContractTests(unittest.TestCase):
         self.assertEqual(edge["relationship_type"], "shared_business_name")
         self.assertEqual(edge["connection_type"], "inferred")
         self.assertEqual(edge["confidence_band"], "possible")
-        self.assertEqual(edge["ruleset_version"], "d6-signal-rules-v2")
+        self.assertEqual(edge["ruleset_version"], "d7-signal-rules-v3")
         self.assertEqual([item["source_record_key"] for item in edge["supporting_source_refs"]], ["record-1", "record-2"])
         self.assertNotIn("operator", edge["relationship_type"])
         self.assertNotIn("Tyson", json.dumps(edge))
@@ -591,6 +641,35 @@ class GraphPersistenceContractTests(unittest.TestCase):
         support = edge["supporting_source_refs"][0]
         self.assertEqual(support["source_record_id"], str(record_id))
         self.assertEqual(support["source_record_key"], row["source_record_key"])
+
+    def test_inferred_edge_identity_tracks_artifact_version_not_just_native_key(self):
+        row = candidate()
+        row["relationships"] = [{
+            "relationship_type": "operator", "from_organization_ref": "organization:1",
+            "target_facility_ref": "facility:1", "assertion_status": "asserted",
+            "connection_type": "inferred",
+            "signal_bundle": [{"name": "organization_name_normalized"}, {"name": "postal_match"}],
+        }]
+        row["organizations"] = [{"local_ref": "organization:1", "source_identifier": {
+            "identifier_type": "vat", "value": "IT-1", "identity_scope": "source_scoped"}}]
+        key = row["source_record_key"]
+        sha_a, sha_b = "a" * 64, "b" * 64
+        id_a, id_b = uuid.uuid4(), uuid.uuid4()
+        edge_a = build_candidate_connection_edges(
+            row, {"source_id": "synthetic.graph", "checksum_sha256": sha_a},
+            source_record_ids={("synthetic.graph", key, sha_a): id_a})[0]
+        edge_b = build_candidate_connection_edges(
+            row, {"source_id": "synthetic.graph", "checksum_sha256": sha_b},
+            source_record_ids={("synthetic.graph", key, sha_b): id_b})[0]
+        duplicate_a = build_candidate_connection_edges(
+            row, {"source_id": "synthetic.graph", "checksum_sha256": sha_a},
+            source_record_ids={("synthetic.graph", key, sha_a): id_a})[0]
+        self.assertNotEqual(edge_a["edge_key"], edge_b["edge_key"])
+        self.assertEqual(edge_a["edge_key"], duplicate_a["edge_key"])
+        self.assertEqual(edge_a["supporting_source_refs"][0]["source_record_id"], str(id_a))
+        self.assertEqual(edge_b["supporting_source_refs"][0]["source_record_id"], str(id_b))
+        self.assertEqual(edge_a["supporting_source_refs"][0]["artifact_sha256"], sha_a)
+        self.assertEqual(edge_b["supporting_source_refs"][0]["artifact_sha256"], sha_b)
 
 
 if __name__ == "__main__":

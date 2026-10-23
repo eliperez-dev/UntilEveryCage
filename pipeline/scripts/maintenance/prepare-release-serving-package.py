@@ -30,6 +30,7 @@ RESTORE_ORDER = (
     "uec.graph_public_projection_builds", "uec.graph_public_projection_endpoints",
     "uec.graph_public_projection_edges", "uec.graph_public_projection_edge_supports",
     "uec.graph_public_projection_anchors", "uec.graph_public_projection_evidence_refs",
+    "uec.graph_public_projection_org_labels",
     "uec.graph_projection_generation",
 )
 

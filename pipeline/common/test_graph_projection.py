@@ -21,6 +21,8 @@ from pipeline.common.graph_projection import (
     _python_endpoint_select,
     _python_edge_select,
     _python_aphis_reference_select,
+    _python_organization_label_select,
+    _insert_organization_label_batch,
     _insert_aphis_reference_batch,
     sanitize_signal_explanation,
 )
@@ -43,7 +45,10 @@ class GraphProjectionTests(unittest.TestCase):
         self.assertIn("ambiguous_record_facilities", EDGE_CTES)
         self.assertIn("ambiguous_source_endpoints", EDGE_CTES)
         self.assertIn("asserted_facility.facility_id=rf.facility_id", EDGE_CTES)
-        self.assertIn("i.identifier_type IN ('vat','vat_number','italian_vat','p_iva')", EDGE_CTES)
+        self.assertIn("i.identifier_type IN (", EDGE_CTES)
+        self.assertIn("business_name.assertion_role IN ('legal','business','operator')", EDGE_CTES)
+        self.assertNotIn("operator-name'", EDGE_CTES)
+        self.assertIn("graph_source_name_assertions", EDGE_CTES)
         self.assertNotIn("fiscal_code", EDGE_CTES)
         self.assertNotIn("codice_fiscale", EDGE_CTES)
 
@@ -148,18 +153,18 @@ class GraphProjectionTests(unittest.TestCase):
         self.assertEqual(query.count("%(release_id)s"), 2)
         self.assertEqual(parameters, {"release_id": "selected-release"})
 
-    def test_aphis_reference_selector_is_exact_and_release_gated(self):
+    def test_aphis_reference_selector_is_exact_and_selected_release_gated(self):
         query, parameters = _python_aphis_reference_select("selected-release")
-        self.assertIn("event.release_id=%(release_id)s", query)
-        self.assertIn("event.storage_state='released'", query)
-        self.assertIn("event.review_state='accepted'", query)
-        self.assertIn("event.privacy_status='passed'", query)
-        self.assertIn("event.publication_status='released'", query)
+        self.assertNotIn("event.release_id", query)
+        self.assertNotIn("event.storage_state", query)
+        self.assertNotIn("event.publication_status", query)
         self.assertIn("link.match_method='exact_source_identifier'", query)
         self.assertIn("review.source_record_id=event.source_record_id", query)
         self.assertIn("review.maintainer_approval='approved'", query)
         self.assertIn("rights.redistribution_status='cleared'", query)
         self.assertIn("rights.artifact_sha256=artifact.sha256", query)
+        self.assertIn("DISTINCT ON (source_id,profile,release_id,artifact_id)", query)
+        self.assertIn("decided_at DESC,source_rights_decision_id DESC", query)
         self.assertIn("endpoint.source_id='us.aphis'", query)
         self.assertNotIn("event_payload", query)
         self.assertNotIn("raw_fields", query)
@@ -203,7 +208,7 @@ class GraphProjectionTests(unittest.TestCase):
         self.assertIn("search/inspection-reports", encoded)
 
     def test_materialization_fingerprint_is_explicitly_versioned(self):
-        self.assertEqual(PROJECTION_VERSION, "graph-release-projection-v2")
+        self.assertEqual(PROJECTION_VERSION, "graph-release-projection-v3")
         self.assertTrue(all((D5_MATCHER_VERSION, D6_EDGE_RULESET_VERSION,
                              SHARED_BUSINESS_NAME_RULESET_VERSION,
                              GRAPH_EDGE_MATERIALIZATION_VERSION,
@@ -233,13 +238,15 @@ class GraphProjectionTests(unittest.TestCase):
             "graph_public_projection_edge_supports": "SELECT, INSERT",
             "graph_public_projection_endpoint_anchors": "SELECT, INSERT",
             "graph_public_projection_evidence_refs": "SELECT, INSERT",
+            "graph_public_projection_org_labels": "SELECT, INSERT",
+            "graph_source_name_assertions": "SELECT, INSERT",
         }
         validator = {**_PRIVATE_GRAPH_REQUIRED_PRIVILEGES,
                      **_PRIVATE_GRAPH_REQUIRED_READ_PRIVILEGES}
         for table, grant in grants.items():
             with self.subTest(table=table):
                 self.assertEqual(validator[table], set(grant.split(", ")))
-                grant_migration = migration if table != "graph_public_projection_evidence_refs" else (
+                grant_migration = migration if table not in {"graph_public_projection_evidence_refs", "graph_public_projection_org_labels", "graph_source_name_assertions"} else (
                     Path(__file__).resolve().parents[1] / "migrations" / "080_graph_public_evidence_references.sql"
                 ).read_text(encoding="utf-8")
                 self.assertIn(f"GRANT {grant} ON uec.{table}", grant_migration)
@@ -247,7 +254,16 @@ class GraphProjectionTests(unittest.TestCase):
         self.assertIn("CREATE OR REPLACE VIEW uec.graph_public_evidence_references_current", evidence_migration)
         self.assertIn("review.source_record_id=evidence_record.source_record_id", evidence_migration)
         self.assertIn("rights.redistribution_status='cleared'", evidence_migration)
+        self.assertIn("DISTINCT ON (source_id,profile,release_id,artifact_id)", evidence_migration)
+        self.assertIn("decided_at DESC,source_rights_decision_id DESC", evidence_migration)
         self.assertIn("public_access_restricted", evidence_migration)
+        self.assertIn("CREATE OR REPLACE VIEW uec.graph_public_organization_labels_current", evidence_migration)
+        for table in ("publication_review_release_current", "source_rights_decisions", "public_access_restricted"):
+            with self.subTest(review_gate=table):
+                self.assertEqual(_PRIVATE_GRAPH_REQUIRED_READ_PRIVILEGES[table], {"SELECT"})
+                self.assertIn(f"GRANT SELECT ON uec.{table}", evidence_migration)
+        self.assertIn("label_source_record_id", evidence_migration)
+        self.assertIn("rights.artifact_sha256=artifact.sha256", evidence_migration)
         normalized = (Path(__file__).resolve().parents[1] / "migrations" / "078_normalized_graph_projection_endpoints.sql").read_text(encoding="utf-8")
         self.assertIn("CREATE OR REPLACE VIEW uec.graph_public_connections_current", normalized)
         self.assertNotIn("DROP VIEW uec.graph_public_connections_current", normalized)
@@ -297,6 +313,38 @@ class GraphProjectionTests(unittest.TestCase):
         self.assertIn("FROM eligible_source_endpoints", query)
         self.assertNotIn("source_identifier", query.split("SELECT", 1)[1].split("FROM", 1)[0])
         self.assertEqual(parameters, {"release_id": "selected-release"})
+
+    def test_organization_labels_require_source_assertions_and_use_safe_projection(self):
+        query, parameters = _python_organization_label_select("selected-release")
+        self.assertIn("graph_source_name_assertions", query)
+        self.assertIn("business_id.identifier_id=assertion.identifier_id", query)
+        self.assertIn("map_facilities_public_discovery_read_model approved", query)
+        self.assertNotIn("organizations.canonical_name", query)
+        self.assertEqual(parameters, {"release_id": "selected-release"})
+        public_id, private_identifier = uuid.uuid4(), "business-native-identifier"
+        key = ("source.sample", "company_number", private_identifier, "organization", public_id)
+        endpoint_id = uuid.uuid4()
+        label_source_record_id = uuid.uuid4()
+
+        class Cursor:
+            def __init__(self): self.calls = []
+            def __enter__(self): return self
+            def __exit__(self, *_args): return False
+            def executemany(self, sql, values): self.calls.append((sql, values))
+        class Connection:
+            def __init__(self): self.value = Cursor()
+            def cursor(self): return self.value
+
+        connection = Connection()
+        count = _insert_organization_label_batch(
+            connection, uuid.uuid4(),
+            [(key[0], key[1], private_identifier, key[3], public_id, label_source_record_id,
+              "Example Trading Ltd", "business")],
+            {key: endpoint_id},
+        )
+        self.assertEqual(count, 1)
+        self.assertNotIn(private_identifier, repr(connection.value.calls))
+        self.assertIn("graph_public_projection_org_labels", connection.value.calls[0][0])
 
     def test_graph_live_membership_lookup_keeps_live_view_as_eligibility_authority(self):
         migration = (Path(__file__).resolve().parents[1] / "migrations" / "079_graph_live_membership_lookup.sql").read_text(encoding="utf-8")

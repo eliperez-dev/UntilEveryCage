@@ -62,9 +62,13 @@ allowed internally, but must be explicit and tested:
 
 Endpoint fields currently include `entity_id`, `entity_type` (`facility` or
 `organization`), `source_id`, `identifier_type`, and `source_identifier`. Entity
-summaries currently include `entity_id`, `entity_type`, `display_name`, and
-`country_code`. They do not currently carry canonical URLs, map precision, or a
-record-type union beyond facility/organization.
+summaries include `entity_id`, `entity_type`, `display_name`, and
+`country_code`. Connection endpoints may also carry an optional
+selected-release `display_name`. Organization labels appear only when a source-qualified
+business identifier and organization-specific legal/business/operator name
+assertion pass the selected-release gates; Connections uses a generic
+organization label otherwise. They do not currently carry canonical URLs, map precision,
+or a record-type union beyond facility/organization.
 
 ## Proposed shared-record extensions
 

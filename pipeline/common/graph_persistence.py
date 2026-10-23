@@ -128,6 +128,8 @@ _PRIVATE_GRAPH_REQUIRED_PRIVILEGES = {
     "claim_support": {"SELECT", "INSERT"},
     "graph_ingest_runs": {"SELECT", "INSERT", "UPDATE"},
     "graph_ingest_items": {"SELECT", "INSERT"},
+    "graph_evidence_events": {"SELECT", "INSERT"},
+    "graph_evidence_links": {"SELECT", "INSERT"},
     "graph_connection_edges": {"SELECT", "INSERT", "UPDATE", "DELETE"},
     "graph_edge_materialization_runs": {"SELECT", "INSERT", "UPDATE"},
     "graph_public_projection_builds": {"SELECT", "INSERT", "UPDATE"},
@@ -136,6 +138,8 @@ _PRIVATE_GRAPH_REQUIRED_PRIVILEGES = {
     "graph_public_projection_endpoints": {"SELECT", "INSERT"},
     "graph_public_projection_anchors": {"SELECT", "INSERT"},
     "graph_public_projection_evidence_refs": {"SELECT", "INSERT"},
+    "graph_source_name_assertions": {"SELECT", "INSERT"},
+    "graph_public_projection_org_labels": {"SELECT", "INSERT"},
     "graph_public_projection_endpoint_anchors": {"SELECT", "INSERT"},
 }
 _PRIVATE_GRAPH_REQUIRED_READ_PRIVILEGES = {
@@ -146,6 +150,11 @@ _PRIVATE_GRAPH_REQUIRED_READ_PRIVILEGES = {
     "release_manifests": {"SELECT"},
     "public_release_history": {"SELECT"},
     "public_suppression_generation": {"SELECT"},
+    # Typed evidence and organization labels are projected only after these
+    # exact selected-release review, artifact-rights, and restriction checks.
+    "publication_review_release_current": {"SELECT"},
+    "source_rights_decisions": {"SELECT"},
+    "public_access_restricted": {"SELECT"},
 }
 
 
@@ -457,6 +466,46 @@ def _country(manifest: dict[str, Any]) -> str:
     return value[:2] if len(value) >= 2 else "ZZ"
 
 
+def _aphis_facility_identifier_aliases(normalized_values: Any) -> list[tuple[str, str]]:
+    """Return exact APHIS certificate/customer aliases from retained source fields.
+
+    APHIS Form 7023 registration numbers are certificate numbers only for the
+    documented R/F/V/G registration formats. Keep the rule versioned and
+    format-bound; never infer customer numbers from registration IDs.
+    """
+    native_ids = normalized_values.get("source_native_ids") if isinstance(normalized_values, dict) else None
+    if not isinstance(native_ids, dict):
+        native_ids = {}
+    alias_types = {
+        "certificate_number": "aphis_certificate_number",
+        "customer_number": "aphis_customer_number",
+        "customer_number_x": "aphis_customer_number_x",
+        "customer_number_y": "aphis_customer_number_y",
+    }
+    aliases = list(dict.fromkeys(
+        (identifier_type, value.strip())
+        for name, identifier_type in alias_types.items()
+        if isinstance((value := native_ids.get(name)), str) and value.strip()
+    ))
+    establishment_id = normalized_values.get("establishment_id") if isinstance(normalized_values, dict) else None
+    registration_values = [native_ids.get("aphis_license_number")]
+    if isinstance(establishment_id, str) and establishment_id.startswith("aphis-registration:"):
+        registration_values.append(establishment_id.removeprefix("aphis-registration:"))
+    for registration in registration_values:
+        if not isinstance(registration, str):
+            continue
+        encoded = registration.encode("ascii", errors="ignore")
+        valid_registration = (
+            len(encoded) == 9 and len(registration) == 9
+            and encoded[2:3] == b"-" and encoded[4:5] == b"-"
+            and encoded[:2].isdigit() and encoded[5:].isdigit()
+            and encoded[3:4] in {b"R", b"F", b"V", b"G"}
+        )
+        if valid_registration:
+            aliases.append(("aphis_certificate_number", registration))
+    return list(dict.fromkeys(aliases))
+
+
 def _ensure_source_artifact(connection: Any, manifest: dict[str, Any], digest: str) -> tuple[uuid.UUID, uuid.UUID]:
     source_id = manifest["source_id"]
     connection.execute(
@@ -549,6 +598,32 @@ def _entity_maps(connection: Any, manifest: dict[str, Any], candidate: dict[str,
              identifier["value"], _timestamp(manifest)),
         ).fetchone()[0]
         facilities[ref] = identifier_id
+    # APHIS event links use source-native certificate/customer identifiers in
+    # addition to the registration's primary establishment ID. Persist those
+    # exact retained aliases against the same approved facility record so an
+    # event can match the registration without equating identifier namespaces.
+    if source_id == "us.aphis" and len(facilities) == 1:
+        normalized_values = candidate.get("normalized_values")
+        identifier_aliases = _aphis_facility_identifier_aliases(normalized_values)
+        if identifier_aliases:
+            _, primary_identifier_id = next(iter(facilities.items()))
+            facility_id = _facility_id_for_identifier(connection, primary_identifier_id)
+            for identifier_type, native_value in identifier_aliases:
+                exists = connection.execute(
+                    """SELECT identifier_id FROM uec.source_entity_identifiers
+                       WHERE source_id=%s AND source_record_id=%s AND entity_type='facility'
+                         AND facility_id=%s AND identifier_type=%s AND source_identifier=%s""",
+                    (source_id, record_id, facility_id, identifier_type, native_value),
+                ).fetchone()
+                if exists:
+                    continue
+                connection.execute(
+                    """INSERT INTO uec.source_entity_identifiers
+                       (source_id,source_record_id,entity_type,facility_id,identifier_type,source_identifier,value_as_observed,observed_at)
+                       VALUES (%s,%s,'facility',%s,%s,%s,%s,%s)""",
+                    (source_id, record_id, facility_id, identifier_type,
+                     native_value, native_value, _timestamp(manifest)),
+                )
     for item in candidate.get("organizations", []):
         ref = item["local_ref"]
         identifier = item["source_identifier"]
@@ -595,6 +670,29 @@ def _entity_maps(connection: Any, manifest: dict[str, Any], candidate: dict[str,
              identifier["value"], _timestamp(manifest)),
         ).fetchone()[0]
         organizations[ref] = identifier_id
+    # The handoff's name assertions are source-field assertions, not canonical
+    # organization names. The v1 contract does not assign assertions to a local
+    # organization ref, so persist them only where this record has one org node.
+    assertions = candidate.get("name_assertions", [])
+    if len(organizations) == 1:
+        _, identifier_id = next(iter(organizations.items()))
+        organization_id = _organization_id_for_identifier(connection, identifier_id)
+        for assertion in assertions:
+            if not isinstance(assertion, dict):
+                continue
+            value = assertion.get("value")
+            source_field = assertion.get("source_field")
+            role = assertion.get("role")
+            if (not isinstance(value, str) or not value.strip()
+                    or not isinstance(source_field, str) or not source_field.strip()
+                    or role not in {"legal", "business", "trading", "dba", "operator", "brand"}):
+                continue
+            connection.execute(
+                """INSERT INTO uec.graph_source_name_assertions
+                   (source_id,source_record_id,organization_id,identifier_id,assertion_role,source_field,assertion_value)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""",
+                (source_id, record_id, organization_id, identifier_id, role, source_field.strip(), value.strip()),
+            )
     return facilities, organizations
 
 
@@ -658,20 +756,23 @@ def _load_approved_facility_map(connection: Any, source_id: str,
 
 
 def _load_run_source_record_ids(connection: Any, run_id: uuid.UUID,
-                                artifact_id: uuid.UUID) -> dict[tuple[str, str], uuid.UUID]:
+                                artifact_id: uuid.UUID) -> dict[tuple[str, str, str], uuid.UUID]:
     rows = connection.execute(
-        """SELECT DISTINCT record.source_id, record.source_record_key, record.source_record_id
+        """SELECT DISTINCT record.source_id, record.source_record_key, artifact.sha256,
+                  record.source_record_id
            FROM uec.graph_ingest_items item
            JOIN uec.source_records record
              ON record.source_id=item.source_id
             AND record.source_record_key=item.source_record_key
             AND record.artifact_id=%s
+           JOIN uec.raw_artifacts artifact ON artifact.artifact_id=record.artifact_id
            WHERE item.ingest_run_id=%s AND item.status='inserted'
              AND item.item_kind='facility_candidate'
            ORDER BY record.source_id, record.source_record_key""",
         (artifact_id, run_id),
     ).fetchall()
-    return {(str(source_id), str(key)): record_id for source_id, key, record_id in rows}
+    return {(str(source_id), str(key), str(sha).lower()): record_id
+            for source_id, key, sha, record_id in rows}
 
 
 def _load_run_source_record_ids_for_edge_batches(connection: Any, run_id: uuid.UUID,
@@ -837,12 +938,13 @@ def _backfill_graph_edge_support_record_ids(connection: Any, run_id: uuid.UUID,
         """
         WITH run_records AS MATERIALIZED (
             SELECT DISTINCT record.source_id, record.source_record_key,
-                   record.source_record_id
+                   artifact.sha256 AS artifact_sha256, record.source_record_id
             FROM uec.graph_ingest_items item
             JOIN uec.source_records record
               ON record.source_id=item.source_id
              AND record.source_record_key=item.source_record_key
              AND record.artifact_id=%s
+            JOIN uec.raw_artifacts artifact ON artifact.artifact_id=record.artifact_id
             WHERE item.ingest_run_id=%s AND item.source_id=%s
               AND item.status='inserted' AND item.item_kind='facility_candidate'
         ),
@@ -857,6 +959,7 @@ def _backfill_graph_edge_support_record_ids(connection: Any, run_id: uuid.UUID,
             LEFT JOIN run_records record
               ON record.source_id=refs.value->>'source_id'
              AND record.source_record_key=refs.value->>'source_record_key'
+             AND record.artifact_sha256=lower(refs.value->>'artifact_sha256')
         WHERE (edge.from_source_id=%s OR edge.to_source_id=%s)
           AND edge.storage_state='private'
           AND edge.publication_status='not_eligible'
@@ -866,6 +969,7 @@ def _backfill_graph_edge_support_record_ids(connection: Any, run_id: uuid.UUID,
                    jsonb_agg(
                        value
                        || CASE WHEN value->>'source_id'=%s AND resolved_record_id IS NOT NULL
+                                    AND NOT (value ? 'source_record_id')
                                THEN jsonb_build_object('source_record_id',resolved_record_id::text)
                                ELSE '{}'::jsonb END
                        || CASE WHEN connection_type='inferred' AND ref_count=2
@@ -874,7 +978,7 @@ def _backfill_graph_edge_support_record_ids(connection: Any, run_id: uuid.UUID,
                        ORDER BY ordinality
                    ) AS supporting_source_refs,
                    bool_and(CASE WHEN value->>'source_id'=%s
-                                 THEN resolved_record_id IS NOT NULL
+                                 THEN (value ? 'source_record_id') OR resolved_record_id IS NOT NULL
                                  ELSE value ? 'source_record_id' END) AS all_refs_resolved
             FROM edge_refs
             GROUP BY connection_edge_id
@@ -1090,19 +1194,40 @@ def _forbidden_evidence_facility_pair(left: EntityRef, right: EntityRef) -> bool
     return bool(sources & _APHIS_FSIS_SOURCES) and bool(sources & _FSIS_SOURCES) and left.source_id != right.source_id
 
 
+def _artifact_sha_for_manifest(manifest: dict[str, Any]) -> str | None:
+    value = manifest.get("checksum_sha256") or manifest.get("source_artifact_sha256")
+    if isinstance(value, str) and len(value) == 64:
+        return value.lower()
+    return None
+
+
+def _lookup_source_record_id(source_record_ids: Mapping[Any, uuid.UUID | str] | None,
+                             source_id: str, key: str, artifact_sha256: str | None) -> uuid.UUID | str | None:
+    if not source_record_ids:
+        return None
+    if artifact_sha256:
+        exact = source_record_ids.get((source_id, key, artifact_sha256.lower()))
+        if exact:
+            return exact
+        return None
+    return source_record_ids.get((source_id, key))
+
+
 def _source_refs(candidate: dict[str, Any], manifest: dict[str, Any], *,
-                 source_record_ids: Mapping[tuple[str, str], uuid.UUID | str] | None = None) -> list[SourceRef]:
+                 source_record_ids: Mapping[Any, uuid.UUID | str] | None = None) -> list[SourceRef]:
     source_id = str(candidate.get("source_id") or manifest["source_id"])
     key = candidate.get("source_record_key") or candidate.get("source_observation_key")
     if not isinstance(key, str) or not key.strip():
         raise GraphPersistenceError("connection candidate requires source_record_key")
-    record_id = (source_record_ids or {}).get((source_id, key))
+    artifact_sha = _artifact_sha_for_manifest(manifest)
+    record_id = _lookup_source_record_id(source_record_ids, source_id, key, artifact_sha)
     return [SourceRef(source_id=source_id, source_record_key=key,
-                      source_record_id=str(record_id) if record_id else None)]
+                      source_record_id=str(record_id) if record_id else None,
+                      artifact_sha256=artifact_sha)]
 
 
 def _matcher_edge(raw: dict[str, Any], candidate: dict[str, Any], manifest: dict[str, Any], *,
-                  source_record_ids: Mapping[tuple[str, str], uuid.UUID | str] | None = None) -> dict[str, Any] | None:
+                  source_record_ids: Mapping[Any, uuid.UUID | str] | None = None) -> dict[str, Any] | None:
     """Adapt the matcher lane's result to the shared score/build contract.
 
     The matcher is deliberately not implemented here.  It may hand us an
@@ -1121,7 +1246,9 @@ def _matcher_edge(raw: dict[str, Any], candidate: dict[str, Any], manifest: dict
         edge["supporting_source_refs"] = [dict(ref) for ref in edge["supporting_source_refs"]]
         for ref in edge["supporting_source_refs"]:
             key = ref.get("source_record_key")
-            record_id = (source_record_ids or {}).get((str(ref.get("source_id") or ""), str(key or "")))
+            ref_source = str(ref.get("source_id") or "")
+            record_id = _lookup_source_record_id(source_record_ids, ref_source, str(key or ""),
+                                                 ref.get("artifact_sha256"))
             if record_id and not ref.get("source_record_id"):
                 ref["source_record_id"] = str(record_id)
         if _forbidden_evidence_facility_pair(
@@ -1208,10 +1335,13 @@ def _matcher_edge(raw: dict[str, Any], candidate: dict[str, Any], manifest: dict
             for index, item in enumerate(provenance):
                 if isinstance(item, dict) and item.get("source_id") and item.get("source_record_key"):
                     source_id, source_key = str(item["source_id"]), str(item["source_record_key"])
-                    record_id = (source_record_ids or {}).get((source_id, source_key))
+                    record_id = _lookup_source_record_id(source_record_ids, source_id, source_key,
+                                                         item.get("artifact_sha256"))
+                    source_sha = item.get("artifact_sha256")
                     refs.append(SourceRef(source_id=source_id, source_record_key=source_key,
                                           source_record_id=str(record_id) if record_id else None,
-                                          role="from" if index == 0 else "to"))
+                                          role="from" if index == 0 else "to",
+                                          artifact_sha256=source_sha))
         if not refs:
             refs = _source_refs(candidate, manifest, source_record_ids=source_record_ids)
         return build_connection_edge(
@@ -1319,8 +1449,22 @@ def build_candidate_connection_edges(candidate: dict[str, Any], manifest: dict[s
         edge = _matcher_edge(raw, candidate, manifest, source_record_ids=source_record_ids)
         if edge is not None:
             built.append(edge)
-    # A matcher may repeat an explicit edge while enriching its explanation;
-    # the deterministic edge key is the single source of truth for persistence.
+    # Version inferred matches by ordered support artifact identity. Native
+    # endpoint identity itself remains unchanged.
+    for edge in built:
+        if edge.get("connection_type") != "inferred":
+            continue
+        version_refs = [
+            (str(ref.get("source_id") or ""), str(ref.get("source_record_key") or ""),
+             str(ref.get("artifact_sha256") or "").lower())
+            for ref in edge.get("supporting_source_refs", [])
+        ]
+        if version_refs and all(len(item[2]) == 64 for item in version_refs):
+            suffix = hashlib.sha256(json.dumps(
+                version_refs, ensure_ascii=False, separators=(",", ":")
+            ).encode("utf-8")).hexdigest()
+            edge["edge_key"] = f"{edge['edge_key']}:support-v1:{suffix}"
+    # A matcher may repeat an explicit edge while enriching its explanation.
     return list({edge["edge_key"]: edge for edge in built}.values())
 
 
@@ -1419,7 +1563,11 @@ def _persist_candidate(connection: Any, manifest: dict[str, Any], candidate: dic
         )
     connection_edges = build_candidate_connection_edges(
         candidate, manifest, edge_builder=edge_builder,
-        source_record_ids={(str(manifest["source_id"]), str(source_record_key)): record_id},
+        source_record_ids={
+            (str(manifest["source_id"]), str(source_record_key), _artifact_sha_for_manifest(manifest)): record_id
+        } if _artifact_sha_for_manifest(manifest) else {
+            (str(manifest["source_id"]), str(source_record_key)): record_id
+        },
     ) if materialize_edges else []
     edge_counts = persist_connection_edges(connection, connection_edges) if connection_edges else {"inserted": 0, "updated": 0, "total": 0}
     return edge_counts
@@ -1763,14 +1911,23 @@ def _persist_evidence_event(connection: Any, manifest: dict[str, Any], row: dict
 
 def import_evidence_events(database_url: str, handoff_dir: str | Path, *,
                            disposable_db: bool = False, batch_size: int = DEFAULT_BATCH_SIZE,
+                           private_target: tuple[str, str] | None = None,
                            on_batch_committed: BatchCommitObserver | None = None) -> dict[str, Any]:
     """Persist evidence events separately from facility graph candidates."""
-    require_disposable_graph_database(database_url, disposable_db)
+    if private_target is None:
+        require_disposable_graph_database(database_url, disposable_db)
+    else:
+        if disposable_db:
+            raise GraphPersistenceError("refusing evidence import: choose either disposable_db or private_target")
+        require_private_graph_target(database_url, expected_database=private_target[0], purpose=private_target[1])
     if batch_size <= 0:
         raise GraphPersistenceError("batch size must be positive")
     manifest, rows, digest = load_evidence_handoff(handoff_dir)
     with psycopg.connect(database_url) as db:
-        _verify_disposable_marker(db)
+        if private_target is None:
+            _verify_disposable_marker(db)
+        else:
+            _validate_private_graph_writer(db, private_target[0])
         db.commit()
         with db.transaction():
             _ensure_source_artifact(db, manifest, digest)
