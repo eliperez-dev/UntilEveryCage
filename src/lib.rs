@@ -5212,10 +5212,14 @@ pub async fn get_v2_locations_handler(
                history.geometry_provenance::text,
                page.total_count
         FROM page_with_total AS page
-        LEFT JOIN {public_read_model} AS history
-          ON history.release_id = $1
-         AND history.facility_id = page.facility_id
-         AND history.observation_id = page.observation_id
+        LEFT JOIN LATERAL (
+          SELECT eligible.*
+          FROM {public_read_model} AS eligible
+          WHERE eligible.release_id = $1
+            AND eligible.facility_id = page.facility_id
+            AND eligible.observation_id = page.observation_id
+          LIMIT 1
+        ) AS history ON TRUE
         LEFT JOIN LATERAL (
           SELECT min(s.display_category) AS display_category,
                  array_agg(DISTINCT a.primary_key ORDER BY a.primary_key) FILTER (WHERE a.primary_key IS NOT NULL) AS primary_categories,
@@ -6712,6 +6716,10 @@ mod v2_api_tests {
         assert!(filtered < total && total < cursor);
         assert!(handler.contains("LEFT JOIN page ON TRUE"));
         assert!(handler.contains("page.total_count"));
+        assert!(handler.contains("LEFT JOIN LATERAL ("));
+        assert!(handler.contains("SELECT eligible.*"));
+        assert!(handler.contains("eligible.facility_id = page.facility_id"));
+        assert!(handler.contains("eligible.observation_id = page.observation_id"));
     }
 
     #[test]
