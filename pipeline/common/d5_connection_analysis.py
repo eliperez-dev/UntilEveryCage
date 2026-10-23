@@ -151,6 +151,7 @@ class _Observed:
     shared_business_name_aliases: list[str] | None = None
     location_role: str = "unknown"
     business_contacts: dict[str, str] | None = None
+    artifact_sha256: str = ""
 
 
 def _source_kind(source_id: str, row: Mapping[str, Any]) -> str:
@@ -186,7 +187,8 @@ def _nested_values(row: Mapping[str, Any]) -> Iterable[tuple[str, Any]]:
                         yield key.casefold(), identifier.get("value")
 
 
-def _observed_from_row(row: Mapping[str, Any], fallback_source: str | None = None) -> _Observed:
+def _observed_from_row(row: Mapping[str, Any], fallback_source: str | None = None,
+                       fallback_artifact_sha256: str | None = None) -> _Observed:
     source_id = _clean(row.get("source_id")) or fallback_source
     if not source_id:
         raise ValueError("row requires source_id or an explicit source mapping")
@@ -209,10 +211,21 @@ def _observed_from_row(row: Mapping[str, Any], fallback_source: str | None = Non
     assertions = row.get("name_assertions")
     if isinstance(assertions, (list, tuple)):
         for assertion in assertions:
-            if (isinstance(assertion, Mapping)
-                    and assertion.get("role") in {"business", "legal", "trading", "dba", "operator", "brand"}
-                    and isinstance(assertion.get("value"), str)):
-                declared_name_values.add(assertion["value"].strip())
+            if not isinstance(assertion, Mapping) or not isinstance(assertion.get("value"), str):
+                continue
+            value = assertion["value"].strip()
+            role = assertion.get("role")
+            if role in {"business", "legal", "trading", "dba", "operator", "brand"} and value:
+                declared_name_values.add(value)
+            # Typed assertions are the authoritative name signal for modern
+            # handoffs.  Do not infer ownership: the multi-signal matcher still
+            # requires an operating-location or eligible-contact corroborator.
+            # Brand-only assertions remain available to the shared-name lane,
+            # but cannot independently seed an operating-business name match.
+            if (role in {"business", "legal", "trading", "dba", "operator"}
+                    and _shared_business_name_key(value)
+                    and (token := _token(value))):
+                signals.setdefault("name", token)
     for raw_key, value in values:
         key = re.sub(r"[^a-z0-9]+", "_", raw_key).strip("_")
         normalized_value = _norm(value)
@@ -314,7 +327,9 @@ def _observed_from_row(row: Mapping[str, Any], fallback_source: str | None = Non
                     contact_values.setdefault("phone", phone)
     return _Observed(source_id, kind, key, facility_ids, facility_endpoint_ids, organization_ids, signals, dates,
                      explicit_relationships, typed_entity_edge, provenance_complete,
-                     bool(row.get("quarantine_reason")), suppressed, aliases, location_role, contact_values)
+                     bool(row.get("quarantine_reason")), suppressed, aliases, location_role, contact_values,
+                     _clean(fallback_artifact_sha256 or row.get("source_artifact_sha256")
+                            or row.get("artifact_sha256")) or "")
 
 
 def classify_collision_observations(rows: Iterable[Mapping[str, Any]]) -> dict[str, int]:
@@ -428,7 +443,7 @@ def _source_metric(source_id: str, manifest: Mapping[str, Any] | None, rows: lis
 
 
 def _candidate_key(left: _Observed, right: _Observed, method: str) -> str:
-    return _digest("|".join((left.source_id, left.key, right.source_id, right.key, method)))
+    return _digest("|".join((*_pair_identity(left, right), method)))
 
 
 _BLOCK_SIGNALS = ("postal", "city", "address")
@@ -443,10 +458,13 @@ def _endpoint_ref(row: _Observed, *, preserve_native_identifier: bool = False) -
         return None
     identifier_type, identifier = sorted(row.facility_ids.items())[0]
     if preserve_native_identifier:
-        identifier = row.facility_endpoint_ids.get(identifier_type, "")
-        if not identifier:
+        native_type = next((raw_type for raw_type in sorted(row.facility_endpoint_ids)
+                            if _norm(raw_type) == _norm(identifier_type)), None)
+        identifier = row.facility_endpoint_ids.get(native_type or "", "")
+        if not native_type or not identifier:
             return None
-    return {
+        identifier_type = native_type
+    result = {
         "entity_type": "facility",
         "source_id": row.source_id,
         "identifier_type": identifier_type,
@@ -454,12 +472,27 @@ def _endpoint_ref(row: _Observed, *, preserve_native_identifier: bool = False) -
         "source_record_key": row.key,
         "identity_scope": "source_scoped",
     }
+    if row.artifact_sha256:
+        # Internal version discriminator only. Persistence adapts the endpoint
+        # to the source-qualified native identifier fields above.
+        result["artifact_sha256"] = row.artifact_sha256
+    return result
 
 
 def _pair_identity(left: _Observed, right: _Observed) -> tuple[str, str]:
-    """Stable pair key independent of input order."""
-    values = (f"{left.source_id}:{left.key}", f"{right.source_id}:{right.key}")
+    """Stable source-record-version pair key, independent of input order."""
+    values = (
+        json.dumps([left.source_id, left.key, left.artifact_sha256], ensure_ascii=False, separators=(",", ":")),
+        json.dumps([right.source_id, right.key, right.artifact_sha256], ensure_ascii=False, separators=(",", ":")),
+    )
     return tuple(sorted(values))  # type: ignore[return-value]
+
+
+def _provenance_ref(row: _Observed) -> dict[str, str]:
+    ref = {"source_id": row.source_id, "source_record_key": row.key}
+    if row.artifact_sha256:
+        ref["artifact_sha256"] = row.artifact_sha256
+    return ref
 
 
 def _exact_equivalent(left: _Observed, right: _Observed) -> bool:
@@ -574,6 +607,7 @@ def _observed_json(row: _Observed) -> str:
         "shared_business_name_aliases": row.shared_business_name_aliases or [],
         "location_role": row.location_role,
         "business_contacts": row.business_contacts or {},
+        "artifact_sha256": row.artifact_sha256,
     }, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
@@ -591,6 +625,7 @@ def _observed_from_json(value: str) -> _Observed:
         [str(item) for item in payload.get("shared_business_name_aliases") or []],
         str(payload.get("location_role") or "unknown"),
         {str(key): str(item) for key, item in (payload.get("business_contacts") or {}).items()},
+        str(payload.get("artifact_sha256") or ""),
     )
 
 
@@ -659,7 +694,8 @@ def iter_shared_business_name_candidates(rows: Iterable[_Observed], *,
                 if endpoint is None:
                     continue
                 identity = (row.source_id, endpoint["identifier_type"],
-                            _norm(endpoint["source_identifier"]) or endpoint["source_identifier"])
+                            _norm(endpoint["source_identifier"]) or endpoint["source_identifier"],
+                            row.artifact_sha256)
                 for raw_alias in row.shared_business_name_aliases or ():
                     alias = _shared_business_name_key(raw_alias)
                     if not alias:
@@ -692,8 +728,7 @@ def iter_shared_business_name_candidates(rows: Iterable[_Observed], *,
                         "candidate_digest": digest,
                         "source_pair": sorted({left.source_id, right.source_id}),
                         "endpoints": [left_endpoint, right_endpoint],
-                        "provenance": [{"source_id": left.source_id, "source_record_key": left.key},
-                                       {"source_id": right.source_id, "source_record_key": right.key}],
+                        "provenance": [_provenance_ref(left), _provenance_ref(right)],
                         "observed_at": min(left.dates + right.dates) if left.dates or right.dates else "",
                         "method": "exact_declared_business_name_equality",
                         "relationship_type": "shared_business_name",
@@ -858,8 +893,7 @@ def _iter_probabilistic_candidates(rows: Iterable[_Observed], *, start_after: st
                         "endpoints": [left_endpoint, right_endpoint],
                         "left_endpoint": left_endpoint,
                         "right_endpoint": right_endpoint,
-                        "provenance": [{"source_id": left.source_id, "source_record_key": left.key},
-                                        {"source_id": right.source_id, "source_record_key": right.key}],
+                        "provenance": [_provenance_ref(left), _provenance_ref(right)],
                         "observed_at": min(left.dates + right.dates) if left.dates or right.dates else "",
                         "method": "multi_signal_intersection",
                         "contributing_features": sorted(features),

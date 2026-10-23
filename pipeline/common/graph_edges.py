@@ -69,12 +69,17 @@ class SourceRef:
     source_record_key: str | None = None
     source_record_id: str | None = None
     role: str = "supporting"
+    artifact_sha256: str | None = None
 
     def __post_init__(self) -> None:
         _text(self.source_id, "source_id")
         if not self.source_record_key and not self.source_record_id:
             raise ValueError("source reference needs source_record_key or source_record_id")
         _text(self.role, "role")
+        if self.artifact_sha256 is not None:
+            digest = _text(self.artifact_sha256, "artifact_sha256")
+            if len(digest) != 64 or any(char not in "0123456789abcdefABCDEF" for char in digest):
+                raise ValueError("artifact_sha256 must be a 64-character hexadecimal SHA-256")
 
     def as_dict(self) -> dict[str, str]:
         value = {"source_id": self.source_id, "role": self.role}
@@ -82,6 +87,8 @@ class SourceRef:
             value["source_record_key"] = self.source_record_key
         if self.source_record_id:
             value["source_record_id"] = self.source_record_id
+        if self.artifact_sha256:
+            value["artifact_sha256"] = self.artifact_sha256.lower()
         return value
 
 
