@@ -14,6 +14,7 @@
     "GET /health/diagnostics",
     "GET /api/v2/locations",
     "GET /api/v2/locations/{facility_id}",
+    "GET /api/v2/locations/{facility_id}/aphis-report-links",
     "GET /api/v2/locations.csv",
     "GET /api/v2/map/feed",
     "GET /api/v2/releases/manifest",
