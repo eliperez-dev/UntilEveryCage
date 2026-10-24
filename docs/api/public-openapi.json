@@ -203,7 +203,7 @@
       "get": {
         "operationId": "getAphisReportLinks",
         "summary": "Resolve report links for existing approved APHIS references",
-        "description": "Requires a facility UUID and selected public release. The server derives the APHIS identifier from that release's public detail and calls APHIS only when a matching annual-report or inspection reference already passes current release, facility, privacy, rights, approval, and suppression gates. Results are matched by the already released year/date. Only allowlisted APHIS report and Column E URLs plus those released year/date fields are returned; no counts, exception assertions, raw response fields, report contents, or source identifiers are returned. HTTPS links are restricted to named APHIS hosts and the APHIS Salesforce attachment path `/sfc/servlet.shepherd/version/download/{15-or-18-character-id}`. Responses are no-store; bounded server cache entries are consulted only after current eligibility is rechecked.",
+        "description": "Requires a facility UUID and selected public release. The server derives the APHIS identifier from that release's public detail and calls APHIS only when a matching annual-report or inspection reference already passes current release, facility, privacy, rights, approval, and suppression gates. Results are matched by the already released year/date. Only allowlisted APHIS report and Column E URLs plus those released year/date fields are returned; no counts, exception assertions, raw response fields, report contents, or source identifiers are returned. APHIS Salesforce attachments are restricted to `aphis.file.force.com/sfc/dist/version/download/` and the exact `asPdf,d,ids,oid` query-key set with validated values. Responses are no-store; bounded server cache entries are consulted only after current eligibility is rechecked.",
         "tags": ["Locations"],
         "parameters": [
           { "$ref": "#/components/parameters/facility_idPath" },
@@ -1870,8 +1870,8 @@
               "evidence_type": { "const": "annual_reports" }, "event_date": { "type": "null" }, "event_period": { "type": "string", "pattern": "^[0-9]{4}$" },
               "observed_at": { "type": "string", "format": "date-time" }, "source_url": { "const": "https://direct.aphis.usda.gov/awa/research-facility-report/annual-summary" },
               "match_method": { "const": "exact_source_identifier" },
-              "report_url": { "type": ["string", "null"], "format": "uri", "description": "HTTPS URL on a named APHIS host and approved report/download path." },
-              "column_e_url": { "type": ["string", "null"], "format": "uri", "description": "HTTPS URL on a named APHIS host and approved report/download path." }
+              "report_url": { "type": ["string", "null"], "format": "uri", "description": "HTTPS URL on a named APHIS host and approved report/download path, including the strict APHIS Salesforce distribution URL shape." },
+              "column_e_url": { "type": ["string", "null"], "format": "uri", "description": "HTTPS URL on a named APHIS host and approved report/download path, including the strict APHIS Salesforce distribution URL shape." }
             }, "additionalProperties": false
           },
           {
@@ -1882,7 +1882,7 @@
               "evidence_type": { "const": "inspections" }, "event_date": { "type": "string", "format": "date" }, "event_period": { "type": "null" },
               "observed_at": { "type": "string", "format": "date-time" }, "source_url": { "const": "https://direct.aphis.usda.gov/awa/search/inspection-reports" },
               "match_method": { "const": "exact_source_identifier" },
-              "report_url": { "type": ["string", "null"], "format": "uri", "description": "HTTPS URL on a named APHIS host and approved report/download path." },
+              "report_url": { "type": ["string", "null"], "format": "uri", "description": "HTTPS URL on a named APHIS host and approved report/download path, including the strict APHIS Salesforce distribution URL shape." },
               "column_e_url": { "type": "null" }
             }, "additionalProperties": false
           }

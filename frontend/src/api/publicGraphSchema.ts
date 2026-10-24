@@ -6,8 +6,16 @@ const profile = z.enum(['official', 'secondary', 'community']);
 const aphisDocumentUrl = z.string().url().refine(value => {
   try {
     const url = new URL(value);
+    const queryEntries = [...url.searchParams.entries()];
+    const queryKeys = queryEntries.map(([key]) => key).sort().join(',');
     const salesforceDocument = url.hostname === 'aphis.file.force.com'
-      && /^\/sfc\/servlet\.shepherd\/version\/download\/[A-Za-z0-9]{15}(?:[A-Za-z0-9]{3})?$/.test(url.pathname);
+      && ['/sfc/dist/version/download', '/sfc/dist/version/download/'].includes(url.pathname)
+      && queryEntries.length === 4 && queryKeys === 'asPdf,d,ids,oid'
+      && /^([A-Za-z0-9]{15}|[A-Za-z0-9]{18})$/.test(url.searchParams.get('oid') ?? '')
+      && /^([A-Za-z0-9]{15}|[A-Za-z0-9]{18})$/.test(url.searchParams.get('ids') ?? '')
+      && ['true', 'false'].includes(url.searchParams.get('asPdf') ?? '')
+      && /^[A-Za-z0-9._~/-]{1,512}$/.test(url.searchParams.get('d') ?? '')
+      && !url.hash;
     return url.protocol === 'https:'
       && (['aphis.my.site.com', 'direct.aphis.usda.gov', 'www.aphis.usda.gov', 'efile.aphis.usda.gov'].includes(url.hostname)
         && ['/PublicSearchTool/', '/awa/', '/sites/', '/efile/'].some(prefix => url.pathname.startsWith(prefix))

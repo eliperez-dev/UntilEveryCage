@@ -51,19 +51,25 @@ describe('APHIS report link repository', () => {
     await expect(new AphisReportsRepository(wrongHost).page(entity, 'official', 'annual_reports', 'release-1')).rejects.toThrow('APHIS report response did not match');
   });
 
-  it('accepts APHIS Salesforce document links only on the exact version-download route', async () => {
+  it('accepts APHIS Salesforce document links only on the exact distribution route and query shape', async () => {
     const officialDocument = {
       ...annual,
-      report_url: 'https://aphis.file.force.com/sfc/servlet.shepherd/version/download/068000000000000AAA',
+      report_url: 'https://aphis.file.force.com/sfc/dist/version/download/?oid=00D000000000000&ids=068000000000000AAA&d=token/with-safe~chars&asPdf=true',
     };
     const accepted = vi.fn().mockResolvedValue(new Response(JSON.stringify(envelope([officialDocument])), { status: 200 }));
     await expect(new AphisReportsRepository(accepted).page(entity, 'official', 'annual_reports', 'release-1'))
       .resolves.toMatchObject({ data: [officialDocument] });
     const unrelated = vi.fn().mockResolvedValue(new Response(JSON.stringify(envelope([{
       ...officialDocument,
-      report_url: 'https://example.force.com/sfc/servlet.shepherd/version/download/068000000000000AAA',
+      report_url: 'https://example.force.com/sfc/dist/version/download/?oid=00D000000000000&ids=068000000000000AAA&d=token&asPdf=true',
     }])), { status: 200 }));
     await expect(new AphisReportsRepository(unrelated).page(entity, 'official', 'annual_reports', 'release-1'))
+      .rejects.toThrow('APHIS report response did not match');
+    const wrongQueryShape = vi.fn().mockResolvedValue(new Response(JSON.stringify(envelope([{
+      ...officialDocument,
+      report_url: 'https://aphis.file.force.com/sfc/dist/version/download/?oid=00D000000000000&ids=068000000000000AAA&d=token&asPdf=true&redirect=https://evil.example',
+    }])), { status: 200 }));
+    await expect(new AphisReportsRepository(wrongQueryShape).page(entity, 'official', 'annual_reports', 'release-1'))
       .rejects.toThrow('APHIS report response did not match');
   });
 

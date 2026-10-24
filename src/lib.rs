@@ -7390,6 +7390,34 @@ fn aphis_report_link_error(status: StatusCode, code: &'static str, message: &'st
     no_store_response(v2_error(status, code, message))
 }
 
+fn safe_aphis_salesforce_download(url: &reqwest::Url) -> bool {
+    if !matches!(url.path(), "/sfc/dist/version/download" | "/sfc/dist/version/download/")
+        || url.fragment().is_some()
+    {
+        return false;
+    }
+    let mut query = HashMap::new();
+    for (name, value) in url.query_pairs() {
+        if query.insert(name.into_owned(), value.into_owned()).is_some() {
+            return false;
+        }
+    }
+    if query.len() != 4 || !["asPdf", "d", "ids", "oid"].iter().all(|key| query.contains_key(*key)) {
+        return false;
+    }
+    let valid_salesforce_id = |value: &str| {
+        matches!(value.len(), 15 | 18) && value.bytes().all(|byte| byte.is_ascii_alphanumeric())
+    };
+    valid_salesforce_id(&query["oid"])
+        && valid_salesforce_id(&query["ids"])
+        && matches!(query["asPdf"].as_str(), "true" | "false")
+        && !query["d"].is_empty()
+        && query["d"].len() <= 512
+        && query["d"].bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'~' | b'/' | b'-')
+        })
+}
+
 fn safe_aphis_report_document_url(value: Option<&Value>) -> Option<String> {
     let value = value?.as_str()?;
     if value.len() > 2048 { return None; }
@@ -7397,9 +7425,7 @@ fn safe_aphis_report_document_url(value: Option<&Value>) -> Option<String> {
     let host = url.host_str()?;
     let official_host = matches!(host,
         "aphis.my.site.com" | "direct.aphis.usda.gov" | "www.aphis.usda.gov" | "efile.aphis.usda.gov" | "aphis.file.force.com");
-    let salesforce_document = host == "aphis.file.force.com"
-        && url.path().strip_prefix("/sfc/servlet.shepherd/version/download/")
-            .is_some_and(|id| matches!(id.len(), 15 | 18) && id.bytes().all(|byte| byte.is_ascii_alphanumeric()));
+    let salesforce_document = host == "aphis.file.force.com" && safe_aphis_salesforce_download(&url);
     let official_path = ["/PublicSearchTool/", "/awa/", "/sites/", "/efile/"]
         .iter().any(|prefix| url.path().starts_with(prefix))
         || salesforce_document;
@@ -7597,8 +7623,11 @@ mod aphis_public_report_link_tests {
             "https://aphis.my.site.com.evil.test/PublicSearchTool/s/report",
             "https://aphis.my.site.com/redirect/report",
             "https://user@aphis.my.site.com/PublicSearchTool/s/report",
-            "https://example.force.com/sfc/servlet.shepherd/version/download/file",
-            "https://aphis.file.force.com/sfc/servlet.shepherd/version/download/068000000000000AAA/redirect",
+            "https://example.force.com/sfc/dist/version/download/?asPdf=true&d=token&ids=068000000000000AAA&oid=00D000000000000",
+            "https://aphis.file.force.com/sfc/servlet.shepherd/version/download/068000000000000AAA",
+            "https://aphis.file.force.com/sfc/dist/version/download/?asPdf=true&d=token&ids=068000000000000AAA&oid=00D000000000000&extra=x",
+            "https://aphis.file.force.com/sfc/dist/version/download/?asPdf=true&d=token&ids=bad&oid=00D000000000000",
+            "https://aphis.file.force.com/sfc/dist/version/download/?asPdf=true&d=https://evil.test&ids=068000000000000AAA&oid=00D000000000000",
         ] {
             assert_eq!(safe_aphis_report_document_url(Some(&json!(url))), None);
         }
@@ -7606,7 +7635,7 @@ mod aphis_public_report_link_tests {
 
     #[test]
     fn report_link_allowlist_accepts_official_aphis_salesforce_documents_only_at_download_path() {
-        let url = "https://aphis.file.force.com/sfc/servlet.shepherd/version/download/068000000000000AAA";
+        let url = "https://aphis.file.force.com/sfc/dist/version/download/?oid=00D000000000000&ids=068000000000000AAA&d=token/with-safe~chars&asPdf=true";
         assert_eq!(safe_aphis_report_document_url(Some(&json!(url))), Some(url.into()));
     }
 
