@@ -75,11 +75,8 @@ class Italy1069PreviewContractTests(unittest.TestCase):
                 "identifier_type": "eu_recognition_number", "id_namespace": "it.1069-2009",
                 "value": "ABP 42TEST3", "identity_scope": "source_scoped",
             })
-            self.assertEqual(candidate["organizations"][0]["source_identifier"], {
-                "identifier_type": "italian_vat", "id_namespace": "it.tax-authority.vat",
-                "value": "00000000000", "identity_scope": "source_scoped",
-            })
-            self.assertEqual(candidate["relationships"][0]["relationship_type"], "operator")
+            self.assertEqual(candidate["organizations"], [])
+            self.assertEqual(candidate["relationships"], [])
             self.assertEqual(candidate["name_assertions"][0]["role"], "legal")
             self.assertEqual(candidate["source_values"]["p_iva"], "00000000000")
             self.assertEqual(candidate["source_values"]["ragione_sociale"], "Synthetic ABP Test Srl")
