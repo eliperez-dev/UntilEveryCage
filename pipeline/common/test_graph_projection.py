@@ -410,23 +410,80 @@ class GraphProjectionTests(unittest.TestCase):
         self.assertIn("'^it', ''", normalized)
         self.assertIn("vat ~ '^[0-9]{11}$'", normalized)
         self.assertIn("vat <> repeat(substr(vat,1,1),11)", normalized)
-        self.assertIn("create or replace view uec.graph_public_organization_endpoints_current", normalized)
-        self.assertIn("uec.is_valid_italian_vat_identifier(\n      endpoint.source_id", normalized)
-        for gate in (
-            "build.projection_version='graph-release-projection-v3'",
-            "build.edge_generation=generation.generation",
-            "rights.redistribution_status='cleared'",
-            "review.privacy_screening_status='passed'",
-            "review.maintainer_approval='approved'",
-            "public_access_restricted",
-        ):
-            with self.subTest(gate=gate):
-                self.assertIn(gate, normalized)
+        self.assertNotIn("create or replace view uec.graph_public_organization_endpoints_current", normalized)
+        self.assertNotIn("endpoint.source_identifier", normalized)
+        self.assertIn("update uec.graph_public_projection_builds set active=false where active", normalized)
+        self.assertIn("update uec.graph_projection_generation", normalized)
+        self.assertIn("set generation=generation+1", normalized)
         self.assertNotIn("delete from uec.graph_connection_edges", normalized)
         self.assertNotIn("update uec.source_entity_identifiers", normalized)
-        self.assertIn("grant execute on function uec.is_valid_italian_vat_identifier(text,text,text) to uec_api_runtime", normalized)
+        self.assertNotIn("to uec_api_runtime", normalized)
+        self.assertIn("is_valid_italian_vat_identifier(\n        i.source_id, i.identifier_type, i.source_identifier", EDGE_CTES)
         label_query, _ = _python_organization_label_select("selected-release")
         self.assertIn("is_valid_italian_vat_identifier(endpoint.source_id,endpoint.identifier_type,endpoint.source_identifier)", label_query)
+
+    @unittest.skipUnless(
+        os.environ.get("UEC_GRAPH_ITALY_GUARD_ACCEPTANCE") == "1"
+        and os.environ.get("UEC_GRAPH_ACCEPTANCE_DATABASE_URL"),
+        "set UEC_GRAPH_ITALY_GUARD_ACCEPTANCE=1 on the isolated clone after 082 and a v3 build",
+    )
+    def test_italian_guard_sql_and_old_build_invalidation_are_rollback_only(self):
+        """Run the real migration semantics in SQL and roll every mutation back."""
+        expected_database = os.environ.get("UEC_GRAPH_DATABASE_NAME", "")
+        self.assertTrue(expected_database)
+
+        class RollbackProbe(Exception):
+            pass
+
+        with psycopg.connect(os.environ["UEC_GRAPH_ACCEPTANCE_DATABASE_URL"]) as connection:
+            self.assertEqual(connection.execute("SELECT current_database()").fetchone()[0],
+                             expected_database)
+            try:
+                with connection.transaction():
+                    before_generation = connection.execute(
+                        "SELECT generation FROM uec.graph_projection_generation WHERE singleton"
+                    ).fetchone()[0]
+                    before_active = connection.execute(
+                        "SELECT count(*) FROM uec.graph_public_projection_builds WHERE active"
+                    ).fetchone()[0]
+                    self.assertGreater(before_active, 0, "a completed graph build is required")
+                    vat_results = connection.execute("""
+                        SELECT
+                          uec.is_valid_italian_vat_identifier('it.853-2004','italian_vat',' iT 123 456 789 01 '),
+                          uec.is_valid_italian_vat_identifier('it.853-2004','italian_vat','00000000000'),
+                          uec.is_valid_italian_vat_identifier('it.1069-2009','it.tax-authority.vat','11111111111'),
+                          uec.is_valid_italian_vat_identifier('it.853-2004','italian_vat','1234567890'),
+                          uec.is_valid_italian_vat_identifier('other.source','company_number','company-7')
+                    """).fetchone()
+                    self.assertEqual(vat_results, (True, False, False, False, True))
+                    connection.execute(
+                        "UPDATE uec.graph_public_projection_builds SET active=false WHERE active"
+                    )
+                    connection.execute(
+                        "UPDATE uec.graph_projection_generation SET generation=generation+1 WHERE singleton"
+                    )
+                    after_generation = connection.execute(
+                        "SELECT generation FROM uec.graph_projection_generation WHERE singleton"
+                    ).fetchone()[0]
+                    self.assertEqual(after_generation, before_generation + 1)
+                    self.assertEqual(connection.execute(
+                        "SELECT count(*) FROM uec.graph_public_projection_builds WHERE active"
+                    ).fetchone()[0], 0)
+                    for view in ("graph_public_connections_current",
+                                 "graph_public_organization_endpoints_current",
+                                 "graph_public_organization_labels_current"):
+                        self.assertEqual(connection.execute(
+                            f"SELECT count(*) FROM uec.{view}"
+                        ).fetchone()[0], 0, f"old build remained visible through {view}")
+                    raise RollbackProbe()
+            except RollbackProbe:
+                pass
+            self.assertEqual(connection.execute(
+                "SELECT generation FROM uec.graph_projection_generation WHERE singleton"
+            ).fetchone()[0], before_generation)
+            self.assertEqual(connection.execute(
+                "SELECT count(*) FROM uec.graph_public_projection_builds WHERE active"
+            ).fetchone()[0], before_active)
 
     def test_public_aphis_reference_batch_uses_only_typed_allowlisted_metadata(self):
         endpoint = uuid.uuid4()
