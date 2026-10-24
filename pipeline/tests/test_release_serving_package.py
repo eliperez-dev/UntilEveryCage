@@ -20,6 +20,7 @@ class ReleaseServingPackageTests(unittest.TestCase):
         self.assertIn("uec.graph_public_projection_endpoints", relations)
         self.assertIn("uec.graph_public_projection_anchors", relations)
         self.assertIn("uec.graph_public_projection_evidence_refs", relations)
+        self.assertIn("uec.graph_public_evidence_metadata_clearance_events", relations)
         self.assertIn("uec.graph_public_projection_org_labels", relations)
         self.assertIn("uec.graph_public_projection_evidence_refs", relations)
         self.assertTrue(relations.isdisjoint(serving.FORBIDDEN_DATA_RELATIONS))
@@ -41,6 +42,7 @@ class ReleaseServingPackageTests(unittest.TestCase):
         self.assertIn("evidence_source_record_id", evidence_refs.columns)
         self.assertNotIn("event_payload", evidence_refs.columns)
         self.assertNotIn("raw_payload", evidence_refs.columns)
+        self.assertIn("graph_public_evidence_references_current", evidence_refs.query)
         self.assertEqual(evidence_refs.columns, (
             "evidence_ref_id", "projection_id", "endpoint_id", "evidence_source_record_id",
             "source_id", "evidence_type", "event_date", "event_period", "observed_at",
@@ -54,15 +56,30 @@ class ReleaseServingPackageTests(unittest.TestCase):
         source_records = next(spec for spec in specs if spec.relation == "uec.source_records")
         self.assertIn("NULL::text", source_records.query)
         self.assertIn("UNION SELECT DISTINCT reference.evidence_source_record_id", source_records.query)
+        self.assertIn("graph_public_evidence_references_current", source_records.query)
         rights = next(spec for spec in specs if spec.relation == "uec.source_rights_decisions")
         self.assertIn("redistribution_status", rights.columns)
+        self.assertIn("NOT IN ('us.aphis.annual-reports','us.inspections')", rights.query)
+        metadata_clearance = next(spec for spec in specs if spec.relation == "uec.graph_public_evidence_metadata_clearance_events")
+        self.assertEqual(metadata_clearance.columns, (
+            "clearance_event_id", "source_id", "profile", "release_id", "artifact_id",
+            "artifact_sha256", "scope_version", "decision_status", "approved_fields",
+            "decision_actor", "decision_reference", "decided_at", "created_at",
+        ))
+        self.assertIn("graph_public_evidence_metadata_clearance_current", metadata_clearance.query)
+        self.assertIn("graph_public_evidence_references_current", metadata_clearance.query)
+        self.assertNotIn("event_payload", metadata_clearance.query)
+        self.assertNotIn("graph_public_evidence_metadata_clearance_current", serving.API_RELATIONS)
         prepare_path = Path(__file__).parents[1] / "scripts" / "maintenance" / "prepare-release-serving-package.py"
         prepare_spec = importlib.util.spec_from_file_location("prepare_release_serving_restore_test", prepare_path)
         prepare = importlib.util.module_from_spec(prepare_spec)
         prepare_spec.loader.exec_module(prepare)
         self.assertIn("uec.source_rights_decisions", prepare.RESTORE_ORDER)
+        self.assertIn("uec.graph_public_evidence_metadata_clearance_events", prepare.RESTORE_ORDER)
         labels = next(spec for spec in specs if spec.relation == "uec.graph_public_projection_org_labels")
         self.assertEqual(labels.columns, ("projection_id", "endpoint_id", "label_source_record_id", "display_name", "assertion_role"))
+        self.assertIn("graph_public_organization_endpoints_current eligible", labels.query)
+        self.assertIn("eligible.organization_id=endpoint.public_entity_id", labels.query)
         self.assertIn("uec.graph_public_projection_org_labels", prepare.RESTORE_ORDER)
         evidence_refs = next(spec for spec in specs if spec.relation == "uec.graph_public_projection_evidence_refs")
         self.assertIn("evidence_source_record_id", evidence_refs.columns)
@@ -78,7 +95,7 @@ class ReleaseServingPackageTests(unittest.TestCase):
 
     def test_manifest_is_reproducible_and_labels_redaction(self):
         manifest = serving.package_manifest(release_ids=["v0-public"], migration_inventory_sha256="a" * 64, table_counts={"uec.releases": 1}, schema_artifacts={"pre_data": "b" * 64})
-        self.assertEqual(manifest["schema_version"], "uec-serving-package-v7")
+        self.assertEqual(manifest["schema_version"], "uec-serving-package-v8")
         self.assertEqual(manifest["package_state"], "selected_public_serving_derivative")
         self.assertEqual(manifest["package_sha256"], serving.canonical_sha256({key: value for key, value in manifest.items() if key != "package_sha256"}))
         self.assertIn("redacted", manifest["redaction_notice"])
@@ -133,6 +150,9 @@ class ReleaseServingPackageTests(unittest.TestCase):
         self.assertIn("uec.graph_public_connections_current", sql)
         self.assertNotIn("uec.graph_public_projection_edge_supports TO uec_api_runtime", sql)
         self.assertNotIn("uec.graph_connection_edges TO uec_api_runtime", sql)
+        self.assertIn("GRANT EXECUTE ON FUNCTION uec.is_valid_italian_vat_identifier(text,text,text) TO uec_api_runtime", sql)
+        custom_role_sql = serving.grant_sql(api_role="custom_graph_api")
+        self.assertIn("GRANT EXECUTE ON FUNCTION uec.is_valid_italian_vat_identifier(text,text,text) TO custom_graph_api", custom_role_sql)
 
     def test_invalid_release_or_digest_fails_closed(self):
         with self.assertRaises(ValueError): serving.package_manifest(release_ids=[], migration_inventory_sha256="a" * 64)

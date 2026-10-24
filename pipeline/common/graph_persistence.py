@@ -151,9 +151,10 @@ _PRIVATE_GRAPH_REQUIRED_READ_PRIVILEGES = {
     "public_release_history": {"SELECT"},
     "public_suppression_generation": {"SELECT"},
     # Typed evidence and organization labels are projected only after these
-    # exact selected-release review, artifact-rights, and restriction checks.
+    # exact selected-release review, metadata-clearance, and restriction checks.
     "publication_review_release_current": {"SELECT"},
     "source_rights_decisions": {"SELECT"},
+    "graph_public_evidence_metadata_clearance_current": {"SELECT"},
     "public_access_restricted": {"SELECT"},
 }
 
@@ -741,6 +742,86 @@ def _entity_maps(connection: Any, manifest: dict[str, Any], candidate: dict[str,
                 (source_id, record_id, organization_id, identifier_id, role, source_field.strip(), value.strip()),
             )
     return facilities, organizations
+
+
+def _backfill_existing_candidate_context(connection: Any, manifest: dict[str, Any],
+                                         candidate: dict[str, Any], artifact_id: uuid.UUID) -> None:
+    """Append newly-supported labels/aliases to exact existing record identifiers.
+
+    A candidate can be replayed after persistence semantics are upgraded while
+    its original ingest item hash remains unchanged. This deliberately does
+    not update source_records/raw_fields, create entity nodes or identifiers,
+    or revisit edge payloads: it only attaches source assertions and declared
+    aliases to identifiers already bound to this source-record-artifact tuple.
+    """
+    source_id = str(manifest["source_id"])
+    source_record_key = candidate.get("source_record_key")
+    if not isinstance(source_record_key, str) or not source_record_key:
+        raise GraphPersistenceError("candidate requires source_record_key")
+    record = connection.execute(
+        """SELECT source_record_id FROM uec.source_records
+           WHERE source_id=%s AND source_record_key=%s AND artifact_id=%s""",
+        (source_id, source_record_key, artifact_id),
+    ).fetchone()
+    if not record:
+        return
+    record_id = record[0]
+
+    # Same-facility aliases may be appended only when the exact primary
+    # facility identifier is already present for this record and artifact.
+    facility_items = candidate.get("facilities", [])
+    aliases = _additional_facility_identifier_aliases(candidate)
+    if source_id == "us.aphis":
+        aliases.extend((kind, value, "us.aphis") for kind, value in
+                       _aphis_facility_identifier_aliases(candidate.get("normalized_values")))
+    aliases = list(dict.fromkeys(aliases))
+    if aliases and len(facility_items) == 1:
+        identifier = facility_items[0].get("source_identifier", {})
+        primary = connection.execute(
+            """SELECT facility_id FROM uec.source_entity_identifiers
+               WHERE source_id=%s AND source_record_id=%s AND entity_type='facility'
+                 AND identifier_type=%s AND source_identifier=%s""",
+            (source_id, record_id, identifier.get("identifier_type"), identifier.get("value")),
+        ).fetchall()
+        if len(primary) == 1 and primary[0][0] is not None:
+            _persist_facility_identifier_aliases(
+                connection, source_id=source_id, source_record_id=record_id,
+                facility_id=primary[0][0], observed_at=_timestamp(manifest), aliases=aliases,
+            )
+
+    # Name assertions are intentionally attached only when one candidate org
+    # maps to one pre-existing org identifier on this exact source record.
+    org_items = candidate.get("organizations", [])
+    assertions = candidate.get("name_assertions", [])
+    if len(org_items) != 1 or not assertions:
+        return
+    identifier = org_items[0].get("source_identifier", {})
+    organization_rows = connection.execute(
+        """SELECT identifier_id,organization_id FROM uec.source_entity_identifiers
+           WHERE source_id=%s AND source_record_id=%s AND entity_type='organization'
+             AND identifier_type=%s AND source_identifier=%s""",
+        (source_id, record_id, identifier.get("identifier_type"), identifier.get("value")),
+    ).fetchall()
+    if len(organization_rows) != 1 or organization_rows[0][1] is None:
+        return
+    identifier_id, organization_id = organization_rows[0]
+    for assertion in assertions:
+        if not isinstance(assertion, dict):
+            continue
+        value = assertion.get("value")
+        source_field = assertion.get("source_field")
+        role = assertion.get("role")
+        if (not isinstance(value, str) or not value.strip()
+                or not isinstance(source_field, str) or not source_field.strip()
+                or role not in {"legal", "business", "trading", "dba", "operator", "brand"}):
+            continue
+        connection.execute(
+            """INSERT INTO uec.graph_source_name_assertions
+               (source_id,source_record_id,organization_id,identifier_id,assertion_role,source_field,assertion_value)
+               VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""",
+            (source_id, record_id, organization_id, identifier_id, role,
+             source_field.strip(), value.strip()),
+        )
 
 
 def _facility_id_for_identifier(connection: Any, identifier_id: uuid.UUID) -> uuid.UUID:
@@ -1848,6 +1929,7 @@ def import_graph_candidates(database_url: str, handoff_dir: str | Path, *,
                         item_digest = hashlib.sha256(canonical_json_bytes(candidate)).hexdigest()
                         existing = db.execute("SELECT 1 FROM uec.graph_ingest_items WHERE source_id=%s AND item_sha256=%s", (manifest["source_id"], item_digest)).fetchone()
                         if existing:
+                            _backfill_existing_candidate_context(db, manifest, candidate, artifact_id)
                             already += 1
                             continue
                         _persist_candidate(db, manifest, candidate, artifact_id, digest,
@@ -1870,6 +1952,7 @@ def import_graph_candidates(database_url: str, handoff_dir: str | Path, *,
                         item_digest = hashlib.sha256(canonical_json_bytes(candidate)).hexdigest()
                         existing = db.execute("SELECT 1 FROM uec.graph_ingest_items WHERE source_id=%s AND item_sha256=%s", (manifest["source_id"], item_digest)).fetchone()
                         if existing:
+                            _backfill_existing_candidate_context(db, manifest, candidate, artifact_id)
                             already += 1
                             continue
                         _persist_candidate(db, manifest, candidate, artifact_id, digest,

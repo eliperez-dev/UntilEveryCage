@@ -2,7 +2,7 @@ import unittest
 
 from pipeline.common.graph_candidate import build_graph_candidate
 from pipeline.common.graph_source_mapping import (FACILITY_IDENTIFIERS, name_assertions,
-    organization_identifiers, source_identifier)
+    operator_asserted, organization_identifiers, source_identifier)
 from pipeline.contracts.graph_candidate_handoff import validate_graph_candidate
 
 
@@ -121,6 +121,21 @@ class GraphSourceMappingTests(unittest.TestCase):
         self.assertEqual(organization_identifiers("br.sif.registered", {}, {"CPF_CNPJ": "12345678901"}), [])
         self.assertEqual(organization_identifiers("br.sif.registered", {}, {"CPF_CNPJ": "12345678000199"})[0]["identifier_type"], "brazil_cnpj")
         self.assertEqual(organization_identifiers("dk.smiley", {}, {"CVR_nummer": "12345678"})[0]["id_namespace"], "dk.virk.cvr")
+
+    def test_italian_vat_all_zero_and_repeated_digit_placeholders_are_not_graph_ids(self):
+        for digit in "0123456789":
+            placeholder = digit * 11
+            source_values = {"p_iva": placeholder, "ragione_sociale": "Synthetic Legal Name",
+                             "cod_fiscale": "PERSONAL-CODE"}
+            self.assertEqual(organization_identifiers("it.853-2004", {}, source_values), [])
+            self.assertFalse(operator_asserted("it.853-2004", source_values))
+            record = {"source_id": "it.853-2004", "source_record_key": f"placeholder-{digit}",
+                      "source_row": 1, "source_values": source_values,
+                      "normalized": {"recognition_number": f"ABP-{digit}", "country_code": "IT"}}
+            candidate = build_graph_candidate(record)
+            self.assertEqual(candidate["organizations"], [])
+            self.assertEqual(candidate["relationships"], [])
+            self.assertEqual(candidate["source_values"]["p_iva"], placeholder)
 
 
 if __name__ == "__main__":

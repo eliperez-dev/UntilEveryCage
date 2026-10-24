@@ -174,6 +174,11 @@ def additional_source_identifiers(source_id: str, normalized: dict[str, Any],
     return result
 
 
+def _is_repeated_digit_placeholder(value: str) -> bool:
+    """Reject all-zero and other repeated-digit business-ID placeholders."""
+    return bool(value) and value.isascii() and value.isdigit() and len(set(value)) == 1
+
+
 def organization_identifiers(source_id: str, normalized: dict[str, Any],
                              source_values: dict[str, Any] | None = None) -> list[dict[str, str]]:
     """Allowlist declared business-ID fields and exclude mixed personal IDs."""
@@ -183,11 +188,12 @@ def organization_identifiers(source_id: str, normalized: dict[str, Any],
     def add(field: str, identifier_type: str, namespace: str, length: int) -> None:
         value = values.get(field)
         if isinstance(value, str):
-            native = value.strip().replace(" ", "")
+            native = "".join(value.split())
             if identifier_type == "italian_vat" and native.upper().startswith("IT"):
                 native = native[2:]
-            compact = "".join(character for character in native if character.isdigit())
-            if len(compact) == length and compact == native:
+            compact = "".join(character for character in native if "0" <= character <= "9")
+            is_placeholder = identifier_type == "italian_vat" and _is_repeated_digit_placeholder(compact)
+            if len(compact) == length and compact == native and not is_placeholder:
                 result.append({"identifier_type": identifier_type, "value": value.strip(),
                                "id_namespace": namespace, "identity_scope": "source_scoped"})
 

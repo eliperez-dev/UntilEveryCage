@@ -69,7 +69,7 @@ class GraphProjectionTests(unittest.TestCase):
 
     @unittest.skipUnless(
         os.environ.get("UEC_GRAPH_ACCEPTANCE_DATABASE_URL"),
-        "set UEC_GRAPH_ACCEPTANCE_DATABASE_URL after 080 and v3 projection are applied",
+        "set UEC_GRAPH_ACCEPTANCE_DATABASE_URL after 082 and v3 projection are applied",
     )
     def test_post_migration_database_projection_acceptance_is_read_only(self):
         expected_database = os.environ.get("UEC_GRAPH_DATABASE_NAME", "")
@@ -121,12 +121,120 @@ class GraphProjectionTests(unittest.TestCase):
                    JOIN uec.graph_public_projection_evidence_refs reference
                      USING (evidence_ref_id)"""
             ).fetchone()
+            vat_guards = connection.execute(
+                """SELECT
+                     uec.is_valid_italian_vat_identifier('it.853-2004','italian_vat',' iT 123 456 789 01 '),
+                     uec.is_valid_italian_vat_identifier('it.853-2004','italian_vat','00000000000'),
+                     uec.is_valid_italian_vat_identifier('it.1069-2009','it.tax-authority.vat','11111111111'),
+                     uec.is_valid_italian_vat_identifier('it.853-2004','italian_vat','1234567890'),
+                     uec.is_valid_italian_vat_identifier('other.source','company_number','company-7')"""
+            ).fetchone()
         self.assertEqual(duplicate_org_labels, 0)
         self.assertEqual(duplicate_org_endpoints, 0)
         self.assertEqual(duplicate_connection_rows, 0)
+        self.assertEqual(vat_guards, (True, False, False, False, True))
         if os.environ.get("UEC_GRAPH_ACCEPTANCE_REQUIRE_APHIS_EVIDENCE") == "1":
             self.assertGreater(evidence_counts[0], 0)
             self.assertGreater(evidence_counts[1], 0)
+
+    @unittest.skipUnless(
+        os.environ.get("UEC_GRAPH_METADATA_CLEARANCE_INVALIDATION_ACCEPTANCE") == "1"
+        and os.environ.get("UEC_GRAPH_ACCEPTANCE_DATABASE_URL"),
+        "set UEC_GRAPH_METADATA_CLEARANCE_INVALIDATION_ACCEPTANCE=1 on the isolated clone",
+    )
+    def test_metadata_approval_after_completed_build_invalidates_projection(self):
+        """Exercise the real trigger; every test-only decision is rolled back."""
+        expected_database = os.environ.get("UEC_GRAPH_DATABASE_NAME", "")
+        self.assertTrue(expected_database)
+
+        class RollbackProbe(Exception):
+            pass
+
+        with psycopg.connect(os.environ["UEC_GRAPH_ACCEPTANCE_DATABASE_URL"]) as connection:
+            self.assertEqual(connection.execute("SELECT current_database()").fetchone()[0],
+                             expected_database)
+            try:
+                with connection.transaction():
+                    build = connection.execute(
+                        """SELECT release_id FROM uec.graph_public_projection_builds
+                           WHERE active AND status='completed' AND projection_version=%s
+                           ORDER BY completed_at DESC LIMIT 1""",
+                        (PROJECTION_VERSION,),
+                    ).fetchone()
+                    self.assertIsNotNone(build, "a completed projection is required")
+                    release_id = build[0]
+                    release = connection.execute(
+                        "SELECT profile FROM uec.releases WHERE release_id=%s",
+                        (release_id,),
+                    ).fetchone()
+                    self.assertIsNotNone(release)
+                    artifact = connection.execute(
+                        """SELECT record.source_id,record.artifact_id,artifact.sha256
+                           FROM uec.source_records record
+                           JOIN uec.raw_artifacts artifact USING(artifact_id)
+                           JOIN uec.graph_evidence_events event
+                             ON event.source_record_id=record.source_record_id
+                            AND event.source_id=record.source_id
+                           WHERE record.source_id IN ('us.aphis.annual-reports','us.inspections')
+                             AND ((record.source_id='us.aphis.annual-reports'
+                                   AND event.event_type='annual_reports'
+                                   AND event.event_period ~ '^[0-9]{4}$')
+                               OR (record.source_id='us.inspections'
+                                   AND event.event_type='inspections'
+                                   AND event.event_date IS NOT NULL))
+                             AND NOT EXISTS (
+                               SELECT 1 FROM uec.observations observation
+                               JOIN uec.release_members member USING(observation_id)
+                               WHERE member.release_id=%s
+                                 AND observation.source_record_id=record.source_record_id)
+                           ORDER BY record.source_id,record.artifact_id LIMIT 1""",
+                        (release_id,),
+                    ).fetchone()
+                    self.assertIsNotNone(artifact, "eligible non-facility APHIS evidence is required")
+                    before = connection.execute(
+                        "SELECT generation FROM uec.graph_projection_generation WHERE singleton"
+                    ).fetchone()[0]
+                    decision = (
+                        "aphis-public-reference-metadata-v1",
+                        ["source_id", "evidence_type", "event_date", "event_period",
+                         "observed_at", "source_url", "match_method"],
+                        "rollback-only regression test",
+                        "user-approved-reference-metadata-only;https://www.aphis.usda.gov/animal-care/awa-services/usda-animal-care-public-search-tool",
+                    )
+                    insert = """INSERT INTO uec.graph_public_evidence_metadata_clearance_events
+                        (source_id,profile,release_id,artifact_id,artifact_sha256,scope_version,
+                         decision_status,approved_fields,decision_actor,decision_reference,decided_at)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,clock_timestamp())"""
+                    connection.execute(
+                        insert,
+                        (artifact[0], release[0], release_id, artifact[1], artifact[2],
+                         decision[0], "withdrawn", decision[1], decision[2], decision[3],
+                        ),
+                    )
+                    connection.execute(
+                        insert.replace("clock_timestamp())", "clock_timestamp()+interval '1 second')"),
+                        (artifact[0], release[0], release_id, artifact[1], artifact[2],
+                         decision[0], "approved", decision[1], decision[2], decision[3],
+                        ),
+                    )
+                    self.assertEqual(connection.execute(
+                        """SELECT decision_status FROM uec.graph_public_evidence_metadata_clearance_current
+                           WHERE source_id=%s AND profile=%s AND release_id=%s AND artifact_id=%s""",
+                        (artifact[0], release[0], release_id, artifact[1]),
+                    ).fetchone()[0], "approved")
+                    after = connection.execute(
+                        "SELECT generation FROM uec.graph_projection_generation WHERE singleton"
+                    ).fetchone()[0]
+                    self.assertEqual(after, before + 1)
+                    self.assertEqual(connection.execute(
+                        """SELECT count(*) FROM uec.graph_public_projection_builds
+                           WHERE release_id=%s AND active AND status='completed'
+                             AND projection_version=%s AND edge_generation=%s""",
+                        (release_id, PROJECTION_VERSION, after),
+                    ).fetchone()[0], 0, "the previous completed build must now be stale")
+                    raise RollbackProbe()
+            except RollbackProbe:
+                pass
 
     def test_projection_selector_preserves_release_and_all_support_gates(self):
         self.assertIn("binding.release_id=$1", EDGE_CTES)
@@ -252,14 +360,73 @@ class GraphProjectionTests(unittest.TestCase):
         self.assertIn("link.match_method='exact_source_identifier'", query)
         self.assertIn("review.source_record_id=event.source_record_id", query)
         self.assertIn("review.maintainer_approval='approved'", query)
-        self.assertIn("rights.redistribution_status='cleared'", query)
-        self.assertIn("rights.artifact_sha256=artifact.sha256", query)
-        self.assertIn("DISTINCT ON (source_id,profile,release_id,artifact_id)", query)
-        self.assertIn("decided_at DESC,source_rights_decision_id DESC", query)
+        self.assertIn("graph_public_evidence_metadata_clearance_current clearance", query)
+        self.assertIn("clearance.artifact_sha256=artifact.sha256", query)
+        self.assertIn("clearance.scope_version='aphis-public-reference-metadata-v1'", query)
+        self.assertIn("'evidence_type','event_date','event_period','observed_at','source_url','match_method'", query)
+        self.assertNotIn("source_rights_decisions", query)
         self.assertIn("endpoint.source_id='us.aphis'", query)
         self.assertNotIn("event_payload", query)
         self.assertNotIn("raw_fields", query)
         self.assertEqual(parameters, {"release_id": "selected-release"})
+
+    def test_081_metadata_clearance_is_append_only_exact_scope_and_does_not_replace_other_rights_gates(self):
+        migration = (Path(__file__).resolve().parents[1] / "migrations" /
+                     "081_aphis_reference_metadata_clearance.sql").read_text(encoding="utf-8")
+        normalized = migration.casefold()
+        self.assertIn("create table uec.graph_public_evidence_metadata_clearance_events", normalized)
+        self.assertIn("before update or delete on uec.graph_public_evidence_metadata_clearance_events", normalized)
+        self.assertIn("after insert on uec.graph_public_evidence_metadata_clearance_events", normalized)
+        self.assertIn("for each row when (new.decision_status='approved')", normalized)
+        self.assertIn("execute function uec.bump_graph_projection_generation()", normalized)
+        self.assertIn("decision_status in ('approved','withdrawn')", normalized)
+        self.assertIn("artifact_digest is distinct from new.artifact_sha256", normalized)
+        self.assertIn("scope_version='aphis-public-reference-metadata-v1'", normalized)
+        self.assertIn("approved_fields = array[", normalized)
+        self.assertIn("'source_id','evidence_type','event_date','event_period','observed_at','source_url','match_method'", normalized)
+        self.assertIn("decision_status='approved'", normalized)
+        self.assertIn("distinct on (source_id,profile,release_id,artifact_id)", normalized)
+        self.assertIn("decided_at desc,clearance_event_id desc", normalized)
+        self.assertIn("publication_eligible=true", normalized)
+        self.assertIn("review.privacy_screening_status='passed'", normalized)
+        self.assertIn("review.maintainer_approval='approved'", normalized)
+        self.assertIn("public_access_restricted", normalized)
+        self.assertIn("current_anchor.facility_id=anchor.facility_id", normalized)
+        self.assertIn("observation.source_record_id=evidence_record.source_record_id", normalized)
+        self.assertIn("build.edge_generation=generation.generation", normalized)
+        self.assertIn("create or replace view uec.graph_public_evidence_references_current", normalized)
+        self.assertNotIn("create or replace view uec.source_rights", normalized)
+        self.assertIn("grant select on uec.graph_public_evidence_references_current to uec_api_runtime", normalized)
+        self.assertNotIn("grant select on uec.graph_public_evidence_metadata_clearance_events to uec_api_runtime", normalized)
+        self.assertIn("revoke all on uec.graph_public_evidence_metadata_clearance_events from uec_api_runtime", normalized)
+        self.assertIn("does not clear report contents", normalized)
+
+    def test_082_public_italian_vat_guard_only_changes_public_organization_qualification(self):
+        migration = (Path(__file__).resolve().parents[1] / "migrations" /
+                     "082_public_italian_vat_qualification.sql").read_text(encoding="utf-8")
+        normalized = migration.casefold()
+        self.assertIn("create function uec.is_valid_italian_vat_identifier", normalized)
+        self.assertIn("regexp_replace(upper(coalesce(source_identifier,'')), '[[:space:]]', '', 'g')", normalized)
+        self.assertIn("'^it', ''", normalized)
+        self.assertIn("vat ~ '^[0-9]{11}$'", normalized)
+        self.assertIn("vat <> repeat(substr(vat,1,1),11)", normalized)
+        self.assertIn("create or replace view uec.graph_public_organization_endpoints_current", normalized)
+        self.assertIn("uec.is_valid_italian_vat_identifier(\n      endpoint.source_id", normalized)
+        for gate in (
+            "build.projection_version='graph-release-projection-v3'",
+            "build.edge_generation=generation.generation",
+            "rights.redistribution_status='cleared'",
+            "review.privacy_screening_status='passed'",
+            "review.maintainer_approval='approved'",
+            "public_access_restricted",
+        ):
+            with self.subTest(gate=gate):
+                self.assertIn(gate, normalized)
+        self.assertNotIn("delete from uec.graph_connection_edges", normalized)
+        self.assertNotIn("update uec.source_entity_identifiers", normalized)
+        self.assertIn("grant execute on function uec.is_valid_italian_vat_identifier(text,text,text) to uec_api_runtime", normalized)
+        label_query, _ = _python_organization_label_select("selected-release")
+        self.assertIn("is_valid_italian_vat_identifier(endpoint.source_id,endpoint.identifier_type,endpoint.source_identifier)", label_query)
 
     def test_public_aphis_reference_batch_uses_only_typed_allowlisted_metadata(self):
         endpoint = uuid.uuid4()
@@ -361,6 +528,12 @@ class GraphProjectionTests(unittest.TestCase):
                 self.assertIn(f"GRANT SELECT ON uec.{table}", evidence_migration)
         self.assertIn("label_source_record_id", evidence_migration)
         self.assertIn("rights.artifact_sha256=artifact.sha256", evidence_migration)
+        metadata_clearance_migration = (Path(__file__).resolve().parents[1] / "migrations" /
+                                        "081_aphis_reference_metadata_clearance.sql").read_text(encoding="utf-8")
+        self.assertEqual(_PRIVATE_GRAPH_REQUIRED_READ_PRIVILEGES[
+            "graph_public_evidence_metadata_clearance_current"], {"SELECT"})
+        self.assertIn("GRANT SELECT ON uec.graph_public_evidence_metadata_clearance_current", metadata_clearance_migration)
+        self.assertIn("GRANT SELECT ON uec.graph_public_evidence_metadata_clearance_current TO %I", metadata_clearance_migration)
         normalized = (Path(__file__).resolve().parents[1] / "migrations" / "078_normalized_graph_projection_endpoints.sql").read_text(encoding="utf-8")
         self.assertIn("CREATE OR REPLACE VIEW uec.graph_public_connections_current", normalized)
         self.assertNotIn("DROP VIEW uec.graph_public_connections_current", normalized)

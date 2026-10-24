@@ -13,6 +13,7 @@ from pipeline.common.graph_persistence import (
     _matcher_edge,
     _aphis_facility_identifier_aliases,
     _additional_facility_identifier_aliases,
+    _backfill_existing_candidate_context,
     _persist_facility_identifier_aliases,
     _observed_at,
     _approved_facility_for_source_record,
@@ -63,6 +64,79 @@ def candidate(source_id="synthetic.graph"):
 
 
 class GraphPersistenceContractTests(unittest.TestCase):
+    def test_duplicate_candidate_context_backfill_is_exact_record_append_only_and_idempotent(self):
+        source_record_id, artifact_id = uuid.uuid4(), uuid.uuid4()
+        facility_id, facility_identifier_id = uuid.uuid4(), uuid.uuid4()
+        organization_id, organization_identifier_id = uuid.uuid4(), uuid.uuid4()
+
+        class Capture:
+            def __init__(self):
+                self.calls = []
+                self.aliases = set()
+                self.assertions = set()
+
+            def execute(self, query, params):
+                normalized = " ".join(query.split())
+                self.calls.append((normalized, params))
+                if "SELECT source_record_id FROM uec.source_records" in normalized:
+                    return self._result((source_record_id,))
+                if "SELECT facility_id FROM uec.source_entity_identifiers" in normalized:
+                    if params != ("us.aphis", source_record_id, "establishment_id", "12-R-3456"):
+                        raise AssertionError("primary lookup was not bound to the exact source record")
+                    return self._result((facility_id,))
+                if "SELECT identifier_id FROM uec.source_entity_identifiers" in normalized and "entity_type='facility'" in normalized:
+                    return self._result((facility_identifier_id,) if params[-2:] in self.aliases else None)
+                if "INSERT INTO uec.source_entity_identifiers" in normalized:
+                    self.aliases.add(params[-2:])
+                    return self._result(None)
+                if "SELECT identifier_id,organization_id FROM uec.source_entity_identifiers" in normalized:
+                    if params != ("us.aphis", source_record_id, "business_number", "opaque-42"):
+                        raise AssertionError("organization lookup was not bound to the exact source record")
+                    return self._result((organization_identifier_id, organization_id))
+                if "INSERT INTO uec.graph_source_name_assertions" in normalized:
+                    if "ON CONFLICT DO NOTHING" not in normalized or params[:4] != (
+                            "us.aphis", source_record_id, organization_id, organization_identifier_id):
+                        raise AssertionError("assertion insert was not append-only and record-bound")
+                    self.assertions.add(params)
+                    return self._result(None)
+                raise AssertionError(f"unexpected SQL in context backfill: {normalized}")
+
+            @staticmethod
+            def _result(row):
+                class Result:
+                    def fetchone(self):
+                        return row
+                    def fetchall(self):
+                        return [row] if row is not None else []
+                return Result()
+
+        connection = Capture()
+        candidate = {
+            "source_record_key": "record-private",
+            "facilities": [{"local_ref": "f", "source_identifier": {
+                "identifier_type": "establishment_id", "value": "12-R-3456"}}],
+            "additional_source_identifiers": [{"identifier_type": "siret", "value": "opaque-siret",
+                                                  "id_namespace": "fr.insee.siret",
+                                                  "identity_scope": "source_scoped"}],
+            "organizations": [{"local_ref": "o", "source_identifier": {
+                "identifier_type": "business_number", "value": "opaque-42"}}],
+            "name_assertions": [{"value": "Synthetic Legal Name", "source_field": "legal_name", "role": "legal"}],
+        }
+        manifest = {"source_id": "us.aphis", "retrieved_at_utc": "2026-01-01T00:00:00Z"}
+        _backfill_existing_candidate_context(connection, manifest, candidate, artifact_id)
+        _backfill_existing_candidate_context(connection, manifest, candidate, artifact_id)
+
+        source_record_selects = [(query, params) for query, params in connection.calls
+                                 if "SELECT source_record_id FROM uec.source_records" in query]
+        self.assertEqual(len(source_record_selects), 2)
+        self.assertTrue(all(params == ("us.aphis", "record-private", artifact_id)
+                            for _, params in source_record_selects))
+        self.assertEqual(len(connection.aliases), 1)
+        self.assertEqual(len(connection.assertions), 1)
+        self.assertFalse(any("UPDATE uec.source_records" in query or "INSERT INTO uec.organizations" in query
+                             or "INSERT INTO uec.graph_connection_edges" in query
+                             for query, _ in connection.calls))
+
     def test_evidence_import_supports_private_writer_target_without_disposable_bypass(self):
         with patch.object(graph_module, "require_private_graph_target") as private_gate, \
              patch.object(graph_module, "require_disposable_graph_database") as disposable_gate:
