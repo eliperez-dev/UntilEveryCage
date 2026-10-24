@@ -285,7 +285,9 @@ class D4GraphPersistenceE2ETests(unittest.TestCase):
                     "to": {"entity_type": "facility", "source_id": source_id,
                            "identifier_type": "synthetic-permit", "source_identifier": facility_id},
                     "relationship_type": "operator",
-                    "signals": [{"name": "organization_name_normalized"}],
+                    # Use the minimum qualifying signal pair for the inferred
+                    # edge; a name-only matcher candidate is correctly skipped.
+                    "signals": [{"name": "organization_name_normalized"}, {"name": "postal_match"}],
                     "observed_at": observed_at,
                 }]
             else:
@@ -355,12 +357,10 @@ class D4GraphPersistenceE2ETests(unittest.TestCase):
                                 "review_state": "review_required", "publication_status": "not_eligible",
                                 "release_id": None},
             }
-            payloads.append(canonical_json_bytes(row) + b"\n")
+            # canonical_json_bytes already emits the JSONL newline.
+            payloads.append(canonical_json_bytes(row))
         payload = b"".join(payloads)
-        # The importer hashes canonical JSON rows without the JSONL newline.
-        # Keep the physical file newline-delimited but bind the manifest to
-        # the canonical candidate stream, as real handoffs do.
-        digest = hashlib.sha256(b"".join(item.rstrip(b"\n") for item in payloads)).hexdigest()
+        digest = hashlib.sha256(payload).hexdigest()
         handoff = self._write_jsonl_handoff(source_id, "facility", payloads, {
             "schema_version": "private-graph-candidate-set-v1",
             "contract_version": "graph-candidate-handoff-v1",
