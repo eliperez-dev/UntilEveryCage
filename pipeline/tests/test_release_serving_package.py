@@ -174,6 +174,8 @@ class ReleaseServingPackageTests(unittest.TestCase):
         self.assertIn("uec.map_facilities_display_history", sql)
         self.assertIn("uec.publication_review_release_current", sql)
         self.assertIn("uec.graph_public_connections_current", sql)
+        self.assertIn("GRANT SELECT ON " + ", ".join(serving.API_RELATIONS) + " TO uec_api_runtime", sql)
+        self.assertIn("REVOKE ALL ON FUNCTION uec.is_valid_italian_vat_identifier(text,text,text) FROM PUBLIC", sql)
         self.assertNotIn("uec.graph_public_projection_edge_supports TO uec_api_runtime", sql)
         self.assertNotIn("uec.graph_connection_edges TO uec_api_runtime", sql)
         self.assertIn("REVOKE ALL ON FUNCTION uec.is_valid_italian_vat_identifier(text,text,text) FROM uec_api_runtime", sql)
