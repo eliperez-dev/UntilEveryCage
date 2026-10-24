@@ -7,6 +7,7 @@ import json
 import os
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -247,6 +248,93 @@ class D4GraphPersistenceE2ETests(unittest.TestCase):
                 "SELECT count(*) FROM uec.source_records WHERE source_id=%s AND raw_fields ? 'name_assertions'",
                 (source_id,),
             ).fetchone()[0], 0)
+
+    def test_edge_timestamps_normalize_unknown_null_date_only_and_timezone_inputs(self):
+        source_id = "synthetic.graph-edge-timestamps"
+        retrieved_at = "2026-10-23T08:00:00Z"
+        rows = []
+
+        def make_candidate(index, observed_at=None, *, matcher=False):
+            record_key = f"timestamp-record-{index}"
+            facility_id = f"TS-FAC-{index}"
+            organization_id = f"TS-ORG-{index}"
+            row = {
+                "contract_version": "graph-candidate-handoff-v1",
+                "source_id": source_id,
+                "source_record_key": record_key,
+                "source_row": index + 1,
+                "source_values": {},
+                "facilities": [{"local_ref": "facility:1", "source_identifier": {
+                    "identifier_type": "synthetic-permit", "value": facility_id,
+                    "identity_scope": "source_scoped",
+                }}],
+                "organizations": [{"local_ref": "organization:1", "source_identifier": {
+                    "identifier_type": "synthetic-operator", "value": organization_id,
+                    "identity_scope": "source_scoped",
+                }}],
+                "relationships": [], "claims": [], "crosswalks": [],
+                "contradiction_state": "none-observed", "review_state": "review_required",
+                "publication": {"storage_state": "private", "privacy_status": "pending",
+                                "review_state": "review_required", "publication_status": "not_eligible",
+                                "release_id": None},
+            }
+            if matcher:
+                row["connection_candidates"] = [{
+                    "from": {"entity_type": "organization", "source_id": source_id,
+                             "identifier_type": "synthetic-operator", "source_identifier": organization_id},
+                    "to": {"entity_type": "facility", "source_id": source_id,
+                           "identifier_type": "synthetic-permit", "source_identifier": facility_id},
+                    "relationship_type": "operator",
+                    "signals": [{"name": "organization_name_normalized"}],
+                    "observed_at": observed_at,
+                }]
+            else:
+                row["relationships"] = [{
+                    "relationship_type": "operator", "from_organization_ref": "organization:1",
+                    "target_facility_ref": "facility:1", "observed_at": observed_at,
+                    "confidence": 0.55, "review_state": "review_required",
+                }]
+            return row
+
+        for index, observed_at in enumerate(("unknown", "2026-09-21", "2026-09-20T12:30:00+02:00")):
+            rows.append(make_candidate(index, observed_at))
+        # The matcher contract permits an absent observation timestamp; this
+        # exercises null-to-capture-time fallback on the inferred-edge path.
+        rows.append(make_candidate(3, None, matcher=True))
+        payloads = [canonical_json_bytes(row) for row in rows]
+        payload = b"".join(payloads)
+        digest = hashlib.sha256(payload).hexdigest()
+        handoff = self._write_jsonl_handoff(source_id, "facility", payloads, {
+            "schema_version": "private-graph-candidate-set-v1",
+            "contract_version": "graph-candidate-handoff-v1",
+            "source_kind": "facility_master", "source_id": source_id,
+            "records_sha256": digest, "checksum_sha256": digest,
+            "candidate_count": len(rows), "byte_size": len(payload), "country_code": "ZZ",
+            "retrieved_at_utc": retrieved_at,
+            "storage_state": "private", "review_state": "review_required",
+            "publication_status": "not_eligible", "release_state": "not-created",
+            "publication_state": "private-candidate",
+        })
+        result = import_graph_candidates(self.env.database_url, handoff, disposable_db=True)
+        self.assertEqual(result["inserted_count"], 4)
+
+        with psycopg.connect(self.env.database_url) as db:
+            persisted = db.execute(
+                "SELECT from_source_identifier, observed_at, computed_at, connection_type "
+                "FROM uec.graph_connection_edges WHERE from_source_id=%s "
+                "AND from_source_identifier LIKE 'TS-ORG-%' ORDER BY from_source_identifier",
+                (source_id,),
+            ).fetchall()
+        self.assertEqual(len(persisted), 4)
+        values = {row[0]: (row[1], row[2], row[3]) for row in persisted}
+        capture = datetime.fromisoformat(retrieved_at.replace("Z", "+00:00"))
+        self.assertEqual(values["TS-ORG-0"][0], capture)
+        self.assertEqual(values["TS-ORG-0"][1], capture)
+        self.assertEqual(values["TS-ORG-1"][0], datetime(2026, 9, 21, tzinfo=timezone.utc))
+        self.assertEqual(values["TS-ORG-2"][0], datetime.fromisoformat("2026-09-20T10:30:00+00:00"))
+        self.assertEqual(values["TS-ORG-3"][0], capture)
+        self.assertEqual(values["TS-ORG-3"][1], capture)
+        self.assertEqual(values["TS-ORG-3"][2], "inferred")
 
     def test_committed_batches_are_visible_and_resumable(self):
         source_id = "synthetic.graph-batch-resume"

@@ -24,6 +24,7 @@ from pipeline.common.graph_persistence import (
     _validate_private_graph_writer,
     _PRIVATE_GRAPH_REQUIRED_PRIVILEGES,
     _PRIVATE_GRAPH_REQUIRED_READ_PRIVILEGES,
+    _PRIVATE_GRAPH_REQUIRED_FUNCTION_PRIVILEGES,
     load_evidence_handoff,
     load_graph_candidate_handoff,
     require_disposable_graph_database,
@@ -558,7 +559,10 @@ class GraphPersistenceContractTests(unittest.TestCase):
     def test_unknown_source_observation_time_uses_handoff_time(self):
         manifest = {"retrieved_at_utc": "2026-09-21T00:00:00Z"}
         self.assertEqual(_observed_at("unknown", manifest), manifest["retrieved_at_utc"])
+        self.assertEqual(_observed_at(None, manifest), manifest["retrieved_at_utc"])
+        self.assertEqual(_observed_at("2026-09-20", manifest), "2026-09-20")
         self.assertEqual(_observed_at("2026-09-20T12:30:00Z", manifest), "2026-09-20T12:30:00Z")
+        self.assertEqual(_observed_at("2026-09-20T12:30:00+02:00", manifest), "2026-09-20T12:30:00+02:00")
 
     def test_loopback_non_default_disposable_guard(self):
         require_disposable_graph_database("postgresql://uec:pw@localhost:5433/uec-test", True)
@@ -594,14 +598,17 @@ class GraphPersistenceContractTests(unittest.TestCase):
                 return self.rows
 
         class Connection:
-            def __init__(self, privileges):
+            def __init__(self, privileges, function_grant=True):
                 self.privileges = privileges
+                self.function_grant = function_grant
 
             def execute(self, query, params=None):
                 if query.startswith("SELECT current_database()"):
                     return Cursor([("uec_stage", "uec_graph_writer_test")])
                 if query.startswith("SELECT rolsuper"):
                     return Cursor([(False, False, False, False)])
+                if query.startswith("SELECT has_function_privilege"):
+                    return Cursor([(self.function_grant,)])
                 return Cursor(self.privileges)
 
         privileges = [
@@ -619,6 +626,8 @@ class GraphPersistenceContractTests(unittest.TestCase):
         with self.assertRaisesRegex(GraphPersistenceError, "grants are incomplete"):
             _validate_private_graph_writer(Connection(missing_history_read), "uec_stage")
         _validate_private_graph_writer(Connection(privileges), "uec_stage")
+        with self.assertRaisesRegex(GraphPersistenceError, "function grants are incomplete"):
+            _validate_private_graph_writer(Connection(privileges, function_grant=False), "uec_stage")
 
     def test_graph_candidate_loader_accepts_private_jsonl_and_is_deterministic(self):
         row = candidate()

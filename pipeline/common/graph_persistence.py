@@ -157,6 +157,9 @@ _PRIVATE_GRAPH_REQUIRED_READ_PRIVILEGES = {
     "graph_public_evidence_metadata_clearance_current": {"SELECT"},
     "public_access_restricted": {"SELECT"},
 }
+_PRIVATE_GRAPH_REQUIRED_FUNCTION_PRIVILEGES = {
+    "uec.is_valid_italian_vat_identifier(text,text,text)": {"EXECUTE"},
+}
 
 
 def _validate_private_graph_writer(connection: Any, expected_database: str) -> None:
@@ -188,6 +191,13 @@ def _validate_private_graph_writer(connection: Any, expected_database: str) -> N
     allowed_writes = {("uec", table) for table in _PRIVATE_GRAPH_REQUIRED_PRIVILEGES}
     if not write_tables.issubset(allowed_writes):
         raise GraphPersistenceError("refusing graph materialization: role has writes outside graph tables")
+    for function, required in _PRIVATE_GRAPH_REQUIRED_FUNCTION_PRIVILEGES.items():
+        for privilege in required:
+            granted = connection.execute(
+                "SELECT has_function_privilege(current_user,%s,%s)", (function, privilege)
+            ).fetchone()
+            if not granted or not granted[0]:
+                raise GraphPersistenceError("refusing graph materialization: private graph writer function grants are incomplete")
 
 
 def _verify_disposable_marker(connection: psycopg.Connection[Any]) -> None:
@@ -1536,7 +1546,7 @@ def _matcher_edge(raw: dict[str, Any], candidate: dict[str, Any], manifest: dict
             relationship_type=str(raw.get("relationship_type") or "related_facility"),
             scoring=scoring,
             supporting_source_refs=refs,
-            observed_at=raw.get("observed_at") or candidate.get("observed_at") or _timestamp(manifest),
+            observed_at=_observed_at(raw.get("observed_at") or candidate.get("observed_at"), manifest),
             conflicting=bool(raw.get("contradictory_evidence")),
             suppressed=bool(raw.get("suppressed")),
             computed_at=str(raw.get("computed_at") or manifest.get("retrieved_at_utc") or _timestamp(manifest)),
@@ -1572,7 +1582,7 @@ def _matcher_edge(raw: dict[str, Any], candidate: dict[str, Any], manifest: dict
     scoring = score_connection(signals)
     if not scoring.eligible:
         return None
-    observed_at = raw.get("observed_at") or candidate.get("observed_at") or _timestamp(manifest)
+    observed_at = _observed_at(raw.get("observed_at") or candidate.get("observed_at"), manifest)
     return build_connection_edge(
         from_ref=left_ref,
         to_ref=right_ref,
@@ -1620,7 +1630,7 @@ def build_candidate_connection_edges(candidate: dict[str, Any], manifest: dict[s
             from_ref=from_ref, to_ref=target_ref,
             relationship_type=str(relationship.get("relationship_type")), scoring=scoring,
             supporting_source_refs=_source_refs(candidate, manifest, source_record_ids=source_record_ids),
-            observed_at=relationship.get("observed_at") or candidate.get("observed_at") or _timestamp(manifest),
+            observed_at=_observed_at(relationship.get("observed_at") or candidate.get("observed_at"), manifest),
             conflicting=relationship.get("assertion_status") in {"disputed", "rejected"},
             computed_at=str(manifest.get("retrieved_at_utc") or _timestamp(manifest)),
         ))
