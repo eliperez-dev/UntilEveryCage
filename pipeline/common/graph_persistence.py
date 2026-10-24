@@ -37,6 +37,7 @@ from pipeline.common.graph_edges import (
     score_connection,
     validate_connection_edge,
 )
+from pipeline.common.graph_source_mapping import FACILITY_IDENTIFIERS
 
 
 DISPOSABLE_MARKER = "uec-e2e-disposable-v1"
@@ -62,6 +63,23 @@ def _peak_rss_bytes() -> int | None:
             return value * (1024 if os.name != "nt" else 1)
         except Exception:
             return None
+
+
+def _native_matcher_endpoint(ref: EntityRef) -> EntityRef:
+    """Restore the source adapter's declared facility identifier type.
+
+    The matcher may use the generic field name ``establishment_id`` for
+    blocking and candidate construction. Persisted graph endpoints must use
+    the source-specific identifier type from the existing adapter registry.
+    Only this exact generic facility shape is normalized; values, source IDs,
+    organization endpoints, and already-native identifier types are unchanged.
+    """
+    if ref.entity_type != "facility" or ref.identifier_type != "establishment_id":
+        return ref
+    declared = FACILITY_IDENTIFIERS.get(ref.source_id)
+    if declared is None:
+        return ref
+    return EntityRef(ref.entity_type, ref.source_id, declared[0], ref.source_identifier)
 
 # These are evidence/event sources, not facility-master identity sources.  In
 # particular, an APHIS observation must never be asserted to be an FSIS
@@ -1277,6 +1295,166 @@ def _repair_inferred_native_endpoints(connection: Any, source_id: str,
             "native_endpoint_repair_skipped_exact": counts["skipped_exact"]}
 
 
+def _repair_generic_facility_endpoint_types(connection: Any) -> dict[str, int]:
+    """Append source-native endpoint types for retained inferred edges.
+
+    The matcher historically persisted ``establishment_id`` for some mapped
+    facility sources. Repair is deliberately narrower than rematching: both
+    support refs must resolve by exact source/key/artifact to the current
+    promoted release, and each generic endpoint must have one exact
+    source-native identifier on that same canonical facility. Existing edge
+    rows are never updated or deleted; the corrected endpoint types receive a
+    new deterministic edge key.
+    """
+    registry = json.dumps([
+        {"source_id": source_id, "identifier_type": identifier_type}
+        for source_id, (identifier_type, _namespace) in sorted(FACILITY_IDENTIFIERS.items())
+    ], separators=(",", ":"))
+    cursor = connection.execute(
+        """
+        WITH selected_release AS MATERIALIZED (
+            SELECT release_id FROM uec.releases
+            WHERE status='promoted' AND test_only IS NOT TRUE AND profile='official'
+            ORDER BY created_at DESC, release_id DESC LIMIT 1
+        ), edge_base AS MATERIALIZED (
+            SELECT edge.connection_edge_id, edge.edge_key, edge.relationship_type,
+                   edge.connection_type, edge.confidence, edge.confidence_band,
+                   edge.match_method, edge.supporting_source_refs,
+                   edge.signal_explanation, edge.ruleset_version, edge.observed_at,
+                   edge.computed_at, edge.conflicting, edge.suppressed,
+                   edge.from_entity_type, edge.from_source_id, edge.from_identifier_type,
+                   edge.from_source_identifier, edge.to_entity_type, edge.to_source_id,
+                   edge.to_identifier_type, edge.to_source_identifier
+            FROM uec.graph_connection_edges edge
+            WHERE edge.connection_type='inferred'
+              AND edge.storage_state='private'
+              AND edge.publication_status='not_eligible'
+              AND (edge.from_identifier_type='establishment_id'
+                   OR edge.to_identifier_type='establishment_id')
+              AND jsonb_array_length(edge.supporting_source_refs)=2
+        ), edge_refs AS MATERIALIZED (
+            SELECT edge.connection_edge_id, refs.ordinality, refs.value,
+                   CASE WHEN refs.ordinality=1 THEN edge.from_entity_type ELSE edge.to_entity_type END AS entity_type,
+                   CASE WHEN refs.ordinality=1 THEN edge.from_source_id ELSE edge.to_source_id END AS endpoint_source_id,
+                   CASE WHEN refs.ordinality=1 THEN edge.from_identifier_type ELSE edge.to_identifier_type END AS identifier_type,
+                   CASE WHEN refs.ordinality=1 THEN edge.from_source_identifier ELSE edge.to_source_identifier END AS endpoint_value
+            FROM edge_base edge
+            CROSS JOIN LATERAL jsonb_array_elements(edge.supporting_source_refs)
+                WITH ORDINALITY AS refs(value, ordinality)
+            WHERE refs.value->>'role'=CASE WHEN refs.ordinality=1 THEN 'from' ELSE 'to' END
+              AND refs.value->>'source_id'=CASE WHEN refs.ordinality=1
+                    THEN edge.from_source_id ELSE edge.to_source_id END
+              AND refs.value ? 'source_record_id'
+              AND refs.value ? 'source_record_key'
+              AND refs.value ? 'artifact_sha256'
+        ), bound_refs AS MATERIALIZED (
+            SELECT refs.*, binding.facility_id,
+                   registry.identifier_type AS mapped_identifier_type,
+                   identifier.identifier_type AS exact_identifier_type
+            FROM edge_refs refs
+            JOIN uec.raw_artifacts artifact
+              ON lower(artifact.sha256)=lower(refs.value->>'artifact_sha256')
+            JOIN uec.source_records private_record
+              ON private_record.source_record_id=(refs.value->>'source_record_id')::uuid
+             AND private_record.source_id=refs.endpoint_source_id
+             AND private_record.source_record_key=refs.value->>'source_record_key'
+             AND private_record.artifact_id=artifact.artifact_id
+            JOIN uec.graph_record_release_bindings binding
+              ON binding.private_source_record_id=private_record.source_record_id
+             AND binding.source_id=private_record.source_id
+             AND binding.artifact_id=private_record.artifact_id
+             AND binding.release_id=(SELECT release_id FROM selected_release)
+            JOIN uec.source_records canonical_record
+              ON canonical_record.source_record_id=binding.canonical_source_record_id
+             AND canonical_record.source_id=binding.source_id
+             AND canonical_record.artifact_id=binding.artifact_id
+            LEFT JOIN jsonb_to_recordset(%s::jsonb) AS registry(source_id text, identifier_type text)
+              ON registry.source_id=refs.endpoint_source_id
+            LEFT JOIN uec.source_entity_identifiers identifier
+              ON refs.entity_type='facility'
+             AND refs.identifier_type='establishment_id'
+             AND registry.identifier_type IS NOT NULL
+             AND identifier.source_record_id=canonical_record.source_record_id
+             AND identifier.source_id=canonical_record.source_id
+             AND identifier.facility_id=binding.facility_id
+             AND identifier.entity_type='facility'
+             AND identifier.identifier_type=registry.identifier_type
+             AND identifier.source_identifier=refs.endpoint_value
+        ), resolved_endpoints AS MATERIALIZED (
+            SELECT connection_edge_id, ordinality,
+                   CASE WHEN identifier_type='establishment_id'
+                        THEN min(exact_identifier_type) ELSE min(identifier_type) END AS resolved_identifier_type,
+                   count(DISTINCT exact_identifier_type) AS exact_type_count,
+                   count(DISTINCT facility_id) AS exact_facility_count
+            FROM bound_refs
+            GROUP BY connection_edge_id, ordinality, identifier_type
+            HAVING count(DISTINCT facility_id)=1
+               AND (identifier_type<>'establishment_id'
+                    OR count(DISTINCT exact_identifier_type)=1)
+        ), fully_resolved AS MATERIALIZED (
+            SELECT edge.connection_edge_id,
+                   from_endpoint.resolved_identifier_type AS from_identifier_type,
+                   to_endpoint.resolved_identifier_type AS to_identifier_type
+            FROM edge_base edge
+            JOIN resolved_endpoints from_endpoint
+              ON from_endpoint.connection_edge_id=edge.connection_edge_id
+             AND from_endpoint.ordinality=1
+            JOIN resolved_endpoints to_endpoint
+              ON to_endpoint.connection_edge_id=edge.connection_edge_id
+             AND to_endpoint.ordinality=2
+        )
+        SELECT edge.edge_key, edge.relationship_type, edge.connection_type,
+               edge.confidence, edge.confidence_band, edge.match_method,
+               edge.supporting_source_refs, edge.signal_explanation,
+               edge.ruleset_version, edge.observed_at, edge.computed_at,
+               edge.conflicting, edge.suppressed,
+               edge.from_entity_type, edge.from_source_id,
+               resolved.from_identifier_type, edge.from_source_identifier,
+               edge.to_entity_type, edge.to_source_id,
+               resolved.to_identifier_type, edge.to_source_identifier
+        FROM edge_base edge
+        JOIN fully_resolved resolved USING (connection_edge_id)
+        WHERE edge.from_identifier_type IS DISTINCT FROM resolved.from_identifier_type
+           OR edge.to_identifier_type IS DISTINCT FROM resolved.to_identifier_type
+        """,
+        (registry,),
+    )
+    rows = cursor.fetchall()
+    repaired = []
+    for row in rows:
+        (old_key, relationship, connection_type, confidence, band, method, refs,
+         explanation, ruleset, observed_at, computed_at, conflicting, suppressed,
+         from_type, from_source, from_identifier_type, from_value,
+         to_type, to_source, to_identifier_type, to_value) = row
+        left = EntityRef(str(from_type), str(from_source), str(from_identifier_type), str(from_value))
+        right = EntityRef(str(to_type), str(to_source), str(to_identifier_type), str(to_value))
+        repaired.append({
+            "edge_key": connection_edge_key(
+                from_ref=left, to_ref=right,
+                relationship_type=str(relationship),
+                connection_type=str(connection_type),
+                ruleset_version=str(ruleset),
+            ),
+            "from": left.as_dict(), "to": right.as_dict(),
+            "relationship_type": relationship, "connection_type": connection_type,
+            "confidence": float(confidence), "confidence_band": band,
+            "match_method": method, "supporting_source_refs": refs,
+            "signal_explanation": explanation, "ruleset_version": ruleset,
+            "observed_at": observed_at, "computed_at": computed_at,
+            "conflicting": conflicting, "suppressed": suppressed,
+            "storage_state": "private", "publication_status": "not_eligible",
+        })
+    counts = persist_connection_edges(connection, repaired) if repaired else {
+        "inserted": 0, "updated": 0, "unchanged": 0,
+        "skipped_exact": 0, "total": 0,
+    }
+    return {"repairable_generic_facility_endpoint_edges": len(rows),
+            "generic_facility_endpoint_repair_inserted": counts["inserted"],
+            "generic_facility_endpoint_repair_updated": counts["updated"],
+            "generic_facility_endpoint_repair_unchanged": counts["unchanged"],
+            "generic_facility_endpoint_repair_skipped_exact": counts["skipped_exact"]}
+
+
 def backfill_approved_graph_identifier_bindings(database_url: str, handoff_dir: str | Path, *,
                                                 private_target: tuple[str, str]) -> dict[str, Any]:
     """Attach existing private Italy assertions to exact approved source rows.
@@ -1440,6 +1618,22 @@ def _matcher_edge(raw: dict[str, Any], candidate: dict[str, Any], manifest: dict
         raise GraphPersistenceError("matcher edge must be an object")
     if {"edge_key", "from", "to", "connection_type"}.issubset(raw):
         edge = dict(validate_connection_edge(raw))
+        original_from = EntityRef(**{key: edge["from"][key] for key in
+                                     ("entity_type", "source_id", "identifier_type", "source_identifier")})
+        original_to = EntityRef(**{key: edge["to"][key] for key in
+                                   ("entity_type", "source_id", "identifier_type", "source_identifier")})
+        from_ref, to_ref = _native_matcher_endpoint(original_from), _native_matcher_endpoint(original_to)
+        if from_ref != original_from or to_ref != original_to:
+            edge["from"], edge["to"] = from_ref.as_dict(), to_ref.as_dict()
+            # The typed endpoint is a new append-only edge representation;
+            # the old key/payload remain untouched in persistence.
+            edge["edge_key"] = connection_edge_key(
+                from_ref=from_ref, to_ref=to_ref,
+                relationship_type=str(edge["relationship_type"]),
+                connection_type=str(edge["connection_type"]),
+                ruleset_version=str(edge["ruleset_version"]),
+            )
+            edge = validate_connection_edge(edge)
         # Shared-name edges may only enter via the source-aware private matcher
         # below, which verifies FSIS endpoints and both source-record supports.
         if edge.get("relationship_type") == "shared_business_name":
@@ -1481,6 +1675,7 @@ def _matcher_edge(raw: dict[str, Any], candidate: dict[str, Any], manifest: dict
             identifier_type=str(right.get("identifier_type") or ""),
             source_identifier=str(right.get("source_identifier") or ""),
         )
+        left_ref, right_ref = _native_matcher_endpoint(left_ref), _native_matcher_endpoint(right_ref)
         if _forbidden_evidence_facility_pair(left_ref, right_ref):
             return None
         if raw.get("relationship_type") == "shared_business_name":
@@ -1579,6 +1774,7 @@ def _matcher_edge(raw: dict[str, Any], candidate: dict[str, Any], manifest: dict
         )
     else:
         raise GraphPersistenceError("matcher edge requires a to endpoint")
+    left_ref, right_ref = _native_matcher_endpoint(left_ref), _native_matcher_endpoint(right_ref)
     if _forbidden_evidence_facility_pair(left_ref, right_ref):
         return None
     signals = raw.get("signals") or raw.get("signal_bundle") or raw.get("match_signals")

@@ -62,6 +62,25 @@ for the API role. The API rechecks source/artifact congruence and current
 canonical-record eligibility. An entity identifier shared across records is
 not sufficient evidence for publishing an edge.
 
+Compact matcher candidates may use the normalized field key
+`establishment_id` for blocking. Before persistence, facility endpoints for
+sources in `graph_source_mapping.FACILITY_IDENTIFIERS` are typed with that
+source's declared native identifier type. The source ID and identifier value
+are preserved exactly; organization endpoints, already-native types, and
+unmapped sources are unchanged. This is a source-local field mapping, not a
+cross-source identifier equivalence. Corrected endpoint representations use
+new edge keys, leaving earlier private rows intact as history.
+
+For already-retained inferred edges created before that boundary normalization,
+`_repair_generic_facility_endpoint_types` appends the corrected typed
+representation without rerunning matching. It requires both ordered support
+references to resolve exactly by source, native record key, and artifact SHA
+into the currently promoted official release; each generic endpoint must also
+match exactly one mapped native identifier on the same canonical facility. It
+does not change endpoint values, support references, relationship semantics,
+or prior edge rows. Unmapped, ambiguous, stale-artifact, and non-current
+release cases remain unchanged.
+
 The Italy D6 matcher normalizes identifiers for comparison, but persisted
 facility endpoint keys must retain the adapter's native identifier spelling.
 The materializer therefore stores native endpoint values while keeping

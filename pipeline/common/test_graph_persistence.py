@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from pipeline.common import graph_persistence as graph_module
+from pipeline.common.graph_source_mapping import FACILITY_IDENTIFIERS
 from pipeline.common.graph_persistence import (
     GraphPersistenceError,
     build_candidate_connection_edges,
@@ -15,6 +16,7 @@ from pipeline.common.graph_persistence import (
     _additional_facility_identifier_aliases,
     _backfill_existing_candidate_context,
     _persist_facility_identifier_aliases,
+    _repair_generic_facility_endpoint_types,
     _observed_at,
     _approved_facility_for_source_record,
     _ITALY_CANONICAL_BINDING_CTES,
@@ -262,6 +264,10 @@ class GraphPersistenceContractTests(unittest.TestCase):
         self.assertEqual(edge["relationship_type"], "shared_business_name")
         self.assertEqual(edge["connection_type"], "inferred")
         self.assertEqual(edge["confidence_band"], "possible")
+        self.assertEqual(edge["from"]["identifier_type"], "fsis_establishment_number")
+        self.assertEqual(edge["to"]["identifier_type"], "fsis_establishment_number")
+        self.assertEqual(edge["from"]["source_identifier"], "FS-1")
+        self.assertEqual(edge["to"]["source_identifier"], "FS-2")
         self.assertEqual(edge["ruleset_version"], "d7-signal-rules-v3")
         self.assertEqual([item["source_record_key"] for item in edge["supporting_source_refs"]], ["record-1", "record-2"])
         self.assertNotIn("operator", edge["relationship_type"])
@@ -270,6 +276,59 @@ class GraphPersistenceContractTests(unittest.TestCase):
         malformed["provenance"] = malformed["provenance"][:1]
         self.assertIsNone(_matcher_edge(malformed, {"source_record_key": "record-1"},
                                         {"source_id": "us.fsis", "retrieved_at_utc": "2026-01-02T00:00:00Z"}))
+
+    def test_generic_matcher_facility_ids_normalize_through_existing_source_registry(self):
+        for source_id, (expected_type, _namespace) in FACILITY_IDENTIFIERS.items():
+            with self.subTest(source_id=source_id):
+                left_value, right_value = "opaque-left", "opaque-right"
+                raw = {
+                    "endpoints": [
+                        {"entity_type": "facility", "source_id": source_id,
+                         "identifier_type": "establishment_id", "source_identifier": left_value},
+                        {"entity_type": "facility", "source_id": source_id,
+                         "identifier_type": "establishment_id", "source_identifier": right_value},
+                    ],
+                    "provenance": [
+                        {"source_id": source_id, "source_record_key": "opaque-record-left"},
+                        {"source_id": source_id, "source_record_key": "opaque-record-right"},
+                    ],
+                    "relationship_type": "shared_business_name",
+                    "method": "exact_declared_business_name_equality",
+                    "ruleset": "d7-shared-business-name-v3",
+                    "contributing_features": ["shared_business_name"],
+                    "contradictory_evidence": [],
+                    "observed_at": "2026-01-01T00:00:00Z",
+                }
+                edge = _matcher_edge(
+                    raw, {"source_id": source_id, "source_record_key": "opaque-record-left"},
+                    {"source_id": source_id, "retrieved_at_utc": "2026-01-02T00:00:00Z"},
+                )
+                self.assertIsNotNone(edge)
+                self.assertEqual(edge["from"]["identifier_type"], expected_type)
+                self.assertEqual(edge["to"]["identifier_type"], expected_type)
+                self.assertEqual(edge["from"]["source_id"], source_id)
+                self.assertEqual(edge["to"]["source_id"], source_id)
+                self.assertEqual(edge["from"]["source_identifier"], left_value)
+                self.assertEqual(edge["to"]["source_identifier"], right_value)
+                self.assertEqual(edge["relationship_type"], "shared_business_name")
+                self.assertEqual(edge["connection_type"], "inferred")
+
+    def test_endpoint_normalization_leaves_non_generic_unknown_and_org_refs_unchanged(self):
+        mapped = FACILITY_IDENTIFIERS["us.fsis"][0]
+        cases = (
+            ("facility", "unmapped.source", "establishment_id", "opaque-a", "establishment_id"),
+            ("facility", "us.fsis", mapped, "opaque-b", mapped),
+            ("organization", "us.fsis", "establishment_id", "opaque-c", "establishment_id"),
+            ("facility", "us.fsis", "eu_recognition_number", "opaque-d", "eu_recognition_number"),
+        )
+        for entity_type, source_id, identifier_type, value, expected_type in cases:
+            with self.subTest(entity_type=entity_type, source_id=source_id, identifier_type=identifier_type):
+                original = graph_module.EntityRef(entity_type, source_id, identifier_type, value)
+                normalized = graph_module._native_matcher_endpoint(original)
+                self.assertEqual(normalized.identifier_type, expected_type)
+                self.assertEqual(normalized.entity_type, entity_type)
+                self.assertEqual(normalized.source_id, source_id)
+                self.assertEqual(normalized.source_identifier, value)
 
     def test_materialization_checkpoint_waits_for_finalization_and_failure_is_retryable(self):
         events = []
@@ -556,6 +615,78 @@ class GraphPersistenceContractTests(unittest.TestCase):
             "native_endpoint_repair_unchanged": 0,
             "native_endpoint_repair_skipped_exact": 0,
         })
+
+    def test_generic_endpoint_repair_is_exact_release_bound_and_append_only(self):
+        source_id = "us.fsis"
+        native_type = FACILITY_IDENTIFIERS[source_id][0]
+        original_refs = [
+            {"source_id": source_id, "source_record_key": "opaque-left",
+             "source_record_id": str(uuid.uuid4()), "artifact_sha256": "a" * 64, "role": "from"},
+            {"source_id": source_id, "source_record_key": "opaque-right",
+             "source_record_id": str(uuid.uuid4()), "artifact_sha256": "b" * 64, "role": "to"},
+        ]
+
+        class Cursor:
+            def fetchall(self):
+                return [("legacy-edge-key", "shared_business_name", "inferred", Decimal("0.61"),
+                         "possible", "exact_declared_business_name_equality", original_refs,
+                         {"signals": ["shared_business_name"]}, "d7-shared-business-name-v3",
+                         "2026-10-20T00:00:00Z", "2026-10-20T00:00:00Z", False, False,
+                         "facility", source_id, native_type, "opaque-facility-left",
+                         "facility", source_id, native_type, "opaque-facility-right")]
+
+        class Connection:
+            query = ""
+            params = ()
+
+            def execute(self, query, params):
+                self.query, self.params = query, params
+                return Cursor()
+
+        connection = Connection()
+        appended = []
+
+        def persist(_connection, edges):
+            appended.extend(edges)
+            return {"inserted": len(edges), "updated": 0, "unchanged": 0,
+                    "skipped_exact": 0, "total": len(edges)}
+
+        with patch.object(graph_module, "persist_connection_edges", persist):
+            counts = _repair_generic_facility_endpoint_types(connection)
+
+        self.assertIn("graph_record_release_bindings", connection.query)
+        self.assertIn("source_record_key=refs.value->>'source_record_key'", connection.query)
+        self.assertIn("lower(artifact.sha256)=lower(refs.value->>'artifact_sha256')", connection.query)
+        self.assertIn("binding.release_id=(SELECT release_id FROM selected_release)", connection.query)
+        registry = json.loads(connection.params[0])
+        self.assertEqual(registry[source_id] if isinstance(registry, dict) else
+                         next(item["identifier_type"] for item in registry if item["source_id"] == source_id),
+                         native_type)
+        self.assertEqual(counts["repairable_generic_facility_endpoint_edges"], 1)
+        self.assertEqual(counts["generic_facility_endpoint_repair_inserted"], 1)
+        repaired = appended[0]
+        self.assertEqual(repaired["from"]["identifier_type"], native_type)
+        self.assertEqual(repaired["to"]["identifier_type"], native_type)
+        self.assertEqual(repaired["from"]["source_identifier"], "opaque-facility-left")
+        self.assertEqual(repaired["to"]["source_identifier"], "opaque-facility-right")
+        self.assertEqual(repaired["relationship_type"], "shared_business_name")
+        self.assertEqual(repaired["supporting_source_refs"], original_refs)
+        self.assertNotEqual(repaired["edge_key"], "legacy-edge-key")
+
+    def test_generic_endpoint_repair_with_no_exact_native_matches_is_noop(self):
+        class Cursor:
+            def fetchall(self):
+                return []
+
+        class Connection:
+            def execute(self, _query, _params):
+                return Cursor()
+
+        with patch.object(graph_module, "persist_connection_edges") as persist:
+            counts = _repair_generic_facility_endpoint_types(Connection())
+        persist.assert_not_called()
+        self.assertEqual(counts["repairable_generic_facility_endpoint_edges"], 0)
+        self.assertEqual(counts["generic_facility_endpoint_repair_inserted"], 0)
     def test_unknown_source_observation_time_uses_handoff_time(self):
         manifest = {"retrieved_at_utc": "2026-09-21T00:00:00Z"}
         self.assertEqual(_observed_at("unknown", manifest), manifest["retrieved_at_utc"])
