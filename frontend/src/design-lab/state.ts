@@ -51,6 +51,13 @@ export function encodeLabHash(state: LabState, privatePreview = true, publicRele
   for (const activity of state.filters.activities) q.append('activity', activity);
   return `#/map?${q.toString()}`;
 }
+export function encodeMapNavigationHash(databaseHref: string, scenario?: string): string {
+  const query = databaseHref.includes('?') ? databaseHref.slice(databaseHref.indexOf('?') + 1) : '';
+  const params = new URLSearchParams(query);
+  if (scenario) params.set('scenario', scenario);
+  else { params.delete('scenario'); params.delete('f1a'); }
+  return `#/map?${params.toString()}`;
+}
 export function reduceLabState(state: LabState, action: LabAction): LabState {
   switch (action.type) {
     case 'direction': return { ...state, direction: action.value };

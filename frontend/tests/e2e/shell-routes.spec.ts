@@ -136,6 +136,8 @@ test('a hash route remains a supported entry point for the same shell destinatio
 test('a cold contribution route recovers after its module import fails once', async ({ page }) => {
   const recordId = '4c4708fa-cdde-51dd-b7b9-30c907f7acce';
   let failedImport = false;
+  let communityImportRequests = 0;
+  page.on('request', request => { if (new URL(request.url()).pathname.includes('CommunityContributions')) communityImportRequests += 1; });
   await page.route('**/api/community/capabilities', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ enabled: true, types: ['facility', 'evidence', 'correction', 'duplicate', 'privacy_removal'] }) }));
   await page.route('**/*', route => {
     const url = new URL(route.request().url());
@@ -148,9 +150,36 @@ test('a cold contribution route recovers after its module import fails once', as
   await page.goto(`./#/contribute/evidence?target=${recordId}`);
   await expect(page.getByRole('heading', { name: 'Unable to open this page' })).toBeVisible();
   await expect(page.getByText('The community pilot could not be opened.')).toBeVisible();
-  await page.getByRole('button', { name: 'Try again' }).click();
+  await page.getByRole('button', { name: 'Reload to try again' }).click();
+  await expect.poll(() => communityImportRequests).toBeGreaterThan(1);
   await expect(page.getByRole('heading', { name: 'Add evidence' })).toBeVisible();
   await expect(page.getByLabel('Record link or ID')).toHaveValue(recordId);
+});
+
+test('public map navigation links keep release and viewport context without fixture parameters', async ({ page }) => {
+  const releaseId = 'release-2026-10-18';
+  await page.route('**/v2-preview/', async route => {
+    const response = await route.fetch();
+    const html = (await response.text()).replace(/<meta name="uec-local-data-mode" content="[^"]*">/g, '');
+    await route.fulfill({ response, body: html.replace('</head>', '<meta name="uec-local-data-mode" content="public-release"></head>') });
+  });
+  await page.route('**/api/v2/releases/manifest*', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify({
+    api_version: 'v2', data: { profile: 'official', release_id: releaseId, manifest: {}, manifest_sha256: 'a'.repeat(64), suppression_generation: 0 },
+  }) }));
+  await page.goto(`./#/map?scenario=default&list=closed&lat=38&lon=-96&z=4&release_id=${releaseId}`);
+  const mapHome = page.getByRole('link', { name: 'Until Every Cage map home' });
+  await expect(mapHome).toHaveAttribute('href', /#\/map\?/);
+  const mapHref = await mapHome.getAttribute('href') ?? '';
+  expect(mapHref).toContain(`release_id=${releaseId}`);
+  expect(mapHref).not.toContain('scenario=');
+  expect(mapHref).not.toContain('f1a=');
+  for (const taskLink of ['Contribute', 'About']) {
+    const href = await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: taskLink, exact: true }).getAttribute('href') ?? '';
+    const nestedMap = new URLSearchParams(href.split('?')[1] ?? '').get('map') ?? '';
+    expect(nestedMap).toContain(`release_id=${releaseId}`);
+    expect(nestedMap).not.toContain('scenario=');
+    expect(nestedMap).not.toContain('f1a=');
+  }
 });
 
 test('an unknown path exposes an accessible not-found state and a route back to the map', async ({ page }) => {

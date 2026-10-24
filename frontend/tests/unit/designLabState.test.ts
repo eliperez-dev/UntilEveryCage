@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_LAB_STATE } from '../../src/design-lab/contract';
-import { decodeLabHash, encodeLabHash, reduceLabState } from '../../src/design-lab/state';
+import { decodeLabHash, encodeLabHash, encodeMapNavigationHash, reduceLabState } from '../../src/design-lab/state';
 
 describe('design-lab state repairs', () => {
   it('decodes a retired muted basemap link as Street and never re-emits it', () => {
@@ -29,6 +29,16 @@ describe('design-lab state repairs', () => {
     expect(publicHash).not.toContain('scenario=');
     expect(publicHash).not.toContain('f1a=');
     expect(publicHash).toContain('category=slaughter');
+  });
+
+  it('keeps public masthead and nested map links free of fixture scenarios', () => {
+    const databaseHref = '#/database?release_id=release-2026-10-18&lat=38&lon=-96&z=4&list=closed&scenario=default&f1a=field';
+    const publicMapLink = encodeMapNavigationHash(databaseHref);
+    expect(publicMapLink).toContain('release_id=release-2026-10-18');
+    expect(publicMapLink).toContain('lat=38');
+    expect(publicMapLink).not.toContain('scenario=');
+    expect(publicMapLink).not.toContain('f1a=');
+    expect(encodeMapNavigationHash('#/database?lat=38', 'dense')).toContain('scenario=dense');
   });
 
   it('clears every search criterion, selection, and aggregate while retaining the map context', () => {

@@ -36,7 +36,7 @@
     {#key `${formKind}:${targetRecordId}`}
       {#if formKind === 'bug'}<BugReportPage embedded {returnMapHref} />
       {:else if CommunityContributions}<CommunityContributions page="form" embedded {formKind} {targetRecordId} {returnMapHref} />
-      {:else if loadError}<p role="alert">{loadError}</p><button type="button" onclick={loadForm}>Try again</button>
+      {:else if loadError}<p role="alert">{loadError}</p><button type="button" onclick={() => window.location.reload()}>Reload to try again</button>
       {:else}<p role="status">Loading form…</p>{/if}
     {/key}
   {/if}

@@ -114,7 +114,7 @@
       <section class="state" role="alert" aria-labelledby="error-heading">
         <h1 id="error-heading">Unable to open this page</h1>
         <p>{loadError}</p>
-        <button type="button" onclick={syncRoute}>Try again</button>
+        <button type="button" onclick={() => window.location.reload()}>Reload to try again</button>
       </section>
     {:else if route.kind === 'not-found'}
       <section class="state" aria-labelledby="not-found-heading">

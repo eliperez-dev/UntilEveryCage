@@ -13,6 +13,7 @@
   import RecordList from "../../components/RecordList.svelte";
   import RecordDetail from "../../../app/RecordDetail.svelte";
   import PreviewMasthead from "../../../app/PreviewMasthead.svelte";
+  import { encodeMapNavigationHash } from "../../state";
   import type { PlaceSuggestion } from "../../../features/placeSearch/placeSearch";
   import { publicReleaseLabel } from "../../../features/locations/releasePresentation";
   import { CATEGORY_PRESENTATIONS } from "../../../features/locations/categoryPresentation";
@@ -393,9 +394,7 @@
       return `#/database?${q}`;
     })(),
   );
-  const mapHref = $derived(
-    `#/map?${new URLSearchParams({ ...((mode === "real-preview" || mode === "candidate-preview") ? { f1a: "field" } : {}), scenario: state.scenario, ...Object.fromEntries(new URLSearchParams(databaseHref.split("?")[1] ?? "")) })}`,
-  );
+  const mapHref = $derived(encodeMapNavigationHash(databaseHref, mode === "public-release" ? undefined : state.scenario));
 </script>
 
 <svelte:window onkeydown={onKeydown} />
