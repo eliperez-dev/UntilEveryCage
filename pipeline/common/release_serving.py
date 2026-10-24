@@ -26,6 +26,52 @@ def _selected(sql: str) -> str:
     return "WITH selected AS (SELECT unnest($1::text[]) release_id) " + sql
 
 
+def _source_rights_decisions_query() -> str:
+    """Export rights closure for public evidence and active org-label inputs.
+
+    Keep all scoped decisions for each included source artifact so consumers
+    can apply the current/latest decision themselves, including a later
+    non-cleared decision. The organization-label branch is intentionally
+    independent of evidence references.
+    """
+    return _selected("""
+        SELECT DISTINCT d.source_rights_decision_id,d.source_id,d.profile,
+               d.release_id,d.artifact_id,d.artifact_sha256,
+               d.redistribution_status,d.decision_actor,d.decision_reference,
+               d.decided_at,d.created_at
+        FROM uec.source_rights_decisions d
+        JOIN selected s ON s.release_id=d.release_id
+        WHERE EXISTS (
+            SELECT 1
+            FROM uec.graph_public_projection_evidence_refs reference
+            JOIN uec.graph_public_projection_builds build USING(projection_id)
+            JOIN uec.source_records r
+              ON r.source_record_id=reference.evidence_source_record_id
+            WHERE build.release_id=d.release_id
+              AND build.active AND build.status='completed'
+              AND r.source_id=d.source_id AND r.artifact_id=d.artifact_id
+              AND r.source_id NOT IN ('us.aphis.annual-reports','us.inspections')
+        ) OR EXISTS (
+            SELECT 1
+            FROM uec.graph_public_projection_org_labels label
+            JOIN uec.graph_public_projection_builds build USING(projection_id)
+            JOIN uec.graph_public_projection_endpoints endpoint
+              ON endpoint.projection_id=label.projection_id
+             AND endpoint.endpoint_id=label.endpoint_id
+             AND endpoint.entity_type='organization'
+            JOIN uec.releases release
+              ON release.release_id=build.release_id
+             AND release.profile=d.profile
+            JOIN uec.source_records r
+              ON r.source_record_id=label.label_source_record_id
+            WHERE build.release_id=d.release_id
+              AND build.active AND build.status='completed'
+              AND build.projection_version='graph-release-projection-v3'
+              AND r.source_id=d.source_id AND r.artifact_id=d.artifact_id
+        )
+    """)
+
+
 MODEL_COLUMNS = (
     "release_id", "facility_id", "observation_id", "source_record_id", "canonical_name", "country_code", "postal_code", "city", "display_location", "display_precision", "display_label", "geocoding_status", "geocoder_provider", "geocoded_at", "classification_category", "observed_at", "first_observed_at", "provenance_origin_type", "provenance_source_id", "provenance_source_name", "provenance_source_url", "provenance_retrieved_at", "source_rights_status", "geometry_provenance", "public_detail", "public_search_text",
 )
@@ -56,7 +102,7 @@ def export_specs() -> tuple[ExportSpec, ...]:
         ExportSpec("uec.record_access_events", ("access_event_id", "source_record_id", "action", "reason_category", "policy_version", "maintainer", "note", "occurred_at"), "WITH records AS (" + records + ") SELECT e.access_event_id,e.source_record_id,e.action,e.reason_category,e.policy_version,e.maintainer,NULL::text,e.occurred_at FROM uec.record_access_events e JOIN records USING(source_record_id)"),
         ExportSpec("uec.publication_review_events", ("publication_review_event_id", "source_record_id", "factual_review_status", "privacy_screening_status", "maintainer_approval", "publication_eligible", "reviewer_role", "note", "reviewed_at", "release_id"), "WITH records AS (" + records + ") SELECT DISTINCT e.publication_review_event_id,e.source_record_id,e.factual_review_status,e.privacy_screening_status,e.maintainer_approval,e.publication_eligible,e.reviewer_role,NULL::text,e.reviewed_at,e.release_id FROM uec.publication_review_events e JOIN uec.publication_review_release_scopes scope USING(publication_review_event_id) JOIN records USING(source_record_id) WHERE scope.release_id=ANY($1)"),
         ExportSpec("uec.publication_review_release_scopes", ("publication_review_event_id", "release_id"), _selected("SELECT DISTINCT scope.publication_review_event_id,scope.release_id FROM uec.publication_review_release_scopes scope JOIN uec.publication_review_events event USING(publication_review_event_id) JOIN selected s ON s.release_id=scope.release_id WHERE EXISTS (SELECT 1 FROM uec.public_discovery_read_model_rows row WHERE row.release_id=scope.release_id AND row.source_record_id=event.source_record_id) OR EXISTS (SELECT 1 FROM uec.graph_public_projection_evidence_refs reference JOIN uec.graph_public_projection_builds build USING(projection_id) JOIN uec.graph_public_evidence_references_current current_ref USING(evidence_ref_id) WHERE build.release_id=scope.release_id AND build.active AND build.status='completed' AND reference.evidence_source_record_id=event.source_record_id)")),
-        ExportSpec("uec.source_rights_decisions", ("source_rights_decision_id", "source_id", "profile", "release_id", "artifact_id", "artifact_sha256", "redistribution_status", "decision_actor", "decision_reference", "decided_at", "created_at"), _selected("SELECT DISTINCT d.source_rights_decision_id,d.source_id,d.profile,d.release_id,d.artifact_id,d.artifact_sha256,d.redistribution_status,d.decision_actor,d.decision_reference,d.decided_at,d.created_at FROM uec.source_rights_decisions d JOIN selected s ON s.release_id=d.release_id WHERE EXISTS (SELECT 1 FROM uec.graph_public_projection_evidence_refs reference JOIN uec.graph_public_projection_builds build USING(projection_id) JOIN uec.source_records r ON r.source_record_id=reference.evidence_source_record_id WHERE build.release_id=d.release_id AND build.active AND build.status='completed' AND r.source_id=d.source_id AND r.artifact_id=d.artifact_id AND r.source_id NOT IN ('us.aphis.annual-reports','us.inspections'))")),
+        ExportSpec("uec.source_rights_decisions", ("source_rights_decision_id", "source_id", "profile", "release_id", "artifact_id", "artifact_sha256", "redistribution_status", "decision_actor", "decision_reference", "decided_at", "created_at"), _source_rights_decisions_query()),
         ExportSpec("uec.facility_lifecycle_events", ("lifecycle_event_id", "facility_id", "status", "effective_at", "source_record_id", "evidence_note", "created_at"), _selected("SELECT DISTINCT e.lifecycle_event_id,e.facility_id,e.status,e.effective_at,e.source_record_id,'Evidence note omitted from serving package',e.created_at FROM uec.facility_lifecycle_events e JOIN uec.public_discovery_read_model_rows row ON row.facility_id=e.facility_id JOIN selected s USING(release_id)")),
         ExportSpec("uec.taxonomy_crosswalks", ("source_id", "taxonomy_version", "crosswalk_version", "ruleset_version", "definition", "definition_sha256", "created_at"), _selected("SELECT DISTINCT c.source_id,c.taxonomy_version,c.crosswalk_version,c.ruleset_version,c.definition,c.definition_sha256,c.created_at FROM uec.taxonomy_crosswalks c JOIN uec.observation_taxonomy_assignment_sets sets ON sets.source_id=c.source_id AND sets.taxonomy_version=c.taxonomy_version AND sets.crosswalk_version=c.crosswalk_version AND sets.ruleset_version=c.ruleset_version JOIN uec.public_discovery_read_model_rows row ON row.observation_id=sets.observation_id JOIN selected s USING(release_id)")),
         ExportSpec("uec.release_cohort_review_documents", ("release_id", "profile", "ruleset_version", "freeze_sha256", "inventory_sha256", "member_sha256", "member_count", "document_sha256", "reviewer_actor", "reviewer_role", "reviewed_at", "review_method", "review_evidence_reference", "recorded_at"), _selected("SELECT d.release_id,d.profile,d.ruleset_version,d.freeze_sha256,d.inventory_sha256,d.member_sha256,d.member_count,d.document_sha256,d.reviewer_actor,d.reviewer_role,d.reviewed_at,d.review_method,d.review_evidence_reference,d.recorded_at FROM uec.release_cohort_review_documents d JOIN selected s USING(release_id)")),

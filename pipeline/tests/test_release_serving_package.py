@@ -69,6 +69,19 @@ class ReleaseServingPackageTests(unittest.TestCase):
         rights = next(spec for spec in specs if spec.relation == "uec.source_rights_decisions")
         self.assertIn("redistribution_status", rights.columns)
         self.assertIn("NOT IN ('us.aphis.annual-reports','us.inspections')", rights.query)
+        org_label_rights = rights.query.casefold().split(") or exists (", 1)[1]
+        self.assertIn("graph_public_projection_org_labels label", org_label_rights)
+        self.assertIn("graph_public_projection_endpoints endpoint", org_label_rights)
+        self.assertNotIn("graph_public_projection_evidence_refs", org_label_rights)
+        self.assertIn("r.source_record_id=label.label_source_record_id", org_label_rights)
+        self.assertIn("r.source_id=d.source_id", org_label_rights)
+        self.assertIn("r.artifact_id=d.artifact_id", org_label_rights)
+        self.assertIn("release.profile=d.profile", org_label_rights)
+        self.assertIn("build.release_id=d.release_id", org_label_rights)
+        self.assertIn("build.active and build.status='completed'", org_label_rights)
+        self.assertIn("build.projection_version='graph-release-projection-v3'", org_label_rights)
+        self.assertIn("join selected s on s.release_id=d.release_id", rights.query.casefold())
+        self.assertNotIn("redistribution_status='cleared'", rights.query.casefold())
         metadata_clearance = next(spec for spec in specs if spec.relation == "uec.graph_public_evidence_metadata_clearance_events")
         self.assertEqual(metadata_clearance.columns, (
             "clearance_event_id", "source_id", "profile", "release_id", "artifact_id",
@@ -101,6 +114,26 @@ class ReleaseServingPackageTests(unittest.TestCase):
         source = next(spec for spec in specs if spec.relation == "uec.source_records")
         self.assertIn("raw_fields", source.columns)
         self.assertIn("raw_source_payload_excluded", source.query)
+
+    def test_org_label_only_rights_are_exported_in_exact_selected_scope(self):
+        rights = next(
+            spec for spec in serving.export_specs()
+            if spec.relation == "uec.source_rights_decisions"
+        )
+        query = rights.query.casefold()
+        # The independent organization-label EXISTS supports a label artifact
+        # with no evidence reference while keeping release/profile/source/
+        # artifact identity tied to the selected active graph projection.
+        evidence_branch, org_label_branch = query.split(") or exists (", 1)
+        self.assertIn("graph_public_projection_evidence_refs", evidence_branch)
+        self.assertIn("graph_public_projection_org_labels label", org_label_branch)
+        self.assertIn("build.release_id=d.release_id", org_label_branch)
+        self.assertIn("release.profile=d.profile", org_label_branch)
+        self.assertIn("r.source_id=d.source_id", org_label_branch)
+        self.assertIn("r.artifact_id=d.artifact_id", org_label_branch)
+        self.assertIn("join selected s on s.release_id=d.release_id", query)
+        self.assertNotIn("graph_public_projection_evidence_refs", org_label_branch)
+        self.assertNotIn("d.release_id=any", org_label_branch)
 
     def test_source_record_key_export_is_stable_unique_and_opaque(self):
         record_ids = (
