@@ -34,11 +34,15 @@ test('all contribution types, including bug reports, submit and track through th
     { path: 'privacy-removal', fill: async () => { await page.getByLabel('Record ID').fill(firstId); await page.getByLabel('What should we review?').fill(`${tag} privacy review`); }, submitLabel: 'Send for review', trackingLabel: 'Track submission' },
     { path: 'bug', fill: async () => { await page.getByLabel('What happened?').fill(`${tag} bug report`); await page.getByLabel('Steps to reproduce').fill('Synthetic acceptance steps'); }, submitLabel: 'Send report', trackingLabel: 'Track report' },
   ];
+  const headingByPath: Record<string, string> = {
+    facility: 'Add a facility', evidence: 'Add evidence', correction: 'Suggest a correction',
+    duplicate: 'Report a possible duplicate', 'privacy-removal': 'Request a privacy review', bug: 'Report a bug',
+  };
 
   try {
     for (const [index, route] of routes.entries()) {
       await page.goto(`${origin}/#/contribute/${route.path === 'bug' ? 'bug' : route.path}`);
-      await expect(page.getByRole('heading', { name: route.path === 'facility' ? 'Add a facility' : route.path === 'bug' ? 'Report a bug' : /.*/ })).toBeVisible();
+      await expect(page.getByRole('heading', { name: headingByPath[route.path], exact: true })).toBeVisible();
       await expect(page.getByRole('button', { name: route.submitLabel })).toBeVisible();
       await route.fill(index);
       if (route.path !== 'bug') await page.getByLabel(/I have permission to share/).check();

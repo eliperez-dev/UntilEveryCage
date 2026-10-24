@@ -383,7 +383,7 @@
     (() => {
       const q = new URLSearchParams();
       if (mode === "real-preview" || mode === "candidate-preview") q.set("f1a", "field");
-      if (mode === "public-release" && publicReleaseId) q.set("release_id", publicReleaseId);
+      if (mode === "public-release" && selectedPublicReleaseId) q.set("release_id", selectedPublicReleaseId);
       if (state.sourceId) q.set("source", state.sourceId);
       if (state.selectedId) q.set("selected", state.selectedId);
       q.set("lat", String(state.viewport.centerLat));
