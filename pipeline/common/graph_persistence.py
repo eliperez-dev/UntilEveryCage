@@ -17,6 +17,7 @@ import os
 import time
 import uuid
 from datetime import date, datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Callable, Iterable
 from urllib.parse import urlparse
@@ -1526,6 +1527,90 @@ def _persist_repaired_edges_append_only(connection: Any,
         str(edge["edge_key"]),
         json.dumps(edge, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str),
     ))
+    by_key: dict[str, list[dict[str, Any]]] = {}
+    for edge in ordered:
+        by_key.setdefault(str(edge["edge_key"]), []).append(edge)
+
+    def signature(edge: Mapping[str, Any]) -> tuple[Any, ...]:
+        def stable(value: Any) -> Any:
+            if isinstance(value, (datetime, date)):
+                return value.isoformat()
+            if isinstance(value, Decimal):
+                return float(value)
+            if isinstance(value, (dict, list)):
+                return json.dumps(value, ensure_ascii=False, sort_keys=True,
+                                  separators=(",", ":"), default=str)
+            return value
+
+        names = ("from", "to", "relationship_type", "connection_type", "confidence",
+                 "confidence_band", "match_method", "supporting_source_refs",
+                 "signal_explanation", "ruleset_version", "observed_at", "conflicting",
+                 "suppressed", "storage_state", "publication_status")
+        return tuple(stable(edge.get(name)) for name in names)
+
+    signature_names = ("from", "to", "relationship_type", "connection_type", "confidence",
+                       "confidence_band", "match_method", "supporting_source_refs",
+                       "signal_explanation", "ruleset_version", "observed_at", "conflicting",
+                       "suppressed", "storage_state", "publication_status")
+
+    def require_supported_existing(key: str, edge: Mapping[str, Any]) -> None:
+        existing_signature = signature(edge)
+        if existing_signature in candidate_signatures[key]:
+            return
+        differing = [
+            name for index, name in enumerate(signature_names)
+            if all(candidate[index] != existing_signature[index]
+                   for candidate in candidate_signatures[key])
+        ]
+        raise GraphPersistenceError(
+            "existing repaired edge has no exact current-release support candidate "
+            f"(mismatched fields: {','.join(differing) or 'unknown'})")
+
+    candidate_signatures = {
+        key: {signature(edge) for edge in variants}
+        for key, variants in by_key.items()
+    }
+
+    def existing_edge(row: tuple[Any, ...]) -> dict[str, Any]:
+        (from_entity_type, from_source_id, from_identifier_type, from_source_identifier,
+         to_entity_type, to_source_id, to_identifier_type, to_source_identifier,
+         relationship_type, connection_type, confidence, confidence_band, match_method,
+         supporting_source_refs, signal_explanation, ruleset_version, observed_at,
+         conflicting, suppressed, storage_state, publication_status) = row
+        return {
+            "from": {"entity_type": from_entity_type, "source_id": from_source_id,
+                     "identifier_type": from_identifier_type, "source_identifier": from_source_identifier,
+                     "identity_scope": "source_scoped"},
+            "to": {"entity_type": to_entity_type, "source_id": to_source_id,
+                   "identifier_type": to_identifier_type, "source_identifier": to_source_identifier,
+                   "identity_scope": "source_scoped"},
+            "relationship_type": relationship_type, "connection_type": connection_type,
+            "confidence": confidence, "confidence_band": confidence_band,
+            "match_method": match_method, "supporting_source_refs": supporting_source_refs,
+            "signal_explanation": signal_explanation, "ruleset_version": ruleset_version,
+            "observed_at": observed_at, "conflicting": conflicting, "suppressed": suppressed,
+            "storage_state": storage_state, "publication_status": publication_status,
+        }
+
+    existing_sql = """SELECT from_entity_type,from_source_id,from_identifier_type,from_source_identifier,
+        to_entity_type,to_source_id,to_identifier_type,to_source_identifier,relationship_type,
+        connection_type,confidence,confidence_band,match_method,supporting_source_refs,
+        signal_explanation,ruleset_version,observed_at,conflicting,suppressed,
+        storage_state,publication_status
+        FROM uec.graph_connection_edges WHERE edge_key=%s"""
+    existing_rows = connection.execute(
+        """SELECT edge_key,from_entity_type,from_source_id,from_identifier_type,from_source_identifier,
+                  to_entity_type,to_source_id,to_identifier_type,to_source_identifier,relationship_type,
+                  connection_type,confidence,confidence_band,match_method,supporting_source_refs,
+                  signal_explanation,ruleset_version,observed_at,conflicting,suppressed,
+                  storage_state,publication_status
+             FROM uec.graph_connection_edges WHERE edge_key=ANY(%s)""",
+        (list(by_key),),
+    ).fetchall() if by_key else []
+    existing_by_key = {
+        str(row[0]): existing_edge(tuple(row[1:]))
+        for row in existing_rows
+    }
     inserted = unchanged = skipped_exact = 0
     insert_sql = """INSERT INTO uec.graph_connection_edges
         (edge_key,from_entity_type,from_source_id,from_identifier_type,from_source_identifier,
@@ -1544,7 +1629,14 @@ def _persist_repaired_edges_append_only(connection: Any,
           (from_entity_type=%s AND from_source_id=%s AND from_identifier_type=%s AND from_source_identifier=%s
            AND to_entity_type=%s AND to_source_id=%s AND to_identifier_type=%s AND to_source_identifier=%s)
         ) LIMIT 1"""
-    for edge in ordered:
+    for edge_key in sorted(by_key):
+        variants = by_key[edge_key]
+        edge = variants[0]
+        present = existing_by_key.get(edge_key)
+        if present is not None:
+            require_supported_existing(edge_key, present)
+            unchanged += len(variants)
+            continue
         left, right = edge["from"], edge["to"]
         endpoint_args = (
             left["entity_type"], left["source_id"], left["identifier_type"], left["source_identifier"],
@@ -1552,7 +1644,7 @@ def _persist_repaired_edges_append_only(connection: Any,
         )
         exact = connection.execute(exact_sql, endpoint_args + endpoint_args[4:] + endpoint_args[:4]).fetchone()
         if exact:
-            skipped_exact += 1
+            skipped_exact += len(variants)
             continue
         args = (
             edge["edge_key"], left["entity_type"], left["source_id"], left["identifier_type"], left["source_identifier"],
@@ -1568,10 +1660,16 @@ def _persist_repaired_edges_append_only(connection: Any,
         cursor = connection.execute(insert_sql, args)
         row = cursor.fetchone() if callable(getattr(cursor, "fetchone", None)) else None
         if getattr(cursor, "rowcount", 1) == 0 or not row:
-            unchanged += 1
+            existing_row = connection.execute(existing_sql, (edge_key,)).fetchone()
+            if not existing_row:
+                raise GraphPersistenceError("conflicting repaired edge disappeared before verification")
+            require_supported_existing(edge_key, existing_edge(tuple(existing_row)))
+            unchanged += len(variants)
         else:
             inserted += 1
-    total = inserted + unchanged
+            unchanged += len(variants) - 1
+            existing_by_key[edge_key] = edge
+    total = inserted + unchanged + skipped_exact
     return {"inserted": inserted, "updated": 0, "unchanged": unchanged,
             "skipped_exact": skipped_exact, "total": total}
 

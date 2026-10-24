@@ -793,9 +793,16 @@ class GraphPersistenceContractTests(unittest.TestCase):
         class Connection:
             def __init__(self):
                 self.inserted = {}
+                self.inserted_params = {}
                 self.write_attempts = 0
 
             def execute(self, query, params):
+                if "WHERE edge_key=ANY(%s)" in query:
+                    return CursorRows([
+                        (edge_key, *stored_row)
+                        for edge_key, stored_row in self.inserted.items()
+                        if edge_key in params[0]
+                    ])
                 if query.lstrip().startswith("SELECT 1"):
                     return Cursor(row=None)
                 if "INSERT INTO uec.graph_connection_edges" not in query:
@@ -805,27 +812,55 @@ class GraphPersistenceContractTests(unittest.TestCase):
                 edge_key = params[0]
                 if edge_key in self.inserted:
                     return Cursor(row=None, rowcount=0)
-                self.inserted[edge_key] = params
+                self.inserted[edge_key] = (
+                    *params[1:14], json.loads(params[14]), json.loads(params[15]),
+                    params[16], params[17], params[19], params[20], "private", "not_eligible",
+                )
+                self.inserted_params[edge_key] = params
                 return Cursor(row=(uuid.uuid4(),), rowcount=1)
+
+        class CursorRows(Cursor):
+            def __init__(self, rows):
+                super().__init__(rowcount=len(rows))
+                self.rows = rows
+
+            def fetchall(self):
+                return self.rows
 
         connection = Connection()
         first_result = graph_module._persist_repaired_edges_append_only(connection, [second, first])
-        stored_supports = connection.inserted[key][14]
+        stored_supports = connection.inserted_params[key][14]
         expected = min((first, second), key=lambda edge: json.dumps(
             edge, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str))
         self.assertEqual(json.loads(stored_supports), expected["supporting_source_refs"])
-        self.assertTrue(connection.inserted[key][18])  # null computed_at gets a one-time computed timestamp
+        self.assertEqual(connection.inserted[key], (
+            expected["from"]["entity_type"], expected["from"]["source_id"],
+            expected["from"]["identifier_type"], expected["from"]["source_identifier"],
+            expected["to"]["entity_type"], expected["to"]["source_id"],
+            expected["to"]["identifier_type"], expected["to"]["source_identifier"],
+            expected["relationship_type"], expected["connection_type"], expected["confidence"],
+            expected["confidence_band"], expected["match_method"], expected["supporting_source_refs"],
+            expected["signal_explanation"], expected["ruleset_version"], expected["observed_at"],
+            expected["conflicting"], expected["suppressed"], expected["storage_state"],
+            expected["publication_status"],
+        ))
+        self.assertTrue(connection.inserted_params[key][18])  # null computed_at gets a one-time computed timestamp
         self.assertIn("ON CONFLICT (edge_key) DO NOTHING", connection.insert_sql)
         self.assertNotIn("DO UPDATE", connection.insert_sql)
         self.assertEqual(first_result["inserted"], 1)
         self.assertEqual(first_result["updated"], 0)
 
         second_result = graph_module._persist_repaired_edges_append_only(connection, [first, second])
-        self.assertEqual(connection.write_attempts, 4)  # two attempted inserts per pass
+        self.assertEqual(connection.write_attempts, 1)
         self.assertEqual(len(connection.inserted), 1)
         self.assertEqual(second_result["inserted"], 0)
         self.assertEqual(second_result["updated"], 0)
         self.assertEqual(second_result["unchanged"], 2)
+
+        connection.inserted[key] = (*connection.inserted[key][:13], [], *connection.inserted[key][14:])
+        with self.assertRaisesRegex(GraphPersistenceError, "no exact current-release support candidate"):
+            graph_module._persist_repaired_edges_append_only(connection, [first, second])
+        self.assertEqual(connection.write_attempts, 1)
 
     def test_unknown_source_observation_time_uses_handoff_time(self):
         manifest = {"retrieved_at_utc": "2026-09-21T00:00:00Z"}
