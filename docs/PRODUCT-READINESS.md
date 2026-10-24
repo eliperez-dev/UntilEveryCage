@@ -27,11 +27,21 @@ publishable facilities unless explicitly labelled that way.
 **Record pages and contributions:** facility details retain distinct activities
 and native classifications without repeating the same terms. Lifecycle and
 internal taxonomy labels are omitted from presentation; source data is unchanged.
-Full pages have one facility-link action beside the name and a single-record
-map: satellite for source coordinates, a wider road map for approximations,
-none for unmapped records. The bundled worker and pin artwork are shared with
+Full pages put the name and facility-link action first, followed by Location,
+the single-record map, activities and remaining facts. Source coordinates use
+satellite zoom 15; approximations use street zoom 9; unmapped records have no
+map. The bundled worker and pin artwork are shared with
 the main map. Mobile map details fill the viewport and retain the release-pinned
 "Open facility page" link. Public DTOs have locality, not a street address.
+
+The main map has independent Street/Satellite and 2D/3D controls. Requested 3D
+uses native MapLibre terrain at true-scale elevation, with lazy Mapterhorn
+tiles and a flat fallback on elevation failure. The native compass resets
+north and flattens the camera without changing its centre or zoom. Optional
+pitch/bearing survive shared URLs and navigation; flat defaults keep compact
+URLs and make no elevation requests. Local public-data checks verified a
+facility PNG selection and cluster expansion while tilted. Camera regressions
+cover cold tilted URLs, style replacement, Back, mobile controls and failure.
 
 Release selection/history now live in Tools; public links omit fixture scenario
 parameters. Production-safe display controls work without enabling development
