@@ -215,6 +215,123 @@ class SuppressionLifecycleE2ETests(unittest.TestCase):
         ) as response:
             return response.status, response.read().decode("utf-8")
 
+    def test_indexed_restriction_routes_preserve_live_suppression_semantics(self):
+        source_id = f"e2e.suppression.routes.{uuid.uuid4().hex}"
+        now = datetime.now(timezone.utc)
+        facility_link_id, facility_observation_id = uuid.uuid4(), uuid.uuid4()
+        record_ids = {
+            key: uuid.uuid4()
+            for key in ("link", "observation", "source_key", "expired", "lifted", "revoked", "restored")
+        }
+        case_ids = {key: uuid.uuid4() for key in ("link", "duplicate_key", "observation", "source_key", "expired", "lifted")}
+
+        class RollbackFixture(Exception):
+            pass
+
+        try:
+            with psycopg.connect(self.env.database_url) as db:
+                with db.transaction():
+                    db.execute(
+                        "INSERT INTO uec.sources (source_id,country_code,name,official_url,access_method) "
+                        "VALUES (%s,'US','Synthetic restriction routes','https://example.invalid/routes','fixture')",
+                        (source_id,),
+                    )
+                    for ordinal, (key, record_id) in enumerate(record_ids.items(), start=1):
+                        artifact_id = uuid.uuid4()
+                        db.execute(
+                            "INSERT INTO uec.raw_artifacts (artifact_id,storage_key,sha256,byte_size,retrieved_at) "
+                            "VALUES (%s,%s,%s,1,%s)",
+                            (artifact_id, f"e2e/suppression/routes/{ordinal}", uuid.uuid4().hex * 2, now),
+                        )
+                        db.execute(
+                            "INSERT INTO uec.source_records "
+                            "(source_record_id,source_id,source_record_key,artifact_id,raw_fields,parsed_at) "
+                            "VALUES (%s,%s,%s,%s,'{}'::jsonb,%s)",
+                            (record_id, source_id, key, artifact_id, now),
+                        )
+                    db.execute(
+                        "INSERT INTO uec.facilities (facility_id,country_code) VALUES (%s,'US'),(%s,'US')",
+                        (facility_link_id, facility_observation_id),
+                    )
+                    db.execute(
+                        "INSERT INTO uec.facility_source_links "
+                        "(facility_id,source_record_id,match_method,review_status) VALUES (%s,%s,'fixture','reviewed')",
+                        (facility_link_id, record_ids["link"]),
+                    )
+                    db.execute(
+                        "INSERT INTO uec.observations "
+                        "(facility_id,source_record_id,observed_at,observation,classification,ruleset_id,rule_id,"
+                        "classification_category,classification_review_status,first_observed_at) "
+                        "VALUES (%s,%s,%s,'{}','{}','fixture','fixture','other','approved',%s)",
+                        (facility_observation_id, record_ids["observation"], now, now),
+                    )
+
+                    cases = (
+                        ("link", "active"),
+                        ("duplicate_key", "active"),
+                        ("observation", "closed"),
+                        ("source_key", "review"),
+                        ("expired", "expired"),
+                        ("lifted", "active"),
+                    )
+                    for key, status in cases:
+                        db.execute(
+                            "INSERT INTO uec.suppression_cases "
+                            "(case_id,status,reason_category,policy_version,actor,decision,created_at) "
+                            "VALUES (%s,%s,'privacy','synthetic-routes-v1','fixture','suppress',%s)",
+                            (case_ids[key], status, now),
+                        )
+                    db.execute(
+                        "INSERT INTO uec.suppression_references (case_id,facility_id,scope) "
+                        "VALUES (%s,%s,'whole_record'),(%s,%s,'whole_record')",
+                        (case_ids["link"], facility_link_id, case_ids["observation"], facility_observation_id),
+                    )
+                    db.execute(
+                        "INSERT INTO uec.suppression_references (case_id,source_id,source_record_key,scope) "
+                        "VALUES (%s,%s,%s,'whole_record'),(%s,%s,%s,'whole_record'),"
+                        "(%s,%s,%s,'whole_record'),(%s,%s,%s,'whole_record')",
+                        (
+                            case_ids["duplicate_key"], source_id, "link",
+                            case_ids["source_key"], source_id, "source_key",
+                            case_ids["expired"], source_id, "expired",
+                            case_ids["lifted"], source_id, "lifted",
+                        ),
+                    )
+                    db.execute(
+                        "INSERT INTO uec.suppression_case_events "
+                        "(case_id,event_type,reason_category,policy_version,actor,decision,occurred_at) "
+                        "VALUES (%s,'lifted','privacy','synthetic-routes-v1','fixture','lift',%s)",
+                        (case_ids["lifted"], now + timedelta(seconds=1)),
+                    )
+                    db.execute(
+                        "INSERT INTO uec.record_access_events "
+                        "(source_record_id,action,reason_category,policy_version,maintainer,occurred_at) "
+                        "VALUES (%s,'public_access_revoked','privacy','synthetic-routes-v1','fixture',%s),"
+                        "(%s,'public_access_revoked','privacy','synthetic-routes-v1','fixture',%s),"
+                        "(%s,'public_access_restored','other','synthetic-routes-v1','fixture',%s)",
+                        (
+                            record_ids["revoked"], now,
+                            record_ids["restored"], now,
+                            record_ids["restored"], now + timedelta(seconds=1),
+                        ),
+                    )
+
+                    for key in ("link", "observation", "source_key", "expired", "revoked"):
+                        count = db.execute(
+                            "SELECT count(*) FROM uec.public_access_restricted WHERE source_record_id=%s",
+                            (record_ids[key],),
+                        ).fetchone()[0]
+                        self.assertEqual(count, 1, key)
+                    for key in ("lifted", "restored"):
+                        count = db.execute(
+                            "SELECT count(*) FROM uec.public_access_restricted WHERE source_record_id=%s",
+                            (record_ids[key],),
+                        ).fetchone()[0]
+                        self.assertEqual(count, 0, key)
+                    raise RollbackFixture()
+        except RollbackFixture:
+            pass
+
     def test_fixture_is_available_before_suppression(self):
         status, body = self.get_json("/api/v2/locations?limit=100")
         self.assertEqual(status, 200)

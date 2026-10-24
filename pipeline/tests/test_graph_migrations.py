@@ -108,8 +108,9 @@ class GraphMigrationContractTests(unittest.TestCase):
 
     def test_084_bounds_live_evidence_anchor_lookup_without_dropping_gates(self):
         migrations = sorted(path.name for path in (ROOT / "migrations").glob("*.sql"))
-        self.assertEqual(migrations[-1], "084_bound_aphis_evidence_anchor_lookup.sql")
-        sql = self.read(migrations[-1]).casefold()
+        migration = "084_bound_aphis_evidence_anchor_lookup.sql"
+        self.assertIn(migration, migrations)
+        sql = self.read(migration).casefold()
         self.assertEqual(sql.count("join lateral ("), 2)
         self.assertIn("limit 1", sql)
         for gate in (
@@ -126,6 +127,108 @@ class GraphMigrationContractTests(unittest.TestCase):
             self.assertIn(gate, sql)
         self.assertIn("current_anchor.source_record_id=anchor.source_record_id", sql)
         self.assertIn("current_anchor.facility_id=anchor.facility_id", sql)
+
+    def test_085_factors_map_eligibility_once_and_reuses_it_for_graph_keys(self):
+        migrations = sorted(path.name for path in (ROOT / "migrations").glob("*.sql"))
+        self.assertEqual(migrations[-1], "085_graph_live_anchor_keys.sql")
+        sql = self.read(migrations[-1]).casefold()
+        self.assertIn("create or replace view uec.public_discovery_live_eligible_rows", sql)
+        self.assertIn("create or replace view uec.map_facilities_public_discovery_read_model", sql)
+        self.assertIn("from uec.public_discovery_live_eligible_rows eligible", sql)
+        self.assertIn("create or replace view uec.graph_public_live_facility_anchors_current", sql)
+        self.assertIn("from uec.public_discovery_live_eligible_rows", sql)
+        self.assertIn("create or replace view uec.graph_public_organization_label_candidates_current", sql)
+        candidates = sql.split(
+            "create or replace view uec.graph_public_organization_label_candidates_current as", 1
+        )[1].split("create or replace view uec.graph_public_connections_current as", 1)[0]
+        for gate in (
+            "review.publication_eligible=true",
+            "review.privacy_screening_status='passed'",
+            "review.factual_review_status<>'rejected'",
+            "review.maintainer_approval='approved'",
+            "rights.redistribution_status='cleared'",
+            "build.release_manifest_sha256=manifest.manifest_sha256",
+            "build.suppression_generation=suppression.generation",
+            "restricted.source_record_id=label.label_source_record_id",
+            "restricted.source_record_id=anchor.source_record_id",
+        ):
+            with self.subTest(organization_candidate_gate=gate):
+                self.assertIn(gate, candidates)
+        for gate in (
+            "release.status='promoted'",
+            "release.test_only is not true",
+            "manifest.manifest_sha256=metadata.manifest_sha256",
+            "review.publication_eligible=true",
+            "review.privacy_screening_status='passed'",
+            "review.factual_review_status<>'rejected'",
+            "review.maintainer_approval='approved'",
+            "public_access_revoked",
+            "suppression_case_current",
+            "case_record.status in ('active','review','closed','expired')",
+            "min(eligible.first_observed_at) over facility_history",
+            "max(eligible.observed_at) over facility_history",
+            "facility_lifecycle_current",
+        ):
+            with self.subTest(gate=gate):
+                self.assertIn(gate, sql)
+        connections = sql.split(
+            "create or replace view uec.graph_public_connections_current as", 1
+        )[1].split("create or replace view uec.graph_public_organization_endpoints_current as", 1)[0]
+        self.assertIn("live_anchors as materialized", connections)
+        self.assertIn("from uec.public_discovery_live_eligible_rows eligible", connections)
+        self.assertIn("eligible_supports as materialized", connections)
+        self.assertIn("support_status as materialized", connections)
+        self.assertIn("eligible_endpoints as materialized", connections)
+        self.assertIn("organization_candidates as materialized", connections)
+        self.assertIn("eligible_organizations as materialized", connections)
+        self.assertIn("from uec.graph_public_organization_label_candidates_current candidate", connections)
+        self.assertIn("from organization_candidates candidate", connections)
+        self.assertIn("support.support_count=support.eligible_support_count", connections)
+        self.assertIn("support_build.active and support_build.status='completed'", connections)
+        self.assertIn("from uec.graph_public_projection_anchors anchor", connections)
+        self.assertNotIn("graph_public_projection_endpoint_anchors", connections)
+        self.assertIn("join live_anchors live", connections)
+        self.assertIn("public_suppression_generation", connections)
+        self.assertIn("release_manifests", connections)
+        self.assertIn("public_release_history", connections)
+        self.assertNotIn("map_facilities_public_discovery_read_model", connections)
+        for view_name, next_view in (
+            ("graph_public_organization_endpoints_current", "graph_public_evidence_references_current"),
+            ("graph_public_evidence_references_current", "graph_public_projection_edges_release_page_idx"),
+        ):
+            view_body = sql.split(f"create or replace view uec.{view_name} as", 1)[1].split(
+                next_view if next_view.startswith("graph_public_projection")
+                else f"create or replace view uec.{next_view} as", 1
+            )[0]
+            self.assertIn("graph_public_live_facility_anchors_current", view_body)
+            self.assertNotIn("map_facilities_public_discovery_read_model current_anchor", view_body)
+        self.assertIn("graph_public_projection_edges_release_page_idx", sql)
+        self.assertIn("graph_public_projection_edges_release_from_idx", sql)
+        self.assertIn("graph_public_projection_edges_release_to_idx", sql)
+        self.assertNotIn("grant select on uec.public_discovery_live_eligible_rows", sql)
+        self.assertNotIn("grant select on uec.graph_public_live_facility_anchors_current", sql)
+
+    def test_085_restriction_resolver_uses_indexed_routes_without_changing_lifecycle_gates(self):
+        sql = self.read("085_graph_live_anchor_keys.sql").casefold()
+        restriction = sql.split(
+            "create or replace view uec.public_access_restricted as", 1
+        )[1].split(
+            "create or replace view uec.public_discovery_live_eligible_rows as", 1
+        )[0]
+        self.assertEqual(restriction.count("select record.source_record_id"), 3)
+        self.assertIn("from uec.record_access_current", restriction)
+        self.assertIn("where action='public_access_revoked'", restriction)
+        self.assertIn("join uec.facility_source_links link", restriction)
+        self.assertIn("link.facility_id=ref.facility_id", restriction)
+        self.assertIn("join uec.observations observation", restriction)
+        self.assertIn("observation.facility_id=ref.facility_id", restriction)
+        self.assertIn("ref.source_id=record.source_id", restriction)
+        self.assertIn("ref.source_record_key=record.source_record_key", restriction)
+        self.assertIn("current_case.event_type='suppressed'", restriction)
+        self.assertIn("case_record.status in ('active','review','closed','expired')", restriction)
+        self.assertEqual(restriction.count("\nunion\n"), 3)
+        self.assertNotIn("join uec.source_records record on (", restriction)
+        self.assertNotIn("or exists (select 1 from uec.facility_source_links", restriction)
 
 
 if __name__ == "__main__":
