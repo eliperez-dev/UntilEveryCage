@@ -651,7 +651,7 @@ class GraphPersistenceContractTests(unittest.TestCase):
             return {"inserted": len(edges), "updated": 0, "unchanged": 0,
                     "skipped_exact": 0, "total": len(edges)}
 
-        with patch.object(graph_module, "persist_connection_edges", persist):
+        with patch.object(graph_module, "_persist_repaired_edges_append_only", persist):
             counts = _repair_generic_facility_endpoint_types(connection)
 
         self.assertIn("graph_record_release_bindings", connection.query)
@@ -690,7 +690,7 @@ class GraphPersistenceContractTests(unittest.TestCase):
             def execute(self, _query, _params):
                 return Cursor()
 
-        with patch.object(graph_module, "persist_connection_edges") as persist:
+        with patch.object(graph_module, "_persist_repaired_edges_append_only") as persist:
             counts = _repair_generic_facility_endpoint_types(Connection())
         persist.assert_not_called()
         self.assertEqual(counts["repairable_generic_facility_endpoint_edges"], 0)
@@ -727,7 +727,7 @@ class GraphPersistenceContractTests(unittest.TestCase):
 
         connection = Connection()
         appended = []
-        with patch.object(graph_module, "persist_connection_edges",
+        with patch.object(graph_module, "_persist_repaired_edges_append_only",
                           side_effect=lambda _connection, edges: (
                               appended.extend(edges),
                               {"inserted": len(edges), "updated": 0, "unchanged": 0,
@@ -749,6 +749,83 @@ class GraphPersistenceContractTests(unittest.TestCase):
         self.assertEqual(counts["repairable_generic_facility_endpoint_edges"], 2)
         self.assertEqual(counts["generic_facility_endpoint_repair_inserted"], 2)
         self.assertEqual({edge["from"]["source_id"] for edge in appended}, {"us.fsis", "it.853-2004"})
+
+    def test_repair_edge_insert_is_append_only_idempotent_for_colliding_support_versions(self):
+        left = graph_module.EntityRef("facility", "us.fsis", "fsis_establishment_number", "opaque-left")
+        right = graph_module.EntityRef("facility", "us.fsis", "fsis_establishment_number", "opaque-right")
+        key = graph_module.connection_edge_key(
+            from_ref=left, to_ref=right, relationship_type="shared_business_name",
+            connection_type="inferred", ruleset_version="d7-shared-business-name-v3",
+        )
+
+        def repaired_edge(suffix):
+            return {
+                "edge_key": key,
+                "from": left.as_dict(), "to": right.as_dict(),
+                "relationship_type": "shared_business_name", "connection_type": "inferred",
+                "confidence": 0.61, "confidence_band": "possible",
+                "match_method": "exact_declared_business_name_equality",
+                "supporting_source_refs": [
+                    {"source_id": "us.fsis", "source_record_key": f"record-{suffix}-left",
+                     "source_record_id": str(uuid.uuid4()), "artifact_sha256": ("a" if suffix == "1" else "b") * 64,
+                     "role": "from"},
+                    {"source_id": "us.fsis", "source_record_key": f"record-{suffix}-right",
+                     "source_record_id": str(uuid.uuid4()), "artifact_sha256": ("c" if suffix == "1" else "d") * 64,
+                     "role": "to"},
+                ],
+                "signal_explanation": {"signals": ["shared_business_name"]},
+                "ruleset_version": "d7-shared-business-name-v3",
+                "observed_at": "2026-10-20T00:00:00Z", "computed_at": None,
+                "conflicting": False, "suppressed": False,
+                "storage_state": "private", "publication_status": "not_eligible",
+            }
+
+        first, second = repaired_edge("1"), repaired_edge("2")
+
+        class Cursor:
+            def __init__(self, row=None, rowcount=1):
+                self.row = row
+                self.rowcount = rowcount
+
+            def fetchone(self):
+                return self.row
+
+        class Connection:
+            def __init__(self):
+                self.inserted = {}
+                self.write_attempts = 0
+
+            def execute(self, query, params):
+                if query.lstrip().startswith("SELECT 1"):
+                    return Cursor(row=None)
+                if "INSERT INTO uec.graph_connection_edges" not in query:
+                    raise AssertionError("unexpected repair persistence SQL")
+                self.write_attempts += 1
+                self.insert_sql = query
+                edge_key = params[0]
+                if edge_key in self.inserted:
+                    return Cursor(row=None, rowcount=0)
+                self.inserted[edge_key] = params
+                return Cursor(row=(uuid.uuid4(),), rowcount=1)
+
+        connection = Connection()
+        first_result = graph_module._persist_repaired_edges_append_only(connection, [second, first])
+        stored_supports = connection.inserted[key][14]
+        expected = min((first, second), key=lambda edge: json.dumps(
+            edge, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str))
+        self.assertEqual(json.loads(stored_supports), expected["supporting_source_refs"])
+        self.assertTrue(connection.inserted[key][18])  # null computed_at gets a one-time computed timestamp
+        self.assertIn("ON CONFLICT (edge_key) DO NOTHING", connection.insert_sql)
+        self.assertNotIn("DO UPDATE", connection.insert_sql)
+        self.assertEqual(first_result["inserted"], 1)
+        self.assertEqual(first_result["updated"], 0)
+
+        second_result = graph_module._persist_repaired_edges_append_only(connection, [first, second])
+        self.assertEqual(connection.write_attempts, 4)  # two attempted inserts per pass
+        self.assertEqual(len(connection.inserted), 1)
+        self.assertEqual(second_result["inserted"], 0)
+        self.assertEqual(second_result["updated"], 0)
+        self.assertEqual(second_result["unchanged"], 2)
 
     def test_unknown_source_observation_time_uses_handoff_time(self):
         manifest = {"retrieved_at_utc": "2026-09-21T00:00:00Z"}

@@ -80,7 +80,11 @@ private-to-canonical release binding; each support must resolve to one
 canonical facility. Each generic endpoint must also match exactly one mapped
 native identifier on that same canonical facility. It
 does not change endpoint values, support references, relationship semantics,
-or prior edge rows. Unmapped, ambiguous, stale-artifact, and non-current
+or prior edge rows. If several historical support payloads normalize to one
+semantic edge key, repair inserts one deterministic representative only;
+other support variants remain intact on their original private rows and are
+not claimed as aggregated evidence. Existing keys are never updated, so a
+second pass is a no-op. Unmapped, ambiguous, stale-artifact, and non-current
 release cases remain unchanged.
 
 The Italy D6 matcher normalizes identifiers for comparison, but persisted

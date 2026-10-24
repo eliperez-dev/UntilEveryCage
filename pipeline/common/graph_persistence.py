@@ -1501,7 +1501,7 @@ def _repair_generic_facility_endpoint_types(connection: Any) -> dict[str, int]:
             "conflicting": conflicting, "suppressed": suppressed,
             "storage_state": "private", "publication_status": "not_eligible",
         })
-    counts = persist_connection_edges(connection, repaired) if repaired else {
+    counts = _persist_repaired_edges_append_only(connection, repaired) if repaired else {
         "inserted": 0, "updated": 0, "unchanged": 0,
         "skipped_exact": 0, "total": 0,
     }
@@ -1510,6 +1510,70 @@ def _repair_generic_facility_endpoint_types(connection: Any) -> dict[str, int]:
             "generic_facility_endpoint_repair_updated": counts["updated"],
             "generic_facility_endpoint_repair_unchanged": counts["unchanged"],
             "generic_facility_endpoint_repair_skipped_exact": counts["skipped_exact"]}
+
+
+def _persist_repaired_edges_append_only(connection: Any,
+                                        edges: Iterable[Mapping[str, Any]]) -> dict[str, int]:
+    """Insert deterministic repair copies without ever updating an edge.
+
+    Multiple legacy payloads can normalize to one semantic edge key. Keep one
+    stable representative, while all original private edge rows remain
+    available as history. A key already present—whether from a prior repair
+    or a native matcher result—is left untouched.
+    """
+    ordered = [validate_connection_edge(edge) for edge in edges]
+    ordered.sort(key=lambda edge: (
+        str(edge["edge_key"]),
+        json.dumps(edge, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str),
+    ))
+    inserted = unchanged = skipped_exact = 0
+    insert_sql = """INSERT INTO uec.graph_connection_edges
+        (edge_key,from_entity_type,from_source_id,from_identifier_type,from_source_identifier,
+         to_entity_type,to_source_id,to_identifier_type,to_source_identifier,relationship_type,
+         connection_type,confidence,confidence_band,match_method,supporting_source_refs,
+         signal_explanation,ruleset_version,observed_at,computed_at,conflicting,suppressed,
+         storage_state,publication_status)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s::jsonb,%s,%s,%s,%s,%s,'private','not_eligible')
+        ON CONFLICT (edge_key) DO NOTHING
+        RETURNING connection_edge_id"""
+    exact_sql = """SELECT 1 FROM uec.graph_connection_edges
+        WHERE connection_type='exact' AND (
+          (from_entity_type=%s AND from_source_id=%s AND from_identifier_type=%s AND from_source_identifier=%s
+           AND to_entity_type=%s AND to_source_id=%s AND to_identifier_type=%s AND to_source_identifier=%s)
+          OR
+          (from_entity_type=%s AND from_source_id=%s AND from_identifier_type=%s AND from_source_identifier=%s
+           AND to_entity_type=%s AND to_source_id=%s AND to_identifier_type=%s AND to_source_identifier=%s)
+        ) LIMIT 1"""
+    for edge in ordered:
+        left, right = edge["from"], edge["to"]
+        endpoint_args = (
+            left["entity_type"], left["source_id"], left["identifier_type"], left["source_identifier"],
+            right["entity_type"], right["source_id"], right["identifier_type"], right["source_identifier"],
+        )
+        exact = connection.execute(exact_sql, endpoint_args + endpoint_args[4:] + endpoint_args[:4]).fetchone()
+        if exact:
+            skipped_exact += 1
+            continue
+        args = (
+            edge["edge_key"], left["entity_type"], left["source_id"], left["identifier_type"], left["source_identifier"],
+            right["entity_type"], right["source_id"], right["identifier_type"], right["source_identifier"],
+            edge["relationship_type"], edge["connection_type"], edge["confidence"], edge["confidence_band"],
+            edge["match_method"], json.dumps(edge["supporting_source_refs"], ensure_ascii=False,
+                                              sort_keys=True, separators=(",", ":")),
+            json.dumps(edge["signal_explanation"], ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+            edge["ruleset_version"], edge["observed_at"],
+            edge.get("computed_at") or datetime.now(timezone.utc).isoformat(),
+            edge.get("conflicting", False), edge.get("suppressed", False),
+        )
+        cursor = connection.execute(insert_sql, args)
+        row = cursor.fetchone() if callable(getattr(cursor, "fetchone", None)) else None
+        if getattr(cursor, "rowcount", 1) == 0 or not row:
+            unchanged += 1
+        else:
+            inserted += 1
+    total = inserted + unchanged
+    return {"inserted": inserted, "updated": 0, "unchanged": unchanged,
+            "skipped_exact": skipped_exact, "total": total}
 
 
 def backfill_approved_graph_identifier_bindings(database_url: str, handoff_dir: str | Path, *,
