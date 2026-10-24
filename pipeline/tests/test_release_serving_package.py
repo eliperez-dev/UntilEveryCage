@@ -2,6 +2,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 import unittest
+import uuid
 
 from pipeline.common import release_serving as serving
 
@@ -54,9 +55,17 @@ class ReleaseServingPackageTests(unittest.TestCase):
         self.assertIn("uec.graph_source_name_assertions", serving.FORBIDDEN_DATA_RELATIONS)
         self.assertIn("uec.source_rights_decisions", relations)
         source_records = next(spec for spec in specs if spec.relation == "uec.source_records")
-        self.assertIn("NULL::text", source_records.query)
+        self.assertIn("'record:'||r.source_record_id::text", source_records.query)
+        self.assertNotIn("r.source_record_key", source_records.query)
+        self.assertIn("source_record_id", source_records.columns)
+        access_events = next(spec for spec in specs if spec.relation == "uec.record_access_events")
+        self.assertIn("e.source_record_id", access_events.query)
+        self.assertNotIn("source_record_key", access_events.query)
         self.assertIn("UNION SELECT DISTINCT reference.evidence_source_record_id", source_records.query)
         self.assertIn("graph_public_evidence_references_current", source_records.query)
+        lifecycle = next(spec for spec in specs if spec.relation == "uec.facility_lifecycle_events")
+        self.assertIn("'Evidence note omitted from serving package'", lifecycle.query)
+        self.assertNotIn("NULL::text", lifecycle.query)
         rights = next(spec for spec in specs if spec.relation == "uec.source_rights_decisions")
         self.assertIn("redistribution_status", rights.columns)
         self.assertIn("NOT IN ('us.aphis.annual-reports','us.inspections')", rights.query)
@@ -92,6 +101,23 @@ class ReleaseServingPackageTests(unittest.TestCase):
         source = next(spec for spec in specs if spec.relation == "uec.source_records")
         self.assertIn("raw_fields", source.columns)
         self.assertIn("raw_source_payload_excluded", source.query)
+
+    def test_source_record_key_export_is_stable_unique_and_opaque(self):
+        record_ids = (
+            uuid.UUID("00000000-0000-4000-8000-000000000001"),
+            uuid.UUID("00000000-0000-4000-8000-000000000002"),
+        )
+
+        def serving_key(record_id):
+            return "record:" + str(record_id)
+
+        first = [serving_key(record_id) for record_id in record_ids]
+        second = [serving_key(record_id) for record_id in record_ids]
+        self.assertEqual(first, second)
+        self.assertEqual(len(set(first)), len(record_ids))
+        self.assertTrue(all(value is not None and value for value in first))
+        self.assertTrue(all(value.startswith("record:") for value in first))
+        self.assertFalse(any("private-native-key" in value for value in first))
 
     def test_manifest_is_reproducible_and_labels_redaction(self):
         manifest = serving.package_manifest(release_ids=["v0-public"], migration_inventory_sha256="a" * 64, table_counts={"uec.releases": 1}, schema_artifacts={"pre_data": "b" * 64})
