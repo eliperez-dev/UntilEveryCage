@@ -98,13 +98,34 @@ class GraphMigrationContractTests(unittest.TestCase):
 
     def test_083_retires_stale_graph_projection_generation(self):
         migrations = sorted(path.name for path in (ROOT / "migrations").glob("*.sql"))
-        self.assertEqual(migrations[-1], "083_source_backed_organization_labels.sql")
+        self.assertIn("083_source_backed_organization_labels.sql", migrations)
         sql = self.read("083_source_backed_organization_labels.sql").casefold()
         self.assertIn("update uec.graph_public_projection_builds", sql)
         self.assertIn("set active=false", sql)
         self.assertIn("update uec.graph_projection_generation", sql)
         self.assertIn("set generation=generation+1", sql)
         self.assertNotIn("graph_connection_edges", sql)
+
+    def test_084_bounds_live_evidence_anchor_lookup_without_dropping_gates(self):
+        migrations = sorted(path.name for path in (ROOT / "migrations").glob("*.sql"))
+        self.assertEqual(migrations[-1], "084_bound_aphis_evidence_anchor_lookup.sql")
+        sql = self.read(migrations[-1]).casefold()
+        self.assertEqual(sql.count("join lateral ("), 2)
+        self.assertIn("limit 1", sql)
+        for gate in (
+            "graph_public_evidence_metadata_clearance_current",
+            "graph_projection_generation",
+            "public_suppression_generation",
+            "publication_review_release_current",
+            "map_facilities_public_discovery_read_model",
+            "release_manifests",
+            "public_access_restricted",
+            "release_members",
+            "source_rights_decisions",
+        ):
+            self.assertIn(gate, sql)
+        self.assertIn("current_anchor.source_record_id=anchor.source_record_id", sql)
+        self.assertIn("current_anchor.facility_id=anchor.facility_id", sql)
 
 
 if __name__ == "__main__":
