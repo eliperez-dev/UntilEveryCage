@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 const requirePreview = () => test.skip(!process.env.UEC_REAL_PREVIEW_URL, 'Requires a populated local real preview');
 
-test('reviewed map keeps cluster expansion on the cached MVT hierarchy', async ({ page }) => {
+test('reviewed map keeps cluster expansion on the cached MVT hierarchy while tilted', async ({ page }) => {
   requirePreview();
   test.setTimeout(90_000);
   const requests: string[] = [];
@@ -10,12 +10,13 @@ test('reviewed map keeps cluster expansion on the cached MVT hierarchy', async (
   const firstTile = page.waitForResponse(response =>
     /\/dev\/real-preview\/map\/tiles\/\d+\/\d+\/\d+/.test(new URL(response.url()).pathname) && response.status() === 200,
   );
-  await page.goto('/#/map?f1a=field&lat=45&lon=5&z=2&list=closed');
+  await page.goto('/#/map?f1a=field&lat=45&lon=5&z=2&pitch=45&list=closed');
   await firstTile;
   await expect(page.getByRole('button', { name: /Map features/ })).toHaveCount(0);
   await page.waitForFunction(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
-    return map?.isStyleLoaded() && map.getSource('preview-mvt') && map.getLayer('mvt-clusters') && map.isSourceLoaded('preview-mvt');
+    return map?.isStyleLoaded() && map.getPitch() === 45 && map.getTerrain()?.source === 'mapterhorn-terrain' &&
+      map.getSource('preview-mvt') && map.getLayer('mvt-clusters') && map.isSourceLoaded('preview-mvt');
   });
   const point = await page.evaluate(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
@@ -33,6 +34,50 @@ test('reviewed map keeps cluster expansion on the cached MVT hierarchy', async (
     .toBeGreaterThan(point!.zoom + 0.1);
   expect(requests.some(path => path.includes('/map/tiles/'))).toBe(true);
   expect(requests.some(path => path.includes('/map/feed'))).toBe(false);
+});
+
+test('a rendered V1 facility pin opens its detail while 3D terrain is active', async ({ page }) => {
+  requirePreview();
+  test.setTimeout(90_000);
+  await page.goto('/#/map?f1a=field&source=us.fsis&lat=39.5&lon=-77&z=6&pitch=45&list=closed');
+  await page.waitForFunction(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return map?.isStyleLoaded() && map.getPitch() === 45 && map.getTerrain()?.source === 'mapterhorn-terrain' &&
+      map.getSource('preview-mvt') && map.getLayer('mvt-v1-source-pins') && map.isSourceLoaded('preview-mvt');
+  }, undefined, { timeout: 60_000 });
+
+  await page.getByRole('button', { name: 'Debug menu' }).click();
+  const cutoff = page.locator('#cluster-max-zoom');
+  await cutoff.evaluate((element: HTMLInputElement) => {
+    element.value = '4';
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  const pins = page.getByLabel('Use V1 facility pin PNG + shadow');
+  await expect(pins).toBeChecked();
+  await expect.poll(() => page.evaluate(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return map.hasImage('v1-pin-red') && map.getLayoutProperty('mvt-v1-source-pins', 'visibility') === 'visible';
+  })).toBe(true);
+  await expect.poll(() => page.evaluate(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return map.queryRenderedFeatures({ layers: ['mvt-v1-source-pins'] }).length;
+  })).toBeGreaterThan(0);
+
+  const point = await page.evaluate(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    const feature = map.queryRenderedFeatures({ layers: ['mvt-v1-source-pins'] })
+      .find((candidate: any) => /^[0-9a-f-]{36}$/i.test(String(candidate.properties?.feature_key)));
+    if (!feature) return null;
+    const pixel = map.project(feature.geometry.coordinates);
+    return { x: pixel.x, y: pixel.y, id: String(feature.properties.feature_key) };
+  });
+  expect(point).not.toBeNull();
+  const canvas = await page.locator('.maplibregl-canvas').boundingBox();
+  expect(canvas).not.toBeNull();
+  await page.mouse.click(canvas!.x + point!.x, canvas!.y + point!.y);
+  await expect(page.locator('.reading-sheet[aria-label="Record evidence"]')).toBeVisible();
+  await expect.poll(() => new URL(page.url()).hash).toContain(`selected=${point!.id}`);
+  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getTerrain()?.source)).toBe('mapterhorn-terrain');
 });
 
 test('Belgium approximate markers and 3 km areas are derived from private MVT features and remain clickable', async ({ page }) => {

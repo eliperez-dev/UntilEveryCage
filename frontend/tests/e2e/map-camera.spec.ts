@@ -63,6 +63,17 @@ test('flat camera URLs stay compact and the camera control remains usable on tou
 });
 
 test('cold shared 3D URLs restore terrain after a style reload and browser Back', async ({ page }) => {
+  await page.route(url => new URL(url.href).pathname === '/api/v2/locations', route => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify({
+      api_version: 'v2', data: [], meta: { profile: 'official', release_id: 'synthetic-camera-nav', ruleset_version: 'synthetic',
+        next_cursor: null, total_count: 0, coverage_note: 'Synthetic navigation fixture.' },
+    }),
+  }));
+  await page.route(url => new URL(url.href).pathname === '/api/v2/discovery/facets', route => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify({
+      api_version: 'v2', data: { dimensions: {} }, meta: { profile: 'official', release_id: 'synthetic-camera-nav', ruleset_version: 'synthetic' },
+    }),
+  }));
   await page.goto('./#/map?f1a=field&scenario=dense&lat=38&lon=-96&z=4&pitch=45&bearing=18');
   const map = page.getByLabel('Map showing records');
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getPitch())).toBe(45);
@@ -88,6 +99,8 @@ test('cold shared 3D URLs restore terrain after a style reload and browser Back'
   const params = new URLSearchParams(databaseHref?.split('?')[1]);
   expect(params.get('pitch')).toBe('45');
   expect(params.get('bearing')).toBe('18');
+  expect(params.has('f1a')).toBe(false);
+  expect(params.has('scenario')).toBe(false);
   await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Database', exact: true }).click();
   await expect(page).toHaveURL(/#\/database\?/);
   await page.goBack();
