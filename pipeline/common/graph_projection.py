@@ -45,38 +45,71 @@ def _python_endpoint_select(release_id: str) -> tuple[str, dict[str, str]]:
 
 
 def _python_organization_label_select(release_id: str) -> tuple[str, dict[str, str]]:
-    query = (f"WITH {EDGE_CTES.replace('$1', '%(release_id)s')} "
-             "SELECT DISTINCT ON (endpoint.source_id,endpoint.identifier_type,endpoint.source_identifier,"
-             "endpoint.entity_type,endpoint.public_entity_id) endpoint.source_id,endpoint.identifier_type,"
-             "endpoint.source_identifier,endpoint.entity_type,endpoint.public_entity_id,"
-             "assertion.source_record_id,assertion.assertion_value,assertion.assertion_role "
-             "FROM eligible_source_endpoints endpoint "
-             "JOIN uec.graph_source_name_assertions assertion "
-             "  ON assertion.source_id=endpoint.source_id AND assertion.organization_id=endpoint.public_entity_id "
-             " AND assertion.assertion_role IN ('legal','business','operator') "
-             " AND lower(regexp_replace(assertion.source_field,'^.*[.]','')) IN "
-             "  ('legal_name','business_name','registered_business_name','company_name','organization_name',"
-             "   'organisation_name','operator_name','operator_company_name','raison_sociale','registered_name') "
+    # The exact eligible endpoints and their safe release anchors have already
+    # been selected/staged by the endpoint cursor. Reusing that bounded set
+    # avoids re-running the expensive whole-edge CTE just to attach labels.
+    # Name assertions remain private, and only the final allowlisted label is
+    # inserted into the safe projection.
+    query = ("WITH approved_assertions AS MATERIALIZED ("
+             " SELECT assertion.name_assertion_id,assertion.source_id,assertion.source_record_id,"
+             "        assertion.organization_id,assertion.identifier_id,assertion.assertion_role,"
+             "        assertion.assertion_value "
+             " FROM uec.graph_source_name_assertions assertion "
+             " WHERE assertion.assertion_role IN ('legal','business','operator') "
+             "   AND lower(regexp_replace(assertion.source_field,'^.*[.]','')) IN "
+             "    ('legal_name','business_name','registered_business_name','company_name','organization_name',"
+             "     'organisation_name','operator_name','operator_company_name','raison_sociale','ragione_sociale','registered_name') "
+             "   AND btrim(assertion.assertion_value)<>''), "
+             "release_facilities AS MATERIALIZED ("
+             " SELECT source_record_id,(array_agg(DISTINCT facility_id ORDER BY facility_id))[1] AS facility_id "
+             " FROM uec.map_facilities_public_discovery_read_model "
+             " WHERE release_id=%(release_id)s GROUP BY source_record_id "
+             " HAVING count(DISTINCT facility_id)=1), "
+             "direct_support AS ("
+             " SELECT assertion.name_assertion_id,assertion.source_id,assertion.source_record_id,"
+             "        record.artifact_id,record.source_record_id AS canonical_source_record_id,approved.facility_id "
+             " FROM approved_assertions assertion "
+             " JOIN uec.source_records record ON record.source_record_id=assertion.source_record_id "
+             "  AND record.source_id=assertion.source_id "
+             " JOIN release_facilities approved ON approved.source_record_id=record.source_record_id), "
+             "bound_support AS ("
+             " SELECT assertion.name_assertion_id,assertion.source_id,assertion.source_record_id,"
+             "        binding.artifact_id,binding.canonical_source_record_id,binding.facility_id "
+             " FROM approved_assertions assertion "
+             " JOIN uec.graph_record_release_bindings binding "
+             "  ON binding.release_id=%(release_id)s AND binding.source_id=assertion.source_id "
+             " AND binding.private_source_record_id=assertion.source_record_id "
+             " JOIN uec.source_records private_record "
+             "  ON private_record.source_record_id=assertion.source_record_id "
+             " AND private_record.source_id=assertion.source_id AND private_record.artifact_id=binding.artifact_id "
+             " JOIN uec.source_records canonical_record "
+             "  ON canonical_record.source_record_id=binding.canonical_source_record_id "
+             " AND canonical_record.source_id=assertion.source_id AND canonical_record.artifact_id=binding.artifact_id "
+             " JOIN release_facilities unambiguous "
+             "  ON unambiguous.source_record_id=binding.canonical_source_record_id "
+             " AND unambiguous.facility_id=binding.facility_id), "
+             "name_support AS (SELECT * FROM direct_support UNION ALL SELECT * FROM bound_support) "
+             "SELECT DISTINCT ON (endpoint.endpoint_id) endpoint.source_id,endpoint.identifier_type,"
+             " endpoint.source_identifier,'organization'::text,endpoint.public_entity_id,"
+             " support.canonical_source_record_id,assertion.assertion_value,assertion.assertion_role "
+             "FROM pg_temp.uec_selected_organization_anchors endpoint "
+             "JOIN approved_assertions assertion ON assertion.source_id=endpoint.source_id "
+             " AND assertion.organization_id=endpoint.public_entity_id "
              "JOIN uec.source_entity_identifiers business_id "
-             "  ON business_id.identifier_id=assertion.identifier_id "
-             " AND business_id.source_id=endpoint.source_id AND business_id.entity_type='organization' "
+             " ON business_id.identifier_id=assertion.identifier_id AND business_id.source_id=assertion.source_id "
+             " AND business_id.source_record_id=assertion.source_record_id "
+             " AND business_id.entity_type='organization' "
              " AND business_id.organization_id=endpoint.public_entity_id "
              " AND business_id.identifier_type=endpoint.identifier_type "
              " AND business_id.source_identifier=endpoint.source_identifier "
-             "JOIN uec.source_entity_identifiers facility_assertion "
-             "  ON facility_assertion.source_record_id=assertion.source_record_id "
-             " AND facility_assertion.source_id=assertion.source_id "
-             " AND facility_assertion.entity_type='facility' "
-             "JOIN uec.map_facilities_public_discovery_read_model approved "
-             "  ON approved.release_id=%(release_id)s "
-             " AND approved.source_record_id=assertion.source_record_id "
-             " AND approved.facility_id=facility_assertion.facility_id "
-             "WHERE endpoint.entity_type='organization' "
-             " AND uec.is_valid_italian_vat_identifier(endpoint.source_id,endpoint.identifier_type,endpoint.source_identifier) "
-             " AND btrim(assertion.assertion_value)<>'' "
-             "ORDER BY endpoint.source_id,endpoint.identifier_type,endpoint.source_identifier,"
-             "endpoint.entity_type,endpoint.public_entity_id,CASE assertion.assertion_role "
-             "  WHEN 'legal' THEN 0 WHEN 'business' THEN 1 ELSE 2 END,assertion.assertion_value")
+             "JOIN name_support support ON support.name_assertion_id=assertion.name_assertion_id "
+             " AND support.source_id=assertion.source_id "
+             " AND support.source_record_id=assertion.source_record_id "
+             " AND support.canonical_source_record_id=endpoint.source_record_id "
+             " AND support.facility_id=endpoint.facility_id "
+             "WHERE uec.is_valid_italian_vat_identifier(endpoint.source_id,endpoint.identifier_type,endpoint.source_identifier) "
+             "ORDER BY endpoint.endpoint_id,CASE assertion.assertion_role "
+             " WHEN 'legal' THEN 0 WHEN 'business' THEN 1 ELSE 2 END,assertion.assertion_value")
     return query, {"release_id": release_id}
 
 
@@ -136,15 +169,22 @@ def _python_aphis_reference_select(release_id: str) -> tuple[str, dict[str, str]
 
 
 def _insert_endpoint_batch(connection: Any, projection_id: uuid.UUID,
-                           rows: Iterable[Any], endpoint_ids: dict[tuple[str, str, str, str, uuid.UUID], uuid.UUID]) -> tuple[int, int]:
+                           rows: Iterable[Any], endpoint_ids: dict[tuple[str, str, str, str, uuid.UUID], uuid.UUID],
+                           organization_anchor_rows: list[tuple[Any, ...]] | None = None) -> tuple[int, int]:
     endpoints: list[tuple[Any, ...]] = []
     anchors: list[tuple[Any, ...]] = []
     for row in rows:
         key = (str(row[0]), str(row[1]), str(row[2]), str(row[3]), uuid.UUID(str(row[4])))
         endpoint_id = endpoint_ids.setdefault(key, uuid.uuid4())
         endpoints.append((projection_id, endpoint_id, key[4], key[3], key[0], key[1]))
+        endpoint_anchors = _anchors(row[5])
         anchors.extend((projection_id, endpoint_id, record_id, facility_id)
-                       for record_id, facility_id in _anchors(row[5]))
+                       for record_id, facility_id in endpoint_anchors)
+        if organization_anchor_rows is not None and key[3] == "organization":
+            organization_anchor_rows.extend(
+                (endpoint_id, key[0], key[1], key[2], key[4], record_id, facility_id)
+                for record_id, facility_id in endpoint_anchors
+            )
     if endpoints:
         with connection.cursor() as cursor:
             cursor.executemany(
@@ -400,16 +440,36 @@ def build_release_projection(database_url: str, release_id: str, *,
                 # underestimation under nested loops. Keep the measured hash
                 # join plan override transaction-local to this one build.
                 connection.execute(PROJECTION_PLANNER_GUARD)
+                connection.execute(
+                    """CREATE TEMP TABLE uec_selected_organization_anchors (
+                           endpoint_id UUID NOT NULL, source_id TEXT NOT NULL,
+                           identifier_type TEXT NOT NULL, source_identifier TEXT NOT NULL,
+                           public_entity_id UUID NOT NULL, source_record_id UUID NOT NULL,
+                           facility_id UUID NOT NULL,
+                           PRIMARY KEY (endpoint_id,source_record_id,facility_id)) ON COMMIT DROP"""
+                )
+                organization_anchor_rows: list[tuple[Any, ...]] = []
                 endpoint_cursor = connection.cursor(name="uec_graph_projection_endpoints")
                 endpoint_query, endpoint_parameters = _python_endpoint_select(release_id)
                 endpoint_cursor.execute(endpoint_query, endpoint_parameters)
                 while batch := endpoint_cursor.fetchmany(batch_size):
                     inserted_endpoints, inserted_anchors = _insert_endpoint_batch(
-                        connection, projection_id, batch, endpoint_ids,
+                        connection, projection_id, batch, endpoint_ids, organization_anchor_rows,
                     )
                     endpoint_count += inserted_endpoints
                     anchor_count += inserted_anchors
                 endpoint_cursor.close()
+                if organization_anchor_rows:
+                    with connection.cursor() as cursor:
+                        cursor.executemany(
+                            """INSERT INTO pg_temp.uec_selected_organization_anchors
+                               (endpoint_id,source_id,identifier_type,source_identifier,
+                                public_entity_id,source_record_id,facility_id)
+                               VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""",
+                            organization_anchor_rows,
+                        )
+                    organization_anchor_rows.clear()
+                connection.execute("ANALYZE pg_temp.uec_selected_organization_anchors")
                 label_cursor = connection.cursor(name="uec_graph_projection_organization_labels")
                 label_query, label_parameters = _python_organization_label_select(release_id)
                 label_cursor.execute(label_query, label_parameters)

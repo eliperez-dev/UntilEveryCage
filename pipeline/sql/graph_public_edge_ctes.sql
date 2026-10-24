@@ -85,13 +85,9 @@ endpoint_candidates AS MATERIALIZED (
   WHERE i.entity_type='facility' AND i.facility_id=rf.facility_id
   UNION ALL
   SELECT i.source_id, i.identifier_type, i.source_identifier, i.entity_type,
-         i.organization_id AS public_entity_id, i.source_record_id,
+         i.organization_id AS public_entity_id, name_support.canonical_source_record_id AS source_record_id,
          rf.facility_id AS anchor_facility_id
   FROM uec.source_entity_identifiers i
-  JOIN record_facilities rf ON rf.source_record_id=i.source_record_id
-  JOIN facility_assertions asserted_facility
-    ON asserted_facility.source_record_id=i.source_record_id
-   AND asserted_facility.facility_id=rf.facility_id
   JOIN uec.graph_source_name_assertions business_name
     ON business_name.source_id=i.source_id
    AND business_name.source_record_id=i.source_record_id
@@ -101,8 +97,19 @@ endpoint_candidates AS MATERIALIZED (
    AND lower(regexp_replace(business_name.source_field,'^.*[.]','')) IN (
       'legal_name','business_name','registered_business_name','company_name',
       'organization_name','organisation_name','operator_name','operator_company_name',
-      'raison_sociale','registered_name'
+      'raison_sociale','ragione_sociale','registered_name'
    )
+  JOIN release_support_records name_support
+    ON name_support.source_id=i.source_id
+   AND name_support.source_record_id=i.source_record_id
+  JOIN uec.source_records canonical_record
+    ON canonical_record.source_record_id=name_support.canonical_source_record_id
+   AND canonical_record.source_id=i.source_id
+   AND canonical_record.artifact_id=name_support.artifact_id
+  JOIN record_facilities rf ON rf.source_record_id=name_support.canonical_source_record_id
+  JOIN facility_assertions asserted_facility
+    ON asserted_facility.source_record_id=name_support.canonical_source_record_id
+   AND asserted_facility.facility_id=rf.facility_id
   WHERE i.entity_type='organization'
     AND i.identifier_type IN (
       'business_id','business_number','business_registration','business_registration_number',

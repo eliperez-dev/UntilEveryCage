@@ -427,6 +427,18 @@ class GraphProjectionTests(unittest.TestCase):
         label_query, _ = _python_organization_label_select("selected-release")
         self.assertIn("is_valid_italian_vat_identifier(endpoint.source_id,endpoint.identifier_type,endpoint.source_identifier)", label_query)
 
+    def test_083_invalidates_builds_for_exact_record_bound_organization_labels(self):
+        migration = (Path(__file__).resolve().parents[1] / "migrations" /
+                     "083_source_backed_organization_labels.sql").read_text(encoding="utf-8")
+        normalized = migration.casefold()
+        self.assertIn("update uec.graph_public_projection_builds", normalized)
+        self.assertIn("set active=false", normalized)
+        self.assertIn("update uec.graph_projection_generation", normalized)
+        self.assertIn("set generation=generation+1", normalized)
+        self.assertNotIn("graph_connection_edges", normalized)
+        self.assertNotIn("graph_source_name_assertions", normalized)
+        self.assertNotIn("source_entity_identifiers", normalized)
+
     @unittest.skipUnless(
         os.environ.get("UEC_GRAPH_ITALY_GUARD_ACCEPTANCE") == "1"
         and os.environ.get("UEC_GRAPH_ACCEPTANCE_DATABASE_URL"),
@@ -755,7 +767,14 @@ class GraphProjectionTests(unittest.TestCase):
         query, parameters = _python_organization_label_select("selected-release")
         self.assertIn("graph_source_name_assertions", query)
         self.assertIn("business_id.identifier_id=assertion.identifier_id", query)
-        self.assertIn("map_facilities_public_discovery_read_model approved", query)
+        self.assertIn("business_id.source_record_id=assertion.source_record_id", query)
+        self.assertIn("graph_record_release_bindings binding", query)
+        self.assertIn("canonical_record.artifact_id=binding.artifact_id", query)
+        self.assertIn("pg_temp.uec_selected_organization_anchors", query)
+        self.assertNotIn("eligible_source_endpoints", query)
+        self.assertIn("release_facilities AS MATERIALIZED", query)
+        self.assertIn("'ragione_sociale'", query)
+        self.assertIn("'ragione_sociale'", EDGE_CTES)
         self.assertNotIn("organizations.canonical_name", query)
         self.assertEqual(parameters, {"release_id": "selected-release"})
         public_id, private_identifier = uuid.uuid4(), "business-native-identifier"

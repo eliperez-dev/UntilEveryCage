@@ -96,6 +96,16 @@ class GraphMigrationContractTests(unittest.TestCase):
         self.assertIn("uec.public_access_restricted", sql)
         self.assertIn("graph_publication_safety", sql)
 
+    def test_083_retires_stale_graph_projection_generation(self):
+        migrations = sorted(path.name for path in (ROOT / "migrations").glob("*.sql"))
+        self.assertEqual(migrations[-1], "083_source_backed_organization_labels.sql")
+        sql = self.read("083_source_backed_organization_labels.sql").casefold()
+        self.assertIn("update uec.graph_public_projection_builds", sql)
+        self.assertIn("set active=false", sql)
+        self.assertIn("update uec.graph_projection_generation", sql)
+        self.assertIn("set generation=generation+1", sql)
+        self.assertNotIn("graph_connection_edges", sql)
+
 
 if __name__ == "__main__":
     unittest.main()
