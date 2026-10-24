@@ -144,6 +144,11 @@ _PRIVATE_GRAPH_REQUIRED_PRIVILEGES = {
 }
 _PRIVATE_GRAPH_REQUIRED_READ_PRIVILEGES = {
     "graph_projection_generation": {"SELECT"},
+    # The selected-release selectors directly test whether a candidate source
+    # record participates in public facility membership; these two private
+    # tables are needed to keep event references out of facility membership.
+    "observations": {"SELECT"},
+    "release_members": {"SELECT"},
     # The projection builder must verify the same public-release, manifest,
     # history, and suppression gates that make its output servable.
     "public_discovery_read_models": {"SELECT"},
