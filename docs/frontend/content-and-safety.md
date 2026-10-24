@@ -58,6 +58,17 @@ Optional fields use “(optional)” without instructions such as
 “enter it yourself”. The form still avoids collecting credentials or silently
 copying private page context; concise copy does not weaken those behaviors.
 
+Facility details show the broad category once, followed by distinct readable
+activities rather than repeated category/provenance summaries. Keep taxonomy
+and crosswalk versions in machine provenance, not visible page copy. A compact
+Location section groups the available address or locality, coordinates and
+recorded location method/provider/confidence. Label source coordinates
+"Source-provided coordinates"; do not imply independent validation or invent
+a confidence score. Do not label a locality as a street address. On mobile,
+the map detail fills the viewport with a visible close control and scrolling
+content. Its "Open facility page" header link opens the stable record URL in
+the selected release; desktop panel layout is unchanged.
+
 ## Safety rules in UI
 
 - Do not expose private-person names, residential addresses, worker details, or

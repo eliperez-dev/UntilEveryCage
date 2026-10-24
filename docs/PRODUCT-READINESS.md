@@ -24,7 +24,18 @@ publishable facilities unless explicitly labelled that way.
 
 ## Current launch decision (2026-10-24)
 
-**Whole-dataset graph update is live on Render:** application revision
+**Facility-detail cleanup:** implementation `1ae306db` removes repeated category
+and taxonomy-version copy, groups location metadata, and replaces the panel
+heading with a release-pinned "Open facility page" link. Mobile map details
+fill the viewport; desktop layout is unchanged. All 258 frontend unit tests,
+type checks and four synthetic browser regressions passed. The orchestrator
+also verified the actual released record's mobile/desktop rendering, navigation
+and dismissal against the public API. Street addresses are absent from the
+current public DTO; locality is not represented as a street address. This is
+not a graph rebuild. Hosted rollout evidence for this UI change belongs in
+ignored `data/staging/facility-detail-20261024/hosted-acceptance.json`.
+
+**Whole-dataset graph rollout checkpoint:** application revision
 `0446083a59e7447bfacf6c4cf80f0960c8bb81c8`, deployment
 `dep-dbe9sm9srm7s73bef2ng`, serves the approved `release-2026-10-18` dataset
 from the new isolated `uec_serving_graph_20261023` database.
@@ -93,6 +104,13 @@ public acceptance receipts are under ignored
 separate. This graph update does not complete those tasks. Measured new-cloud
 100-row entity pages still took 3.7–3.8 seconds and connection pages 1.9–2.3
 seconds; no instant-loading claim is made.
+
+**Known matching gap:** a bounded FSIS case has matching primary display names
+but different alternate names and no typed source-name assertion for the
+release records. Its zero-edge neighborhood is not an endpoint or UI error.
+The retained handoff's primary name needs source-lineage verification and
+alignment with the shared assertion mapping before a separate tested graph
+rebuild. The case and next action are tracked in `source-status.json`.
 
 **Earlier hosted search/pin repair:** revision `c3a0a350` introduced the repair
 retained by the current deployment, with all
