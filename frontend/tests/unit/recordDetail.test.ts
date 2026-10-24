@@ -49,7 +49,7 @@ describe('private preview record detail surface', () => {
 
   it('keeps connections scoped to an active public release', () => {
     expect(component).toContain('publicRelease && publicReleaseId && id');
-    expect(component).toContain('<RecordConnections facilityId={id} releaseId={publicReleaseId} sourceId={sourceId} sourceFacts={sourceFacts} />');
+    expect(component).toContain('<RecordConnections facilityId={id} releaseId={publicReleaseId} sourceId={sourceId ?? undefined} sourceFacts={sourceFacts} />');
     expect(component).not.toContain('Not available in this release');
     expect(component).not.toContain('Record source and date are shown below.');
   });

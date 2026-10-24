@@ -233,7 +233,6 @@
   const detailedActivities = $derived(detailedActivityLabels.filter(label => !isSummaryActivity(label)).join(', '));
   const sourceClassification = $derived(uniqueLabels([
     nativeActivity,
-    ...(taxonomy?.leafActivities.filter(leaf => isSummaryActivity(leaf.label)).map(leaf => humanizeValue(leaf.label)) ?? []),
     ...(taxonomy?.assignments.map(assignment => {
       const label = humanizeValue(assignment.sourceLabel);
       const code = humanizeValue(assignment.sourceCode);
@@ -384,7 +383,7 @@
     </section>
   {/if}
 
-  {#if presentation === 'page' && hasCoordinates}<LocationPreview latitude={record.latitude!} longitude={record.longitude!} precision={precision} category={activityDisplay ?? 'unclassified'} />{/if}
+  {#if presentation === 'page' && hasCoordinates}<LocationPreview latitude={record.latitude!} longitude={record.longitude!} precision={precision} category={taxonomy?.primaryCategories[0] ?? activity ?? 'unclassified'} />{/if}
   <section aria-labelledby="location-heading">
     <h2 id="location-heading">Location</h2>
     <dl>
@@ -402,7 +401,7 @@
   </section>
 
   {#if publicRelease && publicReleaseId && id}
-    <RecordConnections facilityId={id} releaseId={publicReleaseId} sourceId={sourceId} sourceFacts={sourceFacts} />
+    <RecordConnections facilityId={id} releaseId={publicReleaseId} sourceId={sourceId ?? undefined} sourceFacts={sourceFacts} />
   {/if}
 
   <section aria-labelledby="evidence-heading">
@@ -459,9 +458,6 @@
   }
 
   .taxonomy { margin-top: .8rem; }
-  .taxonomy ul { margin: .45rem 0; padding-left: 1.25rem; }
-  .taxonomy-provenance { list-style: none; padding: 0 !important; }
-  .taxonomy-provenance li { display: grid; gap: .15rem; padding: .4rem 0; border-bottom: 1px solid #303632; }
 
   section {
     margin-top: .8rem;

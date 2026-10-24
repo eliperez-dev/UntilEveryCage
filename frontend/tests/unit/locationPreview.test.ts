@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { locationPreviewMode, locationPreviewZoom } from '../../src/features/locations/locationPreview';
+import { locationPreviewPinFile } from '../../src/features/locations/locationPreview';
+import { CATEGORY_PRIMARY_BY_SOURCE_KEY } from '../../src/features/locations/categoryPresentation';
 
 describe('location preview presentation', () => {
   it('uses satellite for source-provided points and roads for approximate points', () => {
@@ -9,5 +11,11 @@ describe('location preview presentation', () => {
     expect(locationPreviewMode('coarse')).toBe('roads');
     expect(locationPreviewMode('unmapped')).toBe('roads');
     expect(locationPreviewZoom('exact')).toBeGreaterThan(locationPreviewZoom('city'));
+  });
+
+  it('uses the canonical V1 pin family and a neutral pin for unknown categories', () => {
+    expect(locationPreviewPinFile('slaughter', CATEGORY_PRIMARY_BY_SOURCE_KEY)).toBe('marker-icon-2x-red.png');
+    expect(locationPreviewPinFile('processing_and_preparation', CATEGORY_PRIMARY_BY_SOURCE_KEY)).toBe('marker-icon-2x-grey.png');
+    expect(locationPreviewPinFile('unknown_source_activity', CATEGORY_PRIMARY_BY_SOURCE_KEY)).toBe('marker-icon-2x-grey.png');
   });
 });
