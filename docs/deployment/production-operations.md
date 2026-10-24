@@ -322,7 +322,8 @@ other package data.
 
 The target schema must be derived from the same verified migrated source, in
 the following order: create `postgis` in `public` and `pgcrypto`; restore the
-schema's pre-data archive; create `pg_trgm` in `uec`; run the selected-column
+schema's pre-data archive; ensure `pg_trgm` exists in `uec` (the archive may
+already create it); run the selected-column
 package restore; then restore the filtered post-data archive. Record SHA-256
 for both schema archives with the package using repeated `--schema-artifact
 NAME=SHA256` arguments. The serving derivative excludes exactly these two
@@ -383,9 +384,11 @@ following empty-database bootstrap before calling `restore`: the archive has
 DDL but does not carry migration-seeded singleton rows. First compare the
 target `public` schema owner and ACL with the prepared source schema metadata.
 When (and only when) the target already has that matching default schema,
-omit exactly the duplicate `CREATE SCHEMA public;` statement from the decoded
-pre-data SQL; retain and execute every other statement. Record this one-statement
-reconciliation and the compared owner/ACL in the restricted receipt. Do not
+omit exactly the duplicate `CREATE SCHEMA public;` statement if the decoded
+pre-data SQL contains it; a verified archive may contain no such statement.
+Reject more than one matching statement and retain every other statement.
+Record whether zero or one statement was omitted and the compared owner/ACL
+in the restricted receipt. Do not
 drop or recreate the schema, or omit any additional schema object. The canonical
 schema derivative still omits only the two documented preview callback
 triggers listed in `SERVING_SCHEMA_OMISSIONS`.

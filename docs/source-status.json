@@ -2,9 +2,9 @@
   "schema_version": "1.0",
   "purpose": "Evidence-backed source readiness baseline; not a runtime health monitor or publication approval register.",
   "whole_dataset_graph": {
-    "as_of": "2026-10-23",
+    "as_of": "2026-10-24",
     "release_id": "release-2026-10-18",
-    "status": "whole_corpus_database_acceptance_passed_public_serving_acceptance_pending",
+    "status": "whole_corpus_acceptance_passed_render_deployed_public_smoke_passed",
     "scope": "All released facility sources and retained private facility evidence, including unmapped records. Counts are source/artifact record versions and candidate relationships, not unique facilities or published connections.",
     "released_records": 69220,
     "released_source_count": 14,
@@ -50,16 +50,17 @@
       "inspection_events": 98,
       "uniquely_matched_references": 1024,
       "unmatched_events": 68,
-      "public_reference_approval": "metadata_only_review_and_artifact_clearance_applied_local_projection_built_hosted_acceptance_pending",
+      "public_reference_approval": "metadata_only_review_and_artifact_clearance_applied_new_cloud_and_public_https_samples_passed",
       "event_handoffs_reimported_this_run": false
     },
     "database_materialization_verified": true,
     "local_projection_build": {"version": "graph-release-projection-v3", "edges": 38308, "exact": 23874, "inferred": 14434, "endpoint_source_count": 9, "cross_source_edges": 719, "cross_source_pairs": [["au.npi.facilities", "fsa_approved_establishments"], ["ca.ontario.meat-plants", "us.fsis"], ["fsa_approved_establishments", "fss_approved_establishments"], ["fsa_approved_establishments", "us.fsis"], ["fss_approved_establishments", "us.fsis"], ["it.1069-2009", "it.853-2004"]], "source_backed_organization_labels": 16154, "aphis_annual_references": 927, "aphis_inspection_references": 97, "hosted_api_totals_verified": false},
-    "selected_serving_acceptance": {"status": "endpoint_repair_build_passed_replacement_package_api_pending", "initial_restore_schema_and_grants_passed": true, "organization_rights_export_fixed": true, "organization_label_parity_verified": true, "keyed_selector_rollback_trial_passed": true, "endpoint_repair_real_noop_passed": true, "repair_candidates": 14995, "repair_rerun_inserts": 0, "repair_rerun_updates": 0, "repair_rerun_generation_unchanged": true, "previous_package_connection_rows": 24022, "previous_package_connection_pages": 241, "previous_package_connection_walk_seconds": 456, "replacement_full_connection_traversal_passed": false, "historical_current_restrictions_reconciled": 180},
-    "deployment_blocker": "Replacement selected-package export/restore, source-pair HTTP traversal, final CI and hosted acceptance remain pending. Local endpoint repair and multi-source projection acceptance passed; no cloud cutover yet.",
-    "hosted_rollout_verified": false,
+    "selected_serving_acceptance": {"status": "replacement_package_local_full_http_cloud_restore_and_public_smoke_passed", "initial_restore_schema_and_grants_passed": true, "organization_rights_export_fixed": true, "organization_label_parity_verified": true, "keyed_selector_rollback_trial_passed": true, "endpoint_repair_real_noop_passed": true, "repair_candidates": 14995, "repair_rerun_inserts": 0, "repair_rerun_updates": 0, "repair_rerun_generation_unchanged": true, "previous_package_connection_rows": 24022, "previous_package_connection_pages": 241, "previous_package_connection_walk_seconds": 456, "replacement_full_connection_traversal_passed": true, "replacement_local_http_connection_rows": 38308, "replacement_local_http_connection_pages": 384, "replacement_local_http_endpoint_source_count": 9, "replacement_local_http_cross_source_edges": 719, "historical_current_restrictions_reconciled": 180, "new_cloud_restore_verified": true, "new_cloud_runtime_tls_and_grants_verified": true, "new_cloud_aphis_metadata_sample_passed": true},
+    "deployment_blocker": null,
+    "hosted_rollout_verified": true,
+    "hosted_acceptance": {"application_revision": "0446083a59e7447bfacf6c4cf80f0960c8bb81c8", "render_deployment": "dep-dbe9sm9srm7s73bef2ng", "serving_database": "uec_serving_graph_20261023", "package_sha256": "3bea02d12e5edb4f826aba8e6acbe56e5e581e6787daeceddd4a89df3bd25595", "ci_run": "https://github.com/eliperez-dev/UntilEveryCage/actions/runs/40087607484", "ci_jobs_passed": 7, "public_https_smoke_passed": true, "public_graph_fully_crawled": false, "historical_manifest_map_list_detail_passed": true, "historical_searchable_records": 63421, "historical_mapped_locations_new_cloud_api": 48576, "public_us_inferred_and_ontario_fsis_neighborhoods_passed": true, "readiness_path": "/health/ready", "auto_deploy_enabled": false, "former_serving_database_preserved": true, "community_database_changed": false},
     "evidence": ["pipeline/common/graph_source_mapping.py", "pipeline/common/real_private_graph.py", "pipeline/migrations/080_graph_public_evidence_references.sql", "pipeline/migrations/081_aphis_reference_metadata_clearance.sql", "pipeline/migrations/082_public_italian_vat_qualification.sql", "pipeline/migrations/083_source_backed_organization_labels.sql", "data/staging/whole-dataset-graph-export-20261023/source-coverage-italy-placeholder-filter-replay-20261023.json", "data/staging/whole-dataset-graph-20261023/aggregate-receipt.json"],
-    "next_action": "Export and restore the repaired selected serving package, verify full HTTP connection/source-pair coverage and historical routes, pass final CI, then restore into the authorized new Render database and cut over after acceptance. Private historical edge totals and local build totals are not verified hosted API totals."
+    "next_action": "Complete owner frontend review and any separately authorized domain cutover. Graph rollout is complete; full counts reconcile through the package and local HTTP traversal, with bounded new-cloud and public HTTPS checks rather than a full public graph crawl."
   },
   "historical_private_rehearsal": "docs/archive/rehearsals/country-rehearsal-2026-09-15.json",
   "latest_v0_private_preview_imports": {

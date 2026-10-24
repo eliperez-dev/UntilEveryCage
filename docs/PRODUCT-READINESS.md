@@ -22,126 +22,80 @@ for implementation claims. A count in this document is an aggregate candidate
 or evidence count, never a count of approved, accurate, operating, or
 publishable facilities unless explicitly labelled that way.
 
-## Current launch decision (2026-10-23)
+## Current launch decision (2026-10-24)
 
-**Whole-dataset graph convergence, not yet deployed:** the shared source
-builders, configured refresh path and version-aware corpus matcher now cover
-all 14 released sources (69,220 records), plus retained private DGAL I/II,
-ICPE, Scotland aquaculture and Italy business evidence. The validated input
-is 136,256 source/artifact record versions across 19 handoffs and 18 facility
-source IDs, not that many distinct facilities. Unmapped records participate.
-The corrected Italy semantic replay preserves raw values and provenance while
-excluding malformed or placeholder VAT identifiers from new business assertions.
-The current matcher staged 20,334 shared-business-name and 958 multi-signal
-candidates. These are not published connection counts. All 12,409 retained ICPE
-SIRET aliases reached matching; no real
-cross-source alias overlap was observed. SIRET remains an establishment
-identifier, not an organization or ownership assertion.
+**Whole-dataset graph update is live on Render:** application revision
+`0446083a59e7447bfacf6c4cf80f0960c8bb81c8`, deployment
+`dep-dbe9sm9srm7s73bef2ng`, serves the approved `release-2026-10-18` dataset
+from the new isolated `uec_serving_graph_20261023` database.
+[All seven CI jobs passed](https://github.com/eliperez-dev/UntilEveryCage/actions/runs/40087607484).
+Readiness uses `/health/ready`; auto-deploy remains off. The former serving
+database is retained for rollback, and the source, frozen and community
+databases were not changed. This update changes no frontend code or domain.
 
-The additive 080 migration and v3 serving projection support source-qualified
-business labels and bounded APHIS report/inspection references. Retained APHIS
-evidence comprises 994 annual events and 98 inspections; 1,024 have unique
-registration matches, while 68 remain unmatched. This is private linkage
-evidence, not successful hosted acceptance. The maintainer authorized
-publication of reference metadata only, not report contents.
-Migrations 080 through 086 have applied through the canonical runner to the
-disposable real-data copy. Earlier 085 trial view/index DDL persisted before
-the test transaction began; the canonical 085 application has now reconciled
-that state. Earlier rollback-only descriptions of those trials were incorrect.
-The source, frozen reference and hosted databases were not modified by those
-trials.
-Whole-corpus acceptance passed for all 19 handoffs: the exact 50,925 original
-edge payloads and 69,220 release members are unchanged, a full rerun is
-idempotent, and all four real positive/negative controls pass. The private
-pre-repair historical graph contained 95,143 edges across 25 nonzero source pairs;
-this includes earlier derivations and is not a public connection count.
-The orchestrator also inspected source-name, operator, address-supported and
-negative examples personally. Generic shared names remain weak inferred
-evidence, not confirmation of common ownership.
+The deployed package contains **38,308 connections: 23,874 exact and 14,434
+inferred**, with qualifying endpoints across nine sources and **719 cross-source
+connections**. Cross-source pairs are AU NPI/FSA, Ontario/FSIS, FSA/FSS,
+FSA/FSIS, FSS/FSIS and IT1069/IT853. Inferred connections comprise 14,060
+shared-business-name links and 374 related-facility links. Name sharing does
+not establish common ownership. Sources with no qualifying matches are not
+assigned invented connections.
 
-The corrected local v3 build completed with 24,022 projected edges, 16,154
-source-backed business labels and 1,024 metadata-only APHIS references (927
-annual reports and 97 inspections). These are build counts, not yet verified
-hosted API totals. Metadata review and artifact-scoped clearance were applied
-only to the approved reference fields. Migration 083 retires builds made with
-the incomplete business-name selector; label selection now follows the exact
-release binding and reuses qualified endpoint anchors. Full connection pagination
-and Render rollout remain pending. The 084
-rollback checks passed approval invalidation, immediate withdrawal and the
-Italian placeholder guard; graph read latency is still under investigation.
-The committed 085 selector refactor preserves the map, release membership and
-all 180 restriction rows in the local trial. Its global graph page still times
-out in the larger research database. Performance acceptance must use the
-isolated selected-serving derivative. The maintainer has authorized the local
-completion and restore into a new Render database, followed by cutover after CI
-and API acceptance. Migration 086 preserves the APHIS reference gates while
-materializing candidate references and shared anchor keys once. Its focused
-checks passed (36 passed, five skipped), including immediate withdrawal.
-The first isolated v8 restore loaded both releases and passed final schema,
-restriction-snapshot and runtime-grant checks. It exposed exporter defects:
-two non-null fields needed explicit redaction values, and organization-label
-rights decisions were missing from the package. Those selectors are corrected;
-the rights-complete package passed a clean restore and label/reference parity.
-On the earlier derivative, current-code entity pages returned in about three
-seconds, but connection pages timed out at 30 seconds and no organization
-labels qualified. These are failures, not completed serving acceptance. Query
-experiments were rolled back. Migration 087 then replaced global connection
-eligibility joins with equivalent keyed lookups: the runtime-role rollback
-trial returned 101 rows in 1.86/1.79 seconds with matching DTOs, map parity and
-revocation checks. It is canonically applied to the source test copy and selected
-serving target, with unchanged data and generation fingerprints. The earlier
-selected package passed verification and its local API returned all 24,022 connections
-over 241 pages without duplicate or cursor errors (456 seconds). Representative
-entity and APHIS evidence checks passed. Historical routes preserve the original
-63,601-record / 48,756-map baseline while applying 180 current restrictions,
-leaving 63,421 searchable records and 48,576 map locations.
+The package also retains 16,154 source-backed organization labels and **1,024
+metadata-only APHIS references** (927 annual reports, 97 inspections).
+These references are not facility-to-facility connections or report contents;
+68 other retained APHIS events remain unmatched. Facility membership is unchanged:
+69,220 records, including 53,107 mapped locations across fourteen released
+sources. Unmapped records can participate in matching.
 
-**Endpoint binding is repaired locally; replacement package/API acceptance is
-pending.** Generic facility identifiers now normalize through the shared source
-registry. Repair accepts exact direct-release anchors or verified record
-bindings, retaining all source/artifact/release/restriction gates. Corrected
-semantic edges are insert-only; original support versions remain retained.
-The final real-data rerun changed neither rows nor generation (14,995 candidates,
-zero inserts/updates). The original 50,925-edge fingerprint, 69,220 release
-members and 180 restrictions remain intact; private history now has 110,003 edges.
+**Acceptance:** the replacement local HTTP API returned all 38,308 connections
+over 384 pages with no duplicate, cursor, release or DTO errors. Endpoint-source
+counts reconcile with the package, including conflicting and all confidence
+bands. The new Render database passed schema, TLS, restriction replay and
+least-privilege checks, followed by bounded API checks. Public HTTPS checks
+passed readiness, a nonempty paginated graph, US inferred and Ontario/FSIS
+cross-source neighborhoods, historical manifest/map/list/detail, CORS and
+private-route exclusions. The public site was smoke-tested, not fully crawled.
+APHIS metadata references passed both the new-cloud API check and a bounded
+public HTTPS evidence request.
 
-The rebuilt projection has 38,308 edges: 23,874 exact and 14,434 inferred across
-nine sources, including 719 cross-source connections. Cross-source pairs are
-AU NPI/FSA, Ontario/FSIS, FSA/FSS, FSA/FSIS, FSS/FSIS and IT1069/IT853.
-It retains 16,154 organization labels and 1,024 APHIS references. Shared-name
-links remain inferred name sharing, not ownership. These are stored-build
-counts, not replacement-package HTTP or hosted totals. The earlier 24,022-row
-package is superseded and must not be deployed.
-No graph change from this sprint is live; the existing Render database remains
-unchanged. Entity pages still take about 4.3 seconds; connection pages take
-about 1.9 seconds per 100 rows.
+Historical v0 remains available: its original 63,601-record / 48,756-map
+baseline, after 180 current restrictions, yields 63,421 searchable records and
+48,576 map locations. Its original manifest identity is preserved.
 
-The previously recorded local standard gate passed: 137 Rust library tests, 24 Rust
-binary tests, 675 pipeline tests (39 optional skips), 90 graph unit tests
-(four database-acceptance skips), and 75 adapter tests. The new suppression
-lifecycle regression passed in the full CI E2E gate at `2821da14`; the earlier
-guard-disabled local invocation did not exercise it. All seven CI jobs passed
-at `c1b1bc36`, including migration 086 and the non-null/export-grant fixes.
-The rights-closure integration at `26f3bc9d` also passed all seven CI jobs.
-Migration 087 passed eleven focused migration contracts; all seven integrated
-CI jobs passed at `e077c3c7`, `335928bc` and `044292af`. The final insert-only
-skip/conflict correction passed 48 focused tests and real-data no-op acceptance;
-integrated CI at the final revision remains required. CI does not establish
-whole-source serving acceptance.
-Earlier frontend checks passed
-257 tests, type checks and 37 static tests; this change does not alter the UI.
-The prior 066 checksum concern was diagnosed as line-ending representation:
-the clone's stored hash matches current checkout bytes and the migration
-runner accepts equivalent LF/CRLF bytes. No ledger or historical migration
-was edited. Four focused PostGIS regressions also pass, including completed
-handoff context backfill and unknown/null/date-only/timezone timestamp handling.
-Complete public API traversal, final CI and hosted acceptance remain separate gates.
-Aggregate input evidence is in ignored
-`data/staging/whole-dataset-graph-export-20261023/source-coverage-italy-placeholder-filter-replay-20261023.json`
-in the backend source lane; integration gate logs are under ignored
-`data/staging/whole-dataset-graph-20261023/`.
+**Reproducibility:** the shared matcher covers 136,256 retained source/artifact
+versions across 19 handoffs and 18 facility sources, including all fourteen
+released sources. Generic facility identifiers now resolve through the shared
+source mapping and exact release anchors or verified record bindings. Repairs
+are append-only; the final rerun considered 14,995 candidates with zero
+inserts, updates or generation changes. The original 50,925-edge fingerprint,
+69,220 release members and 180 restrictions are preserved; private historical
+edges total 110,003, not the public connection count. All four real
+positive/negative controls passed, and the orchestrator personally inspected
+representative source-backed and negative examples.
 
-**Hosted search/pin repair:** revision `c3a0a350` is live on Render with all
+Migration 087 supplies keyed eligibility lookups without relaxing publication
+or suppression checks. Final repair code passed 48 focused tests and integrated
+CI. The earlier standard gate passed 137 Rust library tests, 24 Rust binary
+tests, 675 pipeline tests, 90 graph unit tests and 75 adapter tests, with
+documented optional skips. Previously reported migration-066 hash differences
+were line-ending representation; no ledger or historical migration was edited.
+
+The verified v8 package SHA-256 is
+`3bea02d12e5edb4f826aba8e6acbe56e5e581e6787daeceddd4a89df3bd25595`.
+It contains 32 selected relations, 1,484,484 rows and two releases. The older
+24,022-connection package is superseded. Source rows and raw private graph
+payloads are excluded from repository evidence. Aggregate local, cloud and
+public acceptance receipts are under ignored
+`data/staging/whole-dataset-graph-20261023/restricted/`.
+
+**Remaining work:** owner frontend review and custom-domain cutover remain
+separate. This graph update does not complete those tasks. Measured new-cloud
+100-row entity pages still took 3.7–3.8 seconds and connection pages 1.9–2.3
+seconds; no instant-loading claim is made.
+
+**Earlier hosted search/pin repair:** revision `c3a0a350` introduced the repair
+retained by the current deployment, with all
 seven required CI jobs passing. Hosted Chrome acceptance passed search loading
 with retained results, delayed PNG loading, matching physical pin selection,
 selection dismissal, style switching and warm reload, with no page errors.
@@ -187,10 +141,10 @@ by aggregate fingerprint and current release membership stayed at 69,220.
 The local release-gated projection contains 14,639 exact and 611 inferred
 links, including one existing conflicting link excluded by default. Receipts:
 ignored `data/staging/tyson-shared-business-name-20261023/acceptance-final.json`.
-**These new links are verified locally, not published on Render.**
-The retained baseline verifier also
-reports a pre-existing checksum mismatch for `066_community_contributions`;
-neither its ledger nor the frozen reference was changed to suppress that error.
+**Historical bounded rehearsal:** the current whole-dataset deployment above
+supersedes these local-only graph counts. The migration-066 checksum report
+was subsequently traced to line-ending representation; no ledger or frozen
+reference was changed to suppress it.
 
 **Approximate-location display correction:** implementation `7ee9f46c` replaces
 the public map's approximate dots with the existing category/V1 pin artwork and
