@@ -663,6 +663,11 @@ class GraphProjectionTests(unittest.TestCase):
         }
         validator = {**_PRIVATE_GRAPH_REQUIRED_PRIVILEGES,
                      **_PRIVATE_GRAPH_REQUIRED_READ_PRIVILEGES}
+        for table in ("observations", "release_members"):
+            with self.subTest(membership_guard=table):
+                self.assertEqual(_PRIVATE_GRAPH_REQUIRED_READ_PRIVILEGES[table], {"SELECT"})
+        self.assertNotIn("observations", _PRIVATE_GRAPH_REQUIRED_PRIVILEGES)
+        self.assertNotIn("release_members", _PRIVATE_GRAPH_REQUIRED_PRIVILEGES)
         for table, grant in grants.items():
             with self.subTest(table=table):
                 self.assertEqual(validator[table], set(grant.split(", ")))
