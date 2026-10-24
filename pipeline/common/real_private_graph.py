@@ -33,7 +33,7 @@ from pipeline.common.graph_persistence import (ConnectionEdgeBuilder, import_evi
 REPORT_VERSION = "d7-real-private-graph-v1"
 NATIVE_ENDPOINT_CONTRACT_VERSION = "native-source-identifier-v2"
 GRAPH_EDGE_MATERIALIZATION_VERSION = "private-graph-materialization-v6"
-GRAPH_CONTEXT_PERSISTENCE_VERSION = "private-graph-context-persistence-v2"
+GRAPH_CONTEXT_PERSISTENCE_VERSION = "private-graph-context-persistence-v3"
 GRAPH_MATERIALIZATION_FINGERPRINT = hashlib.sha256(
     "|".join((GRAPH_EDGE_MATERIALIZATION_VERSION, D5_MATCHER_VERSION,
               D6_EDGE_RULESET_VERSION, SHARED_BUSINESS_NAME_RULESET_VERSION,

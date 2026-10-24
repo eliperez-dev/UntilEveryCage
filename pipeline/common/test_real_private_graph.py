@@ -15,6 +15,7 @@ from pipeline.common.graph_candidate import write_graph_candidates
 from pipeline.common.graph_candidate import build_graph_candidate
 from pipeline.contracts.graph_candidate_handoff import canonical_json_bytes, validate_graph_candidate
 from pipeline.common.graph_persistence import build_candidate_connection_edges, load_graph_candidate_handoff
+from pipeline.common import real_private_graph
 
 
 class RealPrivateGraphTests(unittest.TestCase):
@@ -25,6 +26,21 @@ class RealPrivateGraphTests(unittest.TestCase):
 
     def tearDown(self):
         shutil.rmtree(self.root, ignore_errors=True)
+
+    def test_context_persistence_version_invalidates_corpus_fingerprint(self):
+        self.assertEqual(
+            real_private_graph.GRAPH_CONTEXT_PERSISTENCE_VERSION,
+            "private-graph-context-persistence-v3",
+        )
+        expected = hashlib.sha256("|".join((
+            real_private_graph.GRAPH_EDGE_MATERIALIZATION_VERSION,
+            real_private_graph.D5_MATCHER_VERSION,
+            real_private_graph.D6_EDGE_RULESET_VERSION,
+            real_private_graph.SHARED_BUSINESS_NAME_RULESET_VERSION,
+            real_private_graph.NATIVE_ENDPOINT_CONTRACT_VERSION,
+            "private-graph-context-persistence-v3",
+        )).encode("utf-8")).hexdigest()
+        self.assertEqual(real_private_graph.GRAPH_MATERIALIZATION_FINGERPRINT, expected)
 
     def test_manifest_discovery_is_row_free_and_deduplicated(self):
         root = self.root
