@@ -53,7 +53,7 @@ trials.
 Whole-corpus acceptance passed for all 19 handoffs: the exact 50,925 original
 edge payloads and 69,220 release members are unchanged, a full rerun is
 idempotent, and all four real positive/negative controls pass. The private
-historical graph contains 95,143 edges across 25 nonzero source pairs;
+pre-repair historical graph contained 95,143 edges across 25 nonzero source pairs;
 this includes earlier derivations and is not a public connection count.
 The orchestrator also inspected source-name, operator, address-supported and
 negative examples personally. Generic shared names remain weak inferred
@@ -89,22 +89,29 @@ experiments were rolled back. Migration 087 then replaced global connection
 eligibility joins with equivalent keyed lookups: the runtime-role rollback
 trial returned 101 rows in 1.86/1.79 seconds with matching DTOs, map parity and
 revocation checks. It is canonically applied to the source test copy and selected
-serving target, with unchanged data and generation fingerprints. The final
-package passed verification and the local API returned all 24,022 connections
+serving target, with unchanged data and generation fingerprints. The earlier
+selected package passed verification and its local API returned all 24,022 connections
 over 241 pages without duplicate or cursor errors (456 seconds). Representative
 entity and APHIS evidence checks passed. Historical routes preserve the original
 63,601-record / 48,756-map baseline while applying 180 current restrictions,
 leaving 63,421 searchable records and 48,576 map locations.
 
-**Deployment is held for a confirmed endpoint-binding defect.** The active
-projection contains only Italian endpoints. Other sources' matcher candidates
-use generic `establishment_id` types, while their persisted facility identifiers
-use source-specific types. Exact identifier values match, but the strict typed
-join excludes them. The repair normalizes these types at the persistence
-boundary using the existing source registry, appends corrected edges without
-changing historical payloads, and retains all support/release/restriction gates.
-Shared-name links remain inferred name sharing, not ownership. A corrected
-projection, package and API acceptance are required before Render cutover.
+**Endpoint binding is repaired locally; replacement package/API acceptance is
+pending.** Generic facility identifiers now normalize through the shared source
+registry. Repair accepts exact direct-release anchors or verified record
+bindings, retaining all source/artifact/release/restriction gates. Corrected
+semantic edges are insert-only; original support versions remain retained.
+The final real-data rerun changed neither rows nor generation (14,995 candidates,
+zero inserts/updates). The original 50,925-edge fingerprint, 69,220 release
+members and 180 restrictions remain intact; private history now has 110,003 edges.
+
+The rebuilt projection has 38,308 edges: 23,874 exact and 14,434 inferred across
+nine sources, including 719 cross-source connections. Cross-source pairs are
+AU NPI/FSA, Ontario/FSIS, FSA/FSS, FSA/FSIS, FSS/FSIS and IT1069/IT853.
+It retains 16,154 organization labels and 1,024 APHIS references. Shared-name
+links remain inferred name sharing, not ownership. These are stored-build
+counts, not replacement-package HTTP or hosted totals. The earlier 24,022-row
+package is superseded and must not be deployed.
 No graph change from this sprint is live; the existing Render database remains
 unchanged. Entity pages still take about 4.3 seconds; connection pages take
 about 1.9 seconds per 100 rows.
@@ -117,7 +124,10 @@ guard-disabled local invocation did not exercise it. All seven CI jobs passed
 at `c1b1bc36`, including migration 086 and the non-null/export-grant fixes.
 The rights-closure integration at `26f3bc9d` also passed all seven CI jobs.
 Migration 087 passed eleven focused migration contracts; all seven integrated
-CI jobs passed at `e077c3c7`. The endpoint-binding repair requires its own CI.
+CI jobs passed at `e077c3c7`, `335928bc` and `044292af`. The final insert-only
+skip/conflict correction passed 48 focused tests and real-data no-op acceptance;
+integrated CI at the final revision remains required. CI does not establish
+whole-source serving acceptance.
 Earlier frontend checks passed
 257 tests, type checks and 37 static tests; this change does not alter the UI.
 The prior 066 checksum concern was diagnosed as line-ending representation:

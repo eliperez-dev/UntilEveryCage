@@ -34,7 +34,8 @@
     },
     "historical_disk_only_candidates": {"input_receipt": "source-coverage-3ed34ffa.json", "shared_business_name": 25441, "multi_signal": 958},
     "current_input_matcher_candidates": {"shared_business_name": 20334, "multi_signal": 958},
-    "private_graph_history_edges": 95143,
+    "private_graph_history_edges_before_endpoint_repair": 95143,
+    "private_graph_history_edges": 110003,
     "nonzero_private_source_pairs": 25,
     "real_pair_controls_passed": 4,
     "preserved_original_edges": 50925,
@@ -53,12 +54,12 @@
       "event_handoffs_reimported_this_run": false
     },
     "database_materialization_verified": true,
-    "local_projection_build": {"version": "graph-release-projection-v3", "edges": 24022, "source_backed_organization_labels": 16154, "aphis_annual_references": 927, "aphis_inspection_references": 97, "hosted_api_totals_verified": false},
-    "selected_serving_acceptance": {"status": "local_api_passed_endpoint_type_binding_repair_required_before_rollout", "initial_restore_schema_and_grants_passed": true, "initial_connection_page_timed_out": true, "organization_rights_export_fixed": true, "organization_label_parity_verified": true, "keyed_selector_rollback_trial_passed": true, "full_connection_traversal_passed": true, "connection_rows": 24022, "connection_pages": 241, "connection_walk_seconds": 456, "entity_page_seconds": 4.3, "connection_page_seconds": 1.9, "historical_current_restrictions_reconciled": 180},
-    "deployment_blocker": "Confirmed generic establishment_id versus source-specific facility identifier type mismatch excludes non-Italian inferred endpoints. Normalize at the persistence boundary, append corrected edges, rebuild and verify source-pair coverage before rollout. Existing history and release restrictions must remain unchanged.",
+    "local_projection_build": {"version": "graph-release-projection-v3", "edges": 38308, "exact": 23874, "inferred": 14434, "endpoint_source_count": 9, "cross_source_edges": 719, "cross_source_pairs": [["au.npi.facilities", "fsa_approved_establishments"], ["ca.ontario.meat-plants", "us.fsis"], ["fsa_approved_establishments", "fss_approved_establishments"], ["fsa_approved_establishments", "us.fsis"], ["fss_approved_establishments", "us.fsis"], ["it.1069-2009", "it.853-2004"]], "source_backed_organization_labels": 16154, "aphis_annual_references": 927, "aphis_inspection_references": 97, "hosted_api_totals_verified": false},
+    "selected_serving_acceptance": {"status": "endpoint_repair_build_passed_replacement_package_api_pending", "initial_restore_schema_and_grants_passed": true, "organization_rights_export_fixed": true, "organization_label_parity_verified": true, "keyed_selector_rollback_trial_passed": true, "endpoint_repair_real_noop_passed": true, "repair_candidates": 14995, "repair_rerun_inserts": 0, "repair_rerun_updates": 0, "repair_rerun_generation_unchanged": true, "previous_package_connection_rows": 24022, "previous_package_connection_pages": 241, "previous_package_connection_walk_seconds": 456, "replacement_full_connection_traversal_passed": false, "historical_current_restrictions_reconciled": 180},
+    "deployment_blocker": "Replacement selected-package export/restore, source-pair HTTP traversal, final CI and hosted acceptance remain pending. Local endpoint repair and multi-source projection acceptance passed; no cloud cutover yet.",
     "hosted_rollout_verified": false,
     "evidence": ["pipeline/common/graph_source_mapping.py", "pipeline/common/real_private_graph.py", "pipeline/migrations/080_graph_public_evidence_references.sql", "pipeline/migrations/081_aphis_reference_metadata_clearance.sql", "pipeline/migrations/082_public_italian_vat_qualification.sql", "pipeline/migrations/083_source_backed_organization_labels.sql", "data/staging/whole-dataset-graph-export-20261023/source-coverage-italy-placeholder-filter-replay-20261023.json", "data/staging/whole-dataset-graph-20261023/aggregate-receipt.json"],
-    "next_action": "Repair typed facility endpoint binding for all affected mapped sources, append corrected edges without changing historical payloads, rebuild the selected projection/package, and repeat affected API/CI acceptance before Render rollout. Private historical edge totals and local build totals are not verified hosted API totals."
+    "next_action": "Export and restore the repaired selected serving package, verify full HTTP connection/source-pair coverage and historical routes, pass final CI, then restore into the authorized new Render database and cut over after acceptance. Private historical edge totals and local build totals are not verified hosted API totals."
   },
   "historical_private_rehearsal": "docs/archive/rehearsals/country-rehearsal-2026-09-15.json",
   "latest_v0_private_preview_imports": {
