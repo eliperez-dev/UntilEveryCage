@@ -88,6 +88,10 @@ try {
   python pipeline/tests/run_unittest.py --start-directory pipeline/tests
   if ($LASTEXITCODE -ne 0) { throw "Python tests failed (exit $LASTEXITCODE)." }
 
+  $phase = 'graph unit tests'
+  python -m unittest -q pipeline.common.test_real_private_graph pipeline.common.test_graph_source_mapping pipeline.common.test_graph_source_coverage pipeline.common.test_graph_projection pipeline.common.test_graph_persistence pipeline.common.test_graph_edges pipeline.common.test_graph_candidates
+  if ($LASTEXITCODE -ne 0) { throw "Graph unit tests failed (exit $LASTEXITCODE)." }
+
   $phase = 'country adapter tests'
   python -m unittest -q pipeline.germany.test_adapter pipeline.germany.test_orchestrator pipeline.common.test_delta pipeline.common.test_orchestrator pipeline.common.test_registry pipeline.contracts.test_adapter_contract pipeline.contracts.test_candidate_handoff pipeline.sources.denmark.test_adapter pipeline.sources.uk.fsa_approved.test_adapter pipeline.sources.uk.fsa_approved.test_handoff pipeline.sources.uk.fss_approved.test_adapter pipeline.sources.uk.fss_approved.test_handoff pipeline.sources.uk.approved.test_compose
   if ($LASTEXITCODE -ne 0) { throw "Country adapter tests failed (exit $LASTEXITCODE)." }
