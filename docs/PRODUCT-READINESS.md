@@ -24,16 +24,32 @@ publishable facilities unless explicitly labelled that way.
 
 ## Current launch decision (2026-10-24)
 
-**Facility-detail cleanup:** implementation `1ae306db` removes repeated category
-and taxonomy-version copy, groups location metadata, and replaces the panel
-heading with a release-pinned "Open facility page" link. Mobile map details
-fill the viewport; desktop layout is unchanged. All 258 frontend unit tests,
-type checks and four synthetic browser regressions passed. The orchestrator
-also verified the actual released record's mobile/desktop rendering, navigation
-and dismissal against the public API. Street addresses are absent from the
-current public DTO; locality is not represented as a street address. This is
-not a graph rebuild. Hosted rollout evidence for this UI change belongs in
-ignored `data/staging/facility-detail-20261024/hosted-acceptance.json`.
+**Record pages and contributions:** facility details retain distinct activities
+and native classifications without repeating the same terms. Lifecycle and
+internal taxonomy labels are omitted from presentation; source data is unchanged.
+Full pages have one facility-link action beside the name and a single-record
+map: satellite for source coordinates, a wider road map for approximations,
+none for unmapped records. The bundled worker and pin artwork are shared with
+the main map. Mobile map details fill the viewport and retain the release-pinned
+"Open facility page" link. Public DTOs have locality, not a street address.
+
+Release selection/history now live in Tools; public links omit fixture scenario
+parameters. Production-safe display controls work without enabling development
+routes. Contribution imports ignore stale route completions and offer an explicit
+reload after a failed component download. Facility intake uses the existing five
+primary categories plus Other / Unknown; existing submissions remain compatible.
+
+APHIS controls load on request only for relevant records. A bounded resolver
+matches actual document links to references already eligible in the selected
+release, with current restrictions checked before serving cached links. Real
+annual and inspection PDF responses were verified, including an annual Column E
+attachment. This does not add report years, publish upstream counts, or rebuild
+the graph. The known FSIS matching gap below is unchanged. Exact/approximate/
+unmapped cases and mobile/desktop interactions use real released data, with
+synthetic regressions retained for failure cases. Exact deployed revision, CI,
+hosted submission checks and cleanup are recorded in ignored
+`data/staging/sprint1-20261024/hosted-acceptance.json`; this feature list is not
+a substitute for that rollout evidence.
 
 **Whole-dataset graph rollout checkpoint:** application revision
 `0446083a59e7447bfacf6c4cf80f0960c8bb81c8`, deployment

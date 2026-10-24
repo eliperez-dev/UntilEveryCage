@@ -7,7 +7,7 @@
 | Facility | “site” when the physical scope is unclear | The data model distinguishes physical facilities from organizations and source records |
 | Organization | Owner, parent, or operator unless sourced | An edge is not automatically ownership |
 | Record | Facility when the object is not spatial | Evidence, events, organizations, and source rows can be records too |
-| Source-supported connection | Confirmed connection | Exact means an explicit source key/assertion, not universal truth |
+| Exact source | Confirmed connection | An exact connection uses explicit source evidence, not independent verification |
 | Inferred connection | Linked, owned by, or same as | Inference is algorithmic and may be wrong |
 | Exact public point | Verified location | Exact display precision is not a factual guarantee |
 | City-level approximation | Approximate pin without qualifier | The public must not mistake a centroid for a facility point |
@@ -17,11 +17,13 @@
 ## Required labels
 
 Every record has a visible path to source origin, retrieval/observation dates,
-release/profile, precision, lifecycle, and relevant review/privacy context. The
-default label for an inferred relationship is:
-
-> Inferred connection — a deterministic estimate based on the displayed signals
-> and ruleset. It is not proof of ownership, identity, or supply-chain activity.
+release/profile, precision and relevant review/privacy context. Retain lifecycle
+metadata without displaying an unknown-status field. Label exact connections
+"Exact source" once. Label inferred connections "Inferred" with their recorded
+confidence. Keep method and evidence available per connection; do not repeat a
+general disclaimer paragraph above the list. Display `source_assertion` as
+"Source", not "Source assertion". These shorter labels do not change matching
+semantics or establish ownership.
 
 For community profile rows, the warning must precede access and persist in the
 result list, map/list detail, direct link, and export. Color never carries this
@@ -69,6 +71,29 @@ the map detail fills the viewport with a visible close control and scrolling
 content. Its "Open facility page" header link opens the stable record URL in
 the selected release; desktop panel layout is unchanged.
 
+Use one accessible chain-icon "Copy facility link" action beside the facility
+name, not a separate copy-ID action. Source classification is inline, not a
+disclosure: retain distinct native information without repeating the broad
+category or showing internal mapping/version labels. Display animal-count
+estimates in animals while retaining source-native units in data.
+
+Full facility pages may show a compact, single-record location map: satellite
+for source/exact coordinates, a wider road map for approximate locations, and
+no map for an unmapped record. Reuse the existing tile providers and category
+pins. A road map is not street-level panorama imagery. Do not fetch the global
+facility projection for this preview or invent a street address from locality.
+
+APHIS report controls belong only on relevant APHIS records. Load them on
+request and preserve explicit loading, empty, error and retry states. Distinguish
+report files and source-provided report details from metadata references that
+only open an APHIS search page. Do not call the latter full reports or invent
+exception-report coverage. Unrelated records must not issue APHIS requests.
+
+Release selection and history live in Tools. Public map URLs omit fixture
+parameters such as `scenario=default`; old links remain readable. Public debug
+controls may change display settings, but must not enable private routes or
+development mode.
+
 ## Safety rules in UI
 
 - Do not expose private-person names, residential addresses, worker details, or
@@ -105,7 +130,7 @@ presented as project-reviewed facts.
 - No results: “No eligible records match these filters in this release. This
   does not establish that no facility exists.”
 - No point: “This record is public but has no publishable coordinate.”
-- City point: “Approximate city-level location; not a facility point.”
+- City point: “Approximate location.”
 - Stale/unknown lifecycle: “Not observed recently; this is not proof of closure.”
 - Service error: “The current release could not be loaded. Try again; the last
   response was not substituted as if current.”
