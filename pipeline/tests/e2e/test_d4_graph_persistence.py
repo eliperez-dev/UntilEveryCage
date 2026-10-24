@@ -322,8 +322,8 @@ class D4GraphPersistenceE2ETests(unittest.TestCase):
             persisted = db.execute(
                 "SELECT from_source_identifier, observed_at, computed_at, connection_type "
                 "FROM uec.graph_connection_edges WHERE from_source_id=%s "
-                "AND from_source_identifier LIKE 'TS-ORG-%' ORDER BY from_source_identifier",
-                (source_id,),
+                "AND from_source_identifier LIKE %s ORDER BY from_source_identifier",
+                (source_id, "TS-ORG-%"),
             ).fetchall()
         self.assertEqual(len(persisted), 4)
         values = {row[0]: (row[1], row[2], row[3]) for row in persisted}
@@ -357,7 +357,10 @@ class D4GraphPersistenceE2ETests(unittest.TestCase):
             }
             payloads.append(canonical_json_bytes(row) + b"\n")
         payload = b"".join(payloads)
-        digest = hashlib.sha256(payload).hexdigest()
+        # The importer hashes canonical JSON rows without the JSONL newline.
+        # Keep the physical file newline-delimited but bind the manifest to
+        # the canonical candidate stream, as real handoffs do.
+        digest = hashlib.sha256(b"".join(item.rstrip(b"\n") for item in payloads)).hexdigest()
         handoff = self._write_jsonl_handoff(source_id, "facility", payloads, {
             "schema_version": "private-graph-candidate-set-v1",
             "contract_version": "graph-candidate-handoff-v1",
