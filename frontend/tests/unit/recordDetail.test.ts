@@ -11,15 +11,17 @@ describe('private preview record detail surface', () => {
   it('renders a gated identity as not shown and keeps optional fields conditional', () => {
     expect(component).toContain('Name not shown, privacy review pending');
     expect(component).toContain("? 'Name not shown'");
-    expect(component).toContain('{#if activity}');
+    expect(component).toContain('{#if activityDisplay}');
     expect(component).toContain('{#if evidence}');
     expect(component).toContain('{#if retrieved}');
     expect(component).toContain('{#if observed}');
     expect(component).not.toContain('PRIVATE DEVELOPMENT PREVIEW');
     expect(component).not.toContain('Facility candidate');
     expect(component).toContain('Activities and classification');
-    expect(component).toContain('Classification provenance');
-    expect(component).toContain('assignment.taxonomyVersion');
+    expect(component).toContain('<summary>Source classification</summary>');
+    expect(component).not.toContain('assignment.taxonomyVersion');
+    expect(component).not.toContain('taxonomy.taxonomyVersion');
+    expect(component).not.toContain('Primary categories');
   });
 
   it('labels exact, approximate, and unmapped placement distinctly without exposing internal review fields', () => {
@@ -27,7 +29,8 @@ describe('private preview record detail surface', () => {
     expect(component).toContain('City reference · approximate');
     expect(component).toContain('Coarse city/postal area');
     expect(component).toContain('Approximate source coordinate');
-    expect(component).toContain('Source-provided coordinate, precision unverified');
+    expect(component).toContain('Source-provided coordinates');
+    expect(component).toContain('Geocoded location · approximate');
     expect(component).toContain('Unmapped · no map location supplied');
     expect(component).toContain('Coordinate review');
     expect(component).not.toContain('Factual review');
@@ -72,7 +75,7 @@ describe('private preview record detail surface', () => {
   });
 
   it('humanizes the top activity and suppresses repeated affirmative suffixes in compact source-fact lists', () => {
-    expect(component).toContain('const activityDisplay = $derived(humanizeValue(activity) ?? activity);');
+    expect(component).toContain("const activityDisplay = $derived(taxonomy ? taxonomyPrimaryLabels.join(', ') : humanizeValue(activity));");
     expect(component).toContain('{activityDisplay}');
     expect(component).toContain('/^(?:yes|true|1)$/i.test(included.trim())');
   });

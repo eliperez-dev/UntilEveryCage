@@ -1,8 +1,9 @@
 const labels: Readonly<Record<string, string>> = Object.freeze({
   exact: 'Exact public point',
-  source_reported: 'Source-reported coordinate · precision not independently verified',
+  source_reported: 'Source-provided coordinates',
   approximate: 'Approximate public location · not an exact facility point',
   city: 'City-level approximation',
+  provider_locality_approximate: 'City-level approximation',
   coarse: 'Coarse area approximation',
   unmapped: 'Unmapped · no public point',
 });

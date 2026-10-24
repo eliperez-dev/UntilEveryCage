@@ -27,7 +27,7 @@ test('map selection can open the same full record without losing the route', asy
   const firstRecord = page.locator('.record-list button').first();
   await expect(firstRecord).toBeVisible({ timeout: 20_000 });
   await firstRecord.click();
-  const fullRecord = page.getByRole('link', { name: 'Open full record' });
+  const fullRecord = page.getByRole('link', { name: 'Open facility page' });
   await expect(fullRecord).toBeVisible();
   await fullRecord.click();
   await expect.poll(() => new URL(page.url()).hash).toMatch(/^#\/records\/[0-9a-f-]{36}$/i);
@@ -62,12 +62,12 @@ for (const width of [375, 768]) test(`${width}px dossier can be dismissed and it
   await expect(firstRecord).toBeVisible({ timeout: 20_000 });
   await firstRecord.click();
   await expect(page.getByRole('button', { name: 'Close record detail' })).toBeVisible();
-  await expect(page.getByRole('link', { name: /Open full record/ })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Open facility page' })).toBeVisible();
   await page.getByRole('button', { name: 'Close record detail' }).click();
   await expect(page.getByRole('button', { name: 'Close record detail' })).toHaveCount(0);
   await expect(firstRecord).toBeFocused();
   await firstRecord.click();
-  await page.getByRole('link', { name: /Open full record/ }).click();
+  await page.getByRole('link', { name: 'Open facility page' }).click();
   await expect.poll(() => new URL(page.url()).hash).toMatch(/^#\/records\/[0-9a-f-]{36}$/i);
   await expect(page.getByRole('article')).toBeVisible();
   await expect(page.getByText('Name not shown — privacy review pending')).toBeVisible();

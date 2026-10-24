@@ -61,6 +61,8 @@
   }
   function mapPublicLocation(location: Location): LabRecord {
     const precision = location.evidence?.displayPrecision === 'provider_locality_approximate' ? 'city' : location.evidence?.displayPrecision ?? 'unmapped';
+    const geometry = location.evidence?.geometryProvenance;
+    const confidence = geometry?.confidence?.trim() ? Number(geometry.confidence) : NaN;
     return {
       id: location.id,
       name: location.name,
@@ -70,6 +72,10 @@
       precision,
       latitude: location.lat,
       longitude: location.lon,
+      ...(geometry?.method ? { coordinateMethod: geometry.method } : {}),
+      ...(geometry?.provider ? { coordinateProvider: geometry.provider } : {}),
+      ...(Number.isFinite(confidence) && confidence >= 0 && confidence <= 1 ? { coordinateConfidence: confidence } : {}),
+      ...(geometry?.confidence_band === 'high' || geometry?.confidence_band === 'medium' || geometry?.confidence_band === 'low' ? { coordinateConfidenceBand: geometry.confidence_band } : {}),
       ...(location.sourceId ? { sourceId: location.sourceId } : {}),
       ...(location.source ? { sourceName: location.source } : {}),
       ...(location.evidence?.sourceUrl ? { sourceUrl: location.evidence.sourceUrl } : {}),

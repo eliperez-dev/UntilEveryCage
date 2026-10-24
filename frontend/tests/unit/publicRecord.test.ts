@@ -12,11 +12,11 @@ describe('public record detail facts', () => {
     expect(component).not.toContain('Source volume categories');
     expect(component).toContain(".join(', ')");
     expect(component).toContain('record.sourceFacts.speciesSlaughtered');
-    expect(component).toContain('record.sourceFacts.processingActivities');
+    expect(component).toContain('location.sourceFacts?.processingActivities');
   });
 
   it('uses a concise precision and method row instead of a repeated limitation wall', () => {
-    expect(component).toContain("record.evidence?.geometryProvenance?.method");
+    expect(component).toContain("location.evidence?.geometryProvenance?.method");
     expect(component).not.toContain('A source record does not establish current operation');
     expect(component).not.toContain('Facility candidate');
     expect(component).not.toContain('Unclassified');

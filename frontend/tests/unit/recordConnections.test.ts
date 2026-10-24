@@ -27,4 +27,13 @@ describe('public record connections', () => {
     expect(component).toContain('edge.disclaimer');
     expect(component).toContain('No connections in this release.');
   });
+
+  it('keeps APHIS loading and failure visible but hides a successfully empty subsection', () => {
+    expect(component).toContain('{#if evidenceLoading || evidenceError || evidenceReferences.length}');
+    expect(component).toContain('APHIS reports');
+    expect(component).toContain('Loading APHIS references…');
+    expect(component).toContain('APHIS references could not be loaded.');
+    expect(component).not.toContain('publication gates');
+    expect(component).not.toContain('No APHIS evidence references are approved');
+  });
 });

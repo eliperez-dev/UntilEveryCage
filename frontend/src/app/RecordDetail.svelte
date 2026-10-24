@@ -158,6 +158,12 @@
       'coordinate_provenance' in record ? record.coordinate_provenance : null,
     ),
   );
+  const recordedCoordinateMethod = $derived(value(record.coordinateMethod, coordinateProvenance));
+  const coordinateMethod = $derived(recordedCoordinateMethod && !/^(?:source[_ -])?(?:method[_ -])?unknown$/i.test(recordedCoordinateMethod) ? recordedCoordinateMethod : null);
+  const coordinateProvider = $derived(value(record.coordinateProvider));
+  const facilityAddress = $derived(value(record.facilityAddress));
+  const hasCoordinates = $derived(typeof record.latitude === 'number' && Number.isFinite(record.latitude) && typeof record.longitude === 'number' && Number.isFinite(record.longitude));
+  const coordinateConfidence = $derived(typeof record.coordinateConfidence === 'number' && Number.isFinite(record.coordinateConfidence) && record.coordinateConfidence >= 0 && record.coordinateConfidence <= 1 ? record.coordinateConfidence : null);
   const defaultMapScope = $derived(
     'defaultMapScope' in record ? record.defaultMapScope : 'default_map_scope' in record ? record.default_map_scope : null,
   );
@@ -194,8 +200,7 @@
       'activity_source' in record ? record.activity_source : null,
     ),
   );
-  const activityDisplay = $derived(humanizeValue(activity) ?? activity);
-  const activitySourceDisplay = $derived(humanizeValue(activitySource) ?? activitySource);
+  const activityDisplay = $derived(taxonomy ? taxonomyPrimaryLabels.join(', ') : humanizeValue(activity));
   const sourceRecordId = $derived(
     value(
       'safeSourceRecordId' in record ? record.safeSourceRecordId : null,
@@ -210,40 +215,69 @@
   );
   const precisionLabel = $derived(
     (record.sourceId === 'us.fsis' || record.previewLabel?.startsWith('FSIS source-provided')) && record.coordinatePrecision === 'source-provided'
-      ? 'Source-provided coordinate, precision unverified'
-      : precisionLabelFor(precision),
+      ? 'Source-provided coordinates'
+      : precisionLabelFor(record.coordinatePrecision?.includes('provider_address') ? record.coordinatePrecision : precision),
   );
   const sourceFacts = $derived('sourceFacts' in record ? record.sourceFacts : undefined);
-  const sourceFactEntries = $derived((facts: LocationSourceFacts | undefined, field: 'speciesSlaughtered' | 'processingActivities') =>
-    facts?.[field]
-      ? Object.entries(facts[field]!).filter(([, included]) => included !== false).sort(([left], [right]) => left.localeCompare(right))
-      : []);
   const nativeActivity = $derived(
     sourceFacts ? humanizeValue(sourceFacts.nativeActivityLabel ?? sourceFacts.nativeActivityCode ?? null) : null,
   );
   const speciesSlaughtered = $derived(compactSourceFacts(sourceFacts, 'speciesSlaughtered'));
   const processingActivities = $derived(compactSourceFacts(sourceFacts, 'processingActivities'));
+  const detailedActivityLabels = $derived(uniqueLabels([
+    ...(taxonomy?.leafActivities.map(leaf => humanizeValue(leaf.label)) ?? []),
+    ...sourceFactLabels(sourceFacts, 'processingActivities'),
+  ]));
+  const detailedActivities = $derived(detailedActivityLabels.filter(label => !isSummaryActivity(label)).join(', '));
+  const sourceClassification = $derived(uniqueLabels([
+    nativeActivity,
+    ...(taxonomy?.leafActivities.filter(leaf => isSummaryActivity(leaf.label)).map(leaf => humanizeValue(leaf.label)) ?? []),
+    ...(taxonomy?.assignments.map(assignment => {
+      const label = humanizeValue(assignment.sourceLabel);
+      const code = humanizeValue(assignment.sourceCode);
+      const source = label && code && !sameLabel(label, code) ? `${label} (${code})` : label ?? code;
+      return source ? `${source} · ${humanizeValue(assignment.method)} · ${humanizeValue(assignment.status)}` : null;
+    }) ?? []),
+    taxonomy && activity && ![...taxonomyPrimaryLabels, ...taxonomy.leafActivities.map(leaf => leaf.label)].some(label => sameLabel(label, activity))
+      ? humanizeValue(activity) : null,
+    humanizeValue(activitySource),
+  ]));
 
   function humanizeValue(raw: string | null): string | null {
     if (!raw) return null;
 
     // These are display labels only; keep the repository's canonical enum untouched.
-    const words = raw.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const words = raw.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/\b(nrte|rte)\b/gi, acronym => acronym.toUpperCase());
     return words ? words[0]!.toLocaleUpperCase() + words.slice(1) : null;
   }
   function sourceFactLabel(raw: string): string {
     return humanizeValue(raw) ?? raw;
   }
-  function compactSourceFacts(facts: LocationSourceFacts | undefined, field: 'speciesSlaughtered' | 'processingActivities'): string | null {
+  function sameLabel(left: string, right: string): boolean {
+    return humanizeValue(left)?.toLocaleLowerCase() === humanizeValue(right)?.toLocaleLowerCase();
+  }
+  function isSummaryActivity(label: string): boolean {
+    return taxonomyPrimaryLabels.some(primary => sameLabel(primary, label)) ||
+      Boolean(taxonomy?.primaryCategories.includes('processing_and_preparation') && sameLabel(label, 'processing') && detailedActivityLabels.some(other => !sameLabel(other, 'processing')));
+  }
+  function coordinate(value: number | null | undefined): string {
+    return typeof value === 'number' ? String(Number(value.toFixed(6))) : '';
+  }
+  function uniqueLabels(labels: Array<string | null>): string[] {
+    return labels.filter((label): label is string => Boolean(label)).filter((label, index, all) => all.findIndex(other => sameLabel(label, other)) === index);
+  }
+  function sourceFactLabels(facts: LocationSourceFacts | undefined, field: 'speciesSlaughtered' | 'processingActivities'): string[] {
     const entries = facts?.[field]
       ? Object.entries(facts[field]!).filter(([, included]) => included !== false).sort(([left], [right]) => left.localeCompare(right))
       : [];
-    if (!entries.length) return null;
     return entries.map(([name, included]) => {
       const label = sourceFactLabel(name);
       if (typeof included !== 'string' || !included.trim() || /^(?:yes|true|1)$/i.test(included.trim())) return label;
       return `${label}: ${humanizeValue(included) ?? included}`;
-    }).join(', ');
+    });
+  }
+  function compactSourceFacts(facts: LocationSourceFacts | undefined, field: 'speciesSlaughtered' | 'processingActivities'): string | null {
+    return sourceFactLabels(facts, field).join(', ') || null;
   }
   function formattedRange(range: DerivedSourceVolumeRange): string | null {
     const number = (value: number) => new Intl.NumberFormat('en-US').format(value);
@@ -268,13 +302,13 @@
   }
   function precisionLabelFor(raw: string): string {
     if (raw === 'source_reported') {
-      return 'Source-reported coordinate · precision not independently verified';
+      return 'Source-provided coordinates';
     }
     if (raw === 'approximate') {
       return 'Approximate location · not an exact facility point';
     }
     if (raw === 'source_provided_unverified') {
-      return 'Source-provided coordinate, precision unverified';
+      return 'Source-provided coordinates';
     }
     if (raw === 'exact' || raw.includes('source_numeric')) {
       return 'Source coordinate · review status shown below';
@@ -282,6 +316,8 @@
     if (raw === 'city' || raw.includes('city_reference')) {
       return 'City reference · approximate';
     }
+    if (raw.includes('provider_locality')) return 'City-level approximation';
+    if (raw.includes('provider_address')) return 'Geocoded location · approximate';
     if (raw === 'coarse' || raw.includes('city_postal')) {
       return 'Coarse city/postal area';
     }
@@ -312,39 +348,31 @@
   {#if nameWithheld}
     <dl class="identity"><div><dt>Name</dt><dd>Name not shown, privacy review pending</dd></div></dl>
   {/if}
-  {#if activity}
-    <p class="activity">
-      {activityDisplay}{#if activitySourceDisplay}<span> · {activitySourceDisplay}</span>{/if}
-    </p>
+  {#if activityDisplay}
+    <p class="activity">{activityDisplay}</p>
   {/if}
   {#if taxonomy}
     <section class="taxonomy" aria-labelledby="taxonomy-heading">
       <h2 id="taxonomy-heading">Activities and classification</h2>
-      <p class="taxonomy-primary"><strong>Primary categories</strong> · {taxonomyPrimaryLabels.join(' · ')}</p>
-      {#if taxonomy.leafActivities.length}
-        <ul aria-label="Detailed activities">{#each taxonomy.leafActivities as leaf (leaf.key)}<li>{leaf.label}</li>{/each}</ul>
+      {#if detailedActivities}
+        <p aria-label="Detailed activities">{detailedActivities}</p>
       {/if}
-      {#if taxonomy.assignments.length}
-        <h3>Classification provenance</h3>
-        <ul class="taxonomy-provenance">{#each taxonomy.assignments as assignment, index (`${assignment.primaryKey}:${assignment.leafKey ?? ''}:${index}`)}
-          <li>
-            <span>{assignment.leafLabel ?? assignment.leafKey ?? categoryPresentation(assignment.primaryKey).label}</span>
-            <small>{assignment.sourceLabel ?? assignment.sourceCode ?? sourceName ?? 'Source attribution unavailable'} · {humanizeValue(assignment.method)} · {humanizeValue(assignment.status)} · {assignment.taxonomyVersion}</small>
-          </li>
-        {/each}</ul>
+      {#if sourceClassification.length}
+        <details>
+          <summary>Source classification</summary>
+          <ul class="taxonomy-provenance">{#each sourceClassification as classification}<li>{classification}</li>{/each}</ul>
+        </details>
       {/if}
-      <p class="taxonomy-version">Taxonomy version · {taxonomy.taxonomyVersion}</p>
     </section>
   {/if}
-  <p class="place">{locationText}</p>
 
   {#if sourceFacts}
     <section aria-labelledby="source-facts-heading">
       <h2 id="source-facts-heading">Source facts</h2>
       <dl>
-        {#if nativeActivity}<div><dt>Native activity</dt><dd>{nativeActivity}</dd></div>{/if}
+        {#if nativeActivity && !taxonomy}<div><dt>Native activity</dt><dd>{nativeActivity}</dd></div>{/if}
         {#if speciesSlaughtered}<div><dt>Species slaughtered</dt><dd>{speciesSlaughtered}</dd></div>{/if}
-        {#if processingActivities}<div><dt>Processing activities</dt><dd>{processingActivities}</dd></div>{/if}
+        {#if processingActivities && !taxonomy}<div><dt>Processing activities</dt><dd>{processingActivities}</dd></div>{/if}
         {#if slaughterRangeText}<div><dt>Estimated animals slaughtered (last 360 days)</dt><dd>{slaughterRangeText}</dd></div>{/if}
         {#if processingRangeText}<div><dt>Estimated product volume (pounds/month)</dt><dd>{processingRangeText}</dd></div>{/if}
         {#if sourceLocationRole === 'aphis_mailing_locality'}<div><dt>Location role</dt><dd>APHIS mailing locality: approximate locality, not an operating-site location</dd></div>{/if}
@@ -359,15 +387,24 @@
   {/if}
 
   <section aria-labelledby="location-heading">
-    <h2 id="location-heading">Location accuracy</h2>
+    <h2 id="location-heading">Location</h2>
     <dl>
-      <div><dt>Location precision</dt><dd>{precisionLabel}</dd></div>
-      {#if 'coordinatePrecision' in record && record.coordinatePrecision}<div><dt>Source precision</dt><dd>{humanizeValue(record.coordinatePrecision)}</dd></div>{/if}
-      {#if coordinateStatus}<div><dt>Coordinate review</dt><dd>{humanizeValue(coordinateStatus)}</dd></div>{/if}
-      {#if coordinateProvenance}<div><dt>Map reference origin</dt><dd>{humanizeValue(coordinateProvenance)}</dd></div>{/if}
+      {#if facilityAddress}<div><dt>Address</dt><dd>{facilityAddress}</dd></div>{/if}
+      <div><dt>Locality</dt><dd>{locationText}</dd></div>
+      {#if hasCoordinates}<div><dt>Coordinates</dt><dd>{coordinate(record.latitude)}, {coordinate(record.longitude)}</dd></div>{/if}
+      <div><dt>Precision</dt><dd>{precisionLabel}</dd></div>
+      {#if record.coordinatePrecision && !['source-provided', 'source_reported', 'source_provided_unverified'].includes(record.coordinatePrecision)}<div><dt>Source precision</dt><dd>{humanizeValue(record.coordinatePrecision)}</dd></div>{/if}
+      {#if coordinateStatus && !sameLabel(coordinateStatus, 'source_confirmed')}<div><dt>Coordinate review</dt><dd>{humanizeValue(coordinateStatus)}</dd></div>{/if}
+      {#if coordinateMethod}<div><dt>Location method</dt><dd>{humanizeValue(coordinateMethod)}</dd></div>{/if}
+      {#if coordinateProvider}<div><dt>Geocoding provider</dt><dd>{coordinateProvider}</dd></div>{/if}
+      {#if coordinateConfidence !== null || record.coordinateConfidenceBand}<div><dt>Geocoding confidence</dt><dd>{#if coordinateConfidence !== null}{coordinateConfidence} (provider score){/if}{#if record.coordinateConfidenceBand}{coordinateConfidence !== null ? ' · ' : ''}{humanizeValue(record.coordinateConfidenceBand)}{/if}</dd></div>{/if}
       {#if defaultMapScope === false}<div><dt>Map scope</dt><dd>Outside the default map{#if mapScopeReason} · {humanizeValue(mapScopeReason)}{/if}</dd></div>{/if}
     </dl>
   </section>
+
+  {#if publicRelease && publicReleaseId && id}
+    <RecordConnections facilityId={id} releaseId={publicReleaseId} />
+  {/if}
 
   <section aria-labelledby="evidence-heading">
     <h2 id="evidence-heading">Source and review</h2>
@@ -382,10 +419,6 @@
     </dl>
     {#if evidence}<p class="evidence">{evidence}</p>{/if}
   </section>
-
-  {#if publicRelease && publicReleaseId && id}
-    <RecordConnections facilityId={id} releaseId={publicReleaseId} />
-  {/if}
 
   <footer>
     <span class="record-id">Record ID · {id || 'Unavailable'}</span>
@@ -419,8 +452,7 @@
     font: 500 1.3rem/1.2 Georgia, serif;
   }
 
-  .activity,
-  .place {
+  .activity {
     margin: 0.25rem 0;
     color: #d5d9d3;
   }
@@ -429,18 +461,10 @@
     margin: 0.55rem 0 0.7rem;
   }
 
-  .activity span,
-  .place {
-    color: var(--muted);
-  }
-
   .taxonomy { margin-top: .8rem; }
-  .taxonomy-primary,.taxonomy-version { color: var(--muted); }
   .taxonomy ul { margin: .45rem 0; padding-left: 1.25rem; }
   .taxonomy-provenance { list-style: none; padding: 0 !important; }
   .taxonomy-provenance li { display: grid; gap: .15rem; padding: .4rem 0; border-bottom: 1px solid #303632; }
-  .taxonomy-provenance small { color: var(--muted); }
-  .taxonomy h3 { margin: .7rem 0 .2rem; font-size: .8rem; }
 
   section {
     margin-top: .8rem;

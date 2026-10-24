@@ -16,6 +16,7 @@
   import type { PlaceSuggestion } from "../../../features/placeSearch/placeSearch";
   import { publicReleaseLabel } from "../../../features/locations/releasePresentation";
   import { CATEGORY_PRESENTATIONS } from "../../../features/locations/categoryPresentation";
+  import { serializeRoute } from "../../../app/routeState";
   let {
     state,
     records,
@@ -100,6 +101,10 @@
       recordPool.find((record) => record.id === state.selectedId) ??
       null,
   );
+  const facilityPageHref = $derived(selected ? serializeRoute({
+    kind: 'record', facilityId: selected.id,
+    ...(mode === 'public-release' ? { profile: 'official', ...(publicReleaseId ? { releaseId: publicReleaseId } : {}) } : {}),
+  }) : null);
   const aggregateRecords = $derived(
     state.aggregateMemberIds === null
       ? records
@@ -143,7 +148,7 @@
   const precisionLabel = (record: LabRecord) =>
     mode === "real-preview"
       ? record.sourceId === 'us.fsis' && record.coordinatePrecision === 'source-provided'
-        ? 'Source-provided coordinate · precision unverified · private rehearsal, not approved'
+        ? 'Source-provided coordinates'
         : record.precision === "city"
         ? "Approximate city location · not a facility point"
         : record.precision === "exact"
@@ -156,7 +161,7 @@
               : record.precision === "coarse"
                 ? "City or postal · no approved map geometry"
                 : "Unmapped · list only"
-      : record.precision === 'source_reported' ? 'Source-reported location · precision not independently established'
+      : record.precision === 'source_reported' ? 'Source-provided coordinates'
         : record.precision === 'approximate' ? 'Approximate location · not an exact facility point'
           : record.precision === 'exact' ? 'Exact location shown from an approved source coordinate'
             : `${record.precision} precision`;
@@ -244,10 +249,13 @@
       // focus on BODY when that branch is replaced.
       if (pendingRailFocusId === state.selectedId && detailStatus !== "loading") {
         const id = state.selectedId;
-        pendingRailFocusId = null;
         void tick().then(() => {
           if (state.selectedId === id) {
-            document.querySelector<HTMLButtonElement>(".dossier-header button")?.focus();
+            const close = document.querySelector<HTMLButtonElement>(".dossier-header button");
+            if (close) {
+              close.focus();
+              pendingRailFocusId = null;
+            }
           }
         });
       }
@@ -563,19 +571,20 @@
     {#if state.selectedId && mode !== "synthetic" && detailStatus === "loading"}<aside
         class="reading-sheet dossier"
         role="status"
+        aria-label="Record evidence"
       >
-        <header class="dossier-header"><span>Record evidence</span><button type="button" aria-label="Close record detail" onclick={dismissSelection}>×</button></header>
+        <header class="dossier-header"><span></span><button type="button" aria-label="Close record detail" onclick={dismissSelection}>×</button></header>
         <p class="dossier-message">Loading record evidence…</p>
       </aside>{:else if state.selectedId && mode !== "synthetic" && (detailStatus === "error" || detailStatus === "unauthorized")}<aside
         class="reading-sheet dossier"
         role="alert"
+        aria-label="Record evidence"
       >
-        <header class="dossier-header"><span>Record evidence</span><button type="button" aria-label="Close record detail" onclick={dismissSelection}>×</button></header>
+        <header class="dossier-header"><span></span><button type="button" aria-label="Close record detail" onclick={dismissSelection}>×</button></header>
         <p class="dossier-message">{detailError}</p>
       </aside>{:else if selected}<aside class="reading-sheet dossier" aria-label="Record evidence">
-        <header class="dossier-header"><span>Record evidence</span><button type="button" aria-label="Close record detail" onclick={dismissSelection}>×</button></header>
+        <header class="dossier-header"><a href={facilityPageHref ?? ''}>Open facility page</a><button type="button" aria-label="Close record detail" onclick={dismissSelection}>×</button></header>
         {#if aggregateOpen}<button type="button" class="back" onclick={dismissSelection}>← Members</button>{/if}
-        <a class="full-record" href={`#/records/${encodeURIComponent(selected.id)}${mode === "public-release" && publicReleaseId ? `?release_id=${encodeURIComponent(publicReleaseId)}` : ""}`}>Open full record <span aria-hidden="true">↗</span></a>
         <RecordDetail record={selected} presentation="rail" publicRelease={mode === "public-release"} publicReleaseId={mode === "public-release" ? publicReleaseId : null} />
       </aside>{:else if aggregateOpen}<aside
         class="reading-sheet aggregate-sheet"
@@ -925,9 +934,9 @@
   }
   .dossier-header { position:sticky; top:0; z-index:2; display:flex; align-items:center; justify-content:space-between; min-height:2.7rem; padding:.3rem .65rem .3rem 1.1rem; border-bottom:1px solid var(--line); background:#171a18; color:#c6cec4; font-size:.68rem; letter-spacing:.04em; }
   .dossier-header button { min-width:2.2rem; min-height:2.2rem; border:1px solid var(--line); color:var(--ink); background:#202421; font-size:1.25rem; cursor:pointer; }
-  .dossier-header button:focus-visible, .full-record:focus-visible { outline:2px solid #eee7d6; outline-offset:2px; }
+  .dossier-header a { color:#eee5ce; font-size:.75rem; text-underline-offset:2px; }
+  .dossier-header button:focus-visible, .dossier-header a:focus-visible { outline:2px solid #eee7d6; outline-offset:2px; }
   .dossier-message { margin:1.1rem; }
-  .full-record { display:flex; align-items:center; justify-content:space-between; margin:0; padding:.8rem 1.1rem; border-bottom:1px solid var(--line); color:#eee5ce; font-size:.75rem; text-underline-offset:2px; }
   .eyebrow {
     margin: 0 0 0.3rem;
     color: #b9c7b8 !important;
@@ -1089,8 +1098,20 @@
       font-size: 0.66rem;
     }
     .reading-sheet.dossier {
-      padding: 0;
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      width: 100%;
+      height: 100dvh;
+      max-height: none;
+      border: 0;
+      padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scroll-padding-top: calc(3rem + env(safe-area-inset-top));
     }
+    .dossier-header { padding-top:calc(.3rem + env(safe-area-inset-top)); }
+    .dossier-header button { min-width:2.75rem; min-height:2.75rem; }
     .reading-sheet.dossier .back {
       margin-right: 0.4rem;
     }

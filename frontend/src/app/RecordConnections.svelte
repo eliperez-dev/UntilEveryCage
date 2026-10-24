@@ -134,7 +134,7 @@
 
 <section class="connections" aria-labelledby="connections-heading">
   <h2 id="connections-heading">Connections</h2>
-  <p class="explanation">Exact connections come from an explicit source key or assertion. Inferred connections are ruleset estimates, not proof of identity or ownership.</p>
+  <p class="explanation">Exact connections are source-supported. Inferred connections are estimates; inspect their evidence below.</p>
   <div class="controls">
     <label>Relationship <select bind:value={kind}><option value="all">All</option><option value="exact">Exact</option><option value="inferred">Inferred</option></select></label>
     <label>Confidence <select bind:value={confidence}><option value="all">All</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label>
@@ -167,12 +167,11 @@
   </ul>
   {#if nextCursor}<button class="more" type="button" disabled={loadingMore} onclick={() => void load(false)}>{loadingMore ? 'Loading…' : 'Load more'}</button>{/if}
   {/if}
+  {#if evidenceLoading || evidenceError || evidenceReferences.length}
   <section class="evidence-references" aria-labelledby="aphis-evidence-heading">
-    <h3 id="aphis-evidence-heading">APHIS evidence references</h3>
-    <p class="explanation">Only typed references that passed this release’s source-record, privacy, and publication gates appear here. Report contents and source identifiers are not included.</p>
+    <h3 id="aphis-evidence-heading">APHIS reports</h3>
     {#if evidenceLoading}<p role="status">Loading APHIS references…</p>
     {:else if evidenceError}<p role="alert">APHIS references could not be loaded. <button type="button" onclick={() => void loadEvidenceReferences()}>Retry</button></p>
-    {:else if !evidenceReferences.length}<p class="empty">No APHIS evidence references are approved in this release.</p>
     {:else}<ul>
       {#each evidenceReferences as reference (reference.reference_id)}
         <li>
@@ -185,6 +184,7 @@
     {#if evidenceCursor}<button class="more" type="button" disabled={evidenceLoadingMore} onclick={() => void loadEvidenceReferences(evidenceCursor ?? undefined)}>{evidenceLoadingMore ? 'Loading…' : 'Load more APHIS references'}</button>{/if}
     {/if}
   </section>
+  {/if}
 </section>
 
 <style>

@@ -6,6 +6,7 @@
   import { precisionPresentation } from '../features/locations/precisionPresentation';
   import { publicReleaseLabel } from '../features/locations/releasePresentation';
   import RecordConnections from './RecordConnections.svelte';
+  import { categoryPresentation } from '../features/locations/categoryPresentation';
   let { id, profile = 'official', releaseId, onrelease }: { id: string; profile?: LocalProfile; releaseId?: string | undefined; onrelease?: (label: string | null) => void } = $props();
   const repository = new LocalLocationRepository();
   let record = $state<Location | null>(null);
@@ -21,8 +22,35 @@
   });
   const human = (value: string | false | null | undefined) => value === undefined || value === null ? null : String(value).replaceAll('_',' ').replaceAll('-',' ');
   const precision = $derived(precisionPresentation(record?.evidence?.displayPrecision));
-  const detailActivity = (location: Location) => location.taxonomy?.leafActivities.map(activity => activity.label).join(' · ') || (location.category === 'unclassified' ? 'Category not provided' : location.category);
-  const humanLabel = (value: string) => value.replaceAll(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/^./, letter => letter.toLocaleUpperCase());
+  const humanLabel = (value: string) => value.replaceAll(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/\b(nrte|rte)\b/gi, acronym => acronym.toUpperCase()).replace(/^./, letter => letter.toLocaleUpperCase());
+  const category = (location: Location) => location.taxonomy?.primaryCategories.map(key => categoryPresentation(key).label).join(', ') || (location.category === 'unclassified' ? 'Category not provided' : humanLabel(location.category));
+  const flagActivities = (location: Location) => affirmativeEntries(location.sourceFacts?.processingActivities).map(([key, value]) => `${sourceFlagLabel(key)}${typeof value === 'string' && !/^(?:yes|true|1)$/i.test(value.trim()) ? `: ${sourceFlag(value)}` : ''}`);
+  const activityLabels = (location: Location) => [...new Set([
+    ...(location.taxonomy?.leafActivities.map(activity => humanLabel(activity.label)) ?? []), ...flagActivities(location),
+  ])];
+  const isSummaryActivity = (location: Location, label: string) => location.taxonomy?.primaryCategories.some(key => categoryPresentation(key).label.toLocaleLowerCase() === label.toLocaleLowerCase()) ||
+    (location.taxonomy?.primaryCategories.includes('processing_and_preparation') && label.toLocaleLowerCase() === 'processing' && activityLabels(location).some(other => other.toLocaleLowerCase() !== 'processing'));
+  const detailActivity = (location: Location) => activityLabels(location).filter(label => !isSummaryActivity(location, label)).join(', ');
+  const sourceClassifications = (location: Location) => [...new Set([
+    location.sourceFacts?.nativeActivityLabel ?? location.sourceFacts?.nativeActivityCode,
+    ...(location.taxonomy?.leafActivities.filter(leaf => isSummaryActivity(location, humanLabel(leaf.label))).map(leaf => leaf.label) ?? []),
+    ...(location.taxonomy?.assignments.map(assignment => {
+      const label = assignment.sourceLabel ? humanLabel(assignment.sourceLabel) : null;
+      const code = assignment.sourceCode ? humanLabel(assignment.sourceCode) : null;
+      const source = label && code && label.toLocaleLowerCase() !== code.toLocaleLowerCase() ? `${label} (${code})` : label ?? code;
+      return source ? `${source} · ${humanLabel(assignment.method)} · ${humanLabel(assignment.status)}` : null;
+    }) ?? []),
+  ].filter((label): label is string => Boolean(label)).map(humanLabel))];
+  const geocodingConfidence = (location: Location) => {
+    const raw = location.evidence?.geometryProvenance?.confidence;
+    const score = raw?.trim() ? Number(raw) : NaN;
+    return Number.isFinite(score) && score >= 0 && score <= 1 ? score : null;
+  };
+  const coordinate = (value: number) => String(Number(value.toFixed(6)));
+  const locationMethod = (location: Location) => {
+    const method = location.evidence?.geometryProvenance?.method;
+    return method && !/^(?:source[_ -])?(?:method[_ -])?unknown$/i.test(method) ? humanLabel(method) : null;
+  };
   const sourceFlag = (value: string | boolean) => value === true ? 'Yes' : typeof value === 'string' ? humanLabel(value) : null;
   const sourceFlagLabel = (key: string) => humanLabel(key);
   const affirmativeEntries = (flags: Readonly<Record<string, string | boolean>> | undefined) => flags ? Object.entries(flags).filter(([, value]) => value !== false).sort(([left], [right]) => left.localeCompare(right)) : [];
@@ -41,10 +69,26 @@
 <svelte:head><title>{record?.name ?? 'Record'} · Until Every Cage</title></svelte:head>
 <section class="public-record" aria-label="Public record">
   {#if profile === 'community'}<p class="warning"><strong>Unreviewed community claim: not verified by Until Every Cage.</strong> Privacy screening is not factual review or project approval. Community counts are separate.</p>{/if}
-  {#if busy}<p role="status">Loading record…</p>{:else if error}<h1>Record unavailable</h1><p role="alert">{error}</p><button type="button" onclick={() => retry += 1}>Retry</button><p><a href="#/database">Browse records</a></p>{:else if record}<h1>{record.name}</h1><p>{record.region} · {precision}{#if record.evidence?.geometryProvenance?.method} · {record.evidence.geometryProvenance.method.replaceAll(/[_-]+/g, ' ')}{/if}</p>
-    <dl><div><dt>Activity</dt><dd>{detailActivity(record)}</dd></div><div><dt>Source</dt><dd>{record.source} {#if record.evidence?.sourceUrl}<a href={record.evidence.sourceUrl} target="_blank" rel="noreferrer">Open source</a>{/if}</dd></div><div><dt>Source origin</dt><dd>{record.evidence?.sourceType === 'user_submitted' ? 'Community-submitted' : record.evidence?.sourceType === 'secondary' ? 'Secondary source' : 'Government-sourced'}</dd></div>{#if record.observed !== 'unknown'}<div><dt>Observed</dt><dd>{record.observed}</dd></div>{/if}{#if record.evidence?.retrievedAt}<div><dt>Retrieved</dt><dd>{record.evidence.retrievedAt}</dd></div>{/if}<div><dt>Publication</dt><dd>{profile === 'official' ? 'Curated records' : profile === 'community' ? 'Community submissions' : 'Secondary sources'} · {publicReleaseLabel(currentRelease)}</dd></div>{#if human(record.evidence?.lifecycleStatus)}<div><dt>Lifecycle</dt><dd>{human(record.evidence?.lifecycleStatus)}</dd></div>{/if}</dl>
-    {#if record.sourceFacts}<section class="source-facts" aria-labelledby="source-facts-heading"><h2 id="source-facts-heading">Source facts</h2><dl>{#if record.sourceFacts.alternateNames?.length}<div><dt>Also known as</dt><dd>{record.sourceFacts.alternateNames.join(' · ')}</dd></div>{/if}{#if record.sourceFacts.establishmentId}<div><dt>Establishment ID</dt><dd>{record.sourceFacts.establishmentId}</dd></div>{/if}{#if record.sourceFacts.establishmentNumber}<div><dt>Establishment number</dt><dd>{record.sourceFacts.establishmentNumber}</dd></div>{/if}{#if record.sourceFacts.grantDate}<div><dt>Grant date</dt><dd>{record.sourceFacts.grantDate}</dd></div>{/if}{#if record.sourceFacts.nativeActivityLabel || record.sourceFacts.nativeActivityCode}<div><dt>Source activity</dt><dd>{humanLabel(record.sourceFacts.nativeActivityLabel ?? record.sourceFacts.nativeActivityCode ?? '')}</dd></div>{/if}{#if affirmativeEntries(record.sourceFacts.speciesSlaughtered).length}<div><dt>Species slaughtered</dt><dd>{affirmativeEntries(record.sourceFacts.speciesSlaughtered).map(([key, value]) => `${sourceFlagLabel(key)}${typeof value === 'string' ? `: ${sourceFlag(value)}` : ''}`).join(', ')}</dd></div>{/if}{#if affirmativeEntries(record.sourceFacts.processingActivities).length}<div><dt>Processing activities</dt><dd>{affirmativeEntries(record.sourceFacts.processingActivities).map(([key, value]) => `${sourceFlagLabel(key)}${typeof value === 'string' ? `: ${sourceFlag(value)}` : ''}`).join(', ')}</dd></div>{/if}{#if slaughterRanges(record.sourceFacts.derivedSourceVolumeRanges).length}<div><dt>Estimated animals slaughtered (last 360 days)</dt><dd>{slaughterRanges(record.sourceFacts.derivedSourceVolumeRanges).map(range => formattedRange(range) ? `${formattedRange(range)} head` : null).filter(Boolean).join(', ')}</dd></div>{/if}{#if processingRanges(record.sourceFacts.derivedSourceVolumeRanges).length}<div><dt>Estimated product volume (pounds/month)</dt><dd>{processingRanges(record.sourceFacts.derivedSourceVolumeRanges).map(range => formattedRange(range) ? `${formattedRange(range)} pounds/month` : null).filter(Boolean).join(', ')}</dd></div>{/if}{#if record.sourceFacts.aphisAnnualReports?.length}{#each record.sourceFacts.aphisAnnualReports as report (report.fiscalYear)}<div><dt>FY{report.fiscalYear} reported animals</dt><dd><ul>{#each report.speciesCounts as species (species.species)}<li>{sourceFlagLabel(species.species)}: {annualSpeciesCount(species.count)}</li>{/each}</ul><a href={report.sourceUrl} target="_blank" rel="noopener noreferrer">Source report</a></dd></div>{/each}{/if}</dl></section>{/if}
+  {#if busy}<p role="status">Loading record…</p>{:else if error}<h1>Record unavailable</h1><p role="alert">{error}</p><button type="button" onclick={() => retry += 1}>Retry</button><p><a href="#/database">Browse records</a></p>{:else if record}<h1>{record.name}</h1><p>{category(record)}</p>
+    {#if detailActivity(record)}<dl><div><dt>Activities</dt><dd>{detailActivity(record)}</dd></div></dl>{/if}
+    {#if sourceClassifications(record).length}<details><summary>Source classification</summary><ul>{#each sourceClassifications(record) as classification}<li>{classification}</li>{/each}</ul></details>{/if}
+    {#if record.sourceFacts}<section class="source-facts" aria-labelledby="source-facts-heading"><h2 id="source-facts-heading">Source facts</h2><dl>{#if record.sourceFacts.alternateNames?.length}<div><dt>Also known as</dt><dd>{record.sourceFacts.alternateNames.join(' · ')}</dd></div>{/if}{#if record.sourceFacts.establishmentId}<div><dt>Establishment ID</dt><dd>{record.sourceFacts.establishmentId}</dd></div>{/if}{#if record.sourceFacts.establishmentNumber}<div><dt>Establishment number</dt><dd>{record.sourceFacts.establishmentNumber}</dd></div>{/if}{#if record.sourceFacts.grantDate}<div><dt>Grant date</dt><dd>{record.sourceFacts.grantDate}</dd></div>{/if}{#if affirmativeEntries(record.sourceFacts.speciesSlaughtered).length}<div><dt>Species slaughtered</dt><dd>{affirmativeEntries(record.sourceFacts.speciesSlaughtered).map(([key, value]) => `${sourceFlagLabel(key)}${typeof value === 'string' ? `: ${sourceFlag(value)}` : ''}`).join(', ')}</dd></div>{/if}{#if slaughterRanges(record.sourceFacts.derivedSourceVolumeRanges).length}<div><dt>Estimated animals slaughtered (last 360 days)</dt><dd>{slaughterRanges(record.sourceFacts.derivedSourceVolumeRanges).map(range => formattedRange(range) ? `${formattedRange(range)} head` : null).filter(Boolean).join(', ')}</dd></div>{/if}{#if processingRanges(record.sourceFacts.derivedSourceVolumeRanges).length}<div><dt>Estimated product volume (pounds/month)</dt><dd>{processingRanges(record.sourceFacts.derivedSourceVolumeRanges).map(range => formattedRange(range) ? `${formattedRange(range)} pounds/month` : null).filter(Boolean).join(', ')}</dd></div>{/if}{#if record.sourceFacts.aphisAnnualReports?.length}{#each record.sourceFacts.aphisAnnualReports as report (report.fiscalYear)}<div><dt>FY{report.fiscalYear} reported animals</dt><dd><ul>{#each report.speciesCounts as species (species.species)}<li>{sourceFlagLabel(species.species)}: {annualSpeciesCount(species.count)}</li>{/each}</ul><a href={report.sourceUrl} target="_blank" rel="noopener noreferrer">Source report</a></dd></div>{/each}{/if}</dl></section>{/if}
+    <section aria-labelledby="location-heading">
+      <h2 id="location-heading">Location</h2>
+      <dl>
+        <div><dt>Locality</dt><dd>{[record.region, record.countryCode].filter(Boolean).join(', ')}</dd></div>
+        {#if record.lat !== null && record.lon !== null}<div><dt>Coordinates</dt><dd>{coordinate(record.lat)}, {coordinate(record.lon)}</dd></div>{/if}
+        <div><dt>Precision</dt><dd>{precision}</dd></div>
+        {#if locationMethod(record)}<div><dt>Location method</dt><dd>{locationMethod(record)}</dd></div>{/if}
+        {#if record.evidence?.geometryProvenance?.provider}<div><dt>Geocoding provider</dt><dd>{record.evidence.geometryProvenance.provider}</dd></div>{/if}
+        {#if geocodingConfidence(record) !== null || record.evidence?.geometryProvenance?.confidence_band}<div><dt>Geocoding confidence</dt><dd>{#if geocodingConfidence(record) !== null}{geocodingConfidence(record)} (provider score){/if}{#if record.evidence?.geometryProvenance?.confidence_band}{geocodingConfidence(record) !== null ? ' · ' : ''}{humanLabel(record.evidence.geometryProvenance.confidence_band)}{/if}</dd></div>{/if}
+      </dl>
+    </section>
     <RecordConnections facilityId={record.id} releaseId={currentRelease} {profile} />
+    <section aria-labelledby="source-heading">
+      <h2 id="source-heading">Source and review</h2>
+      <dl><div><dt>Source</dt><dd>{record.source} {#if record.evidence?.sourceUrl}<a href={record.evidence.sourceUrl} target="_blank" rel="noreferrer">Open source</a>{/if}</dd></div><div><dt>Source origin</dt><dd>{record.evidence?.sourceType === 'user_submitted' ? 'Community-submitted' : record.evidence?.sourceType === 'secondary' ? 'Secondary source' : 'Government-sourced'}</dd></div>{#if record.observed !== 'unknown'}<div><dt>Observed</dt><dd>{record.observed}</dd></div>{/if}{#if record.evidence?.retrievedAt}<div><dt>Retrieved</dt><dd>{record.evidence.retrievedAt}</dd></div>{/if}<div><dt>Publication</dt><dd>{profile === 'official' ? 'Curated records' : profile === 'community' ? 'Community submissions' : 'Secondary sources'} · {publicReleaseLabel(currentRelease)}</dd></div>{#if human(record.evidence?.lifecycleStatus)}<div><dt>Lifecycle</dt><dd>{human(record.evidence?.lifecycleStatus)}</dd></div>{/if}</dl>
+    </section>
     <p class="record-id">Record ID: <code>{record.id}</code></p><CopyValue value={record.id} label="Record ID" buttonLabel="Copy record ID" /><CopyValue value={recordLink} label="Record link" buttonLabel="Copy record link" />
     <nav aria-label="Record contribution actions">{#each [['evidence','Add evidence'],['correction','Suggest a correction'],['privacy-removal','Privacy or removal']] as [type,label]}<a href={`#/contribute/${type}?target=${encodeURIComponent(record.id)}`}>{label}</a>{/each}</nav>
   {/if}

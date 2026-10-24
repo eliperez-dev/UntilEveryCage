@@ -62,8 +62,8 @@
     ...(location.taxonomy ? { taxonomy: location.taxonomy } : {}),
   });
   const treatment = (record: LabRecord) =>
-    record.sourceId === 'us.fsis' && record.coordinatePrecision === 'source-provided'
-      ? 'Source-provided · precision unverified'
+    record.precision === 'source_reported' || (record.sourceId === 'us.fsis' && record.coordinatePrecision === 'source-provided')
+      ? 'Source-provided coordinates'
       : record.defaultMapScope === false
       ? 'Outside default map scope'
       : record.latitude === null || record.longitude === null
@@ -77,6 +77,19 @@
             : record.coordinatePrecision === "source-precision-unknown"
               ? "Approximate · precision unknown"
               : "Approximate · awaiting review";
+  const humanActivity = (label: string) => label.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/\b(nrte|rte)\b/gi, acronym => acronym.toUpperCase()).replace(/^./, letter => letter.toLocaleUpperCase());
+  const activities = (record: DatabaseRecord) => {
+    if (!record.taxonomy) return humanActivity(record.activityLabel || record.category);
+    const labels = [...new Set(record.taxonomy.leafActivities.map(activity => humanActivity(activity.label)))];
+    return labels.filter(label => !record.taxonomy!.primaryCategories.some(key => CATEGORY_PRESENTATIONS[key].label.toLocaleLowerCase() === label.toLocaleLowerCase()) &&
+      !(record.taxonomy!.primaryCategories.includes('processing_and_preparation') && label.toLocaleLowerCase() === 'processing' && labels.some(other => other.toLocaleLowerCase() !== 'processing'))).join(', ');
+  };
+  const sourceClassifications = (record: DatabaseRecord) => [...new Set([
+    ...(record.taxonomy?.assignments.map(assignment => {
+      const label = assignment.sourceLabel ?? assignment.sourceCode;
+      return label ? `${humanActivity(label)} · ${humanActivity(assignment.method)} · ${humanActivity(assignment.status)}` : null;
+    }) ?? []), record.activitySource ? humanActivity(record.activitySource) : null,
+  ].filter((label): label is string => Boolean(label)))];
   const statusText = (record: LabRecord) =>
     record.publicationStatus?.replaceAll("_", " ") ?? "Not supplied";
   const mapHref = (id = selectedId, focusSelected = false) => {
@@ -390,7 +403,7 @@
                 clearFilters()}
               >Clear filters</button
             >
-          </div>{:else}<RecordTable records={records.map(record => ({ id: record.id, name: record.name, activity: record.taxonomy?.leafActivities.map(activity => activity.label).join(' · ') || record.activityLabel || record.category, place: `${record.locality}, ${record.country}`, source: record.sourceName ?? record.sourceId ?? 'Unavailable', precision: treatment(record) }))} {selectedId} onselect={id => write({ selectedId: id })} />{/if}{#if status === "ready" && nextCursor}<button
+          </div>{:else}<RecordTable records={records.map(record => ({ id: record.id, name: record.name, activity: activities(record), place: `${record.locality}, ${record.country}`, source: record.sourceName ?? record.sourceId ?? 'Unavailable', precision: treatment(record) }))} {selectedId} onselect={id => write({ selectedId: id })} />{/if}{#if status === "ready" && nextCursor}<button
             class="more"
             type="button"
             disabled={loadingMore}
@@ -419,14 +432,14 @@
               <dt>Facility name</dt>
               <dd>{selected.displayName ?? "Name not shown, privacy review pending"}</dd>
             </div>
-            <div>
-              <dt>Activity/category</dt>
-              <dd>{selected.taxonomy?.leafActivities.map(activity => activity.label).join(' · ') || selected.activityLabel || "Unavailable in current preview API"}{#if selected.activitySource}<span class="quiet"> · {selected.activitySource}</span>{/if}</dd>
-            </div>
+            {#if activities(selected)}<div>
+              <dt>Activities</dt>
+              <dd>{activities(selected)}</dd>
+            </div>{/if}
             {#if selected.taxonomy}
-              <div><dt>Primary categories</dt><dd>{selected.taxonomy.primaryCategories.map(key => CATEGORY_PRESENTATIONS[key].label).join(' · ')}</dd></div>
-              <div><dt>Classification provenance</dt><dd>{#each selected.taxonomy.assignments as assignment, index (`${assignment.primaryKey}:${assignment.leafKey ?? ''}:${index}`)}<span class="taxonomy-assignment">{assignment.sourceLabel ?? assignment.sourceCode ?? selected.sourceName ?? selected.sourceId} · {assignment.method} · {assignment.status} · {assignment.taxonomyVersion}</span>{/each}<span class="quiet">Taxonomy {selected.taxonomy.taxonomyVersion}</span></dd></div>
+              <div><dt>Category</dt><dd>{selected.taxonomy.primaryCategories.map(key => CATEGORY_PRESENTATIONS[key].label).join(', ')}</dd></div>
             {/if}
+            {#if sourceClassifications(selected).length}<div><dt>Source classification</dt><dd><details><summary>Show source classification</summary>{#each sourceClassifications(selected) as classification}<span class="taxonomy-assignment">{classification}</span>{/each}</details></dd></div>{/if}
             <div>
               <dt>Source record URL</dt>
               <dd>{#if selected.sourceRecordUrl}<a href={selected.sourceRecordUrl} target="_blank" rel="noopener noreferrer">Open source record</a>{:else if selected.sourceUrl}<a href={selected.sourceUrl} target="_blank" rel="noopener noreferrer">Open source</a>{:else}Unavailable in current preview API{/if}{#if selected.sourceRecordId}<br /><span class="quiet">Source record: {selected.sourceRecordId}</span>{/if}</dd>
