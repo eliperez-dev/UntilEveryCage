@@ -592,7 +592,12 @@ mod tests {
     fn inferred_business_links_require_eligible_nodes_and_versioned_support() {
         assert!(EDGE_CTES.contains("graph_source_name_assertions"));
         assert!(EDGE_CTES.contains("business_id"));
-        assert!(EDGE_CTES.contains("asserted_facility.source_record_id=i.source_record_id"));
+        assert!(EDGE_CTES.contains("JOIN release_support_records name_support"));
+        assert!(EDGE_CTES.contains("name_support.source_id=i.source_id"));
+        assert!(EDGE_CTES.contains("name_support.source_record_id=i.source_record_id"));
+        assert!(EDGE_CTES.contains("canonical_record.artifact_id=name_support.artifact_id"));
+        assert!(EDGE_CTES.contains("rf.source_record_id=name_support.canonical_source_record_id"));
+        assert!(EDGE_CTES.contains("asserted_facility.source_record_id=name_support.canonical_source_record_id"));
         assert!(EDGE_CTES.contains("asserted_facility.facility_id=rf.facility_id"));
         assert!(EDGE_CTES.contains("e.connection_type='inferred'"));
         assert!(EDGE_CTES.contains("e.connection_type='exact' AND e.relationship_type='operator'"));
