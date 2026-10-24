@@ -76,7 +76,11 @@ test('About contains the sources & methodology page and returns via browser hist
   await expect.poll(() => new URL(page.url()).hash).toBe('#/about/sources');
   await expect(page.getByRole('heading', { level: 1, name: 'Sources & Methodology' })).toBeVisible();
   await expect(page.getByText('A centroid is', { exact: false })).toBeVisible();
-  await expect(page.getByText('Maps use OpenStreetMap tiles', { exact: false })).toBeVisible();
+  const providerDisclosure = page.locator('p').filter({ hasText: 'Street maps use OpenStreetMap.' });
+  await expect(providerDisclosure).toContainText('Satellite imagery uses Esri.');
+  await expect(providerDisclosure).toContainText('3D terrain uses Mapterhorn.');
+  await expect(providerDisclosure.getByRole('link', { name: 'Mapterhorn' })).toHaveAttribute('href', 'https://mapterhorn.com/attribution');
+  await expect(providerDisclosure).toContainText('no facility records or search text are sent with those tile requests.');
   await expect(page.getByRole('link', { name: 'untileverycageproject@protonmail.com' })).toHaveAttribute('href', 'mailto:untileverycageproject@protonmail.com');
   await page.goBack();
   await expect.poll(() => new URL(page.url()).hash).toBe('#/about');
