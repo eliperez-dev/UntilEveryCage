@@ -1,10 +1,31 @@
 import { expect, test } from '@playwright/test';
 
-test('camera tilt, compass reset, and URL state preserve the map view', async ({ page }) => {
+test('camera tilt, compass reset, and URL state preserve the map view', async ({ page }, testInfo) => {
+  const tileData = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 256;
+    const context = canvas.getContext('2d')!;
+    context.fillStyle = '#252b28';
+    context.fillRect(0, 0, 256, 256);
+    context.strokeStyle = '#303834';
+    context.lineWidth = 1;
+    for (const offset of [64, 128, 192]) {
+      context.beginPath(); context.moveTo(offset, 0); context.lineTo(offset, 256); context.stroke();
+      context.beginPath(); context.moveTo(0, offset); context.lineTo(256, offset); context.stroke();
+    }
+    return canvas.toDataURL('image/png').split(',')[1];
+  });
+  const pixel = Buffer.from(tileData, 'base64');
+  await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({ status: 200, contentType: 'image/png', body: pixel }));
+  await page.route('**/World_Imagery/**', route => route.fulfill({ status: 200, contentType: 'image/png', body: pixel }));
   await page.goto('./#/map?f1a=field&scenario=dense&lat=38&lon=-96&z=4&pitch=31&bearing=24');
   const map = page.getByLabel('Map showing records');
-  const toggle = map.getByRole('button', { name: 'Return map to 2D' });
-  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  const view = map.getByRole('group', { name: 'View' });
+  const view2d = view.getByRole('button', { name: '2D', exact: true });
+  const view3d = view.getByRole('button', { name: '3D', exact: true });
+  await expect(view3d).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByText('Right-drag to tilt and rotate')).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('map-controls-desktop.png') });
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getPitch())).toBe(31);
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getBearing())).toBe(24);
   const nav = page.getByRole('navigation', { name: 'Primary' });
@@ -15,29 +36,34 @@ test('camera tilt, compass reset, and URL state preserve the map view', async ({
   expect(mapHrefParams.get('pitch')).toBe('31');
   expect(mapHrefParams.get('bearing')).toBe('24');
 
-  await toggle.click();
-  await expect(map.getByRole('button', { name: 'Show 3D terrain' })).toHaveAttribute('aria-pressed', 'false');
+  await view2d.click();
+  await expect(view2d).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(() => new URL(page.url()).hash).not.toMatch(/pitch=/);
   await expect.poll(() => new URL(page.url()).hash).toContain('bearing=24');
-  await map.getByRole('button', { name: 'Show 3D terrain' }).click();
+  await view3d.click();
+  await expect(view3d).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(() => new URL(page.url()).hash).toContain('pitch=45');
   await expect.poll(() => new URL(page.url()).hash).toContain('bearing=24');
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getPitch())).toBe(45);
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getTerrain())).toMatchObject({ source: 'mapterhorn-terrain', exaggeration: 1 });
 
+  const mapStyle = page.getByLabel('Map style');
+  await expect(mapStyle.locator('option')).toHaveText(['Street', 'Satellite']);
+  await expect(mapStyle).toHaveValue('vector');
   const mapState = await page.evaluate(() => {
     const instance = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     const center = instance.getCenter();
     return { lat: Number(center.lat.toFixed(5)), lon: Number(center.lng.toFixed(5)), zoom: instance.getZoom() };
   });
-  const mapStyle = page.getByLabel('Map style');
   await mapStyle.selectOption('satellite');
+  await expect(mapStyle).toHaveValue('satellite');
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getStyle().sources.base.tiles[0])).toContain('World_Imagery');
   await expect.poll(() => page.evaluate(() => {
     const instance = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return [instance.getPitch(), instance.getBearing(), instance.getZoom(), Boolean(instance.getLayer('clusters'))];
   })).toEqual([45, 24, mapState.zoom, true]);
   await mapStyle.selectOption('vector');
+  await expect(mapStyle).toHaveValue('vector');
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getStyle().sources.base.tiles[0])).toContain('tile.openstreetmap.org');
   await map.getByRole('button', { name: /reset north/i }).click();
   await expect.poll(() => page.evaluate(() => {
@@ -52,14 +78,42 @@ test('camera tilt, compass reset, and URL state preserve the map view', async ({
   await expect.poll(() => new URL(page.url()).hash).not.toMatch(/pitch=|bearing=/);
 });
 
-test('flat camera URLs stay compact and the camera control remains usable on touch layouts', async ({ page }) => {
+test('flat camera URLs stay compact and the camera control remains usable on touch layouts', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('./#/map?f1a=field&scenario=dense');
-  const toggle = page.getByRole('group', { name: 'Map camera' }).getByRole('button', { name: 'Show 3D terrain' });
-  await expect(toggle).toBeVisible();
-  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
-  await toggle.click();
+  const view = page.getByRole('group', { name: 'View' });
+  const view2d = view.getByRole('button', { name: '2D', exact: true });
+  const view3d = view.getByRole('button', { name: '3D', exact: true });
+  await expect(view2d).toBeVisible();
+  await expect(view2d).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByText('Two-finger tilt')).toBeVisible();
+  await expect(page.getByText('Right-drag to tilt and rotate')).toBeHidden();
+  await page.screenshot({ path: testInfo.outputPath('map-controls-mobile.png') });
+  await view3d.click();
+  await expect(view3d).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(() => new URL(page.url()).hash).toContain('pitch=45');
+});
+
+test('right-drag rotates and tilts the map in 3D view', async ({ page }) => {
+  await page.goto('./#/map?f1a=field&scenario=dense&lat=38&lon=-96&z=4');
+  const view = page.getByRole('group', { name: 'View' });
+  await view.getByRole('button', { name: '3D', exact: true }).click();
+  await expect(page.getByText('Right-drag to tilt and rotate')).toBeVisible();
+  const before = await page.evaluate(() => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return { pitch: map.getPitch(), bearing: map.getBearing() };
+  });
+  const canvas = await page.locator('.maplibregl-canvas').boundingBox();
+  expect(canvas).not.toBeNull();
+  await page.mouse.move(canvas!.x + canvas!.width * 0.5, canvas!.y + canvas!.height * 0.6);
+  await page.mouse.down({ button: 'right' });
+  await page.mouse.move(canvas!.x + canvas!.width * 0.64, canvas!.y + canvas!.height * 0.55, { steps: 8 });
+  await page.mouse.up({ button: 'right' });
+  await expect.poll(() => page.evaluate((initial: { pitch: number; bearing: number }) => {
+    const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    return Math.abs(map.getPitch() - initial.pitch) > 1 && Math.abs(map.getBearing() - initial.bearing) > 1;
+  }, before)).toBe(true);
+  await expect.poll(() => new URL(page.url()).hash).toMatch(/pitch=[^&]+.*bearing=[^&]+/);
 });
 
 test('cold shared 3D URLs restore terrain after a style reload and browser Back', async ({ page }) => {
@@ -122,7 +176,7 @@ test('flat maps do not request elevation and a DEM failure returns to a flat map
     return map?.isStyleLoaded() && map.getLayer('clusters');
   });
   expect(demRequests).toBe(0);
-  await page.getByRole('button', { name: 'Show 3D terrain' }).click();
+  await page.getByRole('group', { name: 'View' }).getByRole('button', { name: '3D', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText(/Terrain (tiles are unavailable|could not be loaded)/);
   await expect.poll(() => page.evaluate(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;

@@ -638,7 +638,6 @@
           >Open member records</button
         >
       </aside>{/if}
-    <label class="basemap-picker">Map style<select aria-label="Map style" value={state.basemap} onchange={(event) => dispatch({ type: 'basemap', value: event.currentTarget.value as typeof state.basemap })}><option value="vector">Street</option><option value="satellite">Satellite</option></select></label>
   </main>
 </section>
 
@@ -786,8 +785,6 @@
     position: absolute;
     inset: 0;
   }
-  .basemap-picker { position:absolute; z-index:3; right:.65rem; top:.65rem; display:grid; gap:.2rem; padding:.38rem .45rem; border:1px solid var(--line); background:#171a18eF; color:var(--muted); font:.62rem system-ui; }
-  .basemap-picker select { min-width:6.4rem; border:0; background:#202421; color:var(--ink); font:inherit; }
   .status {
     position: absolute;
     z-index: 4;
@@ -1000,7 +997,6 @@
     .map-stage:has(.results):has(.reading-sheet) .results { display:none; }
     .map-stage:has(.results):has(.reading-sheet) .reading-sheet { width:auto; }
     .map-stage:has(.reading-sheet) .search-toggle { display: none; }
-    .basemap-picker { top:.45rem; right:.4rem; bottom:auto; }
     .rail-resize { display:none; }
     .search-tools { grid-template-columns:1fr; }
     .filters { width:100%; }
