@@ -744,6 +744,18 @@ def _entity_maps(connection: Any, manifest: dict[str, Any], candidate: dict[str,
     return facilities, organizations
 
 
+def _candidate_has_backfillable_context(source_id: str, candidate: dict[str, Any]) -> bool:
+    """Identify aliases/organization labels without touching the database."""
+    aliases = _additional_facility_identifier_aliases(candidate)
+    if source_id == "us.aphis":
+        aliases.extend((kind, value, "us.aphis") for kind, value in
+                       _aphis_facility_identifier_aliases(candidate.get("normalized_values")))
+    return bool(aliases) or (
+        len(candidate.get("organizations", [])) == 1
+        and bool(candidate.get("name_assertions", []))
+    )
+
+
 def _backfill_existing_candidate_context(connection: Any, manifest: dict[str, Any],
                                          candidate: dict[str, Any], artifact_id: uuid.UUID) -> None:
     """Append newly-supported labels/aliases to exact existing record identifiers.
@@ -755,6 +767,8 @@ def _backfill_existing_candidate_context(connection: Any, manifest: dict[str, An
     aliases to identifiers already bound to this source-record-artifact tuple.
     """
     source_id = str(manifest["source_id"])
+    if not _candidate_has_backfillable_context(source_id, candidate):
+        return
     source_record_key = candidate.get("source_record_key")
     if not isinstance(source_record_key, str) or not source_record_key:
         raise GraphPersistenceError("candidate requires source_record_key")
@@ -1881,8 +1895,6 @@ def import_graph_candidates(database_url: str, handoff_dir: str | Path, *,
         with db.transaction():
             _ensure_source_artifact(db, manifest, digest)
             run_id, completed = _begin_run(db, manifest, "facility_master", GRAPH_CONTRACT_VERSION, digest, item_count)
-        if completed and edge_builder is None and private_target is None:
-            return {"status": "already_present", "source_id": manifest["source_id"], "source_kind": "facility_master", "run_id": str(run_id), "item_count": item_count, "inserted_count": 0, "already_present_count": item_count, "rejected_count": 0, "edge_inserted_count": 0, "edge_updated_count": 0, "edge_count": 0, "public_rows": 0, "phase_timings_seconds": {"validation_and_staging": round(time.perf_counter() - started_at, 6)}, "peak_rss_bytes": _peak_rss_bytes()}
         artifact_sha = str(manifest.get("checksum_sha256") or manifest.get("source_artifact_sha256") or digest)
         artifact_id = db.execute("SELECT artifact_id FROM uec.raw_artifacts WHERE sha256=%s", (artifact_sha if len(artifact_sha) == 64 else digest,)).fetchone()[0]
         resume_offset = int(db.execute(
@@ -1908,6 +1920,26 @@ def import_graph_candidates(database_url: str, handoff_dir: str | Path, *,
         source_assertion_rows = 0
         endpoint_mapping_diagnostics: dict[str, int] = {}
         try:
+            if base_import_complete:
+                # A completed run may predate context persistence. Revisit
+                # only candidates that can append declared aliases or
+                # organization-name assertions. Keep this separate from the
+                # ingest loop so already_present_count and inserted_count
+                # continue to describe the original completed run.
+                context_batch: list[dict[str, Any]] = []
+                for candidate in candidates:
+                    if not _candidate_has_backfillable_context(str(manifest["source_id"]), candidate):
+                        continue
+                    context_batch.append(candidate)
+                    if len(context_batch) >= batch_size:
+                        with db.transaction():
+                            for row_candidate in context_batch:
+                                _backfill_existing_candidate_context(db, manifest, row_candidate, artifact_id)
+                        context_batch = []
+                if context_batch:
+                    with db.transaction():
+                        for row_candidate in context_batch:
+                            _backfill_existing_candidate_context(db, manifest, row_candidate, artifact_id)
             batch: list[dict[str, Any]] = []
             offset = resume_offset
             batch_number = 0
@@ -1969,8 +2001,9 @@ def import_graph_candidates(database_url: str, handoff_dir: str | Path, *,
             with db.transaction():
                 _mark_failed(db, run_id, error)
             raise
-        with db.transaction():
-            db.execute("UPDATE uec.graph_ingest_runs SET status='completed', inserted_count=%s, already_present_count=%s, rejected_count=%s, error_summary=NULL, completed_at=now() WHERE ingest_run_id=%s", (inserted, already, rejected, run_id))
+        if not base_import_complete:
+            with db.transaction():
+                db.execute("UPDATE uec.graph_ingest_runs SET status='completed', inserted_count=%s, already_present_count=%s, rejected_count=%s, error_summary=NULL, completed_at=now() WHERE ingest_run_id=%s", (inserted, already, rejected, run_id))
         materialization_run_id = None
         if edge_builder is not None or private_target is not None:
             if private_target is not None and materialization_fingerprint is not None:

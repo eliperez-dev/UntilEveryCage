@@ -137,6 +137,21 @@ class GraphPersistenceContractTests(unittest.TestCase):
                              or "INSERT INTO uec.graph_connection_edges" in query
                              for query, _ in connection.calls))
 
+    def test_context_backfill_skips_candidates_without_org_names_or_aliases_before_database_lookup(self):
+        class NoQueries:
+            def execute(self, *_args, **_kwargs):
+                raise AssertionError("context-free candidates must not query the database")
+
+        candidate_without_org_name = {
+            "source_record_key": "record-no-org-name",
+            "facilities": [{"local_ref": "f", "source_identifier": {
+                "identifier_type": "permit", "value": "FAC-1"}}],
+            "organizations": [],
+            "name_assertions": [{"value": "Facility Display Name", "source_field": "name", "role": "business"}],
+        }
+        _backfill_existing_candidate_context(
+            NoQueries(), {"source_id": "synthetic.graph"}, candidate_without_org_name, uuid.uuid4())
+
     def test_evidence_import_supports_private_writer_target_without_disposable_bypass(self):
         with patch.object(graph_module, "require_private_graph_target") as private_gate, \
              patch.object(graph_module, "require_disposable_graph_database") as disposable_gate:

@@ -8,9 +8,11 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import psycopg
 
+from pipeline.common import graph_persistence as graph_module
 from pipeline.common.d4_graph_e2e import D4_FACILITY_SOURCE_IDS, D3_EVIDENCE_SOURCE_IDS
 from pipeline.common.graph_persistence import import_evidence_events, import_graph_candidates
 from pipeline.contracts.graph_candidate_handoff import canonical_json_bytes
@@ -160,6 +162,91 @@ class D4GraphPersistenceE2ETests(unittest.TestCase):
             self.assertEqual(db.execute("SELECT count(*) FROM uec.graph_connection_edges WHERE connection_type='inferred'").fetchone()[0], 1)
             self.assertEqual(db.execute("SELECT count(*) FROM uec.graph_public_relationships").fetchone()[0], 0)
             self.assertEqual(db.execute("SELECT count(*) FROM uec.graph_public_claims").fetchone()[0], 0)
+
+    def test_completed_handoff_backfills_context_without_changing_ingest_metrics(self):
+        source_id = "synthetic.graph-context-backfill"
+        candidate = {
+            "contract_version": "graph-candidate-handoff-v1",
+            "source_id": source_id,
+            "source_record_key": "context-record-1",
+            "source_row": 1,
+            "source_values": {"name": "Synthetic Facility"},
+            "facilities": [{"local_ref": "facility:1", "source_identifier": {
+                "identifier_type": "synthetic-permit", "value": "CTX-FAC-1",
+                "identity_scope": "source_scoped",
+            }}],
+            "organizations": [{"local_ref": "organization:1", "source_identifier": {
+                "identifier_type": "synthetic-operator", "value": "CTX-ORG-1",
+                "identity_scope": "source_scoped",
+            }}],
+            "name_assertions": [{
+                "value": "Synthetic Legal Name", "source_field": "legal_name", "role": "legal",
+            }],
+            "relationships": [], "claims": [], "crosswalks": [],
+            "contradiction_state": "none-observed", "review_state": "review_required",
+            "publication": {"storage_state": "private", "privacy_status": "pending",
+                            "review_state": "review_required", "publication_status": "not_eligible",
+                            "release_id": None},
+        }
+        payload = canonical_json_bytes(candidate)
+        digest = hashlib.sha256(payload).hexdigest()
+        handoff = self._write_jsonl_handoff(source_id, "facility", [payload], {
+            "schema_version": "private-graph-candidate-set-v1",
+            "contract_version": "graph-candidate-handoff-v1",
+            "source_kind": "facility_master", "source_id": source_id,
+            "records_sha256": digest, "checksum_sha256": digest,
+            "candidate_count": 1, "byte_size": len(payload), "country_code": "ZZ",
+            "storage_state": "private", "review_state": "review_required",
+            "publication_status": "not_eligible", "release_state": "not-created",
+            "publication_state": "private-candidate",
+        })
+
+        # Model the original completed import, which persisted identifiers but
+        # predates organization-name assertion storage. Keep the handoff/item
+        # digest identical so the next import exercises the completed-run path.
+        persist_candidate = graph_module._persist_candidate
+
+        def legacy_persist(db, manifest, row, *args, **kwargs):
+            without_context = dict(row)
+            without_context.pop("name_assertions", None)
+            return persist_candidate(db, manifest, without_context, *args, **kwargs)
+
+        with patch.object(graph_module, "_persist_candidate", side_effect=legacy_persist):
+            first = import_graph_candidates(self.env.database_url, handoff, disposable_db=True)
+        self.assertEqual(first["inserted_count"], 1)
+        with psycopg.connect(self.env.database_url) as db:
+            self.assertEqual(db.execute(
+                "SELECT count(*) FROM uec.graph_source_name_assertions WHERE source_id=%s", (source_id,)
+            ).fetchone()[0], 0)
+
+        second = import_graph_candidates(self.env.database_url, handoff, disposable_db=True)
+        third = import_graph_candidates(self.env.database_url, handoff, disposable_db=True)
+        self.assertEqual((second["status"], second["inserted_count"], second["already_present_count"]),
+                         ("already_present", 0, 1))
+        self.assertEqual((third["status"], third["inserted_count"], third["already_present_count"]),
+                         ("already_present", 0, 1))
+        with psycopg.connect(self.env.database_url) as db:
+            self.assertEqual(db.execute(
+                "SELECT count(*) FROM uec.graph_source_name_assertions WHERE source_id=%s", (source_id,)
+            ).fetchone()[0], 1)
+            self.assertEqual(db.execute(
+                "SELECT count(*) FROM uec.graph_ingest_runs WHERE source_id=%s", (source_id,)
+            ).fetchone()[0], 1)
+            self.assertEqual(db.execute(
+                "SELECT inserted_count,already_present_count,status FROM uec.graph_ingest_runs WHERE source_id=%s",
+                (source_id,),
+            ).fetchone(), (1, 0, "completed"))
+            self.assertEqual(db.execute(
+                "SELECT count(*) FROM uec.graph_ingest_items WHERE source_id=%s", (source_id,)
+            ).fetchone()[0], 1)
+            self.assertEqual(db.execute(
+                "SELECT count(*) FROM uec.source_entity_identifiers WHERE source_id=%s AND entity_type='organization'",
+                (source_id,),
+            ).fetchone()[0], 1)
+            self.assertEqual(db.execute(
+                "SELECT count(*) FROM uec.source_records WHERE source_id=%s AND raw_fields ? 'name_assertions'",
+                (source_id,),
+            ).fetchone()[0], 0)
 
     def test_committed_batches_are_visible_and_resumable(self):
         source_id = "synthetic.graph-batch-resume"
