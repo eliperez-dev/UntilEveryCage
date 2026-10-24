@@ -46,7 +46,9 @@ NAME_FIELDS: dict[str, tuple[tuple[str, str], ...]] = {
     "us.aphis": (("canonical_name", "business"), ("facility_display_name", "business")),
     "it.1069-2009": (("name", "business"), ("trading_name", "trading"), ("facility_display_name", "business")),
     "it.853-2004": (("name", "business"), ("trading_name", "trading"), ("facility_display_name", "business")),
-    "us.fsis": (("canonical_name", "business"),),
+    # The retained bridge display name is derived from the FSIS adapter's
+    # source-native establishment name field.
+    "us.fsis": (("canonical_name", "business"), ("facility_display_name", "business")),
     "fr.dgal.section-i": (("name", "business"), ("trading_name", "trading"), ("facility_display_name", "business")),
     "fr.dgal.section-ii": (("name", "business"), ("trading_name", "trading"), ("facility_display_name", "business")),
     "fr.georisques.icpe.animal": (("trading_name", "business"), ("facility_name", "business")),

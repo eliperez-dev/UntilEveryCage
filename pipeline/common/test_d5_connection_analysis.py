@@ -369,7 +369,7 @@ class D5ConnectionAnalysisTests(unittest.TestCase):
         def observed(key: str, facility: str, primary_name: str):
             candidate = build_graph_candidate({
                 "source_id": "us.fsis", "source_record_key": key, "source_row": 1,
-                "normalized": {"establishment_id": facility, "canonical_name": primary_name},
+                "normalized": {"establishment_id": facility, "facility_display_name": primary_name},
             })
             return _observed_from_row(candidate)
 

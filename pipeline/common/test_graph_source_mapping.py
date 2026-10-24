@@ -84,6 +84,17 @@ class GraphSourceMappingTests(unittest.TestCase):
         self.assertEqual(candidate["name_assertions"], expected)
         self.assertEqual(build_graph_candidate(record), candidate)
 
+    def test_fsis_retained_display_name_uses_verified_bridge_lineage(self):
+        record = {
+            "source_id": "us.fsis", "source_record_key": "fsis-synthetic-display-1", "source_row": 1,
+            "normalized": {"establishment_id": "FS-002", "facility_display_name": "Synthetic Establishment"},
+        }
+        expected = [{"value": "Synthetic Establishment", "source_field": "facility_display_name", "role": "business"}]
+        candidate = build_graph_candidate(record)
+        self.assertEqual(candidate["name_assertions"], expected)
+        self.assertEqual(candidate["claims"][1]["claim_kind"], "source_business_name")
+        self.assertEqual(candidate["claims"][1]["value"], "Synthetic Establishment")
+
     def test_recognized_establishment_location_is_not_asserted_as_operating(self):
         from pipeline.common.graph_source_mapping import location_role
         self.assertEqual(location_role("it.853-2004", {"location_role": "recognized-establishment-location"}), "unknown")

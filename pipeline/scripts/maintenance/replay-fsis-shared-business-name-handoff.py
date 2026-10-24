@@ -1,8 +1,10 @@
 """Regenerate a private FSIS graph-candidate handoff from one retained release.
 
-This read-only replay intentionally carries only source-native establishment
-IDs, selected-release source-record keys, and FSIS DBA/alternate-name fields.
-It does not modify the database or create a public release.
+This read-only replay carries source-native establishment IDs, the adapter's
+source-backed primary establishment name and its retained display projection,
+DBA/alternate-name fields, and
+selected-release source-record keys. It does not modify the database or
+create a public release.
 """
 from __future__ import annotations
 
@@ -47,6 +49,23 @@ def _timestamp(value: Any) -> str:
     return "unknown-observation-date"
 
 
+def _replay_normalized(normalized: dict[str, Any], native_id: str,
+                       observed_at: Any) -> dict[str, Any]:
+    """Keep only the source-qualified identity/name fields used by graph mapping."""
+    return {
+        "establishment_id": native_id.strip(),
+        # The FSIS adapter derives this from its source-native
+        # Establishment Name column. Keep it for the shared typed mapping.
+        "canonical_name": normalized.get("canonical_name"),
+        # The v0 bridge retained this bounded label after preserving the
+        # adapter lineage; older retained records may not retain canonical_name.
+        "facility_display_name": normalized.get("facility_display_name"),
+        "alternate_names": normalized.get("alternate_names", []),
+        "dba_names": normalized.get("dba_names"),
+        "observed_at": _timestamp(observed_at),
+    }
+
+
 def replay(database_url: str, database_name: str, release_id: str, output: Path) -> dict[str, Any]:
     if not release_id or len(release_id) > 96:
         raise ValueError("release id is invalid")
@@ -82,15 +101,7 @@ def replay(database_url: str, database_name: str, release_id: str, output: Path)
         source_record_key = row["source_record_key"]
         if not isinstance(native_id, str) or not native_id.strip() or not isinstance(source_record_key, str) or not source_record_key.strip():
             continue
-        safe_normalized = {
-            "establishment_id": native_id.strip(),
-            # The FSIS adapter derives this from its source-native
-            # Establishment Name column. Keep it for the shared typed mapping.
-            "canonical_name": normalized.get("canonical_name"),
-            "alternate_names": normalized.get("alternate_names", []),
-            "dba_names": normalized.get("dba_names"),
-            "observed_at": _timestamp(row["observed_at"]),
-        }
+        safe_normalized = _replay_normalized(normalized, native_id, row["observed_at"])
         aliases = safe_normalized["alternate_names"]
         has_alias = bool(aliases) or bool(safe_normalized["dba_names"])
         aliases_bearing += int(has_alias)
