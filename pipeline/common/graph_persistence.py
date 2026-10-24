@@ -1316,6 +1316,18 @@ def _repair_generic_facility_endpoint_types(connection: Any) -> dict[str, int]:
             SELECT release_id FROM uec.releases
             WHERE status='promoted' AND test_only IS NOT TRUE AND profile='official'
             ORDER BY created_at DESC, release_id DESC LIMIT 1
+        ), record_facility_candidates AS MATERIALIZED (
+            SELECT DISTINCT model.source_record_id, model.facility_id
+            FROM uec.map_facilities_public_discovery_read_model model
+            WHERE model.release_id=(SELECT release_id FROM selected_release)
+        ), ambiguous_record_facilities AS MATERIALIZED (
+            SELECT source_record_id FROM record_facility_candidates
+            GROUP BY source_record_id HAVING count(*)>1
+        ), record_facilities AS MATERIALIZED (
+            SELECT candidate.source_record_id, candidate.facility_id
+            FROM record_facility_candidates candidate
+            LEFT JOIN ambiguous_record_facilities ambiguous USING (source_record_id)
+            WHERE ambiguous.source_record_id IS NULL
         ), edge_base AS MATERIALIZED (
             SELECT edge.connection_edge_id, edge.edge_key, edge.relationship_type,
                    edge.connection_type, edge.confidence, edge.confidence_band,
@@ -1347,10 +1359,28 @@ def _repair_generic_facility_endpoint_types(connection: Any) -> dict[str, int]:
               AND refs.value ? 'source_record_id'
               AND refs.value ? 'source_record_key'
               AND refs.value ? 'artifact_sha256'
-        ), bound_refs AS MATERIALIZED (
-            SELECT refs.*, binding.facility_id,
-                   registry.identifier_type AS mapped_identifier_type,
-                   identifier.identifier_type AS exact_identifier_type
+        ), support_route_candidates AS MATERIALIZED (
+            SELECT refs.connection_edge_id, refs.ordinality,
+                   private_record.source_record_id AS support_record_id,
+                   private_record.source_id, private_record.artifact_id,
+                   private_record.source_record_id AS canonical_source_record_id,
+                   direct.facility_id
+            FROM edge_refs refs
+            JOIN uec.raw_artifacts artifact
+              ON lower(artifact.sha256)=lower(refs.value->>'artifact_sha256')
+            JOIN uec.source_records private_record
+              ON private_record.source_record_id=(refs.value->>'source_record_id')::uuid
+             AND private_record.source_id=refs.endpoint_source_id
+             AND private_record.source_record_key=refs.value->>'source_record_key'
+             AND private_record.artifact_id=artifact.artifact_id
+            JOIN record_facilities direct
+              ON direct.source_record_id=private_record.source_record_id
+            UNION
+            SELECT refs.connection_edge_id, refs.ordinality,
+                   private_record.source_record_id AS support_record_id,
+                   private_record.source_id, private_record.artifact_id,
+                   binding.canonical_source_record_id,
+                   canonical.facility_id
             FROM edge_refs refs
             JOIN uec.raw_artifacts artifact
               ON lower(artifact.sha256)=lower(refs.value->>'artifact_sha256')
@@ -1368,6 +1398,33 @@ def _repair_generic_facility_endpoint_types(connection: Any) -> dict[str, int]:
               ON canonical_record.source_record_id=binding.canonical_source_record_id
              AND canonical_record.source_id=binding.source_id
              AND canonical_record.artifact_id=binding.artifact_id
+            JOIN record_facilities canonical
+              ON canonical.source_record_id=binding.canonical_source_record_id
+             AND canonical.facility_id=binding.facility_id
+        ), unique_support_routes AS MATERIALIZED (
+            SELECT connection_edge_id, ordinality, support_record_id,
+                   source_id, artifact_id,
+                   (array_agg(DISTINCT canonical_source_record_id
+                              ORDER BY canonical_source_record_id))[1] AS canonical_source_record_id,
+                   (array_agg(DISTINCT facility_id ORDER BY facility_id))[1] AS facility_id
+            FROM support_route_candidates
+            GROUP BY connection_edge_id, ordinality, support_record_id, source_id, artifact_id
+            HAVING count(DISTINCT canonical_source_record_id)=1
+               AND count(DISTINCT facility_id)=1
+        ), bound_refs AS MATERIALIZED (
+            SELECT refs.*, route.facility_id,
+                   registry.identifier_type AS mapped_identifier_type,
+                   identifier.identifier_type AS exact_identifier_type
+            FROM edge_refs refs
+            JOIN unique_support_routes route
+              ON route.connection_edge_id=refs.connection_edge_id
+             AND route.ordinality=refs.ordinality
+             AND route.support_record_id=(refs.value->>'source_record_id')::uuid
+             AND route.source_id=refs.endpoint_source_id
+            JOIN uec.source_records canonical_record
+              ON canonical_record.source_record_id=route.canonical_source_record_id
+             AND canonical_record.source_id=route.source_id
+             AND canonical_record.artifact_id=route.artifact_id
             LEFT JOIN jsonb_to_recordset(%s::jsonb) AS registry(source_id text, identifier_type text)
               ON registry.source_id=refs.endpoint_source_id
             LEFT JOIN uec.source_entity_identifiers identifier
@@ -1376,7 +1433,7 @@ def _repair_generic_facility_endpoint_types(connection: Any) -> dict[str, int]:
              AND registry.identifier_type IS NOT NULL
              AND identifier.source_record_id=canonical_record.source_record_id
              AND identifier.source_id=canonical_record.source_id
-             AND identifier.facility_id=binding.facility_id
+             AND identifier.facility_id=route.facility_id
              AND identifier.entity_type='facility'
              AND identifier.identifier_type=registry.identifier_type
              AND identifier.source_identifier=refs.endpoint_value

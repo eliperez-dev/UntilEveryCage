@@ -75,8 +75,10 @@ For already-retained inferred edges created before that boundary normalization,
 `_repair_generic_facility_endpoint_types` appends the corrected typed
 representation without rerunning matching. It requires both ordered support
 references to resolve exactly by source, native record key, and artifact SHA
-into the currently promoted official release; each generic endpoint must also
-match exactly one mapped native identifier on the same canonical facility. It
+through either the direct selected-release record/facility map or an exact
+private-to-canonical release binding; each support must resolve to one
+canonical facility. Each generic endpoint must also match exactly one mapped
+native identifier on that same canonical facility. It
 does not change endpoint values, support references, relationship semantics,
 or prior edge rows. Unmapped, ambiguous, stale-artifact, and non-current
 release cases remain unchanged.

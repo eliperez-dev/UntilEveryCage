@@ -655,9 +655,17 @@ class GraphPersistenceContractTests(unittest.TestCase):
             counts = _repair_generic_facility_endpoint_types(connection)
 
         self.assertIn("graph_record_release_bindings", connection.query)
+        self.assertIn("map_facilities_public_discovery_read_model", connection.query)
+        self.assertIn("UNION", connection.query)
+        self.assertIn("record_facility_candidates", connection.query)
+        self.assertIn("ambiguous_record_facilities", connection.query)
         self.assertIn("source_record_key=refs.value->>'source_record_key'", connection.query)
         self.assertIn("lower(artifact.sha256)=lower(refs.value->>'artifact_sha256')", connection.query)
         self.assertIn("binding.release_id=(SELECT release_id FROM selected_release)", connection.query)
+        self.assertIn("private_record.source_id=refs.endpoint_source_id", connection.query)
+        self.assertIn("count(DISTINCT canonical_source_record_id)=1", connection.query)
+        self.assertIn("count(DISTINCT facility_id)=1", connection.query)
+        self.assertIn("identifier.source_identifier=refs.endpoint_value", connection.query)
         registry = json.loads(connection.params[0])
         self.assertEqual(registry[source_id] if isinstance(registry, dict) else
                          next(item["identifier_type"] for item in registry if item["source_id"] == source_id),
@@ -687,6 +695,61 @@ class GraphPersistenceContractTests(unittest.TestCase):
         persist.assert_not_called()
         self.assertEqual(counts["repairable_generic_facility_endpoint_edges"], 0)
         self.assertEqual(counts["generic_facility_endpoint_repair_inserted"], 0)
+
+    def test_generic_endpoint_repair_sql_accepts_both_routes_and_rejects_ambiguous_supports(self):
+        class Cursor:
+            def fetchall(self):
+                rows = []
+                for source_id, native_type, suffix in (
+                    ("us.fsis", FACILITY_IDENTIFIERS["us.fsis"][0], "direct"),
+                    ("it.853-2004", FACILITY_IDENTIFIERS["it.853-2004"][0], "bound"),
+                ):
+                    refs = [
+                        {"source_id": source_id, "source_record_key": f"opaque-{suffix}-left",
+                         "source_record_id": str(uuid.uuid4()), "artifact_sha256": "c" * 64, "role": "from"},
+                        {"source_id": source_id, "source_record_key": f"opaque-{suffix}-right",
+                         "source_record_id": str(uuid.uuid4()), "artifact_sha256": "d" * 64, "role": "to"},
+                    ]
+                    rows.append((f"old-{suffix}", "shared_business_name", "inferred", Decimal("0.61"),
+                                 "possible", "exact_declared_business_name_equality", refs,
+                                 {"signals": ["shared_business_name"]}, "d7-shared-business-name-v3",
+                                 "2026-10-20T00:00:00Z", "2026-10-20T00:00:00Z", False, False,
+                                 "facility", source_id, native_type, f"opaque-{suffix}-facility-left",
+                                 "facility", source_id, native_type, f"opaque-{suffix}-facility-right"))
+                return rows
+
+        class Connection:
+            query = ""
+
+            def execute(self, query, _params):
+                self.query = query
+                return Cursor()
+
+        connection = Connection()
+        appended = []
+        with patch.object(graph_module, "persist_connection_edges",
+                          side_effect=lambda _connection, edges: (
+                              appended.extend(edges),
+                              {"inserted": len(edges), "updated": 0, "unchanged": 0,
+                               "skipped_exact": 0, "total": len(edges)},
+                          )[1]):
+            counts = _repair_generic_facility_endpoint_types(connection)
+
+        self.assertIn("JOIN record_facilities direct", connection.query)
+        self.assertIn("JOIN uec.graph_record_release_bindings binding", connection.query)
+        self.assertIn("UNION", connection.query)
+        self.assertIn("ambiguous_record_facilities", connection.query)
+        self.assertIn("HAVING count(DISTINCT canonical_source_record_id)=1", connection.query)
+        self.assertIn("AND count(DISTINCT facility_id)=1", connection.query)
+        self.assertIn("private_record.source_id=refs.endpoint_source_id", connection.query)
+        self.assertIn("private_record.source_record_key=refs.value->>'source_record_key'", connection.query)
+        self.assertIn("lower(artifact.sha256)=lower(refs.value->>'artifact_sha256')", connection.query)
+        self.assertIn("identifier.source_identifier=refs.endpoint_value", connection.query)
+        self.assertIn("identifier.facility_id=route.facility_id", connection.query)
+        self.assertEqual(counts["repairable_generic_facility_endpoint_edges"], 2)
+        self.assertEqual(counts["generic_facility_endpoint_repair_inserted"], 2)
+        self.assertEqual({edge["from"]["source_id"] for edge in appended}, {"us.fsis", "it.853-2004"})
+
     def test_unknown_source_observation_time_uses_handoff_time(self):
         manifest = {"retrieved_at_utc": "2026-09-21T00:00:00Z"}
         self.assertEqual(_observed_at("unknown", manifest), manifest["retrieved_at_utc"])
