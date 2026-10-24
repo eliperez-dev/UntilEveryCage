@@ -25,7 +25,7 @@ const facts = {
   establishment_number: 'SYNTHETIC-1',
   derived_source_volume_ranges: [{ ordinal_code: 'A', lower: null, upper: 1000,
     bounds: 'exclusive_upper', unit: 'head', period: 'trailing_360_days',
-    method_version: 'synthetic-volume', source_codebook_url: 'https://example.test/codebook',
+    method_version: 'fsis-mpi-volume-codebook-2026-03-24-v1', source_codebook_url: 'https://example.test/codebook',
     verification_state: 'source_codebook_verified' }, { ordinal_code: '2', lower: 10000, upper: 100000,
     bounds: 'inclusive_lower_exclusive_upper', unit: 'pounds', period: 'month',
     method_version: 'fsis-mpi-volume-codebook-2026-03-24-v1', source_codebook_url: 'https://example.test/codebook',
