@@ -157,6 +157,9 @@ _PRIVATE_GRAPH_REQUIRED_READ_PRIVILEGES = {
     "graph_public_evidence_metadata_clearance_current": {"SELECT"},
     "public_access_restricted": {"SELECT"},
 }
+_PRIVATE_GRAPH_REQUIRED_FUNCTION_PRIVILEGES = {
+    "uec.is_valid_italian_vat_identifier(text,text,text)": {"EXECUTE"},
+}
 
 
 def _validate_private_graph_writer(connection: Any, expected_database: str) -> None:
@@ -188,6 +191,13 @@ def _validate_private_graph_writer(connection: Any, expected_database: str) -> N
     allowed_writes = {("uec", table) for table in _PRIVATE_GRAPH_REQUIRED_PRIVILEGES}
     if not write_tables.issubset(allowed_writes):
         raise GraphPersistenceError("refusing graph materialization: role has writes outside graph tables")
+    for function, required in _PRIVATE_GRAPH_REQUIRED_FUNCTION_PRIVILEGES.items():
+        for privilege in required:
+            granted = connection.execute(
+                "SELECT has_function_privilege(current_user,%s,%s)", (function, privilege)
+            ).fetchone()
+            if not granted or not granted[0]:
+                raise GraphPersistenceError("refusing graph materialization: private graph writer function grants are incomplete")
 
 
 def _verify_disposable_marker(connection: psycopg.Connection[Any]) -> None:
@@ -744,6 +754,18 @@ def _entity_maps(connection: Any, manifest: dict[str, Any], candidate: dict[str,
     return facilities, organizations
 
 
+def _candidate_has_backfillable_context(source_id: str, candidate: dict[str, Any]) -> bool:
+    """Identify aliases/organization labels without touching the database."""
+    aliases = _additional_facility_identifier_aliases(candidate)
+    if source_id == "us.aphis":
+        aliases.extend((kind, value, "us.aphis") for kind, value in
+                       _aphis_facility_identifier_aliases(candidate.get("normalized_values")))
+    return bool(aliases) or (
+        len(candidate.get("organizations", [])) == 1
+        and bool(candidate.get("name_assertions", []))
+    )
+
+
 def _backfill_existing_candidate_context(connection: Any, manifest: dict[str, Any],
                                          candidate: dict[str, Any], artifact_id: uuid.UUID) -> None:
     """Append newly-supported labels/aliases to exact existing record identifiers.
@@ -755,6 +777,8 @@ def _backfill_existing_candidate_context(connection: Any, manifest: dict[str, An
     aliases to identifiers already bound to this source-record-artifact tuple.
     """
     source_id = str(manifest["source_id"])
+    if not _candidate_has_backfillable_context(source_id, candidate):
+        return
     source_record_key = candidate.get("source_record_key")
     if not isinstance(source_record_key, str) or not source_record_key:
         raise GraphPersistenceError("candidate requires source_record_key")
@@ -1522,7 +1546,7 @@ def _matcher_edge(raw: dict[str, Any], candidate: dict[str, Any], manifest: dict
             relationship_type=str(raw.get("relationship_type") or "related_facility"),
             scoring=scoring,
             supporting_source_refs=refs,
-            observed_at=raw.get("observed_at") or candidate.get("observed_at") or _timestamp(manifest),
+            observed_at=_observed_at(raw.get("observed_at") or candidate.get("observed_at"), manifest),
             conflicting=bool(raw.get("contradictory_evidence")),
             suppressed=bool(raw.get("suppressed")),
             computed_at=str(raw.get("computed_at") or manifest.get("retrieved_at_utc") or _timestamp(manifest)),
@@ -1558,7 +1582,7 @@ def _matcher_edge(raw: dict[str, Any], candidate: dict[str, Any], manifest: dict
     scoring = score_connection(signals)
     if not scoring.eligible:
         return None
-    observed_at = raw.get("observed_at") or candidate.get("observed_at") or _timestamp(manifest)
+    observed_at = _observed_at(raw.get("observed_at") or candidate.get("observed_at"), manifest)
     return build_connection_edge(
         from_ref=left_ref,
         to_ref=right_ref,
@@ -1606,7 +1630,7 @@ def build_candidate_connection_edges(candidate: dict[str, Any], manifest: dict[s
             from_ref=from_ref, to_ref=target_ref,
             relationship_type=str(relationship.get("relationship_type")), scoring=scoring,
             supporting_source_refs=_source_refs(candidate, manifest, source_record_ids=source_record_ids),
-            observed_at=relationship.get("observed_at") or candidate.get("observed_at") or _timestamp(manifest),
+            observed_at=_observed_at(relationship.get("observed_at") or candidate.get("observed_at"), manifest),
             conflicting=relationship.get("assertion_status") in {"disputed", "rejected"},
             computed_at=str(manifest.get("retrieved_at_utc") or _timestamp(manifest)),
         ))
@@ -1881,8 +1905,6 @@ def import_graph_candidates(database_url: str, handoff_dir: str | Path, *,
         with db.transaction():
             _ensure_source_artifact(db, manifest, digest)
             run_id, completed = _begin_run(db, manifest, "facility_master", GRAPH_CONTRACT_VERSION, digest, item_count)
-        if completed and edge_builder is None and private_target is None:
-            return {"status": "already_present", "source_id": manifest["source_id"], "source_kind": "facility_master", "run_id": str(run_id), "item_count": item_count, "inserted_count": 0, "already_present_count": item_count, "rejected_count": 0, "edge_inserted_count": 0, "edge_updated_count": 0, "edge_count": 0, "public_rows": 0, "phase_timings_seconds": {"validation_and_staging": round(time.perf_counter() - started_at, 6)}, "peak_rss_bytes": _peak_rss_bytes()}
         artifact_sha = str(manifest.get("checksum_sha256") or manifest.get("source_artifact_sha256") or digest)
         artifact_id = db.execute("SELECT artifact_id FROM uec.raw_artifacts WHERE sha256=%s", (artifact_sha if len(artifact_sha) == 64 else digest,)).fetchone()[0]
         resume_offset = int(db.execute(
@@ -1908,6 +1930,26 @@ def import_graph_candidates(database_url: str, handoff_dir: str | Path, *,
         source_assertion_rows = 0
         endpoint_mapping_diagnostics: dict[str, int] = {}
         try:
+            if base_import_complete:
+                # A completed run may predate context persistence. Revisit
+                # only candidates that can append declared aliases or
+                # organization-name assertions. Keep this separate from the
+                # ingest loop so already_present_count and inserted_count
+                # continue to describe the original completed run.
+                context_batch: list[dict[str, Any]] = []
+                for candidate in candidates:
+                    if not _candidate_has_backfillable_context(str(manifest["source_id"]), candidate):
+                        continue
+                    context_batch.append(candidate)
+                    if len(context_batch) >= batch_size:
+                        with db.transaction():
+                            for row_candidate in context_batch:
+                                _backfill_existing_candidate_context(db, manifest, row_candidate, artifact_id)
+                        context_batch = []
+                if context_batch:
+                    with db.transaction():
+                        for row_candidate in context_batch:
+                            _backfill_existing_candidate_context(db, manifest, row_candidate, artifact_id)
             batch: list[dict[str, Any]] = []
             offset = resume_offset
             batch_number = 0
@@ -1969,8 +2011,9 @@ def import_graph_candidates(database_url: str, handoff_dir: str | Path, *,
             with db.transaction():
                 _mark_failed(db, run_id, error)
             raise
-        with db.transaction():
-            db.execute("UPDATE uec.graph_ingest_runs SET status='completed', inserted_count=%s, already_present_count=%s, rejected_count=%s, error_summary=NULL, completed_at=now() WHERE ingest_run_id=%s", (inserted, already, rejected, run_id))
+        if not base_import_complete:
+            with db.transaction():
+                db.execute("UPDATE uec.graph_ingest_runs SET status='completed', inserted_count=%s, already_present_count=%s, rejected_count=%s, error_summary=NULL, completed_at=now() WHERE ingest_run_id=%s", (inserted, already, rejected, run_id))
         materialization_run_id = None
         if edge_builder is not None or private_target is not None:
             if private_target is not None and materialization_fingerprint is not None:

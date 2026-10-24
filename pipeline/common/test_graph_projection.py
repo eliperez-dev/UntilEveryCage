@@ -485,6 +485,104 @@ class GraphProjectionTests(unittest.TestCase):
                 "SELECT count(*) FROM uec.graph_public_projection_builds WHERE active"
             ).fetchone()[0], before_active)
 
+    @unittest.skipUnless(
+        os.environ.get("UEC_GRAPH_METADATA_WITHDRAWAL_ACCEPTANCE") == "1"
+        and os.environ.get("UEC_GRAPH_ACCEPTANCE_DATABASE_URL"),
+        "set UEC_GRAPH_METADATA_WITHDRAWAL_ACCEPTANCE=1 after metadata approval and a v3 build",
+    )
+    def test_metadata_withdrawal_suppresses_existing_reference_immediately_and_rolls_back(self):
+        """Prove the live clearance gate hides stored refs without rebuilding."""
+        expected_database = os.environ.get("UEC_GRAPH_DATABASE_NAME", "")
+        self.assertTrue(expected_database)
+
+        class RollbackProbe(Exception):
+            pass
+
+        with psycopg.connect(os.environ["UEC_GRAPH_ACCEPTANCE_DATABASE_URL"]) as connection:
+            self.assertEqual(connection.execute("SELECT current_database()").fetchone()[0],
+                             expected_database)
+            try:
+                with connection.transaction():
+                    selected = connection.execute("""
+                        SELECT clearance.source_id,clearance.profile,clearance.release_id,
+                               clearance.artifact_id,clearance.artifact_sha256,
+                               clearance.scope_version,clearance.approved_fields,
+                               count(reference.evidence_ref_id)::int
+                          FROM uec.graph_public_evidence_metadata_clearance_current clearance
+                          JOIN uec.source_records record
+                            ON record.source_id=clearance.source_id
+                           AND record.artifact_id=clearance.artifact_id
+                          JOIN uec.graph_public_projection_evidence_refs reference
+                            ON reference.evidence_source_record_id=record.source_record_id
+                           AND reference.source_id=record.source_id
+                          JOIN uec.graph_public_projection_builds build
+                            ON build.projection_id=reference.projection_id
+                           AND build.release_id=clearance.release_id
+                           AND build.active AND build.status='completed'
+                          JOIN uec.graph_public_evidence_references_current current_ref
+                            ON current_ref.evidence_ref_id=reference.evidence_ref_id
+                         GROUP BY clearance.source_id,clearance.profile,clearance.release_id,
+                                  clearance.artifact_id,clearance.artifact_sha256,
+                                  clearance.scope_version,clearance.approved_fields
+                         ORDER BY clearance.source_id,clearance.artifact_id
+                         LIMIT 1
+                    """).fetchone()
+                    self.assertIsNotNone(selected, "an approved metadata reference must exist")
+                    source_id, profile, release_id, artifact_id, digest, scope, fields, before_count = selected
+                    self.assertGreater(before_count, 0)
+                    generation_before = connection.execute(
+                        "SELECT generation FROM uec.graph_projection_generation WHERE singleton"
+                    ).fetchone()[0]
+                    connection.execute("""
+                        INSERT INTO uec.graph_public_evidence_metadata_clearance_events
+                          (source_id,profile,release_id,artifact_id,artifact_sha256,scope_version,
+                           decision_status,approved_fields,decision_actor,decision_reference,decided_at)
+                        VALUES (%s,%s,%s,%s,%s,%s,'withdrawn',%s,
+                                'rollback-only regression test',
+                                'user-approved-reference-metadata-only;https://www.aphis.usda.gov/animal-care/awa-services/usda-animal-care-public-search-tool',
+                                clock_timestamp())
+                    """, (source_id, profile, release_id, artifact_id, digest, scope, fields))
+                    after_count = connection.execute("""
+                        SELECT count(*)::int
+                          FROM uec.graph_public_projection_evidence_refs reference
+                          JOIN uec.source_records record
+                            ON record.source_record_id=reference.evidence_source_record_id
+                           AND record.source_id=reference.source_id
+                          JOIN uec.graph_public_evidence_references_current current_ref
+                            ON current_ref.evidence_ref_id=reference.evidence_ref_id
+                         WHERE reference.source_id=%s AND record.artifact_id=%s
+                           AND EXISTS (SELECT 1 FROM uec.graph_public_projection_builds build
+                                        WHERE build.projection_id=reference.projection_id
+                                          AND build.release_id=%s AND build.active
+                                          AND build.status='completed')
+                    """, (source_id, artifact_id, release_id)).fetchone()[0]
+                    self.assertEqual(after_count, 0, "withdrawal must gate existing projection rows immediately")
+                    self.assertEqual(connection.execute(
+                        "SELECT generation FROM uec.graph_projection_generation WHERE singleton"
+                    ).fetchone()[0], generation_before,
+                        "withdrawal is live-gated and must not invalidate unrelated graph builds")
+                    raise RollbackProbe()
+            except RollbackProbe:
+                pass
+            restored_count = connection.execute("""
+                SELECT count(*)::int
+                  FROM uec.graph_public_projection_evidence_refs reference
+                  JOIN uec.source_records record
+                    ON record.source_record_id=reference.evidence_source_record_id
+                   AND record.source_id=reference.source_id
+                  JOIN uec.graph_public_evidence_references_current current_ref
+                    ON current_ref.evidence_ref_id=reference.evidence_ref_id
+                 WHERE reference.source_id=%s AND record.artifact_id=%s
+                   AND EXISTS (SELECT 1 FROM uec.graph_public_projection_builds build
+                                WHERE build.projection_id=reference.projection_id
+                                  AND build.release_id=%s AND build.active
+                                  AND build.status='completed')
+            """, (source_id, artifact_id, release_id)).fetchone()[0]
+            self.assertEqual(connection.execute(
+                "SELECT generation FROM uec.graph_projection_generation WHERE singleton"
+            ).fetchone()[0], generation_before)
+            self.assertGreater(restored_count, 0)
+
     def test_public_aphis_reference_batch_uses_only_typed_allowlisted_metadata(self):
         endpoint = uuid.uuid4()
         public_id = uuid.uuid4()

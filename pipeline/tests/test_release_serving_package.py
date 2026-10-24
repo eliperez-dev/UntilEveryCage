@@ -150,9 +150,11 @@ class ReleaseServingPackageTests(unittest.TestCase):
         self.assertIn("uec.graph_public_connections_current", sql)
         self.assertNotIn("uec.graph_public_projection_edge_supports TO uec_api_runtime", sql)
         self.assertNotIn("uec.graph_connection_edges TO uec_api_runtime", sql)
-        self.assertIn("GRANT EXECUTE ON FUNCTION uec.is_valid_italian_vat_identifier(text,text,text) TO uec_api_runtime", sql)
+        self.assertIn("REVOKE ALL ON FUNCTION uec.is_valid_italian_vat_identifier(text,text,text) FROM uec_api_runtime", sql)
+        self.assertNotIn("GRANT EXECUTE ON FUNCTION uec.is_valid_italian_vat_identifier", sql)
         custom_role_sql = serving.grant_sql(api_role="custom_graph_api")
-        self.assertIn("GRANT EXECUTE ON FUNCTION uec.is_valid_italian_vat_identifier(text,text,text) TO custom_graph_api", custom_role_sql)
+        self.assertIn("REVOKE ALL ON FUNCTION uec.is_valid_italian_vat_identifier(text,text,text) FROM custom_graph_api", custom_role_sql)
+        self.assertNotIn("GRANT EXECUTE ON FUNCTION uec.is_valid_italian_vat_identifier", custom_role_sql)
 
     def test_invalid_release_or_digest_fails_closed(self):
         with self.assertRaises(ValueError): serving.package_manifest(release_ids=[], migration_inventory_sha256="a" * 64)
