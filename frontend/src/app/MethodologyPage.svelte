@@ -21,7 +21,7 @@
       <div><dt>Locality reference</dt><dd>A centroid is not a facility point. City, commune, municipality, or postal references are approximate; map halos are visual aids, not measured boundaries.</dd></div>
       <div><dt>Without a point</dt><dd>Records without publishable coordinates remain searchable. We do not guess a location.</dd></div>
     </dl>
-    <p>Maps use OpenStreetMap tiles; viewing a map contacts the tile provider. Placing a pin supplies the chosen location directly.</p>
+    <p>Street maps use OpenStreetMap. Satellite imagery uses Esri. 3D terrain uses <a href="https://mapterhorn.com/attribution" target="_blank" rel="noopener noreferrer">Mapterhorn</a>. These providers receive your IP address and requests for the map tiles you view; no facility records or search text are sent with those tile requests.</p>
   </section>
   <section aria-labelledby="limits-heading">
     <h2 id="limits-heading">Limits</h2>
