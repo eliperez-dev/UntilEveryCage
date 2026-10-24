@@ -84,6 +84,9 @@ def replay(database_url: str, database_name: str, release_id: str, output: Path)
             continue
         safe_normalized = {
             "establishment_id": native_id.strip(),
+            # The FSIS adapter derives this from its source-native
+            # Establishment Name column. Keep it for the shared typed mapping.
+            "canonical_name": normalized.get("canonical_name"),
             "alternate_names": normalized.get("alternate_names", []),
             "dba_names": normalized.get("dba_names"),
             "observed_at": _timestamp(row["observed_at"]),

@@ -363,6 +363,34 @@ class D5ConnectionAnalysisTests(unittest.TestCase):
         self.assertEqual(counters["pairs_emitted"], 1)
         self.assertEqual(counters["pairs_considered"], 1)
 
+    def test_typed_fsis_primary_business_names_feed_exact_shared_name_match(self):
+        from pipeline.common.graph_candidate import build_graph_candidate
+
+        def observed(key: str, facility: str, primary_name: str):
+            candidate = build_graph_candidate({
+                "source_id": "us.fsis", "source_record_key": key, "source_row": 1,
+                "normalized": {"establishment_id": facility, "canonical_name": primary_name},
+            })
+            return _observed_from_row(candidate)
+
+        rows = [
+            observed("synthetic-primary-a", "FS-001", "Tyson Foods Inc."),
+            observed("synthetic-primary-b", "FS-002", "TYSON FOODS, INC"),
+        ]
+        candidates, counters = iter_shared_business_name_candidates(rows)
+        edges = list(candidates)
+        self.assertEqual(len(edges), 1)
+        self.assertEqual(edges[0]["relationship_type"], "shared_business_name")
+        self.assertEqual(counters["pairs_emitted"], 1)
+        self.assertFalse(edges[0]["automatic_merge"])
+        self.assertFalse(edges[0]["transfers_claims"])
+
+        generic, _ = iter_shared_business_name_candidates([
+            observed("synthetic-generic-a", "FS-003", "Meat Processing"),
+            observed("synthetic-generic-b", "FS-004", "MEAT PROCESSING"),
+        ])
+        self.assertEqual(list(generic), [])
+
     def test_shared_business_name_requires_two_non_generic_tokens(self):
         rows = [
             _observed_from_row({"source_id": "us.fsis", "source_record_key": "one",

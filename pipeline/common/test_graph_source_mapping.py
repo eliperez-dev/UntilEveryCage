@@ -73,6 +73,17 @@ class GraphSourceMappingTests(unittest.TestCase):
         ])
         self.assertEqual(name_assertions("br.sif.registered", {"facility_display_name": "Not mapped"}), [])
 
+    def test_fsis_primary_establishment_name_becomes_repeatable_typed_business_assertion(self):
+        record = {
+            "source_id": "us.fsis", "source_record_key": "fsis-synthetic-1", "source_row": 1,
+            "normalized": {"establishment_id": "FS-001", "canonical_name": "Synthetic Foods Inc."},
+        }
+        expected = [{"value": "Synthetic Foods Inc.", "source_field": "canonical_name", "role": "business"}]
+        self.assertEqual(name_assertions("us.fsis", record["normalized"]), expected)
+        candidate = build_graph_candidate(record)
+        self.assertEqual(candidate["name_assertions"], expected)
+        self.assertEqual(build_graph_candidate(record), candidate)
+
     def test_recognized_establishment_location_is_not_asserted_as_operating(self):
         from pipeline.common.graph_source_mapping import location_role
         self.assertEqual(location_role("it.853-2004", {"location_role": "recognized-establishment-location"}), "unknown")
