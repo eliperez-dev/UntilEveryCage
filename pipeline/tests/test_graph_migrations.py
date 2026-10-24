@@ -45,6 +45,26 @@ class GraphMigrationContractTests(unittest.TestCase):
         self.assertEqual(sql.count("exists ("), 14)
         self.assertEqual(sql.count("not exists ("), 2)
 
+    def test_088_page_candidate_view_exposes_only_keys_and_keeps_release_gates(self):
+        sql = self.read("088_public_graph_connection_page_candidates.sql").casefold()
+        self.assertIn("create or replace view uec.graph_public_connection_page_candidates_current as", sql)
+        for gate in (
+            "b.active and b.status='completed'",
+            "b.projection_version='graph-release-projection-v3'",
+            "b.edge_generation=generation.generation",
+            "b.suppression_generation=suppression.generation",
+            "b.release_manifest_sha256=manifest.manifest_sha256",
+            "release.test_only is not true",
+            "release.status='promoted' or history.release_id is not null",
+        ):
+            with self.subTest(gate=gate):
+                self.assertIn(gate, sql)
+        select_list = sql.split("as\nselect", 1)[1].split("from", 1)[0]
+        self.assertEqual(select_list.strip(), "e.release_id,e.connection_edge_id")
+        self.assertIn("grant select on uec.graph_public_connection_page_candidates_current to uec_api_runtime", sql)
+        for forbidden in ("from_entity_id", "to_entity_id", "source_id", "display_name", "signal_explanation"):
+            self.assertNotIn(forbidden, select_list)
+
     def test_reserved_migrations_are_present_and_ordered(self):
         migrations = sorted(path.name for path in (ROOT / "migrations").glob("*.sql"))
         graph_migrations = [

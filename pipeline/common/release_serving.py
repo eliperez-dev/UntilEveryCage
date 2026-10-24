@@ -138,6 +138,7 @@ API_RELATIONS = (
     "uec.map_facilities_display_history", "uec.publication_review_release_current",
     "uec.record_access_current", "uec.public_access_restricted", "uec.suppression_case_current",
     "uec.facility_lifecycle_current", "uec.graph_public_connections_current",
+    "uec.graph_public_connection_page_candidates_current",
     "uec.graph_public_evidence_references_current", "uec.graph_public_organization_labels_current",
     "uec.graph_public_organization_endpoints_current",
 )

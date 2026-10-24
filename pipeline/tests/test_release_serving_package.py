@@ -50,6 +50,7 @@ class ReleaseServingPackageTests(unittest.TestCase):
             "source_url", "match_method",
         ))
         self.assertIn("uec.graph_public_evidence_references_current", serving.API_RELATIONS)
+        self.assertIn("uec.graph_public_connection_page_candidates_current", serving.API_RELATIONS)
         self.assertIn("uec.graph_public_organization_labels_current", serving.API_RELATIONS)
         self.assertIn("uec.graph_public_organization_endpoints_current", serving.API_RELATIONS)
         self.assertIn("uec.graph_source_name_assertions", serving.FORBIDDEN_DATA_RELATIONS)

@@ -19,23 +19,31 @@ use uuid::Uuid;
 
 const MAX_LIMIT: i64 = 100;
 const DEFAULT_LIMIT: i64 = 50;
+const GRAPH_CANDIDATE_BATCH_SIZE: i64 = 128;
 const API_VERSION: &str = "v2-graph-v1";
 const DISCLAIMER: &str = "Confidence is a deterministic ruleset estimate, not a measured probability. An inferred connection is not proof of ownership, identity, or supply-chain control.";
+const GRAPH_CONNECTION_CANDIDATES_SELECT: &str = r#"
+SELECT candidate.release_id,candidate.connection_edge_id
+FROM uec.graph_public_connection_page_candidates_current candidate
+WHERE candidate.release_id=$1
+  AND ($2::uuid IS NULL OR candidate.connection_edge_id<$2)
+ORDER BY candidate.connection_edge_id DESC
+LIMIT $3
+"#;
 const GRAPH_CONNECTION_SELECT: &str = r#"
 WITH page_edges AS MATERIALIZED (
     SELECT edge.*
     FROM uec.graph_public_connections_current edge
     WHERE edge.release_id=$1
-      AND ($8::uuid IS NULL OR edge.from_entity_id=$8 OR edge.to_entity_id=$8)
-      AND ($2::text IS NULL OR edge.connection_type=$2)
-      AND ($3::double precision IS NULL OR edge.confidence >= $3)
-      AND ($4::double precision IS NULL OR edge.confidence <= $4)
-      AND ($5::text[] IS NULL OR edge.confidence_band=ANY($5))
-      AND ($6 OR edge.conflicting=false)
-      AND ($7::text IS NULL OR edge.from_source_id=$7 OR edge.to_source_id=$7)
-      AND ($9::uuid IS NULL OR edge.connection_edge_id<$9)
+      AND edge.connection_edge_id=ANY($2)
+      AND ($3::uuid IS NULL OR edge.from_entity_id=$3 OR edge.to_entity_id=$3)
+      AND ($4::text IS NULL OR edge.connection_type=$4)
+      AND ($5::double precision IS NULL OR edge.confidence >= $5)
+      AND ($6::double precision IS NULL OR edge.confidence <= $6)
+      AND ($7::text[] IS NULL OR edge.confidence_band=ANY($7))
+      AND ($8 OR edge.conflicting=false)
+      AND ($9::text IS NULL OR edge.from_source_id=$9 OR edge.to_source_id=$9)
     ORDER BY edge.connection_edge_id DESC
-    LIMIT $10
 )
 SELECT edge.connection_edge_id,edge.from_entity_id,edge.from_entity_type,
        edge.from_source_id,edge.from_identifier_type,edge.to_entity_id,
@@ -293,6 +301,15 @@ fn public_identifier(entity_id: Option<Uuid>) -> String {
         .unwrap_or_else(|| "entity:unavailable".to_string())
 }
 
+fn candidate_batch_cursor(candidate_ids: &[Uuid]) -> Option<Uuid> {
+    candidate_ids.last().copied()
+}
+
+fn needs_candidate_refill(eligible_count: usize, requested_with_lookahead: usize, candidate_count: usize) -> bool {
+    eligible_count < requested_with_lookahead
+        && candidate_count == GRAPH_CANDIDATE_BATCH_SIZE as usize
+}
+
 #[cfg(test)]
 const EDGE_CTES: &str = include_str!("../pipeline/sql/graph_public_edge_ctes.sql");
 
@@ -359,33 +376,70 @@ pub async fn connections(
             "public graph query failed",
         );
     }
-    let rows = match transaction
-        .query(
-            GRAPH_CONNECTION_SELECT,
-            &[
-                &release_id,
-                &query.connection_type,
-                &query.min_confidence,
-                &query.max_confidence,
-                &bands,
-                &include_conflicting,
-                &query.source_id,
-                &query.entity_id,
-                &query.cursor,
-                &(limit + 1),
-            ],
-        )
-        .await
-    {
-        Ok(rows) => rows,
-        Err(_) => {
-            return v2_error(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "public_graph_query_failed",
-                "public graph query failed",
-            );
+    let mut candidate_cursor = query.cursor;
+    let mut rows = Vec::with_capacity((limit + 1) as usize);
+    loop {
+        let candidates = match transaction
+            .query(
+                GRAPH_CONNECTION_CANDIDATES_SELECT,
+                &[&release_id, &candidate_cursor, &GRAPH_CANDIDATE_BATCH_SIZE],
+            )
+            .await
+        {
+            Ok(rows) => rows,
+            Err(_) => {
+                return v2_error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "public_graph_query_failed",
+                    "public graph query failed",
+                );
+            }
+        };
+        if candidates.is_empty() {
+            break;
         }
-    };
+        let candidate_ids: Vec<Uuid> = candidates.iter().map(|row| row.get(1)).collect();
+        candidate_cursor = candidate_batch_cursor(&candidate_ids);
+        let eligible = match transaction
+            .query(
+                GRAPH_CONNECTION_SELECT,
+                &[
+                    &release_id,
+                    &candidate_ids,
+                    &query.entity_id,
+                    &query.connection_type,
+                    &query.min_confidence,
+                    &query.max_confidence,
+                    &bands,
+                    &include_conflicting,
+                    &query.source_id,
+                ],
+            )
+            .await
+        {
+            Ok(rows) => rows,
+            Err(_) => {
+                return v2_error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "public_graph_query_failed",
+                    "public graph query failed",
+                );
+            }
+        };
+        rows.extend(eligible);
+        rows.sort_by(|left, right| {
+            let left_id: Uuid = left.get(0);
+            let right_id: Uuid = right.get(0);
+            right_id.cmp(&left_id)
+        });
+        if !needs_candidate_refill(
+            rows.len(),
+            (limit + 1) as usize,
+            candidates.len(),
+        ) {
+            break;
+        }
+    }
     let mut data: Vec<Value> = rows
         .iter()
         .map(|row| public_edge(row, &release_id))
@@ -658,9 +712,13 @@ mod tests {
 
     #[test]
     fn api_reads_indexed_projection_and_entities_follow_same_endpoint_policy() {
+        assert!(GRAPH_CONNECTION_CANDIDATES_SELECT.contains("FROM uec.graph_public_connection_page_candidates_current candidate"));
+        assert!(GRAPH_CONNECTION_CANDIDATES_SELECT.contains("ORDER BY candidate.connection_edge_id DESC"));
+        assert!(GRAPH_CONNECTION_CANDIDATES_SELECT.contains("LIMIT $3"));
         assert!(GRAPH_CONNECTION_SELECT.contains("FROM uec.graph_public_connections_current edge"));
         assert!(GRAPH_CONNECTION_SELECT.contains("page_edges AS MATERIALIZED"));
-        assert!(GRAPH_CONNECTION_SELECT.contains("edge.from_entity_id=$8 OR edge.to_entity_id=$8"));
+        assert!(GRAPH_CONNECTION_SELECT.contains("edge.connection_edge_id=ANY($2)"));
+        assert!(GRAPH_CONNECTION_SELECT.contains("edge.from_entity_id=$3 OR edge.to_entity_id=$3"));
         assert!(!GRAPH_CONNECTION_SELECT.contains("graph_public_projection_edges"));
         assert!(!GRAPH_CONNECTION_SELECT.contains("graph_public_projection_builds"));
         assert!(GRAPH_CONNECTION_SELECT.contains("FROM page_edges edge\nLEFT JOIN LATERAL"));
@@ -668,8 +726,12 @@ mod tests {
         assert!(!GRAPH_CONNECTION_SELECT.contains("graph_connection_edges"));
         assert!(!GRAPH_CONNECTION_SELECT.contains("source_entity_identifiers"));
         assert!(GRAPH_CONNECTION_SELECT.contains("from_label.display_name,to_label.display_name"));
-        assert!(GRAPH_CONNECTION_SELECT.contains("ORDER BY edge.connection_edge_id DESC\n    LIMIT $10"));
-        assert!(!GRAPH_CONNECTION_SELECT.contains("LIMIT 101"));
+        assert!(GRAPH_CONNECTION_SELECT.contains("ORDER BY edge.connection_edge_id DESC"));
+        assert!(GRAPH_CONNECTION_SELECT.contains("$4::text IS NULL OR edge.connection_type=$4"));
+        assert!(GRAPH_CONNECTION_SELECT.contains("$5::double precision IS NULL"));
+        assert!(GRAPH_CONNECTION_SELECT.contains("$6::double precision IS NULL"));
+        assert!(GRAPH_CONNECTION_SELECT.contains("$7::text[] IS NULL"));
+        assert!(GRAPH_CONNECTION_SELECT.contains("$9::text IS NULL"));
         let graph_source = include_str!("../src/graph_public.rs");
         assert!(graph_source.contains("SET LOCAL jit=off"));
         assert!(graph_source.contains(".read_only(true)"));
@@ -683,6 +745,28 @@ mod tests {
         assert!(evidence_migration.contains("b.suppression_generation=suppression.generation"));
         let api_entity_query = include_str!("../src/graph_public.rs");
         assert!(api_entity_query.contains("SELECT DISTINCT ON (release_id,organization_id)"));
+    }
+
+    #[test]
+    fn candidate_refill_skips_ineligible_batches_and_preserves_keyset_pages() {
+        let ids: Vec<Uuid> = (1..=130).map(Uuid::from_u128).rev().collect();
+        let first_batch = &ids[..GRAPH_CANDIDATE_BATCH_SIZE as usize];
+        assert_eq!(candidate_batch_cursor(first_batch), Some(ids[127]));
+        assert!(needs_candidate_refill(0, 3, first_batch.len()));
+        let second_batch = &ids[128..];
+        assert_eq!(candidate_batch_cursor(second_batch), Some(ids[129]));
+        assert!(!needs_candidate_refill(3, 3, second_batch.len()));
+
+        let mut first_page = vec![json!({"connection_edge_id": ids[0]}), json!({"connection_edge_id": ids[1]})];
+        let next = page_cursor(&mut first_page, 1, |row| row.get("connection_edge_id").cloned());
+        assert_eq!(first_page.len(), 1);
+        assert_eq!(next, Some(json!(ids[0])));
+        let mut second_page = vec![json!({"connection_edge_id": ids[1]}), json!({"connection_edge_id": ids[2]})];
+        let exhausted = page_cursor(&mut second_page, 2, |row| row.get("connection_edge_id").cloned());
+        assert_eq!(second_page.len(), 2);
+        assert_eq!(exhausted, None);
+        assert_ne!(first_page[0]["connection_edge_id"], second_page[0]["connection_edge_id"]);
+        assert!(!needs_candidate_refill(3, 3, 1));
     }
 
     #[test]
