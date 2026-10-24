@@ -26,7 +26,7 @@ describe('public record connections', () => {
     expect(component).toContain('Method and evidence');
     expect(component).toContain('edge.provenance.source_ids');
     expect(component).toContain('Object.keys(edge.signals)');
-    expect(component).toContain('edge.disclaimer');
+    expect(component).not.toContain('edge.disclaimer');
     expect(component).toContain('No connections in this release.');
   });
 
