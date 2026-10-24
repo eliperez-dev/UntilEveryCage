@@ -121,12 +121,32 @@ export const graphEvidenceReferencesEnvelopeSchema = z.object({
   meta: pageMeta,
 }).strict();
 
-export const aphisReportLinksEnvelopeSchema = z.object({
-  api_version: z.literal('v2'),
-  data: z.array(graphEvidenceReferenceBaseSchema.extend({
+export const aphisReportLinkSchema = z.discriminatedUnion('evidence_type', [
+  z.object({
+    reference_id: uuid,
+    source_id: z.literal('us.aphis.annual-reports'),
+    evidence_type: z.literal('annual_reports'),
+    event_date: z.null(),
+    event_period: z.string().regex(/^\d{4}$/),
+    source_url: z.literal('https://direct.aphis.usda.gov/awa/research-facility-report/annual-summary'),
     report_url: aphisDocumentUrl,
     column_e_url: aphisDocumentUrl,
-  }).strict().superRefine((reference, ctx) => validateEvidenceReference(reference, ctx))),
+  }).strict(),
+  z.object({
+    reference_id: uuid,
+    source_id: z.literal('us.inspections'),
+    evidence_type: z.literal('inspections'),
+    event_date: z.string().date(),
+    event_period: z.null(),
+    source_url: z.literal('https://direct.aphis.usda.gov/awa/search/inspection-reports'),
+    report_url: aphisDocumentUrl,
+    column_e_url: z.null(),
+  }).strict(),
+]);
+
+export const aphisReportLinksEnvelopeSchema = z.object({
+  api_version: z.literal('v2'),
+  data: z.array(aphisReportLinkSchema),
   meta: z.object({
     profile,
     release_id: z.string().min(1),

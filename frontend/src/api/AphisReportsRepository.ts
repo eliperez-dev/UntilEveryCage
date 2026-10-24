@@ -30,7 +30,7 @@ export class AphisReportsRepository {
   ): Promise<AphisReportPage> {
     const params = new URLSearchParams({ profile, release_id: releaseId, kind, limit: String(limit) });
     if (cursor) params.set('cursor', cursor);
-    const response = await this.fetcher(`/api/v2/locations/${encodeURIComponent(facilityId)}/aphis-report-links?${params}`, {
+    const response = await this.fetcher.call(globalThis, `/api/v2/locations/${encodeURIComponent(facilityId)}/aphis-report-links?${params}`, {
       cache: 'no-store', ...(signal ? { signal } : {}),
     });
     if (!response.ok) throw new Error('APHIS report references are unavailable.');

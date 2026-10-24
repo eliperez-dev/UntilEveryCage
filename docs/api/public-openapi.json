@@ -1864,24 +1864,22 @@
         "oneOf": [
           {
             "type": "object",
-            "required": ["reference_id", "source_id", "evidence_type", "event_date", "event_period", "observed_at", "source_url", "match_method", "report_url", "column_e_url"],
+            "required": ["reference_id", "source_id", "evidence_type", "event_date", "event_period", "source_url", "report_url", "column_e_url"],
             "properties": {
               "reference_id": { "type": "string", "format": "uuid" }, "source_id": { "const": "us.aphis.annual-reports" },
               "evidence_type": { "const": "annual_reports" }, "event_date": { "type": "null" }, "event_period": { "type": "string", "pattern": "^[0-9]{4}$" },
-              "observed_at": { "type": "string", "format": "date-time" }, "source_url": { "const": "https://direct.aphis.usda.gov/awa/research-facility-report/annual-summary" },
-              "match_method": { "const": "exact_source_identifier" },
+              "source_url": { "const": "https://direct.aphis.usda.gov/awa/research-facility-report/annual-summary" },
               "report_url": { "type": ["string", "null"], "format": "uri", "description": "HTTPS URL on a named APHIS host and approved report/download path, including the strict APHIS Salesforce distribution URL shape." },
               "column_e_url": { "type": ["string", "null"], "format": "uri", "description": "HTTPS URL on a named APHIS host and approved report/download path, including the strict APHIS Salesforce distribution URL shape." }
             }, "additionalProperties": false
           },
           {
             "type": "object",
-            "required": ["reference_id", "source_id", "evidence_type", "event_date", "event_period", "observed_at", "source_url", "match_method", "report_url", "column_e_url"],
+            "required": ["reference_id", "source_id", "evidence_type", "event_date", "event_period", "source_url", "report_url", "column_e_url"],
             "properties": {
               "reference_id": { "type": "string", "format": "uuid" }, "source_id": { "const": "us.inspections" },
               "evidence_type": { "const": "inspections" }, "event_date": { "type": "string", "format": "date" }, "event_period": { "type": "null" },
-              "observed_at": { "type": "string", "format": "date-time" }, "source_url": { "const": "https://direct.aphis.usda.gov/awa/search/inspection-reports" },
-              "match_method": { "const": "exact_source_identifier" },
+              "source_url": { "const": "https://direct.aphis.usda.gov/awa/search/inspection-reports" },
               "report_url": { "type": ["string", "null"], "format": "uri", "description": "HTTPS URL on a named APHIS host and approved report/download path, including the strict APHIS Salesforce distribution URL shape." },
               "column_e_url": { "type": "null" }
             }, "additionalProperties": false

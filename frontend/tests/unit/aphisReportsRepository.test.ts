@@ -3,8 +3,8 @@ import { AphisReportsRepository, isAphisRelevant } from '../../src/api/AphisRepo
 
 const annual = {
   reference_id: '550e8400-e29b-41d4-a716-446655440001', source_id: 'us.aphis.annual-reports',
-  evidence_type: 'annual_reports', event_date: null, event_period: '2025', observed_at: '2026-01-01T00:00:00Z',
-  source_url: 'https://direct.aphis.usda.gov/awa/research-facility-report/annual-summary', match_method: 'exact_source_identifier',
+  evidence_type: 'annual_reports', event_date: null, event_period: '2025',
+  source_url: 'https://direct.aphis.usda.gov/awa/research-facility-report/annual-summary',
   report_url: 'https://aphis.my.site.com/PublicSearchTool/s/annual-report?id=public-report', column_e_url: null,
 };
 const inspection = {
@@ -28,6 +28,27 @@ describe('APHIS report link repository', () => {
       data: [annual], releaseId: 'release-1', nextCursor: null,
     });
     expect(String(fetcher.mock.calls[0]?.[0])).toContain('/api/v2/locations/' + entity + '/aphis-report-links?profile=official&release_id=release-1&kind=annual_reports&limit=20');
+    expect(Object.keys(annual).sort()).toEqual([
+      'column_e_url', 'event_date', 'event_period', 'evidence_type', 'reference_id', 'report_url', 'source_id', 'source_url',
+    ]);
+  });
+
+  it('rejects unreturned graph-evidence metadata and unknown fields', async () => {
+    const withUnreturnedMetadata = {
+      ...annual, observed_at: '2026-01-01T00:00:00Z', match_method: 'exact_source_identifier',
+    };
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(envelope([withUnreturnedMetadata])), { status: 200 }));
+    await expect(new AphisReportsRepository(fetcher).page(entity, 'official', 'annual_reports', 'release-1'))
+      .rejects.toThrow('APHIS report response did not match the selected release');
+  });
+
+  it('invokes fetch with the global receiver required by native browser fetch', async () => {
+    const fetcher = vi.fn(function (this: typeof globalThis) {
+      expect(this).toBe(globalThis);
+      return Promise.resolve(new Response(JSON.stringify(envelope([annual])), { status: 200 }));
+    });
+    await new AphisReportsRepository(fetcher as unknown as typeof fetch).page(entity, 'official', 'annual_reports', 'release-1');
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
   it('preserves an empty filtered page cursor for continuation', async () => {

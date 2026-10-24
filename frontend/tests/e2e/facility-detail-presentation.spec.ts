@@ -49,8 +49,8 @@ async function mockPublicRecord(page: Page, overrides: Record<string, unknown> =
       const kind = new URL(route.request().url()).searchParams.get('kind');
       body = { api_version: 'v2', data: kind === 'annual_reports' ? [{
         reference_id: '550e8400-e29b-41d4-a716-446655440001', source_id: 'us.aphis.annual-reports', evidence_type: 'annual_reports',
-        event_date: null, event_period: '2025', observed_at: observed,
-        source_url: 'https://direct.aphis.usda.gov/awa/research-facility-report/annual-summary', match_method: 'exact_source_identifier',
+        event_date: null, event_period: '2025',
+        source_url: 'https://direct.aphis.usda.gov/awa/research-facility-report/annual-summary',
         report_url: 'https://direct.aphis.usda.gov/awa/research-facility-report/annual-summary', column_e_url: null,
       }] : [], meta: { profile: 'official', release_id: release, ruleset_version: 'synthetic-rules', kind, limit: 20, next_cursor: null, public_projection: true } };
     }
