@@ -1484,16 +1484,11 @@
   aria-label="Map showing records"
 >
   <div class="map-host" bind:this={host}></div>
-  <div class="map-controls">
-    <label class="map-style-picker">Map style<select aria-label="Map style" value={mapState.basemap} disabled={!nativeStyleReady} onchange={(event) => onbasemap(event.currentTarget.value as Basemap)}><option value="vector">Street</option><option value="satellite">Satellite</option></select></label>
-    <div class="view-picker" role="group" aria-label="View">
-      <span>View</span>
-      <div class="view-options">
-        <button type="button" disabled={!nativeStyleReady} aria-pressed={cameraPitch <= 0.5} onclick={() => setCameraView(false)}>2D</button>
-        <button type="button" disabled={!nativeStyleReady} aria-pressed={cameraPitch > 0.5} onclick={() => setCameraView(true)}>3D</button>
-      </div>
-    </div>
-    <small class="tilt-hint"><span>Right-drag to tilt and rotate</span><span>Two-finger tilt</span></small>
+  <div class="map-controls" role="group" aria-label="Map view">
+    <span class="map-controls-label">Map view</span>
+    <select aria-label="Map style" value={mapState.basemap} disabled={!nativeStyleReady} onchange={(event) => onbasemap(event.currentTarget.value as Basemap)}><option value="vector">Street</option><option value="satellite">Satellite</option></select>
+    <button class="map-camera-toggle" type="button" disabled={!nativeStyleReady} aria-label={cameraPitch > 0.5 ? 'Switch to 2D view' : 'Switch to 3D view'} aria-pressed={cameraPitch > 0.5} aria-describedby="map-camera-help" title="Right-drag to tilt and rotate" onclick={() => setCameraView(cameraPitch <= 0.5)}>{cameraPitch > 0.5 ? '3D' : '2D'}</button>
+    <span id="map-camera-help" class="sr-only">Right-drag to tilt and rotate. On touchscreens, use two fingers to tilt.</span>
   </div>
   {#if terrainError}<small class="map-status terrain-status" role="alert">{terrainError}</small>{/if}
   {#if basemapSwitching && pendingBasemap}<small
@@ -1764,16 +1759,14 @@
     position: absolute;
     inset: 0;
   }
-  .map-controls { position:absolute; z-index:4; top:.65rem; right:.65rem; display:grid; gap:.35rem; min-width:12rem; padding:.4rem .48rem; border:1px solid #48504b; background:#171a18ed; color:#aab0aa; font:.65rem system-ui; }
-  .map-style-picker, .view-picker { display:grid; grid-template-columns:1fr auto; align-items:center; gap:.45rem; }
-  .map-style-picker select { min-width:6.4rem; min-height:2rem; padding:0 .35rem; border:1px solid #69716a; color:#f1efe8; background:#202421; font:inherit; }
-  .view-options { display:flex; gap:.2rem; }
-  .view-options button { min-width:2.7rem; min-height:2rem; border:1px solid #69716a; color:#f1efe8; background:#202421; cursor:pointer; font:600 .7rem system-ui; }
-  .view-options button[aria-pressed="true"] { border-color:#d8c99b; background:#33352d; color:#f5e8bf; }
+  .map-controls { position:absolute; z-index:4; top:.65rem; right:.65rem; display:flex; align-items:center; gap:.35rem; padding:.32rem .42rem; border:1px solid #48504b; background:#171a18ed; color:#aab0aa; font:.65rem system-ui; }
+  .map-controls-label { white-space:nowrap; }
+  .map-controls select { min-width:6.2rem; min-height:1.9rem; padding:0 .35rem; border:1px solid #69716a; color:#f1efe8; background:#202421; font:inherit; }
+  .map-camera-toggle { min-width:2.45rem; min-height:1.9rem; border:1px solid #69716a; color:#f1efe8; background:#202421; cursor:pointer; font:600 .7rem system-ui; }
+  .map-camera-toggle[aria-pressed="true"] { border-color:#d8c99b; background:#33352d; color:#f5e8bf; }
   .map-controls :is(button, select):focus-visible { outline:2px solid #f1efe8; outline-offset:2px; }
-  .view-options button:disabled, .map-style-picker select:disabled { opacity:.58; cursor:default; }
-  .tilt-hint { display:block; color:#aab0aa; font-size:.58rem; }
-  .tilt-hint span:last-child { display:none; }
+  .map-camera-toggle:disabled, .map-controls select:disabled { opacity:.58; cursor:default; }
+  .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
   .terrain-status { top:6.8rem; left:.65rem; transform:none; }
   .feature-list-toggle,
   .diagnostics-toggle {
@@ -1936,9 +1929,9 @@
   .map-surface :global(.maplibregl-ctrl-attrib a) { color: #c1d4cf; }
   .map-surface :global(.maplibregl-ctrl-attrib-button) { filter: invert(1); }
   @media (max-width: 40rem) {
-    .map-controls { top:.45rem; right:.4rem; min-width:11rem; }
-    .tilt-hint span:first-child { display:none; }
-    .tilt-hint span:last-child { display:inline; }
+    .map-controls { top:.45rem; right:.4rem; gap:.25rem; padding:.28rem .32rem; font-size:.6rem; }
+    .map-controls select { min-width:5.3rem; }
+    .map-camera-toggle { min-width:2.25rem; }
     .map-surface :global(.precision-legend) { bottom: 9.4rem; width: auto; max-width: min(15rem, calc(100vw - 1.3rem)); }
     .map-surface :global(.precision-legend.expanded) { top: 3.5rem; bottom: auto; width: min(15rem, calc(100vw - 1.3rem)); }
     .map-surface :global(.maplibregl-ctrl-bottom-right) { right: 0.4rem; bottom: 0.4rem; left: auto; }

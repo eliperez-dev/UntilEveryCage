@@ -20,11 +20,11 @@ test('camera tilt, compass reset, and URL state preserve the map view', async ({
   await page.route('**/World_Imagery/**', route => route.fulfill({ status: 200, contentType: 'image/png', body: pixel }));
   await page.goto('./#/map?f1a=field&scenario=dense&lat=38&lon=-96&z=4&pitch=31&bearing=24');
   const map = page.getByLabel('Map showing records');
-  const view = map.getByRole('group', { name: 'View' });
-  const view2d = view.getByRole('button', { name: '2D', exact: true });
-  const view3d = view.getByRole('button', { name: '3D', exact: true });
-  await expect(view3d).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByText('Right-drag to tilt and rotate')).toBeVisible();
+  const viewToggle = map.locator('.map-camera-toggle');
+  await expect(map.getByRole('group', { name: 'Map view' })).toBeVisible();
+  await expect(viewToggle).toHaveText('3D');
+  await expect(viewToggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(viewToggle).toHaveAttribute('title', 'Right-drag to tilt and rotate');
   await page.screenshot({ path: testInfo.outputPath('map-controls-desktop.png') });
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getPitch())).toBe(31);
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getBearing())).toBe(24);
@@ -36,12 +36,14 @@ test('camera tilt, compass reset, and URL state preserve the map view', async ({
   expect(mapHrefParams.get('pitch')).toBe('31');
   expect(mapHrefParams.get('bearing')).toBe('24');
 
-  await view2d.click();
-  await expect(view2d).toHaveAttribute('aria-pressed', 'true');
+  await viewToggle.click();
+  await expect(viewToggle).toHaveText('2D');
+  await expect(viewToggle).toHaveAttribute('aria-pressed', 'false');
   await expect.poll(() => new URL(page.url()).hash).not.toMatch(/pitch=/);
   await expect.poll(() => new URL(page.url()).hash).toContain('bearing=24');
-  await view3d.click();
-  await expect(view3d).toHaveAttribute('aria-pressed', 'true');
+  await viewToggle.click();
+  await expect(viewToggle).toHaveText('3D');
+  await expect(viewToggle).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(() => new URL(page.url()).hash).toContain('pitch=45');
   await expect.poll(() => new URL(page.url()).hash).toContain('bearing=24');
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getPitch())).toBe(45);
@@ -81,24 +83,39 @@ test('camera tilt, compass reset, and URL state preserve the map view', async ({
 test('flat camera URLs stay compact and the camera control remains usable on touch layouts', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('./#/map?f1a=field&scenario=dense');
-  const view = page.getByRole('group', { name: 'View' });
-  const view2d = view.getByRole('button', { name: '2D', exact: true });
-  const view3d = view.getByRole('button', { name: '3D', exact: true });
-  await expect(view2d).toBeVisible();
-  await expect(view2d).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByText('Two-finger tilt')).toBeVisible();
-  await expect(page.getByText('Right-drag to tilt and rotate')).toBeHidden();
+  const viewToggle = page.locator('.map-camera-toggle');
+  await expect(page.getByRole('group', { name: 'Map view' })).toBeVisible();
+  await expect(viewToggle).toBeVisible();
+  await expect(viewToggle).toHaveText('2D');
+  await expect(viewToggle).toHaveAttribute('aria-pressed', 'false');
+  await expect(viewToggle).toHaveAttribute('aria-describedby', 'map-camera-help');
   await page.screenshot({ path: testInfo.outputPath('map-controls-mobile.png') });
-  await view3d.click();
-  await expect(view3d).toHaveAttribute('aria-pressed', 'true');
+  await viewToggle.click();
+  await expect(viewToggle).toHaveText('3D');
+  await expect(viewToggle).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(() => new URL(page.url()).hash).toContain('pitch=45');
 });
 
-test('right-drag rotates and tilts the map in 3D view', async ({ page }) => {
+test('compact map view control toggles 3D and right-drag rotates the map', async ({ page }, testInfo) => {
   await page.goto('./#/map?f1a=field&scenario=dense&lat=38&lon=-96&z=4');
-  const view = page.getByRole('group', { name: 'View' });
-  await view.getByRole('button', { name: '3D', exact: true }).click();
-  await expect(page.getByText('Right-drag to tilt and rotate')).toBeVisible();
+  const controls = page.getByRole('group', { name: 'Map view' });
+  const viewToggle = controls.locator('.map-camera-toggle');
+  const styleSelect = controls.getByLabel('Map style');
+  await expect(styleSelect.locator('option')).toHaveText(['Street', 'Satellite']);
+  await expect(viewToggle).toHaveText('2D');
+  await expect(controls.locator('#map-camera-help')).toHaveClass(/sr-only/);
+  const rowTops = await Promise.all([
+    controls.getByText('Map view', { exact: true }).boundingBox(),
+    styleSelect.boundingBox(),
+    viewToggle.boundingBox(),
+  ]);
+  expect(rowTops.every(Boolean)).toBe(true);
+  const rowCenters = rowTops.map(box => box!.y + box!.height / 2);
+  expect(Math.max(...rowCenters) - Math.min(...rowCenters)).toBeLessThan(2);
+  await viewToggle.click();
+  await expect(viewToggle).toHaveText('3D');
+  await expect(viewToggle).toHaveAttribute('title', 'Right-drag to tilt and rotate');
+  await page.screenshot({ path: testInfo.outputPath('map-controls-desktop.png') });
   const before = await page.evaluate(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
     return { pitch: map.getPitch(), bearing: map.getBearing() };
@@ -114,6 +131,21 @@ test('right-drag rotates and tilts the map in 3D view', async ({ page }) => {
     return Math.abs(map.getPitch() - initial.pitch) > 1 && Math.abs(map.getBearing() - initial.bearing) > 1;
   }, before)).toBe(true);
   await expect.poll(() => new URL(page.url()).hash).toMatch(/pitch=[^&]+.*bearing=[^&]+/);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(controls).toBeVisible();
+  await expect(viewToggle).toBeVisible();
+  const mobileRowTops = await Promise.all([
+    controls.getByText('Map view', { exact: true }).boundingBox(),
+    styleSelect.boundingBox(),
+    viewToggle.boundingBox(),
+  ]);
+  expect(mobileRowTops.every(Boolean)).toBe(true);
+  const mobileRowCenters = mobileRowTops.map(box => box!.y + box!.height / 2);
+  expect(Math.max(...mobileRowCenters) - Math.min(...mobileRowCenters)).toBeLessThan(2);
+  await expect(controls.locator('#map-camera-help')).toHaveClass(/sr-only/);
+  await expect(viewToggle).toHaveAttribute('aria-describedby', 'map-camera-help');
+  await page.screenshot({ path: testInfo.outputPath('map-controls-mobile.png') });
 });
 
 test('cold shared 3D URLs restore terrain after a style reload and browser Back', async ({ page }) => {
@@ -176,7 +208,7 @@ test('flat maps do not request elevation and a DEM failure returns to a flat map
     return map?.isStyleLoaded() && map.getLayer('clusters');
   });
   expect(demRequests).toBe(0);
-  await page.getByRole('group', { name: 'View' }).getByRole('button', { name: '3D', exact: true }).click();
+  await page.locator('.map-camera-toggle').click();
   await expect(page.getByRole('alert')).toContainText(/Terrain (tiles are unavailable|could not be loaded)/);
   await expect.poll(() => page.evaluate(() => {
     const map = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
