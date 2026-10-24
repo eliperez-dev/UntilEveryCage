@@ -89,10 +89,25 @@ experiments were rolled back. Migration 087 then replaced global connection
 eligibility joins with equivalent keyed lookups: the runtime-role rollback
 trial returned 101 rows in 1.86/1.79 seconds with matching DTOs, map parity and
 revocation checks. It is canonically applied to the source test copy and selected
-serving target, with unchanged data and generation fingerprints. Final package
-verification, full connection pagination, representative entity/evidence pages,
-historical-release checks and hosted acceptance remain pending. No graph change
-from this sprint is live; the existing Render database remains unchanged.
+serving target, with unchanged data and generation fingerprints. The final
+package passed verification and the local API returned all 24,022 connections
+over 241 pages without duplicate or cursor errors (456 seconds). Representative
+entity and APHIS evidence checks passed. Historical routes preserve the original
+63,601-record / 48,756-map baseline while applying 180 current restrictions,
+leaving 63,421 searchable records and 48,576 map locations.
+
+**Deployment is held for a confirmed endpoint-binding defect.** The active
+projection contains only Italian endpoints. Other sources' matcher candidates
+use generic `establishment_id` types, while their persisted facility identifiers
+use source-specific types. Exact identifier values match, but the strict typed
+join excludes them. The repair normalizes these types at the persistence
+boundary using the existing source registry, appends corrected edges without
+changing historical payloads, and retains all support/release/restriction gates.
+Shared-name links remain inferred name sharing, not ownership. A corrected
+projection, package and API acceptance are required before Render cutover.
+No graph change from this sprint is live; the existing Render database remains
+unchanged. Entity pages still take about 4.3 seconds; connection pages take
+about 1.9 seconds per 100 rows.
 
 The previously recorded local standard gate passed: 137 Rust library tests, 24 Rust
 binary tests, 675 pipeline tests (39 optional skips), 90 graph unit tests
@@ -101,8 +116,9 @@ lifecycle regression passed in the full CI E2E gate at `2821da14`; the earlier
 guard-disabled local invocation did not exercise it. All seven CI jobs passed
 at `c1b1bc36`, including migration 086 and the non-null/export-grant fixes.
 The rights-closure integration at `26f3bc9d` also passed all seven CI jobs.
-Migration 087 passed eleven focused migration contracts and requires final
-integrated CI. Earlier frontend checks passed
+Migration 087 passed eleven focused migration contracts; all seven integrated
+CI jobs passed at `e077c3c7`. The endpoint-binding repair requires its own CI.
+Earlier frontend checks passed
 257 tests, type checks and 37 static tests; this change does not alter the UI.
 The prior 066 checksum concern was diagnosed as line-ending representation:
 the clone's stored hash matches current checkout bytes and the migration
