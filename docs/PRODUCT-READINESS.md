@@ -24,6 +24,21 @@ publishable facilities unless explicitly labelled that way.
 
 ## Current launch decision (2026-10-24)
 
+**Verified graph and terrain rollout:** Render acceptance passed at revision
+`6e02a476` after [all seven CI jobs passed](https://github.com/eliperez-dev/UntilEveryCage/actions/runs/40141519697).
+Native 2D/3D terrain and the location-first facility layout are implemented. The
+corrected primary-name graph has 60,263 public connections: 23,874 exact and
+36,389 inferred, including 1,420 cross-source edges across fourteen endpoint
+sources. The known FSIS case now returns 38 distinct shared-name neighbors in
+the live API. Membership and historical release identities are unchanged.
+Global graph paging now selects bounded candidate keys and rechecks live
+eligibility before returning each connection. Entity/source filters are applied
+at both stages; cursor refill does not impose a hidden result cutoff. The actual
+Render API passed 17 bounded checks at both 20- and 100-edge page sizes,
+including current/historical manifest, map, list and detail, cache validation,
+pagination without duplicate edges, the 38-peer case and private-route exclusion.
+This is bounded acceptance, not a full crawl of all 60,263 public connections.
+
 **Record pages and contributions:** facility details retain distinct activities
 and native classifications without repeating the same terms. Lifecycle and
 internal taxonomy labels are omitted from presentation; source data is unchanged.
@@ -34,7 +49,7 @@ map. The bundled worker and pin artwork are shared with
 the main map. Mobile map details fill the viewport and retain the release-pinned
 "Open facility page" link. Public DTOs have locality, not a street address.
 
-The main map has independent Street/Satellite and 2D/3D controls. Requested 3D
+The main map groups Street/Satellite and 2D/3D in a compact map-view control. Requested 3D
 uses native MapLibre terrain at true-scale elevation, with lazy Mapterhorn
 tiles and a flat fallback on elevation failure. The native compass resets
 north and flattens the camera without changing its centre or zoom. Optional
@@ -42,6 +57,17 @@ pitch/bearing survive shared URLs and navigation; flat defaults keep compact
 URLs and make no elevation requests. Local public-data checks verified a
 facility PNG selection and cluster expansion while tilted. Camera regressions
 cover cold tilted URLs, style replacement, Back, mobile controls and failure.
+Desktop guidance uses right-drag to tilt and rotate; left-drag pans.
+
+The selected serving package is restored into
+`uec_serving_graph_s2_keys_20261024`; previous serving, source, frozen and
+community databases are unchanged. TLS, restriction replay, schema integrity
+and read-only runtime grants passed. The clone's inherited migration 066 ledger
+checksum is identical to the prior verified package but differs from the current
+checkout; the standard replay command remains blocked on that old discrepancy.
+No existing ledger row was changed and no successful replay is claimed. Final
+frontend-only deployment identity, UI checks and owned-resource cleanup are
+recorded in ignored `data/staging/sprint2-20261024/hosted-acceptance.json`.
 
 Release selection/history now live in Tools; public links omit fixture scenario
 parameters. Production-safe display controls work without enabling development
@@ -54,14 +80,14 @@ matches actual document links to references already eligible in the selected
 release, with current restrictions checked before serving cached links. Real
 annual and inspection PDF responses were verified, including an annual Column E
 attachment. This does not add report years, publish upstream counts, or rebuild
-the graph. The known FSIS matching gap below is unchanged. Exact/approximate/
+the graph. The FSIS matching gap is repaired as described above. Exact/approximate/
 unmapped cases and mobile/desktop interactions use real released data, with
 synthetic regressions retained for failure cases. Exact deployed revision, CI,
 hosted submission checks and cleanup are recorded in ignored
 `data/staging/sprint1-20261024/hosted-acceptance.json`; this feature list is not
 a substitute for that rollout evidence.
 
-**Whole-dataset graph rollout checkpoint:** application revision
+**Previous whole-dataset graph rollout checkpoint (before primary-name repair):** application revision
 `0446083a59e7447bfacf6c4cf80f0960c8bb81c8`, deployment
 `dep-dbe9sm9srm7s73bef2ng`, serves the approved `release-2026-10-18` dataset
 from the new isolated `uec_serving_graph_20261023` database.
@@ -131,12 +157,14 @@ separate. This graph update does not complete those tasks. Measured new-cloud
 100-row entity pages still took 3.7–3.8 seconds and connection pages 1.9–2.3
 seconds; no instant-loading claim is made.
 
-**Known matching gap:** a bounded FSIS case has matching primary display names
-but different alternate names and no typed source-name assertion for the
-release records. Its zero-edge neighborhood is not an endpoint or UI error.
-The retained handoff's primary name needs source-lineage verification and
-alignment with the shared assertion mapping before a separate tested graph
-rebuild. The case and next action are tracked in `source-status.json`.
+**Primary-name repair:** the retained FSIS bridge's `facility_display_name`
+was verified as the adapter's canonical source name. The shared mapping and
+replay now preserve that typed business-name evidence. All ten full-corpus
+checks and four real controls passed; the repeat projection was idempotent.
+The repaired case has 38 incoming/outgoing shared-name edges and 38 unique
+peers. An earlier three-edge count omitted incoming edges; it is superseded
+by the reconciled API and projection count. Source readiness and the remaining
+global-query gate are tracked in `source-status.json`.
 
 **Earlier hosted search/pin repair:** revision `c3a0a350` introduced the repair
 retained by the current deployment, with all
