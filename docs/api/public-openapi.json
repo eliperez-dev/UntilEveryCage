@@ -199,6 +199,30 @@
         }
       }
     },
+    "/api/v2/locations/{facility_id}/aphis-report-links": {
+      "get": {
+        "operationId": "getAphisReportLinks",
+        "summary": "Resolve report links for existing approved APHIS references",
+        "description": "Requires a facility UUID and selected public release. The server derives the APHIS identifier from that release's public detail and calls APHIS only when a matching annual-report or inspection reference already passes current release, facility, privacy, rights, approval, and suppression gates. Results are matched by the already released year/date. Only allowlisted APHIS report and Column E URLs plus those released year/date fields are returned; no counts, exception assertions, raw response fields, report contents, or source identifiers are returned. Responses are no-store; bounded server cache entries are consulted only after current eligibility is rechecked.",
+        "tags": ["Locations"],
+        "parameters": [
+          { "$ref": "#/components/parameters/facility_idPath" },
+          { "$ref": "#/components/parameters/profile" },
+          { "$ref": "#/components/parameters/release_id" },
+          { "name": "kind", "in": "query", "required": true, "schema": { "type": "string", "enum": ["annual_reports", "inspections"] } },
+          { "name": "cursor", "in": "query", "required": false, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 } }
+        ],
+        "responses": {
+          "200": { "description": "Release-qualified report links. Direct document URLs may be absent; the existing APHIS source page remains available from evidence references.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AphisReportLinks" } } }, "headers": { "Cache-Control": { "schema": { "type": "string", "const": "no-store" } } } },
+          "400": { "$ref": "#/components/responses/Invalid" },
+          "404": { "description": "Facility, release, or qualifying APHIS references unavailable.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "429": { "$ref": "#/components/responses/Limited" },
+          "502": { "description": "APHIS source is temporarily unavailable.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "503": { "$ref": "#/components/responses/Unavailable" }
+        }
+      }
+    },
     "/api/v2/locations.csv": {
       "get": {
         "operationId": "downloadLocationsCsv",
@@ -1816,6 +1840,51 @@
               "match_method": { "const": "exact_source_identifier" }
             },
             "additionalProperties": false
+          }
+        ]
+      },
+      "AphisReportLinks": {
+        "type": "object",
+        "required": ["api_version", "data", "meta"],
+        "properties": {
+          "api_version": { "const": "v2" },
+          "data": { "type": "array", "items": { "$ref": "#/components/schemas/AphisReportLink" } },
+          "meta": { "type": "object", "required": ["release_id", "ruleset_version", "profile", "kind", "limit", "next_cursor", "public_projection"], "properties": {
+            "release_id": { "type": "string" }, "ruleset_version": { "type": "string" },
+            "profile": { "type": "string", "enum": ["official", "secondary", "community"] },
+            "kind": { "type": "string", "enum": ["annual_reports", "inspections"] },
+            "limit": { "type": "integer", "minimum": 1, "maximum": 100 },
+            "next_cursor": { "type": ["string", "null"], "format": "uuid" },
+            "public_projection": { "const": true }
+          }, "additionalProperties": false }
+        },
+        "additionalProperties": false
+      },
+      "AphisReportLink": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["reference_id", "source_id", "evidence_type", "event_date", "event_period", "observed_at", "source_url", "match_method", "report_url", "column_e_url"],
+            "properties": {
+              "reference_id": { "type": "string", "format": "uuid" }, "source_id": { "const": "us.aphis.annual-reports" },
+              "evidence_type": { "const": "annual_reports" }, "event_date": { "type": "null" }, "event_period": { "type": "string", "pattern": "^[0-9]{4}$" },
+              "observed_at": { "type": "string", "format": "date-time" }, "source_url": { "const": "https://direct.aphis.usda.gov/awa/research-facility-report/annual-summary" },
+              "match_method": { "const": "exact_source_identifier" },
+              "report_url": { "type": ["string", "null"], "format": "uri", "description": "HTTPS URL on an allowlisted APHIS domain." },
+              "column_e_url": { "type": ["string", "null"], "format": "uri", "description": "HTTPS URL on an allowlisted APHIS domain." }
+            }, "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": ["reference_id", "source_id", "evidence_type", "event_date", "event_period", "observed_at", "source_url", "match_method", "report_url", "column_e_url"],
+            "properties": {
+              "reference_id": { "type": "string", "format": "uuid" }, "source_id": { "const": "us.inspections" },
+              "evidence_type": { "const": "inspections" }, "event_date": { "type": "string", "format": "date" }, "event_period": { "type": "null" },
+              "observed_at": { "type": "string", "format": "date-time" }, "source_url": { "const": "https://direct.aphis.usda.gov/awa/search/inspection-reports" },
+              "match_method": { "const": "exact_source_identifier" },
+              "report_url": { "type": ["string", "null"], "format": "uri", "description": "HTTPS URL on an allowlisted APHIS domain." },
+              "column_e_url": { "type": "null" }
+            }, "additionalProperties": false
           }
         ]
       }

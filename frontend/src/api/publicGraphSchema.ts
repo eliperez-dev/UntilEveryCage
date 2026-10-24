@@ -3,6 +3,15 @@ import { z } from 'zod';
 const uuid = z.string().uuid();
 const confidenceBand = z.enum(['exact', 'high', 'medium', 'low']);
 const profile = z.enum(['official', 'secondary', 'community']);
+const aphisDocumentUrl = z.string().url().refine(value => {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:'
+      && ['aphis.my.site.com', 'direct.aphis.usda.gov', 'www.aphis.usda.gov', 'efile.aphis.usda.gov'].includes(url.hostname)
+      && ['/PublicSearchTool/', '/awa/', '/sites/', '/efile/'].some(prefix => url.pathname.startsWith(prefix))
+      && !url.username && !url.password && !url.port;
+  } catch { return false; }
+}).nullable();
 
 export const graphEndpointSchema = z.object({
   entity_id: uuid.nullable(),
@@ -45,7 +54,7 @@ export const graphEntitySchema = z.object({
   country_code: z.string().regex(/^[A-Z]{2}$/).nullable(),
 }).strict();
 
-export const graphEvidenceReferenceSchema = z.object({
+const graphEvidenceReferenceBaseSchema = z.object({
   reference_id: uuid,
   source_id: z.enum(['us.aphis.annual-reports', 'us.inspections']),
   evidence_type: z.enum(['annual_reports', 'inspections']),
@@ -57,7 +66,9 @@ export const graphEvidenceReferenceSchema = z.object({
     'https://direct.aphis.usda.gov/awa/search/inspection-reports',
   ]),
   match_method: z.literal('exact_source_identifier'),
-}).strict().superRefine((reference, ctx) => {
+}).strict();
+
+function validateEvidenceReference(reference: z.infer<typeof graphEvidenceReferenceBaseSchema>, ctx: z.RefinementCtx) {
   const annual = reference.evidence_type === 'annual_reports'
     && reference.source_id === 'us.aphis.annual-reports'
     && reference.event_date === null && reference.event_period !== null
@@ -67,7 +78,9 @@ export const graphEvidenceReferenceSchema = z.object({
     && reference.event_date !== null && reference.event_period === null
     && reference.source_url.endsWith('/inspection-reports');
   if (!annual && !inspection) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'APHIS reference fields must describe one supported event type.' });
-});
+}
+
+export const graphEvidenceReferenceSchema = graphEvidenceReferenceBaseSchema.superRefine(validateEvidenceReference);
 
 const pageMeta = z.object({
   profile,
@@ -97,9 +110,33 @@ export const graphEvidenceReferencesEnvelopeSchema = z.object({
   meta: pageMeta,
 }).strict();
 
+export const aphisReportLinksEnvelopeSchema = z.object({
+  api_version: z.literal('v2'),
+  data: z.array(graphEvidenceReferenceBaseSchema.extend({
+    report_url: aphisDocumentUrl,
+    column_e_url: aphisDocumentUrl,
+  }).strict().superRefine((reference, ctx) => validateEvidenceReference(reference, ctx))),
+  meta: z.object({
+    profile,
+    release_id: z.string().min(1),
+    ruleset_version: z.string().min(1),
+    kind: z.enum(['annual_reports', 'inspections']),
+    limit: z.number().int().min(1).max(100),
+    next_cursor: uuid.nullable(),
+    public_projection: z.literal(true),
+  }).strict(),
+}).strict().superRefine((response, ctx) => {
+  response.data.forEach((reference, index) => {
+    if (reference.evidence_type !== response.meta.kind) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['data', index, 'evidence_type'], message: 'APHIS report page contains another report kind.' });
+    }
+  });
+});
+
 export type PublicGraphConnection = z.infer<typeof graphConnectionSchema>;
 export type PublicGraphEntity = z.infer<typeof graphEntitySchema>;
 export type PublicGraphEvidenceReference = z.infer<typeof graphEvidenceReferenceSchema>;
+export type PublicAphisReportLink = z.infer<typeof aphisReportLinksEnvelopeSchema>['data'][number];
 export type PublicGraphProfile = z.infer<typeof profile>;
 export type PublicGraphConnectionsEnvelope = z.infer<typeof graphConnectionsEnvelopeSchema>;
 export type PublicGraphEntitiesEnvelope = z.infer<typeof graphEntitiesEnvelopeSchema>;

@@ -132,6 +132,10 @@ pub fn app(state: uec_api::ApiState, proxy: private_environment::ProxyConfig) ->
             get(uec_api::get_v2_location_detail_handler),
         )
         .route(
+            "/api/v2/locations/{facility_id}/aphis-report-links",
+            get(uec_api::get_v2_aphis_report_links_handler),
+        )
+        .route(
             "/api/v2/graph/connections",
             get(uec_api::graph_public::connections),
         )
