@@ -4,6 +4,8 @@
   import ContributionPinPicker from './ContributionPinPicker.svelte';
   import { countryName, countryOptions } from './countryOptions';
   import { parseRecordReference } from './recordReference';
+  import { TAXONOMY_PRIMARY_KEYS } from '../domain/taxonomy';
+  import { CATEGORY_PRESENTATIONS } from '../features/locations/categoryPresentation';
 
   const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -200,7 +202,7 @@
         {#if ['evidence','correction','duplicate','privacy_removal'].includes(kind)}<label>{kind === 'evidence' ? 'Record link or ID' : 'Record ID'}<input name="target_record_id" value={parseRecordReference(targetRecordId)} maxlength={kind === 'evidence' ? 1000 : 36} autocomplete="off" required aria-describedby={kind === 'evidence' ? 'evidence-record-help' : undefined} /></label>{/if}
         {#if kind === 'evidence'}<p id="evidence-record-help" class="field-help">Open a record and copy its page link or Record ID.</p>{/if}
         {#if kind === 'duplicate'}<label>Possible duplicate record ID<input name="duplicate_record_id" maxlength="36" autocomplete="off" required /></label>{/if}
-        {#if kind === 'facility'}<div class="form-grid"><label>Facility name<input name="label" maxlength="160" required /></label><label>Country (optional)<select name="country_code"><option value="">Unknown / not sure</option>{#each countryOptions as country (country.code)}<option value={country.code}>{country.name}</option>{/each}</select></label></div><div class="form-grid"><label>Locality (optional)<input name="locality" maxlength="160" /></label><label>Activity (optional)<input name="claimed_activity" maxlength="160" /></label></div>{/if}
+        {#if kind === 'facility'}<div class="form-grid"><label>Facility name<input name="label" maxlength="160" required /></label><label>Country (optional)<select name="country_code"><option value="">Unknown / not sure</option>{#each countryOptions as country (country.code)}<option value={country.code}>{country.name}</option>{/each}</select></label></div><div class="form-grid"><label>Locality (optional)<input name="locality" maxlength="160" /></label><label>Primary activity (optional)<select name="claimed_activity"><option value="">Choose a category</option>{#each TAXONOMY_PRIMARY_KEYS as category}<option value={category}>{category === 'unclassified' ? 'Other / Unknown (unclassified)' : CATEGORY_PRESENTATIONS[category].label}</option>{/each}</select></label></div>{/if}
         {#if kind === 'facility' || kind === 'correction'}
           <fieldset class="location-picker"><legend>Location (optional)</legend>
             <ContributionPinPicker latitude={lat} longitude={lon} onpoint={(latitude, longitude, method) => { lat = latitude; lon = longitude; locationInputMethod = method; }} onclear={() => { lat = undefined; lon = undefined; locationInputMethod = undefined; }} />

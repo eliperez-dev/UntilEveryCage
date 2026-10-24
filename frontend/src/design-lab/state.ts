@@ -33,8 +33,8 @@ export function decodeLabHash(hash: string): LabState {
     basemap: q.get('basemap') === 'satellite' ? 'satellite' : 'vector', listOpen: q.get('list') === 'open',
     viewport: { centerLat: safeNumber(q.get('lat'), 45, -90, 90), centerLon: safeNumber(q.get('lon'), 5, -180, 180), zoom: safeNumber(q.get('z'), 2, 1, 18) } };
 }
-export function encodeLabHash(state: LabState, privatePreview = true): string {
-  const q = new URLSearchParams({ ...(privatePreview ? { f1a: state.direction } : {}), scenario: state.scenario });
+export function encodeLabHash(state: LabState, privatePreview = true, publicRelease = false): string {
+  const q = new URLSearchParams({ ...(privatePreview ? { f1a: state.direction } : {}), ...(!publicRelease ? { scenario: state.scenario } : {}) });
   // Search input may contain a home address. Keep it in memory rather than
   // browser history or a shareable URL; old q links are still decoded above.
   if (state.selectedId) q.set('selected', state.selectedId);

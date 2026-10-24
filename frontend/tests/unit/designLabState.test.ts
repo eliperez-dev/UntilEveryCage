@@ -22,6 +22,15 @@ describe('design-lab state repairs', () => {
     expect(restored.filters.categories).toEqual(['slaughter', 'processing_and_preparation']);
   });
 
+  it('keeps legacy public map links readable while omitting private fixture state from public URLs', () => {
+    const legacy = decodeLabHash('#/map?scenario=dense&f1a=field&category=slaughter');
+    expect(legacy.scenario).toBe('dense');
+    const publicHash = encodeLabHash(legacy, false, true);
+    expect(publicHash).not.toContain('scenario=');
+    expect(publicHash).not.toContain('f1a=');
+    expect(publicHash).toContain('category=slaughter');
+  });
+
   it('clears every search criterion, selection, and aggregate while retaining the map context', () => {
     const populated = {
       ...DEFAULT_LAB_STATE,

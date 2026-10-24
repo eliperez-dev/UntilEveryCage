@@ -150,7 +150,7 @@
     if (location.hash && !location.hash.startsWith('#/map')) return;
     const wasSelected = labState.selectedId !== null;
     labState = reduceLabState(labState, action);
-    const nextHash = `${encodeLabHash(labState, mode === 'real-preview')}${$pinnedPublicReleaseId ? `&release_id=${encodeURIComponent($pinnedPublicReleaseId)}` : ''}`;
+    const nextHash = `${encodeLabHash(labState, mode === 'real-preview', mode === 'public-release')}${$pinnedPublicReleaseId ? `&release_id=${encodeURIComponent($pinnedPublicReleaseId)}` : ''}`;
     if (action.type === 'select' && action.value && !wasSelected) {
       // Selection is a navigable map state: Back dismisses the dossier. Other
       // frequent map updates (especially viewport movement) stay replace-only.

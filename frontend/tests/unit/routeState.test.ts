@@ -43,6 +43,7 @@ describe('routeState', () => {
     expect(parseRoute('#/contribute?target=synthetic-record')).toEqual({ kind: 'contribute', targetRecordId: 'synthetic-record' });
     expect(parseRoute('#/contribute/facility')).toEqual({ kind: 'community', page: 'form', formKind: 'facility' });
     expect(parseRoute('#/contribute/evidence?target=synthetic-record&map=%23%2Fmap%3Ff1a%3Dfield')).toEqual({ kind: 'community', page: 'form', formKind: 'evidence', targetRecordId: 'synthetic-record', returnMapHref: '#/map?f1a=field' });
+    expect(parseRoute('#/contribute/evidence?target=4c4708fa-cdde-51dd-b7b9-30c907f7acce')).toMatchObject({ kind: 'community', page: 'form', formKind: 'evidence', targetRecordId: '4c4708fa-cdde-51dd-b7b9-30c907f7acce' });
     expect(parseRoute('#/contribute/privacy-removal')).toEqual({ kind: 'community', page: 'form', formKind: 'privacy_removal' });
     expect(parseRoute('#/contribute/bug')).toEqual({ kind: 'bug-report' });
     expect(serializeRoute({ kind: 'community', page: 'form', formKind: 'evidence', targetRecordId: 'synthetic-record' })).toBe('#/contribute/evidence?target=synthetic-record');

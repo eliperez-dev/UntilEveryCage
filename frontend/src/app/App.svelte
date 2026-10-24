@@ -23,6 +23,7 @@
   let verifiedReleaseLabel = $state<string | null>(null);
 
   let route = $state<RouteState>({ kind: 'map' });
+  let routeGeneration = 0;
   let loading = $state(true);
   let loadError = $state('');
   let returnMapHref = $derived.by(() => {
@@ -38,23 +39,26 @@
   });
 
   const syncRoute = () => {
+    const generation = ++routeGeneration;
     try {
       route = parseRoute(window.location.hash);
       if (route.kind === 'map' && !DesignLab) {
-        void import('../design-lab/DesignLab.svelte').then(module => DesignLab = module.default).catch(() => { loadError = 'The public map could not be opened.'; });
+        void import('../design-lab/DesignLab.svelte').then(module => { if (generation === routeGeneration) DesignLab = module.default; }).catch(() => { if (generation === routeGeneration) loadError = 'The public map could not be opened.'; });
       }
       if (route.kind === 'api' && !ApiPage) {
         apiModule ??= import('./ApiPage.svelte');
-        void apiModule.then(module => ApiPage = module.default).catch(() => { apiModule = null; loadError = 'The API page could not be opened.'; });
+        void apiModule.then(module => { if (generation === routeGeneration) ApiPage = module.default; }).catch(() => { apiModule = null; if (generation === routeGeneration) loadError = 'The API page could not be opened.'; });
       }
       if (route.kind === 'community' && !CommunityContributions) {
         communityModule ??= import('./CommunityContributions.svelte');
         void communityModule.then(module => {
+          if (generation !== routeGeneration) return;
           CommunityContributions = module.default;
           loading = false;
           loadError = '';
         }).catch(() => {
           communityModule = null;
+          if (generation !== routeGeneration) return;
           loading = false;
           loadError = 'The community pilot could not be opened.';
         });
@@ -64,7 +68,8 @@
       const serverDataMode = document.querySelector<HTMLMetaElement>('meta[name="uec-local-data-mode"]')?.content ?? null;
       const explicitPublicRoute = (route.kind === 'record' || route.kind === 'database') && (query.has('profile') || query.has('release_id'));
       reviewMode = import.meta.env.DEV && !explicitPublicRoute && (query.has('f1a') || (serverDataMode === 'candidate-preview' && (route.kind === 'map' || route.kind === 'database' || route.kind === 'record')) || (serverDataMode === 'real-preview' && route.kind === 'map'));
-      loading = false;
+      if (generation !== routeGeneration) return;
+      if (route.kind !== 'community') loading = false;
       loadError = '';
     } catch {
       loading = false;

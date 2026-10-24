@@ -7,13 +7,35 @@ const help = readFileSync(resolve(process.cwd(), 'src/app/HelpPage.svelte'), 'ut
 const contributions = readFileSync(resolve(process.cwd(), 'src/app/CommunityContributions.svelte'), 'utf8');
 const field = readFileSync(resolve(process.cwd(), 'src/design-lab/variants/field/Field.svelte'), 'utf8');
 const atlas = readFileSync(resolve(process.cwd(), 'src/design-lab/variants/atlas/Atlas.svelte'), 'utf8');
+const picker = readFileSync(resolve(process.cwd(), 'src/app/ContributionPinPicker.svelte'), 'utf8');
+const mapSurface = readFileSync(resolve(process.cwd(), 'src/design-lab/components/MapSurface.svelte'), 'utf8');
 
 describe('normal shell content', () => {
   it('keeps release context compact and removes unavailable account controls', () => {
-    expect(masthead).toContain('Release details');
+    expect(masthead).toContain('Current release');
+    expect(masthead).toContain('shared-tools-menu');
+    expect(masthead).toContain('onreleasechange?.(event.currentTarget.value)');
+    expect(masthead).toContain('Historical views follow current privacy restrictions.');
+    expect(masthead).not.toContain('Release</button>');
     expect(masthead).toContain('text-overflow:ellipsis');
     expect(masthead).not.toContain('Account unavailable');
     expect(masthead).not.toContain('Preview release');
+  });
+
+  it('uses canonical primary taxonomy values for the facility activity selector', () => {
+    expect(contributions).toContain('name="claimed_activity"');
+    expect(contributions).toContain('TAXONOMY_PRIMARY_KEYS as category');
+    expect(contributions).toContain('CATEGORY_PRESENTATIONS[category].label');
+    expect(contributions).not.toContain('name="claimed_activity" maxlength');
+    expect(contributions).toContain('Other / Unknown (unclassified)');
+  });
+
+  it('keeps map tools on the map and uses the regular V1 contribution pin in production', () => {
+    expect(masthead).toContain("{#if current === 'map'}");
+    expect(mapSurface).toContain('mode !== "synthetic" && debugEnabled');
+    expect(mapSurface).not.toContain('import.meta.env.DEV && mode !== "synthetic" && debugEnabled');
+    expect(picker).toContain('v1-pins/marker-icon-2x-red.png');
+    expect(picker).not.toContain('rotate(-45deg)');
   });
 
   it('uses written help instead of an embedded tutorial video', () => {

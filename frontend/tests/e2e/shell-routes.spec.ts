@@ -133,6 +133,26 @@ test('a hash route remains a supported entry point for the same shell destinatio
   await expect(page.getByRole('heading', { level: 1, name: /Browse records/i })).toBeVisible();
 });
 
+test('a cold contribution route recovers after its module import fails once', async ({ page }) => {
+  const recordId = '4c4708fa-cdde-51dd-b7b9-30c907f7acce';
+  let failedImport = false;
+  await page.route('**/api/community/capabilities', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ enabled: true, types: ['facility', 'evidence', 'correction', 'duplicate', 'privacy_removal'] }) }));
+  await page.route('**/*', route => {
+    const url = new URL(route.request().url());
+    if (!failedImport && /CommunityContributions(?:-[^/]+)?\.(?:svelte|js)$/.test(url.pathname)) {
+      failedImport = true;
+      return route.abort();
+    }
+    return route.fallback();
+  });
+  await page.goto(`./#/contribute/evidence?target=${recordId}`);
+  await expect(page.getByRole('heading', { name: 'Unable to open this page' })).toBeVisible();
+  await expect(page.getByText('The community pilot could not be opened.')).toBeVisible();
+  await page.getByRole('button', { name: 'Try again' }).click();
+  await expect(page.getByRole('heading', { name: 'Add evidence' })).toBeVisible();
+  await expect(page.getByLabel('Record link or ID')).toHaveValue(recordId);
+});
+
 test('an unknown path exposes an accessible not-found state and a route back to the map', async ({ page }) => {
   await page.goto('./#/not-a-public-route');
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();

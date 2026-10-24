@@ -275,7 +275,7 @@
         ].slice(0, 80)
       : [],
   );
-  const diagnosticsEnabled = $derived(import.meta.env.DEV && mode !== "synthetic" && debugEnabled);
+  const diagnosticsEnabled = $derived(mode !== "synthetic" && debugEnabled);
   const isRealPreview = () => mode === "real-preview" || mode === "candidate-preview";
   const isNativeMap = () => mode !== "synthetic";
   // The private development preview intentionally uses the reviewed, in-memory

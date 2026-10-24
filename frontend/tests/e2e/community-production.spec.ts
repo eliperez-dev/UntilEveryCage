@@ -22,30 +22,33 @@ async function releasedIds(request: import('@playwright/test').APIRequestContext
   return [ids[0]!, ids[1]!];
 }
 
-test('all five contribution types submit and track through the enabled production path', async ({ page, request }) => {
+test('all contribution types, including bug reports, submit and track through the enabled production path', async ({ page, request }) => {
   const [firstId, secondId] = await releasedIds(request);
   const tag = `acceptance-${Date.now()}`;
   const owned: Array<{ id: string; secret: string }> = [];
-  const routes: Array<{ path: string; fill: (index: number) => Promise<void> }> = [
-    { path: 'facility', fill: async index => { await page.getByLabel('Facility name').fill(`${tag}-facility-${index}`); } },
-    { path: 'evidence', fill: async () => { await page.getByLabel('Record link or ID').fill(firstId); await page.getByLabel('What did you find?').fill(`${tag} evidence`); } },
-    { path: 'correction', fill: async () => { await page.getByLabel('Record ID').fill(firstId); await page.getByLabel('What should be corrected?').fill(`${tag} correction`); } },
-    { path: 'duplicate', fill: async () => { await page.getByLabel('Record ID', { exact: true }).fill(firstId); await page.getByLabel('Possible duplicate record ID').fill(secondId); } },
-    { path: 'privacy-removal', fill: async () => { await page.getByLabel('Record ID').fill(firstId); await page.getByLabel('What should we review?').fill(`${tag} privacy review`); } },
+  const routes: Array<{ path: string; fill: (index: number) => Promise<void>; submitLabel: string; trackingLabel: string }> = [
+    { path: 'facility', fill: async index => { await page.getByLabel('Facility name').fill(`${tag}-facility-${index}`); await page.getByLabel('Primary activity (optional)').selectOption('slaughter'); }, submitLabel: 'Send for review', trackingLabel: 'Track submission' },
+    { path: 'evidence', fill: async () => { await page.getByLabel('Record link or ID').fill(firstId); await page.getByLabel('What did you find?').fill(`${tag} evidence`); }, submitLabel: 'Send for review', trackingLabel: 'Track submission' },
+    { path: 'correction', fill: async () => { await page.getByLabel('Record ID').fill(firstId); await page.getByLabel('What should be corrected?').fill(`${tag} correction`); }, submitLabel: 'Send for review', trackingLabel: 'Track submission' },
+    { path: 'duplicate', fill: async () => { await page.getByLabel('Record ID', { exact: true }).fill(firstId); await page.getByLabel('Possible duplicate record ID').fill(secondId); }, submitLabel: 'Send for review', trackingLabel: 'Track submission' },
+    { path: 'privacy-removal', fill: async () => { await page.getByLabel('Record ID').fill(firstId); await page.getByLabel('What should we review?').fill(`${tag} privacy review`); }, submitLabel: 'Send for review', trackingLabel: 'Track submission' },
+    { path: 'bug', fill: async () => { await page.getByLabel('What happened?').fill(`${tag} bug report`); await page.getByLabel('Steps to reproduce').fill('Synthetic acceptance steps'); }, submitLabel: 'Send report', trackingLabel: 'Track report' },
   ];
 
   try {
     for (const [index, route] of routes.entries()) {
-      await page.goto(`${origin}/#/contribute/${route.path}`);
-      await expect(page.getByRole('heading', { name: route.path === 'facility' ? 'Add a facility' : /.*/ })).toBeVisible();
-      await expect(page.getByRole('button', { name: 'Send for review' })).toBeVisible();
+      await page.goto(`${origin}/#/contribute/${route.path === 'bug' ? 'bug' : route.path}`);
+      await expect(page.getByRole('heading', { name: route.path === 'facility' ? 'Add a facility' : route.path === 'bug' ? 'Report a bug' : /.*/ })).toBeVisible();
+      await expect(page.getByRole('button', { name: route.submitLabel })).toBeVisible();
       await route.fill(index);
-      await page.getByLabel(/I have permission to share/).check();
+      if (route.path !== 'bug') await page.getByLabel(/I have permission to share/).check();
       const submitted = page.waitForResponse(response => response.url().endsWith('/api/community/submissions') && response.request().method() === 'POST');
-      await page.getByRole('button', { name: 'Send for review' }).click();
-      const receipt = await (await submitted).json() as { submission_id: string; receipt_secret: string };
+      await page.getByRole('button', { name: route.submitLabel }).click();
+      const response = await submitted;
+      if (route.path === 'facility') expect(response.request().postDataJSON()).toMatchObject({ claimed_activity: 'slaughter' });
+      const receipt = await response.json() as { submission_id: string; receipt_secret: string };
       owned.push({ id: receipt.submission_id, secret: receipt.receipt_secret });
-      const tracker = page.getByRole('link', { name: 'Track submission', exact: true });
+      const tracker = page.getByRole('link', { name: route.trackingLabel, exact: true });
       await expect(tracker).toBeVisible();
       await tracker.click();
       await expect(page.locator('.status-result')).toBeVisible();
