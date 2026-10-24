@@ -209,6 +209,18 @@ with its manifest and checksum.
 
 ## Imagery and alternate map views
 
+Keep Street/Satellite basemap selection separate from the 2D/3D camera control.
+The initial camera is flat. Expose tilt with a compact, keyboard/touch-accessible
+toggle, a north/flat reset, and a short gesture hint. Reflect native gestures in
+the toggle and preserve optional pitch/bearing with the existing URL state.
+Do not rebuild facility data or clustering when changing the camera.
+
+Use native MapLibre terrain for a tilted view with real elevation tiles,
+not a separate rendering framework. Load elevation only for a requested 3D
+view, retain provider attribution, use unexaggerated terrain, and return to a
+usable flat map with a short error if the terrain source fails. Respect reduced
+motion. This does not add a globe, buildings, panoramas or historical imagery.
+
 Satellite imagery is a major selectable basemap, not an afterthought. The map
 style control should include a neutral/vector view and satellite view, with
 provider attribution, licensing, privacy, and cost disclosure. Street View is

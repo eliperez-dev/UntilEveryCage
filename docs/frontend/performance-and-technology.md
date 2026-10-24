@@ -61,6 +61,29 @@ Provider compatibility references: [Mapbox Standard Satellite](https://docs.mapb
 and [Mapbox imagery terms](https://www.mapbox.com/imagery). These references
 inform evaluation; they do not select a provider or authorize credentials.
 
+## Current map tile providers
+
+| View | Provider | Requests |
+| --- | --- | --- |
+| Street | OpenStreetMap standard raster tiles | Visible street-map tile coordinates |
+| Satellite and transport labels | Esri World Imagery / World Transportation | Visible imagery and label tile coordinates |
+| Requested 3D terrain | Mapterhorn public Terrarium elevation tiles | Elevation tile coordinates for the tilted view |
+
+These are direct browser requests. Providers and their infrastructure receive
+the visitor IP address and requested tile coordinates. Facility records,
+source evidence and search text are not included in tile requests. Provider
+logging and retention are outside this application's control; this is not a
+claim that providers keep no logs. Flat views must not fetch elevation tiles.
+
+Mapterhorn's [documented public endpoint](https://mapterhorn.com/data-access/)
+uses `https://tiles.mapterhorn.com/tilejson.json`, Terrarium encoding and
+512-pixel tiles. It requires no application API key or new paid account for
+the documented public access. Preserve its linked
+[terrain attribution](https://mapterhorn.com/attribution/) and upstream
+open-data source credits. Public access is not an uptime or unlimited-capacity
+guarantee. Cloudflare supports the provider's delivery infrastructure; do not
+download a global terrain archive or add terrain storage to Render.
+
 ## Budgets for the first implementation
 
 These are review budgets, not promises. Measure on a mid-range 2022 laptop and

@@ -82,6 +82,9 @@ for source/exact coordinates, a wider road map for approximate locations, and
 no map for an unmapped record. Reuse the existing tile providers and category
 pins. A road map is not street-level panorama imagery. Do not fetch the global
 facility projection for this preview or invent a street address from locality.
+Order full pages as facility name/share action, Location facts, location map,
+then activities/classification and remaining facts. Satellite previews use
+zoom 15 and approximate road-map previews use zoom 9. Keep them noninteractive.
 
 APHIS report controls belong only on relevant APHIS records. Load them on
 request and preserve explicit loading, empty, error and retry states. Distinguish
