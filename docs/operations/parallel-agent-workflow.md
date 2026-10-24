@@ -76,6 +76,10 @@ complete until the final integrated commit has passing required checks; report
 any unavailable gate explicitly, never as a pass. Do not update product or
 source readiness claims based merely on integration or CI.
 
+For a rollback-only migration trial, apply the candidate DDL and run its checks
+in the same transaction. Verify the tested view definitions match the candidate;
+an unapplied migration file does not change another session's database schema.
+
 Finish with owned-resource cleanup. Stopping a shell or client is not proof
 that its database query stopped: inspect the assigned disposable database's
 sessions, cancel only identified obsolete sprint queries, and verify they are

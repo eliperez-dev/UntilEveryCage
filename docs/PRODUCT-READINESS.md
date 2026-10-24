@@ -42,9 +42,14 @@ The additive 080 migration and v3 serving projection support source-qualified
 business labels and bounded APHIS report/inspection references. Retained APHIS
 evidence comprises 994 annual events and 98 inspections; 1,024 have unique
 registration matches, while 68 remain unmatched. This is private linkage
-evidence, not successful hosted acceptance. The maintainer authorized local
-credential use and publication of reference metadata only, not report contents.
-Migrations 080 through 083 have applied to the disposable real-data copy.
+evidence, not successful hosted acceptance. The maintainer authorized
+publication of reference metadata only, not report contents.
+Migrations 080 through 084 have applied to the disposable real-data copy.
+Some 085 trial view/index DDL also persisted in that copy before the test
+transaction began, without an 085 ledger entry. Schema reconciliation and
+fresh acceptance are required; earlier rollback-only descriptions of those
+trials were incorrect. The source, frozen reference and hosted databases were
+not modified by those trials.
 Whole-corpus acceptance passed for all 19 handoffs: the exact 50,925 original
 edge payloads and 69,220 release members are unchanged, a full rerun is
 idempotent, and all four real positive/negative controls pass. The private
@@ -61,13 +66,21 @@ hosted API totals. Metadata review and artifact-scoped clearance were applied
 only to the approved reference fields. Migration 083 retires builds made with
 the incomplete business-name selector; label selection now follows the exact
 release binding and reuses qualified endpoint anchors. Isolated v8 serving
-restore, complete API traversal and Render rollout remain pending. No graph
-change from this sprint is live yet.
+restore, complete API traversal and Render rollout remain pending. The 084
+rollback checks passed approval invalidation, immediate withdrawal and the
+Italian placeholder guard; graph read latency is still under investigation.
+The committed 085 selector refactor preserves the map, release membership and
+all 180 restriction rows in the local trial. Its global graph page still times
+out in the larger research database. Performance acceptance must use the
+isolated selected-serving derivative; that restore and the Render cutover await
+credential-use confirmation. No graph change from this sprint is live yet.
 
-Local code gates passed: 137 Rust tests, 24 Rust documentation tests, 671
-pipeline tests (39 optional skips), 75 adapter tests, 257 frontend tests,
-frontend type checks, and 37 static tests. The standard runner now also gates
-89 graph unit tests (four explicit database-acceptance skips).
+The latest canonical standard gate passed: 137 Rust library tests, 24 Rust
+binary tests, 675 pipeline tests (39 optional skips), 90 graph unit tests
+(four database-acceptance skips), and 75 adapter tests. The new suppression
+lifecycle regression still requires the full E2E gate; it was not exercised
+by the guard-disabled local E2E invocation. Earlier frontend checks passed
+257 tests, type checks and 37 static tests; this change does not alter the UI.
 The prior 066 checksum concern was diagnosed as line-ending representation:
 the clone's stored hash matches current checkout bytes and the migration
 runner accepts equivalent LF/CRLF bytes. No ledger or historical migration
