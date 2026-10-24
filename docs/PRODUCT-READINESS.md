@@ -44,7 +44,7 @@ evidence comprises 994 annual events and 98 inspections; 1,024 have unique
 registration matches, while 68 remain unmatched. This is private linkage
 evidence, not successful hosted acceptance. The maintainer authorized local
 credential use and publication of reference metadata only, not report contents.
-Migrations 080 through 082 have applied to the disposable real-data copy.
+Migrations 080 through 083 have applied to the disposable real-data copy.
 Whole-corpus acceptance passed for all 19 handoffs: the exact 50,925 original
 edge payloads and 69,220 release members are unchanged, a full rerun is
 idempotent, and all four real positive/negative controls pass. The private
@@ -54,9 +54,15 @@ The orchestrator also inspected source-name, operator, address-supported and
 negative examples personally. Generic shared names remain weak inferred
 evidence, not confirmation of common ownership.
 
-The release-safe v3 projection, metadata-only reference clearance, isolated
-v8 serving-package restore, complete public API traversal and Render rollout
-are still being verified. No graph change from this sprint is live yet.
+The corrected local v3 build completed with 24,022 projected edges, 16,154
+source-backed business labels and 1,024 metadata-only APHIS references (927
+annual reports and 97 inspections). These are build counts, not yet verified
+hosted API totals. Metadata review and artifact-scoped clearance were applied
+only to the approved reference fields. Migration 083 retires builds made with
+the incomplete business-name selector; label selection now follows the exact
+release binding and reuses qualified endpoint anchors. Isolated v8 serving
+restore, complete API traversal and Render rollout remain pending. No graph
+change from this sprint is live yet.
 
 Local code gates passed: 137 Rust tests, 24 Rust documentation tests, 671
 pipeline tests (39 optional skips), 75 adapter tests, 257 frontend tests,

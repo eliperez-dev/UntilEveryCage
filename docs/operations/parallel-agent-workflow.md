@@ -75,3 +75,10 @@ requires it and its source access and terms are authorized. Integration is not
 complete until the final integrated commit has passing required checks; report
 any unavailable gate explicitly, never as a pass. Do not update product or
 source readiness claims based merely on integration or CI.
+
+Finish with owned-resource cleanup. Stopping a shell or client is not proof
+that its database query stopped: inspect the assigned disposable database's
+sessions, cancel only identified obsolete sprint queries, and verify they are
+gone. Preserve the active writer and unknown/user sessions. Close owned test
+servers and temporary tabs, remove completed temporary worktrees, and record
+any deliberately retained test resources before handoff.

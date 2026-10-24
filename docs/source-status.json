@@ -49,13 +49,14 @@
       "inspection_events": 98,
       "uniquely_matched_references": 1024,
       "unmatched_events": 68,
-      "public_reference_approval": "authorized_metadata_only_materialization_pending",
+      "public_reference_approval": "metadata_only_review_and_artifact_clearance_applied_local_projection_built_hosted_acceptance_pending",
       "event_handoffs_reimported_this_run": false
     },
     "database_materialization_verified": true,
+    "local_projection_build": {"version": "graph-release-projection-v3", "edges": 24022, "source_backed_organization_labels": 16154, "aphis_annual_references": 927, "aphis_inspection_references": 97, "hosted_api_totals_verified": false},
     "hosted_rollout_verified": false,
-    "evidence": ["pipeline/common/graph_source_mapping.py", "pipeline/common/real_private_graph.py", "pipeline/migrations/080_graph_public_evidence_references.sql", "pipeline/migrations/081_aphis_reference_metadata_clearance.sql", "pipeline/migrations/082_public_italian_vat_qualification.sql", "data/staging/whole-dataset-graph-export-20261023/source-coverage-italy-placeholder-filter-replay-20261023.json", "data/staging/whole-dataset-graph-20261023/aggregate-receipt.json"],
-    "next_action": "Build the approved metadata-only reference and release-safe graph projection; verify isolated v8 serving restore, complete API traversal, final CI and hosted acceptance. Private historical edge totals are not published connection totals."
+    "evidence": ["pipeline/common/graph_source_mapping.py", "pipeline/common/real_private_graph.py", "pipeline/migrations/080_graph_public_evidence_references.sql", "pipeline/migrations/081_aphis_reference_metadata_clearance.sql", "pipeline/migrations/082_public_italian_vat_qualification.sql", "pipeline/migrations/083_source_backed_organization_labels.sql", "data/staging/whole-dataset-graph-export-20261023/source-coverage-italy-placeholder-filter-replay-20261023.json", "data/staging/whole-dataset-graph-20261023/aggregate-receipt.json"],
+    "next_action": "Verify isolated v8 serving restore, complete API traversal, final CI and hosted acceptance of the corrected local projection. Private historical edge totals and local build totals are not verified hosted API totals."
   },
   "historical_private_rehearsal": "docs/archive/rehearsals/country-rehearsal-2026-09-15.json",
   "latest_v0_private_preview_imports": {
