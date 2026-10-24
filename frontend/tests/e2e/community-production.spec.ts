@@ -36,7 +36,7 @@ test('all contribution types, including bug reports, submit and track through th
   ];
   const headingByPath: Record<string, string> = {
     facility: 'Add a facility', evidence: 'Add evidence', correction: 'Suggest a correction',
-    duplicate: 'Report a possible duplicate', 'privacy-removal': 'Request a privacy review', bug: 'Report a bug',
+    duplicate: 'Report a duplicate', 'privacy-removal': 'Privacy or removal', bug: 'Report a bug',
   };
 
   try {
@@ -57,6 +57,7 @@ test('all contribution types, including bug reports, submit and track through th
       await tracker.click();
       await expect(page.locator('.status-result')).toBeVisible();
     }
+    expect(owned.length).toBe(routes.length);
   } finally {
     for (const receipt of owned) {
       const removed = await request.post(`${origin}/api/private/community/submissions/${encodeURIComponent(receipt.id)}/disposition`, {
@@ -67,6 +68,5 @@ test('all contribution types, including bug reports, submit and track through th
       const revoked = await request.post(`${origin}/api/community/status`, { data: { submission_id: receipt.id, receipt_secret: receipt.secret } });
       expect(revoked.status()).toBe(404);
     }
-    expect(owned).toHaveLength(routes.length);
   }
 });
