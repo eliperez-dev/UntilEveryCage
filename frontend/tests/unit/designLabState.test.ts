@@ -11,6 +11,14 @@ describe('design-lab state repairs', () => {
     expect(encodeLabHash({ ...state, basemap: 'satellite' })).toContain('basemap=satellite');
   });
 
+  it('round trips non-default camera pitch and bearing while keeping flat URLs compact', () => {
+    const tilted = decodeLabHash('#/map?lat=38&lon=-96&z=4&pitch=45&bearing=27');
+    expect(tilted.viewport).toMatchObject({ centerLat: 38, centerLon: -96, zoom: 4, pitch: 45, bearing: 27 });
+    expect(decodeLabHash(encodeLabHash(tilted)).viewport).toMatchObject(tilted.viewport);
+    expect(encodeLabHash(DEFAULT_LAB_STATE)).not.toMatch(/pitch=|bearing=/);
+    expect(decodeLabHash('#/map?pitch=200&bearing=oops').viewport).toMatchObject({ pitch: 85, bearing: 0 });
+  });
+
   it('round trips canonical V2 category filters without dropping them on hash changes', () => {
     const selected = reduceLabState(DEFAULT_LAB_STATE, {
       type: 'filters',

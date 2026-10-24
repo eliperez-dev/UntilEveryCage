@@ -55,6 +55,7 @@
   import { clearRealPreviewMapCache, createRealPreviewMapFeedRepository, RealPreviewMapFeedError, realPreviewMapCacheEntryCount } from "../../api/RealPreviewMapFeedRepository";
   import { clearTestReleaseMapCache, createTestReleaseMapFeedRepository, filterTestReleaseMapCollection, testReleaseMapCacheEntryCount } from "../../api/TestReleaseMapFeedRepository";
   import { canReusePublicMapFeed, clearPublicMapCache, createPublicMapFeedRepository, publicMapCacheEntryCount } from "../../api/PublicMapFeedRepository";
+  import { TERRAIN_EXAGGERATION, TERRAIN_SOURCE, TERRAIN_SOURCE_ID } from "../../map/terrain";
 
   let {
     records,
@@ -118,6 +119,9 @@
   let nativeStyleReady = $state(false);
   let nativeStyleGeneration = 0;
   let appliedBasemap = $state<Basemap | undefined>();
+  let cameraPitch = $state(0);
+  let terrainEnabled = $state(false);
+  let terrainError = $state("");
   let basemapSwitching = $state(false);
   let pendingBasemap = $state<Basemap | undefined>();
   let basemapError = $state("");
@@ -292,6 +296,36 @@
 
   function style(): any {
     return createBaseStyle(mapState.basemap);
+  }
+  function setTerrain(enabled: boolean): void {
+    const instance = map;
+    if (!instance) return;
+    if (!enabled) {
+      instance.setTerrain(null);
+      if (instance.getSource(TERRAIN_SOURCE_ID)) instance.removeSource(TERRAIN_SOURCE_ID);
+      terrainEnabled = false;
+      return;
+    }
+    try {
+      if (!instance.getSource(TERRAIN_SOURCE_ID)) instance.addSource(TERRAIN_SOURCE_ID, TERRAIN_SOURCE as any);
+      instance.setTerrain({ source: TERRAIN_SOURCE_ID, exaggeration: TERRAIN_EXAGGERATION });
+      terrainEnabled = true;
+      terrainError = "";
+    } catch {
+      if (instance.getTerrain()) instance.setTerrain(null);
+      if (instance.getSource(TERRAIN_SOURCE_ID)) instance.removeSource(TERRAIN_SOURCE_ID);
+      terrainEnabled = false;
+      terrainError = "Terrain could not be loaded. The map is shown flat.";
+      instance.easeTo({ pitch: 0, duration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 300 });
+    }
+  }
+  function toggleCamera(): void {
+    if (!map) return;
+    terrainError = "";
+    const enable3d = cameraPitch <= 0.5;
+    if (enable3d) setTerrain(true);
+    else setTerrain(false);
+    map.easeTo({ pitch: enable3d && terrainEnabled ? 45 : 0, duration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 450 });
   }
   function rasterTiles(basemap: Basemap): string[] {
     return ((createBaseStyle(basemap) as any).sources.base.tiles as string[]);
@@ -1203,6 +1237,8 @@
       style: style(),
       center: [mapState.viewport.centerLon, mapState.viewport.centerLat],
       zoom: mapState.viewport.zoom,
+      pitch: mapState.viewport.pitch ?? 0,
+      bearing: mapState.viewport.bearing ?? 0,
       attributionControl: {},
       // The private preview owns one in-memory source, so pan and zoom never
       // replace location data. Disabling source fades keeps interaction crisp.
@@ -1212,6 +1248,8 @@
       // minTileCacheSize and prefetchZoomDelta are not MapLibre map options.
     } as any);
     map = instance;
+    instance.addControl(new maplibregl.NavigationControl({ showZoom: false, showCompass: true, visualizePitch: true }), "bottom-right");
+    cameraPitch = instance.getPitch();
     const previewWindow = window as Window & {
       __UEC_LOCAL_PREVIEW_MAP__?: MapLibreMap;
     };
@@ -1252,6 +1290,11 @@
       if (usingMvt && event?.sourceId === "preview-mvt")
         mvtError =
           "Map tiles could not be refreshed. Try panning or selecting a different source.";
+      if (event?.sourceId === TERRAIN_SOURCE_ID && terrainEnabled) {
+        setTerrain(false);
+        terrainError = "Terrain tiles are unavailable. The map is shown flat.";
+        instance.easeTo({ pitch: 0, duration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 300 });
+      }
     });
     instance.on("movestart", (event: any) => {
       if (usingMvt) mvtCameraStartedAt ??= performance.now();
@@ -1308,7 +1351,10 @@
           centerLat: Number(center.lat.toFixed(4)),
           centerLon: Number(center.lng.toFixed(4)),
           zoom: instance.getZoom(),
+          pitch: Math.round(instance.getPitch()),
+          bearing: Number((((instance.getBearing() + 180) % 360 + 360) % 360 - 180).toFixed(1)),
         });
+        cameraPitch = instance.getPitch();
         zoomSettleMs =
           zoomStartedAt === null
             ? null
@@ -1320,6 +1366,8 @@
         boundsTimer = setTimeout(() => publishBounds(), 150);
       }
     });
+    instance.on("pitch", () => { cameraPitch = instance.getPitch(); });
+    instance.on("pitchend", () => setTerrain(instance.getPitch() > 0.5));
     return () => {
       basemapRequest++;
       feedAbort?.abort();
@@ -1365,13 +1413,17 @@
     if (
       Math.abs(center.lat - viewport.centerLat) < 0.001 &&
       Math.abs(center.lng - viewport.centerLon) < 0.001 &&
-      map.getZoom() === viewport.zoom
+      map.getZoom() === viewport.zoom &&
+      Math.abs(map.getPitch() - (viewport.pitch ?? 0)) < 0.1 &&
+      Math.abs(map.getBearing() - (viewport.bearing ?? 0)) < 0.1
     )
       return;
     syncing = true;
     map.jumpTo({
       center: [viewport.centerLon, viewport.centerLat],
       zoom: viewport.zoom,
+      pitch: viewport.pitch ?? 0,
+      bearing: viewport.bearing ?? 0,
     });
     syncing = false;
   });
@@ -1419,6 +1471,11 @@
   aria-label="Map showing records"
 >
   <div class="map-host" bind:this={host}></div>
+  <div class="camera-controls" role="group" aria-label="Map camera">
+    <button type="button" aria-label={cameraPitch > 0.5 ? 'Return map to 2D' : 'Show 3D terrain'} aria-pressed={cameraPitch > 0.5} onclick={toggleCamera}>{cameraPitch > 0.5 ? '3D' : '2D'}</button>
+    <small>Ctrl-drag or two-finger tilt</small>
+  </div>
+  {#if terrainError}<small class="map-status terrain-status" role="alert">{terrainError}</small>{/if}
   {#if basemapSwitching && pendingBasemap}<small
       class="map-status"
       role="status"
@@ -1687,6 +1744,11 @@
     position: absolute;
     inset: 0;
   }
+  .camera-controls { position:absolute; z-index:4; top:4.05rem; left:.65rem; display:flex; align-items:center; gap:.55rem; padding:.3rem; border:1px solid #48504b; background:#171a18ed; color:#aab0aa; font:.62rem system-ui; }
+  .camera-controls button { min-width:2.6rem; min-height:2.2rem; border:1px solid #69716a; color:#f1efe8; background:#202421; cursor:pointer; font:600 .7rem system-ui; }
+  .camera-controls button:focus-visible { outline:2px solid #f1efe8; outline-offset:2px; }
+  .camera-controls small { max-width:12rem; }
+  .terrain-status { top:6.8rem; left:.65rem; transform:none; }
   .feature-list-toggle,
   .diagnostics-toggle {
     position: absolute;

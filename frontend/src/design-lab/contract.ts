@@ -24,7 +24,7 @@ export type LabRecord = Readonly<{
   sourceFacts?: import('../domain/location').LocationSourceFacts | undefined;
 }>;
 export type ViewportBounds = Readonly<{ west: number; south: number; east: number; north: number }>;
-export type Viewport = Readonly<{ centerLat: number; centerLon: number; zoom: number }>;
+export type Viewport = Readonly<{ centerLat: number; centerLon: number; zoom: number; pitch?: number; bearing?: number }>;
 export type MapDiagnostics = Readonly<{
   zoom: number; currentTiles: number; readyTiles: number; cacheEntries: number; cacheCapacity: number;
   cacheHits: number; cacheMisses: number; inFlight: number; lastFetchMs: number | null;

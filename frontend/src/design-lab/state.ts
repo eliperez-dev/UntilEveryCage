@@ -31,7 +31,7 @@ export function decodeLabHash(hash: string): LabState {
     expandedCluster: q.get('cluster') === 'aarhus' ? 'aarhus' : null,
     // Preserve old shared links without preserving a retired map style.
     basemap: q.get('basemap') === 'satellite' ? 'satellite' : 'vector', listOpen: q.get('list') === 'open',
-    viewport: { centerLat: safeNumber(q.get('lat'), 45, -90, 90), centerLon: safeNumber(q.get('lon'), 5, -180, 180), zoom: safeNumber(q.get('z'), 2, 1, 18) } };
+    viewport: { centerLat: safeNumber(q.get('lat'), 45, -90, 90), centerLon: safeNumber(q.get('lon'), 5, -180, 180), zoom: safeNumber(q.get('z'), 2, 1, 18), pitch: safeNumber(q.get('pitch'), 0, 0, 85), bearing: safeNumber(q.get('bearing'), 0, -180, 180) } };
 }
 export function encodeLabHash(state: LabState, privatePreview = true, publicRelease = false): string {
   const q = new URLSearchParams({ ...(privatePreview ? { f1a: state.direction } : {}), ...(!publicRelease ? { scenario: state.scenario } : {}) });
@@ -44,6 +44,8 @@ export function encodeLabHash(state: LabState, privatePreview = true, publicRele
   if (state.viewport.centerLat !== 45) q.set('lat', String(state.viewport.centerLat));
   if (state.viewport.centerLon !== 5) q.set('lon', String(state.viewport.centerLon));
   if (state.viewport.zoom !== 2) q.set('z', String(state.viewport.zoom));
+  if (state.viewport.pitch) q.set('pitch', String(state.viewport.pitch));
+  if (state.viewport.bearing) q.set('bearing', String(state.viewport.bearing));
   for (const category of state.filters.categories) q.append('category', category);
   for (const precision of state.filters.precisions) q.append('precision', precision);
   for (const country of state.filters.countries) q.append('country', country);
