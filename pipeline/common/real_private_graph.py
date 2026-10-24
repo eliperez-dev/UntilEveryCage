@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
+import psycopg
+
 from pipeline.common.d5_connection_analysis import (_iter_probabilistic_candidates,
     iter_shared_business_name_candidates, _observed_from_json, _observed_from_row, _observed_json)
 from pipeline.common.d5_connection_analysis import RULESET_VERSION as D5_MATCHER_VERSION
@@ -24,16 +26,19 @@ from pipeline.common.d5_connection_analysis import SHARED_BUSINESS_NAME_RULESET_
 from pipeline.common.graph_edges import RULESET_VERSION as D6_EDGE_RULESET_VERSION
 from pipeline.common.graph_persistence import (ConnectionEdgeBuilder, import_evidence_events,
     completed_edge_materialization, import_graph_candidates, iter_graph_candidate_handoff,
-    load_evidence_handoff)
+    load_evidence_handoff, require_private_graph_target, _ensure_source_artifact,
+    _validate_private_graph_writer)
 
 
 REPORT_VERSION = "d7-real-private-graph-v1"
 NATIVE_ENDPOINT_CONTRACT_VERSION = "native-source-identifier-v2"
-GRAPH_EDGE_MATERIALIZATION_VERSION = "private-graph-materialization-v5"
+GRAPH_EDGE_MATERIALIZATION_VERSION = "private-graph-materialization-v6"
+GRAPH_CONTEXT_PERSISTENCE_VERSION = "private-graph-context-persistence-v2"
 GRAPH_MATERIALIZATION_FINGERPRINT = hashlib.sha256(
     "|".join((GRAPH_EDGE_MATERIALIZATION_VERSION, D5_MATCHER_VERSION,
               D6_EDGE_RULESET_VERSION, SHARED_BUSINESS_NAME_RULESET_VERSION,
-              NATIVE_ENDPOINT_CONTRACT_VERSION)).encode("utf-8")
+              NATIVE_ENDPOINT_CONTRACT_VERSION,
+              GRAPH_CONTEXT_PERSISTENCE_VERSION)).encode("utf-8")
 ).hexdigest()
 EVIDENCE_CONTRACTS = {"us-aphis-observation-handoff-v1"}
 
@@ -97,6 +102,25 @@ def _describe_handoff(root: str | Path) -> tuple[str, dict[str, Any], str, int]:
         return "evidence", manifest, digest, len(rows)
     manifest, _rows, digest, count = iter_graph_candidate_handoff(root)
     return "facility", manifest, digest, count
+
+
+def _register_corpus_sources(database_url: str,
+                             described: list[tuple[Path, str, dict[str, Any], str, int]],
+                             private_target: tuple[str, str] | None) -> int:
+    """Register every validated source before any cross-source edge is written."""
+    if private_target is None:
+        return 0
+    expected_database, purpose = private_target
+    require_private_graph_target(database_url, expected_database=expected_database, purpose=purpose)
+    with psycopg.connect(database_url) as db:
+        _validate_private_graph_writer(db, expected_database)
+        db.commit()
+        with db.transaction():
+            for _root, _kind, manifest, digest, _count in described:
+                # Use the importer's canonical upsert to preserve source metadata
+                # and the exact artifact identity from each validated handoff.
+                _ensure_source_artifact(db, manifest, digest)
+    return len({str(manifest["source_id"]) for _root, _kind, manifest, _digest, _count in described})
 
 
 class _MatcherStage:
@@ -240,6 +264,7 @@ def materialize_graph_corpus(
             for _, kind, manifest, digest, _ in described}) != len(described):
         raise ValueError("duplicate handoff in graph corpus")
     fingerprint = graph_corpus_materialization_fingerprint(handoffs)
+    registered_source_count = _register_corpus_sources(database_url, described, private_target)
     completed = [completed_edge_materialization(
         database_url, root, private_target=private_target, fingerprint=fingerprint,
     ) for root in facility_roots]
@@ -257,7 +282,8 @@ def materialize_graph_corpus(
             "item_count": result.get("item_count"), "kind": "evidence",
         } for result in evidence_results]]
         return {"status": status, "materialization_fingerprint": fingerprint,
-                "imports": imports, "matcher": {"skipped": "identical complete facility corpus"}}
+                "imports": imports, "matcher": {"skipped": "identical complete facility corpus"},
+                "registered_source_count": registered_source_count}
 
     matcher = _MatcherStage()
     try:
@@ -282,7 +308,8 @@ def materialize_graph_corpus(
                         "item_count": result.get("item_count"), "kind": "evidence"}
                        for result in evidence_results)
         return {"status": "completed", "materialization_fingerprint": fingerprint,
-                "imports": results, "matcher": matcher_summary}
+                "imports": results, "matcher": matcher_summary,
+                "registered_source_count": registered_source_count}
     finally:
         matcher.close()
 

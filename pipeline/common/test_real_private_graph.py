@@ -137,20 +137,38 @@ class RealPrivateGraphTests(unittest.TestCase):
                 pass
 
         stage = Stage()
+        events = []
+        fake_db = mock.MagicMock()
+        fake_db.__enter__.return_value = fake_db
+
+        def register_source(_db, manifest, digest):
+            events.append(("register", manifest["source_id"], digest))
+
         with mock.patch("pipeline.common.real_private_graph._MatcherStage", return_value=stage), \
+             mock.patch("pipeline.common.real_private_graph.psycopg.connect", return_value=fake_db), \
+             mock.patch("pipeline.common.real_private_graph.require_private_graph_target"), \
+             mock.patch("pipeline.common.real_private_graph._validate_private_graph_writer"), \
+             mock.patch("pipeline.common.real_private_graph._ensure_source_artifact", side_effect=register_source), \
              mock.patch("pipeline.common.real_private_graph.completed_edge_materialization", return_value=None), \
-             mock.patch("pipeline.common.real_private_graph.import_graph_candidates", return_value={
+             mock.patch("pipeline.common.real_private_graph.import_graph_candidates", side_effect=lambda *args, **kwargs: (
+                 events.append(("import", "test.facility")) or {
                  "source_id": "test.facility", "status": "completed", "item_count": 1,
-             }) as import_facility, \
-             mock.patch("pipeline.common.real_private_graph.import_evidence_events", return_value={
+             })) as import_facility, \
+             mock.patch("pipeline.common.real_private_graph.import_evidence_events", side_effect=lambda *args, **kwargs: (
+                 events.append(("evidence", "test.evidence")) or {
                  "source_id": "test.evidence", "status": "already_present", "item_count": 1,
-             }) as import_evidence:
+             })) as import_evidence:
             result = materialize_graph_corpus(
                 "postgresql://localhost/test", [facility, evidence],
                 private_target=("uec_graph_test", "private-graph-materialization-v1"),
             )
         self.assertEqual(stage.added, [facility])
         self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["registered_source_count"], 2)
+        self.assertEqual([item[:2] for item in events], [
+            ("register", "test.facility"), ("register", "test.evidence"),
+            ("evidence", "test.evidence"), ("import", "test.facility"),
+        ])
         self.assertEqual({item["kind"] for item in result["imports"]}, {"facility", "evidence"})
         import_facility.assert_called_once()
         import_evidence.assert_called_once_with(
@@ -166,6 +184,66 @@ class RealPrivateGraphTests(unittest.TestCase):
         manifest["normalized_sha256"] = __import__("hashlib").sha256(records).hexdigest()
         (evidence / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
         self.assertNotEqual(first_fingerprint, graph_corpus_materialization_fingerprint([facility, evidence]))
+
+    def test_later_source_is_registered_before_first_source_edge_import(self):
+        first = self.root / "first-source"
+        later = self.root / "later-source"
+        write_graph_candidates(first, [{
+            "source_id": "test.first", "source_row": 1, "source_record_key": "first-key",
+            "source_values": {"id": "first"},
+            "normalized": {"establishment_id": "first", "name": "First Facility"},
+        }], artifact_sha256="c" * 64, observed_at="2026-01-01T00:00:00Z")
+        write_graph_candidates(later, [{
+            "source_id": "test.later", "source_row": 1, "source_record_key": "later-key",
+            "source_values": {"id": "later"},
+            "normalized": {"establishment_id": "later", "name": "Later Facility"},
+        }], artifact_sha256="d" * 64, observed_at="2026-01-01T00:00:00Z")
+        for root, source_id, artifact_sha in (
+            (first, "test.first", "c" * 64), (later, "test.later", "d" * 64),
+        ):
+            manifest_path = root / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest.update({"source_id": source_id, "source_artifact_sha256": artifact_sha})
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        events = []
+        fake_db = mock.MagicMock()
+        fake_db.__enter__.return_value = fake_db
+
+        class Stage:
+            def add_handoff(self, _path):
+                pass
+            def build_candidates(self):
+                return {"rows_staged": 2, "inferred_candidates_staged": 1,
+                        "blocks_ambiguous": 0, "rows_in_ambiguous_blocks": 0}
+            def edge_builder(self, _candidate, _manifest):
+                return ()
+            def close(self):
+                pass
+
+        def register_source(_db, manifest, _digest):
+            events.append(("register", manifest["source_id"]))
+
+        def import_source(_url, root, **_kwargs):
+            manifest = json.loads((Path(root) / "manifest.json").read_text(encoding="utf-8"))
+            events.append(("import", manifest["source_id"]))
+            return {"source_id": manifest["source_id"], "status": "completed", "item_count": 1}
+
+        with mock.patch("pipeline.common.real_private_graph._MatcherStage", return_value=Stage()), \
+             mock.patch("pipeline.common.real_private_graph.psycopg.connect", return_value=fake_db), \
+             mock.patch("pipeline.common.real_private_graph.require_private_graph_target"), \
+             mock.patch("pipeline.common.real_private_graph._validate_private_graph_writer"), \
+             mock.patch("pipeline.common.real_private_graph._ensure_source_artifact", side_effect=register_source), \
+             mock.patch("pipeline.common.real_private_graph.completed_edge_materialization", return_value=None), \
+             mock.patch("pipeline.common.real_private_graph.import_graph_candidates", side_effect=import_source):
+            result = materialize_graph_corpus(
+                "postgresql://localhost/test", [first, later],
+                private_target=("uec_graph_test", "private-graph-materialization-v1"),
+            )
+        self.assertEqual(result["registered_source_count"], 2)
+        self.assertEqual(events, [
+            ("register", "test.first"), ("register", "test.later"),
+            ("import", "test.first"), ("import", "test.later"),
+        ])
 
     def test_fsis_alias_matcher_stage_produces_supported_inferred_edge(self):
         handoff = self.root / "fsis" / "graph-candidates"
