@@ -7394,10 +7394,15 @@ fn safe_aphis_report_document_url(value: Option<&Value>) -> Option<String> {
     let value = value?.as_str()?;
     if value.len() > 2048 { return None; }
     let url = reqwest::Url::parse(value).ok()?;
-    let official_host = matches!(url.host_str()?,
-        "aphis.my.site.com" | "direct.aphis.usda.gov" | "www.aphis.usda.gov" | "efile.aphis.usda.gov");
+    let host = url.host_str()?;
+    let official_host = matches!(host,
+        "aphis.my.site.com" | "direct.aphis.usda.gov" | "www.aphis.usda.gov" | "efile.aphis.usda.gov" | "aphis.file.force.com");
+    let salesforce_document = host == "aphis.file.force.com"
+        && url.path().strip_prefix("/sfc/servlet.shepherd/version/download/")
+            .is_some_and(|id| matches!(id.len(), 15 | 18) && id.bytes().all(|byte| byte.is_ascii_alphanumeric()));
     let official_path = ["/PublicSearchTool/", "/awa/", "/sites/", "/efile/"]
-        .iter().any(|prefix| url.path().starts_with(prefix));
+        .iter().any(|prefix| url.path().starts_with(prefix))
+        || salesforce_document;
     (url.scheme() == "https" && official_host && official_path
         && url.username().is_empty() && url.password().is_none() && url.port().is_none())
         .then(|| value.to_owned())
@@ -7592,9 +7597,17 @@ mod aphis_public_report_link_tests {
             "https://aphis.my.site.com.evil.test/PublicSearchTool/s/report",
             "https://aphis.my.site.com/redirect/report",
             "https://user@aphis.my.site.com/PublicSearchTool/s/report",
+            "https://example.force.com/sfc/servlet.shepherd/version/download/file",
+            "https://aphis.file.force.com/sfc/servlet.shepherd/version/download/068000000000000AAA/redirect",
         ] {
             assert_eq!(safe_aphis_report_document_url(Some(&json!(url))), None);
         }
+    }
+
+    #[test]
+    fn report_link_allowlist_accepts_official_aphis_salesforce_documents_only_at_download_path() {
+        let url = "https://aphis.file.force.com/sfc/servlet.shepherd/version/download/068000000000000AAA";
+        assert_eq!(safe_aphis_report_document_url(Some(&json!(url))), Some(url.into()));
     }
 
     #[test]

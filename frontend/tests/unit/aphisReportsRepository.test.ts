@@ -51,6 +51,22 @@ describe('APHIS report link repository', () => {
     await expect(new AphisReportsRepository(wrongHost).page(entity, 'official', 'annual_reports', 'release-1')).rejects.toThrow('APHIS report response did not match');
   });
 
+  it('accepts APHIS Salesforce document links only on the exact version-download route', async () => {
+    const officialDocument = {
+      ...annual,
+      report_url: 'https://aphis.file.force.com/sfc/servlet.shepherd/version/download/068000000000000AAA',
+    };
+    const accepted = vi.fn().mockResolvedValue(new Response(JSON.stringify(envelope([officialDocument])), { status: 200 }));
+    await expect(new AphisReportsRepository(accepted).page(entity, 'official', 'annual_reports', 'release-1'))
+      .resolves.toMatchObject({ data: [officialDocument] });
+    const unrelated = vi.fn().mockResolvedValue(new Response(JSON.stringify(envelope([{
+      ...officialDocument,
+      report_url: 'https://example.force.com/sfc/servlet.shepherd/version/download/068000000000000AAA',
+    }])), { status: 200 }));
+    await expect(new AphisReportsRepository(unrelated).page(entity, 'official', 'annual_reports', 'release-1'))
+      .rejects.toThrow('APHIS report response did not match');
+  });
+
   it('provides empty state data and lets callers retry an upstream failure', async () => {
     const fetcher = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify(envelope([])), { status: 200 }))

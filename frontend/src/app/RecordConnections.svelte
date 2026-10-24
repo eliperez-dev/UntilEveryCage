@@ -92,7 +92,9 @@
 
   function humanize(value: string): string {
     if (value === 'source_assertion') return 'Source';
+    if (value === 'us.aphis') return 'USDA APHIS';
     if (value === 'us.aphis.annual-reports') return 'USDA APHIS annual reports';
+    if (value === 'us.inspections') return 'USDA APHIS inspections';
     return value.replaceAll(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/^./, letter => letter.toLocaleUpperCase());
   }
 

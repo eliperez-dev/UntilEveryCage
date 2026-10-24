@@ -6,9 +6,12 @@ const profile = z.enum(['official', 'secondary', 'community']);
 const aphisDocumentUrl = z.string().url().refine(value => {
   try {
     const url = new URL(value);
+    const salesforceDocument = url.hostname === 'aphis.file.force.com'
+      && /^\/sfc\/servlet\.shepherd\/version\/download\/[A-Za-z0-9]{15}(?:[A-Za-z0-9]{3})?$/.test(url.pathname);
     return url.protocol === 'https:'
-      && ['aphis.my.site.com', 'direct.aphis.usda.gov', 'www.aphis.usda.gov', 'efile.aphis.usda.gov'].includes(url.hostname)
-      && ['/PublicSearchTool/', '/awa/', '/sites/', '/efile/'].some(prefix => url.pathname.startsWith(prefix))
+      && (['aphis.my.site.com', 'direct.aphis.usda.gov', 'www.aphis.usda.gov', 'efile.aphis.usda.gov'].includes(url.hostname)
+        && ['/PublicSearchTool/', '/awa/', '/sites/', '/efile/'].some(prefix => url.pathname.startsWith(prefix))
+        || salesforceDocument)
       && !url.username && !url.password && !url.port;
   } catch { return false; }
 }).nullable();

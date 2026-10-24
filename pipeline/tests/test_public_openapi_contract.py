@@ -11,6 +11,7 @@ API = ROOT / "docs" / "api"
 PUBLIC_PATHS = {
     "/api/v2/locations",
     "/api/v2/locations/{facility_id}",
+    "/api/v2/locations/{facility_id}/aphis-report-links",
     "/api/v2/locations.csv",
     "/api/v2/map/feed",
     "/api/v2/releases/manifest",
@@ -143,6 +144,20 @@ class PublicOpenApiContractTests(unittest.TestCase):
         self.assertEqual(self.query_names("/api/v2/map/feed"), set(re.findall(r"params\s*\.\s*(\w+)", map_feed)))
         detail = self.handler(self.rust, "get_v2_location_detail_handler")
         self.assertEqual(self.query_names("/api/v2/locations/{facility_id}"), set(re.findall(r"params\s*\.\s*(\w+)", detail)))
+
+    def test_aphis_report_link_resolver_is_release_bound_and_matches_handler(self):
+        path = "/api/v2/locations/{facility_id}/aphis-report-links"
+        self.assertEqual(self.query_names(path), {"profile", "release_id", "kind", "cursor", "limit"})
+        operation = self.spec["paths"][path]["get"]
+        self.assertIn("no-store", operation["description"])
+        self.assertEqual(operation["operationId"], "getAphisReportLinks")
+        handler = self.handler(self.rust, "get_v2_aphis_report_links_handler")
+        self.assertEqual(set(re.findall(r"params\s*\.\s*(\w+)", handler)), {"kind", "profile", "limit", "release_id", "cursor"})
+        self.assertIn("provenance_source_id", handler)
+        self.assertIn("graph_public_evidence_references_current", handler)
+        self.assertLess(handler.index("graph_public_evidence_references_current"), handler.index("aphis_public_report_links(&certificate, kind)"))
+        self.assertIn("no_store_response", handler)
+        self.assertIn("APHIS_PUBLIC_REPORT_PAGE_MAX", self.rust)
 
     def test_graph_query_surface_follows_used_fields_without_fake_traversal(self):
         fields = self.fields(self.graph, "PublicGraphQuery")
