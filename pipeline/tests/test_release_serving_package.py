@@ -78,6 +78,8 @@ class ReleaseServingPackageTests(unittest.TestCase):
         self.assertIn("uec.graph_public_evidence_metadata_clearance_events", prepare.RESTORE_ORDER)
         labels = next(spec for spec in specs if spec.relation == "uec.graph_public_projection_org_labels")
         self.assertEqual(labels.columns, ("projection_id", "endpoint_id", "label_source_record_id", "display_name", "assertion_role"))
+        self.assertIn("graph_public_organization_endpoints_current eligible", labels.query)
+        self.assertIn("eligible.organization_id=endpoint.public_entity_id", labels.query)
         self.assertIn("uec.graph_public_projection_org_labels", prepare.RESTORE_ORDER)
         evidence_refs = next(spec for spec in specs if spec.relation == "uec.graph_public_projection_evidence_refs")
         self.assertIn("evidence_source_record_id", evidence_refs.columns)
@@ -148,6 +150,9 @@ class ReleaseServingPackageTests(unittest.TestCase):
         self.assertIn("uec.graph_public_connections_current", sql)
         self.assertNotIn("uec.graph_public_projection_edge_supports TO uec_api_runtime", sql)
         self.assertNotIn("uec.graph_connection_edges TO uec_api_runtime", sql)
+        self.assertIn("GRANT EXECUTE ON FUNCTION uec.is_valid_italian_vat_identifier(text,text,text) TO uec_api_runtime", sql)
+        custom_role_sql = serving.grant_sql(api_role="custom_graph_api")
+        self.assertIn("GRANT EXECUTE ON FUNCTION uec.is_valid_italian_vat_identifier(text,text,text) TO custom_graph_api", custom_role_sql)
 
     def test_invalid_release_or_digest_fails_closed(self):
         with self.assertRaises(ValueError): serving.package_manifest(release_ids=[], migration_inventory_sha256="a" * 64)

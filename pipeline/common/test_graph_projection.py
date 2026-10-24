@@ -69,7 +69,7 @@ class GraphProjectionTests(unittest.TestCase):
 
     @unittest.skipUnless(
         os.environ.get("UEC_GRAPH_ACCEPTANCE_DATABASE_URL"),
-        "set UEC_GRAPH_ACCEPTANCE_DATABASE_URL after 080 and v3 projection are applied",
+        "set UEC_GRAPH_ACCEPTANCE_DATABASE_URL after 082 and v3 projection are applied",
     )
     def test_post_migration_database_projection_acceptance_is_read_only(self):
         expected_database = os.environ.get("UEC_GRAPH_DATABASE_NAME", "")
@@ -121,9 +121,18 @@ class GraphProjectionTests(unittest.TestCase):
                    JOIN uec.graph_public_projection_evidence_refs reference
                      USING (evidence_ref_id)"""
             ).fetchone()
+            vat_guards = connection.execute(
+                """SELECT
+                     uec.is_valid_italian_vat_identifier('it.853-2004','italian_vat',' iT 123 456 789 01 '),
+                     uec.is_valid_italian_vat_identifier('it.853-2004','italian_vat','00000000000'),
+                     uec.is_valid_italian_vat_identifier('it.1069-2009','it.tax-authority.vat','11111111111'),
+                     uec.is_valid_italian_vat_identifier('it.853-2004','italian_vat','1234567890'),
+                     uec.is_valid_italian_vat_identifier('other.source','company_number','company-7')"""
+            ).fetchone()
         self.assertEqual(duplicate_org_labels, 0)
         self.assertEqual(duplicate_org_endpoints, 0)
         self.assertEqual(duplicate_connection_rows, 0)
+        self.assertEqual(vat_guards, (True, False, False, False, True))
         if os.environ.get("UEC_GRAPH_ACCEPTANCE_REQUIRE_APHIS_EVIDENCE") == "1":
             self.assertGreater(evidence_counts[0], 0)
             self.assertGreater(evidence_counts[1], 0)
@@ -391,6 +400,33 @@ class GraphProjectionTests(unittest.TestCase):
         self.assertNotIn("grant select on uec.graph_public_evidence_metadata_clearance_events to uec_api_runtime", normalized)
         self.assertIn("revoke all on uec.graph_public_evidence_metadata_clearance_events from uec_api_runtime", normalized)
         self.assertIn("does not clear report contents", normalized)
+
+    def test_082_public_italian_vat_guard_only_changes_public_organization_qualification(self):
+        migration = (Path(__file__).resolve().parents[1] / "migrations" /
+                     "082_public_italian_vat_qualification.sql").read_text(encoding="utf-8")
+        normalized = migration.casefold()
+        self.assertIn("create function uec.is_valid_italian_vat_identifier", normalized)
+        self.assertIn("regexp_replace(upper(coalesce(source_identifier,'')), '[[:space:]]', '', 'g')", normalized)
+        self.assertIn("'^it', ''", normalized)
+        self.assertIn("vat ~ '^[0-9]{11}$'", normalized)
+        self.assertIn("vat <> repeat(substr(vat,1,1),11)", normalized)
+        self.assertIn("create or replace view uec.graph_public_organization_endpoints_current", normalized)
+        self.assertIn("uec.is_valid_italian_vat_identifier(\n      endpoint.source_id", normalized)
+        for gate in (
+            "build.projection_version='graph-release-projection-v3'",
+            "build.edge_generation=generation.generation",
+            "rights.redistribution_status='cleared'",
+            "review.privacy_screening_status='passed'",
+            "review.maintainer_approval='approved'",
+            "public_access_restricted",
+        ):
+            with self.subTest(gate=gate):
+                self.assertIn(gate, normalized)
+        self.assertNotIn("delete from uec.graph_connection_edges", normalized)
+        self.assertNotIn("update uec.source_entity_identifiers", normalized)
+        self.assertIn("grant execute on function uec.is_valid_italian_vat_identifier(text,text,text) to uec_api_runtime", normalized)
+        label_query, _ = _python_organization_label_select("selected-release")
+        self.assertIn("is_valid_italian_vat_identifier(endpoint.source_id,endpoint.identifier_type,endpoint.source_identifier)", label_query)
 
     def test_public_aphis_reference_batch_uses_only_typed_allowlisted_metadata(self):
         endpoint = uuid.uuid4()

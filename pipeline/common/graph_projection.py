@@ -60,7 +60,9 @@ def _python_organization_label_select(release_id: str) -> tuple[str, dict[str, s
              "  ON approved.release_id=%(release_id)s "
              " AND approved.source_record_id=assertion.source_record_id "
              " AND approved.facility_id=facility_assertion.facility_id "
-             "WHERE endpoint.entity_type='organization' AND btrim(assertion.assertion_value)<>'' "
+             "WHERE endpoint.entity_type='organization' "
+             " AND uec.is_valid_italian_vat_identifier(endpoint.source_id,endpoint.identifier_type,endpoint.source_identifier) "
+             " AND btrim(assertion.assertion_value)<>'' "
              "ORDER BY endpoint.source_id,endpoint.identifier_type,endpoint.source_identifier,"
              "endpoint.entity_type,endpoint.public_entity_id,CASE assertion.assertion_role "
              "  WHEN 'legal' THEN 0 WHEN 'business' THEN 1 ELSE 2 END,assertion.assertion_value")

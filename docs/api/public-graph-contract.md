@@ -79,6 +79,10 @@ identifiers and name-only operator identifiers do not qualify. Exact organizatio
 to source-reported operator relationships; inferred edges may connect
 independently eligible business nodes when their evidence records also pass
 the selected-release support gate. These edges are not ownership claims.
+For Italian VAT-shaped business identifiers, public qualification strips
+whitespace and an optional `IT` prefix, then requires exactly 11 digits and
+rejects repeated-digit placeholders. This shape screen does not claim registry
+existence, checksum verification, or current validity.
 Organization nodes expose only a selected-release label from an asserted name
 and an opaque source-scoped ID; native identifiers and source-field names
 remain private.
