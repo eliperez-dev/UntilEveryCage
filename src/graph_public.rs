@@ -762,21 +762,33 @@ mod tests {
         let ids: Vec<Uuid> = (1..=130).map(Uuid::from_u128).rev().collect();
         let first_batch = &ids[..GRAPH_CANDIDATE_BATCH_SIZE as usize];
         assert_eq!(candidate_batch_cursor(first_batch), Some(ids[127]));
-        assert!(needs_candidate_refill(0, 3, first_batch.len()));
+        assert!(needs_candidate_refill(0, 2, first_batch.len()));
         let second_batch = &ids[128..];
+        assert!(second_batch.iter().all(|candidate| *candidate < ids[127]));
         assert_eq!(candidate_batch_cursor(second_batch), Some(ids[129]));
-        assert!(!needs_candidate_refill(3, 3, second_batch.len()));
+        assert!(!needs_candidate_refill(2, 2, second_batch.len()));
+        let mut refilled = Vec::new();
+        for batch in [first_batch, second_batch] {
+            refilled.extend(batch.iter().copied().filter(|candidate| candidate.as_u128() <= 2));
+            if !needs_candidate_refill(refilled.len(), 2, batch.len()) {
+                break;
+            }
+        }
+        assert_eq!(refilled, second_batch);
 
-        let mut first_page = vec![json!({"connection_edge_id": ids[0]}), json!({"connection_edge_id": ids[1]})];
+        let mut first_page = refilled
+            .iter()
+            .map(|id| json!({"connection_edge_id": id}))
+            .collect();
         let next = page_cursor(&mut first_page, 1, |row| row.get("connection_edge_id").cloned());
         assert_eq!(first_page.len(), 1);
-        assert_eq!(next, Some(json!(ids[0])));
-        let mut second_page = vec![json!({"connection_edge_id": ids[1]}), json!({"connection_edge_id": ids[2]})];
-        let exhausted = page_cursor(&mut second_page, 2, |row| row.get("connection_edge_id").cloned());
-        assert_eq!(second_page.len(), 2);
+        assert_eq!(next, Some(json!(ids[128])));
+        let mut second_page = vec![json!({"connection_edge_id": ids[129]})];
+        let exhausted = page_cursor(&mut second_page, 1, |row| row.get("connection_edge_id").cloned());
+        assert_eq!(second_page.len(), 1);
         assert_eq!(exhausted, None);
         assert_ne!(first_page[0]["connection_edge_id"], second_page[0]["connection_edge_id"]);
-        assert!(!needs_candidate_refill(3, 3, 1));
+        assert!(!needs_candidate_refill(2, 2, 1));
     }
 
     #[test]
