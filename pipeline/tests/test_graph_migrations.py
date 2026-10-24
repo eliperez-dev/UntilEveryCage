@@ -9,6 +9,42 @@ class GraphMigrationContractTests(unittest.TestCase):
     def read(self, name):
         return (ROOT / "migrations" / name).read_text(encoding="utf-8")
 
+    def test_087_keyed_connection_view_keeps_live_and_release_gates(self):
+        migrations = sorted(path.name for path in (ROOT / "migrations").glob("*.sql"))
+        migration_name = "087_keyed_public_graph_connection_eligibility.sql"
+        self.assertIn(migration_name, migrations)
+        sql = self.read(migration_name).casefold()
+        self.assertIn("create or replace view uec.graph_public_connections_current as", sql)
+        self.assertNotIn("drop view uec.graph_public_connections_current", sql)
+        self.assertNotIn("graph_public_projection_endpoint_anchors", sql)
+        self.assertNotIn("graph_connection_edges", sql)
+        for gate in (
+            "b.active and b.status='completed'",
+            "b.projection_version='graph-release-projection-v3'",
+            "b.edge_generation=generation.generation",
+            "b.suppression_generation=suppression.generation",
+            "b.release_manifest_sha256=manifest.manifest_sha256",
+            "release.test_only is not true",
+            "release.status='promoted' or history.release_id is not null",
+            "record.source_id=support.source_id",
+            "record.artifact_id=support.artifact_id",
+            "candidate.release_id=e.release_id",
+            "current_support.facility_id=candidate.facility_id",
+            "current_anchor.facility_id=anchor.facility_id",
+            "current_anchor.source_record_id=anchor.source_record_id",
+            "graph_public_organization_label_candidates_current org",
+            "org.organization_id=e.from_entity_id",
+            "org.organization_id=e.to_entity_id",
+        ):
+            with self.subTest(gate=gate):
+                self.assertIn(gate, sql)
+        canonical = self.read("085_graph_live_anchor_keys.sql").casefold()
+        self.assertIn("rights.redistribution_status='cleared'", canonical)
+        self.assertIn("restricted.source_record_id=label.label_source_record_id", canonical)
+        self.assertIn("restricted.source_record_id=anchor.source_record_id", canonical)
+        self.assertEqual(sql.count("exists ("), 14)
+        self.assertEqual(sql.count("not exists ("), 2)
+
     def test_reserved_migrations_are_present_and_ordered(self):
         migrations = sorted(path.name for path in (ROOT / "migrations").glob("*.sql"))
         graph_migrations = [
