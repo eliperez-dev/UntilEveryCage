@@ -128,6 +128,105 @@ class GraphProjectionTests(unittest.TestCase):
             self.assertGreater(evidence_counts[0], 0)
             self.assertGreater(evidence_counts[1], 0)
 
+    @unittest.skipUnless(
+        os.environ.get("UEC_GRAPH_METADATA_CLEARANCE_INVALIDATION_ACCEPTANCE") == "1"
+        and os.environ.get("UEC_GRAPH_ACCEPTANCE_DATABASE_URL"),
+        "set UEC_GRAPH_METADATA_CLEARANCE_INVALIDATION_ACCEPTANCE=1 on the isolated clone",
+    )
+    def test_metadata_approval_after_completed_build_invalidates_projection(self):
+        """Exercise the real trigger; every test-only decision is rolled back."""
+        expected_database = os.environ.get("UEC_GRAPH_DATABASE_NAME", "")
+        self.assertTrue(expected_database)
+
+        class RollbackProbe(Exception):
+            pass
+
+        with psycopg.connect(os.environ["UEC_GRAPH_ACCEPTANCE_DATABASE_URL"]) as connection:
+            self.assertEqual(connection.execute("SELECT current_database()").fetchone()[0],
+                             expected_database)
+            try:
+                with connection.transaction():
+                    build = connection.execute(
+                        """SELECT release_id FROM uec.graph_public_projection_builds
+                           WHERE active AND status='completed' AND projection_version=%s
+                           ORDER BY completed_at DESC LIMIT 1""",
+                        (PROJECTION_VERSION,),
+                    ).fetchone()
+                    self.assertIsNotNone(build, "a completed projection is required")
+                    release_id = build[0]
+                    release = connection.execute(
+                        "SELECT profile FROM uec.releases WHERE release_id=%s",
+                        (release_id,),
+                    ).fetchone()
+                    self.assertIsNotNone(release)
+                    artifact = connection.execute(
+                        """SELECT record.source_id,record.artifact_id,artifact.sha256
+                           FROM uec.source_records record
+                           JOIN uec.raw_artifacts artifact USING(artifact_id)
+                           JOIN uec.graph_evidence_events event
+                             ON event.source_record_id=record.source_record_id
+                            AND event.source_id=record.source_id
+                           WHERE record.source_id IN ('us.aphis.annual-reports','us.inspections')
+                             AND ((record.source_id='us.aphis.annual-reports'
+                                   AND event.event_type='annual_reports'
+                                   AND event.event_period ~ '^[0-9]{4}$')
+                               OR (record.source_id='us.inspections'
+                                   AND event.event_type='inspections'
+                                   AND event.event_date IS NOT NULL))
+                             AND NOT EXISTS (
+                               SELECT 1 FROM uec.observations observation
+                               JOIN uec.release_members member USING(observation_id)
+                               WHERE member.release_id=%s
+                                 AND observation.source_record_id=record.source_record_id)
+                           ORDER BY record.source_id,record.artifact_id LIMIT 1""",
+                        (release_id,),
+                    ).fetchone()
+                    self.assertIsNotNone(artifact, "eligible non-facility APHIS evidence is required")
+                    before = connection.execute(
+                        "SELECT generation FROM uec.graph_projection_generation WHERE singleton"
+                    ).fetchone()[0]
+                    decision = (
+                        "aphis-public-reference-metadata-v1",
+                        ["source_id", "evidence_type", "event_date", "event_period",
+                         "observed_at", "source_url", "match_method"],
+                        "rollback-only regression test",
+                        "user-approved-reference-metadata-only;https://www.aphis.usda.gov/animal-care/awa-services/usda-animal-care-public-search-tool",
+                    )
+                    insert = """INSERT INTO uec.graph_public_evidence_metadata_clearance_events
+                        (source_id,profile,release_id,artifact_id,artifact_sha256,scope_version,
+                         decision_status,approved_fields,decision_actor,decision_reference,decided_at)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,clock_timestamp())"""
+                    connection.execute(
+                        insert,
+                        (artifact[0], release[0], release_id, artifact[1], artifact[2],
+                         decision[0], "withdrawn", decision[1], decision[2], decision[3],
+                        ),
+                    )
+                    connection.execute(
+                        insert.replace("clock_timestamp())", "clock_timestamp()+interval '1 second')"),
+                        (artifact[0], release[0], release_id, artifact[1], artifact[2],
+                         decision[0], "approved", decision[1], decision[2], decision[3],
+                        ),
+                    )
+                    self.assertEqual(connection.execute(
+                        """SELECT decision_status FROM uec.graph_public_evidence_metadata_clearance_current
+                           WHERE source_id=%s AND profile=%s AND release_id=%s AND artifact_id=%s""",
+                        (artifact[0], release[0], release_id, artifact[1]),
+                    ).fetchone()[0], "approved")
+                    after = connection.execute(
+                        "SELECT generation FROM uec.graph_projection_generation WHERE singleton"
+                    ).fetchone()[0]
+                    self.assertEqual(after, before + 1)
+                    self.assertEqual(connection.execute(
+                        """SELECT count(*) FROM uec.graph_public_projection_builds
+                           WHERE release_id=%s AND active AND status='completed'
+                             AND projection_version=%s AND edge_generation=%s""",
+                        (release_id, PROJECTION_VERSION, after),
+                    ).fetchone()[0], 0, "the previous completed build must now be stale")
+                    raise RollbackProbe()
+            except RollbackProbe:
+                pass
+
     def test_projection_selector_preserves_release_and_all_support_gates(self):
         self.assertIn("binding.release_id=$1", EDGE_CTES)
         self.assertIn("canonical_record.artifact_id=binding.artifact_id", EDGE_CTES)
@@ -268,6 +367,9 @@ class GraphProjectionTests(unittest.TestCase):
         normalized = migration.casefold()
         self.assertIn("create table uec.graph_public_evidence_metadata_clearance_events", normalized)
         self.assertIn("before update or delete on uec.graph_public_evidence_metadata_clearance_events", normalized)
+        self.assertIn("after insert on uec.graph_public_evidence_metadata_clearance_events", normalized)
+        self.assertIn("for each row when (new.decision_status='approved')", normalized)
+        self.assertIn("execute function uec.bump_graph_projection_generation()", normalized)
         self.assertIn("decision_status in ('approved','withdrawn')", normalized)
         self.assertIn("artifact_digest is distinct from new.artifact_sha256", normalized)
         self.assertIn("scope_version='aphis-public-reference-metadata-v1'", normalized)

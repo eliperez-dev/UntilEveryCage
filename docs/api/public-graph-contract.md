@@ -34,8 +34,11 @@ and `limit`. Entity search additionally accepts `q` and `entity_type`.
 The evidence route accepts `profile`, optional `release_id`, `cursor`, and
 `limit`. It returns only typed APHIS annual-report and inspection references
 whose evidence source record has release-scoped publication approval, passed
-privacy screening, and exact artifact-rights clearance, and whose matched
-facility is eligible in the same release. The underlying event and link rows
+privacy screening, and an append-only, release- and artifact-specific
+metadata-only clearance for this frozen reference DTO, and whose matched
+facility is eligible in the same release. This clearance is distinct from
+report-artifact redistribution rights and does not authorize report contents,
+raw event data, identifiers, or other publication surfaces. The underlying event and link rows
 remain private and are not facility release members; they do not change
 facility release membership. The result contains source ID, event type/date or
 year, observation date, fixed APHIS source URL, and exact source-identifier
@@ -99,7 +102,8 @@ from another artifact or release are excluded.
 ## Edge semantics
 
 `shared_business_name` is an inferred facility-to-facility relation from exact
-equality of complete normalized FSIS alternate/DBA names. Empty, one-token,
+equality of complete normalized alternate or DBA names from eligible source
+records (including FSIS where those fields are present). Empty, one-token,
 placeholder/boilerplate and generic activity-only aliases do not qualify.
 Both facilities and both source
 record versions must independently pass the selected-release support gates.
@@ -136,7 +140,7 @@ same release, endpoint, and support selector as the graph API. Edge generation
 changes invalidate the active projection; read-time release, support, rights,
 and suppression gates remain live. Endpoint/source-assertion changes invalidate
 the projection through a graph-generation counter. A stale projection therefore
-fails closed until rebuilt. Projection v2 stores each exact source-qualified
+fails closed until rebuilt. Projection v3 stores each exact source-qualified
 endpoint and its anchors once, then references that opaque build-local endpoint
 from each edge. The qualification retains source, identifier type, native
 identifier, entity type, and public entity UUID during the private build; native
@@ -145,7 +149,7 @@ identifier values are not persisted in serving tables or the package. Migration
 the safe current projection view but not private edges, identifiers, support
 references, or anchor records.
 
-The selected-column `release_serving` v6 package includes this projection for
+The selected-column `release_serving` v8 package includes this projection for
 explicitly selected current and historical public releases. Migration 077 adds
 its serving view and exact read-only grant. Restore into an isolated empty
 serving database, replay current restrictions and verify the production API

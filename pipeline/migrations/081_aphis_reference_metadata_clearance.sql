@@ -83,6 +83,14 @@ CREATE TRIGGER graph_public_evidence_metadata_clearance_append_only
     BEFORE UPDATE OR DELETE ON uec.graph_public_evidence_metadata_clearance_events
     FOR EACH ROW EXECUTE FUNCTION uec.reject_evidence_mutation();
 
+-- A newly approved DTO scope must invalidate a previously completed build,
+-- including a build whose evidence-reference projection was empty. Withdrawal
+-- remains an immediate live-view gate and does not stale unrelated graph data.
+CREATE TRIGGER graph_public_evidence_metadata_clearance_projection_generation
+    AFTER INSERT ON uec.graph_public_evidence_metadata_clearance_events
+    FOR EACH ROW WHEN (NEW.decision_status='approved')
+    EXECUTE FUNCTION uec.bump_graph_projection_generation();
+
 CREATE VIEW uec.graph_public_evidence_metadata_clearance_current AS
 SELECT clearance_event_id,source_id,profile,release_id,artifact_id,artifact_sha256,
        scope_version,decision_status,approved_fields,decision_actor,decision_reference,decided_at
