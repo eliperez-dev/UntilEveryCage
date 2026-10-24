@@ -112,6 +112,9 @@ endpoint_candidates AS MATERIALIZED (
       'vat','vat_number','italian_vat','p_iva'
     )
     AND i.organization_id IS NOT NULL
+    AND uec.is_valid_italian_vat_identifier(
+        i.source_id, i.identifier_type, i.source_identifier
+    )
 ),
 distinct_endpoint_targets AS MATERIALIZED (
   SELECT DISTINCT source_id, identifier_type, source_identifier, entity_type,
