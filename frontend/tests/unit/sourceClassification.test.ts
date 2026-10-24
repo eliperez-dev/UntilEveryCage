@@ -20,4 +20,12 @@ describe('source classification presentation', () => {
       ['Chicken processing'],
     )).toEqual(['Poultry establishment', 'Former source alias']);
   });
+
+  it('deduplicates semicolon-separated source terms individually without splitting commas', () => {
+    expect(sourceClassificationLabels(
+      ['Cutting; freezing; processing; United States, poultry division'],
+      [],
+      ['Cutting', 'Freezing', 'Processing'],
+    )).toEqual(['United States, poultry division']);
+  });
 });
