@@ -1,0 +1,44 @@
+export type SourceClassificationAssignment = Readonly<{ sourceLabel?: string | null; sourceCode?: string | null }>;
+
+function displayLabel(value: string | null | undefined): string | null {
+  if (!value?.trim()) return null;
+  const words = value.replaceAll(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim()
+    .replace(/\b(nrte|rte)\b/gi, acronym => acronym.toUpperCase());
+  return words ? words[0]!.toLocaleUpperCase() + words.slice(1) : null;
+}
+
+function identity(value: string): string {
+  return value.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+}
+
+/** Preserve native terminology while avoiding a second rendering of activity facts. */
+export function sourceClassificationLabels(
+  nativeLabels: readonly (string | null | undefined)[],
+  assignments: readonly SourceClassificationAssignment[],
+  activities: readonly (string | null | undefined)[],
+): string[] {
+  const activityKeys = new Set(activities.filter((value): value is string => Boolean(value)).map(displayLabel).filter((value): value is string => Boolean(value)).map(identity));
+  const seen = new Set<string>();
+  const output: string[] = [];
+  const add = (value: string | null | undefined) => {
+    const label = displayLabel(value);
+    if (!label) return;
+    const key = identity(label);
+    if (!key || activityKeys.has(key) || seen.has(key)) return;
+    seen.add(key);
+    output.push(label);
+  };
+  nativeLabels.forEach(add);
+  for (const assignment of assignments) {
+    const label = displayLabel(assignment.sourceLabel);
+    const code = displayLabel(assignment.sourceCode);
+    if (label && code && identity(label) !== identity(code)) {
+      const labelRepeated = activityKeys.has(identity(label)) || seen.has(identity(label));
+      const codeRepeated = activityKeys.has(identity(code)) || seen.has(identity(code));
+      if (!labelRepeated && !codeRepeated) add(`${label} (${code})`);
+      else if (!labelRepeated) add(label);
+      else if (!codeRepeated) add(code);
+    } else add(label ?? code);
+  }
+  return output;
+}

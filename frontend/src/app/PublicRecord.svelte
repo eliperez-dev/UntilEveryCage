@@ -6,6 +6,7 @@
   import { publicReleaseLabel } from '../features/locations/releasePresentation';
   import RecordConnections from './RecordConnections.svelte';
   import { categoryPresentation } from '../features/locations/categoryPresentation';
+  import { sourceClassificationLabels } from '../features/locations/sourceClassification';
   import LocationPreview from './LocationPreview.svelte';
   let copyFeedback = $state('');
   let { id, profile = 'official', releaseId, onrelease }: { id: string; profile?: LocalProfile; releaseId?: string | undefined; onrelease?: (label: string | null) => void } = $props();
@@ -31,15 +32,11 @@
   const isSummaryActivity = (location: Location, label: string) => location.taxonomy?.primaryCategories.some(key => categoryPresentation(key).label.toLocaleLowerCase() === label.toLocaleLowerCase()) ||
     (location.taxonomy?.primaryCategories.includes('processing_and_preparation') && label.toLocaleLowerCase() === 'processing' && activityLabels(location).some(other => other.toLocaleLowerCase() !== 'processing'));
   const detailActivity = (location: Location) => activityLabels(location).filter(label => !isSummaryActivity(location, label)).join(', ');
-  const sourceClassifications = (location: Location) => [...new Set([
-    location.sourceFacts?.nativeActivityLabel ?? location.sourceFacts?.nativeActivityCode,
-    ...(location.taxonomy?.assignments.map(assignment => {
-      const label = assignment.sourceLabel ? humanLabel(assignment.sourceLabel) : null;
-      const code = assignment.sourceCode ? humanLabel(assignment.sourceCode) : null;
-      const source = label && code && label.toLocaleLowerCase() !== code.toLocaleLowerCase() ? `${label} (${code})` : label ?? code;
-      return source;
-    }) ?? []),
-  ].filter((label): label is string => Boolean(label)).map(humanLabel))];
+  const sourceClassifications = (location: Location) => sourceClassificationLabels(
+    [location.sourceFacts?.nativeActivityLabel, location.sourceFacts?.nativeActivityCode],
+    location.taxonomy?.assignments ?? [],
+    activityLabels(location),
+  );
   const geocodingConfidence = (location: Location) => {
     const raw = location.evidence?.geometryProvenance?.confidence;
     const score = raw?.trim() ? Number(raw) : NaN;

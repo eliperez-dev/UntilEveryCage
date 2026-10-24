@@ -4,6 +4,7 @@
   import { serializeRoute } from './routeState';
   import type { LabRecord } from '../design-lab/contract';
   import { categoryPresentation } from '../features/locations/categoryPresentation';
+  import { sourceClassificationLabels } from '../features/locations/sourceClassification';
   import type { TaxonomyClassification } from '../domain/taxonomy';
   import type { DerivedSourceVolumeRange, LocationSourceFacts } from '../domain/location';
 
@@ -231,18 +232,11 @@
     ...sourceFactLabels(sourceFacts, 'processingActivities'),
   ]));
   const detailedActivities = $derived(detailedActivityLabels.filter(label => !isSummaryActivity(label)).join(', '));
-  const sourceClassification = $derived(uniqueLabels([
-    nativeActivity,
-    ...(taxonomy?.assignments.map(assignment => {
-      const label = humanizeValue(assignment.sourceLabel);
-      const code = humanizeValue(assignment.sourceCode);
-      const source = label && code && !sameLabel(label, code) ? `${label} (${code})` : label ?? code;
-      return source;
-    }) ?? []),
-    taxonomy && activity && ![...taxonomyPrimaryLabels, ...taxonomy.leafActivities.map(leaf => leaf.label)].some(label => sameLabel(label, activity))
-      ? humanizeValue(activity) : null,
-    humanizeValue(activitySource),
-  ]));
+  const sourceClassification = $derived(sourceClassificationLabels(
+    [sourceFacts?.nativeActivityLabel, sourceFacts?.nativeActivityCode, activitySource],
+    taxonomy?.assignments ?? [],
+    [...detailedActivityLabels, ...taxonomyPrimaryLabels, ...(activity ? [activity] : [])],
+  ));
 
   function humanizeValue(raw: string | null): string | null {
     if (!raw) return null;

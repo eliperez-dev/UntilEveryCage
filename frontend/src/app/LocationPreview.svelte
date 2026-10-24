@@ -1,6 +1,8 @@
 <script lang="ts">
   import 'maplibre-gl/dist/maplibre-gl.css';
+  import * as maplibregl from 'maplibre-gl';
   import type { Map as MapLibreMap } from 'maplibre-gl';
+  import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
   import { CATEGORY_PRIMARY_BY_SOURCE_KEY } from '../features/locations/categoryPresentation';
   import { locationPreviewMode, locationPreviewPinFile, locationPreviewZoom } from '../features/locations/locationPreview';
 
@@ -24,9 +26,10 @@
     pinLoaded = false;
     void (async () => {
       try {
-        const [{ Map }, styles] = await Promise.all([import('maplibre-gl'), import('../map/baseMapStyle')]);
+        const styles = await import('../map/baseMapStyle');
         if (disposed) return;
-        const instance = new Map({
+        maplibregl.setWorkerUrl(workerUrl);
+        const instance = new maplibregl.Map({
           container,
           style: styles.createBaseStyle(locationPreviewMode(precisionValue) === 'satellite' ? 'satellite' : 'vector', { includeTransport: false }) as never,
           center: [lon, lat],
@@ -35,6 +38,12 @@
           interactive: false,
         });
         map = instance;
+        instance.on('error', event => {
+          if (/worker failed to load/i.test(event.error.message)) {
+            pinLoaded = false;
+            error = true;
+          }
+        });
         instance.once('load', () => {
           if (disposed) return;
           instance.addSource('record-location', {
@@ -48,7 +57,9 @@
               id: 'record-location-pin', type: 'symbol', source: 'record-location',
               layout: { 'icon-image': 'record-location-pin', 'icon-anchor': 'bottom', 'icon-size': 0.45 },
             });
-            pinLoaded = true;
+            instance.once('idle', () => {
+              if (!disposed && !error && instance.getLayer('record-location-pin')) pinLoaded = true;
+            });
           }).catch(() => { if (!disposed) error = true; });
         });
       } catch {
