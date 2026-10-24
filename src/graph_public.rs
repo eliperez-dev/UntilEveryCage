@@ -21,7 +21,46 @@ const MAX_LIMIT: i64 = 100;
 const DEFAULT_LIMIT: i64 = 50;
 const API_VERSION: &str = "v2-graph-v1";
 const DISCLAIMER: &str = "Confidence is a deterministic ruleset estimate, not a measured probability. An inferred connection is not proof of ownership, identity, or supply-chain control.";
-const GRAPH_CONNECTION_SELECT: &str = "SELECT edge.connection_edge_id,edge.from_entity_id,edge.from_entity_type,edge.from_source_id,edge.from_identifier_type,edge.to_entity_id,edge.to_entity_type,edge.to_source_id,edge.to_identifier_type,edge.relationship_type,edge.connection_type,edge.confidence,edge.confidence_band,edge.signal_explanation,edge.match_method,edge.observed_at,edge.computed_at,edge.ruleset_version,edge.conflicting,from_label.display_name,to_label.display_name FROM uec.graph_public_connections_current edge LEFT JOIN uec.graph_public_organization_labels_current from_label ON from_label.release_id=edge.release_id AND from_label.organization_id=edge.from_entity_id AND edge.from_entity_type='organization' LEFT JOIN uec.graph_public_organization_labels_current to_label ON to_label.release_id=edge.release_id AND to_label.organization_id=edge.to_entity_id AND edge.to_entity_type='organization' WHERE edge.release_id=$1 AND ($2::text IS NULL OR edge.connection_type=$2) AND ($3::double precision IS NULL OR edge.confidence >= $3) AND ($4::double precision IS NULL OR edge.confidence <= $4) AND ($5::text[] IS NULL OR edge.confidence_band=ANY($5)) AND ($6 OR edge.conflicting=false) AND ($7::text IS NULL OR edge.from_source_id=$7 OR edge.to_source_id=$7) AND ($8::uuid IS NULL OR edge.from_entity_id=$8 OR edge.to_entity_id=$8) AND ($9::uuid IS NULL OR edge.connection_edge_id<$9) ORDER BY edge.connection_edge_id DESC LIMIT $10";
+const GRAPH_CONNECTION_SELECT: &str = r#"
+WITH page_edges AS MATERIALIZED (
+    SELECT edge.*
+    FROM uec.graph_public_connections_current edge
+    WHERE edge.release_id=$1
+      AND ($8::uuid IS NULL OR edge.from_entity_id=$8 OR edge.to_entity_id=$8)
+      AND ($2::text IS NULL OR edge.connection_type=$2)
+      AND ($3::double precision IS NULL OR edge.confidence >= $3)
+      AND ($4::double precision IS NULL OR edge.confidence <= $4)
+      AND ($5::text[] IS NULL OR edge.confidence_band=ANY($5))
+      AND ($6 OR edge.conflicting=false)
+      AND ($7::text IS NULL OR edge.from_source_id=$7 OR edge.to_source_id=$7)
+      AND ($9::uuid IS NULL OR edge.connection_edge_id<$9)
+    ORDER BY edge.connection_edge_id DESC
+    LIMIT $10
+)
+SELECT edge.connection_edge_id,edge.from_entity_id,edge.from_entity_type,
+       edge.from_source_id,edge.from_identifier_type,edge.to_entity_id,
+       edge.to_entity_type,edge.to_source_id,edge.to_identifier_type,
+       edge.relationship_type,edge.connection_type,edge.confidence,
+       edge.confidence_band,edge.signal_explanation,edge.match_method,
+       edge.observed_at,edge.computed_at,edge.ruleset_version,edge.conflicting,
+       from_label.display_name,to_label.display_name
+FROM page_edges edge
+LEFT JOIN LATERAL (
+    SELECT label.display_name
+    FROM uec.graph_public_organization_labels_current label
+    WHERE label.release_id=edge.release_id
+      AND label.organization_id=edge.from_entity_id
+    LIMIT 1 OFFSET 0
+) from_label ON edge.from_entity_type='organization'
+LEFT JOIN LATERAL (
+    SELECT label.display_name
+    FROM uec.graph_public_organization_labels_current label
+    WHERE label.release_id=edge.release_id
+      AND label.organization_id=edge.to_entity_id
+    LIMIT 1 OFFSET 0
+) to_label ON edge.to_entity_type='organization'
+ORDER BY edge.connection_edge_id DESC
+"#;
 const GRAPH_APHIS_REFERENCE_SELECT: &str = "SELECT evidence_ref_id,source_id,evidence_type,event_date,event_period,observed_at,source_url,match_method FROM uec.graph_public_evidence_references_current WHERE release_id=$1 AND public_entity_id=$2 AND endpoint_source_id='us.aphis' AND ($3::uuid IS NULL OR evidence_ref_id<$3) ORDER BY evidence_ref_id DESC LIMIT $4";
 
 #[derive(Debug, Deserialize, Clone)]
@@ -310,6 +349,16 @@ pub async fn connections(
         _ => None,
     };
     let include_conflicting = query.include_conflicting.unwrap_or(false);
+    // PostgreSQL otherwise spends seconds JIT-compiling the large gated view
+    // plan, even for an empty continuation page. Keep this local to the
+    // read-only graph transaction; it does not alter database-wide settings.
+    if transaction.execute("SET LOCAL jit=off", &[]).await.is_err() {
+        return v2_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "public_graph_query_failed",
+            "public graph query failed",
+        );
+    }
     let rows = match transaction
         .query(
             GRAPH_CONNECTION_SELECT,
@@ -609,12 +658,21 @@ mod tests {
 
     #[test]
     fn api_reads_indexed_projection_and_entities_follow_same_endpoint_policy() {
-        assert!(GRAPH_CONNECTION_SELECT.contains("FROM uec.graph_public_connections_current"));
+        assert!(GRAPH_CONNECTION_SELECT.contains("FROM uec.graph_public_connections_current edge"));
+        assert!(GRAPH_CONNECTION_SELECT.contains("page_edges AS MATERIALIZED"));
+        assert!(GRAPH_CONNECTION_SELECT.contains("edge.from_entity_id=$8 OR edge.to_entity_id=$8"));
+        assert!(!GRAPH_CONNECTION_SELECT.contains("graph_public_projection_edges"));
+        assert!(!GRAPH_CONNECTION_SELECT.contains("graph_public_projection_builds"));
+        assert!(GRAPH_CONNECTION_SELECT.contains("FROM page_edges edge\nLEFT JOIN LATERAL"));
         assert!(GRAPH_CONNECTION_SELECT.contains("graph_public_organization_labels_current"));
         assert!(!GRAPH_CONNECTION_SELECT.contains("graph_connection_edges"));
         assert!(!GRAPH_CONNECTION_SELECT.contains("source_entity_identifiers"));
         assert!(GRAPH_CONNECTION_SELECT.contains("from_label.display_name,to_label.display_name"));
-        assert!(GRAPH_CONNECTION_SELECT.contains("ORDER BY edge.connection_edge_id DESC LIMIT $10"));
+        assert!(GRAPH_CONNECTION_SELECT.contains("ORDER BY edge.connection_edge_id DESC\n    LIMIT $10"));
+        assert!(!GRAPH_CONNECTION_SELECT.contains("LIMIT 101"));
+        let graph_source = include_str!("../src/graph_public.rs");
+        assert!(graph_source.contains("SET LOCAL jit=off"));
+        assert!(graph_source.contains(".read_only(true)"));
         let entity_query = include_str!("../pipeline/migrations/077_graph_release_projection.sql");
         assert!(entity_query.contains("CREATE VIEW uec.graph_public_connections_current"));
         assert!(entity_query.contains("graph_public_projection_endpoint_anchors"));
