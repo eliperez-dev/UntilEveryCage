@@ -4,7 +4,7 @@
   "whole_dataset_graph": {
     "as_of": "2026-10-23",
     "release_id": "release-2026-10-18",
-    "status": "inputs_validated_disk_match_complete_database_acceptance_pending",
+    "status": "whole_corpus_database_acceptance_passed_public_serving_acceptance_pending",
     "scope": "All released facility sources and retained private facility evidence, including unmapped records. Counts are source/artifact record versions and candidate relationships, not unique facilities or published connections.",
     "released_records": 69220,
     "released_source_count": 14,
@@ -32,7 +32,16 @@
       "fr.georisques.icpe.animal": 12503,
       "gb.scot.marine.aquaculture": 2124
     },
-    "disk_only_candidates": {"shared_business_name": 25441, "multi_signal": 958},
+    "historical_disk_only_candidates": {"input_receipt": "source-coverage-3ed34ffa.json", "shared_business_name": 25441, "multi_signal": 958},
+    "current_input_matcher_candidates": {"shared_business_name": 20334, "multi_signal": 958},
+    "private_graph_history_edges": 95143,
+    "nonzero_private_source_pairs": 25,
+    "real_pair_controls_passed": 4,
+    "preserved_original_edges": 50925,
+    "original_edge_payload_md5": "9c01a254488b05fde30bd4181ea35ef1",
+    "release_membership_md5": "d069f4041af419783a5c7b996438e432",
+    "whole_corpus_rerun_idempotent": true,
+    "italy_853_source_name_assertions": 42306,
     "icpe_siret_facility_aliases_retained": 12409,
     "real_cross_source_alias_candidates": 0,
     "retained_aphis_evidence": {
@@ -40,13 +49,13 @@
       "inspection_events": 98,
       "uniquely_matched_references": 1024,
       "unmatched_events": 68,
-      "public_reference_approval": "pending",
+      "public_reference_approval": "authorized_metadata_only_materialization_pending",
       "event_handoffs_reimported_this_run": false
     },
-    "database_materialization_verified": false,
+    "database_materialization_verified": true,
     "hosted_rollout_verified": false,
-    "evidence": ["pipeline/common/graph_source_mapping.py", "pipeline/common/real_private_graph.py", "pipeline/migrations/080_graph_public_evidence_references.sql", "data/staging/whole-dataset-graph-export-20261023/source-coverage-3ed34ffa.json"],
-    "next_action": "Complete authorized real-copy migration and corpus replay, verify old edge and release invariants plus rerun idempotence, build and restore the release-safe projection, pass CI and hosted acceptance. Do not count disk candidates as published links."
+    "evidence": ["pipeline/common/graph_source_mapping.py", "pipeline/common/real_private_graph.py", "pipeline/migrations/080_graph_public_evidence_references.sql", "pipeline/migrations/081_aphis_reference_metadata_clearance.sql", "pipeline/migrations/082_public_italian_vat_qualification.sql", "data/staging/whole-dataset-graph-export-20261023/source-coverage-italy-placeholder-filter-replay-20261023.json", "data/staging/whole-dataset-graph-20261023/aggregate-receipt.json"],
+    "next_action": "Build the approved metadata-only reference and release-safe graph projection; verify isolated v8 serving restore, complete API traversal, final CI and hosted acceptance. Private historical edge totals are not published connection totals."
   },
   "historical_private_rehearsal": "docs/archive/rehearsals/country-rehearsal-2026-09-15.json",
   "latest_v0_private_preview_imports": {

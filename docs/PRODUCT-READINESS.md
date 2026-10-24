@@ -30,9 +30,11 @@ all 14 released sources (69,220 records), plus retained private DGAL I/II,
 ICPE, Scotland aquaculture and Italy business evidence. The validated input
 is 136,256 source/artifact record versions across 19 handoffs and 18 facility
 source IDs, not that many distinct facilities. Unmapped records participate.
-The corrected disk-only run generated 25,441 shared-business-name and 958
-multi-signal candidates. These are not persisted or published connection
-counts. All 12,409 retained ICPE SIRET aliases reached matching; no real
+The corrected Italy semantic replay preserves raw values and provenance while
+excluding malformed or placeholder VAT identifiers from new business assertions.
+The current matcher staged 20,334 shared-business-name and 958 multi-signal
+candidates. These are not published connection counts. All 12,409 retained ICPE
+SIRET aliases reached matching; no real
 cross-source alias overlap was observed. SIRET remains an establishment
 identifier, not an organization or ownership assertion.
 
@@ -40,22 +42,34 @@ The additive 080 migration and v3 serving projection support source-qualified
 business labels and bounded APHIS report/inspection references. Retained APHIS
 evidence comprises 994 annual events and 98 inspections; 1,024 have unique
 registration matches, while 68 remain unmatched. This is private linkage
-evidence, not publication or successful hosted acceptance. The local graph
-database credential request and the evidence-reference publication decision
-remain pending. No migration, whole-corpus database replay, serving-package
-restore or Render rollout has been completed for this change.
+evidence, not successful hosted acceptance. The maintainer authorized local
+credential use and publication of reference metadata only, not report contents.
+Migrations 080 through 082 have applied to the disposable real-data copy.
+Whole-corpus acceptance passed for all 19 handoffs: the exact 50,925 original
+edge payloads and 69,220 release members are unchanged, a full rerun is
+idempotent, and all four real positive/negative controls pass. The private
+historical graph contains 95,143 edges across 25 nonzero source pairs;
+this includes earlier derivations and is not a public connection count.
+The orchestrator also inspected source-name, operator, address-supported and
+negative examples personally. Generic shared names remain weak inferred
+evidence, not confirmation of common ownership.
 
-Local code gates passed: 137 Rust tests, 24 Rust documentation tests, 669
-pipeline tests (37 optional skips), 75 adapter tests, 257 frontend tests,
-frontend type checks, and 37 static tests. A further 105 focused graph/source/
-package tests passed with one explicitly env-gated real-database check skipped.
+The release-safe v3 projection, metadata-only reference clearance, isolated
+v8 serving-package restore, complete public API traversal and Render rollout
+are still being verified. No graph change from this sprint is live yet.
+
+Local code gates passed: 137 Rust tests, 24 Rust documentation tests, 671
+pipeline tests (39 optional skips), 75 adapter tests, 257 frontend tests,
+frontend type checks, and 37 static tests. The standard runner now also gates
+89 graph unit tests (four explicit database-acceptance skips).
 The prior 066 checksum concern was diagnosed as line-ending representation:
 the clone's stored hash matches current checkout bytes and the migration
 runner accepts equivalent LF/CRLF bytes. No ledger or historical migration
-was edited. Whole-corpus database idempotence, preserved-edge fingerprints,
-complete public API traversal, CI and hosted acceptance remain separate gates.
+was edited. Four focused PostGIS regressions also pass, including completed
+handoff context backfill and unknown/null/date-only/timezone timestamp handling.
+Complete public API traversal, final CI and hosted acceptance remain separate gates.
 Aggregate input evidence is in ignored
-`data/staging/whole-dataset-graph-export-20261023/source-coverage-3ed34ffa.json`
+`data/staging/whole-dataset-graph-export-20261023/source-coverage-italy-placeholder-filter-replay-20261023.json`
 in the backend source lane; integration gate logs are under ignored
 `data/staging/whole-dataset-graph-20261023/`.
 
