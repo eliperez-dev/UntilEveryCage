@@ -344,12 +344,28 @@
   {#if nameWithheld}
     <dl class="identity"><div><dt>Name</dt><dd>Name not shown, privacy review pending</dd></div></dl>
   {/if}
-  {#if activityDisplay}
-    <p class="activity">{activityDisplay}</p>
-  {/if}
-  {#if taxonomy}
+  <section aria-labelledby="location-heading">
+    <h2 id="location-heading">Location</h2>
+    <dl>
+      {#if facilityAddress}<div><dt>Address</dt><dd>{facilityAddress}</dd></div>{/if}
+      <div><dt>Locality</dt><dd>{locationText}</dd></div>
+      {#if hasCoordinates}<div><dt>Coordinates</dt><dd>{coordinate(record.latitude)}, {coordinate(record.longitude)}</dd></div>{/if}
+      <div><dt>Precision</dt><dd>{precisionLabel}</dd></div>
+      {#if record.coordinatePrecision && !['source-provided', 'source_reported', 'source_provided_unverified'].includes(record.coordinatePrecision)}<div><dt>Source precision</dt><dd>{humanizeValue(record.coordinatePrecision)}</dd></div>{/if}
+      {#if coordinateStatus && !sameLabel(coordinateStatus, 'source_confirmed')}<div><dt>Coordinate review</dt><dd>{humanizeValue(coordinateStatus)}</dd></div>{/if}
+      {#if coordinateMethod}<div><dt>Location method</dt><dd>{humanizeValue(coordinateMethod)}</dd></div>{/if}
+      {#if coordinateProvider}<div><dt>Geocoding provider</dt><dd>{coordinateProvider}</dd></div>{/if}
+      {#if coordinateConfidence !== null || record.coordinateConfidenceBand}<div><dt>Geocoding confidence</dt><dd>{#if coordinateConfidence !== null}{coordinateConfidence} (provider score){/if}{#if record.coordinateConfidenceBand}{coordinateConfidence !== null ? ' · ' : ''}{humanizeValue(record.coordinateConfidenceBand)}{/if}</dd></div>{/if}
+      {#if defaultMapScope === false}<div><dt>Map scope</dt><dd>Outside the default map{#if mapScopeReason} · {humanizeValue(mapScopeReason)}{/if}</dd></div>{/if}
+    </dl>
+  </section>
+
+  {#if presentation === 'page' && hasCoordinates}<LocationPreview latitude={record.latitude!} longitude={record.longitude!} precision={precision} category={taxonomy?.primaryCategories[0] ?? activity ?? 'unclassified'} />{/if}
+
+  {#if activityDisplay || taxonomy}
     <section class="taxonomy" aria-labelledby="taxonomy-heading">
       <h2 id="taxonomy-heading">Activities and classification</h2>
+      {#if activityDisplay}<p class="activity">{activityDisplay}</p>{/if}
       {#if detailedActivities}
         <p aria-label="Detailed activities">{detailedActivities}</p>
       {/if}
@@ -376,23 +392,6 @@
       </dl>
     </section>
   {/if}
-
-  {#if presentation === 'page' && hasCoordinates}<LocationPreview latitude={record.latitude!} longitude={record.longitude!} precision={precision} category={taxonomy?.primaryCategories[0] ?? activity ?? 'unclassified'} />{/if}
-  <section aria-labelledby="location-heading">
-    <h2 id="location-heading">Location</h2>
-    <dl>
-      {#if facilityAddress}<div><dt>Address</dt><dd>{facilityAddress}</dd></div>{/if}
-      <div><dt>Locality</dt><dd>{locationText}</dd></div>
-      {#if hasCoordinates}<div><dt>Coordinates</dt><dd>{coordinate(record.latitude)}, {coordinate(record.longitude)}</dd></div>{/if}
-      <div><dt>Precision</dt><dd>{precisionLabel}</dd></div>
-      {#if record.coordinatePrecision && !['source-provided', 'source_reported', 'source_provided_unverified'].includes(record.coordinatePrecision)}<div><dt>Source precision</dt><dd>{humanizeValue(record.coordinatePrecision)}</dd></div>{/if}
-      {#if coordinateStatus && !sameLabel(coordinateStatus, 'source_confirmed')}<div><dt>Coordinate review</dt><dd>{humanizeValue(coordinateStatus)}</dd></div>{/if}
-      {#if coordinateMethod}<div><dt>Location method</dt><dd>{humanizeValue(coordinateMethod)}</dd></div>{/if}
-      {#if coordinateProvider}<div><dt>Geocoding provider</dt><dd>{coordinateProvider}</dd></div>{/if}
-      {#if coordinateConfidence !== null || record.coordinateConfidenceBand}<div><dt>Geocoding confidence</dt><dd>{#if coordinateConfidence !== null}{coordinateConfidence} (provider score){/if}{#if record.coordinateConfidenceBand}{coordinateConfidence !== null ? ' · ' : ''}{humanizeValue(record.coordinateConfidenceBand)}{/if}</dd></div>{/if}
-      {#if defaultMapScope === false}<div><dt>Map scope</dt><dd>Outside the default map{#if mapScopeReason} · {humanizeValue(mapScopeReason)}{/if}</dd></div>{/if}
-    </dl>
-  </section>
 
   {#if publicRelease && publicReleaseId && id}
     <RecordConnections facilityId={id} releaseId={publicReleaseId} sourceId={sourceId ?? undefined} sourceFacts={sourceFacts} />

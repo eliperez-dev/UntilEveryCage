@@ -71,6 +71,12 @@ test('map detail shows one category and each activity, preserves facts, and open
   await page.goto(`./#/map?selected=${id}&release_id=${release}`);
   const panel = page.locator('.reading-sheet[aria-label="Record evidence"]');
   await expect(panel.getByRole('heading', { name: row.canonical_name, exact: true })).toBeVisible();
+  const drawerOrder = await panel.locator('.detail').evaluate(root => {
+    const location = root.querySelector('#location-heading');
+    const activities = root.querySelector('#taxonomy-heading');
+    return Boolean(location && activities && (location.compareDocumentPosition(activities) & Node.DOCUMENT_POSITION_FOLLOWING));
+  });
+  expect(drawerOrder).toBe(true);
   await expect(panel.getByText('Processing and preparation', { exact: true })).toHaveCount(1);
   await expect(panel.locator('[aria-label="Detailed activities"]')).toHaveText('Meat cutting, NRTE chicken processing, Separate activity: No');
   await expect(panel).not.toContainText(/synthetic-taxonomy-version|Taxonomy version|Primary categories|Classification provenance|not independently|Source confirmed/);
@@ -89,6 +95,15 @@ test('map detail shows one category and each activity, preserves facts, and open
   await link.click();
   await expect(page.locator('.public-record h1')).toHaveText(row.canonical_name);
   await expect(page.locator('.location-preview')).toHaveAttribute('aria-label', 'Satellite location preview');
+  const pageOrder = await page.locator('.public-record').evaluate(root => {
+    const location = root.querySelector('#location-heading');
+    const preview = root.querySelector('.location-preview');
+    const activities = root.querySelector('#activities-heading');
+    return Boolean(location && preview && activities &&
+      (location.compareDocumentPosition(preview) & Node.DOCUMENT_POSITION_FOLLOWING) &&
+      (preview.compareDocumentPosition(activities) & Node.DOCUMENT_POSITION_FOLLOWING));
+  });
+  expect(pageOrder).toBe(true);
   await expect(page.locator('.location-preview .map')).toHaveAttribute('data-pin-loaded', 'true');
   await expect(page.locator('.public-record')).toContainText('Less than 1,000 animals');
   await expect(page.getByRole('button', { name: 'Copy facility link' })).toBeVisible();
@@ -117,6 +132,15 @@ test('city-level geocoding keeps its approximation and actual provider score in 
   const full = page.locator('.public-record');
   await expect(full).toContainText('Approximate location');
   await expect(full.locator('.location-preview')).toHaveAttribute('aria-label', 'Approximate road map preview');
+  const pageOrder = await full.evaluate(root => {
+    const location = root.querySelector('#location-heading');
+    const preview = root.querySelector('.location-preview');
+    const activities = root.querySelector('#activities-heading');
+    return Boolean(location && preview && activities &&
+      (location.compareDocumentPosition(preview) & Node.DOCUMENT_POSITION_FOLLOWING) &&
+      (preview.compareDocumentPosition(activities) & Node.DOCUMENT_POSITION_FOLLOWING));
+  });
+  expect(pageOrder).toBe(true);
   await expect(full.locator('.location-preview .map')).toHaveAttribute('data-pin-loaded', 'true');
   await expect(full).toContainText('0.72 (provider score) · Medium');
   await expect(full.getByRole('heading', { name: 'Location', exact: true })).toHaveCount(1);
@@ -153,6 +177,15 @@ test('unmapped public records do not create a location map', async ({ page }) =>
   await page.goto(`./#/records/${id}?profile=official&release_id=${release}`);
   await expect(page.getByRole('heading', { name: row.canonical_name })).toBeVisible();
   await expect(page.locator('.location-preview')).toHaveCount(0);
+});
+
+test('a failed map image leaves the facility record readable and announces the map limitation', async ({ page }) => {
+  await page.route('**/v1-pins/**', route => route.abort());
+  await mockPublicRecord(page);
+  await page.goto(`./#/records/${id}?profile=official&release_id=${release}`);
+  await expect(page.locator('.location-preview')).toBeVisible();
+  await expect(page.locator('.location-preview [role="status"]')).toHaveText('Location map unavailable.');
+  await expect(page.locator('.public-record').getByRole('heading', { name: 'Activities and classification' })).toBeVisible();
 });
 
 test('APHIS source records load report links only after a report type is selected', async ({ page }) => {

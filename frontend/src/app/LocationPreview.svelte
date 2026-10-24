@@ -56,9 +56,7 @@
               id: 'record-location-pin', type: 'symbol', source: 'record-location',
               layout: { 'icon-image': 'record-location-pin', 'icon-anchor': 'bottom', 'icon-size': 0.45 },
             });
-            instance.once('idle', () => {
-              if (!disposed && !error && instance.getLayer('record-location-pin')) pinLoaded = true;
-            });
+            if (!disposed && !error && instance.getLayer('record-location-pin')) pinLoaded = true;
           }).catch(() => { if (!disposed) error = true; });
         });
       } catch {

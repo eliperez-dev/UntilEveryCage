@@ -66,10 +66,7 @@
 <svelte:head><title>{record?.name ?? 'Record'} · Until Every Cage</title></svelte:head>
 <section class="public-record" aria-label="Public record">
   {#if profile === 'community'}<p class="warning"><strong>Unreviewed community claim: not verified by Until Every Cage.</strong> Privacy screening is not factual review or project approval. Community counts are separate.</p>{/if}
-  {#if busy}<p role="status">Loading record…</p>{:else if error}<h1>Record unavailable</h1><p role="alert">{error}</p><button type="button" onclick={() => retry += 1}>Retry</button><p><a href="#/database">Browse records</a></p>{:else if record}<h1>{record.name} <button class="share" type="button" aria-label="Copy facility link" title="Copy facility link" onclick={copyRecordLink}><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.1 0l3-3A5 5 0 0 0 13 2.9l-1.7 1.7m2.7 6.4a5 5 0 0 0-7.1 0l-3 3A5 5 0 0 0 11 21.1l1.7-1.7"/></svg></button><span class="sr-only" role="status" aria-live="polite">{copyFeedback}</span></h1><p>{category(record)}</p>
-    {#if detailActivity(record)}<dl><div><dt>Activities</dt><dd>{detailActivity(record)}</dd></div></dl>{/if}
-    {#if sourceClassifications(record).length}<p class="classification">{sourceClassifications(record).join(' · ')}</p>{/if}
-    {#if record.lat !== null && record.lon !== null}<LocationPreview latitude={record.lat} longitude={record.lon} precision={record.evidence?.displayPrecision ?? 'unmapped'} category={record.taxonomy?.primaryCategories[0] ?? record.category} />{/if}
+  {#if busy}<p role="status">Loading record…</p>{:else if error}<h1>Record unavailable</h1><p role="alert">{error}</p><button type="button" onclick={() => retry += 1}>Retry</button><p><a href="#/database">Browse records</a></p>{:else if record}<h1>{record.name} <button class="share" type="button" aria-label="Copy facility link" title="Copy facility link" onclick={copyRecordLink}><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.1 0l3-3A5 5 0 0 0 13 2.9l-1.7 1.7m2.7 6.4a5 5 0 0 0-7.1 0l-3 3A5 5 0 0 0 11 21.1l1.7-1.7"/></svg></button><span class="sr-only" role="status" aria-live="polite">{copyFeedback}</span></h1>
     <section aria-labelledby="location-heading">
       <h2 id="location-heading">Location</h2>
       <dl>
@@ -80,6 +77,13 @@
         {#if record.evidence?.geometryProvenance?.provider}<div><dt>Geocoding provider</dt><dd>{record.evidence.geometryProvenance.provider}</dd></div>{/if}
         {#if geocodingConfidence(record) !== null || record.evidence?.geometryProvenance?.confidence_band}<div><dt>Geocoding confidence</dt><dd>{#if geocodingConfidence(record) !== null}{geocodingConfidence(record)} (provider score){/if}{#if record.evidence?.geometryProvenance?.confidence_band}{geocodingConfidence(record) !== null ? ' · ' : ''}{humanLabel(record.evidence.geometryProvenance.confidence_band)}{/if}</dd></div>{/if}
       </dl>
+    </section>
+    {#if record.lat !== null && record.lon !== null}<LocationPreview latitude={record.lat} longitude={record.lon} precision={record.evidence?.displayPrecision ?? 'unmapped'} category={record.taxonomy?.primaryCategories[0] ?? record.category} />{/if}
+    <section aria-labelledby="activities-heading">
+      <h2 id="activities-heading">Activities and classification</h2>
+      <p class="activity">{category(record)}</p>
+      {#if detailActivity(record)}<dl><div><dt>Activities</dt><dd>{detailActivity(record)}</dd></div></dl>{/if}
+      {#if sourceClassifications(record).length}<p class="classification">{sourceClassifications(record).join(' · ')}</p>{/if}
     </section>
     {#if record.sourceFacts}
       <section class="source-facts" aria-labelledby="source-facts-heading">

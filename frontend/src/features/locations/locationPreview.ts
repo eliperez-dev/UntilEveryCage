@@ -9,7 +9,7 @@ export function locationPreviewMode(precision: string | null | undefined): Locat
 }
 
 export function locationPreviewZoom(precision: string | null | undefined): number {
-  return locationPreviewMode(precision) === 'satellite' ? 13 : 8;
+  return locationPreviewMode(precision) === 'satellite' ? 15 : 9;
 }
 
 const pinByCategory: Readonly<Record<CategoryPresentationKey, string>> = {
