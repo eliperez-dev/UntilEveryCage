@@ -35,6 +35,7 @@ from pipeline.common.real_private_graph import (
     SHARED_BUSINESS_NAME_RULESET_VERSION,
     GRAPH_MATERIALIZATION_FINGERPRINT,
     GRAPH_EDGE_MATERIALIZATION_VERSION,
+    GRAPH_CONTEXT_PERSISTENCE_VERSION,
     NATIVE_ENDPOINT_CONTRACT_VERSION,
 )
 
@@ -629,11 +630,13 @@ class GraphProjectionTests(unittest.TestCase):
         self.assertTrue(all((D5_MATCHER_VERSION, D6_EDGE_RULESET_VERSION,
                              SHARED_BUSINESS_NAME_RULESET_VERSION,
                              GRAPH_EDGE_MATERIALIZATION_VERSION,
-                             NATIVE_ENDPOINT_CONTRACT_VERSION)))
+                             NATIVE_ENDPOINT_CONTRACT_VERSION,
+                             GRAPH_CONTEXT_PERSISTENCE_VERSION)))
         self.assertEqual(len(GRAPH_MATERIALIZATION_FINGERPRINT), 64)
         versions = [GRAPH_EDGE_MATERIALIZATION_VERSION, D5_MATCHER_VERSION,
                     D6_EDGE_RULESET_VERSION, SHARED_BUSINESS_NAME_RULESET_VERSION,
-                    NATIVE_ENDPOINT_CONTRACT_VERSION]
+                    NATIVE_ENDPOINT_CONTRACT_VERSION,
+                    GRAPH_CONTEXT_PERSISTENCE_VERSION]
         expected = hashlib.sha256("|".join(versions).encode("utf-8")).hexdigest()
         self.assertEqual(GRAPH_MATERIALIZATION_FINGERPRINT, expected)
         for index in range(len(versions)):
