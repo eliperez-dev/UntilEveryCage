@@ -5,6 +5,7 @@ import uuid
 import hashlib
 import re
 import os
+from collections import Counter
 from pathlib import Path
 from unittest.mock import patch
 
@@ -374,6 +375,183 @@ class GraphProjectionTests(unittest.TestCase):
         self.assertNotIn("event_payload", query)
         self.assertNotIn("raw_fields", query)
         self.assertEqual(parameters, {"release_id": "selected-release"})
+
+    def test_086_evidence_reference_selector_materializes_candidates_before_live_anchor_join(self):
+        migration = (Path(__file__).resolve().parents[1] / "migrations" /
+                     "086_materialize_public_evidence_reference_candidates.sql").read_text(encoding="utf-8")
+        normalized = migration.casefold()
+        view = normalized.split(
+            "create or replace view uec.graph_public_evidence_references_current as", 1
+        )[1].split("comment on view", 1)[0]
+        self.assertIn("eligible_evidence_candidates as materialized", view)
+        self.assertIn("live_facility_anchors as materialized", view)
+        self.assertIn("from uec.graph_public_live_facility_anchors_current eligible", view)
+        self.assertIn("live.source_record_id=candidate.anchor_source_record_id", view)
+        self.assertIn("live.facility_id=candidate.anchor_facility_id", view)
+        self.assertNotIn("join lateral", view)
+        for gate in (
+            "build.projection_version='graph-release-projection-v3'",
+            "build.edge_generation=generation.generation",
+            "build.suppression_generation=suppression.generation",
+            "build.release_manifest_sha256=manifest.manifest_sha256",
+            "release.test_only is not true",
+            "review.publication_eligible=true",
+            "review.privacy_screening_status='passed'",
+            "review.factual_review_status<>'rejected'",
+            "review.maintainer_approval='approved'",
+            "clearance.scope_version='aphis-public-reference-metadata-v1'",
+            "clearance.artifact_sha256=artifact.sha256",
+            "public_access_restricted",
+            "member.release_id=build.release_id",
+            "observation.source_record_id=evidence_record.source_record_id",
+        ):
+            with self.subTest(gate=gate):
+                self.assertIn(gate, view)
+        self.assertNotIn("event_payload", view)
+        self.assertNotIn("raw_fields", view)
+        self.assertNotIn("grant ", normalized)
+
+    @unittest.skipUnless(
+        os.environ.get("UEC_GRAPH_EVIDENCE_SELECTOR_ACCEPTANCE") == "1"
+        and os.environ.get("UEC_GRAPH_ACCEPTANCE_DATABASE_URL"),
+        "set UEC_GRAPH_EVIDENCE_SELECTOR_ACCEPTANCE=1 on the approved clone",
+    )
+    def test_086_evidence_reference_selector_trial_is_bounded_and_rolls_back(self):
+        """Exercise the additive selector in a bounded transaction, then roll it back."""
+        expected_database = os.environ.get("UEC_GRAPH_DATABASE_NAME", "")
+        self.assertTrue(expected_database)
+
+        class RollbackProbe(Exception):
+            pass
+
+        migration = (Path(__file__).resolve().parents[1] / "migrations" /
+                     "086_materialize_public_evidence_reference_candidates.sql").read_text(encoding="utf-8")
+        release_id = os.environ.get("UEC_GRAPH_ACCEPTANCE_RELEASE_ID", "release-2026-10-18")
+        with psycopg.connect(os.environ["UEC_GRAPH_ACCEPTANCE_DATABASE_URL"], autocommit=True) as connection:
+            self.assertEqual(connection.execute("SELECT current_database()").fetchone()[0],
+                             expected_database)
+            before_definition = before_generation = before_active = None
+            try:
+                with connection.transaction():
+                    connection.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+                    connection.execute("SET LOCAL statement_timeout='15s'")
+                    connection.execute("SET LOCAL jit=off")
+                    settings = connection.execute(
+                        "SELECT current_setting('statement_timeout'),current_setting('jit')"
+                    ).fetchone()
+                    self.assertEqual(settings, ("15s", "off"))
+                    before_definition = connection.execute(
+                        "SELECT pg_get_viewdef('uec.graph_public_evidence_references_current'::regclass,true)"
+                    ).fetchone()[0]
+                    before_generation = connection.execute(
+                        "SELECT generation FROM uec.graph_projection_generation WHERE singleton"
+                    ).fetchone()[0]
+                    before_active = connection.execute(
+                        "SELECT count(*) FROM uec.graph_public_projection_builds WHERE active"
+                    ).fetchone()[0]
+
+                    # Preserve the 085 selector in a transaction-local view for
+                    # one exact point-row parity check after the trial DDL.
+                    old_definition = connection.execute(
+                        "SELECT pg_get_viewdef('uec.graph_public_evidence_references_current'::regclass,true)"
+                    ).fetchone()[0]
+                    connection.execute(
+                        "CREATE TEMP VIEW old_graph_public_evidence_references AS " + old_definition,
+                        prepare=False,
+                    )
+                    sample_id = connection.execute(
+                        """SELECT reference.evidence_ref_id
+                             FROM uec.graph_public_projection_evidence_refs reference
+                             JOIN uec.graph_public_projection_builds build USING(projection_id)
+                            WHERE build.release_id=%s AND build.active AND build.status='completed'
+                              AND reference.source_id IN ('us.aphis.annual-reports','us.inspections')
+                            ORDER BY reference.evidence_ref_id LIMIT 1""",
+                        (release_id,),
+                    ).fetchone()
+                    self.assertIsNotNone(sample_id, "an active APHIS reference candidate is required")
+                    old_rows = connection.execute(
+                        "SELECT * FROM old_graph_public_evidence_references WHERE evidence_ref_id=%s",
+                        (sample_id[0],),
+                    ).fetchall()
+                    self.assertTrue(old_rows, "the selected old evidence reference must be live")
+
+                    connection.execute(migration, prepare=False)
+                    source_counts = dict(connection.execute(
+                        """SELECT source_id,count(*)::int
+                             FROM uec.graph_public_evidence_references_current
+                            WHERE release_id=%s
+                            GROUP BY source_id""",
+                        (release_id,),
+                    ).fetchall())
+                    self.assertEqual(source_counts, {
+                        "us.aphis.annual-reports": 927,
+                        "us.inspections": 97,
+                    })
+                    new_rows = connection.execute(
+                        "SELECT * FROM uec.graph_public_evidence_references_current WHERE evidence_ref_id=%s",
+                        (sample_id[0],),
+                    ).fetchall()
+                    self.assertEqual(Counter(old_rows), Counter(new_rows),
+                                     "the point DTO must be unchanged by selector staging")
+
+                    selected = connection.execute(
+                        """SELECT clearance.source_id,clearance.profile,clearance.release_id,
+                                  clearance.artifact_id,clearance.artifact_sha256,
+                                  clearance.scope_version,clearance.approved_fields
+                             FROM uec.graph_public_projection_evidence_refs reference
+                             JOIN uec.graph_public_projection_builds build USING(projection_id)
+                             JOIN uec.source_records record
+                               ON record.source_record_id=reference.evidence_source_record_id
+                              AND record.source_id=reference.source_id
+                             JOIN uec.releases release ON release.release_id=build.release_id
+                             JOIN uec.raw_artifacts artifact ON artifact.artifact_id=record.artifact_id
+                             JOIN uec.graph_public_evidence_metadata_clearance_current clearance
+                               ON clearance.source_id=record.source_id
+                              AND clearance.profile=release.profile
+                              AND clearance.release_id=build.release_id
+                              AND clearance.artifact_id=record.artifact_id
+                              AND clearance.artifact_sha256=artifact.sha256
+                             WHERE reference.evidence_ref_id=%s
+                               AND clearance.decision_status='approved'""",
+                        (sample_id[0],),
+                    ).fetchone()
+                    self.assertIsNotNone(selected, "the point reference needs current metadata clearance")
+                    source_id, profile, selected_release, artifact_id, artifact_sha256, scope, fields = selected
+                    generation_before_withdrawal = connection.execute(
+                        "SELECT generation FROM uec.graph_projection_generation WHERE singleton"
+                    ).fetchone()[0]
+                    connection.execute(
+                        """INSERT INTO uec.graph_public_evidence_metadata_clearance_events
+                             (source_id,profile,release_id,artifact_id,artifact_sha256,scope_version,
+                              decision_status,approved_fields,decision_actor,decision_reference,decided_at)
+                           VALUES (%s,%s,%s,%s,%s,%s,'withdrawn',%s,'rollback-only regression test',
+                             'user-approved-reference-metadata-only;https://www.aphis.usda.gov/animal-care/awa-services/usda-animal-care-public-search-tool',
+                             clock_timestamp())""",
+                        (source_id, profile, selected_release, artifact_id,
+                         artifact_sha256, scope, fields),
+                    )
+                    self.assertEqual(connection.execute(
+                        "SELECT count(*) FROM uec.graph_public_evidence_references_current WHERE evidence_ref_id=%s",
+                        (sample_id[0],),
+                    ).fetchone()[0], 0, "withdrawal must suppress the selected reference immediately")
+                    self.assertEqual(connection.execute(
+                        "SELECT generation FROM uec.graph_projection_generation WHERE singleton"
+                    ).fetchone()[0], generation_before_withdrawal,
+                        "withdrawal is live-gated without changing graph generation")
+                    raise RollbackProbe()
+            except RollbackProbe:
+                pass
+            finally:
+                self.assertIsNotNone(before_definition)
+                self.assertEqual(connection.execute(
+                    "SELECT pg_get_viewdef('uec.graph_public_evidence_references_current'::regclass,true)"
+                ).fetchone()[0], before_definition, "trial selector DDL must roll back")
+                self.assertEqual(connection.execute(
+                    "SELECT generation FROM uec.graph_projection_generation WHERE singleton"
+                ).fetchone()[0], before_generation)
+                self.assertEqual(connection.execute(
+                    "SELECT count(*) FROM uec.graph_public_projection_builds WHERE active"
+                ).fetchone()[0], before_active)
 
     def test_081_metadata_clearance_is_append_only_exact_scope_and_does_not_replace_other_rights_gates(self):
         migration = (Path(__file__).resolve().parents[1] / "migrations" /

@@ -130,8 +130,9 @@ class GraphMigrationContractTests(unittest.TestCase):
 
     def test_085_factors_map_eligibility_once_and_reuses_it_for_graph_keys(self):
         migrations = sorted(path.name for path in (ROOT / "migrations").glob("*.sql"))
-        self.assertEqual(migrations[-1], "085_graph_live_anchor_keys.sql")
-        sql = self.read(migrations[-1]).casefold()
+        migration = "085_graph_live_anchor_keys.sql"
+        self.assertIn(migration, migrations)
+        sql = self.read(migration).casefold()
         self.assertIn("create or replace view uec.public_discovery_live_eligible_rows", sql)
         self.assertIn("create or replace view uec.map_facilities_public_discovery_read_model", sql)
         self.assertIn("from uec.public_discovery_live_eligible_rows eligible", sql)
