@@ -389,6 +389,8 @@
       q.set("lat", String(state.viewport.centerLat));
       q.set("lon", String(state.viewport.centerLon));
       q.set("z", String(state.viewport.zoom));
+      if (state.viewport.pitch) q.set("pitch", String(state.viewport.pitch));
+      if (state.viewport.bearing) q.set("bearing", String(state.viewport.bearing));
       if (!state.listOpen) q.set("list", "closed");
       if (state.basemap !== "vector") q.set("basemap", state.basemap);
       return `#/database?${q}`;

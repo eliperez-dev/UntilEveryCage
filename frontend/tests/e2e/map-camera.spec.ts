@@ -7,6 +7,13 @@ test('camera tilt, compass reset, and URL state preserve the map view', async ({
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getPitch())).toBe(31);
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getBearing())).toBe(24);
+  const nav = page.getByRole('navigation', { name: 'Primary' });
+  const hrefParams = new URLSearchParams((await nav.getByRole('link', { name: 'Database', exact: true }).getAttribute('href'))?.split('?')[1]);
+  expect(hrefParams.get('pitch')).toBe('31');
+  expect(hrefParams.get('bearing')).toBe('24');
+  const mapHrefParams = new URLSearchParams((await nav.getByRole('link', { name: 'Map', exact: true }).getAttribute('href'))?.split('?')[1]);
+  expect(mapHrefParams.get('pitch')).toBe('31');
+  expect(mapHrefParams.get('bearing')).toBe('24');
 
   await toggle.click();
   await expect(map.getByRole('button', { name: 'Show 3D terrain' })).toHaveAttribute('aria-pressed', 'false');
@@ -53,6 +60,41 @@ test('flat camera URLs stay compact and the camera control remains usable on tou
   await expect(toggle).toHaveAttribute('aria-pressed', 'false');
   await toggle.click();
   await expect.poll(() => new URL(page.url()).hash).toContain('pitch=45');
+});
+
+test('cold shared 3D URLs restore terrain after a style reload and browser Back', async ({ page }) => {
+  await page.goto('./#/map?f1a=field&scenario=dense&lat=38&lon=-96&z=4&pitch=45&bearing=18');
+  const map = page.getByLabel('Map showing records');
+  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getPitch())).toBe(45);
+  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getTerrain())).toMatchObject({ source: 'mapterhorn-terrain', exaggeration: 1 });
+  await expect.poll(() => page.evaluate(() => Boolean((window as any).__UEC_LOCAL_PREVIEW_MAP__?.getSource('mapterhorn-terrain')))).toBe(true);
+
+  await page.evaluate(async () => {
+    const instance = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
+    const current = instance.getStyle();
+    const style = {
+      version: 8,
+      sources: { base: current.sources.base, transport: current.sources.transport },
+      layers: current.layers.filter((layer: { id: string }) => layer.id === 'base' || layer.id === 'transport'),
+    };
+    const loaded = new Promise<void>(resolve => instance.once('style.load', resolve));
+    instance.setStyle(style, { diff: false });
+    await loaded;
+  });
+  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getTerrain())).toMatchObject({ source: 'mapterhorn-terrain', exaggeration: 1 });
+  await expect.poll(() => page.evaluate(() => Boolean((window as any).__UEC_LOCAL_PREVIEW_MAP__?.getSource('mapterhorn-terrain')))).toBe(true);
+
+  const databaseHref = await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Database', exact: true }).getAttribute('href');
+  const params = new URLSearchParams(databaseHref?.split('?')[1]);
+  expect(params.get('pitch')).toBe('45');
+  expect(params.get('bearing')).toBe('18');
+  await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Database', exact: true }).click();
+  await expect(page).toHaveURL(/#\/database\?/);
+  await page.goBack();
+  await expect(page).toHaveURL(/pitch=45.*bearing=18/);
+  await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getTerrain())).toMatchObject({ source: 'mapterhorn-terrain', exaggeration: 1 });
+  await expect.poll(() => page.evaluate(() => Boolean((window as any).__UEC_LOCAL_PREVIEW_MAP__?.getSource('mapterhorn-terrain')))).toBe(true);
+  await expect(map).toBeVisible();
 });
 
 test('flat maps do not request elevation and a DEM failure returns to a flat map', async ({ page }) => {

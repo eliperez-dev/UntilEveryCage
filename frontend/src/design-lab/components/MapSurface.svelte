@@ -122,6 +122,7 @@
   let cameraPitch = $state(0);
   let terrainEnabled = $state(false);
   let terrainError = $state("");
+  let terrainRetryRequired = false;
   let basemapSwitching = $state(false);
   let pendingBasemap = $state<Basemap | undefined>();
   let basemapError = $state("");
@@ -297,7 +298,7 @@
   function style(): any {
     return createBaseStyle(mapState.basemap);
   }
-  function setTerrain(enabled: boolean): void {
+  function setTerrain(enabled: boolean, explicitRetry = false): void {
     const instance = map;
     if (!instance) return;
     if (!enabled) {
@@ -306,16 +307,24 @@
       terrainEnabled = false;
       return;
     }
+    if (terrainRetryRequired && !explicitRetry) return;
     try {
+      const activeTerrain = instance.getTerrain();
+      if (activeTerrain?.source === TERRAIN_SOURCE_ID && instance.getSource(TERRAIN_SOURCE_ID)) {
+        terrainEnabled = true;
+        return;
+      }
       if (!instance.getSource(TERRAIN_SOURCE_ID)) instance.addSource(TERRAIN_SOURCE_ID, TERRAIN_SOURCE as any);
       instance.setTerrain({ source: TERRAIN_SOURCE_ID, exaggeration: TERRAIN_EXAGGERATION });
       terrainEnabled = true;
       terrainError = "";
+      terrainRetryRequired = false;
     } catch {
       if (instance.getTerrain()) instance.setTerrain(null);
       if (instance.getSource(TERRAIN_SOURCE_ID)) instance.removeSource(TERRAIN_SOURCE_ID);
       terrainEnabled = false;
       terrainError = "Terrain could not be loaded. The map is shown flat.";
+      terrainRetryRequired = true;
       instance.easeTo({ pitch: 0, duration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 300 });
     }
   }
@@ -323,7 +332,7 @@
     if (!map) return;
     terrainError = "";
     const enable3d = cameraPitch <= 0.5;
-    if (enable3d) setTerrain(true);
+    if (enable3d) setTerrain(true, true);
     else setTerrain(false);
     map.easeTo({ pitch: enable3d && terrainEnabled ? 45 : 0, duration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 450 });
   }
@@ -1263,6 +1272,9 @@
     instance.on("style.load", () => {
       nativeStyleGeneration++;
       nativeStyleReady = true;
+      // MapLibre drops style-owned terrain on style replacement. Reapply only
+      // when the restored camera is tilted; a flat view never fetches DEM tiles.
+      setTerrain(instance.getPitch() > 0.5);
       void (async () => {
         try {
           if (usingMvt) {
@@ -1293,6 +1305,7 @@
       if (event?.sourceId === TERRAIN_SOURCE_ID && terrainEnabled) {
         setTerrain(false);
         terrainError = "Terrain tiles are unavailable. The map is shown flat.";
+        terrainRetryRequired = true;
         instance.easeTo({ pitch: 0, duration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 300 });
       }
     });
@@ -1472,7 +1485,7 @@
 >
   <div class="map-host" bind:this={host}></div>
   <div class="camera-controls" role="group" aria-label="Map camera">
-    <button type="button" aria-label={cameraPitch > 0.5 ? 'Return map to 2D' : 'Show 3D terrain'} aria-pressed={cameraPitch > 0.5} onclick={toggleCamera}>{cameraPitch > 0.5 ? '3D' : '2D'}</button>
+    <button type="button" disabled={!nativeStyleReady} aria-label={cameraPitch > 0.5 ? 'Return map to 2D' : 'Show 3D terrain'} aria-pressed={cameraPitch > 0.5} onclick={toggleCamera}>{cameraPitch > 0.5 ? '3D' : '2D'}</button>
     <small>Ctrl-drag or two-finger tilt</small>
   </div>
   {#if terrainError}<small class="map-status terrain-status" role="alert">{terrainError}</small>{/if}
