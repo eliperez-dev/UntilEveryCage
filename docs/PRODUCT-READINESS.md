@@ -65,7 +65,7 @@ annual reports and 97 inspections). These are build counts, not yet verified
 hosted API totals. Metadata review and artifact-scoped clearance were applied
 only to the approved reference fields. Migration 083 retires builds made with
 the incomplete business-name selector; label selection now follows the exact
-release binding and reuses qualified endpoint anchors. Complete API traversal
+release binding and reuses qualified endpoint anchors. Full connection pagination
 and Render rollout remain pending. The 084
 rollback checks passed approval invalidation, immediate withdrawal and the
 Italian placeholder guard; graph read latency is still under investigation.
@@ -81,12 +81,18 @@ The first isolated v8 restore loaded both releases and passed final schema,
 restriction-snapshot and runtime-grant checks. It exposed exporter defects:
 two non-null fields needed explicit redaction values, and organization-label
 rights decisions were missing from the package. Those selectors are corrected;
-the rights-complete package still requires a clean restore and API acceptance.
+the rights-complete package passed a clean restore and label/reference parity.
 On the earlier derivative, current-code entity pages returned in about three
 seconds, but connection pages timed out at 30 seconds and no organization
 labels qualified. These are failures, not completed serving acceptance. Query
-experiments were rolled back; there is no migration 087. No graph change from
-this sprint is live, and the existing Render database remains unchanged.
+experiments were rolled back. Migration 087 then replaced global connection
+eligibility joins with equivalent keyed lookups: the runtime-role rollback
+trial returned 101 rows in 1.86/1.79 seconds with matching DTOs, map parity and
+revocation checks. It is canonically applied to the source test copy and selected
+serving target, with unchanged data and generation fingerprints. Final package
+verification, full connection pagination, representative entity/evidence pages,
+historical-release checks and hosted acceptance remain pending. No graph change
+from this sprint is live; the existing Render database remains unchanged.
 
 The previously recorded local standard gate passed: 137 Rust library tests, 24 Rust
 binary tests, 675 pipeline tests (39 optional skips), 90 graph unit tests
@@ -94,8 +100,9 @@ binary tests, 675 pipeline tests (39 optional skips), 90 graph unit tests
 lifecycle regression passed in the full CI E2E gate at `2821da14`; the earlier
 guard-disabled local invocation did not exercise it. All seven CI jobs passed
 at `c1b1bc36`, including migration 086 and the non-null/export-grant fixes.
-The subsequent rights-closure fix passed eight focused package tests and
-requires final integrated CI. Earlier frontend checks passed
+The rights-closure integration at `26f3bc9d` also passed all seven CI jobs.
+Migration 087 passed eleven focused migration contracts and requires final
+integrated CI. Earlier frontend checks passed
 257 tests, type checks and 37 static tests; this change does not alter the UI.
 The prior 066 checksum concern was diagnosed as line-ending representation:
 the clone's stored hash matches current checkout bytes and the migration
