@@ -1,6 +1,7 @@
 <script lang="ts">
-  import CopyValue from './CopyValue.svelte';
   import RecordConnections from './RecordConnections.svelte';
+  import LocationPreview from './LocationPreview.svelte';
+  import { serializeRoute } from './routeState';
   import type { LabRecord } from '../design-lab/contract';
   import { categoryPresentation } from '../features/locations/categoryPresentation';
   import type { TaxonomyClassification } from '../domain/taxonomy';
@@ -80,6 +81,7 @@
     publicReleaseId?: string | null;
     onclose?: () => void;
   } = $props();
+  let copyFeedback = $state('');
 
 
   const value = (...items: Array<string | null | undefined>) =>
@@ -236,7 +238,7 @@
       const label = humanizeValue(assignment.sourceLabel);
       const code = humanizeValue(assignment.sourceCode);
       const source = label && code && !sameLabel(label, code) ? `${label} (${code})` : label ?? code;
-      return source ? `${source} · ${humanizeValue(assignment.method)} · ${humanizeValue(assignment.status)}` : null;
+      return source;
     }) ?? []),
     taxonomy && activity && ![...taxonomyPrimaryLabels, ...taxonomy.leafActivities.map(leaf => leaf.label)].some(label => sameLabel(label, activity))
       ? humanizeValue(activity) : null,
@@ -289,7 +291,7 @@
   function annualSpeciesCount(count: number): string { return new Intl.NumberFormat('en-US').format(count); }
   const slaughterRanges = $derived(sourceFacts?.derivedSourceVolumeRanges?.filter(range => range.unit === 'head' && range.period === 'trailing_360_days') ?? []);
   const processingRanges = $derived(sourceFacts?.derivedSourceVolumeRanges?.filter(range => range.unit === 'pounds' && range.period === 'month') ?? []);
-  const slaughterRangeText = $derived(slaughterRanges.map(formattedRange).filter((range): range is string => Boolean(range)).map(range => `${range} head`).join(', '));
+  const slaughterRangeText = $derived(slaughterRanges.map(formattedRange).filter((range): range is string => Boolean(range)).map(range => `${range} animals`).join(', '));
   const processingRangeText = $derived(processingRanges.map(formattedRange).filter((range): range is string => Boolean(range)).map(range => `${range} pounds/month`).join(', '));
 
   function safeHttps(raw: string | null): string | null {
@@ -305,7 +307,7 @@
       return 'Source-provided coordinates';
     }
     if (raw === 'approximate') {
-      return 'Approximate location · not an exact facility point';
+      return 'Approximate location';
     }
     if (raw === 'source_provided_unverified') {
       return 'Source-provided coordinates';
@@ -314,18 +316,19 @@
       return 'Source coordinate · review status shown below';
     }
     if (raw === 'city' || raw.includes('city_reference')) {
-      return 'City reference · approximate';
+      return 'Approximate location';
     }
-    if (raw.includes('provider_locality')) return 'City-level approximation';
-    if (raw.includes('provider_address')) return 'Geocoded location · approximate';
+    if (raw.includes('provider_locality') || raw.includes('provider_address')) return 'Approximate location';
     if (raw === 'coarse' || raw.includes('city_postal')) {
-      return 'Coarse city/postal area';
+      return 'Approximate location';
     }
     if (raw === 'approximate' || raw.includes('approximate')) {
-      return 'Approximate source coordinate';
+      return 'Approximate location';
     }
     return 'Unmapped · no map location supplied';
   }
+  const facilityLink = $derived(`${window.location.origin}${window.location.pathname}${serializeRoute({ kind: 'record', facilityId: id, profile: 'official', ...(publicReleaseId ? { releaseId: publicReleaseId } : {}) })}`);
+  async function copyFacilityLink() { try { await navigator.clipboard.writeText(facilityLink); copyFeedback = 'Facility link copied.'; } catch { copyFeedback = 'Could not copy facility link.'; } }
 </script>
 
 <article
@@ -341,7 +344,7 @@
       onclick={onclose}
     >Close</button>
   {/if}
-  <h1 id="record-title">{name}</h1>
+  <h1 id="record-title">{name}{#if presentation === 'page'} <button class="share" type="button" aria-label="Copy facility link" title="Copy facility link" onclick={copyFacilityLink}><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.1 0l3-3A5 5 0 0 0 13 2.9l-1.7 1.7m2.7 6.4a5 5 0 0 0-7.1 0l-3 3A5 5 0 0 0 11 21.1l1.7-1.7"/></svg></button><span class="sr-only" role="status" aria-live="polite">{copyFeedback}</span>{/if}</h1>
   {#if presentation === 'page' && import.meta.env.VITE_COMMUNITY_PILOT === 'true' && id}
     <p class="contribution-actions">{#each [['evidence','Add evidence'],['correction','Suggest a correction'],['privacy-removal','Privacy or removal']] as [type, label]}<a class="evidence-link" href={`#/contribute/${type}?target=${encodeURIComponent(id)}&map=${encodeURIComponent('#/map?f1a=field')}`}>{label}</a>{/each}</p>
   {/if}
@@ -357,12 +360,7 @@
       {#if detailedActivities}
         <p aria-label="Detailed activities">{detailedActivities}</p>
       {/if}
-      {#if sourceClassification.length}
-        <details>
-          <summary>Source classification</summary>
-          <ul class="taxonomy-provenance">{#each sourceClassification as classification}<li>{classification}</li>{/each}</ul>
-        </details>
-      {/if}
+      {#if sourceClassification.length}<p class="classification">{sourceClassification.join(' · ')}</p>{/if}
     </section>
   {/if}
 
@@ -386,6 +384,7 @@
     </section>
   {/if}
 
+  {#if presentation === 'page' && hasCoordinates}<LocationPreview latitude={record.latitude!} longitude={record.longitude!} precision={precision} category={activityDisplay ?? 'unclassified'} />{/if}
   <section aria-labelledby="location-heading">
     <h2 id="location-heading">Location</h2>
     <dl>
@@ -403,7 +402,7 @@
   </section>
 
   {#if publicRelease && publicReleaseId && id}
-    <RecordConnections facilityId={id} releaseId={publicReleaseId} />
+    <RecordConnections facilityId={id} releaseId={publicReleaseId} sourceId={sourceId} sourceFacts={sourceFacts} />
   {/if}
 
   <section aria-labelledby="evidence-heading">
@@ -421,9 +420,7 @@
   </section>
 
   <footer>
-    <span class="record-id">Record ID · {id || 'Unavailable'}</span>
-    <CopyValue value={id} label="Record ID" buttonLabel="Copy record ID" />
-    <CopyValue value={id ? `${window.location.origin}${window.location.pathname}#/records/${encodeURIComponent(id)}` : ''} label="Record link" buttonLabel="Copy record link" />
+    {#if presentation !== 'page'}<span class="record-id">Record ID · {id || 'Unavailable'}</span>{/if}
   </footer>
 </article>
 

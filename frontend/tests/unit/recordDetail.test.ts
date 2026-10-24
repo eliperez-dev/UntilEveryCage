@@ -18,7 +18,7 @@ describe('private preview record detail surface', () => {
     expect(component).not.toContain('PRIVATE DEVELOPMENT PREVIEW');
     expect(component).not.toContain('Facility candidate');
     expect(component).toContain('Activities and classification');
-    expect(component).toContain('<summary>Source classification</summary>');
+    expect(component).toContain('sourceClassification.join');
     expect(component).not.toContain('assignment.taxonomyVersion');
     expect(component).not.toContain('taxonomy.taxonomyVersion');
     expect(component).not.toContain('Primary categories');
@@ -26,11 +26,8 @@ describe('private preview record detail surface', () => {
 
   it('labels exact, approximate, and unmapped placement distinctly without exposing internal review fields', () => {
     expect(component).toContain('Source coordinate · review status shown below');
-    expect(component).toContain('City reference · approximate');
-    expect(component).toContain('Coarse city/postal area');
-    expect(component).toContain('Approximate source coordinate');
+    expect(component).toContain("return 'Approximate location'");
     expect(component).toContain('Source-provided coordinates');
-    expect(component).toContain('Geocoded location · approximate');
     expect(component).toContain('Unmapped · no map location supplied');
     expect(component).toContain('Coordinate review');
     expect(component).not.toContain('Factual review');
@@ -44,15 +41,15 @@ describe('private preview record detail surface', () => {
   it('accepts only HTTPS source links and offers a stable record URL copy action', () => {
     expect(component).toContain("url.protocol === 'https:'");
     expect(component).toContain('rel="noopener noreferrer"');
-    expect(component).toContain("${window.location.origin}${window.location.pathname}#/records/${encodeURIComponent(id)}");
-    expect(component).toContain('Copy record link');
-    expect(component).toContain('Copy record ID');
+    expect(component).toContain("serializeRoute({ kind: 'record', facilityId: id");
+    expect(component).toContain('Copy facility link');
+    expect(component).not.toContain('Copy record ID');
     expect(component).toContain("'sourceRecordId' in record ? record.sourceRecordId : null");
   });
 
   it('keeps connections scoped to an active public release', () => {
     expect(component).toContain('publicRelease && publicReleaseId && id');
-    expect(component).toContain('<RecordConnections facilityId={id} releaseId={publicReleaseId} />');
+    expect(component).toContain('<RecordConnections facilityId={id} releaseId={publicReleaseId} sourceId={sourceId} sourceFacts={sourceFacts} />');
     expect(component).not.toContain('Not available in this release');
     expect(component).not.toContain('Record source and date are shown below.');
   });

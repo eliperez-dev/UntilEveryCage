@@ -4,7 +4,7 @@ import { precisionPresentation } from '../../src/features/locations/precisionPre
 describe('public location precision labels', () => {
   it('does not present source-reported or approximate locations as exact', () => {
     expect(precisionPresentation('source_reported')).toBe('Source-provided coordinates');
-    expect(precisionPresentation('approximate')).toMatch(/not an exact facility point/);
+    expect(precisionPresentation('approximate')).toBe('Approximate location');
     expect(precisionPresentation('exact')).toBe('Exact public point');
   });
 

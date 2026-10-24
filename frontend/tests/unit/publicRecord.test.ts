@@ -26,7 +26,7 @@ describe('public record detail facts', () => {
     expect(component).toContain('Source origin');
     expect(component).toContain('Observed');
     expect(component).toContain('Retrieved');
-    expect(component).toContain('Lifecycle');
+    expect(component).not.toContain('<dt>Lifecycle</dt>');
     expect(component).not.toContain('<dt>Factual review</dt>');
     expect(component).not.toContain('<dt>Privacy screening</dt>');
     expect(component).not.toContain('<dt>Project approval</dt>');
