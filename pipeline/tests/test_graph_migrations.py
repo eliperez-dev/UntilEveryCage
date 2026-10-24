@@ -65,6 +65,24 @@ class GraphMigrationContractTests(unittest.TestCase):
         for forbidden in ("from_entity_id", "to_entity_id", "source_id", "display_name", "signal_explanation"):
             self.assertNotIn(forbidden, select_list)
 
+    def test_089_page_candidates_add_only_opaque_routing_keys(self):
+        sql = self.read("089_public_graph_connection_routing_keys.sql").casefold()
+        self.assertIn("create or replace view uec.graph_public_connection_page_candidates_current as", sql)
+        self.assertIn("e.from_entity_id,e.to_entity_id,e.from_source_id,e.to_source_id", sql)
+        self.assertNotIn("display_name", sql)
+        self.assertNotIn("signal_explanation", sql)
+        self.assertNotIn("facility_id", sql)
+        self.assertNotIn("source_record_id", sql)
+        for gate in (
+            "b.active and b.status='completed'",
+            "b.edge_generation=generation.generation",
+            "b.suppression_generation=suppression.generation",
+            "release.test_only is not true",
+            "release.status='promoted' or history.release_id is not null",
+        ):
+            with self.subTest(gate=gate):
+                self.assertIn(gate, sql)
+
     def test_reserved_migrations_are_present_and_ordered(self):
         migrations = sorted(path.name for path in (ROOT / "migrations").glob("*.sql"))
         graph_migrations = [

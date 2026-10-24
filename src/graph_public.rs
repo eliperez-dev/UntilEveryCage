@@ -27,8 +27,10 @@ SELECT candidate.release_id,candidate.connection_edge_id
 FROM uec.graph_public_connection_page_candidates_current candidate
 WHERE candidate.release_id=$1
   AND ($2::uuid IS NULL OR candidate.connection_edge_id<$2)
+  AND ($3::uuid IS NULL OR candidate.from_entity_id=$3 OR candidate.to_entity_id=$3)
+  AND ($4::text IS NULL OR candidate.from_source_id=$4 OR candidate.to_source_id=$4)
 ORDER BY candidate.connection_edge_id DESC
-LIMIT $3
+LIMIT $5
 "#;
 const GRAPH_CONNECTION_SELECT: &str = r#"
 WITH page_edges AS MATERIALIZED (
@@ -382,7 +384,13 @@ pub async fn connections(
         let candidates = match transaction
             .query(
                 GRAPH_CONNECTION_CANDIDATES_SELECT,
-                &[&release_id, &candidate_cursor, &GRAPH_CANDIDATE_BATCH_SIZE],
+                &[
+                    &release_id,
+                    &candidate_cursor,
+                    &query.entity_id,
+                    &query.source_id,
+                    &GRAPH_CANDIDATE_BATCH_SIZE,
+                ],
             )
             .await
         {
@@ -714,7 +722,9 @@ mod tests {
     fn api_reads_indexed_projection_and_entities_follow_same_endpoint_policy() {
         assert!(GRAPH_CONNECTION_CANDIDATES_SELECT.contains("FROM uec.graph_public_connection_page_candidates_current candidate"));
         assert!(GRAPH_CONNECTION_CANDIDATES_SELECT.contains("ORDER BY candidate.connection_edge_id DESC"));
-        assert!(GRAPH_CONNECTION_CANDIDATES_SELECT.contains("LIMIT $3"));
+        assert!(GRAPH_CONNECTION_CANDIDATES_SELECT.contains("LIMIT $5"));
+        assert!(GRAPH_CONNECTION_CANDIDATES_SELECT.contains("candidate.from_entity_id=$3 OR candidate.to_entity_id=$3"));
+        assert!(GRAPH_CONNECTION_CANDIDATES_SELECT.contains("candidate.from_source_id=$4 OR candidate.to_source_id=$4"));
         assert!(GRAPH_CONNECTION_SELECT.contains("FROM uec.graph_public_connections_current edge"));
         assert!(GRAPH_CONNECTION_SELECT.contains("page_edges AS MATERIALIZED"));
         assert!(GRAPH_CONNECTION_SELECT.contains("edge.connection_edge_id=ANY($2)"));
