@@ -44,12 +44,12 @@ evidence comprises 994 annual events and 98 inspections; 1,024 have unique
 registration matches, while 68 remain unmatched. This is private linkage
 evidence, not successful hosted acceptance. The maintainer authorized
 publication of reference metadata only, not report contents.
-Migrations 080 through 084 have applied to the disposable real-data copy.
-Some 085 trial view/index DDL also persisted in that copy before the test
-transaction began, without an 085 ledger entry. Schema reconciliation and
-fresh acceptance are required; earlier rollback-only descriptions of those
-trials were incorrect. The source, frozen reference and hosted databases were
-not modified by those trials.
+Migrations 080 through 086 have applied through the canonical runner to the
+disposable real-data copy. Earlier 085 trial view/index DDL persisted before
+the test transaction began; the canonical 085 application has now reconciled
+that state. Earlier rollback-only descriptions of those trials were incorrect.
+The source, frozen reference and hosted databases were not modified by those
+trials.
 Whole-corpus acceptance passed for all 19 handoffs: the exact 50,925 original
 edge payloads and 69,220 release members are unchanged, a full rerun is
 idempotent, and all four real positive/negative controls pass. The private
@@ -72,14 +72,21 @@ Italian placeholder guard; graph read latency is still under investigation.
 The committed 085 selector refactor preserves the map, release membership and
 all 180 restriction rows in the local trial. Its global graph page still times
 out in the larger research database. Performance acceptance must use the
-isolated selected-serving derivative; that restore and the Render cutover await
-credential-use confirmation. No graph change from this sprint is live yet.
+isolated selected-serving derivative. The maintainer has authorized the local
+completion and restore into a new Render database, followed by cutover after CI
+and API acceptance. Migration 086 preserves the APHIS reference gates while
+materializing candidate references and shared anchor keys once. Its focused
+checks passed (36 passed, five skipped), including immediate withdrawal, but a
+cold selector trial still timed out before a warm trial passed. Package export
+has not yet produced a complete manifest; isolated restore, full API traversal
+and hosted acceptance remain pending. No graph change from this sprint is live.
 
 The latest canonical standard gate passed: 137 Rust library tests, 24 Rust
 binary tests, 675 pipeline tests (39 optional skips), 90 graph unit tests
 (four database-acceptance skips), and 75 adapter tests. The new suppression
-lifecycle regression still requires the full E2E gate; it was not exercised
-by the guard-disabled local E2E invocation. Earlier frontend checks passed
+lifecycle regression passed in the full CI E2E gate at `2821da14`; the earlier
+guard-disabled local invocation did not exercise it. All seven CI jobs passed
+at that revision; migration 086 requires a new final CI run. Earlier frontend checks passed
 257 tests, type checks and 37 static tests; this change does not alter the UI.
 The prior 066 checksum concern was diagnosed as line-ending representation:
 the clone's stored hash matches current checkout bytes and the migration
