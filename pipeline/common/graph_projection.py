@@ -16,6 +16,17 @@ PROJECTION_VERSION = "graph-release-projection-v3"
 PROJECTION_PLANNER_GUARD = "SET LOCAL enable_nestloop=off"
 _SQL_PATH = Path(__file__).resolve().parents[1] / "sql" / "graph_public_edge_ctes.sql"
 EDGE_CTES = _SQL_PATH.read_text(encoding="utf-8")
+# Evidence handoffs use compact field names while persisted facility aliases
+# use the documented APHIS namespace. Normalize only this exact source/type
+# pair; values and identifiers remain exact and source-qualified.
+_APHIS_EVIDENCE_LINK_IDENTIFIER_TYPE_SQL = (
+    "CASE WHEN endpoint.source_id='us.aphis' THEN "
+    "CASE endpoint.identifier_type "
+    "WHEN 'aphis_certificate_number' THEN 'certificate_number' "
+    "WHEN 'aphis_customer_number' THEN 'customer_number' "
+    "ELSE endpoint.identifier_type END "
+    "ELSE endpoint.identifier_type END"
+)
 _PUBLIC_GROUPS = frozenset({"source", "identity", "location", "contact", "temporal", "contradiction"})
 _PUBLIC_CONTRADICTIONS = frozenset({"conflicting_identifier", "conflicting_address", "temporal_conflict"})
 
@@ -85,7 +96,7 @@ def _python_aphis_reference_select(release_id: str) -> tuple[str, dict[str, str]
              "FROM eligible_source_endpoints endpoint "
              "JOIN uec.graph_evidence_links link "
              "  ON link.target_source_id=endpoint.source_id "
-             " AND link.target_identifier_type=endpoint.identifier_type "
+             f" AND link.target_identifier_type={_APHIS_EVIDENCE_LINK_IDENTIFIER_TYPE_SQL} "
              " AND link.target_source_identifier=endpoint.source_identifier "
              " AND link.match_method='exact_source_identifier' "
              "JOIN uec.graph_evidence_events event ON event.evidence_event_id=link.evidence_event_id "
