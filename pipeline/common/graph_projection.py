@@ -68,17 +68,14 @@ def _python_organization_label_select(release_id: str) -> tuple[str, dict[str, s
 
 
 def _python_aphis_reference_select(release_id: str) -> tuple[str, dict[str, str]]:
-    """Select typed APHIS refs through selected-release review and artifact-rights gates.
+    """Select typed APHIS refs through release review and narrow metadata clearance.
 
     The event payload and source-native identifiers are used only to establish
     the exact source-scoped match. Neither is part of the selected output.
+    This clearance authorizes only the frozen APHIS reference DTO; full source
+    and report publication remain behind the independent rights gates.
     """
-    query = (f"WITH {EDGE_CTES.replace('$1', '%(release_id)s')}, "
-             "latest_source_rights AS MATERIALIZED ("
-             "  SELECT DISTINCT ON (source_id,profile,release_id,artifact_id) * "
-             "  FROM uec.source_rights_decisions "
-             "  ORDER BY source_id,profile,release_id,artifact_id,decided_at DESC,source_rights_decision_id DESC"
-             ") "
+    query = (f"WITH {EDGE_CTES.replace('$1', '%(release_id)s')} "
              "SELECT DISTINCT ON (endpoint.public_entity_id,event.source_record_id) "
              "endpoint.source_id,endpoint.identifier_type,endpoint.source_identifier,"
              "endpoint.entity_type,endpoint.public_entity_id,event.source_record_id,event.source_id,"
@@ -97,10 +94,15 @@ def _python_aphis_reference_select(release_id: str) -> tuple[str, dict[str, str]
              "  ON review.source_record_id=event.source_record_id "
              " AND review.release_id=%(release_id)s "
              "JOIN uec.raw_artifacts artifact ON artifact.artifact_id=evidence_record.artifact_id "
-             "JOIN latest_source_rights rights ON rights.source_id=event.source_id "
-             " AND rights.profile=(SELECT profile FROM uec.releases WHERE release_id=%(release_id)s) "
-             " AND rights.release_id=%(release_id)s AND rights.artifact_id=artifact.artifact_id "
-             " AND rights.artifact_sha256=artifact.sha256 AND rights.redistribution_status='cleared' "
+             "JOIN uec.graph_public_evidence_metadata_clearance_current clearance "
+             " ON clearance.source_id=event.source_id "
+             " AND clearance.profile=(SELECT profile FROM uec.releases WHERE release_id=%(release_id)s) "
+             " AND clearance.release_id=%(release_id)s AND clearance.artifact_id=artifact.artifact_id "
+             " AND clearance.artifact_sha256=artifact.sha256 "
+             " AND clearance.scope_version='aphis-public-reference-metadata-v1' "
+             " AND clearance.approved_fields=ARRAY["
+             " 'source_id','evidence_type','event_date','event_period','observed_at','source_url','match_method'"
+             "]::text[] "
              "WHERE endpoint.source_id='us.aphis' AND endpoint.entity_type='facility' "
              "  AND link.identity_scope='source_scoped' "
              "  AND review.publication_eligible=true AND review.privacy_screening_status='passed' "
@@ -112,6 +114,10 @@ def _python_aphis_reference_select(release_id: str) -> tuple[str, dict[str, str]
              "        AND event.event_period ~ '^[0-9]{4}$') "
              "    OR (event.source_id='us.inspections' AND event.event_type='inspections' "
              "        AND event.event_date IS NOT NULL)) "
+             "  AND NOT EXISTS (SELECT 1 FROM uec.observations observation "
+             "                  JOIN uec.release_members member USING(observation_id) "
+             "                  WHERE member.release_id=%(release_id)s "
+             "                    AND observation.source_record_id=event.source_record_id) "
              "ORDER BY endpoint.public_entity_id,event.source_record_id,endpoint.identifier_type")
     return query, {"release_id": release_id}
 

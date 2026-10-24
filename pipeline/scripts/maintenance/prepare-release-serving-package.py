@@ -23,6 +23,7 @@ RESTORE_ORDER = (
     "uec.facility_source_links", "uec.releases", "uec.release_manifests", "uec.public_release_history",
     "uec.record_access_events", "uec.publication_review_events", "uec.publication_review_release_scopes",
     "uec.source_rights_decisions",
+    "uec.graph_public_evidence_metadata_clearance_events",
     "uec.facility_lifecycle_events", "uec.taxonomy_crosswalks", "uec.release_cohort_review_documents",
     "uec.release_cohort_review_scopes", "uec.observation_taxonomy_assignment_sets",
     "uec.observation_taxonomy_assignments", "uec.public_discovery_read_models",

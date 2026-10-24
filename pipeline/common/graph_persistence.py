@@ -151,9 +151,10 @@ _PRIVATE_GRAPH_REQUIRED_READ_PRIVILEGES = {
     "public_release_history": {"SELECT"},
     "public_suppression_generation": {"SELECT"},
     # Typed evidence and organization labels are projected only after these
-    # exact selected-release review, artifact-rights, and restriction checks.
+    # exact selected-release review, metadata-clearance, and restriction checks.
     "publication_review_release_current": {"SELECT"},
     "source_rights_decisions": {"SELECT"},
+    "graph_public_evidence_metadata_clearance_current": {"SELECT"},
     "public_access_restricted": {"SELECT"},
 }
 
