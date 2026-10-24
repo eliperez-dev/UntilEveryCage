@@ -1,6 +1,5 @@
 <script lang="ts">
   import 'maplibre-gl/dist/maplibre-gl.css';
-  import * as maplibregl from 'maplibre-gl';
   import type { Map as MapLibreMap } from 'maplibre-gl';
   import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
   import { CATEGORY_PRIMARY_BY_SOURCE_KEY } from '../features/locations/categoryPresentation';
@@ -26,7 +25,7 @@
     pinLoaded = false;
     void (async () => {
       try {
-        const styles = await import('../map/baseMapStyle');
+        const [maplibregl, styles] = await Promise.all([import('maplibre-gl'), import('../map/baseMapStyle')]);
         if (disposed) return;
         maplibregl.setWorkerUrl(workerUrl);
         const instance = new maplibregl.Map({
