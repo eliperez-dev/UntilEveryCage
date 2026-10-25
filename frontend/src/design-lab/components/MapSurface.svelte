@@ -1139,6 +1139,11 @@
             selectedReferenceKey = null;
             updateVisualSettings();
           }
+          const coordinates = event.features?.[0]?.geometry?.coordinates;
+          if (map && Array.isArray(coordinates) && coordinates.length >= 2) {
+            const center: [number, number] = [Number(coordinates[0]), Number(coordinates[1])];
+            if (center.every(Number.isFinite)) map.easeTo({ center, duration: 380, easing: (t) => 1 - Math.pow(1 - t, 3), essential: false });
+          }
           onselect(id);
         }
       });
@@ -1249,12 +1254,10 @@
       pitch: mapState.viewport.pitch ?? 0,
       bearing: mapState.viewport.bearing ?? 0,
       attributionControl: {},
-      // The private preview owns one in-memory source, so pan and zoom never
-      // replace location data. Disabling source fades keeps interaction crisp.
       fadeDuration: 0,
-      // Let MapLibre size each source cache from the viewport. The previous
-      // fixed 512-tile cap retained far more raster/MVT tiles than needed;
-      // minTileCacheSize and prefetchZoomDelta are not MapLibre map options.
+      // Retain one extra zoom level of native source tiles so recent pan/zoom
+      // positions can reuse MapLibre's buffered tiles without app snapshots.
+      maxTileCacheZoomLevels: 6,
     } as any);
     map = instance;
     instance.addControl(new maplibregl.NavigationControl({ showZoom: false, showCompass: true, visualizePitch: true }), "bottom-right");
@@ -1488,6 +1491,7 @@
     <span class="map-controls-label">Map view</span>
     <select aria-label="Map style" value={mapState.basemap} disabled={!nativeStyleReady} onchange={(event) => onbasemap(event.currentTarget.value as Basemap)}><option value="vector">Street</option><option value="satellite">Satellite</option></select>
     <button class="map-camera-toggle" type="button" disabled={!nativeStyleReady} aria-label={cameraPitch > 0.5 ? 'Switch to 2D view' : 'Switch to 3D view'} aria-pressed={cameraPitch > 0.5} aria-describedby="map-camera-help" title="Right-drag to tilt and rotate" onclick={() => setCameraView(cameraPitch <= 0.5)}>{cameraPitch > 0.5 ? '3D' : '2D'}</button>
+    <span class="gesture-hint" aria-hidden="true">Right-drag to rotate / Left-drag to pan</span>
     <span id="map-camera-help" class="sr-only">Right-drag to tilt and rotate. On touchscreens, use two fingers to tilt.</span>
   </div>
   {#if terrainError}<small class="map-status terrain-status" role="alert">{terrainError}</small>{/if}
@@ -1764,6 +1768,7 @@
   .map-controls select { min-width:6.2rem; min-height:1.9rem; padding:0 .35rem; border:1px solid #69716a; color:#f1efe8; background:#202421; font:inherit; }
   .map-camera-toggle { min-width:2.45rem; min-height:1.9rem; border:1px solid #69716a; color:#f1efe8; background:#202421; cursor:pointer; font:600 .7rem system-ui; }
   .map-camera-toggle[aria-pressed="true"] { border-color:#d8c99b; background:#33352d; color:#f5e8bf; }
+  .gesture-hint { padding-left:.3rem; color:#c6cbc4; white-space:nowrap; }
   .map-controls :is(button, select):focus-visible { outline:2px solid #f1efe8; outline-offset:2px; }
   .map-camera-toggle:disabled, .map-controls select:disabled { opacity:.58; cursor:default; }
   .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
@@ -1932,6 +1937,7 @@
     .map-controls { top:.45rem; right:.4rem; gap:.25rem; padding:.28rem .32rem; font-size:.6rem; }
     .map-controls select { min-width:5.3rem; }
     .map-camera-toggle { min-width:2.25rem; }
+    .gesture-hint { display:none; }
     .map-surface :global(.precision-legend) { bottom: 9.4rem; width: auto; max-width: min(15rem, calc(100vw - 1.3rem)); }
     .map-surface :global(.precision-legend.expanded) { top: 3.5rem; bottom: auto; width: min(15rem, calc(100vw - 1.3rem)); }
     .map-surface :global(.maplibregl-ctrl-bottom-right) { right: 0.4rem; bottom: 0.4rem; left: auto; }

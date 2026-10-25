@@ -922,7 +922,6 @@ pub async fn get_v2_locations_export_handler(
         Ok(None) => None,
         _ => return v2_error(StatusCode::BAD_REQUEST, "invalid_limit", "limit must be between 1 and 1000"),
     };
-    let limit = requested_limit.unwrap_or(1000);
     let total_count: i64 = match transaction.query_one(
         &format!("SELECT count(DISTINCT facility_id)::bigint FROM {public_read_model} WHERE release_id=$1"),
         &[&release_id],
@@ -930,18 +929,18 @@ pub async fn get_v2_locations_export_handler(
         Ok(row) => row.get(0),
         Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "export_query_failed", "public export unavailable"),
     };
-    if requested_limit.is_none() && total_count > 1000 {
-        return v2_error(
-            StatusCode::BAD_REQUEST,
-            "export_too_large",
-            "export exceeds the bounded limit; specify an explicit limit to download a bounded first page",
-        );
-    }
-    let rows = match transaction.query(&format!("SELECT h.facility_id, h.canonical_name, h.country_code, h.city, h.classification_category, h.display_precision, h.factual_review_status, h.privacy_screening_status, h.maintainer_approval, h.reviewer_role, h.provenance_origin_type, h.provenance_source_id, h.provenance_source_name, h.provenance_source_url, h.provenance_retrieved_at, h.source_rights_status, h.release_id, h.geometry_provenance::text FROM {public_read_model} h WHERE h.release_id=$1 ORDER BY h.facility_id LIMIT $2"), &[&release_id, &(limit + 1)]).await {
+    let rows_result = match requested_limit {
+        Some(limit) => transaction.query(&format!("SELECT h.facility_id, h.canonical_name, h.country_code, h.city, h.classification_category, h.display_precision, h.factual_review_status, h.privacy_screening_status, h.maintainer_approval, h.reviewer_role, h.provenance_origin_type, h.provenance_source_id, h.provenance_source_name, h.provenance_source_url, h.provenance_retrieved_at, h.source_rights_status, h.release_id, h.geometry_provenance::text FROM {public_read_model} h WHERE h.release_id=$1 ORDER BY h.facility_id LIMIT $2"), &[&release_id, &(limit + 1)]).await,
+        None => transaction.query(&format!("SELECT h.facility_id, h.canonical_name, h.country_code, h.city, h.classification_category, h.display_precision, h.factual_review_status, h.privacy_screening_status, h.maintainer_approval, h.reviewer_role, h.provenance_origin_type, h.provenance_source_id, h.provenance_source_name, h.provenance_source_url, h.provenance_retrieved_at, h.source_rights_status, h.release_id, h.geometry_provenance::text FROM {public_read_model} h WHERE h.release_id=$1 ORDER BY h.facility_id"), &[&release_id]).await,
+    };
+    let rows = match rows_result {
         Ok(rows) => rows, Err(_) => return v2_error(StatusCode::SERVICE_UNAVAILABLE, "export_query_failed", "public export unavailable")
     };
+    let fetched_count = rows.len();
+    let truncated = requested_limit.is_some_and(|limit| fetched_count as i64 > limit);
+    let returned_count = requested_limit.map_or(fetched_count, |limit| fetched_count.min(limit as usize));
     let mut writer = csv::Writer::from_writer(Vec::new());
-    for row in rows.into_iter().take(limit as usize) {
+    for row in rows.into_iter().take(requested_limit.unwrap_or(i64::MAX) as usize) {
         let factual_review_status: String = row.get(6);
         if writer
             .serialize(V2ExportRow {
@@ -1010,8 +1009,8 @@ pub async fn get_v2_locations_export_handler(
         .header("x-uec-data-product-version", "uec-public-data-product-v1")
         .header("x-uec-schema-version", "uec-location-projection-v1")
         .header("x-uec-export-total-count", total_count.to_string())
-        .header("x-uec-export-returned-count", limit.min(total_count).to_string())
-        .header("x-uec-export-truncated", if total_count > limit { "true" } else { "false" })
+        .header("x-uec-export-returned-count", returned_count.min(total_count as usize).to_string())
+        .header("x-uec-export-truncated", if truncated { "true" } else { "false" })
         .body(axum::body::Body::from(body))
         .unwrap()
         .into_response()

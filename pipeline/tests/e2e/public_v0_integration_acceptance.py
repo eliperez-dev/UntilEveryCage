@@ -221,23 +221,23 @@ class PublicV0IntegrationAcceptance(unittest.TestCase):
         self.assertEqual(self.request("/api/v2/locations?profile=official&limit=1")[0], 200)
         self.assertEqual(self.request("/api/v2/discovery/facets?profile=official")[0], 200)
 
-        csv_query = urllib.parse.urlencode({
-            "profile": "official", "release_id": self.release_id, "limit": "1000",
-        })
+        csv_query = urllib.parse.urlencode({"profile": "official", "release_id": self.release_id})
         status, headers, csv_body = self.request("/api/v2/locations.csv?" + csv_query)
         self.assertEqual(status, 200)
         self.assertEqual(headers["X-Uec-Release-Id"], self.release_id)
         self.assertEqual(headers["X-Uec-Export-Total-Count"], str(expected["public_rows"]))
-        self.assertEqual(headers["X-Uec-Export-Returned-Count"], "1000")
-        self.assertEqual(headers["X-Uec-Export-Truncated"], "true")
-        self.assertEqual(sum(1 for _ in csv.reader(io.StringIO(csv_body.decode("utf-8")))) - 1, 1000)
+        self.assertEqual(headers["X-Uec-Export-Returned-Count"], str(expected["public_rows"]))
+        self.assertEqual(headers["X-Uec-Export-Truncated"], "false")
+        self.assertEqual(sum(1 for _ in csv.reader(io.StringIO(csv_body.decode("utf-8")))) - 1, expected["public_rows"])
 
-        with self.assertRaises(urllib.error.HTTPError) as oversize:
-            self.request("/api/v2/locations.csv?" + urllib.parse.urlencode({
-                "profile": "official", "release_id": self.release_id,
-            }))
-        self.assertEqual(oversize.exception.code, 400)
-        self.assertEqual(json.loads(oversize.exception.read())["error"]["code"], "export_too_large")
+        bounded_query = urllib.parse.urlencode({
+            "profile": "official", "release_id": self.release_id, "limit": "1000",
+        })
+        bounded_status, bounded_headers, bounded_csv = self.request("/api/v2/locations.csv?" + bounded_query)
+        self.assertEqual(bounded_status, 200)
+        self.assertEqual(bounded_headers["X-Uec-Export-Returned-Count"], "1000")
+        self.assertEqual(bounded_headers["X-Uec-Export-Truncated"], "true")
+        self.assertEqual(sum(1 for _ in csv.reader(io.StringIO(bounded_csv.decode("utf-8")))) - 1, 1000)
         for invalid_query, expected_code in (("profile=invalid&release_id=" + self.release_id, "invalid_profile"),
                                              ("profile=official&release_id=bad%2Fid", "invalid_release_id"),
                                              ("profile=official&release_id=" + self.release_id + "&format=invalid", "invalid_format")):
