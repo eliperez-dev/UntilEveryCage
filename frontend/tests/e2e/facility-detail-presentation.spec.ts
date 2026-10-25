@@ -70,7 +70,7 @@ test('map detail shows one category and each activity, preserves facts, and open
   await mockPublicRecord(page, { latitude: 55.123456789, longitude: 10.123456789, geometry_provenance: { origin: 'source_coordinates', method: 'source_method_unknown' } });
   await page.goto(`./#/map?selected=${id}&release_id=${release}`);
   const panel = page.locator('.reading-sheet[aria-label="Record evidence"]');
-  await expect(panel.getByRole('heading', { name: row.canonical_name, exact: true })).toBeVisible();
+  await expect(panel.locator('.detail h1')).toContainText(row.canonical_name);
   const drawerOrder = await panel.locator('.detail').evaluate(root => {
     const location = root.querySelector('#location-heading');
     const activities = root.querySelector('#taxonomy-heading');
@@ -92,6 +92,12 @@ test('map detail shows one category and each activity, preserves facts, and open
   expect(reportRequests).toBe(0);
   const link = panel.getByRole('link', { name: 'Open facility page', exact: true });
   await expect(link).toHaveAttribute('href', `#/records/${id}?profile=official&release_id=${release}`);
+  await expect(panel.getByRole('button', { name: 'Copy facility link' })).toBeVisible();
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await panel.getByRole('button', { name: 'Copy facility link' }).click();
+  await expect(panel.locator('.detail h1 [role="status"]')).toHaveText('Facility link copied.');
+  const copiedRailLink = await page.evaluate(() => navigator.clipboard.readText());
+  expect(new URL(copiedRailLink).hash).toBe(`#/records/${id}?profile=official&release_id=${release}`);
   await link.click();
   await expect(page.locator('.public-record h1')).toHaveText(row.canonical_name);
   await expect(page.locator('.location-preview')).toHaveAttribute('aria-label', 'Satellite location preview');
@@ -164,7 +170,12 @@ test('mobile dossier fills the dynamic viewport, scrolls inside, and retains clo
   await expect(close).toBeFocused();
   await panel.evaluate(element => element.scrollTop = element.scrollHeight);
   await expect(close).toBeInViewport();
-  await expect(panel.getByRole('button', { name: 'Copy facility link' })).toHaveCount(0);
+  const copyLink = panel.getByRole('button', { name: 'Copy facility link' });
+  await expect(copyLink).toBeVisible();
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await copyLink.click();
+  const copiedLink = await page.evaluate(() => navigator.clipboard.readText());
+  expect(new URL(copiedLink).hash).toBe(`#/records/${id}?profile=official&release_id=${release}`);
   await close.click();
   await expect(panel).toHaveCount(0);
   await open();

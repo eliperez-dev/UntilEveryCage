@@ -176,8 +176,7 @@ test('community claims are opt-in, scoped to the current profile, and prominentl
   const profileWarning = page.locator('.community-page > .review-warning strong');
   await expect(profileWarning).toHaveText(claimWarning);
   await expect(profileWarning).toBeVisible();
-  await page.getByRole('button', { name: 'Open community profile' }).click();
-  await expect(page.getByText('1 community claims · separate profile count')).toBeVisible();
+  await expect(page.getByText('1 published submissions · separate profile count')).toBeVisible();
   await page.locator('.claim-row').click();
   await expect(page.getByRole('heading', { name: 'Community claim' })).toBeVisible();
   const claimPageWarning = page.locator('.community-page > .review-warning strong');
