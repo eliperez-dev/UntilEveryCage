@@ -585,7 +585,7 @@
         <header class="dossier-header"><span></span><button type="button" aria-label="Close record detail" onclick={dismissSelection}>×</button></header>
         <p class="dossier-message">{detailError}</p>
       </aside>{:else if selected}<aside class="reading-sheet dossier" aria-label="Record evidence">
-        <header class="dossier-header"><a href={facilityPageHref ?? ''}>Open facility page</a><button type="button" aria-label="Close record detail" onclick={dismissSelection}>×</button></header>
+        <header class="dossier-header"><a href={facilityPageHref ?? ''}>{tr('Open facility page', $language)}</a><button type="button" aria-label="Close record detail" onclick={dismissSelection}>×</button></header>
         {#if aggregateOpen}<button type="button" class="back" onclick={dismissSelection}>← Members</button>{/if}
         <RecordDetail record={selected} presentation="rail" publicRelease={mode === "public-release"} publicReleaseId={mode === "public-release" ? publicReleaseId : null} />
       </aside>{:else if aggregateOpen}<aside
