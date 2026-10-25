@@ -10,6 +10,10 @@ supplies one. Run it with:
 python -m pipeline.sources.germany.refresh --fetch --run-dir <private/run> --output-root <private/raw>
 ```
 
+Live mode requires `pipeline/sources/germany/terms-review.json`. That record
+authorizes private acquisition under the project task scope only; it does not
+resolve BVL reuse rights or allow publication.
+
 Preserved artifacts may still be replayed with `--raw <private/bltu-export.csv>`.
 
 The typed adapter preserves repeated activity columns and source evidence,

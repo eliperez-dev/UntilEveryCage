@@ -229,6 +229,17 @@ def register_d3(catalog: Any) -> None:
     for item in D3_DESCRIPTORS():
         if item["source_id"] not in catalog.sources:
             continue
+        if item["source_id"] == "de.locations":
+            from .germany.refresh import GermanyRefreshAdapter
+            catalog.register(GermanyRefreshAdapter(), AdapterCapabilities(
+                source_id="de.locations", adapter_version="de-bltu-private-v2",
+                schema_version="de-bltu-csv-v2", acquisition="bounded_public_session_export",
+                geocoding="disabled", publication="human_gate_required",
+                adapter_path="pipeline/sources/germany/refresh.py", country_code="de",
+                source_kind="facility_master", operational_classification="live",
+                live_callable=True,
+            ))
+            continue
         # FSA is registered by the monthly first-wave bridge, which preserves
         # acquisition sidecars and emits the shared-runner handoff at the
         # expected source root. Keep the legacy D3 descriptor for fixture

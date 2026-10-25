@@ -40,13 +40,26 @@ class GermanyRefreshAdapter:
             result = refresh(run_dir=run_dir, raw_path=artifact,
                              acquisition_metadata_path=options.get("acquisition_metadata"))
         elif mode == "live-acquisition":
+            reviews = options.get("terms_review_paths") or {}
+            review_path = reviews.get(self.source_id) if isinstance(reviews, dict) else None
+            if not review_path:
+                raise RefreshError("Germany live acquisition requires its scoped acquisition terms record")
+            from pipeline.common.acquisition import require_terms_review
+            require_terms_review(Path(str(review_path)))
             result = refresh(run_dir=run_dir, fetch=True,
                              output_root=run_dir / "acquisition",
                              run_id=str(options.get("acquisition_run_id") or run_dir.name),
-                             timeout_seconds=float(options.get("timeout_seconds", 30)),
-                             max_bytes=int(options.get("max_bytes", 16 * 1024 * 1024)))
+                             timeout_seconds=min(float(options.get("timeout_seconds", 30)), 120),
+                             max_bytes=min(int(options.get("max_bytes", 16 * 1024 * 1024)), 64 * 1024 * 1024))
         else:
             raise RefreshError(f"unsupported Germany refresh mode: {mode}")
+        if result["report"].get("lifecycle_status") == "candidate-ready":
+            lifecycle_root = Path(result["report"]["lifecycle_run_dir"])
+            rows = [json.loads(line) for line in (lifecycle_root / "normalized" / "records.jsonl").read_text(encoding="utf-8").splitlines() if line]
+            metadata = json.loads((run_dir / "acquisition-metadata.json").read_text(encoding="utf-8"))
+            raw = Path(metadata["artifact_path"]).read_bytes()
+            source_artifact = SourceArtifact(source_url=metadata["final_url"], retrieved_at_utc=metadata["retrieved_at_utc"], sha256=hashlib.sha256(raw).hexdigest(), byte_size=len(raw), effective_date="unknown", code_version=self.adapter_version, config_version=CONFIG["schema_version"], rights_caveat=CONFIG["terms"], privacy_caveat=metadata.get("privacy_caveat"), coverage=CONFIG["coverage"])
+            write_handoff(run_dir / "candidate-handoff", rows, source_artifact, source_id=self.source_id, profile="d3-facility-master")
         return dict(result["report"])
 
 

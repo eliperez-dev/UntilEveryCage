@@ -12,16 +12,26 @@ ROOT = Path(__file__).parent
 
 
 class GermanyPrivateAdapterTests(unittest.TestCase):
-    def test_bltu_is_typed_and_keeps_coordinates_and_addresses_private(self):
+    def test_bltu_preserves_native_flags_and_address_privately(self):
         raw = ROOT.parent.parent / "germany" / "fixtures" / "synthetic_bltu.csv"
         adapter = BltuAdapter()
         result = adapter.parse_bytes(raw.read_bytes())
-        self.assertEqual(len(result["accepted"]), 1)
+        self.assertEqual(len(result["accepted"]), 2)
         normalized = result["accepted"][0]["normalized"]
-        self.assertEqual(normalized["activity_categories"], ("slaughter",))
-        self.assertIsNone(normalized["address"])
+        self.assertIn(normalized["activity_categories"], (("slaughter",), ("processing",)))
+        self.assertIsNotNone(normalized["address"])
+        self.assertIn(normalized["activity_flags"][0]["code"], {"SH", "CP"})
         self.assertIsNone(normalized["coordinates"])
-        self.assertGreaterEqual(len(result["quarantined"]), 2)
+        self.assertGreaterEqual(len(result["quarantined"]), 1)
+
+    def test_unknown_native_activity_flag_is_preserved_not_discarded(self):
+        raw = ROOT.parent.parent / "germany" / "fixtures" / "synthetic_bltu.csv"
+        content = raw.read_bytes().replace(b";;;DE-SYN-001;;;;;;x", b";;;DE-SYN-001;x;;;;;x", 1)
+        result = BltuAdapter().parse_bytes(content)
+        self.assertEqual(result["schema_status"], "matched")
+        self.assertEqual(len(result["accepted"]), 2)
+        flags = result["accepted"][0]["normalized"]["activity_flags"]
+        self.assertTrue(flags)
 
     def test_shared_private_lifecycle_emits_health_and_no_release(self):
         raw = ROOT.parent.parent / "germany" / "fixtures" / "synthetic_bltu.csv"

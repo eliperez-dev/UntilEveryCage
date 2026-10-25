@@ -298,6 +298,20 @@
       "adapter_version": "us-epa-echo-animal-adapter-v1",
       "schema_version": "us-epa-echo-facilities-cwa-animal-production-v1"
     },
+    "de.locations": {
+      "enabled": true,
+      "runtime_classification": "production-e2e",
+      "public_release": false,
+      "runner": "pipeline.refresh_private:de.locations",
+      "terms_review": "pipeline/sources/germany/terms-review.json",
+      "terms_decision": "approved",
+      "freshness_max_days": 45,
+      "expected_artifacts": ["bltu-general-list.csv"],
+      "allowed_preview_fields": ["establishment_id", "approval_number", "approval_number_kind", "name", "trading_name", "country_code", "nation", "state", "city", "address", "address_state", "activity_codes", "activity_flags", "activity_categories", "source_activity_categories", "classification_state", "coordinates", "coordinate_state", "coordinate_precision", "privacy_gate", "coordinate_gate", "publication_gate"],
+      "display_policy": {"kind": "list_only_unmapped", "precision": "unmapped_no_source_coordinates", "disclosure": "BVL BLtU general list of establishments approved under Regulation (EC) 853/2004. Source application/list version 1.0.35 [10/2023]; data effective date unknown. Source-native activity flags retained, only SH and CP mapped to broad categories. Addresses remain private pending privacy review; no coordinates, public release, or project approval."},
+      "adapter_version": "de-bltu-private-v2",
+      "schema_version": "de-bltu-csv-v2"
+    },
     "es.locations": {
       "enabled": true,
       "runtime_classification": "production-e2e",

@@ -30,7 +30,7 @@ STATE_INDEX = 0
 STREET_INDEX = 2
 CITY_INDEX = 3
 ACTIVITY_START = 7
-ACTIVITY_END = 41
+ACTIVITY_END = 44
 ACTIVITY_MAP = {"SH": "slaughter", "CP": "processing"}
 
 
@@ -93,14 +93,17 @@ class BltuAdapter:
             activity_codes = [headers[index] for index in range(ACTIVITY_START, min(ACTIVITY_END, len(values))) if values[index].strip()]
             if not activity_codes:
                 reasons.append("missing_activity_code")
-            if any(code not in ACTIVITY_MAP for code in activity_codes):
-                reasons.append("unmapped_activity_code")
             mapped = tuple(dict.fromkeys(ACTIVITY_MAP[code] for code in activity_codes if code in ACTIVITY_MAP))
-            if not mapped and "missing_activity_code" not in reasons:
-                reasons.append("unmapped_activity_code")
+            if any(code not in ACTIVITY_MAP for code in activity_codes):
+                # Preserve source-native activity flags even when their exact
+                # operational meaning is not mapped. Unknown taxonomy is a
+                # classification review signal, not a reason to discard a
+                # structurally valid establishment observation.
+                anomalies["unmapped_activity_code"] += 1
             for category in mapped:
                 categories[category] += 1
-            record = {"source_id": self.source_id, "source_row": line, "source_record_key": f"{current_id or 'unknown'}|{line}", "source_values": source, "normalized": {"establishment_id": current_id or None, "approval_number": current_id or None, "approval_number_kind": "current" if has_current_id else "legacy", "name": name or None, "trading_name": name or None, "country_code": "DE", "nation": "Germany", "state": values[STATE_INDEX].strip() if len(values) > STATE_INDEX else None, "city": values[CITY_INDEX].strip() if len(values) > CITY_INDEX else None, "address": None, "address_state": "source-present-pending-privacy-review" if len(values) > STREET_INDEX and values[STREET_INDEX].strip() else "unknown", "activity_codes": tuple(activity_codes), "activity_categories": mapped, "source_activity_categories": mapped, "classification_state": "mapped" if mapped and not any(code not in ACTIVITY_MAP for code in activity_codes) else "unresolved", "coordinates": None, "coordinate_state": "unknown", "coordinate_precision": "not-supplied", "privacy_gate": "pending-review", "coordinate_gate": "review_required", "publication_gate": "blocked"}}
+            activity_flags = [{"column_index": index, "code": headers[index], "value": values[index].strip()} for index in range(ACTIVITY_START, min(ACTIVITY_END, len(values))) if values[index].strip()]
+            record = {"source_id": self.source_id, "source_row": line, "source_record_key": f"{current_id or 'unknown'}|{line}", "source_values": source, "normalized": {"establishment_id": current_id or None, "approval_number": current_id or None, "approval_number_kind": "current" if has_current_id else "legacy", "name": name or None, "trading_name": name or None, "country_code": "DE", "nation": "Germany", "state": values[STATE_INDEX].strip() if len(values) > STATE_INDEX else None, "city": values[CITY_INDEX].strip() if len(values) > CITY_INDEX else None, "address": values[STREET_INDEX].strip() if len(values) > STREET_INDEX and values[STREET_INDEX].strip() else None, "address_state": "source-present-pending-privacy-review" if len(values) > STREET_INDEX and values[STREET_INDEX].strip() else "unknown", "activity_codes": tuple(activity_codes), "activity_flags": tuple(activity_flags), "activity_categories": mapped, "source_activity_categories": tuple(activity_codes), "classification_state": "mapped" if mapped and not any(code not in ACTIVITY_MAP for code in activity_codes) else "unresolved", "coordinates": None, "coordinate_state": "unknown", "coordinate_precision": "not-supplied", "privacy_gate": "pending-review", "coordinate_gate": "review_required", "publication_gate": "blocked"}}
             if reasons:
                 unique = tuple(dict.fromkeys(reasons))
                 for reason in unique:
@@ -126,7 +129,7 @@ class BltuAdapter:
         _, normalized_sha, _ = atomic_jsonl(root / "normalized" / "records.jsonl", result["accepted"])
         atomic_jsonl(root / "quarantined" / "records.jsonl", result["quarantined"])
         manifest = private_manifest(source_id=self.source_id, adapter_version=self.adapter_version, schema_version=self.schema_version, artifact=artifact, input_rows=result["input_rows"], normalized_rows=len(result["accepted"]), quarantined_rows=len(result["quarantined"]), normalized_sha256=normalized_sha, parsed_sha256=parsed_sha, anomaly_counts=result["anomaly_counts"])
-        manifest.update({"country_code": "DE", "coverage": CONFIG["coverage"], "geocoding": "disabled", "schema_status": result["schema_status"], "schema_fingerprint": result["schema_fingerprint"], "encoding": result["encoding"], "row_length_counts": result["row_length_counts"], "coverage_counts": result["coverage_counts"], "release_gate": "restricted_pending_terms"})
+        manifest.update({"country_code": "DE", "coverage": CONFIG["coverage"], "geocoding": "disabled", "schema_status": result["schema_status"], "schema_fingerprint": result["schema_fingerprint"], "encoding": result["encoding"], "row_length_counts": result["row_length_counts"], "coverage_counts": result["coverage_counts"], "release_gate": "restricted_pending_terms", "effective_date": artifact.effective_date or "unknown"})
         atomic_json(root / "manifest.json", manifest)
         return manifest
 

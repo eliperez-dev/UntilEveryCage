@@ -61,14 +61,17 @@ bytes). The page displays “BVL Betriebslisten Version 1.0.35 [10/2023]”; thi
 the application/list version string, not evidence of the export's effective date,
 which remains unknown.
 
-The existing private lifecycle parsed the captured 50-column schema as matched:
-15,775 input rows, 2,683 normalized and 13,092 quarantined. It retained the
-source's address evidence privately, left coordinates unknown/geocoding disabled,
-and created no release. The parser reported 9 malformed CSV rows, 11 physical
-column-count mismatches, 13,078 unmapped activity-code cases, and the associated
-identity/activity anomalies. This is fresh public acquisition and private adapter
-staging, not shared-runner/importer/API/map E2E. Redistribution terms and privacy
-review remain unresolved; no public rows are authorized.
+The first parser pass matched the captured 50-column schema but quarantined rows
+for activity flags outside its narrow SH/CP mapping. An aggregate audit found
+13,078 such cases. The adapter now retains all activity flags with their source
+column positions and values, carries the native street field privately, and
+quarantines unknown taxonomy as an unresolved classification state rather than
+discarding structurally valid observations. Reparse totals are 15,775 input,
+15,755 normalized and 20 quarantined; 11 column-count anomalies and 9 malformed
+CSV rows remain. SH and CP are the only mapped broad categories; other source
+flags remain native/unresolved. Coordinates are unknown and geocoding is disabled.
+This remains private staging, not importer/API/map E2E. Redistribution terms and
+privacy review remain unresolved; no public rows are authorized.
 
 ## Metadata evidence boundary
 

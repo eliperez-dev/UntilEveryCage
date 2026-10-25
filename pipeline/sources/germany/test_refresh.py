@@ -29,7 +29,7 @@ class GermanyRefreshTests(unittest.TestCase):
             first = refresh(run_dir=root / "one", raw_path=raw, retrieved_at_utc="2026-09-14T00:00:00Z")
             second = refresh(run_dir=root / "two", raw_path=raw, retrieved_at_utc="2026-09-14T00:00:00Z")
             self.assertEqual(first["report"]["sha256"], second["report"]["sha256"])
-            self.assertEqual(first["report"]["normalized_rows"], 1)
+            self.assertEqual(first["report"]["normalized_rows"], 2)
             self.assertEqual(first["report"]["publication_eligibility"], "blocked")
             self.assertFalse(any((root / "one" / "lifecycle").glob("*/released/records.jsonl")))
 
