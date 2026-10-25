@@ -74,7 +74,10 @@ class GermanyRefreshAdapter:
             rows = [json.loads(line) for line in (lifecycle_root / "normalized" / "records.jsonl").read_text(encoding="utf-8").splitlines() if line]
             metadata = json.loads((run_dir / "acquisition-metadata.json").read_text(encoding="utf-8"))
             raw = Path(metadata["artifact_path"]).read_bytes()
-            source_artifact = SourceArtifact(source_url=metadata["final_url"], retrieved_at_utc=metadata["retrieved_at_utc"], sha256=hashlib.sha256(raw).hexdigest(), byte_size=len(raw), effective_date="unknown", code_version=self.adapter_version, config_version=CONFIG["schema_version"], rights_caveat=CONFIG["terms"], privacy_caveat=metadata.get("privacy_caveat"), coverage=CONFIG["coverage"])
+            # The session export URL contains transient view-state query data.
+            # Keep that exact request URL only in private acquisition metadata;
+            # handoff/database provenance uses the stable official source URL.
+            source_artifact = SourceArtifact(source_url=CONFIG["source_url"], retrieved_at_utc=metadata["retrieved_at_utc"], sha256=hashlib.sha256(raw).hexdigest(), byte_size=len(raw), effective_date="unknown", code_version=self.adapter_version, config_version=CONFIG["schema_version"], rights_caveat=CONFIG["terms"], privacy_caveat=metadata.get("privacy_caveat"), coverage=CONFIG["coverage"])
             write_handoff(run_dir / "candidate-handoff", rows, source_artifact, source_id=self.source_id, profile="d3-facility-master")
             explicitly_restricted = [row for row in rows
                                      if _explicitly_restricted_from_address_queue(row)]

@@ -8,6 +8,7 @@ from unittest.mock import patch
 from pipeline.common.refresh_runner import RefreshCatalog, RefreshRunner
 from pipeline.contracts.refresh import RefreshRequest
 from pipeline.geocoding.private_profiles import profile_for_source
+from .adapter import CONFIG
 from .refresh import RefreshError, _explicitly_restricted_from_address_queue, refresh
 
 
@@ -72,7 +73,9 @@ class GermanyRefreshTests(unittest.TestCase):
             run_id = result["run_id"]
             source_dir = Path(directory) / "runs" / run_id / "sources" / "de.locations"
             self.assertEqual(result["exit_status"], "ok")
-            self.assertTrue((source_dir / "candidate-handoff" / "manifest.json").is_file())
+            handoff = json.loads((source_dir / "candidate-handoff" / "manifest.json").read_text())
+            self.assertEqual(handoff["source_url"], CONFIG["source_url"])
+            self.assertNotIn("?", handoff["source_url"])
             queue = json.loads((source_dir / "geocode-queue" / "geocode-queue-metadata.json").read_text())
             self.assertEqual(queue["records_seen"], queue["records_eligible_for_local_queue"]
                              + queue["records_withheld_explicit_restriction"])

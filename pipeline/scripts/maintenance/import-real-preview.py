@@ -2114,7 +2114,10 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
         "us.fsis": observations.get("fsis", {}).get("count"),
     }
     if source_id is not None:
-        expected = {source_id: source_summary.get("candidate_observation_rows")}
+        expected_rows = source_summary.get("candidate_observation_rows")
+        if source_id == "de.locations" and expected_rows is None:
+            expected_rows = source_summary.get("normalized_rows")
+        expected = {source_id: expected_rows}
     total = 0
     numeric = coarse = 0
     candidates = unmapped = mapped_non_candidates = 0
@@ -2190,6 +2193,8 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
             if any(not isinstance(value, int) or value < 0 for value in (input_count, accepted_count, quarantined_count, out_of_scope_count)):
                 raise ImportFailure("runtime_counts_invalid")
             candidate_observation_count = source_summary.get("candidate_observation_rows")
+            if source_id == "de.locations" and candidate_observation_count is None:
+                candidate_observation_count = source_summary.get("normalized_rows")
             if (not isinstance(candidate_observation_count, int) or candidate_observation_count < 0
                     or candidate_observation_count != row_count or candidate_observation_count > accepted_count
                     or input_count != accepted_count + quarantined_count):

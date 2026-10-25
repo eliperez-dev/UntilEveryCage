@@ -934,6 +934,14 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                 evidence_files = list((source_root / "acquisition" / source_id / "snapshots").glob("*/snapshot-manifest.json"))
                 evidence = json.loads(evidence_files[0].read_text(encoding="utf-8")) if len(evidence_files) == 1 else {}
                 run_id = evidence.get("run_id")
+            elif source_id == "de.locations":
+                evidence_files = list((source_root / "acquisition").glob("*/acquisition-metadata.json"))
+                if len(evidence_files) == 1:
+                    evidence = json.loads(evidence_files[0].read_text(encoding="utf-8"))
+                    run_id = evidence.get("run_id") or evidence_files[0].parent.name
+                else:
+                    evidence = {}
+                    run_id = None
             else:
                 evidence_files = list((source_root / "acquisition" / source_id).glob("*/acquisition-metadata.json"))
                 evidence = json.loads(evidence_files[0].read_text(encoding="utf-8")) if evidence_files else {}
@@ -1057,7 +1065,8 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                     write_job("failed", "lifecycle", "source_candidate_handoff_missing")
                     raise PreviewError("filtered ICPE lifecycle did not produce a validated candidate handoff; no preview import was attempted")
             if source_id == "de.locations":
-                queue_path = source_root / "geocode-queue" / "geocode-queue-metadata.json"
+                germany_source_root = output_root / str(refresh_result.get("run_id") or "") / "sources" / source_id
+                queue_path = germany_source_root / "geocode-queue" / "geocode-queue-metadata.json"
                 try:
                     queue = json.loads(queue_path.read_text(encoding="utf-8"))
                 except (OSError, json.JSONDecodeError):
