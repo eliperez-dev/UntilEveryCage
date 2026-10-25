@@ -2,7 +2,7 @@
 
 **Canonical authority:** this document is the sole product-level readiness and overall V2 roadmap authority.
 
-**Owner:** project maintainer. **Updated:** 2026-10-24, Pacific.
+**Owner:** project maintainer. **Updated:** 2026-10-25, Pacific.
 This is the only product roadmap. Source readiness belongs in
 [source-status.json](source-status.json); current frontend instructions belong
 in [frontend/README.md](frontend/README.md). [ETHICS.md](ETHICS.md) governs data work.
