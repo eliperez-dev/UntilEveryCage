@@ -65,6 +65,9 @@ class GermanyRefreshAdapter:
     source_id = CONFIG["source_id"]
     adapter_version = CONFIG["adapter_version"]
     source_kind = "facility_master"
+    # The shared rehearsal runner discovers this source-owned synthetic input
+    # in local-artifact mode. This is never used by live-acquisition mode.
+    fixture_path = Path(__file__).parent.parent.parent / "germany" / "fixtures" / "synthetic_bltu.csv"
 
     def refresh(self, *, mode: str, run_dir: Path, artifact: Path | None,
                 options: dict[str, Any]) -> dict[str, Any]:

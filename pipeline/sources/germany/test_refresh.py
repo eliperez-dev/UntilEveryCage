@@ -9,6 +9,7 @@ from pipeline.common.refresh_runner import RefreshCatalog, RefreshRunner
 from pipeline.contracts.refresh import RefreshRequest
 from pipeline.geocoding.private_profiles import profile_for_source
 from .adapter import CONFIG
+from .adapter import BltuAdapter
 from .refresh import (RefreshError, _address_queue_inputs, _explicitly_restricted_from_address_queue,
                       refresh)
 
@@ -17,6 +18,27 @@ ROOT = Path(__file__).parent
 
 
 class GermanyRefreshTests(unittest.TestCase):
+    def test_local_artifact_fixture_is_source_owned_and_unknown_activity_is_retained(self):
+        from .refresh import GermanyRefreshAdapter
+
+        self.assertTrue(GermanyRefreshAdapter.fixture_path.is_file())
+        content = GermanyRefreshAdapter.fixture_path.read_bytes()
+        parsed = BltuAdapter().parse_bytes(content)
+        self.assertEqual(len(parsed["accepted"]), 2)
+        self.assertEqual(len(parsed["quarantined"]), 1)
+
+        # Add one native activity flag outside the adapter's supported map.
+        lines = content.decode("utf-8-sig").splitlines()
+        headers = lines[0].split(";")
+        values = lines[1].split(";")
+        unknown_index = headers.index("GHE")
+        values[unknown_index] = "x"
+        with_unknown = (lines[0] + "\n" + ";".join(values) + "\n").encode("utf-8")
+        result = BltuAdapter().parse_bytes(with_unknown)
+        row = result["accepted"][0]
+        self.assertIn("GHE", row["normalized"]["activity_codes"])
+        self.assertEqual(row["normalized"]["classification_state"], "unresolved")
+
     def test_row_free_acquisition_sidecar_is_verified_and_preserved(self):
         raw = ROOT.parent.parent / "germany" / "fixtures" / "synthetic_bltu.csv"
         with tempfile.TemporaryDirectory() as directory:

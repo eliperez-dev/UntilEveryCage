@@ -55,7 +55,7 @@ class GermanyBelgiumCandidateImportE2E(unittest.TestCase):
     def test_both_sources_are_idempotent_and_candidate_only(self):
         with psycopg.connect(self.env.database_url) as db:
             counts = dict(db.execute("SELECT source_id, count(*) FROM uec.source_records WHERE source_id IN ('be.locations','de.locations') GROUP BY source_id").fetchall())
-            self.assertEqual(counts, {"be.locations": 3, "de.locations": 1})
+            self.assertEqual(counts, {"be.locations": 3, "de.locations": 2})
             self.assertTrue(db.execute("SELECT test_only FROM uec.releases WHERE release_id='candidate-de-be-e2e'").fetchone()[0])
         base = f"http://127.0.0.1:{self.env.api_port}"
         with urllib.request.urlopen(base + "/api/v2/locations?profile=official") as response:

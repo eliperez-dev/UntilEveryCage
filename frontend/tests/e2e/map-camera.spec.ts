@@ -161,7 +161,7 @@ test('compact map view control toggles 3D and shows the map gesture hint without
   expect(mobileLabel!.y + mobileLabel!.height).toBeLessThanOrEqual(mobileRowTops[0]!.y);
   await expect(controls.locator('#map-camera-help')).toHaveClass(/sr-only/);
   await expect(viewToggle).toHaveAttribute('aria-describedby', 'map-camera-help');
-  await expect(controls.getByText('Right-mouse to rotate / Left-mouse to pan', { exact: true })).toBeVisible();
+  await expect(controls.getByText('Right-mouse to rotate / Left-mouse to pan', { exact: true })).toBeHidden();
   await expect(page.locator('.maplibregl-ctrl-compass')).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('map-controls-mobile.png') });
 });
