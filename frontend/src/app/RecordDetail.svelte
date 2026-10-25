@@ -352,12 +352,12 @@
       <div><dt>{tr('Locality', $language)}</dt><dd>{locationText}</dd></div>
       {#if hasCoordinates}<div><dt>{tr('Coordinates', $language)}</dt><dd>{coordinate(record.latitude)}, {coordinate(record.longitude)}</dd></div>{/if}
       <div><dt>{tr('Precision', $language)}</dt><dd>{precisionLabel}</dd></div>
-      {#if record.coordinatePrecision && !['source-provided', 'source_reported', 'source_provided_unverified'].includes(record.coordinatePrecision)}<div><dt>Source precision</dt><dd>{humanizeValue(record.coordinatePrecision)}</dd></div>{/if}
-      {#if coordinateStatus && !sameLabel(coordinateStatus, 'source_confirmed')}<div><dt>Coordinate review</dt><dd>{humanizeValue(coordinateStatus)}</dd></div>{/if}
-      {#if coordinateMethod}<div><dt>Location method</dt><dd>{humanizeValue(coordinateMethod)}</dd></div>{/if}
-      {#if coordinateProvider}<div><dt>Geocoding provider</dt><dd>{coordinateProvider}</dd></div>{/if}
-      {#if coordinateConfidence !== null || record.coordinateConfidenceBand}<div><dt>Geocoding confidence</dt><dd>{#if coordinateConfidence !== null}{coordinateConfidence} (provider score){/if}{#if record.coordinateConfidenceBand}{coordinateConfidence !== null ? ' · ' : ''}{humanizeValue(record.coordinateConfidenceBand)}{/if}</dd></div>{/if}
-      {#if defaultMapScope === false}<div><dt>Map scope</dt><dd>Outside the default map{#if mapScopeReason} · {humanizeValue(mapScopeReason)}{/if}</dd></div>{/if}
+      {#if record.coordinatePrecision && !['source-provided', 'source_reported', 'source_provided_unverified'].includes(record.coordinatePrecision)}<div><dt>{tr('Source precision', $language)}</dt><dd>{humanizeValue(record.coordinatePrecision)}</dd></div>{/if}
+      {#if coordinateStatus && !sameLabel(coordinateStatus, 'source_confirmed')}<div><dt>{tr('Coordinate review', $language)}</dt><dd>{humanizeValue(coordinateStatus)}</dd></div>{/if}
+      {#if coordinateMethod}<div><dt>{tr('Location method', $language)}</dt><dd>{humanizeValue(coordinateMethod)}</dd></div>{/if}
+      {#if coordinateProvider}<div><dt>{tr('Geocoding provider', $language)}</dt><dd>{coordinateProvider}</dd></div>{/if}
+      {#if coordinateConfidence !== null || record.coordinateConfidenceBand}<div><dt>{tr('Geocoding confidence', $language)}</dt><dd>{#if coordinateConfidence !== null}{coordinateConfidence} ({tr('provider score', $language)}){/if}{#if record.coordinateConfidenceBand}{coordinateConfidence !== null ? ' · ' : ''}{humanizeValue(record.coordinateConfidenceBand)}{/if}</dd></div>{/if}
+      {#if defaultMapScope === false}<div><dt>{tr('Map scope', $language)}</dt><dd>{tr('Outside the default map', $language)}{#if mapScopeReason} · {humanizeValue(mapScopeReason)}{/if}</dd></div>{/if}
     </dl>
   </section>
 
@@ -378,16 +378,16 @@
     <section aria-labelledby="source-facts-heading">
       <h2 id="source-facts-heading">{tr('Source facts', $language)}</h2>
       <dl>
-        {#if nativeActivity && !taxonomy}<div><dt>Native activity</dt><dd>{nativeActivity}</dd></div>{/if}
-        {#if speciesSlaughtered}<div><dt>Species slaughtered</dt><dd>{speciesSlaughtered}</dd></div>{/if}
-        {#if processingActivities && !taxonomy}<div><dt>Processing activities</dt><dd>{processingActivities}</dd></div>{/if}
-        {#if slaughterRangeText}<div><dt>Estimated animals slaughtered (last 360 days)</dt><dd>{slaughterRangeText}</dd></div>{/if}
-        {#if processingRangeText}<div><dt>Estimated product volume (pounds/month)</dt><dd>{processingRangeText}</dd></div>{/if}
-        {#if sourceLocationRole === 'aphis_mailing_locality'}<div><dt>Location role</dt><dd>APHIS mailing locality: approximate locality, not an operating-site location</dd></div>{/if}
-        {#if sourceFacts.alternateNames?.length}<div><dt>Also known as</dt><dd>{sourceFacts.alternateNames.join(' · ')}</dd></div>{/if}
+        {#if nativeActivity && !taxonomy}<div><dt>{tr('Native activity', $language)}</dt><dd>{nativeActivity}</dd></div>{/if}
+        {#if speciesSlaughtered}<div><dt>{tr('Species slaughtered', $language)}</dt><dd>{speciesSlaughtered}</dd></div>{/if}
+        {#if processingActivities && !taxonomy}<div><dt>{tr('Processing activities', $language)}</dt><dd>{processingActivities}</dd></div>{/if}
+        {#if slaughterRangeText}<div><dt>{tr('Estimated animals slaughtered (last 360 days)', $language)}</dt><dd>{slaughterRangeText}</dd></div>{/if}
+        {#if processingRangeText}<div><dt>{tr('Estimated product volume (pounds/month)', $language)}</dt><dd>{processingRangeText}</dd></div>{/if}
+        {#if sourceLocationRole === 'aphis_mailing_locality'}<div><dt>{tr('Location role', $language)}</dt><dd>{tr('APHIS mailing locality: approximate locality, not an operating-site location', $language)}</dd></div>{/if}
+        {#if sourceFacts.alternateNames?.length}<div><dt>{tr('Also known as', $language)}</dt><dd>{sourceFacts.alternateNames.join(' · ')}</dd></div>{/if}
         {#if sourceFacts.establishmentId}<div><dt>Establishment ID</dt><dd>{sourceFacts.establishmentId}</dd></div>{/if}
         {#if sourceFacts.establishmentNumber}<div><dt>Establishment number</dt><dd>{sourceFacts.establishmentNumber}</dd></div>{/if}
-        {#if sourceFacts.grantDate}<div><dt>Grant date</dt><dd>{sourceFacts.grantDate}</dd></div>{/if}
+        {#if sourceFacts.grantDate}<div><dt>{tr('Grant date', $language)}</dt><dd>{sourceFacts.grantDate}</dd></div>{/if}
         {#if sourceFacts.aphisAnnualReports?.length}{#each sourceFacts.aphisAnnualReports as report (report.fiscalYear)}<div><dt>FY{report.fiscalYear} reported animals</dt><dd><ul>{#each report.speciesCounts as species (species.species)}<li>{sourceFactLabel(species.species)}: {annualSpeciesCount(species.count)}</li>{/each}</ul>{#if safeHttps(report.sourceUrl)}<a href={safeHttps(report.sourceUrl) ?? ''} target="_blank" rel="noopener noreferrer">Source report</a>{/if}</dd></div>{/each}{/if}
         {#if sourceFacts.aphisDatedInspections?.length}{#each sourceFacts.aphisDatedInspections as inspection (inspection.inspectionDate)}<div><dt>APHIS inspection</dt><dd>{inspection.inspectionDate}{#if safeHttps(inspection.sourceUrl)} <a href={safeHttps(inspection.sourceUrl) ?? ''} target="_blank" rel="noopener noreferrer">Source record</a>{/if}</dd></div>{/each}{/if}
       </dl>
@@ -401,7 +401,7 @@
   <section aria-labelledby="evidence-heading">
       <h2 id="evidence-heading">{tr('Source and review', $language)}</h2>
     <dl>
-      {#if sourceName}<div><dt>Source</dt><dd>{#if sourceUrl}<a href={sourceUrl} target="_blank" rel="noopener noreferrer">{sourceName}<span class="sr-only"> (opens in a new tab)</span></a>{:else}{sourceName}{/if}</dd></div>
+      {#if sourceName}<div><dt>{tr('Source', $language)}</dt><dd>{#if sourceUrl}<a href={sourceUrl} target="_blank" rel="noopener noreferrer">{sourceName}<span class="sr-only"> ({tr('opens in a new tab', $language)})</span></a>{:else}{sourceName}{/if}</dd></div>
       {:else if sourceId}<div><dt>Source ID</dt><dd>{sourceId}</dd></div>{/if}
       {#if sourceRecordId}<div><dt>Source record</dt><dd>{sourceRecordId}</dd></div>{/if}
       {#if sourceRecordUrl}<div><dt>Source record link</dt><dd><a href={sourceRecordUrl} target="_blank" rel="noopener noreferrer">Open source record<span class="sr-only"> (opens in a new tab)</span></a></dd></div>{/if}
