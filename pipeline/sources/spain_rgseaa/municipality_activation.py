@@ -39,19 +39,26 @@ def activate(database_url: str, *, limit: int = 24, connect: Any = None) -> dict
             WITH latest AS (
                 SELECT snapshot_sha256 FROM real_preview.source_preview_runs
                  WHERE source_id=%s ORDER BY created_at DESC,run_id DESC LIMIT 1
+            ), latest_evidence AS (
+                SELECT DISTINCT ON (evidence.candidate_id)
+                       evidence.evidence_event_id,evidence.candidate_id,evidence.snapshot_sha256,
+                       evidence.source_id,evidence.municipality,evidence.province,evidence.retrieved_at
+                  FROM real_preview.spain_verified_locality_evidence evidence
+                  JOIN latest USING(snapshot_sha256)
+                 WHERE evidence.source_id=%s
+                 ORDER BY evidence.candidate_id,evidence.retrieved_at DESC,evidence.evidence_event_id DESC
             )
             SELECT evidence.evidence_event_id,c.candidate_id,c.snapshot_sha256,c.source_group_key,
                    evidence.municipality,evidence.province,manifest.source_artifact_sha256,artifact.artifact_id,
                    c.country_code,c.location_class,c.default_map_scope,
                    location.location_evidence->>'country_code',
                    NOT EXISTS (
-                       SELECT 1 FROM uec.geocode_targets target
+                       SELECT 1 FROM real_preview.geocode_targets target
                        JOIN uec.geocode_jobs job USING(job_id)
                        JOIN uec.public_access_restricted restricted USING(source_record_id)
                        WHERE target.candidate_id=c.candidate_id
                    ) AS restriction_clear
-              FROM real_preview.spain_verified_locality_evidence evidence
-              JOIN latest ON latest.snapshot_sha256=evidence.snapshot_sha256
+              FROM latest_evidence evidence
               JOIN real_preview.candidates c
                 ON c.candidate_id=evidence.candidate_id AND c.snapshot_sha256=evidence.snapshot_sha256
                AND c.source_id=evidence.source_id
@@ -62,7 +69,7 @@ def activate(database_url: str, *, limit: int = 24, connect: Any = None) -> dict
              WHERE evidence.source_id=%s AND c.country_code='ES'
              ORDER BY evidence.retrieved_at,evidence.evidence_event_id
              LIMIT %s
-        """, (SOURCE_ID, SOURCE_ID, limit)).fetchall()
+        """, (SOURCE_ID, SOURCE_ID, SOURCE_ID, limit)).fetchall()
         counts["evidence_available"] = len(rows)
         for row in rows:
             (evidence_id,candidate_id,snapshot,source_key,municipality,province,artifact_sha,artifact_id,

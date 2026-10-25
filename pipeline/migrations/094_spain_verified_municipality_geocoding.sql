@@ -79,13 +79,15 @@ BEGIN
           JOIN real_preview.private_geocoding_source_profiles profile
             ON profile.profile_id='geoapify-es-aesan-verified-municipality'
            AND profile.source_id=candidate.source_id AND profile.enabled
+          JOIN real_preview.spain_verified_locality_evidence evidence
+            ON evidence.candidate_id=candidate.candidate_id
+           AND evidence.snapshot_sha256=candidate.snapshot_sha256
+           AND evidence.source_id=candidate.source_id
           JOIN uec.geocode_job_events queued ON queued.job_id=job.job_id
             AND queued.event_type='queued'
             AND queued.details->>'processing_mode'='private_geoapify_source_profile'
             AND queued.details->>'profile_id'=profile.profile_id
-          JOIN real_preview.spain_verified_locality_evidence evidence
-            ON evidence.candidate_id=candidate.candidate_id
-           AND evidence.snapshot_sha256=candidate.snapshot_sha256
+            AND queued.details->>'locality_evidence_event_id'=evidence.evidence_event_id::text
           CROSS JOIN LATERAL (SELECT NEW.response->'features'->
               CASE WHEN COALESCE(NEW.response->>'_uec_selected_feature_index','') ~ '^[0-9]+$'
                    THEN (NEW.response->>'_uec_selected_feature_index')::integer ELSE 0 END AS feature) item
@@ -102,6 +104,13 @@ BEGIN
                 ORDER BY manifest.retrieved_at DESC,manifest.snapshot_sha256 DESC LIMIT 1))
            AND NOT EXISTS (SELECT 1 FROM uec.public_access_restricted restricted
                            WHERE restricted.source_record_id=NEW.source_record_id)
+           AND NOT EXISTS (
+               SELECT 1 FROM real_preview.spain_verified_locality_evidence newer
+                WHERE newer.candidate_id=evidence.candidate_id
+                  AND newer.snapshot_sha256=evidence.snapshot_sha256
+                  AND (newer.retrieved_at,newer.evidence_event_id)
+                      > (evidence.retrieved_at,evidence.evidence_event_id)
+           )
            AND real_preview.normalize_geocode_address(query_parts[1])
                  = real_preview.normalize_geocode_address(evidence.municipality)
            AND real_preview.normalize_geocode_address(query_parts[2])
