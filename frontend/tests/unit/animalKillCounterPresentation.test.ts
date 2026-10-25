@@ -5,11 +5,11 @@ import { describe, expect, it } from 'vitest';
 const counter = readFileSync(resolve(process.cwd(), 'src/app/AnimalKillCounter.svelte'), 'utf8');
 
 describe('legacy counter presentation', () => {
-  it('labels the model and keeps source and method expandable', () => {
+  it('shows the counter values without an on-screen source and method disclosure', () => {
     expect(counter).toContain('<h2 id="estimate-title">Estimated animals killed</h2>');
     expect(counter).toContain('Estimated since you opened this page.');
-    expect(counter).toContain('<summary>Source and method</summary>');
-    expect(counter).toContain('edition or year is not retained for some rates');
+    expect(counter).not.toContain('Source and method');
+    expect(counter).not.toContain('edition or year is not retained');
     expect(counter).not.toContain('2024 global estimates');
   });
 });

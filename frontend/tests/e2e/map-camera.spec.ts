@@ -14,7 +14,7 @@ async function installTerrainFixture(page: import('@playwright/test').Page) {
   await page.route('https://tiles.mapterhorn.com/**', route => route.fulfill({ status: 200, contentType: 'image/webp', body }));
 }
 
-test('camera tilt, compass reset, and URL state preserve the map view', async ({ page }, testInfo) => {
+test('camera tilt, map style, and URL state preserve the map view without compass controls', async ({ page }, testInfo) => {
   test.setTimeout(60_000);
   const tileData = await page.evaluate(() => {
     const canvas = document.createElement('canvas');
@@ -38,6 +38,7 @@ test('camera tilt, compass reset, and URL state preserve the map view', async ({
   const map = page.getByLabel('Map showing records');
   const viewToggle = map.locator('.map-camera-toggle');
   await expect(map.getByRole('group', { name: 'Map view' })).toBeVisible();
+  await expect(map.locator('.maplibregl-ctrl-compass')).toHaveCount(0);
   await expect(viewToggle).toHaveText('3D');
   await expect(viewToggle).toHaveAttribute('aria-pressed', 'true');
   await expect(viewToggle).toHaveAttribute('title', 'Right-drag to tilt and rotate');
@@ -83,17 +84,6 @@ test('camera tilt, compass reset, and URL state preserve the map view', async ({
   await mapStyle.selectOption('vector');
   await expect(mapStyle).toHaveValue('vector');
   await expect.poll(() => page.evaluate(() => (window as any).__UEC_LOCAL_PREVIEW_MAP__?.getStyle().sources.base.tiles[0])).toContain('tile.openstreetmap.org');
-  await map.getByRole('button', { name: /reset north/i }).click();
-  await expect.poll(() => page.evaluate(() => {
-    const instance = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
-    return [instance.getPitch(), instance.getBearing()];
-  })).toEqual([0, 0]);
-  await expect.poll(() => page.evaluate(() => {
-    const instance = (window as any).__UEC_LOCAL_PREVIEW_MAP__;
-    const center = instance.getCenter();
-    return [Number(center.lat.toFixed(5)), Number(center.lng.toFixed(5)), instance.getZoom()];
-  })).toEqual([mapState.lat, mapState.lon, mapState.zoom]);
-  await expect.poll(() => new URL(page.url()).hash).not.toMatch(/pitch=|bearing=/);
 });
 
 test('flat camera URLs stay compact and the camera control remains usable on touch layouts', async ({ page }, testInfo) => {
@@ -113,15 +103,14 @@ test('flat camera URLs stay compact and the camera control remains usable on tou
   await expect.poll(() => new URL(page.url()).hash).toContain('pitch=45');
 });
 
-test('compact map view control toggles 3D and right-drag rotates the map', async ({ page }, testInfo) => {
+test('compact map view control toggles 3D and map gestures rotate the map without a visible drag hint', async ({ page }, testInfo) => {
   await installTerrainFixture(page);
   await page.goto('./#/map?f1a=field&scenario=dense&lat=38&lon=-96&z=4');
   await page.locator('.map-surface').waitFor({ state: 'visible', timeout: 30_000 });
   const controls = page.getByRole('group', { name: 'Map view' });
   const viewToggle = controls.locator('.map-camera-toggle');
   const styleSelect = controls.getByLabel('Map style');
-  const gestureHint = page.locator('.gesture-hint');
-  await expect(gestureHint).toBeVisible();
+  await expect(page.locator('.gesture-hint')).toHaveCount(0);
   await expect(styleSelect.locator('option')).toHaveText(['Street', 'Satellite']);
   await expect(viewToggle).toHaveText('2D');
   await expect(controls.locator('#map-camera-help')).toHaveClass(/sr-only/);
@@ -133,11 +122,6 @@ test('compact map view control toggles 3D and right-drag rotates the map', async
   expect(rowTops.every(Boolean)).toBe(true);
   const rowCenters = rowTops.map(box => box!.y + box!.height / 2);
   expect(Math.max(...rowCenters) - Math.min(...rowCenters)).toBeLessThan(2);
-  const [controlsBox, hintBox] = await Promise.all([controls.boundingBox(), gestureHint.boundingBox()]);
-  expect(controlsBox).not.toBeNull();
-  expect(hintBox).not.toBeNull();
-  expect(hintBox!.y).toBeGreaterThanOrEqual(controlsBox!.y + controlsBox!.height);
-  expect(Math.abs(hintBox!.x + hintBox!.width - (controlsBox!.x + controlsBox!.width))).toBeLessThan(2);
   await viewToggle.click();
   await expect(viewToggle).toHaveText('3D');
   await expect(viewToggle).toHaveAttribute('title', 'Right-drag to tilt and rotate');
@@ -172,8 +156,7 @@ test('compact map view control toggles 3D and right-drag rotates the map', async
   expect(Math.max(...mobileRowCenters) - Math.min(...mobileRowCenters)).toBeLessThan(2);
   await expect(controls.locator('#map-camera-help')).toHaveClass(/sr-only/);
   await expect(viewToggle).toHaveAttribute('aria-describedby', 'map-camera-help');
-  await expect(gestureHint).toBeHidden();
-  await expect(controls.locator('#map-camera-help')).toContainText('On touchscreens, use two fingers to tilt');
+  await expect(page.locator('.gesture-hint')).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('map-controls-mobile.png') });
 });
 

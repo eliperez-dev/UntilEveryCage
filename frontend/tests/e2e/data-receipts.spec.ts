@@ -23,7 +23,7 @@ test('direct API and About destinations preserve safe map context and section al
   expect(new URL(page.url()).hash).toContain('map=%23%2Fmap%3Flat%3D44.5%26lon%3D8.1%26z%3D5%26release_id%3Drelease-2026-10');
   await page.goto('./#/about/faq');
   await expect(page.getByRole('heading',{name:'Frequently asked questions',exact:true})).toBeVisible();
-  await expect(page.getByRole('heading',{name:'Records, releases, and the counter',exact:true})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'How the data reaches the map',exact:true})).toBeVisible();
 });
 
 test('private Database category filtering reaches the repository and resets paging and selection', async ({ page }) => {

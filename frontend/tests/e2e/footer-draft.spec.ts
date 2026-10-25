@@ -24,9 +24,10 @@ test('the disclosure and credits preserve data context and appear once per non-m
   await expect(footer).toHaveCount(1);
   await expect(footer).toContainText('An independent, open-source, ad-free project.');
   await expect(footer).toContainText('CC BY-NC-SA where applicable; source data may have additional terms.');
-  await expect(footer).toContainText('Counter approach adapted from ADAPTT. Original website inspired by Final Nail.');
+  await expect(footer.locator('p').first()).toHaveText('An independent, open-source, ad-free project.');
+  await expect(footer).toContainText('Counter Adapted from ADAPTT. Original website inspired by Final Nail.');
   await expect(footer.getByRole('navigation')).toHaveCount(0);
-  await expect(footer.getByRole('link')).toHaveCount(8);
+  await expect(footer.getByRole('link')).toHaveCount(9);
   const destinations = [
     ['Contact', 'mailto:untileverycageproject@protonmail.com'],
     ['GitHub', 'https://github.com/eliperez-dev/UntilEveryCage'],
@@ -34,6 +35,7 @@ test('the disclosure and credits preserve data context and appear once per non-m
     ['Support the project', 'https://ko-fi.com/untileverycageisempty'],
     ['Vegan resources', 'https://linktr.ee/veganresource'],
     ['AGPLv3 or later', 'https://www.gnu.org/licenses/agpl-3.0.html'],
+    ['ADAPTT', 'https://www.adaptt.org/'],
     ['Final Nail', 'https://finalnail.com/'],
   ];
   for (const [name, href] of destinations) {

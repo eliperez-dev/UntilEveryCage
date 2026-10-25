@@ -77,7 +77,7 @@ test('direct Database URLs preserve only allowlisted map context in the explicit
   expect(routePath(page).searchParams.get('q')).toBeNull();
 });
 
-test('About and FAQ pages keep legacy routes and source context usable', async ({ page }) => {
+test('About and FAQ pages keep legacy routes without obsolete source/method content', async ({ page }) => {
   await page.goto('./#/database');
   const aboutLink = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'About', exact: true });
   await aboutLink.click();
@@ -85,21 +85,18 @@ test('About and FAQ pages keep legacy routes and source context usable', async (
   await expect(page.getByRole('heading', { level: 1, name: 'About Until Every Cage is Empty' })).toBeVisible();
   await page.goto('./#/about?section=sources');
   await expect.poll(() => new URL(page.url()).hash).toBe('#/about?section=sources');
-  await expect(page.getByRole('heading', { level: 2, name: 'Sources and methods' })).toBeVisible();
-  await expect(page.getByText('approximate locality references', { exact: false })).toBeVisible();
-  const providerDisclosure = page.locator('p').filter({ hasText: /OpenStreetMap/i });
-  await expect(providerDisclosure).toContainText('satellite imagery uses Esri');
-  await expect(providerDisclosure).toContainText('3D terrain uses Mapterhorn');
-  await expect(providerDisclosure.getByRole('link', { name: 'Mapterhorn' })).toHaveAttribute('href', 'https://mapterhorn.com/attribution');
-  await expect(providerDisclosure).toContainText('not facility records or search text.');
+  await expect(page.getByRole('heading', { level: 1, name: 'About Until Every Cage is Empty' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Sources and methods' })).toHaveCount(0);
   await expect(page.getByRole('article', { name: 'About Until Every Cage', exact: true }).getByRole('link', { name: 'Contact', exact: true })).toHaveAttribute('href', 'mailto:untileverycageproject@protonmail.com');
   await page.goto('./#/about/faq');
   await expect(page.getByRole('heading', { level: 1, name: 'Frequently asked questions' })).toBeVisible();
-  await expect(page.getByRole('heading', { level: 2, name: 'Records, releases, and the counter' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: 'How the data reaches the map' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Sources and methods' })).toHaveCount(0);
+  await expect(page.getByText(/sources and method are shown with the counter/i)).toHaveCount(0);
   await page.goto('./#/about/help');
   await expect(page.getByRole('heading', { level: 2, name: 'Help, support, and contact' })).toBeVisible();
   await page.goto('./#/methodology');
-  await expect(page.getByRole('heading', { level: 2, name: 'Technology' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: 'How the data reaches the map' })).toBeVisible();
   await page.goBack();
 });
 

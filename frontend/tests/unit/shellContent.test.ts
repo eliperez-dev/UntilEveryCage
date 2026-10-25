@@ -50,19 +50,28 @@ describe('normal shell content', () => {
     expect(about).not.toContain('Explore and contribute');
     expect(about).not.toContain('Common questions');
     expect(about).not.toContain('estimate-number');
-    expect(faq).toContain('Technology');
-    expect(faq).toContain('PostgreSQL with PostGIS');
+    expect(about).not.toContain('Sources and methods');
+    expect(faq).toContain('How the data reaches the map');
+    expect(faq).toContain('Government datasets are collected, cleaned and standardized, with links back to their sources. Address lookups add coordinates, and matching connects related records. Dated releases supply the map, search and downloads through a Rust API.');
+    expect(faq).not.toContain('Sources and methods');
+    expect(faq).not.toContain('Its sources and method are shown with the counter');
+    expect(faq).not.toContain('PostgreSQL with PostGIS');
     for (const topic of ['suggest a facility', 'add evidence', 'suggest a correction', 'possible duplicate', 'privacy review', 'private tracking link', 'report a bug']) expect(faq).toContain(topic);
     expect(faq).not.toContain('email-notification');
     expect(about).not.toContain('<video');
   });
 
   it('restores the living-project footer with a backend version component', () => {
-    expect(footer).toContain('independent, open-source, ad-free');
+    expect(footer).toContain('<p>An independent, open-source, ad-free project.</p>');
+    expect(footer).not.toContain('Feedback and questions are welcome.');
     for (const url of ['mailto:untileverycageproject@protonmail.com', 'https://discord.gg/wbdTHzAZ4b', 'https://ko-fi.com/untileverycageisempty', 'https://linktr.ee/veganresource', 'https://github.com/eliperez-dev/UntilEveryCage']) expect(footer).toContain(url);
     expect(footer).toContain('AGPLv3 or later');
     expect(footer).toContain('CC BY-NC-SA where applicable');
-    expect(footer).toContain('ADAPTT');
+    expect(footer).toContain('Counter Adapted from <a href="https://www.adaptt.org/" target="_blank" rel="noreferrer">ADAPTT</a>.');
+    expect(footer).not.toContain('Counter approach adapted');
+    expect(picker).toContain('new maplibregl.NavigationControl');
+    expect(mapSurface).not.toContain('new maplibregl.NavigationControl');
+    expect(mapSurface).not.toContain('Right-drag to rotate / Left-drag to pan');
     expect(footer).toContain('Final Nail');
     expect(footer).toContain('<div class="application-version-slot"><ApplicationVersion /></div>');
     expect(footer).not.toContain('v1.5.1');

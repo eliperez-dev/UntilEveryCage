@@ -7,19 +7,13 @@
     if (id) requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ block: 'start' }));
   });
 </script>
-<svelte:head><title>FAQ · Until Every Cage</title><meta name="description" content="Technology, records, contributions, and help for Until Every Cage." /></svelte:head>
+<svelte:head><title>FAQ · Until Every Cage</title><meta name="description" content="How the data reaches the map, contributions, and help for Until Every Cage." /></svelte:head>
 <article class="faq-page" aria-labelledby="faq-title">
   <h1 id="faq-title">Frequently asked questions</h1>
   <section id="technology" aria-labelledby="technology-title">
-    <h2 id="technology-title">Technology</h2>
-    <p>The website uses Svelte, the map uses MapLibre, and the service is built with Rust. Public data is stored in PostgreSQL with PostGIS for geographic queries.</p>
-    <p>Map and terrain providers are listed in <a href={route('about?section=sources')}>Sources and methods</a>. Their tile requests do not include facility records or search text.</p>
-  </section>
-  <section id="records" aria-labelledby="records-title">
-    <h2 id="records-title">Records, releases, and the counter</h2>
-    <p>Facility records include source and location-precision information where available. Public releases are dated snapshots; their release IDs help identify the version being viewed.</p>
-    <p>The animal counter is a modeled estimate, not a live measurement and not a count of animals at mapped facilities. Its sources and method are shown with the counter.</p>
-    <p><a href={route('database')}>Browse records</a> or <a href={route('database/api')}>read the API and reuse terms</a>.</p>
+    <span id="records" aria-hidden="true"></span>
+    <h2 id="technology-title">How the data reaches the map</h2>
+    <p>Government datasets are collected, cleaned and standardized, with links back to their sources. Address lookups add coordinates, and matching connects related records. Dated releases supply the map, search and downloads through a Rust API.</p>
   </section>
   <section id="contributions" aria-labelledby="contributions-title">
     <h2 id="contributions-title">Contributions</h2>

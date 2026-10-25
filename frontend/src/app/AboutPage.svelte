@@ -1,12 +1,5 @@
 <script lang="ts">
   import AnimalKillCounter from './AnimalKillCounter.svelte';
-  let { returnMapHref = '#/map', section = 'overview' }: { returnMapHref?: string; section?: 'overview' | 'sources' } = $props();
-  const context = $derived(returnMapHref !== '#/map' ? `?map=${encodeURIComponent(returnMapHref)}` : '');
-  const route = (path: string) => `#/${path}${context}`;
-  $effect(() => {
-    const id = section;
-    if (id !== 'overview') requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ block: 'start' }));
-  });
 </script>
 <svelte:head><title>About · Until Every Cage</title><meta name="description" content="About the project Until Every Cage and its mission." /></svelte:head>
 <article class="about-page" aria-label="About Until Every Cage">
@@ -46,14 +39,6 @@
     </section>
     <aside class="about-counter-slot" aria-label="Animal counter"><AnimalKillCounter /></aside>
   </div>
-  <section id="sources" aria-labelledby="sources-title">
-    <h2 id="sources-title">Sources and methods</h2>
-    <p>Records retain their source origin, dates, location precision, and available evidence. Interpretation and connections are labeled separately. Coverage is incomplete: absence from the map does not show that a facility is absent or closed.</p>
-    <p>Community submissions are separate from the project dataset.</p>
-    <p>Facility points, approximate locality references, and records without a publishable point have different precision. We do not guess locations.</p>
-    <p>Street maps use OpenStreetMap, satellite imagery uses Esri, and 3D terrain uses <a href="https://mapterhorn.com/attribution" target="_blank" rel="noreferrer">Mapterhorn</a>. Map providers receive your IP address and tile requests, not facility records or search text.</p>
-    <p><a href={route('database/api')}>Browse public data and releases</a> · <a href={returnMapHref}>Open the map</a></p>
-  </section>
 </article>
 <style>
   .about-page{width:min(100% - 3rem,72rem);margin:auto;padding:1.5rem 0 2.5rem;color:#f1efe8;font:.9rem/1.55 system-ui,sans-serif}

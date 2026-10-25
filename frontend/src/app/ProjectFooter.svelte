@@ -5,9 +5,9 @@
 </script>
 
 <footer class="project-footer" aria-label="Project information">
-  <p>An independent, open-source, ad-free project. Feedback and questions are welcome.</p>
+  <p>An independent, open-source, ad-free project.</p>
   <p class="links"><a href="mailto:untileverycageproject@protonmail.com">Contact</a> · <a href="https://github.com/eliperez-dev/UntilEveryCage" target="_blank" rel="noreferrer">GitHub</a> · <a href="https://discord.gg/wbdTHzAZ4b" target="_blank" rel="noreferrer">Discord</a> · <a href="https://ko-fi.com/untileverycageisempty" target="_blank" rel="noreferrer">Support the project</a> · <a href="https://linktr.ee/veganresource" target="_blank" rel="noreferrer">Vegan resources</a></p>
-  <p class="credits">Code is available under <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noreferrer">AGPLv3 or later</a>. The project data compilation is CC BY-NC-SA where applicable; source data may have additional terms. Counter approach adapted from ADAPTT. Original website inspired by <a href="https://finalnail.com/" target="_blank" rel="noreferrer">Final Nail</a>. <a href={dataHref}>Data reuse terms</a>.</p>
+  <p class="credits">Code is available under <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noreferrer">AGPLv3 or later</a>. The project data compilation is CC BY-NC-SA where applicable; source data may have additional terms. Counter Adapted from <a href="https://www.adaptt.org/" target="_blank" rel="noreferrer">ADAPTT</a>. Original website inspired by <a href="https://finalnail.com/" target="_blank" rel="noreferrer">Final Nail</a>. <a href={dataHref}>Data reuse terms</a>.</p>
   <div class="application-version-slot"><ApplicationVersion /></div>
 </footer>
 

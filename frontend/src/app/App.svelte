@@ -115,7 +115,7 @@
         <a href="#/map">Return to the map</a>
       </section>
     {:else if route.kind === 'about'}
-      <AboutPage returnMapHref={returnMapHref} section={route.section} />
+      <AboutPage />
     {:else if route.kind === 'faq'}
       <FaqPage returnMapHref={returnMapHref} section={route.section} />
     {:else if route.kind === 'api' || route.kind === 'downloads'}

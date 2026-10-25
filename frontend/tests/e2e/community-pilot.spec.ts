@@ -256,7 +256,8 @@ test('the direct About and FAQ links open their separate project and help conten
   await expect(page.getByRole('heading', { name: 'About Until Every Cage is Empty' })).toBeVisible();
   await expect(page.locator('.about-counter-slot')).toBeVisible();
   await page.goto('#/about?section=sources');
-  await expect(page.getByRole('heading', { name: 'Sources and methods' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'About Until Every Cage is Empty' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Sources and methods' })).toHaveCount(0);
   await page.goto('#/about/help');
   await expect(page.getByRole('heading', { name: 'Help, support, and contact' })).toBeVisible();
   await page.goto('#/contribute');
