@@ -190,13 +190,13 @@
   onMount(() => { if (!fixtureEnabled) void communityCapabilities().then(value => enabled = value.enabled); });
 </script>
 
-<svelte:head><title>{page === 'form' ? ({ facility: 'Add a facility', evidence: 'Add evidence', correction: 'Suggest a correction', duplicate: 'Possible duplicate', privacy_removal: 'Privacy review' }[kind]) : page === 'status' ? 'Contribution status' : page === 'review' ? 'Contribution review' : 'Community claims'}: Until Every Cage</title></svelte:head>
+<svelte:head><title>{tr(page === 'form' ? ({ facility: 'Add a facility', evidence: 'Add evidence', correction: 'Suggest a correction', duplicate: 'Possible duplicate', privacy_removal: 'Privacy review' }[kind]) : page === 'status' ? 'Contribution status' : page === 'review' ? 'Contribution review' : 'Community claims', $language)}: Until Every Cage</title></svelte:head>
 
 {#if !enabled && page !== 'claims' && page !== 'claim-detail'}
   <section class="community-unavailable" aria-labelledby="community-title">{#if embedded}<h2 id="community-title">Contribute to the project</h2>{:else}<h1 id="community-title">Contribute to the project</h1>{/if}<p>To share a correction, privacy concern, or source, email <a href="mailto:untileverycageproject@protonmail.com">untileverycageproject@protonmail.com</a>. For code contributions, use <a href="https://github.com/UntilEveryCage/UntilEveryCage">GitHub</a>.</p><a href="#/about/sources">Read sources & methodology</a></section>
 {:else if page === 'form'}
-  <section class="community-page" class:embedded aria-label="Contribution form">
-    {#if !embedded}<p><a href={`#/contribute${returnMapHref !== '#/map' ? `?map=${encodeURIComponent(returnMapHref)}` : ''}`}>Contribute</a></p><h1 id="community-title">{{ facility: 'Add a facility', evidence: 'Add evidence', correction: 'Suggest a correction', duplicate: 'Report a possible duplicate', privacy_removal: 'Request a privacy review' }[kind]}</h1>{/if}
+  <section class="community-page" class:embedded aria-label={tr('Contribution form', $language)}>
+    {#if !embedded}<p><a href={`#/contribute${returnMapHref !== '#/map' ? `?map=${encodeURIComponent(returnMapHref)}` : ''}`}>{tr('Contribute', $language)}</a></p><h1 id="community-title">{tr({ facility: 'Add a facility', evidence: 'Add evidence', correction: 'Suggest a correction', duplicate: 'Report a possible duplicate', privacy_removal: 'Request a privacy review' }[kind], $language)}</h1>{/if}
     <p class="lede">{tr(kind === 'evidence' ? 'Add evidence to an existing record. Your submission will be reviewed.' : 'We review submissions before anything is published.', $language)}</p>
     {#if receipt}
       <section class="receipt" aria-labelledby="receipt-heading"><h2 id="receipt-heading">{tr('Contribution received', $language)}</h2><p>{tr('Keep this private link to check the review status. It is shown once and cannot be recovered.', $language)}</p><a class="button-link" href={trackingHref(receipt)}>{tr('Track submission', $language)}</a></section>
@@ -214,10 +214,10 @@
           </fieldset>
         {/if}
         <label>{tr('Source link (optional)', $language)}<input bind:value={sourceUrlValue} name="source_url" type="url" maxlength="2048" placeholder="https://…" /></label>
-        {#if kind === 'facility' || kind === 'evidence'}<label>When did you observe this? (optional)<input name="observed_on" type="date" /></label>{/if}
-        {#if kind === 'correction' || kind === 'privacy_removal'}<label>{kind === 'correction' ? 'What should be corrected?' : 'What should we review?'}<textarea bind:value={descriptionValue} name="description" maxlength="2000" rows="4" required></textarea></label>{:else if kind === 'evidence'}<label>What did you find? (optional if you added a source link)<textarea bind:value={descriptionValue} name="description" maxlength="2000" rows="4" required={!sourceUrlValue.trim()}></textarea></label>{:else if kind === 'facility'}<label>Additional context (optional)<textarea bind:value={descriptionValue} name="description" maxlength="2000" rows="4"></textarea></label>{/if}
-        <label>Email (optional)<input name="contact_email" type="email" maxlength="254" autocomplete="email" aria-describedby="contact-help" /></label>
-        <p id="contact-help" class="field-help">For follow-up about this contribution. Automatic updates are not available yet.</p>
+        {#if kind === 'facility' || kind === 'evidence'}<label>{tr('When did you observe this? (optional)', $language)}<input name="observed_on" type="date" /></label>{/if}
+        {#if kind === 'correction' || kind === 'privacy_removal'}<label>{tr(kind === 'correction' ? 'What should be corrected?' : 'What should we review?', $language)}<textarea bind:value={descriptionValue} name="description" maxlength="2000" rows="4" required></textarea></label>{:else if kind === 'evidence'}<label>{tr('What did you find? (optional if you added a source link)', $language)}<textarea bind:value={descriptionValue} name="description" maxlength="2000" rows="4" required={!sourceUrlValue.trim()}></textarea></label>{:else if kind === 'facility'}<label>{tr('Additional context (optional)', $language)}<textarea bind:value={descriptionValue} name="description" maxlength="2000" rows="4"></textarea></label>{/if}
+        <label>{tr('Email (optional)', $language)}<input name="contact_email" type="email" maxlength="254" autocomplete="email" aria-describedby="contact-help" /></label>
+        <p id="contact-help" class="field-help">{tr('For follow-up about this contribution. Automatic updates are not available yet.', $language)}</p>
         <label class="consent"><input type="checkbox" required /> {tr('I have permission to share this information.', $language)}</label>
         {#if submitError}<p class="form-error" role="alert">{submitError}</p>{/if}
         <button class="primary-action" type="submit" disabled={busy}>{tr(busy ? 'Sending…' : 'Send for review', $language)}</button>

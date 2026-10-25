@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { language, tr } from './language';
   import { AphisReportsRepository, isAphisRelevant, type AphisReportKind } from '../api/AphisReportsRepository';
   import type { LocalProfile } from '../api/LocalLocationRepository';
   import type { LocationSourceFacts } from '../domain/location';
@@ -23,7 +24,7 @@
   const relevant = $derived(isAphisRelevant(sourceId, sourceFacts));
 
   function title(kind: AphisReportKind): string {
-    return kind === 'annual_reports' ? 'Annual reports' : 'Inspection reports';
+    return tr(kind === 'annual_reports' ? 'Annual reports' : 'Inspection reports', $language);
   }
 
   async function load(kind: AphisReportKind, next?: string) {
@@ -75,30 +76,30 @@
 
 {#if relevant}
   <section class="aphis-reports" aria-labelledby="aphis-reports-heading">
-    <h3 id="aphis-reports-heading">APHIS reports</h3>
-    <div class="choices" aria-label="Choose APHIS report type">
+    <h3 id="aphis-reports-heading">{tr('APHIS reports', $language)}</h3>
+    <div class="choices" aria-label={tr('Choose APHIS report type', $language)}>
       {#each kinds as kind}
-        <button type="button" aria-pressed={selected === kind} disabled={loading} onclick={() => void load(kind)}>{kind === 'annual_reports' ? 'Fetch annual reports' : 'Fetch inspection reports'}</button>
+        <button type="button" aria-pressed={selected === kind} disabled={loading} onclick={() => void load(kind)}>{tr(kind === 'annual_reports' ? 'Fetch annual reports' : 'Fetch inspection reports', $language)}</button>
       {/each}
     </div>
     {#if selected}
       <h4>{title(selected)}</h4>
-      {#if error}<p role="alert">Reports could not be loaded. <button type="button" onclick={() => void load(selected!, retryCursor ?? undefined)}>Retry</button></p>{/if}
-      {#if loading}<p role="status">Loading reports…</p>
+      {#if error}<p role="alert">{tr('Reports could not be loaded.', $language)} <button type="button" onclick={() => void load(selected!, retryCursor ?? undefined)}>{tr('Retry', $language)}</button></p>{/if}
+      {#if loading}<p role="status">{tr('Loading reports…', $language)}</p>
       {:else if rows.length}
         <ul>
           {#each rows as reference (reference.reference_id)}
             <li>
               <span>{reference.evidence_type === 'annual_reports' ? `Annual report · FY${reference.event_period}` : `Inspection · ${reference.event_date}`}</span>
-              {#if reference.report_url}<a href={reference.report_url} target="_blank" rel="noopener noreferrer">Open report</a>{/if}
-              {#if reference.column_e_url}<a href={reference.column_e_url} target="_blank" rel="noopener noreferrer">Column E narrative</a>{/if}
-              {#if !reference.report_url && !reference.column_e_url}<a href={reference.source_url} target="_blank" rel="noopener noreferrer">Open APHIS source page</a>{/if}
+              {#if reference.report_url}<a href={reference.report_url} target="_blank" rel="noopener noreferrer">{tr('Open report', $language)}</a>{/if}
+              {#if reference.column_e_url}<a href={reference.column_e_url} target="_blank" rel="noopener noreferrer">{tr('Column E narrative', $language)}</a>{/if}
+              {#if !reference.report_url && !reference.column_e_url}<a href={reference.source_url} target="_blank" rel="noopener noreferrer">{tr('Open APHIS source page', $language)}</a>{/if}
             </li>
           {/each}
         </ul>
-        {#if cursor}<button type="button" disabled={loading} onclick={() => void load(selected!, cursor!)}>Load more {title(selected).toLocaleLowerCase()}</button>{/if}
-      {:else if !error && cursor}<p>No matching references on this page.</p><button type="button" disabled={loading} onclick={() => void load(selected!, cursor!)}>Load more {title(selected).toLocaleLowerCase()}</button>
-      {:else if !error}<p>{selected === 'annual_reports' ? 'No annual reports found.' : 'No inspection reports found.'}</p>{/if}
+        {#if cursor}<button type="button" disabled={loading} onclick={() => void load(selected!, cursor!)}>{tr('Load more', $language)} {title(selected).toLocaleLowerCase()}</button>{/if}
+      {:else if !error && cursor}<p>{tr('No matching references on this page.', $language)}</p><button type="button" disabled={loading} onclick={() => void load(selected!, cursor!)}>{tr('Load more', $language)} {title(selected).toLocaleLowerCase()}</button>
+      {:else if !error}<p>{tr(selected === 'annual_reports' ? 'No annual reports found.' : 'No inspection reports found.', $language)}</p>{/if}
     {/if}
   </section>
 {/if}
