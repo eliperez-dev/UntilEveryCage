@@ -53,4 +53,12 @@ describe('language selection', () => {
     expect(tr('Add evidence', 'es')).toBe('Añadir evidencia');
     expect(tr('us.fsis', 'es')).toBe('us.fsis');
   });
+
+  it('translates generated NRTE activity labels while preserving the acronym', async () => {
+    const { tr } = await import('../../src/app/language');
+    expect(tr('Chicken processing', 'es')).toBe('Procesamiento de pollo');
+    expect(tr('NRTE chicken processing', 'es')).toBe('Procesamiento de pollo (NRTE)');
+    expect(tr('NRTE poultry processing', 'es')).toBe('Procesamiento de aves (NRTE)');
+    expect(tr('NRTE processing', 'es')).toBe('Procesamiento (NRTE)');
+  });
 });
