@@ -26,6 +26,8 @@ def row(aiot: str, *, rubric: str = "2101", name: str = "Établissement Synthét
         "adresse1": "Adresse de test", "adresse2": None, "adresse3": None,
         "codePostal": "75000", "codeInsee": "75056", "commune": "Commune de test",
         "codeNaf": "01.41Z", "longitude": lon, "latitude": lat,
+        "coordonneeXAIOT": 652469.0, "coordonneeYAIOT": 6862035.0,
+        "systemeCoordonneesAIOT": "2154",
         "bovins": "500", "porcs": None, "volailles": "0", "etatActivite": "En fonctionnement",
         "date_maj": "2026-10-01", "regime": "Autorisation",
         "rubriques": [{"numeroRubrique": rubric, "nature": "synthetic",
@@ -59,23 +61,54 @@ def write_snapshot(root: Path, pages: list[list[dict]], page_size: int) -> Path:
 
 
 class GeorisquesIcpeAnimalTests(unittest.TestCase):
-    def test_exact_rubric_allowlist_preserves_name_status_capacity_and_overseas(self):
+    def test_exact_rubric_allowlist_and_projected_coordinates(self):
         rows = [
             row("A-1", name="Ferme Éléonore — test"),
-            row("A-2", lon=55.5, lat=-21.1),
+            row("A-2", rubric="2102"),
             row("A-3", rubric="2510"),
         ]
         parsed = GeorisquesIcpeAnimalAdapter().normalize(rows)
         self.assertEqual(len(parsed["accepted"]), 2)
         self.assertEqual(len(parsed["quarantined"]), 1)
-        first, reunion = (item["normalized"] for item in parsed["accepted"])
+        first_record, corroboration_record = parsed["accepted"]
+        first, corroboration_case = first_record["normalized"], corroboration_record["normalized"]
         self.assertEqual(first["name"], "Ferme Éléonore — test")
         self.assertEqual(first["activity_status_source"], "En fonctionnement")
         self.assertEqual(first["capacity_indicators_source"]["bovins"], "500")
         self.assertEqual(first["coordinates"]["jurisdiction_extent"], "metropolitan-france")
-        self.assertEqual(reunion["coordinates"]["jurisdiction_extent"], "reunion")
+        self.assertEqual(first["coordinates"]["coordinate_reference_system"], "EPSG:4326")
+        self.assertEqual(first["coordinates"]["source_coordinate_reference_system"], "EPSG:2154")
+        self.assertTrue(first["in_default_map_scope"])
+        self.assertEqual(first_record["source_values"]["coordonneeXAIOT"], 652469.0)
+        self.assertEqual(first_record["source_values"]["systemeCoordonneesAIOT"], "2154")
+        self.assertEqual(corroboration_case["coordinates"]["api_lonlat_corroboration"], "differs-over-100m")
         self.assertIn("no_allowed_animal_rubric", parsed["quarantined"][0]["reasons"])
         self.assertEqual(parsed["input_rows"], 3)
+
+    def test_missing_crs_keeps_source_values_but_never_uses_api_lonlat_as_map_point(self):
+        source = row("NO-CRS")
+        source["systemeCoordonneesAIOT"] = None
+        normalized = GeorisquesIcpeAnimalAdapter().normalize([source])["accepted"][0]
+        self.assertIsNone(normalized["normalized"]["coordinates"])
+        self.assertFalse(normalized["normalized"]["in_default_map_scope"])
+        self.assertEqual(normalized["source_values"]["longitude"], 2.0)
+        self.assertEqual(normalized["source_values"]["coordonneeXAIOT"], 652469.0)
+
+    def test_unsupported_crs_is_unmapped_and_api_pair_cannot_override_it(self):
+        source = row("UNKNOWN-CRS")
+        source["systemeCoordonneesAIOT"] = "999999"
+        normalized = GeorisquesIcpeAnimalAdapter().normalize([source])["accepted"][0]
+        self.assertIsNone(normalized["normalized"]["coordinates"])
+        self.assertFalse(normalized["normalized"]["in_default_map_scope"])
+        self.assertEqual(normalized["normalized"]["coordinate_state"], "source-coordinate-transform-failed")
+
+    def test_declared_overseas_crs_transforms_to_configured_french_extent(self):
+        source = row("GUYANE-CRS", lon=-52.5, lat=4.5)
+        source.update({"coordonneeXAIOT": 500000, "coordonneeYAIOT": 500000,
+                      "systemeCoordonneesAIOT": "2972"})
+        normalized = GeorisquesIcpeAnimalAdapter().normalize([source])["accepted"][0]["normalized"]
+        self.assertEqual(normalized["coordinates"]["jurisdiction_extent"], "french-guiana")
+        self.assertTrue(normalized["in_default_map_scope"])
 
     def test_non_animal_rubrics_on_a_qualifying_row_do_not_enter_normalized_scope(self):
         source = row("ANIMAL-AND-INDUSTRIAL")
@@ -133,7 +166,7 @@ class GeorisquesIcpeAnimalTests(unittest.TestCase):
             self.assertEqual(handoff["normalized_rows"], 2)
             self.assertEqual(handoff["release_state"], "not-created")
             location = read_jsonl(run_root / "candidate-handoff" / "normalized" / "records.jsonl")[1]["normalized"]["private_location_evidence"]
-            self.assertEqual(location["coordinates"]["longitude"], 55.5)
+            self.assertNotEqual(location["coordinates"]["longitude"], 55.5)
 
     def test_snapshot_parser_rejects_modified_page_hash(self):
         with tempfile.TemporaryDirectory() as temporary:

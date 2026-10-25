@@ -10,8 +10,11 @@ import hashlib
 import json
 import math
 from collections import Counter
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
+
+from pyproj import Transformer
 
 from pipeline.common.review import write_operator_review_packet
 from pipeline.contracts.adapter_contract import SourceArtifact
@@ -37,6 +40,7 @@ class GeorisquesIcpeAnimalAdapter:
         fields = (
             "codeAIOT", "siret", "raisonSociale", "adresse1", "adresse2", "adresse3",
             "codePostal", "codeInsee", "commune", "codeNaf", "longitude", "latitude",
+            "coordonneeXAIOT", "coordonneeYAIOT", "systemeCoordonneesAIOT",
             "bovins", "porcs", "volailles", "etatActivite", "date_maj", "regime",
         )
         values = {key: raw[key] for key in fields if key in raw}
@@ -104,6 +108,65 @@ class GeorisquesIcpeAnimalAdapter:
             if west <= lon <= east and south <= lat <= north:
                 return name
         return "outside-configured-france-extents"
+
+    @staticmethod
+    @lru_cache(maxsize=32)
+    def _transformer(source_crs: str) -> Transformer:
+        return Transformer.from_crs(source_crs, "EPSG:4326", always_xy=True,
+                                    allow_ballpark=False, only_best=True)
+
+    @classmethod
+    def _source_point(cls, raw: dict[str, Any]) -> tuple[dict[str, Any] | None, str]:
+        """Transform only the API's explicitly projected AIOT coordinate pair.
+
+        The separate API longitude/latitude fields are retained as corroboration,
+        never used as the location authority because their output datum is not
+        declared in the upstream schema.
+        """
+        x = cls._coordinate(raw.get("coordonneeXAIOT"))
+        y = cls._coordinate(raw.get("coordonneeYAIOT"))
+        epsg = cls._text(raw.get("systemeCoordonneesAIOT"))
+        if x is None or y is None:
+            return None, "missing-or-invalid-projected-coordinate-pair"
+        if not epsg:
+            return None, "missing-source-coordinate-reference-system"
+        code = epsg.upper().replace(" ", "")
+        if code.isdigit():
+            code = f"EPSG:{code}"
+        elif not code.startswith("EPSG:") or not code[5:].isdigit():
+            return None, "unsupported-source-coordinate-reference-system"
+        try:
+            transformer = cls._transformer(code)
+            lon, lat = transformer.transform(x, y, errcheck=True)
+        except Exception:
+            return None, "source-coordinate-transform-failed"
+        if transformer.accuracy < 0:
+            return None, "source-coordinate-transform-accuracy-unknown"
+        if not (math.isfinite(lon) and math.isfinite(lat)
+                and -180 <= lon <= 180 and -90 <= lat <= 90):
+            return None, "transformed-coordinate-out-of-wgs84-range"
+
+        api_lon = cls._coordinate(raw.get("longitude"))
+        api_lat = cls._coordinate(raw.get("latitude"))
+        corroboration = "not-comparable"
+        if api_lon is not None and api_lat is not None and -180 <= api_lon <= 180 and -90 <= api_lat <= 90:
+            # Quality signal only; it never selects or suppresses the source-CRS point.
+            from pyproj import Geod
+            _, _, distance_m = Geod(ellps="WGS84").inv(lon, lat, api_lon, api_lat)
+            corroboration = "within-100m" if distance_m <= 100 else "differs-over-100m"
+        return ({
+            "longitude": lon,
+            "latitude": lat,
+            "coordinate_reference_system": "EPSG:4326",
+            "source_coordinate_reference_system": code,
+            "source_coordinate_x": raw.get("coordonneeXAIOT"),
+            "source_coordinate_y": raw.get("coordonneeYAIOT"),
+            "transform_method": "pyproj best available non-ballpark operation; source-declared AIOT CRS to EPSG:4326; always_xy",
+            "transform_accuracy_m": transformer.accuracy,
+            "api_lonlat_corroboration": corroboration,
+            "jurisdiction_extent": cls._france_extent(lon, lat),
+            "state": "source-declared-crs-transformed",
+        }, "transformed")
 
     def _parse_payload_for_size(self, payload: dict[str, Any], expected_page: int,
                                 page_size: int, max_records: int) -> dict[str, Any]:
@@ -229,19 +292,9 @@ class GeorisquesIcpeAnimalAdapter:
                 reasons.append("duplicate_identical_source_observation")
             seen_observations.add(observation_digest)
 
-            latitude = self._coordinate(raw.get("latitude"))
-            longitude = self._coordinate(raw.get("longitude"))
-            coords: dict[str, Any] | None = None
-            if (latitude is None) != (longitude is None):
-                reasons.append("incomplete_source_coordinates")
-            elif latitude is not None and longitude is not None:
-                if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
-                    reasons.append("source_coordinates_out_of_wgs84_numeric_range")
-                else:
-                    coords = {"latitude": latitude, "longitude": longitude,
-                              "coordinate_reference_system": "not independently established; API longitude/latitude axes, source-provided",
-                              "jurisdiction_extent": self._france_extent(longitude, latitude),
-                              "state": "source-provided-pending-coordinate-review"}
+            coords, coordinate_state = self._source_point(raw)
+            map_point = bool(coords and matches
+                             and coords["jurisdiction_extent"] != "outside-configured-france-extents")
 
             source_row_id = hashlib.sha256(f"{index}:{aiot or 'missing'}".encode()).hexdigest()
             record = {
@@ -280,16 +333,17 @@ class GeorisquesIcpeAnimalAdapter:
                     "capacity_indicators_source": {key: raw.get(key) for key in ("bovins", "porcs", "volailles") if key in raw},
                     "capacity_semantics": "source indicators preserved; no capacity conversion or use inferred",
                     "source_updated_at": raw.get("date_maj"),
-                    "coordinates": ({**coords, "precision": "source-coordinate-crs-unverified"} if coords else None),
-                    "coordinate_state": "source-provided-pending-review" if coords else "not-supplied-or-invalid",
+                    "coordinates": coords,
+                    "coordinate_state": coordinate_state,
                     "async_coordinate_enrichment_state": "eligible-for-separately-approved-private-enrichment" if not coords else "not-requested-source-coordinate-present",
-                    "in_default_map_scope": False,
-                    "map_scope_reason": "source animal rubric matches; private point withheld from preview geometry pending coordinate CRS and factual review",
+                    "in_default_map_scope": map_point,
+                    "map_scope_reason": ("source animal rubric matches; private point transformed from the source-declared AIOT CRS; privacy, factual, and publication gates remain separate" if map_point else
+                                         "source-declared projected coordinates unavailable, invalid, or outside configured France extents; no point inferred"),
                     "geocoding": "disabled",
                     "observation_state": "listed-at-retrieval",
                     "disappearance_semantics": "not-observed; never inferred as closure",
                     "privacy_gate": "pending-review",
-                    "coordinate_gate": "review_required",
+                    "coordinate_gate": "source_declared_crs_transformed" if coords else coordinate_state,
                     "publication_gate": "blocked",
                 },
             }
@@ -330,7 +384,8 @@ class GeorisquesIcpeAnimalAdapter:
                 "config_version": CONFIG["config_version"],
                 "source_fields": ["codeAIOT", "siret", "raisonSociale", "adresse1", "adresse2",
                                   "adresse3", "codePostal", "codeInsee", "commune", "codeNaf",
-                                  "longitude", "latitude", "bovins", "porcs", "volailles",
+                                  "longitude", "latitude", "coordonneeXAIOT", "coordonneeYAIOT",
+                                  "systemeCoordonneesAIOT", "bovins", "porcs", "volailles",
                                   "etatActivite", "date_maj", "regime", "serviceAIOT", "rubriques"],
                 "animal_rubrics": sorted(self.allowed_rubrics),
             }, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest(),

@@ -41,6 +41,6 @@
     "https://aida.ineris.fr/reglementation/3641-exploitation-dabattoirs",
     "https://aida.ineris.fr/reglementation/3660-elevage-intensif"
   ],
-  "coordinate_policy": "Preserve source longitude/latitude only; the API field axes are documented but a CRS is not independently established here. Validate numeric ranges and classify broad France mainland/overseas extents for review; never relocate unmatched points. No geocoding.",
+  "coordinate_policy": "Preserve API longitude/latitude and separate AIOT X/Y plus systemeCoordonneesAIOT. Use only the source-declared AIOT CRS to transform X/Y to EPSG:4326; never infer location from API longitude/latitude. Retain those geographic axes as private corroboration only. Require a complete finite pair, best available non-ballpark EPSG transform with reported accuracy, WGS84 range, and configured French extent for private map scope; unsupported, missing, invalid, and out-of-extent points remain unmapped. No geocoding. Report only conversion-library accuracy; infer no additional precision.",
   "publication_policy": "blocked pending Licence Ouverte 2.0 attribution/update-date review, privacy and factual review, coordinate CRS review, and independent release approval. The recorded CGU acceptance covers private acquisition and processing only."
 }
