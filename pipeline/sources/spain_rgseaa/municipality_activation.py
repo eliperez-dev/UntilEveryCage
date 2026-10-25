@@ -62,7 +62,8 @@ def activate(database_url: str, *, limit: int = 24, connect: Any = None) -> dict
               JOIN real_preview.candidates c
                 ON c.candidate_id=evidence.candidate_id AND c.snapshot_sha256=evidence.snapshot_sha256
                AND c.source_id=evidence.source_id
-              JOIN real_preview.candidate_private_location_evidence location USING(candidate_id)
+              JOIN real_preview.candidate_private_location_evidence location
+                ON location.candidate_id=c.candidate_id
               JOIN real_preview.source_manifests manifest
                 ON manifest.snapshot_sha256=c.snapshot_sha256 AND manifest.source_id=c.source_id
               JOIN uec.raw_artifacts artifact ON artifact.sha256=manifest.source_artifact_sha256
