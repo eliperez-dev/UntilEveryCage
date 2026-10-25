@@ -33,12 +33,12 @@ test('centered primary navigation and Tools map controls layout across desktop a
   await page.route('**/api/v2/releases/manifest?**', route => route.fulfill({ contentType:'application/json', body:JSON.stringify({ api_version:'v2', data:{ release_id:'synthetic-release', profile:'official', manifest:{}, manifest_sha256:'a'.repeat(64), suppression_generation:1 } }) }));
   await page.route('**/api/v2/locations?**', route => route.fulfill({ contentType:'application/json', body:JSON.stringify({ api_version:'v2', data:[], meta:{ release_id:'synthetic-release', ruleset_version:'synthetic-rules', profile:'official', next_cursor:null, coverage_note:'Synthetic release.' } }) }));
   await page.goto('./#/map?f1a=field&scenario=dense');
+  await expect(page.getByRole('button', { name: 'Search map' })).toBeVisible();
   const tools = page.getByRole('button', { name: 'Tools', exact: true });
   if (await tools.getAttribute('aria-expanded') === 'false') await tools.click();
   await expect(tools).toHaveAttribute('aria-expanded', 'true');
   const nav = page.getByRole('navigation', { name: 'Primary' });
   await expect(nav.getByRole('link')).toHaveText(['Map','Database','API','Contribute','About','FAQ']);
-  await expect(page.getByRole('button', { name: 'Search map' })).toBeVisible();
   const mapControls = page.getByRole('group', { name: 'Map view' });
   await expect(mapControls.getByText('Right-mouse to rotate / Left-mouse to pan')).toBeVisible();
   await expect(mapControls.getByLabel('Map style')).toBeVisible();
