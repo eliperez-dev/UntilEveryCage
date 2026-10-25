@@ -34,6 +34,16 @@ ALLOWED_SKIPPED_TESTS = {
         "set UEC_SPAIN_REAL_DATA_ACCEPTANCE=true with the assigned private DB URL",
     ),
     (
+        "sources.germany.test_geocoding.GermanyPrivateGeocodingTests"
+        ".test_database_display_bridge_positive_and_negative_cases_rollback",
+        "set UEC_GERMANY_REAL_DATA_ACCEPTANCE=true with the assigned private DB URL",
+    ),
+    (
+        "pipeline.sources.germany.test_geocoding.GermanyPrivateGeocodingTests"
+        ".test_database_display_bridge_positive_and_negative_cases_rollback",
+        "set UEC_GERMANY_REAL_DATA_ACCEPTANCE=true with the assigned private DB URL",
+    ),
+    (
         "e2e.test_graph_activation_real_italy.RealItalyGraphActivationTests"
         ".test_handoff_is_derived_from_source_native_operator_assertions",
         "set UEC_RUN_REAL_GRAPH_ACTIVATION=1 for approved local real-data acceptance",

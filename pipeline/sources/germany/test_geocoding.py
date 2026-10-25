@@ -90,20 +90,6 @@ class GermanyPrivateGeocodingTests(unittest.TestCase):
             source_record_id, query, candidate_id, source_address = target
             self.assertIsNotNone(source_address)
             connection.execute("SAVEPOINT de_bridge_cases")
-            job_id = connection.execute("""
-                INSERT INTO uec.geocode_jobs(source_record_id,provider_id,query)
-                VALUES (%s,'geoapify',%s) RETURNING job_id
-            """, (source_record_id, query)).fetchone()[0]
-            connection.execute("""
-                INSERT INTO uec.geocode_job_events(job_id,event_type,attempt_number,retryable,details)
-                VALUES (%s,'queued',1,false,
-                        '{"processing_mode":"private_geoapify_source_profile","profile_id":"geoapify-de-bltu"}'::jsonb)
-            """, (job_id,))
-            connection.execute("""
-                INSERT INTO real_preview.geocode_targets(job_id,candidate_id,snapshot_sha256,source_id,source_record_key)
-                SELECT %s,candidate_id,snapshot_sha256,source_id,source_group_key
-                  FROM real_preview.candidates WHERE candidate_id=%s
-            """, (job_id, candidate_id))
 
             def feature(address=source_address, country="DE", confidence=0.96):
                 return {"type": "Feature", "geometry": {"type": "Point", "coordinates": [10.0, 51.0]},
