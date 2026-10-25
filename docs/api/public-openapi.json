@@ -1897,7 +1897,6 @@
           "type": "string",
           "enum": [
             "official",
-            "secondary",
             "community"
           ],
           "default": "official"

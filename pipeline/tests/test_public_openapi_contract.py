@@ -205,7 +205,7 @@ class PublicOpenApiContractTests(unittest.TestCase):
 
     def test_caps_profile_defaults_and_error_gates_match_implementation(self):
         params = self.spec["components"]["parameters"]
-        self.assertEqual(params["profile"]["schema"]["enum"], ["official", "secondary", "community"])
+        self.assertEqual(params["profile"]["schema"]["enum"], ["official", "community"])
         self.assertEqual(params["profile"]["schema"]["default"], "official")
         self.assertIn("not project-approved", params["profile"]["description"])
         self.assertEqual(params["graphLimit"]["schema"], {"type": "integer", "minimum": 1, "maximum": 100, "default": 50})

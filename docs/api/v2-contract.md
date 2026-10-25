@@ -2,7 +2,7 @@
 
 The machine-readable contract is [v2-contract.json](v2-contract.json). The
 [public OpenAPI document](public-openapi.json) describes the implemented public
-data GET routes for the frontend's **About → API & downloads** explorer. It
+data GET routes for the dedicated API page. It
 reuses [the location schema](v2-location.schema.json); convergence tests guard
 route registration, effective parameters, references and public-only scope.
 Successful list/detail response shapes remain unchanged; additive metadata
