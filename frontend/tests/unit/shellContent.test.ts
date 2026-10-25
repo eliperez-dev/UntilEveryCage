@@ -3,8 +3,10 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const masthead = readFileSync(resolve(process.cwd(), 'src/app/PreviewMasthead.svelte'), 'utf8');
-const help = readFileSync(resolve(process.cwd(), 'src/app/HelpPage.svelte'), 'utf8');
+const about = readFileSync(resolve(process.cwd(), 'src/app/AboutPage.svelte'), 'utf8');
 const contributions = readFileSync(resolve(process.cwd(), 'src/app/CommunityContributions.svelte'), 'utf8');
+const contribute = readFileSync(resolve(process.cwd(), 'src/app/ContributePage.svelte'), 'utf8');
+const api = readFileSync(resolve(process.cwd(), 'src/app/ApiPage.svelte'), 'utf8');
 const field = readFileSync(resolve(process.cwd(), 'src/design-lab/variants/field/Field.svelte'), 'utf8');
 const atlas = readFileSync(resolve(process.cwd(), 'src/design-lab/variants/atlas/Atlas.svelte'), 'utf8');
 const picker = readFileSync(resolve(process.cwd(), 'src/app/ContributionPinPicker.svelte'), 'utf8');
@@ -38,10 +40,18 @@ describe('normal shell content', () => {
     expect(picker).not.toContain('rotate(-45deg)');
   });
 
-  it('uses written help instead of an embedded tutorial video', () => {
-    expect(help).toContain('<h2>Contribute</h2>');
-    expect(help).not.toContain('<video');
-    expect(help).not.toContain('contribution-types.webm');
+  it('keeps contribution instructions in the combined About page', () => {
+    expect(about).toContain('Explore and contribute');
+    expect(about).toContain('private tracking link');
+    expect(about).not.toContain('<video');
+  });
+
+  it('keeps public community browsing tied to a published release, separately from intake', () => {
+    expect(contribute).toContain("current('community')");
+    expect(contribute).toContain('{#if communityReleasePublished}<a href={utilityHref(\'community\')}>Community submissions</a>{/if}');
+    expect(contribute).toContain("Object.entries(taskNames)");
+    expect(api).toContain("current('community')");
+    expect(api).toContain('{#if communityReleaseAvailable}<option value="community">Community submissions</option>{/if}');
   });
 
   it('uses a private fragment tracking capability for status lookup', () => {

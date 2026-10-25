@@ -18,14 +18,12 @@ describe('routeState', () => {
     expect(parseRoute('#/about')).toEqual({ kind: 'about', section: 'overview' });
     expect(parseRoute('#/about/manifesto')).toEqual({ kind: 'about', section: 'overview' });
     expect(serializeRoute(parseRoute('#/about/manifesto') as { kind: 'about'; section: 'overview' })).toBe('#/about');
-    expect(parseRoute('#/about/sources')).toEqual({ kind: 'methodology' });
-    expect(parseRoute('#/methodology?map=%23%2Fmap%3Ff1a%3Dfield')).toEqual({ kind: 'methodology', returnMapHref: '#/map?f1a=field' });
-    expect(serializeRoute({ kind: 'methodology' })).toBe('#/methodology');
-    expect(serializeRoute({ kind: 'methodology', returnMapHref: '#/map?f1a=field' })).toBe('#/methodology?map=%23%2Fmap%3Ff1a%3Dfield');
+    expect(parseRoute('#/about/sources')).toEqual({ kind: 'about', section: 'sources' });
+    expect(parseRoute('#/methodology?map=%23%2Fmap%3Ff1a%3Dfield')).toEqual({ kind: 'about', section: 'sources', returnMapHref: '#/map?f1a=field' });
   });
 
-  it('round-trips Help and API pages with map context', () => {
-    for (const kind of ['help', 'api', 'faq', 'downloads'] as const) {
+  it('keeps API and downloads aliases with map context', () => {
+    for (const kind of ['api', 'downloads'] as const) {
       const route = { kind, returnMapHref: '#/map?f1a=field' };
       expect(parseRoute(serializeRoute(route))).toEqual(route);
     }
@@ -36,7 +34,8 @@ describe('routeState', () => {
     expect(parseRoute('#/database/api')).toEqual({ kind: 'api' });
     expect(serializeRoute({ kind: 'api' })).toBe('#/database/api');
     expect(parseRoute('#/database/downloads')).toEqual({ kind: 'downloads' });
-    expect(parseRoute('#/about/faq')).toEqual({ kind: 'faq' });
+    expect(parseRoute('#/about/faq')).toEqual({ kind: 'about', section: 'faq' });
+    expect(parseRoute('#/about/help')).toEqual({ kind: 'about', section: 'help' });
   });
 
   it('parses the contribution hub, form subroutes, and bug route', () => {

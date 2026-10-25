@@ -1,11 +1,13 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { communityCapabilities } from '../api/CommunityRepository';
+  import { PublicReleaseRepository } from '../api/PublicReleaseRepository';
   let CommunityContributions = $state<typeof import('./CommunityContributions.svelte').default | null>(null);
   let loadError = $state('');
   let communityModule: Promise<typeof import('./CommunityContributions.svelte')> | null = null;
   const fixtureEnabled = import.meta.env.VITE_COMMUNITY_ENABLED === 'true' || import.meta.env.VITE_COMMUNITY_PILOT === 'true';
   let communityEnabled = $state(fixtureEnabled);
+  let communityReleasePublished = $state(false);
   function loadForm() {
     loadError = '';
     communityModule ??= import('./CommunityContributions.svelte');
@@ -19,7 +21,10 @@
   const utilityHref = (path: string) => `#/${path}${returnMapHref !== '#/map' ? `?map=${encodeURIComponent(returnMapHref)}` : ''}`;
   const taskNames: Record<ContributionType, string> = { facility: 'Facility', evidence: 'Evidence', correction: 'Correction', duplicate: 'Duplicate', privacy_removal: 'Privacy/removal', bug: 'Bug report' };
   const labels: Record<ContributionType, string> = { facility: 'Add a facility', evidence: 'Add evidence', correction: 'Suggest a correction', duplicate: 'Report a duplicate', privacy_removal: 'Privacy or removal', bug: 'Report a bug' };
-  onMount(() => { if (!fixtureEnabled) void communityCapabilities().then(value => communityEnabled = value.enabled); });
+  onMount(() => {
+    if (!fixtureEnabled) void communityCapabilities().then(value => communityEnabled = value.enabled);
+    void new PublicReleaseRepository().current('community').then(value => communityReleasePublished = value !== null).catch(() => communityReleasePublished = false);
+  });
 </script>
 <svelte:head><title>{labels[formKind]} · Until Every Cage</title></svelte:head>
 <section class="contribute-page" aria-labelledby="contribute-title">
@@ -42,9 +47,9 @@
   {/if}
   <footer class="contribute-footer">
     <p class="code-invitation">The code is open source. Help with code, design, tests, or data adapters: <a href="https://github.com/eliperez-dev/UntilEveryCage" target="_blank" rel="noreferrer">Contribute code on GitHub</a>.</p>
-    {#if communityEnabled}<div class="project-links" aria-label="Project links">
+    {#if communityEnabled || communityReleasePublished}<div class="project-links" aria-label="Project links">
       <a href={utilityHref('contribution-status')}>Check status</a>
-      <a href={utilityHref('community')}>Community submissions</a>
+      {#if communityReleasePublished}<a href={utilityHref('community')}>Community submissions</a>{/if}
     </div>{/if}
   </footer>
 </section>

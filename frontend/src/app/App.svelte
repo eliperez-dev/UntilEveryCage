@@ -1,12 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { parseRoute, type RouteState } from './routeState';
-  import MethodologyPage from './MethodologyPage.svelte';
   import AboutPage from './AboutPage.svelte';
   import ContributePage from './ContributePage.svelte';
-  import HelpPage from './HelpPage.svelte';
-  import DownloadsPage from './DownloadsPage.svelte';
-  import FaqPage from './FaqPage.svelte';
   import ProjectFooter from './ProjectFooter.svelte';
   import PublicDatabase from './PublicDatabase.svelte';
   import PublicRecord from './PublicRecord.svelte';
@@ -45,7 +41,7 @@
       if (route.kind === 'map' && !DesignLab) {
         void import('../design-lab/DesignLab.svelte').then(module => { if (generation === routeGeneration) DesignLab = module.default; }).catch(() => { if (generation === routeGeneration) loadError = 'The public map could not be opened.'; });
       }
-      if (route.kind === 'api' && !ApiPage) {
+      if ((route.kind === 'api' || route.kind === 'downloads') && !ApiPage) {
         apiModule ??= import('./ApiPage.svelte');
         void apiModule.then(module => { if (generation === routeGeneration) ApiPage = module.default; }).catch(() => { apiModule = null; if (generation === routeGeneration) loadError = 'The API page could not be opened.'; });
       }
@@ -93,9 +89,7 @@
   <meta name="description" content="Until Every Cage map and research index." />
 </svelte:head>
 
-{#if route.kind === 'methodology'}
-  <MethodologyPage returnMapHref={route.returnMapHref ?? '#/map'} />
-{:else if route.kind === 'map' && DesignLab}
+{#if route.kind === 'map' && DesignLab}
   <DesignLab />
 {:else if reviewMode && route.kind === 'database' && DatabaseResearch}
   <DatabaseResearch />
@@ -105,7 +99,7 @@
   <main class="review-loading" aria-live="polite"><p role="status">Preparing the private-preview workspace…</p><small>The map module and its local data boundary are loading.</small></main>
 {:else}
 <div class="shell">
-  <PreviewMasthead publicReleaseLabel={publicReleaseLabel(verifiedReleaseLabel)} current={route.kind === 'about' || route.kind === 'help' || route.kind === 'faq' ? 'about' : route.kind === 'contribute' || route.kind === 'bug-report' || route.kind === 'community' ? 'contribute' : route.kind === 'database' || route.kind === 'record' || route.kind === 'api' || route.kind === 'downloads' ? 'database' : 'map'} mapHref={returnMapHref} {databaseHref} />
+  <PreviewMasthead publicReleaseLabel={publicReleaseLabel(verifiedReleaseLabel)} current={route.kind === 'about' || route.kind === 'methodology' || route.kind === 'help' || route.kind === 'faq' ? 'about' : route.kind === 'contribute' || route.kind === 'bug-report' || route.kind === 'community' ? 'contribute' : route.kind === 'api' || route.kind === 'downloads' ? 'api' : route.kind === 'database' || route.kind === 'record' ? 'database' : 'map'} mapHref={returnMapHref} {databaseHref} />
 
   <main id="main-content" class="shell-content" tabindex="-1">
     {#if loading}
@@ -122,15 +116,9 @@
         <p>This address does not match a page in this application.</p>
         <a href="#/map">Return to the map</a>
       </section>
-    {:else if route.kind === 'about'}
-      <AboutPage returnMapHref={route.returnMapHref ?? '#/map'} />
-    {:else if route.kind === 'downloads'}
-      <DownloadsPage {returnMapHref} />
-    {:else if route.kind === 'faq'}
-      <FaqPage {returnMapHref} />
-    {:else if route.kind === 'help'}
-      <HelpPage returnMapHref={route.returnMapHref ?? '#/map'} />
-    {:else if route.kind === 'api'}
+    {:else if route.kind === 'about' || route.kind === 'methodology' || route.kind === 'help' || route.kind === 'faq'}
+      <AboutPage returnMapHref={route.returnMapHref ?? '#/map'} section={route.kind === 'about' ? route.section : route.kind === 'methodology' ? 'sources' : route.kind} />
+    {:else if route.kind === 'api' || route.kind === 'downloads'}
       {#if ApiPage}<ApiPage />{:else}<p class="state" role="status">Loading API reference…</p>{/if}
     {:else if route.kind === 'contribute'}
       <ContributePage formKind={route.formKind ?? 'facility'} targetRecordId={route.targetRecordId ?? ''} returnMapHref={route.returnMapHref ?? '#/map'} />

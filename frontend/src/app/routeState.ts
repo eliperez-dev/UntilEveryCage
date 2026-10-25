@@ -3,7 +3,7 @@ export type RouteState =
   | Readonly<{ kind: 'map'; releaseId?: string }>
   | Readonly<{ kind: 'database'; releaseId?: string }>
   | Readonly<{ kind: 'methodology'; returnMapHref?: string }>
-  | Readonly<{ kind: 'about'; section: 'overview'; returnMapHref?: string }>
+  | Readonly<{ kind: 'about'; section: 'overview' | 'sources' | 'help' | 'faq'; returnMapHref?: string }>
   | Readonly<{ kind: 'help'; returnMapHref?: string }>
   | Readonly<{ kind: 'downloads' | 'faq'; returnMapHref?: string }>
   | Readonly<{ kind: 'api'; returnMapHref?: string }>
@@ -25,11 +25,12 @@ export function parseRoute(hash: string): RouteState {
 
   if (path === '/' || path === '/map') { const releaseId = params.get('release_id'); return { kind: 'map', ...(releaseId && /^[A-Za-z0-9._-]{1,160}$/.test(releaseId) ? { releaseId } : {}) }; }
   if (path === '/database') { const releaseId = params.get('release_id'); return { kind: 'database', ...(releaseId && /^[A-Za-z0-9._-]{1,160}$/.test(releaseId) ? { releaseId } : {}) }; }
-  if (path === '/methodology' || path === '/about/sources') return { kind: 'methodology', ...(returnMapHref ? { returnMapHref } : {}) };
+  if (path === '/methodology' || path === '/about/sources') return { kind: 'about', section: 'sources', ...(returnMapHref ? { returnMapHref } : {}) };
   if (path === '/about' || path === '/about/manifesto') return { kind: 'about', section: 'overview', ...(returnMapHref ? { returnMapHref } : {}) };
-  if (path === '/database/downloads' || path === '/about/faq') return { kind: path === '/about/faq' ? 'faq' : 'downloads', ...(returnMapHref ? { returnMapHref } : {}) };
-  if (path === '/database/api') return { kind: 'api', ...(returnMapHref ? { returnMapHref } : {}) };
-  if (path === '/about/help' || path === '/about/api') return { kind: path === '/about/help' ? 'help' : 'api', ...(returnMapHref ? { returnMapHref } : {}) };
+  if (path === '/database/downloads') return { kind: 'downloads', ...(returnMapHref ? { returnMapHref } : {}) };
+  if (path === '/about/faq') return { kind: 'about', section: 'faq', ...(returnMapHref ? { returnMapHref } : {}) };
+  if (path === '/database/api' || path === '/about/api') return { kind: 'api', ...(returnMapHref ? { returnMapHref } : {}) };
+  if (path === '/about/help') return { kind: 'about', section: 'help', ...(returnMapHref ? { returnMapHref } : {}) };
   if (path === '/contribute/bug') return { kind: 'bug-report', ...(returnMapHref ? { returnMapHref } : {}) };
   if (path === '/contribute') {
     const targetRecordId = params.get('target');

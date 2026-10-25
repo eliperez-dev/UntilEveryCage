@@ -1,5 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { PublicReleaseRepository } from '../api/PublicReleaseRepository';
+  import type { LocalProfile } from '../api/LocalLocationRepository';
+  import { publicReleaseLabel } from '../features/locations/releasePresentation';
   import { explorerOptions, guardExplorerRequest, type ExplorerRequest } from './publicApiExplorer';
   import swaggerTheme from './swaggerTheme.css?raw';
   type SwaggerFactory = ((options: Record<string, unknown>) => { unmount?(): void }) & { presets: { apis: unknown } };
@@ -8,41 +11,60 @@
   let error = $state('');
   let communitySelected = $state(false);
   let communityRequested = $state(false);
+  let communityReleaseAvailable = $state(false);
+  let profile = $state<LocalProfile>('official');
+  let releaseId = $state<string | null>(null);
+  let releaseDate = $state<string | null>(null);
+  let releaseLoading = $state(true);
+  let releaseError = $state('');
+  let retry = $state(0);
+  const repository = new PublicReleaseRepository();
   const base = import.meta.env.BASE_URL;
   const reference = `${base}reference/`;
+  const query = $derived(new URLSearchParams({ profile, ...(releaseId ? { release_id: releaseId } : {}) }).toString());
+
+  $effect(() => {
+    void retry;
+    const controller = new AbortController(); releaseLoading = true; releaseError = ''; releaseId = null; releaseDate = null;
+    void repository.current(profile, controller.signal).then(async result => {
+      if (controller.signal.aborted) return;
+      releaseId = result?.releaseId ?? null;
+      if (!result) return;
+      const metaResponse = await fetch(`/api/v2/locations?${new URLSearchParams({ profile, release_id: result.releaseId, limit: '1' })}`, { signal: controller.signal, cache: 'no-store' });
+      if (!metaResponse.ok) return;
+      const payload = await metaResponse.json() as { meta?: { release_created_at?: string } };
+      const date = payload.meta?.release_created_at;
+      if (date && Number.isFinite(Date.parse(date))) releaseDate = new Intl.DateTimeFormat('en', { dateStyle: 'long', timeZone: 'UTC' }).format(new Date(date));
+    }).catch(() => { if (!controller.signal.aborted) releaseError = 'Release availability could not be checked. Try again.'; }).finally(() => { if (!controller.signal.aborted) releaseLoading = false; });
+    return () => controller.abort();
+  });
 
   onMount(() => {
     let disposed = false;
     let instance: ReturnType<SwaggerFactory> | undefined;
+    void repository.current('community').then(result => { if (!disposed) communityReleaseAvailable = result !== null; }).catch(() => { if (!disposed) communityReleaseAvailable = false; });
     const shadow = host.attachShadow({ mode: 'open' });
     const stylesheet = document.createElement('link'); stylesheet.rel = 'stylesheet'; stylesheet.href = `${reference}swagger-ui.css`;
     const theme = document.createElement('style'); theme.textContent = swaggerTheme;
     const container = document.createElement('div'); container.setAttribute('aria-label', 'Public API explorer');
     shadow.append(stylesheet, theme, container);
-    const watchProfile = () => {
-      communitySelected = [...shadow.querySelectorAll('tr')].some(row => row.querySelector('.parameters-col_name')?.textContent?.includes('profile') && row.querySelector('select')?.value === 'community');
-    };
-    shadow.addEventListener('change', watchProfile);
-    shadow.addEventListener('input', watchProfile);
+    const watchProfile = () => { communitySelected = [...shadow.querySelectorAll('tr')].some(row => row.querySelector('.parameters-col_name')?.textContent?.includes('profile') && row.querySelector('select')?.value === 'community'); };
+    shadow.addEventListener('change', watchProfile); shadow.addEventListener('input', watchProfile);
     void (async () => {
       try {
         const runtime = window as unknown as { SwaggerUIBundle?: SwaggerFactory };
-        if (!runtime.SwaggerUIBundle) {
-          await new Promise<void>((resolve, reject) => {
-            const script = document.createElement('script'); script.src = `${reference}swagger-ui-bundle.js`; script.async = true;
-            script.onload = () => resolve(); script.onerror = () => reject(new Error('The API explorer could not be loaded.'));
-            document.head.append(script);
-          });
-        }
+        if (!runtime.SwaggerUIBundle) await new Promise<void>((resolve, reject) => {
+          const script = document.createElement('script'); script.src = `${reference}swagger-ui-bundle.js`; script.async = true;
+          script.onload = () => resolve(); script.onerror = () => reject(new Error('The API explorer could not be loaded.')); document.head.append(script);
+        });
         if (disposed) return;
         const factory = runtime.SwaggerUIBundle;
         if (!factory) throw new Error('The API explorer could not be loaded.');
-        instance = factory({
-          ...explorerOptions, domNode: container, url: `${reference}public-openapi.json`,
-          presets: [factory.presets.apis], layout: 'BaseLayout',
+        instance = factory({ ...explorerOptions, domNode: container, url: `${reference}public-openapi.json`, presets: [factory.presets.apis], layout: 'BaseLayout',
           requestInterceptor: (request: ExplorerRequest) => {
             const guarded = guardExplorerRequest(request, window.location.origin, base);
-            if (new URL(guarded.url).searchParams.get('profile') === 'community') communityRequested = true;
+            const selectedProfile = new URL(guarded.url).searchParams.get('profile');
+            if (selectedProfile === 'community') communityRequested = true;
             return guarded;
           },
           onComplete: () => { if (!disposed) loading = false; },
@@ -52,17 +74,27 @@
     return () => { disposed = true; shadow.removeEventListener('change', watchProfile); shadow.removeEventListener('input', watchProfile); instance?.unmount?.(); shadow.replaceChildren(); };
   });
 </script>
-<svelte:head><title>API documentation · Until Every Cage</title></svelte:head>
+<svelte:head><title>API and data access · Until Every Cage</title></svelte:head>
 <section class="api-page" aria-labelledby="api-title">
-  <h1 id="api-title">API documentation</h1>
-  <p>Public data are available when a release has been published. The explorer reads public releases only.</p>
-  <p class="download-links"><a href="/api/v2/locations.csv?profile=official&limit=1000">Curated CSV · first up to 1,000 records (facility ID order)</a> · <a href="/api/v2/locations?profile=official&limit=100">Paginated JSON</a> · <a href={`${reference}public-openapi.json`} download>OpenAPI specification</a></p>
-  <p class="pagination-note">For larger exports, follow the JSON response’s next cursor to retrieve each page.</p>
-  {#if communitySelected || communityRequested}<p class="community-warning" role="status"><strong>Unreviewed community claim: not verified by Until Every Cage.</strong> Community results are separate from curated totals; privacy screening is not factual review or project approval.</p>{/if}
+  <h1 id="api-title">API and data access</h1>
+  <p>Download the complete selected public release as CSV, or use paginated JSON for records and filters. Map and database filters do not change these exports.</p>
+  <div class="release-access">
+    <label>Dataset<select bind:value={profile}><option value="official">Project dataset</option>{#if communityReleaseAvailable}<option value="community">Community submissions</option>{/if}</select></label>
+    {#if profile === 'community'}<p class="community-warning"><strong>Unreviewed community claims are not verified by Until Every Cage.</strong> This opt-in profile is separate from project totals. Privacy screening does not mean factual review or project approval.</p>{/if}
+    {#if releaseLoading}<p role="status">Checking the current release…</p>{:else if releaseError}<p role="alert">{releaseError} <button type="button" onclick={() => retry += 1}>Retry</button></p>{:else if !releaseId}<p role="status">No public release is available for this dataset yet.</p>{:else}
+      <p class="release-label">{profile === 'official' ? 'Project dataset' : 'Community submissions'} · {releaseDate ?? publicReleaseLabel(releaseId)}</p>
+      <p class="release-id">API release ID: <code>{releaseId}</code></p>
+      <p class="download-links"><a href={`/api/v2/locations.csv?${query}`}>Download complete CSV</a> · <a href={`/api/v2/locations?${query}&limit=100`}>Paginated JSON (100 per page)</a> · <a href={`${reference}public-openapi.json`} download>OpenAPI specification</a></p>
+    {/if}
+  </div>
+  <p class="pagination-note">A release is a dated, versioned snapshot. The date identifies its creation; current privacy restrictions still apply to older views. The API ID above selects that specific release.</p>
+  {#if communitySelected || communityRequested}<p class="community-warning" role="status"><strong>Unreviewed community claims are not verified by Until Every Cage.</strong> Community results are separate from project totals; privacy screening is not factual review or project approval.</p>{/if}
   {#if loading}<p role="status">Loading the API explorer…</p>{/if}
   {#if error}<p role="alert">{error} <button type="button" onclick={() => window.location.reload()}>Try again</button></p>{/if}
   <div class="explorer" bind:this={host}></div>
+  <section class="reuse"><h2>Reuse and citation</h2><p>The code is licensed under AGPLv3 or later. The project compilation is licensed under CC BY-NC-SA 4.0 where the project holds those rights. Individual sources and map providers may have separate terms.</p><p>Credit Until Every Cage and the original sources; retain source links, release IDs, dates, and uncertainty labels. Check source rights before redistributing material.</p></section>
 </section>
 <style>
-  .api-page{width:min(100% - 3rem,72rem);margin:auto;padding:1.5rem 0 2.5rem;color:#f1efe8;font:.9rem/1.5 system-ui,sans-serif}h1{margin:0 0 1rem;font:500 2rem/1.15 Georgia,serif}p{margin:.6rem 0;color:#c6d0c5}a{color:#dce8d9;text-underline-offset:.2rem}.pagination-note{font-size:.82rem}.community-warning{padding:.75rem;border-left:3px solid #cf9a66;background:#282723;color:#eee4ce}.explorer{margin-top:1rem;min-width:0}@media(max-width:40rem){.api-page{width:calc(100% - 2rem)}h1{font-size:1.65rem}.download-links{line-height:1.8}}
+  .api-page{width:min(100% - 3rem,72rem);margin:auto;padding:1.5rem 0 2.5rem;color:#f1efe8;font:.9rem/1.5 system-ui,sans-serif}h1{margin:0 0 .65rem;font:500 2rem/1.15 Georgia,serif}h2{margin:0 0 .45rem;font:600 1rem/1.35 system-ui,sans-serif}p{margin:.55rem 0;color:#c6d0c5}a{color:#dce8d9;text-underline-offset:.2rem}.release-access{margin:1rem 0;padding:.85rem 1rem;border:1px solid #465148;background:#191e1b}.release-access label{display:grid;gap:.35rem;max-width:20rem;font-size:.8rem}.release-access select{min-height:2.4rem;padding:.4rem .5rem;border:1px solid #59615c;background:#202523;color:#f4f1e9;font:inherit}.release-label{color:#eee9df}.release-id{font-size:.77rem}.release-id code{overflow-wrap:anywhere;color:#eee9df}.download-links{margin-top:.75rem}.pagination-note{font-size:.8rem}.community-warning{padding:.7rem;border-left:3px solid #cf9a66;background:#282723;color:#eee4ce}.explorer{margin-top:1rem;min-width:0}.reuse{margin-top:1.5rem;padding-top:1rem;border-top:1px solid #3d4740}.release-access button,.api-page button{min-height:2rem;padding:.35rem .65rem;background:#252f28;border:1px solid #657466;color:#edf0e9;font:inherit}.api-page a:focus-visible,.api-page select:focus-visible,.api-page button:focus-visible{outline:2px solid #eee7d6;outline-offset:3px}
+  @media(max-width:40rem){.api-page{width:calc(100% - 2rem);padding-top:1.2rem}h1{font-size:1.7rem}.download-links{line-height:1.8}.release-access{padding:.75rem}}
 </style>

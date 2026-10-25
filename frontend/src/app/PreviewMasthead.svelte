@@ -13,7 +13,7 @@
     onreleasechange,
     ondebugchange,
   }: {
-    current: "map" | "database" | "methodology" | "about" | "contribute";
+    current: "map" | "database" | "api" | "methodology" | "about" | "contribute";
     mapHref: string;
     databaseHref: string;
     debugEnabled?: boolean;
@@ -103,12 +103,13 @@
       <button class="touch-pages" type="button" aria-label="Show Database pages" aria-expanded={navOpen === 'database'} aria-controls="shared-database-nav" onclick={event => touchNav('database', event.currentTarget)}>…</button>
       {#if navOpen === 'database'}<div id="shared-database-nav" class="nav-dropdown" aria-label="Database destinations"><a href={databaseHref} onclick={() => closeMenus()}>Browse records</a><a href={menuHref('database/downloads')} onclick={() => closeMenus()}>Downloads</a><a href={menuHref('database/api')} onclick={() => closeMenus()}>API documentation</a></div>{/if}
     </div>
-    <a class="secondary-link" href={contributeHref} onclick={() => closeMenus()} aria-current={current === "contribute" ? "page" : undefined}>Contribute</a>
+    <a href={menuHref('database/api')} onclick={() => closeMenus()} aria-current={current === 'api' ? 'page' : undefined}>API</a>
+    <a class="secondary-link contribute-link" href={contributeHref} onclick={() => closeMenus()} aria-current={current === "contribute" ? "page" : undefined}>Contribute</a>
     <div class="nav-group" role="group" onpointerenter={event => hoverNav('about', event)} onpointerleave={event => leaveNav('about', event)} onfocusin={() => focusNav('about')} onfocusout={event => blurNav('about', event)}>
       <a bind:this={aboutLink} class="nav-parent" href={aboutHref} aria-current={current === 'about' || current === 'methodology' ? 'page' : undefined} aria-expanded={navOpen === 'about'} aria-controls="shared-about-nav" onclick={() => closeMenus()} onkeydown={(event) => { if (event.key === 'ArrowDown') { event.preventDefault(); openNav('about', true); } }}>About</a>
       <button class="touch-pages" type="button" aria-label="Show About pages" aria-expanded={navOpen === 'about'} aria-controls="shared-about-nav" onclick={event => touchNav('about', event.currentTarget)}>…</button>
       {#if navOpen === 'about'}<div id="shared-about-nav" class="nav-dropdown about-dropdown" aria-label="About destinations">
-        <a href={aboutHref} onclick={() => closeMenus()}>Overview</a><a href={menuHref('about/sources')} onclick={() => closeMenus()}>Sources & methodology</a><a href={menuHref('about/faq')} onclick={() => closeMenus()}>FAQ</a><a href={menuHref('about/help')} onclick={() => closeMenus()}>Help</a>
+        <a href={aboutHref} onclick={() => closeMenus()}>Overview</a><a href={menuHref('about/sources')} onclick={() => closeMenus()}>Sources & methods</a><a href={menuHref('about/faq')} onclick={() => closeMenus()}>FAQ</a><a href={menuHref('about/help')} onclick={() => closeMenus()}>How to use the site</a>
       </div>{/if}
     </div>
   </nav>
@@ -130,7 +131,7 @@
     position: relative;
     z-index: 20;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
     gap: 1.25rem;
     min-height: 4rem;
@@ -150,10 +151,11 @@
     white-space: nowrap;
   }
   .wordmark img { width: 2rem; height: 2rem; }
-  nav { display: flex; align-items:center; gap: 1rem; font: 0.77rem ui-sans-serif, system-ui, sans-serif; }
+  nav { display: flex; align-items:center; justify-self:stretch; width:100%; gap: 1rem; font: 0.77rem ui-sans-serif, system-ui, sans-serif; }
   nav a { color: #aeb9af; text-decoration: none; }
   nav a[aria-current] { color: #f1efe8; text-decoration: underline; text-underline-offset: 0.35rem; }
   nav .secondary-link { margin-left:.2rem; padding-left:1rem; border-left:1px solid #48524a; }
+  nav .contribute-link { margin-left:auto; }
   .nav-group{position:relative;display:flex;align-items:center;gap:.1rem}
   .nav-parent{display:flex;align-items:center;min-height:2rem;padding:0;border:0;background:transparent;color:#aeb9af;cursor:pointer;font:inherit}
   .nav-parent:hover,.nav-parent[aria-expanded="true"]{color:#fff}
@@ -183,6 +185,7 @@
   @media (max-width: 60rem) {
     .masthead{grid-template-columns:minmax(0,1fr) auto;gap:.35rem 1rem;padding:.55rem 1rem}
     nav{grid-column:1 / -1;grid-row:2;justify-content:center;gap:1.2rem}
+    nav .contribute-link{margin-left:0}
     .masthead-actions{grid-column:2;grid-row:1}
   }
   @media (max-width: 50rem) {

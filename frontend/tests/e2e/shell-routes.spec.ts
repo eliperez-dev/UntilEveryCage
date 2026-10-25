@@ -62,26 +62,26 @@ test('the shell keeps route context in the URL through back and forward navigati
   expect(routePath(page).searchParams.get('basemap')).toBe('satellite');
 });
 
-test('About contains the sources & methodology page and returns via browser history', async ({ page }) => {
+test('About consolidates its legacy routes and preserves map source context', async ({ page }) => {
   await page.goto('./#/database');
   const aboutLink = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'About', exact: true });
   await aboutLink.focus();
   await aboutLink.press('ArrowDown');
   await page.locator('#shared-about-nav').getByRole('link', { name: 'Overview' }).click();
   await expect.poll(() => new URL(page.url()).hash).toBe('#/about');
-  await expect(page.getByRole('heading', { level: 1, name: 'Overview' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Until every cage is empty' })).toBeVisible();
   await aboutLink.focus();
   await aboutLink.press('ArrowDown');
-  await page.locator('#shared-about-nav').getByRole('link', { name: 'Sources & methodology' }).click();
+  await page.locator('#shared-about-nav').getByRole('link', { name: 'Sources & methods' }).click();
   await expect.poll(() => new URL(page.url()).hash).toBe('#/about/sources');
-  await expect(page.getByRole('heading', { level: 1, name: 'Sources & Methodology' })).toBeVisible();
-  await expect(page.getByText('A centroid is', { exact: false })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: 'Sources and methods' })).toBeVisible();
+  await expect(page.getByText('locality references are approximate', { exact: false })).toBeVisible();
   const providerDisclosure = page.locator('p').filter({ hasText: 'Street maps use OpenStreetMap.' });
   await expect(providerDisclosure).toContainText('Satellite imagery uses Esri.');
   await expect(providerDisclosure).toContainText('3D terrain uses Mapterhorn.');
   await expect(providerDisclosure.getByRole('link', { name: 'Mapterhorn' })).toHaveAttribute('href', 'https://mapterhorn.com/attribution');
-  await expect(providerDisclosure).toContainText('no facility records or search text are sent with those tile requests.');
-  await expect(page.getByRole('link', { name: 'untileverycageproject@protonmail.com' })).toHaveAttribute('href', 'mailto:untileverycageproject@protonmail.com');
+  await expect(providerDisclosure).toContainText('not facility records or search text.');
+  await expect(page.getByRole('link', { name: 'Contact the project' })).toHaveAttribute('href', 'mailto:untileverycageproject@protonmail.com');
   await page.goBack();
   await expect.poll(() => new URL(page.url()).hash).toBe('#/about');
 });
@@ -96,7 +96,7 @@ test('the Contribute hub, bug report, and About pages share the primary navigati
   await expect(page.getByRole('heading', { name: 'Report a bug' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Report a public issue on GitHub' })).toHaveAttribute('href', 'https://github.com/eliperez-dev/UntilEveryCage/issues/new');
   await page.goto('./#/about/manifesto');
-  await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Until every cage is empty' })).toBeVisible();
   for (const label of ['Map', 'Contribute']) await expect(nav.getByRole('link', { name: label })).toBeVisible();
   await expect(nav.getByRole('link', { name: 'About', exact: true })).toBeVisible();
 });
