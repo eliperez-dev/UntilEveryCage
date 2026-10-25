@@ -27,7 +27,7 @@
 
 <section class="estimate" aria-labelledby="estimate-title">
   <h2 id="estimate-title">Estimated animals killed</h2>
-  <p class="estimate-caption">Since this page opened · inherited V1 annual estimates, modeled over 365 days.</p>
+  <p class="estimate-caption">Estimated since you opened this page.</p>
   <ul class="estimate-list">
     {#each ANIMAL_KILL_GROUPS as group (group.id)}
       <li><span class="estimate-number">{estimateGroupSinceOpen(group.annualEstimate, elapsedMilliseconds).toLocaleString('en-US')}</span><span>{group.label}</span></li>
