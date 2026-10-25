@@ -103,6 +103,8 @@ def refresh(*, run_dir: str | Path, raw_path: str | Path | None = None, fetch: b
     retrieved = retrieved_at_utc or utc_now()
     if fetch:
         try:
+            from pipeline.common.acquisition import require_terms_review
+            require_terms_review(Path(terms_review_path) if terms_review_path else Path(__file__).with_name("terms-review.json"))
             if export_url:
                 raise RefreshError("--export-url is no longer used; acquisition follows the configured public BLtU session")
             metadata = fetch_bltu(output_root=output_root, run_id=run_id or retrieved.replace(":", "").replace("-", ""), timeout_seconds=timeout_seconds, max_bytes=min(max_bytes, 64 * 1024 * 1024))
