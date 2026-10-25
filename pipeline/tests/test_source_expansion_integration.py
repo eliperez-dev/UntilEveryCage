@@ -10,6 +10,8 @@ import hashlib
 from urllib.parse import parse_qs, urlparse
 from unittest.mock import patch
 
+from pyproj import Transformer
+
 from pipeline.contracts.source_lifecycle import read_jsonl
 
 from pipeline.common.refresh_runner import RefreshCatalog, RefreshRunner
@@ -118,11 +120,13 @@ class SourceExpansionIntegrationTests(unittest.TestCase):
 
     def test_georisques_live_hook_builds_filtered_candidate_handoff_without_rows_in_summary(self):
         source_id = "fr.georisques.icpe.animal"
+        x, y = Transformer.from_crs("EPSG:4326", "EPSG:2154", always_xy=True).transform(5.0, 46.0)
         raw_row = {
             "codeAIOT": "SYNTHETIC-AIOT", "siret": "11111111111111",
             "raisonSociale": "Nom synthétique privé", "adresse1": "Adresse synthétique",
             "codePostal": "01000", "codeInsee": "01001", "commune": "Commune synthétique",
             "longitude": 5.0, "latitude": 46.0, "codeNaf": "01.41Z",
+            "coordonneeXAIOT": x, "coordonneeYAIOT": y, "systemeCoordonneesAIOT": "2154",
             "etatActivite": "Synthetic status", "date_maj": "2026-10-20",
             "bovins": "12", "rubriques": [{"numeroRubrique": "2101", "nature": "synthetic"}],
             "inspections": [{"contact": "must not propagate"}],
@@ -172,7 +176,7 @@ class SourceExpansionIntegrationTests(unittest.TestCase):
             self.assertEqual(handoff[0]["normalized"]["name"], "Nom synthétique privé")
             self.assertEqual(handoff[0]["normalized"]["source_classification_codes"], ["2101"])
             self.assertEqual(handoff[0]["normalized"]["address"], "Adresse synthétique")
-            self.assertFalse(handoff[0]["normalized"]["in_default_map_scope"])
+            self.assertTrue(handoff[0]["normalized"]["in_default_map_scope"])
             self.assertNotIn("inspections", json.dumps(handoff, ensure_ascii=False))
 
     def test_georisques_exact_rubric_taxonomy_has_no_mining_projection(self):
@@ -207,27 +211,33 @@ class SourceExpansionIntegrationTests(unittest.TestCase):
         self.assertEqual(IMPORTER.SOURCE_MEDIA_TYPES["us.epa.echo-animal-production"], "application/zip")
         self.assertEqual(IMPORTER.SOURCE_MEDIA_TYPES["fr.georisques.icpe.animal"], "application/json")
 
-    def test_georisques_private_parse_retains_native_name_address_and_unmapped_coordinates(self):
+    def test_georisques_private_parse_retains_native_name_address_and_transformed_coordinates(self):
         source_id = "fr.georisques.icpe.animal"
         normalized = {
             "establishment_id": "SYNTHETIC-AIOT", "name": "Ferme privée synthétique",
             "trading_name": "Ferme privée synthétique", "address": "1 Rue Exemple",
             "postal_code": "01000", "municipality": "Commune Synthétique", "country_code": "FR",
             "coordinates": {"longitude": 5.0, "latitude": 46.0,
-                            "precision": "source-coordinate-crs-unverified"},
+                            "precision": "source-provided-unspecified",
+                            "coordinate_reference_system": "EPSG:4326",
+                            "source_coordinate_reference_system": "EPSG:2154",
+                            "transform_method": "synthetic test point",
+                            "transform_accuracy_m": 1.0},
             "source_classification_codes": ["2101"], "source_classification_labels": ["cattle holdings"],
             "activity_categories": ["animal_keeping"], "activity_status_source": "source value",
-            "privacy_gate": "pending-review", "in_default_map_scope": False,
-            "map_scope_reason": "pending coordinate CRS review",
+            "privacy_gate": "pending-review", "in_default_map_scope": True,
+            "map_scope_reason": "source-declared CRS transform; private preview only",
         }
         parsed = IMPORTER.parse_row(source_id, {
             "source_id": source_id, "source_record_key": "SYNTHETIC-AIOT|row-1",
-            "source_values": {"raisonSociale": "Ferme privée synthétique"}, "normalized": normalized,
+            "source_values": {"raisonSociale": "Ferme privée synthétique",
+                              "coordonneeXAIOT": 700000.0, "coordonneeYAIOT": 6600000.0,
+                              "systemeCoordonneesAIOT": "2154"}, "normalized": normalized,
         })
         self.assertEqual(parsed[11], "Ferme privée synthétique")
         self.assertEqual(parsed[18], "1 Rue Exemple")
         self.assertEqual((parsed[5], parsed[6]), (46.0, 5.0))
-        self.assertFalse(parsed[16])
+        self.assertTrue(parsed[16])
 
 
 if __name__ == "__main__":
