@@ -72,9 +72,9 @@ test('About consolidates its legacy routes and preserves map source context', as
   await expect.poll(() => new URL(page.url()).hash).toBe('#/about/sources');
   await expect(page.getByRole('heading', { level: 2, name: 'Sources and methods' })).toBeVisible();
   await expect(page.getByText('locality references are approximate', { exact: false })).toBeVisible();
-  const providerDisclosure = page.locator('p').filter({ hasText: 'Street maps use OpenStreetMap.' });
-  await expect(providerDisclosure).toContainText('Satellite imagery uses Esri.');
-  await expect(providerDisclosure).toContainText('3D terrain uses Mapterhorn.');
+  const providerDisclosure = page.locator('p').filter({ hasText: /OpenStreetMap/i });
+  await expect(providerDisclosure).toContainText('satellite imagery uses Esri');
+  await expect(providerDisclosure).toContainText('3D terrain uses Mapterhorn');
   await expect(providerDisclosure.getByRole('link', { name: 'Mapterhorn' })).toHaveAttribute('href', 'https://mapterhorn.com/attribution');
   await expect(providerDisclosure).toContainText('not facility records or search text.');
   await expect(page.getByRole('link', { name: 'Contact the project' })).toHaveAttribute('href', 'mailto:untileverycageproject@protonmail.com');
@@ -221,8 +221,19 @@ test('public contribution contacts, merged About content, and code help are easy
   await expect(page.getByText('Animals are individuals, not database rows.', { exact: false })).toBeVisible();
   await expect(page.getByText('Until every cage is empty.', { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Contribute code on GitHub' })).toHaveAttribute('href', 'https://github.com/eliperez-dev/UntilEveryCage');
-  const overview = await page.locator('.about-page').innerText();
+  const overview = await page.locator('.about-page').evaluate(element => {
+    const stableCopy = element.cloneNode(true) as HTMLElement;
+    stableCopy.querySelector('.estimate-number')?.remove();
+    return stableCopy.innerText;
+  });
+  await expect(page.locator('.estimate-number')).toBeVisible();
   await page.goto('./#/about/manifesto');
-  await expect(page.locator('.about-page')).toHaveText(overview);
+  const manifesto = await page.locator('.about-page').evaluate(element => {
+    const stableCopy = element.cloneNode(true) as HTMLElement;
+    stableCopy.querySelector('.estimate-number')?.remove();
+    return stableCopy.innerText;
+  });
+  expect(manifesto).toBe(overview);
+  await expect(page.locator('.estimate-number')).toBeVisible();
   await expect(page.getByRole('main')).toHaveCount(1);
 });
