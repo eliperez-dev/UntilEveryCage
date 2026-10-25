@@ -43,7 +43,7 @@ snapshots retained later in this document. Do not reopen completed release
 approvals or implementation tasks solely because an old checkpoint says
 "private", "blocked", "not started" or "implementation deferred".
 
-The latest verified application revision is `04b7adb3` on `eli/v2`, deployed
+The verified hosted checkpoint preceding Sprint 2 is `04b7adb3` on `eli/v2`, deployed
 to the existing Render service after [all seven CI jobs passed](https://github.com/eliperez-dev/UntilEveryCage/actions/runs/40150638848).
 Live acceptance verified the current `release-2026-10-18` dataset: 69,220
 records and 53,107 mapped locations. Historical v0 remains available with
@@ -53,12 +53,17 @@ contribution forms, database filters and map cold loading were checked.
 Exact aggregate evidence and cleanup are in ignored
 `data/staging/launch-20261024/acceptance.json`.
 
-Sprint 2 is approved and in progress: restore the maintainer's manifesto,
-compact six-link navigation, separate FAQ and V1-style footer; restore the
-18-category right-side estimate counter; correct map dismissal/return camera
-state and place the gesture hint below the view controls. Application version
-`2.0.0` must come from the Rust crate version, with no separate frontend version
-constant. These are current assignments, not completed deployment claims.
+Sprint 2 implementation and local acceptance are complete: the supplied
+manifesto, compact six-link navigation, separate FAQ and V1-style footer are
+restored, with an 18-category right-side estimate counter. Map dismissal and
+Map/Database return links preserve camera/style context; the gesture hint sits
+below the view controls. The application version is `2.0.0`, obtained from the
+Rust crate version through `/health/live`, not a frontend constant. The counter
+preserves inherited V1 rates; missing source editions/years remain disclosed
+under its method note rather than being represented as newly verified statistics.
+The exact tested revision, CI result, Render deployment and cleanup receipt live
+in ignored `data/staging/launch-fidelity-20261024/acceptance.json`; an implementation
+checkpoint alone is not proof of a successful hosted rollout.
 
 <a id="roadmap"></a>
 
@@ -66,7 +71,7 @@ constant. These are current assignments, not completed deployment claims.
 
 | Remaining work | Current state | Completion evidence |
 | --- | --- | --- |
-| Sprint 2 fidelity and behaviour | In progress | Integrated UI/route/version tests, real-release browser acceptance, CI and exact Render rollout. |
+| Sprint 2 fidelity and behaviour | Implemented and locally verified | Real-v0 acceptance, real-release map/detail/connection checks, 42 shell cases across Chromium/Firefox/WebKit and responsive counter/version checks. CI and exact Render rollout are recorded in the checkpoint receipt above. |
 | Persistent cluster index | Not started | Reuse the built index across reloads with release/profile/manifest/restriction invalidation; caching the point feed alone does not qualify. |
 | Languages | Not started | Spanish first, then German, French, Italian, Dutch and Danish through the same complete language system; source evidence is not rewritten. |
 | France, Spain, Germany and Mexico map coverage | In progress at source-specific stages | Verified acquisition-to-database pipeline, usable source/geocoded locations and actual map membership. The source inventory owns each source's facts, counts and blockers. |

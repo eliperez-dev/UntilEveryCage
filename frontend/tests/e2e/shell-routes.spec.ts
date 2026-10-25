@@ -92,7 +92,7 @@ test('About and FAQ pages keep legacy routes and source context usable', async (
   await expect(providerDisclosure).toContainText('3D terrain uses Mapterhorn');
   await expect(providerDisclosure.getByRole('link', { name: 'Mapterhorn' })).toHaveAttribute('href', 'https://mapterhorn.com/attribution');
   await expect(providerDisclosure).toContainText('not facility records or search text.');
-  await expect(page.getByRole('link', { name: 'Contact', exact: true })).toHaveAttribute('href', 'mailto:untileverycageproject@protonmail.com');
+  await expect(page.getByRole('article', { name: 'About Until Every Cage', exact: true }).getByRole('link', { name: 'Contact', exact: true })).toHaveAttribute('href', 'mailto:untileverycageproject@protonmail.com');
   await page.goto('./#/about/faq');
   await expect(page.getByRole('heading', { level: 1, name: 'Frequently asked questions' })).toBeVisible();
   await expect(page.getByRole('heading', { level: 2, name: 'Records, releases, and the counter' })).toBeVisible();
@@ -240,7 +240,7 @@ test('public contribution contacts, merged About content, and code help are easy
   await about.click();
   await expect(page.getByRole('heading', { name: 'About Until Every Cage is Empty' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Until Every Cage is Empty', level: 2 })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'GitHub', exact: true })).toHaveAttribute('href', 'https://github.com/eliperez-dev/UntilEveryCage');
+  await expect(page.getByRole('article', { name: 'About Until Every Cage', exact: true }).getByRole('link', { name: 'GitHub', exact: true })).toHaveAttribute('href', 'https://github.com/eliperez-dev/UntilEveryCage');
   const overview = await page.locator('.manifesto').innerText();
   await page.goto('./#/about/manifesto');
   const manifesto = await page.locator('.manifesto').innerText();
