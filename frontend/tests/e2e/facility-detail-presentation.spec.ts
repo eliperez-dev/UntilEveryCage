@@ -150,7 +150,7 @@ test('Spanish processing summary is deduplicated in map detail and the full reco
   await expect(mapActivities).toContainText('Procesamiento de pollo (NRTE)');
   await expect(mapActivities).toContainText('Meat cutting');
   await expect(mapActivities).not.toHaveText(/(?:^|,\s*)Procesamiento(?:,\s*|$)/);
-  await panel.getByRole('link', { name: 'Abrir página de la instalación', exact: true }).click();
+  await panel.locator(`a[href="#/records/${id}?profile=official&release_id=${release}"]`).click();
   const full = page.locator('.public-record');
   await expect(full.getByText('Procesamiento y preparación', { exact: true })).toHaveCount(1);
   const fullActivities = full.locator('[aria-label="Actividades detalladas"]');
