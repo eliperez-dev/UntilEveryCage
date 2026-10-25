@@ -9,7 +9,8 @@ from pipeline.common.refresh_runner import RefreshCatalog, RefreshRunner
 from pipeline.contracts.refresh import RefreshRequest
 from pipeline.geocoding.private_profiles import profile_for_source
 from .adapter import CONFIG
-from .refresh import RefreshError, _explicitly_restricted_from_address_queue, refresh
+from .refresh import (RefreshError, _address_queue_inputs, _explicitly_restricted_from_address_queue,
+                      refresh)
 
 
 ROOT = Path(__file__).parent
@@ -92,6 +93,19 @@ class GermanyRefreshTests(unittest.TestCase):
             "normalized": {"privacy_gate": "restricted-withheld-address"}}))
         self.assertTrue(_explicitly_restricted_from_address_queue({
             "normalized": {"source_address_restricted": True}}))
+
+    def test_local_queue_requires_business_street_address(self):
+        city_only = {"source_id": "de.locations", "source_record_key": "opaque-1",
+                     "normalized": {"address": None, "city": "Example", "nation": "Germany"}}
+        restricted = {"source_id": "de.locations", "source_record_key": "opaque-2",
+                      "normalized": {"address": "Example Street 1", "privacy_gate": "withheld"}}
+        complete = {"source_id": "de.locations", "source_record_key": "opaque-3",
+                    "normalized": {"address": "Example Street 1", "city": "Example", "nation": "Germany"}}
+        accepted = [row for row in (city_only, restricted, complete)
+                    if not _explicitly_restricted_from_address_queue(row)]
+        queue_rows, missing = _address_queue_inputs(accepted)
+        self.assertEqual(missing, 1)
+        self.assertEqual(queue_rows, [complete])
 
 
 if __name__ == "__main__":

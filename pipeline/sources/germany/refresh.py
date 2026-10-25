@@ -38,6 +38,28 @@ def _explicitly_restricted_from_address_queue(row: dict[str, Any]) -> bool:
     )
 
 
+def _has_source_coordinates_for_queue(row: dict[str, Any]) -> bool:
+    normalized = row.get("normalized") or {}
+    return normalized.get("coordinate_state") in {
+        "source-coordinate", "source_coordinates_preserved",
+        "source-value-present-pending-review",
+    }
+
+
+def _address_queue_inputs(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+    """Require a business street address for queueing; city/country alone is insufficient."""
+    queue_rows = []
+    missing_street = 0
+    for row in rows:
+        normalized = row.get("normalized") or {}
+        address = normalized.get("address")
+        if _has_source_coordinates_for_queue(row) or (isinstance(address, str) and address.strip()):
+            queue_rows.append(row)
+        else:
+            missing_street += 1
+    return queue_rows, missing_street
+
+
 class GermanyRefreshAdapter:
     """Source-owned bridge for the shared private refresh runner."""
     source_id = CONFIG["source_id"]
@@ -83,23 +105,19 @@ class GermanyRefreshAdapter:
                                      if _explicitly_restricted_from_address_queue(row)]
             queue_candidates = [row for row in rows
                                 if not _explicitly_restricted_from_address_queue(row)]
-            queue = build_geocode_queue(queue_candidates, source_artifact,
+            address_queue_inputs, missing_street_address = _address_queue_inputs(queue_candidates)
+            queue = build_geocode_queue(address_queue_inputs, source_artifact,
                                         run_dir / "geocode-queue", country_name="Germany")
             queue_metadata_path = run_dir / "geocode-queue" / "geocode-queue-metadata.json"
             queue_metadata = json.loads(queue_metadata_path.read_text(encoding="utf-8"))
             queue_metadata.update({
                 "records_seen": len(rows),
-                "records_eligible_for_local_queue": queue["records_queued"]
-                    + queue["records_with_source_coordinates"]
-                    + queue["records_without_usable_address"],
+                "records_eligible_for_local_queue": len(queue_candidates),
                 "records_withheld_explicit_restriction": len(explicitly_restricted),
                 "records_queued": queue["records_queued"],
                 "records_with_source_coordinates": sum(
-                    1 for row in queue_candidates
-                    if row.get("normalized", {}).get("coordinate_state") in {
-                        "source-coordinate", "source_coordinates_preserved",
-                        "source-value-present-pending-review"}),
-                "records_without_usable_address": queue["records_without_usable_address"],
+                    1 for row in queue_candidates if _has_source_coordinates_for_queue(row)),
+                "records_without_usable_address": missing_street_address + queue["records_without_usable_address"],
                 "provider_review_state": "not_configured",
                 "durable_db_jobs": False,
                 "external_provider_called": False,
