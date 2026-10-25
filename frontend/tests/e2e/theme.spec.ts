@@ -17,6 +17,10 @@ const row = {
     source_url: 'https://direct.aphis.usda.gov/awa/research-facility-report/annual-summary',
     safe_provenance: { source_id: 'us.aphis.annual-reports', evidence_type: 'annual_reports', match_method: 'exact_source_identifier', matched_identifier_types: ['certificate_number'] } }],
 };
+// Public list responses use the strict list projection; APHIS report links are
+// detail-only and must not be included in /locations rows.
+const { aphis_annual_reports: detailOnlyReports, ...listRow } = row;
+void detailOnlyReports;
 const meta = { release_id: release, ruleset_version: 'synthetic-rules', profile: 'official', release_created_at: observed };
 
 async function mockSanitizedApi(page: Page) {
@@ -45,7 +49,7 @@ async function mockSanitizedApi(page: Page) {
         reference_origin: 'release_approved_evidence', match_method: 'exact_source_identifier',
       }] : [], meta: { profile: 'official', release_id: release, ruleset_version: meta.ruleset_version, kind, limit: 20, next_cursor: null, public_projection: true } };
     } else if (path === '/api/v2/locations') {
-      body = { api_version: 'v2', data: [row], meta: { ...meta, total_count: 1, next_cursor: null, coverage_note: 'Synthetic fixture only.' } };
+      body = { api_version: 'v2', data: [listRow], meta: { ...meta, total_count: 1, next_cursor: null, coverage_note: 'Synthetic fixture only.' } };
     } else if (path === '/api/v2/discovery/facets') {
       body = { api_version: 'v2', dimensions: {}, meta: { ...meta, coverage_scope: 'synthetic fixture', count_semantics: 'Synthetic test rows only.', filters: { country_code: null, region: null, category: null, source_type: null, display_precision: null, lifecycle_status: null } } };
     } else if (path === '/api/v2/map/feed') {
@@ -157,14 +161,18 @@ for (const viewport of viewports) {
         await page.goto(view.route);
         await expectAppSurface(page, view.surface, view.label, pageErrors);
         if (view.label === 'map controls') {
+          // The open record sheet overlays the masthead controls. Choose the
+          // theme first, then assert the selected dossier inherits it.
+          await selectTheme(page, theme);
           await page.getByRole('button', { name: 'Search map' }).click();
           const fixtureRecord = page.locator(`.record-list button[data-record-id="${id}"]`);
           await expect(fixtureRecord).toBeVisible();
           await fixtureRecord.click();
           await expect(page.locator('.reading-sheet[aria-label="Record evidence"] .detail')).toBeVisible();
           await expect(page.locator('.map-controls')).toBeVisible();
+        } else {
+          await selectTheme(page, theme);
         }
-        await selectTheme(page, theme);
         await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
         const style = await page.locator(view.surface).first().evaluate(element => {
           const own = getComputedStyle(element);
