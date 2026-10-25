@@ -7,6 +7,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from pipeline.geocoding.geoapify import GeoapifyAdapter
+from pipeline.sources.spain_rgseaa.municipality_activation import verified_municipality_query
 
 
 ROOT = Path(__file__).parents[1]
@@ -42,6 +43,36 @@ class SpainGeocodingProfileTests(unittest.TestCase):
                             GeoapifyAdapter._normalize("11 Calle de la Constitución"))
         self.assertNotEqual(GeoapifyAdapter._normalize("10 Calle de la Constitución"),
                             GeoapifyAdapter._normalize("10 Avenida de la Constitución"))
+
+    def test_verified_municipality_query_contains_only_three_unambiguous_components(self):
+        self.assertEqual(verified_municipality_query("  Albarracín ", " Teruel  "),
+                         "Albarracín, Teruel, Spain")
+        for municipality, province in (("", "Teruel"), ("Albarracín", ""),
+                                       ("Town, Address", "Teruel"), ("Town", "Province, Region")):
+            with self.subTest(municipality=bool(municipality), province=bool(province)):
+                with self.assertRaises(ValueError):
+                    verified_municipality_query(municipality, province)
+
+    def test_spain_municipality_migration_is_separate_strict_and_city_precision_only(self):
+        sql = (ROOT / "migrations/094_spain_verified_municipality_geocoding.sql").read_text(encoding="utf-8")
+        for required in (
+            "private_geocoding_source_profiles_one_non_es_profile",
+            "source_id <> 'es.locations'",
+            "private_geocoding_source_profiles_spain_profile_scope",
+            "geoapify-es-aesan-verified-municipality",
+            "spain_verified_locality_evidence",
+            "result_type <> 'city'",
+            "confidence_score < .90",
+            "properties->>'county'",
+            "query_parts[3]) <> 'spain'",
+            "provider_locality_approximate",
+            "approximate municipality point, not facility coordinates",
+            "CREATE TRIGGER geocode_results_spain_verified_municipality_display",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, sql)
+        self.assertNotIn("capture_geoapify_private_display()", sql)
+        self.assertNotIn("DROP TRIGGER GEOCODE_RESULTS_GEOAPIFY_PREVIEW_DISPLAY", sql.upper())
 
     @unittest.skipUnless(
         os.environ.get("UEC_SPAIN_REAL_DATA_ACCEPTANCE") == "true"

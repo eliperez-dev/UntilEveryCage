@@ -76,6 +76,14 @@
       "source_scope": "Only AESAN RGSEAA rows in source keys 10, 12, 14, or 15; retain industrial address privately and query through the existing bounded address-enrichment queue only after separate transfer authorization"
     },
     {
+      "profile_id": "geoapify-es-aesan-verified-municipality",
+      "source_id": "es.locations",
+      "country_code": "ES",
+      "query_kind": "verified_municipality_only",
+      "status": "enabled-private-only",
+      "source_scope": "Only records with append-only AESAN verified municipality and province evidence; query municipality, province, and Spain only; accepted points are approximate municipality references, never facility coordinates"
+    },
+    {
       "profile_id": "geoapify-de-bltu",
       "source_id": "de.locations",
       "country_code": "DE",

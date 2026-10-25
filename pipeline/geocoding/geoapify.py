@@ -33,6 +33,7 @@ class GeoapifyAdapter:
         pilot_auto_display: bool = False,
         private_source_profile: bool = False,
         locality_only: bool = False,
+        municipality_only: bool = False,
         allow_locality_match: bool = True,
     ):
         self.api_key = (api_key or os.environ.get("GEOAPIFY_API_KEY", "")).strip()
@@ -48,10 +49,13 @@ class GeoapifyAdapter:
             raise ValueError("AU pilot and source profile modes are mutually exclusive")
         if locality_only and not private_source_profile:
             raise ValueError("locality-only matching requires a private source profile")
+        if municipality_only and (not locality_only or country_code != "es"):
+            raise ValueError("verified municipality matching requires the Spain locality-only profile")
         self.country_code = country_code
         self.pilot_auto_display = pilot_auto_display
         self.private_source_profile = private_source_profile
         self.locality_only = locality_only
+        self.municipality_only = municipality_only
         self.allow_locality_match = allow_locality_match
         self.strict_matching = pilot_auto_display or private_source_profile
         self.timeout = timeout
@@ -69,7 +73,7 @@ class GeoapifyAdapter:
         if not (self.private_source_profile and self.country_code == "es"):
             return {"result_count": len(features), "viable_result_count": 0}
         allowed = {"country_code", "result_type", "address_line1", "street", "housenumber",
-                   "city", "state_code", "state", "postcode"}
+                   "city", "county", "state_code", "state", "postcode"}
         retained = []
         for feature in features[:2]:
             if not isinstance(feature, dict):
@@ -180,7 +184,13 @@ class GeoapifyAdapter:
                 locality_parts = parts if self.locality_only else parts[1:]
                 state = candidate_props.get("state_code") or candidate_props.get("state")
                 state = self._normalize(state) if isinstance(state, str) else ""
-                state_matches = (not self.locality_only or (len(parts) > 1 and state == parts[1]))
+                if self.municipality_only:
+                    province = candidate_props.get("county")
+                    province = self._normalize(province) if isinstance(province, str) else ""
+                    state_matches = (len(parts) == 3 and parts[2] == self._normalize("Spain")
+                                     and locality == parts[0] and province == parts[1])
+                else:
+                    state_matches = (not self.locality_only or (len(parts) > 1 and state == parts[1]))
                 if locality and locality in locality_parts and state_matches:
                     viable.append((candidate, "approximate_locality_match"))
         if self.strict_matching:
@@ -263,13 +273,19 @@ class GeoapifyAdapter:
         locality = self._normalize(locality) if isinstance(locality, str) else ""
         state = properties.get("state_code") or properties.get("state")
         state = self._normalize(state) if isinstance(state, str) else ""
+        province = properties.get("county")
+        province = self._normalize(province) if isinstance(province, str) else ""
         if (
             result_type == "city"
             and confidence is not None
             and confidence >= self.minimum_rank_confidence
             and locality
             and locality in (query_parts if self.locality_only else query_parts[1:])
-            and (not self.locality_only or (len(query_parts) > 1 and state == query_parts[1]))
+            and (not self.locality_only or self.municipality_only
+                 or (len(query_parts) > 1 and state == query_parts[1]))
+            and (not self.municipality_only or
+                 (len(query_parts) == 3 and query_parts[2] == self._normalize("Spain")
+                  and locality == query_parts[0] and province == query_parts[1]))
         ):
             return GeocodeOutcome(
                 "accepted", "approximate_locality_match", float(latitude), float(longitude),

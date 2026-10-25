@@ -2,7 +2,10 @@ import importlib.util
 import unittest
 from unittest.mock import patch
 from pathlib import Path
+import json
+import tempfile
 
+from pipeline.geocoding import private_profiles
 from pipeline.geocoding.private_profiles import profile_by_id, profile_for_source
 from pipeline.geocoding.registry import get_adapter
 
@@ -71,6 +74,46 @@ class PrivateGeoapifyProfileTests(unittest.TestCase):
         self.assertEqual(adapter.country_code, "es")
         self.assertTrue(adapter.private_source_profile)
         self.assertTrue(adapter.strict_matching)
+        self.assertFalse(adapter.locality_only)
+        self.assertFalse(adapter.allow_locality_match)
+
+    def test_spain_municipality_profile_is_explicit_and_keeps_address_default(self):
+        address = profile_for_source("es.locations")
+        municipality = profile_by_id("geoapify-es-aesan-verified-municipality")
+        self.assertEqual(address["profile_id"], "geoapify-es-aesan-rgseaa")
+        self.assertEqual(municipality["query_kind"], "verified_municipality_only")
+        with patch.dict("os.environ", {"GEOAPIFY_API_KEY": "synthetic-test-key"}):
+            adapter = get_adapter("geoapify", private_source_profile_id=municipality["profile_id"])
+        self.assertEqual(adapter.country_code, "es")
+        self.assertTrue(adapter.locality_only)
+        self.assertTrue(adapter.municipality_only)
+
+    def test_profile_registry_rejects_duplicate_non_spain_and_invalid_spain_profiles(self):
+        original = json.loads(private_profiles.PROFILE_PATH.read_text(encoding="utf-8"))
+        duplicate = original["profiles"][0]
+        cases = (
+            original["profiles"] + [{**duplicate, "profile_id": "synthetic-duplicate-source"}],
+            [row for row in original["profiles"] if row["profile_id"] != "geoapify-es-aesan-verified-municipality"]
+            + [{"profile_id": "geoapify-es-aesan-verified-municipality", "source_id": "es.locations",
+               "country_code": "PT", "query_kind": "verified_municipality_only", "status": "enabled-private-only"}],
+            [row for row in original["profiles"] if row["profile_id"] != "geoapify-es-aesan-verified-municipality"]
+            + [{"profile_id": "geoapify-es-aesan-rgseaa-extra", "source_id": "es.locations",
+               "country_code": "ES", "status": "enabled-private-only"}],
+            [row for row in original["profiles"] if row["profile_id"] != "geoapify-es-aesan-verified-municipality"]
+            + [{"profile_id": "geoapify-es-aesan-verified-municipality", "source_id": "de.locations",
+               "country_code": "DE", "query_kind": "verified_municipality_only", "status": "enabled-private-only"}],
+            [row for row in original["profiles"] if row["source_id"] != "es.locations"]
+            + [{"profile_id": "geoapify-es-aesan-verified-municipality", "source_id": "es.locations",
+               "country_code": "ES", "query_kind": "verified_municipality_only", "status": "enabled-private-only"}],
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "profiles.json"
+            for rows in cases:
+                with self.subTest(count=len(rows)):
+                    path.write_text(json.dumps({**original, "profiles": rows}), encoding="utf-8")
+                    with patch.object(private_profiles, "PROFILE_PATH", path):
+                        with self.assertRaises(ValueError):
+                            private_profiles.profiles()
 
     def test_fsa_and_nvwa_profiles_apply_their_source_country_and_restriction_gates(self):
         fsa = profile_for_source("fsa_approved_establishments")

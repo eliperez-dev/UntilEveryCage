@@ -23,7 +23,9 @@ def get_adapter(provider_id: str, *, au_npi_pilot: bool = False,
                 raise ValueError("private source profile is not enabled")
             return GeoapifyAdapter(country_code=profile["country_code"].lower(),
                                    private_source_profile=True,
-                                   locality_only=profile.get("query_kind") == "mailing_locality_only",
+                                   locality_only=profile.get("query_kind") in {
+                                       "mailing_locality_only", "verified_municipality_only"},
+                                   municipality_only=profile.get("query_kind") == "verified_municipality_only",
                                    allow_locality_match=profile.get("allow_locality_match", True))
         if au_npi_pilot:
             if provider_id != "geoapify":

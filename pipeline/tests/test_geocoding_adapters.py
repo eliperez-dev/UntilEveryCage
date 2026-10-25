@@ -173,6 +173,51 @@ class GeoapifyAdapterTests(unittest.TestCase):
         self.assertEqual(mismatch.status, "review_required")
         self.assertIsNone(mismatch.latitude)
 
+    def test_spain_verified_municipality_profile_accepts_only_exact_city_province_country_context(self):
+        def feature(city="Albarracin", province="Teruel", country="es", kind="city", confidence=0.96):
+            return {"geometry": {"type": "Point", "coordinates": [-1.4, 40.4]}, "properties": {
+                "place_id": "synthetic-locality", "result_type": kind, "country_code": country,
+                "city": city, "county": province, "state": "Aragon",
+                "rank": {"confidence": confidence},
+            }}
+
+        query = "Albarracín, Teruel, Spain"
+        def adapter(features):
+            return geoapify.GeoapifyAdapter(
+                api_key="test-secret", country_code="es", private_source_profile=True,
+                locality_only=True, municipality_only=True,
+                opener=unittest.mock.Mock(return_value=FakeResponse({"features": features})),
+            )
+
+        accepted = adapter([feature()]).geocode(query)
+        self.assertEqual(accepted.status, "accepted")
+        self.assertEqual(accepted.acceptance, "approximate_locality_match")
+        self.assertEqual(accepted.precision, "geoapify_locality_point")
+
+        cases = (
+            ([feature(city="Teruel")], "wrong municipality"),
+            ([feature(province="Zaragoza")], "wrong province"),
+            ([feature(country="pt")], "wrong country"),
+            ([feature(confidence=0.89)], "low confidence"),
+            ([feature(kind="building")], "street-level result"),
+            ([feature(), feature()], "ambiguous municipality"),
+        )
+        for features, reason in cases:
+            with self.subTest(reason=reason):
+                result = adapter(features).geocode(query)
+                self.assertEqual(result.status, "review_required")
+                self.assertIsNone(result.latitude)
+                self.assertIsNone(result.longitude)
+        wrong_country_context = adapter([feature()]).geocode("Albarracín, Teruel, France")
+        self.assertEqual(wrong_country_context.status, "review_required")
+        missing_province = adapter([feature()]).geocode("Albarracín, Spain")
+        self.assertEqual(missing_province.status, "review_required")
+        community_is_not_province = adapter([{
+            **feature(), "properties": {key: value for key, value in feature()["properties"].items()
+                                        if key != "county"},
+        }]).geocode(query)
+        self.assertEqual(community_is_not_province.status, "review_required")
+
     def test_spain_private_profile_rejects_wrong_country_wrong_address_ambiguity_and_low_confidence(self):
         def feature(country="es", address="10 Calle de la Constitución", confidence=0.96):
             return {"geometry": {"coordinates": [-3.7, 40.4]}, "properties": {
@@ -203,7 +248,8 @@ class GeoapifyAdapterTests(unittest.TestCase):
         def feature(country="es", address="11 Calle Real", confidence=0.96):
             return {"geometry": {"type": "Point", "coordinates": [-3.7, 40.4]}, "properties": {
                 "country_code": country, "result_type": "building", "address_line1": address,
-                "street": "Calle Real", "housenumber": "11", "postcode": "28001",
+                "street": "Calle Real", "housenumber": "11", "county": "Synthetic Province",
+                "postcode": "28001",
                 "rank": {"confidence": confidence}, "name": "Synthetic Business", "place_id": "secret-id"}}
 
         def adapter(features):
@@ -221,6 +267,7 @@ class GeoapifyAdapterTests(unittest.TestCase):
         self.assertNotIn("secret-id", serialized)
         self.assertNotIn("test-secret", serialized)
         self.assertEqual(mismatch.response["features"][0]["properties"]["housenumber"], "11")
+        self.assertEqual(mismatch.response["features"][0]["properties"]["county"], "Synthetic Province")
         self.assertEqual(mismatch.response["features"][0]["geometry"]["coordinates"], [-3.7, 40.4])
 
         ambiguous = adapter([feature("es", "10 Calle Real"), feature("es", "10 Calle Real")]).geocode(
