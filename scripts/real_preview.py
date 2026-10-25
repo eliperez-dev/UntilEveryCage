@@ -1064,8 +1064,8 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                     write_job("failed", "lifecycle", "geocode_queue_evidence_missing")
                     raise PreviewError("Germany source lifecycle did not produce private address-queue evidence") from None
                 queue_counts = {key: queue.get(key) for key in (
-                    "records_seen", "records_eligible_after_privacy",
-                    "records_withheld_privacy_review", "records_queued",
+                    "records_seen", "records_eligible_for_local_queue",
+                    "records_withheld_explicit_restriction", "records_queued",
                     "records_with_source_coordinates", "records_without_usable_address")}
                 if (queue.get("status") != "success"
                         or queue.get("provider_review_state") != "not_configured"
@@ -1074,9 +1074,9 @@ def _refresh_source_locked(source_id: str = "be.locations", existing_runner_run_
                         or queue.get("geocoder_status_policy") != "pending; no external geocoder has been called"
                         or any(not isinstance(value, int) or isinstance(value, bool) or value < 0
                                for value in queue_counts.values())
-                        or queue_counts["records_seen"] != queue_counts["records_eligible_after_privacy"]
-                           + queue_counts["records_withheld_privacy_review"]
-                        or queue_counts["records_eligible_after_privacy"] != queue_counts["records_queued"]
+                        or queue_counts["records_seen"] != queue_counts["records_eligible_for_local_queue"]
+                           + queue_counts["records_withheld_explicit_restriction"]
+                        or queue_counts["records_eligible_for_local_queue"] != queue_counts["records_queued"]
                            + queue_counts["records_with_source_coordinates"]
                            + queue_counts["records_without_usable_address"]):
                     write_job("failed", "lifecycle", "geocode_queue_evidence_invalid")

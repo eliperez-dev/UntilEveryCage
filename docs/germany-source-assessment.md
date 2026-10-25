@@ -74,12 +74,14 @@ This remains private staging, not importer/API/map E2E. Redistribution terms and
 privacy review remain unresolved; no public rows are authorized.
 
 The shared refresh runner has also completed this live acquisition into a private
-candidate handoff. Its provider-neutral queue artifact records 15,755 accepted
-candidate observations, zero privacy-cleared for address enrichment, and all
-15,755 withheld pending privacy review; no source coordinates were supplied.
-Germany has no enabled private Geoapify source profile, so no durable provider
-jobs or external provider calls were created. The queue remains pending provider
-configuration and privacy review; no location or map readiness is claimed.
+candidate handoff. Local provider-neutral address staging is distinct from public
+release review: the source's `pending-review` privacy label is retained unchanged
+and does not alone withhold a business address from the local queue. Only explicit
+source address restrictions/withheld or known-residential evidence is excluded.
+No source coordinates were supplied. Germany has no enabled private Geoapify
+source profile, so queue entries remain pending provider configuration; no durable
+provider jobs or external provider calls were created. This is not a claim that
+addresses were privacy-screened, publicly releasable, or map-ready.
 
 ## Metadata evidence boundary
 

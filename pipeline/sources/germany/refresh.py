@@ -23,6 +23,21 @@ class RefreshError(ValueError):
     pass
 
 
+_EXPLICIT_ADDRESS_RESTRICTIONS = {
+    "restricted", "restricted-withheld-address", "blocked", "known-residential",
+    "residential-confirmed", "withheld",
+}
+
+
+def _explicitly_restricted_from_address_queue(row: dict[str, Any]) -> bool:
+    normalized = row.get("normalized") or {}
+    return (
+        normalized.get("source_address_restricted") is True
+        or normalized.get("privacy_gate") in _EXPLICIT_ADDRESS_RESTRICTIONS
+        or normalized.get("address_state") in _EXPLICIT_ADDRESS_RESTRICTIONS
+    )
+
+
 class GermanyRefreshAdapter:
     """Source-owned bridge for the shared private refresh runner."""
     source_id = CONFIG["source_id"]
@@ -61,19 +76,23 @@ class GermanyRefreshAdapter:
             raw = Path(metadata["artifact_path"]).read_bytes()
             source_artifact = SourceArtifact(source_url=metadata["final_url"], retrieved_at_utc=metadata["retrieved_at_utc"], sha256=hashlib.sha256(raw).hexdigest(), byte_size=len(raw), effective_date="unknown", code_version=self.adapter_version, config_version=CONFIG["schema_version"], rights_caveat=CONFIG["terms"], privacy_caveat=metadata.get("privacy_caveat"), coverage=CONFIG["coverage"])
             write_handoff(run_dir / "candidate-handoff", rows, source_artifact, source_id=self.source_id, profile="d3-facility-master")
-            privacy_eligible = [row for row in rows
-                                if row.get("normalized", {}).get("privacy_gate") == "eligible"]
-            queue = build_geocode_queue(privacy_eligible, source_artifact,
+            explicitly_restricted = [row for row in rows
+                                     if _explicitly_restricted_from_address_queue(row)]
+            queue_candidates = [row for row in rows
+                                if not _explicitly_restricted_from_address_queue(row)]
+            queue = build_geocode_queue(queue_candidates, source_artifact,
                                         run_dir / "geocode-queue", country_name="Germany")
             queue_metadata_path = run_dir / "geocode-queue" / "geocode-queue-metadata.json"
             queue_metadata = json.loads(queue_metadata_path.read_text(encoding="utf-8"))
             queue_metadata.update({
                 "records_seen": len(rows),
-                "records_eligible_after_privacy": len(privacy_eligible),
-                "records_withheld_privacy_review": len(rows) - len(privacy_eligible),
+                "records_eligible_for_local_queue": queue["records_queued"]
+                    + queue["records_with_source_coordinates"]
+                    + queue["records_without_usable_address"],
+                "records_withheld_explicit_restriction": len(explicitly_restricted),
                 "records_queued": queue["records_queued"],
                 "records_with_source_coordinates": sum(
-                    1 for row in privacy_eligible
+                    1 for row in queue_candidates
                     if row.get("normalized", {}).get("coordinate_state") in {
                         "source-coordinate", "source_coordinates_preserved",
                         "source-value-present-pending-review"}),
@@ -81,11 +100,11 @@ class GermanyRefreshAdapter:
                 "provider_review_state": "not_configured",
                 "durable_db_jobs": False,
                 "external_provider_called": False,
-                "privacy_policy": "Only records explicitly privacy-cleared may enter the provider-neutral address queue; pending-review records are withheld.",
+                "privacy_policy": "The source privacy label is unchanged. Local address-only staging excludes explicit restricted/withheld/residential evidence; public privacy review remains pending and no provider is enabled.",
             })
             atomic_json(queue_metadata_path, queue_metadata)
             result["report"]["geocode_queue"] = {key: queue_metadata[key] for key in (
-                "records_seen", "records_eligible_after_privacy", "records_withheld_privacy_review",
+                "records_seen", "records_eligible_for_local_queue", "records_withheld_explicit_restriction",
                 "records_queued", "records_with_source_coordinates",
                 "records_without_usable_address", "provider_review_state",
                 "durable_db_jobs", "external_provider_called")}

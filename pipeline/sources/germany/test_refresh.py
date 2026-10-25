@@ -8,7 +8,7 @@ from unittest.mock import patch
 from pipeline.common.refresh_runner import RefreshCatalog, RefreshRunner
 from pipeline.contracts.refresh import RefreshRequest
 from pipeline.geocoding.private_profiles import profile_for_source
-from .refresh import RefreshError, refresh
+from .refresh import RefreshError, _explicitly_restricted_from_address_queue, refresh
 
 
 ROOT = Path(__file__).parent
@@ -74,10 +74,21 @@ class GermanyRefreshTests(unittest.TestCase):
             self.assertEqual(result["exit_status"], "ok")
             self.assertTrue((source_dir / "candidate-handoff" / "manifest.json").is_file())
             queue = json.loads((source_dir / "geocode-queue" / "geocode-queue-metadata.json").read_text())
-            self.assertEqual(queue["records_seen"], queue["records_withheld_privacy_review"])
-            self.assertEqual(queue["records_queued"], 0)
+            self.assertEqual(queue["records_seen"], queue["records_eligible_for_local_queue"]
+                             + queue["records_withheld_explicit_restriction"])
+            self.assertGreater(queue["records_queued"], 0)
+            self.assertEqual(queue["records_withheld_explicit_restriction"], 0)
+            self.assertEqual(queue["provider_review_state"], "not_configured")
             self.assertFalse(queue["durable_db_jobs"])
             self.assertFalse(queue["external_provider_called"])
+
+    def test_pending_publication_review_is_not_an_explicit_queue_restriction(self):
+        self.assertFalse(_explicitly_restricted_from_address_queue({
+            "normalized": {"privacy_gate": "pending-review", "address_state": "source-present-pending-privacy-review"}}))
+        self.assertTrue(_explicitly_restricted_from_address_queue({
+            "normalized": {"privacy_gate": "restricted-withheld-address"}}))
+        self.assertTrue(_explicitly_restricted_from_address_queue({
+            "normalized": {"source_address_restricted": True}}))
 
 
 if __name__ == "__main__":
