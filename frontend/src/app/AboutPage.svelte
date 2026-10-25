@@ -41,7 +41,7 @@
       </ul>
 
       <h2>Get Involved</h2>
-      <p>Contact, GitHub, Discord, Donate and Vegan Resources using the links above.</p>
+      <p class="involvement-links"><a href="mailto:untileverycageproject@protonmail.com">Contact</a> · <a href="https://github.com/eliperez-dev/UntilEveryCage" target="_blank" rel="noreferrer">GitHub</a> · <a href="https://discord.gg/wbdTHzAZ4b" target="_blank" rel="noreferrer">Discord</a> · <a href="https://ko-fi.com/untileverycageisempty" target="_blank" rel="noreferrer">Donate</a> · <a href="https://linktr.ee/veganresource" target="_blank" rel="noreferrer">Vegan resources</a></p>
       <h2>Until Every Cage is Empty</h2>
     </section>
     <aside class="about-counter-slot" aria-label="Animal counter"><AnimalKillCounter /></aside>
