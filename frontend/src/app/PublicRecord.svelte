@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte';
   import { language, tr } from './language';
   import { LocalLocationRepository, type LocalProfile } from '../api/LocalLocationRepository';
   import type { DerivedSourceVolumeRange, Location } from '../domain/location';
@@ -10,7 +11,10 @@
   import { sourceClassificationLabels } from '../features/locations/sourceClassification';
   import LocationPreview from './LocationPreview.svelte';
   import { locationPreviewZoom } from '../features/locations/locationPreview';
-  let copyFeedback = $state('');
+  let copyFeedback = $state<'copied' | 'failed' | ''>('');
+  let copyResetTimer: ReturnType<typeof setTimeout> | undefined;
+  let copyAttempt = 0;
+  onDestroy(() => { copyAttempt += 1; if (copyResetTimer) clearTimeout(copyResetTimer); });
   let { id, profile = 'official', releaseId, returnMapHref = '#/map', onrelease }: { id: string; profile?: LocalProfile; releaseId?: string | undefined; returnMapHref?: string; onrelease?: (label: string | null) => void } = $props();
   const repository = new LocalLocationRepository();
   let record = $state<Location | null>(null);
@@ -70,12 +74,21 @@
     params.set('selected', record.id);
     return mapHrefFromParams(params, currentRelease || releaseId, record.id);
   })() : null);
-  async function copyRecordLink() { try { await navigator.clipboard.writeText(recordLink); copyFeedback = 'Facility link copied.'; } catch { copyFeedback = 'Could not copy facility link.'; } }
+  async function copyRecordLink() {
+    const attempt = ++copyAttempt;
+    if (copyResetTimer) clearTimeout(copyResetTimer);
+    let copied = true;
+    try { await navigator.clipboard.writeText(recordLink); }
+    catch { copied = false; }
+    if (attempt !== copyAttempt) return;
+    copyFeedback = copied ? 'copied' : 'failed';
+    copyResetTimer = setTimeout(() => { if (attempt === copyAttempt) copyFeedback = ''; copyResetTimer = undefined; }, copied ? 1500 : 2500);
+  }
 </script>
 <svelte:head><title>{record?.name ?? 'Record'} · Until Every Cage</title></svelte:head>
 <section class="public-record" aria-label="Public record">
   {#if profile === 'community'}<p class="warning"><strong>Unreviewed community claim: not verified by Until Every Cage.</strong> Privacy screening is not factual review or project approval. Community counts are separate.</p>{/if}
-  {#if busy}<p role="status">{tr('Loading record…', $language)}</p>{:else if error}<h1>Record unavailable</h1><p role="alert">{error}</p><button type="button" onclick={() => retry += 1}>Retry</button><p><a href="#/database">Browse records</a></p>{:else if record}<h1>{record.name} <button class="share" type="button" aria-label="Copy facility link" title="Copy facility link" onclick={copyRecordLink}><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.1 0l3-3A5 5 0 0 0 13 2.9l-1.7 1.7m2.7 6.4a5 5 0 0 0-7.1 0l-3 3A5 5 0 0 0 11 21.1l1.7-1.7"/></svg></button><span class="sr-only" role="status" aria-live="polite">{copyFeedback}</span></h1>
+  {#if busy}<p role="status">{tr('Loading record…', $language)}</p>{:else if error}<h1>Record unavailable</h1><p role="alert">{error}</p><button type="button" onclick={() => retry += 1}>Retry</button><p><a href="#/database">Browse records</a></p>{:else if record}<h1>{record.name} <button class="share" type="button" aria-label={tr('Copy facility link', $language)} title={tr('Copy facility link', $language)} onclick={copyRecordLink}><svg aria-hidden="true" viewBox="0 0 24 24">{#if copyFeedback === 'copied'}<path d="m5 12 4 4L19 6"/>{:else if copyFeedback === 'failed'}<path d="M6 6l12 12M18 6 6 18"/>{:else}<path d="M10 13a5 5 0 0 0 7.1 0l3-3A5 5 0 0 0 13 2.9l-1.7 1.7m2.7 6.4a5 5 0 0 0-7.1 0l-3 3A5 5 0 0 0 11 21.1l1.7-1.7"/>{/if}</svg></button>{#if copyFeedback === 'failed'}<span class="copy-error">{tr('Could not copy facility link', $language)}</span>{/if}<span class="sr-only" role="status" aria-live="polite">{copyFeedback === 'copied' ? tr('Link copied', $language) : copyFeedback === 'failed' ? tr('Could not copy facility link', $language) : ''}</span></h1>
     <section aria-labelledby="location-heading">
       <h2 id="location-heading">{tr('Location', $language)}</h2>
       <dl>
@@ -135,6 +148,7 @@
   button { min-height: 2.25rem; padding: .4rem .6rem; background: #252f28; border: 1px solid #657466; color: #edf0e9; font: inherit; }
   .share { display: inline-grid; place-items: center; vertical-align: middle; min-height: 2rem; width: 2rem; padding: .3rem; }
   .share svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .copy-error { color: #a33d32; font: 600 .75rem/1.2 system-ui,sans-serif; }
   .sr-only { position: absolute; width: 1px; height: 1px; clip: rect(0, 0, 0, 0); overflow: hidden; white-space: nowrap; }
   .warning { padding: .75rem; border-left: 3px solid #cf9a66; background: #282723; color: #eee4ce; }
   a:focus-visible, button:focus-visible { outline: 2px solid #eee7d6; outline-offset: 3px; }
