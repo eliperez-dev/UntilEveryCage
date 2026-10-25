@@ -588,7 +588,7 @@
         "private_database":"uec_launch_sources_test_20261025",
         "idempotent_replay_verified":true,
         "idempotency_evidence":"Same-handoff replay ledger reports idempotent_replay=true and unchanged source counts; the original immutable source_preview_runs row remains false.",
-        "api_acceptance":"Authenticated source list/detail and private map feed checked. Map feed represents 80 geocoded candidates; provider-address features use reference-member keys, not facility UUIDs. Source evidence and frozen v0 counts remain unchanged.",
+        "api_acceptance":"Authenticated source list/detail and map feed checked. All 80 provider-address reference groups resolve to exactly the 80 SQL candidate identities; legacy MVT keys also resolve. A real pin clicked with Search collapsed loaded its member and facility detail without an error. Source evidence and frozen v0 counts remain unchanged.",
         "refresh_command":"python scripts/real_preview.py refresh --source de.locations",
         "effective_date":"unknown"
       },
