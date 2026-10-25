@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { getTheme, setTheme, subscribeTheme, type Theme } from '../features/theme/theme';
 
-  let { label = 'Appearance', lightLabel = 'Light', darkLabel = 'Dark' }: { label?: string; lightLabel?: string; darkLabel?: string } = $props();
+  let { label = 'Appearance', groupLabel = 'Color theme', lightLabel = 'Light', darkLabel = 'Dark' }: { label?: string; groupLabel?: string; lightLabel?: string; darkLabel?: string } = $props();
   let theme = $state<Theme>('dark');
   onMount(() => {
     theme = getTheme();
@@ -12,7 +12,7 @@
 
 <section class="theme-control" aria-label={label}>
   <p class="theme-control-label">{label}</p>
-  <div class="theme-control-options" role="group" aria-label="Color theme">
+  <div class="theme-control-options" role="group" aria-label={groupLabel}>
     <button type="button" aria-pressed={theme === 'light'} onclick={() => setTheme('light')}>{lightLabel}</button>
     <button type="button" aria-pressed={theme === 'dark'} onclick={() => setTheme('dark')}>{darkLabel}</button>
   </div>

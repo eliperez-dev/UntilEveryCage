@@ -11,6 +11,12 @@
   --line-strong: #59615c;
   --link: #dce8d9;
   --focus: #d49a62;
+  --api-ink: #eee9df;
+  --api-background: #1d2520;
+  --api-section: #252f29;
+  --api-input: #202523;
+  --api-link: #c8dcc6;
+  --uec-color-scheme: dark;
   color: #eee9df;
   background: #171a18;
   color-scheme: dark;
@@ -33,6 +39,12 @@
   --line-strong: #8e9b90;
   --link: #315d43;
   --focus: #89531e;
+  --api-ink: #202820;
+  --api-background: #f2f5ef;
+  --api-section: #e4ebe3;
+  --api-input: #ffffff;
+  --api-link: #315d43;
+  --uec-color-scheme: light;
 }
 
 * { box-sizing: border-box; }
@@ -136,14 +148,14 @@ button { min-height: 2.75rem; padding: .5rem 1rem; color: inherit; background: v
 :root[data-theme="light"] .database-research .quiet,
 :root[data-theme="light"] .database-research .intro,
 :root[data-theme="light"] .record-page .state { color: var(--ink-secondary); }
-:root[data-theme="light"] table[aria-label="Browse records"] { color: var(--ink); }
-:root[data-theme="light"] table[aria-label="Browse records"] th,
-:root[data-theme="light"] table[aria-label="Browse records"] td,
-:root[data-theme="light"] table[aria-label="Browse records"] tr { border-color: var(--line); }
-:root[data-theme="light"] table[aria-label="Browse records"] th { color: var(--ink); }
-:root[data-theme="light"] table[aria-label="Browse records"] td:first-child :is(a, button) { color: var(--ink); }
-:root[data-theme="light"] table[aria-label="Browse records"] tr.selected { background: #dce8d9; }
-:root[data-theme="light"] table[aria-label="Browse records"] tr:hover { background: var(--panel-hover); }
+:root[data-theme="light"] .public-database table { color: var(--ink); }
+:root[data-theme="light"] .public-database table th,
+:root[data-theme="light"] .public-database table td,
+:root[data-theme="light"] .public-database table tr { border-color: var(--line); }
+:root[data-theme="light"] .public-database table th { color: var(--ink); }
+:root[data-theme="light"] .public-database table td:first-child :is(a, button) { color: var(--ink); }
+:root[data-theme="light"] .public-database table tr.selected { background: #dce8d9; }
+:root[data-theme="light"] .public-database table tr:hover { background: var(--panel-hover); }
 :root[data-theme="light"] .bug-page { color: var(--ink); }
 :root[data-theme="light"] .bug-page .intro,
 :root[data-theme="light"] .bug-page .issue-link,
@@ -184,6 +196,8 @@ button { min-height: 2.75rem; padding: .5rem 1rem; color: inherit; background: v
 :root[data-theme="light"] .field-view .record-list small,
 :root[data-theme="light"] .field-view .dossier-header,
 :root[data-theme="light"] .field-view .results header small { color: var(--ink-muted); }
+:root[data-theme="light"] .field-view .detail { --ink: #202820; --muted: #59665b; --line: #c7d0c6; color: var(--ink); }
+:root[data-theme="light"] .field-view .detail a { color: var(--link); }
 :root[data-theme="light"] .field-view .dossier-header a { color: var(--link); }
 :root[data-theme="light"] .location-preview .approx,
 :root[data-theme="light"] .location-preview .map-error { background: #fff; color: #202820; }
