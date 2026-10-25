@@ -24,3 +24,14 @@
  .swagger-ui table.parameters .parameters-col_description input,.swagger-ui table.parameters .parameters-col_description select{width:100%;max-width:100%}
  .swagger-ui table.parameters .parameters-col_description .renderedMarkdown p{margin:.3rem 0 .5rem;line-height:1.5}
 }
+
+:host-context(html[data-theme="light"]){color:#202820;color-scheme:light}
+:host-context(html[data-theme="light"]) .swagger-ui{color:#202820}
+:host-context(html[data-theme="light"]) .swagger-ui :is(.opblock-tag,.opblock-summary-path,.opblock-summary-description,.opblock-description-wrapper p,.opblock-title_normal,.opblock-title,.response-col_status,.response-col_description,.parameter__name,.parameter__type,.parameter__in,.parameter__deprecated,.prop-type,.prop-format,.model,label,.info p,.info li,.renderedMarkdown,.servers-title,.opblock .opblock-section-header h4){color:#202820}
+:host-context(html[data-theme="light"]) .swagger-ui .opblock{background:#f2f5ef;border-color:#aab7aa}
+:host-context(html[data-theme="light"]) .swagger-ui .opblock.opblock-get{background:#edf4ed;border-color:#91aa95}
+:host-context(html[data-theme="light"]) .swagger-ui .opblock .opblock-section-header{background:#e4ebe3}
+:host-context(html[data-theme="light"]) .swagger-ui :is(.model-box,.model-container,.highlight-code,.opblock-body pre.microlight){background:#f5f6f2;color:#202820}
+:host-context(html[data-theme="light"]) .swagger-ui :is(input[type=text],textarea,select){background:#fff;color:#202820;border-color:#8e9b90}
+:host-context(html[data-theme="light"]) .swagger-ui select option{background:#fff}
+:host-context(html[data-theme="light"]) .swagger-ui a{color:#315d43}
