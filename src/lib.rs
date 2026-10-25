@@ -7531,9 +7531,18 @@ fn aphis_public_history_reference_id(
 }
 
 fn aphis_recovered_public_report_link(
-    row: &Value, kind: &str, release_id: &str, facility_id: uuid::Uuid,
+    event: &Value, kind: &str, release_id: &str, facility_id: uuid::Uuid,
 ) -> Option<Value> {
-    let event = aphis_public_link_row(row, kind)?;
+    // `AphisPublicReportCandidate::link` is already the sanitized projection
+    // from `aphis_public_link_row`; do not feed it through the raw-source
+    // normalizer a second time (which expects upstream field names).
+    if kind == "annual_reports" {
+        let period = event.get("event_period").and_then(Value::as_str)?;
+        if period.len() != 4 || !period.bytes().all(|byte| byte.is_ascii_digit()) { return None; }
+    } else if kind == "inspections" {
+        let date = event.get("event_date").and_then(Value::as_str)?;
+        if chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").is_err() { return None; }
+    } else { return None; }
     let has_document = event.get("report_url").is_some_and(|value| !value.is_null())
         || event.get("column_e_url").is_some_and(|value| !value.is_null());
     if !has_document { return None; }
@@ -7724,7 +7733,7 @@ pub async fn get_v2_aphis_report_links_handler(
             let key = if kind == "annual_reports" { row.get("event_period") } else { row.get("event_date") }
                 .and_then(Value::as_str);
             if key.is_some_and(|key| approved_event_keys.contains(key)) { continue; }
-            if let Some(recovered) = aphis_recovered_public_report_link(row, kind, &release_id, facility_id) {
+            if let Some(recovered) = aphis_recovered_public_report_link(&candidate.link, kind, &release_id, facility_id) {
                 data.push(recovered);
             }
         }
@@ -7836,13 +7845,33 @@ mod aphis_public_report_link_tests {
             "Account Name":"not returned", "Address":"not returned", "dogs":99
         });
         let facility = uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
-        let recovered = aphis_recovered_public_report_link(&source, "annual_reports", "release-2026-10-18", facility).unwrap();
+        // Exercise the same raw -> sanitized candidate -> recovery path used
+        // by the live handler, rather than passing a raw fixture directly.
+        let candidate = AphisPublicReportCandidate {
+            link: aphis_public_link_row(&source, "annual_reports").unwrap(),
+        };
+        let recovered = aphis_recovered_public_report_link(&candidate.link, "annual_reports", "release-2026-10-18", facility).unwrap();
         assert_eq!(recovered["event_period"], "2024");
         assert_eq!(recovered["reference_origin"], "source_history_recovery");
         assert_eq!(recovered["match_method"], "exact_release_source_identifier");
         assert!(recovered["reference_id"].as_str().is_some());
         assert!(recovered.get("Account Name").is_none());
-        assert!(aphis_recovered_public_report_link(&json!({"year":"2024"}), "annual_reports", "release-2026-10-18", facility).is_none());
+        let no_document = AphisPublicReportCandidate {
+            link: aphis_public_link_row(&json!({"year":"2024"}), "annual_reports").unwrap(),
+        };
+        assert!(aphis_recovered_public_report_link(&no_document.link, "annual_reports", "release-2026-10-18", facility).is_none());
+
+        let inspection_source = json!({
+            "inspectionDate":"2024-07-08",
+            "reportLink":"https://aphis.my.site.com/PublicSearchTool/s/inspection-report?id=opaque",
+            "Account Name":"not returned", "Address":"not returned"
+        });
+        let inspection_candidate = AphisPublicReportCandidate {
+            link: aphis_public_link_row(&inspection_source, "inspections").unwrap(),
+        };
+        let recovered_inspection = aphis_recovered_public_report_link(&inspection_candidate.link, "inspections", "release-2026-10-18", facility).unwrap();
+        assert_eq!(recovered_inspection["event_date"], "2024-07-08");
+        assert_eq!(recovered_inspection["reference_origin"], "source_history_recovery");
         assert_eq!(aphis_public_history_cursor_page(aphis_public_history_cursor(100)), Some(100));
         assert_eq!(aphis_public_history_cursor(100).get_version_num(), 4);
         assert_eq!(aphis_public_history_cursor_page(uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap()), None);
