@@ -32,7 +32,8 @@ test('the masthead exposes six direct destinations and Tools', async ({ page }) 
 });
 
 test('direct links retain native keyboard and browser navigation', async ({ page, context }) => {
-  await page.goto('./#/about/faq');
+  const mapContext = '#/map?lat=44.5&lon=8.1&z=5&basemap=satellite&release_id=synthetic-release';
+  await page.goto(`./#/about/faq?map=${encodeURIComponent(mapContext)}`);
   const database = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Database', exact: true });
   await database.focus();
   await page.keyboard.press('Enter');
@@ -41,12 +42,14 @@ test('direct links retain native keyboard and browser navigation', async ({ page
   await expect(page.getByRole('heading', { name: 'Frequently asked questions', exact: true })).toBeVisible();
   await page.goForward();
   await expect(page.getByRole('heading', { name: 'Browse records', exact: true })).toBeVisible();
+  const about = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'About', exact: true });
   const popupPromise = context.waitForEvent('page');
-  // Middle-click is the native, platform-independent alternate-tab gesture for a normal anchor.
-  await database.click({ button: 'middle' });
+  // Exercise a different native destination; opening the already-active href varies across browsers.
+  await about.click({ button: 'middle' });
   const popup = await popupPromise;
-  await expect(popup).toHaveURL(/#\/database(?:$|[/?])/);
-  await expect(popup.getByRole('heading', { name: 'Browse records', exact: true })).toBeVisible();
+  await expect(popup).toHaveURL(/#\/about(?:$|[/?])/);
+  await expect(popup.getByRole('heading', { name: 'About Until Every Cage is Empty', exact: true })).toBeVisible();
+  expect(new URL(popup.url()).hash).toContain(`map=${encodeURIComponent(mapContext)}`);
   await popup.close();
 });
 
