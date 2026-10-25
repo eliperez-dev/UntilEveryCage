@@ -11,6 +11,7 @@
   let apiModule: Promise<typeof import('./ApiPage.svelte')> | null = null;
   import PreviewMasthead from './PreviewMasthead.svelte';
   import { publicReleaseLabel } from '../features/locations/releasePresentation';
+  import { language, tr } from './language';
   let DesignLab = $state<typeof import('../design-lab/DesignLab.svelte').default | null>(null);
   let DatabaseResearch = $state<typeof import('./DatabaseResearch.svelte').default | null>(null);
   let RecordPage = $state<typeof import('./RecordPage.svelte').default | null>(null);
@@ -101,31 +102,31 @@
 
   <main id="main-content" class="shell-content" tabindex="-1">
     {#if loading}
-      <p class="state" role="status">Loading page…</p>
+      <p class="state" role="status">{tr('Loading page…', $language)}</p>
     {:else if loadError}
       <section class="state" role="alert" aria-labelledby="error-heading">
-        <h1 id="error-heading">Unable to open this page</h1>
+        <h1 id="error-heading">{tr('Unable to open this page', $language)}</h1>
         <p>{loadError}</p>
-        <button type="button" onclick={() => window.location.reload()}>Reload to try again</button>
+        <button type="button" onclick={() => window.location.reload()}>{tr('Reload to try again', $language)}</button>
       </section>
     {:else if route.kind === 'not-found'}
       <section class="state" aria-labelledby="not-found-heading">
-        <h1 id="not-found-heading">Page not found</h1>
-        <p>This address does not match a page in this application.</p>
-        <a href="#/map">Return to the map</a>
+        <h1 id="not-found-heading">{tr('Page not found', $language)}</h1>
+        <p>{tr('This address does not match a page in this application.', $language)}</p>
+        <a href="#/map">{tr('Return to the map', $language)}</a>
       </section>
     {:else if route.kind === 'about'}
       <AboutPage />
     {:else if route.kind === 'faq'}
       <FaqPage returnMapHref={returnMapHref} section={route.section} />
     {:else if route.kind === 'api' || route.kind === 'downloads'}
-      {#if ApiPage}<ApiPage selectedReleaseId={new URLSearchParams(route.returnMapHref?.split('?')[1] ?? '').get('release_id')} />{:else}<p class="state" role="status">Loading API reference…</p>{/if}
+      {#if ApiPage}<ApiPage selectedReleaseId={new URLSearchParams(route.returnMapHref?.split('?')[1] ?? '').get('release_id')} />{:else}<p class="state" role="status">{tr('Loading API reference…', $language)}</p>{/if}
     {:else if route.kind === 'contribute'}
       <ContributePage formKind={route.formKind ?? 'facility'} targetRecordId={route.targetRecordId ?? ''} returnMapHref={route.returnMapHref ?? '#/map'} />
     {:else if route.kind === 'bug-report'}
       <ContributePage formKind="bug" returnMapHref={route.returnMapHref ?? '#/map'} />
     {:else if route.kind === 'map'}
-      <p class="state" role="status">Preparing the map…</p>
+      <p class="state" role="status">{tr('Preparing the map…', $language)}</p>
     {:else if route.kind === 'database'}
       <PublicDatabase {...(route.releaseId ? { releaseId: route.releaseId } : {})} returnMapHref={returnMapHref} onrelease={label => verifiedReleaseLabel = label} />
     {:else if route.kind === 'record'}
@@ -136,7 +137,7 @@
       {:else if CommunityContributions}
         <CommunityContributions page={route.page} formKind={route.formKind ?? 'facility'} targetRecordId={route.targetRecordId ?? ''} claimId={route.claimId ?? ''} releaseId={route.releaseId ?? ''} returnMapHref={route.returnMapHref ?? '#/map'} />
       {:else}
-        <p class="state" role="status">Preparing the community pilot…</p>
+        <p class="state" role="status">{tr('Preparing the community pilot…', $language)}</p>
       {/if}
     {/if}
   </main>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { language, tr } from './language';
   import RecordConnections from './RecordConnections.svelte';
   import LocationPreview from './LocationPreview.svelte';
   import { serializeRoute } from './routeState';
@@ -333,9 +334,9 @@
     <button
       class="close"
       type="button"
-      aria-label="Close record detail"
+      aria-label={tr('Close record detail', $language)}
       onclick={onclose}
-    >Close</button>
+    >{tr('Close', $language)}</button>
   {/if}
   <h1 id="record-title">{name}{#if presentation === 'page' || (presentation === 'rail' && publicRelease)} <button class="share" type="button" aria-label="Copy facility link" title="Copy facility link" onclick={copyFacilityLink}><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.1 0l3-3A5 5 0 0 0 13 2.9l-1.7 1.7m2.7 6.4a5 5 0 0 0-7.1 0l-3 3A5 5 0 0 0 11 21.1l1.7-1.7"/></svg></button><span class="sr-only" role="status" aria-live="polite">{copyFeedback}</span>{/if}</h1>
   {#if presentation === 'page' && import.meta.env.VITE_COMMUNITY_PILOT === 'true' && id}
@@ -345,12 +346,12 @@
     <dl class="identity"><div><dt>Name</dt><dd>Name not shown, privacy review pending</dd></div></dl>
   {/if}
   <section aria-labelledby="location-heading">
-    <h2 id="location-heading">Location</h2>
+    <h2 id="location-heading">{tr('Location', $language)}</h2>
     <dl>
-      {#if facilityAddress}<div><dt>Address</dt><dd>{facilityAddress}</dd></div>{/if}
-      <div><dt>Locality</dt><dd>{locationText}</dd></div>
-      {#if hasCoordinates}<div><dt>Coordinates</dt><dd>{coordinate(record.latitude)}, {coordinate(record.longitude)}</dd></div>{/if}
-      <div><dt>Precision</dt><dd>{precisionLabel}</dd></div>
+      {#if facilityAddress}<div><dt>{tr('Address', $language)}</dt><dd>{facilityAddress}</dd></div>{/if}
+      <div><dt>{tr('Locality', $language)}</dt><dd>{locationText}</dd></div>
+      {#if hasCoordinates}<div><dt>{tr('Coordinates', $language)}</dt><dd>{coordinate(record.latitude)}, {coordinate(record.longitude)}</dd></div>{/if}
+      <div><dt>{tr('Precision', $language)}</dt><dd>{precisionLabel}</dd></div>
       {#if record.coordinatePrecision && !['source-provided', 'source_reported', 'source_provided_unverified'].includes(record.coordinatePrecision)}<div><dt>Source precision</dt><dd>{humanizeValue(record.coordinatePrecision)}</dd></div>{/if}
       {#if coordinateStatus && !sameLabel(coordinateStatus, 'source_confirmed')}<div><dt>Coordinate review</dt><dd>{humanizeValue(coordinateStatus)}</dd></div>{/if}
       {#if coordinateMethod}<div><dt>Location method</dt><dd>{humanizeValue(coordinateMethod)}</dd></div>{/if}
@@ -364,7 +365,7 @@
 
   {#if activityDisplay || taxonomy}
     <section class="taxonomy" aria-labelledby="taxonomy-heading">
-      <h2 id="taxonomy-heading">Activities and classification</h2>
+      <h2 id="taxonomy-heading">{tr('Activities and classification', $language)}</h2>
       {#if activityDisplay}<p class="activity">{activityDisplay}</p>{/if}
       {#if detailedActivities}
         <p aria-label="Detailed activities">{detailedActivities}</p>
@@ -375,7 +376,7 @@
 
   {#if sourceFacts}
     <section aria-labelledby="source-facts-heading">
-      <h2 id="source-facts-heading">Source facts</h2>
+      <h2 id="source-facts-heading">{tr('Source facts', $language)}</h2>
       <dl>
         {#if nativeActivity && !taxonomy}<div><dt>Native activity</dt><dd>{nativeActivity}</dd></div>{/if}
         {#if speciesSlaughtered}<div><dt>Species slaughtered</dt><dd>{speciesSlaughtered}</dd></div>{/if}
@@ -398,7 +399,7 @@
   {/if}
 
   <section aria-labelledby="evidence-heading">
-    <h2 id="evidence-heading">Source and review</h2>
+      <h2 id="evidence-heading">{tr('Source and review', $language)}</h2>
     <dl>
       {#if sourceName}<div><dt>Source</dt><dd>{#if sourceUrl}<a href={sourceUrl} target="_blank" rel="noopener noreferrer">{sourceName}<span class="sr-only"> (opens in a new tab)</span></a>{:else}{sourceName}{/if}</dd></div>
       {:else if sourceId}<div><dt>Source ID</dt><dd>{sourceId}</dd></div>{/if}

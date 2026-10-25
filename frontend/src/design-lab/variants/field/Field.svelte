@@ -17,6 +17,7 @@
   import type { PlaceSuggestion } from "../../../features/placeSearch/placeSearch";
   import { publicReleaseLabel } from "../../../features/locations/releasePresentation";
   import { CATEGORY_PRESENTATIONS } from "../../../features/locations/categoryPresentation";
+  import { language, tr } from '../../../app/language';
   import { serializeRoute } from "../../../app/routeState";
   let {
     state,
@@ -402,14 +403,14 @@
 <svelte:window onkeydown={onKeydown} />
 <section class="field-view">
   <PreviewMasthead privateTools={mode === "real-preview" || mode === "candidate-preview"} publicReleaseLabel={mode === "candidate-preview" ? $candidatePreviewLabel : publicReleaseLabel(publicMapMeta?.releaseId, publicMapMeta?.releaseLabel)} releaseDescription={mode === "candidate-preview" && $candidatePreviewLabel ? 'Configured private candidate release.' : null} {releaseOptions} selectedReleaseId={mode === "public-release" ? selectedPublicReleaseId : null} {...(onreleasechange ? { onreleasechange } : {})} current="map" {mapHref} {databaseHref} debugEnabled={$debugEnabled} ondebugchange={(enabled) => { debugEnabled.set(enabled); if (!enabled) debugOpen.set(false); }} />
-  <main class="map-stage" aria-label="Investigative map field">
+  <main class="map-stage" aria-label={tr('Investigative map field', $language)}>
     {#if mode === "synthetic" && state.scenario === "loading"}<div class="status" role="status">
-        Loading records…
+        {tr('Loading records…', $language)}
       </div>{:else if mode === "synthetic" && state.scenario === "error"}<div
         class="status"
         role="alert"
       >
-        Records unavailable. No live fallback was attempted.
+        {tr('Records unavailable. No live fallback was attempted.', $language)}
       </div>{:else if mode === "public-release" && dataStatus === "error" && records.length === 0}<div class="status" role="alert">{dataError}</div>{:else}<MapSurface
         records={mapped}
         {state}
@@ -440,7 +441,7 @@
         class="status"
         role="status"
       >
-        No records match this search and these filters.
+        {tr('No records match this search and these filters.', $language)}
       </div>{/if}
     {#if mode !== "synthetic" && dataStatus === "error" && mode !== "public-release"}<div
         class="status"
@@ -460,18 +461,18 @@
       aria-expanded={state.listOpen}
       aria-controls="field-record-list"
       onclick={() => dispatch({ type: "list", value: !state.listOpen })}
-      ><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg><span class="search-toggle-copy"><strong>Search map</strong><small>{state.query || state.sourceId ? "Search or filters active" : "Places, facilities, sources"}</small></span></button>{/if}
+      ><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg><span class="search-toggle-copy"><strong>{tr('Search map', $language)}</strong><small>{state.query || state.sourceId ? tr('Search or filters active', $language) : tr('Places, facilities, sources', $language)}</small></span></button>{/if}
     {#if state.listOpen}<aside
         class="results"
         style:width={`min(${$railWidth}px, calc(100% - 2rem))`}
         id="field-record-list"
         aria-label={aggregateOpen
           ? "Aggregate member records"
-          : "Search, filters, and results"}
+          : tr('Search, filters, and results', $language)}
       >
         <button class="rail-resize" type="button" aria-label="Resize search panel" title="Use left and right arrows to resize" onpointerdown={resizeRail} onkeydown={resizeRailKey}></button>
         <header>
-          <strong>Search records</strong><button
+          <strong>{tr('Search records', $language)}</strong><button
             type="button"
             aria-label="Close search panel"
             onclick={() => dispatch({ type: "list", value: false })}>×</button
@@ -479,12 +480,12 @@
         </header>
         <div class="search-tools">
           <form class="search" role="search" onsubmit={(event) => event.preventDefault()}>
-            <label for="field-search">Search across {mode === "public-release" ? "public release records" : "preview records"}</label>
-            <input id="field-search" type="search" placeholder="Name, activity, source, or place"
+            <label for="field-search">{tr(mode === "public-release" ? 'Search across public release records' : 'Search across preview records', $language)}</label>
+            <input id="field-search" type="search" placeholder={tr('Name, activity, source, or place', $language)}
               value={state.query} oninput={(event) => dispatch({ type: "query", value: event.currentTarget.value })} />
           </form>
           <details class="filters">
-            <summary>Filters {#if active}<b>{active}</b>{/if}</summary>
+            <summary>{tr('Filters', $language)} {#if active}<b>{active}</b>{/if}</summary>
             <div class="filter-sheet">
               {#if mode === "candidate-preview" || mode === "public-release"}
                 {#if facetsStatus === "loading"}<small>Loading filters…</small>

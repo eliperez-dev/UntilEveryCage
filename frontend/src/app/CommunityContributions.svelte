@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { language, tr } from './language';
   import { onMount } from 'svelte';
   import { CommunityError, communityCapabilities, createCommunityRepository, type ContributionKind, type ContributionDraft, type Receipt, type StatusResult, type ReviewQueue, type ReviewQueueFilter, type ReviewRow, type CommunityClaims, type CommunityClaim } from '../api/CommunityRepository';
   import ContributionPinPicker from './ContributionPinPicker.svelte';
@@ -196,30 +197,30 @@
 {:else if page === 'form'}
   <section class="community-page" class:embedded aria-label="Contribution form">
     {#if !embedded}<p><a href={`#/contribute${returnMapHref !== '#/map' ? `?map=${encodeURIComponent(returnMapHref)}` : ''}`}>Contribute</a></p><h1 id="community-title">{{ facility: 'Add a facility', evidence: 'Add evidence', correction: 'Suggest a correction', duplicate: 'Report a possible duplicate', privacy_removal: 'Request a privacy review' }[kind]}</h1>{/if}
-    <p class="lede">{kind === 'evidence' ? 'Add evidence to an existing record. Your submission will be reviewed.' : 'We review submissions before anything is published.'}</p>
+    <p class="lede">{tr(kind === 'evidence' ? 'Add evidence to an existing record. Your submission will be reviewed.' : 'We review submissions before anything is published.', $language)}</p>
     {#if receipt}
-      <section class="receipt" aria-labelledby="receipt-heading"><h2 id="receipt-heading">Contribution received</h2><p>Keep this private link to check the review status. It is shown once and cannot be recovered.</p><a class="button-link" href={trackingHref(receipt)}>Track submission</a></section>
+      <section class="receipt" aria-labelledby="receipt-heading"><h2 id="receipt-heading">{tr('Contribution received', $language)}</h2><p>{tr('Keep this private link to check the review status. It is shown once and cannot be recovered.', $language)}</p><a class="button-link" href={trackingHref(receipt)}>{tr('Track submission', $language)}</a></section>
     {:else}
       <form class="contribution-form" onsubmit={submit}>
-        {#if ['evidence','correction','duplicate','privacy_removal'].includes(kind)}<label>{kind === 'evidence' ? 'Record link or ID' : 'Record ID'}<input name="target_record_id" value={parseRecordReference(targetRecordId)} maxlength={kind === 'evidence' ? 1000 : 36} autocomplete="off" required aria-describedby={kind === 'evidence' ? 'evidence-record-help' : undefined} /></label>{/if}
-        {#if kind === 'evidence'}<p id="evidence-record-help" class="field-help">Open a record and copy its page link or Record ID.</p>{/if}
-        {#if kind === 'duplicate'}<label>Possible duplicate record ID<input name="duplicate_record_id" maxlength="36" autocomplete="off" required /></label>{/if}
-        {#if kind === 'facility'}<div class="form-grid"><label>Facility name<input name="label" maxlength="160" required /></label><label>Country (optional)<select name="country_code"><option value="">Unknown / not sure</option>{#each countryOptions as country (country.code)}<option value={country.code}>{country.name}</option>{/each}</select></label></div><div class="form-grid"><label>Locality (optional)<input name="locality" maxlength="160" /></label><label>Primary activity (optional)<select name="claimed_activity"><option value="">Choose a category</option>{#each TAXONOMY_PRIMARY_KEYS as category}<option value={category}>{category === 'unclassified' ? 'Other / Unknown (unclassified)' : CATEGORY_PRESENTATIONS[category].label}</option>{/each}</select></label></div>{/if}
+        {#if ['evidence','correction','duplicate','privacy_removal'].includes(kind)}<label>{tr(kind === 'evidence' ? 'Record link or ID' : 'Record ID', $language)}<input name="target_record_id" value={parseRecordReference(targetRecordId)} maxlength={kind === 'evidence' ? 1000 : 36} autocomplete="off" required aria-describedby={kind === 'evidence' ? 'evidence-record-help' : undefined} /></label>{/if}
+        {#if kind === 'evidence'}<p id="evidence-record-help" class="field-help">{tr('Open a record and copy its page link or Record ID.', $language)}</p>{/if}
+        {#if kind === 'duplicate'}<label>{tr('Possible duplicate record ID', $language)}<input name="duplicate_record_id" maxlength="36" autocomplete="off" required /></label>{/if}
+        {#if kind === 'facility'}<div class="form-grid"><label>{tr('Facility name', $language)}<input name="label" maxlength="160" required /></label><label>{tr('Country (optional)', $language)}<select name="country_code"><option value="">{tr('Unknown / not sure', $language)}</option>{#each countryOptions as country (country.code)}<option value={country.code}>{country.name}</option>{/each}</select></label></div><div class="form-grid"><label>{tr('Locality (optional)', $language)}<input name="locality" maxlength="160" /></label><label>{tr('Primary activity (optional)', $language)}<select name="claimed_activity"><option value="">{tr('Choose a category', $language)}</option>{#each TAXONOMY_PRIMARY_KEYS as category}<option value={category}>{category === 'unclassified' ? tr('Other / Unknown (unclassified)', $language) : tr(CATEGORY_PRESENTATIONS[category].label, $language)}</option>{/each}</select></label></div>{/if}
         {#if kind === 'facility' || kind === 'correction'}
-          <fieldset class="location-picker"><legend>Location (optional)</legend>
+          <fieldset class="location-picker"><legend>{tr('Location (optional)', $language)}</legend>
             <ContributionPinPicker latitude={lat} longitude={lon} onpoint={(latitude, longitude, method) => { lat = latitude; lon = longitude; locationInputMethod = method; }} onclear={() => { lat = undefined; lon = undefined; locationInputMethod = undefined; }} />
-            <label>Location detail<select value={precision} onchange={(event) => setPrecision(event.currentTarget.value as 'unknown' | 'exact' | 'coarse' | 'unmapped')}><option value="unknown">Not sure</option><option value="exact">Exact point</option><option value="coarse">Around this area</option><option value="unmapped">No point</option></select></label>
-            <label>Location note (optional)<input name="location_text" maxlength="1000" placeholder="City or broad area" /></label>
+            <label>{tr('Location detail', $language)}<select value={precision} onchange={(event) => setPrecision(event.currentTarget.value as 'unknown' | 'exact' | 'coarse' | 'unmapped')}><option value="unknown">{tr('Not sure', $language)}</option><option value="exact">{tr('Exact point', $language)}</option><option value="coarse">{tr('Around this area', $language)}</option><option value="unmapped">{tr('No point', $language)}</option></select></label>
+            <label>{tr('Location note (optional)', $language)}<input name="location_text" maxlength="1000" placeholder={tr('City or broad area', $language)} /></label>
           </fieldset>
         {/if}
-        <label>Source link (optional)<input bind:value={sourceUrlValue} name="source_url" type="url" maxlength="2048" placeholder="https://…" /></label>
+        <label>{tr('Source link (optional)', $language)}<input bind:value={sourceUrlValue} name="source_url" type="url" maxlength="2048" placeholder="https://…" /></label>
         {#if kind === 'facility' || kind === 'evidence'}<label>When did you observe this? (optional)<input name="observed_on" type="date" /></label>{/if}
         {#if kind === 'correction' || kind === 'privacy_removal'}<label>{kind === 'correction' ? 'What should be corrected?' : 'What should we review?'}<textarea bind:value={descriptionValue} name="description" maxlength="2000" rows="4" required></textarea></label>{:else if kind === 'evidence'}<label>What did you find? (optional if you added a source link)<textarea bind:value={descriptionValue} name="description" maxlength="2000" rows="4" required={!sourceUrlValue.trim()}></textarea></label>{:else if kind === 'facility'}<label>Additional context (optional)<textarea bind:value={descriptionValue} name="description" maxlength="2000" rows="4"></textarea></label>{/if}
         <label>Email (optional)<input name="contact_email" type="email" maxlength="254" autocomplete="email" aria-describedby="contact-help" /></label>
         <p id="contact-help" class="field-help">For follow-up about this contribution. Automatic updates are not available yet.</p>
-        <label class="consent"><input type="checkbox" required /> I have permission to share this information.</label>
+        <label class="consent"><input type="checkbox" required /> {tr('I have permission to share this information.', $language)}</label>
         {#if submitError}<p class="form-error" role="alert">{submitError}</p>{/if}
-        <button class="primary-action" type="submit" disabled={busy}>{busy ? 'Sending…' : 'Send for review'}</button>
+        <button class="primary-action" type="submit" disabled={busy}>{tr(busy ? 'Sending…' : 'Send for review', $language)}</button>
       </form>
     {/if}
   </section>

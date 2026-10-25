@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { language, tr } from './language';
   let { section, returnMapHref = '#/map' }: { section?: 'technology' | 'records' | 'contributions' | 'help' | undefined; returnMapHref?: string } = $props();
   const context = $derived(returnMapHref !== '#/map' ? `?map=${encodeURIComponent(returnMapHref)}` : '');
   const route = (path: string) => `#/${path}${context ? `${path.includes('?') ? '&' : '?'}map=${encodeURIComponent(returnMapHref)}` : ''}`;
@@ -9,22 +10,22 @@
 </script>
 <svelte:head><title>FAQ · Until Every Cage</title><meta name="description" content="How the data reaches the map, contributions, and help for Until Every Cage." /></svelte:head>
 <article class="faq-page" aria-labelledby="faq-title">
-  <h1 id="faq-title">Frequently asked questions</h1>
+  <h1 id="faq-title">{tr('Frequently asked questions', $language)}</h1>
   <section id="technology" aria-labelledby="technology-title">
     <span id="records" aria-hidden="true"></span>
-    <h2 id="technology-title">How the data reaches the map</h2>
-    <p>Government datasets are collected, cleaned and standardized, with links back to their sources. Address lookups add coordinates, and matching connects related records. Dated releases supply the map, search and downloads through a Rust API.</p>
+    <h2 id="technology-title">{tr('How the data reaches the map', $language)}</h2>
+    <p>{tr('Government datasets are collected, cleaned and standardized, with links back to their sources. Address lookups add coordinates, and matching connects related records. Dated releases supply the map, search and downloads through a Rust API.', $language)}</p>
   </section>
   <section id="contributions" aria-labelledby="contributions-title">
-    <h2 id="contributions-title">Contributions</h2>
-    <p>You can suggest a facility, add evidence, suggest a correction, report a possible duplicate, or request a privacy review. Submissions are reviewed separately from the project dataset and do not automatically change a release.</p>
-    <p>After submitting, keep the private tracking link shown with your receipt to check its status.</p>
-    <p><a href={route('contribute')}>Contribute to the project</a></p>
+    <h2 id="contributions-title">{tr('Contributions', $language)}</h2>
+    <p>{tr('You can suggest a facility, add evidence, suggest a correction, report a possible duplicate, or request a privacy review. Submissions are reviewed separately from the project dataset and do not automatically change a release.', $language)}</p>
+    <p>{tr('After submitting, keep the private tracking link shown with your receipt to check its status.', $language)}</p>
+    <p><a href={route('contribute')}>{tr('Contribute to the project', $language)}</a></p>
   </section>
   <section id="help" aria-labelledby="help-title">
-    <h2 id="help-title">Help, support, and contact</h2>
-    <p>For a website problem, <a href={route('contribute/bug')}>report a bug</a> or <a href="mailto:untileverycageproject@protonmail.com">contact the project</a>.</p>
-    <p>Code contributions and issues are on <a href="https://github.com/eliperez-dev/UntilEveryCage" target="_blank" rel="noreferrer">GitHub</a>. You can also join the <a href="https://discord.gg/wbdTHzAZ4b" target="_blank" rel="noreferrer">project Discord</a> or <a href="https://ko-fi.com/untileverycageisempty" target="_blank" rel="noreferrer">support the project</a>.</p>
+    <h2 id="help-title">{tr('Help, support, and contact', $language)}</h2>
+    <p>{tr('For a website problem,', $language)} <a href={route('contribute/bug')}>{tr('report a bug', $language)}</a> o <a href="mailto:untileverycageproject@protonmail.com">{tr('contact the project', $language)}</a>.</p>
+    <p>{tr('Code contributions and issues are on', $language)} <a href="https://github.com/eliperez-dev/UntilEveryCage" target="_blank" rel="noreferrer">GitHub</a>. También puedes unirte a <a href="https://discord.gg/wbdTHzAZ4b" target="_blank" rel="noreferrer">{tr('project Discord', $language)}</a> o <a href="https://ko-fi.com/untileverycageisempty" target="_blank" rel="noreferrer">{tr('support the project', $language)}</a>.</p>
   </section>
 </article>
 <style>

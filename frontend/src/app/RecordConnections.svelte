@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { language, tr } from './language';
   import { LocalLocationRepository, type LocalProfile } from '../api/LocalLocationRepository';
   import { PublicGraphRepository, type GraphFilters } from '../api/PublicGraphRepository';
   import type { PublicGraphConnection } from '../api/publicGraphSchema';
@@ -106,14 +107,14 @@
 </script>
 
 <section class="connections" aria-labelledby="connections-heading">
-  <h2 id="connections-heading">Connections</h2>
+  <h2 id="connections-heading">{tr('Connections', $language)}</h2>
   {#if kind !== 'all' || confidence !== 'all' || (!loading && !error && rows.length > 0)}<div class="controls">
-    <label>Relationship <select bind:value={kind}><option value="all">All</option><option value="exact">Exact</option><option value="inferred">Inferred</option></select></label>
-    <label>Confidence <select bind:value={confidence}><option value="all">All</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label>
+    <label>{tr('Relationship', $language)} <select bind:value={kind}><option value="all">{tr('All', $language)}</option><option value="exact">{tr('Exact', $language)}</option><option value="inferred">{tr('Inferred', $language)}</option></select></label>
+    <label>{tr('Confidence', $language)} <select bind:value={confidence}><option value="all">{tr('All', $language)}</option><option value="high">{tr('High', $language)}</option><option value="medium">{tr('Medium', $language)}</option><option value="low">{tr('Low', $language)}</option></select></label>
   </div>{/if}
-  {#if loading}<p role="status">Loading connections…</p>
-  {:else if error}<p role="alert">Connections could not be loaded. <button type="button" onclick={() => retry += 1}>Retry</button></p>
-  {:else if !rows.length}<p class="empty">None</p>
+  {#if loading}<p role="status">{tr('Loading connections…', $language)}</p>
+  {:else if error}<p role="alert">{tr('Connections could not be loaded.', $language)} <button type="button" onclick={() => retry += 1}>{tr('Retry', $language)}</button></p>
+  {:else if !rows.length}<p class="empty">{tr('None', $language)}</p>
   {:else}<ul>
     {#each rows as edge (edge.connection_edge_id)}
       {@const endpoint = otherEndpoint(edge)}
@@ -124,19 +125,19 @@
         </div>
         <p class="meta"><span>{edge.connection_type === 'exact' ? 'Exact source' : `Inferred · ${humanize(edge.confidence_band)} confidence`}</span>{#if edge.connection_type === 'inferred'}<span>{Math.round(edge.confidence * 100)}%</span>{/if}</p>
         <details>
-          <summary>Method and evidence</summary>
+          <summary>{tr('Method and evidence', $language)}</summary>
           <dl>
-            <div><dt>Method</dt><dd>{humanize(edge.match_method)}</dd></div>
-            <div><dt>Source</dt><dd>{edge.provenance.source_ids.map(humanize).join(', ')}</dd></div>
-            <div><dt>Observed</dt><dd><time datetime={edge.observed_at}>{new Date(edge.observed_at).toLocaleDateString()}</time></dd></div>
-            {#if Object.keys(edge.signals).length}<div><dt>Signals</dt><dd>{Object.keys(edge.signals).map(humanize).join(', ')}</dd></div>{/if}
-            {#if edge.contradictions.length}<div><dt>Contradictions</dt><dd>{edge.contradictions.length} recorded</dd></div>{/if}
+            <div><dt>{tr('Method', $language)}</dt><dd>{humanize(edge.match_method)}</dd></div>
+            <div><dt>{tr('Source', $language)}</dt><dd>{edge.provenance.source_ids.map(humanize).join(', ')}</dd></div>
+            <div><dt>{tr('Observed', $language)}</dt><dd><time datetime={edge.observed_at}>{new Date(edge.observed_at).toLocaleDateString($language === 'es' ? 'es' : 'en')}</time></dd></div>
+            {#if Object.keys(edge.signals).length}<div><dt>{tr('Signals', $language)}</dt><dd>{Object.keys(edge.signals).map(humanize).join(', ')}</dd></div>{/if}
+            {#if edge.contradictions.length}<div><dt>{tr('Contradictions', $language)}</dt><dd>{edge.contradictions.length} {tr('recorded', $language)}</dd></div>{/if}
           </dl>
         </details>
       </li>
     {/each}
   </ul>
-  {#if nextCursor}<button class="more" type="button" disabled={loadingMore} onclick={() => void load(false)}>{loadingMore ? 'Loading…' : 'Load more'}</button>{/if}
+  {#if nextCursor}<button class="more" type="button" disabled={loadingMore} onclick={() => void load(false)}>{tr(loadingMore ? 'Loading…' : 'Load more', $language)}</button>{/if}
   {/if}
   <AphisReports {facilityId} {releaseId} {profile} {sourceId} {sourceFacts} />
 </section>

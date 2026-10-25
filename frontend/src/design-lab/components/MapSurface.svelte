@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { language, tr } from '../../app/language';
   /**
    * MapSurface is the composition boundary:
    * This component owns MapLibre event wiring. The private preview uses one
@@ -1483,15 +1484,15 @@
 <section
   class:diagnostics-active={diagnosticsOpen}
   class="map-surface"
-  aria-label="Map showing records"
+  aria-label={tr('Map showing records', $language)}
 >
   <div class="map-host" bind:this={host}></div>
   <div class="map-controls-wrap">
-    <div class="map-controls" role="group" aria-label="Map view">
-      <span class="map-controls-label">Map view</span>
-      <select aria-label="Map style" value={mapState.basemap} disabled={!nativeStyleReady} onchange={(event) => onbasemap(event.currentTarget.value as Basemap)}><option value="vector">Street</option><option value="satellite">Satellite</option></select>
+    <div class="map-controls" role="group" aria-label={tr('Map view', $language)}>
+      <span class="map-controls-label">{tr('Map view', $language)}</span>
+      <select aria-label={tr('Map style', $language)} value={mapState.basemap} disabled={!nativeStyleReady} onchange={(event) => onbasemap(event.currentTarget.value as Basemap)}><option value="vector">{tr('Street', $language)}</option><option value="satellite">{tr('Satellite', $language)}</option></select>
       <button class="map-camera-toggle" type="button" disabled={!nativeStyleReady} aria-label={cameraPitch > 0.5 ? 'Switch to 2D view' : 'Switch to 3D view'} aria-pressed={cameraPitch > 0.5} aria-describedby="map-camera-help" title="Right-drag to tilt and rotate" onclick={() => setCameraView(cameraPitch <= 0.5)}>{cameraPitch > 0.5 ? '3D' : '2D'}</button>
-      <small class="gesture-hint">Right-mouse to rotate / Left-mouse to pan</small>
+      <small class="gesture-hint">{tr('Right-mouse to rotate / Left-mouse to pan', $language)}</small>
       <span id="map-camera-help" class="sr-only">Right-drag to tilt and rotate. On touchscreens, use two fingers to tilt.</span>
     </div>
   </div>
