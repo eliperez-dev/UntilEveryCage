@@ -1,18 +1,23 @@
 # API contracts
 
-**Owner:** backend maintainers. **Purpose:** route interface contracts. The
-public V1 migration boundary remains documented in
-[`../frontend/v1-behavioral-contract.md`](../frontend/v1-behavioral-contract.md).
+Current wire formats come from schemas, implemented routes and contract tests.
+The [frontend guide](../frontend/README.md) owns presentation, not DTO shapes.
 
-| Contract | Label | Boundary |
-| --- | --- | --- |
-| [V2 contract index](v2-contract.md) | **Canonical** | Stable V2 API contracts and linked schemas. |
-| [Public OpenAPI document](public-openapi.json) | **Canonical** | Implemented public data GET operations for the self-hosted API explorer; shares the location schema and is checked against registered routes. |
-| [Public graph contract](public-graph-contract.md) | **Canonical** | Release-scoped public graph projection. |
-| [Private graph contract](private-graph-contract.md) | **Canonical** | Operator-only graph analysis. |
-| [Real preview contract](real-preview-contract.md) and [candidate DTO schema](real-preview-candidate.schema.json) | **Canonical** | Local/private preview API and import behavior. |
-| [MVP API contract](v2-mvp-contract.md) | **Reference** | Earlier MVP interface baseline; current supported DTOs are described by the active contracts. |
-| [Backend contract freeze](v2-backend-contract-freeze.md) | **Reference** | Accepted architecture constraints for implementation. |
+| Need | Owner |
+| --- | --- |
+| Location/search/facets/releases/exports and contribution routes | [V2 contract](v2-contract.md) |
+| Public explorer | [public-openapi.json](public-openapi.json) |
+| Location DTO | [v2-location.schema.json](v2-location.schema.json) |
+| Public graph | [public-graph-contract.md](public-graph-contract.md) |
+| Operator-only graph | [private-graph-contract.md](private-graph-contract.md) |
+| Private preview | [real-preview-contract.md](real-preview-contract.md), [candidate schema](real-preview-candidate.schema.json) |
+| Deferred wire fields | [gap ledger JSON](v2-product-convergence-gap-ledger.json): contract-scoped, not product readiness |
 
-Do not create sprint contract snapshots or duplicate API specs. Update the
-relevant contract and its source schema together.
+The retained [MVP](v2-mvp-contract.json) and
+[backend freeze](v2-backend-contract-freeze.json) machine records support
+compatibility tests. They are dated contract snapshots, not instructions to
+remove subsequently implemented features. Current product scope is only in
+[the roadmap](../PRODUCT-READINESS.md).
+
+Update the owning schema and focused drift tests with an API change. Do not
+create new sprint-specific contract copies.

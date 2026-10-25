@@ -1,5 +1,23 @@
 # Bounded large-corpus resilience rehearsal
 
+This is a diagnostic/test reference, not a current corpus inventory. Use
+[the roadmap](../PRODUCT-READINESS.md) and [source inventory](../source-status.json)
+for current state. Legacy tools do not replace approved-v0 acceptance.
+
+## Offline diagnostic references
+
+| Tool | Inputs and output |
+| --- | --- |
+| `pipeline/scripts/diagnostics/real_corpus_regression.py` | Legacy `static_data` snapshots; deterministic row-fingerprint sample and aggregate coordinate/category/identity strata |
+| `pipeline/scripts/diagnostics/real_corpus_report.py` | Authorized local acquisition manifests; counts known row artifacts separately from metadata/route-only evidence |
+| `pipeline/scripts/diagnostics/real_quality_evaluation.py` | Legacy snapshots; aggregate coordinate validity, conflicts and source-native identity opportunities |
+
+Supply a private `--output` and explicit `--as-of` where supported; inspect each
+tool's `--help`. Unknown/unavailable input is not zero. These tools do not prove
+fresh acquisition, real positional accuracy or cross-source identity, and do
+not import, geocode, publish or replace current source status. Their historical
+sample thresholds and totals describe the named run, not today's dataset.
+
 `pipeline/scripts/benchmarks/run_corpus_resilience.py` is the reusable lane for
 the private large-corpus failure modes that the real-corpus reports previously
 left unexercised. It expands only the row-free source-count distribution in

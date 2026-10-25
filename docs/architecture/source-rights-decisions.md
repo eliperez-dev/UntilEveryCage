@@ -77,3 +77,44 @@ Primary references checked for this review:
 Maintainer decisions remain: contributor publication terms, source/asset
 clearances and final release notice completeness. No license change or
 commercial-use permission was granted by this review.
+
+## Historical frozen-source terms references
+
+The following 2026-10-05 source review is retained from the retired v0 packet.
+It describes those sources/artifacts at that time, not new terms verification
+or an instruction to reopen completed dataset approvals. Current recorded
+artifact/release decisions remain authoritative.
+
+### Source-rights verification (2026-10-05)
+
+Current publisher pages were checked for the frozen sources below. This is
+licence/reuse evidence, not an artifact-scoped rights decision or privacy
+approval. Exact candidate artifact digests remain in the linked taxonomy
+inventory; do not substitute a current upstream download for the frozen bytes.
+Licence exceptions, source dates, attribution and no-endorsement conditions
+must accompany any approved output. A missing original capture remains
+`not_retained`, not retrospectively byte-verified.
+
+| Frozen source | Primary reuse evidence and remaining conditions |
+| --- | --- |
+| Australia NPI | [Exact Facilities CSV resource](https://www.data.gov.au/data/dataset/npi/resource/f83cdee9-ebcb-4f24-941b-34bb2f0996cf?inner_span=True) identifies CC BY 4.0; preserve Commonwealth/NPI credit and stated exceptions. This is the CSV, not the separately licensed GeoJSON resource. |
+| South Australia EPA | [Government resource metadata](https://data.gov.au/data/dataset/https-www-waterconnect-sa-gov-au-content-downloads-dewnr-topo-epa-activities-sag-shp-zip/resource/26e076f3-c37f-4089-8f28-3f7c9afd997e) records CC BY 3.0 Australia and approximate locations; publisher-side catalogue verification was unavailable in this check. |
+| Belgium FASFC | [Open-data terms](https://www.foodweb.favv-afsca.be/professionelen/praktisch/opendata/) support reuse with source/latest-update credit and non-misleading presentation; account for both operator-list and activity-code evidence. |
+| Brazil SIF | [MAPA resource](https://dados.agricultura.gov.br/pt_PT/dataset/servico-de-inspecao-federal-sif/resource/97277e92-264a-4dc0-9aea-f87b8ea93798) records CC Attribution; retain MAPA credit and assess excluded personal/third-party material separately. |
+| Ontario meat plants | [Catalogue](https://data.ontario.ca/dataset/provincially-licensed-meat-plants) records OGL-ON-1.0; contact data and third-party material are not cleared merely by that label. |
+| Denmark Find Smiley | [Download/use conditions](https://www.findsmiley.dk/om-smiley/statistik-og-data/hent-smileydata) require authority credit and prohibit logo use; displayed individual smiley status has currentness/design requirements. A dated facility snapshot is not a claim of current smiley status. |
+| Catalonia feed/SANDACH | [Exact national-government catalogue entry](https://datos.gob.es/es/catalogo/a09002970-registro-de-establecimientos-del-sector-de-la-alimentacion-animal-y-del-ambito-de-los-sandach) identifies `m48e-zdz9` and links Generalitat reuse licensing. Preserve source/update-date context, no endorsement and stated exceptions; this evidence is not a recorded release rights decision. |
+| France DGAL I and II | [Source lists](https://agriculture.gouv.fr/liste-des-etablissements-agrees-ce-conformement-au-reglement-ce-ndeg8532004-lists-ue-approved) and [legal notice](https://agriculture.gouv.fr/mentions-legales) require citation/integrity and distinguish non-commercial reuse from commercial/advertising reuse requiring prior request. Do not describe these snapshots as unrestricted commercial open data without an applicable basis. |
+| UK FSA | [Catalogue](https://www.data.gov.uk/dataset/2c80e0ce-ee1c-4f26-ba6f-1e1ae1bd8ee9/approved-food-establishments) records OGL; preserve the frozen snapshot date, attribution and licence exceptions. |
+| UK FSS | [Source portal](https://www.foodstandards.gov.scot/open-data-portal/approved-establishments-in-scotland) records OGL v3; retain Scotland-only scope, frozen edition and attribution. |
+| Italy 1069 and 853 | [1069](https://www.dati.salute.gov.it/it/dataset/stabilimenti-italiani-i-sottoprodotti-di-origine-animale/) and [853](https://www.dati.salute.gov.it/it/dataset/stabilimenti-italiani-gli-alimenti-di-origine-animale/) record IODL v2.0 and identify some coordinates as OSM-derived without identifying individual rows. Preserve attribution and assess the applicable ODbL/derived-database duties; do not silently label all coordinates exclusively Ministry-origin or impose a blanket OSM ban. |
+| Netherlands NVWA | [Copyright policy](https://www.nvwa.nl/service/copyright) establishes a CC0 default with item-specific exceptions and no implied endorsement; privacy/third-party rights remain separate. |
+| US FSIS | [Directory](https://www.fsis.usda.gov/inspection/establishments/meat-poultry-and-egg-product-inspection-directory) offers the CSV; [USDA rights policy](https://www.usda.gov/about-usda/policies-and-links) permits copying/distributing public-domain material, requests USDA credit and identifies exceptions. This supports a conditional reuse basis, not a blanket assumption that every embedded item is unrestricted or a requirement for fresh permission solely because the CSV lacks a licence banner. |
+
+Provider-derived geometry is separate evidence. [Geoapify terms](https://www.geoapify.com/terms-and-conditions/)
+and [geocoding documentation](https://www.geoapify.com/geocoding-api/) support
+storage/reuse subject to source attribution, OSM obligations and Geoapify credit
+on the free plan. Preserve datasource provenance; provider permission does not
+clear the original facility data, establish an operating-site address or resolve
+privacy eligibility. Mixed-source outputs must retain their distinct terms;
+this review does not establish one blanket licence for the combined dataset.

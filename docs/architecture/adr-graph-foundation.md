@@ -1,5 +1,10 @@
 # ADR: Accountability Graph Foundation
 
+Historical architecture rationale. Use [the public graph contract](../api/public-graph-contract.md)
+and [private graph contract](../api/private-graph-contract.md) for implemented
+behavior, and [the roadmap](../PRODUCT-READINESS.md) for current work. Older
+review-oriented candidate terminology is not a human-confirmed edge state.
+
 Status: accepted foundation; no production graph import or publication
 
 ## Decision

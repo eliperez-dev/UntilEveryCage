@@ -1,5 +1,11 @@
 # E1 frontend development dataset
 
+This is the historical fixture-generator contract, not the current real-data
+development baseline. Use [approved v0 development](development.md#approved-v0-development-baseline)
+for new data-backed acceptance and [the current frontend guide](frontend/README.md)
+for UI instructions. Synthetic fixtures supplement real data; they never
+silently replace it. The legacy rehearsal below describes that named population.
+
 The frontend launchpad consumes a dataset directory produced by
 `pipeline/scripts/fixtures/build_frontend_dataset.py`. The directory is a
 development boundary, not a release. It contains `manifest.json`,

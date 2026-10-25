@@ -129,14 +129,10 @@ keeps `release_promoted` false. A changed artifact, unchanged rerun, failed
 attempt, or review-required result is recorded as a new event; no run overwrites
 earlier evidence. The health index is private operational evidence only.
 
-## Small reviewed demonstration release
+## Release operations
 
-The bounded real-data demonstration lane is documented in
-[`docs/reviewed-demonstration-release.md`](../docs/reviewed-demonstration-release.md).
-Use `prepare-demonstration-release.py` to copy at most 25 already-ready,
-opaque-ID-selected observations from a private candidate into a new candidate,
-then use `record-demonstration-review.py` for an explicit release-scoped
-maintainer review. Neither command promotes or publishes. The current Denmark
-source remains blocked until terms, coverage, privacy, precision, and project
-approval are actually reviewed; do not create a review document that claims
-those decisions without an authorized maintainer's evidence.
+Use [source operations](../docs/architecture/source-operations.md#diagnostics-and-legacy-tools)
+for the older bounded demonstration helpers and [production operations](../docs/deployment/production-operations.md)
+for actual releases. Existing approved datasets do not need another generic
+review stamp. New source/artifact membership follows its recorded rights and
+release checks; do not use an old demonstration report as current source status.

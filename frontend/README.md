@@ -1,54 +1,34 @@
-# V2 frontend preview
+# V2 frontend development
 
-The Svelte 5/TypeScript production build remains a structural shell. A local,
-development-only real-preview mode connects MapLibre, the research index, and
-record evidence to the same-origin private API. It does not publish the data or
-fall back to synthetic records if the private service fails.
+The production client is Svelte 5/TypeScript with MapLibre, served by Rust/Axum.
+[Current UI instructions](../docs/frontend/README.md) own layout and copy;
+[development](../docs/development.md) owns the local API/data setup.
 
-## Routes
+## Routes and data modes
 
-- `#/map` — map; real MapLibre field when the local real-preview mode is enabled
-- `#/database` — paginated research index in local real-preview mode
-- `#/records/:id` — stable, directly addressable record evidence page in local real-preview mode
-- `#/contribute` — Add a facility by default; labeled task links switch contribution type
-- `#/about` — Overview; the About menu also links Sources & methodology
-- `#/about/help` — written guides and a controlled contribution walkthrough
-- `#/about/api` — public API documentation, Swagger explorer and bounded download links
+- `#/map`: map and selected facility detail.
+- `#/database`: search and paginated records; links open full pages.
+- `#/records/:id`: full facility page; old location routes remain aliases.
+- `#/database/api`: downloads, paginated API and self-hosted Swagger.
+- `#/contribute`: facility/evidence/correction/duplicate/privacy and bug intake.
+- `#/about` and `#/faq`: manifesto/counter and concise help.
+- `#/contribution-status`: submission tracking.
 
-The hash routes work under the `/v2-preview/` base path without server-side
-route rewrites. Old `#/locations/:id` links remain compatible. Unknown paths
-show a not-found state. The browser uses the Vite same-origin proxy; it never
-receives the private-preview token.
+Public-release mode uses eligible published projections. Private real-preview
+mode is a separately configured loopback workflow; tokens stay server-side in
+the Vite proxy. A fixture/local-artifact run is not public or fresh-source E2E.
+Do not silently substitute synthetic records when real-data acceptance is required.
 
-The Help tutorial contains blank UI only, has native playback controls and no
-autoplay, and has equivalent written steps. Refresh it when the contribution
-flow changes. Do not record real preview rows, filled submissions, receipts or
-operator screens.
-
-With a pilot-enabled loopback preview running, regenerate the blank walkthrough
-from `frontend/`:
-
-```powershell
-node scripts/capture-contribution-tutorial.mjs http://127.0.0.1:4173/v2-preview/
-```
-
-The recorder blocks API/private/external requests, submits nothing, and writes
-the reusable WebM under `public/tutorials/`. Review playback before committing it.
-
-The API page loads pinned, self-hosted Swagger assets only when opened. Vite
-serves the canonical `docs/api/public-openapi.json` and shared location schema
-together under `reference/`; builds emit the same files and Swagger license
-notices into `dist/reference/` for the existing staging command. Do not maintain
-copied specifications in `public/`. API execution is same-origin GET-only, with
-no online validator, remote spec configuration or credentials. Published-release
-eligibility still applies; private preview data are not an export source.
-CSV rejects datasets over 1,000 records; larger exports use paginated JSON.
-From the repository root, check API specification drift with
-`python -B -m unittest pipeline.tests.test_public_openapi_contract pipeline.tests.test_v2_contract_convergence`.
+The canonical OpenAPI/schema files are served under `reference/` and bundled
+with the self-hosted Swagger notices. Do not maintain copied specs in `public/`.
+Swagger executes same-origin public GET operations, not private/intake writes.
+The API supports full-release CSV, explicit bounded exports and cursor JSON.
 
 ## Frontend checks
 
-From `frontend/`, install the lockfile dependencies and run:
+From `frontend/`, install dependencies only when needed. For a small change,
+run its focused tests and applicable type/lint checks. The commands below are
+available gates, not a requirement to repeat every suite after every edit:
 
 ```powershell
 npm ci
@@ -107,6 +87,3 @@ database or browser map worker.
 For the populated browser route check, set `UEC_REAL_PREVIEW_URL` to the local
 preview and run `npx playwright test tests/e2e/real-preview-record-route.spec.ts`.
 It verifies both map and database entry points to a stable record URL.
-
-The legacy public application remains at the repository root under `static/`
-and `src/`. Local-preview APIs are not connected to the production shell.

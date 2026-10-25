@@ -3,6 +3,12 @@
 **Owner:** engineering maintainers. **Status:** Canonical operating contract for
 parallel repository work. Read it after the [documentation hub](../README.md).
 
+Use one integration branch (`eli/v2` currently) and `eli/<feature>` worker
+branches, with at most five total worktrees. Prefer Luna for routine delegated
+work when requested. Workers report completion or an unresolved blocker; avoid
+repetitive cross-agent status exchanges. The coordinator monitors active
+workers and continues integration rather than ending with unattended work.
+
 ## Assignment contract
 
 Give each agent one bounded outcome and one exclusive ownership set. An
@@ -64,9 +70,12 @@ and its supporting manifest/page.
 ## Integration and CI
 
 Integrate in dependency order: review ownership and commit scope; incorporate
-isolated source changes; resolve shared registry/contracts/migrations once;
-run focused checks for each changed component; then run the repository's
-standard pipeline and documentation/hygiene checks, followed by configured CI.
+isolated source changes; resolve shared registry/contracts/migrations once.
+Use focused checks during iteration and the standard pipeline when relevant
+to the integrated change, followed by required CI. Documentation-only changes
+need link/schema/documentation-contract checks, not a Rust/container rebuild.
+Do not repeat broad suites after every small edit. This does not disable or
+skip required CI; its configured triggers are separate from local test selection.
 For database-backed work, the canonical local pipeline command is
 [`pipeline/tests/run-standard.ps1`](../../pipeline/tests/run-standard.ps1);
 use its documented disposable environment and do not run it against a

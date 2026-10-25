@@ -1,19 +1,13 @@
-# Operations documentation
+# Operations references
 
-**Owner:** engineering and operations maintainers. **Purpose:** route practical
-runbooks and operational contracts. Product-wide release readiness is owned by
-[`../PRODUCT-READINESS.md`](../PRODUCT-READINESS.md).
+| Task | Read |
+| --- | --- |
+| Local setup and approved data baseline | [Development](../development.md) |
+| Source implementation | [Pipeline onboarding](../../pipeline/ONBOARDING.md) |
+| Refresh and import | [Source operations](../architecture/source-operations.md), [pipeline contracts](../../pipeline/contracts/README.md) |
+| Geocoding | [Worker and operator guide](../geocoding-worker.md), [separate enrichment contract](../async-location-enrichment-contract.md) |
+| Deployment and recovery | [Production](../deployment/production-operations.md), [private environment](../deployment/private-environment.md), [preview](../deployment/dev-preview.md) |
+| Performance | [Performance index](../performance/README.md) |
+| Parallel work | [parallel-agent-workflow.md](parallel-agent-workflow.md) |
 
-| Area | Documents | Label |
-| --- | --- | --- |
-| Local development and testing | [development.md](../development.md), [pipeline/README.md](../../pipeline/README.md), [pipeline onboarding](../../pipeline/ONBOARDING.md) | **Canonical** |
-| Deployment | [development preview](../deployment/dev-preview.md), [private environment](../deployment/private-environment.md), [production operations](../deployment/production-operations.md) | **Canonical** runbooks |
-| Refresh and import | [source operations](../architecture/source-operations.md), [pipeline contracts](../../pipeline/contracts/README.md) | **Canonical** |
-| Geocoding and local preview enrichment | [operator](../geocoding-operator.md), [worker](../geocoding-worker.md), [async location enrichment contract](../async-location-enrichment-contract.md) | **Canonical** |
-| Performance and recovery | [performance index](../performance/README.md), [E2E backup/restore](../../pipeline/tests/e2e/BACKUP-RESTORE.md) | **Canonical** |
-| Credential guidance | [Geocodio credentials](../security/geocodio-credentials.md) | **Reference**; never store credentials here |
-| Parallel implementation | [parallel agent workflow](parallel-agent-workflow.md) | **Canonical** operating contract |
-
-Operational evidence should be placed in generated reports/manifests and
-summarized in its canonical runbook or readiness authority. Temporary run logs,
-handoffs, and dated status Markdown are not durable documentation.
+Current readiness belongs in [the roadmap](../PRODUCT-READINESS.md), not runbooks.

@@ -166,3 +166,25 @@ its private outcome is verified, repeat both commands with limit 23. The
 configured limit is a conservative pilot allowance, not the provider account
 quota. See the row-free [pilot manifest](../data/manifests/au-npi-geoapify-pilot-20261003.json)
 for actual outcomes; no acceptance threshold was loosened.
+
+## Operator commands and credentials
+
+Supply `GEOAPIFY_API_KEY` through the private environment/secret store, then use
+the optional worker profile:
+
+```powershell
+docker compose -f docker-compose.pipeline.yml --profile geocoding up -d geocode-worker
+python pipeline/scripts/diagnostics/geocode-operator-status.py --pretty
+```
+
+The status command reports aggregate queue/provider/country counts, usage and
+retry/throughput information, never addresses, queries, IDs, credentials or
+provider responses. A null ETA means insufficient throughput evidence.
+Acquisition/import and queued enrichment remain separate persisted jobs.
+Use the configured provider limit/accounting, not an invented pause window.
+
+Historical Italy scripts use `GEOCODIO_API_KEY` only during provider requests;
+importing modules/tests does not contact Geocodio. Any key formerly committed
+must be treated as compromised and rotated with the provider. Removing a key
+from code does not revoke it. Never paste keys into docs, command arguments,
+reports or Git. Provider configuration/terms remain separate from publication.

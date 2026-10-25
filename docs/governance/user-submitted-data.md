@@ -1,141 +1,67 @@
-# Community contributions and accounts proposal
+# Community contribution contract
 
-**Owner:** project maintainers; feature design owned by the Community Contributions Feature Orchestrator. **Purpose:** define a maintainable contribution feature and its implemented boundary. **Status:** approved local MVP integrated; v0 acceptance and production launch remain pending. Investigation date: 2026-10-04.
+**Owner:** project maintainer. Intake is implemented; accounts and automatic
+publication are not. [ETHICS.md](../ETHICS.md) governs screening, removal and
+publication. [Frontend instructions](../frontend/README.md) own visible UX;
+[production operations](../deployment/production-operations.md) own roles,
+secrets, caps and retention; [API contract](../api/v2-contract.md) owns routes.
 
-Recommend an account-free, capped pilot covering facility tips, evidence links, corrections, duplicate reports and private removal requests. Offer a private receipt for basic status; expose only screened claims through an explicitly selected community profile. Defer attachments, accounts and community reviewer tools. This provides useful contributions without a social platform or mandatory factual review of every claim.
+## Implemented scope
 
-[ETHICS.md](../ETHICS.md), especially sections 2, 5, 6, 8, 9 and 12, governs. The existing Agent Orchestrator retains integration, releases, the canonical branch, worktree allocation and the overall roadmap. This proposal neither changes [product readiness](../PRODUCT-READINESS.md) nor assumes the separate v0 release candidate is ready.
+| Type | Purpose |
+| --- | --- |
+| Facility | A new facility/location tip |
+| Evidence | A source or explanation supporting an existing record |
+| Correction | A proposed change to a target record |
+| Duplicate | A proposed relationship between two records, not an automatic merge |
+| Privacy/removal | A private request concerning a record or location |
 
-## Verified capabilities and remaining work
+Bug reports use the same restricted intake infrastructure as a separate kind;
+they are not facility claims and must be saved, not composed as email drafts.
+No uploads, accounts, automated email, password recovery or arbitrary source-URL
+fetching are part of this implementation.
 
-Repository findings describe implementation evidence, not audited deployment behavior.
+Contributors receive a Track submission link. Its secret capability belongs in
+the fragment; the client sends credentials in a POST body for status lookup.
+Status returns processing state and an eligible link, not raw intake, contact,
+operator notes or another person's submission. Do not log tokens or include
+them in URL queries. Optional email is separately stored private contact, not
+a subscription or authentication.
 
-| Area | Existing foundation | Missing work |
-| --- | --- | --- |
-| Intake and accounts | [Axum router](../../src/main.rs) provides public and private/development reads. [Preview controls](../../frontend/src/app/PreviewMasthead.svelte) for submission and sign-in are disabled placeholders. | Submission writes, contributor authentication, receipt lookup and an operational moderation queue. |
-| Provenance and releases | [Initial schema](../../pipeline/migrations/001_initial.sql) provides source records, artifacts, observations, geocoding evidence and release membership; [origin types](../../pipeline/migrations/012_source_origin_type.sql) include user submissions. | Isolated intake/contact storage, submission versions, screened derivatives and links to source-qualified evidence. |
-| Community gates | [Review events](../../pipeline/migrations/015_publication_review_events.sql), [community publication](../../pipeline/migrations/021_community_unreviewed_publication.sql) and [release scopes](../../pipeline/migrations/022_publication_safety_scopes.sql) separate summary gates. [Capability matrix](../frontend/capability-matrix.json) records explicit community-profile API support. | Rich factual-review events/outcomes, contribution workflows, persistent frontend warnings and separate counts. Existing unreviewed-community evidence is synthetic, not end-to-end feature readiness. |
-| Records and discovery | [V2 API](../api/v2-contract.md) supplies facility/location detail, bounded search, facets, exports and release context; [public graph](../api/public-graph-contract.md) supplies facility/organization summaries. | Submission/evidence DTOs and stable submission URLs. The [shared record design](../frontend/release-and-record-model.md) exceeds current public record families; all-record search is future. |
-| Classification and location | [Versioned taxonomy](../../pipeline/migrations/055_versioned_taxonomy_assignments.sql) and [async enrichment](../async-location-enrichment-contract.md) preserve mappings and location uncertainty. | Screened contribution handoff, approved provider eligibility and required public provenance fields. Adapt existing workers; do not create another geocoding pipeline. |
-| Privacy and operations | [Suppression runbook](suppression-runbook.md) documents source-key restrictions, geocoding guards, release gates and restore replay with synthetic evidence. | Submission-specific deletion/propagation, least-privilege writes, actual retention/log/provider settings and staffed triage. [Policy checklist](policy-implementation-todo.md) contains open controls. |
+## Data and access boundaries
 
-The [API gap ledger](../api/v2-product-convergence-gap-ledger.md) defers richer evidence, geocoder, review and approval metadata. Private stored fields are not automatically public capabilities. Preserve legacy wire values such as `official` and `user_submitted`; use precise policy terminology in visible copy. Any later migration preserves original values and provenance rather than silently relabeling history.
+Production serving reads and community intake use separately restricted
+connections. The public serving role must not read intake/contact tables.
+Operator review requires its distinct token, never a contributor capability.
+Use the production runbook for exact configuration and grants.
 
-## Accounts and tracking alternatives
+Submissions do not create curated facilities, release membership, map pins,
+graph edges or source records. An operator `link_community` action can link
+a screened submission only to an already eligible community source record
+and named release. It does not publish intake text or coordinates.
 
-Accounts are unnecessary for the first useful version. Identity does not establish factual accuracy or publication eligibility. Corrections and privacy/removal must always work without an account.
+Community browsing requires an eligible published community release and
+explicit community context. Keep unreviewed community claims, warnings and
+counts separate from the curated project dataset. Preserve original source
+origin when evidence is reviewed or promoted.
 
-| Option | Benefit | Tradeoff and recommendation |
-| --- | --- | --- |
-| Account-free submission and receipt | Lowest friction; per-case status without identity collection. | Receipt loss has no identity-based recovery; theft exposes limited status. Recommended MVP. Do not promise anonymity before auditing infrastructure logs. |
-| Email status without accounts | Cross-device updates and follow-up. | Address verification, delivery, mail abuse, bounces and retention add work. Keep optional contact for requested follow-up; defer automated status email. An unverified email cannot establish ownership. |
-| Authenticated contributors | Recovery and combined history for repeat contributors. | Identity provider, sessions, authorization, account deletion and support. Defer until real use demonstrates a need. |
+## Operations and acceptance
 
-Proposed receipt lookup returns only processing state and an eligible public link, never raw intake, contact or internal notes. Use a cryptographically random secret stored as a hash, scoped to one case, revocable and expiring under the retention schedule. Keep it out of URL queries, referrers and logs; use a paste-in form, no-store responses and rate limits. A public case ID grants no access. This view-only capability cannot edit or publish records. Its security review can adapt secure-generation principles from [OWASP token guidance](https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html); it is not a password-reset implementation.
+- Use bounded fields, escaped text, URL validation, rate/admission caps and
+  separate contact storage. No hidden uploads or automatic URL fetching.
+- Prioritize privacy/removal; suppress affected public records through the
+  [suppression runbook](suppression-runbook.md). Removing intake and suppressing
+  its target are different actions.
+- Apply configured payload/contact/capability expiry. Authenticated
+  `POST /api/private/community/maintenance` needs a verified periodic caller
+  for idle cleanup; intake-triggered cleanup alone is not a schedule.
+- Retain payload-free decision events. Restricted information must not return
+  through restore, historical releases, caches, graph or exports.
+- At cutover verify operator access, queue ownership/caps, retention maintenance
+  and removal/recovery. Implemented forms alone do not establish staffed operation.
+- Test all five kinds, bug persistence, target links, status isolation/revocation,
+  malformed inputs, admission limits and no automatic curated-data mutation.
 
-If accounts later become justified, prefer managed passwordless email over custom passwords/recovery or self-hosted identity. Supabase Auth is a candidate, not a chosen dependency: it supports [OTP/magic links](https://supabase.com/docs/guides/auth/auth-email-passwordless) and [public-key JWT verification](https://supabase.com/docs/guides/auth/jwts). Axum compatibility is an architectural inference: use a maintained verifier, validate signature/issuer/audience/expiry and map the subject to restricted contributor records. This does not require moving the application database. Verify actual hosting and deletion behavior before selection.
-
-Passwordless access removes password resets but depends on mailbox access; lost-mailbox recovery still needs a conservative support policy. [Custom SMTP](https://supabase.com/docs/guides/auth/auth-smtp) is needed for general production email; the default service is restricted and intended for testing. Domain authentication, delivery/bounces and abuse remain maintenance. [Auth rate limits](https://supabase.com/docs/guides/auth/rate-limits) do not replace submission limits. [Sessions](https://supabase.com/docs/guides/auth/sessions) default to indefinite duration, use rotating refresh tokens and have paid-plan timeout controls; logout does not necessarily revoke an issued access token immediately. Later implementation must test expiry/revocation, XSS/CSRF and key rotation, choosing one supported browser-token or server-session model. Contributor permissions never grant operator authority, and the existing shared private API token must not become contributor authentication.
-
-As checked on 2026-10-04, [pricing](https://supabase.com/pricing) lists Free with 50,000 monthly active users and Pro from USD 25/month with 100,000. Email, infrastructure and overages add costs; recheck before selection. Managed authentication reduces password maintenance but adds providers and email operations. No account provider is needed for this MVP.
-
-## Minimal contributor flows
-
-Use the shared **Map, Database | Contribute, About** navigation. Contribute opens Add a facility and uses visible task links, labeled **Choose a contribution type**, to switch the unified form, alongside status lookup and project links. About's text-only menu exposes Overview, Sources & methodology, Help, and API & downloads. Help provides short written guides and controlled tutorial media; the API explorer exposes only public data GET routes and retains published-release boundaries. Shared record details preselect the public record ID for evidence where available. Preserve compact dark styling, keyboard access and translation-ready structure. Add no contributor dashboard.
-
-| Contribution | Minimal input | Treatment |
-| --- | --- | --- |
-| Facility/location | Facility label; optional evidence URL, country/locality, activity and observation date. Precise location is optional and restricted. | New claim with its own ID; never automatic curated creation. Eligible claims may remain list-only. |
-| Evidence | Target record/claim reference and either a public source URL or bounded explanation distinguishing source statements from interpretation. | Related evidence claim; no unscreened narrative or preview becomes public. |
-| Correction | Public ID/link, affected field, proposed correction and evidence. | Restricted change request; no silent mutation. A screened derivative may be a community claim. |
-| Duplicate report | Two public IDs/links and reason. | Identity-review hint, not a merge or confirmed relationship. |
-| Privacy/removal | Public reference, concern and requested action; optional private contact/evidence. | Private priority case only; never a public claim or account-gated flow. |
-
-Before submission, explain that intake is private and publication conditional. Prohibit personal details, threats and targeting; request only necessary evidence, without requiring identity documents or home addresses. Store optional contact separately. Show the receipt once and provide simple status lookup. A lost receipt does not block a new report. Keep the private route in [ETHICS section 9](../ETHICS.md#9-accountable-correction) available when ordinary contributions pause.
-
-Community exploration is an explicit Map/Database profile selection. Show **Unreviewed community claim — not verified by Until Every Cage** before access, persist context on lists/maps and repeat it on every record and direct link. Reviewed claims show reviewer role, scoped outcome and separate approval status; never a generic verified badge. Community counts describe claims and remain separate from curated facility totals. API objects and every exported row carry origin, factual review/role/outcome, approval and publication/profile context; downloads explain scope and limitations. Gate unsupported record types until their public DTO and safety contract exists.
-
-## Data boundaries and lifecycle
-
-Recommend restricted intake tables/schema in the existing PostgreSQL deployment, with separate contact storage and permissions. The public reader has no intake/contact access; the intake writer has no curated publication authority. No additional database, general CMS, message broker or object store is warranted. Reuse existing application/background infrastructure where suitable.
-
-Keep source origin, factual-review events, privacy eligibility, project approval and publication independent. Review events retain actor role (community or project), date, scope, evidence and outcome. Factual confidence and spatial precision are separate again. Government evidence cited by a contributor does not turn their interpretation into a government statement; review or promotion never changes origin.
-
-1. **Received:** create restricted intake/version and receipt. No public query, indexing, export, graph influence or provider geocoding.
-2. **Screened:** mechanical checks reject abuse, restrict harmful content or route uncertainty to an exception queue. Record actor/time, rule version and reason. A validated narrow ruleset may establish public eligibility; absence of flagged words cannot. Failure or ambiguity stays private.
-3. **Community publication:** create an allowlisted screened derivative, source-qualified evidence and explicit community membership. Reuse release/profile read gates: existing community support is release-backed, not a live feed over raw intake. Publication authorizes display, not factual endorsement. Rejected/restricted/removed material remains inaccessible.
-4. **Correction or factual review:** append versions/events with outcomes such as corroborated, disputed, inconclusive or rejected. Rescreen revised payloads; new versions do not inherit approval. Withdraw rejected claims; safe history remains subject to current restrictions. Community review never grants project approval.
-5. **Restriction/removal:** promptly suppress credible exposure concerns, then separately decide retention/redaction/deletion. Receipt status and public notices reveal no removed payload. Only a documented review can lift restrictions.
-6. **Optional curated promotion:** an authorized maintainer separately approves a specific version for a named curated release, with source lineage and explicit identity reconciliation. Preserve the submission link and distinct identity; prevent duplicate counting.
-
-After screening, reuse taxonomy, source statements, uncertainty and async enrichment. Recheck restrictions before enqueue and provider execution; applicable source/provider contracts must permit the handoff. Geocoding never grants publication eligibility. Remove confirmed residential/private precise locations; suppress uncertain mixed-use locations. Use safe coarse or unmapped representations without guessing a point. Database remains useful without map coordinates.
-
-Reuse existing graph rules only with eligible endpoints and evidence. Exact and inferred edges remain discoverable with confidence, signals, contradictions and ruleset provenance; no per-edge human confirmation is required. Raw submissions cannot inject curated edges or silently merge identities. Submission relationships remain explicit and subject to endpoint/evidence privacy and profile gates.
-
-## Screening and solo-maintainer workload
-
-Start with links and structured fields; disable uploads, embedded media and arbitrary URL fetching. This avoids an initial malware-scanning, image-redaction, metadata-stripping and public-attachment service. Later fetching requires SSRF/redirect controls; never serve unscreened originals. Public availability upstream is not privacy permission.
-
-Automate field/type bounds, idempotency, rate/admission caps, duplicate hints, safe URL validation, escaped rendering and suppression checks. Minimize/expire operational identifiers. Add a disclosed abuse challenge only when needed, with provider/privacy/accessibility review. Hold personal contacts, worker details, residential/mixed-use concerns, targeting, contested source rights and uncertain locations. Do not send raw claims to external screening services by default.
-
-A narrow automation candidate is an evidence link to an already eligible public record, from a reviewed source allowlist, exposing only safe structured fields. Domain allowlisting and an eligible target are insufficient alone: validate the URL and derivative for equivalent disclosures. New precise locations, arbitrary narrative and ambiguous facility tips remain exceptions. Enable automatic eligibility only after bounded policy tests and maintainer review; otherwise keep the affected claims private. Screening is not factual verification, and broad arbitrary submissions cannot be promised automatic publication.
-
-Use one private queue prioritizing exposure/removal and then screening exceptions; optional factual curation is a lower-priority batch. Maintainers decide uncertain residential status, contested rights/identity, restriction lifts, exceptional retention/deletion, legal demands and curated approval. Factual review of every eligible unreviewed claim is unnecessary.
-
-Measure arrivals, exception rate, queue age and time per case through aggregate counters. Before opening the pilot, set an intake cap and backlog pause threshold from actual capacity. Pause ordinary intake/publication when overloaded while retaining private reports and urgent suppression. Publication needing human approval pauses without an authorized reviewer. No staffed SLA, zero-moderation promise or assumed backup is justified.
-
-Before launch, set justified retention/review periods for rejected intake, unresolved claims, contact, receipts, logs and backups. Safe evidence is append-only by default; harmful/personal material may require authorized deletion. Keep payload-free audit events. Restrictions/removal cover direct links, source text/URLs, geocoder queries, graph, map, search, exports, previews, caches and historical releases. Reimports, renewed geocoding and restores must not revive removed details. Extend the [removal runbook](private-data-removal-runbook.md) to submission references and dependencies. Verify actual provider/deletion behavior and assess preservation obligations where relevant; this design neither establishes legal compliance nor guarantees recall of third-party copies.
-
-## Acceptance criteria
-
-Before exposure, demonstrate with synthetic cases that:
-
-- All five types work without accounts; contact/private reports stay private, and one receipt cannot access another case or raw payload.
-- Unscreened/rejected/restricted claims never enter public surfaces. Eligible unreviewed claims require explicit community context, persistent warnings, complete status fields and separate counts.
-- Intake/review cannot mutate curated records or approve releases. Changed versions need new decisions; promotion is independently authorized and traceable.
-- Classification, precision and graph preserve evidence/uncertainty. No provider call precedes eligibility; exact/inferred edges do not require individual human confirmation.
-- Spam bursts, malicious text/URLs, forged receipts and publication-role misuse fail safely. Screening cannot override suppression.
-- Removal propagates across controlled surfaces, reimports, enrichment, historical access and restore. Authorized private deletion addresses dependencies without copying payloads into audits.
-- A solo maintainer can triage a tabletop queue, pause publication and urgently suppress, using verified access, retention settings and provider/log disclosures. Unclosed policy/API gaps restrict affected capabilities.
-
-## Bounded sequence for later approval
-
-Follow **Plan → Code → Integrate → Test/CI → Cleanup**:
-
-1. **Plan:** overall Agent Orchestrator chooses timing, exclusive paths and checkout allocation. Branches use `eli/<feature>` within five total worktrees. Agree pilot scope, operator authority, screening, retention and DTO/access boundaries. Resolve relevant policy gaps without changing v0 readiness.
-2. **Code:** implement restricted intake, receipts and one operator queue; then screened derivatives/community membership and minimal shared UX. Reuse provenance, taxonomy, enrichment and graph. Public exposure remains disabled until gates pass.
-3. **Integrate:** overall orchestrator reviews shared schemas, contracts, wire types and suppression lineage and chooses integration timing. This feature owner does not merge or allocate the canonical branch.
-4. **Test/CI:** run focused synthetic boundary/security/removal checks, the standard disposable pipeline gate and configured CI. Verify warnings, accessibility, counts, exports and absence handling. Audit deployment/privacy before a capped pilot; tests alone are not launch approval.
-5. **Cleanup:** retain canonical docs and sanitized evidence, remove task infrastructure through the overall orchestrator, verify retention jobs and adjust admission from measured workload. No parallel plans/status documents.
-
-Defer accounts, automated email updates, uploads, comments, reviewer reputation, gamification, social feeds, dashboards, broad arbitrary-source auto-publication and automatic curated promotion. Extend evidence/review DTOs only as needed for the pilot, rather than implementing every future record family.
-
-## Implemented local MVP and remaining boundaries
-
-[Migration 066](../../pipeline/migrations/066_community_contributions.sql) and the [community module](../../src/community.rs) add bounded intake for all five types, separate contact storage, hashed per-submission receipts, an independently authenticated operator queue, fixed-category dispositions and immutable payload-free events. Unknown fields, oversized bodies, invalid coordinate pairs and credential-bearing source URLs are rejected. Source URLs are stored without fetching. Capacity admission is serialized in PostgreSQL; existing socket-client rate limits also apply. All community responses, including outer middleware failures, use `no-store` and `no-referrer`.
-
-The [contribution interface](../../frontend/src/app/CommunityContributions.svelte) supplies a map pin picker and keyboard coordinate entry. A pin supplies a contributor-selected coordinate pair directly: no geocoding or reverse-geocoding call is made. It remains an unverified private claim. The picker reuses the existing OpenStreetMap basemap, with attribution and provider-request disclosure; it never reads the device's location. The receipt is shown once and stored only in page memory, as is the distinct operator credential. Explicit copy controls explain that the Submission ID identifies intake and the Private receipt authorizes status lookup; a Record ID instead identifies an existing facility. Status lookup sends both receipt values in a POST body and explains each processing state in ordinary language.
-
-The maintainer separately authorized optional contact email on 2026-10-05. It is private follow-up information, stored separately and omitted from the claim, queue, status, receipt and public outputs. There is no email delivery, verification, account or receipt recovery service, and the form says automated updates are unavailable. The current disposable test retains contact and receipts for one day; it does not preserve a notification list for a future launch. Before email updates, approve purpose/retention and notification preferences, verify recipient ownership, implement restricted contact access and bounded delivery/retry controls, and prove deletion. Do not silently turn existing contact entries into subscriptions.
-
-The maintainer's 2026-10-04/05 UX revisions use a consistent styled **Map, Database | Contribute, About** header. Contribute is a direct link, defaults to Add a facility, and switches task fields through visibly labeled links. Database groups Browse records, Downloads and API documentation; About groups Overview (the manifesto), Sources & methodology, FAQ and Help. Menus have no arrows; old links remain aliases. FAQ complements the methods page. A compact shared footer and Overview/Contribute invite developers to contribute to the open-source code on GitHub, distinct from data submissions and data licensing. The [license review](../architecture/source-rights-decisions.md#license-alignment-review-2026-10-05) records code/compilation/upstream boundaries and unresolved publication rights. Pages use compact type, modest spacing and short copy. Facility names are required; country and source links are optional. Unknown country/source stay unknown and are not inferred from the selected point. Evidence identifies an existing record and needs either a link or an explanation; it remains separate pending review rather than immediately editing that record. Private forms use plain labels and one concise review notice; technical provider details belong in methodology, while map attribution and public unreviewed-community warnings remain visible. Validation, unavailable service, receipt lookup and capacity errors must have distinct messages without echoing submitted material.
-
-Bug reporting is a Contribute form type: compose an email or open a GitHub issue using a short description/reproduction template. Email remains available without an account. Drafts remain in page memory; the user sends the report. GitHub issues are public and are not a route for private record evidence or removal requests. Bug reports do not create facility claims, release members or receipts; no additional tracking service is introduced.
-
-Screening in this MVP is an explicit operator privacy/abuse disposition. Automated factual review and automated privacy eligibility are absent. This imposes manual privacy triage, without requiring factual confirmation of every claim or graph edge. Removing/restricting a submission clears its payload, contact, receipt hash and public link, retaining a minimal decision tombstone. It does **not** remove the referenced facility: credible target-record exposure concerns still require the [suppression runbook](suppression-runbook.md). Default queue views show pending cases; explicit status views let the operator revisit screened/published cases.
-
-Public claim reads expose only linkage metadata and persistent unreviewed/not-approved warnings. `link_community` requires a screened submission and an **already released source-record UUID** in the selected live community projection. The public `record_id` is its facility UUID. Each list/detail/receipt link rechecks publication, privacy, suppression and manifest gates. Privacy/removal requests cannot be linked. Counts describe linked claims, not facilities; lists fail closed beyond 500 linked candidates. Released facility detail links carry explicit community profile/release context.
-
-No submitted point creates a source record, release member, geocoder job, graph edge or map feature. Creating a screened derivative and publishing a newly submitted pin are the principal remaining product steps. Community map/profile selection, public narrative/evidence DTOs, revision history, retry/idempotency, finer database roles and an independent submission-removal restore ledger remain deferred. Current application DB credentials can read restricted intake: the proposed least-privilege role split is not implemented. Existing source suppression remains live; submission-specific backup restore/replay is unproved. Production enablement and non-loopback pilot binds are refused.
-
-Local configuration, route contracts and verification commands are maintained in [development](../development.md#local-community-contribution-pilot) and the [API contract](../api/v2-contract.md#local-community-pilot). Retention expiry clears contact and claims while retaining tombstones/events through the authenticated maintenance endpoint. Expired receipts immediately stop authorizing status, but idle database deletion needs a scheduled maintenance caller. No scheduler or audit-tombstone expiry policy is provided: choosing and proving those are a launch requirement, as are staffed triage, terms/retention review and deletion/restore controls. Local test values are synthetic settings, not approved retention or staffing commitments.
-
-UI verification on 2026-10-05: 170 frontend unit tests and 40 distinct focused Chromium checks passed, including Database/About navigation, server-side category query/pagination reset, public record detail/profile routing, download availability and failure states, optional email privacy, receipt copy/fallback and status lookup, legacy aliases, tutorial playback and the public Swagger explorer. The publication-status regression also checks a missing/restored public link without promising availability. Frontend type checking, lint, architecture boundaries and the production build passed; repository hygiene and 12 public API/DTO contract tests passed. Fresh independent design evaluation passed. Browser cases use blank UI or synthetic API responses and block external map tiles; they do not prove a retained-database connection, provider availability, promoted-release availability or production readiness.
-
-Earlier unchanged backend verification passed 124 Rust tests, the disposable PostgreSQL/API intake proof and 12 API-contract checks. A browser flow submitted a name-only facility and retrieved its receipt status through the real local API against a separate synthetic database; no user submissions were inspected. The isolated standard gate applied 63 migrations and passed 517 Python tests with 31 expected skips. Its adapter suite passed 73 tests and failed one existing registry assertion because the unchanged registry includes `nl` while the unchanged test expects the older country set. The full standard gate is therefore not green. The self-managed full-E2E/CI path has not run remotely; no production, real-provider or submission-restore certification is claimed.
-
-## Decisions requiring the project owner
-
-What triage time/backlog capacity can the authorized maintainer commit, and has any backup actually agreed to serve? These determine admission and pause limits. Retention and public terms also require appropriate maintainer review before launch.
-
-The local MVP was separately authorized after the investigation. This document grants no production deployment or identity-provider authorization. Remaining triage capacity, retention, terms and operational controls require maintainer review before launch.
+Accounts, contributor history, email delivery and screened community publication
+may be considered later through [the sole roadmap](../PRODUCT-READINESS.md).
+Do not reintroduce an accounts-provider proposal or a separate feature roadmap.

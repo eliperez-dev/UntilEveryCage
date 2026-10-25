@@ -1,5 +1,6 @@
 {
   "spec_version": "e1-ui-states-1",
+  "authority": "Historical E1 state-coverage reference. Current copy, map symbols, routes and controls are specified only by docs/frontend/README.md; do not restore superseded display requirements from this matrix.",
   "scope": "public Map, Database, shared record detail, imagery controls, and public graph",
   "states": [
     {"surface":"app","state":"first_load","required_behavior":"Show shell, release/profile context, accessible loading status; do not request device location."},

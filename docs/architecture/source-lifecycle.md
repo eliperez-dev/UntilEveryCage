@@ -32,3 +32,18 @@ entry points may remain as thin compatibility shims, but new stages should be
 implemented only in the source-owned package. Use the
 [`country-source adapter template`](../../pipeline/contracts/SOURCE-ADAPTER-TEMPLATE.md)
 for new packages.
+
+## Facility and evidence source kinds
+
+`facility_master` supplies facility observations; `evidence_event` supplies
+dated registrations, reports, inspections or enforcement events. The shared
+runner rejects source-kind/capability mismatches. Evidence events retain
+source-native certificate/customer/report identifiers, dates and artifact
+lineage; they are not new facilities or input to the generic facility importer.
+Missing identity remains unresolved. The private evidence sink is idempotent;
+linking an event to a public record uses the separate release-scoped evidence
+projection, not automatic publication of the event payload.
+
+Retain source addresses, coordinate evidence and classifications in permitted
+private provenance. Release presentation and restrictions are separate from
+acquisition; do not strip fields from adapters merely to simplify the map.

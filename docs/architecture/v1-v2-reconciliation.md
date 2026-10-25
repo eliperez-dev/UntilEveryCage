@@ -1,5 +1,12 @@
 # V1-to-V2 reconciliation
 
+This is migration reference, not current product readiness. The dated
+`data/manifests/legacy-files.csv` and `legacy-status.json` snapshots retain
+historical metadata, including old documentation reports since removed by the
+docs cleanup. Those reports remain recoverable in Git. Do not treat historical
+file totals or `present` states as a fresh inventory; no underlying source data
+was deleted by removing the reports. Regenerate diagnostics for a new audit.
+
 `pipeline/reconciliation/crosswalk.py` produces a row-free comparison of a
 legacy V1 snapshot and one private V2 adapter run. It is a review instrument,
 not an identity resolver and not a release gate by itself.

@@ -77,3 +77,12 @@ private parse/normalize/validate/quarantine staging. Unknown classifications,
 unresolved coordinates, suspicious identity changes, and source disappearance must
 remain explicit review outcomes. No geocoding, release promotion, API ingestion, or
 publication is implied by acquisition approval.
+
+## Unresolved inquiry questions
+
+The retired inquiry document was an unsent draft, not permission received.
+For BLtU specifically, establish the exact dataset licence/metadata URL,
+permitted periodic export route/rate, artifact retention and redistribution
+conditions, attribution, treatment of addresses/activity fields and publisher
+correction/withdrawal obligations. Do not borrow licence metadata from another
+BVL product or mistake the pesticide API for an animal-facility register.

@@ -15,3 +15,15 @@ The typed adapter preserves repeated activity columns and source evidence,
 quarantines schema and mapping anomalies, emits shared health evidence, and
 cannot create a release. Address/coordinate review, BVL reuse terms, and human
 publication approval remain blocked.
+
+## Older adapter foundation
+
+`pipeline/germany/` is the earlier restricted local-artifact foundation, not
+another live acquisition path. Its synthetic tests run with
+`python -m unittest -v test_adapter.py` from that directory. Its narrow prototype
+mapping accepts CP/GME as processing and SH as slaughter; unknown codes retain
+their values in quarantine. The BLtU positional profile preserves repeated
+headers, irregular row lengths and distinct current/legacy approval IDs.
+Schema/config/mapping hashes and diagnostics do not establish public readiness.
+Use this source-owned page for implementation instructions and
+[the Germany assessment](../../../docs/germany-source-assessment.md) for research.

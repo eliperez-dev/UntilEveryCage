@@ -53,7 +53,7 @@
       "status": "implemented_tested",
       "evidence": [
         {"path": "docs/ETHICS.md", "line": 1},
-        {"path": "docs/real-v2-rehearsal.md", "line": 1},
+        {"path": "pipeline/scripts/maintenance/rehearse_real_v2.py", "line": 1},
         {"path": "pipeline/tests/test_real_v2_rehearsal.py", "line": 1}
       ],
       "limit": "Legacy data remains a compatibility/rehearsal population until each source has a current pipeline."
@@ -66,7 +66,7 @@
       "evidence": [
         {"path": "docs/architecture/source-lifecycle.md", "line": 3},
         {"path": "docs/current-geospatial-readiness.md", "line": 42},
-        {"path": "docs/current-reacquisition.md", "line": 1}
+        {"path": "data/manifests/current-reacquisition-2026-09-16.json", "line": 1}
       ],
       "limit": "The current-corpus audit explicitly reports unavailable private handoffs locally; no complete fresh-source claim is made."
     },
@@ -357,8 +357,8 @@
       "status": "prototype_only",
       "evidence": [
         {"path": "docs/VISION.md", "line": 1},
-        {"path": "docs/story/flagship-scale-evidence-spec.md", "line": 1},
-        {"path": "docs/story/storyboard.md", "line": 1}
+        {"path": "docs/PRODUCT-READINESS.md", "line": 1},
+        {"path": "docs/story/claim-ledger.md", "line": 1}
       ],
       "limit": "The mission and story specifications are real product direction; frontend narrative implementation is deliberately outside this backend freeze."
     },

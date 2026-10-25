@@ -10,8 +10,8 @@ identifies release coverage and prevents facility rows from being mistaken for
 story-wide or animal totals. Explicit API errors generally use this envelope:
 
 The final backend boundary, including private exact/inferred graph semantics,
-is frozen in [v2-backend-contract-freeze.md](v2-backend-contract-freeze.md) and
-its machine-readable companion. This page remains the public location/API
+is recorded in [v2-backend-contract-freeze.json](v2-backend-contract-freeze.json).
+This page remains the public location/API
 contract; the graph contract does not make private edges public.
 
 ```json
@@ -67,18 +67,20 @@ Clients discard or refresh cursor pages when release metadata changes. Current
 suppression is authoritative on every read, including filtered results,
 exports, history, reimports, and restores.
 
-## Local community pilot
+## Community intake
 
-These separate routes are disabled by default, require explicit development
-configuration and refuse production/non-loopback operation. They do not change
+These separate routes are disabled by default. Development uses the loopback
+setup; production requires explicit enablement and the separately restricted
+community database connection in the production runbook. They do not change
 V2 location DTOs or curated release membership. The machine contract includes a
 `community_pilot` boundary; [development](../development.md#local-community-contribution-pilot)
 owns setup and maintenance, and [governance](../governance/user-submitted-data.md)
-owns publication policy and unresolved launch requirements.
+owns submission/publication boundaries; the production runbook owns actual
+role separation, retention and deployment settings.
 
 | Route | Access and response |
 | --- | --- |
-| `POST /api/community/submissions` | Bounded JSON, five kinds; returns ID, one-time receipt secret and `received`. Contact stored separately; no fetching or automatic publication. |
+| `POST /api/community/submissions` | Bounded JSON, five record-contribution kinds plus separate bug-report intake; returns ID, one-time receipt secret and `received`. Contact stored separately; no fetching or automatic publication. |
 | `POST /api/community/status` | ID and secret in JSON body only; returns processing status and, when currently eligible, a community record link. Invalid/expired/revoked credentials use generic 404. |
 | `GET /api/private/community/submissions` | Distinct bearer operator credential; pending by default, optional status filter, limit 1–50. Restricted claim fields, no contact/hash/secret. |
 | `POST /api/private/community/submissions/{id}/disposition` | Operator actions `hold`, `screen`, `reject`, `restrict`, `remove`, `link_community`; fixed reason categories. Screen is privacy screening, never factual endorsement. |
@@ -118,10 +120,15 @@ rate-limit responses. Disabled/unauthorized operator routes return 404; invalid
 input 400, admission limit 429, unavailable storage/projection 503. Client errors
 use static messages and do not echo submitted data. There is no retry/idempotency
 contract yet. A lost success response may require a new report; do not retry
-blindly. The launch role split and submission-specific restore ledger are
-unimplemented; the application pool can access intake tables.
+blindly. Production serving and community roles are separate; follow the
+[production runbook](../deployment/production-operations.md) for grants and
+submission-specific recovery checks, not the original pilot's shared-pool setup.
 
 ## Public cached map tiles
+
+This is the MVT artifact endpoint contract, not an instruction to replace the
+current frontend point-feed/clustering path. Follow the active renderer and
+[frontend guide](../frontend/README.md) when changing map behavior.
 
 An eligible map release carries a versioned `map_artifact` object. It identifies
 the release and profile, generation time, current suppression generation,
@@ -157,5 +164,5 @@ evidence content hashes, source publication/effective dates or availability
 status, geocoder provider/query/precision metadata, independent review-event
 identifiers/scopes/dates/outcomes, or richer release-scoped approval metadata.
 Those are tracked as explicit deferred gaps in the
-[product convergence gap ledger](v2-product-convergence-gap-ledger.md), not
+[contract gap ledger](v2-product-convergence-gap-ledger.json), not
 silently inferred from the current fields.

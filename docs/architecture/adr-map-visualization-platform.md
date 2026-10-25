@@ -1,5 +1,9 @@
 # ADR: map and visualization platform
 
+Historical architecture rationale, not current UI instructions or an invitation
+to reopen engine selection. Follow [the current frontend guide](../frontend/README.md)
+and trace its active renderer before changing map loading or clustering.
+
 Status: proposed for maintainer review. Date: 2026-09-16. This is a technology decision for future V2 platform work, not authorization to publish data, enable a live map, acquire third-party services, or imply that present safeguards are deployed.
 
 ## Decision

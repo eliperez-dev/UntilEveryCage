@@ -44,3 +44,25 @@ message}}` envelope is used for invalid queries, missing authorization, and
 database failures. Current suppression is applied before returning a page.
 Private graph rows are never part of the public location, map, export, or
 release projection unless a separate approved contract explicitly adds them.
+
+## Private explorer and legacy analysis
+
+`/private-graph.html` is a restricted research surface, not public navigation
+or an authentication mechanism. Put it behind the private environment's access
+control. It preserves source/date/conflicting observations and must not expose
+addresses, raw payloads or targeting scores.
+
+`python -m pipeline.common.d5_connection_analysis --manifest <aggregate.json>
+--output <private-report.json>` is the historical aggregate analyzer. Optional
+`--rows source_id=<private-handoff.jsonl>` supplies retained normalized or graph
+handoffs. Output is counts and hashed review tokens, not source payloads.
+It checks source-native IDs, VAT/CVR candidates, evidence links, conflicts and
+multi-signal matches; it does not import, merge, geocode or publish. Its older
+`review_required` analysis terminology is not a third graph connection state
+and does not reinstate per-edge human approval. Accuracy requires real controls,
+not synthetic scores represented as measured real precision or recall.
+
+Candidate/merge/split lineage from migration 042 is append-only evidence.
+It does not override the exact/inferred API or transfer source claims between
+identities. Current public graph behavior is owned by the separate public
+contract, not a dated D4/D5 analysis report.

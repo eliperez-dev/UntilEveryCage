@@ -1,4 +1,8 @@
-# Private-alpha source operations
+# Source refresh operations
+
+For the shared one-source acquisition-to-preview command, begin with
+[pipeline onboarding](../../pipeline/ONBOARDING.md). This reference describes
+artifact/history mechanics, not a current readiness table.
 
 `pipeline/source_operations.json` is the shared operational source of truth
 for schedule and freshness expectations. It covers every source identity in
@@ -80,3 +84,27 @@ The older compatibility registration helper may also retain its stable
 those paths are still content-addressed and append-only. New integrations
 should use the layout above so observation metadata and raw bytes are kept as
 separate objects.
+
+## Diagnostics and legacy tools
+
+The no-network `pipeline/scripts/diagnostics/d5-live-readiness.py` audits its
+historical thirteen-source cohort. Supply `--as-of-utc` and `--output` explicitly;
+its acquisition classifications are not the current source inventory or proof
+of unattended scheduling. Use the actual shared runner/private map acceptance
+for a new E2E claim. A future scheduler invokes the existing runner with an
+allowlisted cohort, bounded retries and per-source isolation; it never needs
+source-specific logic inside the scheduler.
+
+The older bounded demonstration helpers
+`pipeline/scripts/stages/prepare-demonstration-release.py` and
+`record-demonstration-review.py` accept explicit private selections/reviews.
+Preparation selects at most 25 opaque records and does not approve or publish.
+Validation/promotion remain separate; use the current cohort review and release
+workflow for actual datasets, not an old demonstration's source-status claims.
+Source/artifact/profile-scoped rights and current restrictions remain required.
+
+Historical private reacquisition checks are available in
+`pipeline/scripts/maintenance/rehearse_current_reacquisition.py` and
+`rehearse_current_candidate.py`; their aggregate manifests remain under
+`data/manifests/`. They test a named retained snapshot, not the current hosted
+dataset. Do not copy their old counts into current readiness.

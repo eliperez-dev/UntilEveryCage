@@ -1,5 +1,10 @@
 # Denmark source entry points
 
+The source-owned `stages/` directory contains Denmark implementations; older
+stage launchers are compatibility shims. Shared queue workers, migrations,
+restrictions and release tools stay in shared locations. Current source state
+belongs in [source-status.json](../../../docs/source-status.json).
+
 Denmark-specific commands are exposed from this directory so country logic has
 a stable home as more sources are added. The source-owned runner below is the
 canonical entrypoint. The historical `pipeline/run-denmark-pipeline.py`
@@ -175,3 +180,24 @@ The row-free summary is [the 2026-10-04 manifest](../../../data/manifests/denmar
 This replay is not a second live acquisition or a full database/API E2E. It
 did not import a database, enable a provider profile, approve publication, or
 create a release.
+
+## Data-flow and location scope
+
+Acquire/preserve XML, parse all source fields, normalize with native values,
+validate/quarantine, then import observations. Queue location enrichment as a
+separate persisted task; do not overwrite absent source coordinates with a
+geocoder result. Retain provider/query/time/precision and append observation
+history. Source absence is not closure; a failed run leaves prior releases intact.
+
+The source-specific exact-address queue covers supported animal-product
+production/processing (slaughter, meat, fish, dairy and eggs), street address
+and postcode, no usable source point, and no explicit restriction. Retail,
+restaurants/catering, logistics/packaging, general/unknown or changed-status
+activity and correspondence/private-address indicators are held/out of scope.
+Do not infer operating-site status from a registered address. Unresolved rows
+remain searchable; low-precision matches remain approximate.
+
+DAWA is a legacy provider option, not a fixed dependency. Earlier availability
+checks do not prove current support. Datafordeler DAR is an authenticated
+register route, not a verified drop-in geocoder. Use the separately configured
+provider profile and [geocoding worker](../../../docs/geocoding-worker.md).

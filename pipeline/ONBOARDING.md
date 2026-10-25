@@ -1,92 +1,76 @@
 # Pipeline contributor onboarding
 
-This is the shortest safe local path for a new pipeline contributor. Run every
-command from the repository root. It uses synthetic fixtures and temporary
-directories; it does not acquire data, import a release, or publish anything.
+Read [AGENTS.md](../AGENTS.md), [ETHICS.md](../docs/ETHICS.md),
+[VISION.md](../docs/VISION.md) and [the hub](../docs/README.md), then the assigned
+source entry in [source-status.json](../docs/source-status.json).
+This is the source-worker workflow, not a separate readiness tracker.
 
-## 1. Read the boundaries
+## One source, one pattern
 
-Read [the governing ethics policy](../docs/ETHICS.md), then [the source
-adapter contract](contracts/README.md) and [the source registry](source_registry.json).
-The registry describes source evidence and blockers; it is not an acquisition
-permission or publication approval.
+1. Identify the exact source ID, country scope and coverage gap. Compare with
+   existing/V1 sources before calling a repeat refresh new country coverage.
+2. Read that country's research, source-owned README and
+   [adapter template](contracts/SOURCE-ADAPTER-TEMPLATE.md).
+   Source identities/descriptors live in [the registry](source_registry.json).
+3. Keep acquisition bounded: expected URL/schema/content, byte/time/retry limits,
+   permitted access/terms and pinned parser dependencies. Preserve raw bytes,
+   retrieval/source dates, checksums and code/config versions.
+4. Parse, normalize, clean and quarantine deterministically. Preserve original
+   fields, aliases, classifications, address/coordinate evidence and provenance
+   in permitted private storage. Display simplification is not adapter data loss.
+5. Register the adapter with the existing shared runner. Import observations
+   before the separate queued location-enrichment task; reuse the queue/providers.
+6. Verify importer idempotency, source/query counts, list/detail and actual
+   map-feed membership. Missing coordinates are not invented.
+7. Update only the owning source inventory entry and its existing research/
+   descriptor/aggregate evidence. Do not create a sprint packet or status page.
 
-## 2. Run the contract tests
+## Shared source command and E2E meaning
+
+Inspect supported commands first:
+
+```powershell
+python scripts/real_preview.py --help
+python scripts/dev.py --json doctor
+```
+
+The shared `refresh --source <source_id>` path selects source acquisition and
+processing. Its `strict-live-private-e2e --source <source_id>` acceptance path
+runs live acquisition, adapter stages, private import and API/map checks for a
+supported source. Configure the permitted source/terms and assigned disposable
+target as documented by the runner; no example here grants new publication.
+
+**E2E ready means the source can be acquired, parsed, normalized/cleaned,
+inserted and made available as records in the preview map through the shared
+command.** Adapter-only, fixture-only and preserved-artifact runs are not live
+E2E. An address-only result must also complete required separate enrichment
+before claiming new mapped locations. State input observations, source-qualified
+candidates, mapped/unmapped results and precision separately. Do not call
+observations or grouped source records unique physical facilities.
+
+Use the approved real-data baseline and a disposable copy for data-backed
+acceptance. Keep private raw/derived rows outside Git, preferably on D: for
+large retained evidence. Do not mutate the frozen baseline or serving database.
+A refresh/enrichment run does not publish a new release.
+
+## Checks and integration
+
+Use focused adapter/runner/importer tests while iterating; do not repeatedly
+run every suite or rebuild Rust after small unrelated changes. Available
+reference checks include:
 
 ```powershell
 python -m unittest pipeline.sources.denmark.test_adapter pipeline.common.test_orchestrator pipeline.common.test_review_packet
 ```
 
-The Denmark tests are the reference vertical slice. They exercise preserved
-input integrity, parsing, normalization, quarantine, private manifests, QA,
-health, candidate handoff, and rerun determinism. The shared orchestrator tests
-cover registered-input compatibility and suppression behavior.
+For integrated database-backed changes, use the standard pipeline gate
+`pwsh -NoProfile -ExecutionPolicy Bypass -File pipeline/tests/run-standard.ps1`
+against its documented disposable environment and the required CI checks.
+Run live acceptance when the assignment requires it; report skipped/blocked
+checks, never as passes.
 
-Run the complete Python suite before submitting pipeline changes:
-
-```powershell
-python -m unittest discover -s pipeline -p 'test*.py'
-```
-
-The one-command private demo runs the graph-candidate and review-packet
-contracts without acquiring, importing, or publishing anything:
-
-```powershell
-python scripts/dev.py demo
-python scripts/dev.py preflight
-python scripts/dev.py diagnostics data/reports/real-corpus-report.json
-python scripts/dev.py review-export data/staging/<source>/<run-id>
-```
-
-`review-export` is a row-free operator packet. It is not approval. Source
-adapters remain the canonical acquire -> parse/normalize -> quarantine ->
-candidate handoff path; candidate database import is restricted to the
-disposable loopback database. Rebuild candidates by rerunning the source-owned
-adapter with a new private run directory; never edit or promote a candidate in
-`static_data`. Missing evidence, source drift, ambiguous identities, and
-quarantined rows remain blockers and are reported in the packet/health files.
-
-## 3. Inspect private operational evidence
-
-For an existing private run, build a row-free report from its manifest root:
-
-```powershell
-python pipeline/scripts/diagnostics/real_corpus_report.py `
-  --manifest-root data/manifests `
-  --output data/reports/real-corpus-report.json
-```
-
-Unknown row counts remain unknown; they are never converted to zero. The
-report is an inventory aid, not a source health claim, release validation, or
-publication decision. Keep raw and derived run directories under ignored
-`data/raw`, `data/staging`, or `data/restricted`.
-
-## 4. Follow one source lifecycle
-
-For Denmark, use the source-owned launcher as the canonical path:
-
-```powershell
-python pipeline/sources/denmark/run-denmark-pipeline.py --help
-python pipeline/sources/denmark/run-denmark-pipeline.py path/to/private/Smileydata.xml --output-dir data/staging/denmark-smiley/<run-id>
-```
-
-Acquisition requires an operator-approved terms review and is intentionally
-opt-in. Candidate import, geocoding, release validation, and promotion are
-separate commands and separate gates. The older
-`pipeline/run-denmark-pipeline.py` path remains a deprecated compatibility
-launcher for one release; new source-specific documentation should link to the
-source-owned path.
-
-## Known onboarding friction
-
-- The repository root README describes the Rust application, while this guide
-  describes the private V2 pipeline; contributors must choose the pipeline
-  path before running `cargo run`.
-- Both historical and source-owned Denmark launchers exist. The source-owned
-  launcher is canonical; the historical path is deprecated and retained for
-  one release for compatibility.
-- Full local V2 API startup requires Docker/Postgres and a Rust build. It is
-  not required for adapter contract tests and must use only the disposable
-  local configuration in `pipeline/scripts/maintenance/local-v2.ps1`.
-- Real corpus reports can only claim what local manifests record. Missing raw
-  bytes, row counts, or V2 runs are reported as unavailable, not inferred.
+Keep last valid state on acquisition/schema failure; preserve quarantine and
+source-kind boundaries, restrictions and source-qualified identifiers. A future
+scheduler calls this shared path; no scheduler-specific adapter framework is needed.
+Follow [the coordination contract](../docs/operations/parallel-agent-workflow.md)
+for exclusive paths, one integration branch, worker commits and cleanup.

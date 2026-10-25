@@ -1,18 +1,19 @@
-# UK adapter registry boundary
+# UK source adapters
 
-The global `pipeline/source_registry.json` currently has one legacy umbrella
-entry, `uk.locations`, because the checked-in V1 dataset combined multiple UK
-jurisdictions. The source-owned registry in `pipeline/sources/uk/registry.json`
-deliberately keeps two separate adapter identities:
+The canonical source IDs are `fsa_approved_establishments` and
+`fss_approved_establishments`. `uk.locations` is a legacy umbrella identity,
+not evidence of a complete national pipeline.
 
-- `fsa_approved_establishments`: the monthly FSA catalogue feed for England and
-  Wales. The feed itself marks Jersey, Isle of Man, and Guernsey rows; those are
-  quarantined. Northern Ireland uses a separate catalogue/feed and is outside
-  this adapter's live monthly scope.
-- `fss_approved_establishments`: Food Standards Scotland coverage for
-  Scotland.
+- [FSA](fsa_approved/README.md): the feed's documented England/Wales scope;
+  do not silently include Northern Ireland or Crown Dependencies.
+- [FSS](fss_approved/README.md): Scotland.
 
-These local identities must not be silently collapsed into `uk.locations` or
-counted as one complete UK pipeline. Until the global registry is split into
-matching canonical IDs, the adapters remain compatibility/private refresh
-lanes and are not part of the D2 seven-source readiness cohort.
+The `approved/` composition layer retains each source's full manifest, nation,
+authority, lifecycle and terms/review context. It does not merge source
+identities. An exact trading-name/postcode signal links references rather than
+combining observations. Restrictions remain keyed by source and source record.
+Missing/failed outputs or incompatible schemas do not replace a prior view.
+Composition does not create a candidate release, geocode or publish.
+
+Use [source-status.json](../../../docs/source-status.json) for actual source
+readiness, not historical D2/D3 cohort membership.

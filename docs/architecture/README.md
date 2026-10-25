@@ -1,25 +1,23 @@
-# Architecture documentation
+# Architecture references
 
-**Owner:** engineering maintainers. **Purpose:** route cross-source platform
-decisions and contracts. Product scope and launch sequencing belong to
-[`../PRODUCT-READINESS.md`](../PRODUCT-READINESS.md).
+Read only the contract relevant to the task. Product scope and sequencing belong
+to [PRODUCT-READINESS.md](../PRODUCT-READINESS.md).
 
-| Document | Label | Use |
-| --- | --- | --- |
-| [Country source platform](country-source-platform.md) | **Canonical** | Shared source registry and country-platform model. |
-| [Source lifecycle](source-lifecycle.md) | **Canonical** | Acquisition through validation, review, and release lifecycle. |
-| [Source operations](source-operations.md) | **Canonical** | Refresh and operational responsibilities. |
-| [Source registry](source-registry.md) | **Reference** | Registry orientation; machine registry remains authoritative. |
-| [Graph data dictionary](graph-data-dictionary.md) | **Canonical** | Graph entities and fields. |
-| [API location contract](api-location-contract.md) | **Canonical** | Location and precision semantics. |
-| [Database import contract](database-import-contract.md) | **Canonical** | Private import boundary. |
-| [Release manifest verification](release-manifest-verification.md) | **Canonical** | Release integrity requirements. |
-| [Source rights decisions](source-rights-decisions.md) | **Canonical** | Recorded rights/access decisions and code, compilation, dependency and contribution license alignment. |
-| [Identity review](d4-identity-review.md) | **Canonical** | Identity-candidate review measures; synthetic controls remain distinct from adjudicated accuracy. |
-| [V1–V2 reconciliation](v1-v2-reconciliation.md) | **Reference** | Migration and coexistence model. |
-| [API contracts](../api/v2-contract.md) | **Canonical** | Public and private API contract index; related contracts are linked there. |
-| [Architecture decision records](adr-graph-foundation.md), [map platform](adr-map-visualization-platform.md) | **Reference** | Accepted cross-cutting architecture rationale. |
+| Need | Owner |
+| --- | --- |
+| Registry, descriptors and adapter organization | [Country source platform](country-source-platform.md) |
+| Acquisition, facility/evidence kinds and normalized handoff | [Source lifecycle](source-lifecycle.md) |
+| Refresh history, artifacts, retries and health | [Source operations](source-operations.md) |
+| Graph entities and fields | [Graph dictionary](graph-data-dictionary.md) |
+| Location and precision semantics | [API location contract](api-location-contract.md) |
+| Private import | [Database import](database-import-contract.md), [disposable importer](disposable-candidate-import.md) |
+| Activation transaction and recovery | [Release activation](release-activation-defects.md) |
+| Artifact integrity | [Manifest verification](release-manifest-verification.md) |
+| Recorded rights/licence decisions | [Source rights](source-rights-decisions.md) |
+| Migration reference | [V1/V2 reconciliation](v1-v2-reconciliation.md) |
+| Architecture rationale, not a new implementation plan | [Graph ADR](adr-graph-foundation.md), [map ADR](adr-map-visualization-platform.md) |
+| Wire shapes | [API index](../api/README.md) |
 
-Source- and country-specific facts belong in the
-[source index](../sources/README.md). Do not create separate plans or repeat
-product completion state here.
+Source identities live in [the machine registry](../../pipeline/source_registry.json);
+source readiness lives only in [source-status.json](../source-status.json).
+Source research and mappings are indexed under [countries](../countries/README.md).

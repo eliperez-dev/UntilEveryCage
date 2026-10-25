@@ -1,6 +1,7 @@
 {
   "spec_version": "e1-capability-matrix-2",
   "status": "design-boundary",
+  "authority": "Historical E1 design/test reference, not current UI instructions or product readiness. docs/frontend/README.md owns current behavior; docs/PRODUCT-READINESS.md owns launch scope; implemented API schemas own wire support.",
   "principle": "Do not imply a backend capability that the current public wire contract does not provide.",
   "capabilities": [
     {"id":"location_list","area":"map,database","status":"supported_now","backend":"GET /api/v2/locations with cursor, filters, bbox/radius, and bounded limit","frontend":"Map viewport results, database result table, loading/partial-page context"},

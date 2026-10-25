@@ -48,3 +48,20 @@ Preserve existing and untracked work. Do not commit private source rows,
 addresses, coordinates, credentials, or geocoder responses. Keep changes scoped
 and report verification and evidence limits. Documentation additions and
 retention follow [the writing policy](docs/README.md#where-durable-facts-live).
+
+## Working agreement
+
+Use one integration branch, currently `eli/v2`; worker branches use
+`eli/<feature>`. Keep at most five total worktrees. Give workers exclusive paths,
+use Luna for routine delegated work when requested, and follow
+[the coordination contract](docs/operations/parallel-agent-workflow.md).
+Plan, implement, integrate, test and clean up. Use focused local checks for
+small edits; do not repeatedly rebuild or run unrelated suites. Report actual
+CI/deployment states, and monitor active workers until completion or a blocker.
+
+Only [the roadmap](docs/PRODUCT-READINESS.md) owns product completion and only
+`docs/source-status.json` owns source readiness. Current frontend behavior is
+in [one guide](docs/frontend/README.md). Do not use old Git versions, archived
+reports or frozen test snapshots as design instructions. Do not create plans,
+handoffs or status documents. Preserve the latest maintainer wording/layout;
+frontend work is not permission for unsolicited redesign or disclaimer copy.

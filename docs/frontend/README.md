@@ -1,157 +1,181 @@
-# V2 frontend design authority
+# Current V2 frontend instructions
 
-Status: canonical V2 design guidance, with implementation under `frontend/`.
-The V1 behavior inventory remains a migration reference, not a visual constraint.
+**Owner:** project maintainer. This is the single current frontend specification.
+The [product roadmap](../PRODUCT-READINESS.md) owns scope/readiness; this guide
+owns approved behavior and copy. Do not rebuild from deleted wireframes or old
+Git versions. The V1 contract is a migration reference, not V2 design authority.
 
-## Active implementation routes
+## Implementation and references
 
-The production map follows this chain, including in a public container build:
+The public map follows:
 
 ```text
 frontend/src/app/App.svelte
-  → design-lab/DesignLab.svelte (data mode: public-release)
-    → design-lab/variants/field/Field.svelte
-      → design-lab/components/MapSurface.svelte
+  -> design-lab/DesignLab.svelte (public-release)
+    -> design-lab/variants/field/Field.svelte
+      -> design-lab/components/MapSurface.svelte
 ```
 
-The `design-lab` folder name does not make these components preview-only.
-Database and full-page records use `app/PublicDatabase.svelte` and
-`app/PublicRecord.svelte`. Trace imports and the selected data mode before
-changing a renderer; a similarly named layer helper may have no active caller.
-Acceptance must exercise the public built frontend, not only a development
-route or fixture mode.
+The folder name does not make it preview-only. Database and full record pages
+are `app/PublicDatabase.svelte` and `app/PublicRecord.svelte`. Trace active imports.
+Technical setup/tests: [frontend/README.md](../../frontend/README.md).
+Wire contracts: [API index](../api/README.md), not duplicate frontend DTO docs.
+[V1 behavior inventory](v1-behavioral-contract.md) and its JSON retain tested
+migration requirements. The [capability matrix](capability-matrix.json) and
+[UI-state matrix](ui-state-matrix.json) are legacy design/test references:
+where their prose differs, this guide owns current UI instructions and current
+API schemas own supported fields. They are not additional roadmaps.
 
-## Product decision
+## Layout and navigation
 
-V2 has two primary destinations:
+- Compact, serious, data-driven interface. No unsolicited redesign, oversized
+  cards, decorative labels, glow, filler or large empty spaces.
+- One centered navigation group: `Map Database API | Contribute About FAQ`.
+  Brand/logo left, Tools right; all six destinations remain usable on mobile.
+  No old hover-subpage navigation, disabled account placeholder or extra header strip.
+- Release selection/history and diagnostics belong in Tools, not a separate
+  header Release button. Display dataset dates; retain immutable IDs internally.
+  Application semver comes from the backend Rust crate, not a frontend constant.
+- Map is the default discovery surface; Database is the compact research table.
+  Existing informational/download routes remain compatible aliases.
+- Search map and Map View use the same viewport-edge spacing, surfaces, borders
+  and typography. Controls must not overlap at narrow widths.
+- Resize applicable panels by dragging edges, not plus/minus width buttons.
+  Do not change panel layout without the maintainer's specific approval.
 
-1. **Map** — the default, quiet place-first discovery experience.
-2. **Database** — the dense, research-oriented search and export experience.
+## Map
 
-The target architecture gives every public record a stable, canonical detail
-URL. Facility detail is a shared drawer/split/fullscreen state, not a third
-top-level destination, while organizations, evidence, inspections/events,
-source records, and future community submissions use the same record model and
-detail architecture. MVP production routes remain gated by the currently
-implemented public DTOs.
-Spatial records can appear on the map; non-spatial records remain searchable
-and graph-connected without being assigned a fake point. Graph connections are
-a public product feature within map detail, record detail, and database search;
-they are not a separate social network or a claim of universal identity.
+- Use MapLibre, the existing V1 PNG pin family and V2 taxonomy mappings.
+  Do not substitute the six legacy type names for the V2 classification model.
+  Processing is grey; do not invent approval for an undocumented palette.
+  Preserve current category meanings until the maintainer agrees a change.
+- Default cluster radius is 30 px. Clusters group geographically, not into a
+  visible square grid. Exact and approximate records participate in clustering;
+  do not make areas disappear between zoom levels or clear valid markers while
+  replacement data/index work settles.
+- A single approximate record uses the regular category pin, an accessible
+  approximation cue and no cluster-style `1`. Do not flash fallback dots.
+  On selection/inspection, show a red geographic area 500 metres across
+  (250-metre radius), not a fixed-pixel circle or invented confidence interval.
+  Use supported source extent where available. No permanent approximation legend.
+- Street/Satellite selector and adjacent 2D/3D toggle form one compact Map View.
+  Directly below: `Right-mouse to rotate / Left-mouse to pan`.
+  No separate hint banner or white MapLibre compass/pitch control on the main map.
+- Native terrain is lazy, true-scale and has a usable flat fallback.
+  Keep provider attribution; changing style/camera must not rebuild facility data.
+- Clicking a real pin, PNG, cluster or search result must work on cold load.
+  Closing detail with X, Escape or Back leaves the focused camera in place.
+  Preserve allowlisted camera, style, selection and release context on navigation.
+  Public URLs omit fixture parameters such as `scenario=default`.
+- Unmapped records stay searchable without invented map points. Do not turn an
+  approximate location into exact directions or a street-address claim.
 
-The product principle is **quiet on first contact, powerful when investigated**.
+## Search and Database
 
-The maintainer's latest 2026-10-24 navigation revision uses six direct destinations:
-`Map, Database, API | Contribute, About, FAQ`. Keep all six links in one compact
-group with a fixed separator; do not spread the two groups across the header.
-Center the six-link group in the masthead, with brand/logo left and Tools right;
-do not push the navigation to the left. Preserve usable responsive navigation.
-Tools retains release selection and map diagnostics.
-Contribute opens Add a facility by default, with visible task links to switch
-the form, plus submission tracking, community browsing and project/support links.
-Only offer community browsing when a published community release is available;
-submission intake is a separate capability. Database opens Browse records.
-Selecting a result opens its full facility page directly, without an intermediate
-preview panel. Mapped facility pages include an "Open in Map" action that centers
-and selects that facility in the same release.
-API combines full-release CSV downloads, paginated JSON, release IDs and the
-self-hosted Swagger explorer. About restores the maintainer's supplied V1
-manifesto with an 18-category estimate counter in a right-hand desktop column,
-stacked on mobile. Its modeled visible updates run around 30 times per second
-using elapsed time. The visible counter heading is exactly "Animals Killed Since
-You Opened This Page", with no subtitle. Its 18 animal rows form one vertical
-list at all widths, not a two-column grid. Rates and source notes remain in the owning model;
-do not restore the removed Source and method disclosure. About contains the
-manifesto and counter, without a Sources and methods section. The closing
-"Until Every Cage is Empty" heading is followed by the project's existing logo.
-FAQ briefly
-explains the data path: acquisition, cleaning/standardization, address matching
-and connections, then dated releases serving map/search/downloads through the
-Rust API. It also covers contribution questions and help/support. Do not restore
-a separate counter disclaimer or substitute a framework inventory for this flow.
-Do not retain a duplicate Common questions section on About. Restore the
-V1-style contact/support/credits footer, but not its obsolete version or
-country-coverage claims. The footer opens with "An independent, open-source,
-ad-free project." Its counter credit is "Counter Adapted from ADAPTT." with
-ADAPTT linked to `https://www.adaptt.org/`. Do not append a feedback invitation
-or expand these credits with internal explanations. Application semver comes from the backend's Rust
-crate version; dataset release dates remain independent.
-Old informational and download routes remain compatible aliases. Data access requires a published
-release, independently of the local preview or submission pilot.
-These links must appear
-consistently in the public shell and local preview; following them must preserve
-the selected preview context. Private submission forms use ordinary language;
-publication warnings belong on public unreviewed community results. Contribute
-is a direct header link. Keep the primary links compact on desktop and touch
-screens without duplicating the consolidated pages in hover menus.
-The main map has no white MapLibre compass/pitch control or separate drag
-instruction banner. Inside Map View, small text directly beneath the options
-says "Right-mouse to rotate / Left-mouse to pan".
-Search map and Map View share viewport-edge insets,
-colors, border treatment and typography on desktop and mobile.
-Keep the compact map-view selector and 2D/3D toggle, native
-gestures, accessible button names and provider attribution. Closing
-a focused facility preserves the current camera; X, Escape, browser Back and
-direct-selected URLs must agree. Map/Database links preserve only allowlisted
-camera, style and release context, not raw search or arbitrary query strings.
-State that the code is open source and provide an
-explicit GitHub path for code contributions on Overview and Contribute. Use
-the same styled masthead on all pages. Informational pages use compact type,
-short copy and modest spacing rather than oversized editorial sections.
+- Search the released database, not only the visible viewport or loaded page.
+  Use only fields supported by the actual public endpoint; all-record-family
+  search is a future contract, not an implied feature.
+- Country, source and activity/category filters use the same scope as results.
+  Provide Clear filters, query totals distinct from loaded-page counts, and
+  usable loading/error states without a map-covering loading popup.
+- Debounce/cancel stale requests; preserve input and pagination semantics.
+  OR within a filter dimension, AND between dimensions.
+- Browse-record links open the full facility page directly. Do not restore
+  the intermediate database preview panel.
+- API offers full-release CSV, explicitly bounded exports, paginated JSON and
+  the self-hosted Swagger explorer. Do not silently crawl the whole database
+  in the browser to render a map or open a facility.
 
-## Reading order
+## Facility details and connections
 
-- [principles and audiences](principles.md) — **Canonical**
-- [backend capability matrix](capability-matrix.json) — **Canonical** interface inventory
-- [information architecture](information-architecture.md) — **Canonical**
-- [wireframes](wireframes.md) — **Canonical**
-- [interaction specification](interactions.md) — **Canonical**
-- [UI state matrix](ui-state-matrix.json) — **Canonical** interface states
-- [content, terminology, and safety](content-and-safety.md) — **Canonical**
-- [visual direction and tokens](visual-direction.md) — **Canonical**
-- [performance and technology assessment](performance-and-technology.md) — **Reference**
-- [MVP cuts and implementation sequence](implementation-sequence.md) — **Canonical**
-- [release and shared record model](release-and-record-model.md) — **Canonical**
-- [future roadmap](roadmap.md) — **Reference**, subordinate to product readiness
-- [maintainer approval decisions](approval-decisions.md) — **Canonical**
+- Full page order: facility name and chain-icon Copy facility link action;
+  Location facts; single-record map; activities and remaining facts.
+  No separate copy-record-ID button or repeated Record Evidence heading.
+- Map detail has an `Open facility page` link, selected-release context and
+  close control. It fills the mobile viewport with scrollable content.
+- Full mapped records have `Open in Map`, centering/selecting that facility
+  in the same release. Unmapped records have no location map/action.
+- Single-record previews use the existing providers/pins: source/exact
+  satellite zoom 15; approximate street zoom 9. Do not fetch the global point
+  projection for these previews or invent an address from a locality.
+- Show the broad category once, then distinct human-readable activities.
+  Source classification is inline, not a disclosure. Format underscores and
+  technical activity labels; retain original values in data. Show all
+  affirmative species/activities and supported slaughter/product estimates.
+  Use `animals`, not `head`, in presentation.
+- Group available address/locality, coordinates, source method/provider and
+  recorded confidence in Location. Label native points
+  `Source-provided coordinates`; do not invent confidence or validation.
+- Hide unknown lifecycle and internal taxonomy/crosswalk versions from UI.
+  Do not hide useful original classifications or source evidence.
+- Exact and inferred connections remain public and filterable at all available
+  confidence bands. Use `Exact source`, `Inferred`, and `Source` for the
+  source-assertion method. Keep real evidence/signals accessible, not repeated
+  general disclaimer paragraphs. No human-confirmed connection state.
+- A loaded record with no connections shows `None`, without Relationship or
+  Confidence controls. Keep controls when filters caused an otherwise nonempty
+  list to have no matches. Loading, errors and empty results remain distinct.
+- Use only public graph routes and supported entity mappings. An organization
+  summary does not gain a fabricated facility page. A canvas limit or API page
+  bound is not a graph storage cap.
+- APHIS controls appear only for relevant APHIS records, fetch on request and
+  retain error/retry states. Search-page metadata references are not full
+  inspection/annual/exception report files; do not claim missing years exist.
 
-The normative V1 migration inventory is [v1-behavioral-contract.md](v1-behavioral-contract.md) — **Reference** for migration.
-The design review explicitly includes the actual V1 implementation in
-`static/app.js`, `static/modules/MapManager.js`, `SearchManager.js`,
-`FilterManager.js`, `popupBuilder.js`, `ExportManager.js`, and
-`translationManager.js`: marker clustering, debounced search and suggestion
-behavior, category semantics, URL-restorable map state, popup/detail discovery,
-exports, lazy reports, and locale behavior are migration inputs rather than
-visual constraints.
-The product-level readiness tracker is [../PRODUCT-READINESS.md](../PRODUCT-READINESS.md) — **Canonical**.
-The roadmap in this folder is subordinate to that tracker; it must not become
-a competing completion ledger.
+## Contribution behavior
 
-## Non-negotiable boundaries
+Contribute opens Add a facility; visible task links switch among facility,
+evidence, correction, duplicate and privacy/removal. Bug reports save into the
+system and return confirmation/tracking, never an email draft.
+Existing-record actions preselect their target. Reuse normal category pins
+and taxonomy choices in location intake.
 
-- Public output is release/profile scoped and suppression-aware.
-- Exact and inferred graph edges are both discoverable, but a ruleset score is never
-  presented as fact, ownership, universal identity, or supply-chain proof.
-- Exact, city/coarse, and unmapped records are visibly distinct.
-- Source origin, factual review, privacy screening, project approval, and
-  publication are separate labels.
-- A missing record does not prove closure or absence.
-- Device location is optional and is not persisted in URLs or analytics.
-- Private preview routes, raw evidence, credentials, and retained private rows
-  never enter the public bundle. Public graph reads use only the release-scoped
-  `/api/v2/graph/*` projection; the `/api/private/graph/*` routes remain
-  operator-only. Public graph edges are intentionally discoverable, with
-  exact/inferred and high/medium/low confidence shown together with their
-evidence and limitations. A record without connections shows "None" without
-relationship/confidence filters. Keep those filters available when they caused
-an otherwise nonempty connection list to have no matches.
-- The current public client is English-only; a complete V2 localization system
-  is not implemented. Multilingual UI is required before launch, after the
-  targeted cleanup checkpoint. Spanish is the first bounded implementation,
-  followed by German, French, Italian, Dutch and Danish. Keep source names and
-  evidence in their original language and domain rules independent of locale.
-- The V1 de/en/es/fr locale implementation is a historical migration reference,
-  not proof that V2 language switching works. Product-level language and
-  country-coverage gates live in `docs/PRODUCT-READINESS.md`.
-- Light and dark interface modes are required before launch. This is a separate
-  implementation task; dark mode alone is not completion of that requirement.
+Use one Track submission link, with its capability in the fragment and status
+credentials sent in a POST body. Accounts, uploads, automated email and receipt
+recovery are not implemented. Public community browsing is offered only for an
+eligible published community release; intake never automatically changes the
+curated map, graph or counts. The [contribution contract](../governance/user-submitted-data.md)
+and [production runbook](../deployment/production-operations.md) own operational details.
+
+## Exact copy and informational pages
+
+Use supplied wording verbatim. No em dashes in authored visitor copy, internal
+candidate/projection jargon, repeated category summaries, unsolicited warning
+blocks or polite filler. Preserve source-native evidence, provider attribution
+and required public unreviewed-community context.
+
+- About uses the supplied V1 manifesto. Counter is on the right on desktop,
+  stacked on mobile. Exact title: `Animals Killed Since You Opened This Page`.
+  No subtitle; all 18 animal groups form one vertical list at every width.
+  Update from elapsed time around 30 times per second, isolated from map rendering;
+  respect reduced motion and hidden tabs.
+- Rates/source notes remain in the model. Do not restore counter Source and
+  method or About Sources and methods sections, or relocate them as replacement copy.
+- The closing `Until Every Cage is Empty` heading is followed by the existing logo.
+- Footer opens `An independent, open-source, ad-free project.` No feedback invitation.
+  Credit `Counter Adapted from ADAPTT.`, linking ADAPTT to
+  `https://www.adaptt.org/`. Retain project/support/code links and distinct
+  software/data licences; do not restore obsolete country/version claims.
+- FAQ explains the data path, contribution questions and support. Its current
+  data-path paragraph is: "Government datasets are collected, cleaned and
+  standardized, with links back to their sources. Address lookups add
+  coordinates, and matching connects related records. Dated releases supply
+  the map, search and downloads through a Rust API."
+- No duplicate Common questions block on About or tutorial video in Help.
+
+## Boundaries and acceptance
+
+Release/profile eligibility and current restrictions apply to UI, APIs, caches,
+history and exports. Never expose private routes/tokens/raw evidence in the
+public bundle. Keep community submissions separate from curated records.
+Device location is optional and is not persisted by default.
+
+Maintain keyboard access, visible focus, reduced motion, screen-reader labels
+and usable narrow/zoomed layouts. Test the actual public built route and real
+approved data where available; synthetic unit/negative tests supplement, not
+replace, real-data acceptance.
+
+English-only dark UI is the current state. Languages, light/dark mode and
+persistent cluster-index reuse remain launch requirements in the roadmap,
+not features this guide claims implemented. Do not reopen map-engine selection
+or rewrite approved visual behavior while implementing them.

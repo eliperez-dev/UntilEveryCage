@@ -5,14 +5,15 @@
 **Maintainer decision, 2026-10-06:** `v0 — Early Access` is the approved
 real-data baseline. It contains 63,601 curated searchable records from 13
 sources, including 48,756 map locations and 54,256 names. It is approved
-release data, not an externally deployed website. V1 is required before
-website launch. V0 must remain available as a historical release, subject
+release data. V2 product launch scope and the next dated dataset are owned by
+[the current roadmap](PRODUCT-READINESS.md), not the old v0/v1 sequence.
+V0 must remain available as a historical release, subject
 to current corrections and privacy restrictions.
 
 The tracked aggregate-only contract is
 `pipeline/contracts/development-baseline.json`. It binds the exact internal
-release ID and immutable manifest checksum to these counts. The public dataset
-version is `v0`; schema/product contract versions are separate identifiers.
+release ID and immutable manifest checksum to these counts. The baseline retains its historical internal identity; new public dataset labels
+use dates. Schema/product contract versions are separate identifiers.
 
 Run the read-only verification with the local database URL supplied privately
 through `UEC_DATABASE_URL`:
@@ -143,154 +144,34 @@ The separate `uec_graph_release_20261021` staging copy combines the approved
 not the source-refresh working copy above or the existing frontend preview.
 Keep its pristine package separate from disposable restriction-test restores;
 current hosted database and acceptance details live in
-[product readiness](PRODUCT-READINESS.md#d66---hosted-graph-and-facility-connections-2026-10-21).
+[product readiness](PRODUCT-READINESS.md#current-state).
 
 ### Local community contribution pilot
 
-This feature is disabled by default and refuses production enablement or a
-non-loopback bind. It is a local workflow, not a public submission launch.
-Use an allocated checkout and a separate disposable, migrated PostgreSQL/PostGIS
-database; preserve existing source databases and developer services. Run
-`python scripts/dev.py --json doctor` before starting services.
+Production intake is implemented separately from this local development setup;
+see [production operations](deployment/production-operations.md) for the required
+separate write role, secrets, caps and retention. The
+[contribution contract](governance/user-submitted-data.md) owns flows and boundaries.
 
-For your separately chosen API port, set `UEC_RUNTIME_MODE=development`,
-`UEC_BIND_HOST=127.0.0.1`, `PORT`, `UEC_DATABASE_URL` and
-`UEC_COMMUNITY_ENABLED=true`. Supply a distinct randomly generated
-`UEC_COMMUNITY_OPERATOR_TOKEN` (32–512 bytes) through process configuration;
-never commit, log or reuse a preview credential. Explicitly choose positive
-`UEC_COMMUNITY_RETENTION_DAYS` (maximum 365),
-`UEC_COMMUNITY_CONTACT_RETENTION_DAYS`, `UEC_COMMUNITY_RECEIPT_DAYS`
-(both no longer than payload retention), `UEC_COMMUNITY_DAILY_INTAKE_CAP`
-(maximum 1,000) and `UEC_COMMUNITY_PENDING_CAP` (maximum 10,000).
-These bounds are implementation limits, not approved operational defaults.
+Use an assigned migrated disposable database and unused loopback API port.
+Set `UEC_RUNTIME_MODE=development`, `UEC_BIND_HOST=127.0.0.1`, `PORT`,
+`UEC_DATABASE_URL`, `UEC_COMMUNITY_ENABLED=true`, a distinct operator token and
+explicit supported retention/admission caps. Do not log credentials.
+Run `cargo run --locked --bin uec-api`. For a separate Vite instance,
+`VITE_COMMUNITY_PILOT=true` and `VITE_API_ORIGIN` select this intake API.
+Use the [frontend guide](frontend/README.md) for current navigation and tracking;
+do not restore the old two-field receipt UI or email-draft bug reports.
 
-Run `cargo run --locked --bin uec-api`. For a separate Vite instance, set
-`VITE_COMMUNITY_PILOT=true` and `VITE_API_ORIGIN` to that loopback API origin,
-then `npm --prefix frontend run dev -- --host 127.0.0.1 --port <unused-port>`.
-Open `/v2-preview/#/contribute` for Add a facility. Visible task links switch
-the unified form to evidence, correction, duplicate, privacy/removal or bug report.
-Canonical type links use `#/contribute?type=facility`, `evidence`, `correction`,
-`duplicate`, `privacy_removal` or `bug`. Existing `#/contribute/…` links
-preselect the appropriate type. The shared
-styled header is Map, Database | Contribute, About. Contribute is a direct
-link; Database's text-only menu offers Browse records, Downloads and API
-documentation. About offers Overview, Sources & methodology, FAQ and Help.
-`#/about/manifesto` remains an alias for Overview. Overview and Contribute
-provide the open-source code contribution link on GitHub.
-Country names and source links are optional on facility intake; a name is
-required. Evidence needs a record reference and either a link or explanation.
-Contact email is optional for private follow-up and is stored separately from
-the claim. No automated email is sent; entering email is not an account,
-receipt recovery method or subscription. It expires under the configured
-contact retention period (the current disposable user test uses one day), so
-this pilot is not a durable list for future notifications. Future delivery
-needs approved retention/purpose, sender verification, a restricted contact
-workflow and delivery controls before enabling it.
-Receipt lookup uses the **Submission ID** and **Private receipt** returned
-after sending. Save both with the explicit copy controls; neither is stored
-in a link or browser storage. A **Record ID** identifies an existing facility
-and is used to target evidence/corrections; it cannot replace a Submission ID.
-Bug reports compose email or open GitHub; the user sends the report.
-Other local routes are `#/contribution-status`,
-`#/contribution-review` and `#/community`. Supply the operator credential
-in the private review form; it remains in memory. Privacy-request actions
-operate on the submission; target-record suppression follows the governance
-runbook. Accounts, uploads and email delivery are absent.
+For an authorized combined local preview, `UEC_REAL_PREVIEW_API_ORIGIN` routes
+private reads to the separately authenticated loopback data service.
+`UEC_COMBINED_PREVIEW=true`, `VITE_LOCAL_DATA_MODE=real-preview` and the
+server-only preview token preserve the existing proxy boundary.
 
-For a separately authorized combined local preview, keep `/api/community/*`
-on the isolated intake service. Vite's server-only
-`UEC_REAL_PREVIEW_API_ORIGIN` can route `/dev/real-preview/*` to a different
-authenticated loopback service against the retained database;
-`UEC_COMBINED_PREVIEW=true` preserves the `/v2-preview/` base. The existing
-`UEC_DEV_PREVIEW_TOKEN` and `VITE_LOCAL_DATA_MODE=real-preview` gate still apply.
-Keep credentials in process memory and make retained-database sessions read-only.
-This does not import data, apply migrations, make a public release or enable
-private downloads. Verify authenticated aggregate responses and independent
-intake health; a synthetic browser test does not prove this connection.
-
-`UEC_COMMUNITY_PUBLIC_ENABLED=true` separately enables safe linkage reads.
-It does not release submitted pins. An authenticated `link_community` API
-disposition requires an already eligible community **source-record** UUID and
-its release ID. Public claim metadata links to existing released facility
-detail; no intake narrative or selected coordinate is exposed.
-
-Call authenticated `POST /api/private/community/maintenance` to expire raw
-claims/contact and revoke expired receipt hashes, retaining tombstones and
-payload-free events. Arrange and verify an idle maintenance schedule before
-any ongoing pilot; none is installed here. Do not enable public operations
-without triage and retention approval, role separation and proven removal
-restore/replay. See the [owning proposal](governance/user-submitted-data.md).
-
-For the synthetic database/API proof, apply migrations to an **empty disposable**
-loopback database, build `cargo build --locked --bin uec-api`, and set
-`UEC_COMMUNITY_TEST_DATABASE_URL` plus `UEC_COMMUNITY_TEST_BINARY` to the local
-binary. Run `python -m unittest pipeline.tests.e2e.test_community_intake -q`.
-The proof refuses a nonempty source/intake database, starts and stops its own
-loopback API, and seeds synthetic community releases without provider calls.
-It exercises live restrictions, receipt isolation/revocation, payload expiry,
-immutable audits and concurrent admission caps. It intentionally leaves its
-fixtures in the disposable database; destroy only your owned test database.
-
-For the synthetic browser proof, start your separate Vite instance with
-`VITE_COMMUNITY_PILOT=true`, then run from `frontend`:
-
-```powershell
-$env:VITE_COMMUNITY_PILOT = 'true'
-$env:UEC_REAL_PREVIEW_URL = 'http://127.0.0.1:<your-vite-port>/v2-preview/'
-npx playwright test tests/e2e/community-pilot.spec.ts --workers=1
-```
-
-This proof mocks only synthetic API responses and blocks external map tiles.
-It checks pin interaction, coordinate fallback, receipt secrecy, private queue
-context and community warnings. It does not certify live basemap availability
-or publication of a newly submitted point. CI runs the same dedicated proof
-with explicit pilot enablement; the ordinary frontend remains disabled.
-
-### Run CFIA strict live private E2E
-
-For the bounded CFIA source lane, run one command from the repository root:
-
-```powershell
-python scripts/real_preview.py strict-live-private-e2e --source ca.cfia.federal-meat
-```
-
-It starts a uniquely named disposable loopback Postgres/PostGIS preview,
-performs one authorized CFIA public download with the tracked source terms
-record, runs provenance/schema/function-code validation and quarantine,
-atomically imports the private candidate handoff, verifies read-only search,
-detail, and viewport behavior, writes a row-free certificate, and removes the
-disposable database volume. Raw workbook and row-bearing private lifecycle
-artifacts remain under ignored local staging; do not commit them. CFIA has no
-source coordinates, so candidates are searchable/listable but remain off the
-map. The official result page and workbook counts differ, and the listing is
-stale-dated; this run proves bounded processing of the acquired artifact only,
-not source completeness, current facility status, privacy clearance, or
-publication eligibility. No public rows are created.
-
-### Certify one strict private real-preview run
-
-`python scripts/certify_real_preview.py --source <source-id> --ledger <path-to-source-preview-ledger.json>`
-verifies one already completed source run. It does not acquire data. The source
-must be explicitly enabled for private production E2E, and the command requires
-the exact run ledger, its loopback Postgres database, and the running loopback
-preview API. Supply the database URL through `UEC_DATABASE_URL` and keep a
-32-character-or-longer preview token in `UEC_DEV_PREVIEW_TOKEN` in the current
-process environment; neither value is printed or written by the command. The
-API address defaults to `http://127.0.0.1:38001` and can be changed with
-`--api-url` only to another loopback HTTP address.
-
-The row-free JSON certificate binds acquisition and runner IDs to provenance
-hashes, quarantine and candidate counts, database rows, zero public projections,
-coordinate validity, and the served private API's run/count/list/detail/map
-readiness. A failure exits nonzero without producing a certificate. Live source
-acquisition remains a separate explicit operator action through
-`scripts/real_preview.py refresh --source <source-id>`; certification itself
-never fetches or imports source data. A passing result is a point-in-time,
-source/run-scoped private-preview check. It does not establish source
-completeness, factual accuracy, privacy clearance, publication approval, release
-eligibility, or recurring runtime health.
-
-`python scripts/dev.py --json doctor` (and any command with the global `--json` flag) emits one machine-readable JSON object. Child-command output is captured so it cannot corrupt JSON output. Diagnostics report only whether environment variables are set; values and database credentials are never printed. `up` may apply migrations and seed/promote the synthetic local fixture through the existing `local-v2.ps1` workflow. It does not publish project data.
+For synthetic intake acceptance, use an empty disposable loopback database,
+`UEC_COMMUNITY_TEST_DATABASE_URL` and `UEC_COMMUNITY_TEST_BINARY`, then run
+`python -m unittest pipeline.tests.e2e.test_community_intake -q`.
+The test guards its target and seeds fixtures. Never use source, frozen,
+community-production or serving databases as disposable targets.
 
 ## First checkout
 
@@ -429,3 +310,15 @@ If the disposable fallback database must be recreated, use the explicit
 destructive command `python scripts/dev.py launchpad-reset`. It targets only
 the `uec-v2-launchpad` Compose project and its volume, then requires a fresh
 `launchpad` start.
+
+## Migration runner
+
+`pipeline/scripts/maintenance/apply-migrations.py` sorts SQL filenames lexically.
+Migration identity is the full filename stem, not just its numeric prefix, so
+same-prefix files remain distinct. Applied filenames/content/order must not be
+rewritten: append a new migration. SHA-256 mismatches stop replay.
+Each migration and ledger insert is transactional; failed SQL rolls back while
+completed earlier migrations remain. Connection retry is bounded (ten attempts,
+one second apart) and does not change ordering. Inspect the exact target and
+existing migration ledger before a restore or migration; never reset persistent
+data to bypass a checksum discrepancy.
