@@ -4,7 +4,7 @@ import { CATEGORY_PRESENTATIONS, CATEGORY_PRIMARY_BY_SOURCE_KEY } from '../../fe
 
 export const DEFAULT_CLUSTER_RADIUS = 30;
 /** Requested camera zoom. Native GeoJSON tile zooms are whole numbers. */
-export const DEFAULT_CLUSTER_MAX_ZOOM = 7.5;
+export const DEFAULT_CLUSTER_MAX_ZOOM = 9;
 /** Presentation-only radius when the public projection has no supplied area. */
 /** Selected approximate locations receive a 500m-diameter reference area. */
 export const DEFAULT_REFERENCE_RADIUS_KM = 0.25;

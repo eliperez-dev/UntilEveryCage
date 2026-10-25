@@ -124,8 +124,8 @@ export function addJsonLocationLayers(map: MapLibreMap, data: JsonMapCollection)
     type: 'geojson',
     data,
     cluster: true,
-    clusterRadius: 50,
-    clusterMaxZoom: 9,
+    clusterRadius: 30,
+    clusterMaxZoom: 8,
     clusterProperties: { representedCount: ['+', ['get', 'weight']] },
   } as any);
 

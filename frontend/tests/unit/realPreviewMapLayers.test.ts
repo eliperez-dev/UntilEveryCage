@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { addRealPreviewMapLayers, applyRealPreviewVisualSettings, hasRealPreviewMapLayers, nativeClusterMaxZoom, referenceRadiusExpression, setClusterTileRounding, setRealPreviewPinMode, useRoundedClusterTiles, REAL_PREVIEW_LAYER_IDS } from '../../src/design-lab/components/realPreviewMapLayers';
+import { addRealPreviewMapLayers, applyRealPreviewVisualSettings, hasRealPreviewMapLayers, nativeClusterMaxZoom, referenceRadiusExpression, setClusterTileRounding, setRealPreviewPinMode, useRoundedClusterTiles, REAL_PREVIEW_LAYER_IDS, DEFAULT_CLUSTER_MAX_ZOOM } from '../../src/design-lab/components/realPreviewMapLayers';
 
 describe('real-preview native clustering layers', () => {
   it('puts facility coordinates and weighted references in one source and filters clusters first', () => {
@@ -19,7 +19,7 @@ describe('real-preview native clustering layers', () => {
     addRealPreviewMapLayers(map as any, data);
     expect(Object.keys(sources)).toEqual(['locations', 'approximate-reference-area']);
     expect(sources['approximate-reference-area']).toMatchObject({ type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-    expect(sources.locations).toMatchObject({ cluster: true, clusterRadius: 30, clusterMaxZoom: 7, roundZoom: true, clusterProperties: { representedCount: ['+', ['get', 'weight']], approximateCount: ['+', ['case', ['any', ['==', ['get', 'precision'], 'approximate'], ['==', ['get', 'precision'], 'city'], ['==', ['get', 'precision'], 'locality_reference_coarse']], ['get', 'weight'], 0]] } });
+    expect(sources.locations).toMatchObject({ cluster: true, clusterRadius: 30, clusterMaxZoom: 8, roundZoom: false, clusterProperties: { representedCount: ['+', ['get', 'weight']], approximateCount: ['+', ['case', ['any', ['==', ['get', 'precision'], 'approximate'], ['==', ['get', 'precision'], 'city'], ['==', ['get', 'precision'], 'locality_reference_coarse']], ['get', 'weight'], 0]] } });
     expect(layers.find(layer => layer.id === 'clusters')?.filter).toEqual(['has', 'cluster']);
     expect(layers.find(layer => layer.id === 'clusters')?.layout['icon-image'])
       .toEqual(['step', ['get', 'representedCount'], 'cluster-low', 10, 'cluster-mid', 100, 'cluster-high', 1001, 'cluster-very-high']);
@@ -169,6 +169,9 @@ describe('real-preview native clustering layers', () => {
   });
 
   it('uses the tile zoom transition matching whole and half camera zoom cutoffs', () => {
+    expect(DEFAULT_CLUSTER_MAX_ZOOM).toBe(9);
+    expect(nativeClusterMaxZoom(DEFAULT_CLUSTER_MAX_ZOOM)).toBe(8);
+    expect(useRoundedClusterTiles(DEFAULT_CLUSTER_MAX_ZOOM)).toBe(false);
     expect(nativeClusterMaxZoom(7.5)).toBe(7);
     expect(useRoundedClusterTiles(7.5)).toBe(true);
     expect(nativeClusterMaxZoom(8)).toBe(7);
