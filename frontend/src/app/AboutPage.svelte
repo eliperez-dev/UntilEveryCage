@@ -21,7 +21,7 @@
   <section id="overview" aria-labelledby="about-title">
     <h1 id="about-title">Until every cage is empty</h1>
     <p class="lead">We are an animal-rights research project. We map the places and systems that use animals so their scale can be investigated and challenged.</p>
-    <p>Animals are individuals, not database rows. A map point identifies a place in the evidence, not an animal count or a claim that every facility practices the same activities.</p>
+    <p>Animals are individuals, not database rows.</p>
     <div class="estimate" aria-labelledby="estimate-title">
       <h2 id="estimate-title">Estimated animals killed</h2>
       <p class="estimate-number" aria-live="off">{estimated.toLocaleString('en-US')} <span>animals</span></p>
@@ -32,7 +32,7 @@
   <section id="sources" aria-labelledby="sources-title">
     <h2 id="sources-title">Sources and methods</h2>
     <p>Records retain their source origin, dates, location precision, and available evidence. Interpretation and connections are labeled separately. Coverage is incomplete: absence from the map does not show that a facility is absent or closed.</p>
-    <p>Source origin, factual review, privacy screening, project approval, and publication are separate. Community submissions remain a distinct, opt-in profile and do not change curated totals.</p>
+    <p>Community submissions are separate from the project dataset.</p>
     <p>Facility points, approximate locality references, and records without a publishable point have different precision. We do not guess locations.</p>
     <p>Street maps use OpenStreetMap, satellite imagery uses Esri, and 3D terrain uses <a href="https://mapterhorn.com/attribution" target="_blank" rel="noreferrer">Mapterhorn</a>. Map providers receive your IP address and tile requests, not facility records or search text.</p>
     <p><a href={route('database/api')}>Browse public data and releases</a> · <a href={returnMapHref}>Open the map</a></p>

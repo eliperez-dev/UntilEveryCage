@@ -18,7 +18,7 @@ test('the legacy Help route opens its section in the merged About page', async (
   await isolatedPage(page);
   await page.goto('./#/about/help?map=%23%2Fmap%3Ff1a%3Dfield');
   await expect(page.getByRole('heading', { name: 'Explore and contribute', exact: true })).toBeVisible();
-  await expect(page.getByText('Keep the private tracking link provided after sending.', { exact: true })).toBeVisible();
+  await expect(page.locator('#help').getByText('Keep the private tracking link provided after sending.', { exact: false })).toBeVisible();
   await expect(page.locator('video')).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Contribute code on GitHub' })).toBeVisible();
 });
@@ -43,6 +43,7 @@ test('Swagger is local and lazy, renders real GET operations and executes only o
   });
   await page.route('**/api/**', async route => {
     if (!new URL(route.request().url()).pathname.startsWith('/api/')) { await route.fallback(); return; }
+    if (new URL(route.request().url()).pathname === '/api/v2/releases/manifest') { await route.fallback(); return; }
     if (route.request().method() !== 'GET') writes += 1;
     else if (new URL(route.request().url()).pathname.startsWith('/api/v2/locations')) locationReads += 1;
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ api_version: 'v2', data: [], meta: { profile: 'official', next_cursor: null } }) });
@@ -51,8 +52,8 @@ test('Swagger is local and lazy, renders real GET operations and executes only o
   await expect(page.getByRole('heading', { name: 'Until every cage is empty' })).toBeVisible();
   expect(swaggerAssets).toBe(0);
   await page.getByRole('link', { name: 'API', exact: true }).click();
-  await expect(page.locator('.opblock')).toHaveCount(10);
-  await expect(page.locator('.opblock-summary-method')).toHaveText(Array(10).fill('GET'));
+  await expect(page.locator('.opblock')).toHaveCount(13);
+  await expect(page.locator('.opblock-summary-method')).toHaveText(Array(13).fill('GET'));
   expect(locationReads).toBe(0); expect(writes).toBe(0);
   await expect(page.locator('.topbar')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Authorize', exact: true })).toHaveCount(0);
@@ -88,7 +89,7 @@ test('About and expanded API paths stay usable on mobile with direct masthead li
   await isolatedPage(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('./#/about/api');
-  await expect(page.locator('.opblock')).toHaveCount(10);
+  await expect(page.locator('.opblock')).toHaveCount(13);
   const list = operation(page, '/api/v2/locations');
   await list.locator('.opblock-summary-control').click();
   await list.getByRole('button', { name: 'Try it out', exact: true }).click();
@@ -150,7 +151,7 @@ test('conditional manifest GET preserves If-None-Match and handles 304 without c
 test('explorer text remains readable and narrow parameters use the available page width', async ({ page }) => {
   await isolatedPage(page);
   await page.goto('./#/about/api');
-  await expect(page.locator('.opblock')).toHaveCount(10);
+  await expect(page.locator('.opblock')).toHaveCount(13);
   const list = operation(page, '/api/v2/locations');
   for (const width of [1440, 768, 375]) {
     await page.setViewportSize({ width, height: 900 });
@@ -178,6 +179,6 @@ test('explorer text remains readable and narrow parameters use the available pag
   expect(api!.x).toBe(16); expect(api!.width).toBe(343);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.goto('./#/about/help');
-  const help = await page.locator('.help-page').boundingBox();
+  const help = await page.locator('.about-page').boundingBox();
   expect(help!.x).toBe(16); expect(help!.width).toBe(343);
 });
