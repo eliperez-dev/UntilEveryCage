@@ -17,6 +17,7 @@ if (typeof window !== 'undefined') {
 
 // English is the source language. Missing Spanish entries intentionally fall back to it.
 const es: Record<string, string> = {
+  'Loading record…': 'Cargando registro…', 'Annual report': 'Informe anual', 'Inspection': 'Inspección',
   'Map': 'Mapa', 'Database': 'Base de datos', 'API': 'API', 'Contribute': 'Contribuir', 'About': 'Acerca de', 'FAQ': 'Preguntas frecuentes',
   'Investigative map field': 'Mapa de investigación', 'Loading records…': 'Cargando registros…', 'Records unavailable. No live fallback was attempted.': 'Los registros no están disponibles. No se intentó una alternativa en vivo.', 'No records match this search and these filters.': 'Ningún registro coincide con esta búsqueda y estos filtros.',
   'Search across public release records': 'Buscar en los registros de la versión pública', 'Search across preview records': 'Buscar en los registros de vista previa', 'Name, activity, source, or place': 'Nombre, actividad, fuente o lugar',

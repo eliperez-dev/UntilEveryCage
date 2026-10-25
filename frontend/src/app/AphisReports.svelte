@@ -90,7 +90,7 @@
         <ul>
           {#each rows as reference (reference.reference_id)}
             <li>
-              <span>{reference.evidence_type === 'annual_reports' ? `Annual report · FY${reference.event_period}` : `Inspection · ${reference.event_date}`}</span>
+              <span>{reference.evidence_type === 'annual_reports' ? `${tr('Annual report', $language)} · FY${reference.event_period}` : `${tr('Inspection', $language)} · ${reference.event_date}`}</span>
               {#if reference.report_url}<a href={reference.report_url} target="_blank" rel="noopener noreferrer">{tr('Open report', $language)}</a>{/if}
               {#if reference.column_e_url}<a href={reference.column_e_url} target="_blank" rel="noopener noreferrer">{tr('Column E narrative', $language)}</a>{/if}
               {#if !reference.report_url && !reference.column_e_url}<a href={reference.source_url} target="_blank" rel="noopener noreferrer">{tr('Open APHIS source page', $language)}</a>{/if}

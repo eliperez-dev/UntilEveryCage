@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { tr } from '../../src/app/language';
 
 const masthead = readFileSync(resolve(process.cwd(), 'src/app/PreviewMasthead.svelte'), 'utf8');
 const about = readFileSync(resolve(process.cwd(), 'src/app/AboutPage.svelte'), 'utf8');
@@ -13,6 +14,9 @@ const field = readFileSync(resolve(process.cwd(), 'src/design-lab/variants/field
 const atlas = readFileSync(resolve(process.cwd(), 'src/design-lab/variants/atlas/Atlas.svelte'), 'utf8');
 const picker = readFileSync(resolve(process.cwd(), 'src/app/ContributionPinPicker.svelte'), 'utf8');
 const mapSurface = readFileSync(resolve(process.cwd(), 'src/design-lab/components/MapSurface.svelte'), 'utf8');
+const aphisReports = readFileSync(resolve(process.cwd(), 'src/app/AphisReports.svelte'), 'utf8');
+const publicRecord = readFileSync(resolve(process.cwd(), 'src/app/PublicRecord.svelte'), 'utf8');
+const language = readFileSync(resolve(process.cwd(), 'src/app/language.ts'), 'utf8');
 
 describe('normal shell content', () => {
   it('keeps release context compact and removes unavailable account controls', () => {
@@ -33,7 +37,8 @@ describe('normal shell content', () => {
     expect(contributions).toContain('TAXONOMY_PRIMARY_KEYS as category');
     expect(contributions).toContain('CATEGORY_PRESENTATIONS[category].label');
     expect(contributions).not.toContain('name="claimed_activity" maxlength');
-    expect(contributions).toContain('Other / Unknown (unclassified)');
+    expect(contributions).toContain("tr('Other / Unknown (unclassified)', $language)");
+    expect(language).toContain("'Other / Unknown (unclassified)': 'Otro / Desconocido (sin clasificar)'");
   });
 
   it('keeps map tools on the map and uses the regular V1 contribution pin in production', () => {
@@ -47,7 +52,8 @@ describe('normal shell content', () => {
   it('keeps the supplied manifesto, counter component, and concise FAQ separate', () => {
     expect(about).toContain('About Until Every Cage is Empty');
     expect(about).toContain('The Architecture of Silence');
-    expect(about).toContain('Until Every Cage is Empty</h2>');
+    expect(about).toContain("{tr('Until Every Cage is Empty', $language)}</h2>");
+    expect(language).toContain("'Until Every Cage is Empty': 'Hasta que todas las jaulas estén vacías'");
     expect(about).toContain('<aside class="about-counter-slot" aria-label="Animal counter"><AnimalKillCounter /></aside>');
     expect(about).toContain('assets/icon.png');
     expect(about).toContain('about-logo');
@@ -66,12 +72,14 @@ describe('normal shell content', () => {
   });
 
   it('restores the living-project footer with a backend version component', () => {
-    expect(footer).toContain('<p>An independent, open-source, ad-free project.</p>');
+    expect(footer).toContain("{tr('An independent, open-source, ad-free project.', $language)}</p>");
+    expect(language).toContain("'An independent, open-source, ad-free project.': 'Un proyecto independiente, de código abierto y sin anuncios.'");
     expect(footer).not.toContain('Feedback and questions are welcome.');
     for (const url of ['mailto:untileverycageproject@protonmail.com', 'https://discord.gg/wbdTHzAZ4b', 'https://ko-fi.com/untileverycageisempty', 'https://linktr.ee/veganresource', 'https://github.com/eliperez-dev/UntilEveryCage']) expect(footer).toContain(url);
-    expect(footer).toContain('AGPLv3 or later');
+    expect(footer).toContain("{tr('Code is available under', $language)} <a href=\"https://www.gnu.org/licenses/agpl-3.0.html\" target=\"_blank\" rel=\"noreferrer\">AGPLv3 {tr('or later', $language)}</a>");
+    expect(tr('or later', 'en')).toBe('or later');
     expect(footer).toContain('CC BY-NC-SA where applicable');
-    expect(footer).toContain('Counter Adapted from <a href="https://www.adaptt.org/" target="_blank" rel="noreferrer">ADAPTT</a>.');
+    expect(footer).toContain("{tr('Counter Adapted from', $language)} <a href=\"https://www.adaptt.org/\" target=\"_blank\" rel=\"noreferrer\">ADAPTT</a>.");
     expect(footer).not.toContain('Counter approach adapted');
     expect(picker).toContain('new maplibregl.NavigationControl');
     expect(mapSurface).not.toContain('new maplibregl.NavigationControl');
@@ -90,10 +98,11 @@ describe('normal shell content', () => {
     expect(contribute).toContain('{#if communityReleasePublished}<a href={utilityHref(\'community\')}>Community submissions</a>{/if}');
     expect(contribute).toContain("Object.entries(taskNames)");
     expect(api).toContain("current('community')");
-    expect(api).toContain('{#if communityReleaseAvailable}<option value="community">Community submissions</option>{/if}');
+    expect(api).toContain('{#if communityReleaseAvailable}<option value="community">{tr(\'Community submissions\', $language)}</option>{/if}');
     expect(api).toContain('selectedReleaseId: selectedFromRoute');
     expect(api).toContain('repository.current(profile, controller.signal, chosenId)');
-    expect(api).toContain('API release ID: <code>{releaseId}</code>');
+    expect(api).toContain("{tr('API release ID:', $language)} <code>{releaseId}</code>");
+    expect(tr('API release ID:', 'en')).toBe('API release ID:');
     expect(api).not.toContain("limit: '1'");
   });
 
@@ -101,7 +110,21 @@ describe('normal shell content', () => {
     const app = readFileSync(resolve(process.cwd(), 'src/app/App.svelte'), 'utf8');
     expect(app).toContain('selectedReleaseId={new URLSearchParams(route.returnMapHref?.split(\'?\')[1] ?? \'\').get(\'release_id\')}');
     expect(api).toContain("...(releaseId ? { release_id: releaseId } : {})");
-    expect(api).toContain('aria-label="Public release"');
+    expect(api).toContain("aria-label={tr('Public release', $language)}");
+    expect(language).toContain("'Public release': 'Versión pública'");
+  });
+
+  it('translates APHIS and record-detail chrome without translating source dates or identifiers', () => {
+    expect(aphisReports).toContain("tr('Annual report', $language)");
+    expect(aphisReports).toContain("tr('Inspection', $language)");
+    expect(aphisReports).toContain('FY${reference.event_period}');
+    expect(aphisReports).toContain('${reference.event_date}');
+    expect(publicRecord).toContain("tr('Loading record…', $language)");
+    expect(publicRecord).toContain("<h2 id=\"source-heading\">{tr('Source and review', $language)}</h2>");
+    expect(language).toContain("'Annual report': 'Informe anual'");
+    expect(language).toContain("'Inspection': 'Inspección'");
+    expect(tr('Annual report', 'en')).toBe('Annual report');
+    expect(tr('Missing Spanish entry', 'es')).toBe('Missing Spanish entry');
   });
 
   it('uses a private fragment tracking capability for status lookup', () => {
