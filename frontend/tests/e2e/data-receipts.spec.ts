@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 const id = '18c6ef3a-28cd-4c8e-a9bb-3951f45f210d';
 const second = '27d7ef4b-39de-4d9f-bacc-4062f560321e';
+const third = '38e8af5c-40ef-4e0a-adbd-5173f671432f';
 const email = 'synthetic-followup@example.test';
 const secret = 'synthetic-private-receipt';
 const publicWire = {facility_id:id,canonical_name:'Synthetic public record',city:'Synthetic locality',country_code:'DK',category:'Synthetic activity',source_type:'official',publication_profile:'official',factual_review_status:'reviewed',privacy_screening_status:'passed',project_approval:'approved',reviewer_role:null,publication_warning:null,display_precision:'unmapped',latitude:null,longitude:null,first_observed_at:null,last_observed_at:'2026-01-01T00:00:00Z',observation_count:1,lifecycle_status:'active_observed',provenance_source_id:'synthetic.source',provenance_source:null,provenance_source_name:'Synthetic public authority',provenance_source_url:'https://example.test/source',provenance_retrieved_at:'2026-01-01T00:00:00Z',source_rights_status:'cleared',release_id:'synthetic-release',release_ruleset_version:'synthetic-rules'};
@@ -65,17 +66,36 @@ test('public record navigation reads the selected release and unavailable record
   const wire = publicWire;
   await page.route('**/api/v2/locations?**',route => route.fulfill({contentType:'application/json',body:JSON.stringify({api_version:'v2',data:[wire],meta:{release_id:'synthetic-release',ruleset_version:'synthetic-rules',profile:'official',next_cursor:null,coverage_note:'Synthetic release only.'}})}));
   await page.route(`**/api/v2/locations/${id}?**`,route => { reads.push(new URL(route.request().url())); return route.fulfill({contentType:'application/json',body:JSON.stringify({api_version:'v2',data:wire,meta:{release_id:'synthetic-release',ruleset_version:'synthetic-rules',profile:'official',release_created_at:'2026-01-01T00:00:00Z'}})}); });
-  await page.goto('./#/database'); await page.getByRole('button',{name:'Synthetic public record',exact:true}).click();
-  await page.getByRole('link',{name:'Open record page',exact:true}).click();
-  await expect(page.getByRole('region',{name:'Public record'}).getByRole('heading',{name:'Synthetic public record',exact:true})).toBeVisible();
+  const mapContext = '#/map?lat=44.5&lon=8.1&z=5&pitch=32&bearing=-12&basemap=satellite&release_id=synthetic-release';
+  await page.goto(`./#/database?release_id=synthetic-release&map=${encodeURIComponent(mapContext)}`);
+  await page.getByRole('link',{name:'Synthetic public record',exact:true}).click();
+  await expect(page.getByRole('region',{name:'Public record'}).getByRole('heading',{name:/Synthetic public record/})).toBeVisible();
   expect(reads[0]!.searchParams.get('release_id')).toBe('synthetic-release'); expect(reads[0]!.searchParams.get('profile')).toBe('official');
+  expect(new URL(page.url()).hash).toContain(encodeURIComponent(mapContext));
   await expect(page.getByText('Unmapped',{exact:false}).first()).toBeVisible();
-  await expect(page.getByRole('button',{name:'Copy record id',exact:true})).toBeVisible();
-  await page.route(`**/api/v2/locations/${second}?**`,route => route.fulfill({status:404,contentType:'application/json',body:'{}'}));
-  await page.goto(`./#/records/${second}?profile=official&release_id=synthetic-release`);
+  await expect(page.getByRole('link',{name:'Open in Map',exact:true})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Copy facility link',exact:true})).toBeVisible();
+
+  const mappedWire = {...publicWire, facility_id:second, display_precision:'exact', latitude:55.7, longitude:12.5};
+  await page.route(`**/api/v2/locations/${second}?**`,route => route.fulfill({contentType:'application/json',body:JSON.stringify({api_version:'v2',data:mappedWire,meta:{release_id:'synthetic-release',ruleset_version:'synthetic-rules',profile:'official',release_created_at:'2026-01-01T00:00:00Z'}})}));
+  await page.goto(`./#/records/${second}?profile=official&release_id=synthetic-release&map=${encodeURIComponent(mapContext)}`);
+  await expect(page.getByRole('region',{name:'Public record'}).getByRole('heading',{name:/Synthetic public record/})).toBeVisible();
+  const openInMap = page.getByRole('link',{name:'Open in Map',exact:true});
+  await expect(openInMap).toBeVisible();
+  const openHref = await openInMap.getAttribute('href') ?? '';
+  const mapQuery = new URLSearchParams(openHref.split('?')[1]);
+  expect(mapQuery.get('lat')).toBe('55.7'); expect(mapQuery.get('lon')).toBe('12.5');
+  expect(mapQuery.get('z')).toBe('15'); expect(mapQuery.get('selected')).toBe(second);
+  expect(mapQuery.get('release_id')).toBe('synthetic-release'); expect(mapQuery.get('basemap')).toBe('satellite');
+  await openInMap.click();
+  const mapRoute = new URLSearchParams(new URL(page.url()).hash.split('?')[1]);
+  expect(mapRoute.get('lat')).toBe('55.7'); expect(mapRoute.get('lon')).toBe('12.5');
+  expect(mapRoute.get('selected')).toBe(second); expect(mapRoute.get('release_id')).toBe('synthetic-release');
+  await page.route(`**/api/v2/locations/${third}?**`,route => route.fulfill({status:404,contentType:'application/json',body:'{}'}));
+  await page.goto(`./#/records/${third}?profile=official&release_id=synthetic-release`);
   await expect(page.getByRole('heading',{name:'Record unavailable',exact:true})).toBeVisible();
   await expect(page.getByRole('heading',{name:'Synthetic public record',exact:true})).toHaveCount(0);
-  await expect(page.getByRole('button',{name:'Copy record id',exact:true})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Copy facility link',exact:true})).toHaveCount(0);
 });
 
 test('an explicit public record stays public under the combined preview marker', async ({ page }) => {

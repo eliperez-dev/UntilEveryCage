@@ -11,7 +11,10 @@ describe('routeState', () => {
   });
 
   it('parses the database route independently', () => {
-    expect(parseRoute('#/database')).toEqual({ kind: 'database' });
+    expect(parseRoute('#/database')).toEqual({ kind: 'database', returnMapHref: '#/map' });
+    expect(parseRoute('#/database?lat=44.5&lon=8.1&z=5&basemap=satellite&release_id=r-2026-10&selected=stale')).toEqual({ kind: 'database', releaseId: 'r-2026-10', returnMapHref: '#/map?lat=44.5&lon=8.1&z=5&basemap=satellite&release_id=r-2026-10' });
+    const databaseRoute = { kind: 'database' as const, releaseId: 'r-2026-10', returnMapHref: '#/map?lat=44.5&lon=8.1&z=5&basemap=satellite&release_id=r-2026-10' };
+    expect(parseRoute(serializeRoute(databaseRoute))).toEqual(databaseRoute);
   });
 
   it('keeps the manifesto route and opens legacy FAQ and methodology URLs in the matching FAQ section', () => {
@@ -28,7 +31,9 @@ describe('routeState', () => {
 
   it('preserves only validated map context when returning from Database or other routes', () => {
     const context = new URLSearchParams('lat=44.5&lon=8.1&z=5&pitch=32&bearing=-12&basemap=satellite&list=open&release_id=release-2026-10&q=private%20search&scenario=default&f1a=field&extra=unsafe');
+    context.set('selected', 'stale-record');
     expect(mapHrefFromParams(context)).toBe('#/map?lat=44.5&lon=8.1&z=5&pitch=32&bearing=-12&basemap=satellite&list=open&release_id=release-2026-10');
+    expect(mapHrefFromParams(context, 'release-2026-10', 'target-record')).toBe('#/map?lat=44.5&lon=8.1&z=5&pitch=32&bearing=-12&basemap=satellite&list=open&selected=target-record&release_id=release-2026-10');
     expect(mapHrefFromHash('#/database?lat=44.5&lon=8.1&z=5&pitch=32&bearing=-12&basemap=satellite&list=open&release_id=release-2026-10&q=private&extra=unsafe')).toBe('#/map?lat=44.5&lon=8.1&z=5&pitch=32&bearing=-12&basemap=satellite&list=open&release_id=release-2026-10');
     expect(mapHrefFromHash('#/database?lat=100&lon=181&z=99&pitch=90&bearing=181&list=closed&release_id=bad/value')).toBe('#/map');
     expect(safeMapHref('#/map?lat=44.5&lon=8.1&q=private&f1a=field')).toBe('#/map?lat=44.5&lon=8.1');
@@ -99,21 +104,21 @@ describe('routeState', () => {
   });
 
   it('preserves record links and rejects unsupported paths', () => {
-    expect(parseRoute('#/records/syn-north-star?source=shared')).toEqual({ kind: 'record', facilityId: 'syn-north-star' });
-    expect(parseRoute('#/locations/syn-river-meadow')).toEqual({ kind: 'record', facilityId: 'syn-river-meadow' });
+    expect(parseRoute('#/records/syn-north-star?source=shared')).toEqual({ kind: 'record', facilityId: 'syn-north-star', returnMapHref: '#/map' });
+    expect(parseRoute('#/locations/syn-river-meadow')).toEqual({ kind: 'record', facilityId: 'syn-river-meadow', returnMapHref: '#/map' });
     expect(parseRoute('#/search?q=eggs')).toEqual({ kind: 'not-found', fragment: '/search?q=eggs' });
   });
 
   it('round-trips a public record snapshot with profile and release membership', () => {
-    const route = { kind: 'record' as const, facilityId: '18c6ef3a-28cd-4c8e-a9bb-3951f45f210d', profile: 'community' as const, releaseId: 'synthetic-release' };
+    const route = { kind: 'record' as const, facilityId: '18c6ef3a-28cd-4c8e-a9bb-3951f45f210d', profile: 'community' as const, releaseId: 'synthetic-release', returnMapHref: '#/map?release_id=synthetic-release' };
     expect(parseRoute(serializeRoute(route))).toEqual(route);
-    expect(parseRoute('#/records/synthetic?profile=private&release_id=bad/value')).toEqual({kind:'record',facilityId:'synthetic'});
+    expect(parseRoute('#/records/synthetic?profile=private&release_id=bad/value')).toEqual({kind:'record',facilityId:'synthetic',returnMapHref:'#/map'});
   });
 
   it('keeps legacy location routes and hash fallback below a preview base path', () => {
-    expect(parseRoute('#/locations/syn-river-meadow')).toEqual({ kind: 'record', facilityId: 'syn-river-meadow' });
+    expect(parseRoute('#/locations/syn-river-meadow')).toEqual({ kind: 'record', facilityId: 'syn-river-meadow', returnMapHref: '#/map' });
     const previewUrl = new URL('https://example.test/v2-preview/#/records/syn-north-star');
-    expect(parseRoute(previewUrl.hash)).toEqual({ kind: 'record', facilityId: 'syn-north-star' });
+    expect(parseRoute(previewUrl.hash)).toEqual({ kind: 'record', facilityId: 'syn-north-star', returnMapHref: '#/map' });
   });
 
   it('rejects malformed public claim links and does not guess unsupported paths', () => {

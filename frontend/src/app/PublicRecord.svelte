@@ -1,15 +1,16 @@
 <script lang="ts">
   import { LocalLocationRepository, type LocalProfile } from '../api/LocalLocationRepository';
   import type { DerivedSourceVolumeRange, Location } from '../domain/location';
-  import { serializeRoute } from './routeState';
+  import { mapHrefFromParams, safeMapHref, serializeRoute } from './routeState';
   import { precisionPresentation } from '../features/locations/precisionPresentation';
   import { publicReleaseLabel } from '../features/locations/releasePresentation';
   import RecordConnections from './RecordConnections.svelte';
   import { categoryPresentation } from '../features/locations/categoryPresentation';
   import { sourceClassificationLabels } from '../features/locations/sourceClassification';
   import LocationPreview from './LocationPreview.svelte';
+  import { locationPreviewZoom } from '../features/locations/locationPreview';
   let copyFeedback = $state('');
-  let { id, profile = 'official', releaseId, onrelease }: { id: string; profile?: LocalProfile; releaseId?: string | undefined; onrelease?: (label: string | null) => void } = $props();
+  let { id, profile = 'official', releaseId, returnMapHref = '#/map', onrelease }: { id: string; profile?: LocalProfile; releaseId?: string | undefined; returnMapHref?: string; onrelease?: (label: string | null) => void } = $props();
   const repository = new LocalLocationRepository();
   let record = $state<Location | null>(null);
   let currentRelease = $state('');
@@ -60,7 +61,14 @@
   const slaughterRanges = (ranges: readonly DerivedSourceVolumeRange[] | undefined) => ranges?.filter(range => range.unit === 'head' && range.period === 'trailing_360_days') ?? [];
   const processingRanges = (ranges: readonly DerivedSourceVolumeRange[] | undefined) => ranges?.filter(range => range.unit === 'pounds' && range.period === 'month') ?? [];
   const annualSpeciesCount = (count: number) => new Intl.NumberFormat('en-US').format(count);
-  const recordLink = $derived(`${window.location.origin}${window.location.pathname}${serializeRoute({kind:'record',facilityId:id,profile,...(currentRelease ? {releaseId:currentRelease} : {})})}`);
+  const recordLink = $derived(`${window.location.origin}${window.location.pathname}${serializeRoute({kind:'record',facilityId:id,profile,...(currentRelease ? {releaseId:currentRelease} : {}),returnMapHref})}`);
+  const openMapHref = $derived(record && record.lat !== null && record.lon !== null ? (() => {
+    const params = new URLSearchParams((safeMapHref(returnMapHref) ?? '#/map').split('?')[1] ?? '');
+    params.set('lat', String(record.lat)); params.set('lon', String(record.lon));
+    params.set('z', String(locationPreviewZoom(record.evidence?.displayPrecision)));
+    params.set('selected', record.id);
+    return mapHrefFromParams(params, currentRelease || releaseId, record.id);
+  })() : null);
   async function copyRecordLink() { try { await navigator.clipboard.writeText(recordLink); copyFeedback = 'Facility link copied.'; } catch { copyFeedback = 'Could not copy facility link.'; } }
 </script>
 <svelte:head><title>{record?.name ?? 'Record'} · Until Every Cage</title></svelte:head>
@@ -77,6 +85,7 @@
         {#if record.evidence?.geometryProvenance?.provider}<div><dt>Geocoding provider</dt><dd>{record.evidence.geometryProvenance.provider}</dd></div>{/if}
         {#if geocodingConfidence(record) !== null || record.evidence?.geometryProvenance?.confidence_band}<div><dt>Geocoding confidence</dt><dd>{#if geocodingConfidence(record) !== null}{geocodingConfidence(record)} (provider score){/if}{#if record.evidence?.geometryProvenance?.confidence_band}{geocodingConfidence(record) !== null ? ' · ' : ''}{humanLabel(record.evidence.geometryProvenance.confidence_band)}{/if}</dd></div>{/if}
       </dl>
+      {#if openMapHref}<p class="map-action"><a href={openMapHref}>Open in Map</a></p>{/if}
     </section>
     {#if record.lat !== null && record.lon !== null}<LocationPreview latitude={record.lat} longitude={record.lon} precision={record.evidence?.displayPrecision ?? 'unmapped'} category={record.taxonomy?.primaryCategories[0] ?? record.category} />{/if}
     <section aria-labelledby="activities-heading">

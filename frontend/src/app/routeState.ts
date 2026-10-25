@@ -1,14 +1,14 @@
 export type ContributionType = 'facility' | 'evidence' | 'correction' | 'duplicate' | 'privacy_removal' | 'bug';
 export type RouteState =
   | Readonly<{ kind: 'map'; releaseId?: string }>
-  | Readonly<{ kind: 'database'; releaseId?: string }>
+  | Readonly<{ kind: 'database'; releaseId?: string; returnMapHref?: string }>
   | Readonly<{ kind: 'about'; section: 'overview' | 'sources'; returnMapHref?: string }>
   | Readonly<{ kind: 'downloads'; returnMapHref?: string }>
   | Readonly<{ kind: 'faq'; section?: 'technology' | 'records' | 'contributions' | 'help'; returnMapHref?: string }>
   | Readonly<{ kind: 'api'; returnMapHref?: string }>
   | Readonly<{ kind: 'contribute'; formKind?: ContributionType; targetRecordId?: string; returnMapHref?: string }>
   | Readonly<{ kind: 'bug-report'; returnMapHref?: string }>
-  | Readonly<{ kind: 'record'; facilityId: string; profile?: 'official' | 'secondary' | 'community'; releaseId?: string }>
+  | Readonly<{ kind: 'record'; facilityId: string; profile?: 'official' | 'secondary' | 'community'; releaseId?: string; returnMapHref?: string }>
   | Readonly<{ kind: 'community'; page: 'form' | 'status' | 'claims' | 'claim-detail' | 'review'; formKind?: 'facility' | 'evidence' | 'correction' | 'duplicate' | 'privacy_removal'; claimId?: string; targetRecordId?: string; releaseId?: string; returnMapHref?: string }>
   | Readonly<{ kind: 'not-found'; fragment: string }>;
 
@@ -23,7 +23,7 @@ function safeNumeric(params: URLSearchParams, key: string, min: number, max: num
   return Number.isFinite(value) && value >= min && value <= max ? String(value) : undefined;
 }
 
-export function mapHrefFromParams(params: URLSearchParams, releaseOverride?: string): string {
+export function mapHrefFromParams(params: URLSearchParams, releaseOverride?: string, selectedOverride?: string): string {
   const safe = new URLSearchParams();
   for (const [key, min, max] of [['lat', -90, 90], ['lon', -180, 180], ['z', 1, 18], ['pitch', 0, 85], ['bearing', -180, 180]] as const) {
     const value = safeNumeric(params, key, min, max);
@@ -32,6 +32,8 @@ export function mapHrefFromParams(params: URLSearchParams, releaseOverride?: str
   const basemap = params.get('basemap');
   if (basemap === 'satellite' || basemap === 'vector') safe.set('basemap', basemap);
   if (params.get('list') === 'open') safe.set('list', 'open');
+  const selected = selectedOverride;
+  if (selected && /^[a-z0-9-]{1,80}$/i.test(selected)) safe.set('selected', selected);
   const releaseId = releaseOverride ?? params.get('release_id') ?? undefined;
   if (releaseId && releaseIdPattern.test(releaseId)) safe.set('release_id', releaseId);
   return `#/map${safe.size ? `?${safe}` : ''}`;
@@ -55,7 +57,13 @@ export function parseRoute(hash: string): RouteState {
   const returnMapHref = safeMapHref(requestedMapHref);
 
   if (path === '/' || path === '/map') { const releaseId = params.get('release_id'); return { kind: 'map', ...(releaseId && /^[A-Za-z0-9._-]{1,160}$/.test(releaseId) ? { releaseId } : {}) }; }
-  if (path === '/database') { const releaseId = params.get('release_id'); return { kind: 'database', ...(releaseId && /^[A-Za-z0-9._-]{1,160}$/.test(releaseId) ? { releaseId } : {}) }; }
+  if (path === '/database') {
+    const releaseId = params.get('release_id');
+    const validReleaseId = releaseId && /^[A-Za-z0-9._-]{1,160}$/.test(releaseId) ? releaseId : undefined;
+    const requestedContext = safeMapHref(requestedMapHref) ?? mapHrefFromHash(hash, validReleaseId);
+    const mapContext = mapHrefFromParams(new URLSearchParams(requestedContext.split('?')[1] ?? ''), validReleaseId);
+    return { kind: 'database', ...(validReleaseId ? { releaseId: validReleaseId } : {}), returnMapHref: mapContext };
+  }
   if (path === '/methodology' || path === '/about/sources') return { kind: 'faq', section: 'technology', ...(returnMapHref ? { returnMapHref } : {}) };
   if (path === '/about' || path === '/about/manifesto') return { kind: 'about', section: params.get('section') === 'sources' ? 'sources' : 'overview', ...(returnMapHref ? { returnMapHref } : {}) };
   if (path === '/database/downloads') return { kind: 'downloads', ...(returnMapHref ? { returnMapHref } : {}) };
@@ -89,7 +97,11 @@ export function parseRoute(hash: string): RouteState {
   const recordMatch = /^\/(?:records|locations)\/([a-z0-9-]+)$/.exec(path);
   if (recordMatch?.[1]) {
     const profile = params.get('profile'); const releaseId = params.get('release_id');
-    return { kind: 'record', facilityId: recordMatch[1], ...(profile && ['official','secondary','community'].includes(profile) ? { profile: profile as 'official' | 'secondary' | 'community' } : {}), ...(releaseId && /^[A-Za-z0-9._-]{1,160}$/.test(releaseId) ? { releaseId } : {}) };
+    const validReleaseId = releaseId && /^[A-Za-z0-9._-]{1,160}$/.test(releaseId) ? releaseId : undefined;
+    const mapContext = returnMapHref
+      ? mapHrefFromParams(new URLSearchParams(returnMapHref.split('?')[1] ?? ''), validReleaseId)
+      : mapHrefFromParams(new URLSearchParams(), validReleaseId);
+    return { kind: 'record', facilityId: recordMatch[1], ...(profile && ['official','secondary','community'].includes(profile) ? { profile: profile as 'official' | 'secondary' | 'community' } : {}), ...(validReleaseId ? { releaseId: validReleaseId } : {}), returnMapHref: mapContext };
   }
 
   return { kind: 'not-found', fragment: raw };
@@ -97,7 +109,7 @@ export function parseRoute(hash: string): RouteState {
 
 export function serializeRoute(route: RoutableState): string {
   if (route.kind === 'map') return `#/map${route.releaseId ? `?release_id=${encodeURIComponent(route.releaseId)}` : ''}`;
-  if (route.kind === 'database') return `#/database${route.releaseId ? `?release_id=${encodeURIComponent(route.releaseId)}` : ''}`;
+  if (route.kind === 'database') { const params = new URLSearchParams({ ...(route.releaseId ? { release_id: route.releaseId } : {}), ...(route.returnMapHref ? { map: route.returnMapHref } : {}) }); return `#/database${params.size ? `?${params}` : ''}`; }
   if (route.kind === 'about') return `#/about${route.section === 'sources' ? '?section=sources' : ''}${route.returnMapHref ? `${route.section === 'sources' ? '&' : '?'}map=${encodeURIComponent(route.returnMapHref)}` : ''}`;
   if (route.kind === 'downloads') return `#/database/downloads${route.returnMapHref ? `?map=${encodeURIComponent(route.returnMapHref)}` : ''}`;
   if (route.kind === 'faq') { const params = new URLSearchParams({ ...(route.section ? { section: route.section } : {}), ...(route.returnMapHref ? { map: route.returnMapHref } : {}) }); return `#/faq${params.size ? `?${params}` : ''}`; }
@@ -116,6 +128,6 @@ export function serializeRoute(route: RoutableState): string {
     if (route.page === 'claim-detail') return `#/community/claim?id=${encodeURIComponent(route.claimId ?? '')}${route.releaseId ? `&release_id=${encodeURIComponent(route.releaseId)}` : ''}${context ? `&${context}` : ''}`;
     return `#/contribution-review${context ? `?${context}` : ''}`;
   }
-  if (route.kind === 'record') { const params = new URLSearchParams({ ...(route.profile ? { profile: route.profile } : {}), ...(route.releaseId ? { release_id: route.releaseId } : {}) }); return `#/records/${encodeURIComponent(route.facilityId)}${params.size ? `?${params}` : ''}`; }
+  if (route.kind === 'record') { const params = new URLSearchParams({ ...(route.profile ? { profile: route.profile } : {}), ...(route.releaseId ? { release_id: route.releaseId } : {}), ...(route.returnMapHref ? { map: route.returnMapHref } : {}) }); return `#/records/${encodeURIComponent(route.facilityId)}${params.size ? `?${params}` : ''}`; }
   return '#/map';
 }

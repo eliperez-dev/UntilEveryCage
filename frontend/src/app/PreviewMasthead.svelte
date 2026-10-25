@@ -77,7 +77,7 @@
     position: relative;
     z-index: 20;
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) max-content minmax(0, 1fr);
     align-items: center;
     gap: 1.25rem;
     min-height: 4rem;
@@ -97,7 +97,7 @@
     white-space: nowrap;
   }
   .wordmark img { width: 2rem; height: 2rem; }
-  nav { display: flex; align-items:center; justify-self:stretch; width:100%; gap: 1rem; font: 0.77rem ui-sans-serif, system-ui, sans-serif; }
+  nav { display: flex; align-items:center; justify-content:center; justify-self:center; gap: 1rem; font: 0.77rem ui-sans-serif, system-ui, sans-serif; }
   nav a { color: #aeb9af; text-decoration: none; }
   nav .nav-separator{color:#657067;font-size:.72rem;user-select:none}
   nav a[aria-current] { color: #f1efe8; text-decoration: underline; text-underline-offset: 0.35rem; }

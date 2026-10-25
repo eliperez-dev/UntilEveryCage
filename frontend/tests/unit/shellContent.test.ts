@@ -18,6 +18,7 @@ describe('normal shell content', () => {
   it('keeps release context compact and removes unavailable account controls', () => {
     expect(masthead).toContain('Current release');
     expect(masthead).toContain('shared-tools-menu');
+    expect(masthead).toContain('justify-content:center; justify-self:stretch;');
     expect(masthead).toContain('onreleasechange?.(event.currentTarget.value)');
     expect(masthead).toContain('Historical views follow current privacy restrictions.');
     expect(masthead).not.toContain('Release</button>');
@@ -47,6 +48,8 @@ describe('normal shell content', () => {
     expect(about).toContain('The Architecture of Silence');
     expect(about).toContain('Until Every Cage is Empty</h2>');
     expect(about).toContain('<aside class="about-counter-slot" aria-label="Animal counter"><AnimalKillCounter /></aside>');
+    expect(about).toContain('assets/icon.png');
+    expect(about).toContain('about-logo');
     expect(about).not.toContain('Explore and contribute');
     expect(about).not.toContain('Common questions');
     expect(about).not.toContain('estimate-number');
@@ -71,7 +74,11 @@ describe('normal shell content', () => {
     expect(footer).not.toContain('Counter approach adapted');
     expect(picker).toContain('new maplibregl.NavigationControl');
     expect(mapSurface).not.toContain('new maplibregl.NavigationControl');
-    expect(mapSurface).not.toContain('Right-drag to rotate / Left-drag to pan');
+    expect(mapSurface).toContain('Right-mouse to rotate / Left-mouse to pan');
+    expect(mapSurface).toContain('.gesture-hint { grid-column:1 / -1;');
+    expect(field).toContain('top: 0.65rem;');
+    expect(field).toContain('left: 0.65rem;');
+    expect(mapSurface).toContain('top:.65rem; right:.65rem;');
     expect(footer).toContain('Final Nail');
     expect(footer).toContain('<div class="application-version-slot"><ApplicationVersion /></div>');
     expect(footer).not.toContain('v1.5.1');

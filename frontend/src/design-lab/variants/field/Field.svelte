@@ -798,10 +798,10 @@
   .search-toggle {
     position: absolute;
     z-index: 4;
-    top: 1rem;
-    left: 1rem;
+    top: 0.65rem;
+    left: 0.65rem;
   }
-  .search-toggle { display:flex; align-items:center; gap:.55rem; min-width:13rem; text-align:left; }
+  .search-toggle { display:flex; align-items:center; gap:.55rem; min-width:13rem; text-align:left; font:.72rem system-ui; }
   .search-toggle svg { width:1.15rem; height:1.15rem; flex:none; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; }
   .search-toggle-copy { display:grid; gap:.12rem; }
   .search-toggle-copy strong { font-size:.72rem; font-weight:650; }
@@ -983,7 +983,7 @@
   @media (max-width: 40rem) {
     /* The compact masthead has a second navigation row at this width. */
     .map-stage { inset: 7.2rem 0 0; }
-    .search-toggle { top: 0.65rem; left: 0.65rem; }
+    .search-toggle { top: 0.45rem; left: 0.4rem; }
     .results { top:auto; right:0; bottom:0; left:0; width:auto !important; max-height:min(62dvh, 34rem); }
     .reading-sheet {
       top: auto;
@@ -1002,7 +1002,7 @@
     .filters { width:100%; }
     .filters summary { justify-content:flex-start; }
     .filter-sheet { right:auto; left:0; }
-    .search-toggle { min-width:11.8rem; }
+    .search-toggle { min-width:10.4rem; }
   }
   .member-context {
     display: grid;

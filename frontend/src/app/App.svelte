@@ -24,8 +24,8 @@
   let loading = $state(true);
   let loadError = $state('');
   let returnMapHref = $derived.by(() => {
-    if (route.kind === 'about' || route.kind === 'contribute' || route.kind === 'bug-report' || route.kind === 'community' || route.kind === 'api' || route.kind === 'faq' || route.kind === 'downloads') return safeMapHref(route.returnMapHref) ?? '#/map';
-    return mapHrefFromHash(window.location.hash, route.kind === 'map' || route.kind === 'database' || route.kind === 'record' ? route.releaseId : undefined);
+    if (route.kind === 'about' || route.kind === 'contribute' || route.kind === 'bug-report' || route.kind === 'community' || route.kind === 'api' || route.kind === 'faq' || route.kind === 'downloads' || route.kind === 'database' || route.kind === 'record') return safeMapHref(route.returnMapHref) ?? mapHrefFromHash(window.location.hash, route.kind === 'database' || route.kind === 'record' ? route.releaseId : undefined);
+    return mapHrefFromHash(window.location.hash, route.kind === 'map' ? route.releaseId : undefined);
   });
   let databaseHref = $derived.by(() => {
     const query = returnMapHref.split('?')[1];
@@ -127,9 +127,9 @@
     {:else if route.kind === 'map'}
       <p class="state" role="status">Preparing the map…</p>
     {:else if route.kind === 'database'}
-      <PublicDatabase {...(route.releaseId ? { releaseId: route.releaseId } : {})} onrelease={label => verifiedReleaseLabel = label} />
+      <PublicDatabase {...(route.releaseId ? { releaseId: route.releaseId } : {})} returnMapHref={returnMapHref} onrelease={label => verifiedReleaseLabel = label} />
     {:else if route.kind === 'record'}
-      <PublicRecord id={route.facilityId} profile={route.profile ?? 'official'} releaseId={route.releaseId} onrelease={label => verifiedReleaseLabel = label} />
+      <PublicRecord id={route.facilityId} profile={route.profile ?? 'official'} releaseId={route.releaseId} returnMapHref={returnMapHref} onrelease={label => verifiedReleaseLabel = label} />
     {:else if route.kind === 'community'}
       {#if route.page === 'form'}
         <ContributePage formKind={route.formKind ?? 'facility'} targetRecordId={route.targetRecordId ?? ''} returnMapHref={route.returnMapHref ?? '#/map'} />

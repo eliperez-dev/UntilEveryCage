@@ -29,6 +29,52 @@ test('the shared shell exposes the primary map and database routes', async ({ pa
   await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Map' })).toBeVisible();
 });
 
+test('centered primary navigation and map controls stay aligned across desktop and mobile', async ({ page }) => {
+  await page.route('**/api/v2/releases/manifest?**', route => route.fulfill({ contentType:'application/json', body:JSON.stringify({ api_version:'v2', data:{ release_id:'synthetic-release', profile:'official', manifest:{}, manifest_sha256:'a'.repeat(64), suppression_generation:1 } }) }));
+  await page.route('**/api/v2/locations?**', route => route.fulfill({ contentType:'application/json', body:JSON.stringify({ api_version:'v2', data:[], meta:{ release_id:'synthetic-release', ruleset_version:'synthetic-rules', profile:'official', next_cursor:null, coverage_note:'Synthetic release.' } }) }));
+  await page.goto('./#/map');
+  const nav = page.getByRole('navigation', { name: 'Primary' });
+  await expect(nav.getByRole('link')).toHaveText(['Map','Database','API','Contribute','About','FAQ']);
+  await expect(page.getByRole('button', { name: 'Search map' })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Map view' }).getByText('Right-mouse to rotate / Left-mouse to pan')).toBeVisible();
+  const midpoint = async () => page.evaluate(() => {
+    const rect = document.querySelector('nav[aria-label="Primary"]')!.getBoundingClientRect();
+    return rect.left + rect.width / 2;
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect.poll(midpoint).toBeCloseTo(640, 0);
+  const mapControlGeometry = async () => page.evaluate(() => {
+    const search = document.querySelector('.search-toggle')!.getBoundingClientRect();
+    const view = document.querySelector('.map-controls-wrap')!.getBoundingClientRect();
+    return { left: search.left, right: innerWidth - view.right, overlap: search.right - view.left };
+  });
+  let inset = await mapControlGeometry();
+  expect(Math.abs(inset.left - inset.right)).toBeLessThan(1);
+  expect(inset.overlap).toBeLessThanOrEqual(0);
+  const alignedStyles = await page.evaluate(() => {
+    const search = getComputedStyle(document.querySelector('.search-toggle')!);
+    const view = getComputedStyle(document.querySelector('.map-controls')!);
+    return ['borderTopColor','backgroundColor','fontFamily','fontSize'].map(key => [search[key as keyof CSSStyleDeclaration], view[key as keyof CSSStyleDeclaration]]);
+  });
+  for (const [search, view] of alignedStyles) expect(search).toBe(view);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(nav.getByRole('link', { name: 'FAQ', exact: true })).toBeVisible();
+  await expect.poll(midpoint).toBeCloseTo(195, 0);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  inset = await page.evaluate(() => {
+    const search = document.querySelector('.search-toggle')!.getBoundingClientRect();
+    const view = document.querySelector('.map-controls-wrap')!.getBoundingClientRect();
+    return { left: search.left, right: innerWidth - view.right, overlap: search.right - view.left };
+  });
+  expect(Math.abs(inset.left - inset.right)).toBeLessThan(1);
+  expect(inset.overlap).toBeLessThanOrEqual(0);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  inset = await mapControlGeometry();
+  expect(Math.abs(inset.left - inset.right)).toBeLessThan(1);
+  expect(inset.overlap).toBeLessThanOrEqual(0);
+});
+
 test('a record URL is directly addressable and has a route-specific heading', async ({ page }) => {
   await page.goto('./#/records/synthetic-record-1');
   await expect(new URL(page.url()).hash).toBe('#/records/synthetic-record-1');
