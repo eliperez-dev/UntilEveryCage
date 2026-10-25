@@ -142,7 +142,9 @@ a competing completion ledger.
   `/api/v2/graph/*` projection; the `/api/private/graph/*` routes remain
   operator-only. Public graph edges are intentionally discoverable, with
   exact/inferred and high/medium/low confidence shown together with their
-  evidence and limitations.
+evidence and limitations. A record without connections shows "None" without
+relationship/confidence filters. Keep those filters available when they caused
+an otherwise nonempty connection list to have no matches.
 - The current public client is English-only; a complete V2 localization system
   is not implemented. Multilingual UI is required before launch, after the
   targeted cleanup checkpoint. Spanish is the first bounded implementation,
