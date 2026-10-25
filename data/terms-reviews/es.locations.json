@@ -1,0 +1,7 @@
+{
+  "decision": "approved",
+  "notes": "The source is AESAN's published RGSEAA full-list XLSX. AESAN's legal notice states that information on its site may be reproduced, modified, distributed, and communicated for commercial and non-commercial use unless expressly indicated otherwise, provided content is not distorted and the source and document last-update date are cited. The RGSEAA page links this file as its complete register listing; AESAN's open-data page lists RGSEAA among its data resources. This review authorizes one bounded acquisition and private processing for es.locations. Check the workbook for any contrary notice or third-party restriction before processing; preserve AESAN attribution and the file update date. No public release is approved. Keep source evidence and addresses in restricted private staging only as needed for queued location enrichment; apply current privacy, minimization, and release review separately. Registration is administrative and does not establish current operation or national primary-production coverage.",
+  "reference": "https://www.aesan.gob.es/registro-sanitario/empresas-alimentarias ; https://www.aesan.gob.es/datos-abiertos ; https://www.aesan.gob.es/aviso-legal ; https://www.aesan.gob.es/dam/jcr%3A0e74247c-5a4e-4c79-863b-b5dae6e79ada/260901_Industrias_RGSEAA.xlsx",
+  "reviewed_at": "2026-10-25T14:39:26Z",
+  "reviewer": "Codex source terms review under explicit project operator authorization"
+}

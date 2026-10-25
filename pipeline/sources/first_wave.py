@@ -25,6 +25,7 @@ from .france.adapter import FranceDgalSectionIAdapter, FranceDgalSectionIIAdapte
 from .italy.it_853_adapter import Italy853Adapter
 from .italy.it_1069_adapter import Italy1069Adapter
 from .spain_cat.adapter import CataloniaFeedSandachAdapter
+from .spain_rgseaa.adapter import RgseaaAdapter, CONFIG as RGSEAA_CONFIG
 from .australia.npi import NpiFacilitiesAdapter
 from .australia.sa_epa import SouthAustraliaEpaAdapter
 from .us.fsis.runner_adapter import FsisRefreshAdapter
@@ -71,8 +72,8 @@ class SourceDescriptor:
 
     def readiness(self) -> dict[str, Any]:
         """Return capability facts without conflating acquisition and approval."""
-        live_callable = self.source_id in {"be.locations", "br.sif.registered", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "fsa_approved_establishments", "fr.dgal.section-i", "fr.dgal.section-ii", "fr.georisques.icpe.animal", "it.853-2004", "it.1069-2009", "es.cat.feed-sandach", "au.sa.epa.licensed-activities", "au.npi.facilities"}
-        operational = "live" if self.source_id in {"be.locations", "br.sif.registered", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "fsa_approved_establishments", "it.853-2004", "it.1069-2009", "fr.dgal.section-i", "fr.dgal.section-ii", "fr.georisques.icpe.animal", "es.cat.feed-sandach", "au.sa.epa.licensed-activities", "au.npi.facilities"} else ("terms-blocked" if live_callable else "assisted")
+        live_callable = self.source_id in {"be.locations", "br.sif.registered", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "fsa_approved_establishments", "fr.dgal.section-i", "fr.dgal.section-ii", "fr.georisques.icpe.animal", "it.853-2004", "it.1069-2009", "es.cat.feed-sandach", "es.locations", "au.sa.epa.licensed-activities", "au.npi.facilities"}
+        operational = "live" if self.source_id in {"be.locations", "br.sif.registered", "ca.ontario.meat-plants", "ca.cfia.federal-meat", "fsa_approved_establishments", "it.853-2004", "it.1069-2009", "fr.dgal.section-i", "fr.dgal.section-ii", "fr.georisques.icpe.animal", "es.cat.feed-sandach", "es.locations", "au.sa.epa.licensed-activities", "au.npi.facilities"} else ("terms-blocked" if live_callable else "assisted")
         return {
             "source_id": self.source_id,
             "fixture_ready": bool(self.fixture_paths),
@@ -80,9 +81,9 @@ class SourceDescriptor:
             "live_acquisition": self.live_acquisition,
             "operational_classification": operational,
             "live_callable": live_callable,
-            "private_pipeline": "one_action_preview_import_ready" if self.source_id in {"br.sif.registered", "ca.ontario.meat-plants", "it.853-2004", "it.1069-2009", "es.cat.feed-sandach", "au.sa.epa.licensed-activities", "au.npi.facilities", "fsa_approved_establishments", "fr.georisques.icpe.animal"} else "fixture_contract_ready",
+            "private_pipeline": "one_action_preview_import_ready" if self.source_id in {"br.sif.registered", "ca.ontario.meat-plants", "it.853-2004", "it.1069-2009", "es.cat.feed-sandach", "es.locations", "au.sa.epa.licensed-activities", "au.npi.facilities", "fsa_approved_establishments", "fr.georisques.icpe.animal"} else "fixture_contract_ready",
             "publication": self.publication,
-            "geocoding": "disabled",
+            "geocoding": "separate-private-profile" if self.source_id == "es.locations" else "disabled",
             "review_required": True,
         }
 
@@ -112,6 +113,10 @@ def _italy_1069() -> SourceAdapter:
 
 def _spain_cat() -> SourceAdapter:
     return CataloniaFeedSandachAdapter()
+
+
+def _spain_rgseaa() -> SourceAdapter:
+    return RgseaaAdapter()
 
 
 def _australia_npi() -> SourceAdapter:
@@ -164,6 +169,7 @@ FIRST_WAVE: tuple[SourceDescriptor, ...] = (
     SourceDescriptor("au.npi.facilities", "AU", "https://data.gov.au/data/dataset/043f58e0-a188-4458-b61c-04e5b540aea4", _australia_npi, (ROOT / "australia" / "fixtures" / "npi_facilities.csv",), "au-npi-facilities-v3", "au-npi-csv-v2", "bounded_private_fetch"),
     SourceDescriptor("au.sa.epa.licensed-activities", "AU", "https://data.sa.gov.au/data/dataset/8fdb86ff-d3d1-4f9e-85a5-bed4080d5ee1/resource/26e076f3-c37f-4089-8f28-3f7c9afd997e/download/topo_epa_activities_wgs84.geojson", _australia_sa_epa, (ROOT / "australia" / "fixtures" / "sa_epa_synthetic.geojson",), "au-sa-epa-licensed-activities-v1", "au-sa-epa-geojson-v1", "bounded_private_fetch"),
     SourceDescriptor("es.cat.feed-sandach", "ES", "https://analisi.transparenciacatalunya.cat/d/m48e-zdz9", _spain_cat, (), "es-cat-feed-sandach-v2", "es-cat-socrata-m48e-zdz9-v1", "bounded_private_fetch"),
+    SourceDescriptor("es.locations", "ES", RGSEAA_CONFIG["source_url"], _spain_rgseaa, (), RGSEAA_CONFIG["adapter_version"], RGSEAA_CONFIG["schema_version"], "bounded_private_fetch"),
     SourceDescriptor("br.sif.registered", "BR", "https://dados.agricultura.gov.br/dataset/062166e3-b515-4274-8e7d-68aadd64b820/resource/97277e92-264a-4dc0-9aea-f87b8ea93798/download/sigsifestabelecimentosregistradosnosif.csv", _br_sif_registered, (ROOT / "brazil" / "fixtures" / "sif_registered.csv",), "br-mapa-sif-registered-v2-private-location-evidence", "br-mapa-sif-registered-csv-v1", "bounded_private_fetch"),
 )
 
@@ -245,6 +251,10 @@ class FirstWaveRefreshAdapter:
             )
         if self.source_id == "es.cat.feed-sandach":
             from .spain_cat.acquire import fetch
+            return fetch(output_root=root, run_id=run_id, terms_review_path=Path(str(review)),
+                         timeout_seconds=timeout, max_bytes=max_bytes)
+        if self.source_id == "es.locations":
+            from .spain_rgseaa.acquire import fetch
             return fetch(output_root=root, run_id=run_id, terms_review_path=Path(str(review)),
                          timeout_seconds=timeout, max_bytes=max_bytes)
         if self.source_id == "br.sif.registered":
@@ -387,6 +397,10 @@ class FirstWaveRefreshAdapter:
                               "normalized": row["normalized"]} for row in rows]
                 write_handoff(run_dir / "candidate-handoff", safe_rows, source_artifact,
                               source_id=self.source_id)
+            elif self.source_id == "es.locations":
+                source_adapter.write_candidate_handoff(run_dir / "candidate-handoff", source_artifact, {
+                    "accepted": rows,
+                })
             elif self.source_id == "br.sif.registered":
                 safe_rows = source_adapter.minimize_for_handoff(rows)
                 write_handoff(run_dir / "candidate-handoff", safe_rows, source_artifact,
@@ -415,6 +429,13 @@ class FirstWaveRefreshAdapter:
                 "publication_date": source_artifact.publication_date,
                 "effective_date": source_artifact.effective_date,
             }
+        if self.source_id == "es.locations":
+            summary["accepted_rows"] = manifest.get("normalized_rows", 0)
+            summary["valid_source_activity_rows"] = manifest.get("normalized_rows", 0)
+            summary["out_of_scope_rows"] = manifest.get("out_of_scope_rows", 0)
+            summary["candidate_rows"] = manifest.get("candidate_rows", 0)
+            summary["source_update_date"] = manifest.get("source_update_date")
+            summary["non_allowlisted_key_count"] = manifest.get("non_allowlisted_key_count", 0)
         elif isinstance(manifest.get("geocode_queue"), dict):
             summary["geocode_queue"] = manifest["geocode_queue"]
         if candidate_handoff:
@@ -569,7 +590,7 @@ def register_first_wave(catalog: Any) -> None:
             adapter_version=descriptor.adapter_version,
             schema_version=descriptor.schema_version,
             acquisition=descriptor.live_acquisition,
-            geocoding="disabled",
+            geocoding=readiness["geocoding"],
             publication=descriptor.publication,
             adapter_path=f"pipeline/sources/{descriptor.country_code.lower()}",
             country_code=descriptor.country_code.lower(),

@@ -54,7 +54,7 @@ NUMERIC_PRECISIONS = {
     "source-provided", "source-provided-unspecified", "source-precision-unknown",
     "source-reported-unknown", "source-coordinate-crs-unverified",
 }
-SOURCE_LOCATION_SOURCES = {"ca.ontario.meat-plants", "ca.cfia.federal-meat", "fr.georisques.icpe.animal"}
+SOURCE_LOCATION_SOURCES = {"ca.ontario.meat-plants", "ca.cfia.federal-meat", "fr.georisques.icpe.animal", "es.locations"}
 SOURCE_GROUP_KEY_INDEX = 23
 ACTIVITY_DISPLAY_PRECEDENCE = (
     "slaughter", "meat_processing", "poultry_processing", "fish_processing",
@@ -369,6 +369,7 @@ SOURCE_NAMES = {
     "fsa_approved_establishments": "Food Standards Agency — Approved Food Establishments (England and Wales)",
     "fss_approved_establishments": "Food Standards Scotland — Approved Establishments (Scotland)",
     "es.cat.feed-sandach": "Catalonia — SANDACH Feed Establishments Register",
+    "es.locations": "AESAN — RGSEAA National Food Establishments Register",
     "dk.smiley": "Danish Veterinary and Food Administration — Find Smiley",
     "fr.dgal.section-i": "French Ministry of Agriculture — DGAL Section I",
     "fr.dgal.section-ii": "French Ministry of Agriculture — DGAL Section II",
@@ -387,6 +388,7 @@ SOURCE_MEDIA_TYPES = {
     "fss_approved_establishments": "text/csv",
     "nl.nvwa.approved-food": "application/json",
     "fr.georisques.icpe.animal": "application/json",
+    "es.locations": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 }
 
 
@@ -751,7 +753,7 @@ def validate_preview_fields(path: Path, allowed_fields: set[str]) -> None:
             raise ImportFailure("preview_field_not_allowed")
         location = normalized.get("private_location_evidence", {})
         if (not isinstance(location, dict)
-                or set(location) - {"address", "address_lines", "city", "postal_code", "region", "country_code", "coordinates",
+                or set(location) - {"address", "address_lines", "city", "postal_code", "region", "province", "country_code", "coordinates",
                                     "municipality_code", "comarca_code", "department_number", "region_code"}):
             raise ImportFailure("private_location_evidence_invalid")
         coordinates = location.get("coordinates")
@@ -988,7 +990,10 @@ def import_rows(db: psycopg.Connection, source: str, path: Path, expected_rows: 
                 "source_id": source,
                 "source_record_key": str(group_key),
                 "normalized": {"private_location_evidence": location_evidence,
-                               "city": city, "postal_code": postal, "country_code": country},
+                               "city": city, "postal_code": postal,
+                               "province": representative_normalized.get("province"),
+                               "region": representative_normalized.get("region"),
+                               "country_code": country},
             })
             if query:
                 country_code = country.upper() if isinstance(country, str) else ""
@@ -1568,7 +1573,42 @@ def run(root: Path, database_url: str, *, source_id: str | None = None,
             archived_replay_evidence = validate_archived_replay(
                 runtime_manifest, source_result, source_id, source_hash, retrieved_at,
                 acquisition_evidence, expected_artifact)
-        if source_id in {"fsa_approved_establishments", "fss_approved_establishments"}:
+        if source_id == "es.locations":
+            acquisition_path = root / "acquisition" / source_id / run_id / "acquisition-metadata.json"
+            expected_artifact = acquisition_path.parent / "rgseaa.xlsx"
+            if (not acquisition_path.is_file() or acquisition_path.is_symlink()
+                    or not expected_artifact.is_file() or expected_artifact.is_symlink()):
+                raise ImportFailure("aesan_acquisition_provenance_missing")
+            acquisition_evidence = json_object(acquisition_path)
+            artifact_value = acquisition_evidence.get("artifact_path")
+            if (not isinstance(artifact_value, str)
+                    or Path(artifact_value).resolve() != expected_artifact.resolve()):
+                raise ImportFailure("aesan_acquisition_artifact_mismatch")
+            artifact_hash, artifact_size = digest_file(expected_artifact)
+            try:
+                acquired_at = datetime.fromisoformat(
+                    str(acquisition_evidence.get("retrieved_at_utc")).replace("Z", "+00:00"))
+            except ValueError:
+                raise ImportFailure("aesan_acquisition_timestamp_invalid") from None
+            terms_evidence = acquisition_evidence.get("terms_review")
+            if (acquisition_evidence.get("source_id") != source_id
+                    or acquisition_evidence.get("run_id") != run_id
+                    or acquisition_evidence.get("artifact") != "rgseaa.xlsx"
+                    or acquisition_evidence.get("sha256") != source_hash
+                    or artifact_hash != source_hash
+                    or artifact_size != acquisition_evidence.get("byte_size")
+                    or acquisition_evidence.get("requested_url") != manifest.get("source_url")
+                    or acquisition_evidence.get("final_url") != manifest.get("source_url")
+                    or acquisition_evidence.get("retrieved_at_utc") != manifest.get("retrieved_at_utc")
+                    or acquisition_evidence.get("adapter_version") != code_version
+                    or acquisition_evidence.get("config_version") != config_version
+                    or not isinstance(terms_evidence, dict)
+                    or terms_evidence.get("decision") != "approved"
+                    or acquired_at.utcoffset() is None
+                    or acquired_at > datetime.now(timezone.utc) + timedelta(minutes=5)
+                    or datetime.now(timezone.utc) - acquired_at > timedelta(days=max_age)):
+                raise ImportFailure("aesan_acquisition_provenance_mismatch")
+        elif source_id in {"fsa_approved_establishments", "fss_approved_establishments"}:
             acquisition_path = root / "acquisition" / source_id / run_id / "acquisition-metadata.json"
             expected_artifact = acquisition_path.parent / "source.csv"
             if (not acquisition_path.is_file() or acquisition_path.is_symlink()

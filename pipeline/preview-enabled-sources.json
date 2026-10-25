@@ -297,6 +297,20 @@
       "display_policy": {"kind": "source_numeric_coordinate", "precision": "source-precision-unknown", "disclosure": "EPA ECHO facilities associated with CWA/NPDES data and matching selected livestock/poultry NAICS/SIC classifications; not a confirmed CAFO or current-operation list. Source-reported coordinates, facility names, and addresses remain private pending lineage, location, and privacy review. No provider geocoding; no public release or project approval."},
       "adapter_version": "us-epa-echo-animal-adapter-v1",
       "schema_version": "us-epa-echo-facilities-cwa-animal-production-v1"
+    },
+    "es.locations": {
+      "enabled": true,
+      "runtime_classification": "production-e2e",
+      "public_release": false,
+      "runner": "scripts/real_preview.py:es.locations",
+      "terms_review": "data/terms-reviews/es.locations.json",
+      "terms_decision": "approved",
+      "freshness_max_days": 45,
+      "expected_artifacts": ["rgseaa.xlsx"],
+      "allowed_preview_fields": ["establishment_id", "country_code", "nation", "region", "province", "address", "source_classification_code", "source_classification_label", "source_scope_eligibility", "source_scope_category", "source_address_state", "coordinate_state", "coordinate_precision", "privacy_gate", "coordinate_gate", "rights_gate", "publication_gate"],
+      "display_policy": {"kind": "list_only_unmapped", "precision": "unmapped_no_source_coordinates", "disclosure": "AESAN RGSEAA national administrative register; candidate handoff limited to official source keys 10, 12, 14, and 15, which identify animal-origin food-chain sectors but do not establish a specific operation or current activity. Source industrial addresses remain restricted for private enrichment only. No source coordinates, no public release or project approval."},
+      "adapter_version": "es-aesan-rgseaa-v1",
+      "schema_version": "es-aesan-rgseaa-xlsx-v1"
     }
   }
 }

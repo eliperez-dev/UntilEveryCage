@@ -19,6 +19,7 @@ FACILITY_IDENTIFIERS: dict[str, tuple[str, str]] = {
     "ca.ontario.meat-plants": ("ontario_plant_number", "ca.ontario.meat-plants"),
     "dk.smiley": ("find_smiley_establishment_id", "dk.smiley"),
     "es.cat.feed-sandach": ("catalonia_sandach_registration", "es.cat.feed-sandach"),
+    "es.locations": ("rgseaa_registration_number", "es.locations"),
     "fsa_approved_establishments": ("fsa_establishment_id", "fsa_approved_establishments"),
     "fss_approved_establishments": ("fss_establishment_id", "fss_approved_establishments"),
     "it.1069-2009": ("it_1069_recognition_number", "it.1069-2009"),
@@ -68,6 +69,7 @@ LOCATION_ROLES: dict[str, str] = {
 PREMISES_ADDRESS_SOURCES = frozenset({
     "au.npi.facilities", "ca.ontario.meat-plants", "dk.smiley",
     "es.cat.feed-sandach", "fsa_approved_establishments",
+    "es.locations",
     "fss_approved_establishments", "nl.nvwa.approved-food", "us.fsis",
     "fr.georisques.icpe.animal", "gb.scot.marine.aquaculture", "it.853-2004",
 })

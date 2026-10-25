@@ -1,6 +1,6 @@
 # Spain source reconnaissance
 
-Status: reconnaissance only; no adapter, release, publication, or row-level fixture. Current V2 source baseline marks `es.locations` as partial/blocked until a permitted current artifact and rights review exist.
+Status: national AESAN route verified and implemented as a private candidate source. The current code supports acquisition, parsing, scoped candidate handoff, and private preview import; database/API/map acceptance is still pending. No rows, addresses, native identifiers, or raw artifacts are committed.
 
 ## Assessment
 
@@ -12,7 +12,17 @@ MAPA also exposes sector-specific public searches, including [SILUM animal-feed 
 
 ## Access, terms, and privacy
 
-The official pages are publicly reachable in web search, but a bounded direct fetch from this environment was refused by the target host; no artifact was retained and no access control was bypassed. No file-specific licence or redistribution grant was established. Treat official origin as provenance only. Establishment names, postal addresses, operator identifiers, and possible sole-trader/farm information require minimisation, privacy screening, and human publication approval. Do not infer facility completeness from RGSEAA, SILUM, SANDACH, or the EU list.
+AESAN's [legal notice](https://www.aesan.gob.es/aviso-legal) allows reuse of available information unless a contrary notice applies, subject to preserving meaning and citing the source and document update date; third-party rights remain separate. AESAN's [open-data page](https://www.aesan.gob.es/datos-abiertos) lists RGSEAA. A source-specific review permits a bounded normal HTTPS acquisition and private processing only; it does not authorize public redistribution or release. Establishment names and industrial addresses remain restricted in private raw/parsed staging; the candidate handoff drops names and keeps an address only as private location evidence for a separately authorized enrichment step.
+
+## Implemented national AESAN RGSEAA lane
+
+The source is AESAN's published [Listado completo](https://www.aesan.gob.es/registro-sanitario/empresas-alimentarias) XLSX (`260901_Industrias_RGSEAA.xlsx`), not the V1 Spain CSV and not a union with Catalonia or other registers. The workbook declares an update date of 2026-09-01; the captured response returned HTTP 200 with the publisher's `Last-Modified` value of 2026-09-08 13:41:47 GMT. The ignored private capture and acquisition metadata retain final URL, retrieval timestamp, response headers, bytes, SHA-256, terms evidence, and source date. The pinned one-sheet schema is `N_RGSEAA`, `Razon_Social`, `Domicilio_industrial`, `Provincia`, `CCAA`, `Clave`, and `Clave_Descripcion`; drift fails closed.
+
+The [AESAN RGSEAA guide](https://www.aesan.gob.es/dam/jcr:fad0c267-172d-42a3-b758-24a537da3b3e/Gu%C3%ADa_RGSEAA.pdf) describes a post-primary-production food register, not a complete animal-agriculture census or proof of current operations. Handoff is limited to exact source keys 10 (meat), 12 (fishery products), 14 (eggs), and 15 (dairy). These are sector keys, not proof that a particular facility slaughters or performs another specific activity. The source's native keys and descriptions remain source-linked evidence; no project activity category is inferred.
+
+The fresh shared-runner acquisition parsed 142,426 rows, quarantined 0 for required identity failures, and retained 19,781 key-allowlisted candidates; 122,645 other register rows were excluded from the handoff. Handoff contains no business names or source-values payload. Source coordinates are absent. Candidate points therefore remain unmapped; industrial addresses are retained privately and only eligible candidates may enter the existing Geoapify queue after a separately authorized transfer. No geocoder was called in the source refresh, and public release remains blocked.
+
+No legacy V1 rows were reused or reconciled. The legacy CSV remains comparison-only until provenance and transformation history are independently established.
 
 ## Acquisition recipe (private, repeatable)
 
@@ -34,4 +44,4 @@ Location-evidence contract verification (2026-10-02) reprocessed that retained s
 
 ## Remaining Spain-wide work
 
-National AESAN RGSEAA, MAPA SILUM/SANDACH, and regional registers have distinct sector scopes and terms. They require independent verification and source IDs; none may be silently unioned. `Old CSVs/spain-data.csv` remains a reconciliation-only V1 baseline, not an acquisition source.
+MAPA SILUM/SANDACH and other regional registers have distinct sector scopes and terms. They require independent verification and source IDs; none may be silently unioned with AESAN or Catalonia. `Old CSVs/spain-data.csv` remains a reconciliation-only V1 baseline, not an acquisition source.

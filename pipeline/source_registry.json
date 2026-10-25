@@ -115,13 +115,13 @@
       "source_id": "es.locations",
       "jurisdiction_scope": "Spain",
       "legacy_paths": ["static_data/es/locations.csv", "static_data/es/locations.csv.backup"],
-      "url": "unknown",
-      "access_method": "download or assisted export",
-      "cadence": "unknown",
-      "attribution_licensing_notes": "unknown; confirm competent authority, reuse terms, and attribution",
-      "adapter_status": "not_started",
-      "expected_artifact_schema": "CSV; legacy location rows with authority and date fields; exact upstream schema unknown",
-      "blockers": ["Identify the exact competent-authority publication and distinguish source values from legacy transformations."]
+      "url": "https://www.aesan.gob.es/dam/jcr%3A0e74247c-5a4e-4c79-863b-b5dae6e79ada/260901_Industrias_RGSEAA.xlsx",
+      "access_method": "Official AESAN full-list XLSX; bounded normal HTTPS acquisition preserving response metadata and checksum",
+      "cadence": "Unknown; file title dated 2026-09-01 and observed Last-Modified 2026-09-08",
+      "attribution_licensing_notes": "AESAN legal notice permits reuse unless contrary notices apply; preserve meaning, cite source and document last update; third-party rights remain separate. Terms review authorizes bounded private acquisition/processing only; no release approval.",
+      "adapter_status": "implemented_partial",
+      "expected_artifact_schema": "Single-sheet XLSX with exact native headers N_RGSEAA, Razon_Social, Domicilio_industrial, Provincia, CCAA, Clave, Clave_Descripcion; source names and industrial addresses are private evidence",
+      "blockers": ["National RGSEAA is an administrative register of post-primary food-chain establishments, not a complete animal-facility census or proof of current operation. Candidate handoff is restricted to official keys 10, 12, 14, and 15, which denote sectors rather than specific operational activities. No source coordinates; external address enrichment requires separate authorization; public release remains blocked."]
     },
     {
       "source_id": "fr.georisques.icpe.animal",

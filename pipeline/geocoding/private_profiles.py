@@ -27,7 +27,7 @@ def profiles() -> list[dict[str, Any]]:
             raise ValueError("private geocoding profile IDs must be unique")
         if not isinstance(source_id, str) or not source_id or source_id in seen_sources:
             raise ValueError("private geocoding sources must have one profile each")
-        if row.get("country_code") not in {"GB", "DK", "NL", "US"}:
+        if row.get("country_code") not in {"GB", "DK", "NL", "US", "ES"}:
             raise ValueError("private Geoapify profile country is not enabled")
         if row.get("status") != ENABLED:
             raise ValueError("private Geoapify profile status is invalid")

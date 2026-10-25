@@ -32,6 +32,7 @@ class GeoapifyAdapter:
         pilot_auto_display: bool = False,
         private_source_profile: bool = False,
         locality_only: bool = False,
+        allow_locality_match: bool = True,
     ):
         self.api_key = (api_key or os.environ.get("GEOAPIFY_API_KEY", "")).strip()
         if not self.api_key:
@@ -40,7 +41,7 @@ class GeoapifyAdapter:
             raise ValueError("country_code must be a lowercase ISO alpha-2 code")
         if pilot_auto_display and country_code != "au":
             raise ValueError("automatic preview display is only configured for the AU pilot")
-        if private_source_profile and country_code not in {"gb", "dk", "nl", "us"}:
+        if private_source_profile and country_code not in {"gb", "dk", "nl", "us", "es"}:
             raise ValueError("private source profiles are not enabled for this country")
         if pilot_auto_display and private_source_profile:
             raise ValueError("AU pilot and source profile modes are mutually exclusive")
@@ -50,6 +51,7 @@ class GeoapifyAdapter:
         self.pilot_auto_display = pilot_auto_display
         self.private_source_profile = private_source_profile
         self.locality_only = locality_only
+        self.allow_locality_match = allow_locality_match
         self.strict_matching = pilot_auto_display or private_source_profile
         self.timeout = timeout
         self.opener = opener
@@ -141,7 +143,7 @@ class GeoapifyAdapter:
             if (not self.locality_only and candidate_type in {"building", "amenity"}
                     and parts and normalized_address == parts[0]):
                 viable.append((candidate, "high_confidence_address_match"))
-            elif candidate_type == "city":
+            elif candidate_type == "city" and self.allow_locality_match:
                 locality = candidate_props.get("city")
                 locality = self._normalize(locality) if isinstance(locality, str) else ""
                 locality_parts = parts if self.locality_only else parts[1:]

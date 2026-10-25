@@ -1,8 +1,10 @@
 import importlib.util
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from pipeline.geocoding.private_profiles import profile_by_id, profile_for_source
+from pipeline.geocoding.registry import get_adapter
 
 
 ROOT = Path(__file__).parents[1]
@@ -18,6 +20,7 @@ class PrivateGeoapifyProfileTests(unittest.TestCase):
         self.assertEqual(profile_for_source("fss_approved_establishments")["country_code"], "GB")
         self.assertEqual(profile_for_source("dk.smiley")["country_code"], "DK")
         self.assertEqual(profile_for_source("nl.nvwa.approved-food")["country_code"], "NL")
+        self.assertEqual(profile_for_source("es.locations")["country_code"], "ES")
         self.assertIsNone(profile_for_source("unknown.source"))
         self.assertEqual(profile_by_id("geoapify-gb-fss-approved-establishments")["source_id"],
                          "fss_approved_establishments")
@@ -43,6 +46,31 @@ class PrivateGeoapifyProfileTests(unittest.TestCase):
             "fss_approved_establishments", base, {}, "unmapped_private_observation", profile))
         self.assertFalse(IMPORTER.private_geocode_queue_eligible(
             "fss_approved_establishments", base, location, "numeric_source_coordinate", profile))
+
+    def test_spain_profile_queues_only_eligible_address_evidence_without_source_coordinates(self):
+        profile = profile_for_source("es.locations")
+        base = {"country_code": "ES", "source_scope_eligibility": "eligible",
+                "privacy_gate": "restricted-private-evidence", "coordinate_state": "not-supplied"}
+        location = {"country_code": "ES", "address": "Synthetic industrial address"}
+        self.assertTrue(IMPORTER.private_geocode_queue_eligible(
+            "es.locations", base, location, "unmapped_private_observation", profile))
+        self.assertFalse(IMPORTER.private_geocode_queue_eligible(
+            "es.locations", {**base, "source_scope_eligibility": "out_of_scope"},
+            location, "unmapped_private_observation", profile))
+        self.assertFalse(IMPORTER.private_geocode_queue_eligible(
+            "es.locations", {**base, "country_code": "PT"}, location,
+            "unmapped_private_observation", profile))
+        self.assertFalse(IMPORTER.private_geocode_queue_eligible(
+            "es.locations", base, {}, "unmapped_private_observation", profile))
+        self.assertFalse(IMPORTER.private_geocode_queue_eligible(
+            "es.locations", base, location, "numeric_source_coordinate", profile))
+
+    def test_spain_private_profile_builds_country_filtered_geoapify_adapter(self):
+        with patch.dict("os.environ", {"GEOAPIFY_API_KEY": "synthetic-test-key"}):
+            adapter = get_adapter("geoapify", private_source_profile_id="geoapify-es-aesan-rgseaa")
+        self.assertEqual(adapter.country_code, "es")
+        self.assertTrue(adapter.private_source_profile)
+        self.assertTrue(adapter.strict_matching)
 
     def test_fsa_and_nvwa_profiles_apply_their_source_country_and_restriction_gates(self):
         fsa = profile_for_source("fsa_approved_establishments")

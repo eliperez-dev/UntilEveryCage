@@ -66,6 +66,14 @@
       "status": "enabled-private-only",
       "query_kind": "mailing_locality_only",
       "source_scope": "Active APHIS registration rows with explicit mailing city and state only; city points are approximate mailing-locality references, never operating-site or facility coordinates"
+    },
+    {
+      "profile_id": "geoapify-es-aesan-rgseaa",
+      "source_id": "es.locations",
+      "country_code": "ES",
+      "allow_locality_match": false,
+      "status": "enabled-private-only",
+      "source_scope": "Only AESAN RGSEAA rows in source keys 10, 12, 14, or 15; retain industrial address privately and query through the existing bounded address-enrichment queue only after separate transfer authorization"
     }
   ]
 }
