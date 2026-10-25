@@ -54,8 +54,9 @@ All items below remain required before replacing the original website.
 | Documentation consolidation | Complete | 46 obsolete/duplicate documents removed; one current roadmap/source inventory/frontend guide; local links and 28 documentation-contract checks passed; no application code changed |
 | Persistent cluster index | Deferred from the current sprint | Reload reuses the built index, with release/profile/manifest/restriction invalidation; cached point bytes alone do not qualify |
 | Languages | Generated Spanish facility labels and activities repaired; hosted verification belongs to the current acceptance receipt | Preserve source names, original classifications and attribution. Remaining German, French, Italian, Dutch and Danish use the same system; routes, filters and selection survive switching. Secondary API/community text is not fully translated |
-| Light/dark interface | Swagger/link contrast and compact mobile toolbar passed local visual review; hosted verification belongs to the current acceptance receipt | Keep the verified 64px equal-half mobile row with 44px controls and accessible touch help. Preserve current-mode moon/sun button and copy-link feedback without layout shifts |
-| France, broader Spain, Germany, Mexico | France source points verified locally; Spain matching incomplete; Germany imported privately but unmapped; Mexico acquisition blocked | Actual missing coverage acquired, normalized, enriched where needed and verified on the map; an adapter, address queue or existing Catalonia refresh is not new mapped national coverage |
+| Light/dark interface and map controls | FAQ repairs, zoom-9 default and Tools relocation integrated; real-data selection acceptance and deployment pending | Readable FAQ links in both themes and complete English/Spanish sentences. Street/Satellite and 2D/3D controls operate inside Tools, with no floating Map View. Pin selection works with Search map collapsed or expanded. Preserve theme/copy feedback and existing camera behavior |
+| France, broader Spain, Germany, Mexico | France capture/import and private source points verified; Germany taxonomy and bounded address enrichment verified; national Spain still unmapped; Mexico acquisition blocked | Actual missing coverage acquired, normalized, enriched where needed and verified on the map; an adapter, address queue or existing Catalonia refresh is not new mapped national coverage |
+| United Kingdom and New Zealand | Required launch-dataset targets added by the maintainer; fresh end-to-end and final-release verification pending | UK source cohorts and a permitted New Zealand source pass fresh acquisition, normalization, import, location enrichment and actual map/API checks, then appear in the final dated launch dataset. Existing UK released rows or legacy V1 New Zealand data alone do not satisfy this gate; report jurisdiction and source coverage explicitly |
 | APHIS history | Reliability and on-demand historical recovery implemented | Six real endpoint cases passed locally: two eligible facilities return pre-2025 annual and inspection links, sampled PDFs open, and the original no-report case returns an empty page; sample history reaches 2014, not a complete archive audit |
 | New default dated dataset | Not started | Fresh acquisition and required location enrichment for included cohorts, measured map membership/counts, retained history and current restrictions |
 | Final cutover | Not started | Maintainer frontend/data acceptance; verified monitoring, recovery and contribution operations; domain/canonical/redirect checks and rollback |
@@ -73,11 +74,11 @@ not an additive increase to the existing dataset. Follow the exact run and
 counts in [the source inventory](source-status.json), not copied sprint totals.
 
 France now transforms explicitly declared source coordinates and has passed
-retained-capture map acceptance; subsequent shared live fetches hit upstream
-connection resets. Broader Spain has a national AESAN import and address queue,
+fresh-capture retained-artifact import and map acceptance. Broader Spain has a
+national AESAN import, verified municipality lookup and corrected-address queue,
 but its geocoding pilots have not yet added map points. Germany now has automated
-official acquisition, idempotent private import and a local street-address queue;
-its provider and taxonomy projection still need completion. Mexico's current
+official acquisition, private taxonomy assignments and tested address enrichment;
+only a bounded subset has been geocoded, not the whole source. Mexico's current
 official attachment/token access remains blocked. Inspect the source inventory before
 promising counts or dates. Compare intended recovery with the original V1
 sources; do not silently count legacy rows as newly acquired data.
@@ -85,19 +86,22 @@ sources; do not silently count legacy rows as newly acquired data.
 ## Roadmap
 
 1. Documentation cleanup is complete.
-2. Retain the implemented UI consistency, mobile toolbar, current-mode theme
+2. Retain the implemented UI consistency, current-mode theme
    toggle and copy feedback without redesigning the interface. Keep APHIS
    recovery and Spanish support. Persistent cluster reuse remains deferred;
    the remaining launch languages still need translation.
-   Finish the verified Swagger/link contrast, generated Spanish record-label
-   translations and shorter mobile toolbar through final integrated CI/deployment.
+   Keep the deployed Swagger/link contrast and generated Spanish record-label
+   translations. Finish FAQ contrast/localization, move map style/view controls
+   into Tools, and repair pin selection while Search map is collapsed. Default
+   the cluster cutoff to camera zoom 9.0, retaining radius 30 px.
    Use focused visual/translation checks for these nits, not repeated full
    integration suites after each small edit.
 3. Deliver missing country coverage through source-specific lanes using the
    existing shared runner and separate enrichment jobs. Complete Spain address
-   matching and repeat France live refresh when available; Germany enrichment/
-   taxonomy and Mexico acquisition remain required follow-ups. Extend languages
-   through the same system.
+   matching and repeat the shared France live refresh; finish Germany enrichment
+   and Mexico acquisition. UK and New Zealand
+   must also pass fresh end-to-end source/map checks and be included in the final
+   launch dataset. Extend languages through the same system.
 4. Build the new dated launch dataset; preserve current and historical releases.
 5. Complete the maintainer pass and production handoff, then switch the domain.
 

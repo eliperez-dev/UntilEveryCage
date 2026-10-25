@@ -38,11 +38,9 @@ API schemas own supported fields. They are not additional roadmaps.
   Application semver comes from the backend Rust crate, not a frontend constant.
 - Map is the default discovery surface; Database is the compact research table.
   Existing informational/download routes remain compatible aliases.
-- Search map and Map View use the same viewport-edge spacing, surfaces, borders
-  and typography. On mobile they share one equal-half horizontal row with
-  matching 64px heights and 44px map-control touch targets; do not stack or
-  overlap them. Hide the mouse-only gesture hint on narrow/mobile screens,
-  retaining accessible touch/camera help.
+- Keep Search map on the map. Map View controls belong in the header Tools
+  menu on desktop and mobile, not in a floating map box or a second toolbar.
+  Preserve the compact controls, theme styles and 44px touch targets.
 - Resize applicable panels by dragging edges, not plus/minus width buttons.
   Do not change panel layout without the maintainer's specific approval.
 
@@ -52,7 +50,8 @@ API schemas own supported fields. They are not additional roadmaps.
   Do not substitute the six legacy type names for the V2 classification model.
   Processing is grey; do not invent approval for an undocumented palette.
   Preserve current category meanings until the maintainer agrees a change.
-- Default cluster radius is 30 px. Clusters group geographically, not into a
+- Default cluster radius is 30 px and the camera-zoom cutoff is 9.0. Preserve
+  explicit debug overrides. Clusters group geographically, not into a
   visible square grid. Exact and approximate records participate in clustering;
   do not make areas disappear between zoom levels or clear valid markers while
   replacement data/index work settles.
@@ -61,12 +60,15 @@ API schemas own supported fields. They are not additional roadmaps.
   On selection/inspection, show a red geographic area 500 metres across
   (250-metre radius), not a fixed-pixel circle or invented confidence interval.
   Use supported source extent where available. No permanent approximation legend.
-- Street/Satellite selector and adjacent 2D/3D toggle form one compact Map View.
-  On desktop, directly below: `Right-mouse to rotate / Left-mouse to pan`.
-  No separate hint banner or white MapLibre compass/pitch control on the main map.
+- Street/Satellite selector and adjacent 2D/3D toggle form one compact Map View
+  group inside Tools. Any desktop gesture hint stays under these options inside
+  Tools. No floating Map View, separate hint banner or white MapLibre
+  compass/pitch control on the main map.
 - Native terrain is lazy, true-scale and has a usable flat fallback.
   Keep provider attribution; changing style/camera must not rebuild facility data.
 - Clicking a real pin, PNG, cluster or search result must work on cold load.
+  Pin selection, detail opening and camera focus must work with Search map
+  collapsed as well as expanded, using the same existing selection behavior.
   Closing detail with X, Escape or Back leaves the focused camera in place.
   Preserve allowlisted camera, style, selection and release context on navigation.
   Public URLs omit fixture parameters such as `scenario=default`.
