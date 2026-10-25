@@ -199,6 +199,50 @@ class GeoapifyAdapterTests(unittest.TestCase):
                 self.assertIsNone(result.latitude)
                 self.assertIsNone(result.longitude)
 
+    def test_spain_rejections_retain_only_redacted_private_candidate_diagnostics(self):
+        def feature(country="es", address="11 Calle Real", confidence=0.96):
+            return {"geometry": {"type": "Point", "coordinates": [-3.7, 40.4]}, "properties": {
+                "country_code": country, "result_type": "building", "address_line1": address,
+                "street": "Calle Real", "housenumber": "11", "postcode": "28001",
+                "rank": {"confidence": confidence}, "name": "Synthetic Business", "place_id": "secret-id"}}
+
+        def adapter(features):
+            return geoapify.GeoapifyAdapter(
+                api_key="test-secret", country_code="es", private_source_profile=True,
+                allow_locality_match=False,
+                opener=unittest.mock.Mock(return_value=FakeResponse({"features": features, "apiKey": "test-secret"})),
+            )
+
+        mismatch = adapter([feature()]).geocode("10 Calle Real, Madrid, 28001, España")
+        self.assertEqual(mismatch.status, "review_required")
+        self.assertEqual(mismatch.response["diagnostic_projection"], "private_es_rejected_candidate_properties")
+        serialized = json.dumps(mismatch.response)
+        self.assertNotIn("Synthetic Business", serialized)
+        self.assertNotIn("secret-id", serialized)
+        self.assertNotIn("test-secret", serialized)
+        self.assertEqual(mismatch.response["features"][0]["properties"]["housenumber"], "11")
+        self.assertEqual(mismatch.response["features"][0]["geometry"]["coordinates"], [-3.7, 40.4])
+
+        ambiguous = adapter([feature("es", "10 Calle Real"), feature("es", "10 Calle Real")]).geocode(
+            "10 Calle Real, Madrid, 28001, España")
+        self.assertEqual(ambiguous.acceptance, "ambiguous_multiple_viable_results")
+        self.assertEqual(len(ambiguous.response["features"]), 2)
+
+        unresolved = adapter([]).geocode("10 Calle Real, Madrid, España")
+        self.assertEqual(unresolved.status, "unresolved")
+        self.assertEqual(unresolved.response["features"], [])
+        self.assertNotIn("apiKey", json.dumps(unresolved.response))
+
+    def test_non_spain_private_rejection_diagnostics_remain_unchanged(self):
+        feature = {"geometry": {"coordinates": [-2.5, 55.9]}, "properties": {
+            "country_code": "gb", "result_type": "building", "address_line1": "11 Other Road",
+            "rank": {"confidence": 0.96}, "name": "Synthetic Business"}}
+        result = self.gb_private_adapter(
+            api_key="test-secret", opener=unittest.mock.Mock(return_value=FakeResponse({"features": [feature]}))
+        ).geocode("10 Example Road, Exampleton, AB1 2CD, United Kingdom")
+        self.assertEqual(result.status, "review_required")
+        self.assertEqual(result.response, {"result_count": 1, "viable_result_count": 0})
+
     def test_private_source_profile_rejects_multiple_viable_or_wrong_country(self):
         base = {"geometry": {"type": "Point", "coordinates": [-2.5, 55.9]},
                 "properties": {"result_type": "building", "country_code": "gb",

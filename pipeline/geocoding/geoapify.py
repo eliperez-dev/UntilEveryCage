@@ -64,6 +64,35 @@ class GeoapifyAdapter:
             "geoapify_forward", retryable, {"error": reason},
         )
 
+    def _private_es_diagnostics(self, features: list) -> dict:
+        """Return a bounded, redacted provider projection for Spain review only."""
+        if not (self.private_source_profile and self.country_code == "es"):
+            return {"result_count": len(features), "viable_result_count": 0}
+        allowed = {"country_code", "result_type", "address_line1", "street", "housenumber",
+                   "city", "state_code", "state", "postcode"}
+        retained = []
+        for feature in features[:2]:
+            if not isinstance(feature, dict):
+                continue
+            props = feature.get("properties")
+            props = props if isinstance(props, dict) else {}
+            safe_props = {key: value[:300] if isinstance(value, str) else value
+                          for key, value in props.items() if key in allowed and isinstance(value, (str, int))}
+            rank = props.get("rank")
+            confidence = rank.get("confidence") if isinstance(rank, dict) else None
+            if isinstance(confidence, (int, float)) and not isinstance(confidence, bool) and isfinite(confidence):
+                safe_props["rank_confidence"] = confidence
+            item = {"properties": safe_props}
+            geom = feature.get("geometry")
+            coords = geom.get("coordinates") if isinstance(geom, dict) else None
+            if (isinstance(coords, list) and len(coords) == 2
+                    and all(isinstance(v, (int, float)) and not isinstance(v, bool) and isfinite(v) for v in coords)
+                    and -180 <= coords[0] <= 180 and -90 <= coords[1] <= 90):
+                item["geometry"] = {"type": "Point", "coordinates": coords}
+            retained.append(item)
+        return {"diagnostic_projection": "private_es_rejected_candidate_properties",
+                "result_count": len(features), "features": retained}
+
     def geocode(self, query: str) -> GeocodeOutcome:
         query = query.strip()
         if not query:
@@ -100,7 +129,8 @@ class GeoapifyAdapter:
         if not features:
             return GeocodeOutcome(
                 "unresolved", "unresolved", None, None, None, None,
-                "geoapify_forward", False, payload,
+                "geoapify_forward", False,
+                self._private_es_diagnostics(features) if self.private_source_profile and self.country_code == "es" else payload,
             )
         # Ignore weak/incompatible alternatives, but require exactly one
         # independently viable match. A second returned feature alone is not
@@ -158,7 +188,9 @@ class GeoapifyAdapter:
                 return GeocodeOutcome(
                     "review_required", "ambiguous_multiple_viable_results" if len(viable) > 1 else "address_or_locality_match_not_supported",
                     None, None, None, None, "geoapify_forward", False,
-                    {"result_count": len(features), "viable_result_count": len(viable)},
+                    (self._private_es_diagnostics(features) | {"viable_result_count": len(viable)}
+                     if self.private_source_profile and self.country_code == "es"
+                     else {"result_count": len(features), "viable_result_count": len(viable)}),
                 )
             feature, accepted_match = viable[0]
         else:
