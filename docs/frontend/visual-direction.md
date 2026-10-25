@@ -33,6 +33,11 @@ changing shared page or masthead styles. Load its assets only on the API page.
 
 ## Palette intent
 
+Before launch, provide both light and dark interface modes with readable text,
+controls, panels and focus states. Theme selection is independent of the map's
+Street/Satellite style and 2D/3D view. Keep category meanings consistent across
+themes. The current dark interface is not evidence that the light mode exists.
+
 The base is near-black charcoal with layered graphite surfaces, warm off-white
 text, muted secondary text, and one restrained signal accent. Category colors
 are sparse functional accents, not a rainbow background:
@@ -90,7 +95,9 @@ announce each numeric update to assistive technology or imply live telemetry.
 The latest revision restores V1's 18-category right-side counter at roughly
 30 visible updates per second, calculated from elapsed time and isolated from
 the map/application render loop. Respect reduced motion and hidden-tab
-behaviour without distorting elapsed totals. Source/date details stay compact;
+behaviour without distorting elapsed totals. Rate/source notes stay in the
+owning model, not an About-page disclosure. Keep only the concise estimate
+heading/caption and the linked ADAPTT footer credit;
 do not substitute the selected land-animal-only catalog for broader categories
 or combine overlapping estimates into an unsupported total.
 Focus rings are visible and high contrast. Hover can enrich a row, but never

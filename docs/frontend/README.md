@@ -53,12 +53,20 @@ API combines full-release CSV downloads, paginated JSON, release IDs and the
 self-hosted Swagger explorer. About restores the maintainer's supplied V1
 manifesto with an 18-category estimate counter in a right-hand desktop column,
 stacked on mobile. Its modeled visible updates run around 30 times per second
-using elapsed time; category rates and dates remain inspectable, with no claim
-of live measurements or counts at mapped facilities. FAQ is a separate short
-page for technology/architecture, contribution questions, and help/support.
+using elapsed time. The visible counter contains its estimate heading, short
+caption and values only. Rates and source notes remain in the owning model;
+do not restore the removed Source and method disclosure. About contains the
+manifesto and counter, without a Sources and methods section. FAQ briefly
+explains the data path: acquisition, cleaning/standardization, address matching
+and connections, then dated releases serving map/search/downloads through the
+Rust API. It also covers contribution questions and help/support. Do not restore
+a separate counter disclaimer or substitute a framework inventory for this flow.
 Do not retain a duplicate Common questions section on About. Restore the
 V1-style contact/support/credits footer, but not its obsolete version or
-country-coverage claims. Application semver comes from the backend's Rust
+country-coverage claims. The footer opens with "An independent, open-source,
+ad-free project." Its counter credit is "Counter Adapted from ADAPTT." with
+ADAPTT linked to `https://www.adaptt.org/`. Do not append a feedback invitation
+or expand these credits with internal explanations. Application semver comes from the backend's Rust
 crate version; dataset release dates remain independent.
 Old informational and download routes remain compatible aliases. Data access requires a published
 release, independently of the local preview or submission pilot.
@@ -68,7 +76,9 @@ the selected preview context. Private submission forms use ordinary language;
 publication warnings belong on public unreviewed community results. Contribute
 is a direct header link. Keep the primary links compact on desktop and touch
 screens without duplicating the consolidated pages in hover menus.
-Gesture guidance belongs below the map-view controls, not beside them. Closing
+The main map has no white MapLibre compass/pitch control and no visible drag
+instruction banner. Keep the compact map-view selector and 2D/3D toggle, native
+gestures, accessible button names and provider attribution. Closing
 a focused facility preserves the current camera; X, Escape, browser Back and
 direct-selected URLs must agree. Map/Database links preserve only allowlisted
 camera, style and release context, not raw search or arbitrary query strings.
@@ -129,3 +139,5 @@ a competing completion ledger.
 - The V1 de/en/es/fr locale implementation is a historical migration reference,
   not proof that V2 language switching works. Product-level language and
   country-coverage gates live in `docs/PRODUCT-READINESS.md`.
+- Light and dark interface modes are required before launch. This is a separate
+  implementation task; dark mode alone is not completion of that requirement.

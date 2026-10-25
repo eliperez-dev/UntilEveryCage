@@ -27,7 +27,8 @@ publishable facilities unless explicitly labelled that way.
 **Required before replacing the original website:** the maintainer approved
 launch repairs and a targeted code/documentation cleanup first, followed by
 persistent cluster-index reuse, multilingual UI and map coverage from France,
-Spain, Germany and Mexico. These remain launch gates, not post-launch extras.
+Spain, Germany and Mexico. Light/dark interface modes are also required before
+launch under the maintainer's subsequent review. These remain launch gates, not post-launch extras.
 The cleanup checkpoint precedes cluster persistence and translation work.
 Spanish is the first bounded translation implementation; German, French,
 Italian, Dutch and Danish follow through the same language system. Original
@@ -60,7 +61,7 @@ Map/Database return links preserve camera/style context; the gesture hint sits
 below the view controls. The application version is `2.0.0`, obtained from the
 Rust crate version through `/health/live`, not a frontend constant. The counter
 preserves inherited V1 rates; missing source editions/years remain disclosed
-under its method note rather than being represented as newly verified statistics.
+in the owning model rather than being represented as newly verified statistics.
 The exact tested revision, CI result, Render deployment and cleanup receipt live
 in ignored `data/staging/launch-fidelity-20261024/acceptance.json`; an implementation
 checkpoint alone is not proof of a successful hosted rollout.
@@ -74,6 +75,7 @@ checkpoint alone is not proof of a successful hosted rollout.
 | Sprint 2 fidelity and behaviour | Implemented and locally verified | Real-v0 acceptance, real-release map/detail/connection checks, 42 shell cases across Chromium/Firefox/WebKit and responsive counter/version checks. CI and exact Render rollout are recorded in the checkpoint receipt above. |
 | Persistent cluster index | Not started | Reuse the built index across reloads with release/profile/manifest/restriction invalidation; caching the point feed alone does not qualify. |
 | Languages | Not started | Spanish first, then German, French, Italian, Dutch and Danish through the same complete language system; source evidence is not rewritten. |
+| Light/dark interface modes | Required; not implemented | User-selectable light and dark modes with readable text, controls, panels and focus states; independent of map style and category semantics. |
 | France, Spain, Germany and Mexico map coverage | In progress at source-specific stages | Verified acquisition-to-database pipeline, usable source/geocoded locations and actual map membership. The source inventory owns each source's facts, counts and blockers. |
 | New default dated dataset | Not started | Fresh source acquisition and required geocoding, including the added eligible country cohorts; verify counts and actual map membership, retaining historical releases and current restrictions. The maintainer permits this dated dataset to become the launch default; no date or membership is invented here. |
 | Final public cutover | Not started | Maintainer UI/data acceptance, verified production recovery/monitoring and contribution/moderation operation, domain/canonical/redirect checks and a tested rollback route. |

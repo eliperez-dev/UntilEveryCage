@@ -31,6 +31,16 @@ meaning by itself.
 
 ## Copy tone
 
+Use the maintainer's supplied wording verbatim where specified. Do not add
+unsolicited disclaimer blocks, internal audit narrative, revision history,
+repeated uncertainty paragraphs or polite filler. Prefer a short factual label
+and the actual source/evidence fields over a general warning paragraph. Removing
+copy does not delete provenance or change publication controls. Required public
+unreviewed-community labels and map-provider attribution remain in place.
+The removed About Sources and methods section and counter Source and method
+disclosure must not be reintroduced elsewhere as replacement copy. Review every
+new public-facing sentence against the task's exact copy requirements.
+
 Use direct, non-sensational language. Explain limitations without apologizing for
 the existence of uncertainty. Source terminology may be quoted, but the project
 explanation is separate. Avoid animal totals or global claims unless the page
@@ -42,7 +52,7 @@ Ask for country names rather than codes; country and evidence links are
 optional for facility tips. Explain a map pin as choosing the location, not as
 a geocoding operation. Use one concise note that submissions are reviewed
 before publication, without repeating pilot/review badges throughout the form.
-Keep map attribution visible and put provider details in methodology.
+Keep map-provider attribution visible on the map.
 Public unreviewed community results retain the warning required above.
 
 Label the task links **Choose a contribution type** so the alternatives are
@@ -130,10 +140,8 @@ presented as project-reviewed facts.
 
 ## Empty and error copy patterns
 
-- No results: “No eligible records match these filters in this release. This
-  does not establish that no facility exists.”
-- No point: “This record is public but has no publishable coordinate.”
+- No results: “No records match these filters.”
+- No point: “No mapped location.”
 - City point: “Approximate location.”
-- Stale/unknown lifecycle: “Not observed recently; this is not proof of closure.”
-- Service error: “The current release could not be loaded. Try again; the last
-  response was not substituted as if current.”
+- Unknown lifecycle: omit the field rather than adding an unknown-status message.
+- Service error: “Could not load this release. Try again.”
